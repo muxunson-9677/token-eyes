@@ -193,3 +193,186 @@ pub fn get_cost_ledger_summary(
 - `start_date` 为空时，取当前自然月月初 00:00:00。
 - `end_date` 为空时，取当前时间。
 - `end_date < start_date` 返回参数错误。
+
+## Day 2 前端组件数据接口
+
+本节是工单 06/07/08 的唯一前端数据契约。三个组件只对接 Day 1 已完成的后端能力，不新增 schema，不新增后端命令，不做套餐摊销或预测。
+
+### 1. 用量列表展示字段
+
+用量列表复用现有用量页模式，不新增专用后端接口。数据来源继续使用现有 `RequestLog`、`PaginatedLogs`、`useRequestLogs`、`RequestLogTable` 链路。
+
+```ts
+export interface UsageListQuery {
+  range: UsageRangeSelection;
+  appType?: AppType | "all";
+  providerName?: string;
+  model?: string;
+  statusCode?: number;
+  page: number;
+  pageSize: number;
+}
+
+export type UsageListResult = PaginatedLogs;
+
+export type UsageListRow = Pick<
+  RequestLog,
+  | "requestId"
+  | "providerName"
+  | "appType"
+  | "model"
+  | "requestModel"
+  | "pricingModel"
+  | "inputTokens"
+  | "outputTokens"
+  | "cacheReadTokens"
+  | "cacheCreationTokens"
+  | "totalCostUsd"
+  | "statusCode"
+  | "createdAt"
+  | "dataSource"
+>;
+```
+
+约定：
+- `appType === "all"` 在调用后端前归一化为 `undefined`。
+- Hermes 用量行使用 `appType: "hermes"`，展示逻辑复用现有列表样式和分页模式。
+- 本阶段不新增用量字段、不调整 `RequestLog` 后端结构。
+
+### 2. 花销图表数据接口
+
+花销图表只展示两个数字和一个简易柱状图：本统计周期花销、历史累计花销。数据来自 Day 1 已定义的 `get_cost_ledger_summary`。
+
+```ts
+export interface CostLedgerQuery {
+  startDate?: number;
+  endDate?: number;
+  agentType?: AppType;
+}
+
+export interface CostLedgerByAgent {
+  agentType: string;
+  tokenCostUsd: string;
+  subscriptionCostUsd: string;
+  totalCostUsd: string;
+}
+
+export interface CostLedgerSummary {
+  periodStart: number;
+  periodEnd: number;
+  tokenCostUsd: string;
+  subscriptionCostUsd: string;
+  totalCostUsd: string;
+  cumulativeTokenCostUsd: string;
+  cumulativeSubscriptionCostUsd: string;
+  cumulativeTotalCostUsd: string;
+  byAgent: CostLedgerByAgent[];
+}
+
+export interface SpendOverviewBarDatum {
+  key: "period" | "cumulative";
+  label: string;
+  valueUsd: number;
+  rawUsd: string;
+}
+
+export interface SpendOverviewViewModel {
+  monthlyUsd: string;
+  cumulativeUsd: string;
+  bars: SpendOverviewBarDatum[];
+  byAgent: CostLedgerByAgent[];
+}
+```
+
+前端 API 约定：
+
+```ts
+usageApi.getCostLedgerSummary(params?: CostLedgerQuery): Promise<CostLedgerSummary>
+```
+
+Tauri invoke 约定：
+
+```ts
+invoke<CostLedgerSummary>("get_cost_ledger_summary", {
+  startDate,
+  endDate,
+  agentType,
+})
+```
+
+约定：
+- `monthlyUsd` 使用 `CostLedgerSummary.totalCostUsd`。
+- `cumulativeUsd` 使用 `CostLedgerSummary.cumulativeTotalCostUsd`。
+- 柱状图只画 `period` 与 `cumulative` 两根柱，不做趋势预测。
+- 金额字符串保持后端返回精度；图表数值用 `Number(value || 0)` 派生。
+
+### 3. 订阅费表单数据接口
+
+订阅费表单对接 Day 1 已定义的 `subscription_fee_commands`。表单只负责手动录入、编辑、删除、列表展示订阅费，不做自动识别。
+
+```ts
+export interface SubscriptionFee {
+  id: number;
+  agentType: AppType;
+  planLabel: string;
+  monthlyFee: string;
+  currency: string;
+  billingDay: number;
+  effectiveFrom: number;
+  effectiveTo?: number | null;
+  note?: string | null;
+}
+
+export interface SubscriptionFeeInput {
+  agentType: AppType;
+  planLabel: string;
+  monthlyFee: string;
+  currency?: string;
+  billingDay: number;
+  effectiveFrom: number;
+  effectiveTo?: number | null;
+  note?: string | null;
+}
+
+export interface SubscriptionFeeFormValues {
+  id?: number;
+  agentType: AppType;
+  planLabel: string;
+  monthlyFee: string;
+  currency: "USD";
+  billingDay: number;
+  effectiveFromDate: string;
+  effectiveToDate?: string;
+  note: string;
+}
+
+export interface SubscriptionFeeListQuery {
+  agentType?: AppType;
+  includeInactive?: boolean;
+}
+```
+
+前端 API 约定：
+
+```ts
+subscriptionFeeApi.list(params?: SubscriptionFeeListQuery): Promise<SubscriptionFee[]>
+subscriptionFeeApi.create(input: SubscriptionFeeInput): Promise<SubscriptionFee>
+subscriptionFeeApi.update(id: number, input: SubscriptionFeeInput): Promise<SubscriptionFee>
+subscriptionFeeApi.remove(id: number): Promise<void>
+```
+
+Tauri invoke 约定：
+
+```ts
+invoke<SubscriptionFee[]>("list_subscription_fees", { agentType, includeInactive })
+invoke<SubscriptionFee>("create_subscription_fee", { input })
+invoke<SubscriptionFee>("update_subscription_fee", { id, input })
+invoke<void>("delete_subscription_fee", { id })
+```
+
+约定：
+- `monthlyFee` 在前端保持字符串，避免输入过程中丢精度或吞掉小数位。
+- `currency` 本阶段固定默认 `USD`，表单不提供多币种扩展。
+- `effectiveFromDate`、`effectiveToDate` 使用 `YYYY-MM-DD`，提交前转换为秒级 Unix 时间戳。
+- `billingDay` 只允许 1-31。
+- 不新增套餐自动识别，不做复杂摊销。
