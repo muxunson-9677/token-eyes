@@ -1350,6 +1350,7 @@ pub fn run() {
             commands::delete_model_pricing,
             commands::check_provider_limits,
             commands::get_cost_ledger_summary,
+            commands::get_cost_ledger_summary,
             // Session usage sync
             commands::sync_session_usage,
             commands::get_usage_data_sources,

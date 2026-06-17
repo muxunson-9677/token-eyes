@@ -411,20 +411,20 @@ pub(crate) fn has_matching_proxy_usage_log(
 }
 
 #[derive(Debug, Clone, Default)]
-struct RollupDateBounds {
-    start: Option<String>,
-    end: Option<String>,
-    is_empty: bool,
+pub(crate) struct RollupDateBounds {
+    pub(crate) start: Option<String>,
+    pub(crate) end: Option<String>,
+    pub(crate) is_empty: bool,
 }
 
-fn local_datetime_from_timestamp(ts: i64) -> Result<chrono::DateTime<Local>, AppError> {
+pub(crate) fn local_datetime_from_timestamp(ts: i64) -> Result<chrono::DateTime<Local>, AppError> {
     Local
         .timestamp_opt(ts, 0)
         .single()
         .ok_or_else(|| AppError::Database(format!("无法解析本地时间戳: {ts}")))
 }
 
-fn compute_rollup_date_bounds(
+pub(crate) fn compute_rollup_date_bounds(
     start_ts: Option<i64>,
     end_ts: Option<i64>,
 ) -> Result<RollupDateBounds, AppError> {
@@ -465,7 +465,7 @@ fn compute_rollup_date_bounds(
     })
 }
 
-fn push_rollup_date_filters(
+pub(crate) fn push_rollup_date_filters(
     conditions: &mut Vec<String>,
     params: &mut Vec<Box<dyn rusqlite::ToSql>>,
     column: &str,
