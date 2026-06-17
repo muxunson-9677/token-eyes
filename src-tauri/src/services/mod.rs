@@ -1,5 +1,6 @@
 pub mod balance;
 pub mod codex_oauth_models;
+pub mod cost_ledger;
 pub mod coding_plan;
 pub mod config;
 pub mod env_checker;
