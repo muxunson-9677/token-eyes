@@ -28,7 +28,8 @@ struct HermesSession {
     id: String,
     model: String,
     billing_provider: Option<String>,
-    started_at: i64,
+    /// 支持 INTEGER 和 REAL（小数秒），统一存储为 f64
+    started_at: f64,
     input_tokens: u32,
     output_tokens: u32,
     cache_read_tokens: u32,
@@ -87,6 +88,7 @@ pub fn sync_hermes_usage(db: &Database) -> Result<SessionSyncResult, AppError> {
         files_scanned: 1,
         errors: vec![],
     };
+    let mut has_sync_errors = false;
 
     for session in &sessions {
         let request_id = format!("hermes_session:{}", session.id);
@@ -99,12 +101,15 @@ pub fn sync_hermes_usage(db: &Database) -> Result<SessionSyncResult, AppError> {
                 log::warn!("[HERMES-SYNC] {msg}");
                 result.errors.push(msg);
                 result.skipped += 1;
+                has_sync_errors = true;
             }
         }
     }
 
-    // 推进文件级同步状态
-    update_sync_state(db, &db_path_str, file_modified, 0)?;
+    // 仅在本轮完全成功时推进文件级状态；否则保留下次重试入口。
+    if !has_sync_errors {
+        update_sync_state(db, &db_path_str, file_modified, 0)?;
+    }
 
     if result.imported > 0 {
         log::info!(
@@ -136,7 +141,7 @@ fn query_sessions(conn: &rusqlite::Connection) -> Result<Vec<HermesSession>, App
                 id: row.get::<_, String>(0)?,
                 model: row.get::<_, String>(1)?,
                 billing_provider: row.get::<_, Option<String>>(2)?,
-                started_at: row.get::<_, i64>(3)?,
+                started_at: row.get::<_, f64>(3).unwrap_or(0.0),
                 input_tokens: row.get::<_, i64>(5).unwrap_or(0).max(0) as u32,
                 output_tokens: row.get::<_, i64>(6).unwrap_or(0).max(0) as u32,
                 cache_read_tokens: row.get::<_, i64>(7).unwrap_or(0).max(0) as u32,
@@ -200,10 +205,11 @@ fn insert_hermes_session(
     let conn = lock_conn!(db.conn);
 
     // created_at: 支持秒或毫秒
-    let created_at = if session.started_at > 1_000_000_000_000 {
-        session.started_at / 1000
+    let raw = session.started_at as i64;
+    let created_at = if raw > 1_000_000_000_000 {
+        raw / 1000
     } else {
-        session.started_at
+        raw
     };
 
     // output_tokens 包含 reasoning_tokens
@@ -351,7 +357,7 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE sessions (
-                id TEXT, model TEXT, billing_provider TEXT, started_at INTEGER,
+                id TEXT, model TEXT, billing_provider TEXT, started_at REAL,
                 message_count INTEGER, input_tokens INTEGER, output_tokens INTEGER,
                 cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER,
                 estimated_cost_usd REAL, actual_cost_usd REAL
@@ -371,7 +377,7 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE sessions (
-                id TEXT, model TEXT, billing_provider TEXT, started_at INTEGER,
+                id TEXT, model TEXT, billing_provider TEXT, started_at REAL,
                 message_count INTEGER, input_tokens INTEGER, output_tokens INTEGER,
                 cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER,
                 estimated_cost_usd REAL, actual_cost_usd REAL
@@ -387,6 +393,28 @@ mod tests {
     }
 
     #[test]
+    fn test_query_sessions_handles_real_started_at() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE sessions (
+                id TEXT, model TEXT, billing_provider TEXT, started_at REAL,
+                message_count INTEGER, input_tokens INTEGER, output_tokens INTEGER,
+                cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER,
+                estimated_cost_usd REAL, actual_cost_usd REAL
+             );
+             INSERT INTO sessions VALUES ('s1', 'claude-3', NULL, 1750000000.25, 1, 100, 200, 0, 0, 0, 0.01, 0);",
+        )
+        .unwrap();
+
+        let sessions = query_sessions(&conn).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert!((sessions[0].started_at - 1750000000.25).abs() < 1e-6);
+        // created_at 应截断为整数秒
+        let raw = sessions[0].started_at as i64;
+        assert_eq!(raw, 1750000000);
+    }
+
+    #[test]
     fn test_insert_hermes_session_basic() -> Result<(), Box<dyn std::error::Error>> {
         let db = Database::memory()?;
 
@@ -394,7 +422,7 @@ mod tests {
             id: "test-session-1".to_string(),
             model: "claude-sonnet-4-20250514".to_string(),
             billing_provider: Some("anthropic/claude".to_string()),
-            started_at: 1718000000,
+            started_at: 1718000000.0,
             input_tokens: 1000,
             output_tokens: 500,
             cache_read_tokens: 200,
@@ -453,14 +481,15 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_uses_estimated_cost_when_actual_is_zero() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_insert_uses_estimated_cost_when_actual_is_zero(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let db = Database::memory()?;
 
         let session = HermesSession {
             id: "test-est".to_string(),
             model: "gpt-4o".to_string(),
             billing_provider: None,
-            started_at: 1718000000,
+            started_at: 1718000000.0,
             input_tokens: 500,
             output_tokens: 200,
             cache_read_tokens: 0,
