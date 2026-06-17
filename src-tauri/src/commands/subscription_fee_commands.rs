@@ -48,8 +48,8 @@ fn is_strict_decimal(s: &str) -> bool {
     let mut has_digit = false;
     for &b in bytes {
         match b {
-            b'''0'''..=b'''9''' => has_digit = true,
-            b'''.''' if !has_dot => has_dot = true,
+            b'0'..=b'9' => has_digit = true,
+            b'.' if !has_dot => has_dot = true,
             _ => return false,
         }
     }
