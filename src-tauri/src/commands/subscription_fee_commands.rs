@@ -38,6 +38,24 @@ pub struct SubscriptionFee {
 // Validation
 // ---------------------------------------------------------------------------
 
+/// 严格十进制格式校验：只允许 digits 或 digits.digits，拒绝 NaN/inf/科学计数法
+fn is_strict_decimal(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    let mut has_dot = false;
+    let mut has_digit = false;
+    for &b in bytes {
+        match b {
+            b'''0'''..=b'''9''' => has_digit = true,
+            b'''.''' if !has_dot => has_dot = true,
+            _ => return false,
+        }
+    }
+    has_digit
+}
+
 fn validate_input(input: &SubscriptionFeeInput) -> Result<String, AppError> {
     if input.agent_type.trim().is_empty() {
         return Err(AppError::InvalidInput("agent_type 不能为空".into()));
@@ -46,20 +64,12 @@ fn validate_input(input: &SubscriptionFeeInput) -> Result<String, AppError> {
         return Err(AppError::InvalidInput("plan_label 不能为空".into()));
     }
 
-    // monthly_fee: 非负十进制字符串
+    // monthly_fee: 非负十进制字符串（严格格式：digits 或 digits.digits，拒绝 NaN/inf/科学计数法）
     let fee_trimmed = input.monthly_fee.trim();
-    match fee_trimmed.parse::<f64>() {
-        Ok(v) if v < 0.0 => {
-            return Err(AppError::InvalidInput(
-                "monthly_fee 不能为负数".into(),
-            ));
-        }
-        Ok(_) => {}
-        Err(_) => {
-            return Err(AppError::InvalidInput(
-                "monthly_fee 必须是有效的十进制数字".into(),
-            ));
-        }
+    if !is_strict_decimal(fee_trimmed) {
+        return Err(AppError::InvalidInput(
+            "monthly_fee 必须是非负十进制数字（如 '20' 或 '20.00'）".into(),
+        ));
     }
 
     // currency: 空默认 USD，非空必须三位大写字母
@@ -348,6 +358,39 @@ mod tests {
     fn reject_non_numeric_fee() {
         let mut input = valid_input();
         input.monthly_fee = "abc".into();
+        assert!(validate_input(&input).is_err());
+    }
+
+    #[test]
+    fn reject_nan_fee() {
+        let mut input = valid_input();
+        input.monthly_fee = "NaN".into();
+        assert!(validate_input(&input).is_err());
+    }
+
+    #[test]
+    fn reject_inf_fee() {
+        let mut input = valid_input();
+        input.monthly_fee = "inf".into();
+        assert!(validate_input(&input).is_err());
+
+        input.monthly_fee = "infinity".into();
+        assert!(validate_input(&input).is_err());
+
+        input.monthly_fee = "-inf".into();
+        assert!(validate_input(&input).is_err());
+    }
+
+    #[test]
+    fn reject_scientific_notation_fee() {
+        let mut input = valid_input();
+        input.monthly_fee = "1e3".into();
+        assert!(validate_input(&input).is_err());
+
+        input.monthly_fee = "1e+3".into();
+        assert!(validate_input(&input).is_err());
+
+        input.monthly_fee = "1.5E10".into();
         assert!(validate_input(&input).is_err());
     }
 
