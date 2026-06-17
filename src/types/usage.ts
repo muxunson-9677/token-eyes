@@ -269,3 +269,44 @@ export interface StatsFilters {
   providerId?: string;
   appType?: string;
 }
+
+// ─── Cost Ledger Types ────────────────────────────────────────────────────────
+
+export interface CostLedgerQuery {
+  startDate?: number;
+  endDate?: number;
+  agentType?: AppType;
+}
+
+export interface CostLedgerByAgent {
+  agentType: string;
+  tokenCostUsd: string;
+  subscriptionCostUsd: string;
+  totalCostUsd: string;
+}
+
+export interface CostLedgerSummary {
+  periodStart: number;
+  periodEnd: number;
+  tokenCostUsd: string;
+  subscriptionCostUsd: string;
+  totalCostUsd: string;
+  cumulativeTokenCostUsd: string;
+  cumulativeSubscriptionCostUsd: string;
+  cumulativeTotalCostUsd: string;
+  byAgent: CostLedgerByAgent[];
+}
+
+export interface SpendOverviewBarDatum {
+  key: "period" | "cumulative";
+  label: string;
+  valueUsd: number;
+  rawUsd: string;
+}
+
+export interface SpendOverviewViewModel {
+  monthlyUsd: string;
+  cumulativeUsd: string;
+  bars: SpendOverviewBarDatum[];
+  byAgent: CostLedgerByAgent[];
+}
