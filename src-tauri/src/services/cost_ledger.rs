@@ -3,10 +3,10 @@
 //! 把 token 消耗成本和手动订阅费合并成统一查询结果。
 //! 本阶段 Dashboard 展示口径使用 USD，不做汇率换算。
 
-use chrono::{Datelike, Local, TimeZone, Timelike};
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use crate::services::usage_stats::effective_usage_log_filter;
+use chrono::{Datelike, Local, TimeZone, Timelike};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -51,10 +51,7 @@ pub struct CostLedgerSummary {
 /// 当前自然月月初 00:00:00 UTC（Unix 秒）
 fn current_month_start_utc() -> i64 {
     let now = chrono::Utc::now();
-    let first_day = now
-        .date_naive()
-        .with_day(1)
-        .expect("month 1 always exists");
+    let first_day = now.date_naive().with_day(1).expect("month 1 always exists");
     first_day
         .and_hms_opt(0, 0, 0)
         .expect("midnight is valid")
@@ -83,7 +80,7 @@ fn for_each_month_in_range(base_ts: i64, end_ts: i64, mut f: impl FnMut(i32, u32
             1,
         )
         .expect("next month is valid")
-        > end
+            > end
         {
             break;
         }
@@ -185,9 +182,9 @@ impl Database {
     ) -> Result<CostLedgerSummary, AppError> {
         let now_ts = current_month_start_utc();
         let period_start = query.start_date.unwrap_or(now_ts);
-        let period_end = query.end_date.unwrap_or_else(|| {
-            chrono::Utc::now().timestamp()
-        });
+        let period_end = query
+            .end_date
+            .unwrap_or_else(|| chrono::Utc::now().timestamp());
 
         if period_end < period_start {
             return Err(AppError::InvalidInput(
@@ -197,23 +194,25 @@ impl Database {
 
         let agent_filter = query.agent_type.as_deref();
 
-        let period_token = self.query_token_cost_sum(
-            Some(period_start), Some(period_end), agent_filter,
-        )?;
-        let cumulative_token = self.query_token_cost_sum(
-            None, Some(period_end), agent_filter,
-        )?;
-        let period_sub = self.query_subscription_cost_sum(period_start, period_end, agent_filter)?;
+        let period_token =
+            self.query_token_cost_sum(Some(period_start), Some(period_end), agent_filter)?;
+        let cumulative_token = self.query_token_cost_sum(None, Some(period_end), agent_filter)?;
+        let period_sub =
+            self.query_subscription_cost_sum(period_start, period_end, agent_filter)?;
         let cumulative_sub = self.query_subscription_cost_sum(0, period_end, agent_filter)?;
 
-        let token_by_agent = self.query_token_cost_by_agent(
-            Some(period_start), Some(period_end), agent_filter,
-        )?;
-        let sub_by_agent = self.query_subscription_cost_by_agent(period_start, period_end, agent_filter)?;
+        let token_by_agent =
+            self.query_token_cost_by_agent(Some(period_start), Some(period_end), agent_filter)?;
+        let sub_by_agent =
+            self.query_subscription_cost_by_agent(period_start, period_end, agent_filter)?;
 
         let mut agents: HashMap<String, (f64, f64)> = HashMap::new();
-        for (k, v) in token_by_agent { agents.entry(k).or_default().0 += v; }
-        for (k, v) in sub_by_agent { agents.entry(k).or_default().1 += v; }
+        for (k, v) in token_by_agent {
+            agents.entry(k).or_default().0 += v;
+        }
+        for (k, v) in sub_by_agent {
+            agents.entry(k).or_default().1 += v;
+        }
         let mut by_agent: Vec<CostLedgerByAgent> = agents
             .into_iter()
             .map(|(agent_type, (tok, sub))| {
@@ -249,23 +248,47 @@ impl Database {
     // -----------------------------------------------------------------------
 
     fn query_token_cost_sum(
-        &self, start_date: Option<i64>, end_date: Option<i64>, agent_type: Option<&str>,
+        &self,
+        start_date: Option<i64>,
+        end_date: Option<i64>,
+        agent_type: Option<&str>,
     ) -> Result<f64, AppError> {
         let conn = lock_conn!(self.conn);
 
         let mut detail_conditions = vec![effective_usage_log_filter("l")];
         let mut detail_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        if let Some(s) = start_date { detail_conditions.push("l.created_at >= ?".into()); detail_params.push(Box::new(s)); }
-        if let Some(e) = end_date { detail_conditions.push("l.created_at <= ?".into()); detail_params.push(Box::new(e)); }
-        if let Some(at) = agent_type { detail_conditions.push("l.app_type = ?".into()); detail_params.push(Box::new(at.to_string())); }
+        if let Some(s) = start_date {
+            detail_conditions.push("l.created_at >= ?".into());
+            detail_params.push(Box::new(s));
+        }
+        if let Some(e) = end_date {
+            detail_conditions.push("l.created_at <= ?".into());
+            detail_params.push(Box::new(e));
+        }
+        if let Some(at) = agent_type {
+            detail_conditions.push("l.app_type = ?".into());
+            detail_params.push(Box::new(at.to_string()));
+        }
         let detail_where = format!("WHERE {}", detail_conditions.join(" AND "));
 
         let rollup_bounds = compute_rollup_date_bounds(start_date, end_date)?;
         let mut rollup_conditions: Vec<String> = Vec::new();
         let mut rollup_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        push_rollup_date_filters(&mut rollup_conditions, &mut rollup_params, "r.date", &rollup_bounds);
-        if let Some(at) = agent_type { rollup_conditions.push("r.app_type = ?".into()); rollup_params.push(Box::new(at.to_string())); }
-        let rollup_where = if rollup_conditions.is_empty() { String::new() } else { format!("WHERE {}", rollup_conditions.join(" AND ")) };
+        push_rollup_date_filters(
+            &mut rollup_conditions,
+            &mut rollup_params,
+            "r.date",
+            &rollup_bounds,
+        );
+        if let Some(at) = agent_type {
+            rollup_conditions.push("r.app_type = ?".into());
+            rollup_params.push(Box::new(at.to_string()));
+        }
+        let rollup_where = if rollup_conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", rollup_conditions.join(" AND "))
+        };
 
         let sql = format!(
             "SELECT COALESCE(d.cost, 0) + COALESCE(r.cost, 0)
@@ -284,23 +307,47 @@ impl Database {
     }
 
     fn query_token_cost_by_agent(
-        &self, start_date: Option<i64>, end_date: Option<i64>, agent_type: Option<&str>,
+        &self,
+        start_date: Option<i64>,
+        end_date: Option<i64>,
+        agent_type: Option<&str>,
     ) -> Result<HashMap<String, f64>, AppError> {
         let conn = lock_conn!(self.conn);
 
         let mut detail_conditions = vec![effective_usage_log_filter("l")];
         let mut detail_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        if let Some(s) = start_date { detail_conditions.push("l.created_at >= ?".into()); detail_params.push(Box::new(s)); }
-        if let Some(e) = end_date { detail_conditions.push("l.created_at <= ?".into()); detail_params.push(Box::new(e)); }
-        if let Some(at) = agent_type { detail_conditions.push("l.app_type = ?".into()); detail_params.push(Box::new(at.to_string())); }
+        if let Some(s) = start_date {
+            detail_conditions.push("l.created_at >= ?".into());
+            detail_params.push(Box::new(s));
+        }
+        if let Some(e) = end_date {
+            detail_conditions.push("l.created_at <= ?".into());
+            detail_params.push(Box::new(e));
+        }
+        if let Some(at) = agent_type {
+            detail_conditions.push("l.app_type = ?".into());
+            detail_params.push(Box::new(at.to_string()));
+        }
         let detail_where = format!("WHERE {}", detail_conditions.join(" AND "));
 
         let rollup_bounds = compute_rollup_date_bounds(start_date, end_date)?;
         let mut rollup_conditions: Vec<String> = Vec::new();
         let mut rollup_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        push_rollup_date_filters(&mut rollup_conditions, &mut rollup_params, "r.date", &rollup_bounds);
-        if let Some(at) = agent_type { rollup_conditions.push("r.app_type = ?".into()); rollup_params.push(Box::new(at.to_string())); }
-        let rollup_where = if rollup_conditions.is_empty() { String::new() } else { format!("WHERE {}", rollup_conditions.join(" AND ")) };
+        push_rollup_date_filters(
+            &mut rollup_conditions,
+            &mut rollup_params,
+            "r.date",
+            &rollup_bounds,
+        );
+        if let Some(at) = agent_type {
+            rollup_conditions.push("r.app_type = ?".into());
+            rollup_params.push(Box::new(at.to_string()));
+        }
+        let rollup_where = if rollup_conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", rollup_conditions.join(" AND "))
+        };
 
         let sql = format!(
             "SELECT agent_type, SUM(cost) FROM (
@@ -324,61 +371,127 @@ impl Database {
             Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
         })?;
         let mut map = HashMap::new();
-        for row in rows { let (agent, cost) = row?; map.insert(agent, cost); }
+        for row in rows {
+            let (agent, cost) = row?;
+            map.insert(agent, cost);
+        }
         Ok(map)
     }
 
     fn query_subscription_cost_sum(
-        &self, start_ts: i64, end_ts: i64, agent_type: Option<&str>,
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+        agent_type: Option<&str>,
     ) -> Result<f64, AppError> {
         let conn = lock_conn!(self.conn);
         let mut conditions = vec!["currency = 'USD'".to_string()];
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        conditions.push("effective_from <= ?".into()); params_vec.push(Box::new(end_ts));
-        conditions.push("(effective_to IS NULL OR effective_to >= ?)".into()); params_vec.push(Box::new(start_ts));
-        if let Some(at) = agent_type { conditions.push("agent_type = ?".into()); params_vec.push(Box::new(at.to_string())); }
+        conditions.push("effective_from <= ?".into());
+        params_vec.push(Box::new(end_ts));
+        conditions.push("(effective_to IS NULL OR effective_to >= ?)".into());
+        params_vec.push(Box::new(start_ts));
+        if let Some(at) = agent_type {
+            conditions.push("agent_type = ?".into());
+            params_vec.push(Box::new(at.to_string()));
+        }
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
         let sql = format!("SELECT agent_type, monthly_fee, effective_from, effective_to FROM subscription_fees {where_clause}");
         let param_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok((row.get::<_, i64>(2)?, row.get::<_, Option<i64>>(3)?, row.get::<_, String>(1)?.trim().parse::<f64>().unwrap_or(0.0)))
+            Ok((
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, String>(1)?
+                    .trim()
+                    .parse::<f64>()
+                    .unwrap_or(0.0),
+            ))
         })?;
         let subs: Vec<(i64, Option<i64>, f64)> = rows.collect::<Result<_, _>>()?;
         let mut total = 0.0f64;
         for_each_month_in_range(start_ts, end_ts, |year, month| {
-            let month_start = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap().and_hms_opt(0,0,0).unwrap().and_utc().timestamp();
-            let next_month = if month == 12 { chrono::NaiveDate::from_ymd_opt(year+1,1,1) } else { chrono::NaiveDate::from_ymd_opt(year,month+1,1) }.unwrap().and_hms_opt(0,0,0).unwrap().and_utc().timestamp();
+            let month_start = chrono::NaiveDate::from_ymd_opt(year, month, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp();
+            let next_month = if month == 12 {
+                chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+            } else {
+                chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
+            }
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
             for &(eff_from, eff_to, fee) in &subs {
-                if eff_from < next_month && eff_to.map_or(true, |to| to >= month_start) { total += fee; }
+                if eff_from < next_month && eff_to.map_or(true, |to| to >= month_start) {
+                    total += fee;
+                }
             }
         });
         Ok(total)
     }
 
     fn query_subscription_cost_by_agent(
-        &self, start_ts: i64, end_ts: i64, agent_type: Option<&str>,
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+        agent_type: Option<&str>,
     ) -> Result<HashMap<String, f64>, AppError> {
         let conn = lock_conn!(self.conn);
         let mut conditions = vec!["currency = 'USD'".to_string()];
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        conditions.push("effective_from <= ?".into()); params_vec.push(Box::new(end_ts));
-        conditions.push("(effective_to IS NULL OR effective_to >= ?)".into()); params_vec.push(Box::new(start_ts));
-        if let Some(at) = agent_type { conditions.push("agent_type = ?".into()); params_vec.push(Box::new(at.to_string())); }
+        conditions.push("effective_from <= ?".into());
+        params_vec.push(Box::new(end_ts));
+        conditions.push("(effective_to IS NULL OR effective_to >= ?)".into());
+        params_vec.push(Box::new(start_ts));
+        if let Some(at) = agent_type {
+            conditions.push("agent_type = ?".into());
+            params_vec.push(Box::new(at.to_string()));
+        }
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
         let sql = format!("SELECT agent_type, monthly_fee, effective_from, effective_to FROM subscription_fees {where_clause}");
         let param_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(2)?, row.get::<_, Option<i64>>(3)?, row.get::<_, String>(1)?.trim().parse::<f64>().unwrap_or(0.0)))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, String>(1)?
+                    .trim()
+                    .parse::<f64>()
+                    .unwrap_or(0.0),
+            ))
         })?;
         let subs: Vec<(String, i64, Option<i64>, f64)> = rows.collect::<Result<_, _>>()?;
         let mut map: HashMap<String, f64> = HashMap::new();
         for_each_month_in_range(start_ts, end_ts, |year, month| {
-            let month_start = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap().and_hms_opt(0,0,0).unwrap().and_utc().timestamp();
-            let next_month = if month == 12 { chrono::NaiveDate::from_ymd_opt(year+1,1,1) } else { chrono::NaiveDate::from_ymd_opt(year,month+1,1) }.unwrap().and_hms_opt(0,0,0).unwrap().and_utc().timestamp();
+            let month_start = chrono::NaiveDate::from_ymd_opt(year, month, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp();
+            let next_month = if month == 12 {
+                chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+            } else {
+                chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
+            }
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
             for (agent, eff_from, eff_to, fee) in &subs {
-                if eff_from < &next_month && eff_to.map_or(true, |to| to >= month_start) { *map.entry(agent.clone()).or_default() += fee; }
+                if eff_from < &next_month && eff_to.map_or(true, |to| to >= month_start) {
+                    *map.entry(agent.clone()).or_default() += fee;
+                }
             }
         });
         Ok(map)
@@ -388,8 +501,17 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::ffi::OsString;
+    use std::path::Path;
 
-    fn insert_log(db: &Database, request_id: &str, app_type: &str, cost_usd: &str, created_at: i64) {
+    fn insert_log(
+        db: &Database,
+        request_id: &str,
+        app_type: &str,
+        cost_usd: &str,
+        created_at: i64,
+    ) {
         db.conn.lock().unwrap().execute(
             "INSERT INTO proxy_request_logs (request_id, provider_id, app_type, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_cost_usd, latency_ms, status_code, created_at, data_source) VALUES (?1, 'tp', ?2, 'unknown', 100, 50, 0, 0, ?3, 0, 200, ?4, 'proxy')",
             rusqlite::params![request_id, app_type, cost_usd, created_at],
@@ -403,23 +525,204 @@ mod tests {
         ).expect("insert rollup");
     }
 
-    fn insert_fee(db: &Database, agent_type: &str, monthly_fee: &str, effective_from: i64, effective_to: Option<i64>) {
+    fn insert_fee(
+        db: &Database,
+        agent_type: &str,
+        monthly_fee: &str,
+        effective_from: i64,
+        effective_to: Option<i64>,
+    ) {
+        insert_fee_with_label(
+            db,
+            agent_type,
+            "test-plan",
+            monthly_fee,
+            effective_from,
+            effective_to,
+        );
+    }
+
+    fn insert_fee_with_label(
+        db: &Database,
+        agent_type: &str,
+        plan_label: &str,
+        monthly_fee: &str,
+        effective_from: i64,
+        effective_to: Option<i64>,
+    ) {
         db.conn.lock().unwrap().execute(
-            "INSERT INTO subscription_fees (agent_type, plan_label, monthly_fee, currency, billing_day, effective_from, effective_to) VALUES (?1, 'test-plan', ?2, 'USD', 1, ?3, ?4)",
-            rusqlite::params![agent_type, monthly_fee, effective_from, effective_to],
+            "INSERT INTO subscription_fees (agent_type, plan_label, monthly_fee, currency, billing_day, effective_from, effective_to) VALUES (?1, ?2, ?3, 'USD', 1, ?4, ?5)",
+            rusqlite::params![agent_type, plan_label, monthly_fee, effective_from, effective_to],
         ).expect("insert fee");
     }
 
     fn ts(year: i32, month: u32, day: u32) -> i64 {
-        chrono::NaiveDate::from_ymd_opt(year, month, day).unwrap().and_hms_opt(0,0,0).unwrap().and_utc().timestamp()
+        chrono::NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp()
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        old_value: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn set_path(key: &'static str, value: &Path) -> Self {
+            let old_value = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, old_value }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.old_value {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    fn seed_hermes_state(home: &Path, started_at: i64, actual_cost_usd: f64) {
+        let hermes_dir = home.join(".hermes");
+        std::fs::create_dir_all(&hermes_dir).expect("create hermes test dir");
+
+        let conn =
+            rusqlite::Connection::open(hermes_dir.join("state.db")).expect("open hermes state db");
+        conn.execute_batch(
+            "CREATE TABLE sessions (
+                id TEXT, model TEXT, billing_provider TEXT, started_at REAL,
+                message_count INTEGER, input_tokens INTEGER, output_tokens INTEGER,
+                cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER,
+                estimated_cost_usd REAL, actual_cost_usd REAL
+             );",
+        )
+        .expect("create hermes sessions table");
+        conn.execute(
+            "INSERT INTO sessions VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            rusqlite::params![
+                "smoke-hermes-session-1",
+                "claude-sonnet-4-20250514",
+                "anthropic/claude",
+                started_at as f64,
+                1i64,
+                1000i64,
+                500i64,
+                100i64,
+                50i64,
+                25i64,
+                0.0f64,
+                actual_cost_usd,
+            ],
+        )
+        .expect("insert hermes session");
+    }
+
+    #[test]
+    #[serial]
+    fn mvp_backend_chain_smoke_hermes_fee_and_cost_ledger() {
+        let temp_home = tempfile::tempdir().expect("create temp home");
+        let _home_guard = EnvGuard::set_path("CC_SWITCH_TEST_HOME", temp_home.path());
+        let db = Database::memory().expect("create memory database");
+        let period_start = ts(2026, 6, 1);
+        let period_end = ts(2026, 6, 30);
+        let session_at = ts(2026, 6, 10);
+
+        seed_hermes_state(temp_home.path(), session_at, 0.006);
+        let sync = crate::services::usage_source_hermes::sync_hermes_usage(&db)
+            .expect("sync hermes usage");
+        assert_eq!(sync.imported, 1);
+        assert_eq!(sync.errors.len(), 0);
+
+        {
+            let conn = db.conn.lock().unwrap();
+            let row = conn
+                .query_row(
+                    "SELECT app_type, data_source, total_cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens
+                     FROM proxy_request_logs
+                     WHERE request_id = 'hermes_session:smoke-hermes-session-1'",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, i64>(4)?,
+                            row.get::<_, i64>(5)?,
+                            row.get::<_, i64>(6)?,
+                        ))
+                    },
+                )
+                .expect("read imported hermes usage row");
+            assert_eq!(row.0, "hermes");
+            assert_eq!(row.1, "hermes_session");
+            assert!((row.2.parse::<f64>().unwrap() - 0.006).abs() < 1e-10);
+            assert_eq!(row.3, 1000);
+            assert_eq!(row.4, 525);
+            assert_eq!(row.5, 100);
+            assert_eq!(row.6, 50);
+        }
+
+        insert_fee_with_label(&db, "hermes", "Hermes Pro", "20.00", period_start, None);
+        {
+            let conn = db.conn.lock().unwrap();
+            let fee = conn
+                .query_row(
+                    "SELECT agent_type, plan_label, monthly_fee, currency
+                     FROM subscription_fees
+                     WHERE agent_type = 'hermes'",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
+                    },
+                )
+                .expect("read stored subscription fee");
+            assert_eq!(fee.0, "hermes");
+            assert_eq!(fee.1, "Hermes Pro");
+            assert_eq!(fee.2, "20.00");
+            assert_eq!(fee.3, "USD");
+        }
+
+        let summary = db
+            .get_cost_ledger_summary(CostLedgerQuery {
+                start_date: Some(period_start),
+                end_date: Some(period_end),
+                agent_type: Some("hermes".to_string()),
+            })
+            .expect("query cost ledger summary");
+        assert_eq!(summary.token_cost_usd, "0.006000");
+        assert_eq!(summary.subscription_cost_usd, "20.000000");
+        assert_eq!(summary.total_cost_usd, "20.006000");
+        assert_eq!(summary.cumulative_token_cost_usd, "0.006000");
+        assert_eq!(summary.cumulative_subscription_cost_usd, "20.000000");
+        assert_eq!(summary.cumulative_total_cost_usd, "20.006000");
+        assert_eq!(summary.by_agent.len(), 1);
+        assert_eq!(summary.by_agent[0].agent_type, "hermes");
+        assert_eq!(summary.by_agent[0].total_cost_usd, "20.006000");
     }
 
     #[test]
     fn only_token_cost() {
         let db = Database::memory().unwrap();
-        insert_log(&db, "r1", "claude", "1.500000", ts(2026,6,10));
-        insert_log(&db, "r2", "claude", "2.500000", ts(2026,6,15));
-        let r = db.get_cost_ledger_summary(CostLedgerQuery { start_date: Some(ts(2026,6,1)), end_date: Some(ts(2026,6,30)), agent_type: None }).unwrap();
+        insert_log(&db, "r1", "claude", "1.500000", ts(2026, 6, 10));
+        insert_log(&db, "r2", "claude", "2.500000", ts(2026, 6, 15));
+        let r = db
+            .get_cost_ledger_summary(CostLedgerQuery {
+                start_date: Some(ts(2026, 6, 1)),
+                end_date: Some(ts(2026, 6, 30)),
+                agent_type: None,
+            })
+            .unwrap();
         assert_eq!(r.token_cost_usd, "4.000000");
         assert_eq!(r.subscription_cost_usd, "0.000000");
         assert_eq!(r.total_cost_usd, "4.000000");
@@ -430,8 +733,14 @@ mod tests {
     #[test]
     fn only_subscription_cost() {
         let db = Database::memory().unwrap();
-        insert_fee(&db, "claude", "20.00", ts(2026,1,1), None);
-        let r = db.get_cost_ledger_summary(CostLedgerQuery { start_date: Some(ts(2026,6,1)), end_date: Some(ts(2026,6,30)), agent_type: None }).unwrap();
+        insert_fee(&db, "claude", "20.00", ts(2026, 1, 1), None);
+        let r = db
+            .get_cost_ledger_summary(CostLedgerQuery {
+                start_date: Some(ts(2026, 6, 1)),
+                end_date: Some(ts(2026, 6, 30)),
+                agent_type: None,
+            })
+            .unwrap();
         assert_eq!(r.token_cost_usd, "0.000000");
         assert_eq!(r.subscription_cost_usd, "20.000000");
         assert_eq!(r.total_cost_usd, "20.000000");
@@ -440,9 +749,15 @@ mod tests {
     #[test]
     fn token_plus_subscription() {
         let db = Database::memory().unwrap();
-        insert_log(&db, "r1", "claude", "3.000000", ts(2026,6,10));
-        insert_fee(&db, "claude", "10.00", ts(2026,1,1), None);
-        let r = db.get_cost_ledger_summary(CostLedgerQuery { start_date: Some(ts(2026,6,1)), end_date: Some(ts(2026,6,30)), agent_type: None }).unwrap();
+        insert_log(&db, "r1", "claude", "3.000000", ts(2026, 6, 10));
+        insert_fee(&db, "claude", "10.00", ts(2026, 1, 1), None);
+        let r = db
+            .get_cost_ledger_summary(CostLedgerQuery {
+                start_date: Some(ts(2026, 6, 1)),
+                end_date: Some(ts(2026, 6, 30)),
+                agent_type: None,
+            })
+            .unwrap();
         assert_eq!(r.token_cost_usd, "3.000000");
         assert_eq!(r.subscription_cost_usd, "10.000000");
         assert_eq!(r.total_cost_usd, "13.000000");
@@ -453,33 +768,64 @@ mod tests {
     #[test]
     fn cross_month_subscription_counted_per_month() {
         let db = Database::memory().unwrap();
-        insert_fee(&db, "claude", "25.00", ts(2026,6,1), Some(ts(2026,7,31)));
-        let r = db.get_cost_ledger_summary(CostLedgerQuery { start_date: Some(ts(2026,6,1)), end_date: Some(ts(2026,7,31)), agent_type: None }).unwrap();
+        insert_fee(
+            &db,
+            "claude",
+            "25.00",
+            ts(2026, 6, 1),
+            Some(ts(2026, 7, 31)),
+        );
+        let r = db
+            .get_cost_ledger_summary(CostLedgerQuery {
+                start_date: Some(ts(2026, 6, 1)),
+                end_date: Some(ts(2026, 7, 31)),
+                agent_type: None,
+            })
+            .unwrap();
         assert_eq!(r.subscription_cost_usd, "50.000000");
     }
 
     #[test]
     fn end_before_start_returns_error() {
         let db = Database::memory().unwrap();
-        let r = db.get_cost_ledger_summary(CostLedgerQuery { start_date: Some(ts(2026,6,30)), end_date: Some(ts(2026,6,1)), agent_type: None });
+        let r = db.get_cost_ledger_summary(CostLedgerQuery {
+            start_date: Some(ts(2026, 6, 30)),
+            end_date: Some(ts(2026, 6, 1)),
+            agent_type: None,
+        });
         assert!(r.is_err());
-        match r.unwrap_err() { AppError::InvalidInput(msg) => assert!(msg.contains("end_date")), other => panic!("{other:?}") }
+        match r.unwrap_err() {
+            AppError::InvalidInput(msg) => assert!(msg.contains("end_date")),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
     fn rollup_rows_counted_when_date_fully_in_range() {
         let db = Database::memory().unwrap();
         insert_rollup(&db, "2026-06-10", "claude", "7.500000");
-        let r = db.get_cost_ledger_summary(CostLedgerQuery { start_date: Some(ts(2026,6,1)), end_date: Some(ts(2026,6,30)), agent_type: None }).unwrap();
+        let r = db
+            .get_cost_ledger_summary(CostLedgerQuery {
+                start_date: Some(ts(2026, 6, 1)),
+                end_date: Some(ts(2026, 6, 30)),
+                agent_type: None,
+            })
+            .unwrap();
         assert_eq!(r.token_cost_usd, "7.500000");
     }
 
     #[test]
     fn rollup_and_detail_costs_summed() {
         let db = Database::memory().unwrap();
-        insert_log(&db, "r1", "claude", "2.000000", ts(2026,6,15));
+        insert_log(&db, "r1", "claude", "2.000000", ts(2026, 6, 15));
         insert_rollup(&db, "2026-06-20", "claude", "3.000000");
-        let r = db.get_cost_ledger_summary(CostLedgerQuery { start_date: Some(ts(2026,6,1)), end_date: Some(ts(2026,6,30)), agent_type: None }).unwrap();
+        let r = db
+            .get_cost_ledger_summary(CostLedgerQuery {
+                start_date: Some(ts(2026, 6, 1)),
+                end_date: Some(ts(2026, 6, 30)),
+                agent_type: None,
+            })
+            .unwrap();
         assert_eq!(r.token_cost_usd, "5.000000");
     }
 
@@ -487,9 +833,15 @@ mod tests {
     fn partial_boundary_range_excludes_non_full_day_rollup() {
         let db = Database::memory().unwrap();
         insert_rollup(&db, "2026-06-15", "claude", "5.000000");
-        let start = ts(2026,6,15) + 12 * 3600;
-        let end = ts(2026,6,30) + 23 * 3600 + 59 * 60;
-        let r = db.get_cost_ledger_summary(CostLedgerQuery { start_date: Some(start), end_date: Some(end), agent_type: None }).unwrap();
+        let start = ts(2026, 6, 15) + 12 * 3600;
+        let end = ts(2026, 6, 30) + 23 * 3600 + 59 * 60;
+        let r = db
+            .get_cost_ledger_summary(CostLedgerQuery {
+                start_date: Some(start),
+                end_date: Some(end),
+                agent_type: None,
+            })
+            .unwrap();
         assert_eq!(r.token_cost_usd, "0.000000");
     }
 }
