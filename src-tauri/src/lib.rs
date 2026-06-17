@@ -1211,6 +1211,11 @@ pub fn run() {
             commands::get_codex_oauth_models,
             commands::get_coding_plan_quota,
             commands::get_balance,
+            // subscription fee CRUD
+            commands::create_subscription_fee,
+            commands::list_subscription_fees,
+            commands::update_subscription_fee,
+            commands::delete_subscription_fee,
             // New MCP via config.json (SSOT)
             commands::get_mcp_config,
             commands::upsert_mcp_server_in_config,
