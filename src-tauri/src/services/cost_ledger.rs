@@ -3,12 +3,10 @@
 //! 把 token 消耗成本和手动订阅费合并成统一查询结果。
 //! 本阶段 Dashboard 展示口径使用 USD，不做汇率换算。
 
-use chrono::Datelike;
+use chrono::{Datelike, Local, TimeZone, Timelike};
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
-use crate::services::usage_stats::{
-    compute_rollup_date_bounds, effective_usage_log_filter, push_rollup_date_filters,
-};
+use crate::services::usage_stats::effective_usage_log_filter;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -95,6 +93,83 @@ fn for_each_month_in_range(base_ts: i64, end_ts: i64, mut f: impl FnMut(i32, u32
         } else {
             month += 1;
         }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct RollupDateBounds {
+    start: Option<String>,
+    end: Option<String>,
+    is_empty: bool,
+}
+
+fn local_datetime_from_timestamp(ts: i64) -> Result<chrono::DateTime<Local>, AppError> {
+    Local
+        .timestamp_opt(ts, 0)
+        .single()
+        .ok_or_else(|| AppError::Database(format!("无法解析本地时间戳: {ts}")))
+}
+
+fn compute_rollup_date_bounds(
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
+) -> Result<RollupDateBounds, AppError> {
+    let start = match start_ts {
+        Some(ts) => {
+            let local = local_datetime_from_timestamp(ts)?;
+            let day = local.date_naive();
+            if local.time().num_seconds_from_midnight() == 0 {
+                Some(day.format("%Y-%m-%d").to_string())
+            } else {
+                day.succ_opt()
+                    .map(|next| next.format("%Y-%m-%d").to_string())
+            }
+        }
+        None => None,
+    };
+
+    let end = match end_ts {
+        Some(ts) => {
+            let local = local_datetime_from_timestamp(ts)?;
+            let day = local.date_naive();
+            if local.time().hour() == 23 && local.time().minute() == 59 {
+                Some(day.format("%Y-%m-%d").to_string())
+            } else {
+                day.pred_opt()
+                    .map(|prev| prev.format("%Y-%m-%d").to_string())
+            }
+        }
+        None => None,
+    };
+
+    let is_empty = matches!((&start, &end), (Some(start), Some(end)) if start > end);
+
+    Ok(RollupDateBounds {
+        start,
+        end,
+        is_empty,
+    })
+}
+
+fn push_rollup_date_filters(
+    conditions: &mut Vec<String>,
+    params: &mut Vec<Box<dyn rusqlite::ToSql>>,
+    column: &str,
+    bounds: &RollupDateBounds,
+) {
+    if bounds.is_empty {
+        conditions.push("1 = 0".to_string());
+        return;
+    }
+
+    if let Some(start) = &bounds.start {
+        conditions.push(format!("{column} >= ?"));
+        params.push(Box::new(start.clone()));
+    }
+
+    if let Some(end) = &bounds.end {
+        conditions.push(format!("{column} <= ?"));
+        params.push(Box::new(end.clone()));
     }
 }
 

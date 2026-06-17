@@ -346,19 +346,6 @@ pub fn get_cost_ledger_summary(
     })
 }
 
-/// 获取花销聚合查询结果
-#[tauri::command]
-pub fn get_cost_ledger_summary(
-    state: State<'_, AppState>,
-    start_date: Option<i64>,
-    end_date: Option<i64>,
-    agent_type: Option<String>,
-) -> Result<crate::services::cost_ledger::CostLedgerSummary, AppError> {
-    state.db.get_cost_ledger_summary(crate::services::cost_ledger::CostLedgerQuery {
-        start_date, end_date, agent_type,
-    })
-}
-
 /// 模型定价信息
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
