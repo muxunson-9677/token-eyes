@@ -6,8 +6,10 @@
 
 - 上游基线: `farion1231/cc-switch` release `v3.16.3`。
 - 基线导入方式: 将上游 `v3.16.3` 源码导入当前仓库，并保留项目计划文档到 `docs/`。
+- GitHub 仓库: `https://github.com/muxunson-9677/token-eyes`。
 - 本地默认分支: `main`。
 - 分支策略: `main` 只接收审核后的合并；每个任务使用 `feature/<编号>-<关键词>` 分支。
+- 远端保护状态: 已尝试启用 `main` branch protection；GitHub 返回私有仓库需要 Pro 或公开仓库才能启用该功能。因此当前先用流程约束执行，远端强制保护待仓库可见性或账号能力确认后补开。
 - 计划文档位置:
   - `docs/cc-switch-usage-monitor-dev-plan.md`
   - `docs/codex-kickoff-prompt.md`
