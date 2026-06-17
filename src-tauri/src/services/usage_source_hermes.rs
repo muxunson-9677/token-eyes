@@ -387,8 +387,8 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_hermes_session_basic() {
-        let db = Database::memory().expect("创建内存数据库失败");
+    fn test_insert_hermes_session_basic() -> Result<(), Box<dyn std::error::Error>> {
+        let db = Database::memory()?;
 
         let session = HermesSession {
             id: "test-session-1".to_string(),
@@ -405,21 +405,19 @@ mod tests {
         };
 
         let request_id = "hermes_session:test-session-1";
-        let inserted = insert_hermes_session(&db, request_id, &session).unwrap();
+        let inserted = insert_hermes_session(&db, request_id, &session)?;
         assert!(inserted, "第一条插入应成功");
 
-        // 验证插入的数据
-        let conn = lock_conn!(db.conn);
-        let mut stmt = conn
-            .prepare(
+        // 验证插入的数据（在 block 内释放锁）
+        {
+            let conn = lock_conn!(db.conn);
+            let mut stmt = conn.prepare(
                 "SELECT request_id, app_type, model, data_source,
                         input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
                         total_cost_usd, provider_type, session_id
                  FROM proxy_request_logs WHERE request_id = ?1",
-            )
-            .unwrap();
-        let row = stmt
-            .query_row([request_id], |r| {
+            )?;
+            let row = stmt.query_row([request_id], |r| {
                 Ok((
                     r.get::<_, String>(0)?,
                     r.get::<_, String>(1)?,
@@ -433,29 +431,30 @@ mod tests {
                     r.get::<_, Option<String>>(9)?,
                     r.get::<_, Option<String>>(10)?,
                 ))
-            })
-            .unwrap();
+            })?;
 
-        assert_eq!(row.0, "hermes_session:test-session-1");
-        assert_eq!(row.1, "hermes");
-        assert_eq!(row.2, "claude-sonnet-4-20250514");
-        assert_eq!(row.3, "hermes_session");
-        assert_eq!(row.4, 1000);
-        assert_eq!(row.5, 600); // output + reasoning
-        assert_eq!(row.6, 200);
-        assert_eq!(row.7, 50);
-        assert!((row.8.parse::<f64>().unwrap() - 0.005).abs() < 1e-10);
-        assert_eq!(row.9, Some("hermes_session".to_string()));
-        assert_eq!(row.10, Some("test-session-1".to_string()));
+            assert_eq!(row.0, "hermes_session:test-session-1");
+            assert_eq!(row.1, "hermes");
+            assert_eq!(row.2, "claude-sonnet-4-20250514");
+            assert_eq!(row.3, "hermes_session");
+            assert_eq!(row.4, 1000);
+            assert_eq!(row.5, 600); // output + reasoning
+            assert_eq!(row.6, 200);
+            assert_eq!(row.7, 50);
+            assert!((row.8.parse::<f64>().unwrap() - 0.005).abs() < 1e-10);
+            assert_eq!(row.9, Some("hermes_session".to_string()));
+            assert_eq!(row.10, Some("test-session-1".to_string()));
+        } // conn 在此释放
 
         // 重复插入应跳过
-        let skipped = insert_hermes_session(&db, request_id, &session).unwrap();
+        let skipped = insert_hermes_session(&db, request_id, &session)?;
         assert!(!skipped, "重复插入应被跳过");
+        Ok(())
     }
 
     #[test]
-    fn test_insert_uses_estimated_cost_when_actual_is_zero() {
-        let db = Database::memory().expect("创建内存数据库失败");
+    fn test_insert_uses_estimated_cost_when_actual_is_zero() -> Result<(), Box<dyn std::error::Error>> {
+        let db = Database::memory()?;
 
         let session = HermesSession {
             id: "test-est".to_string(),
@@ -471,17 +470,18 @@ mod tests {
             actual_cost_usd: 0.0,
         };
 
-        let inserted = insert_hermes_session(&db, "hermes_session:test-est", &session).unwrap();
+        let inserted = insert_hermes_session(&db, "hermes_session:test-est", &session)?;
         assert!(inserted);
 
-        let conn = lock_conn!(db.conn);
-        let total: String = conn
-            .query_row(
+        {
+            let conn = lock_conn!(db.conn);
+            let total: String = conn.query_row(
                 "SELECT total_cost_usd FROM proxy_request_logs WHERE request_id = 'hermes_session:test-est'",
                 [],
                 |r| r.get(0),
-            )
-            .unwrap();
-        assert!((total.parse::<f64>().unwrap() - 0.003).abs() < 1e-10);
+            )?;
+            assert!((total.parse::<f64>().unwrap() - 0.003).abs() < 1e-10);
+        }
+        Ok(())
     }
 }
