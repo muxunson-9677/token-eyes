@@ -11,5 +11,8 @@
         "minHeight": 600
       }
     ]
+  },
+  "bundle": {
+    "targets": ["msi"]
   }
 }
