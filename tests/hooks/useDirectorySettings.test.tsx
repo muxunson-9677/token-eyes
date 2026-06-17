@@ -48,6 +48,7 @@ const createSettings = (
   enableClaudePluginIntegration: false,
   claudeConfigDir: "/claude/custom",
   codexConfigDir: "/codex/custom",
+  hermesConfigDir: "/hermes/custom",
   language: "zh",
   ...overrides,
 });
@@ -238,6 +239,29 @@ describe("useDirectorySettings", () => {
     expect(result.current.resolvedDirs.openclaw).toBe("/picked/openclaw");
   });
 
+  it("updates hermes directory when browsing succeeds", async () => {
+    selectConfigDirectoryMock.mockResolvedValue("/picked/hermes");
+
+    const { result } = renderHook(() =>
+      useDirectorySettings({
+        settings: createSettings({ hermesConfigDir: undefined }),
+        onUpdateSettings,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.browseDirectory("hermes");
+    });
+
+    expect(selectConfigDirectoryMock).toHaveBeenCalledWith("/remote/hermes");
+    expect(onUpdateSettings).toHaveBeenCalledWith({
+      hermesConfigDir: "/picked/hermes",
+    });
+    expect(result.current.resolvedDirs.hermes).toBe("/picked/hermes");
+  });
+
   it("resetAllDirectories applies provided resolved values", async () => {
     const { result } = renderHook(() =>
       useDirectorySettings({ settings: createSettings(), onUpdateSettings }),
@@ -251,6 +275,7 @@ describe("useDirectorySettings", () => {
         gemini: "/server/gemini",
         opencode: "/server/opencode",
         openclaw: "/server/openclaw",
+        hermes: "/server/hermes",
       });
     });
 
@@ -259,5 +284,6 @@ describe("useDirectorySettings", () => {
     expect(result.current.resolvedDirs.gemini).toBe("/server/gemini");
     expect(result.current.resolvedDirs.opencode).toBe("/server/opencode");
     expect(result.current.resolvedDirs.openclaw).toBe("/server/openclaw");
+    expect(result.current.resolvedDirs.hermes).toBe("/server/hermes");
   });
 });

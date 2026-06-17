@@ -92,6 +92,7 @@ const createSettingsFormMock = (overrides: Record<string, unknown> = {}) => ({
     geminiConfigDir: "/gemini",
     opencodeConfigDir: "/opencode",
     openclawConfigDir: "/openclaw",
+    hermesConfigDir: "/hermes",
     language: "zh",
   },
   isLoading: false,
@@ -113,6 +114,7 @@ const createDirectorySettingsMock = (
     gemini: "/default/gemini",
     opencode: "/default/opencode",
     openclaw: "/default/openclaw",
+    hermes: "/default/hermes",
   },
   isLoading: false,
   initialAppConfigDir: undefined,
@@ -161,6 +163,7 @@ describe("useSettings hook", () => {
       geminiConfigDir: "/server/gemini",
       opencodeConfigDir: "/server/opencode",
       openclawConfigDir: "/server/openclaw",
+      hermesConfigDir: "/server/hermes",
       language: "zh",
     };
 
@@ -255,6 +258,7 @@ describe("useSettings hook", () => {
       geminiConfigDir: "/server/gemini",
       opencodeConfigDir: "/server/opencode",
       openclawConfigDir: "/server/openclaw",
+      hermesConfigDir: "/server/hermes",
       language: "en",
     };
     useSettingsQueryMock.mockReturnValue({
@@ -268,6 +272,7 @@ describe("useSettings hook", () => {
         claudeConfigDir: "  /custom/claude  ",
         codexConfigDir: "   ",
         openclawConfigDir: "  /custom/openclaw  ",
+        hermesConfigDir: "  /custom/hermes  ",
         language: "en",
         enableClaudePluginIntegration: true, // 状态从 false 变为 true
       },
@@ -292,6 +297,7 @@ describe("useSettings hook", () => {
     expect(payload.claudeConfigDir).toBe("/custom/claude");
     expect(payload.codexConfigDir).toBeUndefined();
     expect(payload.openclawConfigDir).toBe("/custom/openclaw");
+    expect(payload.hermesConfigDir).toBe("/custom/hermes");
     expect(payload.language).toBe("en");
     expect(setAppConfigDirOverrideMock).toHaveBeenCalledWith("/override/app");
     // 状态改变，应该调用 API
@@ -461,7 +467,7 @@ describe("useSettings hook", () => {
       gemini: "/server/gemini",
       opencode: "/server/opencode",
       openclaw: "/server/openclaw",
-      hermes: undefined,
+      hermes: "/server/hermes",
     });
     expect(metadataMock.setRequiresRestart).toHaveBeenCalledWith(false);
   });
