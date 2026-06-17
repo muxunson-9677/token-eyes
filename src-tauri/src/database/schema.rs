@@ -195,7 +195,11 @@ impl Database {
             duration_ms INTEGER, status_code INTEGER NOT NULL, error_message TEXT, session_id TEXT,
             provider_type TEXT, is_streaming INTEGER NOT NULL DEFAULT 0,
             cost_multiplier TEXT NOT NULL DEFAULT '1.0', created_at INTEGER NOT NULL,
-            data_source TEXT NOT NULL DEFAULT 'proxy'
+            data_source TEXT NOT NULL DEFAULT 'proxy',
+            billing_mode TEXT NOT NULL DEFAULT 'api_key',
+            plan_cycle_type TEXT,
+            plan_start_at INTEGER,
+            plan_end_at INTEGER
         )", []).map_err(|e| AppError::Database(e.to_string()))?;
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_provider ON proxy_request_logs(provider_id, app_type)", [])
@@ -291,6 +295,29 @@ impl Database {
                 last_line_offset INTEGER NOT NULL DEFAULT 0,
                 last_synced_at INTEGER NOT NULL
             )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 19. Subscription Fees 表 (手动订阅费)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS subscription_fees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_type TEXT NOT NULL,
+                plan_label TEXT NOT NULL,
+                monthly_fee TEXT NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'USD',
+                billing_day INTEGER NOT NULL CHECK (billing_day BETWEEN 1 AND 31),
+                effective_from INTEGER NOT NULL,
+                effective_to INTEGER,
+                note TEXT
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_subscription_fees_agent_effective
+             ON subscription_fees(agent_type, effective_from, effective_to)",
             [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -443,6 +470,11 @@ impl Database {
                         log::info!("迁移数据库从 v10 到 v11（usage_daily_rollups 保留 request_model 维度）");
                         Self::migrate_v10_to_v11(conn)?;
                         Self::set_user_version(conn, 11)?;
+                    }
+                    11 => {
+                        log::info!("迁移数据库从 v11 到 v12（计费模式字段 + 手动订阅费表）");
+                        Self::migrate_v11_to_v12(conn)?;
+                        Self::set_user_version(conn, 12)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1267,6 +1299,46 @@ impl Database {
         log::info!(
             "v10 -> v11 迁移完成：usage_daily_rollups 已保留 request_model/pricing_model 维度"
         );
+        Ok(())
+    }
+
+    /// v11 -> v12：给标准用量明细表补计费模式字段，并新增手动订阅费表。
+    fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "proxy_request_logs")? {
+            Self::add_column_if_missing(
+                conn,
+                "proxy_request_logs",
+                "billing_mode",
+                "TEXT NOT NULL DEFAULT 'api_key'",
+            )?;
+            Self::add_column_if_missing(conn, "proxy_request_logs", "plan_cycle_type", "TEXT")?;
+            Self::add_column_if_missing(conn, "proxy_request_logs", "plan_start_at", "INTEGER")?;
+            Self::add_column_if_missing(conn, "proxy_request_logs", "plan_end_at", "INTEGER")?;
+        }
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS subscription_fees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_type TEXT NOT NULL,
+                plan_label TEXT NOT NULL,
+                monthly_fee TEXT NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'USD',
+                billing_day INTEGER NOT NULL CHECK (billing_day BETWEEN 1 AND 31),
+                effective_from INTEGER NOT NULL,
+                effective_to INTEGER,
+                note TEXT
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 subscription_fees 表失败: {e}")))?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_subscription_fees_agent_effective
+             ON subscription_fees(agent_type, effective_from, effective_to)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 subscription_fees 索引失败: {e}")))?;
+
+        log::info!("v11 -> v12 迁移完成：已添加计费模式字段与 subscription_fees 表");
         Ok(())
     }
 

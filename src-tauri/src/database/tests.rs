@@ -292,6 +292,44 @@ fn schema_create_tables_include_pricing_model_columns() {
 }
 
 #[test]
+fn schema_create_tables_include_billing_mode_and_subscription_fees() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    Database::create_tables_on_conn(&conn).expect("create tables");
+
+    let billing_mode = get_column_info(&conn, "proxy_request_logs", "billing_mode");
+    assert_eq!(billing_mode.r#type, "TEXT");
+    assert_eq!(billing_mode.notnull, 1);
+    assert_eq!(
+        normalize_default(&billing_mode.default).as_deref(),
+        Some("api_key")
+    );
+
+    for column in ["plan_cycle_type", "plan_start_at", "plan_end_at"] {
+        assert!(
+            Database::has_column(&conn, "proxy_request_logs", column).expect("check column"),
+            "proxy_request_logs.{column} should exist"
+        );
+    }
+
+    for column in [
+        "id",
+        "agent_type",
+        "plan_label",
+        "monthly_fee",
+        "currency",
+        "billing_day",
+        "effective_from",
+        "effective_to",
+        "note",
+    ] {
+        assert!(
+            Database::has_column(&conn, "subscription_fees", column).expect("check column"),
+            "subscription_fees.{column} should exist"
+        );
+    }
+}
+
+#[test]
 fn schema_migration_v4_adds_pricing_model_columns() {
     let conn = Connection::open_in_memory().expect("open memory db");
     conn.execute_batch(
@@ -419,6 +457,76 @@ fn migration_v10_to_v11_rebuilds_rollups_with_request_model_dimension() {
         [],
     )
     .expect("insert row with same model but different request_model");
+
+    assert_eq!(
+        Database::get_user_version(&conn).expect("version after migration"),
+        SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn migration_v11_to_v12_adds_billing_fields_and_subscription_fees() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    conn.execute_batch(
+        r#"
+        CREATE TABLE proxy_request_logs (
+            request_id TEXT PRIMARY KEY,
+            provider_id TEXT NOT NULL,
+            app_type TEXT NOT NULL,
+            model TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            total_cost_usd TEXT NOT NULL DEFAULT '0',
+            latency_ms INTEGER NOT NULL DEFAULT 0,
+            status_code INTEGER NOT NULL DEFAULT 200,
+            created_at INTEGER NOT NULL,
+            data_source TEXT NOT NULL DEFAULT 'proxy'
+        );
+        INSERT INTO proxy_request_logs (
+            request_id, provider_id, app_type, model, input_tokens, output_tokens,
+            total_cost_usd, created_at
+        ) VALUES ('r1', 'p1', 'codex', 'gpt-5', 100, 20, '0.01', 1700000000);
+        "#,
+    )
+    .expect("seed v11 schema");
+
+    Database::set_user_version(&conn, 11).expect("set user_version=11");
+    Database::apply_schema_migrations_on_conn(&conn).expect("apply migrations");
+
+    let billing_mode = get_column_info(&conn, "proxy_request_logs", "billing_mode");
+    assert_eq!(billing_mode.r#type, "TEXT");
+    assert_eq!(billing_mode.notnull, 1);
+    assert_eq!(
+        normalize_default(&billing_mode.default).as_deref(),
+        Some("api_key")
+    );
+
+    let persisted: (String, Option<String>, Option<i64>, Option<i64>) = conn
+        .query_row(
+            "SELECT billing_mode, plan_cycle_type, plan_start_at, plan_end_at
+             FROM proxy_request_logs WHERE request_id = 'r1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .expect("read migrated billing columns");
+    assert_eq!(persisted, ("api_key".to_string(), None, None, None));
+
+    for column in [
+        "id",
+        "agent_type",
+        "plan_label",
+        "monthly_fee",
+        "currency",
+        "billing_day",
+        "effective_from",
+        "effective_to",
+        "note",
+    ] {
+        assert!(
+            Database::has_column(&conn, "subscription_fees", column).expect("check column"),
+            "subscription_fees.{column} should exist after migration"
+        );
+    }
 
     assert_eq!(
         Database::get_user_version(&conn).expect("version after migration"),
