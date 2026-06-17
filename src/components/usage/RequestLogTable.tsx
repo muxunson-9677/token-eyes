@@ -181,13 +181,16 @@ export function RequestLogTable({
                   <TableHead className="text-center whitespace-nowrap">
                     {t("usage.source", { defaultValue: "Source" })}
                   </TableHead>
+                  <TableHead className="text-center whitespace-nowrap">
+                    {t("usage.appType", { defaultValue: "App" })}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {logs.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="text-center text-muted-foreground"
                     >
                       {t("usage.noData")}
@@ -311,6 +314,9 @@ export function RequestLogTable({
                         </TableCell>
                         <TableCell className="text-center text-xs text-muted-foreground">
                           {log.dataSource || "proxy"}
+                        </TableCell>
+                        <TableCell className="text-center text-xs">
+                          {log.appType || "-"}
                         </TableCell>
                       </TableRow>
                     );
