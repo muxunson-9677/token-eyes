@@ -193,6 +193,9 @@ export function useSettings(): UseSettingsResult {
         const sanitizedOpenclawDir = sanitizeDir(
           mergedSettings.openclawConfigDir,
         );
+        const sanitizedHermesDir = sanitizeDir(
+          mergedSettings.hermesConfigDir,
+        );
         const {
           webdavSync: _ignoredWebdavSync,
           s3Sync: _ignoredS3Sync,
@@ -206,6 +209,7 @@ export function useSettings(): UseSettingsResult {
           geminiConfigDir: sanitizedGeminiDir,
           opencodeConfigDir: sanitizedOpencodeDir,
           openclawConfigDir: sanitizedOpenclawDir,
+          hermesConfigDir: sanitizedHermesDir,
           language: mergedSettings.language,
         };
 
@@ -324,12 +328,16 @@ export function useSettings(): UseSettingsResult {
         const sanitizedOpenclawDir = sanitizeDir(
           mergedSettings.openclawConfigDir,
         );
+        const sanitizedHermesDir = sanitizeDir(
+          mergedSettings.hermesConfigDir,
+        );
         const previousAppDir = initialAppConfigDir;
         const previousClaudeDir = sanitizeDir(data?.claudeConfigDir);
         const previousCodexDir = sanitizeDir(data?.codexConfigDir);
         const previousGeminiDir = sanitizeDir(data?.geminiConfigDir);
         const previousOpencodeDir = sanitizeDir(data?.opencodeConfigDir);
         const previousOpenclawDir = sanitizeDir(data?.openclawConfigDir);
+        const previousHermesDir = sanitizeDir(data?.hermesConfigDir);
         const {
           webdavSync: _ignoredWebdavSync,
           s3Sync: _ignoredS3Sync,
@@ -343,6 +351,7 @@ export function useSettings(): UseSettingsResult {
           geminiConfigDir: sanitizedGeminiDir,
           opencodeConfigDir: sanitizedOpencodeDir,
           openclawConfigDir: sanitizedOpenclawDir,
+          hermesConfigDir: sanitizedHermesDir,
           language: mergedSettings.language,
         };
 
@@ -429,13 +438,15 @@ export function useSettings(): UseSettingsResult {
         const geminiDirChanged = sanitizedGeminiDir !== previousGeminiDir;
         const opencodeDirChanged = sanitizedOpencodeDir !== previousOpencodeDir;
         const openclawDirChanged = sanitizedOpenclawDir !== previousOpenclawDir;
+        const hermesDirChanged = sanitizedHermesDir !== previousHermesDir;
         if (
           !pluginSynced &&
           (claudeDirChanged ||
             codexDirChanged ||
             geminiDirChanged ||
             opencodeDirChanged ||
-            openclawDirChanged)
+            openclawDirChanged ||
+            hermesDirChanged)
         ) {
           const syncResult = await syncCurrentProvidersLiveSafe();
           if (!syncResult.ok) {
