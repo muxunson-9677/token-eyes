@@ -12,6 +12,8 @@ import type {
   PaginatedLogs,
   SessionSyncResult,
   DataSourceSummary,
+  CostLedgerQuery,
+  CostLedgerSummary,
 } from "@/types/usage";
 import type { UsageResult } from "@/types";
 import type { AppId } from "./types";
@@ -182,5 +184,16 @@ export const usageApi = {
 
   getDataSourceBreakdown: async (): Promise<DataSourceSummary[]> => {
     return invoke("get_usage_data_sources");
+  },
+
+  // Cost ledger methods
+  getCostLedgerSummary: async (
+    params?: CostLedgerQuery,
+  ): Promise<CostLedgerSummary> => {
+    return invoke("get_cost_ledger_summary", {
+      startDate: params?.startDate,
+      endDate: params?.endDate,
+      agentType: params?.agentType,
+    });
   },
 };

@@ -5,6 +5,8 @@ import type {
   LogFilters,
   UsageRangeSelection,
   UsageScopeFilters,
+  CostLedgerQuery,
+  AppType,
 } from "@/types/usage";
 
 const DEFAULT_REFETCH_INTERVAL_MS = 30000;
@@ -135,6 +137,18 @@ export const usageKeys = {
     [...usageKeys.all, "limits", providerId, appType] as const,
   script: (providerId: string, appType: string) =>
     [...usageKeys.all, providerId, appType] as const,
+  costLedger: (
+    startDate: number | undefined,
+    endDate: number | undefined,
+    agentType: AppType | undefined,
+  ) =>
+    [
+      ...usageKeys.all,
+      "cost-ledger",
+      startDate ?? 0,
+      endDate ?? 0,
+      agentType ?? null,
+    ] as const,
 };
 
 /** 把 UI 侧的 "all" 哨兵归一成 undefined（后端语义：不过滤）。 */
@@ -370,5 +384,21 @@ export function useDeleteModelPricing() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: usageKeys.all });
     },
+  });
+}
+
+export function useCostLedgerSummary(
+  params?: CostLedgerQuery,
+  options?: UsageQueryOptions,
+) {
+  return useQuery({
+    queryKey: usageKeys.costLedger(
+      params?.startDate,
+      params?.endDate,
+      params?.agentType,
+    ),
+    queryFn: () => usageApi.getCostLedgerSummary(params),
+    refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: options?.refetchIntervalInBackground ?? false,
   });
 }
