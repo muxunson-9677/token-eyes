@@ -26,6 +26,7 @@ mod settings;
 pub mod skill;
 mod stream_check;
 mod subscription;
+mod subscription_fee_commands;
 mod sync_support;
 
 mod lightweight;
@@ -60,6 +61,7 @@ pub use settings::*;
 pub use skill::*;
 pub use stream_check::*;
 pub use subscription::*;
+pub use subscription_fee_commands::*;
 
 pub use lightweight::*;
 pub use s3_sync::*;
