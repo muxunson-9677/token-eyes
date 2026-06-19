@@ -230,7 +230,7 @@ export default function App() {
       isSettingsPath ||
       isSpendPath);
 
-  // Public-host gating: on www.tokentracker.cc et al. there is no local
+  // Public-host gating: on www.tokeneyes.cc et al. there is no local
   // CLI :7680 to fall back to, so dashboard / settings / etc. require a
   // signed-in user. publicMode (shared link) and the loading state are
   // exceptions that handle themselves.
@@ -268,7 +268,7 @@ export default function App() {
     // confusion. Auth check happens inside DevicePage itself.
     content = <DevicePage />;
   } else if (normalizedPath === "/wrapped") {
-    // Year-end Wrapped page. Reads from /functions/tokentracker-wrapped
+    // Year-end Wrapped page. Reads from /functions/tokeneyes-wrapped
     // (provided by the local CLI server) 鈥?no auth required.
     content = <WrappedPage />;
   } else if (gate === "landing") {

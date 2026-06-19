@@ -51,25 +51,25 @@ error.boundary.action.reload,shared,*,ErrorBoundary,action_reload,"Reload",,acti
 
 landing.handle.default,landing,LandingPage,LandingPage,handle_default,"VIBE_USER",,active
 landing.handle.special,landing,LandingPage,LandingPage,handle_special,"VOLT",,active
-landing.screenshot.alt,landing,LandingPage,LandingPage,screenshot_alt,"TokenTracker dashboard screenshot",,active
+landing.screenshot.alt,landing,LandingPage,LandingPage,screenshot_alt,"TokenEyes dashboard screenshot",,active
 landing.nav.login,landing,LandingPage,LandingPage,nav_login,"LOGIN",,active
 landing.nav.signup,landing,LandingPage,LandingPage,nav_signup,"SIGN UP",,active
-landing.install.command,landing,LandingPage,LandingPage,install_command,"npx --yes tokentracker-cli",,active
+landing.install.command,landing,LandingPage,LandingPage,install_command,"npx --yes tokeneyes-cli",,active
 landing.install.action.copy,landing,LandingPage,LandingPage,install_copy,"COPY COMMAND",,active
 landing.install.action.copied,landing,LandingPage,LandingPage,install_copied,"COPIED",,active
-landing.meta.title,landing,LandingPage,Meta,title,"Token Tracker — Token Usage Tracker for AI Agent CLIs",,active
+landing.meta.title,landing,LandingPage,Meta,title,"Token Eyes — Token Usage Tracker for AI Agent CLIs",,active
 landing.meta.description,landing,LandingPage,Meta,description,"Automatically monitor token usage across Claude Code, Cursor, Codex, and more. Local-first, privacy-focused, and zero manual configuration.",,active
-landing.meta.og_site_name,landing,LandingPage,Meta,og_site_name,"Token Tracker",,active
+landing.meta.og_site_name,landing,LandingPage,Meta,og_site_name,"Token Eyes",,active
 landing.meta.og_type,landing,LandingPage,Meta,og_type,"website",,active
-landing.meta.og_image,landing,LandingPage,Meta,og_image,"https://www.tokentracker.cc/dashboard-dark.png",,active
-landing.meta.og_url,landing,LandingPage,Meta,og_url,"https://www.tokentracker.cc/",,active
+landing.meta.og_image,landing,LandingPage,Meta,og_image,"https://www.tokeneyes.cc/dashboard-dark.png",,active
+landing.meta.og_url,landing,LandingPage,Meta,og_url,"https://www.tokeneyes.cc/",,active
 landing.meta.twitter_card,landing,LandingPage,Meta,twitter_card,"summary_large_image",,active
-share.meta.title,share,SharePage,Meta,title,"Token Tracker Share",,active
-share.meta.description,share,SharePage,Meta,description,"Share a Token Tracker dashboard snapshot with token usage insights across models, projects, and time windows.",,active
-share.meta.og_site_name,share,SharePage,Meta,og_site_name,"Token Tracker",,active
+share.meta.title,share,SharePage,Meta,title,"Token Eyes Share",,active
+share.meta.description,share,SharePage,Meta,description,"Share a Token Eyes dashboard snapshot with token usage insights across models, projects, and time windows.",,active
+share.meta.og_site_name,share,SharePage,Meta,og_site_name,"Token Eyes",,active
 share.meta.og_type,share,SharePage,Meta,og_type,"website",,active
-share.meta.og_image,share,SharePage,Meta,og_image,"https://www.tokentracker.cc/dashboard-dark.png",,active
-share.meta.og_url,share,SharePage,Meta,og_url,"https://www.tokentracker.cc/share",,active
+share.meta.og_image,share,SharePage,Meta,og_image,"https://www.tokeneyes.cc/dashboard-dark.png",,active
+share.meta.og_url,share,SharePage,Meta,og_url,"https://www.tokeneyes.cc/share",,active
 share.meta.twitter_card,share,SharePage,Meta,twitter_card,"summary_large_image",,active
 landing.handle.placeholder,landing,LandingPage,LandingPage,handle_placeholder,"TRY '{{handle}}'",,active
 landing.rank.expectation,landing,LandingPage,LandingPage,rank_expectation,"RANK_EXPECTATION: {{rank}}",,active
@@ -94,7 +94,7 @@ landing.v2.install.availability,landing,LandingPage,MarketingLanding,availabilit
 landing.v2.models.title,landing,LandingPage,MarketingLanding,models_title,"SUPPORTED AI CLI TOOLS",,active
 landing.v2.compare.kicker,landing,LandingPage,MarketingLanding,compare_kicker,"SEAMLESS TRACKING",,active
 landing.v2.compare.title,landing,LandingPage,MarketingLanding,compare_title,"Stop guessing your AI usage.",,active
-landing.v2.compare.subtitle,landing,LandingPage,MarketingLanding,compare_subtitle,"AI CLI tools hide raw usage data in obscure local files. TokenTracker consolidates them into a local-first dashboard in real-time.",,active
+landing.v2.compare.subtitle,landing,LandingPage,MarketingLanding,compare_subtitle,"AI CLI tools hide raw usage data in obscure local files. TokenEyes consolidates them into a local-first dashboard in real-time.",,active
 landing.v2.distill.body,landing,LandingPage,MarketingLanding,distill_body,"100% local processing. No prompts or code are ever collected.",,active
 landing.v2.compare.with.title,landing,LandingPage,MarketingLanding,with_title,"WITH TOKEN TRACKER",,active
 landing.v2.compare.with.p1,landing,LandingPage,MarketingLanding,with_p1,"Centralized usage dashboard",,active
@@ -106,7 +106,7 @@ landing.v2.compare.without.p1,landing,LandingPage,MarketingLanding,without_p1,"S
 landing.v2.compare.without.p2,landing,LandingPage,MarketingLanding,without_p2,"Blind to token consumption",,active
 landing.v2.compare.without.p3,landing,LandingPage,MarketingLanding,without_p3,"Unexpected API bills",,active
 landing.v2.compare.without.p4,landing,LandingPage,MarketingLanding,without_p4,"Zero historical audit logs",,active
-landing.v2.footer.line,landing,LandingPage,MarketingLanding,footer_line,"Token Tracker — Made by developers, for developers.",,active
+landing.v2.footer.line,landing,LandingPage,MarketingLanding,footer_line,"Token Eyes — Made by developers, for developers.",,active
 landing.v2.nav.status,landing,LandingPage,MarketingLanding,nav_status,"Status",,active
 landing.v2.nav.github,landing,LandingPage,MarketingLanding,nav_github,"GitHub",,active
 landing.v2.models.agent.codex,landing,LandingPage,MarketingLanding,agent_codex,"CODEX",,active
@@ -154,7 +154,7 @@ dashboard.projects.limit_top_6,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_
 dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_10,"TOP 10",,active
 dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,"No public repositories",,active
 dashboard.widgets.title,dashboard,DashboardPage,WidgetOnboardingCard,title,"Desktop Widgets",,active
-dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""TokenTracker""",,active
+dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""TokenEyes""",,active
 dashboard.widgets.dismiss_aria,dashboard,DashboardPage,WidgetOnboardingCard,dismiss_aria,"Dismiss widget intro",,active
 widgets.page.title,dashboard,WidgetsPage,WidgetsPage,title,"Widgets",,active
 widgets.cta.open_gallery,dashboard,WidgetsPage,WidgetsPage,cta_open_gallery,"Open Widget Gallery",,active
@@ -305,19 +305,19 @@ leaderboard.pagination.page_unknown,dashboard,LeaderboardPage,LeaderboardPage,pa
 
 
 
-dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,"run npx --yes tokentracker-cli init",,active
+dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,"run npx --yes tokeneyes-cli init",,active
 dashboard.session_expired.copied,dashboard,DashboardPage,AsciiBox,body,"copied",,active
 
 
 dashboard.install.prompt,dashboard,DashboardPage,AsciiBox,install_prompt,"Install Node.js 18+ then run:",,active
-dashboard.install.cmd.init,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli init",,active
-dashboard.install.cmd.init_link_code,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli init --link-code {{link_code}}",,active
+dashboard.install.cmd.init,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokeneyes-cli init",,active
+dashboard.install.cmd.init_link_code,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokeneyes-cli init --link-code {{link_code}}",,active
 dashboard.install.copy,dashboard,DashboardPage,AsciiBox,install_copy,"Copy install command",,active
 dashboard.install.copy_base,dashboard,DashboardPage,AsciiBox,install_copy,"Copy init command",,active
 dashboard.install.copied,dashboard,DashboardPage,AsciiBox,install_copy,"Copied to clipboard",,active
 dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_status,"Generating private code...",,active
 dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,"Private code unavailable",,active
-dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli sync",,active
+dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokeneyes-cli sync",,active
 
 
 
@@ -363,7 +363,7 @@ settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,"Appeara
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,"Account",,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,"Limits Display",,active
 settings.appearance.theme.label,ui,SettingsPage,SettingsPage,theme_label,"Theme",,active
-settings.appearance.theme.hint,ui,SettingsPage,SettingsPage,theme_hint,"Choose how Token Tracker looks across the dashboard.",,active
+settings.appearance.theme.hint,ui,SettingsPage,SettingsPage,theme_hint,"Choose how Token Eyes looks across the dashboard.",,active
 settings.appearance.theme.light,ui,SettingsPage,SettingsPage,theme_light,"Light",,active
 settings.appearance.theme.dark,ui,SettingsPage,SettingsPage,theme_dark,"Dark",,active
 settings.appearance.theme.system,ui,SettingsPage,SettingsPage,theme_system,"System",,active
@@ -389,7 +389,7 @@ settings.account.copyUserId,ui,SettingsPage,SettingsPage,copy_user_id,"Copy user
 settings.account.copy,ui,SettingsPage,SettingsPage,copy,"Copy",,active
 settings.account.copied,ui,SettingsPage,SettingsPage,copied,"Copied",,active
 settings.account.cloudSync,ui,SettingsPage,SettingsPage,cloud_sync,"Cloud sync",,active
-settings.account.cloudSyncHint,ui,SettingsPage,SettingsPage,cloud_sync_hint,"Upload local usage to your Token Tracker cloud account.",,active
+settings.account.cloudSyncHint,ui,SettingsPage,SettingsPage,cloud_sync_hint,"Upload local usage to your Token Eyes cloud account.",,active
 settings.account.publicProfile,ui,SettingsPage,SettingsPage,public_profile,"Public profile",,active
 settings.account.publicProfileHint,ui,SettingsPage,SettingsPage,public_profile_hint,"Show your usage on the public leaderboard.",,active
 settings.account.displayNameAnonymousHint,ui,SettingsPage,SettingsPage,display_name_anon_hint,"Anonymous — your name and avatar are hidden on the leaderboard",,active
@@ -401,7 +401,7 @@ settings.account.githubUrlInvalid,ui,SettingsPage,SettingsPage,github_url_invali
 leaderboard.github.aria,ui,LeaderboardPage,LeaderboardPage,github_aria,"Open GitHub profile",,active
 auth.callback.processing,ui,*,NativeAuthCallbackPage,processing,"Processing…",,active
 auth.callback.success,ui,*,NativeAuthCallbackPage,success,"Signed in successfully",,active
-auth.callback.redirecting,ui,*,NativeAuthCallbackPage,redirecting,"Returning to TokenTracker…",,active
+auth.callback.redirecting,ui,*,NativeAuthCallbackPage,redirecting,"Returning to TokenEyes…",,active
 auth.callback.failed,ui,*,NativeAuthCallbackPage,failed,"Sign-in incomplete. Please try again.",,active
 auth.callback.close,ui,*,NativeAuthCallbackPage,close,"Close this page",,active
 stats.period.last_7d,ui,DashboardPage,StatsPanel,period_last_7d,"7d",,active
@@ -433,7 +433,7 @@ settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,"Bli
 settings.menubar.confettiOnReset,ui,SettingsPage,SettingsPage,mb_confetti,"Confetti on reset",,active
 settings.menubar.confettiOnResetHint,ui,SettingsPage,SettingsPage,mb_confetti_hint,"Set off a fireworks celebration when a usage limit resets after you were near it.",,active
 settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,"Launch at login",,active
-settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,"Start TokenTrackerBar automatically when you sign in to macOS.",,active
+settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,"Start TokenEyesBar automatically when you sign in to macOS.",,active
 settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,"Sync now",,active
 settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,"Trigger an immediate parse and upload of local AI tool logs.",,active
 settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,"Syncing…",,active
@@ -442,7 +442,7 @@ settings.menubar.checkUpdates,ui,SettingsPage,SettingsPage,mb_check_updates,"Che
 settings.footer.statusPage,ui,SettingsPage,NativeAppFooter,status_page,"System status",,active
 menubar.slot.primary,ui,WidgetsPage,MenuBarDisplayCard,slot_primary,"Primary slot",,active
 menubar.slot.secondary,ui,WidgetsPage,MenuBarDisplayCard,slot_secondary,"Secondary slot",,active
-menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,"Open TokenTrackerBar for macOS to edit the live menu bar display.",,active
+menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,"Open TokenEyesBar for macOS to edit the live menu bar display.",,active
 menubar.metric.today_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_today_tokens,"Today Tokens",,active
 menubar.metric.today_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_today_cost,"Today Cost",,active
 menubar.metric.last_7d_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_last_7d,"Last 7 Days",,active
@@ -893,13 +893,13 @@ local_only.open_app,dashboard,LocalOnlyNotice,LocalOnlyNotice,open_app,"Open in 
 local_only.download,dashboard,LocalOnlyNotice,LocalOnlyNotice,download,"Get the Mac app",,active
 leaderboard.profile.like.aria_like,dashboard,LeaderboardProfileModal,LikeButton,aria_like,"Like profile",,active
 leaderboard.profile.like.aria_unlike,dashboard,LeaderboardProfileModal,LikeButton,aria_unlike,"Unlike profile",,active
-dashboard.auth_gate.title,dashboard,DashboardPage,DashboardView,auth_gate_title,"Sign in to Token Tracker",,active
+dashboard.auth_gate.title,dashboard,DashboardPage,DashboardView,auth_gate_title,"Sign in to Token Eyes",,active
 dashboard.auth_gate.subtitle,dashboard,DashboardPage,DashboardView,auth_gate_subtitle,"Sign in to sync and view your API usage, cost, and token consumption trends in the cloud.",,active
 dashboard.auth_gate.button,dashboard,DashboardPage,DashboardView,auth_gate_button,"Sign In",,active
 dashboard.expired_gate.title,dashboard,DashboardPage,DashboardView,expired_gate_title,"Session Expired",,active
 dashboard.expired_gate.subtitle,dashboard,DashboardPage,DashboardView,expired_gate_subtitle,"Your session has expired. Please sign in again to continue viewing your cloud dashboard.",,active
 dashboard.expired_gate.button,dashboard,DashboardPage,DashboardView,expired_gate_button,"Sign In Again",,active
-shared.app_name,shared,*,*,app_name,"Token Tracker",,active
+shared.app_name,shared,*,*,app_name,"Token Eyes",,active
 dashboard.auth_gate.hero_title,dashboard,DashboardPage,DashboardView,hero_title,"Track every AI agent token seamlessly",,active
 dashboard.auth_gate.hero_subtitle,dashboard,DashboardPage,DashboardView,hero_subtitle,"Clear, transparent, and multi-endpoint control",,active
 dashboard.auth_gate.desc,dashboard,DashboardPage,DashboardView,desc,"Securely sync token quotas, concurrent costs, and latency across Claude Code, Cursor, and Gemini CLI in a beautifully unified real-time dashboard.",,active

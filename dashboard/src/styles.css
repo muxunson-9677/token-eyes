@@ -6,7 +6,7 @@
   color-scheme: light;
 
   /* ========================================
-     TokenTracker Design System - Brand Colors
+     TokenEyes Design System - Brand Colors
      ======================================== */
 
   /* Colors - Primary (using OKLCH for perceptual uniformity) */
@@ -173,7 +173,7 @@ body {
   --tw-ring-offset-shadow: 0 0 #0000 !important;
 }
 
-/* TokenTrackerBar WKWebView: `native-app` on <html> (inline head script + Swift); NSVisualEffectView under transparent WKWebView. */
+/* TokenEyesBar WKWebView: `native-app` on <html> (inline head script + Swift); NSVisualEffectView under transparent WKWebView. */
 html.native-app,
 html.native-app.dark {
   background: transparent !important;

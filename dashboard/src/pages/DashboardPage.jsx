@@ -99,7 +99,7 @@ function addUtcDays(date, days) {
 
 function isProductionHost(hostname) {
   if (!hostname) return false;
-  return hostname === "www.tokentracker.cc" || hostname === "tokentracker.cc";
+  return hostname === "www.tokeneyes.cc" || hostname === "tokeneyes.cc";
 }
 
 function isForceInstallEnabled() {
@@ -165,7 +165,7 @@ export function DashboardPage({
   const guestAllowed = signedIn && sessionSoftExpired && !publicMode;
 
   // Cloud (cross-device account view) 鈥?driven by Settings 鈫?Cloud sync toggle
-  // on localhost, mandatory on public hosts (www.tokentracker.cc et al.).
+  // on localhost, mandatory on public hosts (www.tokeneyes.cc et al.).
   // publicMode (shared link) opts out of account view entirely.
   const {
     accountView: accountViewBase,
@@ -1035,7 +1035,7 @@ export function DashboardPage({
     // Link to the sharer's own profile when signed in, so the tweet drives to
     // their stats (and the embeddable badge) rather than the generic homepage.
     const sharePath = auth?.userId ? `/u/${auth.userId}` : "/";
-    intentUrl.searchParams.set("url", `https://www.tokentracker.cc${sharePath}?ref=share`);
+    intentUrl.searchParams.set("url", `https://www.tokeneyes.cc${sharePath}?ref=share`);
     return intentUrl.toString();
   }, [screenshotTwitterText, auth?.userId]);
   const captureScreenshotBlob = useCallback(async () => {
