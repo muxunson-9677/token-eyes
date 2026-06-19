@@ -41,7 +41,7 @@ shared.unit.thousand_abbrev,shared,*,*,unit_thousand_abbrev,"K",,active
 shared.unit.million_abbrev,shared,*,*,unit_million_abbrev,"M",,active
 shared.unit.billion_abbrev,shared,*,*,unit_billion_abbrev,"B",,active
 shared.data_source,shared,*,*,label,"Data source: {{source}}",,active
-shared.error.prefix,shared,*,*,label,"Error: {{error}}",,active
+shared.error.prefix,shared,*,*,label,"错误：{{error}}",,active
 shared.status.unsynced,shared,*,*,status,"—",,active
 error.boundary.title,shared,*,ErrorBoundary,title,"Something went wrong",,active
 error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,"This view failed to render",,active
@@ -121,16 +121,16 @@ landing.v2.hero.subtagline,landing,LandingPage,MarketingLanding,hero_subtagline,
 
 
 
-identity_card.rank_label,ui,IdentityCard,IdentityCard,rank_label,"Started",,active
-identity_card.streak_label,ui,IdentityCard,IdentityCard,streak_label,"Active days",,active
+identity_card.rank_label,ui,IdentityCard,IdentityCard,rank_label,"开始使用",,active
+identity_card.streak_label,ui,IdentityCard,IdentityCard,streak_label,"活跃天数",,active
 identity_card.rank_placeholder,ui,IdentityCard,IdentityCard,rank_placeholder,"—",,active
-identity_card.streak_value,ui,IdentityCard,IdentityCard,streak_value,"{{days}} DAY",,active
+identity_card.streak_value,ui,IdentityCard,IdentityCard,streak_value,"{{days}} 天",,active
 
 
 dashboard.core_index.collapse_label,dashboard,DashboardPage,UsagePanel,toggle,"▾",,active
 dashboard.core_index.expand_label,dashboard,DashboardPage,UsagePanel,toggle,"▸",,active
-dashboard.core_index.collapse_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,"Collapse model breakdown",,active
-dashboard.core_index.expand_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,"Expand model breakdown",,active
+dashboard.core_index.collapse_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,"折叠模型分解",,active
+dashboard.core_index.expand_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,"展开模型分解",,active
 usage.summary.total,ui,UsagePanel,UsagePanel,summary_label_total,"Token 总数",,active
 usage.metric.total,ui,UsagePanel,UsagePanel,metric_total,"总计",,active
 usage.metric.input,ui,UsagePanel,UsagePanel,metric_input,"输入",,active
@@ -144,15 +144,15 @@ dashboard.rolling.last_7d,ui,RollingUsagePanel,RollingUsagePanel,label_last_7d,"
 dashboard.rolling.last_30d,ui,RollingUsagePanel,RollingUsagePanel,label_last_30d,"过去 30 天",,active
 dashboard.rolling.avg_active_day,ui,RollingUsagePanel,RollingUsagePanel,label_avg_active_day,"日均",,active
 
-dashboard.projects.title,ui,ProjectUsagePanel,ProjectUsagePanel,title,"Project Usage",,active
-dashboard.projects.tokens_label,ui,ProjectUsagePanel,ProjectUsagePanel,tokens_label,"Tokens",,active
-dashboard.projects.stars_label,ui,ProjectUsagePanel,ProjectUsagePanel,stars_label,"STAR",,active
-dashboard.projects.limit_label,ui,ProjectUsagePanel,ProjectUsagePanel,limit_label,"Show",,active
-dashboard.projects.limit_aria,ui,ProjectUsagePanel,ProjectUsagePanel,limit_aria,"Select repository limit",,active
+dashboard.projects.title,ui,ProjectUsagePanel,ProjectUsagePanel,title,"项目用量",,active
+dashboard.projects.tokens_label,ui,ProjectUsagePanel,ProjectUsagePanel,tokens_label,"Token",,active
+dashboard.projects.stars_label,ui,ProjectUsagePanel,ProjectUsagePanel,stars_label,"星标",,active
+dashboard.projects.limit_label,ui,ProjectUsagePanel,ProjectUsagePanel,limit_label,"显示",,active
+dashboard.projects.limit_aria,ui,ProjectUsagePanel,ProjectUsagePanel,limit_aria,"选择仓库数量限制",,active
 dashboard.projects.limit_top_3,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_3,"TOP 3",,active
 dashboard.projects.limit_top_6,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_6,"TOP 6",,active
 dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_10,"TOP 10",,active
-dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,"No public repositories",,active
+dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,"暂无公开仓库",,active
 dashboard.widgets.title,dashboard,DashboardPage,WidgetOnboardingCard,title,"Desktop Widgets",,active
 dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""TokenEyes""",,active
 dashboard.widgets.dismiss_aria,dashboard,DashboardPage,WidgetOnboardingCard,dismiss_aria,"Dismiss widget intro",,active
@@ -164,52 +164,52 @@ widgets.menubar.section.title,dashboard,WidgetsPage,WidgetsPage,menubar_section_
 widgets.gallery.section.title,dashboard,WidgetsPage,WidgetsPage,gallery_section_title,"Desktop Widgets",,active
 widgets.summary.name,dashboard,WidgetsPage,WidgetsPage,summary_name,"Usage Summary",,active
 widgets.summary.description,dashboard,WidgetsPage,WidgetsPage,summary_desc,"Today and seven-day usage with a compact sparkline.",,active
-widgets.heatmap.name,dashboard,WidgetsPage,WidgetsPage,heatmap_name,"Activity Heatmap",,active
-widgets.heatmap.description,dashboard,WidgetsPage,WidgetsPage,heatmap_desc,"GitHub-style daily calendar. Spot streaks and quiet days at a glance.",,active
+widgets.heatmap.name,dashboard,WidgetsPage,WidgetsPage,heatmap_name,"活动热力图",,active
+widgets.heatmap.description,dashboard,WidgetsPage,WidgetsPage,heatmap_desc,"GitHub 风格的日历。一目了然地查看活跃和空闲的日子。",,active
 widgets.topModels.name,dashboard,WidgetsPage,WidgetsPage,topmodels_name,"Top Models",,active
 widgets.topModels.description,dashboard,WidgetsPage,WidgetsPage,topmodels_desc,"Your heaviest-used models ranked by token share.",,active
 widgets.limits.name,dashboard,WidgetsPage,WidgetsPage,limits_name,"Usage Limits",,active
 widgets.limits.description,dashboard,WidgetsPage,WidgetsPage,limits_desc,"Live rate-limit progress for Claude, Codex, Cursor, Gemini and more.",,active
-dashboard.cost_breakdown.title,ui,CostAnalysisModal,CostAnalysisModal,title,"Cost Breakdown",,active
-dashboard.cost_breakdown.total_label,ui,CostAnalysisModal,CostAnalysisModal,total_label,"Estimated Total Cost",,active
-dashboard.cost_breakdown.close,ui,CostAnalysisModal,CostAnalysisModal,close_label,"Close",,active
+dashboard.cost_breakdown.title,ui,CostAnalysisModal,CostAnalysisModal,title,"成本明细",,active
+dashboard.cost_breakdown.total_label,ui,CostAnalysisModal,CostAnalysisModal,total_label,"预计总成本",,active
+dashboard.cost_breakdown.close,ui,CostAnalysisModal,CostAnalysisModal,close_label,"关闭",,active
 
 
-trend.monitor.label,ui,TrendMonitor,TrendMonitor,label,"Usage Trend",,active
-trend.zoom.open_aria,ui,TrendMonitor,TrendMonitor,zoom_open_aria,"Expand to full screen",,active
-trend.zoom.close_aria,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_close_aria,"Close",,active
-trend.zoom.badge,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_badge,"Trend Insight",,active
-trend.zoom.desc,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_desc,"Hover any bar to inspect tokens, cost and conversations. Switch granularity to drill from months down to half-hours.",,active
-trend.zoom.insight_badge,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_badge,"Insight",,active
-trend.zoom.tooltip.cost,ui,TrendMonitor,TrendMonitor,zoom_tooltip_cost,"cost",,active
-trend.zoom.tooltip.conversations,ui,TrendMonitor,TrendMonitor,zoom_tooltip_conversations,"conversations",,active
-trend.zoom.stats.tokens,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_stats_tokens,"Total Tokens",,active
-trend.zoom.stats.cost,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_stats_cost,"Total Cost",,active
-trend.zoom.stats.conversations,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_stats_conversations,"Conversations",,active
-trend.zoom.stats.peak,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_stats_peak,"Peak Bucket",,active
-trend.zoom.gran.aria,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_gran_aria,"Granularity",,active
+trend.monitor.label,ui,TrendMonitor,TrendMonitor,label,"用量趋势",,active
+trend.zoom.open_aria,ui,TrendMonitor,TrendMonitor,zoom_open_aria,"全屏展开",,active
+trend.zoom.close_aria,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_close_aria,"关闭",,active
+trend.zoom.badge,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_badge,"趋势洞察",,active
+trend.zoom.desc,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_desc,"悬停任意柱子查看 Token、成本和对话数。切换粒度可从月份下钻到半小时。",,active
+trend.zoom.insight_badge,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_badge,"洞察",,active
+trend.zoom.tooltip.cost,ui,TrendMonitor,TrendMonitor,zoom_tooltip_cost,"成本",,active
+trend.zoom.tooltip.conversations,ui,TrendMonitor,TrendMonitor,zoom_tooltip_conversations,"对话",,active
+trend.zoom.stats.tokens,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_stats_tokens,"Token 总数",,active
+trend.zoom.stats.cost,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_stats_cost,"总成本",,active
+trend.zoom.stats.conversations,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_stats_conversations,"对话",,active
+trend.zoom.stats.peak,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_stats_peak,"峰值时段",,active
+trend.zoom.gran.aria,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_gran_aria,"粒度",,active
 trend.zoom.gran.30min,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_gran_30min,"30 min",,active
 trend.zoom.gran.day,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_gran_day,"Day",,active
 trend.zoom.gran.month,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_gran_month,"Month",,active
-trend.zoom.prev_day,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_prev_day,"Previous day",,active
-trend.zoom.next_day,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_next_day,"Next day",,active
-trend.zoom.loading,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_loading,"Loading…",,active
-trend.zoom.pick_day,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_pick_day,"Pick a day",,active
-trend.zoom.pick_range,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_pick_range,"Pick a date range",,active
+trend.zoom.prev_day,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_prev_day,"前一天",,active
+trend.zoom.next_day,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_next_day,"后一天",,active
+trend.zoom.loading,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_loading,"加载中…",,active
+trend.zoom.pick_day,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_pick_day,"选择日期",,active
+trend.zoom.pick_range,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_pick_range,"选择日期范围",,active
 trend.zoom.insight.empty,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_empty,"A quiet stretch. Not a single token crossed the wire.",,active
 trend.zoom.insight.calm,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_calm,"Light touch. The model mostly sat on standby, waking only when you reached for it.",,active
 trend.zoom.insight.steady,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_steady,"A steady rhythm across {{active}} active stretches, cresting at {{peak}}. The kind of pace that ships things without drama.",,active
 trend.zoom.insight.heavy,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_heavy,"Heavy lifting: {{active}} stretches running hot, peaking at {{peak}}. This is output from someone who manufactures momentum instead of waiting for it.",,active
 trend.zoom.insight.massive,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_massive,"Industrial scale. A {{peak}} peak and throughput that never cools. At this volume you are not using the model, you are running a foundry.",,active
 
-heatmap.title,ui,ActivityHeatmap,ActivityHeatmap,title,"Activity Heatmap",,active
-heatmap.empty,ui,ActivityHeatmap,ActivityHeatmap,empty_state,"No activity data yet.",,active
-heatmap.legend.less,ui,ActivityHeatmap,ActivityHeatmap,legend_less,"Less",,active
-heatmap.legend.more,ui,ActivityHeatmap,ActivityHeatmap,legend_more,"More",,active
+heatmap.title,ui,ActivityHeatmap,ActivityHeatmap,title,"活动热力图",,active
+heatmap.empty,ui,ActivityHeatmap,ActivityHeatmap,empty_state,"暂无活动数据。",,active
+heatmap.legend.less,ui,ActivityHeatmap,ActivityHeatmap,legend_less,"少",,active
+heatmap.legend.more,ui,ActivityHeatmap,ActivityHeatmap,legend_more,"多",,active
 heatmap.legend.utc,ui,ActivityHeatmap,ActivityHeatmap,legend_utc,"UTC",,active
 heatmap.tooltip,ui,ActivityHeatmap,ActivityHeatmap,tooltip,"{{day}} • {{value}} {{unit}} • {{tz}}",,active
-heatmap.unit.tokens,ui,ActivityHeatmap,ActivityHeatmap,unit_tokens,"tokens",,active
-heatmap.iso.aria,ui,ActivityHeatmap,ActivityHeatmap3D,iso_aria,"3D isometric activity heatmap",,active
+heatmap.unit.tokens,ui,ActivityHeatmap,ActivityHeatmap,unit_tokens,"Token",,active
+heatmap.iso.aria,ui,ActivityHeatmap,ActivityHeatmap3D,iso_aria,"3D 等距活动热力图",,active
 heatmap.view.2d,ui,ActivityHeatmap,ActivityHeatmap,view_2d,"2D",,active
 heatmap.view.3d,ui,ActivityHeatmap,ActivityHeatmap,view_3d,"3D",,active
 heatmap.month.jan,ui,ActivityHeatmap,ActivityHeatmap,month_label,"Jan",,active
@@ -267,12 +267,12 @@ leaderboard.period.month,dashboard,LeaderboardPage,LeaderboardPage,period_month,
 leaderboard.period.total,dashboard,LeaderboardPage,LeaderboardPage,period_total,"All",,active
 
 leaderboard.me_label,dashboard,LeaderboardPage,LeaderboardPage,me_label,"You",,active
-leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"Anonymous",,active
+leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"匿名",,active
 leaderboard.error.unknown,dashboard,LeaderboardPage,LeaderboardPage,error_unknown,"Unknown error",,active
 
 
 
-leaderboard.loading,dashboard,LeaderboardPage,LeaderboardPage,state_loading,"Loading…",,active
+leaderboard.loading,dashboard,LeaderboardPage,LeaderboardPage,state_loading,"加载中…",,active
 leaderboard.empty,dashboard,LeaderboardPage,LeaderboardPage,state_empty,"No data",,active
 
 leaderboard.column.rank,dashboard,LeaderboardPage,LeaderboardPage,column_rank,"Rank",,active
@@ -305,35 +305,35 @@ leaderboard.pagination.page_unknown,dashboard,LeaderboardPage,LeaderboardPage,pa
 
 
 
-dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,"run npx --yes tokeneyes-cli init",,active
-dashboard.session_expired.copied,dashboard,DashboardPage,AsciiBox,body,"copied",,active
+dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,"运行 npx --yes tokeneyes-cli init",,active
+dashboard.session_expired.copied,dashboard,DashboardPage,AsciiBox,body,"已复制",,active
 
 
-dashboard.install.prompt,dashboard,DashboardPage,AsciiBox,install_prompt,"Install Node.js 18+ then run:",,active
+dashboard.install.prompt,dashboard,DashboardPage,AsciiBox,install_prompt,"安装 Node.js 18+ 然后运行：",,active
 dashboard.install.cmd.init,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokeneyes-cli init",,active
 dashboard.install.cmd.init_link_code,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokeneyes-cli init --link-code {{link_code}}",,active
-dashboard.install.copy,dashboard,DashboardPage,AsciiBox,install_copy,"Copy install command",,active
-dashboard.install.copy_base,dashboard,DashboardPage,AsciiBox,install_copy,"Copy init command",,active
-dashboard.install.copied,dashboard,DashboardPage,AsciiBox,install_copy,"Copied to clipboard",,active
-dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_status,"Generating private code...",,active
-dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,"Private code unavailable",,active
+dashboard.install.copy,dashboard,DashboardPage,AsciiBox,install_copy,"复制安装命令",,active
+dashboard.install.copy_base,dashboard,DashboardPage,AsciiBox,install_copy,"复制初始化命令",,active
+dashboard.install.copied,dashboard,DashboardPage,AsciiBox,install_copy,"已复制到剪贴板",,active
+dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_status,"正在生成专属代码...",,active
+dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,"专属代码不可用",,active
 dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokeneyes-cli sync",,active
 
 
 
-dashboard.daily.title,dashboard,DashboardPage,AsciiBox,title,"Daily Breakdown",,active
-dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,"No data yet. Use your AI CLI then run {{cmd}}.",,active
+dashboard.daily.title,dashboard,DashboardPage,AsciiBox,title,"每日明细",,active
+dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,"还没有数据。先使用 AI CLI，再运行 {{cmd}}。",,active
 
-dashboard.identity.title,dashboard,DashboardPage,IdentityCard,title,"Your Profile",,active
-dashboard.identity.subtitle,dashboard,DashboardPage,IdentityCard,subtitle,"Track your coding journey",,active
-dashboard.identity.fallback,dashboard,DashboardPage,IdentityCard,handle_fallback,"Anonymous",,active
+dashboard.identity.title,dashboard,DashboardPage,IdentityCard,title,"你的档案",,active
+dashboard.identity.subtitle,dashboard,DashboardPage,IdentityCard,subtitle,"追踪你的编程旅程",,active
+dashboard.identity.fallback,dashboard,DashboardPage,IdentityCard,handle_fallback,"匿名",,active
 
 
 dashboard.screenshot.title_line1,dashboard,DashboardPage,ScreenshotTitle,title_line,"Coding Agent",,active
-dashboard.screenshot.title_line2,dashboard,DashboardPage,ScreenshotTitle,title_line,"2025 Wrapped",,active
-dashboard.screenshot.twitter_button,dashboard,DashboardPage,ScreenshotShare,button_label,"Share on X",,active
-dashboard.screenshot.twitter_label,dashboard,DashboardPage,ScreenshotShare,aria_label,"Share on X",,active
-dashboard.screenshot.twitter_hint,dashboard,DashboardPage,ScreenshotShare,helper_text,"Auto-copies image to clipboard",,active
+dashboard.screenshot.title_line2,dashboard,DashboardPage,ScreenshotTitle,title_line,"2025 年度报告",,active
+dashboard.screenshot.twitter_button,dashboard,DashboardPage,ScreenshotShare,button_label,"分享到 X",,active
+dashboard.screenshot.twitter_label,dashboard,DashboardPage,ScreenshotShare,aria_label,"分享到 X",,active
+dashboard.screenshot.twitter_hint,dashboard,DashboardPage,ScreenshotShare,helper_text,"自动复制图片到剪贴板",,active
 dashboard.screenshot.twitter_text,dashboard,DashboardPage,ScreenshotShare,share_text,"{{total_tokens}} tokens on the record.\n{{model_name}} led with {{model_percent}}%.\n\nMy AI usage, unaudited →",,active
 
 nav.usage,shared,*,Sidebar,nav_usage,"概览",,active
@@ -346,15 +346,15 @@ nav.menu,shared,*,Sidebar,nav_menu,"打开导航菜单",,active
 nav.close_menu,shared,*,Sidebar,nav_close_menu,"关闭导航菜单",,active
 nav.aside_label,shared,*,Sidebar,aside_label,"主导航",,active
 nav.nav_label,shared,*,Sidebar,nav_label,"主要",,active
-limits.page.subtitle,ui,LimitsPage,LimitsPage,subtitle,"Rate limits and quota usage across your AI tools.",,active
-limits.settings.toggle_visible,ui,LimitsPage,LimitsSettingsPanel,toggle_visible,"Toggle visibility",,active
-limits.settings.display_mode_label,ui,LimitsPage,LimitsSettingsPanel,display_mode_label,"Usage",,active
-limits.settings.display_mode_used,ui,LimitsPage,LimitsSettingsPanel,display_mode_used,"Used",,active
-limits.settings.display_mode_remaining,ui,LimitsPage,LimitsSettingsPanel,display_mode_remaining,"Remaining",,active
-limits.page.openSettings,ui,LimitsPage,LimitsPage,open_settings,"Display settings",,active
-nav.group.general,shared,*,Sidebar,group_general,"General",,active
-nav.group.tools,shared,*,Sidebar,group_tools,"Tools",,active
-nav.group.account,shared,*,Sidebar,group_account,"Account",,active
+limits.page.subtitle,ui,LimitsPage,LimitsPage,subtitle,"AI 工具的速率限制和配额用量。",,active
+limits.settings.toggle_visible,ui,LimitsPage,LimitsSettingsPanel,toggle_visible,"切换可见性",,active
+limits.settings.display_mode_label,ui,LimitsPage,LimitsSettingsPanel,display_mode_label,"用量",,active
+limits.settings.display_mode_used,ui,LimitsPage,LimitsSettingsPanel,display_mode_used,"已用",,active
+limits.settings.display_mode_remaining,ui,LimitsPage,LimitsSettingsPanel,display_mode_remaining,"剩余",,active
+limits.page.openSettings,ui,LimitsPage,LimitsPage,open_settings,"显示设置",,active
+nav.group.general,shared,*,Sidebar,group_general,"通用",,active
+nav.group.tools,shared,*,Sidebar,group_tools,"工具",,active
+nav.group.account,shared,*,Sidebar,group_account,"账户",,active
 nav.settings,shared,*,Sidebar,nav_settings,"设置",,active
 header.auth.open_settings,shared,*,InsforgeUserHeaderControls,open_settings,"打开设置",,active
 settings.page.title,ui,SettingsPage,SettingsPage,title,"设置",,active
@@ -379,35 +379,34 @@ settings.appearance.currency.rate_source.default,ui,SettingsPage,SettingsPage,ra
 settings.appearance.currency.rate_source.fetched,ui,SettingsPage,SettingsPage,rate_source_fetched,"Source: open.er-api.com",,active
 settings.appearance.currency.rate_updated,ui,SettingsPage,SettingsPage,rate_updated,"updated {{when}}",,active
 settings.appearance.currency.rate_never,ui,SettingsPage,SettingsPage,rate_never,"awaiting first refresh",,active
-settings.account.displayName,ui,SettingsPage,SettingsPage,display_name,"Display name",,active
-settings.account.edit,ui,SettingsPage,SettingsPage,edit,"Edit",,active
-settings.account.save,ui,SettingsPage,SettingsPage,save,"Save",,active
-settings.account.saving,ui,SettingsPage,SettingsPage,saving,"Saving...",,active
-settings.account.cancel,ui,SettingsPage,SettingsPage,cancel,"Cancel",,active
-settings.account.userId,ui,SettingsPage,SettingsPage,user_id,"User ID",,active
-settings.account.copyUserId,ui,SettingsPage,SettingsPage,copy_user_id,"Copy user ID",,active
-settings.account.copy,ui,SettingsPage,SettingsPage,copy,"Copy",,active
-settings.account.copied,ui,SettingsPage,SettingsPage,copied,"Copied",,active
-settings.account.cloudSync,ui,SettingsPage,SettingsPage,cloud_sync,"Cloud sync",,active
-settings.account.cloudSyncHint,ui,SettingsPage,SettingsPage,cloud_sync_hint,"Upload local usage to your Token Eyes cloud account.",,active
-settings.account.publicProfile,ui,SettingsPage,SettingsPage,public_profile,"Public profile",,active
-settings.account.publicProfileHint,ui,SettingsPage,SettingsPage,public_profile_hint,"Show your usage on the public leaderboard.",,active
-settings.account.displayNameAnonymousHint,ui,SettingsPage,SettingsPage,display_name_anon_hint,"Anonymous — your name and avatar are hidden on the leaderboard",,active
-settings.account.displayNameDisabledWhileAnon,ui,SettingsPage,SettingsPage,display_name_disabled,"Turn on the switch first to edit your name",,active
-settings.account.githubUrl,ui,SettingsPage,SettingsPage,github_url,"GitHub profile",,active
-settings.account.githubUrlHint,ui,SettingsPage,SettingsPage,github_url_hint,"Show a GitHub link next to your name on the leaderboard.",,active
-settings.account.githubUrlPlaceholder,ui,SettingsPage,SettingsPage,github_url_placeholder,"username or https://github.com/username",,active
-settings.account.githubUrlInvalid,ui,SettingsPage,SettingsPage,github_url_invalid,"Use a GitHub username or https://github.com/username URL.",,active
-leaderboard.github.aria,ui,LeaderboardPage,LeaderboardPage,github_aria,"Open GitHub profile",,active
-auth.callback.processing,ui,*,NativeAuthCallbackPage,processing,"Processing…",,active
-auth.callback.success,ui,*,NativeAuthCallbackPage,success,"Signed in successfully",,active
-auth.callback.redirecting,ui,*,NativeAuthCallbackPage,redirecting,"Returning to TokenEyes…",,active
-auth.callback.failed,ui,*,NativeAuthCallbackPage,failed,"Sign-in incomplete. Please try again.",,active
-auth.callback.close,ui,*,NativeAuthCallbackPage,close,"Close this page",,active
-stats.period.last_7d,ui,DashboardPage,StatsPanel,period_last_7d,"7d",,active
-stats.period.last_30d,ui,DashboardPage,StatsPanel,period_last_30d,"30d",,active
-stats.period.avg,ui,DashboardPage,StatsPanel,period_avg,"avg",,active
-stats.period.convs,ui,DashboardPage,StatsPanel,period_convs,"convs",,active
+settings.account.displayName,ui,SettingsPage,SettingsPage,display_name,"显示名称",,active
+settings.account.edit,ui,SettingsPage,SettingsPage,edit,"编辑",,active
+settings.account.save,ui,SettingsPage,SettingsPage,save,"保存",,active
+settings.account.saving,ui,SettingsPage,SettingsPage,saving,"保存中...",,active
+settings.account.cancel,ui,SettingsPage,SettingsPage,cancel,"取消",,active
+settings.account.userId,ui,SettingsPage,SettingsPage,user_id,"用户 ID",,active
+settings.account.copyUserId,ui,SettingsPage,SettingsPage,copy_user_id,"复制用户 ID",,active
+settings.account.copy,ui,SettingsPage,SettingsPage,copy,"复制",,active
+settings.account.copied,ui,SettingsPage,SettingsPage,copied,"已复制",,active
+settings.account.cloudSync,ui,SettingsPage,SettingsPage,cloud_sync,"云同步",,active
+settings.account.cloudSyncHint,ui,SettingsPage,SettingsPage,cloud_sync_hint,"将本地用量上传到你的 Token Eyes 云端账号。",,active
+settings.account.publicProfile,ui,SettingsPage,SettingsPage,public_profile,"公开主页",,active
+settings.account.publicProfileHint,ui,SettingsPage,SettingsPage,public_profile_hint,"在公开排行榜上显示你的用量。",,active
+settings.account.displayNameAnonymousHint,ui,SettingsPage,SettingsPage,display_name_anon_hint,"匿名 — 你的名字和头像在排行榜上隐藏",,active
+settings.account.displayNameDisabledWhileAnon,ui,SettingsPage,SettingsPage,display_name_disabled,"请先开启开关再编辑名称",,active
+settings.account.githubUrl,ui,SettingsPage,SettingsPage,github_url,"GitHub 主页",,active
+settings.account.githubUrlHint,ui,SettingsPage,SettingsPage,github_url_hint,"在排行榜上显示 GitHub 链接。",,active
+settings.account.githubUrlPlaceholder,ui,SettingsPage,SettingsPage,github_url_placeholder,"用户名或 https://github.com/用户名",,active
+settings.account.githubUrlInvalid,ui,SettingsPage,SettingsPage,github_url_invalid,"请使用 GitHub 用户名或 https://github.com/用户名 URL。",,active
+auth.callback.processing,ui,*,NativeAuthCallbackPage,processing,"处理中…",,active
+auth.callback.success,ui,*,NativeAuthCallbackPage,success,"登录成功",,active
+auth.callback.redirecting,ui,*,NativeAuthCallbackPage,redirecting,"正在返回 TokenEyes…",,active
+auth.callback.failed,ui,*,NativeAuthCallbackPage,failed,"登录未完成，请重试。",,active
+auth.callback.close,ui,*,NativeAuthCallbackPage,close,"关闭此页面",,active
+stats.period.last_7d,ui,DashboardPage,StatsPanel,period_last_7d,"7天",,active
+stats.period.last_30d,ui,DashboardPage,StatsPanel,period_last_30d,"30天",,active
+stats.period.avg,ui,DashboardPage,StatsPanel,period_avg,"日均",,active
+stats.period.convs,ui,DashboardPage,StatsPanel,period_convs,"对话",,active
 leaderboard.column.est_cost,ui,LeaderboardPage,LeaderboardPage,column_est_cost,"Est. Cost",,active
 leaderboard.signin_prompt,ui,LeaderboardPage,LeaderboardPage,signin_prompt,"Sign in to join the leaderboard",,active
 leaderboard.signin_button,ui,LeaderboardPage,LeaderboardPage,signin_button,"Sign In",,active
@@ -422,32 +421,32 @@ leaderboard.github.tooltipSuffix,ui,LeaderboardPage,LeaderboardPage,github_toolt
 leaderboard.summary.percentile,ui,LeaderboardPage,LeaderboardMeChip,summary_percentile,"Top {{p}}%",,active
 leaderboard.summary.jump_to_me,ui,LeaderboardPage,LeaderboardMeChip,summary_jump_to_me,"Jump to my row",,active
 leaderboard.summary.view_profile,ui,LeaderboardPage,LeaderboardMeChip,summary_view_profile,"View your profile",,active
-settings.account.signOut,ui,SettingsPage,SettingsPage,sign_out,"Sign out",,active
-settings.account.signIn,ui,SettingsPage,SettingsPage,sign_in,"Sign in",,active
-settings.account.signedOutHint,ui,SettingsPage,SettingsPage,signed_out_hint,"Sign in to manage cloud sync and leaderboard preferences.",,active
-settings.section.menubar,ui,SettingsPage,SettingsPage,sec_menubar,"Menu Bar App",,active
-settings.menubar.showStats,ui,SettingsPage,SettingsPage,mb_show_stats,"Show stats in menu bar",,active
-settings.menubar.showStatsHint,ui,SettingsPage,SettingsPage,mb_show_stats_hint,"Display today's token count and cost beside the menu bar icon.",,active
-settings.menubar.animatedIcon,ui,SettingsPage,SettingsPage,mb_anim,"Animated icon",,active
-settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,"Blink the Clawd character and play the syncing animation in the menu bar.",,active
-settings.menubar.confettiOnReset,ui,SettingsPage,SettingsPage,mb_confetti,"Confetti on reset",,active
-settings.menubar.confettiOnResetHint,ui,SettingsPage,SettingsPage,mb_confetti_hint,"Set off a fireworks celebration when a usage limit resets after you were near it.",,active
-settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,"Launch at login",,active
-settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,"Start TokenEyesBar automatically when you sign in to macOS.",,active
-settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,"Sync now",,active
-settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,"Trigger an immediate parse and upload of local AI tool logs.",,active
-settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,"Syncing…",,active
-settings.menubar.updates,ui,SettingsPage,SettingsPage,mb_updates,"Updates",,active
-settings.menubar.checkUpdates,ui,SettingsPage,SettingsPage,mb_check_updates,"Check for updates",,active
-settings.footer.statusPage,ui,SettingsPage,NativeAppFooter,status_page,"System status",,active
-menubar.slot.primary,ui,WidgetsPage,MenuBarDisplayCard,slot_primary,"Primary slot",,active
-menubar.slot.secondary,ui,WidgetsPage,MenuBarDisplayCard,slot_secondary,"Secondary slot",,active
-menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,"Open TokenEyesBar for macOS to edit the live menu bar display.",,active
-menubar.metric.today_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_today_tokens,"Today Tokens",,active
-menubar.metric.today_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_today_cost,"Today Cost",,active
-menubar.metric.last_7d_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_last_7d,"Last 7 Days",,active
-menubar.metric.total_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_total_tokens,"Total Tokens",,active
-menubar.metric.total_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_total_cost,"Total Cost",,active
+settings.account.signOut,ui,SettingsPage,SettingsPage,sign_out,"退出登录",,active
+settings.account.signIn,ui,SettingsPage,SettingsPage,sign_in,"登录",,active
+settings.account.signedOutHint,ui,SettingsPage,SettingsPage,signed_out_hint,"登录后可管理云同步和排行榜偏好。",,active
+settings.section.menubar,ui,SettingsPage,SettingsPage,sec_menubar,"菜单栏应用",,active
+settings.menubar.showStats,ui,SettingsPage,SettingsPage,mb_show_stats,"在菜单栏显示统计",,active
+settings.menubar.showStatsHint,ui,SettingsPage,SettingsPage,mb_show_stats_hint,"在菜单栏图标旁显示今日 Token 数和费用。",,active
+settings.menubar.animatedIcon,ui,SettingsPage,SettingsPage,mb_anim,"动画图标",,active
+settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,"在菜单栏播放 Clawd 角色动画和同步动画。",,active
+settings.menubar.confettiOnReset,ui,SettingsPage,SettingsPage,mb_confetti,"重置时撒花",,active
+settings.menubar.confettiOnResetHint,ui,SettingsPage,SettingsPage,mb_confetti_hint,"当用量限制重置时播放烟花庆祝动画。",,active
+settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,"登录时启动",,active
+settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,"登录 macOS 时自动启动 TokenEyesBar。",,active
+settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,"立即同步",,active
+settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,"立即解析并上传本地 AI 工具日志。",,active
+settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,"同步中…",,active
+settings.menubar.updates,ui,SettingsPage,SettingsPage,mb_updates,"更新",,active
+settings.menubar.checkUpdates,ui,SettingsPage,SettingsPage,mb_check_updates,"检查更新",,active
+settings.footer.statusPage,ui,SettingsPage,NativeAppFooter,status_page,"系统状态",,active
+menubar.slot.primary,ui,WidgetsPage,MenuBarDisplayCard,slot_primary,"主槽位",,active
+menubar.slot.secondary,ui,WidgetsPage,MenuBarDisplayCard,slot_secondary,"副槽位",,active
+menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,"打开 macOS 版 TokenEyesBar 以编辑菜单栏显示。",,active
+menubar.metric.today_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_today_tokens,"今日 Token",,active
+menubar.metric.today_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_today_cost,"今日费用",,active
+menubar.metric.last_7d_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_last_7d,"近 7 天",,active
+menubar.metric.total_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_total_tokens,"Token 总数",,active
+menubar.metric.total_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_total_cost,"总成本",,active
 menubar.metric.claude_5h,ui,WidgetsPage,MenuBarDisplayCard,metric_claude_5h,"Claude 5h Limit",,active
 menubar.metric.claude_7d,ui,WidgetsPage,MenuBarDisplayCard,metric_claude_7d,"Claude 7d Limit",,active
 menubar.metric.codex_5h,ui,WidgetsPage,MenuBarDisplayCard,metric_codex_5h,"Codex 5h Limit",,active
@@ -456,8 +455,8 @@ menubar.metric.codex_spark_5h,ui,WidgetsPage,MenuBarDisplayCard,metric_codex_spa
 menubar.metric.codex_spark_7d,ui,WidgetsPage,MenuBarDisplayCard,metric_codex_spark_7d,"Codex Spark 7d Limit",,active
 share.modal.title,share,DashboardPage,ShareModal,title,"Share your stats",,active
 share.modal.subtitle,share,DashboardPage,ShareModal,subtitle,"Generate a poster-style card and share anywhere.",,active
-share.modal.close,share,DashboardPage,ShareModal,close,"Close",,active
-share.modal.action.x,share,DashboardPage,ShareModal,action_x,"Share on X",,active
+share.modal.close,share,DashboardPage,ShareModal,close,"关闭",,active
+share.modal.action.x,share,DashboardPage,ShareModal,action_x,"分享到 X",,active
 share.modal.action.download,share,DashboardPage,ShareModal,action_download,"Download",,active
 share.modal.action.copy,share,DashboardPage,ShareModal,action_copy,"Copy image",,active
 share.modal.hint.x,share,DashboardPage,ShareModal,hint_x,"Paste image in tweet",,active
@@ -510,10 +509,10 @@ share.card.broadsheet.active_days,share,DashboardPage,BroadsheetCard,active_days
 share.card.broadsheet.days_count,share,DashboardPage,BroadsheetCard,days_count,"{{days}} days",,active
 share.card.broadsheet.track_yours,share,DashboardPage,BroadsheetCard,track_yours,"Track yours",,active
 share.card.annual.report_title,share,DashboardPage,AnnualReportCard,report_title,"Token Report",,active
-share.card.annual.less,share,DashboardPage,AnnualReportCard,legend_less,"Less",,active
-share.card.annual.more,share,DashboardPage,AnnualReportCard,legend_more,"More",,active
+share.card.annual.less,share,DashboardPage,AnnualReportCard,legend_less,"少",,active
+share.card.annual.more,share,DashboardPage,AnnualReportCard,legend_more,"多",,active
 share.card.annual.heatmap_title,share,DashboardPage,AnnualReportCard,heatmap_title,"TOKEN USAGE HEATMAP",,active
-share.card.annual.total_tokens,share,DashboardPage,AnnualReportCard,total_tokens,"Total Tokens",,active
+share.card.annual.total_tokens,share,DashboardPage,AnnualReportCard,total_tokens,"Token 总数",,active
 share.card.annual.estimated_cost,share,DashboardPage,AnnualReportCard,estimated_cost,"Estimated Cost",,active
 share.card.annual.longest_streak,share,DashboardPage,AnnualReportCard,longest_streak,"Longest Streak",,active
 share.card.annual.days_count,share,DashboardPage,AnnualReportCard,days_count,"{{days}} days",,active
@@ -534,7 +533,7 @@ usage.overview.model_count,ui,DashboardPage,UsageOverview,model_count,"{{count}}
 usage.overview.model_details_aria,ui,DashboardPage,UsageOverview,model_details_aria,"{{provider}} model details",,active
 usage.overview.antigravity_notice_title,ui,DashboardPage,UsageOverview,antigravity_notice_title,"Estimated tokens",,active
 usage.overview.antigravity_notice_body,ui,DashboardPage,UsageOverview,antigravity_notice_body,"Antigravity transcripts don't record real usage numbers. These counts are estimated from text length (~4 chars/token) and don't reflect Gemini's prompt-cache discount, so treat them as an upper bound, not a billing figure.",,active
-limits.panel.title,ui,LimitsPage,UsageLimitsPanel,title,"Usage Limits",,active
+limits.panel.title,ui,LimitsPage,UsageLimitsPanel,title,"用量限制",,active
 limits.panel.mode_separator,ui,LimitsPage,UsageLimitsPanel,title_separator," · ",,active
 limits.label.cursor_plan,ui,LimitsPage,UsageLimitsPanel,cursor_plan,"Plan",,active
 limits.label.cursor_auto,ui,LimitsPage,UsageLimitsPanel,cursor_auto,"Auto",,active
@@ -650,14 +649,14 @@ skills.repo.placeholder,ui,SkillsPage,SkillsPage,repo_placeholder,"owner/reposit
 skills.repo.add,ui,SkillsPage,SkillsPage,repo_add,"Add repository",,active
 skills.repo.invalid,ui,SkillsPage,SkillsPage,repo_invalid,"Use owner/repository or a GitHub repository URL.",,active
 skills.repo.remove,ui,SkillsPage,RepoRow,repo_remove,"Remove repository",,active
-settings.appearance.language.label,ui,SettingsPage,SettingsPage,language_label,Language,,active
-settings.appearance.language.hint,ui,SettingsPage,SettingsPage,language_hint,Use System to follow your computer language by default.,,active
-settings.appearance.language.system,ui,SettingsPage,SettingsPage,language_system,System,,active
-settings.appearance.language.english,ui,SettingsPage,SettingsPage,language_english,English,,active
-settings.appearance.language.chinese,ui,SettingsPage,SettingsPage,language_chinese,Simplified Chinese,,active
-settings.appearance.language.traditional_chinese,ui,SettingsPage,SettingsPage,language_traditional_chinese,Traditional Chinese,,active
-settings.appearance.language.japanese,ui,SettingsPage,SettingsPage,language_japanese,Japanese,,active
-settings.appearance.language.korean,ui,SettingsPage,SettingsPage,language_korean,Korean,,active
+settings.appearance.language.label,ui,SettingsPage,SettingsPage,language_label,"语言",,active
+settings.appearance.language.hint,ui,SettingsPage,SettingsPage,language_hint,"选择跟随系统或手动指定界面语言。",,active
+settings.appearance.language.system,ui,SettingsPage,SettingsPage,language_system,"跟随系统",,active
+settings.appearance.language.english,ui,SettingsPage,SettingsPage,language_english,"English",,active
+settings.appearance.language.chinese,ui,SettingsPage,SettingsPage,language_chinese,"简体中文",,active
+settings.appearance.language.traditional_chinese,ui,SettingsPage,SettingsPage,language_traditional_chinese,"繁體中文",,active
+settings.appearance.language.japanese,ui,SettingsPage,SettingsPage,language_japanese,"日本語",,active
+settings.appearance.language.korean,ui,SettingsPage,SettingsPage,language_korean,"한국어",,active
 dashboard.context_breakdown.empty,dashboard,DashboardPage,ContextBreakdownPanel,empty,"No Claude Code activity in the selected period.",,active
 dashboard.context_breakdown.empty_codex,dashboard,DashboardPage,ContextBreakdownPanel,empty_codex,"No Codex activity in the selected period.",,active
 dashboard.context_breakdown.error,dashboard,DashboardPage,ContextBreakdownPanel,error,"Couldn't read Claude Code logs for this view.",,active
@@ -859,17 +858,17 @@ ipcheck.region.SY,ui,IpCheckPage,IpCheckPage,region_sy,"Syria",,active
 ipcheck.region.CU,ui,IpCheckPage,IpCheckPage,region_cu,"Cuba",,active
 ipcheck.region.BY,ui,IpCheckPage,IpCheckPage,region_by,"Belarus",,active
 ipcheck.region.VE,ui,IpCheckPage,IpCheckPage,region_ve,"Venezuela",,active
-leaderboard.profile_modal.close,dashboard,LeaderboardProfileModal,LeaderboardProfileModal,close,"Close",,active
+leaderboard.profile_modal.close,dashboard,LeaderboardProfileModal,LeaderboardProfileModal,close,"关闭",,active
 leaderboard.profile_modal.loading,dashboard,LeaderboardProfileModal,LeaderboardProfileModal,loading,"Loading profile…",,active
 leaderboard.profile_modal.error,dashboard,LeaderboardProfileModal,LeaderboardProfileModal,error,"Failed to load profile.",,active
 leaderboard.profile_modal.empty,dashboard,LeaderboardProfileModal,LeaderboardProfileModal,empty,"This profile is not public.",,active
 leaderboard.profile_modal.row_aria,dashboard,LeaderboardPage,LeaderboardRow,row_aria,"Open profile for {{name}}",,active
 leaderboard.profile_modal.rank,dashboard,LeaderboardProfileModal,Hero,rank,"#{{rank}}",,active
-leaderboard.profile_modal.hero.total_tokens,dashboard,LeaderboardProfileModal,Hero,total_tokens,"Total Tokens",,active
-leaderboard.profile_modal.hero.total_cost,dashboard,LeaderboardProfileModal,Hero,total_cost,"Total Cost",,active
+leaderboard.profile_modal.hero.total_tokens,dashboard,LeaderboardProfileModal,Hero,total_tokens,"Token 总数",,active
+leaderboard.profile_modal.hero.total_cost,dashboard,LeaderboardProfileModal,Hero,total_cost,"总成本",,active
 leaderboard.profile_modal.hero.github,dashboard,LeaderboardProfileModal,Hero,github,"GitHub profile",,active
-leaderboard.profile_modal.stat.total_cost,dashboard,LeaderboardProfileModal,StatCards,total_cost,"Total Cost",,active
-leaderboard.profile_modal.stat.total_tokens,dashboard,LeaderboardProfileModal,StatCards,total_tokens,"Total Tokens",,active
+leaderboard.profile_modal.stat.total_cost,dashboard,LeaderboardProfileModal,StatCards,total_cost,"总成本",,active
+leaderboard.profile_modal.stat.total_tokens,dashboard,LeaderboardProfileModal,StatCards,total_tokens,"Token 总数",,active
 leaderboard.profile_modal.stat.active_days,dashboard,LeaderboardProfileModal,StatCards,active_days,"Active Days",,active
 leaderboard.profile_modal.stat.avg_per_day,dashboard,LeaderboardProfileModal,StatCards,avg_per_day,"Avg/Day",,active
 leaderboard.profile_modal.streak.current,dashboard,LeaderboardProfileModal,Streak,current,"Current Streak",,active
