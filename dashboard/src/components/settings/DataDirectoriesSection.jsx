@@ -1,9 +1,10 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
-import { Save } from "lucide-react";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FolderOpen, Save } from "lucide-react";
 import { getLocalSettings, setLocalSettings } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { SectionCard } from "./Controls.jsx";
+import { isNativeWindowsApp } from "../../lib/native-bridge.js";
 
 const EMPTY_DIRS = { claude: "", codex: "", hermes: "" };
 
@@ -128,22 +129,78 @@ export function DataDirectoriesSection() {
 }
 
 function DirectoryInput({ label, hint, value, onChange, disabled }) {
+  const [showUnsupported, setShowUnsupported] = useState(false);
+
+  const handleSelectFolder = useCallback(() => {
+    // Windows WebView2 环境：通过 native bridge 请求文件夹选择
+    if (isNativeWindowsApp() && window.chrome?.webview) {
+      const handler = (event) => {
+        if (event.data?.type === "folderSelected") {
+          const syntheticEvent = { target: { value: event.data.path || "" } };
+          onChange(syntheticEvent);
+          window.chrome.webview.removeEventListener("message", handler);
+        }
+      };
+      window.chrome.webview.addEventListener("message", handler);
+      window.chrome.webview.postMessage({ type: "selectFolder" });
+      return;
+    }
+
+    // 普通浏览器环境：尝试使用 File System Access API
+    if (typeof window.showDirectoryPicker === "function") {
+      window.showDirectoryPicker({ mode: "read" }).then((dirHandle) => {
+        // showDirectoryPicker 返回的是 FileSystemDirectoryHandle，不是绝对路径
+        // 无法获取绝对路径，显示提示
+        setShowUnsupported(true);
+        setTimeout(() => setShowUnsupported(false), 5000);
+      }).catch(() => {
+        // 用户取消或不支持
+      });
+      return;
+    }
+
+    // 不支持的环境：显示提示
+    setShowUnsupported(true);
+    setTimeout(() => setShowUnsupported(false), 5000);
+  }, [onChange]);
+
   return (
     <label className="block py-3">
       <span className="block text-sm text-oai-gray-900 dark:text-oai-gray-200">{label}</span>
       <span className="mt-0.5 block text-xs text-oai-gray-500 dark:text-oai-gray-400">{hint}</span>
-      <input
-        type="text"
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        placeholder={copy("settings.data_dirs.placeholder")}
-        className={cn(
-          "mt-2 h-9 w-full rounded-md border border-oai-gray-200 bg-white px-3 font-mono text-xs text-oai-gray-900 outline-none transition-colors",
-          "placeholder:text-oai-gray-400 focus:border-oai-brand-500 focus:ring-2 focus:ring-oai-brand-500/20 disabled:opacity-60",
-          "dark:border-oai-gray-800 dark:bg-oai-gray-950 dark:text-oai-gray-100 dark:placeholder:text-oai-gray-600",
-        )}
-      />
+      <div className="mt-2 flex gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          placeholder={copy("settings.data_dirs.placeholder")}
+          className={cn(
+            "h-9 flex-1 rounded-md border border-oai-gray-200 bg-white px-3 font-mono text-xs text-oai-gray-900 outline-none transition-colors",
+            "placeholder:text-oai-gray-400 focus:border-oai-brand-500 focus:ring-2 focus:ring-oai-brand-500/20 disabled:opacity-60",
+            "dark:border-oai-gray-800 dark:bg-oai-gray-950 dark:text-oai-gray-100 dark:placeholder:text-oai-gray-600",
+          )}
+        />
+        <button
+          type="button"
+          onClick={handleSelectFolder}
+          disabled={disabled}
+          title={copy("settings.data_dirs.select_folder")}
+          className={cn(
+            "inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+            "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
+            "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
+          )}
+        >
+          <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+          {copy("settings.data_dirs.select_folder")}
+        </button>
+      </div>
+      {showUnsupported && (
+        <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">
+          {copy("settings.data_dirs.select_folder_unsupported")}
+        </span>
+      )}
     </label>
   );
 }

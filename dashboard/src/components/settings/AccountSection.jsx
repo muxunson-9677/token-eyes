@@ -19,13 +19,7 @@ export function AccountSection() {
       action={<SignOutButton onSignOut={settings.signOut} />}
     >
       <UserIdRow userId={settings.userId} />
-      <CloudSyncRow settings={settings} />
-      <PublicProfileToggleRow
-        checked={settings.publicProfileOn}
-        disabled={settings.profileLoading || settings.profileSaving}
-        onChange={settings.handlePublicProfileToggle}
-      />
-      <PublicProfileDetails visible={settings.publicProfileOn} name={settings.name} github={settings.github} />
+      {/* 云同步和公开主页功能暂不启用 */}
     </SectionCard>
   );
 }
