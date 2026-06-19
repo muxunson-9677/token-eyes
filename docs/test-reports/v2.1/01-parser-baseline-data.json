@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2026-06-19T02:58:16.329Z",
+  "home": "C:\\Users\\admin",
+  "paths": {
+    "codexHome": "E:\\AgentData\\Codex",
+    "codexSessionsDir": "E:\\AgentData\\Codex\\sessions",
+    "codexArchivedDir": "E:\\AgentData\\Codex\\archived_sessions",
+    "claudeProjectsDir": "C:\\Users\\admin\\.claude\\projects",
+    "hermesPath": "C:\\Users\\admin\\AppData\\Local\\hermes",
+    "hermesDbPath": "C:\\Users\\admin\\AppData\\Local\\hermes\\state.db",
+    "queuePath": "D:\\04-AI-Project\\010-Token eye\\docs\\test-reports\\v2.1\\.parser-baseline-1781837896268\\queue.jsonl"
+  },
+  "inputs": {
+    "codexFilesTotal": 66,
+    "codexFilesSelected": [
+      "E:\\AgentData\\Codex\\sessions\\2026\\06\\18\\rollout-2026-06-18T23-57-34-019edb73-a5cc-7e22-bbc4-170e4887b774.jsonl",
+      "E:\\AgentData\\Codex\\sessions\\2026\\06\\14\\rollout-2026-06-14T08-08-21-019ec375-3ee9-7aa1-a2a0-8dd40799d91e.jsonl",
+      "E:\\AgentData\\Codex\\sessions\\2026\\06\\18\\rollout-2026-06-18T06-35-45-019ed7b9-d282-7620-b81b-151aed7ad8bd.jsonl",
+      "E:\\AgentData\\Codex\\sessions\\2026\\06\\18\\rollout-2026-06-18T06-42-38-019ed7c0-2159-7d52-a632-4ee28eedb734.jsonl",
+      "E:\\AgentData\\Codex\\sessions\\2026\\06\\18\\rollout-2026-06-18T00-46-03-019ed679-bf3c-7fb0-a3cb-a4db7ec0cb13.jsonl",
+      "E:\\AgentData\\Codex\\sessions\\2026\\06\\18\\rollout-2026-06-18T00-44-09-019ed678-00fa-7fe3-a27d-7836c24784b5.jsonl",
+      "E:\\AgentData\\Codex\\sessions\\2026\\06\\14\\rollout-2026-06-14T23-36-31-019ec6c7-02e6-7a31-90f3-37cef1f84567.jsonl",
+      "E:\\AgentData\\Codex\\sessions\\2026\\06\\13\\rollout-2026-06-13T11-48-02-019ebf18-02ba-7071-be77-fdc11ec0f139.jsonl"
+    ],
+    "claudeFilesTotal": 1,
+    "claudeFilesSelected": [
+      "C:\\Users\\admin\\.claude\\projects\\E--Program-Files-Pencil\\8698de83-4f6b-4107-b67a-777cd249fb26.jsonl"
+    ],
+    "hermesDbExists": true
+  },
+  "results": {
+    "codexResult": {
+      "filesProcessed": 8,
+      "eventsAggregated": 345,
+      "bucketsQueued": 21,
+      "projectBucketsQueued": 6
+    },
+    "codexError": null,
+    "claudeResult": {
+      "filesProcessed": 1,
+      "eventsAggregated": 0,
+      "bucketsQueued": 1,
+      "projectBucketsQueued": 0
+    },
+    "claudeError": null,
+    "hermesResult": {
+      "recordsProcessed": 0,
+      "eventsAggregated": 0,
+      "bucketsQueued": 0
+    },
+    "hermesError": null,
+    "queueRows": 22,
+    "bySource": {
+      "codex": {
+        "count": 21,
+        "models": [
+          "gpt-5.4-mini",
+          "gpt-5.5"
+        ],
+        "sample": {
+          "source": "codex",
+          "model": "gpt-5.5",
+          "hour_start": "2026-06-18T16:00:00.000Z",
+          "input_tokens": 337678,
+          "cached_input_tokens": 2866944,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 25854,
+          "reasoning_output_tokens": 6970,
+          "total_tokens": 3230476,
+          "billable_total_tokens": 3230476,
+          "conversation_count": 30
+        }
+      },
+      "claude": {
+        "count": 1,
+        "models": [
+          "unknown"
+        ],
+        "sample": {
+          "source": "claude",
+          "model": "unknown",
+          "hour_start": "2026-06-17T16:30:00.000Z",
+          "input_tokens": 0,
+          "cached_input_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 0,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 0,
+          "billable_total_tokens": 0,
+          "conversation_count": 1
+        }
+      }
+    }
+  }
+}

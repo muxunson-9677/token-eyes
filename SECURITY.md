@@ -1,58 +1,44 @@
-# Security Policy / 安全策略
+# Security Policy
 
-## Supported Versions / 支持的版本
+## Supported Versions
 
-Only the latest release of CC Switch receives security updates.
+Only the **latest minor release** is supported with security fixes. This is a small project — please run a recent version.
 
-仅最新版本的 CC Switch 会收到安全更新。
+## Reporting a Vulnerability
 
-| Version / 版本 | Supported / 是否支持 |
-|----------------|---------------------|
-| Latest 3.x     | ✅ Yes / 是          |
-| < 3.0          | ❌ No / 否           |
+**Please do not open a public GitHub issue for security reports.**
 
-## Reporting a Vulnerability / 报告漏洞
+Instead, use one of these private channels:
 
-**Please do NOT report security vulnerabilities through public GitHub issues.**
-
-**请不要通过公开的 GitHub Issue 报告安全漏洞。**
-
-Instead, please report them through [GitHub Security Advisories](https://github.com/farion1231/cc-switch/security/advisories/new).
-
-请通过 [GitHub 安全公告](https://github.com/farion1231/cc-switch/security/advisories/new) 进行报告。
+- **GitHub Private Vulnerability Reporting**: [Report a vulnerability](https://github.com/mm7894215/TokenTracker/security/advisories/new)
+- **Email**: open a GitHub issue asking the maintainer to enable an alternative private channel if you can't use GitHub Security Advisories
 
 When reporting, please include:
 
-报告时请包含以下信息：
+- A clear description of the issue
+- Steps to reproduce
+- Affected version(s)
+- Your assessment of impact (data exposure, privilege escalation, etc.)
+- Any suggested mitigation, if you have one
 
-- A description of the vulnerability / 漏洞描述
-- Steps to reproduce / 复现步骤
-- Potential impact / 潜在影响
-- Affected versions / 受影响版本
+You can expect an initial response within a few days. Once a fix is ready, it will ship in the next release with a credit to you (or anonymously if you prefer).
 
-## Response Timeline / 响应时间
+## Scope
 
-- **Acknowledgment / 确认**: within 48 hours / 48 小时内
-- **Initial assessment / 初步评估**: within 7 days / 7 天内
-- **Fix for critical issues / 关键问题修复**: within 14 days / 14 天内
+TokenTracker is a local-first tool that reads AI CLI tool logs from your home directory. The most sensitive areas to consider when reviewing security:
 
-## Disclosure Policy / 披露政策
+- **`src/lib/rollout.js`** — parses logs from 8 different AI CLI tools. Privacy rule: only token counts and timestamps may be extracted, never prompt or response content.
+- **`src/lib/cursor-config.js`** — reads Cursor's local SQLite to extract auth tokens for the Cursor usage API. Tokens must never leave the user's machine.
+- **`src/lib/local-api.js`** — local HTTP server bound to `127.0.0.1`. Should not accept connections from other hosts.
+- **`TokenTrackerBar/`** — macOS app, ad-hoc signed. Has filesystem access via macOS TCC permissions; should never write outside its own data directories or the documented snapshot/queue paths.
+- **`insforge/`** — optional cloud edge functions. Only used if the user opts into the leaderboard.
 
-We follow a coordinated disclosure process:
+## Out of Scope
 
-我们遵循协调披露流程：
+- Issues only reproducible with arbitrary modifications to the user's local files outside the documented data paths
+- Vulnerabilities in dependencies that have already been disclosed and patched upstream — please report those upstream first
+- Social engineering, phishing, or other non-technical attack vectors
 
-1. The reporter submits the vulnerability privately. / 报告者私下提交漏洞。
-2. We confirm and work on a fix. / 我们确认并修复漏洞。
-3. A patch release is published. / 发布修复版本。
-4. The vulnerability is publicly disclosed. / 公开披露漏洞详情。
+## Privacy Commitment
 
-Reporters will be credited in the release notes unless they prefer to remain anonymous.
-
-除非报告者希望匿名，否则将在发布说明中致谢。
-
-## Security Updates / 安全更新
-
-Security fixes are released as patch versions and announced via [GitHub Releases](https://github.com/farion1231/cc-switch/releases). We recommend always updating to the latest version.
-
-安全修复通过补丁版本发布，并通过 [GitHub Releases](https://github.com/farion1231/cc-switch/releases) 通知。建议始终更新到最新版本。
+TokenTracker's foundational privacy rule: **token counts and timestamps only — never any prompt content, response content, or file contents from user code**. Any change that risks violating this is treated as a security issue.
