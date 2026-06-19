@@ -22,7 +22,8 @@ type AnyRecord = Record<string, any>;
 type TranslationRegistry = Record<string, string>;
 
 let cachedRegistry: any = null;
-let currentLocale = resolvePreferredLocale(getInitialLocalePreference());
+// MVP 只保留中文，强制使用 zh-CN
+let currentLocale = ZH_CN_LOCALE;
 
 function parseCsv(raw: any) {
   const rows: any[] = [];

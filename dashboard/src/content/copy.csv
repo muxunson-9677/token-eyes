@@ -375,8 +375,8 @@ settings.appearance.currency.opt.gbp,ui,SettingsPage,SettingsPage,currency_opt_g
 settings.appearance.currency.opt.cny,ui,SettingsPage,SettingsPage,currency_opt_cny,"CNY (¥)",,active
 settings.appearance.currency.opt.jpy,ui,SettingsPage,SettingsPage,currency_opt_jpy,"JPY (¥)",,active
 settings.appearance.currency.opt.hkd,ui,SettingsPage,SettingsPage,currency_opt_hkd,"HKD (HK$)",,active
-settings.appearance.currency.rate_source.default,ui,SettingsPage,SettingsPage,rate_source_default,"Bundled default rate",,active
-settings.appearance.currency.rate_source.fetched,ui,SettingsPage,SettingsPage,rate_source_fetched,"Source: open.er-api.com",,active
+settings.appearance.currency.rate_source.default,ui,SettingsPage,SettingsPage,rate_source_default,"内置默认汇率",,active
+settings.appearance.currency.rate_source.fetched,ui,SettingsPage,SettingsPage,rate_source_fetched,"来源：open.er-api.com",,active
 settings.appearance.currency.rate_updated,ui,SettingsPage,SettingsPage,rate_updated,"updated {{when}}",,active
 settings.appearance.currency.rate_never,ui,SettingsPage,SettingsPage,rate_never,"awaiting first refresh",,active
 settings.account.displayName,ui,SettingsPage,SettingsPage,display_name,"显示名称",,active
@@ -423,7 +423,7 @@ leaderboard.summary.jump_to_me,ui,LeaderboardPage,LeaderboardMeChip,summary_jump
 leaderboard.summary.view_profile,ui,LeaderboardPage,LeaderboardMeChip,summary_view_profile,"View your profile",,active
 settings.account.signOut,ui,SettingsPage,SettingsPage,sign_out,"退出登录",,active
 settings.account.signIn,ui,SettingsPage,SettingsPage,sign_in,"登录",,active
-settings.account.signedOutHint,ui,SettingsPage,SettingsPage,signed_out_hint,"登录后可管理云同步和排行榜偏好。",,active
+settings.account.signedOutHint,ui,SettingsPage,SettingsPage,signed_out_hint,"登录后可管理更多设置。",,active
 settings.section.menubar,ui,SettingsPage,SettingsPage,sec_menubar,"菜单栏应用",,active
 settings.menubar.showStats,ui,SettingsPage,SettingsPage,mb_show_stats,"在菜单栏显示统计",,active
 settings.menubar.showStatsHint,ui,SettingsPage,SettingsPage,mb_show_stats_hint,"在菜单栏图标旁显示今日 Token 数和费用。",,active
