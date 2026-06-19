@@ -50,12 +50,12 @@ test("Sidebar exposes only Dashboard, Spend, and Settings nav items", () => {
   }
 });
 
-test("Sidebar imports Link when rendering router links", () => {
+test("Sidebar imports router APIs used by layout", () => {
   const sidebarPath = path.join(repoRoot, "dashboard/src/ui/components/Sidebar.jsx");
   const source = fs.readFileSync(sidebarPath, "utf8");
-  assert.match(
-    source,
-    /import\s+\{\s*Link\s*\}\s+from\s+["']react-router-dom["']/,
-    "Sidebar.jsx should import Link from react-router-dom",
-  );
+  const routerImport = source.match(/import\s+\{([^}]+)\}\s+from\s+["']react-router-dom["']/);
+  assert.ok(routerImport, "Sidebar.jsx should import router APIs from react-router-dom");
+  const importedNames = routerImport[1].split(",").map((name) => name.trim());
+  assert.equal(importedNames.includes("Link"), true, "Sidebar.jsx should import Link");
+  assert.equal(importedNames.includes("useLocation"), true, "Sidebar.jsx should import useLocation");
 });
