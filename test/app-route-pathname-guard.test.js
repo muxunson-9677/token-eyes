@@ -49,3 +49,13 @@ test("Sidebar exposes only Dashboard, Spend, and Settings nav items", () => {
     assert.equal(source.includes(`to: "${route}"`), false, `${route} nav item should be hidden`);
   }
 });
+
+test("Sidebar imports Link when rendering router links", () => {
+  const sidebarPath = path.join(repoRoot, "dashboard/src/ui/components/Sidebar.jsx");
+  const source = fs.readFileSync(sidebarPath, "utf8");
+  assert.match(
+    source,
+    /import\s+\{\s*Link\s*\}\s+from\s+["']react-router-dom["']/,
+    "Sidebar.jsx should import Link from react-router-dom",
+  );
+});
