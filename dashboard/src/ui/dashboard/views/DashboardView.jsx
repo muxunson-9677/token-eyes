@@ -7,7 +7,6 @@ import { StatsPanel } from "../components/StatsPanel.jsx";
 import { UsageOverview } from "../components/UsageOverview.jsx";
 import { TrendMonitor } from "../components/TrendMonitor.jsx";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
-import { MacAppBanner } from "../components/MacAppBanner.jsx";
 import { WidgetOnboardingCard } from "../components/WidgetOnboardingCard.jsx";
 import { LoginCard } from "../../../components/LoginCard.jsx";
 import { DashboardSkeleton } from "../../../components/DashboardSkeleton.jsx";
@@ -237,13 +236,6 @@ export function DashboardView(props) {
                       </span>
                     </div>
                   </div>
-                ) : null}
-                {isLocalMode ? (
-                  <MacAppBanner
-                    todayTokens={summaryTotalTokensRaw}
-                    isSyncing={usageLoadingState}
-                    enterDelay={nextLeft()}
-                  />
                 ) : null}
 
                 <FadeIn delay={nextLeft()}>

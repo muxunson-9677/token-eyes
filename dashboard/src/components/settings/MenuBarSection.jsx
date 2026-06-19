@@ -76,7 +76,7 @@ export function NativeAppFooter() {
     <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-500">
       {showNativeInfo ? (
         <>
-          <span>TokenTrackerBar v{settings.version}</span>
+          <span>TokenEyes v{settings.version}</span>
           <span aria-hidden>·</span>
           <button
             type="button"
