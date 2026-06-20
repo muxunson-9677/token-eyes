@@ -38,6 +38,7 @@ const {
   computeRowCost,
   ensurePricingLoaded,
   normalizeAgentDefaultPricing,
+  normalizePricingRules,
 } = require("./pricing");
 
 const {
@@ -950,6 +951,7 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     return {
       dataDirectories: normalizeDataDirectories(config.dataDirectories),
       agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing),
+      pricingRules: normalizePricingRules(config.pricingRules),
     };
   }
 
@@ -961,6 +963,9 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     }
     if (Object.prototype.hasOwnProperty.call(payload, "agentDefaultPricing")) {
       config.agentDefaultPricing = normalizeAgentDefaultPricing(payload.agentDefaultPricing);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "pricingRules")) {
+      config.pricingRules = normalizePricingRules(payload.pricingRules);
     }
     writeTrackerConfig(config);
     return readLocalSettings();
@@ -1020,7 +1025,10 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
 
   function getPricingOptions() {
     const config = readTrackerConfig();
-    return { agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing) };
+    return {
+      agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing),
+      pricingRules: normalizePricingRules(config.pricingRules),
+    };
   }
 
   function normalizeTokenPlanRecord(record, fallback = {}) {
@@ -2474,6 +2482,7 @@ module.exports = {
   computeRowCost,
   ensurePricingLoaded,
   normalizeAgentDefaultPricing,
+  normalizePricingRules,
   // Shared legacy-row correction so every queue reader (main queue, project
   // queue, wrapped aggregator) reports the same numbers for the same data.
   normalizeQueueRow,

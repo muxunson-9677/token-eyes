@@ -722,3 +722,166 @@ test("index: non-MVP sources keep model pricing when agent pricing is enabled", 
   );
   assert.equal(cost, 12.5);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pricingRules (full plan D04) — normalize, lookup, computeRowCost priority
+
+test("pricingRules: normalizePricingRules dedups by id and drops invalid entries", () => {
+  const rules = pricing.normalizePricingRules([
+    { source: "codex", model: "gpt-5.2-codex", inputPricePer1M: 1.75, outputPricePer1M: 14, currency: "USD" },
+    // duplicate id → dropped
+    { source: "codex", model: "gpt-5.2-codex", inputPricePer1M: 999, outputPricePer1M: 999, currency: "USD" },
+    // missing model → dropped
+    { source: "claude", model: "", inputPricePer1M: 3, outputPricePer1M: 15 },
+    // missing source → dropped
+    { source: "", model: "foo", inputPricePer1M: 1, outputPricePer1M: 2 },
+    // negative price → normalized to 0 but kept
+    { source: "hermes", model: "mimo-v2.5-pro", inputPricePer1M: -5, outputPricePer1M: 3, currency: "CNY" },
+    // invalid currency → defaults to USD
+    { source: "hermes", model: "qwen3.7-max", inputPricePer1M: 1, outputPricePer1M: 4, currency: "EUR" },
+  ]);
+  assert.equal(rules.length, 3);
+  assert.equal(rules[0].id, "codex:gpt-5.2-codex");
+  assert.equal(rules[1].inputPricePer1M, 0, "negative price clamped to 0");
+  assert.equal(rules[1].currency, "CNY");
+  assert.equal(rules[2].currency, "USD", "invalid currency defaults to USD");
+  // updated_at is auto-filled when missing.
+  assert.ok(rules[0].updated_at);
+});
+
+test("pricingRules: pricingRule beats agentDefaultPricing and built-in model pricing", () => {
+  pricing.resetPricingForTests();
+  const row = {
+    source: "codex",
+    model: "gpt-5.2-codex",
+    input_tokens: 1_000_000,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 1_000_000,
+    reasoning_output_tokens: 0,
+  };
+  // With only agentDefaultPricing → uses agent default (2 + 8 = 10).
+  const costAgent = pricing.computeRowCost(row, {
+    agentDefaultPricing: { codex: { inputUsdPer1M: 2, outputUsdPer1M: 8 } },
+  });
+  assert.equal(costAgent, 10);
+  // With a pricingRule → rule wins (1.75 + 14 = 15.75).
+  const costRule = pricing.computeRowCost(row, {
+    agentDefaultPricing: { codex: { inputUsdPer1M: 2, outputUsdPer1M: 8 } },
+    pricingRules: [
+      { id: "codex:gpt-5.2-codex", source: "codex", model: "gpt-5.2-codex", inputPricePer1M: 1.75, outputPricePer1M: 14, currency: "USD" },
+    ],
+  });
+  assert.equal(costRule, 15.75);
+});
+
+test("pricingRules: CNY rule converts to USD via fixed 7.2 rate", () => {
+  pricing.resetPricingForTests();
+  const row = {
+    source: "hermes",
+    model: "mimo-v2.5-pro",
+    input_tokens: 1_000_000,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 1_000_000,
+    reasoning_output_tokens: 0,
+  };
+  // 7.2 CNY input + 36 CNY output = 43.2 CNY → /7.2 = 6 USD.
+  const cost = pricing.computeRowCost(row, {
+    pricingRules: [
+      { id: "hermes:mimo-v2.5-pro", source: "hermes", model: "mimo-v2.5-pro", inputPricePer1M: 7.2, outputPricePer1M: 36, currency: "CNY" },
+    ],
+  });
+  assert.ok(Math.abs(cost - 6) < 1e-9, `expected 6, got ${cost}`);
+});
+
+test("pricingRules: codex/every-code reasoning tokens are NOT double-billed", () => {
+  pricing.resetPricingForTests();
+  const row = {
+    source: "codex",
+    model: "gpt-5.2-codex",
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 1_000_000,
+    reasoning_output_tokens: 500_000,
+  };
+  const cost = pricing.computeRowCost(row, {
+    pricingRules: [
+      { id: "codex:gpt-5.2-codex", source: "codex", model: "gpt-5.2-codex", inputPricePer1M: 1, outputPricePer1M: 10, currency: "USD" },
+    ],
+  });
+  // reasoning folded into output → only output_tokens billed = 10.
+  assert.equal(cost, 10);
+});
+
+test("pricingRules: non-codex source DOES bill reasoning tokens", () => {
+  pricing.resetPricingForTests();
+  const row = {
+    source: "claude",
+    model: "claude-opus-4-8",
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 1_000_000,
+    reasoning_output_tokens: 500_000,
+  };
+  const cost = pricing.computeRowCost(row, {
+    pricingRules: [
+      { id: "claude:claude-opus-4-8", source: "claude", model: "claude-opus-4-8", inputPricePer1M: 1, outputPricePer1M: 10, currency: "USD" },
+    ],
+  });
+  // output 1M * 10 + reasoning 0.5M * 10 = 15.
+  assert.equal(cost, 15);
+});
+
+test("pricingRules: no match falls through to agentDefaultPricing", () => {
+  pricing.resetPricingForTests();
+  const row = {
+    source: "claude",
+    model: "claude-opus-4-8",
+    input_tokens: 1_000_000,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 1_000_000,
+    reasoning_output_tokens: 0,
+  };
+  // Rule for a different model → falls through to agent default.
+  const cost = pricing.computeRowCost(row, {
+    agentDefaultPricing: { claude: { inputUsdPer1M: 3, outputUsdPer1M: 15 } },
+    pricingRules: [
+      { id: "claude:other-model", source: "claude", model: "other-model", inputPricePer1M: 1, outputPricePer1M: 1, currency: "USD" },
+    ],
+  });
+  assert.equal(cost, 18);
+});
+
+test("pricingRules: getPricingRuleForRow does exact source+model match only", () => {
+  pricing.resetPricingForTests();
+  const rules = pricing.normalizePricingRules([
+    { source: "codex", model: "gpt-5.2-codex", inputPricePer1M: 1, outputPricePer1M: 2, currency: "USD" },
+  ]);
+  assert.ok(pricing.getPricingRuleForRow({ source: "codex", model: "gpt-5.2-codex" }, rules));
+  // Case-insensitive source.
+  assert.ok(pricing.getPricingRuleForRow({ source: "CODEX", model: "gpt-5.2-codex" }, rules));
+  // Different model → no match.
+  assert.equal(pricing.getPricingRuleForRow({ source: "codex", model: "gpt-5.4" }, rules), null);
+  // Different source → no match.
+  assert.equal(pricing.getPricingRuleForRow({ source: "claude", model: "gpt-5.2-codex" }, rules), null);
+});
+
+test("pricingRules: empty rules array does not activate the rule path", () => {
+  pricing.resetPricingForTests();
+  const row = {
+    source: "claude",
+    model: "claude-opus-4-8",
+    input_tokens: 1_000_000,
+    output_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    reasoning_output_tokens: 0,
+  };
+  // Empty pricingRules + no agentDefaultPricing → built-in model pricing.
+  const cost = pricing.computeRowCost(row, { pricingRules: [] });
+  assert.ok(cost > 0, "built-in model pricing should still apply");
+});

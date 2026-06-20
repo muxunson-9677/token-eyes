@@ -986,8 +986,8 @@ settings.data_dirs.save_error,ui,SettingsPage,DataDirectoriesSection,save_error,
 settings.data_dirs.select_folder,ui,SettingsPage,DataDirectoriesSection,select_folder,"选择文件夹",,active
 settings.data_dirs.selecting_folder,ui,SettingsPage,DataDirectoriesSection,selecting_folder,"选择中",,active
 settings.data_dirs.select_folder_unsupported,ui,SettingsPage,DataDirectoriesSection,select_folder_unsupported,"当前环境不支持直接选择本机目录，请手动输入路径。",,active
-settings.section.agent_pricing,ui,SettingsPage,AgentPricingSection,sec_agent_pricing,"Agent 默认计费",,active
-settings.agent_pricing.subtitle,ui,SettingsPage,AgentPricingSection,subtitle,"MVP 本地价格。每个 Agent 使用一组输入/输出单价，单位为每 100 万 token。",,active
+settings.section.agent_pricing,ui,SettingsPage,AgentPricingSection,sec_agent_pricing,"Agent 计费规则",,active
+settings.agent_pricing.subtitle,ui,SettingsPage,AgentPricingSection,subtitle,"为每个 Agent + Model 组合配置精确单价，未命中时回退到默认计费。单位为每 100 万 token。",,active
 settings.agent_pricing.claude,ui,SettingsPage,AgentPricingSection,claude,"Claude Code",,active
 settings.agent_pricing.codex,ui,SettingsPage,AgentPricingSection,codex,"Codex",,active
 settings.agent_pricing.hermes,ui,SettingsPage,AgentPricingSection,hermes,"Hermes Agent",,active
@@ -999,6 +999,25 @@ settings.agent_pricing.saving,ui,SettingsPage,AgentPricingSection,saving,"保存
 settings.agent_pricing.saved,ui,SettingsPage,AgentPricingSection,saved,"已保存到本地。刷新或同步用量后成本会更新。",,active
 settings.agent_pricing.load_error,ui,SettingsPage,AgentPricingSection,load_error,"无法加载计费设置。",,active
 settings.agent_pricing.save_error,ui,SettingsPage,AgentPricingSection,save_error,"无法保存计费设置。",,active
+settings.agent_pricing.rules.title,ui,SettingsPage,AgentPricingSection,rules_title,"Agent + Model 计费规则",,active
+settings.agent_pricing.rules.subtitle,ui,SettingsPage,AgentPricingSection,rules_subtitle,"精确匹配 Agent 和模型名。未命中规则时回退到默认计费，再回退到内置价格。",,active
+settings.agent_pricing.rules.empty,ui,SettingsPage,AgentPricingSection,rules_empty,"暂无规则，点击下方按钮新增。",,active
+settings.agent_pricing.rules.add,ui,SettingsPage,AgentPricingSection,rules_add,"新增规则",,active
+settings.agent_pricing.rules.edit,ui,SettingsPage,AgentPricingSection,rules_edit,"编辑",,active
+settings.agent_pricing.rules.delete,ui,SettingsPage,AgentPricingSection,rules_delete,"删除",,active
+settings.agent_pricing.rules.cancel,ui,SettingsPage,AgentPricingSection,rules_cancel,"取消",,active
+settings.agent_pricing.rules.save_rule,ui,SettingsPage,AgentPricingSection,rules_save_rule,"保存规则",,active
+settings.agent_pricing.rules.source,ui,SettingsPage,AgentPricingSection,rules_source,"Agent",,active
+settings.agent_pricing.rules.model,ui,SettingsPage,AgentPricingSection,rules_model,"模型名",,active
+settings.agent_pricing.rules.input_price,ui,SettingsPage,AgentPricingSection,rules_input_price,"输入 / 1M",,active
+settings.agent_pricing.rules.output_price,ui,SettingsPage,AgentPricingSection,rules_output_price,"输出 / 1M",,active
+settings.agent_pricing.rules.currency,ui,SettingsPage,AgentPricingSection,rules_currency,"币种",,active
+settings.agent_pricing.rules.updated,ui,SettingsPage,AgentPricingSection,rules_updated,"更新时间",,active
+settings.agent_pricing.rules.duplicate,ui,SettingsPage,AgentPricingSection,rules_duplicate,"该 Agent + Model 组合已存在规则。",,active
+settings.agent_pricing.rules.invalid,ui,SettingsPage,AgentPricingSection,rules_invalid,"Agent 和模型名不能为空。",,active
+settings.agent_pricing.rules.delete_confirm,ui,SettingsPage,AgentPricingSection,rules_delete_confirm,"确定删除这条规则吗？",,active
+settings.agent_pricing.default.title,ui,SettingsPage,AgentPricingSection,default_title,"默认计费（回退）",,active
+settings.agent_pricing.default.subtitle,ui,SettingsPage,AgentPricingSection,default_subtitle,"当没有精确匹配的 Agent + Model 规则时使用此默认单价。",,active
 usage.cache_hit.tokens,dashboard,DashboardPage,UsageOverview,cache_tokens,"Cache hit tokens",,active
 usage.cache_hit.rate,dashboard,DashboardPage,UsageOverview,cache_rate,"Cache hit rate",,active
 settings.section.token_plan,ui,SettingsPage,TokenPlanSection,sec_token_plan,"Token 套餐",,active

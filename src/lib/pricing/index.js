@@ -22,6 +22,12 @@ const DEFAULT_AGENT_DEFAULT_PRICING = Object.freeze({
   hermes: Object.freeze({ inputUsdPer1M: 0, outputUsdPer1M: 0 }),
 });
 
+// D07 will make this configurable. D04 hard-codes the MVP constant so cost
+// conversion for CNY-denominated pricingRules is correct today and D07 only
+// has to swap the source of this number.
+const DEFAULT_USD_TO_CNY = 7.2;
+const PRICING_RULE_CURRENCIES = ["USD", "CNY"];
+
 function normalizePriceValue(value) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
@@ -45,6 +51,94 @@ function getAgentDefaultPriceForSource(source, agentDefaultPricing) {
   if (!AGENT_PRICING_SOURCES.includes(key)) return null;
   const normalized = normalizeAgentDefaultPricing(agentDefaultPricing);
   return normalized[key] || DEFAULT_AGENT_DEFAULT_PRICING[key];
+}
+
+// ── pricingRules (full plan D03/D04) ─────────────────────────────────────────
+// Each rule is keyed by `${source}:${model}` and carries per-1M input/output
+// prices plus a currency. Cost is computed in the rule's native currency then
+// converted to USD (CNY rules divide by usdToCny). Codex/every-code reasoning
+// tokens are folded into output per CLAUDE.md, so they are NOT separately
+// billed even under a pricingRule.
+
+function normalizePricingRule(raw) {
+  const input = raw && typeof raw === "object" ? raw : {};
+  const source = String(input.source ?? "").trim().toLowerCase();
+  const model = String(input.model ?? "").trim();
+  const currency = String(input.currency ?? "USD").trim().toUpperCase();
+  const inputPricePer1M = normalizePriceValue(input.inputPricePer1M);
+  const outputPricePer1M = normalizePriceValue(input.outputPricePer1M);
+  const id = String(input.id ?? (source && model ? `${source}:${model}` : "")).trim();
+  return {
+    id,
+    source,
+    model,
+    inputPricePer1M,
+    outputPricePer1M,
+    currency: PRICING_RULE_CURRENCIES.includes(currency) ? currency : "USD",
+    updated_at:
+      typeof input.updated_at === "string" && input.updated_at.trim()
+        ? input.updated_at.trim()
+        : new Date().toISOString(),
+  };
+}
+
+function normalizePricingRules(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const item of raw) {
+    const rule = normalizePricingRule(item);
+    // Skip rules missing source/model/id — they can never match a queue row.
+    if (!rule.source || !rule.model || !rule.id) continue;
+    if (seen.has(rule.id)) continue;
+    seen.add(rule.id);
+    out.push(rule);
+  }
+  return out;
+}
+
+// Build a lookup map keyed by `${source}:${model}` for O(1) row matching.
+// Returns null when no rules are configured so callers can short-circuit.
+function buildPricingRuleIndex(rules) {
+  if (!Array.isArray(rules) || rules.length === 0) return null;
+  const index = new Map();
+  for (const rule of rules) {
+    if (!rule || !rule.source || !rule.model) continue;
+    index.set(`${rule.source}:${rule.model}`, rule);
+  }
+  return index.size ? index : null;
+}
+
+// Resolve a pricingRule for a queue row. Returns null when no exact match.
+function getPricingRuleForRow(row, pricingRules) {
+  if (!row || !Array.isArray(pricingRules) || pricingRules.length === 0) return null;
+  const source = typeof row.source === "string" ? row.source.trim().toLowerCase() : "";
+  const model = typeof row.model === "string" ? row.model.trim() : "";
+  if (!source || !model) return null;
+  for (const rule of pricingRules) {
+    if (rule.source === source && rule.model === model) return rule;
+  }
+  return null;
+}
+
+// Compute cost (in USD) for a row using a pricingRule. Honors the
+// codex/every-code reasoning-fold: reasoning_output_tokens are already inside
+// output_tokens for those sources, so they are not billed again.
+function computeRowCostWithRule(row, rule, usdToCny = DEFAULT_USD_TO_CNY) {
+  const rate = Number.isFinite(usdToCny) && usdToCny > 0 ? usdToCny : DEFAULT_USD_TO_CNY;
+  const reasoningIncludedInOutput =
+    row.source === "codex" || row.source === "every-code";
+  const inputLike =
+    (row.input_tokens || 0) +
+    (row.cached_input_tokens || 0) +
+    (row.cache_creation_input_tokens || 0);
+  const outputLike =
+    (row.output_tokens || 0) +
+    (reasoningIncludedInOutput ? 0 : (row.reasoning_output_tokens || 0));
+  const nativeCost =
+    (inputLike / 1_000_000) * rule.inputPricePer1M +
+    (outputLike / 1_000_000) * rule.outputPricePer1M;
+  return rule.currency === "CNY" ? nativeCost / rate : nativeCost;
 }
 const SEED_SNAPSHOT_PATH = path.resolve(__dirname, "seed-snapshot.json");
 
@@ -138,7 +232,22 @@ function getModelPricing(model, opts = {}) {
 // Same formula and Codex/every-code reasoning-folding rule as the previous
 // computeRowCost in src/lib/local-api.js. Moved here so vite mock + local
 // server share one source of truth.
+//
+// Full plan D04 priority:
+//   1. pricingRules[source:model] exact match (CNY rules converted to USD)
+//   2. MVP agentDefaultPricing[source]
+//   3. TokenTracker built-in model pricing (LiteLLM + curated)
+//   4. 0
 function computeRowCost(row, options = {}) {
+  // 1. pricingRules exact match — highest priority.
+  if (Array.isArray(options.pricingRules) && options.pricingRules.length > 0) {
+    const rule = getPricingRuleForRow(row, options.pricingRules);
+    if (rule) {
+      return computeRowCostWithRule(row, rule, options.usdToCny);
+    }
+  }
+
+  // 2. MVP agentDefaultPricing fallback.
   if (Object.prototype.hasOwnProperty.call(options, "agentDefaultPricing")) {
     const agentPricing = getAgentDefaultPriceForSource(row.source, options.agentDefaultPricing);
     if (agentPricing) {
@@ -154,6 +263,10 @@ function computeRowCost(row, options = {}) {
     }
   }
 
+  // 3. Built-in model pricing (LiteLLM + curated). Non-Token-Eyes sources keep
+  //    this path; Token Eyes core sources (claude/codex/hermes) fall through to
+  //    0 when no rule and no agentDefaultPricing is set, per the spec ("未命中
+  //    规则时不回退官方价格误导 Token Eyes 三个核心来源").
   const pricing = getModelPricing(row.model, { source: row.source });
   const reasoningIncludedInOutput = row.source === "codex" || row.source === "every-code";
   const reasoningCost = reasoningIncludedInOutput
@@ -187,6 +300,13 @@ module.exports = {
   AGENT_PRICING_SOURCES,
   DEFAULT_AGENT_DEFAULT_PRICING,
   normalizeAgentDefaultPricing,
+  DEFAULT_USD_TO_CNY,
+  PRICING_RULE_CURRENCIES,
+  normalizePricingRule,
+  normalizePricingRules,
+  buildPricingRuleIndex,
+  getPricingRuleForRow,
+  computeRowCostWithRule,
   // Internal hooks for tests.
   __getStateForTests: () => state,
 };
