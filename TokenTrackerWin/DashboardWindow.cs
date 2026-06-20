@@ -302,6 +302,12 @@ internal sealed class DashboardWindow : Window
                             CurrencyChanged?.Invoke();
                         }
                     }
+                    else if (t.GetString() == "selectFolder"
+                             && doc.RootElement.TryGetProperty("requestId", out var rid)
+                             && rid.GetString() is { } requestId)
+                    {
+                        HandleSelectFolder(core, requestId);
+                    }
                 }
                 catch { /* not a JSON message we handle */ }
                 return;
@@ -731,6 +737,63 @@ internal sealed class DashboardWindow : Window
     {
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
         catch { /* no default browser / malformed url */ }
+    }
+
+    /// <summary>
+    /// Handle a <c>selectFolder</c> WebView2 message: open a native
+    /// <see cref="System.Windows.Forms.FolderBrowserDialog"/> and post the
+    /// result back as <c>folderSelected</c>. The dialog runs on the UI thread
+    /// (STA), which is already the current thread inside WebMessageReceived.
+    /// </summary>
+    private void HandleSelectFolder(CoreWebView2 core, string requestId)
+    {
+        try
+        {
+            using var dialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Select a folder",
+                ShowNewFolderButton = true,
+            };
+            var result = dialog.ShowDialog();
+            if (result == System.Windows.Forms.DialogResult.OK && !string.IsNullOrEmpty(dialog.SelectedPath))
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    type = "folderSelected",
+                    requestId,
+                    path = dialog.SelectedPath,
+                    cancelled = false,
+                });
+                core.PostWebMessageAsJson(json);
+            }
+            else
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    type = "folderSelected",
+                    requestId,
+                    path = (string?)null,
+                    cancelled = true,
+                });
+                core.PostWebMessageAsJson(json);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"selectFolder error: {ex.Message}");
+            try
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    type = "folderSelected",
+                    requestId,
+                    path = (string?)null,
+                    cancelled = true,
+                });
+                core.PostWebMessageAsJson(json);
+            }
+            catch { /* best-effort error response */ }
+        }
     }
 
     protected override void OnClosing(CancelEventArgs e)

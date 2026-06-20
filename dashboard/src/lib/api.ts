@@ -31,6 +31,7 @@ const PATHS = {
   localSettings: "tokentracker-local-settings",
   tokenPlans: "tokentracker-token-plans",
   spendRecords: "tokentracker-spend-records",
+  selectDirectory: "tokentracker-select-directory",
 };
 
 /**
@@ -178,6 +179,23 @@ export async function setLocalSettings(settings: AnyRecord = {}) {
       ...authHeaders,
     },
     body: JSON.stringify(settings),
+  });
+}
+
+/**
+ * Request the CLI host to open a native folder picker dialog.
+ * Returns { ok, path, cancelled } on Windows; { ok, unsupported, message } on
+ * other platforms where the dialog is not available.
+ */
+export async function selectLocalDirectory(): Promise<AnyRecord> {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.selectDirectory, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
   });
 }
 

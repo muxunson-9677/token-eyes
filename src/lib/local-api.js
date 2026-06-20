@@ -18,6 +18,40 @@ const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
 const MVP_USD_TO_CNY = 7.2;
 
+/**
+ * Open the native Windows folder picker via PowerShell WinForms.
+ * Returns the selected path string, or null if the user cancelled.
+ * Rejects on process error.
+ */
+function selectDirectoryWindows() {
+  return new Promise((resolve, reject) => {
+    const ps = [
+      "Add-Type -AssemblyName System.Windows.Forms",
+      "$f = New-Object System.Windows.Forms.FolderBrowserDialog",
+      "$f.Description = 'Select a folder'",
+      "$f.ShowNewFolderButton = $true",
+      "if($f.ShowDialog() -eq 'OK'){ $f.SelectedPath }",
+    ].join("; ");
+    const child = spawn("powershell.exe", ["-NoProfile", "-Command", ps], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 60_000,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0 && code !== null) {
+        reject(new Error(stderr.trim() || `PowerShell exited with code ${code}`));
+        return;
+      }
+      const trimmed = stdout.trim();
+      resolve(trimmed || null);
+    });
+  });
+}
+
 // Avatar proxy (see /api/avatar-proxy below). In-memory LRU; survives the
 // CLI server lifetime, which is good enough — the dashboard reloads cheaply.
 const AVATAR_PROXY_TTL_MS = 60 * 60 * 1000; // 1h
@@ -2109,6 +2143,41 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
         return true;
       }
       json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return true;
+    }
+    // --- select directory (native folder picker fallback) ---
+    // Regular browsers can't open a native folder picker. This endpoint
+    // attempts a platform-specific dialog on the CLI host machine. Only
+    // Windows (PowerShell WinForms) is supported; other platforms return
+    // an unsupported flag so the dashboard can show a manual-input hint.
+    if (p === "/functions/tokentracker-select-directory") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method !== "POST") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      if (process.platform !== "win32") {
+        json(res, {
+          ok: false,
+          unsupported: true,
+          message: "当前环境不支持直接选择本机目录，请手动输入路径。",
+        });
+        return true;
+      }
+      try {
+        const selected = await selectDirectoryWindows();
+        if (selected) {
+          json(res, { ok: true, path: selected, cancelled: false });
+        } else {
+          json(res, { ok: true, path: null, cancelled: true });
+        }
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || "Folder picker failed" }, 500);
+      }
       return true;
     }
     // --- cloud-sync preference mirror ---
