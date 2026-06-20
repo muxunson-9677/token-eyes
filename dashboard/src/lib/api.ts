@@ -31,6 +31,7 @@ const PATHS = {
   localSettings: "tokentracker-local-settings",
   selectDirectory: "tokentracker-select-directory",
   tokenPlans: "tokentracker-token-plans",
+  tokenPlansRefresh: "tokentracker-token-plans-refresh",
   spendRecords: "tokentracker-spend-records",
 };
 
@@ -207,6 +208,19 @@ export async function saveTokenPlan(record: AnyRecord = {}) {
       ...authHeaders,
     },
     body: JSON.stringify(record),
+  });
+}
+
+export async function refreshTokenPlan(id: string) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.tokenPlansRefresh, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ id }),
   });
 }
 

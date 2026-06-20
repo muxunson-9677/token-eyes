@@ -1017,6 +1017,18 @@ settings.token_plan.edit,ui,SettingsPage,TokenPlanSection,edit,"编辑",,active
 settings.token_plan.empty,ui,SettingsPage,TokenPlanSection,empty,"暂无手动 Token 套餐记录。",,active
 settings.token_plan.load_error,ui,SettingsPage,TokenPlanSection,load_error,"无法加载 Token 套餐。",,active
 settings.token_plan.save_error,ui,SettingsPage,TokenPlanSection,save_error,"无法保存 Token 套餐。",,active
+settings.token_plan.refresh_method,ui,SettingsPage,TokenPlanSection,refresh_method,"刷新方式",,active
+settings.token_plan.refresh_method.manual,ui,SettingsPage,TokenPlanSection,refresh_method_manual,"手动（不自动刷新）",,active
+settings.token_plan.refresh_method.official_api,ui,SettingsPage,TokenPlanSection,refresh_method_official_api,"官方接口",,active
+settings.token_plan.refresh_method.cookie_scrape,ui,SettingsPage,TokenPlanSection,refresh_method_cookie_scrape,"Cookie 抓取（未实现）",,active
+settings.token_plan.refresh_interval,ui,SettingsPage,TokenPlanSection,refresh_interval,"刷新间隔（分钟）",,active
+settings.token_plan.credential_ref,ui,SettingsPage,TokenPlanSection,credential_ref,"凭证引用",,active
+settings.token_plan.refresh_enabled,ui,SettingsPage,TokenPlanSection,refresh_enabled,"启用自动刷新（仅本地进程存活时运行）",,active
+settings.token_plan.refresh,ui,SettingsPage,TokenPlanSection,refresh,"立即刷新",,active
+settings.token_plan.refresh_failed,ui,SettingsPage,TokenPlanSection,refresh_failed,"刷新失败。",,active
+settings.token_plan.refresh_method_label,ui,SettingsPage,TokenPlanSection,refresh_method_label,"刷新",,active
+settings.token_plan.last_refresh_status.success,ui,SettingsPage,TokenPlanSection,last_refresh_status_success,"成功",,active
+settings.token_plan.last_refresh_status.failed,ui,SettingsPage,TokenPlanSection,last_refresh_status_failed,"失败",,active
 spend.page.title,dashboard,SpendPage,SpendPage,title,"支出",,active
 spend.page.subtitle,dashboard,SpendPage,SpendPage,subtitle,"MVP 手动支出记录，暂不做月付/年付周期换算。",,active
 spend.total_usd,dashboard,SpendPage,SpendPage,total_usd,"USD 合计",,active
