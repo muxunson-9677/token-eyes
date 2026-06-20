@@ -885,3 +885,58 @@ test("pricingRules: empty rules array does not activate the rule path", () => {
   const cost = pricing.computeRowCost(row, { pricingRules: [] });
   assert.ok(cost > 0, "built-in model pricing should still apply");
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pricingRules rework (D04 return-fix) — id forced from source:model, source
+// normalization for the reasoning fold.
+
+test("pricingRules: normalizePricingRule forces id from source:model, ignoring external id", () => {
+  const rule = pricing.normalizePricingRule({
+    id: "stale-foreign-id",
+    source: "CODEX",
+    model: "gpt-5.2-codex",
+    inputPricePer1M: 1.75,
+    outputPricePer1M: 14,
+    currency: "USD",
+  });
+  // id is ALWAYS derived; the external id is discarded.
+  assert.equal(rule.id, "codex:gpt-5.2-codex", "external id must be ignored");
+  assert.equal(rule.source, "codex");
+});
+
+test("pricingRules: same source+model with different external ids collapses to one rule", () => {
+  // Two inputs claim different ids but resolve to the same source:model key.
+  // Only the first survives; the second is a duplicate and must be dropped so
+  // getPricingRuleForRow never sees two matches for the same row. (model is
+  // matched exactly per spec, so both inputs use the identical model string.)
+  const rules = pricing.normalizePricingRules([
+    { id: "anything-1", source: "codex", model: "gpt-5.2-codex", inputPricePer1M: 1.75, outputPricePer1M: 14, currency: "USD" },
+    { id: "anything-2", source: "Codex", model: "gpt-5.2-codex", inputPricePer1M: 999, outputPricePer1M: 999, currency: "USD" },
+  ]);
+  assert.equal(rules.length, 1, "same source+model must dedup to one rule");
+  assert.equal(rules[0].id, "codex:gpt-5.2-codex");
+  // First entry wins (1.75/14), not the 999/999 duplicate.
+  assert.equal(rules[0].inputPricePer1M, 1.75);
+  assert.equal(rules[0].outputPricePer1M, 14);
+});
+
+test("pricingRules: uppercase CODEX source still folds reasoning (no double billing)", () => {
+  pricing.resetPricingForTests();
+  const row = {
+    source: "CODEX",
+    model: "gpt-5.2-codex",
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 1_000_000,
+    reasoning_output_tokens: 500_000,
+  };
+  const cost = pricing.computeRowCost(row, {
+    pricingRules: [
+      { id: "codex:gpt-5.2-codex", source: "codex", model: "gpt-5.2-codex", inputPricePer1M: 1, outputPricePer1M: 10, currency: "USD" },
+    ],
+  });
+  // reasoning folded into output → only output_tokens billed = 10. If the
+  // uppercase source bypassed the fold, cost would be 15 (1M*10 + 0.5M*10).
+  assert.equal(cost, 10, "uppercase CODEX must still fold reasoning");
+});

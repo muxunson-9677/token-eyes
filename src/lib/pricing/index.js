@@ -67,7 +67,10 @@ function normalizePricingRule(raw) {
   const currency = String(input.currency ?? "USD").trim().toUpperCase();
   const inputPricePer1M = normalizePriceValue(input.inputPricePer1M);
   const outputPricePer1M = normalizePriceValue(input.outputPricePer1M);
-  const id = String(input.id ?? (source && model ? `${source}:${model}` : "")).trim();
+  // id is ALWAYS derived from the normalized source:model. Never trust an
+  // externally-supplied id — two rows with the same source+model but different
+  // ids would silently both survive dedup and both match a queue row.
+  const id = source && model ? `${source}:${model}` : "";
   return {
     id,
     source,
@@ -84,11 +87,13 @@ function normalizePricingRule(raw) {
 
 function normalizePricingRules(raw) {
   if (!Array.isArray(raw)) return [];
+  // Dedup by the normalized source:model key (which is also the rule id), so
+  // inputs that differ only in a stale/foreign id field collapse to one rule.
   const seen = new Set();
   const out = [];
   for (const item of raw) {
     const rule = normalizePricingRule(item);
-    // Skip rules missing source/model/id — they can never match a queue row.
+    // Skip rules missing source/model — they can never match a queue row.
     if (!rule.source || !rule.model || !rule.id) continue;
     if (seen.has(rule.id)) continue;
     seen.add(rule.id);
@@ -126,8 +131,13 @@ function getPricingRuleForRow(row, pricingRules) {
 // output_tokens for those sources, so they are not billed again.
 function computeRowCostWithRule(row, rule, usdToCny = DEFAULT_USD_TO_CNY) {
   const rate = Number.isFinite(usdToCny) && usdToCny > 0 ? usdToCny : DEFAULT_USD_TO_CNY;
+  // Normalize source before the reasoning-fold check so "CODEX" / " Codex "
+  // queue rows still get the fold (matches the built-in-model path which uses
+  // a lowercased source via getModelPricing).
+  const source =
+    typeof row.source === "string" ? row.source.trim().toLowerCase() : "";
   const reasoningIncludedInOutput =
-    row.source === "codex" || row.source === "every-code";
+    source === "codex" || source === "every-code";
   const inputLike =
     (row.input_tokens || 0) +
     (row.cached_input_tokens || 0) +

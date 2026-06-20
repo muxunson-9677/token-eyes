@@ -6,9 +6,18 @@
 
 - 基准分支: `codex-token-tracker-baseline`
 - 实现分支: `codex/te-full-d04-agent-model-pricing-rules`
-- commit SHA: `cef011d694fb9fc1c2804bf3797b238f432596a7`（提交信息: `feat: add agent model pricing rules`）
+- 初版 commit: `cef011d` — `feat: add agent model pricing rules`
+- 返工 commit: 见 `git log -1`（提交信息: `fix: force pricing rule id and normalize source for reasoning fold`）
 
 > 说明: 任务派单原文使用 `claude/` 分支前缀，但实际执行方为 CodeBuddy，故改用 `codex/` 前缀以保持与仓库其它分支命名一致。
+
+## 返工说明（复审修复）
+
+基于 `77c93b0` 做三处小修：
+
+1. **`normalizePricingRule`**：`id` 不再信任外部传入值，强制 `id = ${source}:${model}`；`normalizePricingRules` 按规范化后的 `source:model` 去重。补测试：同 source+model、不同 id 的输入只保留一条。
+2. **`computeRowCostWithRule`**：对 `row.source` 做 `trim().toLowerCase()` 后再判断 `codex` / `every-code` reasoning 折叠。补测试：`source: "CODEX"` 命中 rule 时不重复计 reasoning。
+3. **报告 SHA 修正**：初版报告把 HEAD 写成 `cef011d`，实际分支 HEAD 为 `77c93b0`（docs 提交），本次返工进一步推进到新 commit。
 
 ## 修改文件
 
