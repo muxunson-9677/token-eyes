@@ -940,3 +940,75 @@ test("pricingRules: uppercase CODEX source still folds reasoning (no double bill
   // uppercase source bypassed the fold, cost would be 15 (1M*10 + 0.5M*10).
   assert.equal(cost, 10, "uppercase CODEX must still fold reasoning");
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D07: Configurable USD/CNY rate
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("D07: normalizeUsdToCny returns valid value or falls back to 7.2", () => {
+  assert.equal(pricing.normalizeUsdToCny(6), 6);
+  assert.equal(pricing.normalizeUsdToCny(8.5), 8.5);
+  assert.equal(pricing.normalizeUsdToCny(0), 7.2);
+  assert.equal(pricing.normalizeUsdToCny(-1), 7.2);
+  assert.equal(pricing.normalizeUsdToCny(NaN), 7.2);
+  assert.equal(pricing.normalizeUsdToCny(undefined), 7.2);
+  assert.equal(pricing.normalizeUsdToCny(null), 7.2);
+});
+
+test("D07: CNY pricingRule with custom usdToCny=6 differs from default 7.2", () => {
+  pricing.resetPricingForTests();
+  const row = {
+    source: "hermes",
+    model: "mimo-v2.5-pro",
+    input_tokens: 1_000_000,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 1_000_000,
+    reasoning_output_tokens: 0,
+  };
+  // 7.2 CNY input + 36 CNY output = 43.2 CNY → /7.2 = 6 USD (default)
+  const cost72 = pricing.computeRowCost(row, {
+    pricingRules: [
+      { id: "hermes:mimo-v2.5-pro", source: "hermes", model: "mimo-v2.5-pro", inputPricePer1M: 7.2, outputPricePer1M: 36, currency: "CNY" },
+    ],
+    usdToCny: 7.2,
+  });
+  // 43.2 CNY / 6 = 7.2 USD (custom rate)
+  const cost6 = pricing.computeRowCost(row, {
+    pricingRules: [
+      { id: "hermes:mimo-v2.5-pro", source: "hermes", model: "mimo-v2.5-pro", inputPricePer1M: 7.2, outputPricePer1M: 36, currency: "CNY" },
+    ],
+    usdToCny: 6,
+  });
+  assert.ok(Math.abs(cost72 - 6) < 1e-9, `expected 6, got ${cost72}`);
+  assert.ok(Math.abs(cost6 - 7.2) < 1e-9, `expected 7.2, got ${cost6}`);
+  assert.notEqual(cost72, cost6, "custom rate 6 must differ from default 7.2");
+});
+
+test("D07: computeRowCostWithRule CNY falls back to 7.2 for invalid usdToCny", () => {
+  const row = {
+    input_tokens: 1_000_000,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 0,
+    reasoning_output_tokens: 0,
+  };
+  const rule = { id: "test:model", source: "test", model: "model", inputPricePer1M: 7.2, outputPricePer1M: 0, currency: "CNY" };
+  // 7.2 CNY / 7.2 = 1 USD for all invalid rates
+  assert.equal(pricing.computeRowCostWithRule(row, rule, 0), 1);
+  assert.equal(pricing.computeRowCostWithRule(row, rule, -5), 1);
+  assert.equal(pricing.computeRowCostWithRule(row, rule, NaN), 1);
+});
+
+test("D07: computeRowCostWithRule USD rule ignores usdToCny", () => {
+  const row = {
+    input_tokens: 1_000_000,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 0,
+    reasoning_output_tokens: 0,
+  };
+  const rule = { id: "test:model", source: "test", model: "model", inputPricePer1M: 3, outputPricePer1M: 0, currency: "USD" };
+  assert.equal(pricing.computeRowCostWithRule(row, rule, 6), 3);
+  assert.equal(pricing.computeRowCostWithRule(row, rule, 100), 3);
+});

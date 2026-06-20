@@ -177,6 +177,20 @@ describe("formatMvpUsdCny", () => {
     expect(formatMvpUsdCny(2)).toBe("USD 2.00 / CNY 14.40");
   });
 
+  // D07: Custom usdToCny rate
+  it("uses custom usdToCny when provided", () => {
+    expect(formatMvpUsdCny(2, 6)).toBe("USD 2.00 / CNY 12.00");
+    expect(formatMvpUsdCny(2, 8.5)).toBe("USD 2.00 / CNY 17.00");
+  });
+
+  // D07: Invalid rates fall back to 7.2
+  it("falls back to 7.2 for invalid usdToCny", () => {
+    expect(formatMvpUsdCny(2, 0)).toBe("USD 2.00 / CNY 14.40");
+    expect(formatMvpUsdCny(2, -1)).toBe("USD 2.00 / CNY 14.40");
+    expect(formatMvpUsdCny(2, NaN)).toBe("USD 2.00 / CNY 14.40");
+    expect(formatMvpUsdCny(2, Infinity)).toBe("USD 2.00 / CNY 14.40");
+  });
+
   it("preserves empty and invalid display states", () => {
     expect(formatMvpUsdCny(null)).toBe("-");
     expect(formatMvpUsdCny("")).toBe("-");

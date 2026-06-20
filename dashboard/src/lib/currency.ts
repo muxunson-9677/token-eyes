@@ -156,13 +156,14 @@ function formatMvpCurrencyNumber(value: number): string {
   });
 }
 
-export function formatMvpUsdCny(value: any): string {
+export function formatMvpUsdCny(value: any, usdToCny?: number): string {
   if (value == null) return "-";
   if (typeof value === "string" && value.trim() === "") return "-";
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return String(value);
+  const rate = Number.isFinite(usdToCny) && (usdToCny as number) > 0 ? (usdToCny as number) : MVP_USD_TO_CNY;
   const usd = formatMvpCurrencyNumber(numberValue);
-  const cny = formatMvpCurrencyNumber(numberValue * MVP_USD_TO_CNY);
+  const cny = formatMvpCurrencyNumber(numberValue * rate);
   return `USD ${usd} / CNY ${cny}`;
 }
 

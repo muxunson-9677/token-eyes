@@ -39,6 +39,7 @@ import {
 } from "../lib/timezone";
 import {
   getUserStatus,
+  getLocalSettings,
   triggerLocalSync,
 } from "../lib/api";
 import { ActivityHeatmap } from "../ui/dashboard/components/ActivityHeatmap.jsx";
@@ -124,6 +125,7 @@ export function DashboardPage({
 }) {
   const { resolvedLocale } = useLocale();
   const { currency, rate } = useCurrency();
+  const [usdToCny, setUsdToCny] = useState(7.2);
   const [costModalOpen, setCostModalOpen] = useState(false);
   const [linkCode, setLinkCode] = useState(null);
   const [linkCodeExpiresAt, setLinkCodeExpiresAt] = useState(null);
@@ -248,6 +250,23 @@ export function DashboardPage({
   // 鏈湴妯″紡鍒ゆ柇
   const isLocalMode = typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  // D07: Fetch USD/CNY rate from local settings for display.
+  useEffect(() => {
+    if (!isLocalMode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await getLocalSettings();
+        if (cancelled) return;
+        const rate = Number(settings?.currencySettings?.usdToCny);
+        if (Number.isFinite(rate) && rate > 0) setUsdToCny(rate);
+      } catch {
+        // Use default 7.2 on failure.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLocalMode]);
 
   useEffect(() => {
     // 鏈湴妯″紡锛氳烦杩囩櫥褰曟鏌ワ紝鐩存帴鑾峰彇 userStatus
@@ -1165,8 +1184,8 @@ export function DashboardPage({
   );
 
   const summaryCostValue = useMemo(
-    () => formatMvpUsdCny(summary?.total_cost_usd),
-    [summary?.total_cost_usd],
+    () => formatMvpUsdCny(summary?.total_cost_usd, usdToCny),
+    [summary?.total_cost_usd, usdToCny],
   );
   const cacheHitSummary = useMemo(() => {
     const result = calculateCacheHitSummary(summary);

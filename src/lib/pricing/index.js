@@ -28,6 +28,11 @@ const DEFAULT_AGENT_DEFAULT_PRICING = Object.freeze({
 const DEFAULT_USD_TO_CNY = 7.2;
 const PRICING_RULE_CURRENCIES = ["USD", "CNY"];
 
+function normalizeUsdToCny(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_USD_TO_CNY;
+}
+
 function normalizePriceValue(value) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
@@ -317,6 +322,7 @@ module.exports = {
   buildPricingRuleIndex,
   getPricingRuleForRow,
   computeRowCostWithRule,
+  normalizeUsdToCny,
   // Internal hooks for tests.
   __getStateForTests: () => state,
 };

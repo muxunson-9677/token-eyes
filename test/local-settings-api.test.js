@@ -224,3 +224,130 @@ test("local settings API getPricingOptions includes pricingRules for cost calc",
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D07: currencySettings read / write / normalize
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("D07: currencySettings defaults to usdToCny=7.2 when not configured", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-currency-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({ queuePath: path.join(trackerDir, "queue.jsonl"), trackerDataDir: trackerDir });
+
+    const res = await call(handler, "/functions/tokentracker-local-settings");
+    const body = readJsonResponse(res);
+    assert.equal(body.currencySettings.usdToCny, 7.2);
+    assert.equal(body.currencySettings.source, "manual");
+    assert.ok(typeof body.currencySettings.updated_at === "string");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("D07: currencySettings saves and reads custom usdToCny", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-currency-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({ queuePath: path.join(trackerDir, "queue.jsonl"), trackerDataDir: trackerDir });
+
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    const saved = await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ currencySettings: { usdToCny: 6.5 } }),
+    });
+    const savedBody = readJsonResponse(saved);
+    assert.equal(savedBody.currencySettings.usdToCny, 6.5);
+    assert.equal(savedBody.currencySettings.source, "manual");
+
+    const reread = await call(handler, "/functions/tokentracker-local-settings");
+    assert.equal(readJsonResponse(reread).currencySettings.usdToCny, 6.5);
+
+    const config = JSON.parse(await fs.readFile(path.join(trackerDir, "config.json"), "utf8"));
+    assert.equal(config.currencySettings.usdToCny, 6.5);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("D07: currencySettings normalizes invalid usdToCny to 7.2", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-currency-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({ queuePath: path.join(trackerDir, "queue.jsonl"), trackerDataDir: trackerDir });
+
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    const saved = await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ currencySettings: { usdToCny: 0 } }),
+    });
+    assert.equal(readJsonResponse(saved).currencySettings.usdToCny, 7.2);
+
+    const savedNeg = await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ currencySettings: { usdToCny: -5 } }),
+    });
+    assert.equal(readJsonResponse(savedNeg).currencySettings.usdToCny, 7.2);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("D07: currencySettings coexists with agentDefaultPricing and pricingRules", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-currency-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({ queuePath: path.join(trackerDir, "queue.jsonl"), trackerDataDir: trackerDir });
+
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    const pricing = {
+      claude: { inputUsdPer1M: 1, outputUsdPer1M: 5 },
+      codex: { inputUsdPer1M: 2, outputUsdPer1M: 8 },
+      hermes: { inputUsdPer1M: 0.5, outputUsdPer1M: 3 },
+    };
+    const rules = [
+      { source: "codex", model: "gpt-5.2-codex", inputPricePer1M: 1.75, outputPricePer1M: 14, currency: "USD" },
+    ];
+
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ agentDefaultPricing: pricing }),
+    });
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ pricingRules: rules }),
+    });
+    const saved = await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ currencySettings: { usdToCny: 6.5 } }),
+    });
+    const body = readJsonResponse(saved);
+    assert.equal(body.currencySettings.usdToCny, 6.5);
+    assert.deepEqual(body.agentDefaultPricing, pricing);
+    assert.equal(body.pricingRules.length, 1);
+    assert.equal(body.pricingRules[0].id, "codex:gpt-5.2-codex");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

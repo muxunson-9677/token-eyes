@@ -39,6 +39,7 @@ const {
   ensurePricingLoaded,
   normalizeAgentDefaultPricing,
   normalizePricingRules,
+  normalizeUsdToCny,
 } = require("./pricing");
 
 const {
@@ -946,12 +947,27 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     fs.renameSync(tmp, configPath);
   }
 
+  function normalizeCurrencySettings(raw) {
+    const input = raw && typeof raw === "object" ? raw : {};
+    return {
+      usdToCny: normalizeUsdToCny(input.usdToCny),
+      source: String(input.source || "manual").trim() || "manual",
+      updated_at: String(input.updated_at || new Date().toISOString()).trim(),
+    };
+  }
+
+  function getUsdToCny() {
+    const config = readTrackerConfig();
+    return normalizeCurrencySettings(config.currencySettings).usdToCny;
+  }
+
   function readLocalSettings() {
     const config = readTrackerConfig();
     return {
       dataDirectories: normalizeDataDirectories(config.dataDirectories),
       agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing),
       pricingRules: normalizePricingRules(config.pricingRules),
+      currencySettings: normalizeCurrencySettings(config.currencySettings),
     };
   }
 
@@ -966,6 +982,13 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     }
     if (Object.prototype.hasOwnProperty.call(payload, "pricingRules")) {
       config.pricingRules = normalizePricingRules(payload.pricingRules);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "currencySettings")) {
+      const normalized = normalizeCurrencySettings(payload.currencySettings);
+      config.currencySettings = {
+        ...normalized,
+        updated_at: new Date().toISOString(),
+      };
     }
     writeTrackerConfig(config);
     return readLocalSettings();
@@ -1028,6 +1051,7 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     return {
       agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing),
       pricingRules: normalizePricingRules(config.pricingRules),
+      usdToCny: normalizeCurrencySettings(config.currencySettings).usdToCny,
     };
   }
 
@@ -1097,14 +1121,15 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
   }
 
   function summarizeSpendRecords(records) {
+    const usdToCny = getUsdToCny();
     let totalUsd = 0;
     for (const record of records) {
-      if (record.currency === "CNY") totalUsd += record.amount / MVP_USD_TO_CNY;
+      if (record.currency === "CNY") totalUsd += record.amount / usdToCny;
       else totalUsd += record.amount;
     }
     return {
       total_usd: Number(totalUsd.toFixed(6)),
-      total_cny: Number((totalUsd * MVP_USD_TO_CNY).toFixed(6)),
+      total_cny: Number((totalUsd * usdToCny).toFixed(6)),
     };
   }
 

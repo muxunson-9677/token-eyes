@@ -379,6 +379,10 @@ settings.appearance.currency.rate_source.default,ui,SettingsPage,SettingsPage,ra
 settings.appearance.currency.rate_source.fetched,ui,SettingsPage,SettingsPage,rate_source_fetched,"Source: open.er-api.com",,active
 settings.appearance.currency.rate_updated,ui,SettingsPage,SettingsPage,rate_updated,"updated {{when}}",,active
 settings.appearance.currency.rate_never,ui,SettingsPage,SettingsPage,rate_never,"awaiting first refresh",,active
+settings.appearance.usd_cny.label,ui,SettingsPage,SettingsPage,usd_cny_label,"USD/CNY 汇率",,active
+settings.appearance.usd_cny.hint,ui,SettingsPage,SettingsPage,usd_cny_hint,"手动设置 USD 到 CNY 的汇率，用于成本换算和支出汇总。",,active
+settings.appearance.usd_cny.saved,ui,SettingsPage,SettingsPage,usd_cny_saved,"汇率已保存",,active
+settings.appearance.usd_cny.save_error,ui,SettingsPage,SettingsPage,usd_cny_save_error,"保存汇率失败",,active
 settings.account.displayName,ui,SettingsPage,SettingsPage,display_name,"Display name",,active
 settings.account.edit,ui,SettingsPage,SettingsPage,edit,"Edit",,active
 settings.account.save,ui,SettingsPage,SettingsPage,save,"Save",,active

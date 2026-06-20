@@ -90,3 +90,53 @@ test("spend records API creates, lists, deletes, and totals USD/CNY", async () =
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D07: Spend summaries use configurable currencySettings.usdToCny
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("D07: spend totals use custom usdToCny from currencySettings", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-spend-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    // Set custom usdToCny = 6
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ currencySettings: { usdToCny: 6 } }),
+    });
+
+    // Add USD 10
+    const usd = await call(handler, "/functions/tokentracker-spend-records", {
+      method: "POST", headers,
+      body: JSON.stringify({ source: "claude", plan_label: "Max", amount: 10, currency: "USD" }),
+    });
+    const usdBody = readJsonResponse(usd);
+    assert.equal(usdBody.totals.total_usd, 10);
+    assert.equal(usdBody.totals.total_cny, 60); // 10 * 6 = 60
+
+    // Add CNY 72
+    const cny = await call(handler, "/functions/tokentracker-spend-records", {
+      method: "POST", headers,
+      body: JSON.stringify({ source: "codex", plan_label: "Plus", amount: 72, currency: "CNY" }),
+    });
+    const cnyBody = readJsonResponse(cny);
+    assert.equal(cnyBody.records.length, 2);
+    assert.equal(cnyBody.totals.total_usd, 22); // 10 + 72/6 = 22
+    assert.equal(cnyBody.totals.total_cny, 132); // 22 * 6 = 132
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
