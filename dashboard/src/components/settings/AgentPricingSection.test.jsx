@@ -30,7 +30,10 @@ it("loads and saves per-agent default pricing", async () => {
   render(<AgentPricingSection />);
 
   await screen.findByDisplayValue("3");
-  const saveButton = screen.getByRole("button", { name: /Save/i });
+  expect(screen.getByText("Agent 默认计费")).toBeInTheDocument();
+  expect(screen.getAllByText("输入")).toHaveLength(3);
+  expect(screen.getAllByText("输出")).toHaveLength(3);
+  const saveButton = screen.getByRole("button", { name: "保存" });
   expect(saveButton).toBeDisabled();
 
   const inputs = screen.getAllByRole("spinbutton");
@@ -56,5 +59,5 @@ it("loads and saves per-agent default pricing", async () => {
       },
     });
   });
-  expect(await screen.findByText(/Saved locally/i)).toBeInTheDocument();
+  expect(await screen.findByText("已保存到本地。刷新或同步用量后成本会更新。")).toBeInTheDocument();
 });

@@ -3,7 +3,7 @@ import { Info, Languages, Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
 import { useCurrency } from "../../hooks/useCurrency.js";
-import { EN_LOCALE, JA_LOCALE, KO_LOCALE, SYSTEM_LOCALE, ZH_CN_LOCALE, ZH_TW_LOCALE } from "../../lib/locale";
+import { SYSTEM_LOCALE, ZH_CN_LOCALE } from "../../lib/locale";
 import { CURRENCY_USD, getSupportedCurrencies } from "../../lib/currency";
 import { copy } from "../../lib/copy";
 import { Select } from "../../ui/components";
@@ -20,11 +20,7 @@ function buildThemeOptions() {
 function buildLanguageOptions() {
   return [
     { value: SYSTEM_LOCALE, label: copy("settings.appearance.language.system") },
-    { value: EN_LOCALE, label: copy("settings.appearance.language.english") },
     { value: ZH_CN_LOCALE, label: copy("settings.appearance.language.chinese") },
-    { value: ZH_TW_LOCALE, label: copy("settings.appearance.language.traditional_chinese") },
-    { value: JA_LOCALE, label: copy("settings.appearance.language.japanese") },
-    { value: KO_LOCALE, label: copy("settings.appearance.language.korean") },
   ];
 }
 

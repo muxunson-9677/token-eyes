@@ -57,16 +57,16 @@ landing.nav.signup,landing,LandingPage,LandingPage,nav_signup,"SIGN UP",,active
 landing.install.command,landing,LandingPage,LandingPage,install_command,"npx --yes tokentracker-cli",,active
 landing.install.action.copy,landing,LandingPage,LandingPage,install_copy,"COPY COMMAND",,active
 landing.install.action.copied,landing,LandingPage,LandingPage,install_copied,"COPIED",,active
-landing.meta.title,landing,LandingPage,Meta,title,"Token Tracker — Token Usage Tracker for AI Agent CLIs",,active
+landing.meta.title,landing,LandingPage,Meta,title,"Token Eyes",,active
 landing.meta.description,landing,LandingPage,Meta,description,"Automatically monitor token usage across Claude Code, Cursor, Codex, and more. Local-first, privacy-focused, and zero manual configuration.",,active
-landing.meta.og_site_name,landing,LandingPage,Meta,og_site_name,"Token Tracker",,active
+landing.meta.og_site_name,landing,LandingPage,Meta,og_site_name,"Token Eyes",,active
 landing.meta.og_type,landing,LandingPage,Meta,og_type,"website",,active
 landing.meta.og_image,landing,LandingPage,Meta,og_image,"https://www.tokentracker.cc/dashboard-dark.png",,active
 landing.meta.og_url,landing,LandingPage,Meta,og_url,"https://www.tokentracker.cc/",,active
 landing.meta.twitter_card,landing,LandingPage,Meta,twitter_card,"summary_large_image",,active
-share.meta.title,share,SharePage,Meta,title,"Token Tracker Share",,active
-share.meta.description,share,SharePage,Meta,description,"Share a Token Tracker dashboard snapshot with token usage insights across models, projects, and time windows.",,active
-share.meta.og_site_name,share,SharePage,Meta,og_site_name,"Token Tracker",,active
+share.meta.title,share,SharePage,Meta,title,"Token Eyes Share",,active
+share.meta.description,share,SharePage,Meta,description,"Share a Token Eyes dashboard snapshot with token usage insights across models, projects, and time windows.",,active
+share.meta.og_site_name,share,SharePage,Meta,og_site_name,"Token Eyes",,active
 share.meta.og_type,share,SharePage,Meta,og_type,"website",,active
 share.meta.og_image,share,SharePage,Meta,og_image,"https://www.tokentracker.cc/dashboard-dark.png",,active
 share.meta.og_url,share,SharePage,Meta,og_url,"https://www.tokentracker.cc/share",,active
@@ -336,7 +336,7 @@ dashboard.screenshot.twitter_label,dashboard,DashboardPage,ScreenshotShare,aria_
 dashboard.screenshot.twitter_hint,dashboard,DashboardPage,ScreenshotShare,helper_text,"Auto-copies image to clipboard",,active
 dashboard.screenshot.twitter_text,dashboard,DashboardPage,ScreenshotShare,share_text,"{{total_tokens}} tokens on the record.\n{{model_name}} led with {{model_percent}}%.\n\nMy AI usage, unaudited →",,active
 
-nav.usage,shared,*,Sidebar,nav_usage,"Tokens",,active
+nav.usage,shared,*,Sidebar,nav_usage,"概览",,active
 nav.limits,shared,*,Sidebar,nav_limits,"Limits",,active
 nav.widgets,shared,*,Sidebar,nav_widgets,"macOS Widgets",,active
 nav.leaderboard,shared,*,Sidebar,nav_leaderboard,"Leaderboard",,active
@@ -355,7 +355,7 @@ limits.page.openSettings,ui,LimitsPage,LimitsPage,open_settings,"Display setting
 nav.group.general,shared,*,Sidebar,group_general,"General",,active
 nav.group.tools,shared,*,Sidebar,group_tools,"Tools",,active
 nav.group.account,shared,*,Sidebar,group_account,"Account",,active
-nav.settings,shared,*,Sidebar,nav_settings,"Settings",,active
+nav.settings,shared,*,Sidebar,nav_settings,"设置",,active
 header.auth.open_settings,shared,*,InsforgeUserHeaderControls,open_settings,"Open settings",,active
 settings.page.title,ui,SettingsPage,SettingsPage,title,"Settings",,active
 settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage your account, appearance, and display preferences.",,active
@@ -363,7 +363,7 @@ settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,"Appeara
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,"Account",,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,"Limits Display",,active
 settings.appearance.theme.label,ui,SettingsPage,SettingsPage,theme_label,"Theme",,active
-settings.appearance.theme.hint,ui,SettingsPage,SettingsPage,theme_hint,"Choose how Token Tracker looks across the dashboard.",,active
+settings.appearance.theme.hint,ui,SettingsPage,SettingsPage,theme_hint,"选择 Token Eyes 在仪表盘中的显示方式。",,active
 settings.appearance.theme.light,ui,SettingsPage,SettingsPage,theme_light,"Light",,active
 settings.appearance.theme.dark,ui,SettingsPage,SettingsPage,theme_dark,"Dark",,active
 settings.appearance.theme.system,ui,SettingsPage,SettingsPage,theme_system,"System",,active
@@ -388,10 +388,10 @@ settings.account.userId,ui,SettingsPage,SettingsPage,user_id,"User ID",,active
 settings.account.copyUserId,ui,SettingsPage,SettingsPage,copy_user_id,"Copy user ID",,active
 settings.account.copy,ui,SettingsPage,SettingsPage,copy,"Copy",,active
 settings.account.copied,ui,SettingsPage,SettingsPage,copied,"Copied",,active
-settings.account.cloudSync,ui,SettingsPage,SettingsPage,cloud_sync,"Cloud sync",,active
-settings.account.cloudSyncHint,ui,SettingsPage,SettingsPage,cloud_sync_hint,"Upload local usage to your Token Tracker cloud account.",,active
-settings.account.publicProfile,ui,SettingsPage,SettingsPage,public_profile,"Public profile",,active
-settings.account.publicProfileHint,ui,SettingsPage,SettingsPage,public_profile_hint,"Show your usage on the public leaderboard.",,active
+settings.account.cloudSync,ui,SettingsPage,SettingsPage,cloud_sync,"云同步",,active
+settings.account.cloudSyncHint,ui,SettingsPage,SettingsPage,cloud_sync_hint,"将本地用量上传到云端账号。",,active
+settings.account.publicProfile,ui,SettingsPage,SettingsPage,public_profile,"公开主页",,active
+settings.account.publicProfileHint,ui,SettingsPage,SettingsPage,public_profile_hint,"在公开页面显示你的用量。",,active
 settings.account.displayNameAnonymousHint,ui,SettingsPage,SettingsPage,display_name_anon_hint,"Anonymous — your name and avatar are hidden on the leaderboard",,active
 settings.account.displayNameDisabledWhileAnon,ui,SettingsPage,SettingsPage,display_name_disabled,"Turn on the switch first to edit your name",,active
 settings.account.githubUrl,ui,SettingsPage,SettingsPage,github_url,"GitHub profile",,active
@@ -424,7 +424,7 @@ leaderboard.summary.jump_to_me,ui,LeaderboardPage,LeaderboardMeChip,summary_jump
 leaderboard.summary.view_profile,ui,LeaderboardPage,LeaderboardMeChip,summary_view_profile,"View your profile",,active
 settings.account.signOut,ui,SettingsPage,SettingsPage,sign_out,"Sign out",,active
 settings.account.signIn,ui,SettingsPage,SettingsPage,sign_in,"Sign in",,active
-settings.account.signedOutHint,ui,SettingsPage,SettingsPage,signed_out_hint,"Sign in to manage cloud sync and leaderboard preferences.",,active
+settings.account.signedOutHint,ui,SettingsPage,SettingsPage,signed_out_hint,"Token Eyes MVP 当前仅使用本地功能。",,active
 settings.section.menubar,ui,SettingsPage,SettingsPage,sec_menubar,"Menu Bar App",,active
 settings.menubar.showStats,ui,SettingsPage,SettingsPage,mb_show_stats,"Show stats in menu bar",,active
 settings.menubar.showStatsHint,ui,SettingsPage,SettingsPage,mb_show_stats_hint,"Display today's token count and cost beside the menu bar icon.",,active
@@ -899,7 +899,7 @@ dashboard.auth_gate.button,dashboard,DashboardPage,DashboardView,auth_gate_butto
 dashboard.expired_gate.title,dashboard,DashboardPage,DashboardView,expired_gate_title,"Session Expired",,active
 dashboard.expired_gate.subtitle,dashboard,DashboardPage,DashboardView,expired_gate_subtitle,"Your session has expired. Please sign in again to continue viewing your cloud dashboard.",,active
 dashboard.expired_gate.button,dashboard,DashboardPage,DashboardView,expired_gate_button,"Sign In Again",,active
-shared.app_name,shared,*,*,app_name,"Token Tracker",,active
+shared.app_name,shared,*,*,app_name,"Token Eyes",,active
 dashboard.auth_gate.hero_title,dashboard,DashboardPage,DashboardView,hero_title,"Track every AI agent token seamlessly",,active
 dashboard.auth_gate.hero_subtitle,dashboard,DashboardPage,DashboardView,hero_subtitle,"Clear, transparent, and multi-endpoint control",,active
 dashboard.auth_gate.desc,dashboard,DashboardPage,DashboardView,desc,"Securely sync token quotas, concurrent costs, and latency across Claude Code, Cursor, and Gemini CLI in a beautifully unified real-time dashboard.",,active
@@ -969,65 +969,68 @@ skills.usage.months_ago,ui,SkillsPage,SkillDetailPanel,usage_months_ago,"{{month
 skills.usage.unknown,ui,SkillsPage,SkillDetailPanel,usage_unknown,"Unknown",,active
 skills.usage.unused,ui,SkillsPage,SkillDetailPanel,usage_unused,"Not invoked yet. Possible dead weight if you never use it.",,active
 skills.usage.disclaimer,ui,SkillsPage,SkillDetailPanel,usage_disclaimer,"Counts from Claude transcripts. Cost is the approximate spend of turns that invoked this skill.",,active
-settings.section.data_dirs,ui,SettingsPage,DataDirectoriesSection,sec_data_dirs,"Data Directories",,active
-settings.data_dirs.subtitle,ui,SettingsPage,DataDirectoriesSection,subtitle,"Local-only paths for Windows and WSL usage logs.",,active
-settings.data_dirs.claude,ui,SettingsPage,DataDirectoriesSection,claude_label,"Claude Code data directory",,active
-settings.data_dirs.claude_hint,ui,SettingsPage,DataDirectoriesSection,claude_hint,"Leave empty for ~/.claude. Use a WSL path such as \\wsl.localhost\\Ubuntu\\home\\user\\.claude.",,active
-settings.data_dirs.codex,ui,SettingsPage,DataDirectoriesSection,codex_label,"Codex data directory",,active
-settings.data_dirs.codex_hint,ui,SettingsPage,DataDirectoriesSection,codex_hint,"Leave empty for CODEX_HOME or ~/.codex. The directory should contain sessions and archived_sessions.",,active
-settings.data_dirs.hermes,ui,SettingsPage,DataDirectoriesSection,hermes_label,"Hermes Agent data directory",,active
-settings.data_dirs.hermes_hint,ui,SettingsPage,DataDirectoriesSection,hermes_hint,"Leave empty for the default Hermes directory. Use the directory containing state.db.",,active
-settings.data_dirs.placeholder,ui,SettingsPage,DataDirectoriesSection,placeholder,"Default path",,active
-settings.data_dirs.save,ui,SettingsPage,DataDirectoriesSection,save,"Save",,active
-settings.data_dirs.saving,ui,SettingsPage,DataDirectoriesSection,saving,"Saving",,active
-settings.data_dirs.saved,ui,SettingsPage,DataDirectoriesSection,saved,"Saved locally. Run sync to apply changes.",,active
-settings.data_dirs.load_error,ui,SettingsPage,DataDirectoriesSection,load_error,"Unable to load local settings.",,active
-settings.data_dirs.save_error,ui,SettingsPage,DataDirectoriesSection,save_error,"Unable to save local settings.",,active
-settings.section.agent_pricing,ui,SettingsPage,AgentPricingSection,sec_agent_pricing,"Agent Default Pricing",,active
-settings.agent_pricing.subtitle,ui,SettingsPage,AgentPricingSection,subtitle,"MVP local prices. Each agent uses one input and output price per 1M tokens.",,active
+settings.section.data_dirs,ui,SettingsPage,DataDirectoriesSection,sec_data_dirs,"数据目录",,active
+settings.data_dirs.subtitle,ui,SettingsPage,DataDirectoriesSection,subtitle,"本地路径配置，用于 Windows 和 WSL 用量日志。",,active
+settings.data_dirs.claude,ui,SettingsPage,DataDirectoriesSection,claude_label,"Claude Code 数据目录",,active
+settings.data_dirs.claude_hint,ui,SettingsPage,DataDirectoriesSection,claude_hint,"留空则使用 ~/.claude。WSL 路径示例：\\wsl.localhost\\Ubuntu\\home\\user\\.claude。",,active
+settings.data_dirs.codex,ui,SettingsPage,DataDirectoriesSection,codex_label,"Codex 数据目录",,active
+settings.data_dirs.codex_hint,ui,SettingsPage,DataDirectoriesSection,codex_hint,"留空则使用 CODEX_HOME 或 ~/.codex。目录应包含 sessions 和 archived_sessions。",,active
+settings.data_dirs.hermes,ui,SettingsPage,DataDirectoriesSection,hermes_label,"Hermes Agent 数据目录",,active
+settings.data_dirs.hermes_hint,ui,SettingsPage,DataDirectoriesSection,hermes_hint,"留空则使用默认 Hermes 目录。请选择包含 state.db 的目录。",,active
+settings.data_dirs.placeholder,ui,SettingsPage,DataDirectoriesSection,placeholder,"默认路径",,active
+settings.data_dirs.save,ui,SettingsPage,DataDirectoriesSection,save,"保存",,active
+settings.data_dirs.saving,ui,SettingsPage,DataDirectoriesSection,saving,"保存中",,active
+settings.data_dirs.saved,ui,SettingsPage,DataDirectoriesSection,saved,"已保存到本地。运行同步以应用更改。",,active
+settings.data_dirs.load_error,ui,SettingsPage,DataDirectoriesSection,load_error,"无法加载本地设置。",,active
+settings.data_dirs.save_error,ui,SettingsPage,DataDirectoriesSection,save_error,"无法保存本地设置。",,active
+settings.data_dirs.select_folder,ui,SettingsPage,DataDirectoriesSection,select_folder,"选择文件夹",,active
+settings.data_dirs.selecting_folder,ui,SettingsPage,DataDirectoriesSection,selecting_folder,"选择中",,active
+settings.data_dirs.select_folder_unsupported,ui,SettingsPage,DataDirectoriesSection,select_folder_unsupported,"当前环境不支持直接选择本机目录，请手动输入路径。",,active
+settings.section.agent_pricing,ui,SettingsPage,AgentPricingSection,sec_agent_pricing,"Agent 默认计费",,active
+settings.agent_pricing.subtitle,ui,SettingsPage,AgentPricingSection,subtitle,"MVP 本地价格。每个 Agent 使用一组输入/输出单价，单位为每 100 万 token。",,active
 settings.agent_pricing.claude,ui,SettingsPage,AgentPricingSection,claude,"Claude Code",,active
 settings.agent_pricing.codex,ui,SettingsPage,AgentPricingSection,codex,"Codex",,active
 settings.agent_pricing.hermes,ui,SettingsPage,AgentPricingSection,hermes,"Hermes Agent",,active
-settings.agent_pricing.per_1m,ui,SettingsPage,AgentPricingSection,per_1m,"USD per 1M",,active
-settings.agent_pricing.input,ui,SettingsPage,AgentPricingSection,input,"Input",,active
-settings.agent_pricing.output,ui,SettingsPage,AgentPricingSection,output,"Output",,active
-settings.agent_pricing.save,ui,SettingsPage,AgentPricingSection,save,"Save",,active
-settings.agent_pricing.saving,ui,SettingsPage,AgentPricingSection,saving,"Saving",,active
-settings.agent_pricing.saved,ui,SettingsPage,AgentPricingSection,saved,"Saved locally. Refresh or sync usage to update costs.",,active
-settings.agent_pricing.load_error,ui,SettingsPage,AgentPricingSection,load_error,"Unable to load pricing settings.",,active
-settings.agent_pricing.save_error,ui,SettingsPage,AgentPricingSection,save_error,"Unable to save pricing settings.",,active
+settings.agent_pricing.per_1m,ui,SettingsPage,AgentPricingSection,per_1m,"每 100 万 token 美元价格",,active
+settings.agent_pricing.input,ui,SettingsPage,AgentPricingSection,input,"输入",,active
+settings.agent_pricing.output,ui,SettingsPage,AgentPricingSection,output,"输出",,active
+settings.agent_pricing.save,ui,SettingsPage,AgentPricingSection,save,"保存",,active
+settings.agent_pricing.saving,ui,SettingsPage,AgentPricingSection,saving,"保存中",,active
+settings.agent_pricing.saved,ui,SettingsPage,AgentPricingSection,saved,"已保存到本地。刷新或同步用量后成本会更新。",,active
+settings.agent_pricing.load_error,ui,SettingsPage,AgentPricingSection,load_error,"无法加载计费设置。",,active
+settings.agent_pricing.save_error,ui,SettingsPage,AgentPricingSection,save_error,"无法保存计费设置。",,active
 usage.cache_hit.tokens,dashboard,DashboardPage,UsageOverview,cache_tokens,"Cache hit tokens",,active
 usage.cache_hit.rate,dashboard,DashboardPage,UsageOverview,cache_rate,"Cache hit rate",,active
-settings.section.token_plan,ui,SettingsPage,TokenPlanSection,sec_token_plan,"Token Plan",,active
-settings.token_plan.subtitle,ui,SettingsPage,TokenPlanSection,subtitle,"MVP manual records only. Automatic refresh is deferred.",,active
-settings.token_plan.source,ui,SettingsPage,TokenPlanSection,source,"Source",,active
-settings.token_plan.plan_label,ui,SettingsPage,TokenPlanSection,plan_label,"Plan label",,active
-settings.token_plan.total_quota,ui,SettingsPage,TokenPlanSection,total_quota,"Total quota",,active
-settings.token_plan.used_quota,ui,SettingsPage,TokenPlanSection,used_quota,"Used quota",,active
-settings.token_plan.remaining_quota,ui,SettingsPage,TokenPlanSection,remaining_quota,"Remaining quota",,active
-settings.token_plan.expires_at,ui,SettingsPage,TokenPlanSection,expires_at,"Expires at",,active
-settings.token_plan.remaining,ui,SettingsPage,TokenPlanSection,remaining,"remaining",,active
-settings.token_plan.save,ui,SettingsPage,TokenPlanSection,save,"Save",,active
-settings.token_plan.saving,ui,SettingsPage,TokenPlanSection,saving,"Saving",,active
-settings.token_plan.saved,ui,SettingsPage,TokenPlanSection,saved,"Saved locally.",,active
-settings.token_plan.edit,ui,SettingsPage,TokenPlanSection,edit,"Edit",,active
-settings.token_plan.empty,ui,SettingsPage,TokenPlanSection,empty,"No manual token plans yet.",,active
-settings.token_plan.load_error,ui,SettingsPage,TokenPlanSection,load_error,"Unable to load token plans.",,active
-settings.token_plan.save_error,ui,SettingsPage,TokenPlanSection,save_error,"Unable to save token plan.",,active
-spend.page.title,dashboard,SpendPage,SpendPage,title,"Spend",,active
-spend.page.subtitle,dashboard,SpendPage,SpendPage,subtitle,"Manual MVP spend records. No monthly or yearly cycle conversion.",,active
-spend.total_usd,dashboard,SpendPage,SpendPage,total_usd,"Total USD",,active
-spend.total_cny,dashboard,SpendPage,SpendPage,total_cny,"Total CNY",,active
-spend.source,dashboard,SpendPage,SpendPage,source,"Source",,active
-spend.plan_label,dashboard,SpendPage,SpendPage,plan_label,"Plan label",,active
-spend.amount,dashboard,SpendPage,SpendPage,amount,"Amount",,active
-spend.currency,dashboard,SpendPage,SpendPage,currency,"Currency",,active
-spend.note,dashboard,SpendPage,SpendPage,note,"Note",,active
-spend.add,dashboard,SpendPage,SpendPage,add,"Add record",,active
-spend.saving,dashboard,SpendPage,SpendPage,saving,"Saving",,active
-spend.delete,dashboard,SpendPage,SpendPage,delete,"Delete record",,active
-spend.empty,dashboard,SpendPage,SpendPage,empty,"No spend records yet.",,active
-spend.load_error,dashboard,SpendPage,SpendPage,load_error,"Unable to load spend records.",,active
-spend.save_error,dashboard,SpendPage,SpendPage,save_error,"Unable to save spend record.",,active
-spend.delete_error,dashboard,SpendPage,SpendPage,delete_error,"Unable to delete spend record.",,active
-nav.spend,ui,Sidebar,Sidebar,spend,"Spend",,active
+settings.section.token_plan,ui,SettingsPage,TokenPlanSection,sec_token_plan,"Token 套餐",,active
+settings.token_plan.subtitle,ui,SettingsPage,TokenPlanSection,subtitle,"MVP 阶段仅支持手动记录，自动刷新后续再做。",,active
+settings.token_plan.source,ui,SettingsPage,TokenPlanSection,source,"来源",,active
+settings.token_plan.plan_label,ui,SettingsPage,TokenPlanSection,plan_label,"套餐名称",,active
+settings.token_plan.total_quota,ui,SettingsPage,TokenPlanSection,total_quota,"总额度",,active
+settings.token_plan.used_quota,ui,SettingsPage,TokenPlanSection,used_quota,"已用额度",,active
+settings.token_plan.remaining_quota,ui,SettingsPage,TokenPlanSection,remaining_quota,"剩余额度",,active
+settings.token_plan.expires_at,ui,SettingsPage,TokenPlanSection,expires_at,"到期时间",,active
+settings.token_plan.remaining,ui,SettingsPage,TokenPlanSection,remaining,"剩余",,active
+settings.token_plan.save,ui,SettingsPage,TokenPlanSection,save,"保存",,active
+settings.token_plan.saving,ui,SettingsPage,TokenPlanSection,saving,"保存中",,active
+settings.token_plan.saved,ui,SettingsPage,TokenPlanSection,saved,"已保存到本地。",,active
+settings.token_plan.edit,ui,SettingsPage,TokenPlanSection,edit,"编辑",,active
+settings.token_plan.empty,ui,SettingsPage,TokenPlanSection,empty,"暂无手动 Token 套餐记录。",,active
+settings.token_plan.load_error,ui,SettingsPage,TokenPlanSection,load_error,"无法加载 Token 套餐。",,active
+settings.token_plan.save_error,ui,SettingsPage,TokenPlanSection,save_error,"无法保存 Token 套餐。",,active
+spend.page.title,dashboard,SpendPage,SpendPage,title,"支出",,active
+spend.page.subtitle,dashboard,SpendPage,SpendPage,subtitle,"MVP 手动支出记录，暂不做月付/年付周期换算。",,active
+spend.total_usd,dashboard,SpendPage,SpendPage,total_usd,"USD 合计",,active
+spend.total_cny,dashboard,SpendPage,SpendPage,total_cny,"CNY 合计",,active
+spend.source,dashboard,SpendPage,SpendPage,source,"来源",,active
+spend.plan_label,dashboard,SpendPage,SpendPage,plan_label,"套餐名称",,active
+spend.amount,dashboard,SpendPage,SpendPage,amount,"金额",,active
+spend.currency,dashboard,SpendPage,SpendPage,currency,"币种",,active
+spend.note,dashboard,SpendPage,SpendPage,note,"备注",,active
+spend.add,dashboard,SpendPage,SpendPage,add,"添加记录",,active
+spend.saving,dashboard,SpendPage,SpendPage,saving,"保存中",,active
+spend.delete,dashboard,SpendPage,SpendPage,delete,"删除记录",,active
+spend.empty,dashboard,SpendPage,SpendPage,empty,"暂无支出记录。",,active
+spend.load_error,dashboard,SpendPage,SpendPage,load_error,"无法加载支出记录。",,active
+spend.save_error,dashboard,SpendPage,SpendPage,save_error,"无法保存支出记录。",,active
+spend.delete_error,dashboard,SpendPage,SpendPage,delete_error,"无法删除支出记录。",,active
+nav.spend,ui,Sidebar,Sidebar,spend,"支出",,active

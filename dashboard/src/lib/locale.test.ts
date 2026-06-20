@@ -5,70 +5,56 @@ import {
   KO_LOCALE,
   ZH_CN_LOCALE,
   ZH_TW_LOCALE,
+  normalizeLocalePreference,
   normalizeResolvedLocale,
   resolvePreferredLocale,
   SYSTEM_LOCALE,
 } from "./locale";
 
-describe("resolvePreferredLocale (system / Default)", () => {
-  it("uses Simplified Chinese when the primary preferred language is a Simplified zh tag", () => {
+describe("resolvePreferredLocale (Chinese-only MVP)", () => {
+  it("uses Simplified Chinese for system languages", () => {
     expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh-Hans-CN", "en-US"])).toBe(ZH_CN_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh"])).toBe(ZH_CN_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh-CN"])).toBe(ZH_CN_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh-SG"])).toBe(ZH_CN_LOCALE);
+    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh-TW"])).toBe(ZH_CN_LOCALE);
+    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["ja-JP"])).toBe(ZH_CN_LOCALE);
+    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["ko-KR"])).toBe(ZH_CN_LOCALE);
+    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["en-US", "zh-Hans-CN"])).toBe(ZH_CN_LOCALE);
+    expect(resolvePreferredLocale(SYSTEM_LOCALE, [])).toBe(ZH_CN_LOCALE);
   });
 
-  it("uses Traditional Chinese for Hant script or Taiwan/Hong Kong/Macau regions", () => {
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh-TW"])).toBe(ZH_TW_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh-Hant"])).toBe(ZH_TW_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh-Hant-HK", "en-US"])).toBe(ZH_TW_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["zh-MO"])).toBe(ZH_TW_LOCALE);
-  });
-
-  it("uses English when the primary preferred language is en, even if zh is in the list (issue #54)", () => {
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["en-US", "zh-Hans-CN"])).toBe(EN_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["en", "zh-Hans", "ja"])).toBe(EN_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["en-GB", "zh-CN", "fr-FR"])).toBe(EN_LOCALE);
-  });
-
-  it("falls back to English when languages list is empty", () => {
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, [])).toBe(EN_LOCALE);
-  });
-
-  it("uses Japanese or Korean when the primary preferred language is ja/ko", () => {
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["ja-JP", "en-US"])).toBe(JA_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["ja"])).toBe(JA_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["ko-KR"])).toBe(KO_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["ko"])).toBe(KO_LOCALE);
-  });
-
-  it("uses English for any other unsupported primary language", () => {
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["fr-FR"])).toBe(EN_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["it-IT"])).toBe(EN_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["de"])).toBe(EN_LOCALE);
-  });
-
-  it("ignores empty/whitespace primary entry and treats next as primary", () => {
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["", "zh-CN"])).toBe(ZH_CN_LOCALE);
-    expect(resolvePreferredLocale(SYSTEM_LOCALE, ["   ", "en-US"])).toBe(EN_LOCALE);
-  });
-
-  it("respects explicit non-system preferences without consulting the languages list", () => {
-    expect(resolvePreferredLocale("en", ["zh-CN"])).toBe(EN_LOCALE);
+  it("normalizes legacy explicit preferences to Simplified Chinese", () => {
+    expect(resolvePreferredLocale("en", ["zh-CN"])).toBe(ZH_CN_LOCALE);
     expect(resolvePreferredLocale("zh-CN", ["en-US"])).toBe(ZH_CN_LOCALE);
-    expect(resolvePreferredLocale("zh-TW", ["en-US"])).toBe(ZH_TW_LOCALE);
+    expect(resolvePreferredLocale("zh-TW", ["en-US"])).toBe(ZH_CN_LOCALE);
+    expect(resolvePreferredLocale("ja", ["en-US"])).toBe(ZH_CN_LOCALE);
+    expect(resolvePreferredLocale("ko", ["en-US"])).toBe(ZH_CN_LOCALE);
   });
 });
 
 describe("normalizeResolvedLocale", () => {
-  it("keeps Simplified and Traditional Chinese distinct", () => {
+  it("keeps old locale constants as Simplified Chinese compatibility aliases", () => {
+    expect(EN_LOCALE).toBe(ZH_CN_LOCALE);
+    expect(ZH_TW_LOCALE).toBe(ZH_CN_LOCALE);
+    expect(JA_LOCALE).toBe(ZH_CN_LOCALE);
+    expect(KO_LOCALE).toBe(ZH_CN_LOCALE);
+  });
+
+  it("maps every resolved locale to Simplified Chinese", () => {
     expect(normalizeResolvedLocale("zh-CN")).toBe(ZH_CN_LOCALE);
-    expect(normalizeResolvedLocale("zh-TW")).toBe(ZH_TW_LOCALE);
-    expect(normalizeResolvedLocale("zh-Hant")).toBe(ZH_TW_LOCALE);
-    expect(normalizeResolvedLocale("zh")).toBe(ZH_CN_LOCALE);
-    expect(normalizeResolvedLocale("ja-JP")).toBe(JA_LOCALE);
-    expect(normalizeResolvedLocale("ko")).toBe(KO_LOCALE);
-    expect(normalizeResolvedLocale("en")).toBe(EN_LOCALE);
-    expect(normalizeResolvedLocale(null)).toBe(EN_LOCALE);
+    expect(normalizeResolvedLocale("zh-TW")).toBe(ZH_CN_LOCALE);
+    expect(normalizeResolvedLocale("zh-Hant")).toBe(ZH_CN_LOCALE);
+    expect(normalizeResolvedLocale("ja-JP")).toBe(ZH_CN_LOCALE);
+    expect(normalizeResolvedLocale("ko")).toBe(ZH_CN_LOCALE);
+    expect(normalizeResolvedLocale("en")).toBe(ZH_CN_LOCALE);
+    expect(normalizeResolvedLocale(null)).toBe(ZH_CN_LOCALE);
+  });
+});
+
+describe("normalizeLocalePreference", () => {
+  it("preserves system and maps stored legacy choices to Simplified Chinese", () => {
+    expect(normalizeLocalePreference(SYSTEM_LOCALE)).toBe(SYSTEM_LOCALE);
+    expect(normalizeLocalePreference("en")).toBe(ZH_CN_LOCALE);
+    expect(normalizeLocalePreference("zh-TW")).toBe(ZH_CN_LOCALE);
+    expect(normalizeLocalePreference("ja")).toBe(ZH_CN_LOCALE);
+    expect(normalizeLocalePreference("ko")).toBe(ZH_CN_LOCALE);
   });
 });

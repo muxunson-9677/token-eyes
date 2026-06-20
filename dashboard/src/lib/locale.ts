@@ -2,29 +2,19 @@ import { safeGetItem, safeSetItem } from "./safe-browser";
 
 export const LOCALE_STORAGE_KEY = "tokentracker-locale";
 export const SYSTEM_LOCALE = "system";
-export const EN_LOCALE = "en";
 export const ZH_CN_LOCALE = "zh-CN";
-export const ZH_TW_LOCALE = "zh-TW";
-export const JA_LOCALE = "ja";
-export const KO_LOCALE = "ko";
+export const EN_LOCALE = ZH_CN_LOCALE;
+export const ZH_TW_LOCALE = ZH_CN_LOCALE;
+export const JA_LOCALE = ZH_CN_LOCALE;
+export const KO_LOCALE = ZH_CN_LOCALE;
 
-// Traditional-Chinese script (Hant) or Traditional-Chinese regions (Taiwan, Hong Kong, Macau).
-// Everything else under zh-* (zh, zh-Hans, zh-CN, zh-SG, …) resolves to Simplified.
-const TRADITIONAL_CHINESE_TAG = /^zh[-_](hant|tw|hk|mo)\b/i;
-
-// Map a BCP-47-ish language tag to a supported resolved locale, or null if unsupported.
 function classifyLanguageTag(tag: string): string | null {
-  if (/^zh(?:[-_]|$)/i.test(tag)) {
-    return TRADITIONAL_CHINESE_TAG.test(tag) ? ZH_TW_LOCALE : ZH_CN_LOCALE;
-  }
-  if (/^ja(?:[-_]|$)/i.test(tag)) return JA_LOCALE;
-  if (/^ko(?:[-_]|$)/i.test(tag)) return KO_LOCALE;
-  return null;
+  return tag.trim() ? ZH_CN_LOCALE : null;
 }
 
 export function normalizeResolvedLocale(value: any) {
-  if (typeof value !== "string") return EN_LOCALE;
-  return classifyLanguageTag(value.trim()) || EN_LOCALE;
+  if (typeof value !== "string") return ZH_CN_LOCALE;
+  return classifyLanguageTag(value) || ZH_CN_LOCALE;
 }
 
 export function normalizeLocalePreference(value: any) {
@@ -42,16 +32,11 @@ function getBrowserLanguages() {
 
 export function resolvePreferredLocale(preference: any, languages = getBrowserLanguages()) {
   const normalized = normalizeLocalePreference(preference);
-  if (normalized !== SYSTEM_LOCALE) return normalized;
-  // Use only the primary (most preferred) language, not any zh entry in the list.
-  // Many English macOS users keep zh-Hans-CN as a secondary language for input methods or
-  // fallback menus — scanning the whole array mis-resolves their primary "en" to Chinese.
-  // See issue #54.
+  if (normalized !== SYSTEM_LOCALE) return ZH_CN_LOCALE;
   const primary = languages
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .find((value) => value.length > 0);
-  if (!primary) return EN_LOCALE;
-  return classifyLanguageTag(primary) || EN_LOCALE;
+  return classifyLanguageTag(primary || "") || ZH_CN_LOCALE;
 }
 
 export function getInitialLocalePreference() {

@@ -36,19 +36,20 @@ it("loads, edits, and saves manual token plan records", async () => {
   const user = userEvent.setup();
   render(<TokenPlanSection />);
 
+  expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
   await screen.findByText(/claude \/ Max/i);
   await act(async () => {
-    await user.click(screen.getByRole("button", { name: /Edit/i }));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
   });
 
-  const planLabel = screen.getByLabelText(/Plan label/i);
+  const planLabel = screen.getByLabelText("套餐名称");
   await act(async () => {
     await user.clear(planLabel);
     await user.type(planLabel, "Max updated");
   });
 
   await act(async () => {
-    await user.click(screen.getByRole("button", { name: /Save/i }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
   });
 
   await waitFor(() => {
@@ -62,5 +63,5 @@ it("loads, edits, and saves manual token plan records", async () => {
       expires_at: "2026-12-31",
     });
   });
-  expect(await screen.findByText(/Saved locally/i)).toBeInTheDocument();
+  expect(await screen.findByText("已保存到本地。")).toBeInTheDocument();
 });

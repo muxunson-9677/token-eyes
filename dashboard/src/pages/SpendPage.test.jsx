@@ -35,18 +35,18 @@ it("adds spend records and updates totals without refresh", async () => {
   const user = userEvent.setup();
   render(<SpendPage />);
 
-  await screen.findByText(/No spend records yet/i);
+  await screen.findByText("暂无支出记录。");
 
   await act(async () => {
-    await user.type(screen.getByLabelText(/Source/i), "claude");
-    await user.type(screen.getByLabelText(/Plan label/i), "Max");
-    await user.clear(screen.getByLabelText(/Amount/i));
-    await user.type(screen.getByLabelText(/Amount/i), "10");
-    await user.type(screen.getByLabelText(/Note/i), "manual");
+    await user.type(screen.getByLabelText("来源"), "claude");
+    await user.type(screen.getByLabelText("套餐名称"), "Max");
+    await user.clear(screen.getByLabelText("金额"));
+    await user.type(screen.getByLabelText("金额"), "10");
+    await user.type(screen.getByLabelText("备注"), "manual");
   });
 
   await act(async () => {
-    await user.click(screen.getByRole("button", { name: /Add record/i }));
+    await user.click(screen.getByRole("button", { name: "添加记录" }));
   });
 
   await waitFor(() => {

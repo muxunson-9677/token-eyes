@@ -45,7 +45,7 @@ export function SectionCard({ title, subtitle, action, children }) {
     <Card>
       <div className="mb-3 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
+          <h2 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 tracking-wide">
             {title}
           </h2>
           {subtitle ? (

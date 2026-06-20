@@ -29,6 +29,7 @@ const PATHS = {
   localSync: "tokentracker-local-sync",
   usageLimits: "tokentracker-usage-limits",
   localSettings: "tokentracker-local-settings",
+  selectDirectory: "tokentracker-select-directory",
   tokenPlans: "tokentracker-token-plans",
   spendRecords: "tokentracker-spend-records",
 };
@@ -178,6 +179,17 @@ export async function setLocalSettings(settings: AnyRecord = {}) {
       ...authHeaders,
     },
     body: JSON.stringify(settings),
+  });
+}
+
+export async function selectLocalDirectory() {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.selectDirectory, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      ...authHeaders,
+    },
   });
 }
 

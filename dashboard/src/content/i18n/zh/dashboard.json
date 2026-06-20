@@ -305,7 +305,7 @@
   "dashboard.expired_gate.title": "会话已过期",
   "dashboard.expired_gate.subtitle": "您的会话已过期。请重新登录以继续查看您的云端仪表盘。",
   "dashboard.expired_gate.button": "重新登录",
-  "shared.app_name": "Token Tracker",
+  "shared.app_name": "Token Eyes",
   "dashboard.auth_gate.hero_title": "让 AI 代理的每一笔 Token 消耗",
   "dashboard.auth_gate.hero_subtitle": "清晰透明、多端无缝掌控",
   "dashboard.auth_gate.desc": "为您在纯云端安全同步来自 Claude Code、Cursor、Gemini CLI 等全平台主流代理的 Token 额度、并发费用及耗时统计，提供前所未有的全景可视化数据分析。",

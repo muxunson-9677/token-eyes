@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { setCopyLocale } from "../../../lib/copy";
+import { copy, setCopyLocale } from "../../../lib/copy";
 import { EN_LOCALE, ZH_CN_LOCALE } from "../../../lib/locale";
 import { UsageLimitsPanel } from "./UsageLimitsPanel.jsx";
 
@@ -27,8 +27,8 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Cursor")).toBeInTheDocument();
     expect(screen.getByText(/Claude API returned 403/)).toBeInTheDocument();
-    expect(screen.getByText("Not connected")).toBeInTheDocument();
-    expect(screen.getByText("Plan")).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.status.not_connected"))).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.label.cursor_plan"))).toBeInTheDocument();
   });
 
   it("renders Kimi quota windows and not-connected state", () => {
@@ -47,11 +47,11 @@ describe("UsageLimitsPanel", () => {
     );
 
     expect(screen.getByText("Kimi")).toBeInTheDocument();
-    expect(screen.getByText("Weekly")).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.label.kimi_weekly"))).toBeInTheDocument();
     expect(screen.getByText("5h")).toBeInTheDocument();
-    expect(screen.getByText("Total")).toBeInTheDocument();
-    expect(screen.getByText("Parallel: 20")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Usage Limits\s*·\s*Used/ })).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.label.kimi_total"))).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.label.kimi_parallel", { count: 20 }))).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /使用限制\s*·\s*已用/ })).toBeInTheDocument();
     expect(screen.getByText("64%")).toBeInTheDocument();
     expect(screen.getByText("4%")).toBeInTheDocument();
     expect(screen.getByText("1%")).toBeInTheDocument();
@@ -59,7 +59,7 @@ describe("UsageLimitsPanel", () => {
     rerender(<UsageLimitsPanel kimi={{ configured: false }} order={["kimi"]} />);
 
     expect(screen.getByText("Kimi")).toBeInTheDocument();
-    expect(screen.getByText("Not connected")).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.status.not_connected"))).toBeInTheDocument();
   });
 
   it("appends plan_label to the provider title when present", () => {

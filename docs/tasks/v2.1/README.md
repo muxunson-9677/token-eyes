@@ -8,7 +8,10 @@
 
 - 三份计划文档已经放入 `docs/`。
 - V2 计划文档里的工单执行者已经从 Hermes 改为 Claude Code。
-- 飞书 MVP 初始化已完成: 已创建 `Token Eyes 进度表` / `V2.1工单` 表,并同步本轮 10 条工单记录。
+- 飞书 MVP 初始化已完成: 已创建 `Token Eyes 进度表` / `V2.1工单` 表。
+- 飞书表已按用户要求重建为 A-H 模块化进度跟进表,共 32 条记录。
+- V2.1 简化版任务标题统一带 `[MVP]` 前缀; 后续完整版任务不带该前缀。
+- 状态口径为 `待分派` / `已分派` / `执行中` / `待审核` / `已审核` / `打回` / `阻塞`; 审核通过的任务标 `已审核`,不再笼统标 `已完成`。
 - 当前工作区已经在 `codex-token-tracker-baseline` 分支迁移为 TokenTracker 基座。
 - 当前 package 名称应为 `tokentracker-cli`。
 - 基座已完成依赖安装、dashboard 构建、dashboard typecheck、CLI `-h` 烟测。

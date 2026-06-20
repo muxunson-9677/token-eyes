@@ -966,6 +966,58 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     return readLocalSettings();
   }
 
+  function selectDirectoryWithSystemDialog() {
+    if (process.platform !== "win32") {
+      return Promise.resolve({ ok: false, error: "Folder selection is only supported on Windows." });
+    }
+
+    const script = [
+      "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+      "Add-Type -AssemblyName System.Windows.Forms",
+      "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+      "$dialog.Description = 'Select data directory'",
+      "$dialog.ShowNewFolderButton = $true",
+      "$result = $dialog.ShowDialog()",
+      "if ($result -eq [System.Windows.Forms.DialogResult]::OK) {",
+      "  Write-Output $dialog.SelectedPath",
+      "}",
+    ].join("; ");
+
+    return new Promise((resolve) => {
+      const child = spawn("powershell.exe", [
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        script,
+      ], { windowsHide: false });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk.toString("utf8");
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+      child.on("error", (error) => {
+        resolve({ ok: false, error: error?.message || "Unable to open folder picker." });
+      });
+      child.on("close", (code) => {
+        const selectedPath = stdout.trim();
+        if (code === 0 && selectedPath) {
+          resolve({ ok: true, path: selectedPath });
+          return;
+        }
+        if (code === 0) {
+          resolve({ ok: true, cancelled: true });
+          return;
+        }
+        resolve({ ok: false, error: stderr.trim() || "Unable to open folder picker." });
+      });
+    });
+  }
+
   function getPricingOptions() {
     const config = readTrackerConfig();
     return { agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing) };
@@ -2106,6 +2158,20 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
         } catch (e) {
           json(res, { ok: false, error: e?.message || "Unable to save local settings" }, 500);
         }
+        return true;
+      }
+      json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return true;
+    }
+    // --- select directory (local-only helper for Token Eyes MVP settings) ---
+    if (p === "/functions/tokentracker-select-directory") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method === "POST") {
+        if (!isAuthorizedLocalMutation(req)) {
+          json(res, { ok: false, error: "Unauthorized" }, 401);
+          return true;
+        }
+        json(res, await selectDirectoryWithSystemDialog());
         return true;
       }
       json(res, { ok: false, error: "Method Not Allowed" }, 405);

@@ -302,6 +302,21 @@ internal sealed class DashboardWindow : Window
                             CurrencyChanged?.Invoke();
                         }
                     }
+                    else if (t.GetString() == "selectFolder")
+                    {
+                        var requestId = doc.RootElement.TryGetProperty("requestId", out var requestEl)
+                            ? requestEl.GetString()
+                            : null;
+                        var selectedPath = SelectFolderWithDialog();
+                        var payload = JsonSerializer.Serialize(new
+                        {
+                            type = "folderSelected",
+                            requestId,
+                            path = selectedPath,
+                            cancelled = string.IsNullOrWhiteSpace(selectedPath),
+                        });
+                        _webView.CoreWebView2.PostWebMessageAsJson(payload);
+                    }
                 }
                 catch { /* not a JSON message we handle */ }
                 return;
@@ -731,6 +746,19 @@ internal sealed class DashboardWindow : Window
     {
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
         catch { /* no default browser / malformed url */ }
+    }
+
+    private static string? SelectFolderWithDialog()
+    {
+        using var dialog = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "选择数据目录",
+            ShowNewFolderButton = true,
+            UseDescriptionForTitle = true,
+        };
+        return dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK
+            ? dialog.SelectedPath
+            : null;
     }
 
     protected override void OnClosing(CancelEventArgs e)
