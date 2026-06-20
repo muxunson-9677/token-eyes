@@ -124,3 +124,46 @@ it("uses JSON string messages for the Windows WebView2 folder picker bridge", as
   expect(postMessage).toHaveBeenCalledWith(expect.stringContaining('"type":"selectFolder"'));
   expect(screen.getByLabelText("Claude Code 数据目录")).toHaveValue("C:\\Users\\admin\\.claude");
 });
+
+it("handles C# PostWebMessageAsJson response as JSON string (real WebView2 behavior)", async () => {
+  const listeners = new Map();
+  const postMessage = vi.fn((message) => {
+    expect(typeof message).toBe("string");
+    const payload = JSON.parse(message);
+    expect(payload.type).toBe("selectFolder");
+    const handler = listeners.get("message");
+    // Simulate real WebView2 PostWebMessageAsJson: event.data is a JSON string,
+    // not an already-parsed object. This matches the C# response path in
+    // DashboardWindow.cs line 318: PostWebMessageAsJson(payload).
+    handler?.({
+      data: JSON.stringify({
+        type: "folderSelected",
+        requestId: payload.requestId,
+        path: "D:\\data\\.hermes",
+      }),
+    });
+  });
+  Object.defineProperty(window, "chrome", {
+    configurable: true,
+    value: {
+      webview: {
+        addEventListener: vi.fn((event, handler) => listeners.set(event, handler)),
+        removeEventListener: vi.fn((event) => listeners.delete(event)),
+        postMessage,
+      },
+    },
+  });
+  window.localStorage.setItem("tokentracker_native_app", "1");
+
+  const user = userEvent.setup();
+  render(<DataDirectoriesSection />);
+
+  const buttons = await screen.findAllByRole("button", { name: "选择文件夹" });
+  await act(async () => {
+    await user.click(buttons[2]); // Hermes Agent button
+  });
+
+  expect(selectLocalDirectory).not.toHaveBeenCalled();
+  expect(postMessage).toHaveBeenCalledWith(expect.stringContaining('"type":"selectFolder"'));
+  expect(screen.getByLabelText("Hermes Agent 数据目录")).toHaveValue("D:\\data\\.hermes");
+});

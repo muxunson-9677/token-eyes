@@ -59,3 +59,10 @@ test("Sidebar imports router APIs used by layout", () => {
   assert.equal(importedNames.includes("Link"), true, "Sidebar.jsx should import Link");
   assert.equal(importedNames.includes("useLocation"), true, "Sidebar.jsx should import useLocation");
 });
+
+test("Sidebar mobile brand uses the shared Token Eyes name", () => {
+  const sidebarPath = path.join(repoRoot, "dashboard/src/ui/components/Sidebar.jsx");
+  const source = fs.readFileSync(sidebarPath, "utf8");
+  assert.equal(source.includes('copy("shared.app_name")'), true, "mobile brand should use shared app name copy");
+  assert.equal(source.includes("Token Tracker"), false, "Sidebar should not expose the old brand name");
+});

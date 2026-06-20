@@ -413,11 +413,11 @@ function MobileTopBar({ onOpenDrawer }) {
       <Link
         to="/landing"
         className="flex items-center gap-2 no-underline hover:opacity-80 transition-opacity"
-        aria-label="Token Tracker"
+        aria-label={copy("shared.app_name")}
       >
         <img src="/app-icon.png" alt="" width={24} height={24} className="rounded-md" />
         <span className="text-sm font-semibold text-oai-black dark:text-oai-white">
-          Token Tracker
+          {copy("shared.app_name")}
         </span>
       </Link>
       <div className="w-10 shrink-0" aria-hidden />

@@ -28,7 +28,7 @@ git switch -c claude/te-mvp-win-07-folder-picker-verification
 Codex 已实现:
 
 - `dashboard/src/components/settings/DataDirectoriesSection.jsx`
-  - 优先通过 `window.chrome.webview.postMessage({ type: "selectFolder", requestId })` 请求 Windows WebView2 原生文件夹选择器。
+  - 优先通过 `window.chrome.webview.postMessage(JSON.stringify({ type: "selectFolder", requestId }))` 请求 Windows WebView2 原生文件夹选择器。必须发送 string,因为 C# 端使用 `TryGetWebMessageAsString()` 接收消息。
   - 如果不是 Windows WebView2,则 fallback 到 `selectLocalDirectory()` 本地 API。
 - `TokenTrackerWin/DashboardWindow.cs`
   - 处理 `selectFolder` 消息。
