@@ -6,7 +6,7 @@
 
 - 基准分支: `codex-token-tracker-baseline`
 - 实现分支: `codex/te-full-d04-agent-model-pricing-rules`
-- commit SHA: 见 `git log -1`（提交信息: `feat: add agent model pricing rules`）
+- commit SHA: `cef011d694fb9fc1c2804bf3797b238f432596a7`（提交信息: `feat: add agent model pricing rules`）
 
 > 说明: 任务派单原文使用 `claude/` 分支前缀，但实际执行方为 CodeBuddy，故改用 `codex/` 前缀以保持与仓库其它分支命名一致。
 
