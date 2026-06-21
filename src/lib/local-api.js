@@ -1104,40 +1104,191 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     return { record, records: readTokenPlanRecords() };
   }
 
+  const VALID_BILLING_CYCLES = new Set(["monthly", "yearly", "one_time"]);
+
   function normalizeSpendRecord(record, fallback = {}) {
     const input = record && typeof record === "object" ? record : {};
     const fallbackInput = fallback && typeof fallback === "object" ? fallback : {};
     const currency = String(input.currency ?? fallbackInput.currency ?? "USD").trim().toUpperCase();
     const amountValue = Number(input.amount ?? fallbackInput.amount ?? 0);
+    const billingCycle = String(input.billing_cycle ?? fallbackInput.billing_cycle ?? "monthly").trim().toLowerCase();
+    const startDate = String(input.start_date ?? fallbackInput.start_date ?? "").trim();
+    const endDate = String(input.end_date ?? fallbackInput.end_date ?? "").trim();
+    const now = new Date().toISOString();
+    // Validate start_date format YYYY-MM-DD, fallback to today
+    const isValidDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(new Date(`${d}T00:00:00Z`).getTime());
+    const today = new Date().toISOString().slice(0, 10);
     return {
       id: String(input.id ?? fallbackInput.id ?? crypto.randomUUID()).trim(),
       source: String(input.source ?? fallbackInput.source ?? "").trim(),
       plan_label: String(input.plan_label ?? fallbackInput.plan_label ?? "").trim(),
       amount: Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0,
       currency: currency === "CNY" ? "CNY" : "USD",
+      billing_cycle: VALID_BILLING_CYCLES.has(billingCycle) ? billingCycle : "monthly",
+      start_date: isValidDate(startDate) ? startDate : today,
+      end_date: isValidDate(endDate) ? endDate : (endDate === "" ? "" : ""),
       note: String(input.note ?? fallbackInput.note ?? "").trim(),
-      created_at: String(input.created_at ?? fallbackInput.created_at ?? new Date().toISOString()).trim(),
+      created_at: String(input.created_at ?? fallbackInput.created_at ?? now).trim(),
+      updated_at: String(input.updated_at ?? fallbackInput.updated_at ?? now).trim(),
     };
   }
 
-  function summarizeSpendRecords(records) {
-    const usdToCny = getUsdToCny();
-    let totalUsd = 0;
-    for (const record of records) {
-      if (record.currency === "CNY") totalUsd += record.amount / usdToCny;
-      else totalUsd += record.amount;
+  /**
+   * Compute subscription cost for a single record within [from, to] month range.
+   * Returns USD amount contributed by this record.
+   */
+  function computeSubscriptionCostForRange(record, fromDate, toDate, usdToCny) {
+    const amountUsd = record.currency === "CNY" ? record.amount / usdToCny : record.amount;
+    const cycle = record.billing_cycle;
+
+    // Determine record effective range
+    const recStart = new Date(`${record.start_date}T00:00:00Z`);
+    const recEnd = record.end_date ? new Date(`${record.end_date}T00:00:00Z`) : toDate;
+
+    // one_time: count only if start_date falls within [from, to]
+    if (cycle === "one_time") {
+      if (recStart >= fromDate && recStart <= toDate) return amountUsd;
+      return 0;
     }
+
+    // monthly/yearly: count for each overlapping natural month
+    let total = 0;
+    const monthlyAmount = cycle === "yearly" ? amountUsd / 12 : amountUsd;
+
+    // Iterate over natural months in [from, to]
+    const iter = new Date(fromDate);
+    while (iter <= toDate) {
+      const monthStart = new Date(iter);
+      const monthEnd = new Date(Date.UTC(iter.getUTCFullYear(), iter.getUTCMonth() + 1, 0));
+      monthEnd.setUTCHours(23, 59, 59, 999);
+
+      // Check if record's effective range overlaps this month
+      if (recStart <= monthEnd && recEnd >= monthStart) {
+        total += monthlyAmount;
+      }
+
+      // Move to next month
+      iter.setUTCMonth(iter.getUTCMonth() + 1);
+    }
+
+    return total;
+  }
+
+  /**
+   * Compute API cost from queue rows for a given date range and source filter.
+   * Returns USD cost.
+   */
+  function computeApiCostForRange(fromDate, toDate, source, timeZoneContext) {
+    try {
+      const allRows = readQueueData(qp);
+      const rows = source
+        ? allRows.filter((r) => (r.source || "").toLowerCase() === source.toLowerCase())
+        : allRows;
+      const pricingOptions = getPricingOptions();
+      const daily = aggregateByDay(rows, timeZoneContext, pricingOptions).filter((d) => d.day >= fromDate.toISOString().slice(0, 10) && d.day <= toDate.toISOString().slice(0, 10));
+      return daily.reduce((sum, d) => sum + (d.total_cost_usd || 0), 0);
+    } catch (e) {
+      // If queue data is unavailable, return 0 (no API cost data)
+      return 0;
+    }
+  }
+
+  function summarizeSpendRecords(records, fromStr, toStr, timeZoneContext) {
+    const usdToCny = getUsdToCny();
+    const today = new Date();
+
+    // Default to current month if no from/to
+    const fromDate = fromStr ? new Date(`${fromStr}T00:00:00Z`) : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const toDate = toStr ? new Date(`${toStr}T00:00:00Z`) : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+    toDate.setUTCHours(23, 59, 59, 999);
+
+    // Lifetime range: from epoch to today
+    const lifetimeFrom = new Date("2000-01-01T00:00:00Z");
+    const lifetimeTo = new Date();
+    lifetimeTo.setUTCHours(23, 59, 59, 999);
+
+    // Period subscription totals
+    let periodSubscriptionUsd = 0;
+    let lifetimeSubscriptionUsd = 0;
+
+    // by_source: { source -> { subscription_usd, api_usd } }
+    const bySourceMap = new Map();
+
+    for (const record of records) {
+      const src = (record.source || "unknown").toLowerCase();
+      if (!bySourceMap.has(src)) {
+        bySourceMap.set(src, { source: src, subscription_usd: 0, api_usd: 0 });
+      }
+      const periodCost = computeSubscriptionCostForRange(record, fromDate, toDate, usdToCny);
+      const lifetimeCost = computeSubscriptionCostForRange(record, lifetimeFrom, lifetimeTo, usdToCny);
+      periodSubscriptionUsd += periodCost;
+      lifetimeSubscriptionUsd += lifetimeCost;
+      bySourceMap.get(src).subscription_usd += periodCost;
+    }
+
+    // Period API cost (all sources)
+    const periodApiUsd = computeApiCostForRange(fromDate, toDate, null, timeZoneContext);
+
+    // Lifetime API cost
+    const lifetimeApiUsd = computeApiCostForRange(lifetimeFrom, lifetimeTo, null, timeZoneContext);
+
+    // Per-source API cost
+    for (const [src, entry] of bySourceMap) {
+      entry.api_usd = computeApiCostForRange(fromDate, toDate, src, timeZoneContext);
+    }
+
+    const periodSubscriptionCny = periodSubscriptionUsd * usdToCny;
+    const periodApiCny = periodApiUsd * usdToCny;
+    const periodCombinedUsd = periodSubscriptionUsd + periodApiUsd;
+    const periodCombinedCny = periodCombinedUsd * usdToCny;
+
+    const lifetimeSubscriptionCny = lifetimeSubscriptionUsd * usdToCny;
+    const lifetimeApiCny = lifetimeApiUsd * usdToCny;
+    const lifetimeCombinedUsd = lifetimeSubscriptionUsd + lifetimeApiUsd;
+    const lifetimeCombinedCny = lifetimeCombinedUsd * usdToCny;
+
+    const round6 = (v) => Number(v.toFixed(6));
+
+    // Build by_source array
+    const bySource = Array.from(bySourceMap.values())
+      .sort((a, b) => a.source.localeCompare(b.source))
+      .map((entry) => ({
+        source: entry.source,
+        subscription_usd: round6(entry.subscription_usd),
+        subscription_cny: round6(entry.subscription_usd * usdToCny),
+        api_usd: round6(entry.api_usd),
+        api_cny: round6(entry.api_usd * usdToCny),
+        combined_usd: round6(entry.subscription_usd + entry.api_usd),
+        combined_cny: round6((entry.subscription_usd + entry.api_usd) * usdToCny),
+      }));
+
     return {
-      total_usd: Number(totalUsd.toFixed(6)),
-      total_cny: Number((totalUsd * usdToCny).toFixed(6)),
+      totals: {
+        subscription_usd: round6(periodSubscriptionUsd),
+        subscription_cny: round6(periodSubscriptionCny),
+        api_usd: round6(periodApiUsd),
+        api_cny: round6(periodApiCny),
+        combined_usd: round6(periodCombinedUsd),
+        combined_cny: round6(periodCombinedCny),
+        lifetime_subscription_usd: round6(lifetimeSubscriptionUsd),
+        lifetime_subscription_cny: round6(lifetimeSubscriptionCny),
+        lifetime_api_usd: round6(lifetimeApiUsd),
+        lifetime_api_cny: round6(lifetimeApiCny),
+        lifetime_combined_usd: round6(lifetimeCombinedUsd),
+        lifetime_combined_cny: round6(lifetimeCombinedCny),
+        // Backward-compatible legacy fields
+        total_usd: round6(periodCombinedUsd),
+        total_cny: round6(periodCombinedCny),
+      },
+      by_source: bySource,
     };
   }
 
-  function readSpendRecords() {
+  function readSpendRecords(fromStr, toStr, timeZoneContext) {
     const config = readTrackerConfig();
     const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
     const normalized = records.map((record) => normalizeSpendRecord(record));
-    return { records: normalized, totals: summarizeSpendRecords(normalized) };
+    return { records: normalized, ...summarizeSpendRecords(normalized, fromStr, toStr, timeZoneContext) };
   }
 
   function createSpendRecord(body) {
@@ -1148,9 +1299,52 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
       error.statusCode = 400;
       throw error;
     }
+    if (!(Number.isFinite(record.amount) && record.amount > 0)) {
+      const error = new Error("amount must be greater than 0");
+      error.statusCode = 400;
+      throw error;
+    }
     const config = readTrackerConfig();
     const current = Array.isArray(config.spendRecords) ? config.spendRecords : [];
     config.spendRecords = [record, ...current];
+    writeTrackerConfig(config);
+    return { record, ...readSpendRecords() };
+  }
+
+  function updateSpendRecord(body) {
+    const payload = body && typeof body === "object" ? body : {};
+    const id = String(payload.id || "").trim();
+    if (!id) {
+      const error = new Error("id is required for update");
+      error.statusCode = 400;
+      throw error;
+    }
+    const config = readTrackerConfig();
+    const current = Array.isArray(config.spendRecords) ? config.spendRecords : [];
+    const existingIndex = current.findIndex((r) => String(r?.id || "") === id);
+    if (existingIndex < 0) {
+      const error = new Error("record not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const existing = current[existingIndex];
+    const record = normalizeSpendRecord(payload, existing);
+    if (!record.source || !record.plan_label) {
+      const error = new Error("source and plan_label are required");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!(Number.isFinite(record.amount) && record.amount > 0)) {
+      const error = new Error("amount must be greater than 0");
+      error.statusCode = 400;
+      throw error;
+    }
+    // Preserve id and created_at from existing, refresh updated_at
+    record.id = id;
+    record.created_at = existing.created_at || record.created_at;
+    record.updated_at = new Date().toISOString();
+    current[existingIndex] = record;
+    config.spendRecords = current;
     writeTrackerConfig(config);
     return { record, ...readSpendRecords() };
   }
@@ -2114,11 +2308,14 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
       return true;
     }
 
-    // --- spend records (MVP manual local records; no billing-cycle conversion) ---
+    // --- spend records (full CRUD + billing-cycle-aware monthly/lifetime summary) ---
     if (p === "/functions/tokentracker-spend-records") {
       const method = String(req.method || "GET").toUpperCase();
       if (method === "GET") {
-        json(res, readSpendRecords());
+        const from = url.searchParams.get("from") || "";
+        const to = url.searchParams.get("to") || "";
+        const timeZoneContext = getTimeZoneContext(url);
+        json(res, readSpendRecords(from, to, timeZoneContext));
         return true;
       }
       if (method === "POST") {
@@ -2131,6 +2328,19 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
           json(res, { ok: true, ...createSpendRecord(body) });
         } catch (e) {
           json(res, { ok: false, error: e?.message || "Unable to save spend record" }, e?.statusCode || 500);
+        }
+        return true;
+      }
+      if (method === "PUT") {
+        if (!isAuthorizedLocalMutation(req)) {
+          json(res, { ok: false, error: "Unauthorized" }, 401);
+          return true;
+        }
+        try {
+          const body = await readJsonBody(req);
+          json(res, { ok: true, ...updateSpendRecord(body) });
+        } catch (e) {
+          json(res, { ok: false, error: e?.message || "Unable to update spend record" }, e?.statusCode || 500);
         }
         return true;
       }

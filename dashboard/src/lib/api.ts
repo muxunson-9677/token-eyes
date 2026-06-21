@@ -210,14 +210,27 @@ export async function saveTokenPlan(record: AnyRecord = {}) {
   });
 }
 
-export async function getSpendRecords() {
-  return fetchLocalJson(PATHS.spendRecords);
+export async function getSpendRecords(params?: AnyRecord) {
+  return fetchLocalJson(PATHS.spendRecords, params);
 }
 
 export async function createSpendRecord(record: AnyRecord = {}) {
   const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.spendRecords, undefined, {
     method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify(record),
+  });
+}
+
+export async function updateSpendRecord(record: AnyRecord = {}) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.spendRecords, undefined, {
+    method: "PUT",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
