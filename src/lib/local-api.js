@@ -49,6 +49,8 @@ const {
 
 const { computeCodexContextBreakdown } = require("./codex-context-breakdown");
 
+const tokenPlanRefresh = require("./token-plan-refresh");
+
 // ---------------------------------------------------------------------------
 // Queue data helpers
 // ---------------------------------------------------------------------------
@@ -1066,6 +1068,12 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
       const numberValue = Number(value);
       return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
     };
+    // F03: merge auto-refresh fields. `ensureStatusFields` 补全 next_refresh_at。
+    const refreshFields = tokenPlanRefresh.ensureStatusFields({
+      ...tokenPlanRefresh.normalizeRefreshFields(input, fallbackInput),
+      id: String(input.id ?? fallbackInput.id ?? crypto.randomUUID()).trim(),
+      source,
+    });
     return {
       id: String(input.id ?? fallbackInput.id ?? crypto.randomUUID()).trim(),
       source,
@@ -1074,6 +1082,14 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
       used_quota: numberField("used_quota"),
       remaining_quota: numberField("remaining_quota"),
       expires_at: expiresAt,
+      refresh_enabled: refreshFields.refresh_enabled,
+      refresh_interval_minutes: refreshFields.refresh_interval_minutes,
+      refresh_method: refreshFields.refresh_method,
+      credential_ref: refreshFields.credential_ref,
+      last_refresh_status: refreshFields.last_refresh_status,
+      last_refresh_error: refreshFields.last_refresh_error,
+      last_refresh_at: refreshFields.last_refresh_at,
+      next_refresh_at: refreshFields.next_refresh_at,
     };
   }
 
@@ -1105,6 +1121,36 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
   }
 
   const VALID_BILLING_CYCLES = new Set(["monthly", "yearly", "one_time"]);
+
+  function writeAllTokenPlanRecords(records) {
+    const config = readTrackerConfig();
+    config.tokenPlans = Array.isArray(records) ? records : [];
+    writeTrackerConfig(config);
+  }
+
+  // F03: 单进程调度器。readAll/upsertAll 注入本地存储；定时器在 start() 后
+  // 通过 timer.unref() 不阻塞进程退出。serve.js 启动时调用 startTokenPlanScheduler()。
+  const tokenPlanScheduler = tokenPlanRefresh.createScheduler({
+    readAll: () => readTokenPlanRecords(),
+    upsertAll: (records) => writeAllTokenPlanRecords(records),
+    logger: console,
+  });
+
+  function startTokenPlanScheduler() {
+    if (typeof tokenPlanScheduler.start === "function") tokenPlanScheduler.start();
+  }
+
+  function stopTokenPlanScheduler() {
+    if (typeof tokenPlanScheduler.stop === "function") tokenPlanScheduler.stop();
+  }
+
+  async function runTokenPlanRefreshById(id) {
+    return tokenPlanScheduler.refreshById(id);
+  }
+
+  async function runTokenPlanDueRefresh() {
+    return tokenPlanScheduler.runDueOnce();
+  }
 
   function normalizeSpendRecord(record, fallback = {}) {
     const input = record && typeof record === "object" ? record : {};
@@ -2386,7 +2432,7 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
       json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return true;
     }
-    // --- token plans (MVP manual local records; no refresh, no credentials) ---
+    // --- token plans (F03: 支持 auto refresh 字段与手动 refresh endpoint) ---
     if (p === "/functions/tokentracker-token-plans") {
       const method = String(req.method || "GET").toUpperCase();
       if (method === "GET") {
@@ -2407,6 +2453,35 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
         return true;
       }
       json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return true;
+    }
+    // --- token plans refresh (F03: 手动触发单个 plan 的刷新) ---
+    if (p === "/functions/tokentracker-token-plans-refresh") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method !== "POST") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const id = String(body?.id || "").trim();
+        if (!id) {
+          json(res, { ok: false, error: "id is required" }, 400);
+          return true;
+        }
+        const result = await runTokenPlanRefreshById(id);
+        if (!result.ok) {
+          json(res, { ok: false, error: result.error }, result.statusCode || 500);
+          return true;
+        }
+        json(res, { ok: true, plan: result.plan, records: readTokenPlanRecords() });
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || "Unable to refresh token plan" }, e?.statusCode || 500);
+      }
       return true;
     }
     // --- local settings (machine-only; never uploaded) ---
@@ -2731,6 +2806,14 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
 
     return false;
   };
+
+  // F03: 把调度器控制方法挂到 handler 上，供 serve.js 启动时调用。
+  handleLocalApi.startTokenPlanScheduler = startTokenPlanScheduler;
+  handleLocalApi.stopTokenPlanScheduler = stopTokenPlanScheduler;
+  handleLocalApi.runTokenPlanDueRefresh = runTokenPlanDueRefresh;
+  handleLocalApi.runTokenPlanRefreshById = runTokenPlanRefreshById;
+
+  return handleLocalApi;
 }
 
 module.exports = {

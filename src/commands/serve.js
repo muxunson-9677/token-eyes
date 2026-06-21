@@ -94,6 +94,16 @@ async function cmdServe(argv) {
   // 3. Create handler
   const handleApi = createLocalApiHandler({ queuePath });
 
+  // 3.1 F03: Token Plan 自动刷新调度器。
+  //     启动时做一次 due refresh（不阻塞监听），然后启动后台定时器。
+  //     定时器使用 unref，进程退出时不会 hang。
+  try {
+    await handleApi.runTokenPlanDueRefresh();
+  } catch (e) {
+    process.stdout.write(`Token plan due refresh warning: ${e?.message || e}\n`);
+  }
+  handleApi.startTokenPlanScheduler();
+
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -181,6 +191,7 @@ async function cmdServe(argv) {
   // 5. Graceful shutdown
   const shutdown = () => {
     process.stdout.write("\nShutting down...\n");
+    try { handleApi.stopTokenPlanScheduler(); } catch (_e) {}
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000);
   };
