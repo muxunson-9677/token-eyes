@@ -2,9 +2,9 @@
 
 ## 分支和提交
 
-- **分支**: `claude/te-full-d07-configurable-usd-cny-rate`
-- **基准 commit**: `c2c360b`
-- **最终 commit**: `c2c360b` (本地修改未提交)
+- **分支**: `claude/te-full-g04-spend-crud-summary`
+- **基准 commit**: `c2c360b` (from `claude/te-full-d07-configurable-usd-cny-rate`)
+- **最终 commit**: `117591c`
 
 ## 改动文件列表
 
