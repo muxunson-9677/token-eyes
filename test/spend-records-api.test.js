@@ -566,3 +566,83 @@ test("G04 rework: API-only source appears in by_source breakdown", async () => {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G04 Rework 2: timezone-aware source breakdown — API-only source must appear
+// when a queue row falls into the requested date window only after TZ adjustment.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("G04 rework 2: timezone-adjusted API-only source appears in by_source", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-spend-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queueFile = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+
+    const handler = createLocalApiHandler({
+      queuePath: queueFile,
+      trackerDataDir: trackerDir,
+    });
+
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    // Configure agentDefaultPricing for codex so API cost is non-zero
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ agentDefaultPricing: { codex: { inputUsdPer1M: 3, outputUsdPer1M: 15 } } }),
+    });
+
+    // Write a queue row whose hour_start is 2026-06-01T00:30:00.000Z.
+    // In UTC this is June 1, but in UTC-8 (tz_offset_minutes=-480) the local
+    // date is 2026-05-31.  The source=codex row must appear in by_source when
+    // querying from=2026-05-31&to=2026-05-31 with tz_offset_minutes=-480.
+    const queueEntry = JSON.stringify({
+      hour_start: "2026-06-01T00:30:00.000Z",
+      source: "codex",
+      model: "gpt-5.2-codex",
+      input_tokens: 1000000,
+      output_tokens: 1000000,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 2000000,
+      conversation_count: 1,
+    }) + "\n";
+    await fs.writeFile(queueFile, queueEntry, "utf8");
+
+    // No codex subscription/spend record — it is an API-only source.
+
+    // Query with tz_offset_minutes=-480 (UTC-8).
+    // The UTC hour 2026-06-01T00:30 maps to local date 2026-05-31.
+    const result = await call(
+      handler,
+      "/functions/tokentracker-spend-records?from=2026-05-31&to=2026-05-31&tz_offset_minutes=-480",
+      { method: "GET" },
+    );
+    const body = readJsonResponse(result);
+
+    // totals.api_usd must be > 0 (codex queue usage falls into the window)
+    assert.ok(body.totals.api_usd > 0, "totals.api_usd should be > 0 (codex usage in TZ-adjusted window)");
+
+    // by_source must include codex
+    assert.ok(Array.isArray(body.by_source), "by_source should be an array");
+    const codexEntry = body.by_source.find((s) => s.source === "codex");
+    assert.ok(codexEntry, "codex should appear in by_source (API-only source with TZ-adjusted usage)");
+
+    // codex has no subscription, only API cost
+    assert.equal(codexEntry.subscription_usd, 0, "codex subscription_usd should be 0");
+    assert.equal(codexEntry.subscription_cny, 0, "codex subscription_cny should be 0");
+    assert.ok(codexEntry.api_usd > 0, "codex api_usd should be > 0");
+    assert.ok(codexEntry.api_cny > 0, "codex api_cny should be > 0");
+    assert.equal(codexEntry.combined_usd, codexEntry.api_usd, "codex combined_usd should equal api_usd");
+    assert.equal(codexEntry.combined_cny, codexEntry.api_cny, "codex combined_cny should equal api_cny");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

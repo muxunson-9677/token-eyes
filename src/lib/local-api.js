@@ -1234,13 +1234,17 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     // Lifetime API cost
     const lifetimeApiUsd = computeApiCostForRange(lifetimeFrom, lifetimeTo, null, timeZoneContext);
 
-    // Collect API-only sources from queue rows that have usage in this period
+    // Collect API-only sources from queue rows that have usage in this period.
+    // Must use rowDayKey (timezone-aware) so the day matches the same window that
+    // computeApiCostForRange / aggregateByDay use internally.
     try {
       const allRows = readQueueData(qp);
       for (const row of allRows) {
         if (!row.hour_start) continue;
-        const day = row.hour_start.slice(0, 10);
-        if (day < fromDate.toISOString().slice(0, 10) || day > toDate.toISOString().slice(0, 10)) continue;
+        const day = rowDayKey(row, timeZoneContext);
+        if (!day) continue;
+        if (fromStr && day < fromStr) continue;
+        if (toStr && day > toStr) continue;
         const src = (row.source || "").toLowerCase();
         if (src && !allSources.has(src)) {
           allSources.add(src);
