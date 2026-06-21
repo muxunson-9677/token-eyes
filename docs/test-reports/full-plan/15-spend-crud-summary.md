@@ -4,7 +4,7 @@
 
 - **返工分支**: `claude/te-full-g04-spend-crud-summary`
 - **基准 commit**: `c2c360b` (from `claude/te-full-d07-configurable-usd-cny-rate`)
-- **最终 commit**: `ee73766`
+- **最终 commit**: `78dc760`
 
 ## 返工修复说明
 
