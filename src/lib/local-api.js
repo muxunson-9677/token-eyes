@@ -1602,7 +1602,7 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     return hasAllowedLoopbackOrigin(req?.headers || {});
   }
 
-  return async function handleLocalApi(req, res, url) {
+  async function handleLocalApi(req, res, url) {
     const p = url.pathname;
 
     if (p === "/api/local-auth") {

@@ -159,12 +159,94 @@ The following components exist in the build output as code-split chunks but are 
 
 These do not appear in the sidebar navigation and are not part of the user's main workflow. Per the task spec: "如果发现入口仍存在但属于当前基线既有残留，必须在报告里标明是否阻塞最终验收" — these are **non-blocking baseline residuals**.
 
-## 7. Blocking Issues
+## 7. Rework — H04-Rework: Fix Serve Startup Token Plan Scheduler Hook
 
-**None.** All required tests pass, all required capabilities are preserved, no merge conflicts remain unresolved.
+> Rework commit: `7a9e51a`
+>
+> Rework date: 2026-06-22 00:40 CST
 
-## 8. Recommendation
+### Root Cause
+
+The initial merge passed all unit tests but failed in real `serve` startup:
+
+```text
+Token plan due refresh warning: handleApi.runTokenPlanDueRefresh is not a function
+TypeError: handleApi.startTokenPlanScheduler is not a function
+    at cmdServe (.../src/commands/serve.js:105:13)
+```
+
+**Root cause**: In `src/lib/local-api.js`, `createLocalApiHandler()` had:
+
+```js
+return async function handleLocalApi(req, res, url) {
+  // ... full handler body ...
+};  // ← premature return here
+
+// These lines were UNREACHABLE:
+handleLocalApi.startTokenPlanScheduler = startTokenPlanScheduler;
+handleLocalApi.stopTokenPlanScheduler = stopTokenPlanScheduler;
+handleLocalApi.runTokenPlanDueRefresh = runTokenPlanDueRefresh;
+handleLocalApi.runTokenPlanRefreshById = runTokenPlanRefreshById;
+
+return handleLocalApi;  // ← dead code
+```
+
+The `return` on line 1605 before the `async function` keyword caused an immediate return of the handler function, making all scheduler method assignments (lines 2810-2816) unreachable dead code. `serve.js` received a handler where `.startTokenPlanScheduler` was `undefined`.
+
+### Fix Applied
+
+Changed line 1605 from:
+```js
+return async function handleLocalApi(req, res, url) {
+```
+to:
+```js
+async function handleLocalApi(req, res, url) {
+```
+
+This removes the premature `return` keyword, allowing execution to reach the scheduler method assignments and the final `return handleLocalApi` at line 2816. No other code was changed. `serve.js` was NOT modified.
+
+### New Regression Tests
+
+Added `test/serve-token-plan-scheduler.test.js` with 7 tests:
+1. `createLocalApiHandler` returns a handler object with scheduler hooks
+2. Exposes `startTokenPlanScheduler` as a function
+3. Exposes `stopTokenPlanScheduler` as a function
+4. Exposes `runTokenPlanDueRefresh` as a function
+5. Exposes `runTokenPlanRefreshById` as a function
+6. `startTokenPlanScheduler()` can be called without throwing
+7. `stopTokenPlanScheduler()` can be called without throwing
+
+### Real Serve Startup Verification
+
+```bash
+node bin/tracker.js serve --port 7799 --no-open --no-sync
+```
+
+**Result**: ✅ Server started successfully at `http://127.0.0.1:7799`.
+- No `handleApi.runTokenPlanDueRefresh is not a function` error
+- No `handleApi.startTokenPlanScheduler is not a function` error
+- Dashboard HTML served at `GET /` → HTTP 200, 19648 bytes
+- Server stopped after verification
+
+### Updated Regression Results (After Rework)
+
+| Suite | Tests | Result |
+|-------|-------|--------|
+| Backend (all 6 test files) | **97** | ✅ 0 failures |
+| — including new scheduler hook tests | 7 | ✅ 0 failures |
+| Frontend (4 test files) | **35** | ✅ 0 failures |
+| TypeScript typecheck | — | ✅ Clean |
+| Dashboard build | — | ✅ 5.36s |
+| Copy registry | 1052 entries | ✅ 846 used |
+| Architecture guardrails | — | ✅ No violations |
+
+## 8. Blocking Issues
+
+**None.** All required tests pass, all required capabilities are preserved, no merge conflicts remain unresolved. The rework fixes the real serve startup path.
+
+## 9. Recommendation
 
 **✅ Recommend creating final PR and merging into main.**
 
-The integration branch `claude/te-full-h04-final-integration-acceptance` is ready for final review and merge. All backend tests (90), frontend tests (35), typecheck, build, copy registry, and architecture guardrails pass cleanly.
+The integration branch `claude/te-full-h04-final-integration-acceptance` is ready for final review and merge. All backend tests (97), frontend tests (35), typecheck, build, copy registry, architecture guardrails, and real serve startup pass cleanly.
