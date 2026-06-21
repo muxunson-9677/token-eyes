@@ -1,11 +1,12 @@
-# TE-FULL-G04 - 花销模块 CRUD 与汇总测试报告 (返工 R2 后)
+# TE-FULL-G04 - 花销模块 CRUD 与汇总测试报告 (返工 R3 后)
 
 ## 分支和提交
 
 - **返工分支**: `claude/te-full-g04-spend-crud-summary`
 - **基准 commit**: `c2c360b` (from `claude/te-full-d07-configurable-usd-cny-rate`)
 - **R1 commit**: `78dc760` (API-only source 修复)
-- **R2 commit**: (当前提交，时区口径修复)
+- **R2 commit**: `0e01616` (时区口径修复)
+- **R3 commit**: (当前提交，默认区间过滤修复)
 
 ## 返工修复说明
 
@@ -15,34 +16,43 @@
 
 修复：订阅记录迭代后新增 queue rows 遍历，收集当前统计区间内所有出现在 queue 中的 source，对尚未在 `bySourceMap` 中的 source 补初始化。
 
-### R2：`tz/tz_offset_minutes` 下 `by_source` 与 `totals.api_usd` 口径不一致
+### R2：`tz/tz_offset_minutes` 下 `by_source` 与 `totals.api_usd` 口径不一致（已合入）
 
-原因：`summarizeSpendRecords()` 在收集 API-only source 时直接使用 `row.hour_start.slice(0, 10)` 取 UTC naive 日期，但 `computeApiCostForRange()` 内部使用 `aggregateByDay()` → `rowDayKey(row, timeZoneContext)` 做时区调整后的日期分组。当 queue row 的 UTC 日期在查询范围外但时区调整后的本地日期在查询范围内时（如 `hour_start=2026-06-01T00:30:00.000Z` 在 UTC-8 下属于 `2026-05-31`），`totals.api_usd > 0` 但 `by_source` 为空，口径不一致。
+原因：`summarizeSpendRecords()` 在收集 API-only source 时直接使用 `row.hour_start.slice(0, 10)` 取 UTC naive 日期，但 `computeApiCostForRange()` 内部使用 `aggregateByDay()` → `rowDayKey(row, timeZoneContext)` 做时区调整后的日期分组。当 queue row 的 UTC 日期在查询范围外但时区调整后的本地日期在查询范围内时，`totals.api_usd > 0` 但 `by_source` 为空，口径不一致。
+
+修复：source 收集循环改用 `rowDayKey(row, timeZoneContext)` 获取时区调整后的 day，与 `aggregateByDay()` 内部完全一致的口径。
+
+### R3：默认当前月请求下，历史 API-only source 污染 `by_source`
+
+原因：R2 的 source 收集使用 `fromStr`/`toStr` 做条件过滤——当未传 `from/to` 时（默认当前月请求），`fromStr` 和 `toStr` 都为空，过滤条件被跳过。但 `fromDate`/`toDate` 已经正确默认成当前自然月。结果所有历史 queue source 都进入 `by_source`，即使它们在当前统计区间没有 API 成本，`by_source` 中出现 `api_usd=0` 的 source。
 
 修复：
-- source 收集循环改用 `rowDayKey(row, timeZoneContext)` 获取时区调整后的 day
-- 比较逻辑改用 `fromStr`/`toStr` 字符串与 `day` 进行 YYYY-MM-DD 比较
-- 与 `aggregateByDay()` 内部完全一致的口径
+- 在 source 收集循环前用 `fromDate`/`toDate` 生成 effective key：`fromKey`/`toKey`
+- source 收集时**无条件**用 `fromKey`/`toKey` 过滤
+- 保留 `rowDayKey()` 的时区感知
 
 ```js
-// 修复前（R1）：UTC naive，与 API cost 计算口径不一致
-const day = row.hour_start.slice(0, 10);
-if (day < fromDate.toISOString().slice(0, 10) || day > toDate.toISOString().slice(0, 10)) continue;
-
-// 修复后（R2）：使用 rowDayKey，与 aggregateByDay 完全一致
+// 修复前（R2）：fromStr/toStr 为空时不过滤
 const day = rowDayKey(row, timeZoneContext);
 if (!day) continue;
 if (fromStr && day < fromStr) continue;
 if (toStr && day > toStr) continue;
+
+// 修复后（R3）：用 effective fromDate/toDate key 无条件过滤
+const fromKey = fromDate.toISOString().slice(0, 10);
+const toKey = toDate.toISOString().slice(0, 10);
+const day = rowDayKey(row, timeZoneContext);
+if (!day) continue;
+if (day < fromKey || day > toKey) continue;
 ```
 
 ## 改动文件列表
 
 | 文件 | 改动类型 | 说明 |
 |------|---------|------|
-| `src/lib/local-api.js` | 返工修改 | `summarizeSpendRecords()` 中 queue source 收集改用 `rowDayKey()` 统一时区口径 |
-| `test/spend-records-api.test.js` | 新增测试 | R1: `G04 rework: API-only source appears in by_source breakdown`；R2: `G04 rework 2: timezone-adjusted API-only source appears in by_source` |
-| `docs/test-reports/full-plan/15-spend-crud-summary.md` | 更新报告 | 更新为 R2 返工后最终信息 |
+| `src/lib/local-api.js` | 返工修改 | `summarizeSpendRecords()` 中 queue source 收集使用 effective `fromKey`/`toKey` 无条件过滤，修复默认当前月污染 |
+| `test/spend-records-api.test.js` | 新增测试 | R1: API-only source 回归；R2: 时区边界回归；R3: 默认当前月过滤回归 |
+| `docs/test-reports/full-plan/15-spend-crud-summary.md` | 更新报告 | 更新为 R3 返工后最终信息 |
 
 ## 订阅记录字段结构
 
@@ -96,6 +106,7 @@ API 成本来自 queue rows 的 `computeRowCost`/`pricingRules` 计算结果，�
 - `subscription_usd/cny` 没有记录时为 0
 - `api_usd/cny` 没有 usage 时为 0
 - `combined_usd/cny` = subscription + api
+- **R3 关键约束**：仅在当前统计区间内有 queue usage 的 API-only source 才出现在 by_source 中
 
 ### 返回结构
 
@@ -107,7 +118,7 @@ GET `/functions/tokentracker-spend-records` 返回：
 
 ## 验证命令结果
 
-### 后端测试 (70/70 通过)
+### 后端测试 (71/71 通过)
 
 ```
 node --test test/spend-records-api.test.js test/pricing.test.js test/local-settings-api.test.js
@@ -122,8 +133,9 @@ node --test test/spend-records-api.test.js test/pricing.test.js test/local-setti
 | ✔ G04: by_source breakdown | pass |
 | ✔ G04: legacy total_usd/total_cny backward compatibility | pass |
 | ✔ G04 rework: API-only source appears in by_source breakdown | pass (R1) |
-| ✔ G04 rework 2: timezone-adjusted API-only source appears in by_source | **新增 (R2)** |
-| 7 settings + 55 pricing + 8 spend = 70 total | **全部通过** |
+| ✔ G04 rework 2: timezone-adjusted API-only source appears in by_source | pass (R2) |
+| ✔ G04 rework 3: default period filters out last-month API-only source | **新增 (R3)** |
+| 7 settings + 55 pricing + 9 spend = 71 total | **全部通过** |
 
 R1 回归测试详情：
 - 写入 codex queue API usage row（本月 UTC）
@@ -138,6 +150,13 @@ R2 时区边界回归测试详情：
 - 请求 `?from=2026-05-31&to=2026-05-31&tz_offset_minutes=-480`
 - UTC 日期是 2026-06-01，但在 UTC-8 本地日期属于 2026-05-31
 - 断言 `totals.api_usd > 0`、`by_source` 包含 `source=codex`、`codex.subscription_usd === 0`、`codex.api_usd > 0`、`codex.combined_usd === codex.api_usd`
+
+R3 默认当前月过滤回归测试详情：
+- 写入 codex queue row: `hour_start`=上个月 15 号 UTC（动态计算）
+- 不创建任何 codex subscription/spend record
+- 配置 agentDefaultPricing.codex（input $3/MTok, output $15/MTok）
+- 请求默认接口（无 from/to 参数）→ 当前自然月
+- 断言 `totals.api_usd === 0`、`by_source` 不包含 `source=codex`
 
 ### 定价测试 (55/55 通过)
 
@@ -172,7 +191,7 @@ npm run typecheck → 通过
 ### Dashboard 构建
 
 ```
-npm run dashboard:build → 构建成功 (5.61s)
+npm run dashboard:build → 构建成功
 ```
 
 ### Copy 注册表验证
@@ -200,3 +219,4 @@ npm run validate:guardrails → Guardrails ok: no violations found.
 5. **monthly/yearly 汇总**: 按自然月迭代计算，正确处理跨月、跨年场景
 6. **by_source 并集**: 订阅 sources + queue sources 的并集，确保 API-only source 不遗漏
 7. **时区口径统一（R2）**: source 收集使用 `rowDayKey()`，与 `aggregateByDay()`/`computeApiCostForRange()` 完全一致
+8. **有效区间过滤（R3）**: source 收集使用 effective `fromKey`/`toKey` 无条件过滤，确保默认当前月请求不引入区间外历史 source

@@ -1237,14 +1237,17 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     // Collect API-only sources from queue rows that have usage in this period.
     // Must use rowDayKey (timezone-aware) so the day matches the same window that
     // computeApiCostForRange / aggregateByDay use internally.
+    // Use effective fromKey/toKey (always defined) so the default-current-month
+    // case also filters out API-only sources that fall outside the period.
+    const fromKey = fromDate.toISOString().slice(0, 10);
+    const toKey = toDate.toISOString().slice(0, 10);
     try {
       const allRows = readQueueData(qp);
       for (const row of allRows) {
         if (!row.hour_start) continue;
         const day = rowDayKey(row, timeZoneContext);
         if (!day) continue;
-        if (fromStr && day < fromStr) continue;
-        if (toStr && day > toStr) continue;
+        if (day < fromKey || day > toKey) continue;
         const src = (row.source || "").toLowerCase();
         if (src && !allSources.has(src)) {
           allSources.add(src);

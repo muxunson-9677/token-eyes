@@ -646,3 +646,72 @@ test("G04 rework 2: timezone-adjusted API-only source appears in by_source", asy
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G04 Rework 3: default period (current month) must NOT include API-only
+// sources whose queue rows fall outside the effective fromDate→toDate window.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("G04 rework 3: default period filters out last-month API-only source", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-spend-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queueFile = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+
+    const handler = createLocalApiHandler({
+      queuePath: queueFile,
+      trackerDataDir: trackerDir,
+    });
+
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    // Configure agentDefaultPricing for codex so API cost would be non-zero
+    // if the row were counted.
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ agentDefaultPricing: { codex: { inputUsdPer1M: 3, outputUsdPer1M: 15 } } }),
+    });
+
+    // Compute last month's 15th in UTC (unambiguous historical date).
+    const now = new Date();
+    const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15, 12, 0, 0));
+    const lastMonthHour = lastMonth.toISOString().replace(/\.\d{3}Z$/, ".000Z");
+
+    const queueEntry = JSON.stringify({
+      hour_start: lastMonthHour,
+      source: "codex",
+      model: "gpt-5.2-codex",
+      input_tokens: 1000000,
+      output_tokens: 1000000,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 2000000,
+      conversation_count: 1,
+    }) + "\n";
+    await fs.writeFile(queueFile, queueEntry, "utf8");
+
+    // No codex subscription/spend record.
+
+    // Default request (no from/to) → current calendar month.
+    const result = await call(handler, "/functions/tokentracker-spend-records", { method: "GET" });
+    const body = readJsonResponse(result);
+
+    // The queue row is in last month, so current month totals.api_usd must be 0.
+    assert.equal(body.totals.api_usd, 0, "totals.api_usd should be 0 (last-month row outside current period)");
+
+    // by_source must NOT include codex (it has no usage in the current period).
+    assert.ok(Array.isArray(body.by_source), "by_source should be an array");
+    const codexEntry = body.by_source.find((s) => s.source === "codex");
+    assert.equal(codexEntry, undefined, "codex should NOT appear in by_source for default current-month request");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
