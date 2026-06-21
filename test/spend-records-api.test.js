@@ -473,3 +473,96 @@ test("G04: legacy total_usd/total_cny backward compatibility", async () => {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G04 Rework: API-only source must appear in by_source
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("G04 rework: API-only source appears in by_source breakdown", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-spend-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queueFile = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+
+    const handler = createLocalApiHandler({
+      queuePath: queueFile,
+      trackerDataDir: trackerDir,
+    });
+
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    // Configure agentDefaultPricing for codex so API cost is non-zero
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST", headers,
+      body: JSON.stringify({ agentDefaultPricing: { codex: { inputUsdPer1M: 3, outputUsdPer1M: 15 } } }),
+    });
+
+    // Write queue row for codex (no codex subscription record exists)
+    const now = new Date();
+    const thisMonthHour = now.toISOString().slice(0, 13) + ":00:00.000Z";
+    const queueEntry = JSON.stringify({
+      hour_start: thisMonthHour,
+      source: "codex",
+      model: "kiro-agent",
+      input_tokens: 1000000,
+      output_tokens: 500000,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      total_tokens: 1500000,
+    }) + "\n";
+    await fs.writeFile(queueFile, queueEntry, "utf8");
+
+    // Also add a claude subscription record (has both sub + API potentially)
+    const thisMonth = new Date().toISOString().slice(0, 7) + "-01";
+    await call(handler, "/functions/tokentracker-spend-records", {
+      method: "POST", headers,
+      body: JSON.stringify({
+        source: "claude", plan_label: "Max", amount: 10, currency: "USD",
+        billing_cycle: "monthly", start_date: thisMonth, end_date: "",
+      }),
+    });
+
+    const result = await call(handler, "/functions/tokentracker-spend-records", { method: "GET" });
+    const body = readJsonResponse(result);
+
+    // totals.api_usd should be > 0 (codex queue data)
+    assert.ok(body.totals.api_usd > 0, "API cost should be > 0 when queue has data");
+
+    // by_source must include both claude and codex
+    assert.ok(Array.isArray(body.by_source));
+    const claudeEntry = body.by_source.find((s) => s.source === "claude");
+    const codexEntry = body.by_source.find((s) => s.source === "codex");
+    assert.ok(claudeEntry, "claude should appear in by_source (has subscription)");
+    assert.ok(codexEntry, "codex should appear in by_source (API-only source)");
+
+    // codex: subscription = 0, api > 0, combined = api
+    assert.equal(codexEntry.subscription_usd, 0);
+    assert.equal(codexEntry.subscription_cny, 0);
+    assert.ok(codexEntry.api_usd > 0, "codex API cost should be > 0");
+    assert.ok(codexEntry.api_cny > 0, "codex API CNY should be > 0");
+    assert.equal(codexEntry.combined_usd, codexEntry.api_usd);
+    assert.equal(codexEntry.combined_cny, codexEntry.api_cny);
+
+    // claude: subscription = 10, api may be 0 or >0
+    assert.equal(claudeEntry.subscription_usd, 10);
+
+    // Each entry should have all expected fields
+    for (const entry of [claudeEntry, codexEntry]) {
+      assert.ok(entry.subscription_usd !== undefined);
+      assert.ok(entry.subscription_cny !== undefined);
+      assert.ok(entry.api_usd !== undefined);
+      assert.ok(entry.api_cny !== undefined);
+      assert.ok(entry.combined_usd !== undefined);
+      assert.ok(entry.combined_cny !== undefined);
+    }
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

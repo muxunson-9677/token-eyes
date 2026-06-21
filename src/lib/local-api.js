@@ -1207,7 +1207,8 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     const lifetimeTo = new Date();
     lifetimeTo.setUTCHours(23, 59, 59, 999);
 
-    // Period subscription totals
+    // Collect all sources: subscription records + queue rows (API-only sources)
+    const allSources = new Set();
     let periodSubscriptionUsd = 0;
     let lifetimeSubscriptionUsd = 0;
 
@@ -1216,6 +1217,7 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
 
     for (const record of records) {
       const src = (record.source || "unknown").toLowerCase();
+      allSources.add(src);
       if (!bySourceMap.has(src)) {
         bySourceMap.set(src, { source: src, subscription_usd: 0, api_usd: 0 });
       }
@@ -1232,7 +1234,24 @@ function createLocalApiHandler({ queuePath, trackerDataDir: trackerDataDirOverri
     // Lifetime API cost
     const lifetimeApiUsd = computeApiCostForRange(lifetimeFrom, lifetimeTo, null, timeZoneContext);
 
-    // Per-source API cost
+    // Collect API-only sources from queue rows that have usage in this period
+    try {
+      const allRows = readQueueData(qp);
+      for (const row of allRows) {
+        if (!row.hour_start) continue;
+        const day = row.hour_start.slice(0, 10);
+        if (day < fromDate.toISOString().slice(0, 10) || day > toDate.toISOString().slice(0, 10)) continue;
+        const src = (row.source || "").toLowerCase();
+        if (src && !allSources.has(src)) {
+          allSources.add(src);
+          bySourceMap.set(src, { source: src, subscription_usd: 0, api_usd: 0 });
+        }
+      }
+    } catch (e) {
+      // Queue unavailable — proceed with subscription-only sources
+    }
+
+    // Per-source API cost (for ALL sources in the union, including API-only)
     for (const [src, entry] of bySourceMap) {
       entry.api_usd = computeApiCostForRange(fromDate, toDate, src, timeZoneContext);
     }
