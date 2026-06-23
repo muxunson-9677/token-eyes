@@ -179,6 +179,7 @@ describe("App deferred dashboard preload", () => {
     insforgeMock.user = { id: "user-1" };
     insforgeMock.displayName = "Ada";
     window.history.pushState({}, "", "/");
+    delete window.__TAURI_INTERNALS__;
   });
 
   it("does not start target preload before the dashboard main content is visible", async () => {
@@ -206,9 +207,9 @@ describe("App deferred dashboard preload", () => {
   });
 
   it.each([
-    ["/limits", TEXT.limits],
-    ["/leaderboard", TEXT.leaderboard],
-  ])("does not start dashboard preload for deep-linked %s", async (path, pageText) => {
+    ["/limits", TEXT.dashboard],
+    ["/leaderboard", TEXT.dashboard],
+  ])("does not start dashboard preload for hidden product path %s", async (path, pageText) => {
     renderApp(path);
 
     expect(await screen.findByText(pageText)).toBeInTheDocument();
@@ -241,6 +242,16 @@ describe("App deferred dashboard preload", () => {
         userId: null,
       });
     });
+  });
+
+  it("opens the settings page by default inside the Tauri desktop shell", async () => {
+    window.__TAURI_INTERNALS__ = { invoke: vi.fn() };
+
+    renderApp("/");
+
+    expect(await screen.findByText(TEXT.settings)).toBeInTheDocument();
+    expect(screen.queryByText(TEXT.dashboard)).not.toBeInTheDocument();
+    expect(screen.queryByText(TEXT.landing)).not.toBeInTheDocument();
   });
 
   it("preloads again when the leaderboard auth context changes", async () => {

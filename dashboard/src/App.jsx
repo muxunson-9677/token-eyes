@@ -15,6 +15,7 @@ import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
 import { AppLayout } from "./ui/components/Sidebar.jsx";
 import { CommandPalette } from "./ui/dashboard/components/CommandPalette.jsx";
 import { ToastProvider } from "./ui/components/Toast.jsx";
+import { isTauriApp } from "./lib/native-bridge.js";
 import {
   getLeaderboardPreloadContextKey,
   markDashboardMainContentVisible,
@@ -97,10 +98,13 @@ export default function App() {
     sharePathname === "/share" ||
     sharePathname === "/share.html" ||
     sharePathname.startsWith("/share/");
+  const isTauriMode = isTauriApp();
 
   const isLocalMode =
     typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      isTauriMode);
 
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
   const isDashboardDefaultPath = normalizedPath === "/" || normalizedPath === "/dashboard";
@@ -201,6 +205,9 @@ export default function App() {
     normalizedPath === "/wrapped";
   if (isMvpHiddenProductPath) {
     return <Navigate to="/dashboard" replace />;
+  }
+  if (isTauriMode && normalizedPath === "/") {
+    return <Navigate to="/settings" replace />;
   }
 
   let PageComponent = DashboardPage;

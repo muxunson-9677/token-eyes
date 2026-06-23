@@ -47,6 +47,7 @@ export function subscribeNativeSystemAppearance(callback) {
 
 export function isNativeApp() {
   if (typeof window === "undefined") return false;
+  if (isTauriApp()) return true;
   try {
     const params = new URLSearchParams(window.location.search);
     if (params.get("app") === "1") {
@@ -57,6 +58,12 @@ export function isNativeApp() {
   } catch {
     return false;
   }
+}
+
+/** True when running inside a Tauri desktop WebView. */
+export function isTauriApp() {
+  if (typeof window === "undefined") return false;
+  return Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
 }
 
 /** True when running inside TokenTrackerBar WKWebView (bridge is always present). */
