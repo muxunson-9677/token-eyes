@@ -2,6 +2,10 @@
 
 Guidance for Claude Code working in this repository. Every line here is loaded into every conversation turn — keep it lean and current.
 
+## Token Eyes Windows note
+
+For Token Eyes TE-NEXT/V01 work, Windows verification follows the Tauri stack: Rust toolchain + Node.js + WebView2 Runtime. Do not require `.NET SDK` or `.NET 8 SDK` as a Token Eyes prerequisite. Any legacy `TokenTrackerWin/` .NET wording below applies only to the older TokenTrackerWin packaging path, not to Token Eyes Tauri work orders.
+
 ## Project shape
 
 Token Tracker is a local-first AI token usage tracker.

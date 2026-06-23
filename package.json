@@ -38,7 +38,9 @@
     "validate:copy": "node scripts/validate-copy-registry.cjs",
     "validate:guardrails": "node scripts/validate-architecture-guardrails.cjs",
     "validate:retros": "node scripts/validate-retros.cjs",
-    "validate:ui-hardcode": "node scripts/ops/validate-ui-hardcode.cjs"
+    "validate:ui-hardcode": "node scripts/ops/validate-ui-hardcode.cjs",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@mongodb-js/zstd": "^2.0.1",
@@ -46,6 +48,7 @@
   },
   "devDependencies": {
     "@sourcegraph/scip-typescript": "^0.4.0",
+    "@tauri-apps/cli": "^2.11.3",
     "esbuild": "0.28.1"
   },
   "repository": {

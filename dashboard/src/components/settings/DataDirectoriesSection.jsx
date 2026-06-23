@@ -5,6 +5,7 @@ import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { SectionCard } from "./Controls.jsx";
 import { isNativeWindowsApp } from "../../lib/native-bridge.js";
+import { selectDirectoryViaTauri } from "../../lib/tauri-directory.js";
 
 const EMPTY_DIRS = { claude: "", codex: "", hermes: "" };
 
@@ -63,12 +64,21 @@ export function DataDirectoriesSection() {
     setSelectNotice(null);
     setSavedNotice(false);
     try {
+      // 1. Tauri (primary for Token Eyes Windows desktop)
+      const tauriPath = await selectDirectoryViaTauri();
+      if (tauriPath) {
+        setDraft((current) => ({ ...current, [field]: tauriPath }));
+        return;
+      }
+
+      // 2. WebView2 native bridge (legacy TokenTrackerWin)
       const nativePath = await selectDirectoryWithNativeBridge();
       if (nativePath) {
         setDraft((current) => ({ ...current, [field]: nativePath }));
         return;
       }
 
+      // 3. Local API fallback (browser / PowerShell dialog)
       const result = await selectLocalDirectory();
       if (result?.path) {
         setDraft((current) => ({ ...current, [field]: result.path }));
