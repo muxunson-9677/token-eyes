@@ -1,0 +1,369 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
+import { isMockEnabled } from "../lib/mock-data";
+import { isLocalDashboardRuntime } from "../lib/local-api-url";
+import { getTimeZoneCacheKey } from "../lib/timezone";
+import { getRequestUsageRecords } from "../lib/api";
+import type {
+  UsageRecord,
+  RequestUsageRecordsTotals,
+  TokenTotals,
+} from "../lib/types/usage";
+import { useUsageFilterParams, useUsageFilterCacheKey, useUsageFilters } from "./use-usage-filters";
+import { normalizeVisibleProviderIds } from "../lib/spend-provider-visibility.js";
+
+/**
+ * 请求级 Token 记录聚合 Hook。
+ *
+ * 通过 `sources` 参数向后端传递多个 provider，由后端在同一个结果集完成
+ * 过滤、排序和分页，返回真实的分页元数据。
+ *
+ * 返回的 totals 是合并后的累加值；当 visibleProviderIds 为空时返回
+ * 空记录与零 totals，不再发起请求。
+ */
+interface UseRequestUsageRecordsParams {
+  baseUrl?: string;
+  accessToken?: string | null;
+  guestAllowed?: boolean;
+  from?: string;
+  to?: string;
+  cacheKey?: string;
+  timeZone?: string;
+  tzOffsetMinutes?: number;
+  /** 要查询的 provider id 列表（通常来自 useLimitsDisplayPrefs().visibleOrdered）。 */
+  visibleProviderIds?: string[];
+  /** 单个 source 拉取的记录上限；默认 100。 */
+  limit?: number;
+  /** 页码（从1开始）。 */
+  page?: number;
+  /** 每页记录数。 */
+  pageSize?: number;
+}
+
+type RequestUsageRecordsSource = "edge" | "cache" | "mock";
+
+interface MergedTotals extends TokenTotals, RequestUsageRecordsTotals {}
+
+interface UseRequestUsageRecordsReturn {
+  records: UsageRecord[];
+  totals: MergedTotals | null;
+  source: RequestUsageRecordsSource;
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+  fetchedAt: string | null;
+  /** 分页信息。 */
+  page: number;
+  /** 总页数。 */
+  totalPages: number;
+  /** 总记录数。 */
+  total: number;
+}
+
+const EMPTY_TOTALS: MergedTotals = {
+  total_tokens: 0,
+  input_tokens: 0,
+  output_tokens: 0,
+  cached_input_tokens: 0,
+  cache_creation_input_tokens: 0,
+  reasoning_output_tokens: 0,
+  cost_usd: 0,
+  request_count: 0,
+  success_count: null,
+  success_rate: null,
+  avg_latency_ms: null,
+  cache_hit_rate: 0,
+  priced_tokens: 0,
+  unpriced_tokens: 0,
+  pricing_coverage: "complete",
+  status_sample_count: 0,
+  latency_sample_count: 0,
+};
+
+function safeHost(baseUrl: unknown): string | null {
+  try {
+    const url = new URL(baseUrl as string);
+    return url.host;
+  } catch {
+    return null;
+  }
+}
+
+function safeNum(value: unknown): number {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function useRequestUsageRecords({
+  baseUrl,
+  accessToken,
+  guestAllowed = false,
+  from,
+  to,
+  cacheKey,
+  timeZone,
+  tzOffsetMinutes,
+  visibleProviderIds,
+  limit = 100,
+  page = 1,
+  pageSize = 10,
+}: UseRequestUsageRecordsParams = {}): UseRequestUsageRecordsReturn {
+  const mockEnabled = isMockEnabled();
+  const tokenReady = isAccessTokenReady(accessToken);
+  const isLocalMode = isLocalDashboardRuntime();
+  const cacheAllowed = !guestAllowed && !mockEnabled;
+  const filterParams = useUsageFilterParams();
+  const filterCacheKey = useUsageFilterCacheKey();
+  const { refreshRevision } = useUsageFilters();
+  const handledRefreshRevision = useRef(refreshRevision);
+
+  // Normalize visibleProviderIds: lowercase, dedupe, drop unknown IDs.
+  // Use a serialized key for deps so the memo keeps a stable reference when
+  // the caller passes a new array literal with the same contents each render.
+  // Without this, normalizedVisibleProviderIds gets a new reference every
+  // render, which cascades through refresh -> useEffect and triggers an
+  // infinite fetch loop.
+  const normalizedVisibleProviderIds = useMemo(
+    () => normalizeVisibleProviderIds(visibleProviderIds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [Array.isArray(visibleProviderIds) ? visibleProviderIds.join(",") : visibleProviderIds],
+  );
+
+  const [records, setRecords] = useState<UsageRecord[]>([]);
+  const [totals, setTotals] = useState<MergedTotals | null>(null);
+  const [source, setSource] = useState<RequestUsageRecordsSource>("edge");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [pageMeta, setPageMeta] = useState({ page: 1, totalPages: 1, total: 0 });
+  const lastScopeRef = useRef<string>("init");
+
+  // Stable serialization of normalizedVisibleProviderIds so the storageKey + scopeKey
+  // change whenever the set of queried providers changes (independent of the
+  // upstream filter context).
+  const visibleKey = useMemo(
+    () => normalizedVisibleProviderIds.join(","),
+    [normalizedVisibleProviderIds],
+  );
+
+  const storageKey = useMemo(() => {
+    if (!cacheKey) return null;
+    const host = safeHost(baseUrl) || "default";
+    const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
+    return `tokentracker.requestUsageRecords.${cacheKey}.${host}.${from}.${to}.${tzKey}.${filterCacheKey}.${visibleKey}.${limit}`;
+  }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, filterCacheKey, visibleKey, limit]);
+
+  const readCache = useCallback((): { records: UsageRecord[]; totals: MergedTotals } | null => {
+    if (!storageKey || typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.records)) return null;
+      return {
+        records: parsed.records as UsageRecord[],
+        totals: (parsed.totals || EMPTY_TOTALS) as MergedTotals,
+      };
+    } catch {
+      return null;
+    }
+  }, [storageKey]);
+
+  const writeCache = useCallback(
+    (payload: { records: UsageRecord[]; totals: MergedTotals }) => {
+      if (!storageKey || typeof window === "undefined") return;
+      try {
+        window.localStorage.setItem(
+          storageKey,
+          JSON.stringify({ ...payload, fetchedAt: new Date().toISOString() }),
+        );
+      } catch {
+        // quota / serialization errors are non-fatal
+      }
+    },
+    [storageKey],
+  );
+
+  const clearCache = useCallback(() => {
+    if (!storageKey || typeof window === "undefined") return;
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      // non-fatal
+    }
+  }, [storageKey]);
+
+  // Scope-flip wipe: when filterCacheKey or visibleKey changes, drop stale
+  // records so they don't render while the new fetch is in flight.
+  const scopeKey = `${filterCacheKey}|${visibleKey}`;
+  useEffect(() => {
+    if (lastScopeRef.current === scopeKey) return;
+    lastScopeRef.current = scopeKey;
+    setRecords([]);
+    setTotals(null);
+    setSource("edge");
+    setError(null);
+    setFetchedAt(null);
+    setLoading(true);
+  }, [scopeKey]);
+
+  const refresh = useCallback(async () => {
+    const token = await resolveAuthAccessToken(accessToken);
+    if (!token && !mockEnabled && !guestAllowed && !isLocalMode) {
+      setLoading(false);
+      return;
+    }
+
+    if (!Array.isArray(normalizedVisibleProviderIds) || normalizedVisibleProviderIds.length === 0) {
+      setRecords([]);
+      setTotals(EMPTY_TOTALS);
+      setSource(mockEnabled ? "mock" : "edge");
+      setError(null);
+      setFetchedAt(new Date().toISOString());
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getRequestUsageRecords({
+        sources: normalizedVisibleProviderIds,
+        from,
+        to,
+        timeZone,
+        tzOffsetMinutes,
+        limit,
+        page,
+        pageSize,
+        models: filterParams.models,
+        agentIds: filterParams.agentIds,
+        baseUrl,
+        accessToken: token,
+      });
+
+      const { records = [], totals = {}, page: pageInfo = {} } = result as any;
+      const allRecords = Array.isArray(records) ? records : [];
+
+      const extractedPageMeta = {
+        page: pageInfo.page || page,
+        totalPages: pageInfo.total_pages || 1,
+        total: pageInfo.total || allRecords.length,
+      };
+
+      const mergedTotals: MergedTotals = { ...EMPTY_TOTALS };
+      if (totals) {
+        mergedTotals.input_tokens = safeNum(totals.input_tokens);
+        mergedTotals.output_tokens = safeNum(totals.output_tokens);
+        mergedTotals.cached_input_tokens = safeNum(totals.cached_input_tokens);
+        mergedTotals.cache_creation_input_tokens = safeNum(totals.cache_creation_input_tokens);
+        mergedTotals.reasoning_output_tokens = safeNum(totals.reasoning_output_tokens);
+        mergedTotals.total_tokens = safeNum(totals.total_tokens);
+        mergedTotals.cost_usd = safeNum(totals.cost_usd);
+        mergedTotals.request_count = safeNum(totals.request_count);
+        mergedTotals.priced_tokens = safeNum(totals.priced_tokens);
+        mergedTotals.unpriced_tokens = safeNum(totals.unpriced_tokens);
+        mergedTotals.status_sample_count = safeNum(totals.status_sample_count);
+        mergedTotals.latency_sample_count = safeNum(totals.latency_sample_count);
+        mergedTotals.success_count = totals.success_count ?? null;
+        mergedTotals.success_rate = totals.success_rate ?? null;
+        mergedTotals.avg_latency_ms = totals.avg_latency_ms ?? null;
+        mergedTotals.cache_hit_rate = safeNum(totals.cache_hit_rate);
+        mergedTotals.pricing_coverage = totals.pricing_coverage || "complete";
+      }
+
+      setRecords(allRecords);
+      setTotals(mergedTotals);
+      setPageMeta(extractedPageMeta);
+      setSource(mockEnabled ? "mock" : "edge");
+      setFetchedAt(new Date().toISOString());
+      if (cacheAllowed) writeCache({ records: allRecords, totals: mergedTotals });
+      else clearCache();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (cacheAllowed) {
+        const cached = readCache();
+        if (cached) {
+          setRecords(cached.records);
+          setTotals(cached.totals);
+          setSource("cache");
+          setError(null);
+        } else {
+          setError(message);
+          setRecords([]);
+          setTotals(null);
+        }
+      } else {
+        setError(message);
+        setRecords([]);
+        setTotals(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    accessToken,
+    baseUrl,
+    from,
+    mockEnabled,
+    guestAllowed,
+    isLocalMode,
+    cacheAllowed,
+    readCache,
+    timeZone,
+    to,
+    tokenReady,
+    tzOffsetMinutes,
+    clearCache,
+    writeCache,
+    filterParams.models,
+    filterParams.agentIds,
+    normalizedVisibleProviderIds,
+    limit,
+    page,
+    pageSize,
+  ]);
+
+  useEffect(() => {
+    if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
+      setRecords([]);
+      setTotals(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    if (!cacheAllowed) {
+      clearCache();
+      setRecords([]);
+      setTotals(null);
+    } else {
+      const cached = readCache();
+      if (cached) {
+        setRecords(cached.records);
+        setTotals(cached.totals);
+        setSource("cache");
+      }
+    }
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh, cacheAllowed, tokenReady, mockEnabled, guestAllowed]);
+
+  useEffect(() => {
+    if (handledRefreshRevision.current === refreshRevision) return;
+    handledRefreshRevision.current = refreshRevision;
+    void refresh();
+  }, [refreshRevision, refresh]);
+
+  return {
+    records,
+    totals,
+    source: mockEnabled ? "mock" : source,
+    loading,
+    error,
+    refresh,
+    fetchedAt,
+    page: pageMeta.page,
+    totalPages: pageMeta.totalPages,
+    total: pageMeta.total,
+  };
+}

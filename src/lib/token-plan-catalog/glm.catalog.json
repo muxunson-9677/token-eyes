@@ -1,0 +1,69 @@
+{
+  "provider_id": "glm",
+  "provider_name": "GLM",
+  "official_site": "https://www.bigmodel.cn/glm-coding",
+  "catalog_version": "2026-07-03",
+  "evidence": [
+    {
+      "url": "https://docs.bigmodel.cn/cn/coding-plan/overview",
+      "title": "GLM Coding Plan 套餐概览",
+      "accessed_at": "2026-07-03"
+    },
+    {
+      "url": "https://docs.bigmodel.cn/cn/coding-plan/quick-start",
+      "title": "GLM Coding Plan 快速开始",
+      "accessed_at": "2026-07-03"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "glm_lite",
+      "display_name": "Lite",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 400,
+        "unit": "requests",
+        "display": "每周最多约 400 Prompts；每 5 小时最多约 80 Prompts"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://docs.bigmodel.cn/cn/coding-plan/overview"
+    },
+    {
+      "plan_id": "glm_pro",
+      "display_name": "Pro",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 2000,
+        "unit": "requests",
+        "display": "每周最多约 2,000 Prompts；每 5 小时最多约 400 Prompts"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://docs.bigmodel.cn/cn/coding-plan/overview"
+    },
+    {
+      "plan_id": "glm_max",
+      "display_name": "Max",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 8000,
+        "unit": "requests",
+        "display": "每周最多约 8,000 Prompts；每 5 小时最多约 1,600 Prompts"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://docs.bigmodel.cn/cn/coding-plan/overview"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": false,
+    "authorization": "api_key_for_model_calls_only",
+    "usage_endpoint_documented": false,
+    "fields_available": [],
+    "notes": "公开文档仅说明 API Key Bearer 用于模型和工具 API 鉴权，未提供账户余额或 Coding Plan 用量查询 API，也未提供账户 OAuth 授权。实时额度检测不能通过调用模型实现。"
+  }
+}

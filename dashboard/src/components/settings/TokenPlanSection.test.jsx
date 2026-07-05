@@ -1,0 +1,1617 @@
+import React from "react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, expect, it, vi } from "vitest";
+import { TokenPlanSection } from "./TokenPlanSection.jsx";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+
+vi.mock("../../lib/api", () => ({
+  getTokenPlans: vi.fn(),
+  saveTokenPlan: vi.fn(),
+  refreshTokenPlan: vi.fn(),
+  getUsageLimits: vi.fn(),
+  getTokenPlanCatalog: vi.fn(),
+  getConsoleSessions: vi.fn(),
+  createConsoleSession: vi.fn(),
+  deleteConsoleSession: vi.fn(),
+  verifyConsoleSession: vi.fn(),
+  openXiaomiMimoConsoleLogin: vi.fn(),
+  verifyXiaomiMimoConsoleSession: vi.fn(),
+  deleteXiaomiMimoConsoleSession: vi.fn(),
+  saveTokenPlanSecret: vi.fn(),
+}));
+
+const BASE_RECORD = {
+  id: "plan-1",
+  source: "claude",
+  plan_label: "Max",
+  total_quota: 1000,
+  used_quota: 200,
+  remaining_quota: 800,
+  expires_at: "2026-12-31",
+  refresh_enabled: false,
+  refresh_interval_minutes: 60,
+  refresh_method: "manual",
+  credential_ref: "",
+  last_refresh_status: "",
+  last_refresh_error: "",
+  last_refresh_at: "",
+  next_refresh_at: "",
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  getTokenPlans.mockResolvedValue({ records: [{ ...BASE_RECORD }] });
+  saveTokenPlan.mockImplementation(async (record) => ({
+    ok: true,
+    record: { ...record, id: record.id || "plan-2" },
+    records: [{ ...record, id: record.id || "plan-2" }],
+  }));
+  refreshTokenPlan.mockResolvedValue({
+    ok: true,
+    plan: { ...BASE_RECORD, last_refresh_status: "success", last_refresh_at: "2026-06-20T00:00:00.000Z" },
+    records: [{ ...BASE_RECORD, last_refresh_status: "success", last_refresh_at: "2026-06-20T00:00:00.000Z" }],
+  });
+  getUsageLimits.mockResolvedValue({
+    codex: {
+      configured: true,
+      primary_window: { used_percent: 30, reset_at: Date.now() / 1000 + 3600 },
+      secondary_window: { used_percent: 50, reset_at: Date.now() / 1000 + 86400 * 7 },
+    },
+  });
+  getTokenPlanCatalog.mockResolvedValue({
+    providers: [
+      {
+        id: "xiaomi_mimo",
+        name: "小米 MiMo",
+        plans: [
+          {
+            plan_id: "xiaomi_mimo_standard_monthly",
+            display_name: "Standard（月付）",
+            quota_kind: "credits",
+            quota_unit: "credits",
+            total_quota: 11000000000,
+            total_quota_display: "11,000,000,000（11B）Credits",
+            official_evidence_url: "https://mimo.mi.com/docs/zh-CN/price/token-plan",
+          },
+        ],
+      },
+      {
+        id: "custom",
+        name: "自定义套餐",
+        plans: [],
+      },
+    ],
+  });
+  getConsoleSessions.mockResolvedValue({ sessions: [] });
+  deleteConsoleSession.mockResolvedValue({ ok: true });
+  deleteXiaomiMimoConsoleSession.mockResolvedValue(undefined);
+  verifyConsoleSession.mockImplementation(async (_id, nativeResult) => ({
+    ok: true,
+    session: makeXiaomiSession({
+      id: "new-session-id",
+      session_ref: nativeResult.session_ref,
+      status: nativeResult.connected ? "connected" : "awaiting_verification",
+    }),
+  }));
+});
+
+it("loads, edits, and saves manual token plan records", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+
+  expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
+  await screen.findByText(/claude \/ Max/i);
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+
+  const planLabel = screen.getByLabelText("套餐名称");
+  await act(async () => {
+    await user.clear(planLabel);
+    await user.type(planLabel, "Max updated");
+  });
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => {
+    expect(saveTokenPlan).toHaveBeenCalled();
+    const arg = saveTokenPlan.mock.calls[0][0];
+    expect(arg.id).toBe("plan-1");
+    expect(arg.plan_label).toBe("Max updated");
+    expect(arg.total_quota).toBe(1000);
+    expect(arg.used_quota).toBe(200);
+    expect(arg.remaining_quota).toBe(800);
+    expect(arg.expires_at).toBe("2026-12-31");
+  });
+  expect(await screen.findByText("已保存到本地。")).toBeInTheDocument();
+});
+
+it("triggers manual refresh and updates status", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+
+  await screen.findByText(/claude \/ Max/i);
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "立即刷新" }));
+  });
+
+  await waitFor(() => {
+    expect(refreshTokenPlan).toHaveBeenCalledWith("plan-1");
+  });
+});
+
+it("displays Codex live quota block for source=codex records with 5h/7d windows", async () => {
+  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
+  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
+  getUsageLimits.mockResolvedValue({
+    codex: {
+      configured: true,
+      primary_window: { used_percent: 30, reset_at: Date.now() / 1000 + 3600 },
+      secondary_window: { used_percent: 50, reset_at: Date.now() / 1000 + 86400 * 7 },
+    },
+  });
+
+  render(<TokenPlanSection />);
+
+  await screen.findByText(/codex \/ Pro/i);
+  expect(await screen.findByText("Codex 实时额度")).toBeInTheDocument();
+  expect(screen.getByText("5 小时")).toBeInTheDocument();
+  expect(screen.getByText("7 天")).toBeInTheDocument();
+  expect(screen.getByText("70% 剩余")).toBeInTheDocument();
+  expect(screen.getByText("50% 剩余")).toBeInTheDocument();
+});
+
+it("does not display Codex quota block for non-codex records", async () => {
+  getTokenPlans.mockResolvedValue({ records: [{ ...BASE_RECORD, source: "claude" }] });
+
+  render(<TokenPlanSection />);
+
+  await screen.findByText(/claude \/ Max/i);
+  await waitFor(() => {
+    expect(getUsageLimits).not.toHaveBeenCalled();
+  });
+  expect(screen.queryByText("Codex 实时额度")).not.toBeInTheDocument();
+});
+
+it("shows unconfigured status when codex.configured=false", async () => {
+  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
+  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
+  getUsageLimits.mockResolvedValue({
+    codex: { configured: false },
+  });
+
+  render(<TokenPlanSection />);
+
+  await screen.findByText(/codex \/ Pro/i);
+  expect(await screen.findByText("Codex 实时额度")).toBeInTheDocument();
+  expect(await screen.findByText("Codex 未连接，无法读取实时额度")).toBeInTheDocument();
+});
+
+it("shows reauth status when auth_action_required=reauth", async () => {
+  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
+  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
+  getUsageLimits.mockResolvedValue({
+    codex: { configured: true, auth_action_required: "reauth" },
+  });
+
+  render(<TokenPlanSection />);
+
+  await screen.findByText(/codex \/ Pro/i);
+  expect(await screen.findByText("需要重新登录 Codex 后读取额度")).toBeInTheDocument();
+});
+
+it("shows error status when codex.error is present", async () => {
+  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
+  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
+  getUsageLimits.mockResolvedValue({
+    codex: { configured: true, error: "Network error" },
+  });
+
+  render(<TokenPlanSection />);
+
+  await screen.findByText(/codex \/ Pro/i);
+  expect(await screen.findByText("Codex 额度读取失败: Network error")).toBeInTheDocument();
+});
+
+it("shows error status when usage limit request fails", async () => {
+  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
+  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
+  getUsageLimits.mockRejectedValue(new Error("Network down"));
+
+  render(<TokenPlanSection />);
+
+  await screen.findByText(/codex \/ Pro/i);
+  expect(await screen.findByText("Codex 额度读取失败: Network down")).toBeInTheDocument();
+});
+
+it("new plan form has Agent source, provider, and plan selectors", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+
+  await screen.findByText("Token 套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  expect(screen.getByLabelText("Agent 来源")).toBeInTheDocument();
+  expect(screen.getByLabelText("服务商")).toBeInTheDocument();
+  expect(screen.getByLabelText("套餐")).toBeInTheDocument();
+  expect(screen.queryByLabelText("来源")).not.toBeInTheDocument();
+});
+
+it("selecting xiaomi_mimo provider shows only verified catalog plans", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+
+  await screen.findByText("Token 套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "xiaomi_mimo");
+  });
+
+  const planSelect = screen.getByLabelText("套餐");
+  const options = Array.from(planSelect.options).map((opt) => opt.value);
+  expect(options).toContain("xiaomi_mimo_standard_monthly");
+  expect(options).not.toContain("custom");
+});
+
+it("catalog plan makes total quota read-only with display value", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+
+  await screen.findByText("Token 套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => {
+    await user.selectOptions(agentSelect, "hermes");
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "xiaomi_mimo");
+  });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => {
+    await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly");
+  });
+
+  const totalQuotaInput = screen.getByLabelText("总额度");
+  expect(totalQuotaInput).toBeDisabled();
+  expect(screen.getByText("11,000,000,000（11B）Credits")).toBeInTheDocument();
+});
+
+it("custom plan allows editing all quota fields", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+
+  await screen.findByText("Token 套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => {
+    await user.selectOptions(agentSelect, "claude");
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "custom");
+  });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => {
+    await user.selectOptions(planSelect, "custom");
+  });
+
+  expect(screen.getByLabelText("总额度")).not.toBeDisabled();
+  expect(screen.getByLabelText("已用额度")).not.toBeDisabled();
+  expect(screen.getByLabelText("剩余额度")).not.toBeDisabled();
+  expect(screen.getByLabelText("到期时间")).not.toBeDisabled();
+});
+
+it("shows empty catalog hint when provider has no verified plans", async () => {
+  getTokenPlanCatalog.mockResolvedValue({
+    providers: [
+      { id: "xiaomi_mimo", name: "小米 MiMo", plans: [] },
+      { id: "custom", name: "自定义套餐", plans: [] },
+    ],
+  });
+
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+
+  await screen.findByText("Token 套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "xiaomi_mimo");
+  });
+
+  expect(await screen.findByText("官方套餐暂未核验，请使用自定义套餐")).toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------
+// W03-R3B: Detection method in form — no standalone console session card
+// ---------------------------------------------------------------------------
+
+const xiaomiSessionRef = "token-plan/xiaomi_mimo/session/test-uuid-001";
+
+function makeXiaomiSession(overrides = {}) {
+  return {
+    id: "session-1",
+    provider_id: "xiaomi_mimo",
+    auth_kind: "official_console_session",
+    display_name: "小米 MiMo 控制台账号",
+    status: "pending_login",
+    session_ref: xiaomiSessionRef,
+    connected_at: "",
+    last_verified_at: "",
+    last_error_code: "",
+    last_error_message: "",
+    ...overrides,
+  };
+}
+
+async function openMimoOfficialAccountForm(user, { source = "hermes" } = {}) {
+  await screen.findByText("Token 套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+  const agentSelect = await screen.findByLabelText("Agent 来源");
+  if (source) {
+    await act(async () => {
+      await user.selectOptions(agentSelect, source);
+    });
+  }
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText("服务商"), "xiaomi_mimo");
+  });
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText("套餐"), "xiaomi_mimo_standard_monthly");
+  });
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText("选择检测方式"), "official_account");
+  });
+}
+
+it("main UI does NOT render a standalone Xiaomi MiMo console session card", async () => {
+  getConsoleSessions.mockResolvedValue({ sessions: [] });
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+  // The old standalone card title must NOT appear
+  expect(screen.queryByText("小米 MiMo 控制台连接")).not.toBeInTheDocument();
+});
+
+it("detection method section appears in form for xiaomi_mimo catalog plan", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  // Select xiaomi_mimo provider
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "xiaomi_mimo");
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => {
+    await user.selectOptions(agentSelect, "hermes");
+  });
+
+  // Select a catalog plan
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => {
+    await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly");
+  });
+
+  // Detection method section should appear
+  expect(await screen.findByText("检测方式")).toBeInTheDocument();
+  expect(screen.getByLabelText("选择检测方式")).toBeInTheDocument();
+});
+
+it("detection method section does NOT appear for non-xiaomi_mimo providers", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "custom");
+  });
+
+  expect(screen.queryByText("检测方式")).not.toBeInTheDocument();
+});
+
+it("selecting official_account detection shows connect button inside the form", async () => {
+  const user = userEvent.setup();
+  getConsoleSessions.mockResolvedValue({ sessions: [] });
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => {
+    await user.selectOptions(agentSelect, "hermes");
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "xiaomi_mimo");
+  });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => {
+    await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly");
+  });
+
+  // Select official_account detection
+  const detectionSelect = screen.getByLabelText("选择检测方式");
+  await act(async () => {
+    await user.selectOptions(detectionSelect, "official_account");
+  });
+
+  // Official account connect UI appears inside the form
+  expect(await screen.findByText("官网账号登录")).toBeInTheDocument();
+  expect(screen.getByTestId("detection-connect-xiaomi")).toBeInTheDocument();
+});
+
+it("does not start Xiaomi authorization without an Agent source", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await openMimoOfficialAccountForm(user, { source: "" });
+
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-xiaomi"));
+  });
+
+  expect(createConsoleSession).not.toHaveBeenCalled();
+  expect(openXiaomiMimoConsoleLogin).not.toHaveBeenCalled();
+  expect(await screen.findByText("请先选择 Agent 来源")).toBeInTheDocument();
+});
+
+it("automatically creates the session, verifies quota, saves the selected plan, and closes the window", async () => {
+  const user = userEvent.setup();
+  const order = [];
+  createConsoleSession.mockImplementation(async (params) => {
+    order.push("create-session");
+    return {
+      session: makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref }),
+      sessions: [makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref })],
+    };
+  });
+  openXiaomiMimoConsoleLogin.mockImplementation(async () => {
+    order.push("open-window");
+    return { connected: false, state_code: "login_started" };
+  });
+  verifyXiaomiMimoConsoleSession.mockImplementation(async (sessionRef) => {
+    order.push("verify-native");
+    return {
+      connected: true,
+      session_ref: sessionRef,
+      state_code: "connected",
+      error_code: "",
+      error_message: "",
+      quota: {
+        total_quota: 11_000_000_000,
+        used_quota: 1_000_000_000,
+        remaining_quota: 10_000_000_000,
+        expires_at: null,
+        provider_reported_at: "2026-06-28T00:00:00.000Z",
+      },
+    };
+  });
+  verifyConsoleSession.mockImplementation(async () => {
+    order.push("verify-backend");
+    return { ok: true, session: makeXiaomiSession({ id: "new-session-id", status: "connected" }) };
+  });
+  saveTokenPlan.mockImplementation(async (record) => {
+    order.push("save-plan");
+    return { ok: true, record: { ...record, id: "plan-mimo" }, records: [{ ...record, id: "plan-mimo" }] };
+  });
+  deleteXiaomiMimoConsoleSession.mockImplementation(async () => {
+    order.push("close-window");
+  });
+
+  render(<TokenPlanSection />);
+  await openMimoOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-xiaomi"));
+  });
+
+  await waitFor(() => {
+    expect(order).toEqual([
+      "create-session",
+      "open-window",
+      "verify-native",
+      "verify-backend",
+      "save-plan",
+      "close-window",
+    ]);
+  });
+  expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+    source: "hermes",
+    provider_id: "xiaomi_mimo",
+    plan_id: "xiaomi_mimo_standard_monthly",
+    used_quota: 1_000_000_000,
+    remaining_quota: 10_000_000_000,
+    detection_method: "official_account",
+  }));
+  expect(screen.queryByText("新增 Token 套餐")).not.toBeInTheDocument();
+});
+
+it("does not open the Xiaomi login window when local session creation fails", async () => {
+  const user = userEvent.setup();
+  createConsoleSession.mockRejectedValue(new Error("Failed to fetch"));
+
+  render(<TokenPlanSection />);
+  await openMimoOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-xiaomi"));
+  });
+
+  expect(await screen.findByText("Failed to fetch")).toBeInTheDocument();
+  expect(openXiaomiMimoConsoleLogin).not.toHaveBeenCalled();
+});
+
+it("rolls back the pending session when the native login window fails to open", async () => {
+  const user = userEvent.setup();
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref }),
+    sessions: [makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref })],
+  }));
+  openXiaomiMimoConsoleLogin.mockRejectedValue(new Error("window failed"));
+
+  render(<TokenPlanSection />);
+  await openMimoOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-xiaomi"));
+  });
+
+  await waitFor(() => expect(deleteConsoleSession).toHaveBeenCalledWith("new-session-id"));
+  expect(await screen.findByText("window failed")).toBeInTheDocument();
+  expect(saveTokenPlan).not.toHaveBeenCalled();
+});
+
+it("keeps the Xiaomi window open and does not show success when saving the plan fails", async () => {
+  const user = userEvent.setup();
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref }),
+    sessions: [makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref })],
+  }));
+  openXiaomiMimoConsoleLogin.mockResolvedValue({ connected: false, state_code: "login_started" });
+  verifyXiaomiMimoConsoleSession.mockImplementation(async (sessionRef) => ({
+    connected: true,
+    session_ref: sessionRef,
+    state_code: "connected",
+    error_code: "",
+    error_message: "",
+    quota: { total_quota: 100, used_quota: 25, remaining_quota: 75 },
+  }));
+  saveTokenPlan
+    .mockRejectedValueOnce(new Error("save failed"))
+    .mockImplementation(async (record) => ({
+      ok: true,
+      record: { ...record, id: "plan-mimo" },
+      records: [{ ...record, id: "plan-mimo" }],
+    }));
+
+  render(<TokenPlanSection />);
+  await openMimoOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-xiaomi"));
+  });
+
+  expect(await screen.findByText("save failed")).toBeInTheDocument();
+  expect(deleteXiaomiMimoConsoleSession).not.toHaveBeenCalled();
+  expect(screen.queryByTestId("detection-connected")).not.toBeInTheDocument();
+
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-resume"));
+  });
+
+  await waitFor(() => expect(deleteXiaomiMimoConsoleSession).toHaveBeenCalledTimes(1));
+  expect(createConsoleSession).toHaveBeenCalledTimes(1);
+  expect(openXiaomiMimoConsoleLogin).toHaveBeenCalledTimes(1);
+  expect(verifyXiaomiMimoConsoleSession).toHaveBeenCalledTimes(2);
+  expect(saveTokenPlan).toHaveBeenCalledTimes(2);
+});
+
+it("cleans up a pending session when the Xiaomi login window is closed", async () => {
+  const user = userEvent.setup();
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref }),
+    sessions: [makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref })],
+  }));
+  openXiaomiMimoConsoleLogin.mockResolvedValue({ connected: false, state_code: "login_started" });
+  verifyXiaomiMimoConsoleSession.mockImplementation(async (sessionRef) => ({
+    connected: false,
+    session_ref: sessionRef,
+    state_code: "session_not_found",
+    error_code: "SESSION_NOT_FOUND",
+    error_message: "登录窗口已关闭",
+  }));
+
+  render(<TokenPlanSection />);
+  await openMimoOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-xiaomi"));
+  });
+
+  await waitFor(() => expect(deleteConsoleSession).toHaveBeenCalledWith("new-session-id"));
+  expect(deleteXiaomiMimoConsoleSession).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText("登录窗口已关闭")).toBeInTheDocument();
+  expect(screen.getByTestId("detection-connect-xiaomi")).toBeInTheDocument();
+});
+
+it("replaces a failed Xiaomi session before retrying authorization", async () => {
+  const user = userEvent.setup();
+  const oldSession = makeXiaomiSession({
+    id: "old-session-id",
+    session_ref: "token-plan/xiaomi_mimo/session/old",
+    status: "failed",
+  });
+  getConsoleSessions.mockResolvedValue({ sessions: [oldSession] });
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref }),
+    sessions: [makeXiaomiSession({ id: "new-session-id", session_ref: params.session_ref })],
+  }));
+  openXiaomiMimoConsoleLogin.mockResolvedValue({ connected: false, state_code: "login_started" });
+  verifyXiaomiMimoConsoleSession.mockImplementation(async (sessionRef) => ({
+    connected: true,
+    session_ref: sessionRef,
+    state_code: "connected",
+    error_code: "",
+    error_message: "",
+    quota: { total_quota: 100, used_quota: 25, remaining_quota: 75 },
+  }));
+
+  render(<TokenPlanSection />);
+  await openMimoOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(await screen.findByTestId("detection-retry"));
+  });
+
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
+  expect(deleteConsoleSession).toHaveBeenCalledWith("old-session-id");
+  expect(deleteXiaomiMimoConsoleSession).toHaveBeenNthCalledWith(
+    1,
+    "token-plan/xiaomi_mimo/session/old",
+  );
+  expect(deleteConsoleSession.mock.invocationCallOrder[0]).toBeLessThan(
+    createConsoleSession.mock.invocationCallOrder[0],
+  );
+});
+
+it("selecting xiaomi_mimo catalog plan auto-fills catalog quota and detection url", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => {
+    await user.selectOptions(agentSelect, "hermes");
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "xiaomi_mimo");
+  });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => {
+    await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly");
+  });
+
+  // Catalog quota is displayed and readonly
+  const totalQuotaInput = screen.getByLabelText("总额度");
+  expect(totalQuotaInput).toBeDisabled();
+  expect(screen.getByText("11,000,000,000（11B）Credits")).toBeInTheDocument();
+
+  // Detection method section appears
+  expect(await screen.findByText("检测方式")).toBeInTheDocument();
+});
+
+it("save payload does NOT contain forbidden fields (api_key, cookie, authorization)", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => {
+    await user.selectOptions(agentSelect, "claude");
+  });
+
+  const planLabel = screen.getByLabelText("套餐名称");
+  await act(async () => {
+    await user.clear(planLabel);
+    await user.type(planLabel, "Test Plan");
+  });
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => {
+    expect(saveTokenPlan).toHaveBeenCalled();
+  });
+
+  const saveArg = saveTokenPlan.mock.calls[0][0];
+  // Forbidden fields must be stripped
+  expect(saveArg.api_key).toBeUndefined();
+  expect(saveArg.apiKey).toBeUndefined();
+  expect(saveArg.cookie).toBeUndefined();
+  expect(saveArg.authorization).toBeUndefined();
+  expect(saveArg.authorization_header).toBeUndefined();
+  expect(saveArg.bearer).toBeUndefined();
+  expect(saveArg.token).toBeUndefined();
+  expect(saveArg.password).toBeUndefined();
+});
+
+it("detection_method not written when not configured", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => {
+    await user.selectOptions(agentSelect, "hermes");
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "xiaomi_mimo");
+  });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => {
+    await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly");
+  });
+
+  // Do NOT select any detection method — leave it blank
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => {
+    expect(saveTokenPlan).toHaveBeenCalled();
+  });
+
+  const saveArg = saveTokenPlan.mock.calls[0][0];
+  expect(saveArg.detection_method).toBe("");
+  // detection_config should be stripped when detection_method is empty
+  expect(saveArg.detection_config).toBeUndefined();
+});
+
+it("custom_api detection shows real config form (R3C)", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => {
+    await user.selectOptions(agentSelect, "hermes");
+  });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => {
+    await user.selectOptions(providerSelect, "xiaomi_mimo");
+  });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => {
+    await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly");
+  });
+
+  const detectionSelect = screen.getByLabelText("选择检测方式");
+  await act(async () => {
+    await user.selectOptions(detectionSelect, "custom_api");
+  });
+
+  // R3C: real custom API form should appear, not placeholder text
+  expect(screen.getAllByText("自定义 API 检测").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getByLabelText("API 格式")).toBeInTheDocument();
+  expect(screen.getByLabelText("请求地址")).toBeInTheDocument();
+  expect(screen.getByLabelText("总额度路径")).toBeInTheDocument();
+  expect(screen.getByLabelText("已用额度路径")).toBeInTheDocument();
+  expect(screen.getByLabelText("剩余额度路径")).toBeInTheDocument();
+});
+
+// W03-R3D P1: API Key input is editable (not disabled placeholder)
+it("R3D custom_api API Key input is editable and not disabled", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => { await user.selectOptions(agentSelect, "hermes"); });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => { await user.selectOptions(providerSelect, "xiaomi_mimo"); });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => { await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly"); });
+
+  const detectionSelect = screen.getByLabelText("选择检测方式");
+  await act(async () => { await user.selectOptions(detectionSelect, "custom_api"); });
+
+  // API Key input should exist and NOT be disabled
+  const apiKeyInput = screen.getByLabelText("API Key");
+  expect(apiKeyInput).toBeInTheDocument();
+  expect(apiKeyInput.disabled).toBe(false);
+
+  // User can type into it
+  await act(async () => {
+    await user.clear(apiKeyInput);
+    await user.type(apiKeyInput, "sk-test-api-key-12345");
+  });
+  expect(apiKeyInput.value).toBe("sk-test-api-key-12345");
+});
+
+// W03-R3D P1: save with custom_api detection calls saveTokenPlanSecret and
+// writes api_key_ref into the plan payload (not the raw key).
+it("R3D save custom_api plan calls saveTokenPlanSecret and writes api_key_ref", async () => {
+  const user = userEvent.setup();
+  const mockSecretRef = "token-plan/xiaomi_mimo/custom-api/mock-uuid-1234";
+  saveTokenPlanSecret.mockResolvedValue({
+    ok: true,
+    api_key_ref: mockSecretRef,
+    provider_id: "xiaomi_mimo",
+    purpose: "custom-api",
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => { await user.selectOptions(agentSelect, "hermes"); });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => { await user.selectOptions(providerSelect, "xiaomi_mimo"); });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => { await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly"); });
+
+  const detectionSelect = screen.getByLabelText("选择检测方式");
+  await act(async () => { await user.selectOptions(detectionSelect, "custom_api"); });
+
+  // Type in API Key
+  const apiKeyInput = screen.getByLabelText("API Key");
+  await act(async () => {
+    await user.clear(apiKeyInput);
+    await user.type(apiKeyInput, "sk-test-save-key");
+  });
+
+  // Fill in required custom API fields
+  const requestUrl = screen.getByLabelText("请求地址");
+  await act(async () => {
+    await user.clear(requestUrl);
+    await user.type(requestUrl, "https://api.example.com/quota");
+  });
+
+  const totalPath = screen.getByLabelText("总额度路径");
+  await act(async () => {
+    await user.clear(totalPath);
+    await user.type(totalPath, "$.total");
+  });
+
+  const usedPath = screen.getByLabelText("已用额度路径");
+  await act(async () => {
+    await user.clear(usedPath);
+    await user.type(usedPath, "$.used");
+  });
+
+  const remainingPath = screen.getByLabelText("剩余额度路径");
+  await act(async () => {
+    await user.clear(remainingPath);
+    await user.type(remainingPath, "$.remaining");
+  });
+
+  // Save
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => {
+    // 1. saveTokenPlanSecret must have been called with the raw key
+    expect(saveTokenPlanSecret).toHaveBeenCalledWith({
+      provider_id: "xiaomi_mimo",
+      purpose: "custom-api",
+      secret: "sk-test-save-key",
+    });
+
+    // 2. saveTokenPlan must have been called
+    expect(saveTokenPlan).toHaveBeenCalled();
+  });
+
+  const saveArg = saveTokenPlan.mock.calls[0][0];
+
+  // 3. detection_config.custom_api must contain api_key_ref (not raw key)
+  expect(saveArg.detection_method).toBe("custom_api");
+  expect(saveArg.detection_config).toBeDefined();
+  expect(saveArg.detection_config.custom_api).toBeDefined();
+  expect(saveArg.detection_config.custom_api.api_key_ref).toBe(mockSecretRef);
+
+  // 4. Raw API Key must NOT appear in the plan payload
+  const payloadStr = JSON.stringify(saveArg);
+  expect(payloadStr).not.toMatch(/sk-test-save-key/);
+  expect(payloadStr).not.toMatch(/api_key_ref.*sk-/);
+
+  // 5. Forbidden fields must still be stripped
+  expect(saveArg.api_key).toBeUndefined();
+  expect(saveArg.secret).toBeUndefined();
+});
+
+// W03-R3D: saveTokenPlanSecret failure shows error and does not save plan
+it("R3D saveTokenPlanSecret failure shows error and does not save plan", async () => {
+  const user = userEvent.setup();
+  saveTokenPlanSecret.mockResolvedValue({
+    ok: false,
+    error: "credential_store_unavailable",
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  const agentSelect = screen.getByLabelText("Agent 来源");
+  await act(async () => { await user.selectOptions(agentSelect, "hermes"); });
+
+  const providerSelect = screen.getByLabelText("服务商");
+  await act(async () => { await user.selectOptions(providerSelect, "xiaomi_mimo"); });
+
+  const planSelect = screen.getByLabelText("套餐");
+  await act(async () => { await user.selectOptions(planSelect, "xiaomi_mimo_standard_monthly"); });
+
+  const detectionSelect = screen.getByLabelText("选择检测方式");
+  await act(async () => { await user.selectOptions(detectionSelect, "custom_api"); });
+
+  // Type in API Key
+  const apiKeyInput = screen.getByLabelText("API Key");
+  await act(async () => {
+    await user.clear(apiKeyInput);
+    await user.type(apiKeyInput, "sk-test-fail-key");
+  });
+
+  // Save
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => {
+    expect(saveTokenPlanSecret).toHaveBeenCalled();
+    // saveTokenPlan must NOT have been called (secret save failed first)
+    expect(saveTokenPlan).not.toHaveBeenCalled();
+  });
+
+  // Error message should be displayed — either the server error or fallback
+  const errorEl = await screen.findByText(
+    (content) => content.includes("credential_store_unavailable") || content.includes("API Key 保存失败"),
+  );
+  expect(errorEl).toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------
+// W03-R3D: Unified detection/sync status display tests
+// ---------------------------------------------------------------------------
+
+it("R3D record without detection_method shows no-detection prompt", async () => {
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-no-detection",
+      detection_method: "",
+      sync_status: "not_configured",
+    }],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+  expect(await screen.findByText("请选择检测方式以同步套餐状态")).toBeInTheDocument();
+});
+
+it("R3D record with official_account detection shows unsupported status and preserves quota", async () => {
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-official",
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_id: "xiaomi_mimo_standard_monthly",
+      plan_label: "Standard（月付）",
+      total_quota: 11000000000,
+      used_quota: 5000000000,
+      remaining_quota: 6000000000,
+      expires_at: "2026-12-31",
+      quota_source: "catalog",
+      detection_method: "official_account",
+      detection_config: {
+        official_account: {
+          provider_home_url: "https://platform.xiaomimimo.com/token-plan",
+          account_binding_id: "session-test",
+        },
+      },
+      sync_status: "unsupported",
+      last_error_code: "PROVIDER_UNSUPPORTED",
+      last_error_message: "当前没有可复现官方额度查询能力",
+      last_sync_attempt_at: "2026-06-25T10:00:00.000Z",
+    }],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  // Quota is displayed (used_quota appears in both SummaryMetric and record card summary line)
+  expect(screen.getAllByText(/5,000,000,000/).length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText(/11,000,000,000/).length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText(/6,000,000,000/).length).toBeGreaterThanOrEqual(1);
+  expect(screen.getByText(/2026-12-31/)).toBeInTheDocument();
+
+  // Detection method label is shown (text may be embedded in a span with other content)
+  expect(screen.getByText(/官网账号登录检测/)).toBeInTheDocument();
+
+  // Status is unsupported (not success)
+  expect(screen.getByText(/不支持同步/)).toBeInTheDocument();
+
+  // Error message is shown
+  expect(screen.getByText(/PROVIDER_UNSUPPORTED/)).toBeInTheDocument();
+});
+
+it("R3D record with custom_api detection shows success status and quota_source custom_api", async () => {
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-custom-success",
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_label: "Standard（月付）",
+      total_quota: 11000000000,
+      used_quota: 3200000000,
+      remaining_quota: 7800000000,
+      expires_at: "2026-07-25",
+      quota_source: "custom_api",
+      detection_method: "custom_api",
+      sync_status: "success",
+      last_synced_at: "2026-06-25T10:00:00.000Z",
+      last_error_code: "",
+      last_error_message: "",
+    }],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  // Detection method label
+  expect(screen.getByText(/自定义 API 检测/)).toBeInTheDocument();
+
+  // Status is success
+  expect(screen.getByText(/同步成功/)).toBeInTheDocument();
+
+  // quota_source shown as 自定义 API (use getAllByText since detection_method also contains this substring)
+  const customApiLabels = screen.getAllByText(/自定义 API/);
+  expect(customApiLabels.length).toBeGreaterThanOrEqual(2); // detection label + quota source
+});
+
+it("R3D failed record shows last successful quota and error reason", async () => {
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-failed",
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_label: "Standard（月付）",
+      total_quota: 11000000000,
+      used_quota: 2000000000,
+      remaining_quota: 9000000000,
+      expires_at: "2026-07-01",
+      quota_source: "custom_api",
+      detection_method: "custom_api",
+      sync_status: "failed",
+      last_error_code: "CUSTOM_API_MAPPING_MISSING",
+      last_error_message: "自定义 API 响应中未找到有效额度数值",
+      last_sync_attempt_at: "2026-06-25T11:00:00.000Z",
+      last_synced_at: "2026-06-20T10:00:00.000Z",
+      provider_reported_at: "2026-06-20T10:00:00.000Z",
+    }],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  // Quota from last success is still displayed
+  expect(screen.getAllByText(/11,000,000,000/).length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText(/2,000,000,000/).length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText(/9,000,000,000/).length).toBeGreaterThanOrEqual(1);
+
+  // Status is failed
+  expect(screen.getByText(/同步失败/)).toBeInTheDocument();
+
+  // Error code and message are shown
+  expect(screen.getByText(/CUSTOM_API_MAPPING_MISSING/)).toBeInTheDocument();
+  expect(screen.getByText(/自定义 API 响应中未找到有效额度数值/)).toBeInTheDocument();
+
+  // Last sync time is shown
+  expect(screen.getByText(/最后同步时间/)).toBeInTheDocument();
+});
+
+it("R3D both detection methods use the same status labels", async () => {
+  // Create two records: one official_account failed, one custom_api failed
+  getTokenPlans.mockResolvedValue({
+    records: [
+      {
+        ...BASE_RECORD,
+        id: "plan-official-failed",
+        source: "hermes",
+        provider_id: "xiaomi_mimo",
+        plan_id: "xiaomi_mimo_standard_monthly",
+        plan_label: "Standard（月付）",
+        total_quota: 1000,
+        used_quota: 100,
+        remaining_quota: 900,
+        quota_source: "catalog",
+        detection_method: "official_account",
+        sync_status: "unsupported",
+        last_error_code: "PROVIDER_UNSUPPORTED",
+        last_error_message: "当前没有可复现官方额度查询能力",
+      },
+      {
+        ...BASE_RECORD,
+        id: "plan-custom-failed",
+        source: "hermes",
+        plan_label: "Custom",
+        total_quota: 500,
+        used_quota: 50,
+        remaining_quota: 450,
+        quota_source: "custom_api",
+        detection_method: "custom_api",
+        sync_status: "failed",
+        last_error_code: "CUSTOM_API_REQUEST_FAILED",
+        last_error_message: "自定义 API 请求失败",
+      },
+    ],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  // Both records should show "同步状态" label (same status label for both methods)
+  const statusLabels = screen.getAllByText(/同步状态/);
+  expect(statusLabels.length).toBeGreaterThanOrEqual(2);
+
+  // Status labels use the same copy path regardless of detection method
+  expect(screen.getByText(/不支持同步/)).toBeInTheDocument();
+  expect(screen.getByText(/同步失败/)).toBeInTheDocument();
+});
+
+it("R3D API Key must NOT appear in record card or list view", async () => {
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-no-leak",
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_label: "Standard（月付）",
+      total_quota: 11000000000,
+      quota_source: "custom_api",
+      detection_method: "custom_api",
+      detection_config: {
+        custom_api: {
+          api_key_ref: "token-plan/xiaomi_mimo/custom-api/2e2c7f3d-7b9f-4c92-b2d2-c6e9f4a8c320",
+          api_format: "json_path",
+          request_url: "https://example.com/quota",
+          method: "GET",
+          response_mapping: {
+            total_quota_path: "$.total",
+            remaining_quota_path: "$.remaining",
+          },
+        },
+      },
+      sync_status: "success",
+    }],
+  });
+
+  const { container } = render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  const html = container.innerHTML;
+  // No API key plaintext in the DOM
+  expect(html).not.toMatch(/sk-/);
+  expect(html).not.toMatch(/do-not-leak/);
+  expect(html).not.toMatch(/nested-secret/);
+  expect(html).not.toMatch(/raw-cookie/);
+});
+
+it("R3D manual quota entry is disabled when detection method is configured", async () => {
+  const user = userEvent.setup();
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-r3d-disable",
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_id: "xiaomi_mimo_standard_monthly",
+      plan_label: "Standard",
+      total_quota: 11000000000,
+      used_quota: 5000000000,
+      remaining_quota: 6000000000,
+      detection_method: "custom_api",
+      detection_config: {
+        custom_api: {
+          api_key_ref: "token-plan/xiaomi_mimo/api/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          request_url: "https://api.example.com/quota",
+          method: "GET",
+          response_mapping: {
+            total_quota_path: "$.total",
+            used_quota_path: "$.used",
+            remaining_quota_path: "$.remaining",
+          },
+        },
+      },
+      sync_status: "success",
+      last_synced_at: "2026-06-20T10:00:00Z",
+      quota_source: "custom_api",
+    }],
+  });
+  getTokenPlanCatalog.mockResolvedValue({
+    providers: [{
+      id: "xiaomi_mimo",
+      display_name: "小米 MiMo",
+      plans: [{
+        plan_id: "xiaomi_mimo_standard_monthly",
+        display_name: "Standard",
+        quota_kind: "tokens",
+        quota_unit: "tokens",
+        total_quota: 11000000000,
+      }],
+    }],
+  });
+
+  const { container } = render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  // Open edit form for the existing plan
+  const editBtn = screen.getByRole("button", { name: "编辑" });
+  await act(async () => {
+    await user.click(editBtn);
+  });
+
+  // After opening edit, used_quota, remaining_quota, expires_at should be disabled
+  // because detection_method is configured
+  const usedQuotaInput = screen.getByLabelText("已用额度");
+  const remainingQuotaInput = screen.getByLabelText("剩余额度");
+  const expiresAtInput = screen.getByLabelText("到期时间");
+
+  expect(usedQuotaInput.disabled).toBe(true);
+  expect(remainingQuotaInput.disabled).toBe(true);
+  expect(expiresAtInput.disabled).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// W03-R3D P1 regression: editing an existing custom_api record and entering
+// a NEW API Key must call saveTokenPlanSecret and replace the old ref.
+// The in-memory credential store is volatile — after a server restart the
+// old ref is stale.  If we skipped saving because an old ref existed, the
+// user could never re-enter / rotate their key.
+// ---------------------------------------------------------------------------
+
+it("R3D P1 editing existing custom_api record with new key replaces api_key_ref", async () => {
+  const user = userEvent.setup();
+  const oldRef = "token-plan/xiaomi_mimo/custom-api/old-stale-uuid-0001";
+  const newRef = "token-plan/xiaomi_mimo/custom-api/new-fresh-uuid-9999";
+
+  // Existing record already has a custom_api detection with an old api_key_ref.
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-existing-custom",
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_id: "xiaomi_mimo_standard_monthly",
+      plan_label: "Standard（月付）",
+      quota_kind: "credits",
+      quota_unit: "credits",
+      total_quota: 11000000000,
+      used_quota: 2000000000,
+      remaining_quota: 9000000000,
+      expires_at: "2026-07-01",
+      quota_source: "custom_api",
+      detection_method: "custom_api",
+      detection_config: {
+        custom_api: {
+          api_key_ref: oldRef,
+          api_format: "json_path",
+          request_url: "https://api.example.com/quota",
+          method: "GET",
+          response_mapping: {
+            total_quota_path: "$.total",
+            used_quota_path: "$.used",
+            remaining_quota_path: "$.remaining",
+            expires_at_path: "$.expires_at",
+          },
+        },
+      },
+      sync_status: "success",
+      last_synced_at: "2026-06-20T10:00:00Z",
+    }],
+  });
+
+  // The secrets endpoint returns a NEW ref when called.
+  saveTokenPlanSecret.mockResolvedValue({
+    ok: true,
+    api_key_ref: newRef,
+    provider_id: "xiaomi_mimo",
+    purpose: "custom-api",
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+  await screen.findByText(/Standard（月付）/i);
+
+  // 1. Open edit form for the existing record
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+
+  // 2. API Key input should be empty (never pre-filled)
+  const apiKeyInput = screen.getByLabelText("API Key");
+  expect(apiKeyInput.value).toBe("");
+
+  // 3. Type a NEW key
+  await act(async () => {
+    await user.clear(apiKeyInput);
+    await user.type(apiKeyInput, "sk-rotated-new-key-9999");
+  });
+
+  // 4. Save
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => {
+    // saveTokenPlanSecret MUST have been called — even though oldRef existed
+    expect(saveTokenPlanSecret).toHaveBeenCalledWith({
+      provider_id: "xiaomi_mimo",
+      purpose: "custom-api",
+      secret: "sk-rotated-new-key-9999",
+    });
+    expect(saveTokenPlan).toHaveBeenCalled();
+  });
+
+  const saveArg = saveTokenPlan.mock.calls[0][0];
+
+  // 5. The plan payload must use the NEW ref, not the old one
+  expect(saveArg.detection_config.custom_api.api_key_ref).toBe(newRef);
+  expect(saveArg.detection_config.custom_api.api_key_ref).not.toBe(oldRef);
+
+  // 6. Raw key must NOT appear anywhere in the payload
+  const payloadStr = JSON.stringify(saveArg);
+  expect(payloadStr).not.toMatch(/sk-rotated-new-key-9999/);
+  expect(saveArg.api_key).toBeUndefined();
+  expect(saveArg.secret).toBeUndefined();
+});
+
+it("R3D P1 editing existing custom_api record with EMPTY key field keeps old ref", async () => {
+  const user = userEvent.setup();
+  const oldRef = "token-plan/xiaomi_mimo/custom-api/preserved-old-uuid-7777";
+
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-keep-ref",
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_id: "xiaomi_mimo_standard_monthly",
+      plan_label: "Standard（月付）",
+      quota_kind: "credits",
+      quota_unit: "credits",
+      total_quota: 11000000000,
+      used_quota: 2000000000,
+      remaining_quota: 9000000000,
+      expires_at: "2026-07-01",
+      quota_source: "custom_api",
+      detection_method: "custom_api",
+      detection_config: {
+        custom_api: {
+          api_key_ref: oldRef,
+          api_format: "json_path",
+          request_url: "https://api.example.com/quota",
+          method: "GET",
+          response_mapping: {
+            total_quota_path: "$.total",
+            used_quota_path: "$.used",
+            remaining_quota_path: "$.remaining",
+            expires_at_path: "$.expires_at",
+          },
+        },
+      },
+      sync_status: "success",
+      last_synced_at: "2026-06-20T10:00:00Z",
+    }],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+  await screen.findByText(/Standard（月付）/i);
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+
+  // API Key input is empty — user did NOT re-enter a key
+  const apiKeyInput = screen.getByLabelText("API Key");
+  expect(apiKeyInput.value).toBe("");
+
+  // Save without typing anything into the API Key field
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => {
+    expect(saveTokenPlan).toHaveBeenCalled();
+  });
+
+  // saveTokenPlanSecret must NOT have been called (no new key entered)
+  expect(saveTokenPlanSecret).not.toHaveBeenCalled();
+
+  // The old ref must be preserved in the payload
+  const saveArg = saveTokenPlan.mock.calls[0][0];
+  expect(saveArg.detection_config.custom_api.api_key_ref).toBe(oldRef);
+});
+
+// ---------------------------------------------------------------------------
+// W03E-R3E: Remove legacy cookie_scrape entry from user-visible UI
+// ---------------------------------------------------------------------------
+
+it("R3E new plan form does not show cookie_scrape as a refresh method option", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  // cookie_scrape label must not appear anywhere in the form
+  expect(screen.queryByText("Cookie 抓取（未实现）")).not.toBeInTheDocument();
+
+  // If the refresh method selector is visible, its options must not include cookie_scrape
+  const refreshMethodSelect = screen.queryByLabelText("刷新方式");
+  if (refreshMethodSelect) {
+    const optionValues = Array.from(refreshMethodSelect.options).map((o) => o.value);
+    expect(optionValues).not.toContain("cookie_scrape");
+  }
+});
+
+it("R3E editing a legacy refresh_method=cookie_scrape record opens the form without crashing", async () => {
+  const user = userEvent.setup();
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-legacy-cookie",
+      source: "claude",
+      plan_label: "Legacy Cookie Plan",
+      refresh_method: "cookie_scrape",
+      detection_method: "",
+    }],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/Legacy Cookie Plan/i);
+
+  // Opening edit must not crash
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+
+  // Form should be open and show the plan label
+  expect(screen.getByDisplayValue("Legacy Cookie Plan")).toBeInTheDocument();
+
+  // cookie_scrape must not be a selectable value in the refresh method selector
+  const refreshMethodSelect = screen.queryByLabelText("刷新方式");
+  if (refreshMethodSelect) {
+    const optionValues = Array.from(refreshMethodSelect.options).map((o) => o.value);
+    expect(optionValues).not.toContain("cookie_scrape");
+    // The current value must be normalized to a valid option, not left as cookie_scrape
+    expect(refreshMethodSelect.value).not.toBe("cookie_scrape");
+  }
+});
+
+it("R3E saving an edited legacy cookie_scrape record does not write cookie_scrape in payload", async () => {
+  const user = userEvent.setup();
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "plan-legacy-cookie-save",
+      source: "claude",
+      plan_label: "Legacy Cookie Save",
+      refresh_method: "cookie_scrape",
+      detection_method: "",
+    }],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/Legacy Cookie Save/i);
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => {
+    expect(saveTokenPlan).toHaveBeenCalled();
+  });
+
+  const saveArg = saveTokenPlan.mock.calls[0][0];
+  // Payload must NOT contain cookie_scrape as refresh_method
+  expect(saveArg.refresh_method).not.toBe("cookie_scrape");
+});
+
+it("R3E no Cookie input or paste-Cookie action appears in the form", async () => {
+  const user = userEvent.setup();
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+
+  // No Cookie-related input labels or buttons
+  expect(screen.queryByLabelText(/cookie/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /cookie/i })).not.toBeInTheDocument();
+  expect(screen.queryByText(/粘贴\s*Cookie/i)).not.toBeInTheDocument();
+});
