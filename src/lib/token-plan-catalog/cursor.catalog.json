@@ -1,0 +1,50 @@
+{
+  "provider_id": "cursor",
+  "provider_name": "Cursor",
+  "official_site": "https://www.cursor.com/",
+  "catalog_version": "2026-07-08",
+  "evidence": [
+    {
+      "url": "https://www.cursor.com/pricing",
+      "title": "Cursor Pricing",
+      "accessed_at": "2026-07-08"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "cursor_pro",
+      "display_name": "Pro",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 0,
+        "unit": "tokens",
+        "display": "账单周期用量（官方百分比）"
+      },
+      "expires": {
+        "kind": "billing_cycle"
+      },
+      "official_evidence_url": "https://www.cursor.com/settings"
+    },
+    {
+      "plan_id": "cursor_business",
+      "display_name": "Business / Team",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 0,
+        "unit": "tokens",
+        "display": "团队池化用量（官方百分比）"
+      },
+      "expires": {
+        "kind": "billing_cycle"
+      },
+      "official_evidence_url": "https://www.cursor.com/settings"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "local_cursor_session_cookie",
+    "usage_endpoint_documented": false,
+    "fields_available": ["rolling_weekly"],
+    "notes": "额度来自 cursor.com/api/usage-summary；需本机 Cursor IDE 已登录。无独立 5 小时窗口 API。"
+  }
+}

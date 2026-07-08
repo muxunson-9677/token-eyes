@@ -1,42 +1,37 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CC Switch",
-  "version": "3.16.3",
-  "identifier": "com.ccswitch.desktop",
+  "productName": "Token Eyes",
+  "version": "0.54.0",
+  "identifier": "com.tokeneyes.desktop",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "pnpm run dev:renderer",
-    "beforeBuildCommand": "pnpm run build:renderer"
+    "frontendDist": "../dashboard/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm --prefix dashboard run dev -- --host 127.0.0.1",
+    "beforeBuildCommand": "npm run dashboard:build && npm run tauri:prepare-runtime"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "label": "main",
-        "title": "",
-        "titleBarStyle": "Overlay",
-        "width": 1000,
-        "height": 650,
+        "title": "Token Eyes",
+        "width": 1200,
+        "height": 800,
         "minWidth": 900,
         "minHeight": 600,
-        "visible": false,
         "resizable": true,
         "fullscreen": false,
         "center": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: https: http:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https: http:",
-      "assetProtocol": {
-        "enable": true,
-        "scope": []
-      }
+      "csp": "default-src 'self'; img-src 'self' data: https: http:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https: http:"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": false,
+    "publisher": "Muxunson",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -44,26 +39,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "EmbeddedServer/**/*"
+    ],
     "windows": {
-      "wix": {
-        "template": "wix/per-user-main.wxs"
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installerHooks": "windows/nsis-hooks.nsh"
       }
-    },
-    "macOS": {
-      "minimumSystemVersion": "12.0"
-    }
-  },
-  "plugins": {
-    "deep-link": {
-      "desktop": {
-        "schemes": ["ccswitch"]
-      }
-    },
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM4MDI4QzlBNTczOTI4RTMKUldUaktEbFhtb3dDeUM5US9kT0FmdGR5Ti9vQzcwa2dTMlpibDVDUmQ2M0VGTzVOWnd0SGpFVlEK",
-      "endpoints": [
-        "https://github.com/farion1231/cc-switch/releases/latest/download/latest.json"
-      ]
     }
   }
 }

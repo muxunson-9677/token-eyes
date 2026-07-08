@@ -1,0 +1,64 @@
+{
+  "provider_id": "glm",
+  "provider_name": "GLM",
+  "official_site": "https://www.bigmodel.cn/glm-coding",
+  "catalog_version": "2026-07-08",
+  "evidence": [
+    {
+      "url": "https://docs.bigmodel.cn/cn/coding-plan/overview",
+      "title": "GLM Coding Plan 套餐概览",
+      "accessed_at": "2026-07-08"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "glm_lite",
+      "display_name": "Lite",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 400,
+        "unit": "prompts",
+        "display": "每周约 400 次 prompts（5 小时约 80 次）"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://docs.bigmodel.cn/cn/coding-plan/overview"
+    },
+    {
+      "plan_id": "glm_pro",
+      "display_name": "Pro",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 2000,
+        "unit": "prompts",
+        "display": "每周约 2000 次 prompts（5 小时约 400 次）"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://docs.bigmodel.cn/cn/coding-plan/overview"
+    },
+    {
+      "plan_id": "glm_max",
+      "display_name": "Max",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 8000,
+        "unit": "prompts",
+        "display": "每周约 8000 次 prompts（5 小时约 1600 次）"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://docs.bigmodel.cn/cn/coding-plan/overview"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "api_key_for_usage_endpoint",
+    "usage_endpoint_documented": true,
+    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "notes": "套餐参考额度来自官方文档；实时已用/剩余通过 Coding Plan API Key 或官网登录后同步。"
+  }
+}

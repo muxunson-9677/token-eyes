@@ -1,0 +1,50 @@
+{
+  "provider_id": "minimax",
+  "provider_name": "MiniMax",
+  "official_site": "https://platform.minimaxi.com/",
+  "catalog_version": "2026-07-07",
+  "evidence": [
+    {
+      "url": "https://platform.minimaxi.com/",
+      "title": "MiniMax 开放平台",
+      "accessed_at": "2026-07-07"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "minimax_api_budget",
+      "display_name": "MiniMax API 按量预算（手动）",
+      "quota": {
+        "kind": "manual_budget",
+        "total": 0,
+        "unit": "CNY",
+        "display": "手动填写 API 预算；用于和本地捕捉到的用量成本对照。"
+      },
+      "expires": {
+        "kind": "manual"
+      },
+      "official_evidence_url": "https://platform.minimaxi.com/"
+    },
+    {
+      "plan_id": "minimax_manual_quota",
+      "display_name": "MiniMax 额度（手动登记）",
+      "quota": {
+        "kind": "manual",
+        "total": 0,
+        "unit": "tokens",
+        "display": "手动填写额度或套餐；客户端不伪造官方余额检测。"
+      },
+      "expires": {
+        "kind": "manual"
+      },
+      "official_evidence_url": "https://platform.minimaxi.com/"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "subscription_api_key_for_token_plan",
+    "usage_endpoint_documented": true,
+    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "notes": "Token Plan 额度来自 GET /v1/token_plan/remains；按量付费余额无公开 API，minimax_api_budget 仍手动登记。"
+  }
+}

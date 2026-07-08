@@ -1,0 +1,69 @@
+{
+  "provider_id": "codex",
+  "provider_name": "Codex",
+  "official_site": "https://chatgpt.com/codex",
+  "catalog_version": "2026-07-08",
+  "evidence": [
+    {
+      "url": "https://chatgpt.com/codex/pricing/",
+      "title": "Codex Pricing",
+      "accessed_at": "2026-07-08"
+    },
+    {
+      "url": "https://github.com/openai/codex",
+      "title": "OpenAI Codex CLI",
+      "accessed_at": "2026-07-08"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "codex_plus",
+      "display_name": "Plus",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 0,
+        "unit": "tokens",
+        "display": "官方动态额度（5 小时与 7 天窗口，百分比）"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://chatgpt.com/codex/pricing/"
+    },
+    {
+      "plan_id": "codex_pro_5x",
+      "display_name": "Pro 5x",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 0,
+        "unit": "tokens",
+        "display": "官方动态额度（5 小时与 7 天窗口，约为 Plus 的 5 倍）"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://chatgpt.com/codex/pricing/"
+    },
+    {
+      "plan_id": "codex_pro_20x",
+      "display_name": "Pro 20x",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 0,
+        "unit": "tokens",
+        "display": "官方动态额度（5 小时与 7 天窗口，约为 Plus 的 20 倍）"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://chatgpt.com/codex/pricing/"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "chatgpt_account_oauth_auth_json",
+    "usage_endpoint_documented": true,
+    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "notes": "额度来自 chatgpt.com wham/usage；桌面端支持官网 WebView 登录同步，无需本机 CLI。"
+  }
+}

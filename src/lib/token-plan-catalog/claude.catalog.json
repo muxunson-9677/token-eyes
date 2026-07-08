@@ -1,0 +1,64 @@
+{
+  "provider_id": "claude",
+  "provider_name": "Claude",
+  "official_site": "https://console.anthropic.com/",
+  "catalog_version": "2026-07-08",
+  "evidence": [
+    {
+      "url": "https://docs.anthropic.com/en/docs/claude-code/overview",
+      "title": "Claude Code",
+      "accessed_at": "2026-07-08"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "claude_pro",
+      "display_name": "Pro",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 0,
+        "unit": "tokens",
+        "display": "官方动态额度（5 小时与 7 天利用率）"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://console.anthropic.com/settings/billing"
+    },
+    {
+      "plan_id": "claude_max",
+      "display_name": "Max",
+      "quota": {
+        "kind": "rolling_window",
+        "total": 0,
+        "unit": "tokens",
+        "display": "官方动态额度（5 小时与 7 天利用率）"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://console.anthropic.com/settings/billing"
+    },
+    {
+      "plan_id": "claude_routing",
+      "display_name": "路由模式（CC Switch 等）",
+      "quota": {
+        "kind": "manual",
+        "total": 0,
+        "unit": "tokens",
+        "display": "仅本地 Token 统计；不同步 Anthropic 官方额度"
+      },
+      "expires": {
+        "kind": "manual"
+      },
+      "official_evidence_url": "https://console.anthropic.com/"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "claude_code_oauth",
+    "usage_endpoint_documented": false,
+    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "notes": "官方模式走 api.anthropic.com/oauth/usage；路由套餐 claude_routing 不调用官方额度 API。"
+  }
+}

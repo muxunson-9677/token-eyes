@@ -1,0 +1,50 @@
+{
+  "provider_id": "kimi",
+  "provider_name": "Kimi",
+  "official_site": "https://platform.moonshot.cn/",
+  "catalog_version": "2026-07-08",
+  "evidence": [
+    {
+      "url": "https://platform.moonshot.cn/",
+      "title": "Moonshot AI / Kimi 开放平台",
+      "accessed_at": "2026-07-08"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "kimi_api_budget",
+      "display_name": "API 余额（推荐）",
+      "quota": {
+        "kind": "manual_budget",
+        "total": 0,
+        "unit": "CNY",
+        "display": "通过 Moonshot API Key 查询账户余额；无需 Kimi CLI。"
+      },
+      "expires": {
+        "kind": "manual"
+      },
+      "official_evidence_url": "https://platform.moonshot.cn/console/account"
+    },
+    {
+      "plan_id": "kimi_code_manual_quota",
+      "display_name": "Kimi Code 额度",
+      "quota": {
+        "kind": "manual",
+        "total": 0,
+        "unit": "tokens",
+        "display": "读取本机 Kimi Code 登录态的 5 小时 / 每周额度窗口。"
+      },
+      "expires": {
+        "kind": "manual"
+      },
+      "official_evidence_url": "https://www.kimi.com/code"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "api_key_for_balance_or_oauth_for_code_usage",
+    "usage_endpoint_documented": true,
+    "fields_available": ["rolling_5_hour", "rolling_weekly", "available_balance"],
+    "notes": "推荐 API Key 余额检测（与 CC Switch 相同端点）；Kimi Code 额度需本机 OAuth。"
+  }
+}
