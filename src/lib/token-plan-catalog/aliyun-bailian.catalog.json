@@ -1,0 +1,50 @@
+{
+  "provider_id": "aliyun_bailian",
+  "provider_name": "阿里云百炼",
+  "official_site": "https://bailian.console.aliyun.com/",
+  "catalog_version": "2026-07-07",
+  "evidence": [
+    {
+      "url": "https://bailian.console.aliyun.com/",
+      "title": "阿里云百炼控制台",
+      "accessed_at": "2026-07-07"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "aliyun_bailian_manual_quota",
+      "display_name": "阿里云百炼额度（手动登记）",
+      "quota": {
+        "kind": "manual",
+        "total": 0,
+        "unit": "credits",
+        "display": "手动填写控制台额度或预算；本地只记录已捕捉到的 Token 用量。"
+      },
+      "expires": {
+        "kind": "manual"
+      },
+      "official_evidence_url": "https://bailian.console.aliyun.com/"
+    },
+    {
+      "plan_id": "aliyun_bailian_pay_as_you_go_budget",
+      "display_name": "阿里云百炼按量预算（手动）",
+      "quota": {
+        "kind": "manual_budget",
+        "total": 0,
+        "unit": "CNY",
+        "display": "手动填写按量预算；不会调用模型或读取密钥余额。"
+      },
+      "expires": {
+        "kind": "manual"
+      },
+      "official_evidence_url": "https://bailian.console.aliyun.com/"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "coding_plan_subscription_key",
+    "usage_endpoint_documented": true,
+    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "notes": "Coding Plan 额度来自百炼控制台 queryCodingPlanInstanceInfoV2；按量预算无公开余额 API。"
+  }
+}

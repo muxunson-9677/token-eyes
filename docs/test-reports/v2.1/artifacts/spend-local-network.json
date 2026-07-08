@@ -1,0 +1,15 @@
+{
+  "serverUrl": "http://127.0.0.1:63598",
+  "port": 63598,
+  "authResponse": {
+    "token": "5340c2f13cfda904b8fb464f7c9ccd71b12674f2517d2368",
+    "protocol_version": 2,
+    "capabilities": [
+      "spend_usage_v2",
+      "provider_model_stats",
+      "request_usage_records"
+    ]
+  },
+  "requests": [],
+  "timestamp": "2026-06-29T13:34:56.925Z"
+}

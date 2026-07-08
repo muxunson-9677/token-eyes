@@ -1,0 +1,594 @@
+{
+  "generatedAt": "2026-07-04T21:14:28.994Z",
+  "root": "dashboard/src",
+  "rules": {
+    "colors": "hex/rgb(a) literals",
+    "rawText": "JSX text nodes containing letters or digits"
+  },
+  "totals": {
+    "colors": 308,
+    "rawText": 205
+  },
+  "files": {
+    "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ") : avatarSrc && !avatarFailed ? (",
+        ") : initialsFromName(displayName) === \"?\" ? ("
+      ]
+    },
+    "dashboard/src/components/leaderboard/LeaderboardProfileModal.jsx": {
+      "colors": 6,
+      "rawText": 2,
+      "rawTextTokens": [
+        "0 && n",
+        "1 && ("
+      ]
+    },
+    "dashboard/src/components/LeaderboardSummaryCard.jsx": {
+      "colors": 3,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/components/LoginCard.jsx": {
+      "colors": 4,
+      "rawText": 1,
+      "rawTextTokens": [
+        "); const GITHUB_ICON = ("
+      ]
+    },
+    "dashboard/src/components/settings/DataDirectoriesSection.jsx": {
+      "colors": 0,
+      "rawText": 6,
+      "rawTextTokens": [
+        ") : detectNotice ? (",
+        ") : isDetected ? (",
+        ") : isNotDetected ? (",
+        ") : isReady ? ("
+      ]
+    },
+    "dashboard/src/components/settings/MenuBarSection.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "GitHub"
+      ]
+    },
+    "dashboard/src/components/settings/ProviderApiConfigSection.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ") : configs.length === 0 ? (",
+        ") : loading ? (",
+        "0 && ("
+      ]
+    },
+    "dashboard/src/components/settings/TokenPlanSection.jsx": {
+      "colors": 0,
+      "rawText": 4,
+      "rawTextTokens": [
+        ") : xiaomiMimoStage === \"awaiting_verification\" ? (",
+        ") : xiaomiMimoStage === \"disconnected\" ? (",
+        ") : xiaomiMimoStage === \"failed\" || xiaomiMimoStage === \"desktop_not_verified\" ? (",
+        ") : xiaomiMimoStage === \"login_started\" ? ("
+      ]
+    },
+    "dashboard/src/components/SortableColumnHeader.jsx": {
+      "colors": 4,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/components/spend/SpendTrendChart.jsx": {
+      "colors": 24,
+      "rawText": 2,
+      "rawTextTokens": [
+        "b.bucket_start === item.bucket_start); if (bucketIdx"
+      ]
+    },
+    "dashboard/src/contexts/LoginModalContext.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "setIsOpen(false), []); return ("
+      ]
+    },
+    "dashboard/src/pages/DashboardPage.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/pages/DevicePage.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        "Approve your CLI",
+        "CLI code",
+        "Sign in first, then return to this page."
+      ]
+    },
+    "dashboard/src/pages/IpCheckPage.jsx": {
+      "colors": 12,
+      "rawText": 17,
+      "rawTextTokens": [
+        "', ipAddrCN: ipHeroSkeleton(), ipGeoCN: ipGeoSkeleton(), ipAddr: ipHeroSkeleton(), ipGeo: ipGeoSkeleton(), ipAddrClaude: ipHeroSkeleton(), ipGeoClaude: ipGeoSkeleton(), propsContent: loadingRows([t.propsRegion, t.propsCity, t.propsType, t.propsAsn, t.propsOrg]), securityContent: loadingRows([t.secVpn, t.secProxy, t.secTor, t.secCrawler, t.secAbuser]), claudeAvailContent: row(\"claude.ai\", undefined, true) + row(\"anthropic.com\", undefined, true), dnsLeakContent: row(t.dnsStatus, undefined, true) + row(t.dnsOutletIp, undefined, true), udpLeakContent: row(t.udpStatus, undefined, true) + row(t.udpOutletIp, undefined, true), deviceContent: loadingRows([t.devTz, t.devLang, t.devOs, t.devTouch, t.devNet, t.devDnt, t.devWebglRender, t.devCanvasFp]), ipHistoryContent: `",
+        "// via its user-agent stylesheet (Blink does not). Chrome looks fine, the // app does not.",
+        "25",
+        "50",
+        "75",
+        "= 0 ? \"+\" : \"\") + localOffset; const cr = state.claudeRisk; const _cc = (cr?.countryCode || \"\").toUpperCase(); const claudeTz = cr?.timezone || CC_TO_TZ[_cc] || \"\"; const tzIsExact = !!cr?.timezone; const claudeOffMin = currentOffsetMinutes(claudeTz); const localOffMin = -new Date().getTimezoneOffset(); let tzMatch = null; if (claudeTz && claudeOffMin != null) tzMatch = Math.abs(claudeOffMin - localOffMin)",
+        "`) + row(t.devCanvasFp, `",
+        "`) + row(t.devDnt, esc(dnt)) + row(t.devWebglRender, `",
+        "`) + row(t.devWebglFp, `",
+        "`; const safeIp = esc(ip); if (isIPv6(ip)) return `",
+        "`; else langHtml = `",
+        "`; return `",
+        "element: // macOS app's WKWebView (Safari) applies a 36px padding-top to",
+        "for the header row, NOT the semantic",
+        "setTimeout(r, 1500)); let dnsServers = []; for (let attempt = 0; attempt",
+        "sidesteps all UA semantics. return ("
+      ]
+    },
+    "dashboard/src/pages/LeaderboardProfilePage.jsx": {
+      "colors": 2,
+      "rawText": 2,
+      "rawTextTokens": [
+        ") : realSignedIn ? (",
+        "Token Tracker"
+      ]
+    },
+    "dashboard/src/pages/SettingsPage.test.jsx": {
+      "colors": 0,
+      "rawText": 9,
+      "rawTextTokens": [
+        "Account",
+        "AgentPricing",
+        "Appearance",
+        "DataDirs",
+        "Footer",
+        "LimitsPanel",
+        "MenuBar",
+        "ProviderApiConfig",
+        "TokenPlan"
+      ]
+    },
+    "dashboard/src/pages/SkillDetailPanel.jsx": {
+      "colors": 2,
+      "rawText": 1,
+      "rawTextTokens": [
+        ") : skill.directory && skill.directory !== title ? ("
+      ]
+    },
+    "dashboard/src/pages/SkillsPage.jsx": {
+      "colors": 4,
+      "rawText": 9,
+      "rawTextTokens": [
+        ") : null; const hintNode = !manageOpen && !isSkillsSh && !isPopular && repos.length",
+        ") : null; contentNode = (",
+        ") : source === SOURCE_POPULAR ? null : (",
+        "); const browseLoadingNode = (",
+        "0 ? (",
+        "0 || browseAnyFilter) ? (",
+        "t.id === id)?.label || id) .join(\", \") : copy(\"skills.action.choose_targets\"); return ("
+      ]
+    },
+    "dashboard/src/pages/WidgetsPage.jsx": {
+      "colors": 25,
+      "rawText": 9,
+      "rawTextTokens": [
+        "$129.56 ±0%",
+        "$673.61",
+        "0 ? (",
+        "10.3B",
+        "203.2M",
+        "7 DAYS",
+        "880.9M",
+        "TODAY",
+        "tokens · 202 active days"
+      ]
+    },
+    "dashboard/src/pages/WrappedPage.jsx": {
+      "colors": 0,
+      "rawText": 18,
+      "rawTextTokens": [
+        "0 && (",
+        "Highlights",
+        "Loading…",
+        "Longest streak",
+        "No data for that year yet. Run",
+        "Peak hour",
+        "TokenTracker Wrapped",
+        "Top days",
+        "Top models",
+        "Top tools",
+        "Total tokens",
+        "across",
+        "first.",
+        "tools",
+        "tracker sync",
+        "tracker wrapped --json"
+      ]
+    },
+    "dashboard/src/pet.jsx": {
+      "colors": 3,
+      "rawText": 2,
+      "rawTextTokens": [
+        "/@keyframes // so the animations still run. const result = raw.replace(/",
+        "whose class/id contains \"eye\" (e.g. eyes-look, * eyes-focus, eyes-read). Those groups already run their own blink/track transform * animations, which would override any transform we set directly — so after a pose * loads we wrap each (non-shut) eye group in our own"
+      ]
+    },
+    "dashboard/src/ui/components/ConfirmModal.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/components/Counter.jsx": {
+      "colors": 1,
+      "rawText": 1,
+      "rawTextTokens": [
+        "/\\d/.test(char) && (decimalIndex === -1 || index"
+      ]
+    },
+    "dashboard/src/ui/components/HeaderGithubStar.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "Star"
+      ]
+    },
+    "dashboard/src/ui/components/Shell.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "Token Tracker"
+      ]
+    },
+    "dashboard/src/ui/components/__tests__/Sidebar.nav.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "page"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/ActivityHeatmap.jsx": {
+      "colors": 28,
+      "rawText": 5,
+      "rawTextTokens": [
+        "0 ? (",
+        "3D Insight",
+        "Model Breakdown",
+        "Tokens",
+        "with position: fixed, so use viewport // coordinates directly. This keeps it visible inside the leaderboard // profile modal, where the Dialog.Popup has both `overflow-hidden` and // a `transform` (from the open/close transition) — that combo clips any // absolute-positioned tooltip rendered inside the modal subtree. const rect = e.currentTarget.getBoundingClientRect(); const viewportWidth = typeof window !== \"undefined\" ? window.innerWidth : 1024; const x = rect.left + rect.width / 2; const y = rect.top; const halfWidth = 140; let shiftX = 0; if (x"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/ActivityHeatmap3D.jsx": {
+      "colors": 53,
+      "rawText": 4,
+      "rawTextTokens": [
+        "0 ? (",
+        "Model Breakdown",
+        "Tokens",
+        "maxX) maxX = x + padding; if (y - padding"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/CommandPalette.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ") : isRenderableIcon(item.Icon) ? ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/ContextBreakdownPanel.jsx": {
+      "colors": 0,
+      "rawText": 10,
+      "rawTextTokens": [
+        "(b.totals?.total_tokens || 0) - (a.totals?.total_tokens || 0), ); return (",
+        "); const labelInner = (",
+        "); const labelSuffix = isSystemPrefix ? (",
+        "0 && (",
+        "0 || codexQueueFallback)) || (isCustomAgents && hasCustomAgents && subagentsSet); const rowOpen = Boolean(openRows[cat.key]); const bucketBase = bucketColor(cat.key, source); const colorSquare = (",
+        "0; const clampedShare = hasFill ? Math.max(0, Math.min(100, share)) : 0; return (",
+        "isExecToolName(t.name)); const catOpen = Boolean(openCats[cat.name]); return ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/CostAccumulation.jsx": {
+      "colors": 0,
+      "rawText": 5,
+      "rawTextTokens": [
+        ") : accounts.length === 0 ? (",
+        ") : packages.length === 0 ? (",
+        ") : records.length === 0 ? (",
+        "0 && (",
+        "0; return ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/CostAnalysisModal.jsx": {
+      "colors": 2,
+      "rawText": 3,
+      "rawTextTokens": [
+        "Cost",
+        "Model",
+        "No spend recorded."
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/DataDetails.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "1 ? ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/DateRangePopover.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "23 || mi"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/LikeButton.jsx": {
+      "colors": 6,
+      "rawText": 1,
+      "rawTextTokens": [
+        "setTriggerNumAnim(false), 500); const colors = [\"#ff4757\", \"#ff6b81\", \"#ffa502\", \"#70a1ff\", \"#2ed573\", \"#a29bfe\"]; const shapes = [\"circle\", \"heart\"]; const newParticles = []; for (let i = 0; i"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/ModelFilter.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ") : searchedOptions.length === 0 ? (",
+        "0 && (",
+        "draft.includes(o.model)); return ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/ProviderIcon.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/dashboard/components/RequestUsageLog.jsx": {
+      "colors": 0,
+      "rawText": 5,
+      "rawTextTokens": [
+        "0 && (",
+        "1 && (",
+        "3; const rightEllipsis = currentPage",
+        "page === \"...\" ? ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/SourceFilter.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ") : searchedOptions.length === 0 ? (",
+        "0 && (",
+        "draft.includes(o.source)); return ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/StatsPanel.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "0 && ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/TrendMonitor.jsx": {
+      "colors": 30,
+      "rawText": 9,
+      "rawTextTokens": [
+        "0 && (",
+        "0 ? (",
+        "0) && (",
+        "No data yet",
+        "Predicted",
+        "Tokens",
+        "Unsynced",
+        "sum + s.value, 0); const renderFlat = kind !== \"real\" || totalSegmentsValue"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/TrendMonitorZoomModal.jsx": {
+      "colors": 1,
+      "rawText": 1,
+      "rawTextTokens": [
+        "(outside #root) mount and composite in the renderer // but are NOT presented on-screen, so the modal looked like it \"didn't open\". // The 3D heatmap modal renders inline for the same reason and works. macOS // WKWebView / browsers are unaffected either way. return ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/UsageLimitsPanel.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "(prev === id ? null : id)), ), ) .filter(Boolean); return (",
+        "0 ? groups :"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/UsageLimitsPanel.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ", ); expect(screen.getByText(\"Cursor\")).toBeInTheDocument(); rerender("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/UsageOverview.jsx": {
+      "colors": 11,
+      "rawText": 1,
+      "rawTextTokens": [
+        "0 && ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/UsageStatsPanel.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ") : pricingCoverage === \"partial\" ? ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/UsageTrendChart.jsx": {
+      "colors": 5,
+      "rawText": 3,
+      "rawTextTokens": [
+        "1 ? chartWidth / (numBuckets - 1) / 2 : chartWidth / 2; return (",
+        "b.bucket_start === hoveredBucket); if (idx",
+        "d.axis === \"cost\"; return ("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/ActivityHeatmap3D.test.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ").container; // The top face is rendered last in each cell",
+        ").container; const darkSvg = render(",
+        "g\"); expect(groups.length).toBe(2); //"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/ModelUsageTable.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "0.5 // Click again to toggle to asc fireEvent.click(screen.getByText(\"Cost\")); rows = container.querySelectorAll(\"tbody tr\"); expect(rows[0].textContent).toContain(\"claude-sonnet\"); // cost 0.5"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/ProviderUsageTable.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "0.5 // Click again to toggle to asc fireEvent.click(screen.getByText(\"Cost\")); rows = container.querySelectorAll(\"tbody tr\"); expect(rows[0].textContent).toContain(\"Claude\"); // cost 0.5"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/TrendMonitor.test.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "); expect(plain.container.textContent).not.toContain(\"14:00\"); const zoomed = render(",
+        "); expect(without.queryByRole(\"button\")).toBeNull(); const withCfg = render("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/TrendMonitorZoomModal.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "Chart"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/UsageFilterBar.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "render("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/UsageStatsPanel.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ", ); expect(screen.getByText(\"91.4%\")).toBeInTheDocument(); unmount(); render("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/UsageTrendChart.test.jsx": {
+      "colors": 10,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/dashboard/views/DashboardView.jsx": {
+      "colors": 2,
+      "rawText": 1,
+      "rawTextTokens": [
+        "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; // 留给右列底部 return ("
+      ]
+    },
+    "dashboard/src/ui/foundation/__tests__/LocaleProvider.test.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "en",
+        "zh"
+      ]
+    },
+    "dashboard/src/ui/marketing/components/BorderGlow.jsx": {
+      "colors": 6,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/marketing/components/LaserFlow.jsx": {
+      "colors": 1,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/marketing/components/LightRays.jsx": {
+      "colors": 1,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/marketing/components/SpotlightCard.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/marketing/components/TiltedCard.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/marketing/MarketingLanding.jsx": {
+      "colors": 22,
+      "rawText": 20,
+      "rawTextTokens": [
+        ") : ( // 未登录：Sign In 展示为主行动实色按钮，点击唤起 Modal",
+        ") : signedIn ? ( // 已登录：Open Dashboard 升级为主行动实色按钮",
+        "01",
+        "02",
+        "03",
+        "1,420,850",
+        "42 DAY ACTIVE STREAK",
+        "740,560",
+        "89.5% Eff.",
+        "92.1% Eff.",
+        "924,110",
+        "98.4% Eff.",
+        "ALEX",
+        "CHAMP",
+        "CHARLIE",
+        "Community Rankings (Global)",
+        "Realtime",
+        "SYSTEM: // LEADERBOARD_PREVIEW_FEED",
+        "Token Tracker",
+        "VOLT"
+      ]
+    },
+    "dashboard/src/ui/share/HeatmapStrip.jsx": {
+      "colors": 5,
+      "rawText": 1,
+      "rawTextTokens": [
+        "= 7) return null; const level = normalizeLevel(cell); const x = wi * (cellSize + gap); const y = di * (cellSize + gap); const fill = level === null ? empty : innerPalette[level]; return ("
+      ]
+    },
+    "dashboard/src/ui/share/ShareModal.tsx": {
+      "colors": 1,
+      "rawText": 5,
+      "rawTextTokens": [
+        "(\"\"); const [variant, setVariant] = useState",
+        "(\"annual-report\"); const cardRef = useRef",
+        "(null); const [handleOverride, setHandleOverride] = useState",
+        "(null); const timerRef = useRef",
+        "PNG"
+      ]
+    },
+    "dashboard/src/ui/share/variants/AnnualReportCard.jsx": {
+      "colors": 24,
+      "rawText": 4,
+      "rawTextTokens": [
+        "!v||v",
+        "Token Tracker",
+        "tokentracker.cc"
+      ]
+    },
+    "dashboard/src/ui/share/variants/BroadsheetCard.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        "0; return (",
+        "The Token Tracker",
+        "→ tokentracker.cc"
+      ]
+    }
+  }
+}

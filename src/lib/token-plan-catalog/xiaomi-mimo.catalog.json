@@ -1,0 +1,149 @@
+{
+  "provider_id": "xiaomi_mimo",
+  "provider_name": "小米 MiMo",
+  "official_site": "https://mimo.mi.com/docs/",
+  "catalog_version": "2026-06-25",
+  "evidence": [
+    {
+      "url": "https://mimo.mi.com/docs/zh-CN/price/token-plan",
+      "title": "Token Plan - 小米 MiMo 文档",
+      "accessed_at": "2026-06-25"
+    },
+    {
+      "url": "https://platform.xiaomimimo.com/token-plan",
+      "title": "Xiaomi MiMo Token Plan",
+      "accessed_at": "2026-06-25"
+    },
+    {
+      "url": "https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call",
+      "title": "首次调用 API - 小米 MiMo 文档",
+      "accessed_at": "2026-06-25"
+    },
+    {
+      "url": "https://mimo.mi.com/docs/zh-CN/api/guidance/rate-limit",
+      "title": "速率限制 - 小米 MiMo 文档",
+      "accessed_at": "2026-06-25"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "xiaomi_mimo_lite_monthly",
+      "display_name": "Lite（月付）",
+      "quota": {
+        "kind": "credits",
+        "total": 4100000000,
+        "unit": "credits",
+        "display": "4,100,000,000（4.1B）Credits"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+    },
+    {
+      "plan_id": "xiaomi_mimo_standard_monthly",
+      "display_name": "Standard（月付）",
+      "quota": {
+        "kind": "credits",
+        "total": 11000000000,
+        "unit": "credits",
+        "display": "11,000,000,000（11B）Credits"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+    },
+    {
+      "plan_id": "xiaomi_mimo_pro_monthly",
+      "display_name": "Pro（月付）",
+      "quota": {
+        "kind": "credits",
+        "total": 38000000000,
+        "unit": "credits",
+        "display": "38,000,000,000（38B）Credits"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+    },
+    {
+      "plan_id": "xiaomi_mimo_max_monthly",
+      "display_name": "Max（月付）",
+      "quota": {
+        "kind": "credits",
+        "total": 82000000000,
+        "unit": "credits",
+        "display": "82,000,000,000（82B）Credits"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+    },
+    {
+      "plan_id": "xiaomi_mimo_lite_yearly",
+      "display_name": "Lite（年付）",
+      "quota": {
+        "kind": "credits",
+        "total": 49200000000,
+        "unit": "credits",
+        "display": "49,200,000,000（49.2B）Credits"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+    },
+    {
+      "plan_id": "xiaomi_mimo_standard_yearly",
+      "display_name": "Standard（年付）",
+      "quota": {
+        "kind": "credits",
+        "total": 132000000000,
+        "unit": "credits",
+        "display": "132,000,000,000（132B）Credits"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+    },
+    {
+      "plan_id": "xiaomi_mimo_pro_yearly",
+      "display_name": "Pro（年付）",
+      "quota": {
+        "kind": "credits",
+        "total": 456000000000,
+        "unit": "credits",
+        "display": "456,000,000,000（456B）Credits"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+    },
+    {
+      "plan_id": "xiaomi_mimo_max_yearly",
+      "display_name": "Max（年付）",
+      "quota": {
+        "kind": "credits",
+        "total": 984000000000,
+        "unit": "credits",
+        "display": "984,000,000,000（984B）Credits"
+      },
+      "expires": {
+        "kind": "subscription_period"
+      },
+      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": false,
+    "authorization": "none",
+    "usage_endpoint_documented": false,
+    "fields_available": [],
+    "notes": "小米 MiMo 未提供官方文档化的额度查询 API。API Key 可用于模型推理调用，但没有官方文档化的额度查询能力，因此不能用于读取 used_quota、remaining_quota、expires_at。用户需登录控制台（platform.xiaomimimo.com）在订阅管理页面人工查看用量。小米 MiMo 当前没有可用于额度同步的官方授权接口。产品仅支持静态套餐目录与用户手工更新额度；不实现自动浏览器 Cookie 抓取。"
+  }
+}
