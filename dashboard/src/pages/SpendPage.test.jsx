@@ -107,6 +107,16 @@ const SAMPLE_RECORD = {
 
 const VISIBLE_PROVIDERS = ["claude", "codex", "hermes"];
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   useCurrency.mockReturnValue({ currency: "USD", rate: 1 });
@@ -258,6 +268,87 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(currentCall[0].sources).toEqual(previousCall[0].sources);
     expect(currentCall[0].timeZone).toBe(previousCall[0].timeZone);
     expect(currentCall[0].tzOffsetMinutes).toBe(previousCall[0].tzOffsetMinutes);
+  });
+
+  it("hides totals from the previous financial scope while the new scope is pending or fails", async () => {
+    const nextCurrent = deferred();
+    const nextPrevious = deferred();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const claudeOnly = ["claude"];
+    const codexOnly = ["codex"];
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: claudeOnly });
+    getSpendRecords
+      .mockResolvedValueOnce({
+        ...EMPTY_RESULT,
+        totals: { ...EMPTY_RESULT.totals, combined_usd: 50, combined_cny: 360 },
+      })
+      .mockResolvedValueOnce({
+        ...EMPTY_RESULT,
+        totals: { ...EMPTY_RESULT.totals, combined_usd: 40, combined_cny: 288 },
+      })
+      .mockReturnValueOnce(nextCurrent.promise)
+      .mockReturnValueOnce(nextPrevious.promise);
+
+    const view = render(<SpendUsagePage />);
+    expect(await screen.findByText("USD 50.00")).toBeInTheDocument();
+
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: codexOnly });
+    view.rerender(<SpendUsagePage />);
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(4));
+    expect(screen.queryByText("USD 50.00")).not.toBeInTheDocument();
+
+    await act(async () => {
+      nextCurrent.reject(new Error("codex totals unavailable"));
+      nextPrevious.resolve(EMPTY_RESULT);
+      await Promise.allSettled([nextCurrent.promise, nextPrevious.promise]);
+    });
+
+    expect(screen.queryByText("USD 50.00")).not.toBeInTheDocument();
+    consoleError.mockRestore();
+  });
+
+  it("ignores a previous financial scope that resolves after the active scope", async () => {
+    const oldCurrent = deferred();
+    const oldPrevious = deferred();
+    const nextCurrent = deferred();
+    const nextPrevious = deferred();
+    const claudeOnly = ["claude"];
+    const codexOnly = ["codex"];
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: claudeOnly });
+    getSpendRecords
+      .mockReturnValueOnce(oldCurrent.promise)
+      .mockReturnValueOnce(oldPrevious.promise)
+      .mockReturnValueOnce(nextCurrent.promise)
+      .mockReturnValueOnce(nextPrevious.promise);
+
+    const view = render(<SpendUsagePage />);
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
+
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: codexOnly });
+    view.rerender(<SpendUsagePage />);
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(4));
+
+    await act(async () => {
+      nextCurrent.resolve({
+        ...EMPTY_RESULT,
+        totals: { ...EMPTY_RESULT.totals, combined_usd: 20, combined_cny: 144 },
+      });
+      nextPrevious.resolve(EMPTY_RESULT);
+      await Promise.all([nextCurrent.promise, nextPrevious.promise]);
+    });
+    expect(await screen.findByText("USD 20.00")).toBeInTheDocument();
+
+    await act(async () => {
+      oldCurrent.resolve({
+        ...EMPTY_RESULT,
+        totals: { ...EMPTY_RESULT.totals, combined_usd: 80, combined_cny: 576 },
+      });
+      oldPrevious.resolve(EMPTY_RESULT);
+      await Promise.all([oldCurrent.promise, oldPrevious.promise]);
+    });
+
+    expect(screen.getByText("USD 20.00")).toBeInTheDocument();
+    expect(screen.queryByText("USD 80.00")).not.toBeInTheDocument();
   });
 
   it("does NOT render the independent '按来源拆分' table", async () => {

@@ -137,8 +137,12 @@ function SpendUsagePageInner({
   publicMode = false,
   publicToken = null,
 }) {
-  const [totals, setTotals] = useState(null);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [financialState, setFinancialState] = useState({
+    scopeKey: null,
+    totals: null,
+    lastUpdatedAt: null,
+  });
+  const financialRequestIdRef = useRef(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const initialIntervalLoaded = useRef(false);
 
@@ -208,6 +212,16 @@ function SpendUsagePageInner({
   // Timezone context
   const timeZone = useMemo(() => getBrowserTimeZone() || "UTC", []);
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
+  const financialScopeKey = useMemo(
+    () => JSON.stringify([timeZone, tzOffsetMinutes, costSources]),
+    [timeZone, tzOffsetMinutes, costSources],
+  );
+  const totals = financialState.scopeKey === financialScopeKey
+    ? financialState.totals
+    : null;
+  const lastUpdatedAt = financialState.scopeKey === financialScopeKey
+    ? financialState.lastUpdatedAt
+    : null;
 
   // Compute from/to based on filter time range (Ticket-02 keys)
   const range = useMemo(() => {
@@ -277,8 +291,11 @@ function SpendUsagePageInner({
   // Agent/provider source filters still apply, while the Token trend's rolling
   // date range does not redefine a card explicitly labelled "本月".
   const fetchTotals = useCallback(async () => {
+    const requestId = financialRequestIdRef.current + 1;
+    financialRequestIdRef.current = requestId;
+
     if (costSources.length === 0) {
-      setTotals(null);
+      setFinancialState({ scopeKey: financialScopeKey, totals: null, lastUpdatedAt: null });
       return;
     }
 
@@ -299,17 +316,22 @@ function SpendUsagePageInner({
       requestMonth(monthRanges.previous),
     ]);
 
+    if (requestId !== financialRequestIdRef.current) return;
+
     if (currentResult.status === "fulfilled") {
       const currentTotals = currentResult.value?.totals || null;
       const previousTotals = previousResult.status === "fulfilled"
         ? previousResult.value?.totals
         : null;
-      setTotals(currentTotals ? {
-        ...currentTotals,
-        previous_combined_usd: previousTotals?.combined_usd ?? null,
-        previous_combined_cny: previousTotals?.combined_cny ?? null,
-      } : null);
-      setLastUpdatedAt(new Date());
+      setFinancialState({
+        scopeKey: financialScopeKey,
+        totals: currentTotals ? {
+          ...currentTotals,
+          previous_combined_usd: previousTotals?.combined_usd ?? null,
+          previous_combined_cny: previousTotals?.combined_cny ?? null,
+        } : null,
+        lastUpdatedAt: new Date(),
+      });
     } else {
       // Totals are optional for the usage page; swallow the error so a
       // transient backend hiccup doesn't crash the stats panel below.
@@ -318,7 +340,7 @@ function SpendUsagePageInner({
     if (previousResult.status === "rejected") {
       console.error("[SpendUsagePage] Failed to load previous-month totals:", previousResult.reason);
     }
-  }, [timeZone, tzOffsetMinutes, costSources]);
+  }, [financialScopeKey, timeZone, tzOffsetMinutes, costSources]);
 
   useEffect(() => {
     fetchTotals();
