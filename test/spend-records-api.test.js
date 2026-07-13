@@ -1084,6 +1084,49 @@ test("OTHER-AI: manual charges affect the selected month and lifetime with CRUD 
   }
 });
 
+test("OTHER-AI: lifetime uses the requested local day across the UTC+8 date boundary", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-local-day-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-07-13T16:30:00.000Z"),
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    await call(handler, "/functions/tokentracker-spend-records", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        source: "other_ai",
+        plan_label: "本地今天的充值",
+        amount: 72,
+        currency: "CNY",
+        billing_cycle: "one_time",
+        start_date: "2026-07-14",
+        note: "",
+      }),
+    });
+
+    const result = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?from=2026-07-01&to=2026-07-31&sources=other_ai&tz_offset_minutes=480",
+      { method: "GET" },
+    ));
+    assert.equal(result.totals.other_ai_usd, 10);
+    assert.equal(result.totals.lifetime_other_ai_usd, 10);
+    assert.equal(result.totals.lifetime_combined_usd, 10);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("06: POST missing source returns 400 missing_required_field", async () => {
   const { tmp, handler, headers } = await setupSpendHandler();
   try {

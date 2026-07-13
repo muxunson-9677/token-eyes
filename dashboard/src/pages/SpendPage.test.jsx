@@ -278,6 +278,10 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     const selectedAgent = await screen.findByTestId("usage-selected-agent");
     expect(selectedAgent).toHaveTextContent("Claude Code");
+    await waitFor(() => {
+      const latestFinancialCall = getSpendRecords.mock.calls.at(-1)?.[0];
+      expect(latestFinancialCall?.sources).toEqual(["claude"]);
+    });
   });
 
   it("initial load defers trend chart and request log until after first paint", async () => {
@@ -441,6 +445,15 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(callWithSources[0]?.sources).toEqual(["claude", "codex", "hermes", "other_ai"]);
   });
 
+  it("still loads other_ai financial totals when no Token provider is visible", async () => {
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
+
+    render(<SpendUsagePage />);
+
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+    expect(getSpendRecords.mock.calls[0][0]?.sources).toEqual(["other_ai"]);
+  });
+
   it("getUsageSummary receives sources filter from visibleProviderIds", async () => {
     render(<SpendUsagePage />);
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
@@ -460,11 +473,13 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(callArgs?.sources).toEqual(["claude", "codex", "hermes"]);
   });
 
-  it("empty allowlist shows empty state and does not fetch", async () => {
+  it("empty Token allowlist shows its empty state but still fetches other_ai costs", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
     render(<SpendUsagePage />);
     await waitFor(() => expect(screen.getByText("请在显示设置中启用至少一个 Provider。")).toBeInTheDocument());
-    expect(getSpendRecords).not.toHaveBeenCalled();
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledWith(expect.objectContaining({
+      sources: ["other_ai"],
+    })));
     expect(getSpendTimeseries).not.toHaveBeenCalled();
     expect(getUsageSummary).not.toHaveBeenCalled();
     expect(getRequestUsageRecords).not.toHaveBeenCalled();

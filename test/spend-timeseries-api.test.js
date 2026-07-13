@@ -220,6 +220,12 @@ test("OTHER-AI: filtered timeseries includes manual cost with zero tokens", asyn
       0,
     );
     assert.ok(Math.abs(seriesOtherAiCost - 12) < 1e-10);
+    const chargedBuckets = body.series.filter((entry) => entry.other_ai_cost_usd > 0);
+    assert.deepEqual(
+      chargedBuckets.map((entry) => [entry.bucket_start, entry.other_ai_cost_usd]),
+      [["2026-07-10", 12]],
+      "a one-time charge must stay in its spend-date bucket",
+    );
     assert.equal(body.by_source[0].subscription_cost_usd, 0);
     assert.equal(body.by_source[0].other_ai_cost_usd, 12);
   } finally {

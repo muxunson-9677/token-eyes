@@ -159,8 +159,14 @@ function SpendUsagePageInner({
     [filterState.sources, filterState.agentIds, visibleProviderIds],
   );
   const costSources = useMemo(
-    () => withOtherAiCostSource(effectiveUsageSources),
-    [effectiveUsageSources],
+    () => {
+      const includesAllVisibleProviders = visibleProviderIds.length === effectiveUsageSources.length
+        && visibleProviderIds.every((source) => effectiveUsageSources.includes(source));
+      return includesAllVisibleProviders
+        ? withOtherAiCostSource(effectiveUsageSources)
+        : effectiveUsageSources;
+    },
+    [effectiveUsageSources, visibleProviderIds],
   );
   const {
     setRefreshInterval: dispatchRefreshInterval,
@@ -268,7 +274,7 @@ function SpendUsagePageInner({
   // getSpendRecords for its totals only — the independent "按来源拆分"
   // table and by_source derived state are removed per the IA spec.
   const fetchTotals = useCallback(async ({ silent = false } = {}) => {
-    if (visibleProviderIds.length === 0 || effectiveUsageSources.length === 0) {
+    if (costSources.length === 0) {
       setTotals(null);
       return;
     }
@@ -288,7 +294,7 @@ function SpendUsagePageInner({
       // transient backend hiccup doesn't crash the stats panel below.
       console.error("[SpendUsagePage] Failed to load totals:", err);
     }
-  }, [from, to, timeZone, tzOffsetMinutes, visibleProviderIds, effectiveUsageSources, costSources]);
+  }, [from, to, timeZone, tzOffsetMinutes, costSources]);
 
   useEffect(() => {
     fetchTotals();

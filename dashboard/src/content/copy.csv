@@ -1614,4 +1614,6 @@ settings.cost.other_ai.delete,ui,SettingsPage,OtherAiSpendSection,delete,"删除
 settings.cost.other_ai.confirm_delete,ui,SettingsPage,OtherAiSpendSection,confirm_delete,"确定删除这条花销记录吗？",,active
 settings.cost.other_ai.error_save,ui,SettingsPage,OtherAiSpendSection,error_save,"保存失败，请重试。",,active
 settings.cost.other_ai.error_required,ui,SettingsPage,OtherAiSpendSection,error_required,"请填写名称、正数金额和花销日期。",,active
+settings.cost.other_ai.error_load,ui,SettingsPage,OtherAiSpendSection,error_load,"花销记录刷新失败，现有显示数据未被清空，请重试。",,active
+settings.cost.other_ai.error_delete,ui,SettingsPage,OtherAiSpendSection,error_delete,"删除失败，请重试。",,active
 settings.cost.other_ai.subtotal,ui,SettingsPage,OtherAiSpendSection,subtotal,"原币合计",,active

@@ -1671,6 +1671,7 @@ function createLocalApiHandler({
   detectAgentEnvironment: detectAgentEnvironmentOverride,
   providerApiTestMode = false,
   providerApiTimeoutMs,
+  now: nowProvider = () => new Date(),
 } = {}) {
   const qp = queuePath || resolveQueuePath();
   const detectDataDirectories = detectDataDirectoriesOverride || detectDataDirectoryPaths;
@@ -2939,7 +2940,7 @@ function createLocalApiHandler({
 
   function summarizeSpendRecords(records, fromStr, toStr, timeZoneContext, sources) {
     const usdToCny = getUsdToCny();
-    const today = new Date();
+    const today = new Date(nowProvider());
 
     // Default to current month if no from/to
     const fromDate = fromStr ? new Date(`${fromStr}T00:00:00Z`) : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
@@ -2948,8 +2949,8 @@ function createLocalApiHandler({
 
     // Lifetime range: from epoch to today
     const lifetimeFrom = new Date("2000-01-01T00:00:00Z");
-    const lifetimeTo = new Date();
-    lifetimeTo.setUTCHours(23, 59, 59, 999);
+    const localTodayKey = formatPartsDayKey(getZonedParts(today, timeZoneContext));
+    const lifetimeTo = new Date(`${localTodayKey || today.toISOString().slice(0, 10)}T23:59:59.999Z`);
 
     // Ticket-07 Task 4: filter sources if provided
     const sourcesSet = sources ? new Set(sources) : null;
@@ -3393,6 +3394,25 @@ function createLocalApiHandler({
     const periodCost = computeSubscriptionCostForRange(record, fromDate, toDate, usdToCny);
     if (periodCost <= 0) return [];
 
+    const source = String(record.source || "unknown").trim().toLowerCase() || "unknown";
+    if (record.billing_cycle === "one_time") {
+      const fromParts = getZonedParts(fromDate, timeZoneContext);
+      const toParts = getZonedParts(toDate, timeZoneContext);
+      const fromKey = formatPartsDayKey(fromParts) || fromDate.toISOString().slice(0, 10);
+      const toKey = formatPartsDayKey(toParts) || toDate.toISOString().slice(0, 10);
+      const spendDay = String(record.start_date || "");
+      if (spendDay < fromKey || spendDay > toKey) return [];
+
+      const [year, month, day] = spendDay.split("-").map(Number);
+      const bucketStart = formatBucketStart({ year, month, day, hour: 0 }, bucket);
+      return [{
+        source,
+        bucket_start: bucketStart,
+        subscription_cost_usd: source === "other_ai" ? 0 : periodCost,
+        other_ai_cost_usd: source === "other_ai" ? periodCost : 0,
+      }];
+    }
+
     const fromKey = fromDate.toISOString().slice(0, 10);
     const toKey = toDate.toISOString().slice(0, 10);
     const recStart = new Date(`${record.start_date}T00:00:00Z`);
@@ -3464,7 +3484,6 @@ function createLocalApiHandler({
     const baseCost = round6(periodCost / n);
     const lastCost = round6(periodCost - baseCost * (n - 1));
 
-    const source = String(record.source || "unknown").trim().toLowerCase() || "unknown";
     return bucketList.map((bucketStart, idx) => ({
       source,
       bucket_start: bucketStart,

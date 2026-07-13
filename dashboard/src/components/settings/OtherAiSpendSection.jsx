@@ -67,9 +67,10 @@ export function OtherAiSpendSection() {
       setRecords(loadedRecords.filter(
         (record) => String(record.source || "").toLowerCase() === SOURCE,
       ));
+      setError(null);
     } catch (loadError) {
       console.warn("[OtherAiSpendSection] failed to load records:", loadError);
-      setRecords([]);
+      setError(copy("settings.cost.other_ai.error_load"));
     } finally {
       setLoading(false);
     }
@@ -138,7 +139,15 @@ export function OtherAiSpendSection() {
         setSaving(false);
         return;
       }
-      closeForm();
+      if (result?.record) {
+        setRecords((current) => {
+          const remaining = current.filter((record) => record.id !== result.record.id);
+          return [result.record, ...remaining];
+        });
+      }
+      setFormOpen(false);
+      setSaving(false);
+      setError(null);
       await reload();
     } catch (saveError) {
       setError(saveError?.message || copy("settings.cost.other_ai.error_save"));
@@ -149,12 +158,18 @@ export function OtherAiSpendSection() {
   const remove = async (record) => {
     // eslint-disable-next-line no-alert
     if (!window.confirm(copy("settings.cost.other_ai.confirm_delete"))) return;
+    setError(null);
     try {
       const result = await deleteSpendRecord(record.id);
-      if (result?.ok === false) return;
+      if (result?.ok === false) {
+        setError(result.error || copy("settings.cost.other_ai.error_delete"));
+        return;
+      }
+      setRecords((current) => current.filter((item) => item.id !== record.id));
       await reload();
     } catch (deleteError) {
       console.error("[OtherAiSpendSection] delete failed:", deleteError);
+      setError(deleteError?.message || copy("settings.cost.other_ai.error_delete"));
     }
   };
 
@@ -276,12 +291,16 @@ export function OtherAiSpendSection() {
         </div>
       )}
 
+      {!formOpen && error ? (
+        <p className="mb-3 text-xs text-red-600 dark:text-red-400">{error}</p>
+      ) : null}
+
       {loading && (
         <div className="py-4 text-center text-sm text-oai-gray-400">
           {copy("settings.cost.other_ai.loading")}
         </div>
       )}
-      {!loading && records.length === 0 && !formOpen && (
+      {!loading && records.length === 0 && !formOpen && !error && (
         <div className="py-4 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
           {copy("settings.cost.other_ai.empty")}
         </div>

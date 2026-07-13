@@ -161,4 +161,63 @@ describe("OtherAiSpendSection", () => {
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
     confirmSpy.mockRestore();
   });
+
+  it("shows a real error when deletion fails instead of pretending the record disappeared", async () => {
+    getSpendRecords.mockResolvedValue({ records: [OTHER_AI_RECORD] });
+    deleteSpendRecord.mockResolvedValue({ ok: false });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<OtherAiSpendSection />);
+
+    const deleteButton = await screen.findByRole("button", { name: "settings.cost.other_ai.delete" });
+    fireEvent.click(deleteButton);
+
+    expect(await screen.findByText("settings.cost.other_ai.error_delete")).toBeInTheDocument();
+    expect(getSpendRecords).toHaveBeenCalledTimes(1);
+    confirmSpy.mockRestore();
+  });
+
+  it("keeps the confirmed local state and shows an error when a refresh fails", async () => {
+    getSpendRecords
+      .mockResolvedValueOnce({ records: [OTHER_AI_RECORD] })
+      .mockRejectedValueOnce(new Error("offline"));
+    deleteSpendRecord.mockResolvedValue({ ok: true });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<OtherAiSpendSection />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "settings.cost.other_ai.delete" }));
+
+    expect(await screen.findByText("settings.cost.other_ai.error_load")).toBeInTheDocument();
+    expect(screen.queryByText("settings.cost.other_ai.empty")).not.toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it("keeps the saved record visible when the post-save refresh fails", async () => {
+    getSpendRecords
+      .mockResolvedValueOnce({ records: [OTHER_AI_RECORD] })
+      .mockRejectedValueOnce(new Error("offline"));
+    createSpendRecord.mockResolvedValue({
+      ok: true,
+      record: {
+        ...OTHER_AI_RECORD,
+        id: "other-ai-2",
+        plan_label: "新充值",
+        amount: 100,
+      },
+    });
+    render(<OtherAiSpendSection />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "settings.cost.other_ai.add" }));
+    fireEvent.change(screen.getByLabelText("settings.cost.other_ai.name_label"), {
+      target: { value: "新充值" },
+    });
+    fireEvent.change(screen.getByLabelText("settings.cost.other_ai.amount_label"), {
+      target: { value: "100" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "settings.cost.other_ai.save" }));
+    });
+
+    expect(await screen.findByText("新充值")).toBeInTheDocument();
+    expect(screen.getByText("settings.cost.other_ai.error_load")).toBeInTheDocument();
+  });
 });
