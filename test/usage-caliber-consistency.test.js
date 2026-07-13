@@ -244,6 +244,70 @@ test("Codex real rollout logs feed usage-summary, spend-timeseries, provider-sta
   }
 });
 
+test("aggregate views prefer synced Codex queue rows over redundant rollout rescans", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-snapshot-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const trackerDataDir = path.join(tmp, "tracker");
+    const codexHome = path.join(tmp, ".codex");
+    const sessionsDir = path.join(codexHome, "sessions", "2026", "05", "09");
+    await fs.promises.mkdir(trackerDataDir, { recursive: true });
+    await fs.promises.mkdir(sessionsDir, { recursive: true });
+    await writeQueue(queuePath, [{
+      hour_start: "2026-05-09T10:00:00.000Z",
+      source: "codex",
+      model: "gpt-5",
+      input_tokens: 80,
+      output_tokens: 20,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 100,
+      billable_total_tokens: 100,
+      conversation_count: 1,
+    }]);
+    await fs.promises.writeFile(
+      path.join(trackerDataDir, "config.json"),
+      JSON.stringify({ dataDirectories: { codex: codexHome } }),
+      "utf8",
+    );
+    await fs.promises.writeFile(
+      path.join(sessionsDir, "rollout-2026-05-09T10-00-00-000Z.jsonl"),
+      [
+        buildCodexTurnContextLine({ model: "gpt-5" }),
+        buildCodexTokenCountLine({
+          ts: "2026-05-09T10:05:00.000Z",
+          last: {
+            input_tokens: 900,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            output_tokens: 99,
+            reasoning_output_tokens: 0,
+            total_tokens: 999,
+          },
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir });
+    const qs = "?from=2026-05-09&to=2026-05-09&tz=UTC&sources=codex";
+    const [summary, timeseries, providers, models] = await Promise.all([
+      callHandler(handler, `/functions/tokentracker-usage-summary${qs}`),
+      callHandler(handler, `/functions/tokentracker-spend-timeseries${qs}&bucket=day`),
+      callHandler(handler, `/functions/tokentracker-provider-stats${qs}`),
+      callHandler(handler, `/functions/tokentracker-model-stats${qs}`),
+    ]);
+
+    assert.equal(summary.totals.total_tokens, 100);
+    assert.equal(timeseries.totals.total_tokens, 100);
+    assert.equal(providers.totals.total_tokens, 100);
+    assert.equal(models.totals.total_tokens, 100);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("three-caliber consistency: filtered by sources param", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-filter-"));
   try {

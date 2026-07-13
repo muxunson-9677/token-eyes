@@ -1898,8 +1898,20 @@ function createLocalApiHandler({
     return normalizeCurrencySettings(config.currencySettings).usdToCny;
   }
 
+  function hasCodexQueueRowsForRange(rows, { from = "", to = "", timeZoneContext = null } = {}) {
+    return rows.some((row) => {
+      if (normalizeSource(row.source) !== "codex") return false;
+      const day = rowDayKey(row, timeZoneContext);
+      if (!day) return false;
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      return true;
+    });
+  }
+
   async function withCodexRolloutRows(rows, { from = "", to = "", timeZoneContext = null, sources = null } = {}) {
     if (Array.isArray(sources) && !sources.includes("codex")) return rows;
+    if (hasCodexQueueRowsForRange(rows, { from, to, timeZoneContext })) return rows;
     const config = readTrackerConfig();
     const configuredCodexHome = normalizeDataDirectories(config.dataDirectories).codex;
     const usesDefaultQueue = path.resolve(qp).toLowerCase() === path.resolve(resolveQueuePath()).toLowerCase();
