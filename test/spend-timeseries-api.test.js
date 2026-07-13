@@ -201,7 +201,8 @@ test("OTHER-AI: filtered timeseries includes manual cost with zero tokens", asyn
     assert.equal(result.statusCode, 200);
     assert.deepEqual(body.sources, ["other_ai"]);
     assert.deepEqual(body.by_source.map((entry) => entry.source), ["other_ai"]);
-    assert.equal(body.totals.subscription_cost_usd, 12);
+    assert.equal(body.totals.subscription_cost_usd, 0);
+    assert.equal(body.totals.other_ai_cost_usd, 12);
     assert.equal(body.totals.combined_usd, 12);
     assert.equal(body.totals.input_tokens, 0);
     assert.equal(body.totals.output_tokens, 0);
@@ -213,6 +214,13 @@ test("OTHER-AI: filtered timeseries includes manual cost with zero tokens", asyn
     assert.ok(Math.abs(seriesCost - 12) < 1e-10);
     assert.ok(body.series.every((entry) => entry.source === "other_ai"));
     assert.ok(body.series.every((entry) => entry.total_tokens === 0));
+    assert.ok(body.series.every((entry) => entry.subscription_cost_usd === 0));
+    assert.equal(
+      body.series.reduce((sum, entry) => sum + entry.other_ai_cost_usd, 0),
+      12,
+    );
+    assert.equal(body.by_source[0].subscription_cost_usd, 0);
+    assert.equal(body.by_source[0].other_ai_cost_usd, 12);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

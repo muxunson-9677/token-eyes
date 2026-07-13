@@ -1025,9 +1025,15 @@ test("OTHER-AI: manual charges affect the selected month and lifetime with CRUD 
       { method: "GET" },
     ));
     assert.deepEqual(july.records.map((record) => record.source), ["other_ai", "other_ai"]);
-    assert.equal(july.totals.subscription_usd, 10);
-    assert.equal(july.totals.lifetime_subscription_usd, 30);
+    assert.equal(july.totals.subscription_usd, 0);
+    assert.equal(july.totals.other_ai_usd, 10);
+    assert.equal(july.totals.combined_usd, 10);
+    assert.equal(july.totals.lifetime_subscription_usd, 0);
+    assert.equal(july.totals.lifetime_other_ai_usd, 30);
+    assert.equal(july.totals.lifetime_combined_usd, 30);
     assert.deepEqual(july.by_source.map((entry) => entry.source), ["other_ai"]);
+    assert.equal(july.by_source[0].subscription_usd, 0);
+    assert.equal(july.by_source[0].other_ai_usd, 10);
 
     const updated = readJsonResponse(await call(handler, "/functions/tokentracker-spend-records", {
       method: "PUT",
@@ -1052,7 +1058,10 @@ test("OTHER-AI: manual charges affect the selected month and lifetime with CRUD 
       { method: "GET" },
     ));
     assert.equal(afterEdit.totals.subscription_usd, 0);
-    assert.equal(afterEdit.totals.lifetime_subscription_usd, 40);
+    assert.equal(afterEdit.totals.other_ai_usd, 0);
+    assert.equal(afterEdit.totals.lifetime_subscription_usd, 0);
+    assert.equal(afterEdit.totals.lifetime_other_ai_usd, 40);
+    assert.equal(afterEdit.totals.lifetime_combined_usd, 40);
 
     await call(handler, "/functions/tokentracker-spend-records", {
       method: "DELETE",
@@ -1065,8 +1074,11 @@ test("OTHER-AI: manual charges affect the selected month and lifetime with CRUD 
       { method: "GET" },
     ));
     assert.equal(afterDelete.records.length, 1);
-    assert.equal(afterDelete.totals.subscription_usd, 20);
-    assert.equal(afterDelete.totals.lifetime_subscription_usd, 20);
+    assert.equal(afterDelete.totals.subscription_usd, 0);
+    assert.equal(afterDelete.totals.other_ai_usd, 20);
+    assert.equal(afterDelete.totals.combined_usd, 20);
+    assert.equal(afterDelete.totals.lifetime_subscription_usd, 0);
+    assert.equal(afterDelete.totals.lifetime_other_ai_usd, 20);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
