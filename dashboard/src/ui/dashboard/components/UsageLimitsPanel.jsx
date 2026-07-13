@@ -9,6 +9,7 @@ import {
   limitProviderName,
 } from "../../../lib/limits-providers.js";
 import { computePace, resetToMs, resolveWindowSeconds } from "../../../lib/limit-pace.js";
+import { formatCompactNumber } from "../../../lib/format";
 import { ProviderIcon } from "./ProviderIcon.jsx";
 import { PROVIDER_LIMIT_SPECS } from "./usage-limits-provider-specs.js";
 
@@ -227,6 +228,15 @@ function LimitWindowSection({ rows, mode, extra = null }) {
 }
 
 function renderProviderExtra(kind, data) {
+  if (kind === "token_only") {
+    return (
+      <StatusLine>
+        {copy("limits.status.token_only", {
+          tokens: formatCompactNumber(Number(data.total_tokens || 0), { decimals: 1 }),
+        })}
+      </StatusLine>
+    );
+  }
   if (kind === "kimi_parallel" && data.parallel_limit) {
     return <StatusLine>{copy("limits.label.kimi_parallel", { count: data.parallel_limit })}</StatusLine>;
   }
@@ -339,8 +349,8 @@ function useWidestLabelWidth(containerRef) {
   return labelWidth;
 }
 
-export function UsageLimitsPanel({ claude, codex, cursor, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, order, visibility, displayMode }) {
-  const dataById = { claude, codex, cursor, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot };
+export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, order, visibility, displayMode }) {
+  const dataById = { claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot };
   const containerRef = useRef(null);
   const labelWidth = useWidestLabelWidth(containerRef);
   const [expandedId, setExpandedId] = useState(null);

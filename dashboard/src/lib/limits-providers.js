@@ -6,6 +6,7 @@ export const LIMIT_PROVIDER_IDS = [
   "codex",
   "cursor",
   "trae",
+  "codebuddy",
   "gemini",
   "hermes",
   "openclaw",
@@ -19,6 +20,7 @@ export const LIMIT_PROVIDER_ICON_KEYS = {
   codex: "CODEX",
   cursor: "CURSOR",
   trae: "TRAE",
+  codebuddy: "CODEBUDDY",
   gemini: "GEMINI",
   hermes: "HERMES",
   openclaw: "OPENCLAW",
@@ -40,6 +42,8 @@ export function limitProviderName(id) {
       return copy("limits.provider.cursor");
     case "trae":
       return copy("limits.provider.trae");
+    case "codebuddy":
+      return copy("limits.provider.codebuddy");
     case "gemini":
       return copy("limits.provider.gemini");
     case "hermes":

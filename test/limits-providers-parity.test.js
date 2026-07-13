@@ -43,6 +43,8 @@ test("macOS LimitsSettingsStore.allProviders matches dashboard LIMIT_PROVIDER_ID
     "claude",
     "codex",
     "cursor",
+    "trae",
+    "codebuddy",
     "gemini",
     "hermes",
     "openclaw",

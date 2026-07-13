@@ -536,6 +536,7 @@ limits.provider.claude,ui,LimitsPage,UsageLimitsPanel,provider_claude,"Claude",,
 limits.provider.codex,ui,LimitsPage,UsageLimitsPanel,provider_codex,"Codex",,active
 limits.provider.cursor,ui,LimitsPage,UsageLimitsPanel,provider_cursor,"Cursor",,active
 limits.provider.trae,ui,LimitsPage,UsageLimitsPanel,provider_trae,"Trae",,active
+limits.provider.codebuddy,ui,LimitsPage,UsageLimitsPanel,provider_codebuddy,"CodeBuddy",,active
 limits.provider.gemini,ui,LimitsPage,UsageLimitsPanel,provider_gemini,"Gemini",,active
 limits.provider.kimi,ui,LimitsPage,UsageLimitsPanel,provider_kimi,"Kimi",,active
 limits.provider.kiro,ui,LimitsPage,UsageLimitsPanel,provider_kiro,"Kiro",,active
@@ -557,6 +558,7 @@ limits.label.antigravity_gpro,ui,LimitsPage,UsageLimitsPanel,antigravity_gpro,"G
 limits.label.antigravity_flash,ui,LimitsPage,UsageLimitsPanel,antigravity_flash,"Flash",,active
 limits.bar.sub_one_percent,ui,LimitsPage,UsageLimitsPanel,bar_sub_one_percent,"<1",,active
 limits.status.not_connected,ui,LimitsPage,UsageLimitsPanel,status_not_connected,"Not connected",,active
+limits.status.token_only,ui,LimitsPage,UsageLimitsPanel,status_token_only,"Tokens tracked: {{tokens}} (no official total quota)",,active
 limits.status.no_data,ui,LimitsPage,UsageLimitsPanel,status_no_data,"No live limit data returned",,active
 limits.status.all_hidden,ui,LimitsPage,UsageLimitsPanel,status_all_hidden,"All limit providers are hidden. Open display settings to show them.",,active
 shared.time.now,shared,*,Shared,time_now,"now",,active

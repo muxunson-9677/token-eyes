@@ -75,6 +75,22 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getAllByText(copy("limits.status.not_connected"))).toHaveLength(3);
   });
 
+  it("renders Trae and CodeBuddy as token-only totals without quota bars", () => {
+    render(
+      <UsageLimitsPanel
+        trae={{ configured: true, error: null, token_only: true, total_tokens: 1_250 }}
+        codebuddy={{ configured: true, error: null, token_only: true, total_tokens: 3_200 }}
+        order={["trae", "codebuddy"]}
+      />,
+    );
+
+    expect(screen.getByText("Trae")).toBeInTheDocument();
+    expect(screen.getByText("CodeBuddy")).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.status.token_only", { tokens: "1.3K" }))).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.status.token_only", { tokens: "3.2K" }))).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
   it("appends plan_label to the provider title when present", () => {
     render(
       <UsageLimitsPanel

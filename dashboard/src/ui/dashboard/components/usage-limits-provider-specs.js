@@ -31,6 +31,18 @@ export const PROVIDER_LIMIT_SPECS = {
       ];
     },
   },
+  trae: {
+    extra: "token_only",
+    windows() {
+      return [];
+    },
+  },
+  codebuddy: {
+    extra: "token_only",
+    windows() {
+      return [];
+    },
+  },
   gemini: {
     windows(data) {
       return [

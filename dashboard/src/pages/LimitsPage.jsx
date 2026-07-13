@@ -70,6 +70,8 @@ export function LimitsPage() {
                 claude={usageLimits?.claude}
                 codex={usageLimits?.codex}
                 cursor={usageLimits?.cursor}
+                trae={usageLimits?.trae}
+                codebuddy={usageLimits?.codebuddy}
                 gemini={usageLimits?.gemini}
                 hermes={usageLimits?.hermes}
                 openclaw={usageLimits?.openclaw}
