@@ -515,9 +515,17 @@ function detectKnownProviderPreset(config) {
   const providerText = lowerTrim(config?.providerId);
   const labelText = lowerTrim(config?.label);
   const host = hostFromUrl(config?.requestUrl);
+
+  if (providerText) {
+    for (const preset of KNOWN_PROVIDER_PRESETS) {
+      if (providerText === preset.providerId) return preset;
+      if (preset.aliases.some((alias) => providerText === alias)) return preset;
+    }
+    return null;
+  }
+
   for (const preset of KNOWN_PROVIDER_PRESETS) {
-    if (providerText === preset.providerId) return preset;
-    if (preset.aliases.some((alias) => providerText === alias || labelText.includes(alias))) return preset;
+    if (preset.aliases.some((alias) => labelText.includes(alias))) return preset;
     if (preset.hosts.includes(host)) return preset;
   }
   return null;

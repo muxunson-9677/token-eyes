@@ -437,6 +437,57 @@ test("DeepSeek capability metadata exposes balance without inventing spend histo
     getProviderFinancialCapabilities(normalized));
 });
 
+test("explicit custom mode bypasses known-provider aliases and derives configured financial paths", () => {
+  const customProxy = normalizeProviderApiConfig({
+    providerId: "custom",
+    label: "DeepSeek Proxy",
+    requestUrl: "https://proxy.example.com/account/balance",
+    requestMethod: "GET",
+    authType: "bearer",
+    balancePath: "data.balance",
+    monthSpendPath: "data.month",
+    lifetimeSpendPath: "data.total",
+    currencyPath: "data.currency",
+    refreshIntervalSeconds: 300,
+    enabled: true,
+  });
+
+  assert.equal(customProxy.providerId, "custom");
+  assert.equal(customProxy.requestUrl, "https://proxy.example.com/account/balance");
+  assert.deepEqual(getProviderFinancialCapabilities(customProxy), {
+    balance: "custom",
+    monthSpend: "custom",
+    lifetimeSpend: "custom",
+    tokenQuota: "unsupported",
+  });
+  assert.equal(validateProviderApiConfig(customProxy).ok, true);
+
+  const customGlmProxy = normalizeProviderApiConfig({
+    ...customProxy,
+    id: "custom-glm",
+    label: "智谱代理财务",
+  });
+  assert.equal(getProviderFinancialCapabilities(customGlmProxy).balance, "custom");
+  assert.equal(validateProviderApiConfig(customGlmProxy).ok, true);
+
+  for (const providerId of ["deepseek-proxy", "my-proxy"]) {
+    const legacyCustom = normalizeProviderApiConfig({
+      ...customProxy,
+      id: `legacy-${providerId}`,
+      providerId,
+      label: "智谱 DeepSeek Proxy",
+    });
+    assert.equal(legacyCustom.providerId, providerId);
+    assert.deepEqual(getProviderFinancialCapabilities(legacyCustom), {
+      balance: "custom",
+      monthSpend: "custom",
+      lifetimeSpend: "custom",
+      tokenQuota: "unsupported",
+    });
+    assert.equal(validateProviderApiConfig(legacyCustom).ok, true);
+  }
+});
+
 test("readProviderApiConfigs migrates legacy DeepSeek first-entry balance paths to wildcard paths", () => {
   const [config] = readProviderApiConfigs({
     providerApiConfigs: [{

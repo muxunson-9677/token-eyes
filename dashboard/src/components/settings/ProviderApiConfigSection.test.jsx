@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ProviderApiConfigSection } from "./ProviderApiConfigSection.jsx";
+import { getProviderFinancialCapabilities } from "../../lib/provider-api-presets.js";
 import {
   getProviderApiConfigs,
   getProviderApiBalances,
@@ -273,6 +274,53 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(document.querySelector("input[type='password']")).toBeDisabled();
     expect(saveProviderApiConfig).not.toHaveBeenCalled();
     expect(saveProviderApiSecret).not.toHaveBeenCalled();
+  });
+
+  it("custom mode bypasses known aliases and keeps proxy financial capabilities editable", async () => {
+    expect(getProviderFinancialCapabilities({
+      providerId: "custom",
+      label: "DeepSeek Proxy",
+      requestUrl: "https://proxy.example.com/account/balance",
+      balancePath: "data.balance",
+      monthSpendPath: "data.month",
+      lifetimeSpendPath: "data.total",
+    })).toEqual({
+      balance: "custom",
+      monthSpend: "custom",
+      lifetimeSpend: "custom",
+      tokenQuota: "unsupported",
+    });
+    expect(getProviderFinancialCapabilities({
+      providerId: "deepseek-proxy",
+      label: "智谱 DeepSeek Proxy",
+      requestUrl: "https://proxy.example.com/account/balance",
+      balancePath: "data.balance",
+      monthSpendPath: "data.month",
+      lifetimeSpendPath: "data.total",
+    })).toEqual({
+      balance: "custom",
+      monthSpend: "custom",
+      lifetimeSpend: "custom",
+      tokenQuota: "unsupported",
+    });
+
+    const user = userEvent.setup();
+    await openAddForm(user);
+    await act(async () => {
+      await user.selectOptions(
+        screen.getByLabelText("settings.cost.provider_api.form.api_mode"),
+        "custom",
+      );
+      await user.type(
+        screen.getByLabelText("settings.cost.provider_api.form.name"),
+        "智谱代理财务",
+      );
+    });
+
+    expect(document.querySelector("input[type='password']")).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.save" })).not.toBeDisabled();
+    expect(screen.queryByText("settings.cost.provider_api.capability.glm_finance_unsupported"))
+      .not.toBeInTheDocument();
   });
 
   it("DeepSeek card labels unsupported spend history instead of rendering unknown or zero", async () => {

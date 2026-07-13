@@ -105,9 +105,16 @@ function detectPreset(form) {
   const providerText = lowerTrim(form?.providerId);
   const labelText = lowerTrim(form?.label);
   const host = hostFromUrl(form?.requestUrl);
+
+  if (providerText) {
+    return PROVIDER_API_PRESETS.find((preset) => (
+      providerText === preset.providerId
+      || preset.aliases.some((alias) => providerText === alias)
+    )) || null;
+  }
+
   return PROVIDER_API_PRESETS.find((preset) => (
-    providerText === preset.providerId ||
-    preset.aliases.some((alias) => providerText === alias || labelText.includes(alias)) ||
+    preset.aliases.some((alias) => labelText.includes(alias)) ||
     preset.hosts.includes(host)
   )) || null;
 }
