@@ -2759,22 +2759,30 @@ function createLocalApiHandler({
     const session = normalizeConsoleSession(current[index]);
     const nativeState = String(native.state_code || "").trim();
     const nativeConnected = Boolean(native.connected);
+    const nativeAuthorized = Boolean(native.authorized);
+    const forbiddenNativeKeys = ["authorization", "cookie", "token", "raw_response", "headers"];
+    for (const key of forbiddenNativeKeys) {
+      if (Object.prototype.hasOwnProperty.call(native, key)) {
+        const error = new Error(`native_result must not include sensitive field: ${key}`);
+        error.statusCode = 400;
+        throw error;
+      }
+    }
 
-    if (nativeConnected && nativeState === "connected") {
+    if (nativeConnected && (
+      nativeState === "connected"
+      || (nativeAuthorized && nativeState === "authorized")
+    )) {
       session.status = "connected";
       session.last_verified_at = new Date().toISOString();
-      session.last_error_code = "";
-      session.last_error_message = "";
+      session.last_error_code = nativeState === "authorized"
+        ? String(native.error_code || "QUOTA_SYNC_FAILED").slice(0, 64)
+        : "";
+      session.last_error_message = nativeState === "authorized"
+        ? String(native.error_message || "Authorization completed, but quota sync failed").slice(0, 256)
+        : "";
       if (!session.connected_at) {
         session.connected_at = session.last_verified_at;
-      }
-      const forbiddenNativeKeys = ["authorization", "cookie", "token", "raw_response", "headers"];
-      for (const key of forbiddenNativeKeys) {
-        if (Object.prototype.hasOwnProperty.call(native, key)) {
-          const error = new Error(`native_result must not include sensitive field: ${key}`);
-          error.statusCode = 400;
-          throw error;
-        }
       }
       const balance = normalizeConsoleBalance(native.balance);
       if (balance) {
@@ -6387,4 +6395,3 @@ module.exports = {
   computeStableMachineId,
   clearRequestUsageRecordsListCacheForTests,
 };
-

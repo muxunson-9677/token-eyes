@@ -1001,3 +1001,59 @@ test("GLM console verification stores only sanitized balance", async () => {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("Codex authorized without quota remains connected with a retryable sync error", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-codex-authorized-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const headers = await getAuthHeaders(handler);
+    const sessionRef = "token-plan/codex/session/authorized-test";
+
+    const created = await call(handler, "/functions/tokentracker-token-plan-console-sessions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        provider_id: "codex",
+        auth_kind: "official_console_session",
+        display_name: "Codex 官网账号",
+        session_ref: sessionRef,
+      }),
+    });
+    const sessionId = readJsonResponse(created).session.id;
+
+    const verified = await call(
+      handler,
+      `/functions/tokentracker-token-plan-console-sessions/${sessionId}/verify`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          native_result: {
+            connected: true,
+            authorized: true,
+            session_ref: sessionRef,
+            state_code: "authorized",
+            error_code: "QUOTA_SYNC_FAILED",
+            error_message: "授权已完成，但额度同步暂时失败，可稍后重试。",
+          },
+        }),
+      },
+    );
+
+    assert.equal(verified.statusCode, 200);
+    const body = readJsonResponse(verified);
+    assert.equal(body.session.status, "connected");
+    assert.equal(body.session.last_error_code, "QUOTA_SYNC_FAILED");
+    assert.equal(body.session.last_error_message, "授权已完成，但额度同步暂时失败，可稍后重试。");
+    assert.equal(
+      /authorization|cookie|\"token\"|raw_response|headers/i.test(JSON.stringify(body)),
+      false,
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
