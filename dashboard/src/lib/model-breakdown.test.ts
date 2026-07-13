@@ -178,6 +178,37 @@ describe("BILLING_FILTERS", () => {
 });
 
 describe("buildFleetData preserves billing metadata", () => {
+  it("includes Trae and CodeBuddy token-only sources with zero cost", () => {
+    const breakdown = {
+      pricing: { pricing_mode: "list" },
+      sources: [
+        {
+          source: "trae",
+          totals: { total_tokens: 1000, total_cost_usd: 0 },
+          models: [
+            { model: "trae", model_id: "trae", totals: { total_tokens: 1000, total_cost_usd: 0 } },
+          ],
+        },
+        {
+          source: "codebuddy",
+          totals: { total_tokens: 500, total_cost_usd: 0 },
+          models: [
+            {
+              model: "codebuddy",
+              model_id: "codebuddy",
+              totals: { total_tokens: 500, total_cost_usd: 0 },
+            },
+          ],
+        },
+      ],
+    };
+
+    const fleet = buildFleetData(breakdown);
+    expect(fleet.map((entry) => entry.source)).toEqual(["trae", "codebuddy"]);
+    expect(fleet.map((entry) => entry.usage)).toEqual([1000, 500]);
+    expect(fleet.map((entry) => entry.usd)).toEqual([0, 0]);
+  });
+
   it("surfaces source-level and model-level billing metadata to consumers", () => {
     const breakdown = {
       pricing: { pricing_mode: "list" },

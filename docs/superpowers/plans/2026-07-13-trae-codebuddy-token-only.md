@@ -18,14 +18,14 @@
 - Modify: `src/lib/pricing/index.js`
 - Modify: `src/lib/local-api.js`
 
-- [ ] Write a pricing regression proving Trae and CodeBuddy return `cost_usd: 0` even when their model has built-in, custom-rule, or agent-default pricing.
-- [ ] Run the focused pricing test and verify RED because known model names are currently priced.
-- [ ] Add a `TOKEN_ONLY_SOURCES` guard at the start of `computeRowCostDetailed`; return zero cost with all tokens marked unpriced.
-- [ ] Write a local API regression with deduplicated Trae/CodeBuddy queue rows and an injected usage-limits provider; assert `token_only`, `configured`, and exact `total_tokens` values.
-- [ ] Run the local API regression and verify RED because the endpoint does not yet append local token-only summaries.
-- [ ] Add `summarizeTokenOnlyUsage(rows)` and merge it into `/functions/tokentracker-usage-limits`; use the existing queue reader and an optional test-only provider override.
-- [ ] Run focused Node tests and verify GREEN.
-- [ ] Commit with `feat: add token-only usage limit summaries`.
+- [x] Write a pricing regression proving Trae and CodeBuddy return `cost_usd: 0` even when their model has built-in, custom-rule, or agent-default pricing.
+- [x] Run the focused pricing test and verify RED because known model names are currently priced.
+- [x] Add a `TOKEN_ONLY_SOURCES` guard at the start of `computeRowCostDetailed`; return zero cost with all tokens marked unpriced.
+- [x] Write a local API regression with deduplicated Trae/CodeBuddy queue rows and an injected usage-limits provider; assert `token_only`, `configured`, and exact `total_tokens` values.
+- [x] Run the local API regression and verify RED because the endpoint does not yet append local token-only summaries.
+- [x] Add `summarizeTokenOnlyUsage(rows)` and merge it into `/functions/tokentracker-usage-limits`; use the existing queue reader and an optional test-only provider override.
+- [x] Run focused Node tests and verify GREEN.
+- [x] Commit with `feat: add token-only usage limit summaries`.
 
 ### Task 2: Render token-only providers without fake quota bars
 
@@ -40,13 +40,13 @@
 - Modify: `TokenTrackerBar/TokenTrackerBar/Models/LimitsSettingsStore.swift`
 - Modify: `test/limits-providers-parity.test.js`
 
-- [ ] Write a component test proving Trae and CodeBuddy display exact compact token totals plus the token-only explanation and render no percentage bar.
-- [ ] Run the component test and verify RED because CodeBuddy is absent and token-only rendering does not exist.
-- [ ] Add both ids/names/icons to the canonical provider list, extend the limits payload type/page props, and add token-only provider specs.
-- [ ] Render token-only summaries through a dedicated status line using copy-registry text; do not reuse quota windows or percentages.
-- [ ] Update macOS/dashboard provider preference parity so saved order/visibility keys are not dropped.
-- [ ] Run component, parity, copy, and dashboard build verification.
-- [ ] Commit with `feat: show Trae and CodeBuddy token usage`.
+- [x] Write a component test proving Trae and CodeBuddy display exact compact token totals plus the token-only explanation and render no percentage bar.
+- [x] Run the component test and verify RED because CodeBuddy is absent and token-only rendering does not exist.
+- [x] Add both ids/names/icons to the canonical provider list, extend the limits payload type/page props, and add token-only provider specs.
+- [x] Render token-only summaries through a dedicated status line using copy-registry text; do not reuse quota windows or percentages.
+- [x] Update macOS/dashboard provider preference parity so saved order/visibility keys are not dropped.
+- [x] Run component, parity, copy, and dashboard build verification.
+- [x] Commit with `feat: show Trae and CodeBuddy token usage`.
 
 ### Task 3: Verify overview inclusion and update progress
 
@@ -54,8 +54,8 @@
 - Modify: `dashboard/src/lib/model-breakdown.test.ts`
 - Modify: `docs/superpowers/specs/2026-07-13-token-eyes-fixes-1-6-design.md`
 
-- [ ] Add a fleet-data regression proving Trae and CodeBuddy remain separate sources with real token totals and zero cost.
-- [ ] Run the regression; if existing behavior already passes, record it as characterization rather than claiming a RED cycle.
-- [ ] Run focused Node/Vitest tests, dashboard build, copy validation, and `git diff --check`.
-- [ ] Update item 11 to complete only when the backend, limits UI, zero-cost contract, and overview characterization all pass.
-- [ ] Commit with `docs: record token-only provider verification`.
+- [x] Add a fleet-data regression proving Trae and CodeBuddy remain separate sources with real token totals and zero cost.
+- [x] Run the regression; existing behavior passed, so this is recorded as characterization rather than a RED cycle.
+- [x] Run focused Node/Vitest tests, dashboard build, copy validation, and `git diff --check`.
+- [x] Update item 11 to complete only when the backend, limits UI, zero-cost contract, and overview characterization all pass.
+- [x] Commit with `docs: record token-only provider verification`.
