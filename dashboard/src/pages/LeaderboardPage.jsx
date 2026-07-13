@@ -32,6 +32,15 @@ import {
   pageContainingRank,
   prependMeRowToPage,
 } from "../lib/leaderboard-ui";
+import {
+  LEADERBOARD_AGENTS,
+  LEADERBOARD_DEFAULT_AGENT,
+  LEADERBOARD_DEFAULT_METRIC,
+  LEADERBOARD_DEFAULT_PERIOD,
+  normalizeLeaderboardAgent,
+  normalizeLeaderboardMetric,
+  normalizeLeaderboardPeriod,
+} from "../lib/leaderboard-query.js";
 import { getLeaderboardBaseUrl } from "../lib/config";
 import { getDashboardEntryPath } from "../lib/host-mode";
 import { isMockEnabled } from "../lib/mock-data";
@@ -69,6 +78,19 @@ import {
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_STORAGE_KEY = "tokentracker:leaderboard:pageSize";
+const PRIMARY_AGENT_TABS = ["all", "codex", "claude", "hermes", "cursor"];
+const PERIOD_OPTIONS = [
+  { value: "today", copyKey: "leaderboard.period.today" },
+  { value: "yesterday", copyKey: "leaderboard.period.yesterday" },
+  { value: "7d", copyKey: "leaderboard.period.7d" },
+  { value: "30d", copyKey: "leaderboard.period.30d" },
+  { value: "total", copyKey: "leaderboard.period.total" },
+];
+const METRIC_OPTIONS = [
+  { value: "with_cache", copyKey: "leaderboard.metric.with_cache" },
+  { value: "without_cache", copyKey: "leaderboard.metric.without_cache" },
+  { value: "estimated_cost", copyKey: "leaderboard.metric.estimated_cost" },
+];
 
 function readStoredPageSize() {
   if (typeof window === "undefined") return DEFAULT_PAGE_SIZE;
@@ -101,6 +123,16 @@ function TotalTokens({ value }) {
       <span className="hidden sm:inline">{toDisplayNumber(value)}</span>
     </>
   );
+}
+
+function RankingScore({ entry, metric, currency, rate }) {
+  if (metric === "estimated_cost") {
+    return formatCost(entry?.score ?? entry?.estimated_cost_usd, currency, rate);
+  }
+  const fallback = metric === "without_cache"
+    ? entry?.without_cache_tokens ?? entry?.total_tokens
+    : entry?.total_tokens;
+  return <TotalTokens value={entry?.score ?? fallback} />;
 }
 
 function leaderboardTokenCells(entry, isMe, orderedColumns) {
@@ -137,15 +169,6 @@ function RankCell({ rank, placeholder }) {
     );
   }
   return <span className="inline-flex items-center justify-center h-7 w-7 text-sm">{rank ?? placeholder}</span>;
-}
-
-function normalizePeriod(value) {
-  if (typeof value !== "string") return null;
-  const v = value.trim().toLowerCase();
-  if (v === "week") return v;
-  if (v === "month") return v;
-  if (v === "total") return v;
-  return null;
 }
 
 function normalizeLeaderboardError(err) {
@@ -309,16 +332,22 @@ export function LeaderboardPage({
 
   const period = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
-    return normalizePeriod(params.get("period")) || "total";
+    return normalizeLeaderboardPeriod(params.get("period") || LEADERBOARD_DEFAULT_PERIOD);
+  }, [location?.search]);
+  const agent = useMemo(() => {
+    const params = new URLSearchParams(location?.search || "");
+    return normalizeLeaderboardAgent(params.get("agent") || LEADERBOARD_DEFAULT_AGENT);
+  }, [location?.search]);
+  const metric = useMemo(() => {
+    const params = new URLSearchParams(location?.search || "");
+    return normalizeLeaderboardMetric(params.get("metric") || LEADERBOARD_DEFAULT_METRIC);
   }, [location?.search]);
 
-
-  const handlePeriodChange = (nextPeriod) => {
-    const normalized = normalizePeriod(nextPeriod);
-    if (!normalized) return;
-    if (normalized === period) return;
+  const handleDimensionChange = (key, value) => {
+    const current = key === "period" ? period : key === "agent" ? agent : metric;
+    if (value === current) return;
     const params = new URLSearchParams(location?.search || "");
-    params.set("period", normalized);
+    params.set(key, value);
     setListPage(1);
     navigate(`${location?.pathname || "/leaderboard"}?${params.toString()}`, { replace: true });
   };
@@ -333,7 +362,7 @@ export function LeaderboardPage({
 
   useEffect(() => {
     setListPage(1);
-  }, [period]);
+  }, [agent, metric, period]);
 
   const listOffset = useMemo(() => {
     const safePage = clampInt(listPage, { min: 1, max: 1_000_000, fallback: 1 });
@@ -352,14 +381,16 @@ export function LeaderboardPage({
     () =>
       getLeaderboardPreloadContextKey({
         accessMode: leaderboardAccessMode,
+        agent,
         baseUrl: leaderboardBaseUrl,
+        metric,
         mockEnabled,
         userId: cloudUser?.id || null,
         period,
         pageSize,
         offset: listOffset,
       }),
-    [cloudUser?.id, leaderboardAccessMode, leaderboardBaseUrl, listOffset, mockEnabled, pageSize, period],
+    [agent, cloudUser?.id, leaderboardAccessMode, leaderboardBaseUrl, listOffset, metric, mockEnabled, pageSize, period],
   );
 
   const [listState, setListState] = useState(() => {
@@ -406,7 +437,9 @@ export function LeaderboardPage({
     (async () => {
       const data = await getLeaderboard({
         baseUrl: leaderboardBaseUrl,
+        agent,
         userId: cloudUser?.id || null,
+        metric,
         period,
         limit: pageSize,
         offset: listOffset,
@@ -439,11 +472,13 @@ export function LeaderboardPage({
   }, [
     leaderboardBaseUrl,
     leaderboardAccessMode,
+    agent,
     cloudUser?.id,
     leaderboardPreloadContextKey,
     listOffset,
     listReloadToken,
     mockEnabled,
+    metric,
     period,
     pageSize,
   ]);
@@ -491,10 +526,38 @@ export function LeaderboardPage({
   const me = listData?.me || null;
   const meLabel = copy("leaderboard.me_label");
   const anonLabel = copy("leaderboard.anon_label");
-  const weekLabel = copy("leaderboard.period.week");
-  const monthLabel = copy("leaderboard.period.month");
-  const totalLabel = copy("leaderboard.period.total");
-  const periodLabel = period === "month" ? monthLabel : period === "total" ? totalLabel : weekLabel;
+  const periodLabel = copy(
+    PERIOD_OPTIONS.find((option) => option.value === period)?.copyKey || "leaderboard.period.total",
+  );
+  const agentOptions = useMemo(
+    () => LEADERBOARD_AGENTS.map((option) => ({ value: option.value, label: option.label })),
+    [],
+  );
+  const primaryAgentOptions = useMemo(
+    () => [
+      { value: "all", label: copy("leaderboard.agent.all") },
+      ...PRIMARY_AGENT_TABS.slice(1).map((value) => ({
+        value,
+        label: LEADERBOARD_AGENTS.find((option) => option.value === value)?.label || value,
+      })),
+    ],
+    [],
+  );
+  const overflowAgentOptions = useMemo(
+    () => [
+      { value: "__more__", label: copy("leaderboard.agent.more"), disabled: true },
+      ...agentOptions.filter((option) => !PRIMARY_AGENT_TABS.includes(option.value)),
+    ],
+    [agentOptions],
+  );
+  const overflowAgentValue = PRIMARY_AGENT_TABS.includes(agent) ? "__more__" : agent;
+  const selectedAgentLabel = agent === "all"
+    ? copy("leaderboard.agent.all")
+    : agentOptions.find((option) => option.value === agent)?.label || agent;
+  const selectedMetricLabel = copy(
+    METRIC_OPTIONS.find((option) => option.value === metric)?.copyKey || "leaderboard.metric.with_cache",
+  );
+  const scoreColumnLabel = `${selectedAgentLabel} · ${selectedMetricLabel}`;
 
   const displayEntries = useMemo(() => {
     const rows = Array.isArray(listData?.entries) ? listData.entries : [];
@@ -557,7 +620,7 @@ export function LeaderboardPage({
                 {copy("leaderboard.column.user")}
               </th>
               <th className="px-3 sm:px-4 py-4 text-[11px] font-semibold uppercase tracking-wider text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap text-right align-middle">
-                {copy("leaderboard.column.total")}
+                {scoreColumnLabel}
               </th>
               <th className="hidden sm:table-cell px-3 sm:px-4 py-4 text-[11px] font-semibold uppercase tracking-wider text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap text-right align-middle" title="Based on estimated API pricing, not actual billing">
                 {copy("leaderboard.column.est_cost")}
@@ -653,7 +716,7 @@ export function LeaderboardPage({
                       </div>
                     </td>
                     <td className="px-3 sm:px-4 py-4 font-medium text-oai-black dark:text-oai-white whitespace-nowrap text-right tabular-nums bg-oai-brand-50 dark:bg-oai-brand-900/10">
-                      <TotalTokens value={entry?.total_tokens} />
+                      <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
                     </td>
                     <td className="hidden sm:table-cell px-3 sm:px-4 py-4 font-medium text-oai-brand-600 dark:text-oai-brand-400 whitespace-nowrap text-right tabular-nums bg-oai-brand-50 dark:bg-oai-brand-900/10" title="Based on estimated API pricing, not actual billing">
                       {formatCost(entry?.estimated_cost_usd, currency, rate)}
@@ -687,7 +750,7 @@ export function LeaderboardPage({
                     </div>
                   </td>
                   <td className="px-3 sm:px-4 py-4 font-semibold text-oai-gray-800 dark:text-oai-gray-200 whitespace-nowrap text-right tabular-nums bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60">
-                    <TotalTokens value={entry?.total_tokens} />
+                    <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
                   </td>
                   <td className="hidden sm:table-cell px-3 sm:px-4 py-4 text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap text-right tabular-nums bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60" title="Based on estimated API pricing, not actual billing">
                     {formatCost(entry?.estimated_cost_usd, currency, rate)}
@@ -769,16 +832,14 @@ export function LeaderboardPage({
             </p>
           </div>
 
-          {/* One row: period filter (left) + personal me-chip (right). The chip
-              drops its name/percentile below sm so both fit on a single line. */}
-          <div className="mb-6 sm:mb-8 flex flex-row items-center justify-between gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
-              {["week", "month", "total"].map((p) => {
-                const isActive = period === p;
+              {primaryAgentOptions.map((option) => {
+                const isActive = agent === option.value;
                 return (
                   <button
-                    key={p}
-                    onClick={() => handlePeriodChange(p)}
+                    key={option.value}
+                    onClick={() => handleDimensionChange("agent", option.value)}
                     disabled={currentListState.loading}
                     className={cn(
                       "px-3 sm:px-4 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
@@ -788,11 +849,11 @@ export function LeaderboardPage({
                     )}
                   >
                     <span className="relative z-10">
-                      {p === "week" ? weekLabel : p === "month" ? monthLabel : totalLabel}
+                      {option.label}
                     </span>
                     {isActive && (
                       <motion.div
-                        layoutId="leaderboard-period-active-bg"
+                        layoutId="leaderboard-agent-active-bg"
                         className="absolute inset-0 bg-oai-gray-200 dark:bg-oai-gray-800 rounded-full z-0"
                         transition={{ type: "spring", stiffness: 380, damping: 30 }}
                       />
@@ -800,6 +861,77 @@ export function LeaderboardPage({
                   </button>
                 );
               })}
+            </div>
+            <Select
+              value={overflowAgentValue}
+              onValueChange={(value) => {
+                if (value !== "__more__") {
+                  handleDimensionChange("agent", normalizeLeaderboardAgent(value));
+                }
+              }}
+              options={overflowAgentOptions}
+              ariaLabel={copy("leaderboard.agent.more")}
+              disabled={currentListState.loading}
+              className="h-9 min-w-24 rounded-full px-3 text-sm"
+            />
+          </div>
+
+          <div className="mb-6 sm:mb-8 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
+                {PERIOD_OPTIONS.map((option) => {
+                  const isActive = period === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      onClick={() => handleDimensionChange("period", option.value)}
+                      disabled={currentListState.loading}
+                      className={cn(
+                        "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
+                        isActive
+                          ? "text-oai-black dark:text-white"
+                          : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
+                      )}
+                    >
+                      <span className="relative z-10">{copy(option.copyKey)}</span>
+                      {isActive && (
+                        <motion.div
+                          layoutId="leaderboard-period-active-bg"
+                          className="absolute inset-0 bg-oai-gray-200 dark:bg-oai-gray-800 rounded-full z-0"
+                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
+                {METRIC_OPTIONS.map((option) => {
+                  const isActive = metric === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      onClick={() => handleDimensionChange("metric", option.value)}
+                      disabled={currentListState.loading}
+                      className={cn(
+                        "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
+                        isActive
+                          ? "text-oai-black dark:text-white"
+                          : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
+                      )}
+                    >
+                      <span className="relative z-10">{copy(option.copyKey)}</span>
+                      {isActive && (
+                        <motion.div
+                          layoutId="leaderboard-metric-active-bg"
+                          className="absolute inset-0 bg-oai-gray-200 dark:bg-oai-gray-800 rounded-full z-0"
+                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <LeaderboardMeChip

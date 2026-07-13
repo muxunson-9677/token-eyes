@@ -247,13 +247,20 @@ leaderboard.profile.nav.back,dashboard,LeaderboardProfilePage,Header,nav_back,"L
 leaderboard.profile.nav.download,dashboard,LeaderboardProfilePage,Header,nav_download,"Download",Shown only to browser visitors without the app,active
 leaderboard.profile.hero.rank_label,dashboard,LeaderboardProfilePage,Hero,rank_label,"Rank",,active
 leaderboard.title,dashboard,LeaderboardPage,LeaderboardPage,title,"Leaderboard",,active
-leaderboard.range,dashboard,LeaderboardPage,LeaderboardPage,range,"UTC {{period}} · {{from}} – {{to}}",,active
-leaderboard.range_loading,dashboard,LeaderboardPage,LeaderboardPage,range_loading,"UTC {{period}} · …",,active
+leaderboard.range,dashboard,LeaderboardPage,LeaderboardPage,range,"UTC+8 {{period}} · {{from}} – {{to}}",,active
+leaderboard.range_loading,dashboard,LeaderboardPage,LeaderboardPage,range_loading,"UTC+8 {{period}} · …",,active
 leaderboard.range.total,dashboard,LeaderboardPage,LeaderboardPage,range_total,"All time",,active
 leaderboard.generated_at,dashboard,LeaderboardPage,LeaderboardPage,generated_at,"Updated {{ts}}",,active
-leaderboard.period.week,dashboard,LeaderboardPage,LeaderboardPage,period_week,"Week",,active
-leaderboard.period.month,dashboard,LeaderboardPage,LeaderboardPage,period_month,"Month",,active
-leaderboard.period.total,dashboard,LeaderboardPage,LeaderboardPage,period_total,"All",,active
+leaderboard.period.today,dashboard,LeaderboardPage,LeaderboardPage,period_today,"Today",,active
+leaderboard.period.yesterday,dashboard,LeaderboardPage,LeaderboardPage,period_yesterday,"Yesterday",,active
+leaderboard.period.7d,dashboard,LeaderboardPage,LeaderboardPage,period_7d,"Last 7 days",,active
+leaderboard.period.30d,dashboard,LeaderboardPage,LeaderboardPage,period_30d,"Last 30 days",,active
+leaderboard.period.total,dashboard,LeaderboardPage,LeaderboardPage,period_total,"All time",,active
+leaderboard.agent.all,dashboard,LeaderboardPage,LeaderboardPage,agent_all,"Overall",,active
+leaderboard.agent.more,dashboard,LeaderboardPage,LeaderboardPage,agent_more,"More Agents",,active
+leaderboard.metric.with_cache,dashboard,LeaderboardPage,LeaderboardPage,metric_with_cache,"With cache",,active
+leaderboard.metric.without_cache,dashboard,LeaderboardPage,LeaderboardPage,metric_without_cache,"Without cache",,active
+leaderboard.metric.estimated_cost,dashboard,LeaderboardPage,LeaderboardPage,metric_estimated_cost,"Estimated cost",,active
 leaderboard.me_label,dashboard,LeaderboardPage,LeaderboardPage,me_label,"You",,active
 leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"Anonymous",,active
 leaderboard.error.unknown,dashboard,LeaderboardPage,LeaderboardPage,error_unknown,"Unknown error",,active

@@ -118,7 +118,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.queryByTestId("leaderboard-skeleton")).not.toBeInTheDocument();
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
+      agent: "all",
       userId: "user-1",
+      metric: "with_cache",
       period: "total",
       limit: 20,
       offset: 0,
@@ -232,7 +234,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getByTestId("leaderboard-skeleton")).toBeInTheDocument();
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
+      agent: "all",
       userId: "user-1",
+      metric: "with_cache",
       period: "total",
       limit: 20,
       offset: 0,
@@ -295,7 +299,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
     await waitFor(() => {
       expect(getLeaderboard).toHaveBeenCalledWith({
         baseUrl: "https://edge.example",
+        agent: "all",
         userId: null,
+        metric: "with_cache",
         period: "total",
         limit: 20,
         offset: 0,
@@ -352,7 +358,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
+      agent: "all",
       userId: "user-1",
+      metric: "with_cache",
       period: "total",
       limit: 50,
       offset: 0,
@@ -371,7 +379,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
       accessMode: "cloud",
       baseUrl: "https://edge.example",
       mockEnabled: false,
-      period: "week",
+      period: "7d",
       userId: "user-1",
     });
     publishLeaderboardPreloadState(preloadedData, { contextKey: totalContextKey });
@@ -397,14 +405,14 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "周" }));
+      await user.click(screen.getByRole("button", { name: "近 7 日" }));
     });
 
     expect(screen.getAllByText("Week User").length).toBeGreaterThan(0);
     expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "全部" }));
+      await user.click(screen.getByRole("button", { name: "总累计" }));
     });
 
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
@@ -426,10 +434,70 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "周" }));
+      await user.click(screen.getByRole("button", { name: "近 7 日" }));
     });
 
     expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
     expect(screen.getByTestId("leaderboard-skeleton")).toBeInTheDocument();
+  });
+
+  it("offers five periods, Agent ranking and three metric views", async () => {
+    const user = userEvent.setup();
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard();
+
+    expect(screen.getByRole("button", { name: "今日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "昨日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "近 7 日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "近 30 日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "总累计" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "总榜" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Codex" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "含缓存" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "不含缓存" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预估费用" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "今日" }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Codex" })[0]).not.toBeDisabled());
+    await user.click(screen.getAllByRole("button", { name: "Codex" })[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "不含缓存" })).not.toBeDisabled());
+    await user.click(screen.getByRole("button", { name: "不含缓存" }));
+
+    await waitFor(() => {
+      expect(getLeaderboard).toHaveBeenLastCalledWith({
+        baseUrl: "https://edge.example",
+        userId: "user-1",
+        period: "today",
+        agent: "codex",
+        metric: "without_cache",
+        limit: 20,
+        offset: 0,
+      });
+    });
+  });
+
+  it("renders the selected Agent and token metric as the primary ranking value", async () => {
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [{ ...preloadedData.entries[0], score: 987 }],
+    });
+
+    renderLeaderboard("/leaderboard?agent=codex&metric=without_cache");
+
+    expect(await screen.findByRole("columnheader", { name: "Codex · 不含缓存" })).toBeInTheDocument();
+    expect(screen.getAllByText("987").length).toBeGreaterThan(0);
+  });
+
+  it("formats an estimated-cost score as currency in the primary ranking column", async () => {
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [{ ...preloadedData.entries[0], score: 7.89 }],
+    });
+
+    renderLeaderboard("/leaderboard?metric=estimated_cost");
+
+    expect(await screen.findByRole("columnheader", { name: "总榜 · 预估费用" })).toBeInTheDocument();
+    expect(screen.getAllByText("$7.89").length).toBeGreaterThan(0);
   });
 });

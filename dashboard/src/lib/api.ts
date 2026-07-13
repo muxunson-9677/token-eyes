@@ -596,12 +596,13 @@ export async function getLeaderboard({
   accessToken,
   userId,
   period,
+  agent,
   metric,
   limit,
   offset,
 }: AnyRecord = {}) {
   if (isMockEnabled()) {
-    return getMockLeaderboard({ seed: accessToken || userId, period, metric, limit, offset });
+    return getMockLeaderboard({ seed: accessToken || userId, period, agent, metric, limit, offset });
   }
   // Deliberately NOT passing accessToken. Leaderboard is a public read and
   // InsForge's gateway returns opaque 500 (JWSError) for any JWT issue
@@ -609,7 +610,7 @@ export async function getLeaderboard({
   // param lets the server compute `is_me` without ever touching the
   // Authorization header.
   return fetchInsforgeFunction("tokentracker-leaderboard", {
-    params: { period, limit, offset, user_id: userId },
+    params: { period, agent, metric, limit, offset, user_id: userId },
   });
 }
 

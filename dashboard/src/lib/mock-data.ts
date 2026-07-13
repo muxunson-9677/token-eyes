@@ -5,6 +5,11 @@ import {
 } from "./activity-heatmap";
 import { formatDateLocal, formatDateUTC } from "./date-range";
 import { isTauriApp } from "./native-bridge.js";
+import {
+  normalizeLeaderboardAgent,
+  normalizeLeaderboardMetric,
+  normalizeLeaderboardPeriod,
+} from "./leaderboard-query.js";
 
 type AnyRecord = Record<string, any>;
 type HourRow = {
@@ -504,30 +509,31 @@ export function getMockProjectUsageSummary({ seed, limit = 3 }: AnyRecord = {}) 
 
 function computeLeaderboardWindow(period: string) {
   const today = parseUtcDate(formatDateLocal(new Date())) || new Date();
-  const safe =
-    String(period || "week")
-      .trim()
-      .toLowerCase() || "week";
+  const safe = normalizeLeaderboardPeriod(period);
 
   if (safe === "total") {
     return { from: "1970-01-01", to: "9999-12-31" };
   }
 
-  if (safe === "month") {
-    const fromDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-    const toDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
-    return { from: formatDateUTC(fromDate), to: formatDateUTC(toDate) };
+  if (safe === "today") {
+    const day = formatDateUTC(today);
+    return { from: day, to: day };
   }
-
-  const dow = today.getUTCDay(); // 0=Sunday
-  const from = formatDateUTC(addUtcDays(today, -dow));
-  const to = formatDateUTC(addUtcDays(today, -dow + 6));
-  return { from, to };
+  if (safe === "yesterday") {
+    const day = formatDateUTC(addUtcDays(today, -1));
+    return { from: day, to: day };
+  }
+  const days = safe === "30d" ? 30 : 7;
+  return {
+    from: formatDateUTC(addUtcDays(today, -(days - 1))),
+    to: formatDateUTC(today),
+  };
 }
 
 export function getMockLeaderboard({
   seed,
   period: rawPeriod,
+  agent: rawAgent,
   metric,
   limit = 20,
   offset = 0,
@@ -535,16 +541,9 @@ export function getMockLeaderboard({
   const seedValue = toSeed(seed);
   const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20)));
   const safeOffset = Math.max(0, Math.min(10_000, Math.floor(Number(offset) || 0)));
-  const safeMetric =
-    String(metric || "all")
-      .trim()
-      .toLowerCase() || "all";
-  const safePeriod =
-    String(rawPeriod || "week")
-      .trim()
-      .toLowerCase() || "week";
-  const period =
-    safePeriod === "month" || safePeriod === "total" || safePeriod === "week" ? safePeriod : "week";
+  const safeMetric = normalizeLeaderboardMetric(metric);
+  const agent = normalizeLeaderboardAgent(rawAgent);
+  const period = normalizeLeaderboardPeriod(rawPeriod);
   const { from, to } = computeLeaderboardWindow(period);
   const totalEntries = 250;
   const totalPages = totalEntries > 0 ? Math.ceil(totalEntries / safeLimit) : 0;
@@ -593,32 +592,43 @@ export function getMockLeaderboard({
   const meIndex = Math.max(0, Math.min(totalEntries - 1, Math.floor(totalEntries * 0.8)));
   if (raw[meIndex]) raw[meIndex].is_me = true;
 
-  const metricKey =
-    safeMetric === "gpt" || safeMetric === "codex"
+  const agentKey =
+    agent === "codex"
       ? "gpt_tokens"
-      : safeMetric === "claude"
+      : agent === "claude"
         ? "claude_tokens"
-        : safeMetric === "gemini"
+        : agent === "gemini"
           ? "gemini_tokens"
-          : safeMetric === "cursor"
+          : agent === "cursor"
             ? "cursor_tokens"
-            : safeMetric === "opencode"
+            : agent === "opencode"
               ? "opencode_tokens"
-              : safeMetric === "openclaw"
+              : agent === "openclaw"
                 ? "openclaw_tokens"
-                : safeMetric === "hermes"
+                : agent === "hermes"
                   ? "hermes_tokens"
-                  : safeMetric === "kiro"
+                  : agent === "kiro"
                     ? "kiro_tokens"
-                    : safeMetric === "copilot"
+                    : agent === "copilot"
                       ? "copilot_tokens"
-                      : safeMetric === "kimi"
+                      : agent === "kimi"
                         ? "kimi_tokens"
-                        : "total_tokens";
+                        : agent === "all"
+                          ? "total_tokens"
+                          : null;
+
+  const scoreFor = (entry: any) => {
+    const withCache = agentKey
+      ? Number(entry[agentKey] || 0)
+      : Math.floor(Number(entry.total_tokens || 0) * (0.01 + (hashString(agent) % 5) / 100));
+    if (safeMetric === "without_cache") return Math.max(0, Math.floor(withCache * 0.78));
+    if (safeMetric === "estimated_cost") return (withCache / 1_000_000) * 4;
+    return withCache;
+  };
 
   const sorted = raw
     .slice()
-    .sort((a: any, b: any) => Number(b[metricKey]) - Number(a[metricKey]) || a.id - b.id)
+    .sort((a: any, b: any) => scoreFor(b) - scoreFor(a) || a.id - b.id)
     .map((entry: any, index: number) => ({
       user_id: entry.is_public ? entry.user_id : null,
       rank: index + 1,
@@ -637,6 +647,9 @@ export function getMockLeaderboard({
       kimi_tokens: String(entry.kimi_tokens ?? 0),
       other_tokens: String(entry.other_tokens ?? 0),
       total_tokens: String(entry.total_tokens),
+      without_cache_tokens: String(Math.floor(entry.total_tokens * 0.78)),
+      estimated_cost_usd: Number(((entry.total_tokens / 1_000_000) * 4).toFixed(6)),
+      score: String(scoreFor(entry)),
       is_public: Boolean(entry.is_public),
     }));
 
@@ -656,6 +669,7 @@ export function getMockLeaderboard({
         kimi_tokens: meRow.kimi_tokens,
         other_tokens: meRow.other_tokens,
         total_tokens: meRow.total_tokens,
+        score: meRow.score,
       }
     : {
         rank: null,
@@ -671,12 +685,14 @@ export function getMockLeaderboard({
         kimi_tokens: "0",
         other_tokens: "0",
         total_tokens: "0",
+        score: "0",
       };
 
   const entries = sorted.slice(safeOffset, safeOffset + safeLimit);
 
   return {
     period,
+    agent,
     metric: safeMetric,
     from,
     to,

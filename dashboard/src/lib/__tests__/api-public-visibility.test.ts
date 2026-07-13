@@ -10,7 +10,7 @@ vi.mock("../insforge-config", () => ({
   getInsforgeRemoteUrl: getInsforgeRemoteUrlMock,
 }));
 
-import { getPublicVisibility, setPublicVisibility } from "../api";
+import { getLeaderboard, getPublicVisibility, setPublicVisibility } from "../api";
 
 function makeJwt(payload: Record<string, unknown>) {
   const encode = (value: unknown) =>
@@ -106,5 +106,33 @@ describe("public visibility API", () => {
     await expect(getPublicVisibility({ accessToken: "token" })).rejects.toThrow(
       "InsForge base URL not configured",
     );
+  });
+});
+
+describe("leaderboard API", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    getInsforgeRemoteUrlMock.mockReset();
+    getInsforgeRemoteUrlMock.mockReturnValue("https://example.insforge.app");
+  });
+
+  it("sends period, Agent and metric dimensions without an Authorization header", async () => {
+    const fetchMock = mockJsonFetch({ entries: [], page: 1, total_entries: 0 });
+
+    await getLeaderboard({
+      accessToken: makeJwt({ sub: "user-123" }),
+      userId: "user-123",
+      period: "today",
+      agent: "codex",
+      metric: "without_cache",
+      limit: 20,
+      offset: 40,
+    });
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(
+      "https://example.insforge.app/functions/tokentracker-leaderboard?period=today&agent=codex&metric=without_cache&limit=20&offset=40&user_id=user-123",
+    );
+    expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 });
