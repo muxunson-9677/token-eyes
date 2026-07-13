@@ -83,6 +83,7 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 
 ### Project-wide
 
+- **Repository boundary (hard rule)**: all agent/tool mutations for Token Eyes work must stay inside this repository root. Do not create, edit, delete, move, install, uninstall, update, launch, stop, or reconfigure files or software outside the repository, including CC Switch or any other independent application. Read-only inspection outside the repository is allowed only when needed for diagnosis. Any external mutation requires the user's explicit approval first.
 - CommonJS in `src/`, ESM + TypeScript strict in `dashboard/`. No mixing.
 - Env-var prefixes: `TOKENTRACKER_` for CLI, `VITE_` for dashboard.
 - Git commits in **English**, conventional style (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:` / `ci:`).
