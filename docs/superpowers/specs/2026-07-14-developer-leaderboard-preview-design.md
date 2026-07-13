@@ -2,7 +2,7 @@
 
 日期：2026-07-14
 
-状态：已确认，待实现
+状态：已实现并生成测试安装包
 
 ## 目标
 
@@ -47,3 +47,14 @@
 - 不验证真实微信扫码、真实 InsForge 会话或真实排行榜同步。
 - 不提供可用于正式环境的免认证入口。
 - 不安装或修改 Token Eyes 项目目录以外的软件，也不操作 CC Switch。
+
+## 实施与验证结果
+
+- 普通构建不设置开关，开发者直登入口保持隐藏；测试安装包使用 `VITE_TOKENTRACKER_DEV_LEADERBOARD_LOGIN=1` 构建。
+- 聚焦 Vitest：5 个测试文件、42 项测试全部通过。
+- 变更文件 ESLint、copy 注册表、架构守卫和 Dashboard 生产构建通过。
+- 编译后的排行榜代码包含 `function Bo(){return zo("1")}`，确认测试开关已注入本次安装包；应用版本信息中的 ProductName 和 FileDescription 均为 `Token Eyes`。
+- NSIS 安装包：`src-tauri/target/release/bundle/nsis/Token Eyes_0.54.0_x64-setup.exe`。
+- 安装包大小：35,664,115 字节（34.01 MiB）。
+- SHA-256：`5E698B38A6352AFD57F694D66630A559ABB323BDB67EBD28D7C45605AF970643`。
+- 附带检查 `validate:ui-hardcode` 仍报告本功能之前已存在的 3 个文件基线偏差：`TokenPlanSection.jsx`、`TokenServiceList.jsx`、`UsageOverview.jsx`；本次排行榜测试曾触发的新增偏差已消除。
