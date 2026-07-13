@@ -1517,6 +1517,10 @@ settings.cost.provider_api.form.auth_type,ui,SettingsPage,ProviderApiConfigSecti
 settings.cost.provider_api.form.api_key,ui,SettingsPage,ProviderApiConfigSection,form_api_key,"API Key",,active
 settings.cost.provider_api.form.api_key_placeholder,ui,SettingsPage,ProviderApiConfigSection,form_api_key_placeholder,"留空表示保留现有密钥，输入新值将覆盖",,active
 settings.cost.provider_api.form.api_key_hint_new,ui,SettingsPage,ProviderApiConfigSection,form_api_key_hint_new,"提交后将通过系统安全凭据存储保存，页面不会回显。",,active
+settings.cost.provider_api.form.access_key_id,ui,SettingsPage,ProviderApiConfigSection,form_access_key_id,"AccessKey ID",,active
+settings.cost.provider_api.form.access_key_secret,ui,SettingsPage,ProviderApiConfigSection,form_access_key_secret,"AccessKey Secret",,active
+settings.cost.provider_api.form.access_key_pair_hint,ui,SettingsPage,ProviderApiConfigSection,form_access_key_pair_hint,"请填写云账号的 AccessKey ID 和 AccessKey Secret；提交后将安全保存且不会回显。",,active
+settings.cost.provider_api.form.access_key_pair_required,ui,SettingsPage,ProviderApiConfigSection,form_access_key_pair_required,"AccessKey ID 和 AccessKey Secret 必须同时填写。",,active
 settings.cost.provider_api.form.auth_header_name,ui,SettingsPage,ProviderApiConfigSection,form_auth_header_name,"自定义 Header 名",,active
 settings.cost.provider_api.form.non_secret_headers,ui,SettingsPage,ProviderApiConfigSection,form_non_secret_headers,"非敏感 Header",,active
 settings.cost.provider_api.form.non_secret_headers_hint,ui,SettingsPage,ProviderApiConfigSection,form_non_secret_headers_hint,"每行一个，格式 Name: Value；禁止填写 Authorization/Cookie/密钥。",,active
@@ -1532,12 +1536,15 @@ settings.cost.provider_api.form.auth_bearer,ui,SettingsPage,ProviderApiConfigSec
 settings.cost.provider_api.form.auth_header,ui,SettingsPage,ProviderApiConfigSection,form_auth_header,"Custom Header",,active
 settings.cost.provider_api.form.title_add,ui,SettingsPage,ProviderApiConfigSection,form_title_add,"新增供应商 API 配置",,active
 settings.cost.provider_api.form.title_edit,ui,SettingsPage,ProviderApiConfigSection,form_title_edit,"编辑供应商 API 配置",,active
-settings.cost.provider_api.form.auto_hint,ui,SettingsPage,ProviderApiConfigSection,form_auto_hint,"只需选择 API 模式并填写 API 端点和 API Key；已收录供应商会自动补齐真实财务查询配置。",,active
+settings.cost.provider_api.form.auto_hint,ui,SettingsPage,ProviderApiConfigSection,form_auto_hint,"自动识别或自定义模式需填写财务 API 地址和 API Key；已收录供应商会自动补齐真实查询配置。",,active
 settings.cost.provider_api.form.api_mode,ui,SettingsPage,ProviderApiConfigSection,form_api_mode,"API 模式",,active
 settings.cost.provider_api.form.api_mode_auto,ui,SettingsPage,ProviderApiConfigSection,form_api_mode_auto,"自动识别",,active
 settings.cost.provider_api.form.api_mode_custom,ui,SettingsPage,ProviderApiConfigSection,form_api_mode_custom,"自定义财务接口",,active
 settings.cost.provider_api.capability.unsupported,ui,SettingsPage,ProviderApiConfigSection,capability_unsupported,"不支持自动查询",,active
 settings.cost.provider_api.capability.glm_finance_unsupported,ui,SettingsPage,ProviderApiConfigSection,glm_finance_unsupported,"智谱未提供可验证的公开现金余额、当月花销或累计充值接口，因此这里不会把 Coding Plan 配额冒充余额。",,active
+settings.cost.provider_api.capability.minimax_balance_unsupported,ui,SettingsPage,ProviderApiConfigSection,minimax_balance_unsupported,"MiniMax 官方当前未提供可验证的公开账户余额查询 API，因此暂不支持自动检测余额。",,active
+settings.cost.provider_api.capability.aliyun_account_scope,ui,SettingsPage,ProviderApiConfigSection,aliyun_account_scope,"查询的是阿里云账号总余额（包含千问/百炼相关消费），不是单独的千问模型余额；需为 RAM 用户授予账务只读权限。",,active
+settings.cost.provider_api.capability.volcengine_account_scope,ui,SettingsPage,ProviderApiConfigSection,volcengine_account_scope,"查询的是火山引擎账号总余额（包含豆包/方舟相关消费），不是单独的豆包模型余额；需使用具备账务查询权限的 AccessKey。",,active
 settings.cost.provider_api.capability.token_plan_settings,ui,SettingsPage,ProviderApiConfigSection,token_plan_settings,"套餐 Token 额度请在 Token 套餐设置中配置",,active
 settings.cost.provider_api.token_quota,ui,SettingsPage,ProviderApiConfigSection,token_quota,"套餐 Token 额度",,active
 settings.cost.provider_api.form.advanced_show,ui,SettingsPage,ProviderApiConfigSection,form_advanced_show,"展开高级配置",,active

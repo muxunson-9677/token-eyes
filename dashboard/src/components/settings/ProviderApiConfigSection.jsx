@@ -144,6 +144,15 @@ function providerApiModeValue(providerId) {
   return providerId ? "custom" : "";
 }
 
+function serializeAccessKeyCredential(accessKeyId, accessKeySecret) {
+  return JSON.stringify({
+    version: 1,
+    type: "access_key_pair",
+    accessKeyId: accessKeyId.trim(),
+    accessKeySecret: accessKeySecret.trim(),
+  });
+}
+
 // F4 / F6: render a financial value or "—" when unknown/missing.
 // - null/undefined/NaN → "—" (NEVER fake 0 for unknown — that was the F4/F6 bug)
 // - real 0 → "0.00" (a true zero balance from the provider is meaningful)
@@ -196,6 +205,8 @@ export function ProviderApiConfigSection() {
   const [form, setForm] = useState(DEFAULT_FORM);
   // apiKeyInput is the one-time secret field. Blank on edit (never prefilled).
   const [apiKeyInput, setApiKeyInput] = useState("");
+  const [accessKeyIdInput, setAccessKeyIdInput] = useState("");
+  const [accessKeySecretInput, setAccessKeySecretInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -205,9 +216,15 @@ export function ProviderApiConfigSection() {
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
+  const clearCredentialInputs = () => {
+    setApiKeyInput("");
+    setAccessKeyIdInput("");
+    setAccessKeySecretInput("");
+  };
+
   const startAdd = () => {
     setForm({ ...DEFAULT_FORM });
-    setApiKeyInput("");
+    clearCredentialInputs();
     setFormError(null);
     setShowAdvanced(false);
     setEditing("new");
@@ -231,7 +248,7 @@ export function ProviderApiConfigSection() {
       nonSecretHeadersText: nonSecretHeadersToText(config.nonSecretHeaders),
     });
     // API Key field is intentionally left blank — never prefilled.
-    setApiKeyInput("");
+    clearCredentialInputs();
     setFormError(null);
     setShowAdvanced(false);
     setEditing(config);
@@ -239,7 +256,7 @@ export function ProviderApiConfigSection() {
 
   const cancelEdit = () => {
     setEditing(null);
-    setApiKeyInput("");
+    clearCredentialInputs();
     setFormError(null);
     setShowAdvanced(false);
   };
@@ -253,8 +270,26 @@ export function ProviderApiConfigSection() {
         preparedForm.financialCapabilities.balance === "unsupported"
         && preparedForm.financialCapabilities.tokenQuota === "token_plan"
       ) {
-        setFormError(copy("settings.cost.provider_api.capability.glm_finance_unsupported"));
+        setFormError(copy(
+          preparedForm.providerId === "minimax"
+            ? "settings.cost.provider_api.capability.minimax_balance_unsupported"
+            : "settings.cost.provider_api.capability.glm_finance_unsupported"
+        ));
         return;
+      }
+      const usesAccessKeyPair = preparedForm.authType === "aliyun_rpc"
+        || preparedForm.authType === "volcengine_hmac";
+      let credentialSecret = apiKeyInput;
+      if (usesAccessKeyPair) {
+        const accessKeyId = accessKeyIdInput.trim();
+        const accessKeySecret = accessKeySecretInput.trim();
+        if ((accessKeyId && !accessKeySecret) || (!accessKeyId && accessKeySecret)) {
+          setFormError(copy("settings.cost.provider_api.form.access_key_pair_required"));
+          return;
+        }
+        credentialSecret = accessKeyId && accessKeySecret
+          ? serializeAccessKeyCredential(accessKeyId, accessKeySecret)
+          : "";
       }
       const payload = {
         providerId: preparedForm.providerId.trim(),
@@ -267,6 +302,7 @@ export function ProviderApiConfigSection() {
         monthSpendPath: preparedForm.monthSpendPath.trim(),
         lifetimeSpendPath: preparedForm.lifetimeSpendPath.trim(),
         currencyPath: preparedForm.currencyPath.trim(),
+        currencyValue: String(preparedForm.currencyValue || "").trim(),
         refreshIntervalSeconds: Number(preparedForm.refreshIntervalSeconds) || 300,
         enabled: preparedForm.enabled,
         nonSecretHeaders: parseNonSecretHeaders(preparedForm.nonSecretHeadersText),
@@ -287,22 +323,22 @@ export function ProviderApiConfigSection() {
 
       // If a new API Key was entered, save it via the secrets endpoint. The
       // secret leaves this state object immediately after this call.
-      if (apiKeyInput && configId) {
-        const secretResult = await saveProviderApiSecret({ configId, secret: apiKeyInput });
+      if (credentialSecret && configId) {
+        const secretResult = await saveProviderApiSecret({ configId, secret: credentialSecret });
         if (!secretResult?.ok) {
           setFormError(formatSaveError(secretResult));
           // Config was saved but secret was not — keep the form open so the
           // user can retry. Clear the secret input regardless.
-          setApiKeyInput("");
+          clearCredentialInputs();
           return;
         }
       }
       // Clear the secret from state immediately after handling.
-      setApiKeyInput("");
+      clearCredentialInputs();
       await reload();
       setEditing(null);
-    } catch (err) {
-      setFormError(err?.message || copy("settings.cost.provider_api.error_generic"));
+    } catch {
+      setFormError(copy("settings.cost.provider_api.error_generic"));
     } finally {
       setSaving(false);
     }
@@ -420,6 +456,10 @@ export function ProviderApiConfigSection() {
           setField={setField}
           apiKeyInput={apiKeyInput}
           setApiKeyInput={setApiKeyInput}
+          accessKeyIdInput={accessKeyIdInput}
+          setAccessKeyIdInput={setAccessKeyIdInput}
+          accessKeySecretInput={accessKeySecretInput}
+          setAccessKeySecretInput={setAccessKeySecretInput}
           editing={editing}
           saving={saving}
           formError={formError}
@@ -633,6 +673,10 @@ function ProviderApiConfigForm({
   setField,
   apiKeyInput,
   setApiKeyInput,
+  accessKeyIdInput,
+  setAccessKeyIdInput,
+  accessKeySecretInput,
+  setAccessKeySecretInput,
   editing,
   saving,
   formError,
@@ -647,6 +691,25 @@ function ProviderApiConfigForm({
   const unsupportedKnownProvider = preview.financialCapabilities.balance === "unsupported"
     && preview.financialCapabilities.tokenQuota === "token_plan";
   const selectedMode = providerApiModeValue(form.providerId);
+  const usesAccessKeyPair = preview.authType === "aliyun_rpc"
+    || preview.authType === "volcengine_hmac";
+  const usesFixedPreset = Boolean(selectedMode && selectedMode !== "custom");
+  const showEditableUrl = !usesFixedPreset;
+  const capabilityNoticeKey = selectedMode === "minimax"
+    ? "settings.cost.provider_api.capability.minimax_balance_unsupported"
+    : "settings.cost.provider_api.capability.glm_finance_unsupported";
+  const accountScopeKey = preview.providerId === "aliyun_bss"
+    ? "settings.cost.provider_api.capability.aliyun_account_scope"
+    : preview.providerId === "volcengine_billing"
+      ? "settings.cost.provider_api.capability.volcengine_account_scope"
+      : null;
+
+  const handleModeChange = (providerId) => {
+    setField("providerId", providerId);
+    setApiKeyInput("");
+    setAccessKeyIdInput("");
+    setAccessKeySecretInput("");
+  };
 
   return (
     <div className="space-y-3 rounded-md border border-oai-gray-200 p-3 dark:border-oai-gray-800">
@@ -667,7 +730,7 @@ function ProviderApiConfigForm({
       <FormField label={copy("settings.cost.provider_api.form.api_mode")}>
         <select
           value={selectedMode}
-          onChange={(e) => setField("providerId", e.target.value)}
+          onChange={(e) => handleModeChange(e.target.value)}
           className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
         >
           {PROVIDER_API_MODES.map((mode) => (
@@ -678,45 +741,83 @@ function ProviderApiConfigForm({
         </select>
       </FormField>
 
-      <FormField label={copy("settings.cost.provider_api.form.url")}>
-        <input
-          type="url"
-          inputMode="url"
-          value={form.requestUrl}
-          onChange={(e) => setField("requestUrl", e.target.value)}
-          placeholder="https://api.deepseek.com"
-          className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
-        />
-      </FormField>
+      {showEditableUrl && (
+        <FormField label={copy("settings.cost.provider_api.form.url")}>
+          <input
+            type="url"
+            inputMode="url"
+            value={form.requestUrl}
+            onChange={(e) => setField("requestUrl", e.target.value)}
+            placeholder="https://api.deepseek.com"
+            className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
+          />
+        </FormField>
+      )}
 
-      <div className="rounded-md bg-oai-gray-50 px-3 py-2 text-xs text-oai-gray-600 dark:bg-oai-gray-900 dark:text-oai-gray-300">
-        {copy("settings.cost.provider_api.form.auto_hint")}
-      </div>
+      {showEditableUrl && (
+        <div className="rounded-md bg-oai-gray-50 px-3 py-2 text-xs text-oai-gray-600 dark:bg-oai-gray-900 dark:text-oai-gray-300">
+          {copy("settings.cost.provider_api.form.auto_hint")}
+        </div>
+      )}
 
       {unsupportedKnownProvider && (
         <div className="space-y-1 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-300">
-          <p>{copy("settings.cost.provider_api.capability.glm_finance_unsupported")}</p>
+          <p>{copy(capabilityNoticeKey)}</p>
           <p>{copy("settings.cost.provider_api.capability.token_plan_settings")}</p>
         </div>
       )}
 
-      <FormField label={copy("settings.cost.provider_api.form.api_key")}>
-        <input
-          type="password"
-          autoComplete="off"
-          value={apiKeyInput}
-          onChange={(e) => setApiKeyInput(e.target.value)}
-          disabled={unsupportedKnownProvider}
-          placeholder={hasExistingKey ? copy("settings.cost.provider_api.form.api_key_placeholder") : ""}
-          className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
-          // The secret is intentionally not mirrored into any data-* attribute.
-        />
-        <p className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-          {hasExistingKey
-            ? copy("settings.cost.provider_api.form.api_key_placeholder")
-            : copy("settings.cost.provider_api.form.api_key_hint_new")}
-        </p>
-      </FormField>
+      {accountScopeKey && (
+        <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+          {copy(accountScopeKey)}
+        </div>
+      )}
+
+      {!unsupportedKnownProvider && usesAccessKeyPair && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField label={copy("settings.cost.provider_api.form.access_key_id")}>
+            <input
+              type="password"
+              autoComplete="off"
+              value={accessKeyIdInput}
+              onChange={(e) => setAccessKeyIdInput(e.target.value)}
+              placeholder={hasExistingKey ? copy("settings.cost.provider_api.form.api_key_placeholder") : ""}
+              className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
+            />
+          </FormField>
+          <FormField label={copy("settings.cost.provider_api.form.access_key_secret")}>
+            <input
+              type="password"
+              autoComplete="off"
+              value={accessKeySecretInput}
+              onChange={(e) => setAccessKeySecretInput(e.target.value)}
+              placeholder={hasExistingKey ? copy("settings.cost.provider_api.form.api_key_placeholder") : ""}
+              className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
+            />
+          </FormField>
+          <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400 sm:col-span-2">
+            {copy("settings.cost.provider_api.form.access_key_pair_hint")}
+          </p>
+        </div>
+      )}
+
+      {!unsupportedKnownProvider && !usesAccessKeyPair && (
+        <FormField label={copy("settings.cost.provider_api.form.api_key")}>
+          <input
+            type="password"
+            autoComplete="off"
+            value={apiKeyInput}
+            onChange={(e) => setApiKeyInput(e.target.value)}
+            placeholder={hasExistingKey ? copy("settings.cost.provider_api.form.api_key_placeholder") : ""}
+            className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
+          />
+          <p className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+            {hasExistingKey
+              ? copy("settings.cost.provider_api.form.api_key_placeholder")
+              : copy("settings.cost.provider_api.form.api_key_hint_new")}
+          </p>
+        </FormField>
+      )}
 
       <FormField label={copy("settings.cost.provider_api.form.enabled")}>
         <label className="inline-flex items-center gap-2 text-sm text-oai-gray-700 dark:text-oai-gray-300">
@@ -730,17 +831,19 @@ function ProviderApiConfigForm({
         </label>
       </FormField>
 
-      <button
-        type="button"
-        onClick={() => setShowAdvanced(!showAdvanced)}
-        className="text-left text-xs font-medium text-oai-brand-600 hover:text-oai-brand-700 dark:text-oai-brand-400"
-      >
-        {showAdvanced
-          ? copy("settings.cost.provider_api.form.advanced_hide")
-          : copy("settings.cost.provider_api.form.advanced_show")}
-      </button>
+      {!usesFixedPreset && (
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="text-left text-xs font-medium text-oai-brand-600 hover:text-oai-brand-700 dark:text-oai-brand-400"
+        >
+          {showAdvanced
+            ? copy("settings.cost.provider_api.form.advanced_hide")
+            : copy("settings.cost.provider_api.form.advanced_show")}
+        </button>
+      )}
 
-      {showAdvanced && (
+      {showAdvanced && !usesFixedPreset && (
         <>
       <div className="grid gap-3 sm:grid-cols-2">
         <FormField label={copy("settings.cost.provider_api.form.method")}>

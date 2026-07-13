@@ -258,10 +258,16 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     await openAddForm(user);
 
     const urlInput = document.querySelector("input[type='url']");
-    const passwordInput = document.querySelector("input[type='password']");
     await act(async () => {
       await user.type(urlInput, "https://dashscope.aliyuncs.com");
-      await user.type(passwordInput, TEST_SECRET);
+      await user.type(
+        screen.getByLabelText("settings.cost.provider_api.form.access_key_id"),
+        "aliyun-test-id",
+      );
+      await user.type(
+        screen.getByLabelText("settings.cost.provider_api.form.access_key_secret"),
+        "aliyun-test-secret",
+      );
     });
 
     const saveButton = screen.getByRole("button", { name: "settings.cost.provider_api.save" });
@@ -277,6 +283,104 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(payload.authType).toBe("aliyun_rpc");
     expect(payload.balancePath).toBe("Data.AvailableAmount");
     expect(payload.currencyPath).toBe("Data.Currency");
+    const savedSecret = JSON.parse(saveProviderApiSecret.mock.calls[0][0].secret);
+    expect(savedSecret).toEqual({
+      version: 1,
+      type: "access_key_pair",
+      accessKeyId: "aliyun-test-id",
+      accessKeySecret: "aliyun-test-secret",
+    });
+    expect(JSON.stringify(payload)).not.toContain("aliyun-test-id");
+    expect(JSON.stringify(payload)).not.toContain("aliyun-test-secret");
+  });
+
+  it("explicit Kimi mode needs only an API Key and hides the fixed endpoint", async () => {
+    const user = userEvent.setup();
+    await openAddForm(user);
+
+    await act(async () => {
+      await user.selectOptions(
+        screen.getByLabelText("settings.cost.provider_api.form.api_mode"),
+        "moonshot",
+      );
+    });
+
+    expect(screen.queryByText("settings.cost.provider_api.form.url")).not.toBeInTheDocument();
+    expect(screen.getByText("settings.cost.provider_api.form.api_key")).toBeInTheDocument();
+    expect(document.querySelector("input[type='password']")).toBeInTheDocument();
+    expect(screen.queryByText("settings.cost.provider_api.form.access_key_id")).not.toBeInTheDocument();
+  });
+
+  it("Alibaba Cloud mode asks only for an AccessKey pair and explains account scope", async () => {
+    const user = userEvent.setup();
+    await openAddForm(user);
+
+    await act(async () => {
+      await user.selectOptions(
+        screen.getByLabelText("settings.cost.provider_api.form.api_mode"),
+        "aliyun_bss",
+      );
+    });
+
+    expect(screen.queryByText("settings.cost.provider_api.form.url")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("settings.cost.provider_api.form.access_key_id")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("settings.cost.provider_api.form.access_key_secret")).toHaveAttribute("type", "password");
+    expect(screen.getByText("settings.cost.provider_api.capability.aliyun_account_scope")).toBeInTheDocument();
+    expect(screen.queryByText("settings.cost.provider_api.form.advanced_show")).not.toBeInTheDocument();
+  });
+
+  it("Volcengine mode asks for an AccessKey pair and explains account scope", async () => {
+    const user = userEvent.setup();
+    await openAddForm(user);
+
+    await act(async () => {
+      await user.selectOptions(
+        screen.getByLabelText("settings.cost.provider_api.form.api_mode"),
+        "volcengine_billing",
+      );
+    });
+
+    expect(screen.getByLabelText("settings.cost.provider_api.form.access_key_id")).toBeInTheDocument();
+    expect(screen.getByLabelText("settings.cost.provider_api.form.access_key_secret")).toBeInTheDocument();
+    expect(screen.getByText("settings.cost.provider_api.capability.volcengine_account_scope")).toBeInTheDocument();
+  });
+
+  it("does not save a signed provider when only half of the AccessKey pair is filled", async () => {
+    const user = userEvent.setup();
+    await openAddForm(user);
+
+    await act(async () => {
+      await user.selectOptions(
+        screen.getByLabelText("settings.cost.provider_api.form.api_mode"),
+        "aliyun_bss",
+      );
+      await user.type(
+        screen.getByLabelText("settings.cost.provider_api.form.access_key_id"),
+        "only-an-id",
+      );
+      await user.click(screen.getByRole("button", { name: "settings.cost.provider_api.save" }));
+    });
+
+    expect(await screen.findByText("settings.cost.provider_api.form.access_key_pair_required"))
+      .toBeInTheDocument();
+    expect(saveProviderApiConfig).not.toHaveBeenCalled();
+    expect(saveProviderApiSecret).not.toHaveBeenCalled();
+  });
+
+  it("MiniMax mode clearly reports that automatic balance lookup is unavailable", async () => {
+    const user = userEvent.setup();
+    await openAddForm(user);
+
+    await act(async () => {
+      await user.selectOptions(
+        screen.getByLabelText("settings.cost.provider_api.form.api_mode"),
+        "minimax",
+      );
+    });
+
+    expect(screen.getByText("settings.cost.provider_api.capability.minimax_balance_unsupported")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.save" })).toBeDisabled();
+    expect(document.querySelector("input[type='password']")).toBeNull();
   });
 
   it("add form shows only name/url/key/enable by default; balance paths are in advanced", async () => {
@@ -308,7 +412,7 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(screen.getByText("settings.cost.provider_api.capability.glm_finance_unsupported")).toBeInTheDocument();
     expect(screen.getByText("settings.cost.provider_api.capability.token_plan_settings")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "settings.cost.provider_api.save" })).toBeDisabled();
-    expect(document.querySelector("input[type='password']")).toBeDisabled();
+    expect(document.querySelector("input[type='password']")).toBeNull();
     expect(saveProviderApiConfig).not.toHaveBeenCalled();
     expect(saveProviderApiSecret).not.toHaveBeenCalled();
   });
