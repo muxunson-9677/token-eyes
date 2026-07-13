@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 const { performance } = require("node:perf_hooks");
 const {
   createLocalApiHandler,
@@ -6,7 +7,10 @@ const {
 } = require("../src/lib/local-api");
 
 const COLD_LIMIT_MS = 2000;
+const REFRESH_P95_LIMIT_MS = 1000;
 const REPEATED_P95_LIMIT_MS = 500;
+const COLD_RUNS = 10;
+const REFRESH_RUNS = 10;
 const REPEATED_RUNS = 10;
 
 function percentile(values, percentileValue) {
@@ -88,29 +92,69 @@ async function runFanout(handler, range) {
   };
 }
 
+async function runColdSample() {
+  const handler = createLocalApiHandler({
+    queuePath: resolveQueuePath(),
+    trackerDataDir: process.cwd(),
+  });
+  return runFanout(handler, defaultRange());
+}
+
 async function main() {
+  if (process.argv.includes("--cold-sample")) {
+    process.stdout.write(`${JSON.stringify(await runColdSample())}\n`);
+    return;
+  }
   const queuePath = resolveQueuePath();
   const queueStat = fs.statSync(queuePath);
-  const handler = createLocalApiHandler({
+  const createHandler = () => createLocalApiHandler({
     queuePath,
     trackerDataDir: process.cwd(),
   });
+  const handler = createHandler();
   const range = defaultRange();
-  const cold = await runFanout(handler, range);
+  const cold = [];
+  for (let index = 0; index < COLD_RUNS; index += 1) {
+    cold.push(JSON.parse(execFileSync(
+      process.execPath,
+      [__filename, "--cold-sample"],
+      { encoding: "utf8" },
+    )));
+  }
+  const refresh = [];
+  for (let index = 0; index < REFRESH_RUNS; index += 1) {
+    refresh.push(await runFanout(createHandler(), range));
+  }
+  await runFanout(handler, range);
   const repeated = [];
   for (let index = 0; index < REPEATED_RUNS; index += 1) {
     repeated.push(await runFanout(handler, range));
   }
+  const coldWalls = cold.map((run) => run.wall_ms);
+  const refreshWalls = refresh.map((run) => run.wall_ms);
   const repeatedWalls = repeated.map((run) => run.wall_ms);
   const report = {
     queue_path: queuePath,
     queue_bytes: queueStat.size,
     range,
     thresholds_ms: {
-      cold: COLD_LIMIT_MS,
+      cold_p95: COLD_LIMIT_MS,
+      refresh_p95: REFRESH_P95_LIMIT_MS,
       repeated_p95: REPEATED_P95_LIMIT_MS,
     },
-    cold,
+    cold: {
+      runs: COLD_RUNS,
+      p50_ms: percentile(coldWalls, 50),
+      p95_ms: percentile(coldWalls, 95),
+      samples_ms: coldWalls,
+      endpoints: cold[0].endpoints,
+    },
+    refresh: {
+      runs: REFRESH_RUNS,
+      p50_ms: percentile(refreshWalls, 50),
+      p95_ms: percentile(refreshWalls, 95),
+      samples_ms: refreshWalls,
+    },
     repeated: {
       runs: REPEATED_RUNS,
       p50_ms: percentile(repeatedWalls, 50),
@@ -120,7 +164,8 @@ async function main() {
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   if (
-    cold.wall_ms > COLD_LIMIT_MS
+    report.cold.p95_ms > COLD_LIMIT_MS
+    || report.refresh.p95_ms > REFRESH_P95_LIMIT_MS
     || report.repeated.p95_ms > REPEATED_P95_LIMIT_MS
   ) {
     process.exitCode = 1;
