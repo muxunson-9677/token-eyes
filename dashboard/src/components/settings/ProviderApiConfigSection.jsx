@@ -137,6 +137,13 @@ function nonSecretHeadersToText(obj) {
     .join("\n");
 }
 
+function providerApiModeValue(providerId) {
+  for (const mode of PROVIDER_API_MODES) {
+    if (mode.value === providerId) return providerId;
+  }
+  return providerId ? "custom" : "";
+}
+
 // F4 / F6: render a financial value or "—" when unknown/missing.
 // - null/undefined/NaN → "—" (NEVER fake 0 for unknown — that was the F4/F6 bug)
 // - real 0 → "0.00" (a true zero balance from the provider is meaningful)
@@ -639,10 +646,7 @@ function ProviderApiConfigForm({
   const preview = applyProviderApiPreset(form);
   const unsupportedKnownProvider = preview.financialCapabilities.balance === "unsupported"
     && preview.financialCapabilities.tokenQuota === "token_plan";
-  const knownModeValues = PROVIDER_API_MODES.map((mode) => mode.value);
-  const selectedMode = knownModeValues.includes(form.providerId)
-    ? form.providerId
-    : form.providerId ? "custom" : "";
+  const selectedMode = providerApiModeValue(form.providerId);
 
   return (
     <div className="space-y-3 rounded-md border border-oai-gray-200 p-3 dark:border-oai-gray-800">
@@ -667,7 +671,7 @@ function ProviderApiConfigForm({
           className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
         >
           {PROVIDER_API_MODES.map((mode) => (
-            <option key={mode.value || "auto"} value={mode.value}>
+            <option key={mode.copyKey || mode.value} value={mode.value}>
               {mode.copyKey ? copy(mode.copyKey) : mode.label}
             </option>
           ))}
