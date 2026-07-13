@@ -48,6 +48,19 @@ const REQUEST_USAGE_RECORDS_CACHE_MAX_ENTRIES = 16;
 const requestUsageRecordsListCache = new Map();
 const QUEUE_DATA_CACHE_MAX_ENTRIES = 8;
 const queueDataCache = new Map();
+const ZONED_PARTS_FORMATTER_CACHE_MAX_ENTRIES = 32;
+const zonedPartsFormatterCache = new Map();
+const ZONED_PARTS_CACHE_MAX_ENTRIES = 20_000;
+const zonedPartsCache = new Map();
+const USAGE_AGGREGATE_RESPONSE_CACHE_TTL_MS = 30_000;
+const USAGE_AGGREGATE_RESPONSE_CACHE_MAX_ENTRIES = 64;
+const USAGE_AGGREGATE_RESPONSE_PATHS = new Set([
+  "/functions/tokentracker-usage-summary",
+  "/functions/tokentracker-provider-stats",
+  "/functions/tokentracker-model-stats",
+  "/functions/tokentracker-spend-records",
+  "/functions/tokentracker-spend-timeseries",
+]);
 
 function queueFileMtimeKey(queuePath) {
   try {
@@ -1248,22 +1261,53 @@ function getTimeZoneContext(url) {
   };
 }
 
+function getZonedPartsFormatter(timeZone) {
+  const cached = zonedPartsFormatterCache.get(timeZone);
+  if (cached) {
+    zonedPartsFormatterCache.delete(timeZone);
+    zonedPartsFormatterCache.set(timeZone, cached);
+    return cached;
+  }
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  zonedPartsFormatterCache.set(timeZone, formatter);
+  while (zonedPartsFormatterCache.size > ZONED_PARTS_FORMATTER_CACHE_MAX_ENTRIES) {
+    const oldestKey = zonedPartsFormatterCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    zonedPartsFormatterCache.delete(oldestKey);
+  }
+  return formatter;
+}
+
+function writeZonedPartsCache(cacheKey, parts) {
+  zonedPartsCache.set(cacheKey, parts);
+  while (zonedPartsCache.size > ZONED_PARTS_CACHE_MAX_ENTRIES) {
+    const oldestKey = zonedPartsCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    zonedPartsCache.delete(oldestKey);
+  }
+  return parts;
+}
+
 function getZonedParts(date, { timeZone, offsetMinutes } = {}) {
   const dt = date instanceof Date ? date : new Date(date);
   if (!Number.isFinite(dt.getTime())) return null;
+  const zoneKey = timeZone || (Number.isFinite(offsetMinutes) ? `offset:${offsetMinutes}` : "local");
+  const cacheKey = `${zoneKey}|${dt.getTime()}`;
+  const cached = zonedPartsCache.get(cacheKey);
+  if (cached) return cached;
 
   if (timeZone && typeof Intl !== "undefined" && Intl.DateTimeFormat) {
     try {
-      const formatter = new Intl.DateTimeFormat("en-CA", {
-        timeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hourCycle: "h23",
-      });
+      const formatter = getZonedPartsFormatter(timeZone);
       const parts = formatter.formatToParts(dt);
       const values = parts.reduce((acc, part) => {
         if (part.type && part.value) acc[part.type] = part.value;
@@ -1276,7 +1320,7 @@ function getZonedParts(date, { timeZone, offsetMinutes } = {}) {
       const minute = Number(values.minute);
       const second = Number(values.second);
       if ([year, month, day, hour, minute, second].every(Number.isFinite)) {
-        return { year, month, day, hour, minute, second };
+        return writeZonedPartsCache(cacheKey, { year, month, day, hour, minute, second });
       }
     } catch (_e) {
       // fall through
@@ -1285,24 +1329,24 @@ function getZonedParts(date, { timeZone, offsetMinutes } = {}) {
 
   if (Number.isFinite(offsetMinutes)) {
     const shifted = new Date(dt.getTime() + offsetMinutes * 60 * 1000);
-    return {
+    return writeZonedPartsCache(cacheKey, {
       year: shifted.getUTCFullYear(),
       month: shifted.getUTCMonth() + 1,
       day: shifted.getUTCDate(),
       hour: shifted.getUTCHours(),
       minute: shifted.getUTCMinutes(),
       second: shifted.getUTCSeconds(),
-    };
+    });
   }
 
-  return {
+  return writeZonedPartsCache(cacheKey, {
     year: dt.getFullYear(),
     month: dt.getMonth() + 1,
     day: dt.getDate(),
     hour: dt.getHours(),
     minute: dt.getMinutes(),
     second: dt.getSeconds(),
-  };
+  });
 }
 
 function formatPartsDayKey(parts) {
@@ -1707,6 +1751,63 @@ function createLocalApiHandler({
   const localAuthToken = crypto.randomBytes(24).toString("hex");
   const trackerDataDir = trackerDataDirOverride || path.join(os.homedir(), ".tokentracker", "tracker");
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
+  const usageAggregateResponseCache = new Map();
+
+  function prepareUsageAggregateResponseCache(req, res, url) {
+    if (String(req.method || "GET").toUpperCase() !== "GET") return false;
+    if (!USAGE_AGGREGATE_RESPONSE_PATHS.has(url.pathname)) return false;
+
+    const normalizedQuery = new URLSearchParams(
+      Array.from(url.searchParams.entries()).sort(([aKey, aValue], [bKey, bValue]) => {
+        const keyOrder = aKey.localeCompare(bKey);
+        return keyOrder !== 0 ? keyOrder : aValue.localeCompare(bValue);
+      }),
+    ).toString();
+    const cacheKey = [
+      url.pathname,
+      normalizedQuery,
+      queueFileMtimeKey(qp),
+      queueFileMtimeKey(path.join(trackerDataDir, "config.json")),
+    ].join("\u0001");
+    const cached = usageAggregateResponseCache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt <= USAGE_AGGREGATE_RESPONSE_CACHE_TTL_MS) {
+      res.writeHead(cached.statusCode, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TokenTracker-Local-Auth",
+        "X-TokenTracker-Usage-Cache": "hit",
+      });
+      res.end(cached.body);
+      return true;
+    }
+    if (cached) usageAggregateResponseCache.delete(cacheKey);
+
+    let statusCode = 200;
+    const originalWriteHead = res.writeHead.bind(res);
+    const originalEnd = res.end.bind(res);
+    res.writeHead = (code, ...args) => {
+      statusCode = Number(code) || 200;
+      return originalWriteHead(code, ...args);
+    };
+    res.end = (body, ...args) => {
+      if (statusCode === 200 && body !== undefined && body !== null) {
+        usageAggregateResponseCache.delete(cacheKey);
+        usageAggregateResponseCache.set(cacheKey, {
+          body: Buffer.isBuffer(body) ? body.toString("utf8") : String(body),
+          cachedAt: Date.now(),
+          statusCode,
+        });
+        while (usageAggregateResponseCache.size > USAGE_AGGREGATE_RESPONSE_CACHE_MAX_ENTRIES) {
+          const oldestKey = usageAggregateResponseCache.keys().next().value;
+          if (oldestKey === undefined) break;
+          usageAggregateResponseCache.delete(oldestKey);
+        }
+      }
+      return originalEnd(body, ...args);
+    };
+    return false;
+  }
 
   // 02-ia-api-balance: Provider API credential store + balance refresh manager.
   // Uses injected store for testing, or the OS-backed default (macOS Keychain /
@@ -4074,6 +4175,8 @@ function createLocalApiHandler({
 
   async function handleLocalApi(req, res, url) {
     const p = url.pathname;
+
+    if (prepareUsageAggregateResponseCache(req, res, url)) return true;
 
     if (p === "/api/local-auth") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {
