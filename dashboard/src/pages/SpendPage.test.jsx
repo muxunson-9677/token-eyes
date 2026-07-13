@@ -433,12 +433,12 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(screen.getByText("claude-3-opus")).toBeInTheDocument());
   });
 
-  it("getSpendRecords receives sources filter from visibleProviderIds", async () => {
+  it("getSpendRecords includes other_ai in the financial source filter", async () => {
     render(<SpendUsagePage />);
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     const callWithSources = getSpendRecords.mock.calls.find((call) => Array.isArray(call[0]?.sources));
     expect(callWithSources).toBeDefined();
-    expect(callWithSources[0]?.sources).toEqual(["claude", "codex", "hermes"]);
+    expect(callWithSources[0]?.sources).toEqual(["claude", "codex", "hermes", "other_ai"]);
   });
 
   it("getUsageSummary receives sources filter from visibleProviderIds", async () => {
@@ -555,6 +555,59 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(getApiBillingAccounts).toHaveBeenCalled());
+  });
+
+  it("uses other_ai for financial calls but not as a subscription record", async () => {
+    getSpendRecords.mockResolvedValue({
+      records: [
+        { ...SAMPLE_RECORD, id: "spend-1", source: "claude" },
+        {
+          ...SAMPLE_RECORD,
+          id: "other-ai-1",
+          source: "other_ai",
+          plan_label: "被封账号历史充值",
+          billing_cycle: "one_time",
+        },
+      ],
+      totals: { ...EMPTY_RESULT.totals, subscription_usd: 20, combined_usd: 20 },
+      by_source: [],
+    });
+
+    render(
+      <MemoryRouter>
+        <SpendCostPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+    expect(getSpendRecords.mock.calls[0][0]?.sources).toEqual([
+      "claude",
+      "codex",
+      "hermes",
+      "other_ai",
+    ]);
+    expect(getSpendTimeseries.mock.calls[0][0]?.sources).toEqual([
+      "claude",
+      "codex",
+      "hermes",
+      "other_ai",
+    ]);
+    expect(await screen.findByText("claude")).toBeInTheDocument();
+    expect(screen.queryByText("被封账号历史充值")).not.toBeInTheDocument();
+  });
+
+  it("keeps the cost page available for other_ai when no provider is visible", async () => {
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
+
+    render(
+      <MemoryRouter>
+        <SpendCostPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+    expect(getSpendRecords.mock.calls[0][0]?.sources).toEqual(["other_ai"]);
   });
 
   it("subscription records are filtered by allowlist (cursor hidden)", async () => {

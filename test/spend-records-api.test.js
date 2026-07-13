@@ -970,6 +970,108 @@ test("06: POST missing start_date returns 400 missing_required_field (not silent
   }
 });
 
+test("OTHER-AI: manual charges affect the selected month and lifetime with CRUD and CNY conversion", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    const create = async (record) => readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records",
+      { method: "POST", headers, body: JSON.stringify(record) },
+    )).record;
+
+    const current = await create({
+      source: "other_ai",
+      plan_label: "被封账号历史充值",
+      amount: 72,
+      currency: "CNY",
+      billing_cycle: "one_time",
+      start_date: "2026-07-10",
+      note: "保留历史损失",
+    });
+    const previous = await create({
+      source: "other_ai",
+      plan_label: "旧账号充值",
+      amount: 20,
+      currency: "USD",
+      billing_cycle: "one_time",
+      start_date: "2026-06-10",
+      note: "",
+    });
+    await create({
+      source: "claude",
+      plan_label: "unrelated provider subscription",
+      amount: 100,
+      currency: "USD",
+      billing_cycle: "one_time",
+      start_date: "2026-07-10",
+      note: "",
+    });
+
+    const july = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?from=2026-07-01&to=2026-07-31&sources=other_ai",
+      { method: "GET" },
+    ));
+    assert.deepEqual(july.records.map((record) => record.source), ["other_ai", "other_ai"]);
+    assert.equal(july.totals.subscription_usd, 10);
+    assert.equal(july.totals.lifetime_subscription_usd, 30);
+    assert.deepEqual(july.by_source.map((entry) => entry.source), ["other_ai"]);
+
+    const updated = readJsonResponse(await call(handler, "/functions/tokentracker-spend-records", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        id: current.id,
+        source: "other_ai",
+        plan_label: "被封账号历史充值（修正）",
+        amount: 144,
+        currency: "CNY",
+        billing_cycle: "one_time",
+        start_date: "2026-06-11",
+        note: "修正日期与金额",
+      }),
+    }));
+    assert.equal(updated.record.source, "other_ai");
+    assert.equal(updated.record.amount, 144);
+
+    const afterEdit = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?from=2026-07-01&to=2026-07-31&sources=other_ai",
+      { method: "GET" },
+    ));
+    assert.equal(afterEdit.totals.subscription_usd, 0);
+    assert.equal(afterEdit.totals.lifetime_subscription_usd, 40);
+
+    await call(handler, "/functions/tokentracker-spend-records", {
+      method: "DELETE",
+      headers,
+      body: JSON.stringify({ id: previous.id }),
+    });
+    const afterDelete = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?from=2026-06-01&to=2026-06-30&sources=other_ai",
+      { method: "GET" },
+    ));
+    assert.equal(afterDelete.records.length, 1);
+    assert.equal(afterDelete.totals.subscription_usd, 20);
+    assert.equal(afterDelete.totals.lifetime_subscription_usd, 20);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("06: POST missing source returns 400 missing_required_field", async () => {
   const { tmp, handler, headers } = await setupSpendHandler();
   try {

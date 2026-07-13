@@ -153,6 +153,73 @@ test("P02: subscription cost allocation sums match spend-records totals", async 
   }
 });
 
+test("OTHER-AI: filtered timeseries includes manual cost with zero tokens", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-timeseries-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const create = (record) => call(handler, "/functions/tokentracker-spend-records", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(record),
+    });
+
+    await create({
+      source: "other_ai",
+      plan_label: "历史 AI 充值",
+      amount: 12,
+      currency: "USD",
+      billing_cycle: "one_time",
+      start_date: "2026-07-10",
+      note: "",
+    });
+    await create({
+      source: "claude",
+      plan_label: "unrelated provider subscription",
+      amount: 50,
+      currency: "USD",
+      billing_cycle: "one_time",
+      start_date: "2026-07-10",
+      note: "",
+    });
+
+    const result = await call(
+      handler,
+      "/functions/tokentracker-spend-timeseries?from=2026-07-01&to=2026-07-31&bucket=day&sources=other_ai",
+      { method: "GET" },
+    );
+    const body = readJsonResponse(result);
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(body.sources, ["other_ai"]);
+    assert.deepEqual(body.by_source.map((entry) => entry.source), ["other_ai"]);
+    assert.equal(body.totals.subscription_cost_usd, 12);
+    assert.equal(body.totals.combined_usd, 12);
+    assert.equal(body.totals.input_tokens, 0);
+    assert.equal(body.totals.output_tokens, 0);
+    assert.equal(body.totals.cached_input_tokens, 0);
+    assert.equal(body.totals.cache_creation_input_tokens, 0);
+    assert.equal(body.totals.reasoning_output_tokens, 0);
+    assert.equal(body.totals.total_tokens, 0);
+    assert.equal(
+      body.series.reduce((sum, entry) => sum + entry.combined_usd, 0),
+      12,
+    );
+    assert.ok(body.series.every((entry) => entry.source === "other_ai"));
+    assert.ok(body.series.every((entry) => entry.total_tokens === 0));
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("P02: API-only source appears in sources, series, by_source", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-timeseries-"));
   try {
