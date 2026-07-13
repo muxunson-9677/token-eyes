@@ -6,6 +6,7 @@ import { AccountViewProvider } from "./contexts/AccountViewContext.jsx";
 import { LocaleProvider } from "./ui/foundation/LocaleProvider.jsx";
 import { CurrencyProvider } from "./ui/foundation/CurrencyProvider.jsx";
 import { applyDocumentIdentity } from "./lib/app-identity.js";
+import { shouldUseHashRouter } from "./lib/router-mode.js";
 import App from "./App.jsx";
 import "@fontsource/geist-mono/400.css";
 import "@fontsource/geist-mono/500.css";
@@ -15,9 +16,7 @@ import "./styles.css";
 
 applyDocumentIdentity();
 
-const useHashRouter =
-  String(import.meta.env.VITE_TOKENTRACKER_HASH_ROUTER || "").toLowerCase() === "1" ||
-  String(import.meta.env.VITE_TOKENTRACKER_HASH_ROUTER || "").toLowerCase() === "true";
+const useHashRouter = shouldUseHashRouter(import.meta.env.VITE_TOKENTRACKER_HASH_ROUTER);
 const createRouter = useHashRouter ? createHashRouter : createBrowserRouter;
 const router = createRouter([{ path: "*", element: <App /> }]);
 

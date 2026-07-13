@@ -1,5 +1,6 @@
 mod auto_launch;
 mod claude_session;
+#[path = "commands.rs"]
 mod commands;
 mod codex_session;
 mod cursor_session;
@@ -110,7 +111,10 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let prefs = window_prefs::load(window.app_handle());
-                if prefs.minimize_to_tray_on_close {
+                if window_control::should_minimize_to_tray(
+                    window.label(),
+                    prefs.minimize_to_tray_on_close,
+                ) {
                     api.prevent_close();
                     let _ = window.hide();
                 }
