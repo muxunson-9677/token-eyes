@@ -468,6 +468,7 @@ function toUtcHalfHourStart(ts) {
 }
 
 const CODEX_ROLLOUT_QUEUE_CACHE = new Map();
+const CODEX_ROLLOUT_QUEUE_INFLIGHT = new Map();
 const CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS = 30_000;
 const CODEX_ROLLOUT_FILES_CACHE = new Map();
 const CODEX_ROLLOUT_FILES_CACHE_TTL_MS = 60_000;
@@ -574,105 +575,121 @@ async function collectCodexRolloutQueueRows({
   if (cached && Date.now() - cached.at < CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS) {
     return cached.rows.map((row) => ({ ...row }));
   }
-
-  const buckets = new Map();
-  const minFileDay = from ? shiftDayKey(from, -1) : null;
-  const maxFileDay = to ? shiftDayKey(to, 1) : null;
-
-  for (const filePath of files) {
-    const fileDay = codexRolloutFileDay(filePath);
-    if (fileDay && minFileDay && fileDay < minFileDay) continue;
-    if (fileDay && maxFileDay && fileDay > maxFileDay) continue;
-
-    const stat = await fs.promises.stat(filePath).catch(() => null);
-    if (!stat || !stat.isFile()) continue;
-
-    let model = "unknown";
-    const stream = fs.createReadStream(filePath, { encoding: "utf8" });
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-    try {
-      for await (const line of rl) {
-        if (!line) continue;
-        if (
-          !line.includes('"token_count"') &&
-          !line.includes('"turn_context"') &&
-          !line.includes('"session_meta"')
-        ) {
-          continue;
-        }
-
-        let obj;
-        try {
-          obj = JSON.parse(line);
-        } catch {
-          continue;
-        }
-
-        if (
-          (obj?.type === "turn_context" || obj?.type === "session_meta") &&
-          obj?.payload &&
-          typeof obj.payload === "object"
-        ) {
-          if (typeof obj.payload.model === "string" && obj.payload.model.trim()) {
-            model = obj.payload.model.trim();
-          }
-          continue;
-        }
-
-        const token = extractCodexTokenCount(obj);
-        if (!token?.info || typeof token.info !== "object") continue;
-        const timestamp = typeof token.timestamp === "string" ? token.timestamp : "";
-        if (!timestamp) continue;
-        const dayKey = codexTimestampDayKey(timestamp, timeZoneContext);
-        if (!dayKey) continue;
-        if (from && dayKey < from) continue;
-        if (to && dayKey > to) continue;
-
-        const usage = normalizeCodexUsage(token.info.last_token_usage);
-        if (!usage || !Number(usage.total_tokens || 0)) continue;
-        const hourStart = toUtcHalfHourStart(timestamp);
-        if (!hourStart) continue;
-
-        const bucketKey = `codex|${model}|${hourStart}`;
-        if (!buckets.has(bucketKey)) {
-          buckets.set(bucketKey, {
-            hour_start: hourStart,
-            source: "codex",
-            model,
-            input_tokens: 0,
-            output_tokens: 0,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            reasoning_output_tokens: 0,
-            total_tokens: 0,
-            billable_total_tokens: 0,
-            conversation_count: 0,
-          });
-        }
-        const row = buckets.get(bucketKey);
-        row.input_tokens += Number(usage.input_tokens || 0);
-        row.output_tokens += Number(usage.output_tokens || 0);
-        row.cached_input_tokens += Number(usage.cached_input_tokens || 0);
-        row.cache_creation_input_tokens += Number(usage.cache_creation_input_tokens || 0);
-        row.reasoning_output_tokens += Number(usage.reasoning_output_tokens || 0);
-        row.total_tokens += Number(usage.total_tokens || 0);
-        row.billable_total_tokens += Number(usage.total_tokens || 0);
-        row.conversation_count += 1;
-      }
-    } finally {
-      rl.close();
-      stream.close?.();
-    }
+  const existingScan = CODEX_ROLLOUT_QUEUE_INFLIGHT.get(cacheKey);
+  if (existingScan) {
+    const rows = await existingScan;
+    return rows.map((row) => ({ ...row }));
   }
 
-  const rows = Array.from(buckets.values()).sort((a, b) => {
-    const timeCmp = a.hour_start.localeCompare(b.hour_start);
-    if (timeCmp !== 0) return timeCmp;
-    return String(a.model || "").localeCompare(String(b.model || ""));
-  });
-  CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, { at: Date.now(), rows });
-  return rows.map((row) => ({ ...row }));
+  const scan = (async () => {
+    const buckets = new Map();
+    const minFileDay = from ? shiftDayKey(from, -1) : null;
+    const maxFileDay = to ? shiftDayKey(to, 1) : null;
+
+    for (const filePath of files) {
+      const fileDay = codexRolloutFileDay(filePath);
+      if (fileDay && minFileDay && fileDay < minFileDay) continue;
+      if (fileDay && maxFileDay && fileDay > maxFileDay) continue;
+
+      const stat = await fs.promises.stat(filePath).catch(() => null);
+      if (!stat || !stat.isFile()) continue;
+
+      let model = "unknown";
+      const stream = fs.createReadStream(filePath, { encoding: "utf8" });
+      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+      try {
+        for await (const line of rl) {
+          if (!line) continue;
+          if (
+            !line.includes('"token_count"') &&
+            !line.includes('"turn_context"') &&
+            !line.includes('"session_meta"')
+          ) {
+            continue;
+          }
+
+          let obj;
+          try {
+            obj = JSON.parse(line);
+          } catch {
+            continue;
+          }
+
+          if (
+            (obj?.type === "turn_context" || obj?.type === "session_meta") &&
+            obj?.payload &&
+            typeof obj.payload === "object"
+          ) {
+            if (typeof obj.payload.model === "string" && obj.payload.model.trim()) {
+              model = obj.payload.model.trim();
+            }
+            continue;
+          }
+
+          const token = extractCodexTokenCount(obj);
+          if (!token?.info || typeof token.info !== "object") continue;
+          const timestamp = typeof token.timestamp === "string" ? token.timestamp : "";
+          if (!timestamp) continue;
+          const dayKey = codexTimestampDayKey(timestamp, timeZoneContext);
+          if (!dayKey) continue;
+          if (from && dayKey < from) continue;
+          if (to && dayKey > to) continue;
+
+          const usage = normalizeCodexUsage(token.info.last_token_usage);
+          if (!usage || !Number(usage.total_tokens || 0)) continue;
+          const hourStart = toUtcHalfHourStart(timestamp);
+          if (!hourStart) continue;
+
+          const bucketKey = `codex|${model}|${hourStart}`;
+          if (!buckets.has(bucketKey)) {
+            buckets.set(bucketKey, {
+              hour_start: hourStart,
+              source: "codex",
+              model,
+              input_tokens: 0,
+              output_tokens: 0,
+              cached_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+              reasoning_output_tokens: 0,
+              total_tokens: 0,
+              billable_total_tokens: 0,
+              conversation_count: 0,
+            });
+          }
+          const row = buckets.get(bucketKey);
+          row.input_tokens += Number(usage.input_tokens || 0);
+          row.output_tokens += Number(usage.output_tokens || 0);
+          row.cached_input_tokens += Number(usage.cached_input_tokens || 0);
+          row.cache_creation_input_tokens += Number(usage.cache_creation_input_tokens || 0);
+          row.reasoning_output_tokens += Number(usage.reasoning_output_tokens || 0);
+          row.total_tokens += Number(usage.total_tokens || 0);
+          row.billable_total_tokens += Number(usage.total_tokens || 0);
+          row.conversation_count += 1;
+        }
+      } finally {
+        rl.close();
+        stream.close?.();
+      }
+    }
+
+    const rows = Array.from(buckets.values()).sort((a, b) => {
+      const timeCmp = a.hour_start.localeCompare(b.hour_start);
+      if (timeCmp !== 0) return timeCmp;
+      return String(a.model || "").localeCompare(String(b.model || ""));
+    });
+    CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, { at: Date.now(), rows });
+    return rows;
+  })();
+  CODEX_ROLLOUT_QUEUE_INFLIGHT.set(cacheKey, scan);
+  try {
+    const rows = await scan;
+    return rows.map((row) => ({ ...row }));
+  } finally {
+    if (CODEX_ROLLOUT_QUEUE_INFLIGHT.get(cacheKey) === scan) {
+      CODEX_ROLLOUT_QUEUE_INFLIGHT.delete(cacheKey);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

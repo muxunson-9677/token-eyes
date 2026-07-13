@@ -183,6 +183,7 @@ test("three-caliber consistency: usage-summary === spend-timeseries totals === p
 
 test("Codex real rollout logs feed usage-summary, spend-timeseries, provider-stats, and model-stats when queue is empty", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-rollout-"));
+  const originalCreateReadStream = fs.createReadStream;
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
     const trackerDataDir = path.join(tmp, "tracker");
@@ -213,8 +214,9 @@ test("Codex real rollout logs feed usage-summary, spend-timeseries, provider-sta
       reasoning_output_tokens: 0,
       total_tokens: 110,
     };
+    const rolloutPath = path.join(codexSessionsDir, "rollout-2026-05-09T10-00-00-000Z.jsonl");
     await fs.promises.writeFile(
-      path.join(codexSessionsDir, "rollout-2026-05-09T10-00-00-000Z.jsonl"),
+      rolloutPath,
       [
         buildCodexTurnContextLine({ model: "gpt-4o" }),
         buildCodexTokenCountLine({ ts: "2026-05-09T10:05:00.000Z", last: usage1 }),
@@ -222,13 +224,20 @@ test("Codex real rollout logs feed usage-summary, spend-timeseries, provider-sta
       ].join("\n") + "\n",
       "utf8",
     );
+    let rolloutReads = 0;
+    fs.createReadStream = function patchedCreateReadStream(filePath, ...args) {
+      if (path.resolve(String(filePath)) === path.resolve(rolloutPath)) rolloutReads += 1;
+      return originalCreateReadStream.call(this, filePath, ...args);
+    };
 
     const handler = createLocalApiHandler({ queuePath, trackerDataDir });
     const qs = "?from=2026-05-09&to=2026-05-09&tz=UTC&sources=codex";
-    const summary = await callHandler(handler, `/functions/tokentracker-usage-summary${qs}`);
-    const timeseries = await callHandler(handler, `/functions/tokentracker-spend-timeseries${qs}&bucket=day`);
-    const providerStats = await callHandler(handler, `/functions/tokentracker-provider-stats${qs}`);
-    const modelStats = await callHandler(handler, `/functions/tokentracker-model-stats${qs}`);
+    const [summary, timeseries, providerStats, modelStats] = await Promise.all([
+      callHandler(handler, `/functions/tokentracker-usage-summary${qs}`),
+      callHandler(handler, `/functions/tokentracker-spend-timeseries${qs}&bucket=day`),
+      callHandler(handler, `/functions/tokentracker-provider-stats${qs}`),
+      callHandler(handler, `/functions/tokentracker-model-stats${qs}`),
+    ]);
 
     assert.equal(summary.totals.total_tokens, 260);
     assert.equal(summary.totals.input_tokens, 160);
@@ -239,7 +248,9 @@ test("Codex real rollout logs feed usage-summary, spend-timeseries, provider-sta
     assert.equal(modelStats.totals.total_tokens, 260);
     assert.equal(providerStats.providers[0].source, "codex");
     assert.equal(modelStats.models[0].model, "gpt-4o");
+    assert.equal(rolloutReads, 1);
   } finally {
+    fs.createReadStream = originalCreateReadStream;
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
