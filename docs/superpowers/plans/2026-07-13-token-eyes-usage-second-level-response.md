@@ -4,7 +4,9 @@
 
 **Goal:** Make `/spend/usage` show a meaningful local overview within 500ms on repeated opens and within 2s on a representative cold start, without hiding stale data behind a loading state or replacing real figures with placeholders.
 
-**Architecture:** Treat the synced `queue.jsonl` as the durable local snapshot for aggregate views. Aggregate endpoints use that snapshot immediately and read raw Codex rollout logs only when the requested range has no synced Codex rows. Add an mtime-and-size keyed in-process queue cache so the page's summary, provider, model, cost, and trend requests reuse one parsed snapshot. Preserve the existing browser stale-while-revalidate cache and request-detail rollout path.
+**Architecture:** Treat the synced `queue.jsonl` as the durable local snapshot for aggregate views. Aggregate endpoints use that snapshot immediately and read raw Codex rollout logs only when the requested range has no synced Codex rows. Reuse parsed queue rows, timezone conversion results, and bounded aggregate JSON responses by file fingerprint. Preserve the existing browser stale-while-revalidate cache and request-detail rollout path.
+
+**Execution status:** Complete on 2026-07-13. The measured follow-up added timezone/result caching and aggregate-response caching after the first two changes improved cold fan-out from 11.845s to 2.721s but did not yet satisfy the fixed 2s threshold.
 
 **Tech Stack:** Node.js CommonJS local API, React 18/Vite dashboard, Node test runner, Vitest, PowerShell/Node performance harness.
 
@@ -18,10 +20,12 @@
 - A read-only benchmark on 2026-07-13 found a 749,354-byte queue and four in-range rollout files totalling 50,074,624 bytes.
 - Sequential cold aggregate calls took 10.124s. A cold page-style fan-out took 11.845s wall time; summary/provider/model each remained pending for roughly 11 seconds.
 - Therefore the primary cause is redundant raw-log scanning and concurrent scan amplification, not React rendering.
+- Queue-snapshot precedence and parsed-queue reuse reduced cold fan-out to 2.721s. Profiling then found per-row `Intl.DateTimeFormat` construction and repeated timezone conversion across five aggregate endpoints.
+- Bounded timezone formatter/result caches and a 30-second aggregate response cache reduced the final real-data benchmark to cold P95 793.6ms, uncached refresh P95 770.3ms, and repeated-open P95 0.5ms.
 
 ## File map
 
-- Modify `src/lib/local-api.js`: choose synced queue rows before raw Codex fallback; cache parsed queue rows by file fingerprint.
+- Modify `src/lib/local-api.js`: choose synced queue rows before raw Codex fallback; cache parsed rows, timezone conversion results, and aggregate responses by bounded fingerprints.
 - Modify `test/usage-caliber-consistency.test.js`: lock queue-snapshot precedence while preserving the existing empty-queue rollout fallback.
 - Create `test/local-api-queue-cache.test.js`: lock cache reuse and invalidation behavior.
 - Create `scripts/benchmark-usage-page.js`: reproduce cold/repeated `/spend/usage` endpoint fan-out and report P50/P95.
@@ -34,7 +38,7 @@
 - Modify: `test/usage-caliber-consistency.test.js`
 - Modify: `src/lib/local-api.js`
 
-- [ ] **Step 1: Write the failing regression test**
+- [x] **Step 1: Write the failing regression test**
 
 Add a test that writes one Codex queue row with `total_tokens: 100`, writes a conflicting rollout event with `total_tokens: 999`, then requests all four aggregate endpoints concurrently:
 
@@ -104,7 +108,7 @@ test("aggregate views prefer synced Codex queue rows over redundant rollout resc
 });
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run:
 
@@ -114,7 +118,7 @@ node --test --test-name-pattern "aggregate views prefer synced Codex queue rows"
 
 Expected: FAIL because the current code replaces the queue's 100 tokens with the rollout's 999 tokens.
 
-- [ ] **Step 3: Add the smallest queue-snapshot predicate**
+- [x] **Step 3: Add the smallest queue-snapshot predicate**
 
 In `src/lib/local-api.js`, add:
 
@@ -133,7 +137,7 @@ function hasCodexQueueRowsForRange(rows, { from = "", to = "", timeZoneContext =
 
 Then make `withCodexRolloutRows` return `rows` immediately after the existing source-exclusion guard when the predicate is true. Keep the existing raw-rollout fallback unchanged for an empty/missing queue so the current fallback test remains valid.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run:
 
@@ -143,7 +147,7 @@ node --test --test-name-pattern "Codex real rollout logs|aggregate views prefer 
 
 Expected: the new snapshot-precedence test and existing empty-queue fallback/caliber tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add -- src/lib/local-api.js test/usage-caliber-consistency.test.js
@@ -156,7 +160,7 @@ git commit -m "perf: serve aggregate usage from synced snapshot"
 - Create: `test/local-api-queue-cache.test.js`
 - Modify: `src/lib/local-api.js`
 
-- [ ] **Step 1: Write the failing cache reuse and invalidation tests**
+- [x] **Step 1: Write the failing cache reuse and invalidation tests**
 
 Create `test/local-api-queue-cache.test.js` with this complete test file. It patches `fs.readFileSync` only while calling `readQueueData(queuePath)`, asserts two reads with an unchanged fingerprint hit disk once, then rewrites the queue with a different size and verifies invalidation:
 
@@ -224,7 +228,7 @@ test("readQueueData reuses an unchanged parsed queue and invalidates on file cha
 });
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run:
 
@@ -234,7 +238,7 @@ node --test test/local-api-queue-cache.test.js
 
 Expected: FAIL because `readQueueData` and `clearQueueDataCacheForTests` are not exported and no parsed-queue cache exists.
 
-- [ ] **Step 3: Implement the bounded fingerprint cache**
+- [x] **Step 3: Implement the bounded fingerprint cache**
 
 In `src/lib/local-api.js`:
 
@@ -292,7 +296,7 @@ function clearQueueDataCacheForTests() {
 
 Export `readQueueData` and `clearQueueDataCacheForTests`. Do not change normalization, malformed-line tolerance, or dedup keys.
 
-- [ ] **Step 4: Run the focused test and local API regression set**
+- [x] **Step 4: Run the focused test and local API regression set**
 
 Run:
 
@@ -302,7 +306,7 @@ node --test test/local-api-queue-cache.test.js test/usage-caliber-consistency.te
 
 Expected: all pass with zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add -- src/lib/local-api.js test/local-api-queue-cache.test.js
@@ -315,7 +319,7 @@ git commit -m "perf: cache parsed local usage queue"
 - Create: `scripts/benchmark-usage-page.js`
 - Modify: `package.json`
 
-- [ ] **Step 1: Add the benchmark harness**
+- [x] **Step 1: Add the benchmark harness**
 
 Create `scripts/benchmark-usage-page.js` with the following complete implementation:
 
@@ -325,6 +329,8 @@ Create `scripts/benchmark-usage-page.js` with the following complete implementat
 - run one cold iteration and ten repeated iterations;
 - print queue bytes, cold wall time, repeated P50/P95, endpoint timings and thresholds;
 - exit non-zero when cold exceeds 2000ms or repeated P95 exceeds 500ms.
+
+Execution tightened the harness beyond the original sketch: it now runs ten independent-process cold samples, ten fresh-handler background refresh samples, and ten pre-warmed repeated-open samples. Fixed gates are cold P95 ≤2000ms, refresh P95 ≤1000ms, and repeated P95 ≤500ms.
 
 ```js
 const fs = require("node:fs");
@@ -454,7 +460,7 @@ Add to `package.json`:
 "benchmark:usage-page": "node scripts/benchmark-usage-page.js"
 ```
 
-- [ ] **Step 2: Validate syntax and run the real-data benchmark**
+- [x] **Step 2: Validate syntax and run the real-data benchmark**
 
 Run:
 
@@ -465,7 +471,9 @@ npm run benchmark:usage-page
 
 Expected: exit 0; cold wall time ≤2000ms and repeated P95 ≤500ms. If the threshold fails, do not change the number: return to root-cause investigation and optimize the measured bottleneck.
 
-- [ ] **Step 3: Commit**
+Actual: exit 0; cold P95 793.6ms, fresh-handler refresh P95 770.3ms, and repeated P95 0.5ms on a 778,356-byte real local snapshot. An additional regression coalesces concurrent empty-queue rollout fallbacks into one scan instead of one scan per endpoint.
+
+- [x] **Step 3: Commit**
 
 ```powershell
 git add -- scripts/benchmark-usage-page.js package.json
@@ -477,7 +485,7 @@ git commit -m "test: add usage page performance benchmark"
 **Files:**
 - Modify: `docs/superpowers/specs/2026-07-13-token-eyes-fixes-1-6-design.md`
 
-- [ ] **Step 1: Run focused and project verification**
+- [x] **Step 1: Run focused and project verification**
 
 ```powershell
 node --test test/local-api-queue-cache.test.js test/usage-caliber-consistency.test.js test/local-api-source-scope.test.js
@@ -489,7 +497,7 @@ git diff --check
 
 Expected: zero test/build/validation failures and a clean diff check.
 
-- [ ] **Step 2: Run the final fresh benchmark**
+- [x] **Step 2: Run the final fresh benchmark**
 
 ```powershell
 npm run benchmark:usage-page
@@ -497,11 +505,11 @@ npm run benchmark:usage-page
 
 Record the actual queue size, cold wall time and repeated P50/P95. Do not mark item 12 complete unless the command exits 0.
 
-- [ ] **Step 3: Update the 12-item tracking document**
+- [x] **Step 3: Update the 12-item tracking document**
 
 Change item 12 from partial to complete only when the thresholds pass. Append a progress row with the original 11.845s reproduction, final timings, tests, build and remaining manual installed-client verification.
 
-- [ ] **Step 4: Commit documentation**
+- [x] **Step 4: Commit documentation**
 
 ```powershell
 git add -- docs/superpowers/specs/2026-07-13-token-eyes-fixes-1-6-design.md
