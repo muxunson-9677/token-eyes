@@ -20,13 +20,14 @@ beforeEach(() => {
   setLocalSettings.mockImplementation(async ({ dataDirectories }) => ({ ok: true, dataDirectories }));
 });
 
-it("renders configurable data directories for Claude, Codex, Hermes, Cursor and OpenClaw", async () => {
+it("renders configurable data directories including OpenCode", async () => {
   render(<DataDirectoriesSection />);
 
   expect(await screen.findByLabelText("Claude Code 数据目录")).toBeInTheDocument();
   expect(screen.getByLabelText("Codex 数据目录")).toBeInTheDocument();
   expect(screen.getByLabelText("Hermes Agent 数据目录")).toBeInTheDocument();
   expect(screen.getByLabelText("Cursor 数据目录")).toBeInTheDocument();
+  expect(screen.getByLabelText("OpenCode 数据目录")).toBeInTheDocument();
   expect(screen.getByLabelText("OpenClaw 数据目录")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "选择文件夹" })).toHaveLength(5);
+  expect(screen.getAllByRole("button", { name: "选择文件夹" })).toHaveLength(6);
 });

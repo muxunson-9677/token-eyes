@@ -40,7 +40,7 @@ async function callEndpoint(queuePath, endpoint, handlerOptions = {}) {
   return JSON.parse(chunks.join(""));
 }
 
-test("usage-limits appends deduplicated Trae and CodeBuddy token-only totals", async () => {
+test("usage-limits appends Trae, CodeBuddy and OpenCode token-only totals", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-localapi-token-only-limits-"));
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
@@ -69,14 +69,24 @@ test("usage-limits appends deduplicated Trae and CodeBuddy token-only totals", a
         output_tokens: 50,
         total_tokens: 300,
       },
+      {
+        source: "opencode",
+        model: "gpt-5",
+        hour_start: "2026-05-09T11:00:00.000Z",
+        input_tokens: 350,
+        output_tokens: 70,
+        total_tokens: 420,
+      },
     ]);
 
     assert.deepEqual(summarizeTokenOnlyUsage([
       { source: "trae", total_tokens: 180 },
       { source: "codebuddy", total_tokens: 300 },
+      { source: "opencode", total_tokens: 420 },
     ]), {
       trae: { configured: true, error: null, token_only: true, total_tokens: 180 },
       codebuddy: { configured: true, error: null, token_only: true, total_tokens: 300 },
+      opencode: { configured: true, error: null, token_only: true, total_tokens: 420 },
     });
 
     const result = await callEndpoint(
@@ -96,6 +106,12 @@ test("usage-limits appends deduplicated Trae and CodeBuddy token-only totals", a
       error: null,
       token_only: true,
       total_tokens: 300,
+    });
+    assert.deepEqual(result.opencode, {
+      configured: true,
+      error: null,
+      token_only: true,
+      total_tokens: 420,
     });
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });

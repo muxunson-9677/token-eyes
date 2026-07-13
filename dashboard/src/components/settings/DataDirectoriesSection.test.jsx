@@ -31,6 +31,7 @@ beforeEach(() => {
       codex: "",
       hermes: "",
       cursor: "",
+      opencode: "",
       openclaw: "",
     },
   });
@@ -42,12 +43,14 @@ beforeEach(() => {
       codex: "C:\\Users\\admin\\.codex",
       hermes: "",
       cursor: "C:\\Users\\admin\\.cursor",
+      opencode: "C:\\Users\\admin\\.local\\share\\opencode",
       openclaw: "",
     },
     detected: {
       claude: { agent: "claude", environment: "win", status: "ready", trackingReady: true },
       codex: { agent: "codex", environment: "win", status: "ready", trackingReady: true },
       cursor: { agent: "cursor", environment: "win", status: "ready", trackingReady: true },
+      opencode: { agent: "opencode", environment: "win", status: "ready", trackingReady: true },
     },
   });
   getAgentEnvironment.mockResolvedValue({
@@ -92,8 +95,9 @@ it("auto-detects evidence-backed data directories and clears missing agents", as
   expect(claudeInput).toHaveValue("C:\\Users\\admin\\.claude");
   expect(screen.getByLabelText("Codex 数据目录")).toHaveValue("C:\\Users\\admin\\.codex");
   expect(screen.getByLabelText("Cursor 数据目录")).toHaveValue("C:\\Users\\admin\\.cursor");
+  expect(screen.getByLabelText("OpenCode 数据目录")).toHaveValue("C:\\Users\\admin\\.local\\share\\opencode");
   expect(screen.getByLabelText("OpenClaw 数据目录")).toHaveValue("");
-  expect(screen.getByText("已识别 3 个可采集 Agent 路径，请确认后保存。")).toBeInTheDocument();
+  expect(screen.getByText("已识别 4 个可采集 Agent 路径，请确认后保存。")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
 });
 
@@ -105,7 +109,7 @@ it("loads and saves data directory overrides", async () => {
   const codexInput = screen.getByLabelText("Codex 数据目录");
   const saveButton = screen.getByRole("button", { name: "保存" });
   expect(screen.getByText("数据目录")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "选择文件夹" })).toHaveLength(5);
+  expect(screen.getAllByRole("button", { name: "选择文件夹" })).toHaveLength(6);
 
   expect(saveButton).toBeEnabled();
 
@@ -125,6 +129,7 @@ it("loads and saves data directory overrides", async () => {
         codex: "C:\\Users\\admin\\.codex",
         hermes: "",
         cursor: "",
+        opencode: "",
         openclaw: "",
       },
     });

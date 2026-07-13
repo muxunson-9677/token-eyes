@@ -175,15 +175,15 @@ test("codex and claude are NOT account-level per source-metadata", () => {
 // listDataDirectoryAdapterKeys + DATA_DIRECTORY_KEYS
 // ---------------------------------------------------------------------------
 
-test("listDataDirectoryAdapterKeys returns claude, codex, cursor, hermes and openclaw", () => {
+test("listDataDirectoryAdapterKeys returns every configurable desktop source", () => {
   const keys = listDataDirectoryAdapterKeys();
-  for (const key of ["claude", "codex", "cursor", "hermes", "openclaw"]) {
+  for (const key of ["claude", "codex", "cursor", "hermes", "opencode", "openclaw", "trae"]) {
     assert.ok(keys.includes(key), `${key} must be in path override keys; got: ${JSON.stringify(keys)}`);
   }
 });
 
 test("DATA_DIRECTORY_KEYS equals the registry-backed configurable directory keys", () => {
-  const expected = ["claude", "codex", "cursor", "hermes", "openclaw"];
+  const expected = ["claude", "codex", "cursor", "hermes", "opencode", "openclaw", "trae"];
   assert.deepEqual(
     DATA_DIRECTORY_KEYS.sort(),
     expected.sort(),
@@ -207,6 +207,7 @@ test("listUsageLimitAdapterIds matches the supported limits display sources", ()
     "claude",
     "codex",
     "cursor",
+    "trae",
     "gemini",
     "hermes",
     "openclaw",
@@ -233,4 +234,3 @@ test("every source in sync.js has a registry entry", () => {
       "Add them to src/lib/agent-adapters.js per the agent-adapter-spec.md checklist.",
   );
 });
-

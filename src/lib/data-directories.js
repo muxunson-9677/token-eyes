@@ -135,6 +135,10 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     home,
     platform,
   });
+  const xdgDataHome = normalizePathValue(env.XDG_DATA_HOME) || path.join(home, ".local", "share");
+  const opencodeHome = dataDirectories.opencode
+    || normalizePathValue(env.OPENCODE_HOME)
+    || path.join(xdgDataHome, "opencode");
   const openclawHome = dataDirectories.openclaw || normalizePathValue(env.OPENCLAW_HOME) || path.join(home, ".openclaw");
 
   return {
@@ -148,6 +152,7 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     cursorHomes,
     traeHome: traeHomes[0] || traeHome,
     traeHomes,
+    opencodeHome,
     openclawHome,
   };
 }
@@ -310,6 +315,21 @@ function inspectDataDirectory(agentId, directoryPath) {
     const count = (encryptedDb ? 1 : 0) + (decryptedDb ? 1 : 0) + (tokenJsonl ? 1 : 0);
     result = { count, latestMs };
     evidence = decryptedDb || tokenJsonl ? "token_logs" : encryptedDb ? "encrypted_database" : "trae_directory";
+  } else if (agentId === "opencode") {
+    const database = fileStat(path.join(normalizedPath, "opencode.db"));
+    const databaseWal = fileStat(path.join(normalizedPath, "opencode.db-wal"));
+    const messageDir = path.join(normalizedPath, "storage", "message");
+    const messages = findEvidenceFiles(messageDir, { extension: ".json", maxDepth: 4 });
+    recognized = Boolean(database) || Boolean(databaseWal) || isDirectory(messageDir);
+    result = {
+      count: (database ? 1 : 0) + (databaseWal ? 1 : 0) + messages.count,
+      latestMs: Math.max(database?.mtimeMs || 0, databaseWal?.mtimeMs || 0, messages.latestMs),
+    };
+    evidence = messages.count > 0
+      ? "token_logs"
+      : database || databaseWal
+        ? "opencode_database"
+        : "opencode_storage";
   } else if (agentId === "openclaw") {
     const agentsDir = path.join(normalizedPath, "agents");
     recognized = Boolean(fileStat(path.join(normalizedPath, "openclaw.json"))) || isDirectory(agentsDir);
@@ -333,6 +353,7 @@ const AGENT_COMMANDS = Object.freeze({
   claude: "claude",
   codex: "codex",
   cursor: "cursor",
+  opencode: "opencode",
   openclaw: "openclaw",
   hermes: "hermes",
 });
@@ -478,6 +499,11 @@ function detectDataDirectoryPaths({
     ],
     cursor: [configured.cursor, normalizePathValue(env.CURSOR_HOME), defaultCursorAppDir({ env, home, platform })],
     trae: [configured.trae, normalizePathValue(env.TRAE_HOME), ...defaultTraeAppDirs({ env, home, platform })],
+    opencode: [
+      configured.opencode,
+      normalizePathValue(env.OPENCODE_HOME),
+      path.join(normalizePathValue(env.XDG_DATA_HOME) || path.join(home, ".local", "share"), "opencode"),
+    ],
     openclaw: [configured.openclaw, normalizePathValue(env.OPENCLAW_HOME), path.join(home, ".openclaw")],
   };
 
@@ -493,6 +519,7 @@ function detectDataDirectoryPaths({
       candidates.hermes.push(path.join(wslHome, ".hermes"));
       candidates.cursor.push(path.join(wslHome, ".config", "Cursor"));
       candidates.trae.push(path.join(wslHome, ".config", "Trae CN"));
+      candidates.opencode.push(path.join(wslHome, ".local", "share", "opencode"));
       candidates.openclaw.push(path.join(wslHome, ".openclaw"));
     }
   }

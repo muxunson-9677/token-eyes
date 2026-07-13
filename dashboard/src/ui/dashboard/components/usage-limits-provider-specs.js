@@ -63,6 +63,7 @@ export const PROVIDER_LIMIT_SPECS = {
     },
   },
   opencode: {
+    extra: "token_only",
     windows() {
       return [];
     },

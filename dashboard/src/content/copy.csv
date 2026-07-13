@@ -1119,6 +1119,8 @@ spend.delete_error,dashboard,SpendPage,SpendPage,delete_error,"无法删除支�
 nav.spend,ui,Sidebar,Sidebar,spend,"支出",,active
 settings.data_dirs.cursor,ui,SettingsPage,DataDirectoriesSection,cursor_label,"Cursor 数据目录",,active
 settings.data_dirs.cursor_hint,ui,SettingsPage,DataDirectoriesSection,cursor_hint,"留空则使用默认 Cursor 配置目录；如有独立数据目录，请在这里覆盖。",,active
+settings.data_dirs.opencode,ui,SettingsPage,DataDirectoriesSection,opencode_label,"OpenCode 数据目录",,active
+settings.data_dirs.opencode_hint,ui,SettingsPage,DataDirectoriesSection,opencode_hint,"留空则使用 OPENCODE_HOME 或默认 ~/.local/share/opencode；请选择包含 opencode.db 或 storage/message 的目录。",,active
 settings.data_dirs.openclaw,ui,SettingsPage,DataDirectoriesSection,openclaw_label,"OpenClaw 数据目录",,active
 settings.data_dirs.openclaw_hint,ui,SettingsPage,DataDirectoriesSection,openclaw_hint,"留空则使用默认 OpenClaw 目录；用于后续 OpenClaw 日志或插件数据接入。",,active
 settings.data_dirs.detect_env,ui,SettingsPage,DataDirectoriesSection,detect_env,"检测环境",,active

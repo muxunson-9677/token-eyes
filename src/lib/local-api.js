@@ -438,7 +438,7 @@ function clearQueueDataCacheForTests() {
 }
 
 function summarizeTokenOnlyUsage(rows) {
-  const totals = { trae: 0, codebuddy: 0 };
+  const totals = { trae: 0, codebuddy: 0, opencode: 0 };
   for (const row of Array.isArray(rows) ? rows : []) {
     const source = normalizeSource(row?.source);
     if (!Object.prototype.hasOwnProperty.call(totals, source)) continue;

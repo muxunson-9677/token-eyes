@@ -205,7 +205,7 @@ async function cmdSync(argv) {
     const geminiHome = process.env.GEMINI_HOME || path.join(home, ".gemini");
     const geminiTmpDir = path.join(geminiHome, "tmp");
     const xdgDataHome = process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
-    const opencodeHome = process.env.OPENCODE_HOME || path.join(xdgDataHome, "opencode");
+    const opencodeHome = dataDirectoryPaths.opencodeHome;
     const opencodeStorageDir = path.join(opencodeHome, "storage");
     const kiloHome = process.env.KILO_HOME || path.join(xdgDataHome, "kilo");
 

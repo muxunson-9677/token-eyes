@@ -75,19 +75,22 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getAllByText(copy("limits.status.not_connected"))).toHaveLength(3);
   });
 
-  it("renders Trae and CodeBuddy as token-only totals without quota bars", () => {
+  it("renders Trae, CodeBuddy and OpenCode as token-only totals without quota bars", () => {
     render(
       <UsageLimitsPanel
         trae={{ configured: true, error: null, token_only: true, total_tokens: 1_250 }}
         codebuddy={{ configured: true, error: null, token_only: true, total_tokens: 3_200 }}
-        order={["trae", "codebuddy"]}
+        opencode={{ configured: true, error: null, token_only: true, total_tokens: 8_400 }}
+        order={["trae", "codebuddy", "opencode"]}
       />,
     );
 
     expect(screen.getByText("Trae")).toBeInTheDocument();
     expect(screen.getByText("CodeBuddy")).toBeInTheDocument();
+    expect(screen.getByText("OpenCode")).toBeInTheDocument();
     expect(screen.getByText(copy("limits.status.token_only", { tokens: "1.3K" }))).toBeInTheDocument();
     expect(screen.getByText(copy("limits.status.token_only", { tokens: "3.2K" }))).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.status.token_only", { tokens: "8.4K" }))).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 

@@ -6,6 +6,7 @@ const { test } = require("node:test");
 
 const {
   detectDataDirectoryPaths,
+  inspectDataDirectory,
   listTrackingReadyCodexHomes,
   normalizeDataDirectories,
   resolveDataDirectoryPaths,
@@ -18,6 +19,7 @@ test("normalizeDataDirectories trims known directory overrides", () => {
       codex: " C:\\Users\\admin\\.codex ",
       cursor: "  ",
       openclaw: " D:\\openclaw ",
+      opencode: " E:\\opencode ",
       hermes: "  ",
       ignored: "x",
     }),
@@ -27,6 +29,7 @@ test("normalizeDataDirectories trims known directory overrides", () => {
       cursor: "",
       trae: "",
       openclaw: "D:\\openclaw",
+      opencode: "E:\\opencode",
       hermes: "",
     },
   );
@@ -40,6 +43,7 @@ test("resolveDataDirectoryPaths keeps TokenTracker defaults on non-Windows when 
   assert.equal(resolved.codeHome, path.join(home, ".code"));
   assert.equal(resolved.claudeProjectsDir, path.join(home, ".claude", "projects"));
   assert.equal(resolved.hermesPath, null);
+  assert.equal(resolved.opencodeHome, path.join(home, ".local", "share", "opencode"));
 });
 
 test("resolveDataDirectoryPaths applies MVP data directory overrides", () => {
@@ -47,15 +51,43 @@ test("resolveDataDirectoryPaths applies MVP data directory overrides", () => {
   const claude = "\\\\wsl.localhost\\Ubuntu\\home\\agent\\.claude";
   const codex = "D:\\CodexHome";
   const hermes = "\\\\wsl.localhost\\Ubuntu\\home\\agent\\.hermes";
+  const opencode = "D:\\OpenCodeData";
   const resolved = resolveDataDirectoryPaths({
     home,
     env: { CODEX_HOME: "E:\\ShouldNotWin" },
-    config: { dataDirectories: { claude, codex, hermes } },
+    config: { dataDirectories: { claude, codex, hermes, opencode } },
   });
 
   assert.equal(resolved.codexHome, codex);
   assert.equal(resolved.claudeProjectsDir, path.join(claude, "projects"));
   assert.equal(resolved.hermesPath, hermes);
+  assert.equal(resolved.opencodeHome, opencode);
+});
+
+test("inspectDataDirectory recognizes OpenCode SQLite and JSON message evidence", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-data-dirs-opencode-"));
+  try {
+    const sqliteHome = path.join(tmp, "sqlite");
+    await fs.promises.mkdir(sqliteHome, { recursive: true });
+    const dbPath = path.join(sqliteHome, "opencode.db");
+    await fs.promises.writeFile(dbPath, "sqlite", "utf8");
+    const sqliteInspection = inspectDataDirectory("opencode", sqliteHome);
+    assert.equal(sqliteInspection.status, "ready");
+    assert.equal(sqliteInspection.trackingReady, true);
+    assert.equal(sqliteInspection.evidence, "opencode_database");
+    assert.equal(sqliteInspection.evidenceCount, 1);
+
+    const jsonHome = path.join(tmp, "json");
+    const messageDir = path.join(jsonHome, "storage", "message", "session");
+    await fs.promises.mkdir(messageDir, { recursive: true });
+    await fs.promises.writeFile(path.join(messageDir, "message.json"), "{}", "utf8");
+    const jsonInspection = inspectDataDirectory("opencode", jsonHome);
+    assert.equal(jsonInspection.trackingReady, true);
+    assert.equal(jsonInspection.evidence, "token_logs");
+    assert.equal(jsonInspection.evidenceCount, 1);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
 });
 
 test("resolveDataDirectoryPaths prefers active Codex Desktop evidence over stale default .codex", async () => {
@@ -93,6 +125,7 @@ test("detectDataDirectoryPaths chooses installed agents with live token evidence
     const appData = path.join(tmp, "AppData", "Roaming");
     const hermesHome = path.join(localAppData, "hermes");
     const cursorHome = path.join(appData, "Cursor");
+    const opencodeHome = path.join(tmp, ".local", "share", "opencode");
     const wslRoot = path.join(tmp, "wsl.localhost");
     const wslClaudeHome = path.join(wslRoot, "Ubuntu", "home", "agent", ".claude");
 
@@ -104,6 +137,8 @@ test("detectDataDirectoryPaths chooses installed agents with live token evidence
     await fs.promises.writeFile(path.join(codexHome, "sessions", "session.jsonl"), "{}\n", "utf8");
     await fs.promises.mkdir(path.join(cursorHome, "User", "globalStorage"), { recursive: true });
     await fs.promises.writeFile(path.join(cursorHome, "User", "globalStorage", "state.vscdb"), "db", "utf8");
+    await fs.promises.mkdir(opencodeHome, { recursive: true });
+    await fs.promises.writeFile(path.join(opencodeHome, "opencode.db"), "db", "utf8");
     await fs.promises.mkdir(path.join(tmp, ".openclaw"), { recursive: true });
     await fs.promises.mkdir(hermesHome, { recursive: true });
     await fs.promises.writeFile(path.join(hermesHome, "state.db"), "db", "utf8");
@@ -130,6 +165,7 @@ test("detectDataDirectoryPaths chooses installed agents with live token evidence
       hermes: hermesHome,
       cursor: cursorHome,
       trae: "",
+      opencode: opencodeHome,
       openclaw: "",
     });
     assert.equal(result.detected.claude.evidence, "token_logs");

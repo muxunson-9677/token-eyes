@@ -131,7 +131,7 @@ const AGENT_ADAPTERS = [
     statusSurface: true,
     diagnosticsSurface: true,
     usageLimitsSurface: true,
-    pathOverrideKey: null,
+    pathOverrideKey: "opencode",
     accountLevel: false,
     notes: "OpenCode CLI (SQLite message store + JSON file fallback).",
   },

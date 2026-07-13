@@ -19,6 +19,7 @@ const DIRECTORY_FIELDS = [
   { key: "codex", labelKey: "settings.data_dirs.codex", hintKey: "settings.data_dirs.codex_hint" },
   { key: "hermes", labelKey: "settings.data_dirs.hermes", hintKey: "settings.data_dirs.hermes_hint" },
   { key: "cursor", labelKey: "settings.data_dirs.cursor", hintKey: "settings.data_dirs.cursor_hint" },
+  { key: "opencode", labelKey: "settings.data_dirs.opencode", hintKey: "settings.data_dirs.opencode_hint" },
   { key: "openclaw", labelKey: "settings.data_dirs.openclaw", hintKey: "settings.data_dirs.openclaw_hint" },
 ];
 
