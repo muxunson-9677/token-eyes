@@ -1358,6 +1358,14 @@ export async function verifyCodexConsoleSession(sessionRef: string): Promise<Cod
   return invoke("verify_codex_console_session", { sessionRef });
 }
 
+export async function syncCodexConsoleQuota(sessionRef: string): Promise<CodexSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    throw new Error("Tauri runtime not available");
+  }
+  return invoke("sync_codex_console_quota", { sessionRef });
+}
+
 export async function deleteCodexConsoleSession(sessionRef: string): Promise<void> {
   const invoke = getTauriInvoke();
   if (!invoke) {

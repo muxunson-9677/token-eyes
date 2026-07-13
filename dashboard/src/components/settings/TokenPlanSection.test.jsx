@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TokenPlanSection } from "./TokenPlanSection.jsx";
-import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, deleteCodexConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, deleteCodexConsoleSession, saveTokenPlanSecret } from "../../lib/api";
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { copy } from "../../lib/copy";
 
@@ -25,6 +25,7 @@ vi.mock("../../lib/api", () => ({
   deleteGlmConsoleSession: vi.fn(),
   openCodexConsoleLogin: vi.fn(),
   verifyCodexConsoleSession: vi.fn(),
+  syncCodexConsoleQuota: vi.fn(),
   deleteCodexConsoleSession: vi.fn(),
   openClaudeConsoleLogin: vi.fn(),
   verifyClaudeConsoleSession: vi.fn(),
@@ -2040,6 +2041,15 @@ it("Codex system browser reuses an authorized binding, saves quota, and keeps th
     connected: true,
     authorized: true,
     session_ref: sessionRef,
+    state_code: "authorized",
+    quota_sync_status: "idle",
+    error_code: "",
+    error_message: "",
+  }));
+  syncCodexConsoleQuota.mockImplementation(async (sessionRef) => ({
+    connected: true,
+    authorized: true,
+    session_ref: sessionRef,
     state_code: "connected",
     quota_sync_status: "success",
     error_code: "",
@@ -2075,6 +2085,11 @@ it("Codex system browser reuses an authorized binding, saves quota, and keeps th
   expect(saved.sync_status).toBe("success");
   expect(saved.quota_windows).toHaveLength(2);
   expect(verifyCodexConsoleSession).not.toHaveBeenCalled();
+  expect(syncCodexConsoleQuota).toHaveBeenCalledWith(expect.stringContaining("token-plan/codex/session/"));
+  expect(verifyConsoleSession).toHaveBeenNthCalledWith(1, "codex-session-id", expect.objectContaining({
+    state_code: "authorized",
+    quota_sync_status: "idle",
+  }));
   expect(deleteCodexConsoleSession).not.toHaveBeenCalled();
   expect(deleteConsoleSession).not.toHaveBeenCalled();
 });
@@ -2125,11 +2140,20 @@ it("Codex system browser completes authorization even when quota sync fails", as
       authorized: true,
       session_ref: codexSessionRef,
       state_code: "authorized",
-      quota_sync_status: "error",
-      error_code: "QUOTA_SYNC_FAILED",
-      error_message: "授权已完成，但额度同步暂时失败，可稍后重试。",
+      quota_sync_status: "idle",
+      error_code: "",
+      error_message: "",
     })
     .mockRejectedValueOnce(new Error("must stop polling after authorization"));
+  syncCodexConsoleQuota.mockResolvedValue({
+    connected: true,
+    authorized: true,
+    session_ref: codexSessionRef,
+    state_code: "authorized",
+    quota_sync_status: "error",
+    error_code: "QUOTA_SYNC_FAILED",
+    error_message: "授权已完成，但额度同步暂时失败，可稍后重试。",
+  });
   verifyConsoleSession.mockImplementation(async (_id, nativeResult) => ({
     ok: true,
     session: makeCodexSession({
@@ -2159,6 +2183,91 @@ it("Codex system browser completes authorization even when quota sync fails", as
   expect(saved.last_error_code).toBe("QUOTA_SYNC_FAILED");
   expect(saved.last_error_message).toContain("额度同步");
   expect(verifyCodexConsoleSession).toHaveBeenCalledTimes(1);
+  expect(syncCodexConsoleQuota).toHaveBeenCalledTimes(1);
   expect(deleteCodexConsoleSession).not.toHaveBeenCalled();
   expect(deleteConsoleSession).not.toHaveBeenCalled();
+});
+
+it("Codex connected refresh keeps quota and never falls back to the legacy adapter on sync failure", async () => {
+  mockCodexCatalog();
+  const record = {
+    ...BASE_RECORD,
+    id: "codex-plan",
+    source: "codex",
+    provider_id: "codex",
+    plan_id: "codex_pro_5x",
+    plan_label: "Pro 5x",
+    total_quota: 100,
+    used_quota: 40,
+    remaining_quota: 60,
+    detection_method: "official_account",
+    detection_config: {
+      official_account: {
+        account_binding_id: "codex-session-id",
+        provider_home_url: "https://chatgpt.com/codex",
+      },
+    },
+    quota_windows: [{
+      kind: "rolling_weekly",
+      unit: "tokens",
+      total: 100,
+      used: 40,
+      remaining: 60,
+      percentage: 40,
+    }],
+  };
+  getTokenPlans.mockResolvedValue({ records: [record] });
+  getConsoleSessions.mockResolvedValue({
+    sessions: [makeCodexSession({
+      id: "codex-session-id",
+      session_ref: codexSessionRef,
+      status: "connected",
+    })],
+  });
+  syncCodexConsoleQuota.mockResolvedValue({
+    connected: true,
+    authorized: true,
+    session_ref: codexSessionRef,
+    state_code: "authorized",
+    quota_sync_status: "error",
+    error_code: "QUOTA_SYNC_FAILED",
+    error_message: "授权已完成，但额度同步暂时失败，可稍后重试。",
+  });
+  const user = userEvent.setup();
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/codex \/ codex \/ Pro 5x/i);
+  await act(async () => {
+    await user.click(screen.getByTitle(copy("settings.token_plan.refresh")));
+  });
+
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
+  expect(refreshTokenPlan).not.toHaveBeenCalled();
+  expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+    id: "codex-plan",
+    used_quota: 40,
+    remaining_quota: 60,
+    sync_status: "failed",
+    last_error_code: "QUOTA_SYNC_FAILED",
+  }));
+});
+
+it("formats Codex reset timestamps returned as Unix-second strings", async () => {
+  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
+  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
+  getUsageLimits.mockResolvedValue({
+    codex: {
+      configured: true,
+      primary_window: {
+        used_percent: 30,
+        reset_at: String(Math.floor(Date.now() / 1000) + 3600),
+      },
+    },
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/codex \/ Pro/i);
+
+  expect(screen.getByText(/重置 \d+m|重置 \d+h/)).toBeInTheDocument();
+  expect(screen.queryByText(/重置 --/)).not.toBeInTheDocument();
 });

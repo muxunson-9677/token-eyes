@@ -18,6 +18,7 @@ import {
   deleteGlmConsoleSession,
   openCodexConsoleLogin,
   verifyCodexConsoleSession,
+  syncCodexConsoleQuota,
   deleteCodexConsoleSession,
   openClaudeConsoleLogin,
   verifyClaudeConsoleSession,
@@ -40,7 +41,10 @@ function isCodexSource(source) {
 }
 
 function formatCodexReset(isoOrUnix) {
-  const ts = typeof isoOrUnix === "number" ? isoOrUnix * 1000 : Date.parse(String(isoOrUnix));
+  const raw = String(isoOrUnix ?? "").trim();
+  const ts = typeof isoOrUnix === "number" || /^\d+$/.test(raw)
+    ? Number(raw || isoOrUnix) * 1000
+    : Date.parse(raw);
   if (!Number.isFinite(ts)) return "--";
   const diff = ts - Date.now();
   if (diff <= 0) return copy("shared.time.now");
@@ -1053,26 +1057,73 @@ export function TokenPlanSection() {
       }
 
       const deadline = Date.now() + XIAOMI_AUTH_TIMEOUT_MS;
-      while (Date.now() < deadline) {
+      for (;;) {
         if (!nativeStatus?.authorized && !nativeStatus?.connected) {
           nativeStatus = await verifyCodexConsoleSession(sessionRef);
         }
-        if (nativeStatus?.authorized || nativeStatus?.connected) {
+        const authorizationComplete = Boolean(nativeStatus?.authorized || nativeStatus?.connected)
+          && ["authorized", "connected"].includes(nativeStatus?.state_code);
+        if (authorizationComplete) {
           authorizationReady = true;
-          const quotaAvailable = Boolean(nativeStatus?.quota);
-          const nativeResult = {
+          const authorizedResult = {
             connected: true,
             authorized: true,
             session_ref: nativeStatus.session_ref || sessionRef,
+            state_code: "authorized",
+            quota_sync_status: "idle",
+            error_code: "",
+            error_message: "",
+          };
+          const authorized = await verifyConsoleSession(createdSession.id, authorizedResult);
+          const accountBindingId = authorized.session?.id || createdSession.id;
+          setConsoleSessions((previous) => previous.map((session) =>
+            session.id === accountBindingId ? authorized.session : session
+          ));
+
+          let quotaStatus;
+          try {
+            quotaStatus = await syncCodexConsoleQuota(sessionRef);
+          } catch {
+            quotaStatus = {
+              connected: true,
+              authorized: true,
+              session_ref: sessionRef,
+              state_code: "authorized",
+              quota_sync_status: "error",
+              error_code: "QUOTA_SYNC_FAILED",
+              error_message: copy("settings.token_plan.codex.quota_sync_failed"),
+            };
+          }
+          if (!quotaStatus?.authorized
+            || !quotaStatus?.connected
+            || !["authorized", "connected"].includes(quotaStatus?.state_code)) {
+            const rejected = await verifyConsoleSession(createdSession.id, quotaStatus || {
+              connected: false,
+              authorized: false,
+              session_ref: sessionRef,
+              state_code: "failed",
+              error_code: "VERIFY_FAILED",
+              error_message: copy("settings.token_plan.console_session.verify_error"),
+            });
+            setConsoleSessions((previous) => previous.map((session) =>
+              session.id === accountBindingId ? rejected.session : session
+            ));
+            throw new Error(quotaStatus?.error_message || copy("settings.token_plan.console_session.verify_error"));
+          }
+          const quotaAvailable = quotaStatus.state_code === "connected" && Boolean(quotaStatus.quota);
+          const quotaResult = {
+            connected: true,
+            authorized: true,
+            session_ref: quotaStatus.session_ref || sessionRef,
             state_code: quotaAvailable ? "connected" : "authorized",
-            error_code: quotaAvailable ? "" : (nativeStatus.error_code || "QUOTA_SYNC_FAILED"),
+            quota_sync_status: quotaAvailable ? "success" : "error",
+            error_code: quotaAvailable ? "" : (quotaStatus.error_code || "QUOTA_SYNC_FAILED"),
             error_message: quotaAvailable
               ? ""
-              : (nativeStatus.error_message || copy("settings.token_plan.codex.quota_sync_failed")),
-            ...(quotaAvailable ? { quota: nativeStatus.quota } : {}),
+              : (quotaStatus.error_message || copy("settings.token_plan.codex.quota_sync_failed")),
+            ...(quotaAvailable ? { quota: quotaStatus.quota } : {}),
           };
-          const verified = await verifyConsoleSession(createdSession.id, nativeResult);
-          const accountBindingId = verified.session?.id || createdSession.id;
+          const verified = await verifyConsoleSession(createdSession.id, quotaResult);
           setConsoleSessions((previous) => previous.map((session) =>
             session.id === accountBindingId ? verified.session : session
           ));
@@ -1080,19 +1131,19 @@ export function TokenPlanSection() {
           const saved = await saveTokenPlan({
             ...form,
             used_quota: quotaAvailable
-              ? Number(nativeStatus.quota.used_quota || 0)
+              ? Number(quotaStatus.quota.used_quota || 0)
               : Number(form.used_quota || 0),
             remaining_quota: quotaAvailable
-              ? Number(nativeStatus.quota.remaining_quota || 0)
+              ? Number(quotaStatus.quota.remaining_quota || 0)
               : Number(form.remaining_quota || 0),
             total_quota: Number(selectedPlan?.total_quota || form.total_quota || 0),
             total_quota_display: selectedPlan?.total_quota_display || form.total_quota_display || "",
             quota_windows: quotaAvailable
-              ? (nativeStatus.quota.quota_windows || [])
+              ? (quotaStatus.quota.quota_windows || [])
               : (form.quota_windows || []),
             expires_at: form.expires_at || "",
             provider_reported_at: quotaAvailable
-              ? (nativeStatus.quota.provider_reported_at || now)
+              ? (quotaStatus.quota.provider_reported_at || now)
               : (form.provider_reported_at || ""),
             detection_method: "official_account",
             detection_config: {
@@ -1106,8 +1157,8 @@ export function TokenPlanSection() {
             sync_status: quotaAvailable ? "success" : "failed",
             last_synced_at: quotaAvailable ? now : (form.last_synced_at || ""),
             last_sync_attempt_at: now,
-            last_error_code: nativeResult.error_code,
-            last_error_message: nativeResult.error_message,
+            last_error_code: quotaResult.error_code,
+            last_error_message: quotaResult.error_message,
           });
           setRecords(normalizeRecords(saved.records));
           setForm(EMPTY_FORM);
@@ -1122,10 +1173,12 @@ export function TokenPlanSection() {
         if (["unsupported", "failed"].includes(nativeStatus?.state_code)) {
           throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.verify_error"));
         }
+        if (Date.now() >= deadline) {
+          throw new Error(copy("settings.token_plan.codex.connect_timeout"));
+        }
         nativeStatus = null;
         await wait(XIAOMI_AUTH_POLL_MS);
       }
-      throw new Error(copy("settings.token_plan.codex.connect_timeout"));
     } catch (err) {
       if (createdSession && !authorizationReady) {
         await deleteCodexConsoleSession(sessionRef).catch(() => {});
@@ -1965,11 +2018,39 @@ export function TokenPlanSection() {
         recordConsoleSession.status === "connected" &&
         recordConsoleSession.session_ref
       ) {
+        let nativeStatus;
         try {
-          const nativeStatus = await verifyCodexConsoleSession(recordConsoleSession.session_ref);
-          if (nativeStatus?.quota) {
+          nativeStatus = await syncCodexConsoleQuota(recordConsoleSession.session_ref);
+        } catch (err) {
+          nativeStatus = {
+            connected: true,
+            authorized: true,
+            session_ref: recordConsoleSession.session_ref,
+            state_code: "authorized",
+            quota_sync_status: "error",
+            error_code: "QUOTA_SYNC_FAILED",
+            error_message: err?.message || copy("settings.token_plan.codex.quota_sync_failed"),
+          };
+        }
+        const now = new Date().toISOString();
+        const quotaAvailable = nativeStatus?.state_code === "connected" && Boolean(nativeStatus?.quota);
+        if (quotaAvailable) {
+          try {
             const catalogPlan = findCatalogPlan(catalog, plan.provider_id, plan.plan_id);
-            await saveTokenPlan({
+            const verified = await verifyConsoleSession(recordConsoleSession.id, {
+              connected: true,
+              authorized: true,
+              session_ref: recordConsoleSession.session_ref,
+              state_code: "connected",
+              quota_sync_status: "success",
+              error_code: "",
+              error_message: "",
+              quota: nativeStatus.quota,
+            });
+            setConsoleSessions((previous) => previous.map((session) =>
+              session.id === recordConsoleSession.id ? verified.session : session
+            ));
+            const result = await saveTokenPlan({
               ...plan,
               used_quota: Number(nativeStatus.quota.used_quota || 0),
               remaining_quota: Number(nativeStatus.quota.remaining_quota || 0),
@@ -1979,21 +2060,48 @@ export function TokenPlanSection() {
               expires_at: plan.expires_at || "",
               sync_status: "success",
               last_synced_at: new Date().toISOString(),
-              last_sync_attempt_at: new Date().toISOString(),
+              last_sync_attempt_at: now,
               last_error_code: "",
               last_error_message: "",
               last_refresh_status: "success",
               last_refresh_error: "",
-              last_refresh_at: new Date().toISOString(),
+              last_refresh_at: now,
             });
-            const plansResult = await getTokenPlans();
-            setRecords(normalizeRecords(plansResult?.records));
-            setRefreshingId("");
+            setRecords(normalizeRecords(result?.records));
+            return;
+          } catch (err) {
+            setError(err?.message || copy("settings.token_plan.refresh_failed"));
             return;
           }
-        } catch (_) {
-          // Native fetch failed; fall through to backend refresh
         }
+        const reauthRequired = nativeStatus?.state_code === "reauth_required";
+        if (recordConsoleSession.id) {
+          const verified = await verifyConsoleSession(recordConsoleSession.id, nativeStatus).catch(() => null);
+          if (verified?.session) {
+            setConsoleSessions((previous) => previous.map((session) =>
+              session.id === recordConsoleSession.id ? verified.session : session
+            ));
+          }
+        }
+        const errorCode = nativeStatus?.error_code
+          || (reauthRequired ? "REAUTH_REQUIRED" : "QUOTA_SYNC_FAILED");
+        const errorMessage = nativeStatus?.error_message
+          || (reauthRequired
+            ? copy("settings.token_plan.codex_quota.reauth")
+            : copy("settings.token_plan.codex.quota_sync_failed"));
+        const result = await saveTokenPlan({
+          ...plan,
+          sync_status: reauthRequired ? "reauth_required" : "failed",
+          last_sync_attempt_at: now,
+          last_error_code: errorCode,
+          last_error_message: errorMessage,
+          last_refresh_status: "failed",
+          last_refresh_error: errorMessage,
+          last_refresh_at: now,
+        });
+        setRecords(normalizeRecords(result?.records));
+        setError(errorMessage);
+        return;
       }
       const webviewQuotaProviders = [
         { id: "claude", verify: verifyClaudeConsoleSession, skip: isClaudeRoutingMode(plan?.provider_id, plan?.plan_id, plan?.detection_config?.official_account?.claude_account_mode) },

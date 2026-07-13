@@ -72,6 +72,7 @@ pub fn run() {
             claude_session::delete_claude_console_session,
             codex_session::open_codex_console_login,
             codex_session::verify_codex_console_session,
+            codex_session::sync_codex_console_quota,
             codex_session::delete_codex_console_session,
             cursor_session::open_cursor_console_login,
             cursor_session::verify_cursor_console_session,

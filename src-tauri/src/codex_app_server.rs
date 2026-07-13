@@ -19,6 +19,7 @@ use std::os::windows::process::CommandExt;
 const INITIALIZE_METHOD: &str = "initialize";
 const INITIALIZED_METHOD: &str = "initialized";
 const ACCOUNT_READ_METHOD: &str = "account/read";
+const ACCOUNT_UPDATED_METHOD: &str = "account/updated";
 const LOGIN_START_METHOD: &str = "account/login/start";
 const LOGIN_COMPLETED_METHOD: &str = "account/login/completed";
 const LOGOUT_METHOD: &str = "account/logout";
@@ -73,11 +74,12 @@ enum ResponsePayload {
 enum IncomingMessage {
     Response { id: u64, payload: ResponsePayload },
     LoginCompleted { login_id: String, success: bool },
+    AccountUpdated { authorized: bool },
 }
 
 pub struct AppServerClient {
     child: Child,
-    stdin: ChildStdin,
+    stdin: Option<ChildStdin>,
     incoming: Arc<Mutex<VecDeque<IncomingMessage>>>,
     reader: Option<JoinHandle<()>>,
     next_id: u64,
@@ -96,29 +98,6 @@ pub fn validate_auth_url(url: &str) -> bool {
     ["chatgpt.com", "openai.com"]
         .iter()
         .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
-}
-
-pub fn parse_login_completed(message: &Value, expected_login_id: &str) -> LoginCompletion {
-    if message.get("method").and_then(Value::as_str) != Some(LOGIN_COMPLETED_METHOD) {
-        return LoginCompletion::Pending;
-    }
-    let params = message.get("params").and_then(Value::as_object);
-    if params
-        .and_then(|value| value.get("loginId"))
-        .and_then(Value::as_str)
-        != Some(expected_login_id)
-    {
-        return LoginCompletion::Pending;
-    }
-    if params
-        .and_then(|value| value.get("success"))
-        .and_then(Value::as_bool)
-        == Some(true)
-    {
-        LoginCompletion::Succeeded
-    } else {
-        LoginCompletion::Failed
-    }
 }
 
 pub fn parse_login_start_response(message: &Value) -> Result<BrowserLoginStart, String> {
@@ -153,6 +132,23 @@ pub fn parse_rate_limits_response(message: &Value) -> Result<SanitizedRateLimits
     let limits = message
         .pointer("/result/rateLimits")
         .and_then(Value::as_object)
+        .or_else(|| {
+            message
+                .pointer("/result/rateLimitsByLimitId/codex")
+                .and_then(Value::as_object)
+        })
+        .or_else(|| {
+            message
+                .pointer("/result/rateLimitsByLimitId")
+                .and_then(Value::as_object)
+                .and_then(|buckets| {
+                    buckets.values().find_map(|bucket| {
+                        let object = bucket.as_object()?;
+                        (object.get("limitId").and_then(Value::as_str) == Some("codex"))
+                            .then_some(object)
+                    })
+                })
+        })
         .ok_or_else(|| "Codex rate-limit response is missing rateLimits".to_string())?;
     let mut windows = Vec::new();
     for name in ["primary", "secondary"] {
@@ -197,6 +193,11 @@ fn classify_incoming(message: Value) -> Option<IncomingMessage> {
             .unwrap_or(false);
         return Some(IncomingMessage::LoginCompleted { login_id, success });
     }
+    if message.get("method").and_then(Value::as_str) == Some(ACCOUNT_UPDATED_METHOD) {
+        let authorized =
+            message.pointer("/params/authMode").and_then(Value::as_str) == Some("chatgpt");
+        return Some(IncomingMessage::AccountUpdated { authorized });
+    }
 
     let id = message.get("id").and_then(Value::as_u64)?;
     let payload = if message.get("error").is_some() {
@@ -206,7 +207,9 @@ fn classify_incoming(message: Value) -> Option<IncomingMessage> {
             Ok(result) => ResponsePayload::LoginStarted(result),
             Err(_) => ResponsePayload::Rejected,
         }
-    } else if message.pointer("/result/rateLimits").is_some() {
+    } else if message.pointer("/result/rateLimits").is_some()
+        || message.pointer("/result/rateLimitsByLimitId").is_some()
+    {
         match parse_rate_limits_response(&message) {
             Ok(result) => ResponsePayload::RateLimits(result),
             Err(_) => ResponsePayload::Rejected,
@@ -282,15 +285,11 @@ fn build_command(executable: &CodexExecutable) -> Result<Command, String> {
         }
         CodexExecutable::CmdScript(path) => {
             let path_text = path.to_string_lossy();
-            if path_text.contains(['"', '%', '\r', '\n']) {
+            if path_text.contains(['\r', '\n']) {
                 return Err("Codex command path contains unsupported characters".to_string());
             }
-            let mut command = Command::new("cmd.exe");
-            command
-                .arg("/d")
-                .arg("/s")
-                .arg("/c")
-                .arg(format!("\"{path_text}\" app-server"));
+            let mut command = Command::new(path);
+            command.arg("app-server");
             command
         }
     };
@@ -345,7 +344,7 @@ impl AppServerClient {
 
         let mut client = Self {
             child,
-            stdin,
+            stdin: Some(stdin),
             incoming,
             reader: Some(reader),
             next_id: 1,
@@ -367,8 +366,11 @@ impl AppServerClient {
         Ok(client)
     }
 
-    pub fn read_account_authorized(&mut self) -> Result<bool, String> {
-        match self.request(ACCOUNT_READ_METHOD, Some(json!({ "refreshToken": false })))? {
+    pub fn read_account_authorized(&mut self, refresh_token: bool) -> Result<bool, String> {
+        match self.request(
+            ACCOUNT_READ_METHOD,
+            Some(json!({ "refreshToken": refresh_token })),
+        )? {
             ResponsePayload::AccountAuthorized(authorized) => Ok(authorized),
             _ => Err("Codex account state is unavailable".to_string()),
         }
@@ -408,6 +410,27 @@ impl AppServerClient {
         } else {
             LoginCompletion::Failed
         }
+    }
+
+    pub fn poll_account_update(&mut self) -> Option<bool> {
+        let Ok(mut queue) = self.incoming.lock() else {
+            return None;
+        };
+        let mut latest = None;
+        let mut index = 0;
+        while index < queue.len() {
+            if matches!(
+                queue.get(index),
+                Some(IncomingMessage::AccountUpdated { .. })
+            ) {
+                if let Some(IncomingMessage::AccountUpdated { authorized }) = queue.remove(index) {
+                    latest = Some(authorized);
+                }
+            } else {
+                index += 1;
+            }
+        }
+        latest
     }
 
     pub fn read_rate_limits(&mut self) -> Result<SanitizedRateLimits, String> {
@@ -463,17 +486,22 @@ impl AppServerClient {
     }
 
     fn write_message(&mut self, message: &Value) -> Result<(), String> {
-        serde_json::to_writer(&mut self.stdin, message)
+        let stdin = self
+            .stdin
+            .as_mut()
+            .ok_or_else(|| "Codex app-server stdin is closed".to_string())?;
+        serde_json::to_writer(&mut *stdin, message)
             .map_err(|_| "Unable to encode a Codex app-server request".to_string())?;
-        self.stdin
+        stdin
             .write_all(b"\n")
-            .and_then(|_| self.stdin.flush())
+            .and_then(|_| stdin.flush())
             .map_err(|_| "Unable to write to the Codex app-server".to_string())
     }
 }
 
 impl Drop for AppServerClient {
     fn drop(&mut self) {
+        drop(self.stdin.take());
         let _ = self.child.kill();
         let _ = self.child.wait();
         if let Some(reader) = self.reader.take() {
@@ -505,14 +533,11 @@ mod tests {
             "method": "account/login/completed",
             "params": { "loginId": "login-1", "success": true }
         });
-        assert_eq!(
-            parse_login_completed(&message, "login-1"),
-            LoginCompletion::Succeeded
-        );
-        assert_eq!(
-            parse_login_completed(&message, "different-login"),
-            LoginCompletion::Pending
-        );
+        assert!(matches!(
+            classify_incoming(message),
+            Some(IncomingMessage::LoginCompleted { login_id, success: true })
+                if login_id == "login-1"
+        ));
     }
 
     #[test]
@@ -542,6 +567,47 @@ mod tests {
     }
 
     #[test]
+    fn parses_codex_bucket_from_rate_limits_by_limit_id() {
+        let message = json!({
+            "id": 7,
+            "result": {
+                "rateLimits": null,
+                "rateLimitsByLimitId": {
+                    "codex": {
+                        "limitId": "codex",
+                        "primary": {
+                            "usedPercent": 20,
+                            "windowDurationMins": 300,
+                            "resetsAt": 1783900800
+                        },
+                        "secondary": {
+                            "usedPercent": 45,
+                            "windowDurationMins": 10080,
+                            "resetsAt": 1784505600
+                        }
+                    }
+                }
+            }
+        });
+        let quota = parse_rate_limits_response(&message).expect("Codex bucket should parse");
+        assert_eq!(quota.windows.len(), 2);
+        assert_eq!(quota.windows[0].kind, "rolling_5_hour");
+        assert_eq!(quota.windows[1].kind, "rolling_weekly");
+    }
+
+    #[test]
+    fn production_classifier_tracks_account_logout_notifications() {
+        let message = json!({
+            "method": "account/updated",
+            "params": { "authMode": null }
+        });
+        assert!(matches!(
+            classify_incoming(message),
+            Some(IncomingMessage::AccountUpdated { authorized: false })
+        ));
+    }
+
+    #[test]
     fn resolves_windows_script_from_path_with_spaces() {
         let directory = PathBuf::from(r"C:\Program Files\OpenAI");
         let expected = directory.join("codex.cmd");
@@ -556,5 +622,33 @@ mod tests {
         let resolved =
             resolve_codex_executable_with(&[PathBuf::from(r"C:\missing")], None, true, |_| false);
         assert_eq!(resolved, None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cmd_script_with_spaces_receives_the_fixed_app_server_argument() {
+        let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("codex command fixture {}", std::process::id()));
+        std::fs::create_dir_all(&fixture_dir).expect("fixture directory should be created");
+        let script = fixture_dir.join("codex.cmd");
+        std::fs::write(
+            &script,
+            "@echo off\r\n> received.txt echo %~1\r\nif \"%~1\"==\"app-server\" exit /b 0\r\nexit /b 17\r\n",
+        )
+        .expect("fixture script should be written");
+
+        let mut command =
+            build_command(&CodexExecutable::CmdScript(script)).expect("command should build");
+        command.current_dir(&fixture_dir);
+        let status = command.status().expect("fixture command should start");
+        let received = std::fs::read_to_string(fixture_dir.join("received.txt"))
+            .unwrap_or_else(|_| "<script did not start>".to_string());
+        let _ = std::fs::remove_dir_all(&fixture_dir);
+        assert!(
+            status.success(),
+            "cmd script did not receive app-server; exit={:?}, received={received:?}",
+            status.code()
+        );
     }
 }

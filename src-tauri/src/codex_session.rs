@@ -216,32 +216,52 @@ pub fn map_rate_limits_to_quota(
     })
 }
 
-fn authorized_status(session_ref: &str, client: &mut AppServerClient) -> CodexSessionStatus {
-    match client
-        .read_rate_limits()
-        .and_then(|limits| map_rate_limits_to_quota(&limits))
-    {
-        Ok(quota) => CodexSessionStatus {
-            connected: true,
-            authorized: true,
-            session_ref: session_ref.to_string(),
-            state_code: SessionStateCode::Connected,
-            quota_sync_status: QuotaSyncStatus::Success,
-            error_code: String::new(),
-            error_message: String::new(),
-            quota: Some(quota),
-        },
-        Err(_) => CodexSessionStatus {
-            connected: true,
-            authorized: true,
-            session_ref: session_ref.to_string(),
-            state_code: SessionStateCode::Authorized,
-            quota_sync_status: QuotaSyncStatus::Error,
-            error_code: "QUOTA_SYNC_FAILED".to_string(),
-            error_message: "授权已完成，但额度同步暂时失败，可稍后重试。".to_string(),
-            quota: None,
-        },
+fn authorized_status(session_ref: &str) -> CodexSessionStatus {
+    CodexSessionStatus {
+        connected: true,
+        authorized: true,
+        session_ref: session_ref.to_string(),
+        state_code: SessionStateCode::Authorized,
+        quota_sync_status: QuotaSyncStatus::Idle,
+        error_code: String::new(),
+        error_message: String::new(),
+        quota: None,
     }
+}
+
+fn quota_status(session_ref: &str, quota: CodexQuotaDto) -> CodexSessionStatus {
+    CodexSessionStatus {
+        connected: true,
+        authorized: true,
+        session_ref: session_ref.to_string(),
+        state_code: SessionStateCode::Connected,
+        quota_sync_status: QuotaSyncStatus::Success,
+        error_code: String::new(),
+        error_message: String::new(),
+        quota: Some(quota),
+    }
+}
+
+fn quota_error_status(session_ref: &str) -> CodexSessionStatus {
+    CodexSessionStatus {
+        connected: true,
+        authorized: true,
+        session_ref: session_ref.to_string(),
+        state_code: SessionStateCode::Authorized,
+        quota_sync_status: QuotaSyncStatus::Error,
+        error_code: "QUOTA_SYNC_FAILED".to_string(),
+        error_message: "授权已完成，但额度同步暂时失败，可稍后重试。".to_string(),
+        quota: None,
+    }
+}
+
+fn reauth_status(session_ref: &str) -> CodexSessionStatus {
+    basic_status(
+        session_ref,
+        SessionStateCode::ReauthRequired,
+        "REAUTH_REQUIRED",
+        "Codex 官网授权已失效，请重新连接。",
+    )
 }
 
 fn open_flow(
@@ -259,15 +279,11 @@ fn open_flow(
         .client
         .as_mut()
         .ok_or_else(|| "Codex app-server is unavailable".to_string())?
-        .read_account_authorized()?;
+        .read_account_authorized(true)?;
     if already_authorized {
         state.authorized = true;
         state.login_id = None;
-        let status = authorized_status(
-            session_ref,
-            state.client.as_mut().expect("client initialized above"),
-        );
-        return Ok((status, None));
+        return Ok((authorized_status(session_ref), None));
     }
 
     let started = state
@@ -296,6 +312,22 @@ fn verify_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus,
         .map_err(|_| "Codex session state is unavailable".to_string())?;
     let restarted = ensure_client(&mut state, session_ref, &storage)?;
 
+    if let Some(authorized) = state
+        .client
+        .as_mut()
+        .expect("client initialized above")
+        .poll_account_update()
+    {
+        if authorized {
+            state.authorized = true;
+            state.login_id = None;
+        } else if state.authorized {
+            state.authorized = false;
+            state.login_id = None;
+            return Ok(reauth_status(session_ref));
+        }
+    }
+
     if let Some(login_id) = state.login_id.clone() {
         match state
             .client
@@ -317,8 +349,19 @@ fn verify_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus,
                     "OpenAI 官方授权未完成，请重新连接。",
                 ));
             }
-            LoginCompletion::Pending => {}
+            LoginCompletion::Pending => {
+                return Ok(basic_status(
+                    session_ref,
+                    SessionStateCode::AwaitingVerification,
+                    "AWAITING_VERIFICATION",
+                    "等待 OpenAI 官方授权确认。",
+                ));
+            }
         }
+    }
+
+    if state.authorized {
+        return Ok(authorized_status(session_ref));
     }
 
     if !state.authorized {
@@ -326,7 +369,7 @@ fn verify_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus,
             .client
             .as_mut()
             .expect("client initialized above")
-            .read_account_authorized()?;
+            .read_account_authorized(true)?;
         if account_authorized {
             state.authorized = true;
             state.login_id = None;
@@ -347,10 +390,59 @@ fn verify_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus,
         }
     }
 
-    Ok(authorized_status(
-        session_ref,
-        state.client.as_mut().expect("client initialized above"),
-    ))
+    Ok(authorized_status(session_ref))
+}
+
+fn sync_quota_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
+    let storage = account_dir(app, session_ref)?;
+    let managed = app.state::<Mutex<CodexSessionState>>();
+    let mut state = managed
+        .lock()
+        .map_err(|_| "Codex session state is unavailable".to_string())?;
+    ensure_client(&mut state, session_ref, &storage)?;
+
+    if let Some(authorized) = state
+        .client
+        .as_mut()
+        .expect("client initialized above")
+        .poll_account_update()
+    {
+        state.authorized = authorized;
+    }
+    if !state.authorized {
+        state.authorized = state
+            .client
+            .as_mut()
+            .expect("client initialized above")
+            .read_account_authorized(true)?;
+    }
+    if !state.authorized {
+        return Ok(reauth_status(session_ref));
+    }
+
+    let rate_limits = state
+        .client
+        .as_mut()
+        .expect("client initialized above")
+        .read_rate_limits();
+    match rate_limits.and_then(|limits| map_rate_limits_to_quota(&limits)) {
+        Ok(quota) => Ok(quota_status(session_ref, quota)),
+        Err(_) => {
+            if matches!(
+                state
+                    .client
+                    .as_mut()
+                    .expect("client initialized above")
+                    .read_account_authorized(true),
+                Ok(false)
+            ) {
+                state.authorized = false;
+                Ok(reauth_status(session_ref))
+            } else {
+                Ok(quota_error_status(session_ref))
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -383,6 +475,17 @@ pub async fn verify_codex_console_session(
     tauri::async_runtime::spawn_blocking(move || verify_flow(&app, &session_ref))
         .await
         .map_err(|_| "Codex verification task failed".to_string())?
+}
+
+#[tauri::command]
+pub async fn sync_codex_console_quota(
+    app: AppHandle,
+    session_ref: String,
+) -> Result<CodexSessionStatus, String> {
+    validate_session_ref(&session_ref).map_err(str::to_string)?;
+    tauri::async_runtime::spawn_blocking(move || sync_quota_flow(&app, &session_ref))
+        .await
+        .map_err(|_| "Codex quota synchronization task failed".to_string())?
 }
 
 #[tauri::command]

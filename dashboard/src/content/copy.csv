@@ -1357,7 +1357,7 @@ settings.token_plan.notes_placeholder,ui,SettingsPage,TokenPlanSection,notes_pla
 settings.token_plan.codex.official_desc,ui,SettingsPage,TokenPlanSection,codex_official_desc,"通过 OpenAI 官方 Codex 组件在系统默认浏览器完成 ChatGPT 授权；浏览器已有登录时可直接确认，授权后自动返回并同步 5 小时与 7 天额度。",,active
 settings.token_plan.codex.connect_account,ui,SettingsPage,TokenPlanSection,codex_connect_account,"连接 ChatGPT / Codex 官网账号",,active
 settings.token_plan.codex.account_display_name,ui,SettingsPage,TokenPlanSection,codex_account_display_name,"ChatGPT / Codex 官网账号",,active
-settings.token_plan.codex.login_started_desc,ui,SettingsPage,TokenPlanSection,codex_login_started_desc,"系统默认浏览器已打开 OpenAI 官方授权页；确认后 Token Eyes 会自动完成连接，无需返回手动关闭窗口。",,active
+settings.token_plan.codex.login_started_desc,ui,SettingsPage,TokenPlanSection,codex_login_started_desc,"系统默认浏览器已打开 OpenAI 官方授权页；确认后 Token Eyes 会自动识别授权结果。授权页标签是否自动关闭由浏览器与 OpenAI 官方页面决定，不影响连接。",,active
 settings.token_plan.codex.connect_timeout,ui,SettingsPage,TokenPlanSection,codex_connect_timeout,"等待 ChatGPT 登录超时，请重试。",,active
 settings.token_plan.codex.quota_sync_failed,ui,SettingsPage,TokenPlanSection,codex_quota_sync_failed,"授权已完成，但额度同步暂时失败，可稍后重试。",,active
 settings.token_plan.claude.account_mode,ui,SettingsPage,TokenPlanSection,claude_account_mode,"Claude 检测模式",,active

@@ -2775,10 +2775,12 @@ function createLocalApiHandler({
     )) {
       session.status = "connected";
       session.last_verified_at = new Date().toISOString();
-      session.last_error_code = nativeState === "authorized"
+      const quotaSyncPending = nativeState === "authorized"
+        && String(native.quota_sync_status || "").trim() === "idle";
+      session.last_error_code = nativeState === "authorized" && !quotaSyncPending
         ? String(native.error_code || "QUOTA_SYNC_FAILED").slice(0, 64)
         : "";
-      session.last_error_message = nativeState === "authorized"
+      session.last_error_message = nativeState === "authorized" && !quotaSyncPending
         ? String(native.error_message || "Authorization completed, but quota sync failed").slice(0, 256)
         : "";
       if (!session.connected_at) {

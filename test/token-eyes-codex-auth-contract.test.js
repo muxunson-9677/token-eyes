@@ -20,6 +20,8 @@ test("Codex auth uses the official app-server and never an embedded WebView", ()
   assert.match(nativeSource, /account\/login\/completed/);
   assert.match(nativeSource, /account\/read/);
   assert.match(nativeSource, /account\/rateLimits\/read/);
+  assert.match(session, /sync_codex_console_quota/);
+  assert.match(read("dashboard/src/lib/api.ts"), /syncCodexConsoleQuota/);
   assert.doesNotMatch(nativeSource, /WebviewWindowBuilder/);
   assert.doesNotMatch(nativeSource, /backend-api\/wham\/usage/);
   assert.doesNotMatch(nativeSource, /document\.cookie|localStorage|sessionStorage/);
