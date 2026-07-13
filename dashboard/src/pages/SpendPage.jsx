@@ -26,6 +26,7 @@ import {
   reconcileVisibleUsageFilters,
   resolveEffectiveUsageSources,
 } from "../lib/spend-provider-visibility.js";
+import { withOtherAiCostSource } from "../lib/cost-sources.js";
 import {
   UsageFiltersProvider,
   useUsageFilters,
@@ -157,6 +158,10 @@ function SpendUsagePageInner({
     }),
     [filterState.sources, filterState.agentIds, visibleProviderIds],
   );
+  const costSources = useMemo(
+    () => withOtherAiCostSource(effectiveUsageSources),
+    [effectiveUsageSources],
+  );
   const {
     setRefreshInterval: dispatchRefreshInterval,
     setAgentIds: dispatchAgentIds,
@@ -274,7 +279,7 @@ function SpendUsagePageInner({
         to,
         timeZone,
         tzOffsetMinutes,
-        sources: effectiveUsageSources,
+        sources: costSources,
       });
       setTotals(recordsResult?.totals || null);
       setLastUpdatedAt(new Date());
@@ -283,7 +288,7 @@ function SpendUsagePageInner({
       // transient backend hiccup doesn't crash the stats panel below.
       console.error("[SpendUsagePage] Failed to load totals:", err);
     }
-  }, [from, to, timeZone, tzOffsetMinutes, visibleProviderIds, effectiveUsageSources]);
+  }, [from, to, timeZone, tzOffsetMinutes, visibleProviderIds, effectiveUsageSources, costSources]);
 
   useEffect(() => {
     fetchTotals();
@@ -453,6 +458,10 @@ function SpendCostPageInner({
     () => normalizeVisibleProviderIds(visibleOrdered),
     [visibleOrdered],
   );
+  const costSources = useMemo(
+    () => withOtherAiCostSource(visibleProviderIds),
+    [visibleProviderIds],
+  );
 
   const { state: filterState, refreshRevision, requestRefresh } = useUsageFilters();
 
@@ -485,7 +494,7 @@ function SpendCostPageInner({
     timeZone,
     tzOffsetMinutes,
     refreshRevision,
-    sources: visibleProviderIds,
+    sources: costSources,
   });
   const {
     tokenPackages,
@@ -591,35 +600,29 @@ function SpendCostPageInner({
             </div>
           </div>
 
-          {visibleProviderIds.length === 0 ? (
-            <div className="mb-6 rounded-lg border border-oai-gray-200 p-4 text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
-              {copy("spend.visibility.empty")}
-            </div>
-          ) : (
-            <CostAccumulation
-              tokenPackages={tokenPackages}
-              apiBillingAccounts={apiBillingAccounts}
-              subscriptionRecords={subscriptionRecords}
-              costSummary={costSummary}
-              loading={costLoading}
-              error={costError}
-              providerApiBalances={providerApiBalances}
-              providerApiRefreshing={providerApiRefreshing}
-              providerApiRefreshingIds={providerApiRefreshingIds}
-              providerApiStale={providerApiStale}
-              providerApiLastUpdatedAt={providerApiLastUpdatedAt}
-              onRefreshAllProviderApis={refreshAllProviderApis}
-              onRefreshOneProviderApi={refreshOneProviderApi}
-              subscriptionFormState={subscriptionFormState}
-              subscriptionFormSaving={subscriptionFormSaving}
-              subscriptionFormError={subscriptionFormError}
-              onAddSubscription={handleAddSubscription}
-              onEditSubscription={handleEditSubscription}
-              onSaveSubscription={handleSaveSubscription}
-              onDeleteSubscription={handleDeleteSubscription}
-              onCancelSubscriptionForm={handleCancelSubscriptionForm}
-            />
-          )}
+          <CostAccumulation
+            tokenPackages={tokenPackages}
+            apiBillingAccounts={apiBillingAccounts}
+            subscriptionRecords={subscriptionRecords}
+            costSummary={costSummary}
+            loading={costLoading}
+            error={costError}
+            providerApiBalances={providerApiBalances}
+            providerApiRefreshing={providerApiRefreshing}
+            providerApiRefreshingIds={providerApiRefreshingIds}
+            providerApiStale={providerApiStale}
+            providerApiLastUpdatedAt={providerApiLastUpdatedAt}
+            onRefreshAllProviderApis={refreshAllProviderApis}
+            onRefreshOneProviderApi={refreshOneProviderApi}
+            subscriptionFormState={subscriptionFormState}
+            subscriptionFormSaving={subscriptionFormSaving}
+            subscriptionFormError={subscriptionFormError}
+            onAddSubscription={handleAddSubscription}
+            onEditSubscription={handleEditSubscription}
+            onSaveSubscription={handleSaveSubscription}
+            onDeleteSubscription={handleDeleteSubscription}
+            onCancelSubscriptionForm={handleCancelSubscriptionForm}
+          />
         </div>
       </main>
     </div>

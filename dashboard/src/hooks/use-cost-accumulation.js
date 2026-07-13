@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getTokenPlans, getSpendRecords, getSpendTimeseries, getApiBillingAccounts } from "../lib/api";
+import { OTHER_AI_SPEND_SOURCE } from "../lib/cost-sources.js";
 
 /**
  * Cost Accumulation data hook (03-cost-billing).
@@ -156,17 +157,19 @@ export function useCostAccumulation({
 
   // Transform spend records into subscription records format
   const subscriptionRecords = useMemo(() => {
-    return filteredSpendRecords.map((record) => ({
-      id: record.id,
-      name: record.plan_label || record.source || "未知",
-      provider: record.source || "未知",
-      cycle: normalizeCycle(record.billing_cycle),
-      amount: record.amount || 0,
-      currency: record.currency || "USD",
-      startedAt: record.start_date || null,
-      renewsAt: record.end_date || null,
-      status: getSubscriptionStatus(record),
-    }));
+    return filteredSpendRecords
+      .filter((record) => String(record.source || "").toLowerCase() !== OTHER_AI_SPEND_SOURCE)
+      .map((record) => ({
+        id: record.id,
+        name: record.plan_label || record.source || "未知",
+        provider: record.source || "未知",
+        cycle: normalizeCycle(record.billing_cycle),
+        amount: record.amount || 0,
+        currency: record.currency || "USD",
+        startedAt: record.start_date || null,
+        renewsAt: record.end_date || null,
+        status: getSubscriptionStatus(record),
+      }));
   }, [filteredSpendRecords]);
 
   // Transform token plans for display

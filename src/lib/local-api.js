@@ -3505,9 +3505,15 @@ function createLocalApiHandler({
     const config = readTrackerConfig();
     const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
     const normalizedRecords = records.map((r) => normalizeSpendRecord(r));
+    const spendSources = Array.isArray(filters.sources)
+      ? new Set(filters.sources.map((source) => String(source).trim().toLowerCase()))
+      : null;
+    const filteredSpendRecords = spendSources
+      ? normalizedRecords.filter((record) => spendSources.has(String(record.source || "").toLowerCase()))
+      : normalizedRecords;
 
     const subAllocations = [];
-    for (const record of normalizedRecords) {
+    for (const record of filteredSpendRecords) {
       const allocations = allocateSubscriptionCostToBuckets(record, fromDate, toDate, bucket, timeZoneContext, usdToCny);
       subAllocations.push(...allocations);
     }
@@ -3631,7 +3637,7 @@ function createLocalApiHandler({
     totals.subscription_usd = totals.subscription_cost_usd;
     try {
       const lifetimeSummary = summarizeSpendRecords(
-        normalizedRecords, fromStr, toStr, timeZoneContext, filters.sources,
+        filteredSpendRecords, fromStr, toStr, timeZoneContext, filters.sources,
       );
       totals.lifetime_combined_usd = lifetimeSummary.totals.lifetime_combined_usd;
       totals.lifetime_api_usd = lifetimeSummary.totals.lifetime_api_usd;
