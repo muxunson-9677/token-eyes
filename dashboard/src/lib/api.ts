@@ -1366,6 +1366,14 @@ export async function syncCodexConsoleQuota(sessionRef: string): Promise<CodexSe
   return invoke("sync_codex_console_quota", { sessionRef });
 }
 
+export async function discardCodexPendingSession(sessionRef: string): Promise<boolean> {
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    throw new Error("Tauri runtime not available");
+  }
+  return invoke("discard_codex_pending_session", { sessionRef });
+}
+
 export async function deleteCodexConsoleSession(sessionRef: string): Promise<void> {
   const invoke = getTauriInvoke();
   if (!invoke) {

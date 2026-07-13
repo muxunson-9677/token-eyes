@@ -445,6 +445,58 @@ fn sync_quota_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionSta
     }
 }
 
+fn pending_cleanup_allowed(account_check: &Result<bool, String>) -> bool {
+    matches!(account_check, Ok(false))
+}
+
+fn discard_pending_flow(app: &AppHandle, session_ref: &str) -> Result<bool, String> {
+    let storage = account_dir(app, session_ref)?;
+    let managed = app.state::<Mutex<CodexSessionState>>();
+    let mut state = managed
+        .lock()
+        .map_err(|_| "Codex session state is unavailable".to_string())?;
+    let active = state.active_session_ref.as_deref() == Some(session_ref);
+    let mut client = if active { state.client.take() } else { None };
+    if client.is_none() && storage.exists() {
+        client = AppServerClient::start(&storage).ok();
+    }
+    let Some(mut client) = client else {
+        if active && !storage.exists() {
+            state.active_session_ref = None;
+            state.account_dir = None;
+            state.login_id = None;
+            state.authorized = false;
+        }
+        return Ok(!storage.exists());
+    };
+
+    let account_check = client.read_account_authorized(true);
+    if !pending_cleanup_allowed(&account_check) {
+        if active {
+            state.authorized = account_check == Ok(true);
+            if state.authorized {
+                state.login_id = None;
+            }
+            state.client = Some(client);
+        }
+        return Ok(false);
+    }
+
+    if active {
+        state.active_session_ref = None;
+        state.account_dir = None;
+        state.login_id = None;
+        state.authorized = false;
+    }
+    drop(state);
+    drop(client);
+    if storage.exists() {
+        std::fs::remove_dir_all(&storage)
+            .map_err(|_| "Unable to remove the pending Token Eyes Codex binding".to_string())?;
+    }
+    Ok(true)
+}
+
 #[tauri::command]
 pub async fn open_codex_console_login(
     app: AppHandle,
@@ -486,6 +538,17 @@ pub async fn sync_codex_console_quota(
     tauri::async_runtime::spawn_blocking(move || sync_quota_flow(&app, &session_ref))
         .await
         .map_err(|_| "Codex quota synchronization task failed".to_string())?
+}
+
+#[tauri::command]
+pub async fn discard_codex_pending_session(
+    app: AppHandle,
+    session_ref: String,
+) -> Result<bool, String> {
+    validate_session_ref(&session_ref).map_err(str::to_string)?;
+    tauri::async_runtime::spawn_blocking(move || discard_pending_flow(&app, &session_ref))
+        .await
+        .map_err(|_| "Codex pending-session cleanup task failed".to_string())?
 }
 
 #[tauri::command]
@@ -605,5 +668,14 @@ mod tests {
         ] {
             assert!(!serialized.contains(forbidden));
         }
+    }
+
+    #[test]
+    fn pending_cleanup_requires_a_confirmed_unauthorized_account() {
+        assert!(pending_cleanup_allowed(&Ok(false)));
+        assert!(!pending_cleanup_allowed(&Ok(true)));
+        assert!(!pending_cleanup_allowed(&Err(
+            "account check failed".to_string()
+        )));
     }
 }

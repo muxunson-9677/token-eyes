@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TokenPlanSection } from "./TokenPlanSection.jsx";
-import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, deleteCodexConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, discardCodexPendingSession, deleteCodexConsoleSession, saveTokenPlanSecret } from "../../lib/api";
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { copy } from "../../lib/copy";
 
@@ -26,6 +26,7 @@ vi.mock("../../lib/api", () => ({
   openCodexConsoleLogin: vi.fn(),
   verifyCodexConsoleSession: vi.fn(),
   syncCodexConsoleQuota: vi.fn(),
+  discardCodexPendingSession: vi.fn(),
   deleteCodexConsoleSession: vi.fn(),
   openClaudeConsoleLogin: vi.fn(),
   verifyClaudeConsoleSession: vi.fn(),
@@ -106,6 +107,7 @@ beforeEach(() => {
   deleteConsoleSession.mockResolvedValue({ ok: true });
   deleteXiaomiMimoConsoleSession.mockResolvedValue(undefined);
   deleteCodexConsoleSession.mockResolvedValue(undefined);
+  discardCodexPendingSession.mockResolvedValue(true);
   verifyConsoleSession.mockImplementation(async (_id, nativeResult) => ({
     ok: true,
     session: makeXiaomiSession({
@@ -2084,6 +2086,8 @@ it("Codex system browser reuses an authorized binding, saves quota, and keeps th
   const saved = saveTokenPlan.mock.calls[0][0];
   expect(saved.sync_status).toBe("success");
   expect(saved.quota_windows).toHaveLength(2);
+  expect(saved.refresh_enabled).toBe(false);
+  expect(saved.refresh_method).toBe("manual");
   expect(verifyCodexConsoleSession).not.toHaveBeenCalled();
   expect(syncCodexConsoleQuota).toHaveBeenCalledWith(expect.stringContaining("token-plan/codex/session/"));
   expect(verifyConsoleSession).toHaveBeenNthCalledWith(1, "codex-session-id", expect.objectContaining({
@@ -2186,6 +2190,28 @@ it("Codex system browser completes authorization even when quota sync fails", as
   expect(syncCodexConsoleQuota).toHaveBeenCalledTimes(1);
   expect(deleteCodexConsoleSession).not.toHaveBeenCalled();
   expect(deleteConsoleSession).not.toHaveBeenCalled();
+});
+
+it("Codex failed cleanup preserves a binding when native authorization may have completed", async () => {
+  mockCodexCatalog();
+  const user = userEvent.setup();
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeCodexSession({ id: "codex-session-id", session_ref: params.session_ref }),
+    sessions: [makeCodexSession({ id: "codex-session-id", session_ref: params.session_ref })],
+  }));
+  openCodexConsoleLogin.mockRejectedValue(new Error("authorization result arrived at timeout"));
+  discardCodexPendingSession.mockResolvedValue(false);
+
+  render(<TokenPlanSection />);
+  await openCodexOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-codex"));
+  });
+
+  await waitFor(() => expect(discardCodexPendingSession).toHaveBeenCalledTimes(1));
+  expect(deleteConsoleSession).not.toHaveBeenCalled();
+  expect(deleteCodexConsoleSession).not.toHaveBeenCalled();
+  expect(screen.getByText("authorization result arrived at timeout")).toBeInTheDocument();
 });
 
 it("Codex connected refresh keeps quota and never falls back to the legacy adapter on sync failure", async () => {

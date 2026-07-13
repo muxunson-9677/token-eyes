@@ -19,6 +19,7 @@ import {
   openCodexConsoleLogin,
   verifyCodexConsoleSession,
   syncCodexConsoleQuota,
+  discardCodexPendingSession,
   deleteCodexConsoleSession,
   openClaudeConsoleLogin,
   verifyClaudeConsoleSession,
@@ -1130,6 +1131,8 @@ export function TokenPlanSection() {
           const now = new Date().toISOString();
           const saved = await saveTokenPlan({
             ...form,
+            refresh_enabled: false,
+            refresh_method: "manual",
             used_quota: quotaAvailable
               ? Number(quotaStatus.quota.used_quota || 0)
               : Number(form.used_quota || 0),
@@ -1181,9 +1184,11 @@ export function TokenPlanSection() {
       }
     } catch (err) {
       if (createdSession && !authorizationReady) {
-        await deleteCodexConsoleSession(sessionRef).catch(() => {});
-        await deleteConsoleSession(createdSession.id).catch(() => {});
-        setConsoleSessions((previous) => previous.filter((session) => session.id !== createdSession.id));
+        const discarded = await discardCodexPendingSession(sessionRef).catch(() => false);
+        if (discarded) {
+          await deleteConsoleSession(createdSession.id).catch(() => {});
+          setConsoleSessions((previous) => previous.filter((session) => session.id !== createdSession.id));
+        }
       }
       setConsoleSessionError(err?.message || copy("settings.token_plan.console_session.connect_error"));
     } finally {
@@ -1780,9 +1785,12 @@ export function TokenPlanSection() {
             form.detection_config?.official_account?.claude_account_mode,
           )
         ) {
-          payload.refresh_enabled = true;
-          payload.refresh_method = "official_api";
-          payload.refresh_interval_minutes = 5;
+          const nativeOnlyCodexSync = form.provider_id === "codex";
+          payload.refresh_enabled = !nativeOnlyCodexSync;
+          payload.refresh_method = nativeOnlyCodexSync ? "manual" : "official_api";
+          if (!nativeOnlyCodexSync) {
+            payload.refresh_interval_minutes = 5;
+          }
         } else {
           payload.refresh_enabled = false;
           payload.refresh_method = "manual";
