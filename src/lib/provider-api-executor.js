@@ -21,6 +21,12 @@
 
 const https = require("node:https");
 const http = require("node:http");
+const {
+  getCredentialRedactions,
+  parseAccessKeyCredential,
+  signAliyunRpcRequest,
+  signVolcengineRequest,
+} = require("./provider-api-signing");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,6 +108,7 @@ const SECRET_QUERY_PARAMS = new Set([
   "refresh_token", "refreshtoken",
   "password", "passwd",
   "private_key", "privatekey",
+  "accesskeyid", "signature",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -399,10 +406,13 @@ function validateRedirectTarget(redirectUrl, options = {}) {
 async function executeFinancialRequest(config, secret, options = {}) {
   const timeoutMs = Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS;
   const maxResponseBytes = Number(options.maxResponseBytes) || DEFAULT_MAX_RESPONSE_BYTES;
-  const maxRedirects = Number(options.maxRedirects) || DEFAULT_MAX_REDIRECTS;
+  const configuredMaxRedirects = Number(options.maxRedirects);
+  const maxRedirects = Number.isInteger(configuredMaxRedirects) && configuredMaxRedirects >= 0
+    ? configuredMaxRedirects
+    : DEFAULT_MAX_REDIRECTS;
   const testMode = Boolean(options.testMode);
 
-  const requestUrl = String(config?.requestUrl || "").trim();
+  let requestUrl = String(config?.requestUrl || "").trim();
   if (!requestUrl) {
     return { ok: false, error_code: "invalid_config", error: "请求地址未配置" };
   }
@@ -459,8 +469,27 @@ async function executeFinancialRequest(config, secret, options = {}) {
   // 大小写不敏感：集合统一存小写，比较时也对 Header 名转小写。
   const sensitiveHeaderNames = new Set(["authorization", "cookie"]);
   let configuredAuthHeaderName = "";
+  let signedRequest = false;
 
-  if (secret) {
+  if (authType === "aliyun_rpc" || authType === "volcengine_hmac") {
+    if (method !== "GET") {
+      return { ok: false, error_code: "invalid_config", error: "签名余额接口仅支持 GET" };
+    }
+    const credentials = parseAccessKeyCredential(secret);
+    if (!credentials) {
+      return { ok: false, error_code: "invalid_config", error: "AccessKey 凭据格式无效" };
+    }
+    try {
+      const signed = authType === "aliyun_rpc"
+        ? signAliyunRpcRequest(requestUrl, credentials, options.signing)
+        : signVolcengineRequest(requestUrl, credentials, options.signing);
+      requestUrl = signed.url;
+      Object.assign(headers, signed.headers);
+      signedRequest = true;
+    } catch {
+      return { ok: false, error_code: "invalid_config", error: "余额查询请求签名失败" };
+    }
+  } else if (secret) {
     if (authType === "bearer") {
       headers["Authorization"] = `Bearer ${secret}`;
     } else if (authType === "header") {
@@ -486,7 +515,7 @@ async function executeFinancialRequest(config, secret, options = {}) {
 
   // 01-密钥安全修复 (F1 错误脱敏): 把实际密钥作为 verbatim 脱敏目标传入，
   // 保证子进程/网络错误中出现的密钥原文被清除（覆盖非 sk- 前缀的密钥）。
-  const extraRedactions = typeof secret === "string" && secret.length > 0 ? [secret] : [];
+  const extraRedactions = getCredentialRedactions(secret);
 
   // Execute with redirect handling
   // SECURITY: originalHost uses URL.host (includes port) so that redirects to a
@@ -496,7 +525,7 @@ async function executeFinancialRequest(config, secret, options = {}) {
   return executeWithRedirects(requestUrl, method, headers, {
     timeoutMs,
     maxResponseBytes,
-    maxRedirects,
+    maxRedirects: signedRequest ? 0 : maxRedirects,
     testMode,
     originalHost: originalParsed.host,
     originalProtocol: originalParsed.protocol,

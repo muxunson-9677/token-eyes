@@ -193,6 +193,56 @@ test("parseBalanceResponse handles null optional fields", () => {
   assert.equal(result.currency, null);
 });
 
+test("parseBalanceResponse uses the verified Kimi CNY currency when the API omits it", () => {
+  const result = parseBalanceResponse(
+    { data: { available_balance: 88.5 } },
+    validConfig({
+      providerId: "moonshot",
+      balancePath: "data.available_balance",
+      monthSpendPath: "",
+      lifetimeSpendPath: "",
+      currencyPath: "",
+      currencyValue: "CNY",
+    })
+  );
+
+  assert.equal(result.balance, 88.5);
+  assert.equal(result.currency, "CNY");
+});
+
+test("parseBalanceResponse reads Alibaba Cloud account balance fields", () => {
+  const result = parseBalanceResponse(
+    { Data: { AvailableAmount: "123.45", Currency: "CNY" } },
+    validConfig({
+      providerId: "aliyun_bss",
+      balancePath: "Data.AvailableAmount",
+      monthSpendPath: "",
+      lifetimeSpendPath: "",
+      currencyPath: "Data.Currency",
+    })
+  );
+
+  assert.equal(result.balance, 123.45);
+  assert.equal(result.currency, "CNY");
+});
+
+test("parseBalanceResponse reads Volcengine account balance and fixed currency", () => {
+  const result = parseBalanceResponse(
+    { Result: { AvailableBalance: "67.89" } },
+    validConfig({
+      providerId: "volcengine_billing",
+      balancePath: "Result.AvailableBalance",
+      monthSpendPath: "",
+      lifetimeSpendPath: "",
+      currencyPath: "",
+      currencyValue: "CNY",
+    })
+  );
+
+  assert.equal(result.balance, 67.89);
+  assert.equal(result.currency, "CNY");
+});
+
 test("parseBalanceResponse rejects NaN and Infinity", () => {
   const data = { data: { balance: NaN, month_spend: Infinity } };
   const config = validConfig();

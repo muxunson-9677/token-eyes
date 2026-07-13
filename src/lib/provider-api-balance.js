@@ -20,6 +20,7 @@ const {
   ERROR_CODES: EXECUTOR_ERROR_CODES,
 } = require("./provider-api-executor");
 const { getProviderFinancialCapabilities } = require("./provider-api-configs");
+const { getCredentialRedactions } = require("./provider-api-signing");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -197,7 +198,9 @@ function parseBalanceResponse(data, config) {
 
   const monthSpend = parseFinancialNumber(monthSpendRaw);
   const lifetimeSpend = parseFinancialNumber(lifetimeSpendRaw);
-  const currency = deepseekBalanceInfo?.currency || parseCurrency(currencyRaw);
+  const currency = deepseekBalanceInfo?.currency
+    || parseCurrency(currencyRaw)
+    || parseCurrency(config.currencyValue);
 
   // Validate month/lifetime spend are non-negative if present
   if (monthSpend !== null && monthSpend < 0) {
@@ -498,7 +501,7 @@ function createBalanceRefreshManager(options = {}) {
     } catch (err) {
       // 01-密钥安全修复 (F1 错误脱敏): 把实际密钥作为 verbatim 脱敏目标传入，
       // 防止子进程/网络错误消息中出现的非 sk- 前缀密钥原文泄漏到 balance。
-      const sanitized = sanitizeErrorMessage(err?.message || String(err), [secret].filter(Boolean));
+      const sanitized = sanitizeErrorMessage(err?.message || String(err), getCredentialRedactions(secret));
       const balance = makeBalance(config, {
         status: STATUS_ERROR,
         errorCode: ERROR_CODES.PROVIDER_UNAVAILABLE,
@@ -517,7 +520,7 @@ function createBalanceRefreshManager(options = {}) {
         errorCode: result.error_code || ERROR_CODES.PROVIDER_UNAVAILABLE,
         // 01-密钥安全修复 (F1 错误脱敏): executor 内部已 sanitize，但此处再保险
         // 对密钥原文 verbatim 脱敏，覆盖 executor 未覆盖的非 sk- 前缀密钥。
-        errorMessage: sanitizeErrorMessage(result.error || "未知错误", [secret].filter(Boolean)),
+        errorMessage: sanitizeErrorMessage(result.error || "未知错误", getCredentialRedactions(secret)),
         lastSyncedAt: null,
       });
       cache.set(config.id, { balance, timestamp: Date.now() });
