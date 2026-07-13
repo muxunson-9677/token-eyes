@@ -211,8 +211,8 @@ describe("App deferred dashboard preload", () => {
 
   it.each([
     ["/limits", TEXT.dashboard],
-    ["/leaderboard", TEXT.dashboard],
-  ])("does not start dashboard preload for hidden product path %s", async (path, pageText) => {
+    ["/leaderboard", TEXT.leaderboard],
+  ])("does not start dashboard preload for non-dashboard path %s", async (path, pageText) => {
     renderApp(path);
 
     expect(await screen.findByText(pageText)).toBeInTheDocument();

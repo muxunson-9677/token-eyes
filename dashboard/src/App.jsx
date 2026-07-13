@@ -47,6 +47,9 @@ const LandingPage = lazy(() =>
 const LeaderboardPage = lazy(() =>
   import("./pages/LeaderboardPage.jsx").then((m) => ({ default: m.LeaderboardPage })),
 );
+const LeaderboardRulesPage = lazy(() =>
+  import("./pages/LeaderboardRulesPage.jsx").then((m) => ({ default: m.LeaderboardRulesPage })),
+);
 const LeaderboardProfilePage = lazy(() =>
   import("./pages/LeaderboardProfilePage.jsx").then((m) => ({ default: m.LeaderboardProfilePage })),
 );
@@ -118,6 +121,8 @@ export default function App() {
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
   const isDashboardDefaultPath = normalizedPath === "/" || normalizedPath === "/dashboard";
   const isLeaderboardPath = normalizedPath === "/leaderboard";
+  const isLeaderboardRulesPath = normalizedPath === "/leaderboard/rules";
+  const isPublicLeaderboardPath = isLeaderboardPath || isLeaderboardRulesPath;
   // Standalone shareable profile page: /u/:userId (public, anonymous-visible).
   const profileMatch = normalizedPath.match(/^\/u\/([^/]+)$/i);
   const profileUserId = profileMatch ? profileMatch[1] : null;
@@ -199,7 +204,7 @@ export default function App() {
   let gate = isLocalMode || mockEnabled || screenshotMode ? "dashboard" : "landing";
   if (normalizedPath === "/landing") gate = "landing";
   if (normalizedPath === "/dashboard") gate = "dashboard";
-  if (isLeaderboardPath) gate = "dashboard";
+  if (isPublicLeaderboardPath) gate = "dashboard";
   if (profileUserId) gate = "dashboard";
 
   const isLimitsPath = normalizedPath === "/limits";
@@ -227,8 +232,6 @@ export default function App() {
   )
     gate = "dashboard";
   const isMvpHiddenProductPath =
-    isLeaderboardPath ||
-    Boolean(profileUserId) ||
     isLimitsPath ||
     isSkillsPath ||
     isWidgetsPath ||
@@ -253,6 +256,8 @@ export default function App() {
   let PageComponent = DashboardPage;
   if (profileUserId) {
     PageComponent = LeaderboardProfilePage;
+  } else if (isLeaderboardRulesPath) {
+    PageComponent = LeaderboardRulesPage;
   } else if (normalizedPath === "/leaderboard") {
     PageComponent = LeaderboardPage;
   } else if (isLimitsPath) {
@@ -292,10 +297,10 @@ export default function App() {
     !insforge.loading &&
     gate === "dashboard" &&
     // Public-readable routes must stay reachable for signed-out visitors:
-    // /leaderboard and /u/:userId profiles are deliberate no-auth reads
+    // /leaderboard, /leaderboard/rules and /u/:userId profiles are deliberate no-auth reads
     // (see api.ts getLeaderboard + LeaderboardProfilePage). Without these
     // exclusions the gate would bounce anonymous share-link traffic to /login.
-    !isLeaderboardPath &&
+    !isPublicLeaderboardPath &&
     !profileUserId &&
     normalizedPath !== "/login" &&
     normalizedPath !== "/reset-password" &&
@@ -367,6 +372,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-
-
-

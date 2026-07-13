@@ -14,10 +14,15 @@ import { runCloudUsageSyncNow } from "../lib/cloud-sync";
 import { LeaderboardPage } from "./LeaderboardPage.jsx";
 
 const openLoginModalMock = vi.hoisted(() => vi.fn());
+const signInWithOAuthMock = vi.hoisted(() => vi.fn());
+const getPublicAuthConfigMock = vi.hoisted(() => vi.fn());
 const insforgeAuthMock = vi.hoisted(() => ({
+  enabled: true,
   signedIn: true,
   loading: false,
   user: { id: "user-1" },
+  signInWithOAuth: signInWithOAuthMock,
+  getPublicAuthConfig: getPublicAuthConfigMock,
 }));
 
 vi.mock("../lib/api", () => ({
@@ -96,9 +101,18 @@ describe("LeaderboardPage window-session cache reuse", () => {
     runCloudUsageSyncNow.mockReset();
     runCloudUsageSyncNow.mockResolvedValue(undefined);
     openLoginModalMock.mockReset();
+    signInWithOAuthMock.mockReset();
+    signInWithOAuthMock.mockResolvedValue({ data: {}, error: null });
+    getPublicAuthConfigMock.mockReset();
+    getPublicAuthConfigMock.mockResolvedValue({
+      data: { oAuthProviders: [], customOAuthProviders: ["wechat"] },
+      error: null,
+    });
+    insforgeAuthMock.enabled = true;
     insforgeAuthMock.signedIn = true;
     insforgeAuthMock.loading = false;
     insforgeAuthMock.user = { id: "user-1" };
+    delete window.webkit;
     window.localStorage.clear();
   });
 
@@ -318,6 +332,58 @@ describe("LeaderboardPage window-session cache reuse", () => {
         }),
       ),
     ).toMatchObject({ data: publicData });
+  });
+
+  it("uses only WeChat login for leaderboard participation without opening the generic login modal", async () => {
+    const user = userEvent.setup();
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { signedIn: false });
+
+    const button = await screen.findByRole("button", { name: "微信登录" });
+    expect(openLoginModalMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/邮箱|手机号|密码/)).not.toBeInTheDocument();
+
+    await user.click(button);
+
+    expect(signInWithOAuthMock).toHaveBeenCalledWith(
+      "wechat",
+      expect.stringMatching(/\/leaderboard$/),
+    );
+  });
+
+  it("states clearly when the WeChat provider is not configured", async () => {
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    getPublicAuthConfigMock.mockResolvedValue({
+      data: { oAuthProviders: ["github"], customOAuthProviders: [] },
+      error: null,
+    });
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { signedIn: false });
+
+    const button = await screen.findByRole("button", { name: "微信登录服务尚未配置" });
+    expect(button).toBeDisabled();
+    expect(signInWithOAuthMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the native callback relay for WeChat login inside the macOS app", async () => {
+    const user = userEvent.setup();
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    window.webkit = { messageHandlers: { nativeOAuth: { postMessage: vi.fn() } } };
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { signedIn: false });
+    await user.click(await screen.findByRole("button", { name: "微信登录" }));
+
+    expect(signInWithOAuthMock).toHaveBeenCalledWith(
+      "wechat",
+      expect.stringMatching(/\/auth\/callback$/),
+    );
   });
 
   it("reuses matching cache again after remounting in the same window session", () => {

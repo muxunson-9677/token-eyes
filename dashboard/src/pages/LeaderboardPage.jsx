@@ -17,7 +17,6 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
-import { useLoginModal } from "../contexts/LoginModalContext.jsx";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
 import { isAccessTokenReady, resolveAuthAccessTokenWithRetry } from "../lib/auth-token";
 import { copy } from "../lib/copy";
@@ -267,8 +266,14 @@ export function LeaderboardPage({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { openLoginModal } = useLoginModal();
-  const { signedIn: cloudSignedIn, loading: authLoading, user: cloudUser } = useInsforgeAuth();
+  const {
+    enabled: cloudAuthEnabled,
+    signedIn: cloudSignedIn,
+    loading: authLoading,
+    user: cloudUser,
+    signInWithOAuth,
+    getPublicAuthConfig,
+  } = useInsforgeAuth();
   const { currency, rate } = useCurrency();
   const leaderboardBaseUrl = useMemo(() => getLeaderboardBaseUrl(), []);
   const mockEnabled = isMockEnabled();
@@ -335,6 +340,9 @@ export function LeaderboardPage({
 
   const [cloudSyncOn, setCloudSyncOn] = useState(() => getCloudSyncEnabled());
   const [syncing, setSyncing] = useState(false);
+  const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
+  const [wechatLoginError, setWechatLoginError] = useState(false);
+  const [wechatProviderAvailable, setWechatProviderAvailable] = useState(null);
 
   const period = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
@@ -349,6 +357,35 @@ export function LeaderboardPage({
     return normalizeLeaderboardMetric(params.get("metric") || LEADERBOARD_DEFAULT_METRIC);
   }, [location?.search]);
 
+  useEffect(() => {
+    if (mockEnabled || cloudSignedIn) return undefined;
+    if (!cloudAuthEnabled || typeof getPublicAuthConfig !== "function") {
+      setWechatProviderAvailable(false);
+      return undefined;
+    }
+    let active = true;
+    setWechatProviderAvailable(null);
+    (async () => {
+      try {
+        const { data, error } = await getPublicAuthConfig();
+        if (!active) return;
+        if (error || !data) {
+          setWechatProviderAvailable(false);
+          return;
+        }
+        const builtIn = Array.isArray(data.oAuthProviders) ? data.oAuthProviders : [];
+        const custom = Array.isArray(data.customOAuthProviders) ? data.customOAuthProviders : [];
+        setWechatProviderAvailable([...builtIn, ...custom].includes("wechat"));
+      } catch {
+        if (!active) return;
+        setWechatProviderAvailable(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [cloudAuthEnabled, cloudSignedIn, getPublicAuthConfig, mockEnabled]);
+
   const handleDimensionChange = (key, value) => {
     const current = key === "period" ? period : key === "agent" ? agent : metric;
     if (value === current) return;
@@ -358,13 +395,21 @@ export function LeaderboardPage({
     navigate(`${location?.pathname || "/leaderboard"}?${params.toString()}`, { replace: true });
   };
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (mockEnabled) return;
-    if (!cloudSignedIn) {
-      openLoginModal();
+  const handleWechatSignIn = useCallback(async () => {
+    if (!cloudAuthEnabled || wechatProviderAvailable !== true || wechatLoginBusy) return;
+    setWechatLoginBusy(true);
+    setWechatLoginError(false);
+    try {
+      const isNativeOAuth = Boolean(window.webkit?.messageHandlers?.nativeOAuth);
+      const redirectTo = `${window.location.origin}${isNativeOAuth ? "/auth/callback" : "/leaderboard"}`;
+      const result = await signInWithOAuth("wechat", redirectTo);
+      if (result?.error) throw result.error;
+    } catch {
+      setWechatLoginError(true);
+    } finally {
+      setWechatLoginBusy(false);
     }
-  }, [cloudSignedIn, authLoading, mockEnabled, openLoginModal]);
+  }, [cloudAuthEnabled, signInWithOAuth, wechatLoginBusy, wechatProviderAvailable]);
 
   useEffect(() => {
     setListPage(1);
@@ -823,9 +868,17 @@ export function LeaderboardPage({
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           {/* Title gets its own row. */}
           <div className="mb-5 sm:mb-6">
-            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-oai-black dark:text-white mb-2 sm:mb-3">
-              {copy("leaderboard.title")}
-            </h1>
+            <div className="mb-2 flex items-center justify-between gap-4 sm:mb-3">
+              <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-oai-black dark:text-white">
+                {copy("leaderboard.title")}
+              </h1>
+              <Link
+                to="/leaderboard/rules"
+                className="shrink-0 text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
+              >
+                {copy("leaderboard.rules_link")}
+              </Link>
+            </div>
             <p className="text-oai-gray-500 dark:text-oai-gray-400 text-sm sm:text-base">
               {period === "total"
                 ? copy("leaderboard.range.total")
@@ -968,14 +1021,30 @@ export function LeaderboardPage({
             />
           </div>
 
-          {!signedIn && (
+          {!cloudSignedIn && !authLoading && !mockEnabled && (
             <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
-              <p className="text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.signin_prompt")}</p>
+              <div>
+                <p className="text-oai-gray-500 dark:text-oai-gray-400">
+                  {copy("leaderboard.signin_prompt")}
+                </p>
+                {wechatLoginError && (
+                  <p className="mt-1 text-red-500 dark:text-red-400" role="alert">
+                    {copy("leaderboard.signin_error")}
+                  </p>
+                )}
+              </div>
               <button
-                onClick={openLoginModal}
-                className="shrink-0 whitespace-nowrap self-start sm:self-auto px-3 py-1.5 text-sm font-medium text-oai-gray-600 dark:text-oai-gray-300 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md hover:text-oai-black dark:hover:text-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 transition-colors"
+                onClick={handleWechatSignIn}
+                disabled={!cloudAuthEnabled || wechatProviderAvailable !== true || wechatLoginBusy}
+                className="shrink-0 whitespace-nowrap self-start sm:self-auto px-3 py-1.5 text-sm font-medium text-oai-gray-600 dark:text-oai-gray-300 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md hover:text-oai-black dark:hover:text-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
               >
-                {copy("leaderboard.signin_button")}
+                {!cloudAuthEnabled || wechatProviderAvailable === false
+                  ? copy("leaderboard.signin_unavailable")
+                  : wechatProviderAvailable == null
+                    ? copy("leaderboard.signin_checking")
+                  : wechatLoginBusy
+                    ? copy("leaderboard.signin_busy")
+                    : copy("leaderboard.signin_button")}
               </button>
             </div>
           )}

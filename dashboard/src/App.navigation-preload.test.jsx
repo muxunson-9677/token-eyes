@@ -14,12 +14,9 @@ const TEXT = {
   device: "Device page",
   ipCheck: "IP check",
   landing: "Landing page",
-  // Navigation targets must be real Sidebar destinations that are NOT
-  // MVP-hidden. App.jsx marks /limits, /leaderboard, /skills, /widgets,
-  // /ip-check and /wrapped as isMvpHiddenProductPath and redirects them to
-  // /dashboard, so they can never be reached. The real Sidebar only exposes
-  // /dashboard, /spend and /settings; use the latter two to verify that
-  // navigation completes while preload promises are still pending.
+  // The real Sidebar exposes /dashboard, /spend and /settings; use the latter
+  // two to verify that navigation completes while preload promises are still
+  // pending. Public leaderboard routes are covered by App.routes.test.jsx.
   settings: "Settings page",
   settingsNav: "Settings nav",
   spend: "Spend page",

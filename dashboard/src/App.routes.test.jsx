@@ -1,3 +1,7 @@
+/**
+ * @vitest-environment jsdom
+ * @vitest-environment-options {"url":"https://app.tokeneyes.example/"}
+ */
 import React from "react";
 import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -15,6 +19,10 @@ const TEXT = {
   spendCost: "Spend cost page",
   settingsBasic: "Settings basic page",
   settingsCost: "Settings cost page",
+  leaderboard: "Leaderboard page",
+  leaderboardRules: "Leaderboard rules page",
+  leaderboardProfile: "Leaderboard profile page",
+  login: "Login page",
   sidebarShell: "Sidebar shell",
 };
 
@@ -110,13 +118,22 @@ vi.mock("./pages/NativeAuthCallbackPage.jsx", () => ({
 
 vi.mock("./pages/IpCheckPage.jsx", () => ({ default: () => null }));
 vi.mock("./pages/LandingPage.jsx", () => ({ LandingPage: () => null }));
-vi.mock("./pages/LeaderboardProfilePage.jsx", () => ({ LeaderboardProfilePage: () => null }));
-vi.mock("./pages/LoginPage.jsx", () => ({ LoginPage: () => null }));
+vi.mock("./pages/LeaderboardProfilePage.jsx", () => ({
+  LeaderboardProfilePage: () => <main>{TEXT.leaderboardProfile}</main>,
+}));
+vi.mock("./pages/LoginPage.jsx", () => ({
+  LoginPage: () => <main>{TEXT.login}</main>,
+}));
 vi.mock("./pages/DevicePage.jsx", () => ({ default: () => null }));
 vi.mock("./pages/WrappedPage.jsx", () => ({ default: () => null }));
 vi.mock("./pages/SkillsPage.jsx", () => ({ SkillsPage: () => null }));
 vi.mock("./pages/WidgetsPage.jsx", () => ({ WidgetsPage: () => null }));
-vi.mock("./pages/LeaderboardPage.jsx", () => ({ LeaderboardPage: () => null }));
+vi.mock("./pages/LeaderboardPage.jsx", () => ({
+  LeaderboardPage: () => <main>{TEXT.leaderboard}</main>,
+}));
+vi.mock("./pages/LeaderboardRulesPage.jsx", () => ({
+  LeaderboardRulesPage: () => <main>{TEXT.leaderboardRules}</main>,
+}));
 
 // SpendPage.jsx must export SpendUsagePage and SpendCostPage.
 vi.mock("./pages/SpendPage.jsx", () => ({
@@ -142,6 +159,10 @@ function renderApp(initialPath = "/dashboard") {
 describe("App routes (v2.0 IA refactor)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    insforgeMock.enabled = true;
+    insforgeMock.signedIn = true;
+    insforgeMock.loading = false;
+    insforgeMock.user = { id: "user-1" };
     window.history.pushState({}, "", "/");
   });
 
@@ -182,11 +203,45 @@ describe("App routes (v2.0 IA refactor)", () => {
     expect(await screen.findByText(TEXT.settingsBasic)).toBeInTheDocument();
     expect(screen.queryByText(TEXT.settingsCost)).not.toBeInTheDocument();
   });
+
+  it("/leaderboard remains publicly reachable instead of redirecting to dashboard", async () => {
+    insforgeMock.signedIn = false;
+    insforgeMock.user = null;
+    renderApp("/leaderboard");
+    expect(window.location.hostname).toBe("app.tokeneyes.example");
+    expect(await screen.findByText(TEXT.leaderboard)).toBeInTheDocument();
+    expect(screen.queryByText(TEXT.login)).not.toBeInTheDocument();
+    expect(screen.queryByText(TEXT.dashboard)).not.toBeInTheDocument();
+  });
+
+  it("/leaderboard/rules remains publicly reachable", async () => {
+    insforgeMock.signedIn = false;
+    insforgeMock.user = null;
+    renderApp("/leaderboard/rules");
+    expect(window.location.hostname).toBe("app.tokeneyes.example");
+    expect(await screen.findByText(TEXT.leaderboardRules)).toBeInTheDocument();
+    expect(screen.queryByText(TEXT.login)).not.toBeInTheDocument();
+    expect(screen.queryByText(TEXT.dashboard)).not.toBeInTheDocument();
+  });
+
+  it("public leaderboard profiles remain reachable", async () => {
+    insforgeMock.signedIn = false;
+    insforgeMock.user = null;
+    renderApp("/u/user-123");
+    expect(window.location.hostname).toBe("app.tokeneyes.example");
+    expect(await screen.findByText(TEXT.leaderboardProfile)).toBeInTheDocument();
+    expect(screen.queryByText(TEXT.login)).not.toBeInTheDocument();
+    expect(screen.queryByText(TEXT.dashboard)).not.toBeInTheDocument();
+  });
 });
 
 describe("App Tauri root entry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    insforgeMock.enabled = true;
+    insforgeMock.signedIn = true;
+    insforgeMock.loading = false;
+    insforgeMock.user = { id: "user-1" };
     window.history.pushState({}, "", "/");
   });
 
