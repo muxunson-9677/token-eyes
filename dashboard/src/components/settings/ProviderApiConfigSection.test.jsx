@@ -303,6 +303,17 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
       lifetimeSpend: "custom",
       tokenQuota: "unsupported",
     });
+    expect(getProviderFinancialCapabilities({
+      providerId: "glm-coding-plan",
+      label: "自定义旧套餐",
+      requestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+      balancePath: "data.limits[*].usage",
+    })).toEqual({
+      balance: "unsupported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "token_plan",
+    });
 
     const user = userEvent.setup();
     await openAddForm(user);

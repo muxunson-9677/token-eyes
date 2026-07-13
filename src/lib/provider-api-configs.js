@@ -511,6 +511,17 @@ function hostFromUrl(rawUrl) {
   }
 }
 
+function isOfficialGlmQuotaEndpoint(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || "").trim());
+    const host = parsed.hostname.toLowerCase();
+    const isBigModelHost = host === "bigmodel.cn" || host.endsWith(".bigmodel.cn");
+    return isBigModelHost && /\/quota\/limit\/?$/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function detectKnownProviderPreset(config) {
   const providerText = lowerTrim(config?.providerId);
   const labelText = lowerTrim(config?.label);
@@ -532,6 +543,14 @@ function detectKnownProviderPreset(config) {
 }
 
 function getProviderFinancialCapabilities(config) {
+  if (isOfficialGlmQuotaEndpoint(config?.requestUrl)) {
+    return {
+      balance: "unsupported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "token_plan",
+    };
+  }
   const preset = detectKnownProviderPreset(config);
   if (preset) return { ...preset.financialCapabilities };
   return {

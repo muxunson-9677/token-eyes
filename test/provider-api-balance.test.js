@@ -429,6 +429,32 @@ test("refreshBalance short-circuits unsupported GLM before reading its API key",
   assert.equal(readSecretCalls, 0);
 });
 
+test("refreshBalance blocks official GLM quota endpoint before secret read even for unknown provider IDs", async () => {
+  let readSecretCalls = 0;
+  const manager = createBalanceRefreshManager({
+    credentialStore: {
+      isAvailable: () => true,
+      readSecret() {
+        readSecretCalls += 1;
+        return "must-not-be-read";
+      },
+    },
+  });
+
+  const balance = await manager.refreshBalance({
+    id: "glm-coding-plan-legacy",
+    providerId: "glm-coding-plan",
+    label: "自定义旧套餐",
+    requestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+    apiKeyRef: "provider-api/glm/unknown-id",
+    balancePath: "data.limits[*].usage",
+  });
+
+  assert.equal(balance.status, "unsupported");
+  assert.equal(balance.errorCode, ERROR_CODES.UNSUPPORTED_ENDPOINT);
+  assert.equal(readSecretCalls, 0);
+});
+
 // ---------------------------------------------------------------------------
 // Unit tests: determineStatus
 // ---------------------------------------------------------------------------
@@ -1075,7 +1101,7 @@ test("GET /functions/tokentracker-provider-api-balances returns all configured b
   }
 });
 
-test("legacy GLM quota config stays unsupported across list and refresh APIs without reading its key", async () => {
+test("legacy GLM quota config with unknown provider ID stays unsupported across list and refresh APIs", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-glm-legacy-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
@@ -1083,7 +1109,7 @@ test("legacy GLM quota config stays unsupported across list and refresh APIs wit
     await fs.writeFile(path.join(trackerDir, "config.json"), JSON.stringify({
       providerApiConfigs: [{
         id: "glm-legacy",
-        providerId: "glm",
+        providerId: "glm-coding-plan",
         label: "智谱 GLM",
         requestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
         requestMethod: "GET",
