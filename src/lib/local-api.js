@@ -5963,6 +5963,15 @@ function createLocalApiHandler({
           // Return cached balance if available; otherwise return not-connected/placeholder
           const cached = providerApiBalanceManager.getCachedBalance(c.id);
           if (cached) return cached;
+          const capabilities = providerApiConfigs.getProviderFinancialCapabilities(c);
+          if (capabilities.balance === "unsupported" && capabilities.tokenQuota === "token_plan") {
+            return providerApiBalance.makeBalance(c, {
+              status: providerApiBalance.STATUS_UNSUPPORTED,
+              errorCode: providerApiBalance.ERROR_CODES.UNSUPPORTED_ENDPOINT,
+              errorMessage: "该供应商没有可验证的公开现金余额查询接口",
+              lastSyncedAt: null,
+            });
+          }
           // If no secret configured, return not-connected
           if (!c.apiKeyRef) {
             return providerApiBalance.makeBalance(c, {

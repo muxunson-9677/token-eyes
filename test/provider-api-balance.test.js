@@ -12,6 +12,7 @@ const { createLocalApiHandler } = require("../src/lib/local-api");
 const {
   parseBalanceResponse,
   determineStatus,
+  createBalanceRefreshManager,
   ERROR_CODES,
 } = require("../src/lib/provider-api-balance");
 
@@ -367,7 +368,7 @@ test("parseBalanceResponse treats DeepSeek all-zero balance as a real synced zer
   assert.equal(result.currency, "USD");
 });
 
-test("parseBalanceResponse extracts GLM weekly remaining tokens from quota endpoint", () => {
+test("parseBalanceResponse never maps GLM Coding Plan quota to cash balance", () => {
   const data = {
     code: 200,
     data: {
@@ -396,9 +397,36 @@ test("parseBalanceResponse extracts GLM weekly remaining tokens from quota endpo
     balancePath: "data.limits[*].usage",
   };
   const result = parseBalanceResponse(data, config);
-  assert.equal(result.balance, 15_000_000);
+  assert.equal(result.balance, null);
   assert.equal(result.currency, null);
-  assert.equal(result.error_code, undefined);
+  assert.equal(result.error_code, ERROR_CODES.UNSUPPORTED_ENDPOINT);
+});
+
+test("refreshBalance short-circuits unsupported GLM before reading its API key", async () => {
+  let readSecretCalls = 0;
+  const manager = createBalanceRefreshManager({
+    credentialStore: {
+      isAvailable: () => true,
+      readSecret() {
+        readSecretCalls += 1;
+        return "must-not-be-read";
+      },
+    },
+  });
+
+  const balance = await manager.refreshBalance({
+    id: "glm-legacy",
+    providerId: "glm",
+    label: "智谱 GLM",
+    requestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+    apiKeyRef: "provider-api/glm/legacy",
+    balancePath: "data.limits[*].usage",
+  });
+
+  assert.equal(balance.status, "unsupported");
+  assert.equal(balance.errorCode, ERROR_CODES.UNSUPPORTED_ENDPOINT);
+  assert.equal(balance.balance, null);
+  assert.equal(readSecretCalls, 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -1042,6 +1070,66 @@ test("GET /functions/tokentracker-provider-api-balances returns all configured b
     const balancesStr = JSON.stringify(balancesBody);
     assert.ok(!balancesStr.includes("sk-"), "no secret in balances response");
     assert.ok(!balancesStr.includes("Bearer "), "no Bearer in balances response");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("legacy GLM quota config stays unsupported across list and refresh APIs without reading its key", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-glm-legacy-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(path.join(trackerDir, "config.json"), JSON.stringify({
+      providerApiConfigs: [{
+        id: "glm-legacy",
+        providerId: "glm",
+        label: "智谱 GLM",
+        requestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+        requestMethod: "GET",
+        authType: "header",
+        authHeaderName: "Authorization",
+        apiKeyRef: "provider-api/glm/legacy",
+        balancePath: "data.limits[*].usage",
+        monthSpendPath: "",
+        lifetimeSpendPath: "",
+        currencyPath: "",
+        refreshIntervalSeconds: 300,
+        enabled: true,
+      }],
+    }), "utf8");
+
+    let readSecretCalls = 0;
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      credentialStore: {
+        isAvailable: () => true,
+        readSecret() {
+          readSecretCalls += 1;
+          return "must-not-be-read";
+        },
+        saveSecret: () => ({ ok: true, masked: "••••read" }),
+        deleteSecret: () => true,
+      },
+    });
+
+    const balancesRes = await call(handler, "/functions/tokentracker-provider-api-balances");
+    const balancesBody = readJsonResponse(balancesRes);
+    assert.equal(balancesRes.statusCode, 200);
+    assert.equal(balancesBody.balances[0].status, "unsupported");
+    assert.equal(balancesBody.balances[0].errorCode, ERROR_CODES.UNSUPPORTED_ENDPOINT);
+
+    const headers = await getAuthHeaders(handler);
+    const refreshRes = await call(handler, "/functions/tokentracker-provider-api-refresh?id=glm-legacy", {
+      method: "POST",
+      headers,
+    });
+    const refreshBody = readJsonResponse(refreshRes);
+    assert.equal(refreshRes.statusCode, 200);
+    assert.equal(refreshBody.balance.status, "unsupported");
+    assert.equal(refreshBody.balance.balance, null);
+    assert.equal(readSecretCalls, 0);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

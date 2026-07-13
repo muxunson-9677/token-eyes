@@ -1530,7 +1530,14 @@ settings.cost.provider_api.form.auth_bearer,ui,SettingsPage,ProviderApiConfigSec
 settings.cost.provider_api.form.auth_header,ui,SettingsPage,ProviderApiConfigSection,form_auth_header,"Custom Header",,active
 settings.cost.provider_api.form.title_add,ui,SettingsPage,ProviderApiConfigSection,form_title_add,"新增供应商 API 配置",,active
 settings.cost.provider_api.form.title_edit,ui,SettingsPage,ProviderApiConfigSection,form_title_edit,"编辑供应商 API 配置",,active
-settings.cost.provider_api.form.auto_hint,ui,SettingsPage,ProviderApiConfigSection,form_auto_hint,"与 CC Switch 相同：只需填写 API URL 和 API Key，常见供应商会自动识别并补齐余额查询配置。",,active
+settings.cost.provider_api.form.auto_hint,ui,SettingsPage,ProviderApiConfigSection,form_auto_hint,"只需选择 API 模式并填写 API 端点和 API Key；已收录供应商会自动补齐真实财务查询配置。",,active
+settings.cost.provider_api.form.api_mode,ui,SettingsPage,ProviderApiConfigSection,form_api_mode,"API 模式",,active
+settings.cost.provider_api.form.api_mode_auto,ui,SettingsPage,ProviderApiConfigSection,form_api_mode_auto,"自动识别",,active
+settings.cost.provider_api.form.api_mode_custom,ui,SettingsPage,ProviderApiConfigSection,form_api_mode_custom,"自定义财务接口",,active
+settings.cost.provider_api.capability.unsupported,ui,SettingsPage,ProviderApiConfigSection,capability_unsupported,"不支持自动查询",,active
+settings.cost.provider_api.capability.glm_finance_unsupported,ui,SettingsPage,ProviderApiConfigSection,glm_finance_unsupported,"智谱未提供可验证的公开现金余额、当月花销或累计充值接口，因此这里不会把 Coding Plan 配额冒充余额。",,active
+settings.cost.provider_api.capability.token_plan_settings,ui,SettingsPage,ProviderApiConfigSection,token_plan_settings,"套餐 Token 额度请在 Token 套餐设置中配置",,active
+settings.cost.provider_api.token_quota,ui,SettingsPage,ProviderApiConfigSection,token_quota,"套餐 Token 额度",,active
 settings.cost.provider_api.form.advanced_show,ui,SettingsPage,ProviderApiConfigSection,form_advanced_show,"展开高级配置",,active
 settings.cost.provider_api.form.advanced_hide,ui,SettingsPage,ProviderApiConfigSection,form_advanced_hide,"收起高级配置",,active
 settings.cost.provider_api.status.synced,ui,SettingsPage,ProviderApiConfigSection,status_synced,"已连接",,active

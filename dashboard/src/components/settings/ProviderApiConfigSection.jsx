@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
-import { applyProviderApiPreset } from "../../lib/provider-api-presets.js";
+import {
+  applyProviderApiPreset,
+  getProviderFinancialCapabilities,
+  PROVIDER_API_MODES,
+} from "../../lib/provider-api-presets.js";
 import {
   saveProviderApiConfig,
   updateProviderApiConfig,
@@ -238,6 +242,13 @@ export function ProviderApiConfigSection() {
     setSaving(true);
     try {
       const preparedForm = applyProviderApiPreset(form);
+      if (
+        preparedForm.financialCapabilities.balance === "unsupported"
+        && preparedForm.financialCapabilities.tokenQuota === "token_plan"
+      ) {
+        setFormError(copy("settings.cost.provider_api.capability.glm_finance_unsupported"));
+        return;
+      }
       const payload = {
         providerId: preparedForm.providerId.trim(),
         label: preparedForm.label.trim(),
@@ -448,19 +459,29 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
     : "settings.cost.provider_api.status.not_connected";
   const testResult = state.testResult;
   const isSynced = balance?.status === "synced";
+  const capabilities = getProviderFinancialCapabilities(config);
   // F4: financial fields are only meaningful when synced. For any other
   // status (not-connected / error / unsupported / never-refreshed) we render
   // "—" — NEVER 0. The balance object may be absent entirely (e.g. config has
   // no apiKeyRef yet), which also yields "—".
-  const balanceValue = isSynced
+  const balanceValue = capabilities.balance === "unsupported"
+    ? copy("settings.cost.provider_api.capability.unsupported")
+    : isSynced
     ? formatFinancialValue(balance?.balance, balance?.currency)
     : copy("settings.cost.provider_api.data_unknown");
-  const monthSpendValue = isSynced
+  const monthSpendValue = capabilities.monthSpend === "unsupported"
+    ? copy("settings.cost.provider_api.capability.unsupported")
+    : isSynced
     ? formatFinancialValue(balance?.monthSpend, balance?.currency)
     : copy("settings.cost.provider_api.data_unknown");
-  const lifetimeSpendValue = isSynced
+  const lifetimeSpendValue = capabilities.lifetimeSpend === "unsupported"
+    ? copy("settings.cost.provider_api.capability.unsupported")
+    : isSynced
     ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency)
     : copy("settings.cost.provider_api.data_unknown");
+  const tokenQuotaValue = capabilities.tokenQuota === "token_plan"
+    ? copy("settings.cost.provider_api.capability.token_plan_settings")
+    : copy("settings.cost.provider_api.capability.unsupported");
   const currencyValue = isSynced && balance?.currency
     ? balance.currency
     : copy("settings.cost.provider_api.data_unknown");
@@ -515,6 +536,10 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
             <span>
               {copy("settings.cost.provider_api.lifetime_spend")}:{" "}
               <span data-testid={`provider-api-card-lifetime-spend-${config.id}`}>{lifetimeSpendValue}</span>
+            </span>
+            <span>
+              {copy("settings.cost.provider_api.token_quota")}:{" "}
+              <span data-testid={`provider-api-card-token-quota-${config.id}`}>{tokenQuotaValue}</span>
             </span>
             <span>
               {copy("settings.cost.provider_api.currency")}:{" "}
@@ -611,6 +636,13 @@ function ProviderApiConfigForm({
 }) {
   const isEdit = editing && editing !== "new";
   const hasExistingKey = Boolean(isEdit && editing.apiKeyRef);
+  const preview = applyProviderApiPreset(form);
+  const unsupportedKnownProvider = preview.financialCapabilities.balance === "unsupported"
+    && preview.financialCapabilities.tokenQuota === "token_plan";
+  const knownModeValues = PROVIDER_API_MODES.map((mode) => mode.value);
+  const selectedMode = knownModeValues.includes(form.providerId)
+    ? form.providerId
+    : form.providerId ? "custom" : "";
 
   return (
     <div className="space-y-3 rounded-md border border-oai-gray-200 p-3 dark:border-oai-gray-800">
@@ -628,6 +660,20 @@ function ProviderApiConfigForm({
         />
       </FormField>
 
+      <FormField label={copy("settings.cost.provider_api.form.api_mode")}>
+        <select
+          value={selectedMode}
+          onChange={(e) => setField("providerId", e.target.value)}
+          className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
+        >
+          {PROVIDER_API_MODES.map((mode) => (
+            <option key={mode.value || "auto"} value={mode.value}>
+              {mode.copyKey ? copy(mode.copyKey) : mode.label}
+            </option>
+          ))}
+        </select>
+      </FormField>
+
       <FormField label={copy("settings.cost.provider_api.form.url")}>
         <input
           type="url"
@@ -643,12 +689,20 @@ function ProviderApiConfigForm({
         {copy("settings.cost.provider_api.form.auto_hint")}
       </div>
 
+      {unsupportedKnownProvider && (
+        <div className="space-y-1 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-300">
+          <p>{copy("settings.cost.provider_api.capability.glm_finance_unsupported")}</p>
+          <p>{copy("settings.cost.provider_api.capability.token_plan_settings")}</p>
+        </div>
+      )}
+
       <FormField label={copy("settings.cost.provider_api.form.api_key")}>
         <input
           type="password"
           autoComplete="off"
           value={apiKeyInput}
           onChange={(e) => setApiKeyInput(e.target.value)}
+          disabled={unsupportedKnownProvider}
           placeholder={hasExistingKey ? copy("settings.cost.provider_api.form.api_key_placeholder") : ""}
           className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
           // The secret is intentionally not mirrored into any data-* attribute.
@@ -684,15 +738,6 @@ function ProviderApiConfigForm({
 
       {showAdvanced && (
         <>
-      <FormField label={copy("settings.cost.provider_api.form.provider")}>
-        <input
-          type="text"
-          value={form.providerId}
-          onChange={(e) => setField("providerId", e.target.value)}
-          className="w-full rounded-md border border-oai-gray-200 px-2 py-1.5 text-sm dark:border-oai-gray-700 dark:bg-oai-gray-900"
-        />
-      </FormField>
-
       <div className="grid gap-3 sm:grid-cols-2">
         <FormField label={copy("settings.cost.provider_api.form.method")}>
           <select
@@ -813,7 +858,7 @@ function ProviderApiConfigForm({
         <button
           type="button"
           onClick={onSave}
-          disabled={saving}
+          disabled={saving || unsupportedKnownProvider}
           className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-oai-brand-700 disabled:opacity-50"
         >
           {copy("settings.cost.provider_api.save")}

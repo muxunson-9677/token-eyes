@@ -12,6 +12,12 @@ const PROVIDER_API_PRESETS = [
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "balance_infos[*].currency",
+    financialCapabilities: {
+      balance: "supported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "unsupported",
+    },
   },
   {
     providerId: "dashscope",
@@ -26,6 +32,12 @@ const PROVIDER_API_PRESETS = [
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "output.currency",
+    financialCapabilities: {
+      balance: "supported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "unsupported",
+    },
   },
   {
     providerId: "moonshot",
@@ -40,20 +52,32 @@ const PROVIDER_API_PRESETS = [
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "",
+    financialCapabilities: {
+      balance: "supported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "unsupported",
+    },
   },
   {
     providerId: "glm",
     label: "智谱 GLM",
     aliases: ["glm", "zhipu", "智谱", "bigmodel", "智谱ai", "zhipuai"],
     hosts: ["open.bigmodel.cn", "www.bigmodel.cn", "bigmodel.cn"],
-    defaultRequestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+    defaultRequestUrl: "https://open.bigmodel.cn/api/paas/v4",
     requestMethod: "GET",
-    authType: "header",
-    authHeaderName: "Authorization",
-    balancePath: "data.limits[*].usage",
+    authType: "bearer",
+    authHeaderName: "",
+    balancePath: "",
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "",
+    financialCapabilities: {
+      balance: "unsupported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "token_plan",
+    },
   },
 ];
 
@@ -86,6 +110,27 @@ function detectPreset(form) {
     preset.aliases.some((alias) => providerText === alias || labelText.includes(alias)) ||
     preset.hosts.includes(host)
   )) || null;
+}
+
+export const PROVIDER_API_MODES = [
+  { value: "", copyKey: "settings.cost.provider_api.form.api_mode_auto" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "dashscope", label: "DashScope" },
+  { value: "moonshot", label: "Moonshot" },
+  { value: "glm", label: "智谱 GLM" },
+  { value: "custom", copyKey: "settings.cost.provider_api.form.api_mode_custom" },
+];
+
+export function getProviderFinancialCapabilities(form) {
+  if (form?.financialCapabilities) return { ...form.financialCapabilities };
+  const preset = detectPreset(form);
+  if (preset) return { ...preset.financialCapabilities };
+  return {
+    balance: String(form?.balancePath || "").trim() ? "custom" : "unsupported",
+    monthSpend: String(form?.monthSpendPath || "").trim() ? "custom" : "unsupported",
+    lifetimeSpend: String(form?.lifetimeSpendPath || "").trim() ? "custom" : "unsupported",
+    tokenQuota: "unsupported",
+  };
 }
 
 function shouldUsePresetRequestUrl(rawUrl, preset) {
@@ -149,5 +194,6 @@ export function applyProviderApiPreset(form) {
   return {
     ...prepared,
     refreshIntervalSeconds: Number(prepared.refreshIntervalSeconds) || 300,
+    financialCapabilities: getProviderFinancialCapabilities(prepared),
   };
 }

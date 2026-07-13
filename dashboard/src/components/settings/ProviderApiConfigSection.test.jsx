@@ -246,6 +246,7 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     await openAddForm(user);
 
     expect(screen.getByText("settings.cost.provider_api.form.name")).toBeInTheDocument();
+    expect(screen.getByText("settings.cost.provider_api.form.api_mode")).toBeInTheDocument();
     expect(screen.getByText("settings.cost.provider_api.form.url")).toBeInTheDocument();
     expect(screen.getByText("settings.cost.provider_api.form.api_key")).toBeInTheDocument();
     expect(screen.queryByText("settings.cost.provider_api.form.balance_path")).not.toBeInTheDocument();
@@ -255,6 +256,114 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     });
 
     expect(screen.getByText("settings.cost.provider_api.form.balance_path")).toBeInTheDocument();
+  });
+
+  it("GLM mode explains the unsupported public financial capability and never saves the key", async () => {
+    const user = userEvent.setup();
+    await openAddForm(user);
+
+    const modeSelect = screen.getByLabelText("settings.cost.provider_api.form.api_mode");
+    await act(async () => {
+      await user.selectOptions(modeSelect, "glm");
+    });
+
+    expect(screen.getByText("settings.cost.provider_api.capability.glm_finance_unsupported")).toBeInTheDocument();
+    expect(screen.getByText("settings.cost.provider_api.capability.token_plan_settings")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.save" })).toBeDisabled();
+    expect(document.querySelector("input[type='password']")).toBeDisabled();
+    expect(saveProviderApiConfig).not.toHaveBeenCalled();
+    expect(saveProviderApiSecret).not.toHaveBeenCalled();
+  });
+
+  it("DeepSeek card labels unsupported spend history instead of rendering unknown or zero", async () => {
+    const config = {
+      ...BASE_CONFIG,
+      id: "deepseek-1",
+      providerId: "deepseek",
+      label: "DeepSeek",
+      requestUrl: "https://api.deepseek.com/user/balance",
+      balancePath: "balance_infos[*].total_balance",
+      monthSpendPath: "",
+      lifetimeSpendPath: "",
+      currencyPath: "balance_infos[*].currency",
+      financialCapabilities: {
+        balance: "supported",
+        monthSpend: "unsupported",
+        lifetimeSpend: "unsupported",
+        tokenQuota: "unsupported",
+      },
+    };
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [config] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: {
+        balances: [{
+          configId: "deepseek-1",
+          providerId: "deepseek",
+          accountLabel: "DeepSeek",
+          balance: 12.34,
+          monthSpend: null,
+          lifetimeSpend: null,
+          currency: "USD",
+          status: "synced",
+          lastSyncedAt: "2026-07-13T00:00:00.000Z",
+        }],
+      },
+    });
+
+    render(<ProviderApiConfigSection />);
+    await screen.findByText("DeepSeek");
+
+    expect(screen.getByTestId("provider-api-card-balance-deepseek-1").textContent).toBe("USD 12.34");
+    expect(screen.getByTestId("provider-api-card-month-spend-deepseek-1").textContent)
+      .toBe("settings.cost.provider_api.capability.unsupported");
+    expect(screen.getByTestId("provider-api-card-lifetime-spend-deepseek-1").textContent)
+      .toBe("settings.cost.provider_api.capability.unsupported");
+    expect(screen.getByTestId("provider-api-card-token-quota-deepseek-1").textContent)
+      .toBe("settings.cost.provider_api.capability.unsupported");
+  });
+
+  it("legacy GLM card is unsupported and directs quota configuration to Token package settings", async () => {
+    const config = {
+      ...BASE_CONFIG,
+      id: "glm-legacy",
+      providerId: "glm",
+      label: "智谱 GLM",
+      requestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+      balancePath: "data.limits[*].usage",
+      financialCapabilities: {
+        balance: "unsupported",
+        monthSpend: "unsupported",
+        lifetimeSpend: "unsupported",
+        tokenQuota: "token_plan",
+      },
+    };
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [config] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: {
+        balances: [{
+          configId: "glm-legacy",
+          providerId: "glm",
+          accountLabel: "智谱 GLM",
+          balance: null,
+          monthSpend: null,
+          lifetimeSpend: null,
+          currency: null,
+          status: "unsupported",
+          errorCode: "unsupported_endpoint",
+          lastSyncedAt: null,
+        }],
+      },
+    });
+
+    render(<ProviderApiConfigSection />);
+    await screen.findByText("智谱 GLM");
+
+    expect(screen.getByTestId("provider-api-card-balance-glm-legacy").textContent)
+      .toBe("settings.cost.provider_api.capability.unsupported");
+    expect(screen.getByTestId("provider-api-card-token-quota-glm-legacy").textContent)
+      .toBe("settings.cost.provider_api.capability.token_plan_settings");
   });
 
   it("DOM never exposes the API Key secret as visible text or in data-* attributes", async () => {

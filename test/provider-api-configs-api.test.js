@@ -12,6 +12,7 @@ const {
   validateDotPath,
   validateProviderApiConfig,
   normalizeProviderApiConfig,
+  getProviderFinancialCapabilities,
   readProviderApiConfigs,
   sanitizeConfigForOutput,
   isSecretLikeValue,
@@ -383,7 +384,7 @@ test("normalizeProviderApiConfig converts Moonshot CC Switch base URL to balance
   assert.equal(validation.ok, true, validation.error || "normalized Moonshot config should be valid");
 });
 
-test("normalizeProviderApiConfig converts GLM CC Switch base URL to quota endpoint", () => {
+test("GLM model API is recognized but rejected as an unsupported financial source", () => {
   const normalized = normalizeProviderApiConfig({
     providerId: "",
     label: "智谱GLM",
@@ -397,13 +398,43 @@ test("normalizeProviderApiConfig converts GLM CC Switch base URL to quota endpoi
   });
 
   assert.equal(normalized.providerId, "glm");
-  assert.equal(normalized.requestUrl, "https://open.bigmodel.cn/api/monitor/usage/quota/limit");
-  assert.equal(normalized.authType, "header");
-  assert.equal(normalized.authHeaderName, "Authorization");
-  assert.equal(normalized.balancePath, "data.limits[*].usage");
+  assert.equal(normalized.requestUrl, "https://open.bigmodel.cn/api/paas/v4");
+  assert.equal(normalized.authType, "bearer");
+  assert.equal(normalized.balancePath, "");
+
+  assert.deepEqual(getProviderFinancialCapabilities(normalized), {
+    balance: "unsupported",
+    monthSpend: "unsupported",
+    lifetimeSpend: "unsupported",
+    tokenQuota: "token_plan",
+  });
 
   const validation = validateProviderApiConfig(normalized);
-  assert.equal(validation.ok, true, validation.error || "normalized GLM config should be valid");
+  assert.equal(validation.ok, false);
+  assert.equal(validation.error_code, "unsupported_endpoint");
+});
+
+test("DeepSeek capability metadata exposes balance without inventing spend history", () => {
+  const normalized = normalizeProviderApiConfig({
+    providerId: "deepseek",
+    label: "DeepSeek",
+    requestUrl: "https://api.deepseek.com",
+    requestMethod: "GET",
+    authType: "bearer",
+    balancePath: "",
+    currencyPath: "",
+    refreshIntervalSeconds: 300,
+    enabled: true,
+  });
+
+  assert.deepEqual(getProviderFinancialCapabilities(normalized), {
+    balance: "supported",
+    monthSpend: "unsupported",
+    lifetimeSpend: "unsupported",
+    tokenQuota: "unsupported",
+  });
+  assert.deepEqual(sanitizeConfigForOutput(normalized).financialCapabilities,
+    getProviderFinancialCapabilities(normalized));
 });
 
 test("readProviderApiConfigs migrates legacy DeepSeek first-entry balance paths to wildcard paths", () => {
@@ -628,7 +659,7 @@ test("provider-api-configs POST accepts DashScope CC Switch style base URL with 
   }
 });
 
-test("provider-api-configs POST accepts GLM CC Switch style base URL with inferred quota endpoint", async () => {
+test("provider-api-configs POST rejects GLM quota as a cash-balance source", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-configs-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
@@ -656,10 +687,9 @@ test("provider-api-configs POST accepts GLM CC Switch style base URL with inferr
     });
 
     const body = readJsonResponse(created);
-    assert.equal(created.statusCode, 200, JSON.stringify(body));
-    assert.equal(body.config.providerId, "glm");
-    assert.equal(body.config.requestUrl, "https://open.bigmodel.cn/api/monitor/usage/quota/limit");
-    assert.equal(body.config.balancePath, "data.limits[*].usage");
+    assert.equal(created.statusCode, 400, JSON.stringify(body));
+    assert.equal(body.error_code, "unsupported_endpoint");
+    assert.match(body.error, /Token 套餐设置/);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

@@ -245,6 +245,15 @@ function validateProviderApiConfig(config, options = {}) {
     return { ok: false, error_code: ERROR_CODES.INVALID_CONFIG, error: "不允许配置模型推理端点" };
   }
 
+  const capabilities = getProviderFinancialCapabilities(config);
+  if (capabilities.balance === "unsupported" && capabilities.tokenQuota === "token_plan") {
+    return {
+      ok: false,
+      error_code: ERROR_CODES.UNSUPPORTED_ENDPOINT,
+      error: "智谱未提供可验证的公开现金余额或历史花销接口；Coding Plan 额度请在 Token 套餐设置中配置",
+    };
+  }
+
   // 05-供应商API财务端点白名单修复: 只允许财务 endpoint（allowlist）。
   // 非财务 POST endpoint（realtime/sessions、batches、countTokens、run-agent
   // 等）即使不是模型推理 endpoint，也会因 pathname 不含财务关键词而被拒绝。
@@ -421,6 +430,12 @@ const KNOWN_PROVIDER_PRESETS = [
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "balance_infos[*].currency",
+    financialCapabilities: {
+      balance: "supported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "unsupported",
+    },
   },
   {
     providerId: "dashscope",
@@ -435,6 +450,12 @@ const KNOWN_PROVIDER_PRESETS = [
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "output.currency",
+    financialCapabilities: {
+      balance: "supported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "unsupported",
+    },
   },
   {
     providerId: "moonshot",
@@ -449,20 +470,32 @@ const KNOWN_PROVIDER_PRESETS = [
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "",
+    financialCapabilities: {
+      balance: "supported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "unsupported",
+    },
   },
   {
     providerId: "glm",
     label: "智谱 GLM",
     aliases: ["glm", "zhipu", "智谱", "bigmodel", "智谱ai", "zhipuai"],
     hosts: ["open.bigmodel.cn", "www.bigmodel.cn", "bigmodel.cn"],
-    defaultRequestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+    defaultRequestUrl: "https://open.bigmodel.cn/api/paas/v4",
     requestMethod: "GET",
-    authType: "header",
-    authHeaderName: "Authorization",
-    balancePath: "data.limits[*].usage",
+    authType: "bearer",
+    authHeaderName: "",
+    balancePath: "",
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "",
+    financialCapabilities: {
+      balance: "unsupported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "token_plan",
+    },
   },
 ];
 
@@ -488,6 +521,17 @@ function detectKnownProviderPreset(config) {
     if (preset.hosts.includes(host)) return preset;
   }
   return null;
+}
+
+function getProviderFinancialCapabilities(config) {
+  const preset = detectKnownProviderPreset(config);
+  if (preset) return { ...preset.financialCapabilities };
+  return {
+    balance: String(config?.balancePath || "").trim() ? "custom" : "unsupported",
+    monthSpend: String(config?.monthSpendPath || "").trim() ? "custom" : "unsupported",
+    lifetimeSpend: String(config?.lifetimeSpendPath || "").trim() ? "custom" : "unsupported",
+    tokenQuota: "unsupported",
+  };
 }
 
 function shouldUsePresetRequestUrl(rawUrl, preset) {
@@ -540,16 +584,6 @@ function applyKnownProviderPreset(config) {
       }
       if (String(next.currencyPath || "").trim() === "balance_infos[0].currency") {
         next.currencyPath = preset.currencyPath;
-      }
-    }
-    if (preset.providerId === "glm") {
-      next.authType = "header";
-      next.authHeaderName = "Authorization";
-      if (
-        String(next.balancePath || "").trim() === "data.limits[0].currentValue"
-        || String(next.balancePath || "").trim() === "data.limits[*].currentValue"
-      ) {
-        next.balancePath = preset.balancePath;
       }
     }
   }
@@ -608,6 +642,7 @@ function sanitizeConfigForOutput(config) {
   if (!config || typeof config !== "object") return config;
   const sanitized = {};
   for (const [key, value] of Object.entries(config)) {
+    if (key === "financialCapabilities") continue;
     if (key === "apiKeyRef") {
       sanitized[key] = value; // safe reference
       continue;
@@ -621,6 +656,7 @@ function sanitizeConfigForOutput(config) {
     }
     sanitized[key] = value;
   }
+  sanitized.financialCapabilities = getProviderFinancialCapabilities(config);
   return sanitized;
 }
 
@@ -706,6 +742,7 @@ module.exports = {
   validateProviderApiConfigSecrets,
   normalizeProviderApiConfig,
   applyKnownProviderPreset,
+  getProviderFinancialCapabilities,
   sanitizeConfigForOutput,
   findConfigById,
   upsertProviderApiConfig,

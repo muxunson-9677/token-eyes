@@ -19,7 +19,7 @@ const {
   sanitizeErrorMessage,
   ERROR_CODES: EXECUTOR_ERROR_CODES,
 } = require("./provider-api-executor");
-const { parseGlmQuotaResponse } = require("./glm-token-plan");
+const { getProviderFinancialCapabilities } = require("./provider-api-configs");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -141,22 +141,6 @@ function isGlmQuotaConfig(config) {
   }
 }
 
-function parseGlmProviderQuotaBalance(data) {
-  try {
-    const parsed = parseGlmQuotaResponse(data);
-    const weekly = parsed.quota_windows.find((window) => window.kind === "rolling_weekly");
-    if (!weekly) return null;
-    return {
-      balance: weekly.remaining,
-      monthSpend: null,
-      lifetimeSpend: null,
-      currency: null,
-    };
-  } catch {
-    return null;
-  }
-}
-
 function parseBalanceResponse(data, config) {
   if (!data || typeof data !== "object") {
     return {
@@ -169,17 +153,13 @@ function parseBalanceResponse(data, config) {
   }
 
   if (isGlmQuotaConfig(config)) {
-    const glm = parseGlmProviderQuotaBalance(data);
-    if (!glm) {
-      return {
-        balance: null,
-        monthSpend: null,
-        lifetimeSpend: null,
-        currency: null,
-        error_code: ERROR_CODES.PROVIDER_RESPONSE_INVALID,
-      };
-    }
-    return glm;
+    return {
+      balance: null,
+      monthSpend: null,
+      lifetimeSpend: null,
+      currency: null,
+      error_code: ERROR_CODES.UNSUPPORTED_ENDPOINT,
+    };
   }
 
   const deepseekBalanceInfo = parseDeepSeekBalanceInfos(data, config);
@@ -466,6 +446,16 @@ function createBalanceRefreshManager(options = {}) {
   async function doRefresh(config) {
     const now = new Date().toISOString();
 
+    const capabilities = getProviderFinancialCapabilities(config);
+    if (capabilities.balance === "unsupported" && capabilities.tokenQuota === "token_plan") {
+      return makeBalance(config, {
+        status: STATUS_UNSUPPORTED,
+        errorCode: ERROR_CODES.UNSUPPORTED_ENDPOINT,
+        errorMessage: "该供应商没有可验证的公开现金余额查询接口",
+        lastSyncedAt: null,
+      });
+    }
+
     // Check if credential store is available
     if (!credentialStore || typeof credentialStore.isAvailable !== "function" || !credentialStore.isAvailable()) {
       return makeBalance(config, {
@@ -521,7 +511,9 @@ function createBalanceRefreshManager(options = {}) {
 
     if (!result.ok) {
       const balance = makeBalance(config, {
-        status: STATUS_ERROR,
+        status: result.error_code === ERROR_CODES.UNSUPPORTED_ENDPOINT
+          ? STATUS_UNSUPPORTED
+          : STATUS_ERROR,
         errorCode: result.error_code || ERROR_CODES.PROVIDER_UNAVAILABLE,
         // 01-密钥安全修复 (F1 错误脱敏): executor 内部已 sanitize，但此处再保险
         // 对密钥原文 verbatim 脱敏，覆盖 executor 未覆盖的非 sk- 前缀密钥。
