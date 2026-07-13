@@ -30,6 +30,7 @@
     "dashboard:preview": "npm --prefix dashboard run preview",
     "dev:shim": "node scripts/dev-bin-shim.cjs",
     "audit:tokens": "node scripts/audit-token-correctness.cjs",
+    "benchmark:usage-page": "node scripts/benchmark-usage-page.js",
     "graph:auto-index": "node scripts/graph/auto-index.cjs",
     "graph:scip": "node scripts/graph/generate-scip.cjs",
     "pricing:build-seed": "node scripts/build-pricing-seed.cjs",
