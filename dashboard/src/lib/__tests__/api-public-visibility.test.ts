@@ -135,4 +135,22 @@ describe("leaderboard API", () => {
     );
     expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
   });
+
+  it("uses local leaderboard data when developer preview explicitly requests mock mode", async () => {
+    const fetchMock = mockJsonFetch({ entries: [] });
+
+    const result = await getLeaderboard({
+      mock: true,
+      userId: "developer-preview",
+      period: "today",
+      agent: "codex",
+      metric: "with_cache",
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(result.entries.length).toBeGreaterThan(0);
+    expect(result.me).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

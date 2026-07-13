@@ -600,8 +600,9 @@ export async function getLeaderboard({
   metric,
   limit,
   offset,
+  mock = false,
 }: AnyRecord = {}) {
-  if (isMockEnabled()) {
+  if (mock || isMockEnabled()) {
     return getMockLeaderboard({ seed: accessToken || userId, period, agent, metric, limit, offset });
   }
   // Deliberately NOT passing accessToken. Leaderboard is a public read and
