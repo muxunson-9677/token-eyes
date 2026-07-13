@@ -10,6 +10,7 @@ import {
   Moon,
   Monitor,
   ChevronRight,
+  Trophy,
 } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
@@ -36,6 +37,7 @@ export function getNavGroups() {
       label: copy("nav.group.overview"),
       items: [
         { id: "usage", to: "/dashboard", icon: BarChart3, label: copy("nav.usage") },
+        { id: "leaderboard", to: "/leaderboard", icon: Trophy, label: copy("nav.leaderboard") },
       ],
     },
     {
@@ -707,5 +709,4 @@ export function AppLayout({ children }) {
     </div>
   );
 }
-
 

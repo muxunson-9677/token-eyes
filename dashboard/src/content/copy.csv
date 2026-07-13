@@ -1532,7 +1532,7 @@ spend.usage.page.subtitle,dashboard,SpendPage,SpendPage,usage_page_subtitle,"查
 spend.usage.token_services.title,dashboard,SpendPage,TokenServiceList,token_services_title,"Token 服务列表",,active
 spend.usage.token_services.loading,dashboard,SpendPage,TokenServiceList,token_services_loading,"正在加载套餐用量…",,active
 spend.usage.token_services.error,dashboard,SpendPage,TokenServiceList,token_services_error,"Token 服务加载失败，请刷新重试。",,active
-spend.usage.token_services.empty,dashboard,SpendPage,TokenServiceList,token_services_empty,"暂无未耗尽且已有用量的 Token 服务",,active
+spend.usage.token_services.empty,dashboard,SpendPage,TokenServiceList,token_services_empty,"暂无未过期的 Token 服务",,active
 spend.usage.token_services.unknown,dashboard,SpendPage,TokenServiceList,token_services_unknown,"未命名服务",,active
 spend.usage.token_services.used,dashboard,SpendPage,TokenServiceList,token_services_used,"已用",,active
 spend.usage.token_services.total,dashboard,SpendPage,TokenServiceList,token_services_total,"总量",,active

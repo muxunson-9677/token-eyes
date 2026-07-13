@@ -19,7 +19,7 @@ function plan(id, used, total = 1_000, overrides = {}) {
 }
 
 describe("TokenServiceList", () => {
-  it("sorts by used quota, hides inactive records, and paginates five rows with global ranks", async () => {
+  it("sorts by used quota, includes exhausted and unused plans, hides expired records, and paginates five rows with global ranks", async () => {
     const user = userEvent.setup();
     const plans = [
       plan("G", 300),
@@ -39,11 +39,10 @@ describe("TokenServiceList", () => {
     let rows = screen.getAllByTestId("token-service-row");
     expect(rows).toHaveLength(5);
     expect(within(rows[0]).getByText("1")).toBeInTheDocument();
-    expect(within(rows[0]).getByText("Service A")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Service exhausted")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("100%")).toBeInTheDocument();
     expect(within(rows[4]).getByText("5")).toBeInTheDocument();
-    expect(within(rows[4]).getByText("Service E")).toBeInTheDocument();
-    expect(screen.queryByText("Service exhausted")).not.toBeInTheDocument();
-    expect(screen.queryByText("Service unused")).not.toBeInTheDocument();
+    expect(within(rows[4]).getByText("Service D")).toBeInTheDocument();
     expect(screen.queryByText("Service expired")).not.toBeInTheDocument();
 
     await act(async () => {
@@ -51,11 +50,15 @@ describe("TokenServiceList", () => {
     });
 
     rows = screen.getAllByTestId("token-service-row");
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(4);
     expect(within(rows[0]).getByText("6")).toBeInTheDocument();
-    expect(within(rows[0]).getByText("Service F")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Service E")).toBeInTheDocument();
     expect(within(rows[1]).getByText("7")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("Service G")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Service F")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("8")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Service G")).toBeInTheDocument();
+    expect(within(rows[3]).getByText("9")).toBeInTheDocument();
+    expect(within(rows[3]).getByText("Service unused")).toBeInTheDocument();
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
   });
 
@@ -80,9 +83,9 @@ describe("TokenServiceList", () => {
   });
 
   it("shows an explicit empty state", () => {
-    render(<TokenServiceList plans={[plan("exhausted", 1_000)]} />);
+    render(<TokenServiceList plans={[plan("expired", 1_000, 1_000, { expires_at: "2020-01-01" })]} />);
 
-    expect(screen.getByText("暂无未耗尽且已有用量的 Token 服务")).toBeInTheDocument();
+    expect(screen.getByText("暂无未过期的 Token 服务")).toBeInTheDocument();
     expect(screen.queryByTestId("token-service-row")).not.toBeInTheDocument();
   });
 

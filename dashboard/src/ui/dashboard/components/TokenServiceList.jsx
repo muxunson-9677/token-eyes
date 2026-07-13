@@ -55,10 +55,7 @@ export function normalizeTokenServices(plans, now = new Date()) {
     })
     .filter((service) => (
       !service.expired
-      && service.used > 0
       && service.total > 0
-      && service.used < service.total
-      && service.percentage < 100
     ))
     .sort((left, right) => right.used - left.used || left.originalIndex - right.originalIndex);
 }

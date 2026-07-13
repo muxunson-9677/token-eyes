@@ -45,15 +45,20 @@ vi.mock("../../../lib/native-bridge.js", () => ({
 }));
 
 describe("getNavGroups structure (v2.0 IA)", () => {
-  it("returns overview single item + spend and settings parents with children", () => {
+  it("returns overview and leaderboard items + spend and settings parents with children", () => {
     const groups = getNavGroups();
     // Three top-level groups: overview, spend, settings
     expect(groups).toHaveLength(3);
 
     const overview = groups.find((g) => g.id === "overview");
     expect(overview).toBeDefined();
-    expect(overview.items).toHaveLength(1);
+    expect(overview.items).toHaveLength(2);
     expect(overview.items[0].to).toBe("/dashboard");
+    expect(overview.items[1]).toMatchObject({
+      id: "leaderboard",
+      to: "/leaderboard",
+      label: "copy:nav.leaderboard",
+    });
 
     const spend = groups.find((g) => g.id === "spend");
     expect(spend).toBeDefined();
@@ -99,9 +104,10 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     // on that so we can assert nav structure without a real viewport.
   });
 
-  it("renders overview, spend parent, and settings parent labels", () => {
+  it("renders overview, leaderboard, spend parent, and settings parent labels", () => {
     renderSidebar("/dashboard");
     expect(screen.getByText("copy:nav.usage")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.leaderboard")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.group.spend")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.group.settings")).toBeInTheDocument();
   });
@@ -150,6 +156,12 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     renderSidebar("/spend/usage");
     const overviewLink = screen.getByRole("link", { name: "copy:nav.usage" });
     expect(overviewLink).not.toHaveAttribute("aria-current", "page");
+  });
+
+  it("leaderboard is active on the leaderboard route", () => {
+    renderSidebar("/leaderboard");
+    expect(screen.getByRole("link", { name: "copy:nav.leaderboard" }))
+      .toHaveAttribute("aria-current", "page");
   });
 
   it("parent button has aria-expanded reflecting children visibility", () => {
