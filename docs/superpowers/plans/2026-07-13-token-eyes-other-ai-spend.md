@@ -28,39 +28,39 @@
 
 ### Task 1: Lock the financial boundary with failing tests
 
-- [ ] Add API tests for one-time `other_ai` records in current month, previous month, and lifetime totals.
-- [ ] Add API tests for CNY conversion plus edit/delete behavior.
-- [ ] Add a timeseries test requiring manual cost with zero Token usage.
-- [ ] Add dashboard tests requiring financial source filters to contain `other_ai` while usage filters exclude it.
-- [ ] Run focused tests and confirm the missing behavior fails.
-- [ ] Commit the red tests.
+- [x] Add API tests for one-time `other_ai` records in current month, previous month, and lifetime totals.
+- [x] Add API tests for CNY conversion plus edit/delete behavior.
+- [x] Add a timeseries test requiring manual cost with zero Token usage.
+- [x] Add dashboard tests requiring financial source filters to contain `other_ai` while usage filters exclude it.
+- [x] Run focused tests and confirm the missing behavior fails.
+- [x] Commit the red tests.
 
 ### Task 2: Add the shared cost-source policy
 
-- [ ] Implement a minimal immutable helper that appends and deduplicates `other_ai`.
-- [ ] Use it in usage-page cost totals and cost-accumulation queries only.
-- [ ] Exclude `other_ai` from the subscription-record management list.
-- [ ] Run focused source-policy and page tests.
-- [ ] Commit the financial wiring.
+- [x] Implement a minimal immutable helper that appends and deduplicates `other_ai`.
+- [x] Use it in usage-page cost totals and cost-accumulation queries only.
+- [x] Exclude `other_ai` from the subscription-record management list.
+- [x] Run focused source-policy and page tests.
+- [x] Commit the financial wiring.
 
 ### Task 3: Implement the third settings section
 
-- [ ] Add failing component tests for load, create, edit, and delete.
-- [ ] Implement the smallest CRUD form with required name, positive amount, CNY/USD currency, spend date, and optional note.
-- [ ] Force the reserved source and one-time billing cycle in every mutation payload.
-- [ ] Render the section once on cost settings and register all user-facing copy.
-- [ ] Run component and settings-page tests.
-- [ ] Commit the settings UI.
+- [x] Add failing component tests for load, create, edit, and delete.
+- [x] Implement the smallest CRUD form with required name, positive amount, CNY/USD currency, spend date, and optional note.
+- [x] Force the reserved source and one-time billing cycle in every mutation payload.
+- [x] Render the section once on cost settings and register all user-facing copy.
+- [x] Run component and settings-page tests.
+- [x] Commit the settings UI.
 
 ### Task 4: Verify and record completion
 
-- [ ] Run focused Node spend API and timeseries tests with project-local temporary storage.
-- [ ] Run focused Vitest suites for settings, source policy, cost accumulation, and Spend pages.
-- [ ] Run the dashboard production build.
-- [ ] Run copy and UI-hardcode validation against the branch baseline.
-- [ ] Update the 1–6 tracking document with completed evidence and manual acceptance still required.
-- [ ] Run `git diff --check` and verify the feature worktree is clean.
-- [ ] Commit verification documentation.
+- [x] Run focused Node spend API and timeseries tests with project-local temporary storage.
+- [x] Run focused Vitest suites for settings, source policy, cost accumulation, and Spend pages.
+- [x] Run the dashboard production build.
+- [x] Run copy and UI-hardcode validation against the branch baseline.
+- [x] Update the 1–6 tracking document with completed evidence and manual acceptance still required.
+- [x] Run `git diff --check` and verify the feature worktree is clean.
+- [x] Commit verification documentation.
 
 ## Acceptance criteria
 
