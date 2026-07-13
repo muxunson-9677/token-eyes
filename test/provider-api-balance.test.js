@@ -193,9 +193,11 @@ test("parseBalanceResponse handles null optional fields", () => {
   assert.equal(result.currency, null);
 });
 
-test("parseBalanceResponse uses the verified Kimi CNY currency when the API omits it", () => {
+test("parseBalanceResponse uses the verified Kimi CNY currency when the API omits it", async () => {
+  const fixturePath = path.join(__dirname, "fixtures", "kimi-balance-response.json");
+  const data = JSON.parse(await fs.readFile(fixturePath, "utf8"));
   const result = parseBalanceResponse(
-    { data: { available_balance: 88.5 } },
+    data,
     validConfig({
       providerId: "moonshot",
       balancePath: "data.available_balance",
@@ -210,9 +212,11 @@ test("parseBalanceResponse uses the verified Kimi CNY currency when the API omit
   assert.equal(result.currency, "CNY");
 });
 
-test("parseBalanceResponse reads Alibaba Cloud account balance fields", () => {
+test("parseBalanceResponse reads Alibaba Cloud account balance fields", async () => {
+  const fixturePath = path.join(__dirname, "fixtures", "aliyun-account-balance-response.json");
+  const data = JSON.parse(await fs.readFile(fixturePath, "utf8"));
   const result = parseBalanceResponse(
-    { Data: { AvailableAmount: "123.45", Currency: "CNY" } },
+    data,
     validConfig({
       providerId: "aliyun_bss",
       balancePath: "Data.AvailableAmount",
@@ -226,9 +230,11 @@ test("parseBalanceResponse reads Alibaba Cloud account balance fields", () => {
   assert.equal(result.currency, "CNY");
 });
 
-test("parseBalanceResponse reads Volcengine account balance and fixed currency", () => {
+test("parseBalanceResponse reads Volcengine account balance and fixed currency", async () => {
+  const fixturePath = path.join(__dirname, "fixtures", "volcengine-account-balance-response.json");
+  const data = JSON.parse(await fs.readFile(fixturePath, "utf8"));
   const result = parseBalanceResponse(
-    { Result: { AvailableBalance: "67.89" } },
+    data,
     validConfig({
       providerId: "volcengine_billing",
       balancePath: "Result.AvailableBalance",

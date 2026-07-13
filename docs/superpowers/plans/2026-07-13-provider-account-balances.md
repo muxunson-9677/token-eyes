@@ -23,12 +23,12 @@
 - Modify: `test/provider-api-configs-api.test.js`
 - Modify: `dashboard/src/components/settings/ProviderApiConfigSection.test.jsx`
 
-- [ ] Write failing server/UI parity tests for Kimi, Alibaba Cloud BSS, Volcengine Billing, and MiniMax unsupported.
-- [ ] Replace the undocumented DashScope balance preset with an Alibaba Cloud BSS signed preset.
-- [ ] Add the Volcengine Billing signed preset and exact financial result paths.
-- [ ] Add MiniMax as a known unsupported balance provider so it cannot fall through to a fake custom adapter.
-- [ ] Keep Kimi on its official balance endpoint and attach the documented CNY currency.
-- [ ] Run the focused preset tests and commit.
+- [x] Write failing server/UI parity tests for Kimi, Alibaba Cloud BSS, Volcengine Billing, and MiniMax unsupported.
+- [x] Replace the undocumented DashScope balance preset with an Alibaba Cloud BSS signed preset.
+- [x] Add the Volcengine Billing signed preset and exact financial result paths.
+- [x] Add MiniMax as a known unsupported balance provider so it cannot fall through to a fake custom adapter.
+- [x] Keep Kimi on its official balance endpoint and attach the documented CNY currency.
+- [x] Run the focused preset tests and commit.
 
 ### Task 2: Add secure deterministic financial request signing
 
@@ -41,12 +41,12 @@
 - Modify: `test/provider-api-security.test.js`
 - Modify: `test/provider-api-balance.test.js`
 
-- [ ] Write RED tests using the Alibaba Cloud published HMAC-SHA1 vector and deterministic Volcengine HMAC-SHA256 request values.
-- [ ] Implement strict credential-envelope parsing and both signing algorithms using only Node `crypto`.
-- [ ] Allow only the exact official financial RPC actions on the two root-path endpoints; keep all other root/query endpoints denied.
-- [ ] Ensure signed requests cannot redirect credentials/signatures to another origin and redact both credential components from all errors.
-- [ ] Parse `Data.AvailableAmount`/`Data.Currency`, `Result.AvailableBalance`, and Kimi CNY without mixing provider balances with local estimates.
-- [ ] Run signing/security/balance tests and commit.
+- [x] Write RED tests using the Alibaba Cloud published HMAC-SHA1 vector and deterministic Volcengine HMAC-SHA256 request values.
+- [x] Implement strict credential-envelope parsing and both signing algorithms using only Node `crypto`.
+- [x] Allow only the exact official financial RPC actions on the two root-path endpoints; keep all other root/query endpoints denied.
+- [x] Ensure signed requests cannot redirect credentials/signatures to another origin and redact both credential components from all errors.
+- [x] Parse `Data.AvailableAmount`/`Data.Currency`, `Result.AvailableBalance`, and Kimi CNY without mixing provider balances with local estimates.
+- [x] Run signing/security/balance tests and commit.
 
 ### Task 3: Render only the required credential fields
 
@@ -54,13 +54,12 @@
 - Modify: `dashboard/src/components/settings/ProviderApiConfigSection.jsx`
 - Modify: `dashboard/src/components/settings/ProviderApiConfigSection.test.jsx`
 - Modify: `dashboard/src/content/copy.csv`
-- Modify: `dashboard/src/content/i18n/zh/core.json`
 
-- [ ] Write RED component tests proving Kimi asks for one API key, Alibaba Cloud and Volcengine ask for AccessKey ID + Secret, and MiniMax shows an unsupported notice with no save path.
-- [ ] Hide preset URLs and response paths from the basic form; retain them under Advanced for custom configurations only.
-- [ ] Save paired credentials as a versioned secure envelope, clear both one-time input states immediately, and never include them in config payloads or DOM attributes.
-- [ ] Explain that Alibaba/Volcengine balances are cloud-account balances that include, but are not limited to, Qwen/Doubao spend.
-- [ ] Run component, copy, and production-build verification and commit.
+- [x] Write RED component tests proving Kimi asks for one API key, Alibaba Cloud and Volcengine ask for AccessKey ID + Secret, and MiniMax shows an unsupported notice with no save path.
+- [x] Hide preset URLs and response paths from the basic form; retain them under Advanced for custom configurations only.
+- [x] Save paired credentials as a versioned secure envelope, clear both one-time input states immediately, and never include them in config payloads or DOM attributes.
+- [x] Explain that Alibaba/Volcengine balances are cloud-account balances that include, but are not limited to, Qwen/Doubao spend.
+- [x] Run component, copy, and production-build verification and commit.
 
 ### Task 4: Record evidence and remaining real-account checks
 
@@ -68,7 +67,7 @@
 - Modify: `docs/superpowers/specs/2026-07-13-token-eyes-fixes-1-6-design.md`
 - Modify: this plan
 
-- [ ] Run focused Node/Vitest tests, Dashboard production build, copy validation, and `git diff --check`.
-- [ ] Record Kimi as implemented, Alibaba Cloud/Volcengine as implemented with signed AK/SK adapters, and MiniMax as explicitly unsupported by current public APIs.
-- [ ] Keep real-account comparison pending until the user provides credentials through the app; never place credentials in tests or shell history.
-- [ ] Commit verification documentation.
+- [x] Run focused Node/Vitest tests, Dashboard production build, copy validation, and `git diff --check`.
+- [x] Record Kimi as implemented, Alibaba Cloud/Volcengine as implemented with signed AK/SK adapters, and MiniMax as explicitly unsupported by current public APIs.
+- [x] Keep real-account comparison pending until the user provides credentials through the app; never place credentials in tests or shell history.
+- [x] Commit verification documentation.

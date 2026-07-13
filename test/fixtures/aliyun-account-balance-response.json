@@ -1,0 +1,11 @@
+{
+  "Code": "Success",
+  "Data": {
+    "AvailableAmount": "123.45",
+    "AvailableCashAmount": "100.00",
+    "Currency": "CNY"
+  },
+  "Message": "Successful!",
+  "RequestId": "fixture-request-id",
+  "Success": true
+}

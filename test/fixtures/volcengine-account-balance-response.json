@@ -1,0 +1,14 @@
+{
+  "ResponseMetadata": {
+    "RequestId": "fixture-request-id",
+    "Action": "QueryBalanceAcct",
+    "Version": "2022-01-01",
+    "Service": "billing",
+    "Region": "cn-north-1"
+  },
+  "Result": {
+    "AvailableBalance": "67.89",
+    "CashBalance": "50.00",
+    "CreditLimit": "0.00"
+  }
+}
