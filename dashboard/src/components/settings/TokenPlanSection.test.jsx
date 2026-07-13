@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TokenPlanSection } from "./TokenPlanSection.jsx";
-import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, deleteCodexConsoleSession, saveTokenPlanSecret } from "../../lib/api";
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { copy } from "../../lib/copy";
 
@@ -104,6 +104,7 @@ beforeEach(() => {
   getConsoleSessions.mockResolvedValue({ sessions: [] });
   deleteConsoleSession.mockResolvedValue({ ok: true });
   deleteXiaomiMimoConsoleSession.mockResolvedValue(undefined);
+  deleteCodexConsoleSession.mockResolvedValue(undefined);
   verifyConsoleSession.mockImplementation(async (_id, nativeResult) => ({
     ok: true,
     session: makeXiaomiSession({
@@ -1977,4 +1978,187 @@ it("lists codex claude cursor in catalog provider options", async () => {
   expect(screen.getByTestId("token-plan-provider-card-select-option-codex")).toBeInTheDocument();
   expect(screen.getByTestId("token-plan-provider-card-select-option-claude")).toBeInTheDocument();
   expect(screen.getByTestId("token-plan-provider-card-select-option-cursor")).toBeInTheDocument();
+});
+
+const codexSessionRef = "token-plan/codex/session/test-uuid-001";
+
+function makeCodexSession(overrides = {}) {
+  return makeXiaomiSession({
+    provider_id: "codex",
+    display_name: "ChatGPT / Codex 官网账号",
+    session_ref: codexSessionRef,
+    ...overrides,
+  });
+}
+
+function mockCodexCatalog() {
+  getTokenPlanCatalog.mockResolvedValue({
+    providers: [
+      {
+        id: "codex",
+        name: "Codex",
+        plans: [{
+          plan_id: "codex_pro_5x",
+          display_name: "Pro 5x",
+          quota_kind: "rolling_window",
+          quota_unit: "tokens",
+          total_quota: 0,
+          total_quota_display: "动态",
+        }],
+      },
+      { id: "custom", name: "自定义套餐", plans: [] },
+    ],
+  });
+}
+
+async function openCodexOfficialAccountForm(user) {
+  await screen.findByText(copy("settings.section.token_plan"));
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.add") }));
+  });
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText(copy("settings.token_plan.agent_source")), "codex");
+    await user.selectOptions(screen.getByLabelText(copy("settings.token_plan.provider")), "codex");
+    await user.selectOptions(screen.getByLabelText(copy("settings.token_plan.plan")), "codex_pro_5x");
+  });
+  const detection = screen.getByLabelText(copy("settings.token_plan.detection_method.select"));
+  if (detection.value !== "official_account") {
+    await act(async () => {
+      await user.selectOptions(detection, "official_account");
+    });
+  }
+}
+
+it("Codex system browser reuses an authorized binding, saves quota, and keeps the binding", async () => {
+  mockCodexCatalog();
+  const user = userEvent.setup();
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeCodexSession({ id: "codex-session-id", session_ref: params.session_ref }),
+    sessions: [makeCodexSession({ id: "codex-session-id", session_ref: params.session_ref })],
+  }));
+  openCodexConsoleLogin.mockImplementation(async (sessionRef) => ({
+    connected: true,
+    authorized: true,
+    session_ref: sessionRef,
+    state_code: "connected",
+    quota_sync_status: "success",
+    error_code: "",
+    error_message: "",
+    quota: {
+      total_quota: 100,
+      used_quota: 50,
+      remaining_quota: 50,
+      provider_reported_at: "2026-07-13T00:00:00.000Z",
+      quota_windows: [
+        { kind: "rolling_5_hour", unit: "tokens", total: 100, used: 25, remaining: 75, percentage: 25 },
+        { kind: "rolling_weekly", unit: "tokens", total: 100, used: 50, remaining: 50, percentage: 50 },
+      ],
+    },
+  }));
+  verifyConsoleSession.mockImplementation(async (_id, nativeResult) => ({
+    ok: true,
+    session: makeCodexSession({
+      id: "codex-session-id",
+      session_ref: nativeResult.session_ref,
+      status: "connected",
+    }),
+  }));
+
+  render(<TokenPlanSection />);
+  await openCodexOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-codex"));
+  });
+
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
+  const saved = saveTokenPlan.mock.calls[0][0];
+  expect(saved.sync_status).toBe("success");
+  expect(saved.quota_windows).toHaveLength(2);
+  expect(verifyCodexConsoleSession).not.toHaveBeenCalled();
+  expect(deleteCodexConsoleSession).not.toHaveBeenCalled();
+  expect(deleteConsoleSession).not.toHaveBeenCalled();
+});
+
+it("Codex system browser completes authorization even when quota sync fails", async () => {
+  mockCodexCatalog();
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...BASE_RECORD,
+      id: "codex-plan",
+      source: "codex",
+      provider_id: "codex",
+      plan_id: "codex_pro_5x",
+      plan_label: "Pro 5x",
+      total_quota: 100,
+      used_quota: 40,
+      remaining_quota: 60,
+      quota_windows: [{
+        kind: "rolling_weekly",
+        unit: "tokens",
+        total: 100,
+        used: 40,
+        remaining: 60,
+        percentage: 40,
+      }],
+      detection_method: "official_account",
+      detection_config: { official_account: { provider_home_url: "https://chatgpt.com/codex" } },
+      sync_status: "success",
+    }],
+  });
+  const user = userEvent.setup();
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeCodexSession({ id: "codex-session-id", session_ref: params.session_ref }),
+    sessions: [makeCodexSession({ id: "codex-session-id", session_ref: params.session_ref })],
+  }));
+  openCodexConsoleLogin.mockResolvedValue({
+    connected: false,
+    authorized: false,
+    session_ref: codexSessionRef,
+    state_code: "login_started",
+    quota_sync_status: "idle",
+    error_code: "LOGIN_STARTED",
+    error_message: "",
+  });
+  verifyCodexConsoleSession
+    .mockResolvedValueOnce({
+      connected: true,
+      authorized: true,
+      session_ref: codexSessionRef,
+      state_code: "authorized",
+      quota_sync_status: "error",
+      error_code: "QUOTA_SYNC_FAILED",
+      error_message: "授权已完成，但额度同步暂时失败，可稍后重试。",
+    })
+    .mockRejectedValueOnce(new Error("must stop polling after authorization"));
+  verifyConsoleSession.mockImplementation(async (_id, nativeResult) => ({
+    ok: true,
+    session: makeCodexSession({
+      id: "codex-session-id",
+      session_ref: nativeResult.session_ref,
+      status: "connected",
+      last_error_code: nativeResult.error_code,
+      last_error_message: nativeResult.error_message,
+    }),
+  }));
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/codex \/ Pro 5x/i);
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
+  });
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-codex"));
+  });
+
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
+  const saved = saveTokenPlan.mock.calls[0][0];
+  expect(saved.sync_status).toBe("failed");
+  expect(saved.used_quota).toBe(40);
+  expect(saved.remaining_quota).toBe(60);
+  expect(saved.quota_windows).toHaveLength(1);
+  expect(saved.last_error_code).toBe("QUOTA_SYNC_FAILED");
+  expect(saved.last_error_message).toContain("额度同步");
+  expect(verifyCodexConsoleSession).toHaveBeenCalledTimes(1);
+  expect(deleteCodexConsoleSession).not.toHaveBeenCalled();
+  expect(deleteConsoleSession).not.toHaveBeenCalled();
 });

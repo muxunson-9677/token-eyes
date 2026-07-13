@@ -1037,8 +1037,9 @@ export function TokenPlanSection() {
     const sessionRef = resumableSession?.session_ref
       || `token-plan/codex/session/${crypto.randomUUID()}`;
     let createdSession = resumableSession;
-    let quotaReady = false;
+    let authorizationReady = false;
     try {
+      let nativeStatus = null;
       if (!createdSession) {
         const created = await createConsoleSession({
           provider_id: "codex",
@@ -1048,34 +1049,51 @@ export function TokenPlanSection() {
         });
         createdSession = created.session;
         setConsoleSessions(Array.isArray(created.sessions) ? created.sessions : []);
-        await openCodexConsoleLogin(sessionRef);
+        nativeStatus = await openCodexConsoleLogin(sessionRef);
       }
 
       const deadline = Date.now() + XIAOMI_AUTH_TIMEOUT_MS;
       while (Date.now() < deadline) {
-        const nativeStatus = await verifyCodexConsoleSession(sessionRef);
-        if (nativeStatus?.connected && nativeStatus?.quota) {
-          quotaReady = true;
+        if (!nativeStatus?.authorized && !nativeStatus?.connected) {
+          nativeStatus = await verifyCodexConsoleSession(sessionRef);
+        }
+        if (nativeStatus?.authorized || nativeStatus?.connected) {
+          authorizationReady = true;
+          const quotaAvailable = Boolean(nativeStatus?.quota);
           const nativeResult = {
             connected: true,
+            authorized: true,
             session_ref: nativeStatus.session_ref || sessionRef,
-            state_code: "connected",
-            error_code: "",
-            error_message: "",
-            quota: nativeStatus.quota,
+            state_code: quotaAvailable ? "connected" : "authorized",
+            error_code: quotaAvailable ? "" : (nativeStatus.error_code || "QUOTA_SYNC_FAILED"),
+            error_message: quotaAvailable
+              ? ""
+              : (nativeStatus.error_message || copy("settings.token_plan.codex.quota_sync_failed")),
+            ...(quotaAvailable ? { quota: nativeStatus.quota } : {}),
           };
           const verified = await verifyConsoleSession(createdSession.id, nativeResult);
           const accountBindingId = verified.session?.id || createdSession.id;
+          setConsoleSessions((previous) => previous.map((session) =>
+            session.id === accountBindingId ? verified.session : session
+          ));
           const now = new Date().toISOString();
           const saved = await saveTokenPlan({
             ...form,
-            used_quota: Number(nativeStatus.quota.used_quota || 0),
-            remaining_quota: Number(nativeStatus.quota.remaining_quota || 0),
+            used_quota: quotaAvailable
+              ? Number(nativeStatus.quota.used_quota || 0)
+              : Number(form.used_quota || 0),
+            remaining_quota: quotaAvailable
+              ? Number(nativeStatus.quota.remaining_quota || 0)
+              : Number(form.remaining_quota || 0),
             total_quota: Number(selectedPlan?.total_quota || form.total_quota || 0),
             total_quota_display: selectedPlan?.total_quota_display || form.total_quota_display || "",
-            quota_windows: nativeStatus.quota.quota_windows || [],
+            quota_windows: quotaAvailable
+              ? (nativeStatus.quota.quota_windows || [])
+              : (form.quota_windows || []),
             expires_at: form.expires_at || "",
-            provider_reported_at: nativeStatus.quota.provider_reported_at || now,
+            provider_reported_at: quotaAvailable
+              ? (nativeStatus.quota.provider_reported_at || now)
+              : (form.provider_reported_at || ""),
             detection_method: "official_account",
             detection_config: {
               ...form.detection_config,
@@ -1085,16 +1103,12 @@ export function TokenPlanSection() {
                 provider_home_url: "https://chatgpt.com/codex",
               },
             },
-            sync_status: "success",
-            last_synced_at: now,
+            sync_status: quotaAvailable ? "success" : "failed",
+            last_synced_at: quotaAvailable ? now : (form.last_synced_at || ""),
             last_sync_attempt_at: now,
-            last_error_code: "",
-            last_error_message: "",
+            last_error_code: nativeResult.error_code,
+            last_error_message: nativeResult.error_message,
           });
-          await deleteCodexConsoleSession(sessionRef);
-          setConsoleSessions((previous) => previous.map((session) =>
-            session.id === accountBindingId ? verified.session : session
-          ));
           setRecords(normalizeRecords(saved.records));
           setForm(EMPTY_FORM);
           setFormOpen(false);
@@ -1108,11 +1122,12 @@ export function TokenPlanSection() {
         if (["unsupported", "failed"].includes(nativeStatus?.state_code)) {
           throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.verify_error"));
         }
+        nativeStatus = null;
         await wait(XIAOMI_AUTH_POLL_MS);
       }
       throw new Error(copy("settings.token_plan.codex.connect_timeout"));
     } catch (err) {
-      if (createdSession && !quotaReady) {
+      if (createdSession && !authorizationReady) {
         await deleteCodexConsoleSession(sessionRef).catch(() => {});
         await deleteConsoleSession(createdSession.id).catch(() => {});
         setConsoleSessions((previous) => previous.filter((session) => session.id !== createdSession.id));

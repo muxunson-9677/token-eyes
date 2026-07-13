@@ -1354,11 +1354,12 @@ settings.token_plan.aliyun_bailian.api_key,ui,SettingsPage,TokenPlanSection,aliy
 settings.token_plan.aliyun_bailian.api_key_placeholder,ui,SettingsPage,TokenPlanSection,aliyun_bailian_api_key_placeholder,"输入 sk-sp- 开头的订阅 Key",,active
 settings.token_plan.notes,ui,SettingsPage,TokenPlanSection,notes,"备注",,active
 settings.token_plan.notes_placeholder,ui,SettingsPage,TokenPlanSection,notes_placeholder,"区分多账号，最多 200 字",,active
-settings.token_plan.codex.official_desc,ui,SettingsPage,TokenPlanSection,codex_official_desc,"连接 ChatGPT 官网账号后同步 5 小时与 7 天额度窗口（无需本机 Codex CLI）。",,active
+settings.token_plan.codex.official_desc,ui,SettingsPage,TokenPlanSection,codex_official_desc,"通过 OpenAI 官方 Codex 组件在系统默认浏览器完成 ChatGPT 授权；浏览器已有登录时可直接确认，授权后自动返回并同步 5 小时与 7 天额度。",,active
 settings.token_plan.codex.connect_account,ui,SettingsPage,TokenPlanSection,codex_connect_account,"连接 ChatGPT / Codex 官网账号",,active
 settings.token_plan.codex.account_display_name,ui,SettingsPage,TokenPlanSection,codex_account_display_name,"ChatGPT / Codex 官网账号",,active
-settings.token_plan.codex.login_started_desc,ui,SettingsPage,TokenPlanSection,codex_login_started_desc,"官方登录窗口已打开，请在窗口内完成 ChatGPT 登录，Token Eyes 会自动同步额度。",,active
+settings.token_plan.codex.login_started_desc,ui,SettingsPage,TokenPlanSection,codex_login_started_desc,"系统默认浏览器已打开 OpenAI 官方授权页；确认后 Token Eyes 会自动完成连接，无需返回手动关闭窗口。",,active
 settings.token_plan.codex.connect_timeout,ui,SettingsPage,TokenPlanSection,codex_connect_timeout,"等待 ChatGPT 登录超时，请重试。",,active
+settings.token_plan.codex.quota_sync_failed,ui,SettingsPage,TokenPlanSection,codex_quota_sync_failed,"授权已完成，但额度同步暂时失败，可稍后重试。",,active
 settings.token_plan.claude.account_mode,ui,SettingsPage,TokenPlanSection,claude_account_mode,"Claude 检测模式",,active
 settings.token_plan.claude.account_mode.official,ui,SettingsPage,TokenPlanSection,claude_account_mode_official,"官方账号（同步 Anthropic 额度）",,active
 settings.token_plan.claude.account_mode.routing,ui,SettingsPage,TokenPlanSection,claude_account_mode_routing,"路由模式（CC Switch 等，仅 Token 统计）",,active

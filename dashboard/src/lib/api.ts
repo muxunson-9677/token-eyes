@@ -1337,6 +1337,8 @@ export interface CodexQuotaSnapshot {
 }
 
 export interface CodexSessionStatus extends NativeSessionResult {
+  authorized: boolean;
+  quota_sync_status?: "idle" | "success" | "error";
   quota?: CodexQuotaSnapshot;
 }
 
@@ -1477,4 +1479,3 @@ export async function deleteKimiConsoleSession(sessionRef: string): Promise<void
   if (!invoke) throw new Error("Tauri runtime not available");
   return invoke("delete_kimi_console_session", { sessionRef });
 }
-
