@@ -1492,7 +1492,7 @@ spend.cost.page.subtitle,dashboard,SpendPage,SpendPage,cost_page_subtitle,"查�
 settings.basic.page.title,ui,SettingsPage,SettingsPage,basic_page_title,"基础设置",,active
 settings.basic.page.subtitle,ui,SettingsPage,SettingsPage,basic_page_subtitle,"外观、菜单栏、账户、数据目录、Agent 计费规则与限制显示。",,active
 settings.cost.page.title,ui,SettingsPage,SettingsPage,cost_page_title,"成本设置",,active
-settings.cost.page.subtitle,ui,SettingsPage,SettingsPage,cost_page_subtitle,"管理 Token 套餐与供应商 API 配置（仅查询余额与花销，不调用模型）。",,active
+settings.cost.page.subtitle,ui,SettingsPage,SettingsPage,cost_page_subtitle,"管理 Token 套餐、供应商 API 配置和其他 AI 花销。",,active
 settings.cost.provider_api.placeholder,ui,SettingsPage,SettingsPage,provider_api_placeholder,"供应商 API 配置将在 03 工单接入。",,active
 settings.cost.provider_api.section,ui,SettingsPage,ProviderApiConfigSection,provider_api_section,"供应商 API 配置",,active
 settings.cost.provider_api.subtitle,ui,SettingsPage,ProviderApiConfigSection,provider_api_subtitle,"配置供应商账户余额与花销查询（仅查询财务接口，不调用模型）。",,active
@@ -1593,3 +1593,25 @@ spend.cost.subscription.form.save,dashboard,SpendPage,CostAccumulation,subscript
 spend.cost.subscription.form.cancel,dashboard,SpendPage,CostAccumulation,subscription_form_cancel,"取消",,active
 spend.cost.subscription.note_separate,dashboard,SpendPage,CostAccumulation,subscription_note_separate,"订阅费用与供应商 API 账户花销分栏展示，不重复计算。",,active
 spend.cost.subscription.error_save,dashboard,SpendPage,CostAccumulation,subscription_error_save,"保存订阅记录失败，请重试。",,active
+settings.cost.other_ai.title,ui,SettingsPage,OtherAiSpendSection,title,"其他 AI 花销",,active
+settings.cost.other_ai.subtitle,ui,SettingsPage,OtherAiSpendSection,subtitle,"记录历史充值等手工花销；自动计入对应月份和累计总成本，不计入 Token 用量。",,active
+settings.cost.other_ai.add,ui,SettingsPage,OtherAiSpendSection,add,"新增花销",,active
+settings.cost.other_ai.empty,ui,SettingsPage,OtherAiSpendSection,empty,"还没有记录，点击“新增花销”添加。",,active
+settings.cost.other_ai.loading,ui,SettingsPage,OtherAiSpendSection,loading,"加载中…",,active
+settings.cost.other_ai.name_label,ui,SettingsPage,OtherAiSpendSection,name_label,"名称",,active
+settings.cost.other_ai.name_placeholder,ui,SettingsPage,OtherAiSpendSection,name_placeholder,"如：某平台账号充值",,active
+settings.cost.other_ai.amount_label,ui,SettingsPage,OtherAiSpendSection,amount_label,"金额",,active
+settings.cost.other_ai.amount_placeholder,ui,SettingsPage,OtherAiSpendSection,amount_placeholder,"0.00",,active
+settings.cost.other_ai.currency_label,ui,SettingsPage,OtherAiSpendSection,currency_label,"币种",,active
+settings.cost.other_ai.date_label,ui,SettingsPage,OtherAiSpendSection,date_label,"花销日期",,active
+settings.cost.other_ai.note_label,ui,SettingsPage,OtherAiSpendSection,note_label,"备注",,active
+settings.cost.other_ai.note_placeholder,ui,SettingsPage,OtherAiSpendSection,note_placeholder,"如：账号被封，余额无法退回",,active
+settings.cost.other_ai.save,ui,SettingsPage,OtherAiSpendSection,save,"保存",,active
+settings.cost.other_ai.saving,ui,SettingsPage,OtherAiSpendSection,saving,"保存中…",,active
+settings.cost.other_ai.cancel,ui,SettingsPage,OtherAiSpendSection,cancel,"取消",,active
+settings.cost.other_ai.edit,ui,SettingsPage,OtherAiSpendSection,edit,"编辑",,active
+settings.cost.other_ai.delete,ui,SettingsPage,OtherAiSpendSection,delete,"删除",,active
+settings.cost.other_ai.confirm_delete,ui,SettingsPage,OtherAiSpendSection,confirm_delete,"确定删除这条花销记录吗？",,active
+settings.cost.other_ai.error_save,ui,SettingsPage,OtherAiSpendSection,error_save,"保存失败，请重试。",,active
+settings.cost.other_ai.error_required,ui,SettingsPage,OtherAiSpendSection,error_required,"请填写名称、正数金额和花销日期。",,active
+settings.cost.other_ai.subtotal,ui,SettingsPage,OtherAiSpendSection,subtotal,"原币合计",,active

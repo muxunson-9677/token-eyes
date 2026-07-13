@@ -40,7 +40,7 @@ vi.mock("../components/settings/ProviderApiConfigSection.jsx", () => ({
 }));
 
 vi.mock("../components/settings/OtherAiSpendSection.jsx", () => ({
-  OtherAiSpendSection: () => <section data-testid="other-ai-spend-section">OtherAiSpend</section>,
+  OtherAiSpendSection: () => <section data-testid="other-ai-spend-section" />,
 }));
 
 vi.mock("../components/settings/AppearanceSection.jsx", () => ({

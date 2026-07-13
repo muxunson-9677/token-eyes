@@ -1,6 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSpendRecord,
@@ -70,19 +69,28 @@ describe("OtherAiSpendSection", () => {
   });
 
   it("creates a one-time other_ai charge with amount, currency, date, and note", async () => {
-    const user = userEvent.setup();
     render(<OtherAiSpendSection />);
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
 
-    await user.click(screen.getByRole("button", { name: "settings.cost.other_ai.add" }));
-    await user.type(screen.getByLabelText("settings.cost.other_ai.name_label"), "历史充值损失");
-    await user.type(screen.getByLabelText("settings.cost.other_ai.amount_label"), "120");
-    await user.selectOptions(screen.getByLabelText("settings.cost.other_ai.currency_label"), "USD");
+    fireEvent.click(screen.getByRole("button", { name: "settings.cost.other_ai.add" }));
+    fireEvent.change(screen.getByLabelText("settings.cost.other_ai.name_label"), {
+      target: { value: "历史充值损失" },
+    });
+    fireEvent.change(screen.getByLabelText("settings.cost.other_ai.amount_label"), {
+      target: { value: "120" },
+    });
+    fireEvent.change(screen.getByLabelText("settings.cost.other_ai.currency_label"), {
+      target: { value: "USD" },
+    });
     fireEvent.change(screen.getByLabelText("settings.cost.other_ai.date_label"), {
       target: { value: "2026-07-12" },
     });
-    await user.type(screen.getByLabelText("settings.cost.other_ai.note_label"), "旧账号已封禁");
-    await user.click(screen.getByRole("button", { name: "settings.cost.other_ai.save" }));
+    fireEvent.change(screen.getByLabelText("settings.cost.other_ai.note_label"), {
+      target: { value: "旧账号已封禁" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "settings.cost.other_ai.save" }));
+    });
 
     await waitFor(() => expect(createSpendRecord).toHaveBeenCalledTimes(1));
     expect(createSpendRecord).toHaveBeenCalledWith({
@@ -98,35 +106,37 @@ describe("OtherAiSpendSection", () => {
   });
 
   it("requires name, positive amount, and spend date before saving", async () => {
-    const user = userEvent.setup();
     render(<OtherAiSpendSection />);
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
 
-    await user.click(screen.getByRole("button", { name: "settings.cost.other_ai.add" }));
-    await user.type(screen.getByLabelText("settings.cost.other_ai.name_label"), "历史充值");
-    await user.type(screen.getByLabelText("settings.cost.other_ai.amount_label"), "10");
+    fireEvent.click(screen.getByRole("button", { name: "settings.cost.other_ai.add" }));
+    fireEvent.change(screen.getByLabelText("settings.cost.other_ai.name_label"), {
+      target: { value: "历史充值" },
+    });
+    fireEvent.change(screen.getByLabelText("settings.cost.other_ai.amount_label"), {
+      target: { value: "10" },
+    });
     fireEvent.change(screen.getByLabelText("settings.cost.other_ai.date_label"), {
       target: { value: "" },
     });
-    await user.click(screen.getByRole("button", { name: "settings.cost.other_ai.save" }));
+    fireEvent.click(screen.getByRole("button", { name: "settings.cost.other_ai.save" }));
 
     expect(await screen.findByText("settings.cost.other_ai.error_required")).toBeInTheDocument();
     expect(createSpendRecord).not.toHaveBeenCalled();
   });
 
   it("edits an existing record without changing its reserved accounting type", async () => {
-    const user = userEvent.setup();
     getSpendRecords.mockResolvedValue({ records: [OTHER_AI_RECORD] });
     render(<OtherAiSpendSection />);
 
-    await user.click(await screen.findByRole("button", { name: "settings.cost.other_ai.edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "settings.cost.other_ai.edit" }));
     const nameInput = screen.getByLabelText("settings.cost.other_ai.name_label");
-    await user.clear(nameInput);
-    await user.type(nameInput, "修正后的充值记录");
+    fireEvent.change(nameInput, { target: { value: "修正后的充值记录" } });
     const amountInput = screen.getByLabelText("settings.cost.other_ai.amount_label");
-    await user.clear(amountInput);
-    await user.type(amountInput, "144");
-    await user.click(screen.getByRole("button", { name: "settings.cost.other_ai.save" }));
+    fireEvent.change(amountInput, { target: { value: "144" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "settings.cost.other_ai.save" }));
+    });
 
     await waitFor(() => expect(updateSpendRecord).toHaveBeenCalledTimes(1));
     expect(updateSpendRecord).toHaveBeenCalledWith(expect.objectContaining({
@@ -140,15 +150,15 @@ describe("OtherAiSpendSection", () => {
   });
 
   it("deletes a confirmed record and reloads the list", async () => {
-    const user = userEvent.setup();
     getSpendRecords.mockResolvedValue({ records: [OTHER_AI_RECORD] });
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<OtherAiSpendSection />);
 
-    await user.click(await screen.findByRole("button", { name: "settings.cost.other_ai.delete" }));
+    const deleteButton = await screen.findByRole("button", { name: "settings.cost.other_ai.delete" });
+    fireEvent.click(deleteButton);
 
     await waitFor(() => expect(deleteSpendRecord).toHaveBeenCalledWith("other-ai-1"));
-    expect(getSpendRecords).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
     confirmSpy.mockRestore();
   });
 });
