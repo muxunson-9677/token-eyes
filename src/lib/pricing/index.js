@@ -15,6 +15,7 @@ const {
 const { loadLitellmData } = require("./litellm-fetcher");
 
 const ZERO_PRICING = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
+const TOKEN_ONLY_SOURCES = new Set(["trae", "codebuddy"]);
 const AGENT_PRICING_SOURCES = ["claude", "codex", "hermes"];
 const DEFAULT_AGENT_DEFAULT_PRICING = Object.freeze({
   claude: Object.freeze({ inputUsdPer1M: 0, outputUsdPer1M: 0 }),
@@ -269,6 +270,16 @@ function computeRowCostDetailed(row, options = {}) {
   const cachedInputTokens = Number(row.cached_input_tokens || 0);
   const cacheCreationTokens = Number(row.cache_creation_input_tokens || 0);
   const reasoningTokens = Number(row.reasoning_output_tokens || 0);
+  const source = String(row.source || "").trim().toLowerCase();
+
+  if (TOKEN_ONLY_SOURCES.has(source)) {
+    return {
+      cost_usd: 0,
+      priced_tokens: 0,
+      unpriced_tokens: totalTokens,
+      pricing_coverage: totalTokens > 0 ? "unpriced" : "complete",
+    };
+  }
 
   if (Array.isArray(options.pricingRules) && options.pricingRules.length > 0) {
     const rule = getPricingRuleForRow(row, options.pricingRules);

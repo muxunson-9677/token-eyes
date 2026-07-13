@@ -565,6 +565,51 @@ test("index: computeRowCost scopes Antigravity-only model aliases by source", as
   assert.equal(pricing.computeRowCost({ ...row, model: "gpt-oss-20b", source: "antigravity" }), 0);
 });
 
+test("index: Trae and CodeBuddy are token-only even when pricing is available", async () => {
+  pricing.resetPricingForTests();
+  const cachePath = tmpCachePath();
+  await pricing.ensurePricingLoaded({
+    cachePath,
+    fetchImpl: makeFetchImpl(FIXTURE_LITELLM),
+  });
+  const row = {
+    model: "claude-sonnet-4-6",
+    input_tokens: 1_000,
+    cached_input_tokens: 200,
+    cache_creation_input_tokens: 100,
+    output_tokens: 300,
+    reasoning_output_tokens: 0,
+    total_tokens: 1_600,
+  };
+  const options = {
+    pricingRules: [{
+      id: "token-only-must-ignore-rules",
+      source: "trae",
+      modelPattern: "claude-sonnet-4-6",
+      inputUsdPer1M: 100,
+      outputUsdPer1M: 100,
+      cacheReadUsdPer1M: 100,
+      cacheWriteUsdPer1M: 100,
+      currency: "USD",
+      enabled: true,
+    }],
+    agentDefaultPricing: {
+      trae: { inputUsdPer1M: 50, outputUsdPer1M: 50 },
+      codebuddy: { inputUsdPer1M: 50, outputUsdPer1M: 50 },
+    },
+  };
+
+  for (const source of ["trae", "codebuddy"]) {
+    assert.equal(pricing.computeRowCost({ ...row, source }, options), 0);
+    assert.deepEqual(pricing.computeRowCostDetailed({ ...row, source }, options), {
+      cost_usd: 0,
+      priced_tokens: 0,
+      unpriced_tokens: 1_600,
+      pricing_coverage: "unpriced",
+    });
+  }
+});
+
 test("index: negative cache is scoped by source for Antigravity aliases", async () => {
   pricing.resetPricingForTests();
   const cachePath = tmpCachePath();

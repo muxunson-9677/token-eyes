@@ -6,14 +6,17 @@ const { test } = require("node:test");
 
 require("./helpers/home-shim.cjs");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const {
+  createLocalApiHandler,
+  summarizeTokenOnlyUsage,
+} = require("../src/lib/local-api");
 
 async function writeQueue(queuePath, rows) {
   await fs.promises.writeFile(queuePath, rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
 }
 
-async function callEndpoint(queuePath, endpoint) {
-  const handler = createLocalApiHandler({ queuePath });
+async function callEndpoint(queuePath, endpoint, handlerOptions = {}) {
+  const handler = createLocalApiHandler({ queuePath, ...handlerOptions });
   const url = new URL(`http://localhost${endpoint}`);
   const req = {
     method: "GET",
@@ -36,6 +39,68 @@ async function callEndpoint(queuePath, endpoint) {
   assert.ok(handled, `endpoint must be handled: ${endpoint}`);
   return JSON.parse(chunks.join(""));
 }
+
+test("usage-limits appends deduplicated Trae and CodeBuddy token-only totals", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-localapi-token-only-limits-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await writeQueue(queuePath, [
+      {
+        source: "trae",
+        model: "claude-sonnet-4-6",
+        hour_start: "2026-05-09T10:00:00.000Z",
+        input_tokens: 100,
+        output_tokens: 20,
+        total_tokens: 120,
+      },
+      {
+        source: "trae",
+        model: "claude-sonnet-4-6",
+        hour_start: "2026-05-09T10:00:00.000Z",
+        input_tokens: 150,
+        output_tokens: 30,
+        total_tokens: 180,
+      },
+      {
+        source: "codebuddy",
+        model: "gpt-5",
+        hour_start: "2026-05-09T10:30:00.000Z",
+        input_tokens: 250,
+        output_tokens: 50,
+        total_tokens: 300,
+      },
+    ]);
+
+    assert.deepEqual(summarizeTokenOnlyUsage([
+      { source: "trae", total_tokens: 180 },
+      { source: "codebuddy", total_tokens: 300 },
+    ]), {
+      trae: { configured: true, error: null, token_only: true, total_tokens: 180 },
+      codebuddy: { configured: true, error: null, token_only: true, total_tokens: 300 },
+    });
+
+    const result = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-usage-limits",
+      { usageLimitsProvider: async () => ({ fetched_at: "2026-05-09T11:00:00.000Z" }) },
+    );
+    assert.equal(result.fetched_at, "2026-05-09T11:00:00.000Z");
+    assert.deepEqual(result.trae, {
+      configured: true,
+      error: null,
+      token_only: true,
+      total_tokens: 180,
+    });
+    assert.deepEqual(result.codebuddy, {
+      configured: true,
+      error: null,
+      token_only: true,
+      total_tokens: 300,
+    });
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
 
 test("usage-summary defaults to all scope and includes account-level Cursor usage", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-localapi-source-scope-"));

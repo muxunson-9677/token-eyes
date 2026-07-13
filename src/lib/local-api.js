@@ -437,6 +437,23 @@ function clearQueueDataCacheForTests() {
   queueDataCache.clear();
 }
 
+function summarizeTokenOnlyUsage(rows) {
+  const totals = { trae: 0, codebuddy: 0 };
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const source = normalizeSource(row?.source);
+    if (!Object.prototype.hasOwnProperty.call(totals, source)) continue;
+    totals[source] += Math.max(0, Number(row?.total_tokens || 0));
+  }
+  return Object.fromEntries(
+    Object.entries(totals).map(([source, totalTokens]) => [source, {
+      configured: totalTokens > 0,
+      error: null,
+      token_only: true,
+      total_tokens: totalTokens,
+    }]),
+  );
+}
+
 function rowDayKey(row, timeZoneContext) {
   const hs = row.hour_start;
   if (!hs) return "";
@@ -1751,6 +1768,7 @@ function createLocalApiHandler({
   detectAgentEnvironment: detectAgentEnvironmentOverride,
   providerApiTestMode = false,
   providerApiTimeoutMs,
+  usageLimitsProvider,
   now: nowProvider = () => new Date(),
 } = {}) {
   const qp = queuePath || resolveQueuePath();
@@ -6578,18 +6596,27 @@ function createLocalApiHandler({
 
     // --- usage-limits ---
     if (p === "/functions/tokentracker-usage-limits") {
-      const { getUsageLimits, resetUsageLimitsCache } = require("./usage-limits");
+      const usageLimitsModule = require("./usage-limits");
       try {
         const forceRefresh = url.searchParams.get("refresh");
-        if (forceRefresh === "1" || forceRefresh === "true") {
-          resetUsageLimitsCache();
+        if (
+          (forceRefresh === "1" || forceRefresh === "true")
+          && typeof usageLimitsProvider !== "function"
+        ) {
+          usageLimitsModule.resetUsageLimitsCache();
         }
-        const data = await getUsageLimits({
+        const loadUsageLimits = typeof usageLimitsProvider === "function"
+          ? usageLimitsProvider
+          : usageLimitsModule.getUsageLimits;
+        const data = await loadUsageLimits({
           home: os.homedir(),
           env: process.env,
           platform: process.platform,
         });
-        json(res, data);
+        json(res, {
+          ...data,
+          ...summarizeTokenOnlyUsage(readQueueData(qp)),
+        });
       } catch (e) {
         json(res, { error: e?.message || "Unknown error" }, 500);
       }
@@ -6634,6 +6661,7 @@ module.exports = {
   getOrCreateMachineId,
   computeStableMachineId,
   readQueueData,
+  summarizeTokenOnlyUsage,
   clearQueueDataCacheForTests,
   clearRequestUsageRecordsListCacheForTests,
 };
