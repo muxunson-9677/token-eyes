@@ -2,6 +2,7 @@ mod auto_launch;
 mod claude_session;
 #[path = "commands.rs"]
 mod commands;
+mod codex_app_server;
 mod codex_session;
 mod cursor_session;
 mod glm_session;
