@@ -2958,8 +2958,10 @@ function createLocalApiHandler({
     const allSources = new Set();
     let periodSubscriptionUsd = 0;
     let lifetimeSubscriptionUsd = 0;
+    let periodOtherAiUsd = 0;
+    let lifetimeOtherAiUsd = 0;
 
-    // by_source: { source -> { subscription_usd, api_usd } }
+    // by_source: { source -> { subscription_usd, other_ai_usd, api_usd } }
     const bySourceMap = new Map();
 
     for (const record of records) {
@@ -2969,13 +2971,19 @@ function createLocalApiHandler({
 
       allSources.add(src);
       if (!bySourceMap.has(src)) {
-        bySourceMap.set(src, { source: src, subscription_usd: 0, api_usd: 0 });
+        bySourceMap.set(src, { source: src, subscription_usd: 0, other_ai_usd: 0, api_usd: 0 });
       }
       const periodCost = computeSubscriptionCostForRange(record, fromDate, toDate, usdToCny);
       const lifetimeCost = computeSubscriptionCostForRange(record, lifetimeFrom, lifetimeTo, usdToCny);
-      periodSubscriptionUsd += periodCost;
-      lifetimeSubscriptionUsd += lifetimeCost;
-      bySourceMap.get(src).subscription_usd += periodCost;
+      if (src === "other_ai") {
+        periodOtherAiUsd += periodCost;
+        lifetimeOtherAiUsd += lifetimeCost;
+        bySourceMap.get(src).other_ai_usd += periodCost;
+      } else {
+        periodSubscriptionUsd += periodCost;
+        lifetimeSubscriptionUsd += lifetimeCost;
+        bySourceMap.get(src).subscription_usd += periodCost;
+      }
     }
 
     // Period API cost (filtered by sources allowlist)
@@ -3004,7 +3012,7 @@ function createLocalApiHandler({
 
         if (src && !allSources.has(src)) {
           allSources.add(src);
-          bySourceMap.set(src, { source: src, subscription_usd: 0, api_usd: 0 });
+          bySourceMap.set(src, { source: src, subscription_usd: 0, other_ai_usd: 0, api_usd: 0 });
         }
       }
     } catch (e) {
@@ -3017,13 +3025,15 @@ function createLocalApiHandler({
     }
 
     const periodSubscriptionCny = periodSubscriptionUsd * usdToCny;
+    const periodOtherAiCny = periodOtherAiUsd * usdToCny;
     const periodApiCny = periodApiUsd * usdToCny;
-    const periodCombinedUsd = periodSubscriptionUsd + periodApiUsd;
+    const periodCombinedUsd = periodSubscriptionUsd + periodOtherAiUsd + periodApiUsd;
     const periodCombinedCny = periodCombinedUsd * usdToCny;
 
     const lifetimeSubscriptionCny = lifetimeSubscriptionUsd * usdToCny;
+    const lifetimeOtherAiCny = lifetimeOtherAiUsd * usdToCny;
     const lifetimeApiCny = lifetimeApiUsd * usdToCny;
-    const lifetimeCombinedUsd = lifetimeSubscriptionUsd + lifetimeApiUsd;
+    const lifetimeCombinedUsd = lifetimeSubscriptionUsd + lifetimeOtherAiUsd + lifetimeApiUsd;
     const lifetimeCombinedCny = lifetimeCombinedUsd * usdToCny;
 
     const round6 = (v) => Number(v.toFixed(6));
@@ -3035,22 +3045,28 @@ function createLocalApiHandler({
         source: entry.source,
         subscription_usd: round6(entry.subscription_usd),
         subscription_cny: round6(entry.subscription_usd * usdToCny),
+        other_ai_usd: round6(entry.other_ai_usd),
+        other_ai_cny: round6(entry.other_ai_usd * usdToCny),
         api_usd: round6(entry.api_usd),
         api_cny: round6(entry.api_usd * usdToCny),
-        combined_usd: round6(entry.subscription_usd + entry.api_usd),
-        combined_cny: round6((entry.subscription_usd + entry.api_usd) * usdToCny),
+        combined_usd: round6(entry.subscription_usd + entry.other_ai_usd + entry.api_usd),
+        combined_cny: round6((entry.subscription_usd + entry.other_ai_usd + entry.api_usd) * usdToCny),
       }));
 
     return {
       totals: {
         subscription_usd: round6(periodSubscriptionUsd),
         subscription_cny: round6(periodSubscriptionCny),
+        other_ai_usd: round6(periodOtherAiUsd),
+        other_ai_cny: round6(periodOtherAiCny),
         api_usd: round6(periodApiUsd),
         api_cny: round6(periodApiCny),
         combined_usd: round6(periodCombinedUsd),
         combined_cny: round6(periodCombinedCny),
         lifetime_subscription_usd: round6(lifetimeSubscriptionUsd),
         lifetime_subscription_cny: round6(lifetimeSubscriptionCny),
+        lifetime_other_ai_usd: round6(lifetimeOtherAiUsd),
+        lifetime_other_ai_cny: round6(lifetimeOtherAiCny),
         lifetime_api_usd: round6(lifetimeApiUsd),
         lifetime_api_cny: round6(lifetimeApiCny),
         lifetime_combined_usd: round6(lifetimeCombinedUsd),
@@ -3373,7 +3389,7 @@ function createLocalApiHandler({
     return bySourceBucket;
   }
 
-  function allocateSubscriptionCostToBuckets(record, fromDate, toDate, bucket, timeZoneContext, usdToCny) {
+  function allocateSpendCostToBuckets(record, fromDate, toDate, bucket, timeZoneContext, usdToCny) {
     const periodCost = computeSubscriptionCostForRange(record, fromDate, toDate, usdToCny);
     if (periodCost <= 0) return [];
 
@@ -3452,7 +3468,8 @@ function createLocalApiHandler({
     return bucketList.map((bucketStart, idx) => ({
       source,
       bucket_start: bucketStart,
-      subscription_cost_usd: idx === n - 1 ? lastCost : baseCost,
+      subscription_cost_usd: source === "other_ai" ? 0 : (idx === n - 1 ? lastCost : baseCost),
+      other_ai_cost_usd: source === "other_ai" ? (idx === n - 1 ? lastCost : baseCost) : 0,
     }));
   }
 
@@ -3514,7 +3531,7 @@ function createLocalApiHandler({
 
     const subAllocations = [];
     for (const record of filteredSpendRecords) {
-      const allocations = allocateSubscriptionCostToBuckets(record, fromDate, toDate, bucket, timeZoneContext, usdToCny);
+      const allocations = allocateSpendCostToBuckets(record, fromDate, toDate, bucket, timeZoneContext, usdToCny);
       subAllocations.push(...allocations);
     }
 
@@ -3543,6 +3560,8 @@ function createLocalApiHandler({
           api_cost_cny: 0,
           subscription_cost_usd: 0,
           subscription_cost_cny: 0,
+          other_ai_cost_usd: 0,
+          other_ai_cost_cny: 0,
           combined_usd: 0,
           combined_cny: 0,
           // Token breakdown (sum across all models for this source × bucket).
@@ -3590,11 +3609,13 @@ function createLocalApiHandler({
       if (seriesEntry) {
         seriesEntry.subscription_cost_usd = seriesEntry.subscription_cost_usd + alloc.subscription_cost_usd;
         seriesEntry.subscription_cost_cny = seriesEntry.subscription_cost_usd * usdToCny;
+        seriesEntry.other_ai_cost_usd = seriesEntry.other_ai_cost_usd + alloc.other_ai_cost_usd;
+        seriesEntry.other_ai_cost_cny = seriesEntry.other_ai_cost_usd * usdToCny;
       }
     }
 
     for (const entry of seriesMap.values()) {
-      entry.combined_usd = entry.api_cost_usd + entry.subscription_cost_usd;
+      entry.combined_usd = entry.api_cost_usd + entry.subscription_cost_usd + entry.other_ai_cost_usd;
       entry.combined_cny = entry.combined_usd * usdToCny;
     }
 
@@ -3609,6 +3630,8 @@ function createLocalApiHandler({
       api_cost_cny: 0,
       subscription_cost_usd: 0,
       subscription_cost_cny: 0,
+      other_ai_cost_usd: 0,
+      other_ai_cost_cny: 0,
       combined_usd: 0,
       combined_cny: 0,
     };
@@ -3618,6 +3641,8 @@ function createLocalApiHandler({
       totals.api_cost_cny += entry.api_cost_cny;
       totals.subscription_cost_usd += entry.subscription_cost_usd;
       totals.subscription_cost_cny += entry.subscription_cost_cny;
+      totals.other_ai_cost_usd += entry.other_ai_cost_usd;
+      totals.other_ai_cost_cny += entry.other_ai_cost_cny;
       totals.combined_usd += entry.combined_usd;
       totals.combined_cny += entry.combined_cny;
     }
@@ -3635,6 +3660,7 @@ function createLocalApiHandler({
     // Cost Summary Cards.
     totals.api_usd = totals.api_cost_usd;
     totals.subscription_usd = totals.subscription_cost_usd;
+    totals.other_ai_usd = totals.other_ai_cost_usd;
     try {
       const lifetimeSummary = summarizeSpendRecords(
         filteredSpendRecords, fromStr, toStr, timeZoneContext, filters.sources,
@@ -3642,6 +3668,7 @@ function createLocalApiHandler({
       totals.lifetime_combined_usd = lifetimeSummary.totals.lifetime_combined_usd;
       totals.lifetime_api_usd = lifetimeSummary.totals.lifetime_api_usd;
       totals.lifetime_subscription_usd = lifetimeSummary.totals.lifetime_subscription_usd;
+      totals.lifetime_other_ai_usd = lifetimeSummary.totals.lifetime_other_ai_usd;
     } catch (_e) {
       // Lifetime computation failed; lifetime_* fields remain undefined.
       // Frontend falls back to 0 via || 0 (acceptable degradation, not false data).
@@ -3677,6 +3704,8 @@ function createLocalApiHandler({
         api_cost_cny: 0,
         subscription_cost_usd: 0,
         subscription_cost_cny: 0,
+        other_ai_cost_usd: 0,
+        other_ai_cost_cny: 0,
         combined_usd: 0,
         combined_cny: 0,
         input_tokens: 0,
@@ -3695,6 +3724,8 @@ function createLocalApiHandler({
       sa.api_cost_cny += entry.api_cost_cny;
       sa.subscription_cost_usd += entry.subscription_cost_usd;
       sa.subscription_cost_cny += entry.subscription_cost_cny;
+      sa.other_ai_cost_usd += entry.other_ai_cost_usd;
+      sa.other_ai_cost_cny += entry.other_ai_cost_cny;
       sa.combined_usd += entry.combined_usd;
       sa.combined_cny += entry.combined_cny;
       sa.input_tokens += entry.input_tokens;
@@ -3711,6 +3742,8 @@ function createLocalApiHandler({
       sa.api_cost_cny = round6(sa.api_cost_cny);
       sa.subscription_cost_usd = round6(sa.subscription_cost_usd);
       sa.subscription_cost_cny = round6(sa.subscription_cost_cny);
+      sa.other_ai_cost_usd = round6(sa.other_ai_cost_usd);
+      sa.other_ai_cost_cny = round6(sa.other_ai_cost_cny);
       sa.combined_usd = round6(sa.combined_usd);
       sa.combined_cny = round6(sa.combined_cny);
       sa.cost_usd = round6(sa.cost_usd);
@@ -3721,6 +3754,8 @@ function createLocalApiHandler({
       entry.api_cost_cny = round6(entry.api_cost_cny);
       entry.subscription_cost_usd = round6(entry.subscription_cost_usd);
       entry.subscription_cost_cny = round6(entry.subscription_cost_cny);
+      entry.other_ai_cost_usd = round6(entry.other_ai_cost_usd);
+      entry.other_ai_cost_cny = round6(entry.other_ai_cost_cny);
       entry.combined_usd = round6(entry.combined_usd);
       entry.combined_cny = round6(entry.combined_cny);
       entry.cost_usd = round6(entry.cost_usd);
@@ -3760,18 +3795,36 @@ function createLocalApiHandler({
         targetEntry.combined_usd = round6(targetUsd - otherSumUsd);
         targetEntry.combined_cny = round6(targetCny - otherSumCny);
 
-        const oldTotal = targetEntry.api_cost_usd + targetEntry.subscription_cost_usd;
+        const oldTotal = targetEntry.api_cost_usd
+          + targetEntry.subscription_cost_usd
+          + targetEntry.other_ai_cost_usd;
         if (oldTotal !== 0) {
           const apiRatio = targetEntry.api_cost_usd / oldTotal;
+          const subscriptionRatio = targetEntry.subscription_cost_usd / oldTotal;
           targetEntry.api_cost_usd = round6(targetEntry.combined_usd * apiRatio);
-          targetEntry.subscription_cost_usd = round6(targetEntry.combined_usd - targetEntry.api_cost_usd);
+          targetEntry.subscription_cost_usd = round6(targetEntry.combined_usd * subscriptionRatio);
+          targetEntry.other_ai_cost_usd = round6(
+            targetEntry.combined_usd - targetEntry.api_cost_usd - targetEntry.subscription_cost_usd,
+          );
           targetEntry.api_cost_cny = round6(targetEntry.combined_cny * apiRatio);
-          targetEntry.subscription_cost_cny = round6(targetEntry.combined_cny - targetEntry.api_cost_cny);
+          targetEntry.subscription_cost_cny = round6(targetEntry.combined_cny * subscriptionRatio);
+          targetEntry.other_ai_cost_cny = round6(
+            targetEntry.combined_cny - targetEntry.api_cost_cny - targetEntry.subscription_cost_cny,
+          );
+        } else if (targetEntry.source === "other_ai") {
+          targetEntry.api_cost_usd = 0;
+          targetEntry.subscription_cost_usd = 0;
+          targetEntry.other_ai_cost_usd = targetEntry.combined_usd;
+          targetEntry.api_cost_cny = 0;
+          targetEntry.subscription_cost_cny = 0;
+          targetEntry.other_ai_cost_cny = targetEntry.combined_cny;
         } else {
           targetEntry.api_cost_usd = 0;
           targetEntry.subscription_cost_usd = targetEntry.combined_usd;
+          targetEntry.other_ai_cost_usd = 0;
           targetEntry.api_cost_cny = 0;
           targetEntry.subscription_cost_cny = targetEntry.combined_cny;
+          targetEntry.other_ai_cost_cny = 0;
         }
       }
     }

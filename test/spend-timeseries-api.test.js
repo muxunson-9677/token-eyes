@@ -215,10 +215,11 @@ test("OTHER-AI: filtered timeseries includes manual cost with zero tokens", asyn
     assert.ok(body.series.every((entry) => entry.source === "other_ai"));
     assert.ok(body.series.every((entry) => entry.total_tokens === 0));
     assert.ok(body.series.every((entry) => entry.subscription_cost_usd === 0));
-    assert.equal(
-      body.series.reduce((sum, entry) => sum + entry.other_ai_cost_usd, 0),
-      12,
+    const seriesOtherAiCost = body.series.reduce(
+      (sum, entry) => sum + entry.other_ai_cost_usd,
+      0,
     );
+    assert.ok(Math.abs(seriesOtherAiCost - 12) < 1e-10);
     assert.equal(body.by_source[0].subscription_cost_usd, 0);
     assert.equal(body.by_source[0].other_ai_cost_usd, 12);
   } finally {
