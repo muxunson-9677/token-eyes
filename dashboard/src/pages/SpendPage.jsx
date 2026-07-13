@@ -20,6 +20,7 @@ import { ModelUsageTable } from "../ui/dashboard/components/ModelUsageTable.jsx"
 import { UsageTrendChartCard } from "../ui/dashboard/components/UsageTrendChart.jsx";
 import { UsageFilterBar } from "../ui/dashboard/components/UsageFilterBar.jsx";
 import { UsageStatsPanel } from "../ui/dashboard/components/UsageStatsPanel.jsx";
+import { TokenServiceList } from "../ui/dashboard/components/TokenServiceList.jsx";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import {
   normalizeVisibleProviderIds,
@@ -36,6 +37,7 @@ import { useUsageSummary } from "../hooks/use-usage-summary";
 import { useUsageFilterOptions } from "../hooks/use-usage-filter-options";
 import { useCostAccumulation } from "../hooks/use-cost-accumulation.js";
 import { useProviderApiBalances } from "../hooks/use-provider-api-balances.js";
+import { useTokenServicePlans } from "../hooks/use-token-service-plans.js";
 import { CostAccumulation } from "../ui/dashboard/components/CostAccumulation.jsx";
 
 // v2.0 IA refactor (work order 01): the old single SpendPage with a top-level
@@ -150,6 +152,7 @@ function SpendUsagePageInner({
 
   // Ticket-02: filter state from UsageFiltersContext
   const { state: filterState, refreshRevision, requestRefresh } = useUsageFilters();
+  const tokenServices = useTokenServicePlans(refreshRevision);
   const effectiveUsageSources = useMemo(
     () => resolveEffectiveUsageSources({
       sources: filterState.sources,
@@ -353,7 +356,7 @@ function SpendUsagePageInner({
   return (
     <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
@@ -397,7 +400,10 @@ function SpendUsagePageInner({
               {heavyUsagePanelsReady && (
                 <>
                   {/* Usage Trend Chart */}
-                  <div className="mb-6">
+                  <div
+                    data-testid="usage-chart-token-services-layout"
+                    className="mb-6 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-stretch"
+                  >
                     <UsageTrendChartCard
                       from={from}
                       to={to}
@@ -408,6 +414,13 @@ function SpendUsagePageInner({
                       timeZone={timeZone}
                       tzOffsetMinutes={tzOffsetMinutes}
                       allowedSources={visibleProviderIds}
+                      className="min-w-0"
+                    />
+                    <TokenServiceList
+                      plans={tokenServices.plans}
+                      loading={tokenServices.loading}
+                      error={tokenServices.error}
+                      className="min-w-0"
                     />
                   </div>
 

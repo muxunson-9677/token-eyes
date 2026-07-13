@@ -1489,6 +1489,16 @@ nav.settings.basic,ui,Sidebar,Sidebar,nav_settings_basic,"基础设置",,active
 nav.settings.cost,ui,Sidebar,Sidebar,nav_settings_cost,"成本设置",,active
 spend.usage.page.title,dashboard,SpendPage,SpendPage,usage_page_title,"使用统计",,active
 spend.usage.page.subtitle,dashboard,SpendPage,SpendPage,usage_page_subtitle,"查看真实 Token 消耗、API 成本与请求日志。",,active
+spend.usage.token_services.title,dashboard,SpendPage,TokenServiceList,token_services_title,"Token 服务列表",,active
+spend.usage.token_services.loading,dashboard,SpendPage,TokenServiceList,token_services_loading,"正在加载套餐用量…",,active
+spend.usage.token_services.error,dashboard,SpendPage,TokenServiceList,token_services_error,"Token 服务加载失败，请刷新重试。",,active
+spend.usage.token_services.empty,dashboard,SpendPage,TokenServiceList,token_services_empty,"暂无未耗尽且已有用量的 Token 服务",,active
+spend.usage.token_services.unknown,dashboard,SpendPage,TokenServiceList,token_services_unknown,"未命名服务",,active
+spend.usage.token_services.used,dashboard,SpendPage,TokenServiceList,token_services_used,"已用",,active
+spend.usage.token_services.total,dashboard,SpendPage,TokenServiceList,token_services_total,"总量",,active
+spend.usage.token_services.progress,dashboard,SpendPage,TokenServiceList,token_services_progress,"{{name}} 用量",,active
+spend.usage.token_services.previous,dashboard,SpendPage,TokenServiceList,token_services_previous,"上一页",,active
+spend.usage.token_services.next,dashboard,SpendPage,TokenServiceList,token_services_next,"下一页",,active
 spend.cost.page.title,dashboard,SpendPage,SpendPage,cost_page_title,"成本累积",,active
 spend.cost.page.subtitle,dashboard,SpendPage,SpendPage,cost_page_subtitle,"查看 Token 套餐状态、供应商账户花销与余额及订阅记录。",,active
 settings.basic.page.title,ui,SettingsPage,SettingsPage,basic_page_title,"基础设置",,active

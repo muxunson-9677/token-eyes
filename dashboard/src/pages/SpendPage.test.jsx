@@ -406,6 +406,28 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(screen.getByRole("img", { name: "使用趋势图" })).toBeInTheDocument());
   });
 
+  it("places a compact paginated Token service list beside the usage trend", async () => {
+    getTokenPlans.mockResolvedValue({
+      records: Array.from({ length: 6 }, (_, index) => ({
+        id: `plan-${index + 1}`,
+        source: `source-${index + 1}`,
+        plan_label: `套餐 ${index + 1}`,
+        total_quota: 1_000,
+        used_quota: 900 - index * 100,
+        remaining_quota: 100 + index * 100,
+        quota_unit: "tokens",
+        expires_at: "2099-12-31",
+      })),
+    });
+
+    render(<SpendUsagePage />);
+
+    const layout = await screen.findByTestId("usage-chart-token-services-layout");
+    expect(within(layout).getByText("Token 服务列表")).toBeInTheDocument();
+    expect(within(layout).getAllByTestId("token-service-row")).toHaveLength(5);
+    expect(getTokenPlans).toHaveBeenCalledTimes(1);
+  });
+
   it("provider tab renders ProviderUsageTable with hook data", async () => {
     const user = userEvent.setup();
     getProviderStats.mockResolvedValue({
