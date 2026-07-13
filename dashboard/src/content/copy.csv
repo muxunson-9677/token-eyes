@@ -415,6 +415,11 @@ leaderboard.signin_checking,ui,LeaderboardPage,LeaderboardPage,signin_checking,"
 leaderboard.signin_busy,ui,LeaderboardPage,LeaderboardPage,signin_busy,"Opening WeChat...",,active
 leaderboard.signin_unavailable,ui,LeaderboardPage,LeaderboardPage,signin_unavailable,"WeChat sign-in is not configured",,active
 leaderboard.signin_error,ui,LeaderboardPage,LeaderboardPage,signin_error,"Could not start WeChat sign-in. Please try again.",,active
+leaderboard.developer_preview.prompt,ui,LeaderboardPage,LeaderboardPage,developer_preview_prompt,"WeChat sign-in is not connected yet. This test build can enter a local developer preview.",,active
+leaderboard.developer_preview.wechat_placeholder,ui,LeaderboardPage,LeaderboardPage,developer_preview_wechat_placeholder,"WeChat sign-in (placeholder)",,active
+leaderboard.developer_preview.signin,ui,LeaderboardPage,LeaderboardPage,developer_preview_signin,"Developer sign-in",,active
+leaderboard.developer_preview.active,ui,LeaderboardPage,LeaderboardPage,developer_preview_active,"Developer preview signed in: this is a simulated leaderboard and no real data is uploaded.",,active
+leaderboard.developer_preview.signout,ui,LeaderboardPage,LeaderboardPage,developer_preview_signout,"Exit developer preview",,active
 leaderboard.sync_prompt,ui,LeaderboardPage,LeaderboardPage,sync_prompt,"Enable Cloud Sync to appear in rankings",,active
 leaderboard.sync_button.idle,ui,LeaderboardPage,LeaderboardPage,sync_button_idle,"Enable & Sync",,active
 leaderboard.sync_button.busy,ui,LeaderboardPage,LeaderboardPage,sync_button_busy,"Syncing...",,active

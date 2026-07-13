@@ -1,7 +1,7 @@
 import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getLeaderboardPreloadContextKey,
@@ -16,6 +16,7 @@ import { LeaderboardPage } from "./LeaderboardPage.jsx";
 const openLoginModalMock = vi.hoisted(() => vi.fn());
 const signInWithOAuthMock = vi.hoisted(() => vi.fn());
 const getPublicAuthConfigMock = vi.hoisted(() => vi.fn());
+const developerPreviewGate = vi.hoisted(() => ({ enabled: false }));
 const insforgeAuthMock = vi.hoisted(() => ({
   enabled: true,
   signedIn: true,
@@ -40,6 +41,10 @@ vi.mock("../lib/config", () => ({
 
 vi.mock("../lib/mock-data", () => ({
   isMockEnabled: () => false,
+}));
+
+vi.mock("../lib/developer-leaderboard-preview.js", () => ({
+  isDeveloperLeaderboardLoginEnabled: () => developerPreviewGate.enabled,
 }));
 
 vi.mock("../contexts/LoginModalContext.jsx", () => ({
@@ -81,15 +86,30 @@ const preloadedData = {
   generated_at: null,
 };
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="leaderboard-location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
 function renderLeaderboard(initialEntry = "/leaderboard", props = {}) {
   const tree = React.createElement(
     MemoryRouter,
     { initialEntries: [initialEntry] },
-    React.createElement(LeaderboardPage, {
-      auth: props.auth ?? null,
-      signedIn: props.signedIn ?? true,
-      sessionSoftExpired: false,
-    }),
+    React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(LeaderboardPage, {
+        auth: props.auth ?? null,
+        signedIn: props.signedIn ?? true,
+        sessionSoftExpired: false,
+      }),
+      React.createElement(LocationProbe),
+    ),
   );
   return render(props.strict ? <React.StrictMode>{tree}</React.StrictMode> : tree);
 }
@@ -112,6 +132,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     insforgeAuthMock.signedIn = true;
     insforgeAuthMock.loading = false;
     insforgeAuthMock.user = { id: "user-1" };
+    developerPreviewGate.enabled = false;
     delete window.webkit;
     window.localStorage.clear();
   });
@@ -368,6 +389,57 @@ describe("LeaderboardPage window-session cache reuse", () => {
     const button = await screen.findByRole("button", { name: "微信登录服务尚未配置" });
     expect(button).toBeDisabled();
     expect(signInWithOAuthMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps developer direct login hidden in ordinary builds", async () => {
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { signedIn: false });
+
+    expect((await screen.findAllByText("Preloaded User")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "开发者直登" })).not.toBeInTheDocument();
+  });
+
+  it("enters a local developer preview without starting WeChat OAuth", async () => {
+    const user = userEvent.setup();
+    developerPreviewGate.enabled = true;
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { signedIn: false });
+
+    const wechatPlaceholder = await screen.findByRole("button", { name: "微信登录（占位）" });
+    expect(wechatPlaceholder).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "开发者直登" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("dev_login=1");
+      expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("mock=1");
+      expect(getLeaderboard).toHaveBeenCalledWith(expect.objectContaining({ mock: true }));
+    });
+    expect(screen.getByText(/开发者预览已登录/)).toBeInTheDocument();
+    expect(signInWithOAuthMock).not.toHaveBeenCalled();
+  });
+
+  it("exits the developer preview and removes only its query flags", async () => {
+    const user = userEvent.setup();
+    developerPreviewGate.enabled = true;
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard?period=today&dev_login=1&mock=1", { signedIn: false });
+
+    await user.click(await screen.findByRole("button", { name: "退出开发者预览" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("period=today");
+      expect(screen.getByTestId("leaderboard-location")).not.toHaveTextContent("dev_login=1");
+      expect(screen.getByTestId("leaderboard-location")).not.toHaveTextContent("mock=1");
+    });
   });
 
   it("uses the native callback relay for WeChat login inside the macOS app", async () => {

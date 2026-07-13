@@ -43,6 +43,7 @@ import {
 import { getLeaderboardBaseUrl } from "../lib/config";
 import { getDashboardEntryPath } from "../lib/host-mode";
 import { isMockEnabled } from "../lib/mock-data";
+import { isDeveloperLeaderboardLoginEnabled } from "../lib/developer-leaderboard-preview.js";
 import {
   getLeaderboard,
   refreshLeaderboard,
@@ -277,6 +278,13 @@ export function LeaderboardPage({
   const { currency, rate } = useCurrency();
   const leaderboardBaseUrl = useMemo(() => getLeaderboardBaseUrl(), []);
   const mockEnabled = isMockEnabled();
+  const developerLoginEnabled = isDeveloperLeaderboardLoginEnabled();
+  const developerPreviewActive = useMemo(() => {
+    if (!developerLoginEnabled) return false;
+    const params = new URLSearchParams(location?.search || "");
+    return params.get("dev_login") === "1";
+  }, [developerLoginEnabled, location?.search]);
+  const leaderboardMockEnabled = mockEnabled || developerPreviewActive;
   const authTokenAllowed = signedIn && !sessionSoftExpired;
   const authAccessToken = useMemo(() => {
     if (!authTokenAllowed) return null;
@@ -358,7 +366,7 @@ export function LeaderboardPage({
   }, [location?.search]);
 
   useEffect(() => {
-    if (mockEnabled || cloudSignedIn) return undefined;
+    if (leaderboardMockEnabled || cloudSignedIn || developerLoginEnabled) return undefined;
     if (!cloudAuthEnabled || typeof getPublicAuthConfig !== "function") {
       setWechatProviderAvailable(false);
       return undefined;
@@ -384,7 +392,7 @@ export function LeaderboardPage({
     return () => {
       active = false;
     };
-  }, [cloudAuthEnabled, cloudSignedIn, getPublicAuthConfig, mockEnabled]);
+  }, [cloudAuthEnabled, cloudSignedIn, developerLoginEnabled, getPublicAuthConfig, leaderboardMockEnabled]);
 
   const handleDimensionChange = (key, value) => {
     const current = key === "period" ? period : key === "agent" ? agent : metric;
@@ -411,6 +419,21 @@ export function LeaderboardPage({
     }
   }, [cloudAuthEnabled, signInWithOAuth, wechatLoginBusy, wechatProviderAvailable]);
 
+  const handleDeveloperSignIn = useCallback(() => {
+    const params = new URLSearchParams(location?.search || "");
+    params.set("dev_login", "1");
+    params.set("mock", "1");
+    navigate(`${location?.pathname || "/leaderboard"}?${params.toString()}`, { replace: true });
+  }, [location?.pathname, location?.search, navigate]);
+
+  const handleDeveloperSignOut = useCallback(() => {
+    const params = new URLSearchParams(location?.search || "");
+    params.delete("dev_login");
+    params.delete("mock");
+    const search = params.toString();
+    navigate(`${location?.pathname || "/leaderboard"}${search ? `?${search}` : ""}`, { replace: true });
+  }, [location?.pathname, location?.search, navigate]);
+
   useEffect(() => {
     setListPage(1);
   }, [agent, metric, period]);
@@ -420,13 +443,13 @@ export function LeaderboardPage({
     return (safePage - 1) * pageSize;
   }, [listPage, pageSize]);
   const leaderboardAccessMode = useMemo(() => {
-    if (mockEnabled) return "mock";
+    if (leaderboardMockEnabled) return "mock";
     if (authLoading) return "unavailable";
     if (cloudSignedIn) return "cloud";
     if (signedIn) return "local";
     if (leaderboardBaseUrl) return "public";
     return "unavailable";
-  }, [authLoading, cloudSignedIn, leaderboardBaseUrl, mockEnabled, signedIn]);
+  }, [authLoading, cloudSignedIn, leaderboardBaseUrl, leaderboardMockEnabled, signedIn]);
 
   const leaderboardPreloadContextKey = useMemo(
     () =>
@@ -435,13 +458,13 @@ export function LeaderboardPage({
         agent,
         baseUrl: leaderboardBaseUrl,
         metric,
-        mockEnabled,
+        mockEnabled: leaderboardMockEnabled,
         userId: cloudUser?.id || null,
         period,
         pageSize,
         offset: listOffset,
       }),
-    [agent, cloudUser?.id, leaderboardAccessMode, leaderboardBaseUrl, listOffset, metric, mockEnabled, pageSize, period],
+    [agent, cloudUser?.id, leaderboardAccessMode, leaderboardBaseUrl, leaderboardMockEnabled, listOffset, metric, pageSize, period],
   );
 
   const [listState, setListState] = useState(() => {
@@ -464,7 +487,7 @@ export function LeaderboardPage({
 
   useEffect(() => {
     // Mock leaderboard uses local getMockLeaderboard(); real data needs InsForge URL from getLeaderboardBaseUrl().
-    if ((!leaderboardBaseUrl && !mockEnabled) || (!mockEnabled && leaderboardAccessMode === "unavailable")) {
+    if ((!leaderboardBaseUrl && !leaderboardMockEnabled) || (!leaderboardMockEnabled && leaderboardAccessMode === "unavailable")) {
       setListState({ loading: false, error: null, data: null, contextKey: null });
       return;
     }
@@ -494,6 +517,7 @@ export function LeaderboardPage({
         period,
         limit: pageSize,
         offset: listOffset,
+        ...(developerPreviewActive ? { mock: true } : {}),
       });
       if (!active) return;
       publishLeaderboardPreloadState(data, {
@@ -525,10 +549,11 @@ export function LeaderboardPage({
     leaderboardAccessMode,
     agent,
     cloudUser?.id,
+    developerPreviewActive,
     leaderboardPreloadContextKey,
     listOffset,
     listReloadToken,
-    mockEnabled,
+    leaderboardMockEnabled,
     metric,
     period,
     pageSize,
@@ -549,7 +574,7 @@ export function LeaderboardPage({
       };
     }
     return {
-      loading: Boolean(leaderboardBaseUrl || mockEnabled) && leaderboardAccessMode !== "unavailable",
+      loading: Boolean(leaderboardBaseUrl || leaderboardMockEnabled) && leaderboardAccessMode !== "unavailable",
       error: null,
       data: null,
       contextKey: leaderboardPreloadContextKey,
@@ -559,7 +584,7 @@ export function LeaderboardPage({
     leaderboardBaseUrl,
     leaderboardPreloadContextKey,
     listState,
-    mockEnabled,
+    leaderboardMockEnabled,
     renderCachedState,
   ]);
   const listData = currentListState.data;
@@ -1021,7 +1046,43 @@ export function LeaderboardPage({
             />
           </div>
 
-          {!cloudSignedIn && !authLoading && !mockEnabled && (
+          {developerPreviewActive && (
+            <div className="mb-6 flex flex-col gap-2 rounded-lg border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm dark:border-amber-700/70 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-amber-800 dark:text-amber-200">
+                {copy("leaderboard.developer_preview.active")}
+              </p>
+              <button
+                onClick={handleDeveloperSignOut}
+                className="shrink-0 whitespace-nowrap self-start rounded-md border border-amber-400 px-3 py-1.5 text-sm font-medium text-amber-800 transition-colors hover:border-amber-500 hover:text-amber-950 dark:border-amber-700 dark:text-amber-200 dark:hover:border-amber-600 dark:hover:text-amber-100 sm:self-auto"
+              >
+                {copy("leaderboard.developer_preview.signout")}
+              </button>
+            </div>
+          )}
+
+          {developerLoginEnabled && !developerPreviewActive && !cloudSignedIn && !authLoading && (
+            <div className="mb-6 flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-oai-gray-500 dark:text-oai-gray-400">
+                {copy("leaderboard.developer_preview.prompt")}
+              </p>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  disabled
+                  className="whitespace-nowrap rounded-md border border-oai-gray-300 px-3 py-1.5 text-sm font-medium text-oai-gray-500 opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-400"
+                >
+                  {copy("leaderboard.developer_preview.wechat_placeholder")}
+                </button>
+                <button
+                  onClick={handleDeveloperSignIn}
+                  className="whitespace-nowrap rounded-md bg-oai-black px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-oai-gray-800 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+                >
+                  {copy("leaderboard.developer_preview.signin")}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!developerLoginEnabled && !cloudSignedIn && !authLoading && !leaderboardMockEnabled && (
             <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
               <div>
                 <p className="text-oai-gray-500 dark:text-oai-gray-400">
