@@ -39,6 +39,10 @@ vi.mock("../components/settings/ProviderApiConfigSection.jsx", () => ({
   ),
 }));
 
+vi.mock("../components/settings/OtherAiSpendSection.jsx", () => ({
+  OtherAiSpendSection: () => <section data-testid="other-ai-spend-section">OtherAiSpend</section>,
+}));
+
 vi.mock("../components/settings/AppearanceSection.jsx", () => ({
   AppearanceSection: () => <section data-testid="appearance-section">Appearance</section>,
 }));
@@ -142,6 +146,15 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId("provider-api-config-section")).toBeInTheDocument();
+  });
+
+  it("renders OtherAiSpendSection as the third cost-settings category", () => {
+    render(
+      <MemoryRouter>
+        <SettingsCostPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("other-ai-spend-section")).toBeInTheDocument();
   });
 
   it("does NOT render Appearance / Account / DataDirs / AgentPricing / MenuBar", () => {
