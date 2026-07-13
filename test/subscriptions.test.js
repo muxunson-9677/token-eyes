@@ -8,6 +8,7 @@ const {
   collectLocalSubscriptions,
   detectClaudeCodeSubscriptionDetails,
   readClaudeCodeAccessToken,
+  resolveCodexHomeSearchOrder,
 } = require("../src/lib/subscriptions");
 
 function base64UrlEncodeJson(value) {
@@ -20,6 +21,11 @@ function makeJwt(payload) {
   const body = base64UrlEncodeJson(payload);
   return `${header}.${body}.`;
 }
+
+test("resolveCodexHomeSearchOrder defaults to the current user home", () => {
+  const candidates = resolveCodexHomeSearchOrder({ env: {}, config: null });
+  assert.ok(candidates.includes(path.join(os.homedir(), ".codex")));
+});
 
 async function writeJson(p, obj) {
   await fs.mkdir(path.dirname(p), { recursive: true });

@@ -765,7 +765,15 @@ export function TokenPlanSection() {
     }
   }, [glmSession, connectingConsole]);
 
-  const codexStage = useMemo(() => computeConsoleStage(formCodexSession, connectingConsole), [formCodexSession, connectingConsole]);
+  const codexLocalConnected = form.provider_id === "codex" && form.sync_status === "success";
+  const codexStage = useMemo(
+    () => formCodexSession
+      ? computeConsoleStage(formCodexSession, connectingConsole)
+      : codexLocalConnected
+        ? "connected"
+        : "disconnected",
+    [formCodexSession, connectingConsole, codexLocalConnected],
+  );
 
   const claudeStage = useMemo(() => computeConsoleStage(formClaudeSession, connectingConsole), [formClaudeSession, connectingConsole]);
 
@@ -1023,10 +1031,11 @@ export function TokenPlanSection() {
     }
   };
 
-  const handleConnectCodex = async () => {
+  const handleConnectCodex = async ({ record = null } = {}) => {
     if (connectingConsole) return;
+    const codexForm = record || form;
     setConsoleSessionError("");
-    if (!form.source) {
+    if (!codexForm.source) {
       setConsoleSessionError(copy("settings.token_plan.console_session.source_required"));
       return;
     }
@@ -1049,7 +1058,7 @@ export function TokenPlanSection() {
         const created = await createConsoleSession({
           provider_id: "codex",
           auth_kind: "official_console_session",
-          display_name: form.notes?.trim() || `${form.source} / Codex`,
+          display_name: codexForm.notes?.trim() || `${codexForm.source} / Codex`,
           session_ref: sessionRef,
         });
         createdSession = created.session;
@@ -1130,35 +1139,35 @@ export function TokenPlanSection() {
           ));
           const now = new Date().toISOString();
           const saved = await saveTokenPlan({
-            ...form,
+            ...codexForm,
             refresh_enabled: false,
             refresh_method: "manual",
             used_quota: quotaAvailable
               ? Number(quotaStatus.quota.used_quota || 0)
-              : Number(form.used_quota || 0),
+              : Number(codexForm.used_quota || 0),
             remaining_quota: quotaAvailable
               ? Number(quotaStatus.quota.remaining_quota || 0)
-              : Number(form.remaining_quota || 0),
-            total_quota: Number(selectedPlan?.total_quota || form.total_quota || 0),
-            total_quota_display: selectedPlan?.total_quota_display || form.total_quota_display || "",
+              : Number(codexForm.remaining_quota || 0),
+            total_quota: Number(selectedPlan?.total_quota || codexForm.total_quota || 0),
+            total_quota_display: selectedPlan?.total_quota_display || codexForm.total_quota_display || "",
             quota_windows: quotaAvailable
               ? (quotaStatus.quota.quota_windows || [])
-              : (form.quota_windows || []),
-            expires_at: form.expires_at || "",
+              : (codexForm.quota_windows || []),
+            expires_at: codexForm.expires_at || "",
             provider_reported_at: quotaAvailable
               ? (quotaStatus.quota.provider_reported_at || now)
-              : (form.provider_reported_at || ""),
+              : (codexForm.provider_reported_at || ""),
             detection_method: "official_account",
             detection_config: {
-              ...form.detection_config,
+              ...codexForm.detection_config,
               official_account: {
-                ...form.detection_config.official_account,
+                ...codexForm.detection_config?.official_account,
                 account_binding_id: accountBindingId,
                 provider_home_url: "https://chatgpt.com/codex",
               },
             },
             sync_status: quotaAvailable ? "success" : "failed",
-            last_synced_at: quotaAvailable ? now : (form.last_synced_at || ""),
+            last_synced_at: quotaAvailable ? now : (codexForm.last_synced_at || ""),
             last_sync_attempt_at: now,
             last_error_code: quotaResult.error_code,
             last_error_message: quotaResult.error_message,
@@ -1785,12 +1794,10 @@ export function TokenPlanSection() {
             form.detection_config?.official_account?.claude_account_mode,
           )
         ) {
-          const nativeOnlyCodexSync = form.provider_id === "codex";
-          payload.refresh_enabled = !nativeOnlyCodexSync;
-          payload.refresh_method = nativeOnlyCodexSync ? "manual" : "official_api";
-          if (!nativeOnlyCodexSync) {
-            payload.refresh_interval_minutes = 5;
-          }
+          const nativeCodexSync = form.provider_id === "codex" && formCodexSession?.status === "connected";
+          payload.refresh_enabled = !nativeCodexSync;
+          payload.refresh_method = nativeCodexSync ? "manual" : "official_api";
+          if (!nativeCodexSync) payload.refresh_interval_minutes = 5;
         } else {
           payload.refresh_enabled = false;
           payload.refresh_method = "manual";
@@ -1875,9 +1882,7 @@ export function TokenPlanSection() {
           official_account: {
             ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
             provider_home_url: "https://chatgpt.com/codex",
-            account_binding_id: formCodexSession?.id
-              || payload.detection_config?.official_account?.account_binding_id
-              || "",
+            account_binding_id: formCodexSession?.status === "connected" ? formCodexSession.id : "",
           },
         };
       } else if (
@@ -1960,7 +1965,8 @@ export function TokenPlanSection() {
           ? (officialApiKeyRef || payload.detection_config?.official_account?.api_key_ref || "")
           : "";
         const skipBackendRefreshOnSave = (payload.provider_id === "glm" && !glmApiKeyRef)
-          || ["codex", "claude", "cursor"].includes(payload.provider_id)
+          || (payload.provider_id === "codex" && formCodexSession?.status === "connected")
+          || ["claude", "cursor"].includes(payload.provider_id)
           || (payload.provider_id === "kimi" && payload.plan_id !== "kimi_api_budget");
         if (!skipBackendRefreshOnSave) {
           try {
@@ -1987,13 +1993,19 @@ export function TokenPlanSection() {
             used_quota: Number(savedRecord.used_quota ?? current.used_quota),
             remaining_quota: Number(savedRecord.remaining_quota ?? current.remaining_quota),
             total_quota: Number(savedRecord.total_quota ?? current.total_quota),
+            quota_windows: savedRecord.quota_windows || current.quota_windows,
+            sync_status: savedRecord.sync_status || current.sync_status,
+            last_error_code: savedRecord.last_error_code || "",
+            last_error_message: savedRecord.last_error_message || "",
             detection_config: savedRecord.detection_config || current.detection_config,
           }));
         }
       }
       setSavedNotice(true);
+      return { savedId, records: nextRecords };
     } catch (err) {
       setError(err?.message || copy("settings.token_plan.save_error"));
+      return null;
     } finally {
       setSaving(false);
     }
@@ -2273,7 +2285,26 @@ export function TokenPlanSection() {
         await refresh(form.id);
         return;
       }
-      await handleConnectCodex();
+      const saved = await save({ keepOpen: true });
+      if (!saved?.savedId) return;
+      const syncedRecord = saved.records.find((record) => record.id === saved.savedId);
+      if (syncedRecord?.sync_status === "success") {
+        if (formCodexSession && formCodexSession.status !== "connected") {
+          const discarded = await discardCodexPendingSession(formCodexSession.session_ref).catch(() => false);
+          if (!discarded) {
+            await deleteCodexConsoleSession(formCodexSession.session_ref).catch(() => {});
+          }
+          await deleteConsoleSession(formCodexSession.id).catch(() => {});
+          setConsoleSessions((previous) => previous.filter((session) => session.id !== formCodexSession.id));
+        }
+        return;
+      }
+      if (
+        syncedRecord?.sync_status === "reauth_required"
+        || syncedRecord?.last_error_code === "CODEX_REAUTH_REQUIRED"
+      ) {
+        await handleConnectCodex({ record: syncedRecord });
+      }
       return;
     }
     if (form.provider_id === "claude" && !claudeRoutingMode) {
@@ -3042,7 +3073,7 @@ export function TokenPlanSection() {
                       ) : codexStage === "disconnected" ? (
                         <button
                           type="button"
-                          onClick={handleConnectCodex}
+                          onClick={handleOfficialAccountSync}
                           disabled={connectingConsole}
                           data-testid="detection-connect-codex"
                           className={cn(
@@ -3083,7 +3114,7 @@ export function TokenPlanSection() {
                           </div>
                           <button
                             type="button"
-                            onClick={handleConnectCodex}
+                            onClick={handleOfficialAccountSync}
                             disabled={connectingConsole}
                             data-testid="detection-codex-resume"
                             className={cn(
@@ -3111,7 +3142,7 @@ export function TokenPlanSection() {
                           </div>
                           <button
                             type="button"
-                            onClick={handleConnectCodex}
+                            onClick={handleOfficialAccountSync}
                             disabled={connectingConsole}
                             data-testid="detection-codex-retry"
                             className={cn(
@@ -3130,10 +3161,10 @@ export function TokenPlanSection() {
                             <CheckCircle2 className="h-4 w-4 text-green-500" aria-hidden />
                             <div>
                               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                                {formCodexSession?.display_name}
+                                {formCodexSession?.display_name || `${form.source} / Codex`}
                               </div>
                               <div className="text-xs text-green-600 dark:text-green-300">
-                                {codexStatusLabel}
+                                {codexStatusLabel || copy("settings.token_plan.console_session.status_connected")}
                               </div>
                             </div>
                           </div>
@@ -3153,13 +3184,15 @@ export function TokenPlanSection() {
                               ? copy("settings.token_plan.official_sync.syncing")
                               : copy("settings.token_plan.official_sync.connect")}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCodexConsoleSession(formCodexSession.id, formCodexSession.session_ref)}
-                            className="text-xs text-red-600 dark:text-red-400"
-                          >
-                            {copy("settings.token_plan.console_session.disconnect")}
-                          </button>
+                          {formCodexSession ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCodexConsoleSession(formCodexSession.id, formCodexSession.session_ref)}
+                              className="text-xs text-red-600 dark:text-red-400"
+                            >
+                              {copy("settings.token_plan.console_session.disconnect")}
+                            </button>
+                          ) : null}
                         </div>
                       )}
                     </div>

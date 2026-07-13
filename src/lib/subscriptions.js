@@ -119,7 +119,11 @@ function readTrackerConfigFromHome(home) {
   }
 }
 
-function resolveCodexHomeSearchOrder({ home, env, config } = {}) {
+function resolveCodexHomeSearchOrder({
+  home = os.homedir(),
+  env = process.env,
+  config,
+} = {}) {
   const trackerConfig = config && typeof config === "object" ? config : readTrackerConfigFromHome(home);
   const dataDirectories = normalizeDataDirectories(trackerConfig.dataDirectories);
   const readyHomes = listTrackingReadyCodexHomes({
@@ -492,6 +496,7 @@ module.exports = {
   collectLocalSubscriptions,
   detectClaudeCodeSubscriptionDetails,
   readClaudeCodeAccessToken,
+  resolveCodexHomeSearchOrder,
   readCodexAccessToken,
   readCodexAuthBundle,
 };

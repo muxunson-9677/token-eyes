@@ -47,11 +47,36 @@ test("mapCodexErrorCode maps Codex errors to sync statuses", () => {
   assert.equal(mapCodexErrorCode(new CodexTokenPlanError("CODEX_NO_QUOTA_WINDOWS", "x")), "unsupported");
 });
 
-test("codex provider adapter skips CLI when official_account detection is configured", async () => {
+test("codex provider adapter uses the local official login for official_account detection", async () => {
   const { createCodexProviderAdapter } = require("../src/lib/codex-token-plan");
-  const adapter = createCodexProviderAdapter();
+  const adapter = createCodexProviderAdapter({
+    readAuthBundle: async () => ({
+      accessToken: "local-access-token",
+      accountId: "account-123",
+      refreshToken: null,
+      lastRefresh: new Date().toISOString(),
+    }),
+    fetchImpl: async (_url, init) => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(whamPayload),
+      requestHeaders: init.headers,
+    }),
+  });
+
+  const quota = await adapter({ detection_method: "official_account", provider_id: "codex" });
+  assert.equal(quota.quota_windows.length, 2);
+  assert.equal(quota.remaining_quota, 45);
+});
+
+test("codex provider adapter requests reauthentication when no local official login exists", async () => {
+  const { createCodexProviderAdapter } = require("../src/lib/codex-token-plan");
+  const adapter = createCodexProviderAdapter({
+    readAuthBundle: async () => null,
+  });
+
   await assert.rejects(
     () => adapter({ detection_method: "official_account", provider_id: "codex" }),
-    (error) => error instanceof CodexTokenPlanError && error.code === "CODEX_CONSOLE_SYNC_REQUIRED",
+    (error) => error instanceof CodexTokenPlanError && error.code === "CODEX_REAUTH_REQUIRED",
   );
 });

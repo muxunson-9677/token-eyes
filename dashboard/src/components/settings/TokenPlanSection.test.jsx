@@ -333,7 +333,7 @@ it("new plan Agent source options follow visible limits display preferences", as
     .map((option) => option.value)
     .filter(Boolean);
 
-  expect(optionValues).toEqual(["hermes", "claude"]);
+  expect(optionValues).toEqual(["hermes", "claude", "codebuddy"]);
 });
 
 it("new plan provider choices render as separated card options", async () => {
@@ -2014,6 +2014,23 @@ function mockCodexCatalog() {
   });
 }
 
+function mockCodexLocalReauth(id = "plan-2", overrides = {}) {
+  const plan = {
+    ...BASE_RECORD,
+    id,
+    source: "codex",
+    provider_id: "codex",
+    plan_id: "codex_pro_5x",
+    plan_label: "Pro 5x",
+    detection_method: "official_account",
+    sync_status: "reauth_required",
+    last_error_code: "CODEX_REAUTH_REQUIRED",
+    last_error_message: "Codex local login is unavailable",
+    ...overrides,
+  };
+  refreshTokenPlan.mockResolvedValue({ ok: true, plan, records: [plan] });
+}
+
 async function openCodexOfficialAccountForm(user) {
   await screen.findByText(copy("settings.section.token_plan"));
   await act(async () => {
@@ -2032,8 +2049,82 @@ async function openCodexOfficialAccountForm(user) {
   }
 }
 
+it("Codex account detection uses the local official login before opening OAuth", async () => {
+  mockCodexCatalog();
+  const user = userEvent.setup();
+  const syncedPlan = {
+    ...BASE_RECORD,
+    id: "plan-2",
+    source: "codex",
+    provider_id: "codex",
+    plan_id: "codex_pro_5x",
+    plan_label: "Pro 5x",
+    detection_method: "official_account",
+    sync_status: "success",
+    used_quota: 45,
+    remaining_quota: 55,
+    quota_windows: [
+      { kind: "rolling_5_hour", total: 100, used: 30, remaining: 70, percentage: 30 },
+      { kind: "rolling_weekly", total: 100, used: 45, remaining: 55, percentage: 45 },
+    ],
+  };
+  refreshTokenPlan.mockResolvedValue({ ok: true, plan: syncedPlan, records: [syncedPlan] });
+
+  render(<TokenPlanSection />);
+  await openCodexOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-codex"));
+  });
+
+  await waitFor(() => expect(refreshTokenPlan).toHaveBeenCalledWith("plan-2"));
+  expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+    refresh_enabled: true,
+    refresh_method: "official_api",
+  }));
+  expect(createConsoleSession).not.toHaveBeenCalled();
+  expect(openCodexConsoleLogin).not.toHaveBeenCalled();
+});
+
+it("Codex local detection closes and removes a stale pending OAuth session", async () => {
+  mockCodexCatalog();
+  const user = userEvent.setup();
+  const pendingSession = makeCodexSession({
+    id: "stale-codex-session",
+    status: "awaiting_verification",
+  });
+  getConsoleSessions.mockResolvedValue({ sessions: [pendingSession] });
+  discardCodexPendingSession.mockResolvedValue(false);
+  const syncedPlan = {
+    ...BASE_RECORD,
+    id: "plan-2",
+    source: "codex",
+    provider_id: "codex",
+    plan_id: "codex_pro_5x",
+    detection_method: "official_account",
+    sync_status: "success",
+  };
+  refreshTokenPlan.mockResolvedValue({ ok: true, plan: syncedPlan, records: [syncedPlan] });
+
+  render(<TokenPlanSection />);
+  await openCodexOfficialAccountForm(user);
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-codex-resume"));
+  });
+
+  await waitFor(() => expect(discardCodexPendingSession).toHaveBeenCalledWith(codexSessionRef));
+  expect(deleteCodexConsoleSession).toHaveBeenCalledWith(codexSessionRef);
+  expect(deleteConsoleSession).toHaveBeenCalledWith("stale-codex-session");
+  expect(openCodexConsoleLogin).not.toHaveBeenCalled();
+  expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+    detection_config: expect.objectContaining({
+      official_account: expect.objectContaining({ account_binding_id: "" }),
+    }),
+  }));
+});
+
 it("Codex system browser reuses an authorized binding, saves quota, and keeps the binding", async () => {
   mockCodexCatalog();
+  mockCodexLocalReauth();
   const user = userEvent.setup();
   createConsoleSession.mockImplementation(async (params) => ({
     session: makeCodexSession({ id: "codex-session-id", session_ref: params.session_ref }),
@@ -2082,8 +2173,8 @@ it("Codex system browser reuses an authorized binding, saves quota, and keeps th
     await user.click(screen.getByTestId("detection-connect-codex"));
   });
 
-  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
-  const saved = saveTokenPlan.mock.calls[0][0];
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(2));
+  const saved = saveTokenPlan.mock.calls.at(-1)[0];
   expect(saved.sync_status).toBe("success");
   expect(saved.quota_windows).toHaveLength(2);
   expect(saved.refresh_enabled).toBe(false);
@@ -2122,6 +2213,19 @@ it("Codex system browser completes authorization even when quota sync fails", as
       detection_method: "official_account",
       detection_config: { official_account: { provider_home_url: "https://chatgpt.com/codex" } },
       sync_status: "success",
+    }],
+  });
+  mockCodexLocalReauth("codex-plan", {
+    total_quota: 100,
+    used_quota: 40,
+    remaining_quota: 60,
+    quota_windows: [{
+      kind: "rolling_weekly",
+      unit: "tokens",
+      total: 100,
+      used: 40,
+      remaining: 60,
+      percentage: 40,
     }],
   });
   const user = userEvent.setup();
@@ -2175,11 +2279,11 @@ it("Codex system browser completes authorization even when quota sync fails", as
     await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
   });
   await act(async () => {
-    await user.click(screen.getByTestId("detection-connect-codex"));
+    await user.click(screen.getByTestId("detection-sync-codex"));
   });
 
-  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
-  const saved = saveTokenPlan.mock.calls[0][0];
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(2));
+  const saved = saveTokenPlan.mock.calls.at(-1)[0];
   expect(saved.sync_status).toBe("failed");
   expect(saved.used_quota).toBe(40);
   expect(saved.remaining_quota).toBe(60);
@@ -2194,6 +2298,7 @@ it("Codex system browser completes authorization even when quota sync fails", as
 
 it("Codex failed cleanup preserves a binding when native authorization may have completed", async () => {
   mockCodexCatalog();
+  mockCodexLocalReauth();
   const user = userEvent.setup();
   createConsoleSession.mockImplementation(async (params) => ({
     session: makeCodexSession({ id: "codex-session-id", session_ref: params.session_ref }),
