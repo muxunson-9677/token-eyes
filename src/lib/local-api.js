@@ -46,6 +46,8 @@ const avatarProxyCache = new Map();
 const REQUEST_USAGE_RECORDS_CACHE_TTL_MS = 60_000;
 const REQUEST_USAGE_RECORDS_CACHE_MAX_ENTRIES = 16;
 const requestUsageRecordsListCache = new Map();
+const QUEUE_DATA_CACHE_MAX_ENTRIES = 8;
+const queueDataCache = new Map();
 
 function queueFileMtimeKey(queuePath) {
   try {
@@ -366,9 +368,14 @@ function normalizeQueueRow(row) {
 }
 
 function readQueueData(queuePath) {
+  const cacheKey = path.resolve(queuePath);
+  const fingerprint = queueFileMtimeKey(cacheKey);
+  const cached = queueDataCache.get(cacheKey);
+  if (cached?.fingerprint === fingerprint) return cached.rows;
+
   let raw;
   try {
-    raw = fs.readFileSync(queuePath, "utf8");
+    raw = fs.readFileSync(cacheKey, "utf8");
   } catch (e) {
     // ENOENT is legitimate (never synced yet); anything else is a signal we
     // don't want to hide behind an empty array forever 鈥?the dashboard would
@@ -402,7 +409,19 @@ function readQueueData(queuePath) {
     const key = `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
     seen.set(key, normalizeQueueRow(row));
   }
-  return Array.from(seen.values());
+  const rows = Array.from(seen.values());
+  queueDataCache.delete(cacheKey);
+  queueDataCache.set(cacheKey, { fingerprint, rows });
+  while (queueDataCache.size > QUEUE_DATA_CACHE_MAX_ENTRIES) {
+    const oldestKey = queueDataCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    queueDataCache.delete(oldestKey);
+  }
+  return rows;
+}
+
+function clearQueueDataCacheForTests() {
+  queueDataCache.clear();
 }
 
 function rowDayKey(row, timeZoneContext) {
@@ -6494,5 +6513,7 @@ module.exports = {
   // to the machine, not the hostname.
   getOrCreateMachineId,
   computeStableMachineId,
+  readQueueData,
+  clearQueueDataCacheForTests,
   clearRequestUsageRecordsListCacheForTests,
 };
