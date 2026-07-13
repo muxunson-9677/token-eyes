@@ -82,6 +82,8 @@
   "leaderboard.metric.with_cache": "含缓存",
   "leaderboard.metric.without_cache": "不含缓存",
   "leaderboard.metric.estimated_cost": "预估费用",
+  "leaderboard.summary.total_score": "全员累计 {{value}}",
+  "leaderboard.summary.participants": "参与人数 {{count}}",
   "leaderboard.me_label": "你",
   "leaderboard.anon_label": "匿名",
   "leaderboard.error.unknown": "未知错误",

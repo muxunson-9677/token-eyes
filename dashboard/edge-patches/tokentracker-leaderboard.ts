@@ -32,6 +32,36 @@ const BLOCKED_LEADERBOARD_USER_IDS = new Set(
     .map((id) => id.trim())
     .filter(Boolean),
 );
+const VALID_PERIODS = new Set(["today", "yesterday", "7d", "30d", "total"]);
+const VALID_METRICS = new Set(["with_cache", "without_cache", "estimated_cost"]);
+const LEADERBOARD_AGENT_SOURCES = new Set([
+  "claude",
+  "codex",
+  "every-code",
+  "cursor",
+  "trae",
+  "gemini",
+  "opencode",
+  "openclaw",
+  "kilo-cli",
+  "kilocode",
+  "roocode",
+  "kiro",
+  "kiro-cli",
+  "hermes",
+  "kimi",
+  "kimi-code",
+  "codebuddy",
+  "omp",
+  "pi",
+  "craft",
+  "grok",
+  "copilot",
+  "zed",
+  "goose",
+  "droid",
+  "antigravity",
+]);
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -67,12 +97,39 @@ function unsafeDecodeJwtSub(token: string): string | null {
   return null;
 }
 
+function normalizePeriod(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "week") return "7d";
+  if (normalized === "month") return "30d";
+  return VALID_PERIODS.has(normalized) ? normalized : null;
+}
+
+function normalizeAgent(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "all" || LEADERBOARD_AGENT_SOURCES.has(normalized)) return normalized;
+  return null;
+}
+
+function normalizeMetric(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  return VALID_METRICS.has(normalized) ? normalized : null;
+}
+
 export default async function (req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
+
   const url = new URL(req.url);
-  const period = url.searchParams.get("period") || "week";
-  const limit = Math.min(parseInt(url.searchParams.get("limit") || "20") || 20, 100);
-  const offset = parseInt(url.searchParams.get("offset") || "0") || 0;
+  const period = normalizePeriod(url.searchParams.get("period") || "total");
+  const agent = normalizeAgent(url.searchParams.get("agent") || "all");
+  const metric = normalizeMetric(url.searchParams.get("metric") || "with_cache");
+  if (!period || !agent || !metric) {
+    return json({ error: "invalid leaderboard dimensions" }, 400);
+  }
+  const parsedLimit = Number.parseInt(url.searchParams.get("limit") || "20", 10);
+  const parsedOffset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
+  const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 20, 1), 100);
+  const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
   // Preferred path: client passes user_id as a query param (v0.5.51+).
   // Fallback: v0.5.46 clients still send a Bearer token — decode its sub
   // claim (WITHOUT signature verification) so they keep seeing is_me
@@ -101,89 +158,55 @@ export default async function (req: Request): Promise<Response> {
     ...(anonKey ? { headers: { apikey: anonKey } } : {}),
   });
 
-  const now = new Date();
-  let from_day: string;
-  let to_day: string;
-  if (period === "week") {
-    // ISO 8601 Monday-start week. Must match
-    // tokentracker-leaderboard-refresh.ts AND dashboard/src/lib/date-range.ts
-    // so the (period, from_day, to_day) tuple the reader queries matches the
-    // tuple the refresh wrote.
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const offset = (d.getUTCDay() + 6) % 7;
-    d.setUTCDate(d.getUTCDate() - offset); // Monday
-    from_day = d.toISOString().slice(0, 10);
-    d.setUTCDate(d.getUTCDate() + 6); // Sunday
-    to_day = d.toISOString().slice(0, 10);
-  } else if (period === "month") {
-    from_day = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
-    to_day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-  } else {
-    // period === "total": find the most recent (from_day, to_day) pair written
-    // by the refresh job. Hardcoding (2024-01-01, today) used to 404 whenever
-    // today's snapshot hadn't been generated yet, so the UI saw "no data".
-    const { data: latest } = await client.database
-      .from("tokentracker_leaderboard_snapshots")
-      .select("from_day, to_day")
-      .eq("period", "total")
-      .order("to_day", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const row = latest as { from_day?: string; to_day?: string } | null;
-    from_day = (row?.from_day ?? "2024-01-01").slice(0, 10);
-    to_day = (row?.to_day ?? now.toISOString()).slice(0, 10);
-  }
-
-  const {
-    data: entries,
-    error,
-    count,
-  } = await client.database
-    .from("tokentracker_leaderboard_snapshots")
-    .select("*", { count: "exact" })
-    .eq("period", period)
-    .eq("from_day", from_day)
-    .eq("to_day", to_day)
-    .order("rank", { ascending: true })
-    .range(offset, offset + limit - 1);
+  const { data, error } = await client.database.rpc(
+    "leaderboard_ranked",
+    {
+      p_period: period,
+      p_agent: agent,
+      p_metric: metric,
+      p_limit: limit,
+      p_offset: offset,
+      p_user_id: requestedUserId,
+      p_blocked_user_ids: Array.from(BLOCKED_LEADERBOARD_USER_IDS),
+    },
+  );
   if (error) return json({ error: error.message }, 500);
 
-  let me: unknown = null;
-  if (requestedUserId) {
-    try {
-      const { data: mr } = await client.database
-        .from("tokentracker_leaderboard_snapshots")
-        .select("*")
-        .eq("period", period)
-        .eq("from_day", from_day)
-        .eq("to_day", to_day)
-        .eq("user_id", requestedUserId)
-        .limit(1)
-        .maybeSingle();
-      if (mr) me = mr;
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const visibleEntries = (entries || []).filter(
-    (e: { user_id?: string }) => !e.user_id || !BLOCKED_LEADERBOARD_USER_IDS.has(e.user_id),
-  );
-  const visibleMe =
-    me && !BLOCKED_LEADERBOARD_USER_IDS.has((me as { user_id?: string }).user_id || "")
-      ? me
-      : null;
+  type RankedPayload = {
+    entries?: Array<Record<string, unknown>>;
+    me?: Record<string, unknown> | null;
+    participant_count?: number | string;
+    total_score?: number | string;
+    aggregate_total_tokens?: number | string;
+    from?: string | null;
+    to?: string | null;
+    generated_at?: string | null;
+  };
+  const payload = (
+    Array.isArray(data) ? (data[0] ?? {}) : (data ?? {})
+  ) as RankedPayload;
+  const entries = Array.isArray(payload.entries) ? payload.entries : [];
+  const participantCount = Math.max(Number(payload.participant_count) || 0, 0);
+  const me = payload.me ?? null;
+  const meUserId = typeof me?.user_id === "string" ? me.user_id : null;
 
   return json({
-    entries: visibleEntries.map((e: { user_id?: string }) => ({
+    entries: entries.map((e) => ({
       ...e,
-      is_me: (visibleMe as { user_id?: string } | null)?.user_id === e.user_id,
+      is_me: Boolean(meUserId && meUserId === e.user_id),
     })),
-    me: visibleMe,
-    total_entries: count || 0,
-    total_pages: Math.ceil((count || 0) / limit),
-    from: from_day,
-    to: to_day,
-    generated_at: new Date().toISOString(),
+    me,
+    participant_count: participantCount,
+    total_entries: participantCount,
+    total_score: Number(payload.total_score) || 0,
+    aggregate_total_tokens: Number(payload.aggregate_total_tokens) || 0,
+    page: Math.floor(offset / limit) + 1,
+    total_pages: Math.ceil(participantCount / limit),
+    period,
+    agent,
+    metric,
+    from: payload.from ?? null,
+    to: payload.to ?? null,
+    generated_at: payload.generated_at ?? null,
   });
 }

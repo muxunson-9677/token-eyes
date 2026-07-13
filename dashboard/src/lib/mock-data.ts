@@ -546,7 +546,6 @@ export function getMockLeaderboard({
   const period = normalizeLeaderboardPeriod(rawPeriod);
   const { from, to } = computeLeaderboardWindow(period);
   const totalEntries = 250;
-  const totalPages = totalEntries > 0 ? Math.ceil(totalEntries / safeLimit) : 0;
   const page = Math.floor(safeOffset / safeLimit) + 1;
 
   const raw = Array.from({ length: totalEntries }, (_, index) => {
@@ -689,6 +688,12 @@ export function getMockLeaderboard({
       };
 
   const entries = sorted.slice(safeOffset, safeOffset + safeLimit);
+  const participantCount = sorted.filter((entry: any) => Number(entry.score) > 0).length;
+  const totalScore = sorted.reduce((sum: number, entry: any) => sum + Number(entry.score || 0), 0);
+  const aggregateTotalTokens = sorted.reduce(
+    (sum: number, entry: any) => sum + Number(entry.total_tokens || 0),
+    0,
+  );
 
   return {
     period,
@@ -700,8 +705,11 @@ export function getMockLeaderboard({
     page,
     limit: safeLimit,
     offset: safeOffset,
-    total_entries: totalEntries,
-    total_pages: totalPages,
+    participant_count: participantCount,
+    total_entries: participantCount,
+    total_score: totalScore,
+    aggregate_total_tokens: aggregateTotalTokens,
+    total_pages: participantCount > 0 ? Math.ceil(participantCount / safeLimit) : 0,
     entries,
     me,
   };

@@ -500,4 +500,18 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(await screen.findByRole("columnheader", { name: "总榜 · 预估费用" })).toBeInTheDocument();
     expect(screen.getAllByText("$7.89").length).toBeGreaterThan(0);
   });
+
+  it("shows the participant count and aggregate score returned by the ranking RPC", async () => {
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      participant_count: 55,
+      total_entries: 55,
+      total_score: 987654,
+    });
+
+    renderLeaderboard();
+
+    expect(await screen.findByText("全员累计 987,654")).toBeInTheDocument();
+    expect(screen.getByText("参与人数 55")).toBeInTheDocument();
+  });
 });

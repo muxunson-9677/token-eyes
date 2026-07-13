@@ -114,6 +114,12 @@ function formatCost(value, currency, rate) {
   return `${symbol}${converted.toFixed(2)}`;
 }
 
+function formatRankingValue(value, metric, currency, rate) {
+  return metric === "estimated_cost"
+    ? formatCost(value, currency, rate)
+    : toDisplayNumber(value);
+}
+
 // Total-tokens value: compact ("79.6B") on phones where the column is tight,
 // full grouped digits at sm+ where the wide table has room.
 function TotalTokens({ value }) {
@@ -515,6 +521,8 @@ export function LeaderboardPage({
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.total_entries ?? 0;
+  const participantCount = listData?.participant_count ?? totalEntries;
+  const totalScore = listData?.total_score ?? null;
   const currentPage = listData?.page ?? listPage;
   const pageItems = useMemo(() => {
     return buildPageItems(currentPage, totalPages);
@@ -830,6 +838,21 @@ export function LeaderboardPage({
                 </span>
               )}
             </p>
+            {totalScore != null && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
+                <span>
+                  {copy("leaderboard.summary.total_score", {
+                    value: formatRankingValue(totalScore, metric, currency, rate),
+                  })}
+                </span>
+                <span aria-hidden className="text-oai-gray-300 dark:text-oai-gray-700">·</span>
+                <span>
+                  {copy("leaderboard.summary.participants", {
+                    count: Number(participantCount || 0).toLocaleString(),
+                  })}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="mb-3 flex flex-wrap items-center gap-2">

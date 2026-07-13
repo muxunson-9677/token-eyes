@@ -5,7 +5,7 @@ const { loadDashboardModule } = require("./helpers/load-dashboard-module");
 test("mock leaderboard returns entries and me", async () => {
   const { getMockLeaderboard } = await loadDashboardModule("dashboard/src/lib/mock-data.ts");
   const res = getMockLeaderboard({ seed: "demo", limit: 30, offset: 0 });
-  assert.equal(res.period, "week");
+  assert.equal(res.period, "total");
   assert.equal(Array.isArray(res.entries), true);
   assert.ok(res.entries.length <= 30);
   assert.ok(res.me);
@@ -22,6 +22,9 @@ test("mock leaderboard returns entries and me", async () => {
   assert.equal(typeof res.me.kimi_tokens, "string");
   assert.equal(typeof res.me.other_tokens, "string");
   assert.equal(typeof res.me.total_tokens, "string");
+  assert.equal(res.participant_count, res.total_entries);
+  assert.equal(typeof res.total_score, "number");
+  assert.equal(typeof res.aggregate_total_tokens, "number");
 
   let privateCount = 0;
   for (const entry of res.entries) {

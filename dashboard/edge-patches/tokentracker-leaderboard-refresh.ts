@@ -1,7 +1,8 @@
 /**
  * InsForge Edge：排行榜快照刷新。
  * 从 tokentracker_hourly 聚合数据，按 period 写入 tokentracker_leaderboard_snapshots。
- * 接受 POST，可选 body: { period: "week"|"month"|"total" }，不传则刷新全部三个。
+ * 接受 POST，可选 body: { period: "today"|"yesterday"|"7d"|"30d"|"total" }。
+ * 旧 week/month 分别兼容为 7d/30d；不传则刷新全部五个周期。
  */
 import { createClient } from "npm:@insforge/sdk";
 
@@ -22,8 +23,36 @@ function logRefreshEvent(event: Record<string, unknown>) {
   console.log(JSON.stringify({ scope: "leaderboard-refresh", ...event }));
 }
 
-type Period = "week" | "month" | "total";
-const ALL_PERIODS: Period[] = ["week", "month", "total"];
+type Period = "today" | "yesterday" | "7d" | "30d" | "total";
+const ALL_PERIODS: Period[] = ["today", "yesterday", "7d", "30d", "total"];
+const LEADERBOARD_AGENT_SOURCES = new Set([
+  "claude",
+  "codex",
+  "every-code",
+  "cursor",
+  "trae",
+  "gemini",
+  "opencode",
+  "openclaw",
+  "kilo-cli",
+  "kilocode",
+  "roocode",
+  "kiro",
+  "kiro-cli",
+  "hermes",
+  "kimi",
+  "kimi-code",
+  "codebuddy",
+  "omp",
+  "pi",
+  "craft",
+  "grok",
+  "copilot",
+  "zed",
+  "goose",
+  "droid",
+  "antigravity",
+]);
 const BLOCKED_LEADERBOARD_USER_IDS = new Set(
   (Deno.env.get("LEADERBOARD_BLOCKED_USER_IDS") ?? "")
     .split(",")
@@ -261,39 +290,43 @@ const SOURCE_COLUMN_MAP: Record<string, string> = {
   kimi: "kimi_tokens",
 };
 
-interface DateRange {
-  from_day: string;
-  to_day: string;
+// LEADERBOARD_PERIOD_HELPERS_START
+const SHANGHAI_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function shiftDay(day: string, amount: number): string {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
 }
 
-function computeDateRange(period: Period): DateRange {
-  const now = new Date();
-  if (period === "week") {
-    // ISO 8601 Monday-start week (matches dashboard/src/lib/date-range.ts:67
-    // `period === "week"` branch, so cloud leaderboard rank and the
-    // dashboard's own "Week" tab cover the same 7 days. Previously this used
-    // Sunday-start which made leaderboard's week off-by-one vs the dashboard
-    // and confused users comparing the two numbers.
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const offset = (d.getUTCDay() + 6) % 7; // days since Monday (Mon=0..Sun=6)
-    d.setUTCDate(d.getUTCDate() - offset); // Monday
-    const from_day = d.toISOString().slice(0, 10);
-    d.setUTCDate(d.getUTCDate() + 6); // Sunday
-    const to_day = d.toISOString().slice(0, 10);
-    return { from_day, to_day };
-  }
-  if (period === "month") {
-    const from_day = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
-    const to_day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
-      .toISOString()
-      .slice(0, 10);
-    return { from_day, to_day };
-  }
-  // total — full lifetime. `from_day` is a static epoch sentinel so snapshot
-  // rows always have identical (period, from_day, to_day) and upsert cleanly.
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  return { from_day: "1970-01-01", to_day: end.toISOString().slice(0, 10) };
+function shanghaiDay(now: Date): string {
+  return new Date(now.getTime() + SHANGHAI_UTC_OFFSET_MS).toISOString().slice(0, 10);
 }
+
+function computeDateRange(
+  period: Period,
+  now = new Date(),
+): { from_day: string; to_day: string } {
+  const today = shanghaiDay(now);
+  if (period === "today") return { from_day: today, to_day: today };
+  if (period === "yesterday") {
+    const yesterday = shiftDay(today, -1);
+    return { from_day: yesterday, to_day: yesterday };
+  }
+  if (period === "7d") return { from_day: shiftDay(today, -6), to_day: today };
+  if (period === "30d") return { from_day: shiftDay(today, -29), to_day: today };
+  return { from_day: "1970-01-01", to_day: today };
+}
+
+function toUtcTimestampRange(
+  { from_day, to_day }: { from_day: string; to_day: string },
+): { rangeStart: string; rangeEnd: string } {
+  return {
+    rangeStart: `${from_day}T00:00:00+08:00`,
+    rangeEnd: `${shiftDay(to_day, 1)}T00:00:00+08:00`,
+  };
+}
+// LEADERBOARD_PERIOD_HELPERS_END
 
 interface HourlyRow {
   user_id: string;
@@ -321,6 +354,14 @@ interface UserAgg {
   kimi_tokens: number;
   other_tokens: number;
   total_tokens: number;
+  total_without_cache_tokens: number;
+  estimated_cost_usd: number;
+  agent_metrics: Record<string, AgentMetric>;
+}
+
+interface AgentMetric {
+  with_cache_tokens: number;
+  without_cache_tokens: number;
   estimated_cost_usd: number;
 }
 
@@ -338,8 +379,18 @@ function newUserAgg(): UserAgg {
     kimi_tokens: 0,
     other_tokens: 0,
     total_tokens: 0,
+    total_without_cache_tokens: 0,
     estimated_cost_usd: 0,
+    agent_metrics: {},
   };
+}
+
+function normalizeRequestedPeriod(value: unknown): Period | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "week") return "7d";
+  if (normalized === "month") return "30d";
+  return ALL_PERIODS.includes(normalized as Period) ? normalized as Period : null;
 }
 
 export default async function (req: Request): Promise<Response> {
@@ -370,8 +421,12 @@ export default async function (req: Request): Promise<Response> {
       ? body.source.trim().slice(0, 80)
       : "unknown";
   let periods: Period[];
-  if (body.period && ALL_PERIODS.includes(body.period as Period)) {
-    periods = [body.period as Period];
+  const requestedPeriod = normalizeRequestedPeriod(body.period);
+  if (body.period !== undefined && !requestedPeriod) {
+    return json({ error: "invalid leaderboard period" }, 400);
+  }
+  if (requestedPeriod) {
+    periods = [requestedPeriod];
   } else {
     periods = [...ALL_PERIODS];
   }
@@ -424,10 +479,7 @@ export default async function (req: Request): Promise<Response> {
     // total-period failure (the in-edge scan 500'd at ~5s on the schedule and
     // 504'd at the 30s gateway once history grew). Mirrors how the account-*
     // functions delegate to account_usage_grouped.
-    const rangeStart = `${from_day}T00:00:00Z`;
-    const nextDay = new Date(to_day + "T00:00:00Z");
-    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-    const rangeEnd = nextDay.toISOString();
+    const { rangeStart, rangeEnd } = toUtcTimestampRange({ from_day, to_day });
 
     const __t0 = Date.now();
     const { data: groupedData, error: rpcErr } = await client.database.rpc(
@@ -461,10 +513,29 @@ export default async function (req: Request): Promise<Response> {
         aggMap.set(row.user_id, agg);
       }
       const tokens = Number(row.total_tokens) || 0;
+      const withoutCacheTokens = Math.max(
+        0,
+        tokens -
+          (Number(row.cached_input_tokens) || 0) -
+          (Number(row.cache_creation_input_tokens) || 0),
+      );
+      const estimatedCostUsd = computeRowCost(row);
       const col = SOURCE_COLUMN_MAP[row.source] ?? "other_tokens";
       (agg as unknown as Record<string, number>)[col] += tokens;
       agg.total_tokens += tokens;
-      agg.estimated_cost_usd += computeRowCost(row);
+      agg.total_without_cache_tokens += withoutCacheTokens;
+      agg.estimated_cost_usd += estimatedCostUsd;
+      if (LEADERBOARD_AGENT_SOURCES.has(row.source)) {
+        const agentMetric = agg.agent_metrics[row.source] ?? {
+          with_cache_tokens: 0,
+          without_cache_tokens: 0,
+          estimated_cost_usd: 0,
+        };
+        agentMetric.with_cache_tokens += tokens;
+        agentMetric.without_cache_tokens += withoutCacheTokens;
+        agentMetric.estimated_cost_usd += estimatedCostUsd;
+        agg.agent_metrics[row.source] = agentMetric;
+      }
     }
     for (const blockedUserId of BLOCKED_LEADERBOARD_USER_IDS) {
       aggMap.delete(blockedUserId);
@@ -599,8 +670,12 @@ export default async function (req: Request): Promise<Response> {
 
     const __tAfterFetch = Date.now();
 
-    // --- Rank users by total_tokens DESC ---
-    const sorted = Array.from(aggMap.entries()).sort((a, b) => b[1].total_tokens - a[1].total_tokens);
+    // Legacy rank remains total-token based for older readers. The new reader
+    // computes the selected Agent/metric rank in Postgres with the same stable
+    // total-token and user-id tie breakers.
+    const sorted = Array.from(aggMap.entries()).sort(
+      (a, b) => b[1].total_tokens - a[1].total_tokens || a[0].localeCompare(b[0]),
+    );
 
     const generatedAt = new Date().toISOString();
     const upsertRows = sorted.map(([userId, agg], idx) => {
@@ -616,6 +691,16 @@ export default async function (req: Request): Promise<Response> {
       const githubUrl = !isAnonymous && settings?.show_github_url && settings?.github_url
         ? settings.github_url
         : null;
+      const agentMetrics = Object.fromEntries(
+        Object.entries(agg.agent_metrics).map(([source, values]) => [
+          source,
+          {
+            with_cache_tokens: Math.round(values.with_cache_tokens),
+            without_cache_tokens: Math.round(values.without_cache_tokens),
+            estimated_cost_usd: Math.round(values.estimated_cost_usd * 1_000_000) / 1_000_000,
+          },
+        ]),
+      );
 
       return {
         user_id: userId,
@@ -635,7 +720,9 @@ export default async function (req: Request): Promise<Response> {
         kimi_tokens: agg.kimi_tokens,
         other_tokens: agg.other_tokens,
         total_tokens: agg.total_tokens,
-        estimated_cost_usd: Math.round(agg.estimated_cost_usd * 100) / 100,
+        total_without_cache_tokens: agg.total_without_cache_tokens,
+        estimated_cost_usd: Math.round(agg.estimated_cost_usd * 1_000_000) / 1_000_000,
+        agent_metrics: agentMetrics,
         display_name: displayName,
         avatar_url: avatarUrl,
         github_url: githubUrl,
