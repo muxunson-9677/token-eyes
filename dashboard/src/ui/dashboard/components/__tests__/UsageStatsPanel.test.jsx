@@ -152,6 +152,34 @@ describe("UsageStatsPanel", () => {
     expect(within(row).getAllByText("USD 0.00").length).toBeGreaterThanOrEqual(1);
   });
 
+  it.each([
+    { current: 120, previous: 100, expected: "较上月新增 20.0%" },
+    { current: 80, previous: 100, expected: "较上月减少 20.0%" },
+    { current: 100, previous: 100, expected: "与上月持平" },
+    { current: 15, previous: 0, expected: "较上月新增 USD 15.00" },
+    { current: 0, previous: 0, expected: "与上月持平" },
+  ])("renders the monthly total comparison without invalid zero-base percentages", ({ current, previous, expected }) => {
+    render(
+      <UsageStatsPanel
+        summary={{ totals: { total_tokens: 1 } }}
+        costSummary={{
+          api_usd: 0,
+          api_cny: 0,
+          subscription_usd: 0,
+          subscription_cny: 0,
+          combined_usd: current,
+          combined_cny: current * 7.2,
+          previous_combined_usd: previous,
+          previous_combined_cny: previous * 7.2,
+          lifetime_combined_usd: current,
+          lifetime_combined_cny: current * 7.2,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("monthly-cost-comparison")).toHaveTextContent(expected);
+  });
+
   it("keeps existing stats visible while refreshing", () => {
     render(<UsageStatsPanel summary={{ totals: { total_tokens: 1 } }} loading={true} />);
 

@@ -1039,6 +1039,10 @@ spend.monthly_api,dashboard,SpendPage,SpendPage,monthly_api,"本月 API 成本",
 spend.monthly_subscription,dashboard,SpendPage,SpendPage,monthly_subscription,"本月订阅成本",,active
 spend.monthly_combined,dashboard,SpendPage,SpendPage,monthly_combined,"本月总成本",,active
 spend.lifetime_combined,dashboard,SpendPage,SpendPage,lifetime_combined,"累计总成本",,active
+spend.monthly_change.increase,dashboard,SpendPage,UsageStatsPanel,monthly_change_increase,"较上月新增 {{value}}%",,active
+spend.monthly_change.decrease,dashboard,SpendPage,UsageStatsPanel,monthly_change_decrease,"较上月减少 {{value}}%",,active
+spend.monthly_change.new_amount,dashboard,SpendPage,UsageStatsPanel,monthly_change_new_amount,"较上月新增 {{amount}}",,active
+spend.monthly_change.flat,dashboard,SpendPage,UsageStatsPanel,monthly_change_flat,"与上月持平",,active
 spend.total_usd,dashboard,SpendPage,SpendPage,total_usd,"USD 合计",,active
 spend.total_cny,dashboard,SpendPage,SpendPage,total_cny,"CNY 合计",,active
 spend.by_source_title,dashboard,SpendPage,SpendPage,by_source_title,"按来源拆分",,active

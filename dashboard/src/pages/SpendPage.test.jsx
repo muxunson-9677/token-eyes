@@ -222,6 +222,44 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(screen.getByText("累计总成本")).toBeInTheDocument();
   });
 
+  it("loads adjacent natural months and renders the combined-cost comparison", async () => {
+    getSpendRecords
+      .mockResolvedValueOnce({
+        ...EMPTY_RESULT,
+        totals: {
+          ...EMPTY_RESULT.totals,
+          api_usd: 40,
+          api_cny: 288,
+          subscription_usd: 60,
+          subscription_cny: 432,
+          other_ai_usd: 20,
+          other_ai_cny: 144,
+          combined_usd: 120,
+          combined_cny: 864,
+          lifetime_combined_usd: 300,
+          lifetime_combined_cny: 2160,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...EMPTY_RESULT,
+        totals: {
+          ...EMPTY_RESULT.totals,
+          combined_usd: 100,
+          combined_cny: 720,
+        },
+      });
+
+    render(<SpendUsagePage />);
+
+    expect(await screen.findByTestId("monthly-cost-comparison")).toHaveTextContent("较上月新增 20.0%");
+    expect(getSpendRecords).toHaveBeenCalledTimes(2);
+    const [currentCall, previousCall] = getSpendRecords.mock.calls;
+    expect(currentCall[0].from > previousCall[0].from).toBe(true);
+    expect(currentCall[0].sources).toEqual(previousCall[0].sources);
+    expect(currentCall[0].timeZone).toBe(previousCall[0].timeZone);
+    expect(currentCall[0].tzOffsetMinutes).toBe(previousCall[0].tzOffsetMinutes);
+  });
+
   it("does NOT render the independent '按来源拆分' table", async () => {
     getSpendRecords.mockResolvedValue({
       records: [SAMPLE_RECORD],
@@ -315,8 +353,8 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
   });
 
-  it("range switching calls both APIs with the same from/to params", async () => {
-    const { rerender } = render(<SpendUsagePage />);
+  it("range switching leaves natural-month finance totals unchanged", async () => {
+    render(<SpendUsagePage />);
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     vi.clearAllMocks();
 
@@ -330,12 +368,8 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       await user.click(sevenDayBtn);
     });
 
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalled());
-    const recordsCall = getSpendRecords.mock.calls[0];
-    const timeseriesCall = getSpendTimeseries.mock.calls[0];
-    expect(recordsCall[0]?.from).toBe(timeseriesCall[0]?.from);
-    expect(recordsCall[0]?.to).toBe(timeseriesCall[0]?.to);
+    expect(getSpendRecords).not.toHaveBeenCalled();
   });
 
   it("shows empty state when timeseries has no series", async () => {

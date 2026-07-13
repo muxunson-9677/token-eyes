@@ -96,6 +96,31 @@ export function getRangeForPeriod(
   return getRangeForPeriod("week");
 }
 
+export function getMonthComparisonRanges(options: DateRangeOptions = {}) {
+  const current = getRangeForPeriod("month", options);
+  const currentStart = parseDateString(current.from);
+  if (!currentStart) return { current, previous: current };
+
+  const previousStart = new Date(Date.UTC(
+    currentStart.getUTCFullYear(),
+    currentStart.getUTCMonth() - 1,
+    1,
+  ));
+  const previousEnd = new Date(Date.UTC(
+    previousStart.getUTCFullYear(),
+    previousStart.getUTCMonth() + 1,
+    0,
+  ));
+
+  return {
+    current,
+    previous: {
+      from: formatDateUTC(previousStart),
+      to: formatDateUTC(previousEnd),
+    },
+  };
+}
+
 /**
  * Compute a {from, to} date range (YYYY-MM-DD) for the Ticket-02 time-range
  * keys used by the SpendPage filter bar: "today" / "1d" / "7d" / "14d" /

@@ -65,6 +65,32 @@ function formatCurrencyAmount(value, currency) {
   })}`;
 }
 
+export function getMonthlyCostComparison(currentValue, previousValue) {
+  if (currentValue === null || currentValue === undefined
+    || previousValue === null || previousValue === undefined) return null;
+  const current = Number(currentValue);
+  const previous = Number(previousValue);
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || current < 0 || previous < 0) return null;
+
+  const difference = current - previous;
+  if (Math.abs(difference) < 1e-9) {
+    return { kind: "flat", text: copy("spend.monthly_change.flat") };
+  }
+  if (previous === 0) {
+    return {
+      kind: "increase",
+      text: copy("spend.monthly_change.new_amount", {
+        amount: formatCurrencyAmount(current, "USD"),
+      }),
+    };
+  }
+
+  const percent = Math.abs((difference / previous) * 100).toFixed(1);
+  return difference > 0
+    ? { kind: "increase", text: copy("spend.monthly_change.increase", { value: percent }) }
+    : { kind: "decrease", text: copy("spend.monthly_change.decrease", { value: percent }) };
+}
+
 function formatApprox(value) {
   const n = safeNum(value);
   if (n >= 1e8) return `${(n / 1e8).toFixed(2)} 亿`;
@@ -266,22 +292,43 @@ export function UsageStatsPanel({
               className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4"
               data-testid="usage-cost-summary"
             >
-              {COST_SUMMARY_CARDS.map((card) => (
-                <div
-                  key={card.labelKey}
-                  className="min-w-0 rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
-                >
-                  <div className="truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
-                    {copy(card.labelKey)}
+              {COST_SUMMARY_CARDS.map((card) => {
+                const comparison = card.labelKey === "spend.monthly_combined"
+                  ? getMonthlyCostComparison(
+                    costSummary.combined_usd,
+                    costSummary.previous_combined_usd,
+                  )
+                  : null;
+                return (
+                  <div
+                    key={card.labelKey}
+                    className="min-w-0 rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
+                  >
+                    <div className="truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                      {copy(card.labelKey)}
+                    </div>
+                    <div className="mt-1 truncate text-base font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
+                      {formatCurrencyAmount(costSummary[card.usdField], "USD")}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                      {formatCurrencyAmount(costSummary[card.cnyField], "CNY")}
+                    </div>
+                    {comparison && (
+                      <div
+                        data-testid="monthly-cost-comparison"
+                        className={cn(
+                          "mt-1 truncate text-[10px] font-medium leading-tight tabular-nums",
+                          comparison.kind === "increase" && "text-red-600 dark:text-red-400",
+                          comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
+                          comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",
+                        )}
+                      >
+                        {comparison.text}
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-1 truncate text-base font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
-                    {formatCurrencyAmount(costSummary[card.usdField], "USD")}
-                  </div>
-                  <div className="mt-0.5 truncate text-[11px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
-                    {formatCurrencyAmount(costSummary[card.cnyField], "CNY")}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

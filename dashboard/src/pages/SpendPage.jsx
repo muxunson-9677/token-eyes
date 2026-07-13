@@ -10,7 +10,7 @@ import {
 } from "../lib/api";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
-import { computeRangeFromKey } from "../lib/date-range";
+import { computeRangeFromKey, getMonthComparisonRanges } from "../lib/date-range";
 import { getBrowserTimeZone, getBrowserTimeZoneOffsetMinutes } from "../lib/timezone";
 import { normalizeAccessToken } from "../lib/auth-token";
 import { DASHBOARD_AGENTS } from "../lib/agent-adapters-dashboard";
@@ -273,32 +273,52 @@ function SpendUsagePageInner({
     allowedSources: visibleProviderIds,
   });
 
-  // v2.0 IA: the usage page still needs the cost-summary totals (for the
-  // monthly API / subscription / combined / lifetime cards). We fetch
-  // getSpendRecords for its totals only — the independent "按来源拆分"
-  // table and by_source derived state are removed per the IA spec.
-  const fetchTotals = useCallback(async ({ silent = false } = {}) => {
+  // The financial cards use adjacent natural months in the browser timezone.
+  // Agent/provider source filters still apply, while the Token trend's rolling
+  // date range does not redefine a card explicitly labelled "本月".
+  const fetchTotals = useCallback(async () => {
     if (costSources.length === 0) {
       setTotals(null);
       return;
     }
 
-    try {
-      const recordsResult = await getSpendRecords({
-        from,
-        to,
-        timeZone,
-        tzOffsetMinutes,
-        sources: costSources,
-      });
-      setTotals(recordsResult?.totals || null);
+    const monthRanges = getMonthComparisonRanges({
+      timeZone,
+      offsetMinutes: tzOffsetMinutes,
+    });
+    const requestMonth = (monthRange) => getSpendRecords({
+      from: monthRange.from,
+      to: monthRange.to,
+      timeZone,
+      tzOffsetMinutes,
+      sources: costSources,
+    });
+
+    const [currentResult, previousResult] = await Promise.allSettled([
+      requestMonth(monthRanges.current),
+      requestMonth(monthRanges.previous),
+    ]);
+
+    if (currentResult.status === "fulfilled") {
+      const currentTotals = currentResult.value?.totals || null;
+      const previousTotals = previousResult.status === "fulfilled"
+        ? previousResult.value?.totals
+        : null;
+      setTotals(currentTotals ? {
+        ...currentTotals,
+        previous_combined_usd: previousTotals?.combined_usd ?? null,
+        previous_combined_cny: previousTotals?.combined_cny ?? null,
+      } : null);
       setLastUpdatedAt(new Date());
-    } catch (err) {
+    } else {
       // Totals are optional for the usage page; swallow the error so a
       // transient backend hiccup doesn't crash the stats panel below.
-      console.error("[SpendUsagePage] Failed to load totals:", err);
+      console.error("[SpendUsagePage] Failed to load current-month totals:", currentResult.reason);
     }
-  }, [from, to, timeZone, tzOffsetMinutes, costSources]);
+    if (previousResult.status === "rejected") {
+      console.error("[SpendUsagePage] Failed to load previous-month totals:", previousResult.reason);
+    }
+  }, [timeZone, tzOffsetMinutes, costSources]);
 
   useEffect(() => {
     fetchTotals();
@@ -337,7 +357,7 @@ function SpendUsagePageInner({
   useEffect(() => {
     if (refreshRevision === 0) return;
     setIsRefreshing(true);
-    fetchTotals({ silent: true }).finally(() => setIsRefreshing(false));
+    fetchTotals().finally(() => setIsRefreshing(false));
   }, [refreshRevision, fetchTotals]);
 
   // Ticket-02: auto-refresh based on filterState.refreshInterval
