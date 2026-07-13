@@ -3,7 +3,11 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ProviderApiConfigSection } from "./ProviderApiConfigSection.jsx";
-import { getProviderFinancialCapabilities } from "../../lib/provider-api-presets.js";
+import {
+  applyProviderApiPreset,
+  getProviderFinancialCapabilities,
+  PROVIDER_API_MODES,
+} from "../../lib/provider-api-presets.js";
 import {
   getProviderApiConfigs,
   getProviderApiBalances,
@@ -99,6 +103,38 @@ async function openAddForm(user) {
 }
 
 describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
+  it("keeps verified provider presets in UI parity with the backend contract", () => {
+    expect(PROVIDER_API_MODES.map((mode) => mode.value)).toEqual([
+      "",
+      "deepseek",
+      "moonshot",
+      "aliyun_bss",
+      "volcengine_billing",
+      "minimax",
+      "glm",
+      "custom",
+    ]);
+
+    expect(applyProviderApiPreset({ providerId: "aliyun_bss" })).toMatchObject({
+      requestUrl: "https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14",
+      authType: "aliyun_rpc",
+      balancePath: "Data.AvailableAmount",
+      currencyPath: "Data.Currency",
+    });
+    expect(applyProviderApiPreset({ providerId: "volcengine_billing" })).toMatchObject({
+      requestUrl: "https://open.volcengineapi.com/?Action=QueryBalanceAcct&Version=2022-01-01",
+      authType: "volcengine_hmac",
+      balancePath: "Result.AvailableBalance",
+      currencyValue: "CNY",
+    });
+    expect(getProviderFinancialCapabilities({ providerId: "minimax" })).toEqual({
+      balance: "unsupported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "token_plan",
+    });
+  });
+
   it("renders the section title and empty state when no configs", async () => {
     render(<ProviderApiConfigSection />);
     expect(await screen.findByText("settings.cost.provider_api.section")).toBeInTheDocument();
@@ -217,7 +253,7 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(payload.lifetimeSpendPath).toBe("");
   });
 
-  it("saving DashScope with a CC Switch base URL auto-fills preset balance paths", async () => {
+  it("maps a DashScope model URL to the verified Alibaba Cloud BSS balance contract", async () => {
     const user = userEvent.setup();
     await openAddForm(user);
 
@@ -235,11 +271,12 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
 
     await waitFor(() => expect(saveProviderApiConfig).toHaveBeenCalled());
     const payload = saveProviderApiConfig.mock.calls[0][0];
-    expect(payload.providerId).toBe("dashscope");
-    expect(payload.label).toBe("DashScope");
-    expect(payload.requestUrl).toBe("https://dashscope.aliyuncs.com/api/v1/recharge/recharge-balance/query");
-    expect(payload.balancePath).toBe("output.available_balance");
-    expect(payload.currencyPath).toBe("output.currency");
+    expect(payload.providerId).toBe("aliyun_bss");
+    expect(payload.label).toBe("阿里云（含千问/百炼）");
+    expect(payload.requestUrl).toBe("https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14");
+    expect(payload.authType).toBe("aliyun_rpc");
+    expect(payload.balancePath).toBe("Data.AvailableAmount");
+    expect(payload.currencyPath).toBe("Data.Currency");
   });
 
   it("add form shows only name/url/key/enable by default; balance paths are in advanced", async () => {

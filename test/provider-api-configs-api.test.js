@@ -339,27 +339,28 @@ test("normalizeProviderApiConfig converts DeepSeek CC Switch base URL to balance
   assert.equal(validation.ok, true, validation.error || "normalized DeepSeek config should be valid");
 });
 
-test("normalizeProviderApiConfig converts DashScope CC Switch base URL to balance endpoint", () => {
+test("normalizeProviderApiConfig uses Alibaba Cloud BSS rather than an undocumented DashScope balance endpoint", () => {
   const normalized = normalizeProviderApiConfig({
-    providerId: "",
-    label: "",
+    providerId: "aliyun_bss",
+    label: "阿里云（含千问/百炼）",
     requestUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     requestMethod: "GET",
-    authType: "bearer",
+    authType: "",
     balancePath: "data.balance",
     currencyPath: "data.currency",
     refreshIntervalSeconds: 300,
     enabled: true,
   });
 
-  assert.equal(normalized.providerId, "dashscope");
-  assert.equal(normalized.label, "DashScope");
-  assert.equal(normalized.requestUrl, "https://dashscope.aliyuncs.com/api/v1/recharge/recharge-balance/query");
-  assert.equal(normalized.balancePath, "output.available_balance");
-  assert.equal(normalized.currencyPath, "output.currency");
+  assert.equal(normalized.providerId, "aliyun_bss");
+  assert.equal(normalized.label, "阿里云（含千问/百炼）");
+  assert.equal(normalized.requestUrl, "https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14");
+  assert.equal(normalized.authType, "aliyun_rpc");
+  assert.equal(normalized.balancePath, "Data.AvailableAmount");
+  assert.equal(normalized.currencyPath, "Data.Currency");
 
   const validation = validateProviderApiConfig(normalized);
-  assert.equal(validation.ok, true, validation.error || "normalized DashScope config should be valid");
+  assert.equal(validation.ok, true, validation.error || "normalized Alibaba Cloud config should be valid");
 });
 
 test("normalizeProviderApiConfig converts Moonshot CC Switch base URL to balance endpoint", () => {
@@ -379,9 +380,53 @@ test("normalizeProviderApiConfig converts Moonshot CC Switch base URL to balance
   assert.equal(normalized.label, "Kimi 主账户");
   assert.equal(normalized.requestUrl, "https://api.moonshot.cn/v1/users/me/balance");
   assert.equal(normalized.balancePath, "data.available_balance");
+  assert.equal(normalized.currencyValue, "CNY");
 
   const validation = validateProviderApiConfig(normalized);
   assert.equal(validation.ok, true, validation.error || "normalized Moonshot config should be valid");
+});
+
+test("normalizeProviderApiConfig configures the signed Volcengine account-balance API", () => {
+  const normalized = normalizeProviderApiConfig({
+    providerId: "volcengine_billing",
+    label: "火山引擎（含豆包）",
+    requestUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    requestMethod: "GET",
+    authType: "",
+    balancePath: "",
+    currencyPath: "",
+    refreshIntervalSeconds: 300,
+    enabled: true,
+  });
+
+  assert.equal(normalized.requestUrl, "https://open.volcengineapi.com/?Action=QueryBalanceAcct&Version=2022-01-01");
+  assert.equal(normalized.authType, "volcengine_hmac");
+  assert.equal(normalized.balancePath, "Result.AvailableBalance");
+  assert.equal(normalized.currencyValue, "CNY");
+  assert.equal(validateProviderApiConfig(normalized).ok, true);
+});
+
+test("MiniMax is a known unsupported balance source instead of a custom adapter", () => {
+  const normalized = normalizeProviderApiConfig({
+    providerId: "minimax",
+    label: "MiniMax",
+    requestUrl: "https://api.minimax.io/v1",
+    requestMethod: "GET",
+    authType: "bearer",
+    balancePath: "",
+    refreshIntervalSeconds: 300,
+    enabled: true,
+  });
+
+  assert.deepEqual(getProviderFinancialCapabilities(normalized), {
+    balance: "unsupported",
+    monthSpend: "unsupported",
+    lifetimeSpend: "unsupported",
+    tokenQuota: "token_plan",
+  });
+  const validation = validateProviderApiConfig(normalized);
+  assert.equal(validation.ok, false);
+  assert.equal(validation.error_code, "unsupported_endpoint");
 });
 
 test("GLM model API is recognized but rejected as an unsupported financial source", () => {
@@ -671,7 +716,7 @@ test("provider-api-configs POST accepts DeepSeek CC Switch style base URL with i
   }
 });
 
-test("provider-api-configs POST accepts DashScope CC Switch style base URL with inferred fields", async () => {
+test("provider-api-configs POST migrates a DashScope model URL to Alibaba Cloud BSS", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-configs-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
@@ -700,11 +745,12 @@ test("provider-api-configs POST accepts DashScope CC Switch style base URL with 
 
     const body = readJsonResponse(created);
     assert.equal(created.statusCode, 200, JSON.stringify(body));
-    assert.equal(body.config.providerId, "dashscope");
-    assert.equal(body.config.label, "DashScope");
-    assert.equal(body.config.requestUrl, "https://dashscope.aliyuncs.com/api/v1/recharge/recharge-balance/query");
-    assert.equal(body.config.balancePath, "output.available_balance");
-    assert.equal(body.config.currencyPath, "output.currency");
+    assert.equal(body.config.providerId, "aliyun_bss");
+    assert.equal(body.config.label, "阿里云（含千问/百炼）");
+    assert.equal(body.config.requestUrl, "https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14");
+    assert.equal(body.config.authType, "aliyun_rpc");
+    assert.equal(body.config.balancePath, "Data.AvailableAmount");
+    assert.equal(body.config.currencyPath, "Data.Currency");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

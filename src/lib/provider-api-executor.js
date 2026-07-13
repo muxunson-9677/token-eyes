@@ -203,6 +203,10 @@ function isFinancialProviderEndpoint(url) {
   } catch {
     return false;
   }
+  const host = parsed.hostname.toLowerCase();
+  const action = String(parsed.searchParams.get("Action") || "");
+  if (host === "business.aliyuncs.com" && action === "QueryAccountBalance") return true;
+  if (host === "open.volcengineapi.com" && action === "QueryBalanceAcct") return true;
   const normalized = normalizeFinancialPath(parsed.pathname);
   // Root path "/" or empty pathname cannot be a financial endpoint
   if (!normalized || normalized === "/") return false;

@@ -31,7 +31,7 @@ const {
 const CONFIG_KEY = "providerApiConfigs";
 
 const ALLOWED_METHODS = new Set(["GET", "POST"]);
-const ALLOWED_AUTH_TYPES = new Set(["bearer", "header"]);
+const ALLOWED_AUTH_TYPES = new Set(["bearer", "header", "aliyun_rpc", "volcengine_hmac"]);
 
 const FORBIDDEN_PATH_KEYS = new Set([
   "__proto__",
@@ -247,10 +247,14 @@ function validateProviderApiConfig(config, options = {}) {
 
   const capabilities = getProviderFinancialCapabilities(config);
   if (capabilities.balance === "unsupported" && capabilities.tokenQuota === "token_plan") {
+    const providerId = String(config?.providerId || "").trim().toLowerCase();
+    const isGlm = providerId === "glm" || isOfficialGlmQuotaEndpoint(config?.requestUrl);
     return {
       ok: false,
       error_code: ERROR_CODES.UNSUPPORTED_ENDPOINT,
-      error: "智谱未提供可验证的公开现金余额或历史花销接口；Coding Plan 额度请在 Token 套餐设置中配置",
+      error: isGlm
+        ? "智谱未提供可验证的公开现金余额或历史花销接口；Coding Plan 额度请在 Token 套餐设置中配置"
+        : "该供应商未提供可验证的公开现金余额接口；套餐额度请在 Token 套餐设置中配置",
     };
   }
 
@@ -283,7 +287,7 @@ function validateProviderApiConfig(config, options = {}) {
   // Auth type validation
   const authType = String(config.authType || "bearer").trim().toLowerCase();
   if (!ALLOWED_AUTH_TYPES.has(authType)) {
-    return { ok: false, error_code: ERROR_CODES.INVALID_CONFIG, error: "authType 只允许 bearer 或 header" };
+    return { ok: false, error_code: ERROR_CODES.INVALID_CONFIG, error: "authType 不受支持" };
   }
 
   // Auth header name required for header auth
@@ -438,18 +442,20 @@ const KNOWN_PROVIDER_PRESETS = [
     },
   },
   {
-    providerId: "dashscope",
-    label: "DashScope",
-    aliases: ["dashscope", "百炼", "bailian", "aliyun", "灵积", "aliyuncs"],
-    hosts: ["dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "dashscope-us.aliyuncs.com"],
-    defaultRequestUrl: "https://dashscope.aliyuncs.com/api/v1/recharge/recharge-balance/query",
+    providerId: "aliyun_bss",
+    label: "阿里云（含千问/百炼）",
+    aliases: ["aliyun_bss", "dashscope", "百炼", "bailian", "aliyun", "阿里云", "千问", "qwen"],
+    hosts: ["business.aliyuncs.com", "dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "dashscope-us.aliyuncs.com"],
+    fixedRequestUrl: true,
+    defaultRequestUrl: "https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14",
     requestMethod: "GET",
-    authType: "bearer",
+    authType: "aliyun_rpc",
     authHeaderName: "",
-    balancePath: "output.available_balance",
+    balancePath: "Data.AvailableAmount",
     monthSpendPath: "",
     lifetimeSpendPath: "",
-    currencyPath: "output.currency",
+    currencyPath: "Data.Currency",
+    currencyValue: "",
     financialCapabilities: {
       balance: "supported",
       monthSpend: "unsupported",
@@ -461,7 +467,7 @@ const KNOWN_PROVIDER_PRESETS = [
     providerId: "moonshot",
     label: "Moonshot",
     aliases: ["moonshot", "kimi", "月之暗面", "moon shot"],
-    hosts: ["api.moonshot.cn", "api.moonshot.com"],
+    hosts: ["api.moonshot.cn", "api.moonshot.ai"],
     defaultRequestUrl: "https://api.moonshot.cn/v1/users/me/balance",
     requestMethod: "GET",
     authType: "bearer",
@@ -470,11 +476,56 @@ const KNOWN_PROVIDER_PRESETS = [
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "",
+    currencyValue: "CNY",
     financialCapabilities: {
       balance: "supported",
       monthSpend: "unsupported",
       lifetimeSpend: "unsupported",
       tokenQuota: "unsupported",
+    },
+  },
+  {
+    providerId: "volcengine_billing",
+    label: "火山引擎（含豆包）",
+    aliases: ["volcengine_billing", "volcengine", "volces", "火山引擎", "豆包", "doubao", "ark"],
+    hosts: ["open.volcengineapi.com", "ark.cn-beijing.volces.com"],
+    fixedRequestUrl: true,
+    defaultRequestUrl: "https://open.volcengineapi.com/?Action=QueryBalanceAcct&Version=2022-01-01",
+    requestMethod: "GET",
+    authType: "volcengine_hmac",
+    authHeaderName: "",
+    balancePath: "Result.AvailableBalance",
+    monthSpendPath: "",
+    lifetimeSpendPath: "",
+    currencyPath: "",
+    currencyValue: "CNY",
+    financialCapabilities: {
+      balance: "supported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "unsupported",
+    },
+  },
+  {
+    providerId: "minimax",
+    label: "MiniMax",
+    aliases: ["minimax", "mini max", "海螺"],
+    hosts: ["api.minimax.io", "api.minimaxi.com", "platform.minimax.io"],
+    fixedRequestUrl: true,
+    defaultRequestUrl: "https://platform.minimax.io/account/billing",
+    requestMethod: "GET",
+    authType: "bearer",
+    authHeaderName: "",
+    balancePath: "",
+    monthSpendPath: "",
+    lifetimeSpendPath: "",
+    currencyPath: "",
+    currencyValue: "",
+    financialCapabilities: {
+      balance: "unsupported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "token_plan",
     },
   },
   {
@@ -562,6 +613,7 @@ function getProviderFinancialCapabilities(config) {
 }
 
 function shouldUsePresetRequestUrl(rawUrl, preset) {
+  if (preset.fixedRequestUrl) return true;
   const value = String(rawUrl || "").trim();
   if (!value) return true;
   try {
@@ -595,15 +647,23 @@ function applyKnownProviderPreset(config) {
       next.monthSpendPath = preset.monthSpendPath;
       next.lifetimeSpendPath = preset.lifetimeSpendPath;
       next.currencyPath = preset.currencyPath;
+      next.currencyValue = preset.currencyValue || "";
     } else {
       if (!String(next.balancePath || "").trim()) next.balancePath = preset.balancePath;
       if (!String(next.monthSpendPath || "").trim()) next.monthSpendPath = preset.monthSpendPath;
       if (!String(next.lifetimeSpendPath || "").trim()) next.lifetimeSpendPath = preset.lifetimeSpendPath;
       if (!String(next.currencyPath || "").trim()) next.currencyPath = preset.currencyPath;
+      if (!String(next.currencyValue || "").trim()) next.currencyValue = preset.currencyValue || "";
     }
-    if (!String(next.requestMethod || "").trim()) next.requestMethod = preset.requestMethod;
-    if (!String(next.authType || "").trim()) next.authType = preset.authType;
-    if (!String(next.authHeaderName || "").trim()) next.authHeaderName = preset.authHeaderName;
+    if (preset.fixedRequestUrl) {
+      next.requestMethod = preset.requestMethod;
+      next.authType = preset.authType;
+      next.authHeaderName = preset.authHeaderName;
+    } else {
+      if (!String(next.requestMethod || "").trim()) next.requestMethod = preset.requestMethod;
+      if (!String(next.authType || "").trim()) next.authType = preset.authType;
+      if (!String(next.authHeaderName || "").trim()) next.authHeaderName = preset.authHeaderName;
+    }
     if (!Number(next.refreshIntervalSeconds)) next.refreshIntervalSeconds = 300;
     if (preset.providerId === "deepseek") {
       if (String(next.balancePath || "").trim() === "balance_infos[0].total_balance") {
@@ -640,6 +700,7 @@ function normalizeProviderApiConfig(config) {
     monthSpendPath: prepared.monthSpendPath ? String(prepared.monthSpendPath).trim() : "",
     lifetimeSpendPath: prepared.lifetimeSpendPath ? String(prepared.lifetimeSpendPath).trim() : "",
     currencyPath: prepared.currencyPath ? String(prepared.currencyPath).trim() : "",
+    currencyValue: prepared.currencyValue ? String(prepared.currencyValue).trim().toUpperCase() : "",
     refreshIntervalSeconds: Number(prepared.refreshIntervalSeconds) || 300,
     enabled: prepared.enabled !== false,
   };
