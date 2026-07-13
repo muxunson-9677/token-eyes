@@ -284,6 +284,24 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     });
   });
 
+  it("does not mix other_ai into a selected service when it is the only visible provider", async () => {
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["claude"] });
+    const user = userEvent.setup();
+    render(<SpendUsagePage />);
+
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledWith(expect.objectContaining({
+      sources: ["claude", "other_ai"],
+    })));
+    await act(async () => {
+      await user.click(await screen.findByTitle("Claude Code"));
+    });
+
+    await waitFor(() => {
+      const latestFinancialCall = getSpendRecords.mock.calls.at(-1)?.[0];
+      expect(latestFinancialCall?.sources).toEqual(["claude"]);
+    });
+  });
+
   it("initial load defers trend chart and request log until after first paint", async () => {
     render(<SpendUsagePage />);
 

@@ -160,13 +160,14 @@ function SpendUsagePageInner({
   );
   const costSources = useMemo(
     () => {
-      const includesAllVisibleProviders = visibleProviderIds.length === effectiveUsageSources.length
-        && visibleProviderIds.every((source) => effectiveUsageSources.includes(source));
-      return includesAllVisibleProviders
-        ? withOtherAiCostSource(effectiveUsageSources)
-        : effectiveUsageSources;
+      if (visibleProviderIds.length === 0) return withOtherAiCostSource([]);
+      const hasExplicitProviderScope = (filterState.agentIds?.length || 0) > 0
+        || (filterState.sources?.length || 0) > 0;
+      return hasExplicitProviderScope
+        ? effectiveUsageSources
+        : withOtherAiCostSource(effectiveUsageSources);
     },
-    [effectiveUsageSources, visibleProviderIds],
+    [effectiveUsageSources, filterState.agentIds, filterState.sources, visibleProviderIds],
   );
   const {
     setRefreshInterval: dispatchRefreshInterval,
