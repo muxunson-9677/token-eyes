@@ -138,7 +138,7 @@ function resolveCodexHomeSearchOrder({
   });
   const ordered = [];
   const seen = new Set();
-  for (const candidate of [primary, ...readyHomes]) {
+  for (const candidate of [primary, ...readyHomes, path.join(home, ".codex")]) {
     const normalized = normalizeString(candidate);
     if (!normalized) continue;
     const key = normalized.toLowerCase();
