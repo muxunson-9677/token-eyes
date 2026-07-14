@@ -91,7 +91,15 @@ test("local settings API saves machine-only data directory and pricing overrides
     const handler = createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
 
     const initial = await call(handler, "/functions/tokentracker-local-settings");
-    assert.deepEqual(readJsonResponse(initial).dataDirectories, { claude: "", codex: "", hermes: "", cursor: "", openclaw: "" });
+    assert.deepEqual(readJsonResponse(initial).dataDirectories, {
+      claude: "",
+      codex: "",
+      cursor: "",
+      trae: "",
+      opencode: "",
+      openclaw: "",
+      hermes: "",
+    });
     assert.deepEqual(readJsonResponse(initial).agentDefaultPricing, {
       claude: { inputUsdPer1M: 0, outputUsdPer1M: 0 },
       codex: { inputUsdPer1M: 0, outputUsdPer1M: 0 },
@@ -114,6 +122,8 @@ test("local settings API saves machine-only data directory and pricing overrides
       codex: "C:\\Users\\admin\\.codex",
       hermes: "\\\\wsl.localhost\\Ubuntu\\home\\agent\\.hermes",
       cursor: "C:\\Users\\admin\\AppData\\Roaming\\Cursor",
+      trae: "C:\\Users\\admin\\AppData\\Roaming\\Trae",
+      opencode: "C:\\Users\\admin\\AppData\\Local\\opencode",
       openclaw: "D:\\OpenClaw",
     };
     const saved = await call(handler, "/functions/tokentracker-local-settings", {
