@@ -2,6 +2,8 @@
 
 > 对应设计：`docs/superpowers/specs/2026-07-14-installed-client-remediation-design.md`
 
+状态：六个任务均已完成；需要真实供应商密钥、微信开放平台和安装后点击体验的部分保留为人工验收。
+
 ## Task 1：排行榜入口与 Token 服务过滤
 
 - 修改 `dashboard/src/ui/components/Sidebar.jsx` 及测试，增加排行榜入口。

@@ -1,7 +1,7 @@
 # Token Eyes 安装客户端五项复核修复设计
 
 日期：2026-07-14  
-状态：设计已获用户确认，进入实施
+状态：仓库内实施完成；外部真实账号、微信生产配置与覆盖安装体验待用户验收
 
 ## 1. 范围与边界
 
@@ -83,3 +83,15 @@
 ## 5. 完成定义
 
 只有代码行为、自动化测试、生产构建和仓库内可重复验证证据全部具备，才标记“仓库内完成”。需要用户真实密钥、微信开放平台或安装环境交互的部分单列为“待人工验收”，不得用 fixture 或模拟登录冒充完成。
+
+## 6. 2026-07-14 完成记录
+
+- Codex：修复本机官方登录目录发现与官方账号检测策略；本机只读真实请求成功返回周窗口额度，无登录弹窗。
+- 排行榜：侧边栏入口可见，公开榜单与规则页可达；本地功能仍免登录。
+- Token 服务列表：保留未过期的 100% 已耗尽套餐，仅过滤过期套餐，继续按用量排序并每页 5 条。
+- OpenCode：增加自动/自定义目录、SQLite/WAL/JSON 消息证据检测、统一同步目录和 token-only 限制显示。
+- 供应商余额：DeepSeek、Kimi、阿里云 BSS、火山引擎 Billing 的官方认证、签名、解析与安全边界通过相关回归；MiniMax 官方完整文档索引没有公开现金余额 API，因此明确显示不支持，不抓取控制台 Cookie。
+- 验证：相关 Node 201 项、供应商前端 48 项、Token Eyes Rust 主库 139 项、导航/目录契约 18 项均通过；Dashboard production build 和 Tauri NSIS build 通过。
+- 安装包：`src-tauri/target/release/bundle/nsis/Token Eyes_0.54.0_x64-setup.exe`，产品名/描述均为 `Token Eyes`，SHA-256 `E571BCF7AC249F49A5F8AFDA434A91ED8C5BC593EF5F9F2BDACEC79012853C3D`。
+
+已知仓库基线：全量 Node 入口仍会命中本轮未修改的旧断言/配置（缺失 npm 发布 workflow、安装卡旧源码断言、两处既有 TypeScript 类型错误、一个旧 Token Plan 状态断言）；`src-tauri/tests` 仍是引用 `cc_switch_lib` 的历史集成测试，无法作为当前 `token-eyes` crate 的测试。上述问题未被伪装为通过，也未为本轮需求扩大修改范围；当前 Token Eyes `cargo test --lib` 139 项通过且 release 安装包构建成功。
