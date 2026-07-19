@@ -2381,18 +2381,19 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         { id: "kimi", verify: verifyKimiConsoleSession, skip: plan?.plan_id === "kimi_api_budget" },
       ];
       for (const entry of webviewQuotaProviders) {
+        const boundSessionRef = recordConsoleSession?.session_ref
+          || plan?.detection_config?.official_account?.session_ref
+          || "";
         if (
           plan &&
           plan.provider_id === entry.id &&
           !entry.skip &&
           plan.detection_method === "official_account" &&
-          recordConsoleSession &&
-          recordConsoleSession.status === "connected" &&
-          recordConsoleSession.session_ref
+          boundSessionRef
         ) {
           try {
-            const nativeStatus = await entry.verify(recordConsoleSession.session_ref);
-            if (nativeStatus?.quota) {
+            const nativeStatus = await entry.verify(boundSessionRef);
+            if (nativeStatus?.connected && nativeStatus?.quota) {
               const catalogPlan = findCatalogPlan(catalog, plan.provider_id, plan.plan_id);
               await saveTokenPlan({
                 ...plan,
@@ -2402,6 +2403,19 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 total_quota_display: catalogPlan?.total_quota_display || plan.total_quota_display || "",
                 quota_windows: nativeStatus.quota.quota_windows || plan.quota_windows || [],
                 expires_at: plan.expires_at || "",
+                provider_reported_at: nativeStatus.quota.provider_reported_at
+                  || nativeStatus.quota.fetched_at
+                  || new Date().toISOString(),
+                detection_config: {
+                  ...plan.detection_config,
+                  official_account: {
+                    ...(plan.detection_config?.official_account || {}),
+                    session_ref: nativeStatus.session_ref || boundSessionRef,
+                    account_id: nativeStatus.quota.account_id
+                      || plan.detection_config?.official_account?.account_id
+                      || "",
+                  },
+                },
                 sync_status: "success",
                 last_synced_at: new Date().toISOString(),
                 last_sync_attempt_at: new Date().toISOString(),
@@ -2417,23 +2431,26 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
               return;
             }
             const reauthRequired = ["session_not_found", "reauth_required"].includes(nativeStatus?.state_code);
+            const syncFailed = nativeStatus?.state_code === "sync_failed";
             const errorCode = nativeStatus?.error_code
-              || (reauthRequired ? "SESSION_NOT_FOUND" : "QUOTA_SYNC_FAILED");
+              || (reauthRequired ? "SESSION_NOT_FOUND" : (syncFailed ? "SYNC_FAILED" : "QUOTA_SYNC_FAILED"));
             const errorMessage = nativeStatus?.error_message
               || (reauthRequired
                 ? copy("settings.token_plan.console_session.window_closed")
                 : copy("settings.token_plan.refresh_failed"));
-            const verified = await verifyConsoleSession(recordConsoleSession.id, nativeStatus || {
-              connected: false,
-              session_ref: recordConsoleSession.session_ref,
-              state_code: reauthRequired ? "session_not_found" : "failed",
-              error_code: errorCode,
-              error_message: errorMessage,
-            }).catch(() => null);
-            if (verified?.session) {
-              setConsoleSessions((previous) => previous.map((session) =>
-                session.id === recordConsoleSession.id ? verified.session : session
-              ));
+            if (recordConsoleSession?.id) {
+              const verified = await verifyConsoleSession(recordConsoleSession.id, nativeStatus || {
+                connected: false,
+                session_ref: boundSessionRef,
+                state_code: reauthRequired ? "session_not_found" : (syncFailed ? "sync_failed" : "failed"),
+                error_code: errorCode,
+                error_message: errorMessage,
+              }).catch(() => null);
+              if (verified?.session) {
+                setConsoleSessions((previous) => previous.map((session) =>
+                  session.id === recordConsoleSession.id ? verified.session : session
+                ));
+              }
             }
             const now = new Date().toISOString();
             const result = await saveTokenPlan({

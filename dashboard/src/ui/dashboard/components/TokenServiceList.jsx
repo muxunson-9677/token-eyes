@@ -45,7 +45,7 @@ function isExpired(expiresAt, now) {
   return timestamp !== null && timestamp <= now.getTime();
 }
 
-const WINDOW_PRIORITY = ["rolling_5_hour", "rolling_weekly"];
+const WINDOW_PRIORITY = ["rolling_5_hour", "rolling_weekly", "total", "auto_composer", "api"];
 // Cockpit-aligned Cursor lanes: Total Usage / Auto+Composer / API Usage.
 const CURSOR_WINDOW_PRIORITY = ["total", "rolling_weekly", "auto_composer", "api"];
 
@@ -139,8 +139,8 @@ export function normalizeTokenServices(plans, now = new Date()) {
   return plans
     .map((plan, index) => {
       const metrics = readQuotaMetrics(plan);
-      const primaryMetric = metrics.find((metric) => metric.kind === "rolling_weekly")
-        || metrics.find((metric) => metric.kind === "total")
+      const primaryMetric = metrics.find((metric) => metric.kind === "total")
+        || metrics.find((metric) => metric.kind === "rolling_weekly")
         || metrics[0]
         || { total: 0, used: 0, percentage: 0 };
       const labels = serviceLabels(plan);

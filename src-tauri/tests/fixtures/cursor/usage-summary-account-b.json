@@ -1,37 +1,39 @@
 {
-  "_fixture": {
-    "account_id": "google-oauth2|user_01KK9F07TG4FGF3DREDACTED",
-    "display_name_redacted": "she***@gmail.com",
-    "source": "structure_from_cockpit_field_paths_plus_screenshot_values",
-    "captured_at": "2026-07-19T12:00:00.000Z",
-    "notes": "structure from Cockpit field paths + screenshot values; not raw live capture. Token Eyes app data only had account A tokens; account B percentages (6/1/39) and reset time come from Cockpit Tools screenshot 2026-07-19. Field names match live usage-summary from account A capture and Cockpit cursor.ts / cursor_account.rs parsers."
-  },
-  "billingCycleStart": "2026-07-13T09:08:00.000Z",
-  "billingCycleEnd": "2026-08-13T09:08:00.000Z",
-  "membershipType": "pro",
-  "limitType": "user",
-  "isUnlimited": false,
-  "individualUsage": {
-    "plan": {
-      "enabled": true,
-      "used": 2000,
-      "limit": 2000,
-      "remaining": 0,
-      "breakdown": {
-        "included": 2000,
-        "bonus": 0,
-        "total": 2000
-      },
-      "autoPercentUsed": 1.0,
-      "apiPercentUsed": 39.0,
-      "totalPercentUsed": 6.0
-    },
-    "onDemand": {
-      "enabled": false,
-      "used": 0,
-      "limit": null,
-      "remaining": null
-    }
-  },
-  "teamUsage": {}
+    "_fixture":  {
+                     "label":  "account-b",
+                     "note":  "Percentages from Cockpit screenshot (Total 6% / Auto+Composer 1% / API 39%, reset 2026/08/13 17:08). Field paths mirrored from live account-a + Cockpit read_usage_percent.",
+                     "display_name":  "she***@gmail.com",
+                     "account_id":  "google-oauth2|user_01KK9F07TG4FGF3DREDACTED",
+                     "capture":  "structure_from_cockpit_field_paths_plus_screenshot_values_not_raw_live_capture"
+                 },
+    "billingCycleStart":  "2026-07-13T09:08:00.000Z",
+    "billingCycleEnd":  "2026-08-13T09:08:00.000Z",
+    "membershipType":  "pro",
+    "teamUsage":  {
+
+                  },
+    "individualUsage":  {
+                            "onDemand":  {
+                                             "used":  0,
+                                             "limit":  null,
+                                             "remaining":  null,
+                                             "enabled":  false
+                                         },
+                            "plan":  {
+                                         "autoPercentUsed":  1,
+                                         "used":  2000,
+                                         "remaining":  0,
+                                         "limit":  2000,
+                                         "totalPercentUsed":  6,
+                                         "apiPercentUsed":  39,
+                                         "enabled":  true,
+                                         "breakdown":  {
+                                                           "included":  2000,
+                                                           "bonus":  0,
+                                                           "total":  2000
+                                                       }
+                                     }
+                        },
+    "limitType":  "user",
+    "isUnlimited":  false
 }

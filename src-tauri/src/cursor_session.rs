@@ -1964,9 +1964,11 @@ mod tests {
 
         assert_eq!(snap_a.account_id, account_a);
         assert_eq!(snap_b.account_id, account_b);
-        // Live account A capture (2026-07-19); Cockpit UI rounds Total Usage (~27%).
-        assert!((snap_a.total_usage_percent - 29.544927536231885).abs() < 0.000_001);
-        assert!((snap_a.auto_composer_percent.unwrap() - 23.246666666666666).abs() < 0.000_001);
+
+        // Fixture files on disk are the source of truth for these assertions.
+        // usage-summary-account-a.json: totalPercentUsed / autoPercentUsed / apiPercentUsed.
+        assert!((snap_a.total_usage_percent - 29.095652173913045).abs() < 0.000_001);
+        assert_eq!(snap_a.auto_composer_percent, Some(22.73));
         assert!((snap_a.api_usage_percent.unwrap() - 71.53333333333333).abs() < 0.000_001);
         assert_eq!(snap_a.reset_at.as_deref(), Some("2026-08-06T14:31:29.000Z"));
 

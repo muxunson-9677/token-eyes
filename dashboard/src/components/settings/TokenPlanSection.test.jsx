@@ -2,8 +2,8 @@ import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { TokenPlanSection } from "./TokenPlanSection.jsx";
-import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, discardCodexPendingSession, deleteCodexConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+import { TokenPlanSection, resolveConsoleSessionForRecord } from "./TokenPlanSection.jsx";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, discardCodexPendingSession, deleteCodexConsoleSession, verifyCursorConsoleSession, saveTokenPlanSecret } from "../../lib/api";
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { copy } from "../../lib/copy";
 
@@ -37,6 +37,10 @@ vi.mock("../../lib/api", () => ({
   openKimiConsoleLogin: vi.fn(),
   verifyKimiConsoleSession: vi.fn(),
   deleteKimiConsoleSession: vi.fn(),
+  openTraeConsoleLogin: vi.fn(),
+  verifyTraeConsoleSession: vi.fn(),
+  syncTraeConsoleQuota: vi.fn(),
+  deleteTraeConsoleSession: vi.fn(),
   saveTokenPlanSecret: vi.fn(),
 }));
 
@@ -57,6 +61,19 @@ const BASE_RECORD = {
   last_refresh_at: "",
   next_refresh_at: "",
 };
+
+async function expandAllPlans() {
+  const user = userEvent.setup();
+  await waitFor(() => {
+    expect(screen.getAllByRole("button", { name: /^展开 / }).length).toBeGreaterThan(0);
+  });
+  const expandButtons = screen.getAllByRole("button", { name: /^展开 / });
+  for (const button of expandButtons) {
+    await act(async () => {
+      await user.click(button);
+    });
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -124,6 +141,7 @@ it("loads, edits, and saves manual token plan records", async () => {
 
   expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
   await screen.findByText(/claude \/ Max/i);
+  await expandAllPlans();
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
   });
@@ -156,6 +174,7 @@ it("triggers manual refresh and updates status", async () => {
   render(<TokenPlanSection />);
 
   await screen.findByText(/claude \/ Max/i);
+  await expandAllPlans();
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "立即刷新" }));
   });
@@ -179,6 +198,7 @@ it("displays Codex live quota block for source=codex records with 5h/7d windows"
   render(<TokenPlanSection />);
 
   await screen.findByText(/codex \/ Pro/i);
+  await expandAllPlans();
   expect(await screen.findByText("Codex 实时额度")).toBeInTheDocument();
   expect(screen.getByText("5 小时")).toBeInTheDocument();
   expect(screen.getByText("7 天")).toBeInTheDocument();
@@ -208,6 +228,7 @@ it("shows unconfigured status when codex.configured=false", async () => {
   render(<TokenPlanSection />);
 
   await screen.findByText(/codex \/ Pro/i);
+  await expandAllPlans();
   expect(await screen.findByText("Codex 实时额度")).toBeInTheDocument();
   expect(await screen.findByText("Codex 未连接，无法读取实时额度")).toBeInTheDocument();
 });
@@ -222,6 +243,7 @@ it("shows reauth status when auth_action_required=reauth", async () => {
   render(<TokenPlanSection />);
 
   await screen.findByText(/codex \/ Pro/i);
+  await expandAllPlans();
   expect(await screen.findByText("需要重新登录 Codex 后读取额度")).toBeInTheDocument();
 });
 
@@ -235,6 +257,7 @@ it("shows error status when codex.error is present", async () => {
   render(<TokenPlanSection />);
 
   await screen.findByText(/codex \/ Pro/i);
+  await expandAllPlans();
   expect(await screen.findByText("Codex 额度读取失败: Network error")).toBeInTheDocument();
 });
 
@@ -246,6 +269,7 @@ it("shows error status when usage limit request fails", async () => {
   render(<TokenPlanSection />);
 
   await screen.findByText(/codex \/ Pro/i);
+  await expandAllPlans();
   expect(await screen.findByText("Codex 额度读取失败: Network down")).toBeInTheDocument();
 });
 
@@ -458,6 +482,38 @@ it("catalog plans with official detection expose connect and sync controls", asy
   expect(saveArg.refresh_enabled).toBe(true);
   expect(saveArg.detection_method).toBe("official_account");
   expect(saveArg.detection_config?.official_account?.provider_home_url).toContain("minimaxi.com");
+});
+
+it("Trae catalog plans expose the official OAuth connect control", async () => {
+  const user = userEvent.setup();
+  getTokenPlanCatalog.mockResolvedValueOnce({
+    providers: [
+      {
+        id: "trae",
+        name: "Trae CN",
+        plans: [{
+          plan_id: "trae_cn_pro",
+          display_name: "速通 Pro",
+          quota_kind: "requests",
+          quota_unit: "requests",
+          total_quota: 100,
+          total_quota_display: "官方动态额度",
+        }],
+      },
+      { id: "custom", name: "自定义套餐", plans: [] },
+    ],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText("Token 套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "新增套餐" }));
+  });
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText("服务商"), "trae");
+  });
+
+  expect(screen.getByTestId("detection-connect-trae")).toBeInTheDocument();
 });
 
 it("selecting xiaomi_mimo provider shows only verified catalog plans", async () => {
@@ -1330,6 +1386,7 @@ it("R3D record without detection_method shows no-detection prompt", async () => 
 
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
+  await expandAllPlans();
   expect(await screen.findByText("请选择检测方式以同步套餐状态")).toBeInTheDocument();
 });
 
@@ -1363,6 +1420,7 @@ it("R3D record with official_account detection shows unsupported status and pres
 
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
+  await expandAllPlans();
 
   // Quota is displayed (used_quota appears in both SummaryMetric and record card summary line)
   expect(screen.getAllByText(/5,000,000,000/).length).toBeGreaterThanOrEqual(1);
@@ -1403,6 +1461,7 @@ it("R3D record with custom_api detection shows success status and quota_source c
 
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
+  await expandAllPlans();
 
   // Detection method label
   expect(screen.getByText(/自定义 API 检测/)).toBeInTheDocument();
@@ -1440,6 +1499,7 @@ it("R3D failed record shows last successful quota and error reason", async () =>
 
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
+  await expandAllPlans();
 
   // Quota from last success is still displayed
   expect(screen.getAllByText(/11,000,000,000/).length).toBeGreaterThanOrEqual(1);
@@ -1496,6 +1556,7 @@ it("R3D both detection methods use the same status labels", async () => {
 
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
+  await expandAllPlans();
 
   // Both records should show "同步状态" label (same status label for both methods)
   const statusLabels = screen.getAllByText(/同步状态/);
@@ -2031,6 +2092,56 @@ function mockCodexLocalReauth(id = "plan-2", overrides = {}) {
   refreshTokenPlan.mockResolvedValue({ ok: true, plan, records: [plan] });
 }
 
+it("lets a connected Codex plan start a separate account record", async () => {
+  mockCodexCatalog();
+  const record = {
+    ...BASE_RECORD,
+    id: "codex-account-one",
+    source: "codex",
+    provider_id: "codex",
+    plan_id: "codex_pro_5x",
+    plan_label: "Pro 5x",
+    notes: "account one",
+    detection_method: "official_account",
+    detection_config: { official_account: { account_binding_id: "codex-session-one" } },
+    sync_status: "success",
+  };
+  getTokenPlans.mockResolvedValue({ records: [record] });
+  getConsoleSessions.mockResolvedValue({
+    sessions: [makeCodexSession({ id: "codex-session-one", status: "connected" })],
+  });
+  const user = userEvent.setup();
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/codex \/ codex \/ Pro 5x/i);
+  await expandAllPlans();
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
+  });
+  expect(await screen.findByTestId("detection-add-account-codex")).toBeInTheDocument();
+
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-add-account-codex"));
+  });
+
+  expect(await screen.findByTestId("detection-connect-codex")).toBeInTheDocument();
+  expect(screen.getByTestId("token-plan-form-notes")).toHaveValue("");
+  expect(screen.getByText(/codex \/ codex \/ Pro 5x/i)).toBeInTheDocument();
+});
+
+it("never aliases an unbound Codex plan to another account session", () => {
+  const connected = makeCodexSession({ id: "codex-session-one", status: "connected" });
+  const unboundPlan = {
+    ...BASE_RECORD,
+    id: "codex-account-two",
+    provider_id: "codex",
+    detection_method: "official_account",
+    detection_config: { official_account: { account_binding_id: "" } },
+  };
+
+  expect(resolveConsoleSessionForRecord(unboundPlan, [connected])).toBeNull();
+});
+
 async function openCodexOfficialAccountForm(user) {
   await screen.findByText(copy("settings.section.token_plan"));
   await act(async () => {
@@ -2049,26 +2160,14 @@ async function openCodexOfficialAccountForm(user) {
   }
 }
 
-it("Codex account detection uses the local official login before opening OAuth", async () => {
+it("Codex account detection creates an isolated binding before saving a new account", async () => {
   mockCodexCatalog();
   const user = userEvent.setup();
-  const syncedPlan = {
-    ...BASE_RECORD,
-    id: "plan-2",
-    source: "codex",
-    provider_id: "codex",
-    plan_id: "codex_pro_5x",
-    plan_label: "Pro 5x",
-    detection_method: "official_account",
-    sync_status: "success",
-    used_quota: 45,
-    remaining_quota: 55,
-    quota_windows: [
-      { kind: "rolling_5_hour", total: 100, used: 30, remaining: 70, percentage: 30 },
-      { kind: "rolling_weekly", total: 100, used: 45, remaining: 55, percentage: 45 },
-    ],
-  };
-  refreshTokenPlan.mockResolvedValue({ ok: true, plan: syncedPlan, records: [syncedPlan] });
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeCodexSession({ id: "isolated-codex-session", session_ref: params.session_ref }),
+    sessions: [makeCodexSession({ id: "isolated-codex-session", session_ref: params.session_ref })],
+  }));
+  openCodexConsoleLogin.mockRejectedValue(new Error("stop after opening isolated login"));
 
   render(<TokenPlanSection />);
   await openCodexOfficialAccountForm(user);
@@ -2076,50 +2175,13 @@ it("Codex account detection uses the local official login before opening OAuth",
     await user.click(screen.getByTestId("detection-connect-codex"));
   });
 
-  await waitFor(() => expect(refreshTokenPlan).toHaveBeenCalledWith("plan-2"));
-  expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
-    refresh_enabled: true,
-    refresh_method: "official_api",
-  }));
-  expect(createConsoleSession).not.toHaveBeenCalled();
-  expect(openCodexConsoleLogin).not.toHaveBeenCalled();
-});
-
-it("Codex local detection closes and removes a stale pending OAuth session", async () => {
-  mockCodexCatalog();
-  const user = userEvent.setup();
-  const pendingSession = makeCodexSession({
-    id: "stale-codex-session",
-    status: "awaiting_verification",
-  });
-  getConsoleSessions.mockResolvedValue({ sessions: [pendingSession] });
-  discardCodexPendingSession.mockResolvedValue(false);
-  const syncedPlan = {
-    ...BASE_RECORD,
-    id: "plan-2",
-    source: "codex",
+  await waitFor(() => expect(openCodexConsoleLogin).toHaveBeenCalledTimes(1));
+  expect(createConsoleSession).toHaveBeenCalledWith(expect.objectContaining({
     provider_id: "codex",
-    plan_id: "codex_pro_5x",
-    detection_method: "official_account",
-    sync_status: "success",
-  };
-  refreshTokenPlan.mockResolvedValue({ ok: true, plan: syncedPlan, records: [syncedPlan] });
-
-  render(<TokenPlanSection />);
-  await openCodexOfficialAccountForm(user);
-  await act(async () => {
-    await user.click(screen.getByTestId("detection-codex-resume"));
-  });
-
-  await waitFor(() => expect(discardCodexPendingSession).toHaveBeenCalledWith(codexSessionRef));
-  expect(deleteCodexConsoleSession).toHaveBeenCalledWith(codexSessionRef);
-  expect(deleteConsoleSession).toHaveBeenCalledWith("stale-codex-session");
-  expect(openCodexConsoleLogin).not.toHaveBeenCalled();
-  expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
-    detection_config: expect.objectContaining({
-      official_account: expect.objectContaining({ account_binding_id: "" }),
-    }),
+    session_ref: expect.stringContaining("token-plan/codex/session/"),
   }));
+  expect(saveTokenPlan).not.toHaveBeenCalled();
+  expect(refreshTokenPlan).not.toHaveBeenCalled();
 });
 
 it("Codex system browser reuses an authorized binding, saves quota, and keeps the binding", async () => {
@@ -2173,7 +2235,7 @@ it("Codex system browser reuses an authorized binding, saves quota, and keeps th
     await user.click(screen.getByTestId("detection-connect-codex"));
   });
 
-  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
   const saved = saveTokenPlan.mock.calls.at(-1)[0];
   expect(saved.sync_status).toBe("success");
   expect(saved.quota_windows).toHaveLength(2);
@@ -2282,7 +2344,7 @@ it("Codex system browser completes authorization even when quota sync fails", as
     await user.click(screen.getByTestId("detection-sync-codex"));
   });
 
-  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
   const saved = saveTokenPlan.mock.calls.at(-1)[0];
   expect(saved.sync_status).toBe("failed");
   expect(saved.used_quota).toBe(40);
@@ -2368,6 +2430,7 @@ it("Codex connected refresh keeps quota and never falls back to the legacy adapt
 
   render(<TokenPlanSection />);
   await screen.findByText(/codex \/ codex \/ Pro 5x/i);
+  await expandAllPlans();
   await act(async () => {
     await user.click(screen.getByTitle(copy("settings.token_plan.refresh")));
   });
@@ -2381,6 +2444,65 @@ it("Codex connected refresh keeps quota and never falls back to the legacy adapt
     sync_status: "failed",
     last_error_code: "QUOTA_SYNC_FAILED",
   }));
+});
+
+it("Cursor refresh treats a missing native session as reauthorization instead of fake connected", async () => {
+  const record = {
+    ...BASE_RECORD,
+    id: "cursor-plan",
+    source: "cursor",
+    provider_id: "cursor",
+    plan_id: "cursor_pro",
+    plan_label: "Pro",
+    notes: "work account",
+    detection_method: "official_account",
+    detection_config: { official_account: { account_binding_id: "cursor-session-id" } },
+    sync_status: "success",
+  };
+  getTokenPlans.mockResolvedValue({ records: [record] });
+  getConsoleSessions.mockResolvedValue({
+    sessions: [makeXiaomiSession({
+      id: "cursor-session-id",
+      provider_id: "cursor",
+      session_ref: "token-plan/cursor/session/cursor-one",
+      status: "connected",
+    })],
+  });
+  verifyCursorConsoleSession.mockResolvedValue({
+    connected: false,
+    session_ref: "token-plan/cursor/session/cursor-one",
+    state_code: "session_not_found",
+    error_code: "SESSION_NOT_FOUND",
+    error_message: "请重新连接 Cursor",
+  });
+  verifyConsoleSession.mockResolvedValue({
+    ok: true,
+    session: makeXiaomiSession({
+      id: "cursor-session-id",
+      provider_id: "cursor",
+      session_ref: "token-plan/cursor/session/cursor-one",
+      status: "failed",
+    }),
+  });
+  const user = userEvent.setup();
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/cursor \/ cursor \/ Pro/i);
+  await expandAllPlans();
+  await act(async () => {
+    await user.click(screen.getByTitle(copy("settings.token_plan.refresh")));
+  });
+
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+    id: "cursor-plan",
+    notes: "work account",
+    sync_status: "reauth_required",
+    last_error_code: "SESSION_NOT_FOUND",
+  })));
+  expect(verifyConsoleSession).toHaveBeenCalledWith("cursor-session-id", expect.objectContaining({
+    state_code: "session_not_found",
+  }));
+  expect(refreshTokenPlan).not.toHaveBeenCalled();
 });
 
 it("formats Codex reset timestamps returned as Unix-second strings", async () => {
@@ -2398,6 +2520,7 @@ it("formats Codex reset timestamps returned as Unix-second strings", async () =>
 
   render(<TokenPlanSection />);
   await screen.findByText(/codex \/ Pro/i);
+  await expandAllPlans();
 
   expect(screen.getByText(/重置 \d+m|重置 \d+h/)).toBeInTheDocument();
   expect(screen.queryByText(/重置 --/)).not.toBeInTheDocument();
