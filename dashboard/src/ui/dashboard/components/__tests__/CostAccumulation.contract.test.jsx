@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen, within } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
-import { CostAccumulation } from "../CostAccumulation.jsx";
+import { describe, expect, it, vi } from "vitest";
+import { CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
 
 // 02 work order contract tests for CostAccumulation.
 //
@@ -13,13 +13,24 @@ import { CostAccumulation } from "../CostAccumulation.jsx";
 //    wire-contract value `one_time` (underscore), not `one-time` (hyphen).
 //  - F6 (currency contract): the subscription form's currency select offers
 //    ONLY USD and CNY — EUR/GBP are removed.
+//  - MoM copy direction: increase/decrease both emerald; copy keys accurate.
 
 vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
 }));
 
 vi.mock("../../../../lib/copy", () => ({
-  copy: (key) => key,
+  copy: (key, params) => {
+    if (!params) return key;
+    return Object.entries(params).reduce(
+      (text, [name, value]) => text.replace(`{{${name}}}`, String(value)),
+      key.includes("increase") || key.includes("decrease")
+        ? `${key}:{{value}}%`
+        : key.includes("new_amount")
+          ? `${key}:{{amount}}`
+          : key,
+    );
+  },
 }));
 
 const BASE_SUMMARY = {
@@ -29,6 +40,63 @@ const BASE_SUMMARY = {
   lifetimeTotalCostUsd: 0,
   usdToCny: 7.2,
 };
+
+it("renders API, subscription, and total month comparisons beside the CNY line", () => {
+  render(
+    <CostAccumulation
+      costSummary={{
+        ...BASE_SUMMARY,
+        monthApiCostUsd: 120,
+        previousMonthApiCostUsd: 100,
+        monthSubscriptionCostUsd: 80,
+        previousMonthSubscriptionCostUsd: 100,
+        monthTotalCostUsd: 200,
+        previousMonthTotalCostUsd: 200,
+      }}
+    />,
+  );
+
+  expect(screen.getByTestId("monthly-cost-comparison-api")).toBeInTheDocument();
+  expect(screen.getByTestId("monthly-cost-comparison-subscription")).toBeInTheDocument();
+  expect(screen.getByTestId("monthly-cost-comparison-total")).toBeInTheDocument();
+  for (const testId of ["api", "subscription", "total"]) {
+    const comparison = screen.getByTestId(`monthly-cost-comparison-${testId}`);
+    expect(comparison.parentElement).toHaveTextContent("CNY");
+    if (testId !== "total") expect(comparison).toHaveClass("text-emerald-600");
+  }
+});
+
+describe("getMonthComparison MoM copy boundary", () => {
+  const usdToCny = 7.2;
+
+  it("labels an increase with the increase copy key and emerald class", () => {
+    const result = getMonthComparison(150, 100, usdToCny);
+    expect(result.label).toContain("spend.monthly_change.increase");
+    expect(result.label).toContain("50.0%");
+    expect(result.className).toContain("text-emerald-600");
+  });
+
+  it("labels a decrease with the decrease copy key and emerald class", () => {
+    const result = getMonthComparison(50, 100, usdToCny);
+    expect(result.label).toContain("spend.monthly_change.decrease");
+    expect(result.label).toContain("50.0%");
+    expect(result.className).toContain("text-emerald-600");
+  });
+
+  it("labels a flat comparison when both periods are zero", () => {
+    const result = getMonthComparison(0, 0, usdToCny);
+    expect(result.label).toBe("spend.monthly_change.flat");
+    expect(result.className).toContain("text-oai-gray-400");
+  });
+
+  it("avoids infinite percent when previous is zero and shows new-amount copy", () => {
+    const result = getMonthComparison(50, 0, usdToCny);
+    expect(result.label).toContain("spend.monthly_change.new_amount");
+    expect(result.label).not.toMatch(/Infinity|∞|NaN/);
+    expect(result.label).toContain("CNY");
+    expect(result.className).toContain("text-emerald-600");
+  });
+});
 
 // --------------------------------------------------------------------------
 // Task-10 / F6: unknown cost must render "—", never fake 0.
@@ -172,46 +240,43 @@ it("Task-10: API billing card shows '—' for a not-connected account regardless
 // F5: subscription form cycle select uses one_time (underscore) on the wire.
 // --------------------------------------------------------------------------
 
-it("F5: subscription form cycle select offers one_time (underscore), not one-time (hyphen)", () => {
-  render(
-    <CostAccumulation
-      costSummary={{ ...BASE_SUMMARY }}
-      subscriptionFormState="new"
-      onAddSubscription={() => {}}
-      onSaveSubscription={() => {}}
-      onCancelSubscriptionForm={() => {}}
-    />
-  );
-  const form = screen.getByTestId("subscription-form");
-  const cycleSelect = within(form).getByDisplayValue; // helper
-  // The cycle select must have an option with value "one_time" and must NOT
-  // have an option with value "one-time".
-  const cycleOptions = within(form).getAllByRole("option");
-  const cycleValues = cycleOptions.map((o) => o.getAttribute("value"));
-  expect(cycleValues).toContain("one_time");
-  expect(cycleValues).not.toContain("one-time");
+it("does not render the detailed subscription-record panel", () => {
+  render(<CostAccumulation costSummary={{ ...BASE_SUMMARY }} subscriptionRecords={[{ id: "old", name: "Legacy" }]} />);
+  expect(screen.queryByText("spend.cost.subscription.section")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("subscription-form")).not.toBeInTheDocument();
 });
 
 // --------------------------------------------------------------------------
 // F6: subscription form currency select offers ONLY USD and CNY.
 // --------------------------------------------------------------------------
 
-it("F6: subscription form currency select offers only USD and CNY (no EUR/GBP)", () => {
+it("OTHER-AI: renders each custom group's month, year, and lifetime costs", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
-      subscriptionFormState="new"
-      onAddSubscription={() => {}}
-      onSaveSubscription={() => {}}
-      onCancelSubscriptionForm={() => {}}
+      otherAiGroupCosts={[{
+        group_id: "learning",
+        group_name: "AI learning",
+        record_count: 3,
+        month_usd: 10,
+        month_cny: 72,
+        year_usd: 30,
+        year_cny: 216,
+        lifetime_usd: 60,
+        lifetime_cny: 432,
+      }]}
     />
   );
-  const form = screen.getByTestId("subscription-form");
-  const currencyOptions = within(form).getAllByRole("option");
-  const currencyValues = currencyOptions.map((o) => o.getAttribute("value"));
-
-  expect(currencyValues).toContain("USD");
-  expect(currencyValues).toContain("CNY");
-  expect(currencyValues).not.toContain("EUR");
-  expect(currencyValues).not.toContain("GBP");
+  const section = screen.getByText("spend.cost.other_ai_groups.section").closest("section");
+  expect(section).not.toBeNull();
+  expect(within(section).getByText("AI learning")).toBeInTheDocument();
+  expect(within(section).getByText("spend.cost.other_ai_groups.month")).toBeInTheDocument();
+  expect(within(section).getByText("spend.cost.other_ai_groups.year")).toBeInTheDocument();
+  expect(within(section).getByText("spend.cost.other_ai_groups.lifetime")).toBeInTheDocument();
+  expect(within(section).getByText("USD 10.00")).toBeInTheDocument();
+  expect(within(section).getByText("USD 30.00")).toBeInTheDocument();
+  expect(within(section).getByText("USD 60.00")).toBeInTheDocument();
+  const grid = within(section).getByTestId("compact-cost-group-grid");
+  expect(grid).toHaveClass("lg:grid-cols-4");
+  expect(within(section).getByTestId("compact-cost-group-learning")).toHaveAttribute("data-density", "ultra-compact");
 });

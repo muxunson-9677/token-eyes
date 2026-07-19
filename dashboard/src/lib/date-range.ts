@@ -96,28 +96,45 @@ export function getRangeForPeriod(
   return getRangeForPeriod("week");
 }
 
+/**
+ * Month-over-month comparison ranges: month-to-date vs the same elapsed
+ * period in the previous calendar month (本月至今 vs 上月同期).
+ *
+ * - current: 1st of this month → today (local)
+ * - previous: 1st of last month → same day-of-month last month (clamped to
+ *   last day of that month when the day does not exist, e.g. Mar 31 → Feb 28/29)
+ */
 export function getMonthComparisonRanges(options: DateRangeOptions = {}) {
-  const current = getRangeForPeriod("month", options);
-  const currentStart = parseDateString(current.from);
-  if (!currentStart) return { current, previous: current };
+  const baseDate = options.now instanceof Date && Number.isFinite(options.now.getTime())
+    ? options.now
+    : new Date();
+  const parts = getLocalDateParts({
+    timeZone: options.timeZone,
+    offsetMinutes: options.offsetMinutes,
+    date: baseDate,
+  });
+  if (!parts) {
+    const fallbackKey = formatDateLocal(new Date());
+    const fallback = { from: fallbackKey, to: fallbackKey };
+    return { current: fallback, previous: fallback };
+  }
 
-  const previousStart = new Date(Date.UTC(
-    currentStart.getUTCFullYear(),
-    currentStart.getUTCMonth() - 1,
-    1,
-  ));
-  const previousEnd = new Date(Date.UTC(
-    previousStart.getUTCFullYear(),
-    previousStart.getUTCMonth() + 1,
-    0,
-  ));
+  const currentFrom = `${parts.year}-${String(parts.month).padStart(2, "0")}-01`;
+  const currentTo = formatDateParts(parts);
+
+  const previousMonthAnchor = new Date(Date.UTC(parts.year, parts.month - 2, 1));
+  const previousYear = previousMonthAnchor.getUTCFullYear();
+  const previousMonth = previousMonthAnchor.getUTCMonth() + 1;
+  const previousMonthLastDay = new Date(
+    Date.UTC(previousYear, previousMonthAnchor.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const previousDay = Math.min(parts.day, previousMonthLastDay);
+  const previousFrom = `${previousYear}-${String(previousMonth).padStart(2, "0")}-01`;
+  const previousTo = `${previousYear}-${String(previousMonth).padStart(2, "0")}-${String(previousDay).padStart(2, "0")}`;
 
   return {
-    current,
-    previous: {
-      from: formatDateUTC(previousStart),
-      to: formatDateUTC(previousEnd),
-    },
+    current: { from: currentFrom, to: currentTo },
+    previous: { from: previousFrom, to: previousTo },
   };
 }
 

@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CreditCard, Package, Globe, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
+import { BarChart3, CreditCard, Package, Globe, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings, ChevronDown, ChevronUp } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 
 /**
  * CostAccumulation component (03-cost-billing).
  *
- * Displays five sections:
+ * Displays four rendered sections; detailed subscription records are intentionally omitted.
  * 1. Cost Summary (top cards)
  * 2. Token 套餐 (Token Packages)
  * 3. 供应商账户 (Provider API Account balances — from 02 financial endpoints)
@@ -40,7 +40,31 @@ function formatAmount(value, currency = "USD") {
   })}`;
 }
 
-function formatDualAmount(usd, cny) {
+/** Pure MoM copy helper — exported for contract/unit tests. */
+export function getMonthComparison(currentUsd, previousUsd, usdToCny) {
+  if (!Number.isFinite(Number(currentUsd)) || !Number.isFinite(Number(previousUsd))) return null;
+  const current = Number(currentUsd);
+  const previous = Number(previousUsd);
+  if (previous === 0) {
+    if (current === 0) {
+      return { label: copy("spend.monthly_change.flat"), className: "text-oai-gray-400 dark:text-oai-gray-500" };
+    }
+    return {
+      label: copy("spend.monthly_change.new_amount", { amount: formatAmount(current * usdToCny, "CNY") }),
+      className: "text-emerald-600 dark:text-emerald-400",
+    };
+  }
+  const percentage = Math.abs(((current - previous) / previous) * 100).toFixed(1);
+  if (current > previous) {
+    return { label: copy("spend.monthly_change.increase", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400" };
+  }
+  if (current < previous) {
+    return { label: copy("spend.monthly_change.decrease", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400" };
+  }
+  return { label: copy("spend.monthly_change.flat"), className: "text-oai-gray-400 dark:text-oai-gray-500" };
+}
+
+function formatDualAmount(usd, cny, comparison = null) {
   // If the USD total is missing, both lines show "—" — never fake 0. The CNY
   // argument is derived as `usd * usdToCny` by the caller, so when usd is null
   // the caller must not pass a faked 0; we guard on usd here regardless.
@@ -55,7 +79,14 @@ function formatDualAmount(usd, cny) {
   return (
     <div className="flex flex-col">
       <span className="tabular-nums">{formatAmount(usd, "USD")}</span>
-      <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">{formatAmount(cny, "CNY")}</span>
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">
+        <span>{formatAmount(cny, "CNY")}</span>
+        {comparison ? (
+          <span data-testid={`monthly-cost-comparison-${comparison.id}`} className={cn("text-[10px] font-medium", comparison.className)}>
+            {comparison.label}
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -82,7 +113,7 @@ function CostSummaryCards({ summary, loading }) {
     return (
       <div className="mb-6 grid gap-2 grid-cols-2 lg:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800 animate-pulse">
+          <div key={i} className="rounded-xl border border-oai-gray-200 bg-white p-3 shadow-oai-sm dark:border-oai-gray-800 dark:bg-oai-gray-900 animate-pulse">
             <div className="h-3 w-20 bg-oai-gray-200 dark:bg-oai-gray-700 rounded" />
             <div className="mt-2 h-5 w-16 bg-oai-gray-200 dark:bg-oai-gray-700 rounded" />
           </div>
@@ -91,19 +122,36 @@ function CostSummaryCards({ summary, loading }) {
     );
   }
 
+  const comparison = (id, current, previous) => {
+    const value = getMonthComparison(current, previous, summary.usdToCny);
+    return value ? { id, ...value } : null;
+  };
+
   return (
     <div className="mb-6 grid gap-2 grid-cols-2 lg:grid-cols-4">
       <SummaryCard
         label={copy("spend.cost.summary.month_api")}
-        value={formatDualAmount(summary.monthApiCostUsd, summary.monthApiCostUsd * summary.usdToCny)}
+        value={formatDualAmount(
+          summary.monthApiCostUsd,
+          summary.monthApiCostUsd * summary.usdToCny,
+          comparison("api", summary.monthApiCostUsd, summary.previousMonthApiCostUsd),
+        )}
       />
       <SummaryCard
         label={copy("spend.cost.summary.month_subscription")}
-        value={formatDualAmount(summary.monthSubscriptionCostUsd, summary.monthSubscriptionCostUsd * summary.usdToCny)}
+        value={formatDualAmount(
+          summary.monthSubscriptionCostUsd,
+          summary.monthSubscriptionCostUsd * summary.usdToCny,
+          comparison("subscription", summary.monthSubscriptionCostUsd, summary.previousMonthSubscriptionCostUsd),
+        )}
       />
       <SummaryCard
         label={copy("spend.cost.summary.month_total")}
-        value={formatDualAmount(summary.monthTotalCostUsd, summary.monthTotalCostUsd * summary.usdToCny)}
+        value={formatDualAmount(
+          summary.monthTotalCostUsd,
+          summary.monthTotalCostUsd * summary.usdToCny,
+          comparison("total", summary.monthTotalCostUsd, summary.previousMonthTotalCostUsd),
+        )}
         highlight
       />
       <SummaryCard
@@ -117,7 +165,7 @@ function CostSummaryCards({ summary, loading }) {
 function SummaryCard({ label, value, highlight = false }) {
   return (
     <div className={cn(
-      "rounded-lg border p-3",
+      "rounded-xl border bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-oai-md dark:bg-oai-gray-900",
       highlight
         ? "border-oai-brand-300 bg-oai-brand-50 dark:border-oai-brand-700 dark:bg-oai-brand-900/20"
         : "border-oai-gray-200 dark:border-oai-gray-800"
@@ -133,18 +181,55 @@ function SummaryCard({ label, value, highlight = false }) {
   );
 }
 
+function OtherAiGroupCostSection({ groups = [] }) {
+  if (!groups.length) return null;
+  return (
+    <section className="mb-4">
+      <div className="mb-2 flex items-center gap-2">
+        <BarChart3 className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden="true" />
+        <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">
+          {copy("spend.cost.other_ai_groups.section")}
+        </h3>
+      </div>
+      <div data-testid="compact-cost-group-grid" className="grid grid-cols-2 gap-1.5 lg:grid-cols-4">
+        {groups.map((group) => (
+          <article key={group.group_id || "ungrouped"} data-testid={`compact-cost-group-${group.group_id || "ungrouped"}`} data-layout="compact-cost-group" data-density="ultra-compact" className="rounded-md border border-oai-gray-200 bg-white px-2 py-1.5 shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <h4 className="truncate text-xs font-semibold text-oai-gray-900 dark:text-oai-gray-100">{group.group_name}</h4>
+              <span className="rounded-full bg-oai-gray-100 px-1.5 py-0.5 text-[10px] tabular-nums text-oai-gray-500 dark:bg-oai-gray-800">{group.record_count}</span>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-oai-gray-100 dark:divide-oai-gray-800">
+              {[
+                ["month", group.month_usd, group.month_cny],
+                ["year", group.year_usd, group.year_cny],
+                ["lifetime", group.lifetime_usd, group.lifetime_cny],
+              ].map(([period, usd, cny]) => (
+                <div key={period} className="min-w-0 px-1 py-0.5">
+                  <div className="text-[10px] text-oai-gray-500 dark:text-oai-gray-400">{copy(`spend.cost.other_ai_groups.${period}`)}</div>
+                  <div className="truncate text-[11px] font-semibold">{formatDualAmount(usd, cny)}</div>
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Token Package Section
 // ---------------------------------------------------------------------------
 
 function TokenPackageSection({ packages, loading }) {
+  const [open, setOpen] = useState(true);
   return (
-    <section className="mb-6">
-      <SectionHeader
-        icon={Package}
-        title={copy("spend.cost.token_package.section")}
-        count={packages.length}
-      />
+    <section className="mb-4" data-testid="token-package-collapsible">
+      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="mb-3 flex w-full items-center justify-between rounded-xl border border-oai-gray-200 bg-white px-3 py-2 text-left dark:border-oai-gray-800 dark:bg-oai-gray-900">
+        <SectionHeader icon={Package} title={copy("spend.cost.token_package.section")} count={packages.length} />
+        {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
+      </button>
+      {open ? <>
       {loading ? (
         <LoadingSkeleton />
       ) : packages.length === 0 ? (
@@ -155,7 +240,7 @@ function TokenPackageSection({ packages, loading }) {
             <TokenPackageCard key={pkg.id} package={pkg} />
           ))}
         </div>
-      )}
+      )}</> : null}
     </section>
   );
 }
@@ -174,7 +259,7 @@ function TokenPackageCard({ package: pkg }) {
   };
 
   return (
-    <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
+    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow] hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:border-oai-gray-700">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -238,16 +323,20 @@ function ProviderApiAccountSection({
   onRefreshOne,
 }) {
   const navigate = useNavigate();
+  const [open, setOpen] = useState(true);
   const hasBalances = Array.isArray(balances) && balances.length > 0;
 
   return (
-    <section className="mb-6" data-testid="provider-api-account-section">
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <section className="mb-4" data-testid="provider-api-account-section">
+      <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-oai-gray-200 bg-white px-3 py-2 dark:border-oai-gray-800 dark:bg-oai-gray-900">
+        <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex flex-1 items-center justify-between text-left">
         <SectionHeader
           icon={Globe}
           title={copy("spend.cost.provider_account.section")}
           count={hasBalances ? balances.length : 0}
         />
+        {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
+        </button>
         <div className="flex items-center gap-2">
           {stale && (
             <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
@@ -268,7 +357,7 @@ function ProviderApiAccountSection({
           )}
         </div>
       </div>
-
+      {open ? <>
       {!hasBalances ? (
         <EmptyState message={copy("spend.cost.provider_account.empty")} />
       ) : (
@@ -295,6 +384,7 @@ function ProviderApiAccountSection({
           {copy("spend.cost.provider_account.config_link")}
         </button>
       </div>
+      </> : null}
     </section>
   );
 }
@@ -309,7 +399,7 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
   const currencyValue = isSynced ? (balance?.currency || "—") : "—";
 
   return (
-    <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
+    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow] hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:border-oai-gray-700">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -370,13 +460,14 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
 // ---------------------------------------------------------------------------
 
 function ApiBillingSection({ accounts, loading }) {
+  const [open, setOpen] = useState(true);
   return (
-    <section className="mb-6">
-      <SectionHeader
-        icon={Globe}
-        title={copy("spend.cost.api_billing.section")}
-        count={accounts.length}
-      />
+    <section className="mb-4" data-testid="api-billing-collapsible">
+      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="mb-3 flex w-full items-center justify-between rounded-xl border border-oai-gray-200 bg-white px-3 py-2 text-left dark:border-oai-gray-800 dark:bg-oai-gray-900">
+        <SectionHeader icon={Globe} title={copy("spend.cost.api_billing.section")} count={accounts.length} />
+        {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
+      </button>
+      {open ? <>
       {loading ? (
         <LoadingSkeleton />
       ) : accounts.length === 0 ? (
@@ -387,7 +478,7 @@ function ApiBillingSection({ accounts, loading }) {
             <ApiBillingCard key={account.id} account={account} />
           ))}
         </div>
-      )}
+      )}</> : null}
     </section>
   );
 }
@@ -404,7 +495,7 @@ function ApiBillingCard({ account }) {
   const hasCostData = account.status === "synced";
 
   return (
-    <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
+    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow] hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:border-oai-gray-700">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -518,7 +609,7 @@ function SubscriptionCard({ record, onEdit, onDelete }) {
   const status = statusConfig[record.status] || statusConfig.active;
 
   return (
-    <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
+    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow] hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:border-oai-gray-700">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -770,6 +861,7 @@ export function CostAccumulation({
     lifetimeTotalCostUsd: 0,
     usdToCny: 7.2,
   },
+  otherAiGroupCosts = [],
   loading = false,
   error = null,
   // 03 work order: provider API account balances from 02 endpoints.
@@ -794,6 +886,7 @@ export function CostAccumulation({
     <div className="space-y-6">
       {/* Cost Summary */}
       <CostSummaryCards summary={costSummary} loading={loading} />
+      <OtherAiGroupCostSection groups={otherAiGroupCosts} />
 
       {/* Error state */}
       {error && (
@@ -820,23 +913,6 @@ export function CostAccumulation({
       {/* API Billing (existing — local usage cost aggregation) */}
       <ApiBillingSection accounts={apiBillingAccounts} loading={loading} />
 
-      {/* Subscription Records (with CRUD) */}
-      {subscriptionFormState !== null && (
-        <SubscriptionForm
-          initial={subscriptionFormState === "new" ? null : subscriptionFormState}
-          saving={subscriptionFormSaving}
-          formError={subscriptionFormError}
-          onSave={onSaveSubscription}
-          onCancel={onCancelSubscriptionForm}
-        />
-      )}
-      <SubscriptionSection
-        records={subscriptionRecords}
-        loading={loading}
-        onAdd={onAddSubscription}
-        onEdit={onEditSubscription}
-        onDelete={onDeleteSubscription}
-      />
     </div>
   );
 }

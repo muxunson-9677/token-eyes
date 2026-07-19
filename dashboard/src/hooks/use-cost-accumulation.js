@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getTokenPlans, getSpendRecords, getSpendTimeseries, getApiBillingAccounts } from "../lib/api";
 import { OTHER_AI_SPEND_SOURCE } from "../lib/cost-sources.js";
+import { getMonthComparisonRanges } from "../lib/date-range";
 
 /**
  * Cost Accumulation data hook (03-cost-billing).
@@ -25,7 +26,9 @@ export function useCostAccumulation({
   const [tokenPlans, setTokenPlans] = useState([]);
   const [spendRecords, setSpendRecords] = useState([]);
   const [spendTimeseries, setSpendTimeseries] = useState(null);
+  const [previousMonthTimeseries, setPreviousMonthTimeseries] = useState(null);
   const [apiBillingAccounts, setApiBillingAccounts] = useState([]);
+  const [otherAiGroupCosts, setOtherAiGroupCosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -54,23 +57,35 @@ export function useCostAccumulation({
             return { records: [] };
           })
         : Promise.resolve({ records: [] });
+      const monthRanges = getMonthComparisonRanges({ timeZone, offsetMinutes: tzOffsetMinutes });
       const timeseriesPromise = hasSources
-        ? getSpendTimeseries({ from, to, timeZone, tzOffsetMinutes, sources }).catch((e) => {
+        ? getSpendTimeseries({ ...monthRanges.current, timeZone, tzOffsetMinutes, sources }).catch((e) => {
             console.warn("[useCostAccumulation] failed to fetch spend timeseries:", e);
             return null;
           })
         : Promise.resolve(null);
+      const previousTimeseriesPromise = hasSources
+        ? getSpendTimeseries({ ...monthRanges.previous, timeZone, tzOffsetMinutes, sources }).catch((e) => {
+            console.warn("[useCostAccumulation] failed to fetch previous-month spend timeseries:", e);
+            return null;
+          })
+        : Promise.resolve(null);
 
-      const [plansResult, recordsResult, timeseriesResult, billingResult] = await Promise.all([
+      const [plansResult, recordsResult, timeseriesResult, previousTimeseriesResult, billingResult] = await Promise.all([
         plansPromise,
         recordsPromise,
         timeseriesPromise,
+        previousTimeseriesPromise,
         billingPromise,
       ]);
 
       setTokenPlans(Array.isArray(plansResult?.records) ? plansResult.records : []);
       setSpendRecords(Array.isArray(recordsResult?.records) ? recordsResult.records : []);
+      setOtherAiGroupCosts(Array.isArray(recordsResult?.other_ai_group_totals)
+        ? recordsResult.other_ai_group_totals.filter((group) => Number(group?.record_count || 0) > 0)
+        : []);
       setSpendTimeseries(timeseriesResult || null);
+      setPreviousMonthTimeseries(previousTimeseriesResult || null);
       setApiBillingAccounts(Array.isArray(billingResult?.accounts) ? billingResult.accounts : []);
     } catch (err) {
       setError(err?.message || "Failed to load cost accumulation data");
@@ -114,15 +129,25 @@ export function useCostAccumulation({
     if (spendTimeseries) {
       const totals = spendTimeseries?.totals;
       if (totals) {
+        const previousTotals = previousMonthTimeseries?.totals || null;
         // F6/02 work order (未知成本不得显示 0): preserve null for missing
         // totals fields instead of masking with `?? 0`. A real 0 from the
         // backend (meaning "no cost incurred this period") stays 0 and renders
         // "0.00"; a missing field (null/undefined) stays null and renders "—".
         // The summary cards use formatDualAmount which shows "—" for null.
+        // Totals identity (local-api spend timeseries):
+        // combined_usd = api_usd + subscription_usd + other_ai_usd
+        // MoM ranges come from getMonthComparisonRanges (MTD vs same elapsed
+        // period last month) — never full calendar months.
         return {
           monthApiCostUsd: totals.api_usd ?? null,
           monthSubscriptionCostUsd: totals.subscription_usd ?? null,
+          monthOtherAiCostUsd: totals.other_ai_usd ?? null,
           monthTotalCostUsd: totals.combined_usd ?? null,
+          previousMonthApiCostUsd: previousTotals?.api_usd ?? null,
+          previousMonthSubscriptionCostUsd: previousTotals?.subscription_usd ?? null,
+          previousMonthOtherAiCostUsd: previousTotals?.other_ai_usd ?? null,
+          previousMonthTotalCostUsd: previousTotals?.combined_usd ?? null,
           lifetimeTotalCostUsd: totals.lifetime_combined_usd ?? null,
           usdToCny: USD_TO_CNY,
         };
@@ -149,11 +174,16 @@ export function useCostAccumulation({
     return {
       monthApiCostUsd,
       monthSubscriptionCostUsd,
+      monthOtherAiCostUsd: 0,
       monthTotalCostUsd: monthApiCostUsd + monthSubscriptionCostUsd,
+      previousMonthApiCostUsd: null,
+      previousMonthSubscriptionCostUsd: null,
+      previousMonthOtherAiCostUsd: null,
+      previousMonthTotalCostUsd: null,
       lifetimeTotalCostUsd,
       usdToCny: USD_TO_CNY,
     };
-  }, [spendTimeseries, filteredSpendRecords]);
+  }, [spendTimeseries, previousMonthTimeseries, filteredSpendRecords]);
 
   // Transform spend records into subscription records format
   const subscriptionRecords = useMemo(() => {
@@ -194,6 +224,7 @@ export function useCostAccumulation({
     apiBillingAccounts: apiBillingAccountsNormalized,
     subscriptionRecords,
     costSummary,
+    otherAiGroupCosts,
     // State
     loading,
     error,
