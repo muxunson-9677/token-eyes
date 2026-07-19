@@ -4,7 +4,16 @@ Worktree: `D:\04-AI-Project\010-Token eye\.worktrees\provider-api`
 Branch: `codex/token-eyes-provider-api`  
 Captured: 2026-07-19 (local)
 
-This report freezes the **pre-fix failure baseline** for cost MoM, compact spend cards, Cursor multi-account quota, and TRAE OAuth/quota. Live Token Eyes EXE values were **not** re-sampled in this session (no running install / no reachable EXE on this machine). Cockpit Tools screenshot values are treated as the ground-truth expected side. Token Eyes cells that could not be read live are marked `未采集(安装版不可达)` — **not invented**.
+This report freezes the **pre-fix failure baseline** for cost MoM, compact spend cards, Cursor multi-account quota, and TRAE OAuth/quota.
+
+**Token Eyes value provenance (2026-07-19 re-check):**
+
+- Searched `%LOCALAPPDATA%\Programs`, `%ProgramFiles%`, and worktree `src-tauri/target/release`.
+- Found a **dev/release build** at `src-tauri/target/release/token-eyes.exe` (17,213,952 bytes, 2026-07-19 18:30). No installer under Programs / Program Files.
+- App data `Roaming\com.tokeneyes.desktop` has **one** `cursor-accounts/…` entry and **no** `trae-accounts/`. GUI was not re-driven for quota readout in this session.
+- Therefore Cursor A/B Total Usage and TRAE remaining use **plan §1.3 confirmed failure values** (UI still showing `0` / `0%`), labeled as「计划确认失败态，本会话未重测安装版」— **not invented**. Cockpit columns remain screenshot-derived.
+
+---
 
 ---
 
@@ -58,14 +67,14 @@ Raw logs (local, not committed):
 
 | 场景 | Token Eyes 实际值 | Cockpit/原始接口值 | 是否一致 | 原始证据 |
 |---|---:|---:|---|---|
-| 成本环比口径（本月 vs 上月） | 未采集(安装版不可达) | 应用「本月至今 vs 上月同期」；当前代码为本月完整自然月 vs 上月完整自然月 | 否（代码口径） | `date-range.ts` / `use-cost-accumulation.js`；见 §3.1。示例 (Asia/Shanghai, 2026-07-19): current `2026-07-01…2026-07-31`, previous `2026-06-01…2026-06-30` |
-| 自定义花销卡片金额可读性 @1280/1440/1920 | 未采集(安装版不可达)（无 Playwright/安装版截图） | 金额完整可读（验收目标） | 否（CSS 证据） | `CostAccumulation.jsx` L193–208：`lg:grid-cols-4` + 卡内 `grid-cols-3` + 金额外层 `truncate`；见 §3.2 |
-| Cursor 账号 A Total Usage（`evelynwatt3779@h…` / auth0 `…MKZ2XX`） | 未采集(安装版不可达) | **27%**（另：Auto+Composer 20%，API 72%，配额 $20/$20，重置 2026/08/06 22:31） | 否 | Cockpit 截图 §4.1；计划 §1.3 记 UI 仍显示 0。解析代码见 §3.3 |
-| Cursor 账号 B Total Usage（`shelmain01@g…` / google-oauth2 `…FGF3D`） | 未采集(安装版不可达) | **6%**（另：Auto+Composer 1%，API 39%，配额 $20/$20，重置 2026/08/13 17:08） | 否 | Cockpit 截图 §4.1 |
-| Cursor 账号 C Total Usage（`muxunson@g…` / github `…XVSF`，FREE） | 未采集(安装版不可达) | **0%**（配额 $0/$0） | 未对照（Cockpit 本身为 0） | Cockpit 截图 §4.1（第三张卡；非本次双账号硬验收主路径） |
-| Cursor OAuth URL 形态 | 未采集(安装版不可达) | `https://cursor.com/loginDeepControl?challenge=…`；有效期 300s；轮询 2s | 代码方向一致 / 实时未证 | Cockpit 截图 §4.2；`cursor_session.rs` `LOGIN_URL` / `POLL_URL` |
-| TRAE 剩余次数（Muxunson / 用户 ID `…6825`） | 未采集(安装版不可达) | **75** 次（速通 Pro，进度约 25%，重置 2026/08/01 00:03） | 否 | Cockpit 截图 §4.3；计划 §1.3 记 UI 仍显示 0 |
-| TRAE OAuth 授权链接 host | 未采集(安装版不可达) | `https://www.trae.cn/authorization?login_version=1&auth_from=trae&…` | 否（缺陷路径） | Cockpit 截图 §4.4；代码可拼出 `https://api.trae.cn/authorization` — 见 §3.4 |
+| 成本环比显示（截图中的环比文案） | **401.9% / 405.8%**（计划确认显示值；本会话未重测安装版；Task 2 需账本核账，不得当作已证明正确） | 应用「本月至今 vs 上月同期」；当前代码为本月完整自然月 vs 上月完整自然月 | 否（口径未核账） | 计划 §1.3：「截图中的 `401.9%`、`405.8%`…没有对原始账目逐条核账」。代码区间见 §3.1（Asia/Shanghai 2026-07-19 示例: current `2026-07-01…2026-07-31`, previous `2026-06-01…2026-06-30`） |
+| 自定义花销卡片金额可读性 @1280/1440/1920 | 未采集视觉截图（本会话无 Playwright/安装版截图） | 金额完整可读（验收目标） | 否（CSS 证据） | `CostAccumulation.jsx` L193–208：`lg:grid-cols-4` + 卡内 `grid-cols-3` + 金额外层 `truncate`；见 §3.2 |
+| Cursor 账号 A Total Usage（`evelynwatt3779@h…` / auth0 `…MKZ2XX`） | **0%**（计划确认失败态，本会话未重测安装版） | **27%**（另：Auto+Composer 20%，API 72%，配额 $20/$20，重置 2026/08/06 22:31） | 否 | Token Eyes：计划 §1.3「用户界面仍显示 `0`」。Cockpit：截图 §4.1。解析代码见 §3.3 |
+| Cursor 账号 B Total Usage（`shelmain01@g…` / google-oauth2 `…FGF3D`） | **0%**（计划确认失败态，本会话未重测安装版） | **6%**（另：Auto+Composer 1%，API 39%，配额 $20/$20，重置 2026/08/13 17:08） | 否 | Token Eyes：计划 §1.3（同上）。Cockpit：截图 §4.1 |
+| Cursor 账号 C Total Usage（`muxunson@g…` / github `…XVSF`，FREE） | 未作为双账号硬验收主路径重测 | **0%**（配额 $0/$0） | 未对照（Cockpit 本身为 0） | Cockpit 截图 §4.1（第三张卡） |
+| Cursor OAuth URL 形态 | 未重测安装版打开 URL | `https://cursor.com/loginDeepControl?challenge=…`；有效期 300s；轮询 2s | 代码方向一致 / 实时未证 | Cockpit 截图 §4.2；`cursor_session.rs` `LOGIN_URL` / `POLL_URL` |
+| TRAE 剩余次数（Muxunson / 用户 ID `…6825`） | **0**（计划确认失败态，本会话未重测安装版） | **75** 次（速通 Pro，进度约 25%，重置 2026/08/01 00:03） | 否 | Token Eyes：计划 §1.3 UI 仍显示 `0`。Cockpit：截图 §4.3。App data 无 `trae-accounts/` |
+| TRAE OAuth 授权链接 host | 未重测安装版打开 URL | `https://www.trae.cn/authorization?login_version=1&auth_from=trae&…` | 否（缺陷路径） | Cockpit 截图 §4.4；代码可拼出 `https://api.trae.cn/authorization` — 见 §3.4 |
 
 Privacy: full emails / tokens / cookies / JWTs redacted. Stable tails kept for account matching only.
 
@@ -104,7 +113,7 @@ Computed for `now = 2026-07-19T12:30:00+08:00`, `timeZone = Asia/Shanghai`:
 - Spend records use SpendPage filter `from`/`to`
 - MoM timeseries **ignores** the filter and always calls `getSpendTimeseries` with `getMonthComparisonRanges().current|previous`
 
-Live Token Eyes MoM percentages (e.g. reported `401.9%` / `405.8%` in the plan) were **not** re-verified against ledger rows in this capture → marked 未采集; the **range asymmetry alone** is sufficient to mark口径 inconsistent.
+Plan §1.3 records screenshot display values **`401.9%` / `405.8%`**. They are carried in §2 as **plan-reported display values only**. They were **not** re-measured from the install in this session and **must not** be treated as ledger-proven correct until Task 2 reconciliation. The **range asymmetry** (full prior month vs MTD-effective current) is independently confirmed in code.
 
 ### 3.2 Custom spend cards — truncate / grid at 1280 / 1440 / 1920
 
@@ -130,7 +139,7 @@ Live Token Eyes MoM percentages (e.g. reported `401.9%` / `405.8%` in the plan) 
 1. **Singular OAuth pending slot:** `CursorSessionState.active_session_ref: Option<String>` — only one in-flight login identity in process state (per-account dirs under `cursor-accounts/{suffix}` exist, but concurrent/multi bind UX is not proven live).
 2. **Quota fetch path:** Rust `fetch_cursor_quota` → `GET https://cursor.com/api/usage-summary` with `WorkosCursorSessionToken=…` cookie + browser UA. WebView script also same-origin fetches `/api/usage-summary`.
 3. **Parser** (`parse_cursor_usage_summary`) already has unit coverage for `totalPercentUsed`, `totalSpend` / `total_spend`, and stale-zero fallbacks (`--lib` 28 tests green). That proves **fixture JSON** parsing, **not** live multi-account Token Eyes UI parity.
-4. **Live gap:** installed Token Eyes values for accounts A/B were not readable here → `未采集(安装版不可达)`. Plan §1.3 still records UI showing `0` against Cockpit non-zero — kept as historical observation only, not re-measured.
+4. **Failure baseline values:** plan §1.3 confirmed UI still shows **`0%`** for Cursor usage against Cockpit 27%/6%. Carried in §2 as「计划确认失败态，本会话未重测安装版」. Worktree release EXE exists; Programs install absent; app-data has only one cursor account folder.
 
 OAuth URL direction matches Cockpit (`loginDeepControl` + challenge); polling target `https://api2.cursor.sh/auth/poll`. Live success for two simultaneous bound accounts remains unproven.
 
@@ -157,7 +166,7 @@ which is the documented wrong host (plan §1.3: “No hard-coded `https://api.tr
 
 Default fallback host is correctly `https://www.trae.cn`, but guidance/callback API hosts are not normalized to the www authorization origin.
 
-**Quota:** `normalize_quota` + `QUOTA_PATHS` (`ide_user_ent_usage` v2/v1, entitlement list). Lib unit tests pass; live remaining **75** vs Token Eyes display was not re-sampled → `未采集(安装版不可达)`.
+**Quota:** `normalize_quota` + `QUOTA_PATHS` (`ide_user_ent_usage` v2/v1, entitlement list). Lib unit tests pass. Cockpit remaining **75** vs Token Eyes **0** (plan §1.3 confirmed failure态；本会话未重测安装版；app-data 无 `trae-accounts/`).
 
 ---
 
@@ -177,8 +186,8 @@ Design note: `docs/superpowers/specs/2026-07-19-live-quota-corrections-design.md
 
 ## 5. Gaps / non-claims
 
-1. Installed Token Eyes EXE was **not** running and was **not** launched from this baseline task → all Token Eyes numeric cells are `未采集(安装版不可达)`.
-2. No local queue/API ledger reconciliation was performed for MoM percentages.
+1. No Programs/Program Files **installed** Token Eyes; worktree `target/release/token-eyes.exe` exists but GUI quota was **not** re-read this session → Cursor/TRAE Token Eyes cells use **plan §1.3** failure values with explicit provenance.
+2. MoM **401.9% / 405.8%** are plan-reported screenshot displays only; Task 2 must reconcile ledgers before treating them as correct.
 3. No viewport screenshots at 1280/1440/1920 — truncate defect is CSS-proven only.
 4. Mandated cargo filter commands fail before tests run; `--lib` greens are diagnostic only and must not be treated as live parity proof.
 5. Do not treat green fixture unit tests (`totalSpend` / TRAE URL builder with `www.trae.cn`) as proof that the installed app matches Cockpit for the user’s accounts.
@@ -190,9 +199,9 @@ Design note: `docs/superpowers/specs/2026-07-19-live-quota-corrections-design.md
 | Area | Baseline status |
 |---|---|
 | Automated suite | Root npm **fail 52**; dashboard vitest **pass**; mandated cargo cursor/trae filters **exit 101** (compile) |
-| MoM | Range asymmetry confirmed in code |
+| MoM | Plan-reported display **401.9%/405.8%** + code range asymmetry; ledger reconciliation pending Task 2 |
 | Compact cards | `truncate` on amount container confirmed in code |
-| Cursor live | Cockpit A/B = 27%/6%; Token Eyes live **未采集** |
-| TRAE live | Cockpit remaining = 75; OAuth host must be `www.trae.cn`; Token Eyes live **未采集**; `api.trae.cn` + `/authorization` rewrite path confirmed in code |
+| Cursor live | Token Eyes **0% / 0%** (计划 §1.3) vs Cockpit **27% / 6%** |
+| TRAE live | Token Eyes **0** (计划 §1.3) vs Cockpit **75**; OAuth host must be `www.trae.cn`; `api.trae.cn` + `/authorization` rewrite path confirmed in code |
 
 This baseline is intentionally **red** on the live-parity dimensions until later tasks produce measurable Token Eyes values that match Cockpit.
