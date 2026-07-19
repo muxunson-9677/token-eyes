@@ -85,8 +85,29 @@ Files: `crates/cockpit-core/src/modules/cursor_oauth.rs`, `cursor_account.rs`
 
 | File | Capture |
 |------|---------|
-| `src-tauri/tests/fixtures/cursor/usage-summary-account-a.json` | **Live** usage-summary after refresh+cookie via `curl` (2026-07-19). Account `auth0\|user_01KWTPZG4VW30ZF6MKZ2XXM398`. Tokens/cookies redacted; body kept. Total ~29% (Cockpit screenshot was ~27% — refresh-time drift). |
-| `src-tauri/tests/fixtures/cursor/usage-summary-account-b.json` | **structure from Cockpit field paths + screenshot values; not raw live capture**. Total 6% / Auto 1% / API 39%, reset `2026-08-13T09:08:00.000Z`. Account id redacted from Cockpit screenshot auth id prefix. |
+| `src-tauri/tests/fixtures/cursor/usage-summary-account-a.json` | **Live** usage-summary after refresh+cookie (2026-07-19). Account `auth0\|user_01KWTPZG4VW30ZF6MKZ2XXM398`. Tokens/cookies redacted; body kept. |
+| `src-tauri/tests/fixtures/cursor/usage-summary-account-b.json` | **structure from Cockpit field paths + screenshot values; not raw live capture**. Account id redacted from Cockpit screenshot auth id prefix. |
+
+### Fixture A values (source of truth for unit assertions)
+
+| Field | Value |
+|-------|------:|
+| `totalPercentUsed` | 29.095652173913045 |
+| `autoPercentUsed` | 22.73 |
+| `apiPercentUsed` | 71.53333333333333 |
+| `billingCycleEnd` | 2026-08-06T14:31:29.000Z |
+| `plan.used` / `plan.limit` | 2000 / 2000 |
+
+### Fixture B values
+
+| Field | Value |
+|-------|------:|
+| `totalPercentUsed` | 6 |
+| `autoPercentUsed` | 1 |
+| `apiPercentUsed` | 39 |
+| `billingCycleEnd` | 2026-08-13T09:08:00.000Z |
+
+Cockpit screenshot for account A showed Total **27%** / Auto **20%** / API **72%** — UI rounding / older refresh; parser tests assert the fixture file on disk (above), not the screenshot.
 
 Live capture note: PowerShell `Invoke-WebRequest` returned 401 for the same Cookie that `curl.exe` accepted (200). Rust `reqwest` matches curl-style headers (aligned with Cockpit).
 
@@ -100,7 +121,7 @@ Live capture note: PowerShell `Invoke-WebRequest` returned 401 for the same Cook
 cargo test --manifest-path src-tauri/Cargo.toml --lib cursor_session -- --nocapture
 ```
 
-**Result:** `33 passed; 0 failed` (2026-07-19).
+**Result:** `test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 142 filtered out` (re-verified after fixture/assertion alignment, 2026-07-19).
 
 ### Mandated filter
 
@@ -112,7 +133,7 @@ cargo test --manifest-path src-tauri/Cargo.toml cursor_session -- --nocapture
 
 ### Covered behaviors
 
-1. Fixtures → distinct `account_id` + Total/Auto/API/`billingCycleEnd`
+1. Fixtures → distinct `account_id` + Total/Auto/API/`billingCycleEnd` matching fixture-on-disk values (§3)
 2. Missing critical fields → error
 3. Explicit `totalPercentUsed` wins over `used`/`limit` ceiling
 4. Auth OK + usage Err → `sync_failed`, not connected
@@ -124,7 +145,7 @@ cargo test --manifest-path src-tauri/Cargo.toml cursor_session -- --nocapture
 
 | Check | Result |
 |-------|--------|
-| Account A live usage-summary after refresh | **OK** (~29% Total / ~23% Auto / ~72% API; Cockpit screenshot 27/20/72 — drift OK) |
+| Account A live usage-summary after refresh | **OK** (fixture A: 29.095652173913045 / 22.73 / 71.53333333333333; Cockpit screenshot 27/20/72 — drift OK) |
 | Account B live usage-summary | **BLOCKED** — no second Token Eyes `cursor-accounts/` auth; Cockpit account JSON store not found under Local/Roaming for raw capture |
 | Installed EXE dual-plan UI vs Cockpit | **Pending Task 6** |
 | Cross-wire / overwrite | Code paths use per-`session_ref` dirs + plan-bound `session_ref`; not live-proven for two plans |

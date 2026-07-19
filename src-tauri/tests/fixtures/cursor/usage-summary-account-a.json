@@ -1,39 +1,37 @@
 {
-    "_fixture":  {
-                     "label":  "account-a",
-                     "note":  "Tokens/cookies redacted; usage body from real GET https://cursor.com/api/usage-summary",
-                     "display_name":  "eve***@hotmail.com",
-                     "account_id":  "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
-                     "capture":  "live_usage_summary_via_refresh_plus_cookie_curl_2026-07-19"
-                 },
-    "billingCycleStart":  "2026-07-06T14:31:29.000Z",
-    "billingCycleEnd":  "2026-08-06T14:31:29.000Z",
-    "membershipType":  "pro",
-    "teamUsage":  {
-
-                  },
-    "individualUsage":  {
-                            "onDemand":  {
-                                             "used":  0,
-                                             "limit":  null,
-                                             "remaining":  null,
-                                             "enabled":  false
-                                         },
-                            "plan":  {
-                                         "autoPercentUsed":  22.73,
-                                         "used":  2000,
-                                         "remaining":  0,
-                                         "limit":  2000,
-                                         "totalPercentUsed":  29.095652173913045,
-                                         "apiPercentUsed":  71.53333333333333,
-                                         "enabled":  true,
-                                         "breakdown":  {
-                                                           "included":  2000,
-                                                           "bonus":  8038,
-                                                           "total":  10038
-                                                       }
-                                     }
-                        },
-    "limitType":  "user",
-    "isUnlimited":  false
+  "_fixture": {
+    "label": "account-a",
+    "note": "Tokens/cookies redacted; usage body from real GET https://cursor.com/api/usage-summary",
+    "display_name": "eve***@hotmail.com",
+    "account_id": "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+    "capture": "live_usage_summary_via_refresh_plus_cookie_curl_2026-07-19"
+  },
+  "billingCycleStart": "2026-07-06T14:31:29.000Z",
+  "billingCycleEnd": "2026-08-06T14:31:29.000Z",
+  "membershipType": "pro",
+  "teamUsage": {},
+  "individualUsage": {
+    "onDemand": {
+      "used": 0,
+      "limit": null,
+      "remaining": null,
+      "enabled": false
+    },
+    "plan": {
+      "autoPercentUsed": 22.73,
+      "used": 2000,
+      "remaining": 0,
+      "limit": 2000,
+      "totalPercentUsed": 29.095652173913045,
+      "apiPercentUsed": 71.53333333333333,
+      "enabled": true,
+      "breakdown": {
+        "included": 2000,
+        "bonus": 8038,
+        "total": 10038
+      }
+    }
+  },
+  "limitType": "user",
+  "isUnlimited": false
 }

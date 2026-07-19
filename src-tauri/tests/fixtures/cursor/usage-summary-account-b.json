@@ -1,39 +1,37 @@
 {
-    "_fixture":  {
-                     "label":  "account-b",
-                     "note":  "Percentages from Cockpit screenshot (Total 6% / Auto+Composer 1% / API 39%, reset 2026/08/13 17:08). Field paths mirrored from live account-a + Cockpit read_usage_percent.",
-                     "display_name":  "she***@gmail.com",
-                     "account_id":  "google-oauth2|user_01KK9F07TG4FGF3DREDACTED",
-                     "capture":  "structure_from_cockpit_field_paths_plus_screenshot_values_not_raw_live_capture"
-                 },
-    "billingCycleStart":  "2026-07-13T09:08:00.000Z",
-    "billingCycleEnd":  "2026-08-13T09:08:00.000Z",
-    "membershipType":  "pro",
-    "teamUsage":  {
-
-                  },
-    "individualUsage":  {
-                            "onDemand":  {
-                                             "used":  0,
-                                             "limit":  null,
-                                             "remaining":  null,
-                                             "enabled":  false
-                                         },
-                            "plan":  {
-                                         "autoPercentUsed":  1,
-                                         "used":  2000,
-                                         "remaining":  0,
-                                         "limit":  2000,
-                                         "totalPercentUsed":  6,
-                                         "apiPercentUsed":  39,
-                                         "enabled":  true,
-                                         "breakdown":  {
-                                                           "included":  2000,
-                                                           "bonus":  0,
-                                                           "total":  2000
-                                                       }
-                                     }
-                        },
-    "limitType":  "user",
-    "isUnlimited":  false
+  "_fixture": {
+    "label": "account-b",
+    "note": "Percentages from Cockpit screenshot (Total 6% / Auto+Composer 1% / API 39%, reset 2026/08/13 17:08). Field paths mirrored from live account-a + Cockpit read_usage_percent.",
+    "display_name": "she***@gmail.com",
+    "account_id": "google-oauth2|user_01KK9F07TG4FGF3DREDACTED",
+    "capture": "structure_from_cockpit_field_paths_plus_screenshot_values_not_raw_live_capture"
+  },
+  "billingCycleStart": "2026-07-13T09:08:00.000Z",
+  "billingCycleEnd": "2026-08-13T09:08:00.000Z",
+  "membershipType": "pro",
+  "teamUsage": {},
+  "individualUsage": {
+    "onDemand": {
+      "used": 0,
+      "limit": null,
+      "remaining": null,
+      "enabled": false
+    },
+    "plan": {
+      "autoPercentUsed": 1,
+      "used": 2000,
+      "remaining": 0,
+      "limit": 2000,
+      "totalPercentUsed": 6,
+      "apiPercentUsed": 39,
+      "enabled": true,
+      "breakdown": {
+        "included": 2000,
+        "bonus": 0,
+        "total": 2000
+      }
+    }
+  },
+  "limitType": "user",
+  "isUnlimited": false
 }
