@@ -240,15 +240,46 @@ it("Task-10: API billing card shows '—' for a not-connected account regardless
 // F5: subscription form cycle select uses one_time (underscore) on the wire.
 // --------------------------------------------------------------------------
 
-it("does not render the detailed subscription-record panel", () => {
-  render(<CostAccumulation costSummary={{ ...BASE_SUMMARY }} subscriptionRecords={[{ id: "old", name: "Legacy" }]} />);
-  expect(screen.queryByText("spend.cost.subscription.section")).not.toBeInTheDocument();
-  expect(screen.queryByTestId("subscription-form")).not.toBeInTheDocument();
+it("F5: subscription form cycle select offers one_time (underscore), not one-time (hyphen)", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      subscriptionFormState="new"
+      onAddSubscription={() => {}}
+      onSaveSubscription={() => {}}
+      onCancelSubscriptionForm={() => {}}
+    />
+  );
+  const form = screen.getByTestId("subscription-form");
+  const cycleOptions = within(form).getAllByRole("option");
+  const cycleValues = cycleOptions.map((o) => o.getAttribute("value"));
+  expect(cycleValues).toContain("one_time");
+  expect(cycleValues).not.toContain("one-time");
 });
 
 // --------------------------------------------------------------------------
 // F6: subscription form currency select offers ONLY USD and CNY.
 // --------------------------------------------------------------------------
+
+it("F6: subscription form currency select offers only USD and CNY (no EUR/GBP)", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      subscriptionFormState="new"
+      onAddSubscription={() => {}}
+      onSaveSubscription={() => {}}
+      onCancelSubscriptionForm={() => {}}
+    />
+  );
+  const form = screen.getByTestId("subscription-form");
+  const currencyOptions = within(form).getAllByRole("option");
+  const currencyValues = currencyOptions.map((o) => o.getAttribute("value"));
+
+  expect(currencyValues).toContain("USD");
+  expect(currencyValues).toContain("CNY");
+  expect(currencyValues).not.toContain("EUR");
+  expect(currencyValues).not.toContain("GBP");
+});
 
 it("OTHER-AI: renders each custom group's month, year, and lifetime costs", () => {
   render(

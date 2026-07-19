@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, CreditCard, Package, Globe, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings, ChevronDown, ChevronUp } from "lucide-react";
+import { BarChart3, CreditCard, Package, Globe, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 
 /**
  * CostAccumulation component (03-cost-billing).
  *
- * Displays four rendered sections; detailed subscription records are intentionally omitted.
+ * Displays five sections (+ optional Other AI group costs under the summary):
  * 1. Cost Summary (top cards)
  * 2. Token 套餐 (Token Packages)
  * 3. 供应商账户 (Provider API Account balances — from 02 financial endpoints)
@@ -113,7 +113,7 @@ function CostSummaryCards({ summary, loading }) {
     return (
       <div className="mb-6 grid gap-2 grid-cols-2 lg:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="rounded-xl border border-oai-gray-200 bg-white p-3 shadow-oai-sm dark:border-oai-gray-800 dark:bg-oai-gray-900 animate-pulse">
+          <div key={i} className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800 animate-pulse">
             <div className="h-3 w-20 bg-oai-gray-200 dark:bg-oai-gray-700 rounded" />
             <div className="mt-2 h-5 w-16 bg-oai-gray-200 dark:bg-oai-gray-700 rounded" />
           </div>
@@ -165,7 +165,7 @@ function CostSummaryCards({ summary, loading }) {
 function SummaryCard({ label, value, highlight = false }) {
   return (
     <div className={cn(
-      "rounded-xl border bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-oai-md dark:bg-oai-gray-900",
+      "rounded-lg border p-3",
       highlight
         ? "border-oai-brand-300 bg-oai-brand-50 dark:border-oai-brand-700 dark:bg-oai-brand-900/20"
         : "border-oai-gray-200 dark:border-oai-gray-800"
@@ -222,14 +222,13 @@ function OtherAiGroupCostSection({ groups = [] }) {
 // ---------------------------------------------------------------------------
 
 function TokenPackageSection({ packages, loading }) {
-  const [open, setOpen] = useState(true);
   return (
-    <section className="mb-4" data-testid="token-package-collapsible">
-      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="mb-3 flex w-full items-center justify-between rounded-xl border border-oai-gray-200 bg-white px-3 py-2 text-left dark:border-oai-gray-800 dark:bg-oai-gray-900">
-        <SectionHeader icon={Package} title={copy("spend.cost.token_package.section")} count={packages.length} />
-        {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
-      </button>
-      {open ? <>
+    <section className="mb-6">
+      <SectionHeader
+        icon={Package}
+        title={copy("spend.cost.token_package.section")}
+        count={packages.length}
+      />
       {loading ? (
         <LoadingSkeleton />
       ) : packages.length === 0 ? (
@@ -240,7 +239,7 @@ function TokenPackageSection({ packages, loading }) {
             <TokenPackageCard key={pkg.id} package={pkg} />
           ))}
         </div>
-      )}</> : null}
+      )}
     </section>
   );
 }
@@ -259,7 +258,7 @@ function TokenPackageCard({ package: pkg }) {
   };
 
   return (
-    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow] hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:border-oai-gray-700">
+    <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -323,20 +322,16 @@ function ProviderApiAccountSection({
   onRefreshOne,
 }) {
   const navigate = useNavigate();
-  const [open, setOpen] = useState(true);
   const hasBalances = Array.isArray(balances) && balances.length > 0;
 
   return (
-    <section className="mb-4" data-testid="provider-api-account-section">
-      <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-oai-gray-200 bg-white px-3 py-2 dark:border-oai-gray-800 dark:bg-oai-gray-900">
-        <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex flex-1 items-center justify-between text-left">
+    <section className="mb-6" data-testid="provider-api-account-section">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <SectionHeader
           icon={Globe}
           title={copy("spend.cost.provider_account.section")}
           count={hasBalances ? balances.length : 0}
         />
-        {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
-        </button>
         <div className="flex items-center gap-2">
           {stale && (
             <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
@@ -357,7 +352,7 @@ function ProviderApiAccountSection({
           )}
         </div>
       </div>
-      {open ? <>
+
       {!hasBalances ? (
         <EmptyState message={copy("spend.cost.provider_account.empty")} />
       ) : (
@@ -384,7 +379,6 @@ function ProviderApiAccountSection({
           {copy("spend.cost.provider_account.config_link")}
         </button>
       </div>
-      </> : null}
     </section>
   );
 }
@@ -399,7 +393,7 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
   const currencyValue = isSynced ? (balance?.currency || "—") : "—";
 
   return (
-    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow] hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:border-oai-gray-700">
+    <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -460,14 +454,13 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
 // ---------------------------------------------------------------------------
 
 function ApiBillingSection({ accounts, loading }) {
-  const [open, setOpen] = useState(true);
   return (
-    <section className="mb-4" data-testid="api-billing-collapsible">
-      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="mb-3 flex w-full items-center justify-between rounded-xl border border-oai-gray-200 bg-white px-3 py-2 text-left dark:border-oai-gray-800 dark:bg-oai-gray-900">
-        <SectionHeader icon={Globe} title={copy("spend.cost.api_billing.section")} count={accounts.length} />
-        {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
-      </button>
-      {open ? <>
+    <section className="mb-6">
+      <SectionHeader
+        icon={Globe}
+        title={copy("spend.cost.api_billing.section")}
+        count={accounts.length}
+      />
       {loading ? (
         <LoadingSkeleton />
       ) : accounts.length === 0 ? (
@@ -478,7 +471,7 @@ function ApiBillingSection({ accounts, loading }) {
             <ApiBillingCard key={account.id} account={account} />
           ))}
         </div>
-      )}</> : null}
+      )}
     </section>
   );
 }
@@ -495,7 +488,7 @@ function ApiBillingCard({ account }) {
   const hasCostData = account.status === "synced";
 
   return (
-    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow] hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:border-oai-gray-700">
+    <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -609,7 +602,7 @@ function SubscriptionCard({ record, onEdit, onDelete }) {
   const status = statusConfig[record.status] || statusConfig.active;
 
   return (
-    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 shadow-oai-sm transition-[border-color,box-shadow] hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:border-oai-gray-700">
+    <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -913,6 +906,23 @@ export function CostAccumulation({
       {/* API Billing (existing — local usage cost aggregation) */}
       <ApiBillingSection accounts={apiBillingAccounts} loading={loading} />
 
+      {/* Subscription Records (with CRUD) */}
+      {subscriptionFormState !== null && (
+        <SubscriptionForm
+          initial={subscriptionFormState === "new" ? null : subscriptionFormState}
+          saving={subscriptionFormSaving}
+          formError={subscriptionFormError}
+          onSave={onSaveSubscription}
+          onCancel={onCancelSubscriptionForm}
+        />
+      )}
+      <SubscriptionSection
+        records={subscriptionRecords}
+        loading={loading}
+        onAdd={onAddSubscription}
+        onEdit={onEditSubscription}
+        onDelete={onDeleteSubscription}
+      />
     </div>
   );
 }

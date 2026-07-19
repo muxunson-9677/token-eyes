@@ -8,10 +8,8 @@ describe("getMonthComparisonRanges", () => {
       timeZone: "Asia/Shanghai",
     });
 
-    expect(ranges.current.from).toContain("2026-07-01");
-    expect(ranges.current.to).toContain("2026-07-19");
-    expect(ranges.previous.from).toContain("2026-06-01");
-    expect(ranges.previous.to).toContain("2026-06-19");
+    expect(ranges.current).toEqual({ from: "2026-07-01", to: "2026-07-19" });
+    expect(ranges.previous).toEqual({ from: "2026-06-01", to: "2026-06-19" });
   });
 
   it("returns month-to-date ranges across a year boundary in the requested timezone", () => {

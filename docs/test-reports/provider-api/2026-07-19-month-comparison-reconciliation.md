@@ -20,11 +20,13 @@ Edge case covered in unit tests: March 31 → previous ends Feb 28 (same local d
 
 ## 2. Data source
 
-Live local Token Eyes serve (read-only):
+Live local Token Eyes serve (read-only), **historical capture**:
 
 - Process: `token-eyes.exe` (pid 30920) + embedded `tracker.js serve --port 7681`
 - Endpoint: `GET http://127.0.0.1:7681/functions/tokentracker-spend-timeseries?from=…&to=…&timeZone=Asia/Shanghai`
-- Queried: 2026-07-19
+- Queried: 2026-07-19 (during Task 2)
+
+**Note:** All USD totals and MoM percentages in §4–§6 are frozen from that capture-time local API response. They are not re-fetched on later reads of this document; if the endpoint is down or ledger data has changed since, treat the arithmetic below as a historical snapshot, not a live recompute. Numbers were not invented.
 
 No credentials, prompts, or account secrets were written into this report.
 
