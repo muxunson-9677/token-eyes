@@ -1,38 +1,136 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
 import { cn } from "../../../lib/cn";
 import { copy } from "../../../lib/copy";
+import { formatChineseTokenCount } from "../../../lib/format";
+import { ProviderIcon } from "./ProviderIcon.jsx";
 
 export const TOKEN_SERVICE_PAGE_SIZE = 5;
+
+const PROVIDER_LABELS = {
+  xiaomi_mimo: "Xiaomi",
+  codex: "Codex",
+  claude: "Claude",
+  cursor: "Cursor",
+  glm: "GLM",
+  kimi: "Kimi",
+  minimax: "MiniMax",
+  aliyun_bailian: "阿里云百炼",
+};
 
 function toNonNegativeNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : 0;
 }
 
-function isExpired(expiresAt, now) {
+export function expiryTimestamp(expiresAt) {
   const value = String(expiresAt || "").trim();
-  if (!value) return false;
+  if (!value) return null;
+  if (/^\d{10,13}$/.test(value)) {
+    const numeric = Number(value);
+    const timestamp = value.length <= 10 ? numeric * 1000 : numeric;
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value < now.toISOString().slice(0, 10);
+    const [year, month, day] = value.split("-").map(Number);
+    const timestamp = new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
   }
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) && timestamp <= now.getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function readQuotaMetric(plan) {
-  const windows = Array.isArray(plan?.quota_windows) ? plan.quota_windows : [];
-  const liveWindow = windows.find((window) => window?.kind === "rolling_weekly")
-    || windows.find((window) => window?.kind === "rolling_5_hour")
-    || null;
-  const source = liveWindow || plan || {};
-  const total = toNonNegativeNumber(liveWindow ? source.total : source.total_quota);
-  const used = toNonNegativeNumber(liveWindow ? source.used : source.used_quota);
-  const reportedPercentage = Number(source.percentage);
+function isExpired(expiresAt, now) {
+  const timestamp = expiryTimestamp(expiresAt);
+  return timestamp !== null && timestamp <= now.getTime();
+}
+
+const WINDOW_PRIORITY = ["rolling_5_hour", "rolling_weekly"];
+// Cockpit-aligned Cursor lanes: Total Usage / Auto+Composer / API Usage.
+const CURSOR_WINDOW_PRIORITY = ["total", "rolling_weekly", "auto_composer", "api"];
+
+function quotaMetric(source, kind, unit) {
+  const total = toNonNegativeNumber(kind === "total" && source?.total_quota != null ? source?.total_quota : source?.total);
+  const used = toNonNegativeNumber(kind === "total" && source?.used_quota != null && source?.total == null
+    ? source?.used_quota
+    : source?.used);
+  const reportedPercentage = Number(source?.percentage);
   const percentage = Number.isFinite(reportedPercentage)
     ? Math.max(0, Math.min(100, reportedPercentage))
     : (total > 0 ? Math.max(0, Math.min(100, (used / total) * 100)) : 0);
-  return { total, used, percentage };
+  return {
+    kind,
+    total,
+    used,
+    percentage,
+    unit,
+    resetsAt: source?.resets_at || source?.reset_at || null,
+  };
+}
+
+function readQuotaMetrics(plan) {
+  const windows = Array.isArray(plan?.quota_windows) ? plan.quota_windows : [];
+  const unit = String(plan?.quota_unit || "tokens");
+  const providerId = String(plan?.provider_id || "").trim().toLowerCase();
+  const priority = providerId === "cursor" ? CURSOR_WINDOW_PRIORITY : WINDOW_PRIORITY;
+  const liveMetrics = windows
+    .filter((window) => priority.includes(window?.kind))
+    .map((window) => quotaMetric(window, window.kind, window?.unit || unit))
+    .filter((metric) => metric.total > 0 || Number.isFinite(metric.percentage))
+    .sort((left, right) => priority.indexOf(left.kind) - priority.indexOf(right.kind));
+  // Cursor emits both `total` and `rolling_weekly` as the same Total Usage lane —
+  // keep a single headline window plus Auto/API breakdowns.
+  if (providerId === "cursor" && liveMetrics.length > 0) {
+    const seen = new Set();
+    const deduped = [];
+    for (const metric of liveMetrics) {
+      const key = metric.kind === "rolling_weekly" ? "total" : metric.kind;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(metric.kind === "rolling_weekly" ? { ...metric, kind: "total" } : metric);
+    }
+    return deduped;
+  }
+  if (liveMetrics.length > 0) return liveMetrics;
+
+  const fixedMetric = quotaMetric(plan || {}, "total", unit);
+  return fixedMetric.total > 0 ? [fixedMetric] : [];
+}
+
+function isConfiguredService(plan, total) {
+  const detectionMethod = String(plan?.detection_method || "").trim().toLowerCase();
+  const refreshMethod = String(plan?.refresh_method || "").trim().toLowerCase();
+  const hasAutomaticDetection = (
+    (detectionMethod && detectionMethod !== "not_configured")
+    || refreshMethod === "official_api"
+    || refreshMethod === "custom_api"
+  );
+  if (hasAutomaticDetection) {
+    const status = String(plan?.sync_status || plan?.last_refresh_status || "").trim().toLowerCase();
+    return status === "success";
+  }
+
+  const providerId = String(plan?.provider_id || "").trim().toLowerCase();
+  const source = String(plan?.source || "").trim();
+  const isManual = (
+    String(plan?.quota_source || "").trim().toLowerCase() === "manual"
+    || providerId === "custom"
+    || (!providerId && !detectionMethod && !refreshMethod)
+  );
+  return isManual && source.length > 0 && total > 0;
+}
+
+function serviceLabels(plan) {
+  const providerId = String(plan?.provider_id || "").trim().toLowerCase();
+  const source = String(plan?.source || "").trim();
+  const provider = PROVIDER_LABELS[providerId]
+    || (providerId === "custom" ? source : "")
+    || source
+    || copy("spend.usage.token_services.unknown");
+  const planLabel = String(plan?.plan_label || "")
+    .replace(/\s*[（(]月付[）)]\s*$/u, "")
+    .trim();
+  return { provider, planLabel, providerId: providerId || "custom" };
 }
 
 export function normalizeTokenServices(plans, now = new Date()) {
@@ -40,33 +138,83 @@ export function normalizeTokenServices(plans, now = new Date()) {
 
   return plans
     .map((plan, index) => {
-      const metric = readQuotaMetric(plan);
-      const name = String(
-        plan?.plan_label || plan?.source || plan?.provider_id || copy("spend.usage.token_services.unknown"),
-      ).trim();
+      const metrics = readQuotaMetrics(plan);
+      const primaryMetric = metrics.find((metric) => metric.kind === "rolling_weekly")
+        || metrics.find((metric) => metric.kind === "total")
+        || metrics[0]
+        || { total: 0, used: 0, percentage: 0 };
+      const labels = serviceLabels(plan);
+      const resetDates = [...new Set(metrics.map((metric) => metric.resetsAt).filter(Boolean))];
+      const effectiveExpiry = plan?.expires_at || (resetDates.length === 1 ? resetDates[0] : null);
+      const verifiedExpiry = expiryTimestamp(effectiveExpiry);
       return {
-        id: String(plan?.id || `${name}-${index}`),
-        name,
+        id: String(plan?.id || `${labels.provider}-${index}`),
+        ...labels,
         unit: String(plan?.quota_unit || "tokens"),
+        expiresAt: effectiveExpiry,
+        notes: String(plan?.notes || "").trim(),
         originalIndex: index,
-        ...metric,
-        expired: isExpired(plan?.expires_at, now),
+        metrics,
+        ...primaryMetric,
+        configured: isConfiguredService(plan, primaryMetric.total),
+        expired: isExpired(effectiveExpiry, now),
+        hasVerifiedFutureExpiry: verifiedExpiry !== null && verifiedExpiry > now.getTime(),
       };
     })
-    .filter((service) => (
-      !service.expired
-      && service.total > 0
-    ))
-    .sort((left, right) => right.used - left.used || left.originalIndex - right.originalIndex);
+    .filter((service) => {
+      if (!service.configured || service.expired) return false;
+      // Cursor percent lanes use total=100; 0% is a valid live reading (do not hide).
+      if (service.providerId === "cursor") {
+        return Number.isFinite(service.percentage) && (
+          service.used < service.total
+          || service.hasVerifiedFutureExpiry
+          || service.percentage === 0
+        );
+      }
+      return service.total > 0
+        && (service.used < service.total || service.hasVerifiedFutureExpiry);
+    })
+    .sort(compareTokenServices);
+}
+
+export function compareTokenServices(left, right) {
+  const leftExhausted = left.total > 0 && left.used >= left.total;
+  const rightExhausted = right.total > 0 && right.used >= right.total;
+  if (leftExhausted !== rightExhausted) return leftExhausted ? 1 : -1;
+  return right.used - left.used || left.originalIndex - right.originalIndex;
 }
 
 function formatQuota(value, unit) {
   const number = toNonNegativeNumber(value);
+  if (!unit || unit === "tokens") return formatChineseTokenCount(number);
   const suffix = unit && unit !== "tokens" ? ` ${unit}` : "";
-  if (number >= 1_000_000_000) return `${(number / 1_000_000_000).toFixed(2)}B${suffix}`;
-  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(2)}M${suffix}`;
-  if (number >= 1_000) return `${(number / 1_000).toFixed(1)}K${suffix}`;
-  return `${number.toLocaleString()}${suffix}`;
+  return `${number.toLocaleString("zh-CN")}${suffix}`;
+}
+
+function formatDateTime(value, includeTime = false) {
+  if (!value) return null;
+  const normalized = String(value).trim();
+  const timestamp = /^\d{10,13}$/.test(normalized)
+    ? Number(normalized) * (normalized.length <= 10 ? 1000 : 1)
+    : Date.parse(normalized);
+  if (!Number.isFinite(timestamp)) return String(value);
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: includeTime ? undefined : "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: includeTime ? "2-digit" : undefined,
+    minute: includeTime ? "2-digit" : undefined,
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
+function windowLabel(kind) {
+  if (kind === "rolling_5_hour") return copy("spend.usage.token_services.window.rolling_5_hour");
+  if (kind === "rolling_weekly") return copy("spend.usage.token_services.window.rolling_weekly");
+  if (kind === "auto_composer") return copy("spend.usage.token_services.window.auto_composer");
+  if (kind === "api") return copy("spend.usage.token_services.window.api");
+  if (kind === "total") return copy("spend.usage.token_services.window.total_usage");
+  return copy("spend.usage.token_services.window.total");
 }
 
 function progressColor(percentage) {
@@ -91,7 +239,7 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
     <aside
       data-testid="token-service-list"
       className={cn(
-        "flex min-h-[220px] min-w-0 flex-col rounded-xl border border-oai-gray-200 bg-white p-3 dark:border-oai-gray-800 dark:bg-oai-gray-900",
+        "flex min-h-[220px] min-w-0 flex-col rounded-xl border border-oai-gray-200 bg-white p-3 shadow-sm shadow-black/[0.04] dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:shadow-black/20",
         className,
       )}
     >
@@ -122,35 +270,80 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
         <ol className="min-h-0 flex-1 divide-y divide-oai-gray-100 dark:divide-oai-gray-800">
           {pageRows.map((service, index) => {
             const rank = pageStart + index + 1;
-            const roundedPercentage = Math.round(service.percentage);
             return (
-              <li key={service.id} data-testid="token-service-row" className="py-2.5">
-                <div className="flex min-w-0 items-center gap-2">
+              <li key={service.id} data-testid="token-service-row" className="py-3">
+                <div className="flex min-w-0 items-start gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-oai-gray-100 text-[11px] font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400">
                     {rank}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-oai-gray-800 dark:text-oai-gray-200" title={service.name}>
-                    {service.name}
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-oai-gray-50 text-oai-gray-700 ring-1 ring-inset ring-oai-gray-200 dark:bg-oai-gray-800 dark:text-oai-gray-200 dark:ring-oai-gray-700"
+                    data-testid={`token-service-provider-icon-${service.providerId}`}
+                  >
+                    <ProviderIcon provider={service.providerId} size={16} />
                   </span>
-                  <span className="shrink-0 text-[11px] font-medium tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
-                    {roundedPercentage}%
+                  <span className="min-w-0 flex-1 pt-0.5" title={[service.provider, service.planLabel].filter(Boolean).join(" · ")}>
+                    <span className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="truncate text-xs font-semibold text-oai-gray-800 dark:text-oai-gray-200">
+                        {service.provider}
+                      </span>
+                      {service.planLabel && (
+                        <span className="truncate text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
+                          {service.planLabel}
+                        </span>
+                      )}
+                    </span>
+                    {service.notes && (
+                      <span className="mt-0.5 block truncate text-[9px] text-oai-gray-400 dark:text-oai-gray-500" title={service.notes}>
+                        {service.notes}
+                      </span>
+                    )}
                   </span>
                 </div>
-                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
-                  <div
-                    className={cn("h-full rounded-full", progressColor(roundedPercentage))}
-                    style={{ width: `${roundedPercentage}%` }}
-                    role="progressbar"
-                    aria-label={copy("spend.usage.token_services.progress", { name: service.name })}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={roundedPercentage}
-                  />
+                <div className="mt-2 space-y-2">
+                  {service.metrics.map((metric) => {
+                    const roundedPercentage = Math.round(metric.percentage);
+                    return (
+                      <div key={metric.kind} data-testid={`token-service-window-${metric.kind}`}>
+                        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-oai-gray-500 dark:text-oai-gray-400">
+                          <span className="inline-flex items-center gap-1 font-medium">
+                            {metric.kind === "total" ? null : <Clock3 className="h-3 w-3" aria-hidden="true" />}
+                            {windowLabel(metric.kind)}
+                          </span>
+                          <span className="font-semibold tabular-nums text-oai-gray-700 dark:text-oai-gray-300">
+                            {roundedPercentage}%
+                          </span>
+                        </div>
+                        <div className="h-1 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
+                          <div
+                            className={cn("h-full rounded-full", progressColor(roundedPercentage))}
+                            style={{ width: `${roundedPercentage}%` }}
+                            role="progressbar"
+                            aria-label={copy("spend.usage.token_services.progress", { name: service.provider })}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={roundedPercentage}
+                          />
+                        </div>
+                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
+                          <span>{copy("spend.usage.token_services.used")} {formatQuota(metric.used, metric.unit)}</span>
+                          <span>{copy("spend.usage.token_services.total")} {formatQuota(metric.total, metric.unit)}</span>
+                        </div>
+                        {metric.resetsAt && (
+                          <div className="mt-1 text-right text-[9px] tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
+                            {copy("spend.usage.token_services.reset_at", { value: formatDateTime(metric.resetsAt, true) })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
-                  <span>{copy("spend.usage.token_services.used")} {formatQuota(service.used, service.unit)}</span>
-                  <span>{copy("spend.usage.token_services.total")} {formatQuota(service.total, service.unit)}</span>
-                </div>
+                {service.expiresAt && (
+                  <div className="mt-2 flex items-center gap-1 text-[9px] tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
+                    <CalendarDays className="h-3 w-3" aria-hidden="true" />
+                    {copy("spend.usage.token_services.expires_at", { value: formatDateTime(service.expiresAt) })}
+                  </div>
+                )}
               </li>
             );
           })}

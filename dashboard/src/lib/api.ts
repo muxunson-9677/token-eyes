@@ -35,9 +35,11 @@ const PATHS = {
   detectDataDirectories: "tokentracker-detect-data-directories",
   selectDirectory: "tokentracker-select-directory",
   tokenPlans: "tokentracker-token-plans",
+  tokenPlansOrder: "tokentracker-token-plans-order",
   tokenPlansRefresh: "tokentracker-token-plans-refresh",
   tokenPlanCatalog: "tokentracker-token-plan-catalog",
   spendRecords: "tokentracker-spend-records",
+  otherAiSpendGroups: "tokentracker-other-ai-groups",
   spendTimeseries: "tokentracker-spend-timeseries",
   requestUsageRecords: "tokentracker-request-usage-records",
   providerStats: "tokentracker-provider-stats",
@@ -54,6 +56,7 @@ const PATHS = {
   providerApiTest: "tokentracker-provider-api-test",
   providerApiRefresh: "tokentracker-provider-api-refresh",
   providerApiBalances: "tokentracker-provider-api-balances",
+  officialModelPricing: "tokentracker-official-model-pricing",
 };
 
 /**
@@ -278,6 +281,19 @@ export async function setLocalSettings(settings: AnyRecord = {}) {
   });
 }
 
+export async function verifyOfficialModelPricing(params: AnyRecord = {}) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.officialModelPricing, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify(params),
+  });
+}
+
 export async function selectLocalDirectory() {
   const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.selectDirectory, undefined, {
@@ -318,6 +334,32 @@ export async function saveTokenPlan(record: AnyRecord = {}) {
       ...authHeaders,
     },
     body: JSON.stringify(record),
+  });
+}
+
+export async function deleteTokenPlan(id: string) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.tokenPlans, undefined, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ id }),
+  });
+}
+
+export async function reorderTokenPlans(ids: string[]) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.tokenPlansOrder, undefined, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ ids }),
   });
 }
 
@@ -433,6 +475,37 @@ export async function deleteSpendRecord(id: string) {
     },
     body: JSON.stringify({ id }),
   });
+}
+
+export async function saveOtherAiSpendGroup(group: AnyRecord = {}) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.otherAiSpendGroups, undefined, {
+    method: group.id ? "PUT" : "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify(group),
+  });
+}
+
+export async function deleteOtherAiSpendGroup(id: string) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.otherAiSpendGroups, undefined, {
+    method: "DELETE",
+    headers: { Accept: "application/json", "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify({ id }),
+  });
+}
+
+export async function reorderOtherAiSpendGroups(ids: string[]) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.otherAiSpendGroups, undefined, {
+    method: "PUT",
+    headers: { Accept: "application/json", "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify({ action: "reorder", ids }),
+  });
+}
+
+export async function reorderOtherAiSpendRecords(ids: string[], move: AnyRecord = {}) {
+  return updateSpendRecord({ action: "reorder", ids, ...move });
 }
 
 // ---------------------------------------------------------------------------
@@ -1223,6 +1296,14 @@ export interface XiaomiMimoQuota {
   provider_reported_at?: string;
 }
 
+export interface OfficialBalanceSnapshot {
+  balance: number;
+  available_balance: number;
+  credit_balance: number;
+  currency: string;
+  provider_reported_at: string;
+}
+
 export interface NativeSessionResult {
   connected: boolean;
   session_ref: string;
@@ -1230,6 +1311,7 @@ export interface NativeSessionResult {
   error_code: string;
   error_message: string;
   quota?: XiaomiMimoQuota;
+  balance?: OfficialBalanceSnapshot;
 }
 
 /**
@@ -1286,13 +1368,7 @@ export async function deleteXiaomiMimoConsoleSession(sessionRef: string): Promis
   return invoke("delete_xiaomi_mimo_console_session", { sessionRef });
 }
 
-export interface GlmBalanceSnapshot {
-  balance: number;
-  available_balance: number;
-  credit_balance: number;
-  currency: string;
-  provider_reported_at: string;
-}
+export interface GlmBalanceSnapshot extends OfficialBalanceSnapshot {}
 
 export interface GlmSessionStatus extends NativeSessionResult {
   balance?: GlmBalanceSnapshot;
@@ -1320,6 +1396,28 @@ export async function deleteGlmConsoleSession(sessionRef: string): Promise<void>
     throw new Error("Tauri runtime not available");
   }
   return invoke("delete_glm_console_session", { sessionRef });
+}
+
+export interface MiniMaxSessionStatus extends NativeSessionResult {
+  balance?: OfficialBalanceSnapshot;
+}
+
+export async function openMiniMaxConsoleLogin(sessionRef: string): Promise<MiniMaxSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("open_minimax_console_login", { sessionRef });
+}
+
+export async function verifyMiniMaxConsoleSession(sessionRef: string): Promise<MiniMaxSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("verify_minimax_console_session", { sessionRef });
+}
+
+export async function deleteMiniMaxConsoleSession(sessionRef: string): Promise<void> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("delete_minimax_console_session", { sessionRef });
 }
 
 export interface CodexQuotaSnapshot {
@@ -1423,6 +1521,12 @@ export async function deleteClaudeConsoleSession(sessionRef: string): Promise<vo
 }
 
 export interface CursorQuotaSnapshot {
+  account_id?: string;
+  total_usage_percent?: number;
+  auto_composer_percent?: number | null;
+  api_usage_percent?: number | null;
+  reset_at?: string | null;
+  fetched_at?: string;
   total_quota: number;
   used_quota: number;
   remaining_quota: number;
@@ -1458,6 +1562,32 @@ export async function deleteCursorConsoleSession(sessionRef: string): Promise<vo
   const invoke = getTauriInvoke();
   if (!invoke) throw new Error("Tauri runtime not available");
   return invoke("delete_cursor_console_session", { sessionRef });
+}
+
+export type TraeSessionStatus = CursorSessionStatus;
+
+export async function openTraeConsoleLogin(sessionRef: string): Promise<TraeSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("open_trae_console_login", { sessionRef });
+}
+
+export async function verifyTraeConsoleSession(sessionRef: string): Promise<TraeSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("verify_trae_console_session", { sessionRef });
+}
+
+export async function syncTraeConsoleQuota(sessionRef: string): Promise<TraeSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("sync_trae_console_quota", { sessionRef });
+}
+
+export async function deleteTraeConsoleSession(sessionRef: string): Promise<void> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("delete_trae_console_session", { sessionRef });
 }
 
 export interface KimiQuotaSnapshot {

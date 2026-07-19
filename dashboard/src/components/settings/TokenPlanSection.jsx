@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert } from "lucide-react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import {
   getTokenPlans,
+  deleteTokenPlan,
   saveTokenPlan,
   refreshTokenPlan,
   getUsageLimits,
@@ -27,10 +31,14 @@ import {
   openCursorConsoleLogin,
   verifyCursorConsoleSession,
   deleteCursorConsoleSession,
+  openTraeConsoleLogin,
+  verifyTraeConsoleSession,
+  deleteTraeConsoleSession,
   openKimiConsoleLogin,
   verifyKimiConsoleSession,
   deleteKimiConsoleSession,
   saveTokenPlanSecret,
+  reorderTokenPlans,
 } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
@@ -124,9 +132,10 @@ const OFFICIAL_ACCOUNT_DETECTION_PROVIDERS = new Set([
   "codex",
   "claude",
   "cursor",
+  "trae",
 ]);
 
-const WEBVIEW_CONSOLE_PROVIDERS = new Set(["xiaomi_mimo", "glm", "codex", "claude", "cursor", "kimi"]);
+const WEBVIEW_CONSOLE_PROVIDERS = new Set(["xiaomi_mimo", "glm", "codex", "claude", "cursor", "kimi", "trae"]);
 
 function resolveProviderHomeUrl(providerId, planId = "") {
   switch (providerId) {
@@ -140,6 +149,8 @@ function resolveProviderHomeUrl(providerId, planId = "") {
       return "https://console.anthropic.com/settings/billing";
     case "cursor":
       return "https://www.cursor.com/settings";
+    case "trae":
+      return "https://www.trae.cn/";
     case "kimi":
       return planId === "kimi_api_budget"
         ? "https://platform.moonshot.cn/console/account"
@@ -258,14 +269,11 @@ function mergeCatalogQuotaIntoForm(formState, catalog, providerId, planId) {
   return next;
 }
 
-function resolveConsoleSessionForRecord(record, sessions) {
+export function resolveConsoleSessionForRecord(record, sessions) {
   if (!record || !Array.isArray(sessions)) return null;
   const bindingId = record.detection_config?.official_account?.account_binding_id;
-  if (bindingId) {
-    const bound = sessions.find((s) => s.id === bindingId);
-    if (bound) return bound;
-  }
-  return sessions.find((s) => s.provider_id === record.provider_id) || null;
+  if (!bindingId) return null;
+  return sessions.find((s) => s.id === bindingId) || null;
 }
 
 function resolveFormProviderSession(form, sessions, records, providerId) {
@@ -295,6 +303,10 @@ function resolveFormClaudeSession(form, sessions, records) {
 
 function resolveFormCursorSession(form, sessions, records) {
   return resolveFormProviderSession(form, sessions, records, "cursor");
+}
+
+function resolveFormTraeSession(form, sessions, records) {
+  return resolveFormProviderSession(form, sessions, records, "trae");
 }
 
 function resolveFormKimiSession(form, sessions, records) {
@@ -361,6 +373,7 @@ function WebviewConsoleConnectPanel({
   onConnect,
   onSync,
   onDelete,
+  onAddAccount,
   testIdPrefix,
   syncing,
   syncDisabled,
@@ -506,6 +519,16 @@ function WebviewConsoleConnectPanel({
               {copy("settings.token_plan.console_session.disconnect")}
             </button>
           ) : null}
+          {onAddAccount ? (
+            <button
+              type="button"
+              onClick={onAddAccount}
+              data-testid={`detection-add-account-${testIdPrefix}`}
+              className="ml-3 text-xs font-medium text-oai-brand-600 underline hover:text-oai-brand-700 dark:text-oai-brand-400"
+            >
+              {copy("settings.token_plan.console_session.add_account")}
+            </button>
+          ) : null}
         </div>
       )}
     </div>
@@ -543,13 +566,140 @@ function normalizeCatalog(value) {
   }));
 }
 
-export function TokenPlanSection() {
+function SortableTokenPlanCard({
+  record,
+  expanded,
+  onToggle,
+  onRefresh,
+  onEdit,
+  onSaveNotes,
+  onKeyboardMove,
+  onDelete,
+  refreshing,
+  saving,
+  catalog,
+  usageLimits,
+  loadingUsageLimits,
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
+  const planLabel = record.plan_label || record.id;
+  const style = { transform: CSS.Transform.toString(transform), transition };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      data-testid="token-plan-card"
+      className={cn(
+        "rounded-md border border-oai-gray-200 px-3 py-2 dark:border-oai-gray-800",
+        isDragging && "relative z-10 bg-white shadow-lg dark:bg-oai-gray-900",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={copy("settings.token_plan.drag", { plan: planLabel })}
+          className="inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded text-oai-gray-400 hover:bg-oai-gray-100 hover:text-oai-gray-700 active:cursor-grabbing dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200"
+          {...attributes}
+          {...listeners}
+          onKeyDown={(event) => {
+            if (event.altKey && ["ArrowUp", "ArrowDown"].includes(event.key)) {
+              event.preventDefault();
+              onKeyboardMove(record.id, event.key === "ArrowUp" ? -1 : 1);
+              return;
+            }
+            listeners?.onKeyDown?.(event);
+          }}
+        >
+          <GripVertical className="h-4 w-4" aria-hidden />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">
+            {record.provider_id && record.provider_id !== "custom"
+              ? `${record.source} / ${record.provider_id} / ${record.plan_label}`
+              : `${record.source} / ${record.plan_label}`}
+          </div>
+          <div className="truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
+            {formatRecordQuotaLine(record, catalog)}
+            {record.quota_unit && record.quota_unit !== "tokens" ? ` ${record.quota_unit}` : ""}
+          </div>
+          {record.notes && (
+            <div className="truncate text-[11px] text-oai-gray-400 dark:text-oai-gray-500" title={record.notes}>
+              {record.notes}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => onEdit(record)}
+          className="shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark"
+        >
+          {copy("settings.token_plan.edit")}
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggle(record.id)}
+          aria-expanded={expanded}
+          aria-label={copy(expanded ? "settings.token_plan.collapse" : "settings.token_plan.expand", { plan: planLabel })}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-oai-gray-500 hover:bg-oai-gray-100 dark:text-oai-gray-400 dark:hover:bg-oai-gray-800"
+        >
+          {expanded ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="ml-9 mt-2 border-t border-oai-gray-100 pt-2 dark:border-oai-gray-800">
+          <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
+            {record.quota_source
+              ? (record.quota_source === "catalog"
+                ? copy("settings.token_plan.quota_source_catalog")
+                : record.quota_source === "custom_api"
+                ? copy("settings.token_plan.quota_source_custom_api")
+                : copy("settings.token_plan.quota_source_manual"))
+              : ""}
+            {record.expires_at ? ` · ${copy("settings.token_plan.expires_at")} ${record.expires_at}` : ""}
+          </div>
+          <RecordNotesEditor record={record} onSave={onSaveNotes} disabled={saving} />
+          <RecordSyncStatus record={record} />
+          <div className="mt-2 flex justify-end gap-3">
+            <button
+              type="button"
+              aria-label={copy("settings.token_plan.delete", { plan: planLabel })}
+              onClick={() => onDelete(record)}
+              disabled={saving}
+              className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              {copy("settings.token_plan.delete_short")}
+            </button>
+            <button
+              type="button"
+              title={copy("settings.token_plan.refresh")}
+              onClick={() => onRefresh(record.id)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1 text-xs font-medium text-oai-gray-600 hover:text-oai-brand disabled:opacity-50 dark:text-oai-gray-300"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
+              {copy("settings.token_plan.refresh")}
+            </button>
+          </div>
+          {isCodexSource(record.source) && (
+            <CodexQuotaBlock codexData={usageLimits?.codex} loading={loadingUsageLimits} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNavigate = () => {} }) {
   const { visibleOrdered: visibleLimitProviders } = useLimitsDisplayPrefs();
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formOpen, setFormOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
   const [refreshingId, setRefreshingId] = useState("");
   const [error, setError] = useState("");
   const [savedNotice, setSavedNotice] = useState(false);
@@ -570,6 +720,13 @@ export function TokenPlanSection() {
   // endpoint which returns an api_key_ref, and the ref is what gets saved.
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [planRefreshTargetId, setPlanRefreshTargetId] = useState("");
+  const [expandedPlanIds, setExpandedPlanIds] = useState(() => new Set());
+  const [editorInitialized, setEditorInitialized] = useState(false);
+  const [editorMissing, setEditorMissing] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -682,6 +839,11 @@ export function TokenPlanSection() {
     return resolveFormCursorSession(form, consoleSessions, records);
   }, [form.provider_id, form.id, form.detection_config?.official_account?.account_binding_id, consoleSessions, records]);
 
+  const formTraeSession = useMemo(() => {
+    if (form.provider_id !== "trae") return null;
+    return resolveFormTraeSession(form, consoleSessions, records);
+  }, [form.provider_id, form.id, form.detection_config?.official_account?.account_binding_id, consoleSessions, records]);
+
   const formKimiSession = useMemo(() => {
     if (form.provider_id !== "kimi" || form.plan_id === "kimi_api_budget") return null;
     return resolveFormKimiSession(form, consoleSessions, records);
@@ -779,6 +941,8 @@ export function TokenPlanSection() {
 
   const cursorStage = useMemo(() => computeConsoleStage(formCursorSession, connectingConsole), [formCursorSession, connectingConsole]);
 
+  const traeStage = useMemo(() => computeConsoleStage(formTraeSession, connectingConsole), [formTraeSession, connectingConsole]);
+
   const kimiStage = useMemo(() => computeConsoleStage(formKimiSession, connectingConsole), [formKimiSession, connectingConsole]);
 
   const codexStatusLabel = useMemo(() => consoleStatusLabel(formCodexSession), [formCodexSession]);
@@ -786,6 +950,8 @@ export function TokenPlanSection() {
   const claudeStatusLabel = useMemo(() => consoleStatusLabel(formClaudeSession), [formClaudeSession]);
 
   const cursorStatusLabel = useMemo(() => consoleStatusLabel(formCursorSession), [formCursorSession]);
+
+  const traeStatusLabel = useMemo(() => consoleStatusLabel(formTraeSession), [formTraeSession]);
 
   const kimiStatusLabel = useMemo(() => consoleStatusLabel(formKimiSession), [formKimiSession]);
 
@@ -1048,12 +1214,23 @@ export function TokenPlanSection() {
     ].includes(formCodexSession.status)
       ? formCodexSession
       : null;
-    const sessionRef = resumableSession?.session_ref
+    let sessionRef = resumableSession?.session_ref
       || `token-plan/codex/session/${crypto.randomUUID()}`;
     let createdSession = resumableSession;
     let authorizationReady = false;
     try {
       let nativeStatus = null;
+      if (createdSession) {
+        nativeStatus = await verifyCodexConsoleSession(sessionRef).catch(() => null);
+        if (nativeStatus?.state_code === "session_not_found") {
+          const staleSessionId = createdSession.id;
+          await deleteConsoleSession(staleSessionId).catch(() => {});
+          setConsoleSessions((previous) => previous.filter((session) => session.id !== staleSessionId));
+          createdSession = null;
+          nativeStatus = null;
+          sessionRef = `token-plan/codex/session/${crypto.randomUUID()}`;
+        }
+      }
       if (!createdSession) {
         const created = await createConsoleSession({
           provider_id: "codex",
@@ -1163,6 +1340,7 @@ export function TokenPlanSection() {
               official_account: {
                 ...codexForm.detection_config?.official_account,
                 account_binding_id: accountBindingId,
+                session_ref: sessionRef,
                 provider_home_url: "https://chatgpt.com/codex",
               },
             },
@@ -1214,6 +1392,7 @@ export function TokenPlanSection() {
     openLogin,
     verifySession,
     deleteNativeSession,
+    retainNativeSession = false,
     connectTimeoutCopyKey,
     officialExtra = {},
   }) => {
@@ -1232,11 +1411,21 @@ export function TokenPlanSection() {
     ].includes(resumableSession.status)
       ? resumableSession
       : null;
-    const sessionRef = activeResumable?.session_ref
+    let sessionRef = activeResumable?.session_ref
       || `token-plan/${sessionPrefix}/session/${crypto.randomUUID()}`;
     let createdSession = activeResumable;
     let quotaReady = false;
     try {
+      if (createdSession) {
+        const resumableStatus = await verifySession(sessionRef).catch(() => null);
+        if (resumableStatus?.state_code === "session_not_found") {
+          const staleSessionId = createdSession.id;
+          await deleteConsoleSession(staleSessionId).catch(() => {});
+          setConsoleSessions((previous) => previous.filter((session) => session.id !== staleSessionId));
+          createdSession = null;
+          sessionRef = `token-plan/${sessionPrefix}/session/${crypto.randomUUID()}`;
+        }
+      }
       if (!createdSession) {
         const created = await createConsoleSession({
           provider_id: providerId,
@@ -1269,7 +1458,7 @@ export function TokenPlanSection() {
             ...form,
             used_quota: Number(nativeStatus.quota.used_quota || 0),
             remaining_quota: Number(nativeStatus.quota.remaining_quota || 0),
-            total_quota: Number(selectedPlan?.total_quota || form.total_quota || 0),
+            total_quota: Number(nativeStatus.quota.total_quota || selectedPlan?.total_quota || form.total_quota || 0),
             total_quota_display: selectedPlan?.total_quota_display || form.total_quota_display || "",
             quota_windows: nativeStatus.quota.quota_windows || [],
             expires_at: form.expires_at || "",
@@ -1281,7 +1470,11 @@ export function TokenPlanSection() {
                 form,
                 accountBindingId,
                 providerHomeUrl,
-                officialExtra,
+                {
+                  ...officialExtra,
+                  session_ref: sessionRef,
+                  account_id: nativeStatus.quota.account_id || "",
+                },
               ),
             },
             sync_status: "success",
@@ -1290,7 +1483,9 @@ export function TokenPlanSection() {
             last_error_code: "",
             last_error_message: "",
           });
-          await deleteNativeSession(sessionRef);
+          if (!retainNativeSession) {
+            await deleteNativeSession(sessionRef);
+          }
           setConsoleSessions((previous) => previous.map((session) =>
             session.id === accountBindingId ? verified.session : session
           ));
@@ -1304,7 +1499,8 @@ export function TokenPlanSection() {
         if (nativeStatus?.state_code === "session_not_found") {
           throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.window_closed"));
         }
-        if (["unsupported", "failed"].includes(nativeStatus?.state_code)) {
+        // Auth may succeed while usage fails — surface sync_failed; do not treat as connected 0%.
+        if (["unsupported", "failed", "sync_failed", "reauth_required"].includes(nativeStatus?.state_code)) {
           throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.verify_error"));
         }
         await wait(XIAOMI_AUTH_POLL_MS);
@@ -1312,7 +1508,11 @@ export function TokenPlanSection() {
       throw new Error(copy(connectTimeoutCopyKey));
     } catch (err) {
       if (createdSession && !quotaReady) {
-        await deleteNativeSession(sessionRef).catch(() => {});
+        // retainNativeSession keeps per-account auth.json so reconnect can retry usage sync
+        // without wiping a just-authorized Cursor/Trae account on a transient sync_failed.
+        if (!retainNativeSession) {
+          await deleteNativeSession(sessionRef).catch(() => {});
+        }
         await deleteConsoleSession(createdSession.id).catch(() => {});
         setConsoleSessions((previous) => previous.filter((session) => session.id !== createdSession.id));
       }
@@ -1344,7 +1544,21 @@ export function TokenPlanSection() {
     openLogin: openCursorConsoleLogin,
     verifySession: verifyCursorConsoleSession,
     deleteNativeSession: deleteCursorConsoleSession,
+    retainNativeSession: true,
     connectTimeoutCopyKey: "settings.token_plan.cursor.connect_timeout",
+  });
+
+  const handleConnectTrae = () => runQuotaConsoleConnect({
+    providerId: "trae",
+    sessionPrefix: "trae",
+    providerHomeUrl: resolveProviderHomeUrl("trae"),
+    displayNameSuffix: "Trae CN",
+    resumableSession: formTraeSession,
+    openLogin: openTraeConsoleLogin,
+    verifySession: verifyTraeConsoleSession,
+    deleteNativeSession: deleteTraeConsoleSession,
+    retainNativeSession: true,
+    connectTimeoutCopyKey: "settings.token_plan.trae.connect_timeout",
   });
 
   const handleConnectKimi = () => runQuotaConsoleConnect({
@@ -1358,6 +1572,32 @@ export function TokenPlanSection() {
     deleteNativeSession: deleteKimiConsoleSession,
     connectTimeoutCopyKey: "settings.token_plan.kimi.connect_timeout",
   });
+
+  const handleAddDetectedAccount = () => {
+    setConsoleSessionError("");
+    setSavedNotice(false);
+    setForm((current) => ({
+      ...current,
+      id: "",
+      notes: "",
+      used_quota: 0,
+      remaining_quota: 0,
+      quota_windows: [],
+      provider_reported_at: "",
+      sync_status: "",
+      last_synced_at: "",
+      last_sync_attempt_at: "",
+      last_error_code: "",
+      last_error_message: "",
+      detection_config: {
+        ...current.detection_config,
+        official_account: {
+          ...(current.detection_config?.official_account || {}),
+          account_binding_id: "",
+        },
+      },
+    }));
+  };
 
   const handleDeleteConsoleSession = async (sessionId, sessionRef) => {
     try {
@@ -1429,6 +1669,20 @@ export function TokenPlanSection() {
     }
   };
 
+  const handleDeleteTraeConsoleSession = async (sessionId, sessionRef) => {
+    try {
+      await deleteConsoleSession(sessionId);
+      try {
+        await deleteTraeConsoleSession(sessionRef);
+      } catch {
+        // Native session may already be gone; ignore.
+      }
+      setConsoleSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    } catch (err) {
+      setConsoleSessionError(err?.message || copy("settings.token_plan.console_session.delete_error"));
+    }
+  };
+
   const handleDeleteKimiConsoleSession = async (sessionId, sessionRef) => {
     try {
       await deleteConsoleSession(sessionId);
@@ -1442,15 +1696,6 @@ export function TokenPlanSection() {
       setConsoleSessionError(err?.message || copy("settings.token_plan.console_session.delete_error"));
     }
   };
-
-  const quotaSummary = useMemo(() => records.reduce(
-    (acc, record) => ({
-      total: acc.total + Number(record.total_quota || 0),
-      used: acc.used + Number(record.used_quota || 0),
-      remaining: acc.remaining + Number(record.remaining_quota || 0),
-    }),
-    { total: 0, used: 0, remaining: 0 },
-  ), [records]);
 
   const currentProvider = useMemo(() => {
     return catalog.find((p) => p.id === form.provider_id) || null;
@@ -1649,6 +1894,10 @@ export function TokenPlanSection() {
   };
 
   const openNewForm = () => {
+    if (listOnly) {
+      onNavigate("/settings/cost/token-plans/new");
+      return;
+    }
     setForm(EMPTY_FORM);
     setApiKeyInput("");
     setFormOpen(true);
@@ -1661,6 +1910,7 @@ export function TokenPlanSection() {
     setApiKeyInput("");
     setFormOpen(false);
     setSavedNotice(false);
+    if (editorPlanId) onNavigate("/settings/cost");
   };
 
   const save = async ({ keepOpen = false } = {}) => {
@@ -2002,6 +2252,7 @@ export function TokenPlanSection() {
         }
       }
       setSavedNotice(true);
+      if (!keepOpen && editorPlanId) onNavigate("/settings/cost");
       return { savedId, records: nextRecords };
     } catch (err) {
       setError(err?.message || copy("settings.token_plan.save_error"));
@@ -2126,6 +2377,7 @@ export function TokenPlanSection() {
       const webviewQuotaProviders = [
         { id: "claude", verify: verifyClaudeConsoleSession, skip: isClaudeRoutingMode(plan?.provider_id, plan?.plan_id, plan?.detection_config?.official_account?.claude_account_mode) },
         { id: "cursor", verify: verifyCursorConsoleSession },
+        { id: "trae", verify: verifyTraeConsoleSession },
         { id: "kimi", verify: verifyKimiConsoleSession, skip: plan?.plan_id === "kimi_api_budget" },
       ];
       for (const entry of webviewQuotaProviders) {
@@ -2146,7 +2398,7 @@ export function TokenPlanSection() {
                 ...plan,
                 used_quota: Number(nativeStatus.quota.used_quota || 0),
                 remaining_quota: Number(nativeStatus.quota.remaining_quota || 0),
-                total_quota: Number(catalogPlan?.total_quota || plan.total_quota || 0),
+                total_quota: Number(nativeStatus.quota.total_quota || catalogPlan?.total_quota || plan.total_quota || 0),
                 total_quota_display: catalogPlan?.total_quota_display || plan.total_quota_display || "",
                 quota_windows: nativeStatus.quota.quota_windows || plan.quota_windows || [],
                 expires_at: plan.expires_at || "",
@@ -2164,8 +2416,55 @@ export function TokenPlanSection() {
               setRefreshingId("");
               return;
             }
-          } catch (_) {
-            // Native fetch failed; fall through to backend refresh
+            const reauthRequired = ["session_not_found", "reauth_required"].includes(nativeStatus?.state_code);
+            const errorCode = nativeStatus?.error_code
+              || (reauthRequired ? "SESSION_NOT_FOUND" : "QUOTA_SYNC_FAILED");
+            const errorMessage = nativeStatus?.error_message
+              || (reauthRequired
+                ? copy("settings.token_plan.console_session.window_closed")
+                : copy("settings.token_plan.refresh_failed"));
+            const verified = await verifyConsoleSession(recordConsoleSession.id, nativeStatus || {
+              connected: false,
+              session_ref: recordConsoleSession.session_ref,
+              state_code: reauthRequired ? "session_not_found" : "failed",
+              error_code: errorCode,
+              error_message: errorMessage,
+            }).catch(() => null);
+            if (verified?.session) {
+              setConsoleSessions((previous) => previous.map((session) =>
+                session.id === recordConsoleSession.id ? verified.session : session
+              ));
+            }
+            const now = new Date().toISOString();
+            const result = await saveTokenPlan({
+              ...plan,
+              sync_status: reauthRequired ? "reauth_required" : "failed",
+              last_sync_attempt_at: now,
+              last_error_code: errorCode,
+              last_error_message: errorMessage,
+              last_refresh_status: "failed",
+              last_refresh_error: errorMessage,
+              last_refresh_at: now,
+            });
+            setRecords(normalizeRecords(result?.records));
+            setError(errorMessage);
+            return;
+          } catch (err) {
+            const now = new Date().toISOString();
+            const errorMessage = err?.message || copy("settings.token_plan.refresh_failed");
+            const result = await saveTokenPlan({
+              ...plan,
+              sync_status: "failed",
+              last_sync_attempt_at: now,
+              last_error_code: "QUOTA_SYNC_FAILED",
+              last_error_message: errorMessage,
+              last_refresh_status: "failed",
+              last_refresh_error: errorMessage,
+              last_refresh_at: now,
+            });
+            setRecords(normalizeRecords(result?.records));
+            setError(errorMessage);
+            return;
           }
         }
       }
@@ -2285,26 +2584,7 @@ export function TokenPlanSection() {
         await refresh(form.id);
         return;
       }
-      const saved = await save({ keepOpen: true });
-      if (!saved?.savedId) return;
-      const syncedRecord = saved.records.find((record) => record.id === saved.savedId);
-      if (syncedRecord?.sync_status === "success") {
-        if (formCodexSession && formCodexSession.status !== "connected") {
-          const discarded = await discardCodexPendingSession(formCodexSession.session_ref).catch(() => false);
-          if (!discarded) {
-            await deleteCodexConsoleSession(formCodexSession.session_ref).catch(() => {});
-          }
-          await deleteConsoleSession(formCodexSession.id).catch(() => {});
-          setConsoleSessions((previous) => previous.filter((session) => session.id !== formCodexSession.id));
-        }
-        return;
-      }
-      if (
-        syncedRecord?.sync_status === "reauth_required"
-        || syncedRecord?.last_error_code === "CODEX_REAUTH_REQUIRED"
-      ) {
-        await handleConnectCodex({ record: syncedRecord });
-      }
+      await handleConnectCodex();
       return;
     }
     if (form.provider_id === "claude" && !claudeRoutingMode) {
@@ -2323,6 +2603,15 @@ export function TokenPlanSection() {
         return;
       }
       await handleConnectCursor();
+      return;
+    }
+    if (form.provider_id === "trae") {
+      if (formTraeSession?.status === "connected" && form.id) {
+        await save({ keepOpen: true });
+        await refresh(form.id);
+        return;
+      }
+      await handleConnectTrae();
       return;
     }
     if (form.provider_id === "kimi" && form.plan_id !== "kimi_api_budget") {
@@ -2426,6 +2715,100 @@ export function TokenPlanSection() {
     setError("");
   };
 
+  const openRecordEditor = (record) => {
+    if (listOnly) {
+      onNavigate(`/settings/cost/token-plans/${encodeURIComponent(record.id)}/edit`);
+      return;
+    }
+    editRecord(record);
+  };
+
+  useEffect(() => {
+    if (!editorPlanId || loading || editorInitialized) return;
+    if (editorPlanId === "new") {
+      setForm(EMPTY_FORM);
+      setApiKeyInput("");
+      setFormOpen(true);
+      setEditorInitialized(true);
+      return;
+    }
+    const record = records.find((item) => item.id === editorPlanId);
+    if (!record) {
+      setEditorMissing(true);
+      setEditorInitialized(true);
+      return;
+    }
+    editRecord(record);
+    setEditorInitialized(true);
+  }, [editorInitialized, editorPlanId, loading, records]);
+
+  const togglePlanDetails = (id) => {
+    setExpandedPlanIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handlePlanDragEnd = async ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    const previous = records;
+    const oldIndex = previous.findIndex((record) => record.id === active.id);
+    const newIndex = previous.findIndex((record) => record.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const optimistic = arrayMove(previous, oldIndex, newIndex)
+      .map((record, index) => ({ ...record, display_order: index }));
+    setRecords(optimistic);
+    setError("");
+    try {
+      const result = await reorderTokenPlans(optimistic.map((record) => record.id));
+      setRecords(normalizeRecords(result?.records));
+    } catch (err) {
+      setRecords(previous);
+      setError(err?.message || copy("settings.token_plan.reorder_error"));
+    }
+  };
+
+  const handlePlanKeyboardMove = async (id, direction) => {
+    const oldIndex = records.findIndex((record) => record.id === id);
+    const newIndex = Math.max(0, Math.min(records.length - 1, oldIndex + direction));
+    if (oldIndex < 0 || oldIndex === newIndex) return;
+    const previous = records;
+    const optimistic = arrayMove(previous, oldIndex, newIndex)
+      .map((record, index) => ({ ...record, display_order: index }));
+    setRecords(optimistic);
+    setError("");
+    try {
+      const result = await reorderTokenPlans(optimistic.map((record) => record.id));
+      setRecords(normalizeRecords(result?.records));
+    } catch (err) {
+      setRecords(previous);
+      setError(err?.message || copy("settings.token_plan.reorder_error"));
+    }
+  };
+
+  const removeRecord = async (record) => {
+    const planLabel = record?.plan_label || record?.id || "";
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(copy("settings.token_plan.confirm_delete", { plan: planLabel }))) return;
+    setDeletingId(record.id);
+    setError("");
+    try {
+      const result = await deleteTokenPlan(record.id);
+      setRecords(normalizeRecords(result?.records));
+      setExpandedPlanIds((current) => {
+        const next = new Set(current);
+        next.delete(record.id);
+        return next;
+      });
+    } catch (err) {
+      setError(err?.message || copy("settings.token_plan.delete_error"));
+    } finally {
+      setDeletingId("");
+    }
+  };
+
   const canSave = formOpen && !loading && !saving && form.source.trim() && form.plan_label.trim();
 
   const showEmptyCatalog = formOpen &&
@@ -2448,7 +2831,8 @@ export function TokenPlanSection() {
     <SectionCard
       title={copy("settings.section.token_plan")}
       subtitle={copy("settings.token_plan.subtitle")}
-      action={
+      collapsible={!editorPlanId}
+      action={!editorPlanId ? (
         <button
           type="button"
           onClick={openNewForm}
@@ -2462,82 +2846,55 @@ export function TokenPlanSection() {
           <Plus className="h-3.5 w-3.5" aria-hidden />
           {copy("settings.token_plan.add")}
         </button>
-      }
+      ) : null}
     >
-      {records.length !== 0 && (
-        <div className="mb-3 grid gap-2 border-y border-oai-gray-200 py-3 text-xs dark:border-oai-gray-800 sm:grid-cols-3">
-          <SummaryMetric label={copy("settings.token_plan.total_quota")} value={formatQuota(quotaSummary.total)} />
-          <SummaryMetric label={copy("settings.token_plan.used_quota")} value={formatQuota(quotaSummary.used)} />
-          <SummaryMetric label={copy("settings.token_plan.remaining_quota")} value={formatQuota(quotaSummary.remaining)} />
-        </div>
-      )}
-
-      <div className="border-b border-oai-gray-200 pb-3 dark:border-oai-gray-800">
+      {!editorPlanId && <div className="border-b border-oai-gray-200 pb-3 dark:border-oai-gray-800">
         {records.length === 0 ? (
           <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
             {copy("settings.token_plan.empty")}
           </div>
         ) : (
-          <div className="space-y-2">
-            {records.map((record) => (
-              <div key={record.id} className="rounded-md border border-oai-gray-200 px-3 py-2 dark:border-oai-gray-800">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">
-                      {record.provider_id && record.provider_id !== "custom"
-                        ? `${record.source} / ${record.provider_id} / ${record.plan_label}`
-                        : `${record.source} / ${record.plan_label}`}
-                    </div>
-                    <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
-                      {formatRecordQuotaLine(record, catalog)} {copy("settings.token_plan.remaining")}
-                      {record.quota_unit && record.quota_unit !== "tokens" ? ` ${record.quota_unit}` : ""}
-                      {record.expires_at ? ` · ${copy("settings.token_plan.expires_at")} ${record.expires_at}` : ""}
-                    </div>
-                    <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
-                      {record.quota_source
-                        ? ` · ${record.quota_source === "catalog"
-                          ? copy("settings.token_plan.quota_source_catalog")
-                          : record.quota_source === "custom_api"
-                          ? copy("settings.token_plan.quota_source_custom_api")
-                          : copy("settings.token_plan.quota_source_manual")}`
-                        : ""}
-                    </div>
-                    <RecordNotesEditor
-                      record={record}
-                      onSave={saveRecordNotes}
-                      disabled={saving}
-                      hidden={formOpen && form.id === record.id}
-                    />
-                    {/* W03-R3D: Unified detection/sync status display for both official_account and custom_api */}
-                    <RecordSyncStatus record={record} />
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => refresh(record.id)}
-                      disabled={refreshingId === record.id}
-                      title={copy("settings.token_plan.refresh")}
-                      className="text-xs font-medium text-oai-gray-600 hover:text-oai-brand dark:text-oai-gray-300 disabled:opacity-50"
-                    >
-                      <RefreshCw className={cn("h-3.5 w-3.5", refreshingId === record.id && "animate-spin")} aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editRecord(record)}
-                      className="shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark"
-                    >
-                      {copy("settings.token_plan.edit")}
-                    </button>
-                  </div>
-                </div>
-                {isCodexSource(record.source) && (
-                  <CodexQuotaBlock codexData={usageLimits?.codex} loading={loadingUsageLimits} />
-                )}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePlanDragEnd}>
+            <SortableContext items={records.map((record) => record.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {records.map((record) => (
+                  <SortableTokenPlanCard
+                    key={record.id}
+                    record={record}
+                    expanded={expandedPlanIds.has(record.id)}
+                    onToggle={togglePlanDetails}
+                    onRefresh={refresh}
+                    onEdit={openRecordEditor}
+                    onSaveNotes={saveRecordNotes}
+                    onKeyboardMove={handlePlanKeyboardMove}
+                    onDelete={removeRecord}
+                    refreshing={refreshingId === record.id}
+                    saving={saving || deletingId === record.id}
+                    catalog={catalog}
+                    usageLimits={usageLimits}
+                    loadingUsageLimits={loadingUsageLimits}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
-      </div>
+      </div>}
+
+      {editorMissing && (
+        <div className="rounded-md border border-oai-gray-200 px-4 py-6 text-center dark:border-oai-gray-800">
+          <p className="text-sm text-oai-gray-600 dark:text-oai-gray-300">
+            {copy("settings.token_plan.editor_missing")}
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate("/settings/cost")}
+            className="mt-3 text-sm font-medium text-oai-brand hover:underline"
+          >
+            {copy("settings.token_plan.back_to_cost")}
+          </button>
+        </div>
+      )}
 
       {formOpen && (
         <div className="mt-3 rounded-md border border-oai-gray-200 px-3 py-3 dark:border-oai-gray-800">
@@ -2973,6 +3330,7 @@ export function TokenPlanSection() {
                         onConnect={handleConnectKimi}
                         onSync={handleOfficialAccountSync}
                         onDelete={handleDeleteKimiConsoleSession}
+                        onAddAccount={handleAddDetectedAccount}
                         testIdPrefix="kimi"
                         syncing={refreshingId === form.id || connectingConsole}
                         syncDisabled={refreshingId === form.id || saving || connectingConsole}
@@ -3193,6 +3551,14 @@ export function TokenPlanSection() {
                               {copy("settings.token_plan.console_session.disconnect")}
                             </button>
                           ) : null}
+                          <button
+                            type="button"
+                            onClick={handleAddDetectedAccount}
+                            data-testid="detection-add-account-codex"
+                            className="ml-3 text-xs font-medium text-oai-brand-600 underline hover:text-oai-brand-700 dark:text-oai-brand-400"
+                          >
+                            {copy("settings.token_plan.console_session.add_account")}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -3217,7 +3583,8 @@ export function TokenPlanSection() {
                         consoleSessionError={consoleSessionError}
                         onConnect={handleConnectClaude}
                         onSync={handleOfficialAccountSync}
-                        onDelete={handleDeleteClaudeConsoleSession}
+                      onDelete={handleDeleteClaudeConsoleSession}
+                      onAddAccount={handleAddDetectedAccount}
                         testIdPrefix="claude"
                         syncing={refreshingId === form.id || connectingConsole}
                         syncDisabled={refreshingId === form.id || saving || connectingConsole}
@@ -3238,9 +3605,30 @@ export function TokenPlanSection() {
                       onConnect={handleConnectCursor}
                       onSync={handleOfficialAccountSync}
                       onDelete={handleDeleteCursorConsoleSession}
+                      onAddAccount={handleAddDetectedAccount}
                       testIdPrefix="cursor"
                       syncing={refreshingId === form.id || connectingConsole}
                       syncDisabled={refreshingId === form.id || saving || connectingConsole}
+                    />
+                  ) : form.provider_id === "trae" ? (
+                    <WebviewConsoleConnectPanel
+                      descCopyKey="settings.token_plan.trae.official_desc"
+                      connectCopyKey="settings.token_plan.trae.connect_account"
+                      loginStartedDescCopyKey="settings.token_plan.trae.login_started_desc"
+                      providerHomeUrl={resolveProviderHomeUrl("trae")}
+                      stage={traeStage}
+                      session={formTraeSession}
+                      statusLabel={traeStatusLabel}
+                      loadingConsoleSessions={loadingConsoleSessions}
+                      connectingConsole={connectingConsole}
+                      consoleSessionError={consoleSessionError}
+                      onConnect={handleConnectTrae}
+                      onSync={handleConnectTrae}
+                      onDelete={handleDeleteTraeConsoleSession}
+                      onAddAccount={handleAddDetectedAccount}
+                      testIdPrefix="trae"
+                      syncing={connectingConsole}
+                      syncDisabled={saving || connectingConsole}
                     />
                   ) : form.provider_id === "xiaomi_mimo" ? (
                     <>

@@ -1,0 +1,39 @@
+{
+  "billingCycleStart": "2026-07-06T14:31:29.000Z",
+  "billingCycleEnd": "2026-08-06T14:31:29.000Z",
+  "membershipType": "pro",
+  "limitType": "user",
+  "isUnlimited": false,
+  "autoModelSelectedDisplayMessage": "You've used 30% of your included total usage",
+  "namedModelSelectedDisplayMessage": "You've used 72% of your included API usage",
+  "individualUsage": {
+    "plan": {
+      "enabled": true,
+      "used": 2000,
+      "limit": 2000,
+      "remaining": 0,
+      "breakdown": {
+        "included": 2000,
+        "bonus": 8193,
+        "total": 10193
+      },
+      "autoPercentUsed": 23.246666666666666,
+      "apiPercentUsed": 71.53333333333333,
+      "totalPercentUsed": 29.544927536231885
+    },
+    "onDemand": {
+      "enabled": false,
+      "used": 0,
+      "limit": null,
+      "remaining": null
+    }
+  },
+  "teamUsage": {},
+  "_fixture": {
+    "account_id": "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+    "display_name_redacted": "eve***@hotmail.com",
+    "source": "live_capture_via_token_eyes_auth_refresh",
+    "captured_at": "2026-07-19T11:58:57.718721Z",
+    "notes": "LIVE capture via Token Eyes stored refresh_token -> api2.cursor.sh/oauth/token -> cursor.com/api/usage-summary Cookie WorkosCursorSessionToken. Tokens/cookies omitted from fixture. account_id is JWT sub. Cockpit UI rounded Total Usage to ~27%; raw totalPercentUsed here is ~29.54%."
+  }
+}

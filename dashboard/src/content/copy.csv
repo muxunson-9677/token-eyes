@@ -1,4 +1,12 @@
 key,module,page,component,slot,text,notes,status
+settings.cost.provider_api.guide,ui,SettingsPage,ProviderApiConfigSection,guide,"配置文档",,active
+settings.cost.provider_api.guide_close,ui,SettingsPage,ProviderApiConfigSection,guide_close,"关闭配置文档",,active
+settings.cost.provider_api.guide_copy,ui,SettingsPage,ProviderApiConfigSection,guide_copy,"复制给 AI",,active
+settings.cost.provider_api.guide_copied,ui,SettingsPage,ProviderApiConfigSection,guide_copied,"已复制",,active
+settings.cost.provider_api.guide_secret_warning,ui,SettingsPage,ProviderApiConfigSection,guide_secret_warning,"文档不包含密钥；请勿把 API Key、AccessKey Secret 或浏览器 Cookie 发给 AI。",,active
+settings.cost.other_ai.edit_group,ui,SettingsPage,OtherAiSpendSection,edit_group,"编辑分组",,active
+settings.cost.other_ai.favorite_group,ui,SettingsPage,OtherAiSpendSection,favorite_group,"收藏分组",,active
+settings.cost.other_ai.unfavorite_group,ui,SettingsPage,OtherAiSpendSection,unfavorite_group,"取消收藏分组",,active
 header.auth.sign_in_aria,shared,*,InsforgeUserHeaderControls,sign_in_aria,"Sign in",,active
 login.back_home,shared,LoginPage,LoginPage,back_home,"Back to home",,active
 login.cloud_only,shared,LoginPage,LoginPage,cloud_only,"Cloud sign-in is not configured. Use the local dashboard on localhost.",,active
@@ -258,11 +266,15 @@ leaderboard.period.30d,dashboard,LeaderboardPage,LeaderboardPage,period_30d,"Las
 leaderboard.period.total,dashboard,LeaderboardPage,LeaderboardPage,period_total,"All time",,active
 leaderboard.agent.all,dashboard,LeaderboardPage,LeaderboardPage,agent_all,"Overall",,active
 leaderboard.agent.more,dashboard,LeaderboardPage,LeaderboardPage,agent_more,"More Agents",,active
+leaderboard.back_overview,dashboard,LeaderboardPage,LeaderboardPage,back_overview,"Back to overview",,active
 leaderboard.metric.with_cache,dashboard,LeaderboardPage,LeaderboardPage,metric_with_cache,"With cache",,active
 leaderboard.metric.without_cache,dashboard,LeaderboardPage,LeaderboardPage,metric_without_cache,"Without cache",,active
 leaderboard.metric.estimated_cost,dashboard,LeaderboardPage,LeaderboardPage,metric_estimated_cost,"Estimated cost",,active
 leaderboard.summary.total_score,dashboard,LeaderboardPage,LeaderboardPage,summary_total_score,"All participants {{value}}",,active
 leaderboard.summary.participants,dashboard,LeaderboardPage,LeaderboardPage,summary_participants,"Participants {{count}}",,active
+leaderboard.summary.participant_label,dashboard,LeaderboardPage,LeaderboardPage,summary_participant_label,"Total participants",,active
+leaderboard.summary.tokens_label,dashboard,LeaderboardPage,LeaderboardPage,summary_tokens_label,"All-user cumulative Token",,active
+leaderboard.summary.cost_label,dashboard,LeaderboardPage,LeaderboardPage,summary_cost_label,"All-user cumulative estimated spend",,active
 leaderboard.me_label,dashboard,LeaderboardPage,LeaderboardPage,me_label,"You",,active
 leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"Anonymous",,active
 leaderboard.error.unknown,dashboard,LeaderboardPage,LeaderboardPage,error_unknown,"Unknown error",,active
@@ -270,6 +282,7 @@ leaderboard.loading,dashboard,LeaderboardPage,LeaderboardPage,state_loading,"Loa
 leaderboard.empty,dashboard,LeaderboardPage,LeaderboardPage,state_empty,"No data",,active
 leaderboard.column.rank,dashboard,LeaderboardPage,LeaderboardPage,column_rank,"Rank",,active
 leaderboard.column.user,dashboard,LeaderboardPage,LeaderboardPage,column_user,"User",,active
+leaderboard.column.agent_distribution,dashboard,LeaderboardPage,LeaderboardPage,column_agent_distribution,"Agent usage",,active
 leaderboard.column.total,dashboard,LeaderboardPage,LeaderboardPage,column_total,"Total",,active
 leaderboard.column.codex,dashboard,LeaderboardPage,LeaderboardPage,column_codex,"Codex",,active
 leaderboard.column.claude,dashboard,LeaderboardPage,LeaderboardPage,column_claude,"Claude",,active
@@ -571,6 +584,7 @@ limits.label.grok_ondemand,ui,LimitsPage,UsageLimitsPanel,grok_ondemand,"On-dema
 limits.provider.claude,ui,LimitsPage,UsageLimitsPanel,provider_claude,"Claude",,active
 limits.provider.codex,ui,LimitsPage,UsageLimitsPanel,provider_codex,"Codex",,active
 limits.provider.cursor,ui,LimitsPage,UsageLimitsPanel,provider_cursor,"Cursor",,active
+usage.provider.connected_no_precise_tokens,ui,ProviderUsageTable,ProviderUsageTable,connected_no_precise_tokens,"已连接，当前日志未提供精确 Token 字段",,active
 limits.provider.trae,ui,LimitsPage,UsageLimitsPanel,provider_trae,"Trae",,active
 limits.provider.codebuddy,ui,LimitsPage,UsageLimitsPanel,provider_codebuddy,"CodeBuddy",,active
 limits.provider.gemini,ui,LimitsPage,UsageLimitsPanel,provider_gemini,"Gemini",,active
@@ -986,6 +1000,7 @@ skills.usage.unused,ui,SkillsPage,SkillDetailPanel,usage_unused,"Not invoked yet
 skills.usage.disclaimer,ui,SkillsPage,SkillDetailPanel,usage_disclaimer,"Counts from Claude transcripts. Cost is the approximate spend of turns that invoked this skill.",,active
 settings.section.data_dirs,ui,SettingsPage,DataDirectoriesSection,sec_data_dirs,"数据目录",,active
 settings.data_dirs.subtitle,ui,SettingsPage,DataDirectoriesSection,subtitle,"本地路径配置，用于 Windows 和 WSL 用量日志。",,active
+settings.data_dirs.drag,ui,SettingsPage,DataDirectoriesSection,drag,"拖动排序 {agent}",,active
 settings.data_dirs.claude,ui,SettingsPage,DataDirectoriesSection,claude_label,"Claude Code 数据目录",,active
 settings.data_dirs.claude_hint,ui,SettingsPage,DataDirectoriesSection,claude_hint,"留空则使用 ~/.claude。WSL 路径示例：\\wsl.localhost\\Ubuntu\\home\\user\\.claude。",,active
 settings.data_dirs.codex,ui,SettingsPage,DataDirectoriesSection,codex_label,"Codex 数据目录",,active
@@ -1006,8 +1021,26 @@ settings.data_dirs.auto_detecting,ui,SettingsPage,DataDirectoriesSection,auto_de
 settings.data_dirs.auto_detect_success,ui,SettingsPage,DataDirectoriesSection,auto_detect_success,"已识别 {{count}} 个可采集 Agent 路径，请确认后保存。",,active
 settings.data_dirs.auto_detect_none,ui,SettingsPage,DataDirectoriesSection,auto_detect_none,"未发现可采集的 Agent 数据目录，请手动选择目录后再检测。",,active
 settings.data_dirs.auto_detect_error,ui,SettingsPage,DataDirectoriesSection,auto_detect_error,"自动检测路径失败，请手动选择目录。",,active
-settings.section.agent_pricing,ui,SettingsPage,AgentPricingSection,sec_agent_pricing,"Agent 计费规则",,active
-settings.agent_pricing.subtitle,ui,SettingsPage,AgentPricingSection,subtitle,"为每个 Agent + Model 组合配置精确单价，未命中时回退到默认计费。单位为每 100 万 token。",,active
+settings.section.agent_pricing,ui,SettingsPage,AgentPricingSection,sec_agent_pricing,"模型定价表",,active
+settings.agent_pricing.subtitle,ui,SettingsPage,AgentPricingSection,subtitle,"查看常用模型公开价格，并可为本地 Agent + Model 配置精确单价。单位为每 100 万 Token。",,active
+settings.agent_pricing.catalog.title,ui,SettingsPage,AgentPricingSection,catalog_title,"公开价目",,active
+settings.agent_pricing.catalog.subtitle,ui,SettingsPage,AgentPricingSection,catalog_subtitle,"官网公开价格快照；实际账单以供应商结算为准。",,active
+settings.agent_pricing.catalog.model,ui,SettingsPage,AgentPricingSection,catalog_model,"模型",,active
+settings.agent_pricing.catalog.input,ui,SettingsPage,AgentPricingSection,catalog_input,"输入",,active
+settings.agent_pricing.catalog.output,ui,SettingsPage,AgentPricingSection,catalog_output,"输出",,active
+settings.agent_pricing.catalog.cache_read,ui,SettingsPage,AgentPricingSection,catalog_cache_read,"缓存读",,active
+settings.agent_pricing.catalog.cache_write,ui,SettingsPage,AgentPricingSection,catalog_cache_write,"缓存写",,active
+settings.agent_pricing.catalog.source,ui,SettingsPage,AgentPricingSection,catalog_source,"来源",,active
+settings.agent_pricing.catalog.official,ui,SettingsPage,AgentPricingSection,catalog_official,"官网",,active
+settings.agent_pricing.catalog.pending_verification,ui,SettingsPage,AgentPricingSection,catalog_pending_verification,"待核价",,active
+settings.agent_pricing.catalog.new_model,ui,SettingsPage,AgentPricingSection,catalog_new_model,"新检测模型 · 待核价",,active
+settings.agent_pricing.catalog.peak_double,ui,SettingsPage,AgentPricingSection,catalog_peak_double,"高峰期 2 倍用量",,active
+settings.agent_pricing.catalog.updated,ui,SettingsPage,AgentPricingSection,catalog_updated,"价格核验于 {{date}}",,active
+settings.agent_pricing.catalog.auto_verify,ui,SettingsPage,AgentPricingSection,catalog_auto_verify,"自动核价",,active
+settings.agent_pricing.catalog.auto_verify_model,ui,SettingsPage,AgentPricingSection,catalog_auto_verify_model,"自动核价 {{model}}",,active
+settings.agent_pricing.catalog.verifying,ui,SettingsPage,AgentPricingSection,catalog_verifying,"核价中…",,active
+settings.agent_pricing.catalog.auto_success,ui,SettingsPage,AgentPricingSection,catalog_auto_success,"官网自动核价成功",,active
+settings.agent_pricing.catalog.auto_failed,ui,SettingsPage,AgentPricingSection,catalog_auto_failed,"官网自动核价失败，请人工填写。",,active
 settings.agent_pricing.claude,ui,SettingsPage,AgentPricingSection,claude,"Claude Code",,active
 settings.agent_pricing.codex,ui,SettingsPage,AgentPricingSection,codex,"Codex",,active
 settings.agent_pricing.hermes,ui,SettingsPage,AgentPricingSection,hermes,"Hermes Agent",,active
@@ -1019,7 +1052,7 @@ settings.agent_pricing.saving,ui,SettingsPage,AgentPricingSection,saving,"保存
 settings.agent_pricing.saved,ui,SettingsPage,AgentPricingSection,saved,"已保存到本地。刷新或同步用量后成本会更新。",,active
 settings.agent_pricing.load_error,ui,SettingsPage,AgentPricingSection,load_error,"无法加载计费设置。",,active
 settings.agent_pricing.save_error,ui,SettingsPage,AgentPricingSection,save_error,"无法保存计费设置。",,active
-settings.agent_pricing.rules.title,ui,SettingsPage,AgentPricingSection,rules_title,"Agent + Model 计费规则",,active
+settings.agent_pricing.rules.title,ui,SettingsPage,AgentPricingSection,rules_title,"本地自定义价目",,active
 settings.agent_pricing.rules.subtitle,ui,SettingsPage,AgentPricingSection,rules_subtitle,"精确匹配 Agent 和模型名。未命中规则时回退到默认计费，再回退到内置价格。",,active
 settings.agent_pricing.rules.empty,ui,SettingsPage,AgentPricingSection,rules_empty,"暂无规则，点击下方按钮新增。",,active
 settings.agent_pricing.rules.add,ui,SettingsPage,AgentPricingSection,rules_add,"新增规则",,active
@@ -1123,6 +1156,18 @@ settings.data_dirs.opencode,ui,SettingsPage,DataDirectoriesSection,opencode_labe
 settings.data_dirs.opencode_hint,ui,SettingsPage,DataDirectoriesSection,opencode_hint,"留空则使用 OPENCODE_HOME 或默认 ~/.local/share/opencode；请选择包含 opencode.db 或 storage/message 的目录。",,active
 settings.data_dirs.openclaw,ui,SettingsPage,DataDirectoriesSection,openclaw_label,"OpenClaw 数据目录",,active
 settings.data_dirs.openclaw_hint,ui,SettingsPage,DataDirectoriesSection,openclaw_hint,"留空则使用默认 OpenClaw 目录；用于后续 OpenClaw 日志或插件数据接入。",,active
+settings.data_dirs.trae,ui,SettingsPage,DataDirectoriesSection,trae_label,"Trae 数据目录",,active
+settings.data_dirs.trae_hint,ui,SettingsPage,DataDirectoriesSection,trae_hint,"留空则使用 Trae 默认日志目录；请选择包含会话数据库或日志的目录。",,active
+settings.token_plan.trae.official_desc,ui,SettingsPage,TokenPlanSection,trae_official_desc,"通过 Trae CN 官方 OAuth 授权检测账号订阅状态与可用额度；每个授权账号独立保存。",,active
+settings.token_plan.trae.connect_account,ui,SettingsPage,TokenPlanSection,trae_connect_account,"连接 Trae CN 账号",,active
+settings.token_plan.trae.login_started_desc,ui,SettingsPage,TokenPlanSection,trae_login_started_desc,"已在系统默认浏览器打开 Trae CN 官方授权页；完成授权后将自动返回并同步额度。",,active
+settings.token_plan.trae.connect_timeout,ui,SettingsPage,TokenPlanSection,trae_connect_timeout,"Trae CN 授权等待超时，请重试。",,active
+settings.data_dirs.codebuddy,ui,SettingsPage,DataDirectoriesSection,codebuddy_label,"CodeBuddy 数据目录",,active
+settings.data_dirs.codebuddy_hint,ui,SettingsPage,DataDirectoriesSection,codebuddy_hint,"留空则使用 ~/.codebuddy；请选择包含 projects 会话日志的目录。",,active
+settings.data_dirs.gemini,ui,SettingsPage,DataDirectoriesSection,gemini_label,"Gemini CLI 数据目录",,active
+settings.data_dirs.gemini_hint,ui,SettingsPage,DataDirectoriesSection,gemini_hint,"留空则使用 GEMINI_HOME 或 ~/.gemini；请选择包含 tmp 项目会话的目录。",,active
+settings.data_dirs.antigravity,ui,SettingsPage,DataDirectoriesSection,antigravity_label,"Antigravity 数据目录",,active
+settings.data_dirs.antigravity_hint,ui,SettingsPage,DataDirectoriesSection,antigravity_hint,"留空则使用 Gemini 数据根目录；请选择包含 antigravity 会话日志的目录。",,active
 settings.data_dirs.detect_env,ui,SettingsPage,DataDirectoriesSection,detect_env,"检测环境",,active
 settings.data_dirs.detecting,ui,SettingsPage,DataDirectoriesSection,detecting,"检测中",,active
 settings.data_dirs.detect_env_aria,ui,SettingsPage,DataDirectoriesSection,detect_env_aria,"检测 {{agent}} 运行环境",,active
@@ -1130,17 +1175,28 @@ settings.data_dirs.ready,ui,SettingsPage,DataDirectoriesSection,ready,"已就绪
 settings.data_dirs.saved_button,ui,SettingsPage,DataDirectoriesSection,saved_button,"已保存",,active
 settings.data_dirs.syncing,ui,SettingsPage,DataDirectoriesSection,syncing,"路径已保存，正在同步 Token 数据。",,active
 settings.data_dirs.sync_error,ui,SettingsPage,DataDirectoriesSection,sync_error,"路径已保存，但 Token 同步失败，请稍后重试。",,active
-settings.data_dirs.installed_no_data,ui,SettingsPage,DataDirectoriesSection,installed_no_data,"已安装，暂无 Token 数据",,active
+settings.data_dirs.installed_no_data,ui,SettingsPage,DataDirectoriesSection,installed_no_data,"已连接，当前日志未提供精确 Token 字段",,active
 settings.data_dirs.not_detected,ui,SettingsPage,DataDirectoriesSection,not_detected,"未检测到",,active
 settings.data_dirs.not_detected_reason,ui,SettingsPage,DataDirectoriesSection,not_detected_reason,"路径不存在或未配置",,active
 settings.data_dirs.env.win,ui,SettingsPage,DataDirectoriesSection,env_win,"Win",,active
 settings.data_dirs.env.wsl_ubuntu,ui,SettingsPage,DataDirectoriesSection,env_wsl_ubuntu,"WSL Ubuntu",,active
 settings.data_dirs.env.unknown,ui,SettingsPage,DataDirectoriesSection,env_unknown,"未知",,active
 settings.data_dirs.version_current,ui,SettingsPage,DataDirectoriesSection,version_current,"当前版本：{{version}}",,active
+settings.data_dirs.resolved_data_path,ui,SettingsPage,DataDirectoriesSection,resolved_data_path,"实际读取目录：{{path}}",,active
 settings.token_plan.add,ui,SettingsPage,TokenPlanSection,add,"新增套餐",,active
+settings.token_plan.drag,ui,SettingsPage,TokenPlanSection,drag,"拖动 {{plan}}",,active
+settings.token_plan.expand,ui,SettingsPage,TokenPlanSection,expand,"展开 {{plan}}",,active
+settings.token_plan.collapse,ui,SettingsPage,TokenPlanSection,collapse,"收起 {{plan}}",,active
+settings.token_plan.reorder_error,ui,SettingsPage,TokenPlanSection,reorder_error,"套餐顺序保存失败，已恢复原顺序",,active
+settings.token_plan.delete,ui,SettingsPage,TokenPlanSection,delete,"删除 {{plan}}",,active
+settings.token_plan.delete_short,ui,SettingsPage,TokenPlanSection,delete_short,"删除",,active
+settings.token_plan.confirm_delete,ui,SettingsPage,TokenPlanSection,confirm_delete,"确认删除 Token 套餐“{{plan}}”？这只会删除 Token Eyes 本地记录。",,active
+settings.token_plan.delete_error,ui,SettingsPage,TokenPlanSection,delete_error,"套餐删除失败，请重试",,active
 settings.token_plan.cancel,ui,SettingsPage,TokenPlanSection,cancel,"取消",,active
 settings.token_plan.form_title_new,ui,SettingsPage,TokenPlanSection,form_title_new,"新增 Token 套餐",,active
 settings.token_plan.form_title_edit,ui,SettingsPage,TokenPlanSection,form_title_edit,"编辑 Token 套餐",,active
+settings.token_plan.editor_missing,ui,SettingsPage,TokenPlanSection,editor_missing,"未找到该 Token 套餐",,active
+settings.token_plan.back_to_cost,ui,SettingsPage,TokenPlanSection,back_to_cost,"返回成本设置",,active
 dashboard.refresh.interval.label,dashboard,DashboardPage,DashboardPage,refresh_interval_label,"刷新间隔",,active
 dashboard.refresh.interval.manual,dashboard,DashboardPage,DashboardPage,refresh_interval_manual,"手动",,active
 dashboard.refresh.interval.30s,dashboard,DashboardPage,DashboardPage,refresh_interval_30s,"30秒",,active
@@ -1209,6 +1265,9 @@ usage.request_log.error,ui,DashboardPage,RequestUsageLog,error,"无法读取请�
 usage.request_log.loading_aria,ui,DashboardPage,RequestUsageLog,loading_aria,"加载请求级 Token 记录",,active
 usage.request_log.source_filter_aria,ui,DashboardPage,RequestUsageLog,source_filter_aria,"选择数据源",,active
 usage.request_log.totals,ui,DashboardPage,RequestUsageLog,totals,"合计",,active
+usage.request_log.metric.requests,ui,DashboardPage,RequestUsageLog,metric_requests,"请求数",,active
+usage.request_log.metric.success_rate,ui,DashboardPage,RequestUsageLog,metric_success_rate,"成功率",,active
+usage.request_log.metric.avg_latency,ui,DashboardPage,RequestUsageLog,metric_avg_latency,"平均延迟",,active
 usage.request_log.showing,ui,DashboardPage,RequestUsageLog,showing,"显示 {{count}} 条记录",,active
 usage.request_log.column.time,ui,DashboardPage,RequestUsageLog,column_time,"时间",,active
 usage.request_log.column.agent,ui,DashboardPage,RequestUsageLog,column_agent,"Agent",,active
@@ -1365,6 +1424,7 @@ settings.token_plan.console_session.retry,ui,SettingsPage,TokenPlanSection,conso
 settings.token_plan.console_session.last_verified,ui,SettingsPage,TokenPlanSection,console_session_last_verified,"最后验证",,active
 settings.token_plan.console_session.verify,ui,SettingsPage,TokenPlanSection,console_session_verify,"重新验证",,active
 settings.token_plan.console_session.disconnect,ui,SettingsPage,TokenPlanSection,console_session_disconnect,"删除连接",,active
+settings.token_plan.console_session.add_account,ui,SettingsPage,TokenPlanSection,console_session_add_account,"新增账号",,active
 settings.token_plan.console_session.connect_error,ui,SettingsPage,TokenPlanSection,console_session_connect_error,"连接失败",,active
 settings.token_plan.console_session.delete_error,ui,SettingsPage,TokenPlanSection,console_session_delete_error,"删除连接失败",,active
 settings.token_plan.console_session.verify_error,ui,SettingsPage,TokenPlanSection,console_session_verify_error,"验证失败",,active
@@ -1522,6 +1582,10 @@ spend.cost.summary.month_api,dashboard,SpendPage,CostAccumulation,summary_month_
 spend.cost.summary.month_subscription,dashboard,SpendPage,CostAccumulation,summary_month_subscription,"本月订阅成本",,active
 spend.cost.summary.month_total,dashboard,SpendPage,CostAccumulation,summary_month_total,"本月总成本",,active
 spend.cost.summary.lifetime_total,dashboard,SpendPage,CostAccumulation,summary_lifetime_total,"累计总成本",,active
+spend.cost.other_ai_groups.section,dashboard,SpendPage,CostAccumulation,other_ai_groups_section,"自定义花销分组",,active
+spend.cost.other_ai_groups.month,dashboard,SpendPage,CostAccumulation,other_ai_groups_month,"本月",,active
+spend.cost.other_ai_groups.year,dashboard,SpendPage,CostAccumulation,other_ai_groups_year,"本年",,active
+spend.cost.other_ai_groups.lifetime,dashboard,SpendPage,CostAccumulation,other_ai_groups_lifetime,"总累积",,active
 nav.group.overview,ui,Sidebar,Sidebar,group_overview,"概览",,active
 nav.group.spend,ui,Sidebar,Sidebar,group_spend,"支出",,active
 nav.group.settings,ui,Sidebar,Sidebar,group_settings,"设置",,active
@@ -1541,6 +1605,17 @@ spend.usage.token_services.total,dashboard,SpendPage,TokenServiceList,token_serv
 spend.usage.token_services.progress,dashboard,SpendPage,TokenServiceList,token_services_progress,"{{name}} 用量",,active
 spend.usage.token_services.previous,dashboard,SpendPage,TokenServiceList,token_services_previous,"上一页",,active
 spend.usage.token_services.next,dashboard,SpendPage,TokenServiceList,token_services_next,"下一页",,active
+spend.usage.token_services.window.total,dashboard,SpendPage,TokenServiceList,token_services_window_total,"总额度",,active
+spend.usage.token_services.window.total_usage,dashboard,SpendPage,TokenServiceList,token_services_window_total_usage,"Total Usage",,active
+spend.usage.token_services.window.rolling_5_hour,dashboard,SpendPage,TokenServiceList,token_services_window_rolling_5_hour,"5 小时",,active
+spend.usage.token_services.window.rolling_weekly,dashboard,SpendPage,TokenServiceList,token_services_window_rolling_weekly,"每周",,active
+spend.usage.token_services.window.auto_composer,dashboard,SpendPage,TokenServiceList,token_services_window_auto_composer,"Auto + Composer",,active
+spend.usage.token_services.window.api,dashboard,SpendPage,TokenServiceList,token_services_window_api,"API Usage",,active
+spend.usage.token_services.reset_at,dashboard,SpendPage,TokenServiceList,token_services_reset_at,"{{value}} 重置",,active
+spend.usage.token_services.expires_at,dashboard,SpendPage,TokenServiceList,token_services_expires_at,"有效期至 {{value}}",,active
+app.boot.loading,ui,App,AppBootSplash,app_boot_loading,"正在启动本地仪表盘…",,active
+app.boot.loading_aria,ui,App,AppBootSplash,app_boot_loading_aria,"Token Eyes 正在启动",,active
+settings.cost.loading,ui,SettingsPage,SettingsCostFallback,settings_cost_loading,"正在加载成本设置…",,active
 spend.cost.page.title,dashboard,SpendPage,SpendPage,cost_page_title,"成本累积",,active
 spend.cost.page.subtitle,dashboard,SpendPage,SpendPage,cost_page_subtitle,"查看 Token 套餐状态、供应商账户花销与余额及订阅记录。",,active
 settings.basic.page.title,ui,SettingsPage,SettingsPage,basic_page_title,"基础设置",,active
@@ -1549,6 +1624,7 @@ settings.cost.page.title,ui,SettingsPage,SettingsPage,cost_page_title,"成本设
 settings.cost.page.subtitle,ui,SettingsPage,SettingsPage,cost_page_subtitle,"管理 Token 套餐、供应商 API 配置和其他 AI 花销。",,active
 settings.cost.provider_api.placeholder,ui,SettingsPage,SettingsPage,provider_api_placeholder,"供应商 API 配置将在 03 工单接入。",,active
 settings.cost.provider_api.section,ui,SettingsPage,ProviderApiConfigSection,provider_api_section,"供应商 API 配置",,active
+settings.cost.provider_api.details,ui,SettingsPage,ProviderApiConfigSection,provider_api_details,"展开或收起详细内容",,active
 settings.cost.provider_api.subtitle,ui,SettingsPage,ProviderApiConfigSection,provider_api_subtitle,"配置供应商账户余额与花销查询（仅查询财务接口，不调用模型）。",,active
 settings.cost.provider_api.empty,ui,SettingsPage,ProviderApiConfigSection,provider_api_empty,"暂无供应商 API 配置，点击新增开始接入。",,active
 settings.cost.provider_api.add,ui,SettingsPage,ProviderApiConfigSection,provider_api_add,"新增配置",,active
@@ -1598,6 +1674,7 @@ settings.cost.provider_api.capability.minimax_balance_unsupported,ui,SettingsPag
 settings.cost.provider_api.capability.aliyun_account_scope,ui,SettingsPage,ProviderApiConfigSection,aliyun_account_scope,"查询的是阿里云账号总余额（包含千问/百炼相关消费），不是单独的千问模型余额；需为 RAM 用户授予账务只读权限。",,active
 settings.cost.provider_api.capability.volcengine_account_scope,ui,SettingsPage,ProviderApiConfigSection,volcengine_account_scope,"查询的是火山引擎账号总余额（包含豆包/方舟相关消费），不是单独的豆包模型余额；需使用具备账务查询权限的 AccessKey。",,active
 settings.cost.provider_api.capability.token_plan_settings,ui,SettingsPage,ProviderApiConfigSection,token_plan_settings,"套餐 Token 额度请在 Token 套餐设置中配置",,active
+settings.cost.provider_api.capability.official_console_hint,ui,SettingsPage,ProviderApiConfigSection,official_console_hint,"保存后点击“测试连接”，在官方控制台窗口完成登录。Token Eyes 只保存脱敏后的余额数字，不保存密码或 Cookie。",,active
 settings.cost.provider_api.token_quota,ui,SettingsPage,ProviderApiConfigSection,token_quota,"套餐 Token 额度",,active
 settings.cost.provider_api.form.advanced_show,ui,SettingsPage,ProviderApiConfigSection,form_advanced_show,"展开高级配置",,active
 settings.cost.provider_api.form.advanced_hide,ui,SettingsPage,ProviderApiConfigSection,form_advanced_hide,"收起高级配置",,active
@@ -1685,3 +1762,29 @@ settings.cost.other_ai.error_required,ui,SettingsPage,OtherAiSpendSection,error_
 settings.cost.other_ai.error_load,ui,SettingsPage,OtherAiSpendSection,error_load,"花销记录刷新失败，现有显示数据未被清空，请重试。",,active
 settings.cost.other_ai.error_delete,ui,SettingsPage,OtherAiSpendSection,error_delete,"删除失败，请重试。",,active
 settings.cost.other_ai.subtotal,ui,SettingsPage,OtherAiSpendSection,subtotal,"原币合计",,active
+settings.cost.other_ai.add_group,ui,SettingsPage,OtherAiSpendSection,add_group,"新增分组",,active
+settings.cost.other_ai.add_subgroup,ui,SettingsPage,OtherAiSpendSection,add_subgroup,"新增子分组",,active
+settings.cost.other_ai.group_name,ui,SettingsPage,OtherAiSpendSection,group_name,"分组名称",,active
+settings.cost.other_ai.parent_group,ui,SettingsPage,OtherAiSpendSection,parent_group,"上级分组",,active
+settings.cost.other_ai.root_group,ui,SettingsPage,OtherAiSpendSection,root_group,"一级分组",,active
+settings.cost.other_ai.save_group,ui,SettingsPage,OtherAiSpendSection,save_group,"保存分组",,active
+settings.cost.other_ai.group_label,ui,SettingsPage,OtherAiSpendSection,group_label,"所属分组",,active
+settings.cost.other_ai.ungrouped,ui,SettingsPage,OtherAiSpendSection,ungrouped,"未分组",,active
+settings.cost.other_ai.group_empty,ui,SettingsPage,OtherAiSpendSection,group_empty,"暂无花销项，可编辑花销并移动到此分组。",,active
+settings.cost.other_ai.delete_group,ui,SettingsPage,OtherAiSpendSection,delete_group,"删除分组",,active
+settings.cost.other_ai.collapse_group,ui,SettingsPage,OtherAiSpendSection,collapse_group,"折叠",,active
+settings.cost.other_ai.expand_group,ui,SettingsPage,OtherAiSpendSection,expand_group,"展开",,active
+settings.cost.other_ai.confirm_delete_group,ui,SettingsPage,OtherAiSpendSection,confirm_delete_group,"确定删除该分组吗？组内花销会移到“未分组”，不会被删除。",,active
+settings.cost.other_ai.error_group,ui,SettingsPage,OtherAiSpendSection,error_group,"分组操作失败，请重试。",,active
+settings.cost.other_ai.favorite,ui,SettingsPage,OtherAiSpendSection,favorite,"收藏",,active
+settings.cost.other_ai.unfavorite,ui,SettingsPage,OtherAiSpendSection,unfavorite,"取消收藏",,active
+settings.cost.other_ai.drag,ui,SettingsPage,OtherAiSpendSection,drag,"拖动排序",,active
+settings.cost.other_ai.details,ui,SettingsPage,OtherAiSpendSection,details,"展开或收起详细内容",,active
+settings.cost.other_ai.no_note,ui,SettingsPage,OtherAiSpendSection,no_note,"无备注",,active
+settings.cost.other_ai.error_reorder,ui,SettingsPage,OtherAiSpendSection,error_reorder,"排序保存失败，已恢复原顺序。",,active
+dashboard.model_distribution.title,dashboard,DashboardView,ModelUsageDonut,title,"模型消耗分布",,active
+dashboard.model_distribution.subtitle,dashboard,DashboardView,ModelUsageDonut,subtitle,"当前时间范围内各模型 Token 占比",,active
+dashboard.model_distribution.total,dashboard,DashboardView,ModelUsageDonut,total,"模型总消耗",,active
+dashboard.model_distribution.empty,dashboard,DashboardView,ModelUsageDonut,empty,"当前范围暂无模型消耗",,active
+dashboard.model_distribution.chart_aria,dashboard,DashboardView,ModelUsageDonut,chart_aria,"模型消耗分布图",,active
+dashboard.model_distribution.other,dashboard,DashboardPage,model_usage_distribution,other,"其他",,active
