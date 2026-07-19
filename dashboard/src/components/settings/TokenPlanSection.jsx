@@ -1474,6 +1474,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                   ...officialExtra,
                   session_ref: sessionRef,
                   account_id: nativeStatus.quota.account_id || "",
+                  plan_name: nativeStatus.quota.plan_name || "",
                 },
               ),
             },
@@ -2413,6 +2414,9 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                     session_ref: nativeStatus.session_ref || boundSessionRef,
                     account_id: nativeStatus.quota.account_id
                       || plan.detection_config?.official_account?.account_id
+                      || "",
+                    plan_name: nativeStatus.quota.plan_name
+                      || plan.detection_config?.official_account?.plan_name
                       || "",
                   },
                 },

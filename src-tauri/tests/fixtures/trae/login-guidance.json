@@ -1,0 +1,21 @@
+{
+  "_fixture": {
+    "label": "trae-cn-login-guidance",
+    "note": "Live GetLoginGuidance shape from https://api.trae.cn/cloudide/api/v3/trae/GetLoginGuidance (2026-07-19). LoginHost is the browser auth host, not the API guidance host.",
+    "capture": "live_get_login_guidance_2026-07-19"
+  },
+  "ResponseMetadata": {
+    "Action": "",
+    "OID": null,
+    "Region": "",
+    "RequestId": "",
+    "Service": "",
+    "Source": "",
+    "TraceID": "00000000000000000000000000000000",
+    "Version": "",
+    "WID": null
+  },
+  "Result": {
+    "LoginHost": "www.trae.cn"
+  }
+}

@@ -1564,7 +1564,27 @@ export async function deleteCursorConsoleSession(sessionRef: string): Promise<vo
   return invoke("delete_cursor_console_session", { sessionRef });
 }
 
-export type TraeSessionStatus = CursorSessionStatus;
+export interface TraeQuotaSnapshot {
+  account_id?: string;
+  plan_name?: string;
+  total_quota: number;
+  used_quota: number;
+  remaining_quota: number;
+  provider_reported_at: string;
+  quota_windows?: Array<{
+    kind: string;
+    unit: string;
+    total: number;
+    used: number;
+    remaining: number;
+    percentage?: number;
+    resets_at?: string;
+  }>;
+}
+
+export interface TraeSessionStatus extends NativeSessionResult {
+  quota?: TraeQuotaSnapshot;
+}
 
 export async function openTraeConsoleLogin(sessionRef: string): Promise<TraeSessionStatus> {
   const invoke = getTauriInvoke();

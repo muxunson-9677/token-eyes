@@ -1,0 +1,31 @@
+{
+  "_fixture": {
+    "label": "trae-cn-muxunson",
+    "note": "structure from Cockpit field paths (src/types/trae.ts getFastRequestUsage / getUsageStatusFromPackList) + Cockpit screenshot values; not a raw live API capture. Tokens redacted / omitted.",
+    "account_id": "4267669818716825",
+    "plan_name": "速通 Pro",
+    "remaining": 75,
+    "used_percent": 25,
+    "reset_display_local": "2026/08/01 00:03",
+    "cockpit_screenshot": "C:/Users/admin/AppData/Local/Temp/codex-clipboard-2a41817b-eeaf-4828-839d-716fab6f825e.png"
+  },
+  "code": 0,
+  "user_id": "4267669818716825",
+  "user_entitlement_pack_list": [
+    {
+      "status": 1,
+      "is_hide": false,
+      "display_desc": "速通 Pro",
+      "entitlement_base_info": {
+        "product_type": 100,
+        "end_time": 1785513779,
+        "quota": {
+          "premium_model_fast_request_limit": 100
+        }
+      },
+      "usage": {
+        "premium_model_fast_amount": 25
+      }
+    }
+  ]
+}

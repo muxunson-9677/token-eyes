@@ -7,6 +7,7 @@ mod codex_session;
 mod cursor_session;
 mod glm_session;
 mod kimi_session;
+mod trae_session;
 mod tray;
 mod window_control;
 mod window_prefs;
@@ -55,6 +56,7 @@ pub fn run() {
         .manage(Mutex::new(CursorSessionState::default()))
         .manage(Mutex::new(glm_session::GlmSessionState::default()))
         .manage(Mutex::new(kimi_session::KimiSessionState::default()))
+        .manage(Mutex::new(trae_session::TraeSessionState::default()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -84,6 +86,10 @@ pub fn run() {
             kimi_session::open_kimi_console_login,
             kimi_session::verify_kimi_console_session,
             kimi_session::delete_kimi_console_session,
+            trae_session::open_trae_console_login,
+            trae_session::verify_trae_console_session,
+            trae_session::sync_trae_console_quota,
+            trae_session::delete_trae_console_session,
         ])
         .setup(|app| {
             window_control::enforce_main_window_title(app.handle());

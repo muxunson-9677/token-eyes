@@ -41,6 +41,9 @@ function applyNativeQuotaToPlan(plan, status) {
         account_id: status.quota.account_id
           || plan.detection_config?.official_account?.account_id
           || "",
+        plan_name: status.quota.plan_name
+          || plan.detection_config?.official_account?.plan_name
+          || "",
       },
     },
   };
@@ -97,13 +100,31 @@ export async function refreshConnectedTraePlans(plans, sessions = []) {
   const traePlans = (Array.isArray(plans) ? plans : []).filter((plan) => (
     String(plan?.provider_id || "").toLowerCase() === "trae"
     && plan?.detection_method === "official_account"
-    && plan?.detection_config?.official_account?.account_binding_id
+    && (
+      plan?.detection_config?.official_account?.session_ref
+      || plan?.detection_config?.official_account?.account_binding_id
+    )
   ));
   await Promise.allSettled(traePlans.map(async (plan) => {
     const sessionRef = resolveNativeSessionRef(plan, sessions);
     if (!sessionRef) return;
     const status = await syncTraeConsoleQuota(sessionRef);
-    if (status?.state_code !== "connected" || !status?.quota) return;
+    if (status?.state_code !== "connected" || !status?.quota) {
+      // Auth file may exist while quota parse fails — never treat as connected 0 requests.
+      if (status?.state_code === "sync_failed" || status?.state_code === "reauth_required") {
+        const now = new Date().toISOString();
+        await saveTokenPlan({
+          ...plan,
+          sync_status: status.state_code === "reauth_required" ? "reauth_required" : "failed",
+          last_refresh_status: "failed",
+          last_refresh_at: now,
+          last_sync_attempt_at: now,
+          last_error_code: status.error_code || "TRAE_QUOTA_FAILED",
+          last_error_message: status.error_message || "TRAE quota sync failed",
+        });
+      }
+      return;
+    }
     await saveTokenPlan(applyNativeQuotaToPlan(plan, status));
   }));
 }
