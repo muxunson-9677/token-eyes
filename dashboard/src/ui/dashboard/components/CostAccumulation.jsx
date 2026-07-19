@@ -191,7 +191,7 @@ function OtherAiGroupCostSection({ groups = [] }) {
           {copy("spend.cost.other_ai_groups.section")}
         </h3>
       </div>
-      <div data-testid="compact-cost-group-grid" className="grid grid-cols-2 gap-1.5 lg:grid-cols-4">
+      <div data-testid="compact-cost-group-grid" className="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
         {groups.map((group) => (
           <article key={group.group_id || "ungrouped"} data-testid={`compact-cost-group-${group.group_id || "ungrouped"}`} data-layout="compact-cost-group" data-density="ultra-compact" className="rounded-md border border-oai-gray-200 bg-white px-2 py-1.5 shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
             <div className="mb-1 flex items-center justify-between gap-2">
@@ -206,7 +206,7 @@ function OtherAiGroupCostSection({ groups = [] }) {
               ].map(([period, usd, cny]) => (
                 <div key={period} className="min-w-0 px-1 py-0.5">
                   <div className="text-[10px] text-oai-gray-500 dark:text-oai-gray-400">{copy(`spend.cost.other_ai_groups.${period}`)}</div>
-                  <div className="truncate text-[11px] font-semibold">{formatDualAmount(usd, cny)}</div>
+                  <div data-testid="compact-cost-group-amount" className="text-[11px] font-semibold leading-snug break-words">{formatDualAmount(usd, cny)}</div>
                 </div>
               ))}
             </div>

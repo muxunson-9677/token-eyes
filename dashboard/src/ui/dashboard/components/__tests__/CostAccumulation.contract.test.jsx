@@ -308,6 +308,47 @@ it("OTHER-AI: renders each custom group's month, year, and lifetime costs", () =
   expect(within(section).getByText("USD 30.00")).toBeInTheDocument();
   expect(within(section).getByText("USD 60.00")).toBeInTheDocument();
   const grid = within(section).getByTestId("compact-cost-group-grid");
-  expect(grid).toHaveClass("lg:grid-cols-4");
+  expect(grid).toBeInTheDocument();
+  expect(grid.className).toMatch(/minmax\(240px/);
   expect(within(section).getByTestId("compact-cost-group-learning")).toHaveAttribute("data-density", "ultra-compact");
+});
+
+it("OTHER-AI: amount containers never truncate USD/CNY dual amounts", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      otherAiGroupCosts={[{
+        group_id: "learning",
+        group_name: "Very Long Custom Group Name That May Truncate",
+        record_count: 3,
+        month_usd: 105.56,
+        month_cny: 760,
+        year_usd: 105.56,
+        year_cny: 760,
+        lifetime_usd: 105.56,
+        lifetime_cny: 760,
+      }]}
+    />
+  );
+
+  const section = screen.getByText("spend.cost.other_ai_groups.section").closest("section");
+  expect(section).not.toBeNull();
+  expect(within(section).getByTestId("compact-cost-group-grid")).toBeInTheDocument();
+
+  const usdNode = within(section).getAllByText("USD 105.56")[0];
+  // formatDualAmount root is flex-col; its parent is the period amount wrapper.
+  const dualRoot = usdNode.closest("div.flex.flex-col");
+  const amountContainer = dualRoot?.parentElement;
+  expect(amountContainer).toBeTruthy();
+  expect(amountContainer).not.toHaveClass("truncate");
+  expect(amountContainer).not.toHaveClass("overflow-hidden");
+  expect(amountContainer).not.toHaveClass("whitespace-nowrap");
+  expect(amountContainer.className).not.toMatch(/\btruncate\b/);
+
+  const cnyNode = within(section).getAllByText("CNY 760.00")[0];
+  expect(cnyNode).toBeVisible();
+
+  // Group titles may still truncate; amounts must not.
+  const title = within(section).getByText("Very Long Custom Group Name That May Truncate");
+  expect(title).toHaveClass("truncate");
 });
