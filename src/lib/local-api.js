@@ -26,6 +26,9 @@ const {
   buildLeaderboardDeviceState,
   stableStateHash,
 } = require("./leaderboard-state");
+const {
+  buildLeaderboardActualCostSummary,
+} = require("./leaderboard-actual-cost");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
@@ -4618,6 +4621,40 @@ function createLocalApiHandler({
             ? "Compact leaderboard state exceeds the local size limit"
             : "Unable to build leaderboard state",
         }, error instanceof RangeError ? 413 : 500);
+      }
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-leaderboard-actual-cost") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      try {
+        const config = readTrackerConfig();
+        const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
+        const normalizedRecords = records.map((record) => normalizeSpendRecord(record));
+        const timeZoneContext = { timeZone: "Asia/Shanghai", offsetMinutes: 480 };
+        const summary = await buildLeaderboardActualCostSummary({
+          capturedAt: new Date(),
+          readCombinedCost: ({ from, to }) => summarizeSpendRecords(
+            normalizedRecords,
+            from,
+            to,
+            timeZoneContext,
+            null,
+          ),
+        });
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET",
+          "Access-Control-Allow-Headers": "Content-Type, X-TokenTracker-Local-Auth",
+        });
+        res.end(JSON.stringify(summary));
+      } catch (_error) {
+        json(res, { ok: false, error: "Unable to summarize actual AI cost" }, 500);
       }
       return true;
     }
