@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, CreditCard, Package, Globe, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
+import { BarChart3, ChevronLeft, ChevronRight, CreditCard, Package, Globe, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 
@@ -50,7 +50,7 @@ export function getMonthComparison(currentUsd, previousUsd, usdToCny) {
       return { label: copy("spend.monthly_change.flat"), className: "text-oai-gray-400 dark:text-oai-gray-500" };
     }
     return {
-      label: copy("spend.monthly_change.new_amount", { amount: formatAmount(current * usdToCny, "CNY") }),
+      label: copy("spend.monthly_change.no_baseline"),
       className: "text-emerald-600 dark:text-emerald-400",
     };
   }
@@ -104,11 +104,69 @@ function formatFinancialValue(value, currency, formatter = formatAmount) {
   return formatter(value, currency);
 }
 
+function formatSelectedMonth(monthKey) {
+  const [year, month] = String(monthKey || "").split("-").map(Number);
+  if (!year || !month) return "";
+  return copy("spend.cost.month_picker.value", { year, month });
+}
+
+function formatSelectedYearToMonth(monthKey) {
+  const [year, month] = String(monthKey || "").split("-").map(Number);
+  if (!year || !month) return "";
+  return copy("spend.cost.month_picker.year_to_month", { year, month });
+}
+
+function shiftMonth(monthKey, delta) {
+  const [year, month] = String(monthKey || "").split("-").map(Number);
+  if (!year || !month) return "";
+  const shifted = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function CostMonthPicker({ selectedMonth, currentMonth, onChange }) {
+  if (!selectedMonth || !currentMonth || typeof onChange !== "function") return null;
+  const nextDisabled = selectedMonth >= currentMonth;
+  const changeMonth = (value) => {
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value) && value <= currentMonth) onChange(value);
+  };
+  return (
+    <div className="mb-3 flex items-center justify-end gap-1.5" data-testid="cost-month-picker">
+      <button
+        type="button"
+        aria-label={copy("spend.cost.month_picker.previous")}
+        onClick={() => changeMonth(shiftMonth(selectedMonth, -1))}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-oai-gray-200 text-oai-gray-600 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+      >
+        <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+      </button>
+      <label className="sr-only" htmlFor="cost-month-input">{copy("spend.cost.month_picker.label")}</label>
+      <input
+        id="cost-month-input"
+        type="month"
+        value={selectedMonth}
+        max={currentMonth}
+        aria-label={copy("spend.cost.month_picker.label")}
+        onChange={(event) => changeMonth(event.target.value)}
+        className="h-8 rounded-md border border-oai-gray-200 bg-white px-2 text-sm font-medium tabular-nums text-oai-gray-800 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-200"
+      />
+      <button
+        type="button"
+        aria-label={copy("spend.cost.month_picker.next")}
+        disabled={nextDisabled}
+        onClick={() => changeMonth(shiftMonth(selectedMonth, 1))}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-oai-gray-200 text-oai-gray-600 hover:bg-oai-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+      >
+        <ChevronRight className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Cost Summary Cards
 // ---------------------------------------------------------------------------
 
-function CostSummaryCards({ summary, loading }) {
+function CostSummaryCards({ summary, loading, selectedMonth }) {
   if (loading) {
     return (
       <div className="mb-6 grid gap-2 grid-cols-2 lg:grid-cols-4">
@@ -126,11 +184,15 @@ function CostSummaryCards({ summary, loading }) {
     const value = getMonthComparison(current, previous, summary.usdToCny);
     return value ? { id, ...value } : null;
   };
+  const monthLabel = formatSelectedMonth(selectedMonth);
+  const label = (suffixKey, fallbackKey) => monthLabel
+    ? `${monthLabel} ${copy(suffixKey)}`
+    : copy(fallbackKey);
 
   return (
     <div className="mb-6 grid gap-2 grid-cols-2 lg:grid-cols-4">
       <SummaryCard
-        label={copy("spend.cost.summary.month_api")}
+        label={label("spend.cost.summary.api_suffix", "spend.cost.summary.month_api")}
         value={formatDualAmount(
           summary.monthApiCostUsd,
           summary.monthApiCostUsd * summary.usdToCny,
@@ -138,7 +200,7 @@ function CostSummaryCards({ summary, loading }) {
         )}
       />
       <SummaryCard
-        label={copy("spend.cost.summary.month_subscription")}
+        label={label("spend.cost.summary.subscription_suffix", "spend.cost.summary.month_subscription")}
         value={formatDualAmount(
           summary.monthSubscriptionCostUsd,
           summary.monthSubscriptionCostUsd * summary.usdToCny,
@@ -146,7 +208,7 @@ function CostSummaryCards({ summary, loading }) {
         )}
       />
       <SummaryCard
-        label={copy("spend.cost.summary.month_total")}
+        label={label("spend.cost.summary.total_suffix", "spend.cost.summary.month_total")}
         value={formatDualAmount(
           summary.monthTotalCostUsd,
           summary.monthTotalCostUsd * summary.usdToCny,
@@ -181,7 +243,7 @@ function SummaryCard({ label, value, highlight = false }) {
   );
 }
 
-function OtherAiGroupCostSection({ groups = [] }) {
+function OtherAiGroupCostSection({ groups = [], selectedMonth }) {
   if (!groups.length) return null;
   return (
     <section className="mb-4">
@@ -191,22 +253,22 @@ function OtherAiGroupCostSection({ groups = [] }) {
           {copy("spend.cost.other_ai_groups.section")}
         </h3>
       </div>
-      <div data-testid="compact-cost-group-grid" className="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
+      <div data-testid="compact-cost-group-grid" className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
         {groups.map((group) => (
-          <article key={group.group_id || "ungrouped"} data-testid={`compact-cost-group-${group.group_id || "ungrouped"}`} data-layout="compact-cost-group" data-density="ultra-compact" className="rounded-md border border-oai-gray-200 bg-white px-2 py-1.5 shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
+          <article key={group.group_id || "ungrouped"} data-testid={`compact-cost-group-${group.group_id || "ungrouped"}`} data-layout="compact-cost-group" data-density="compact" className="rounded-md border border-oai-gray-200 bg-white px-2.5 py-2 shadow-oai-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <h4 className="truncate text-xs font-semibold text-oai-gray-900 dark:text-oai-gray-100">{group.group_name}</h4>
-              <span className="rounded-full bg-oai-gray-100 px-1.5 py-0.5 text-[10px] tabular-nums text-oai-gray-500 dark:bg-oai-gray-800">{group.record_count}</span>
+              <h4 className="min-w-0 break-words text-sm font-semibold leading-snug text-oai-gray-900 dark:text-oai-gray-100">{group.group_name}</h4>
+              <span className="shrink-0 rounded-full bg-oai-gray-100 px-1.5 py-0.5 text-xs tabular-nums text-oai-gray-500 dark:bg-oai-gray-800">{group.record_count}</span>
             </div>
-            <div className="grid grid-cols-3 divide-x divide-oai-gray-100 dark:divide-oai-gray-800">
+            <div className="grid gap-1 [grid-template-columns:repeat(auto-fit,minmax(108px,1fr))]">
               {[
-                ["month", group.month_usd, group.month_cny],
-                ["year", group.year_usd, group.year_cny],
-                ["lifetime", group.lifetime_usd, group.lifetime_cny],
-              ].map(([period, usd, cny]) => (
-                <div key={period} className="min-w-0 px-1 py-0.5">
-                  <div className="text-[10px] text-oai-gray-500 dark:text-oai-gray-400">{copy(`spend.cost.other_ai_groups.${period}`)}</div>
-                  <div data-testid="compact-cost-group-amount" className="text-[11px] font-semibold leading-snug break-words">{formatDualAmount(usd, cny)}</div>
+                ["month", group.month_usd, group.month_cny, formatSelectedMonth(selectedMonth) || copy("spend.cost.other_ai_groups.month")],
+                ["year", group.year_usd, group.year_cny, formatSelectedYearToMonth(selectedMonth) || copy("spend.cost.other_ai_groups.year")],
+                ["lifetime", group.lifetime_usd, group.lifetime_cny, copy("spend.cost.other_ai_groups.lifetime")],
+              ].map(([period, usd, cny, periodLabel]) => (
+                <div key={period} className="min-w-0 rounded bg-oai-gray-50 px-1.5 py-1 dark:bg-oai-gray-800/60">
+                  <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{periodLabel}</div>
+                  <div data-testid="compact-cost-group-amount" className="break-words text-xs font-semibold leading-snug">{formatDualAmount(usd, cny)}</div>
                 </div>
               ))}
             </div>
@@ -855,6 +917,9 @@ export function CostAccumulation({
     usdToCny: 7.2,
   },
   otherAiGroupCosts = [],
+  selectedMonth = "",
+  currentMonth = "",
+  onSelectedMonthChange,
   loading = false,
   error = null,
   // 03 work order: provider API account balances from 02 endpoints.
@@ -878,8 +943,15 @@ export function CostAccumulation({
   return (
     <div className="space-y-6">
       {/* Cost Summary */}
-      <CostSummaryCards summary={costSummary} loading={loading} />
-      <OtherAiGroupCostSection groups={otherAiGroupCosts} />
+      <div>
+        <CostMonthPicker
+          selectedMonth={selectedMonth}
+          currentMonth={currentMonth}
+          onChange={onSelectedMonthChange}
+        />
+        <CostSummaryCards summary={costSummary} loading={loading} selectedMonth={selectedMonth} />
+      </div>
+      <OtherAiGroupCostSection groups={otherAiGroupCosts} selectedMonth={selectedMonth} />
 
       {/* Error state */}
       {error && (

@@ -17,6 +17,7 @@ import {
   getProviderStats,
   getModelStats,
   getTokenPlans,
+  getConsoleSessions,
   getApiBillingAccounts,
   getProviderApiConfigs,
   getProviderApiBalances,
@@ -48,6 +49,10 @@ vi.mock("../lib/api", () => ({
   getProviderStats: vi.fn(),
   getModelStats: vi.fn(),
   getTokenPlans: vi.fn(),
+  getConsoleSessions: vi.fn(),
+  syncCodexConsoleQuota: vi.fn(),
+  syncTraeConsoleQuota: vi.fn(),
+  saveTokenPlan: vi.fn(),
   getApiBillingAccounts: vi.fn(),
   // 03-ia-api-balance: provider API config / balance functions.
   getProviderApiConfigs: vi.fn(),
@@ -184,6 +189,7 @@ beforeEach(() => {
   getProviderStats.mockResolvedValue({ providers: [] });
   getModelStats.mockResolvedValue({ models: [] });
   getTokenPlans.mockResolvedValue({ records: [] });
+  getConsoleSessions.mockResolvedValue({ sessions: [] });
   getApiBillingAccounts.mockResolvedValue({ accounts: [] });
   // 03-ia-api-balance: default empty provider API configs/balances.
   getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [] } });
@@ -254,6 +260,10 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
         ...EMPTY_RESULT,
         totals: {
           ...EMPTY_RESULT.totals,
+          api_usd: 20,
+          api_cny: 144,
+          subscription_usd: 50,
+          subscription_cny: 360,
           combined_usd: 100,
           combined_cny: 720,
         },
@@ -261,22 +271,24 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     render(<SpendUsagePage />);
 
-    expect(await screen.findByTestId("monthly-cost-comparison")).toHaveTextContent("较上月新增 20.0%");
+    const comparisons = await screen.findAllByTestId("monthly-cost-comparison");
+    expect(comparisons).toHaveLength(3);
+    expect(comparisons[0]).toHaveTextContent("较上月新增 100.0%");
+    expect(comparisons[1]).toHaveTextContent("较上月新增 20.0%");
+    expect(comparisons[2]).toHaveTextContent("较上月新增 20.0%");
+    expect(screen.getAllByTestId("monthly-cost-cny-row")).toHaveLength(3);
     expect(getSpendRecords).toHaveBeenCalledTimes(2);
     const [currentCall, previousCall] = getSpendRecords.mock.calls;
     expect(currentCall[0].from > previousCall[0].from).toBe(true);
     expect(currentCall[0].sources).toEqual(previousCall[0].sources);
-    expect(currentCall[0].timeZone).toBe(previousCall[0].timeZone);
-    expect(currentCall[0].tzOffsetMinutes).toBe(previousCall[0].tzOffsetMinutes);
+    expect(currentCall[0]).not.toHaveProperty("timeZone");
+    expect(currentCall[0]).not.toHaveProperty("tzOffsetMinutes");
   });
 
   it("hides totals from the previous financial scope while the new scope is pending or fails", async () => {
     const nextCurrent = deferred();
     const nextPrevious = deferred();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const claudeOnly = ["claude"];
-    const codexOnly = ["codex"];
-    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: claudeOnly });
     getSpendRecords
       .mockResolvedValueOnce({
         ...EMPTY_RESULT,
@@ -289,11 +301,13 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       .mockReturnValueOnce(nextCurrent.promise)
       .mockReturnValueOnce(nextPrevious.promise);
 
-    const view = render(<SpendUsagePage />);
+    const user = userEvent.setup();
+    render(<SpendUsagePage />);
     expect(await screen.findByText("USD 50.00")).toBeInTheDocument();
 
-    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: codexOnly });
-    view.rerender(<SpendUsagePage />);
+    await act(async () => {
+      await user.click(await screen.findByTitle("Claude Code"));
+    });
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(4));
     expect(screen.queryByText("USD 50.00")).not.toBeInTheDocument();
 
@@ -312,20 +326,19 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     const oldPrevious = deferred();
     const nextCurrent = deferred();
     const nextPrevious = deferred();
-    const claudeOnly = ["claude"];
-    const codexOnly = ["codex"];
-    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: claudeOnly });
     getSpendRecords
       .mockReturnValueOnce(oldCurrent.promise)
       .mockReturnValueOnce(oldPrevious.promise)
       .mockReturnValueOnce(nextCurrent.promise)
       .mockReturnValueOnce(nextPrevious.promise);
 
-    const view = render(<SpendUsagePage />);
+    const user = userEvent.setup();
+    render(<SpendUsagePage />);
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
 
-    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: codexOnly });
-    view.rerender(<SpendUsagePage />);
+    await act(async () => {
+      await user.click(await screen.findByTitle("Codex"));
+    });
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(4));
 
     await act(async () => {
@@ -418,9 +431,10 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     const user = userEvent.setup();
     render(<SpendUsagePage />);
 
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledWith(expect.objectContaining({
-      sources: ["claude", "other_ai"],
-    })));
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
+    for (const [params] of getSpendRecords.mock.calls) {
+      expect(params).not.toHaveProperty("sources");
+    }
     await act(async () => {
       await user.click(await screen.findByTitle("Claude Code"));
     });
@@ -532,6 +546,28 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   });
 
   it("places a compact paginated Token service list beside the usage trend", async () => {
+    getSpendTimeseries.mockResolvedValue({
+      sources: ["codex"],
+      series: [
+        {
+          bucket_start: "2026-07-20",
+          label: "07-20",
+          source: "codex",
+          input_tokens: 1_000,
+          output_tokens: 500,
+          cached_input_tokens: 200,
+          cache_creation_input_tokens: 100,
+          cost_usd: 0.05,
+        },
+      ],
+      totals: { api_cost_usd: 0.05, api_cost_cny: 0.36, subscription_cost_usd: 0, subscription_cost_cny: 0, combined_usd: 0.05, combined_cny: 0.36 },
+      by_source: [],
+      bucket: "day",
+      from: "2026-07-20",
+      to: "2026-07-20",
+      timezone: { tz: "UTC", tz_offset_minutes: 0 },
+      currency: { base: "USD", usd_to_cny: 7.2 },
+    });
     getTokenPlans.mockResolvedValue({
       records: Array.from({ length: 6 }, (_, index) => ({
         id: `plan-${index + 1}`,
@@ -550,7 +586,11 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     const layout = await screen.findByTestId("usage-chart-token-services-layout");
     expect(within(layout).getByText("Token 服务列表")).toBeInTheDocument();
     expect(within(layout).getAllByTestId("token-service-row")).toHaveLength(5);
-    expect(getTokenPlans).toHaveBeenCalledTimes(1);
+    expect(layout).toHaveClass("lg:items-stretch");
+    expect(layout).toHaveClass("lg:grid-cols-[minmax(0,1fr)_17rem]");
+    expect(within(layout).getByTestId("token-service-list")).toHaveClass("h-full");
+    expect(await within(layout).findByTestId("usage-trend-plot")).toHaveClass("flex-1");
+    expect(getTokenPlans).toHaveBeenCalledTimes(2);
   });
 
   it("provider tab renders ProviderUsageTable with hook data", async () => {
@@ -602,21 +642,22 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(screen.getByText("claude-3-opus")).toBeInTheDocument());
   });
 
-  it("getSpendRecords includes other_ai in the financial source filter", async () => {
+  it("omits the financial source filter for the default all-ledger view", async () => {
     render(<SpendUsagePage />);
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
-    const callWithSources = getSpendRecords.mock.calls.find((call) => Array.isArray(call[0]?.sources));
-    expect(callWithSources).toBeDefined();
-    expect(callWithSources[0]?.sources).toEqual(["claude", "codex", "hermes", "other_ai"]);
+    expect(getSpendRecords.mock.calls).toHaveLength(2);
+    for (const [params] of getSpendRecords.mock.calls) {
+      expect(params).not.toHaveProperty("sources");
+    }
   });
 
-  it("still loads other_ai financial totals when no Token provider is visible", async () => {
+  it("still loads all-ledger financial totals when no Token provider is visible", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
 
     render(<SpendUsagePage />);
 
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
-    expect(getSpendRecords.mock.calls[0][0]?.sources).toEqual(["other_ai"]);
+    expect(getSpendRecords.mock.calls[0][0]).not.toHaveProperty("sources");
   });
 
   it("getUsageSummary receives sources filter from visibleProviderIds", async () => {
@@ -638,13 +679,12 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(callArgs?.sources).toEqual(["claude", "codex", "hermes"]);
   });
 
-  it("empty Token allowlist shows its empty state but still fetches other_ai costs", async () => {
+  it("empty Token allowlist shows its empty state but still fetches all-ledger costs", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
     render(<SpendUsagePage />);
     await waitFor(() => expect(screen.getByText("请在显示设置中启用至少一个 Provider。")).toBeInTheDocument());
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledWith(expect.objectContaining({
-      sources: ["other_ai"],
-    })));
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+    expect(getSpendRecords.mock.calls[0][0]).not.toHaveProperty("sources");
     expect(getSpendTimeseries).not.toHaveBeenCalled();
     expect(getUsageSummary).not.toHaveBeenCalled();
     expect(getRequestUsageRecords).not.toHaveBeenCalled();
@@ -658,7 +698,47 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 // ---------------------------------------------------------------------------
 
 describe("SpendCostPage (v2.0 IA split)", () => {
-  it("renders cost accumulation with token packages, API billing, and subscriptions", async () => {
+  it("uses local month boundaries across the complete financial ledger", async () => {
+    render(
+      <MemoryRouter>
+        <SpendCostPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(2));
+    for (const [params] of getSpendTimeseries.mock.calls) {
+      expect(params).toHaveProperty("timeZone");
+      expect(params).toHaveProperty("tzOffsetMinutes");
+      expect(params).not.toHaveProperty("sources");
+    }
+  });
+
+  it("changes only the independent cost month and reloads the selected historical ledger", async () => {
+    render(
+      <MemoryRouter>
+        <SpendCostPage />
+      </MemoryRouter>,
+    );
+
+    const picker = await screen.findByLabelText("选择成本月份");
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(2));
+    fireEvent.change(picker, { target: { value: "2025-06" } });
+
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(4));
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      from: "2025-06-01",
+      to: "2025-06-30",
+    }));
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      from: "2025-05-01",
+      to: "2025-05-31",
+    }));
+    expect(getSpendRecords).toHaveBeenLastCalledWith(expect.objectContaining({
+      summary_month: "2025-06",
+    }));
+  });
+
+  it("renders cost accumulation with token packages and API billing", async () => {
     getTokenPlans.mockResolvedValue({
       records: [
         {
@@ -696,7 +776,6 @@ describe("SpendCostPage (v2.0 IA split)", () => {
 
     expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
     expect(screen.getByText("API 计费")).toBeInTheDocument();
-    expect(screen.getByText("订阅记录")).toBeInTheDocument();
     expect(screen.getByText("Pro 套餐")).toBeInTheDocument();
     expect(screen.getByText("OpenAI API")).toBeInTheDocument();
     expect(getTokenPlans).toHaveBeenCalled();
@@ -737,45 +816,6 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     await waitFor(() => expect(getApiBillingAccounts).toHaveBeenCalled());
   });
 
-  it("uses other_ai for financial calls but not as a subscription record", async () => {
-    getSpendRecords.mockResolvedValue({
-      records: [
-        { ...SAMPLE_RECORD, id: "spend-1", source: "claude" },
-        {
-          ...SAMPLE_RECORD,
-          id: "other-ai-1",
-          source: "other_ai",
-          plan_label: "被封账号历史充值",
-          billing_cycle: "one_time",
-        },
-      ],
-      totals: { ...EMPTY_RESULT.totals, subscription_usd: 20, combined_usd: 20 },
-      by_source: [],
-    });
-
-    render(
-      <MemoryRouter>
-        <SpendCostPage />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
-    expect(getSpendRecords.mock.calls[0][0]?.sources).toEqual([
-      "claude",
-      "codex",
-      "hermes",
-      "other_ai",
-    ]);
-    expect(getSpendTimeseries.mock.calls[0][0]?.sources).toEqual([
-      "claude",
-      "codex",
-      "hermes",
-      "other_ai",
-    ]);
-    expect(await screen.findByText("claude")).toBeInTheDocument();
-    expect(screen.queryByText("被封账号历史充值")).not.toBeInTheDocument();
-  });
-
   it("keeps the cost page available for other_ai when no provider is visible", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
 
@@ -788,28 +828,6 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     expect(getSpendRecords.mock.calls[0][0]?.sources).toEqual(["other_ai"]);
-  });
-
-  it("subscription records are filtered by allowlist (cursor hidden)", async () => {
-    getSpendRecords.mockResolvedValue({
-      records: [
-        { ...SAMPLE_RECORD, id: "spend-1", source: "claude" },
-        { ...SAMPLE_RECORD, id: "spend-2", source: "cursor" },
-        { ...SAMPLE_RECORD, id: "spend-3", source: "hermes" },
-      ],
-      totals: { ...EMPTY_RESULT.totals },
-      by_source: [],
-    });
-
-    render(
-      <MemoryRouter>
-        <SpendCostPage />
-      </MemoryRouter>,
-    );
-    expect(await screen.findByText("订阅记录")).toBeInTheDocument();
-    expect(screen.getAllByText("claude").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("hermes").length).toBeGreaterThan(0);
-    expect(screen.queryByText("cursor")).not.toBeInTheDocument();
   });
 
   it("does NOT render the top-level '使用统计 / 成本累积' Tab UI", async () => {
@@ -992,194 +1010,6 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     expect(typePassword).toHaveLength(0);
   });
 
-  it("subscription 添加记录 button opens the form; saving creates a record and refreshes", async () => {
-    const user = userEvent.setup();
-    createSpendRecord.mockResolvedValue({ ok: true, record: SAMPLE_RECORD });
-
-    render(
-      <MemoryRouter>
-        <SpendCostPage />
-      </MemoryRouter>,
-    );
-    const addButton = await screen.findByRole("button", { name: "添加记录" });
-    await act(async () => {
-      await user.click(addButton);
-    });
-
-    // Form renders with add title.
-    expect(screen.getByText("添加订阅记录")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
-
-    // Fill required fields.
-    const nameInput = screen.getByLabelText("名称");
-    const providerInput = screen.getByLabelText("服务商");
-    await act(async () => {
-      await user.type(nameInput, "Pro Max");
-      await user.type(providerInput, "claude");
-    });
-
-    const saveButton = screen.getByRole("button", { name: "保存" });
-    await act(async () => {
-      await user.click(saveButton);
-    });
-
-    await waitFor(() => expect(createSpendRecord).toHaveBeenCalled());
-    const callArg = createSpendRecord.mock.calls[0][0];
-    expect(callArg.plan_label).toBe("Pro Max");
-    expect(callArg.source).toBe("claude");
-    // API Key is never sent in a subscription record.
-    expect(callArg.apiKey).toBeUndefined();
-    expect(callArg.api_key).toBeUndefined();
-  });
-
-  it("subscription edit button opens the form prefilled; saving updates the record", async () => {
-    const user = userEvent.setup();
-    getSpendRecords.mockResolvedValue({
-      records: [{ ...SAMPLE_RECORD, id: "spend-edit-1", plan_label: "Old Plan", source: "claude" }],
-      totals: { ...EMPTY_RESULT.totals },
-      by_source: [],
-    });
-    updateSpendRecord.mockResolvedValue({ ok: true, record: SAMPLE_RECORD });
-
-    render(
-      <MemoryRouter>
-        <SpendCostPage />
-      </MemoryRouter>,
-    );
-    await screen.findByText("Old Plan");
-    const editButton = screen.getByRole("button", { name: "编辑" });
-    await act(async () => {
-      await user.click(editButton);
-    });
-
-    // Form opens in edit mode.
-    expect(screen.getByText("编辑订阅记录")).toBeInTheDocument();
-    // The name field is prefilled with the existing record.
-    const nameInput = screen.getByLabelText("名称");
-    expect(nameInput.value).toBe("Old Plan");
-  });
-
-  it("subscription delete button calls deleteSpendRecord and refreshes", async () => {
-    const user = userEvent.setup();
-    getSpendRecords.mockResolvedValue({
-      records: [{ ...SAMPLE_RECORD, id: "spend-del-1", plan_label: "Del Plan", source: "claude" }],
-      totals: { ...EMPTY_RESULT.totals },
-      by_source: [],
-    });
-    deleteSpendRecord.mockResolvedValue({ ok: true });
-
-    // window.confirm auto-accepts.
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-
-    render(
-      <MemoryRouter>
-        <SpendCostPage />
-      </MemoryRouter>,
-    );
-    await screen.findByText("Del Plan");
-    const deleteButton = screen.getByRole("button", { name: "删除" });
-    await act(async () => {
-      await user.click(deleteButton);
-    });
-
-    await waitFor(() => expect(deleteSpendRecord).toHaveBeenCalledWith("spend-del-1"));
-    confirmSpy.mockRestore();
-  });
-
-  it("06: subscription form sends currency, billing_cycle, start_date on save (contract)", async () => {
-    const user = userEvent.setup();
-    createSpendRecord.mockResolvedValue({ ok: true, record: SAMPLE_RECORD });
-
-    render(
-      <MemoryRouter>
-        <SpendCostPage />
-      </MemoryRouter>,
-    );
-    const addButton = await screen.findByRole("button", { name: "添加记录" });
-    await act(async () => {
-      await user.click(addButton);
-    });
-
-    // Fill required text fields.
-    await act(async () => {
-      await user.type(screen.getByLabelText("名称"), "Pro Max");
-      await user.type(screen.getByLabelText("服务商"), "claude");
-      await user.type(screen.getByLabelText("金额"), "20");
-    });
-    // Date input — use fireEvent.change for reliable jsdom behavior.
-    fireEvent.change(screen.getByLabelText("开始日期"), { target: { value: "2026-06-01" } });
-
-    // Currency and cycle are <select> with defaults USD / monthly.
-    // Verify the defaults match the backend contract values.
-    expect(screen.getByLabelText("币种").value).toBe("USD");
-    expect(screen.getByLabelText("计费周期").value).toBe("monthly");
-
-    const saveButton = screen.getByRole("button", { name: "保存" });
-    await act(async () => {
-      await user.click(saveButton);
-    });
-
-    await waitFor(() => expect(createSpendRecord).toHaveBeenCalled());
-    const callArg = createSpendRecord.mock.calls[0][0];
-    // 06 contract: all required fields must be sent — no silent defaulting.
-    expect(callArg.source).toBe("claude");
-    expect(callArg.plan_label).toBe("Pro Max");
-    expect(callArg.amount).toBe(20);
-    expect(callArg.currency).toBe("USD");
-    expect(callArg.billing_cycle).toBe("monthly");
-    expect(callArg.start_date).toBe("2026-06-01");
-  });
-
-  it("06: subscription form shows backend error and stays open when save fails (no fake success)", async () => {
-    const user = userEvent.setup();
-    // Simulate the backend 400 error enriched by buildErrorFromResponse:
-    // backend returns { ok:false, error:"Missing required field: currency",
-    // error_code:"missing_required_field", field:"currency" } → fetchLocalJson
-    // throws Error("Missing required field: currency").
-    createSpendRecord.mockRejectedValueOnce(new Error("Missing required field: currency"));
-
-    render(
-      <MemoryRouter>
-        <SpendCostPage />
-      </MemoryRouter>,
-    );
-    const addButton = await screen.findByRole("button", { name: "添加记录" });
-    await act(async () => {
-      await user.click(addButton);
-    });
-
-    // Fill required fields.
-    await act(async () => {
-      await user.type(screen.getByLabelText("名称"), "Pro Max");
-      await user.type(screen.getByLabelText("服务商"), "claude");
-      await user.type(screen.getByLabelText("金额"), "20");
-    });
-    fireEvent.change(screen.getByLabelText("开始日期"), { target: { value: "2026-06-01" } });
-
-    const saveButton = screen.getByRole("button", { name: "保存" });
-    await act(async () => {
-      await user.click(saveButton);
-    });
-
-    // The backend error MUST be displayed — NOT faked as success.
-    await waitFor(() =>
-      expect(screen.getByText("Missing required field: currency")).toBeInTheDocument(),
-    );
-
-    // The form must still be open (NOT closed / faked success).
-    // The form title "添加订阅记录" and Save button are still visible.
-    expect(screen.getByText("添加订阅记录")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
-  });
-
-  it("shows the separate-columns note (订阅费用与供应商 API 花销分栏)", async () => {
-    render(
-      <MemoryRouter>
-        <SpendCostPage />
-      </MemoryRouter>,
-    );
-    expect(await screen.findByText(/订阅费用与供应商 API 账户花销分栏展示/)).toBeInTheDocument();
-  });
 });
 
 // ---------------------------------------------------------------------------

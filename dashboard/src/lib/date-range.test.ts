@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getMonthComparisonRanges } from "./date-range";
+import { getCostMonthRanges, getMonthComparisonRanges } from "./date-range";
 
 describe("getMonthComparisonRanges", () => {
   it("compares month-to-date with the same elapsed period last month", () => {
@@ -42,5 +42,61 @@ describe("getMonthComparisonRanges", () => {
 
     expect(ranges.current).toEqual({ from: "2026-03-01", to: "2026-03-31" });
     expect(ranges.previous).toEqual({ from: "2026-02-01", to: "2026-02-28" });
+  });
+});
+
+describe("getCostMonthRanges", () => {
+  it("uses month-to-date and the same elapsed period for the local current month", () => {
+    expect(getCostMonthRanges({
+      selectedMonth: "2026-07",
+      now: new Date("2026-07-20T10:00:00+08:00"),
+      timeZone: "Asia/Shanghai",
+    })).toEqual({
+      selectedMonth: "2026-07",
+      isCurrentMonth: true,
+      selected: { from: "2026-07-01", to: "2026-07-20" },
+      comparison: { from: "2026-06-01", to: "2026-06-20" },
+      yearToSelected: { from: "2026-01-01", to: "2026-07-20" },
+    });
+  });
+
+  it("uses complete selected and previous natural months for history", () => {
+    expect(getCostMonthRanges({
+      selectedMonth: "2025-06",
+      now: new Date("2026-07-20T10:00:00+08:00"),
+      timeZone: "Asia/Shanghai",
+    })).toEqual({
+      selectedMonth: "2025-06",
+      isCurrentMonth: false,
+      selected: { from: "2025-06-01", to: "2025-06-30" },
+      comparison: { from: "2025-05-01", to: "2025-05-31" },
+      yearToSelected: { from: "2025-01-01", to: "2025-06-30" },
+    });
+  });
+
+  it("crosses the year boundary and keeps leap-day month ends", () => {
+    const january = getCostMonthRanges({
+      selectedMonth: "2025-01",
+      now: new Date("2026-07-20T10:00:00+08:00"),
+      timeZone: "Asia/Shanghai",
+    });
+    const leapFebruary = getCostMonthRanges({
+      selectedMonth: "2024-02",
+      now: new Date("2026-07-20T10:00:00+08:00"),
+      timeZone: "Asia/Shanghai",
+    });
+
+    expect(january.comparison).toEqual({ from: "2024-12-01", to: "2024-12-31" });
+    expect(leapFebruary.selected).toEqual({ from: "2024-02-01", to: "2024-02-29" });
+  });
+
+  it("clamps invalid and future selections to the local current month", () => {
+    const options = {
+      now: new Date("2025-12-31T16:30:00.000Z"),
+      timeZone: "Asia/Shanghai",
+    };
+
+    expect(getCostMonthRanges({ ...options, selectedMonth: "not-a-month" }).selectedMonth).toBe("2026-01");
+    expect(getCostMonthRanges({ ...options, selectedMonth: "2026-02" }).selectedMonth).toBe("2026-01");
   });
 });

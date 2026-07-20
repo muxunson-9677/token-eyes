@@ -138,6 +138,56 @@ export function getMonthComparisonRanges(options: DateRangeOptions = {}) {
   };
 }
 
+type CostMonthRangeOptions = DateRangeOptions & {
+  selectedMonth?: string;
+};
+
+export function getCostMonthRanges(options: CostMonthRangeOptions = {}) {
+  const baseDate = options.now instanceof Date && Number.isFinite(options.now.getTime())
+    ? options.now
+    : new Date();
+  const localParts = getLocalDateParts({
+    timeZone: options.timeZone,
+    offsetMinutes: options.offsetMinutes,
+    date: baseDate,
+  });
+  const fallbackDay = formatDateLocal(baseDate);
+  const currentYear = localParts?.year || Number(fallbackDay.slice(0, 4));
+  const currentMonthNumber = localParts?.month || Number(fallbackDay.slice(5, 7));
+  const currentDay = localParts?.day || Number(fallbackDay.slice(8, 10));
+  const currentMonth = `${currentYear}-${String(currentMonthNumber).padStart(2, "0")}`;
+  const requestedMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(options.selectedMonth || ""))
+    ? String(options.selectedMonth)
+    : currentMonth;
+  const selectedMonth = requestedMonth > currentMonth ? currentMonth : requestedMonth;
+  const [selectedYear, selectedMonthNumber] = selectedMonth.split("-").map(Number);
+  const isCurrentMonth = selectedMonth === currentMonth;
+  const selectedLastDay = new Date(Date.UTC(selectedYear, selectedMonthNumber, 0)).getUTCDate();
+  const selectedToDay = isCurrentMonth ? currentDay : selectedLastDay;
+  const selectedFrom = `${selectedMonth}-01`;
+  const selectedTo = `${selectedMonth}-${String(selectedToDay).padStart(2, "0")}`;
+
+  const comparisonAnchor = new Date(Date.UTC(selectedYear, selectedMonthNumber - 2, 1));
+  const comparisonYear = comparisonAnchor.getUTCFullYear();
+  const comparisonMonthNumber = comparisonAnchor.getUTCMonth() + 1;
+  const comparisonMonth = `${comparisonYear}-${String(comparisonMonthNumber).padStart(2, "0")}`;
+  const comparisonLastDay = new Date(Date.UTC(comparisonYear, comparisonMonthNumber, 0)).getUTCDate();
+  const comparisonToDay = isCurrentMonth
+    ? Math.min(selectedToDay, comparisonLastDay)
+    : comparisonLastDay;
+
+  return {
+    selectedMonth,
+    isCurrentMonth,
+    selected: { from: selectedFrom, to: selectedTo },
+    comparison: {
+      from: `${comparisonMonth}-01`,
+      to: `${comparisonMonth}-${String(comparisonToDay).padStart(2, "0")}`,
+    },
+    yearToSelected: { from: `${selectedYear}-01-01`, to: selectedTo },
+  };
+}
+
 /**
  * Compute a {from, to} date range (YYYY-MM-DD) for the Ticket-02 time-range
  * keys used by the SpendPage filter bar: "today" / "1d" / "7d" / "14d" /

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
 
@@ -22,6 +22,8 @@ vi.mock("react-router-dom", () => ({
 vi.mock("../../../../lib/copy", () => ({
   copy: (key, params) => {
     if (!params) return key;
+    if (key === "spend.cost.month_picker.value") return `${params.year}年${params.month}月`;
+    if (key === "spend.cost.month_picker.year_to_month") return `${params.year}年截至${params.month}月`;
     return Object.entries(params).reduce(
       (text, [name, value]) => text.replace(`{{${name}}}`, String(value)),
       key.includes("increase") || key.includes("decrease")
@@ -66,6 +68,56 @@ it("renders API, subscription, and total month comparisons beside the CNY line",
   }
 });
 
+it("lets the user browse historical cost months without advancing into the future", () => {
+  const onSelectedMonthChange = vi.fn();
+  const { rerender } = render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      selectedMonth="2025-06"
+      currentMonth="2026-07"
+      onSelectedMonthChange={onSelectedMonthChange}
+      otherAiGroupCosts={[{
+        group_id: "learning",
+        group_name: "AI learning",
+        record_count: 1,
+        month_usd: 10,
+        month_cny: 72,
+        year_usd: 30,
+        year_cny: 216,
+        lifetime_usd: 60,
+        lifetime_cny: 432,
+      }]}
+    />,
+  );
+
+  const picker = screen.getByLabelText("spend.cost.month_picker.label");
+  expect(picker).toHaveValue("2025-06");
+  expect(picker).toHaveAttribute("max", "2026-07");
+  expect(screen.getByText("2025年6月 spend.cost.summary.api_suffix")).toBeInTheDocument();
+  expect(screen.getByText("2025年6月 spend.cost.summary.subscription_suffix")).toBeInTheDocument();
+  expect(screen.getByText("2025年6月 spend.cost.summary.total_suffix")).toBeInTheDocument();
+  expect(screen.getByText("2025年6月")).toBeInTheDocument();
+  expect(screen.getByText("2025年截至6月")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "spend.cost.month_picker.previous" }));
+  fireEvent.click(screen.getByRole("button", { name: "spend.cost.month_picker.next" }));
+  expect(onSelectedMonthChange).toHaveBeenNthCalledWith(1, "2025-05");
+  expect(onSelectedMonthChange).toHaveBeenNthCalledWith(2, "2025-07");
+
+  fireEvent.change(picker, { target: { value: "2027-01" } });
+  expect(onSelectedMonthChange).not.toHaveBeenCalledWith("2027-01");
+
+  rerender(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      selectedMonth="2026-07"
+      currentMonth="2026-07"
+      onSelectedMonthChange={onSelectedMonthChange}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "spend.cost.month_picker.next" })).toBeDisabled();
+});
+
 describe("getMonthComparison MoM copy boundary", () => {
   const usdToCny = 7.2;
 
@@ -91,10 +143,18 @@ describe("getMonthComparison MoM copy boundary", () => {
 
   it("avoids infinite percent when previous is zero and shows new-amount copy", () => {
     const result = getMonthComparison(50, 0, usdToCny);
-    expect(result.label).toContain("spend.monthly_change.new_amount");
+    expect(result.label).toContain("spend.monthly_change.no_baseline");
     expect(result.label).not.toMatch(/Infinity|∞|NaN/);
-    expect(result.label).toContain("CNY");
     expect(result.className).toContain("text-emerald-600");
+  });
+
+  it("uses delta growth for the installed-ledger API and total values", () => {
+    const api = getMonthComparison(6603.138389, 463.393724, usdToCny);
+    const total = getMonthComparison(6749.666167, 472.143724, usdToCny);
+
+    expect(api.label).toContain("1325.0%");
+    expect(total.label).toContain("1329.6%");
+    expect(api.label).not.toContain("1425.0%");
   });
 });
 
@@ -309,24 +369,24 @@ it("OTHER-AI: renders each custom group's month, year, and lifetime costs", () =
   expect(within(section).getByText("USD 60.00")).toBeInTheDocument();
   const grid = within(section).getByTestId("compact-cost-group-grid");
   expect(grid).toBeInTheDocument();
-  expect(grid.className).toMatch(/minmax\(240px/);
-  expect(within(section).getByTestId("compact-cost-group-learning")).toHaveAttribute("data-density", "ultra-compact");
+  expect(grid.className).toMatch(/minmax\(300px/);
+  expect(within(section).getByTestId("compact-cost-group-learning")).toHaveAttribute("data-density", "compact");
 });
 
-it("OTHER-AI: amount containers never truncate USD/CNY dual amounts", () => {
+it("OTHER-AI: long group name and six distinct month/year/lifetime amounts remain readable", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
       otherAiGroupCosts={[{
         group_id: "learning",
-        group_name: "Very Long Custom Group Name That May Truncate",
+        group_name: "AI 学习投入与长期订阅",
         record_count: 3,
-        month_usd: 105.56,
-        month_cny: 760,
-        year_usd: 105.56,
-        year_cny: 760,
-        lifetime_usd: 105.56,
-        lifetime_cny: 760,
+        month_usd: 1234.56,
+        month_cny: 8888.88,
+        year_usd: 12345.67,
+        year_cny: 88888.88,
+        lifetime_usd: 123456.78,
+        lifetime_cny: 888888.88,
       }]}
     />
   );
@@ -335,7 +395,18 @@ it("OTHER-AI: amount containers never truncate USD/CNY dual amounts", () => {
   expect(section).not.toBeNull();
   expect(within(section).getByTestId("compact-cost-group-grid")).toBeInTheDocument();
 
-  const usdNode = within(section).getAllByText("USD 105.56")[0];
+  for (const amount of [
+    "USD 1,234.56",
+    "CNY 8,888.88",
+    "USD 12,345.67",
+    "CNY 88,888.88",
+    "USD 123,456.78",
+    "CNY 888,888.88",
+  ]) {
+    expect(within(section).getByText(amount)).toBeVisible();
+  }
+
+  const usdNode = within(section).getByText("USD 123,456.78");
   // formatDualAmount root is flex-col; its parent is the period amount wrapper.
   const dualRoot = usdNode.closest("div.flex.flex-col");
   const amountContainer = dualRoot?.parentElement;
@@ -345,10 +416,12 @@ it("OTHER-AI: amount containers never truncate USD/CNY dual amounts", () => {
   expect(amountContainer).not.toHaveClass("whitespace-nowrap");
   expect(amountContainer.className).not.toMatch(/\btruncate\b/);
 
-  const cnyNode = within(section).getAllByText("CNY 760.00")[0];
-  expect(cnyNode).toBeVisible();
-
-  // Group titles may still truncate; amounts must not.
-  const title = within(section).getByText("Very Long Custom Group Name That May Truncate");
-  expect(title).toHaveClass("truncate");
+  const title = within(section).getByText("AI 学习投入与长期订阅");
+  expect(title).not.toHaveClass("truncate");
+  expect(title).not.toHaveClass("overflow-hidden");
+  expect(title).toHaveClass("text-sm");
+  for (const amountContainerNode of within(section).getAllByTestId("compact-cost-group-amount")) {
+    expect(amountContainerNode).toHaveClass("text-xs");
+    expect(amountContainerNode).not.toHaveClass("truncate");
+  }
 });

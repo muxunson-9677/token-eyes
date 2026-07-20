@@ -6,7 +6,9 @@ const crypto = require("node:crypto");
 const readline = require("node:readline");
 const { DEFAULT_BASE_URL, resolveRuntimeConfig } = require("./runtime-config");
 const {
+  DATA_DIRECTORY_KEYS,
   detectDataDirectoryPaths,
+  inspectDataDirectory,
   normalizeDataDirectories,
   resolveDataDirectoryPaths,
 } = require("./data-directories");
@@ -48,6 +50,13 @@ const REQUEST_USAGE_RECORDS_CACHE_MAX_ENTRIES = 16;
 const requestUsageRecordsListCache = new Map();
 const QUEUE_DATA_CACHE_MAX_ENTRIES = 8;
 const queueDataCache = new Map();
+
+function normalizeDataDirectoryOrder(value) {
+  const seen = new Set();
+  return (Array.isArray(value) ? value : [])
+    .map((key) => String(key || "").trim().toLowerCase())
+    .filter((key) => DATA_DIRECTORY_KEYS.includes(key) && !seen.has(key) && seen.add(key));
+}
 const ZONED_PARTS_FORMATTER_CACHE_MAX_ENTRIES = 32;
 const zonedPartsFormatterCache = new Map();
 const ZONED_PARTS_CACHE_MAX_ENTRIES = 20_000;
@@ -437,7 +446,7 @@ function clearQueueDataCacheForTests() {
   queueDataCache.clear();
 }
 
-function summarizeTokenOnlyUsage(rows) {
+function summarizeTokenOnlyUsage(rows, directoryStates = {}) {
   const totals = { trae: 0, codebuddy: 0, opencode: 0 };
   for (const row of Array.isArray(rows) ? rows : []) {
     const source = normalizeSource(row?.source);
@@ -445,13 +454,67 @@ function summarizeTokenOnlyUsage(rows) {
     totals[source] += Math.max(0, Number(row?.total_tokens || 0));
   }
   return Object.fromEntries(
-    Object.entries(totals).map(([source, totalTokens]) => [source, {
-      configured: totalTokens > 0,
-      error: null,
-      token_only: true,
-      total_tokens: totalTokens,
-    }]),
+    Object.entries(totals).map(([source, totalTokens]) => {
+      const directoryState = directoryStates?.[source];
+      const detected = directoryState && directoryState.status !== "not-detected";
+      const result = {
+        configured: totalTokens > 0 || Boolean(detected),
+        error: null,
+        token_only: true,
+        total_tokens: totalTokens,
+      };
+      if (detected && totalTokens === 0) {
+        result.collection_status = "connected_no_precise_tokens";
+        result.tracking_ready = Boolean(directoryState.trackingReady);
+        result.evidence = directoryState.evidence || null;
+        result.data_path = directoryState.dataPath || directoryState.path || null;
+      }
+      return [source, result];
+    }),
   );
+}
+
+function resolveTokenOnlyDirectoryStates(settings, options = {}) {
+  const resolved = resolveDataDirectoryPaths({
+    config: { dataDirectories: settings?.dataDirectories || {} },
+    env: options.env || process.env,
+    home: options.home || os.homedir(),
+    platform: options.platform || process.platform,
+  });
+  return {
+    trae: inspectDataDirectory("trae", resolved.traeHome, options),
+    codebuddy: inspectDataDirectory("codebuddy", resolved.codebuddyHome, options),
+    opencode: inspectDataDirectory("opencode", resolved.opencodeHome, options),
+  };
+}
+
+function appendDetectedTokenOnlyProviders(providers, directoryStates = {}, sources = null) {
+  const result = Array.isArray(providers) ? providers.slice() : [];
+  const existing = new Set(result.map((provider) => normalizeSource(provider?.source)));
+  for (const source of ["trae", "codebuddy", "opencode"]) {
+    if (sources && !sources.includes(source)) continue;
+    if (existing.has(source)) continue;
+    const state = directoryStates?.[source];
+    if (!state || state.status === "not-detected") continue;
+    result.push({
+      source,
+      source_display_name: getSourceDisplayName(source),
+      request_count: null,
+      conversation_count: null,
+      tokens: 0,
+      cost_usd: 0,
+      priced_tokens: 0,
+      unpriced_tokens: 0,
+      pricing_coverage: "complete",
+      success_rate: null,
+      avg_latency_ms: null,
+      metric_availability: "connected_no_precise_tokens",
+      collection_status: "connected_no_precise_tokens",
+      evidence: state.evidence || null,
+      data_path: state.dataPath || state.path || null,
+    });
+  }
+  return result;
 }
 
 function rowDayKey(row, timeZoneContext) {
@@ -1769,6 +1832,7 @@ function createLocalApiHandler({
   providerApiTestMode = false,
   providerApiTimeoutMs,
   usageLimitsProvider,
+  tokenOnlyDirectoryStatesProvider,
   now: nowProvider = () => new Date(),
 } = {}) {
   const qp = queuePath || resolveQueuePath();
@@ -1853,6 +1917,7 @@ function createLocalApiHandler({
     credentialStore: providerApiCredStore,
     testMode: providerApiTestMode,
     timeoutMs: providerApiTimeoutMs,
+    resolveOfficialConsoleBalance,
   });
 
   // Load persisted cookies on startup
@@ -2095,6 +2160,7 @@ function createLocalApiHandler({
     const config = readTrackerConfig();
     return {
       dataDirectories: normalizeDataDirectories(config.dataDirectories),
+      dataDirectoryOrder: normalizeDataDirectoryOrder(config.dataDirectoryOrder),
       agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing),
       pricingRules: normalizePricingRules(config.pricingRules),
       currencySettings: normalizeCurrencySettings(config.currencySettings),
@@ -2107,6 +2173,9 @@ function createLocalApiHandler({
     const config = readTrackerConfig();
     if (Object.prototype.hasOwnProperty.call(payload, "dataDirectories")) {
       config.dataDirectories = normalizeDataDirectories(payload.dataDirectories);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "dataDirectoryOrder")) {
+      config.dataDirectoryOrder = normalizeDataDirectoryOrder(payload.dataDirectoryOrder);
     }
     if (Object.prototype.hasOwnProperty.call(payload, "agentDefaultPricing")) {
       config.agentDefaultPricing = normalizeAgentDefaultPricing(payload.agentDefaultPricing);
@@ -2239,7 +2308,9 @@ function createLocalApiHandler({
     const numberFieldNonNegative = (field) => {
       const value = input[field] ?? fallbackInput[field] ?? 0;
       const numberValue = Number(value);
-      if (!Number.isFinite(numberValue) || numberValue < 0 || !Number.isSafeInteger(numberValue)) return 0;
+      const allowFraction = providerId === "cursor"
+        && ["total_quota", "used_quota", "remaining_quota"].includes(field);
+      if (!Number.isFinite(numberValue) || numberValue < 0 || (!allowFraction && !Number.isSafeInteger(numberValue))) return 0;
       return numberValue;
     };
 
@@ -2251,15 +2322,25 @@ function createLocalApiHandler({
     let quotaSource = String(input.quota_source ?? fallbackInput.quota_source ?? "").trim();
 
     const catalogPlan = providerId !== "custom" ? getPlanById(providerId, planId) : null;
+    const hasProviderSnapshot = String(input.sync_status || "").trim() === "success"
+      && (Array.isArray(input.quota_windows) && input.quota_windows.length > 0)
+      && Boolean(String(input.provider_reported_at || input.last_synced_at || "").trim());
 
     if (catalogPlan) {
       quotaKind = catalogPlan.quota_kind || "unknown";
-      quotaUnit = catalogPlan.quota_unit || "tokens";
-      totalQuota = Number.isSafeInteger(catalogPlan.total_quota) && catalogPlan.total_quota >= 0 ? catalogPlan.total_quota : 0;
+      quotaUnit = hasProviderSnapshot && input.quota_unit
+        ? String(input.quota_unit).trim()
+        : (catalogPlan.quota_unit || "tokens");
+      const catalogTotal = Number.isSafeInteger(catalogPlan.total_quota) && catalogPlan.total_quota >= 0
+        ? catalogPlan.total_quota
+        : 0;
+      totalQuota = hasProviderSnapshot && catalogTotal === 0
+        ? numberFieldNonNegative("total_quota")
+        : catalogTotal;
       totalQuotaDisplay = catalogPlan.total_quota_display || "";
       const providerCatalog = getProviderCatalog(providerId);
       quotaCatalogVersion = providerCatalog?.catalog_version || "";
-      quotaSource = "catalog";
+      quotaSource = hasProviderSnapshot ? "provider_reported" : "catalog";
     } else if (isLegacy || providerId === "custom") {
       if (!quotaSource) quotaSource = "manual";
       if (!quotaKind) quotaKind = "manual";
@@ -2300,6 +2381,13 @@ function createLocalApiHandler({
       refreshFields.refresh_method = "manual";
       refreshFields.credential_ref = "";
     }
+    if (catalogPlan && providerId === "cursor" && detectionMethod === "official_account") {
+      // Cursor official-account refresh is performed by the desktop native bridge.
+      // The Node scheduler has no access to that per-account authorization and must
+      // not overwrite a successful live snapshot with CURSOR_CONSOLE_SYNC_REQUIRED.
+      refreshFields.refresh_enabled = false;
+      refreshFields.next_refresh_at = "";
+    }
 
     const quotaWindows = tokenPlanRefresh.normalizeQuotaWindows(
       input.quota_windows,
@@ -2310,6 +2398,10 @@ function createLocalApiHandler({
     const detectionFields = tokenPlanRefresh.normalizeDetectionFields(input, fallbackInput);
 
     const notes = String(input.notes ?? fallbackInput.notes ?? "").trim().slice(0, 200);
+    const displayOrderValue = Number(input.display_order ?? fallbackInput.display_order ?? 0);
+    const displayOrder = Number.isSafeInteger(displayOrderValue) && displayOrderValue >= 0
+      ? displayOrderValue
+      : 0;
 
     return {
       id: String(input.id ?? fallbackInput.id ?? crypto.randomUUID()).trim(),
@@ -2344,6 +2436,7 @@ function createLocalApiHandler({
       last_error_message: detectionFields.last_error_message,
       provider_reported_at: detectionFields.provider_reported_at,
       notes,
+      display_order: displayOrder,
       ...(quotaWindows.length > 0 ? { quota_windows: quotaWindows } : {}),
     };
   }
@@ -2351,7 +2444,10 @@ function createLocalApiHandler({
   function readTokenPlanRecords() {
     const config = readTrackerConfig();
     const records = Array.isArray(config.tokenPlans) ? config.tokenPlans : [];
-    return records.map((record) => normalizeTokenPlanRecord(record));
+    return records
+      .map((record, index) => normalizeTokenPlanRecord(record, { display_order: index }))
+      .sort((left, right) => left.display_order - right.display_order)
+      .map((record, index) => ({ ...record, display_order: index }));
   }
 
   // ---------------------------------------------------------------------------
@@ -2545,6 +2641,9 @@ function createLocalApiHandler({
     const fallback = existingIndex >= 0 ? current[existingIndex] : { id };
     validateTokenPlanCatalogSelection({ ...payload, id }, fallback);
     const record = normalizeTokenPlanRecord({ ...payload, id }, fallback);
+    record.display_order = existingIndex >= 0
+      ? Number.isSafeInteger(Number(fallback.display_order)) ? Number(fallback.display_order) : existingIndex
+      : current.length;
     if (!record.source) {
       const error = new Error("来源不能为空");
       error.statusCode = 400;
@@ -2577,6 +2676,39 @@ function createLocalApiHandler({
     }
 
     return { record, records: readTokenPlanRecords() };
+  }
+
+  function deleteTokenPlanRecord(body) {
+    const id = String(body?.id || "").trim();
+    if (!id) {
+      const error = new Error("套餐 ID 不能为空");
+      error.statusCode = 400;
+      throw error;
+    }
+    const config = readTrackerConfig();
+    const current = Array.isArray(config.tokenPlans) ? config.tokenPlans : [];
+    const index = current.findIndex((record) => String(record?.id || "") === id);
+    if (index < 0) {
+      const error = new Error("Token 套餐不存在");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const removed = current[index];
+    const remaining = current
+      .filter((_, recordIndex) => recordIndex !== index)
+      .map((record, displayOrder) => ({ ...record, display_order: displayOrder }));
+    config.tokenPlans = remaining;
+    writeTrackerConfig(config);
+
+    const remainingRefs = new Set(remaining.flatMap((record) => getTokenPlanSecretRefs(record)));
+    for (const ref of getTokenPlanSecretRefs(removed)) {
+      if (remainingRefs.has(ref)) continue;
+      if (providerApiCredStore.isAvailable()) providerApiCredStore.deleteSecret(ref);
+      tokenPlanSecretStore.delete(ref);
+    }
+
+    return { record: normalizeTokenPlanRecord(removed), records: readTokenPlanRecords() };
   }
 
   const VALID_BILLING_CYCLES = new Set(["monthly", "yearly", "one_time"]);
@@ -2757,7 +2889,7 @@ function createLocalApiHandler({
   //   expired        -> native verify determined the session is no longer live
   //   revoked        -> the user deleted the session
   //   failed         -> non-official domain, session not found, or other error
-  const ALLOWED_CONSOLE_PROVIDER_IDS = new Set(["xiaomi_mimo", "glm", "codex", "claude", "cursor", "kimi"]);
+  const ALLOWED_CONSOLE_PROVIDER_IDS = new Set(["xiaomi_mimo", "glm", "minimax", "codex", "claude", "cursor", "trae", "kimi"]);
   const ALLOWED_AUTH_KINDS = new Set(["official_console_session"]);
   const ALLOWED_CONSOLE_STATUSES = new Set([
     "pending_login",
@@ -2774,6 +2906,19 @@ function createLocalApiHandler({
     const config = readTrackerConfig();
     const sessions = Array.isArray(config.consoleSessions) ? config.consoleSessions : [];
     return sessions.map((session) => normalizeConsoleSession(session));
+  }
+
+  function resolveOfficialConsoleBalance(providerConfig) {
+    const providerId = String(providerConfig?.providerId || "").trim();
+    if (!providerId) return null;
+    const connected = readConsoleSessions()
+      .filter((session) => (
+        session.provider_id === providerId
+        && session.status === "connected"
+        && session.balance
+      ))
+      .sort((left, right) => String(right.last_verified_at || "").localeCompare(String(left.last_verified_at || "")));
+    return connected[0]?.balance || null;
   }
 
   function normalizeConsoleBalance(input) {
@@ -3026,9 +3171,130 @@ function createLocalApiHandler({
       start_date: isValidDate(startDate) ? startDate : "",
       end_date: isValidDate(endDate) ? endDate : "",
       note: String(input.note ?? fallbackInput.note ?? "").trim(),
+      group_id: String(input.group_id ?? fallbackInput.group_id ?? "").trim(),
+      favorite: Boolean(input.favorite ?? fallbackInput.favorite ?? false),
+      sort_order: Number.isFinite(Number(input.sort_order ?? fallbackInput.sort_order))
+        ? Number(input.sort_order ?? fallbackInput.sort_order)
+        : 0,
       created_at: String(input.created_at ?? fallbackInput.created_at ?? now).trim(),
       updated_at: String(input.updated_at ?? fallbackInput.updated_at ?? now).trim(),
     };
+  }
+
+  function normalizeOtherAiSpendGroup(group, fallback = {}) {
+    const input = group && typeof group === "object" ? group : {};
+    const fallbackInput = fallback && typeof fallback === "object" ? fallback : {};
+    const now = new Date(nowProvider()).toISOString();
+    return {
+      id: String(input.id ?? fallbackInput.id ?? crypto.randomUUID()).trim(),
+      name: String(input.name ?? fallbackInput.name ?? "").trim(),
+      parent_id: String(input.parent_id ?? fallbackInput.parent_id ?? "").trim(),
+      favorite: Boolean(input.favorite ?? fallbackInput.favorite ?? false),
+      sort_order: Number.isFinite(Number(input.sort_order ?? fallbackInput.sort_order))
+        ? Number(input.sort_order ?? fallbackInput.sort_order)
+        : 0,
+      created_at: String(input.created_at ?? fallbackInput.created_at ?? now).trim(),
+      updated_at: String(input.updated_at ?? fallbackInput.updated_at ?? now).trim(),
+    };
+  }
+
+  function readOtherAiSpendGroups(config = readTrackerConfig()) {
+    const groups = Array.isArray(config.otherAiSpendGroups) ? config.otherAiSpendGroups : [];
+    return groups
+      .map((group) => normalizeOtherAiSpendGroup(group))
+      .filter((group) => group.id && group.name)
+      .sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+  }
+
+  function saveOtherAiSpendGroup(body) {
+    const payload = body && typeof body === "object" ? body : {};
+    const name = String(payload.name || "").trim();
+    if (!name) {
+      const error = new Error("name is required");
+      error.statusCode = 400;
+      throw error;
+    }
+    const config = readTrackerConfig();
+    const current = readOtherAiSpendGroups(config);
+    const id = String(payload.id || "").trim();
+    const existingIndex = id ? current.findIndex((group) => group.id === id) : -1;
+    const existing = existingIndex >= 0 ? current[existingIndex] : null;
+    const parentId = String(payload.parent_id ?? existing?.parent_id ?? "").trim();
+    if (parentId) {
+      const parent = current.find((candidate) => candidate.id === parentId);
+      if (!parent) {
+        const error = new Error("parent group not found");
+        error.statusCode = 400;
+        throw error;
+      }
+      if (parent.parent_id) {
+        const error = new Error("groups support at most two levels");
+        error.statusCode = 400;
+        throw error;
+      }
+      if (parent.id === id || (id && current.some((candidate) => candidate.parent_id === id))) {
+        const error = new Error("groups support at most two levels");
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+    const group = normalizeOtherAiSpendGroup({
+      ...payload,
+      id: existing?.id || id || crypto.randomUUID(),
+      parent_id: parentId,
+      sort_order: existing?.sort_order ?? current.length,
+      created_at: existing?.created_at,
+      updated_at: new Date(nowProvider()).toISOString(),
+    }, existing || {});
+    if (existingIndex >= 0) current[existingIndex] = group;
+    else current.push(group);
+    config.otherAiSpendGroups = current;
+    writeTrackerConfig(config);
+    return { group, groups: readOtherAiSpendGroups(config) };
+  }
+
+  function reorderOtherAiSpendGroups(body) {
+    const ids = Array.isArray(body?.ids) ? body.ids.map((id) => String(id || "").trim()).filter(Boolean) : [];
+    const config = readTrackerConfig();
+    const current = readOtherAiSpendGroups(config);
+    if (ids.length !== current.length || new Set(ids).size !== current.length || ids.some((id) => !current.some((group) => group.id === id))) {
+      const error = new Error("ids must contain every group exactly once");
+      error.statusCode = 400;
+      throw error;
+    }
+    const order = new Map(ids.map((id, index) => [id, index]));
+    config.otherAiSpendGroups = current.map((group) => ({ ...group, sort_order: order.get(group.id) }));
+    writeTrackerConfig(config);
+    return { groups: readOtherAiSpendGroups(config) };
+  }
+
+  function deleteOtherAiSpendGroup(body) {
+    const id = String(body?.id || "").trim();
+    if (!id) {
+      const error = new Error("id is required");
+      error.statusCode = 400;
+      throw error;
+    }
+    const config = readTrackerConfig();
+    const current = readOtherAiSpendGroups(config);
+    if (!current.some((group) => group.id === id)) {
+      const error = new Error("group not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const removedIds = new Set([
+      id,
+      ...current.filter((group) => group.parent_id === id).map((group) => group.id),
+    ]);
+    config.otherAiSpendGroups = current
+      .filter((group) => !removedIds.has(group.id))
+      .map((group, index) => ({ ...group, sort_order: index }));
+    const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
+    config.spendRecords = records.map((record) => removedIds.has(String(record?.group_id || ""))
+      ? { ...record, group_id: "", updated_at: new Date(nowProvider()).toISOString() }
+      : record);
+    writeTrackerConfig(config);
+    return { groups: readOtherAiSpendGroups(config) };
   }
 
   /**
@@ -3247,16 +3513,81 @@ function createLocalApiHandler({
     };
   }
 
-  function readSpendRecords(fromStr, toStr, timeZoneContext, sources) {
+  function readSpendRecords(fromStr, toStr, timeZoneContext, sources, summaryMonth) {
     const config = readTrackerConfig();
     const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
-    const normalized = records.map((record) => normalizeSpendRecord(record));
+    const normalized = records
+      .map((record) => normalizeSpendRecord(record))
+      .sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at));
     // Ticket-07 Task 4: filter records by sources before returning
     const sourcesSet = sources ? new Set(sources) : null;
     const filteredRecords = sourcesSet
       ? normalized.filter((record) => sourcesSet.has((record.source || "unknown").toLowerCase()))
       : normalized;
-    return { records: filteredRecords, ...summarizeSpendRecords(filteredRecords, fromStr, toStr, timeZoneContext, sources) };
+    const groups = readOtherAiSpendGroups(config);
+    return {
+      records: filteredRecords,
+      other_ai_groups: groups,
+      other_ai_group_totals: summarizeOtherAiSpendGroups(normalized, groups, timeZoneContext, summaryMonth),
+      ...summarizeSpendRecords(filteredRecords, fromStr, toStr, timeZoneContext, sources),
+    };
+  }
+
+  function summarizeOtherAiSpendGroups(records, groups, timeZoneContext, requestedSummaryMonth) {
+    const today = new Date(nowProvider());
+    const localTodayKey = formatPartsDayKey(getZonedParts(today, timeZoneContext));
+    const todayKey = localTodayKey || today.toISOString().slice(0, 10);
+    const currentMonth = todayKey.slice(0, 7);
+    const requestedMonth = String(requestedSummaryMonth || "").trim();
+    const summaryMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth) && requestedMonth <= currentMonth
+      ? requestedMonth
+      : currentMonth;
+    const year = Number(summaryMonth.slice(0, 4));
+    const month = Number(summaryMonth.slice(5, 7));
+    const monthFrom = new Date(Date.UTC(year, month - 1, 1));
+    const yearFrom = new Date(Date.UTC(year, 0, 1));
+    const lifetimeFrom = new Date("2000-01-01T00:00:00Z");
+    const selectedToKey = summaryMonth === currentMonth
+      ? todayKey
+      : new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    const toDate = new Date(`${selectedToKey}T23:59:59.999Z`);
+    const lifetimeTo = new Date(`${todayKey}T23:59:59.999Z`);
+    const usdToCny = getUsdToCny();
+    const otherAiRecords = records.filter((record) => record.source === "other_ai");
+    const groupIds = new Set(groups.map((group) => group.id));
+    const buckets = groups.map((group) => ({ id: group.id, name: group.name, parent_id: group.parent_id, sort_order: group.sort_order }));
+    if (otherAiRecords.some((record) => !record.group_id || !groupIds.has(record.group_id))) {
+      buckets.push({ id: "", name: "未分组", sort_order: Number.MAX_SAFE_INTEGER });
+    }
+    const round6 = (value) => Number(value.toFixed(6));
+    return buckets.map((group) => {
+      const groupRecords = otherAiRecords.filter((record) => group.id
+        ? record.group_id === group.id
+        : !record.group_id || !groupIds.has(record.group_id));
+      const sum = (from) => groupRecords.reduce(
+        (total, record) => total + computeSubscriptionCostForRange(record, from, toDate, usdToCny),
+        0,
+      );
+      const monthUsd = sum(monthFrom);
+      const yearUsd = sum(yearFrom);
+      const lifetimeUsd = groupRecords.reduce(
+        (total, record) => total + computeSubscriptionCostForRange(record, lifetimeFrom, lifetimeTo, usdToCny),
+        0,
+      );
+      return {
+        group_id: group.id,
+        group_name: group.name,
+        summary_month: summaryMonth,
+        sort_order: group.sort_order,
+        record_count: groupRecords.length,
+        month_usd: round6(monthUsd),
+        month_cny: round6(monthUsd * usdToCny),
+        year_usd: round6(yearUsd),
+        year_cny: round6(yearUsd * usdToCny),
+        lifetime_usd: round6(lifetimeUsd),
+        lifetime_cny: round6(lifetimeUsd * usdToCny),
+      };
+    });
   }
 
   function createSpendRecord(body) {
@@ -3294,6 +3625,9 @@ function createLocalApiHandler({
 
   function updateSpendRecord(body) {
     const payload = body && typeof body === "object" ? body : {};
+    if (payload.action === "reorder") {
+      return reorderSpendRecords(payload);
+    }
     const id = String(payload.id || "").trim();
     if (!id) {
       const error = new Error("id is required for update");
@@ -3336,6 +3670,42 @@ function createLocalApiHandler({
     config.spendRecords = current;
     writeTrackerConfig(config);
     return { record, ...readSpendRecords() };
+  }
+
+  function reorderSpendRecords(body) {
+    const ids = Array.isArray(body?.ids) ? body.ids.map((id) => String(id || "").trim()).filter(Boolean) : [];
+    const config = readTrackerConfig();
+    const current = Array.isArray(config.spendRecords) ? config.spendRecords : [];
+    const otherAi = current.filter((record) => String(record?.source || "").toLowerCase() === "other_ai");
+    if (ids.length !== otherAi.length || new Set(ids).size !== otherAi.length || ids.some((id) => !otherAi.some((record) => String(record?.id || "") === id))) {
+      const error = new Error("ids must contain every other_ai record exactly once");
+      error.statusCode = 400;
+      throw error;
+    }
+    const order = new Map(ids.map((id, index) => [id, index]));
+    const movedId = String(body?.moved_id || "").trim();
+    const groupId = String(body?.group_id || "").trim();
+    if (movedId && !otherAi.some((record) => String(record?.id || "") === movedId)) {
+      const error = new Error("moved record not found");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (groupId && !readOtherAiSpendGroups(config).some((group) => group.id === groupId)) {
+      const error = new Error("target group not found");
+      error.statusCode = 400;
+      throw error;
+    }
+    config.spendRecords = current.map((record) => String(record?.source || "").toLowerCase() === "other_ai"
+      ? {
+          ...record,
+          sort_order: order.get(String(record?.id || "")),
+          ...(movedId && String(record?.id || "") === movedId
+            ? { group_id: groupId, updated_at: new Date(nowProvider()).toISOString() }
+            : {}),
+        }
+      : record);
+    writeTrackerConfig(config);
+    return readSpendRecords();
   }
 
   function deleteSpendRecord(body) {
@@ -4800,14 +5170,17 @@ function createLocalApiHandler({
         timeZoneContext,
         sources: effectiveSources,
       });
-      const providers = aggregateBySource(scopedRows, {
+      const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
+        ? tokenOnlyDirectoryStatesProvider(readLocalSettings())
+        : resolveTokenOnlyDirectoryStates(readLocalSettings());
+      const providers = appendDetectedTokenOnlyProviders(aggregateBySource(scopedRows, {
         fromKey: from || null,
         toKey: to || null,
         timeZoneContext,
         pricingOptions,
         sources: effectiveSources,
         models: modelsParam,
-      });
+      }), directoryStates, effectiveSources);
       const totals = computeQueueTotals(scopedRows, {
         fromKey: from || null,
         toKey: to || null,
@@ -5345,7 +5718,8 @@ function createLocalApiHandler({
         const sources = sourcesParam
           ? sourcesParam.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
           : null;
-        json(res, readSpendRecords(from, to, timeZoneContext, sources));
+        const summaryMonth = url.searchParams.get("summary_month") || "";
+        json(res, readSpendRecords(from, to, timeZoneContext, sources, summaryMonth));
         return true;
       }
       if (method === "POST") {
@@ -5392,6 +5766,36 @@ function createLocalApiHandler({
         return true;
       }
       json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return true;
+    }
+
+    // --- other AI spend groups (group records remain independent of spend rows) ---
+    if (p === "/functions/tokentracker-other-ai-groups") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method === "GET") {
+        json(res, { groups: readOtherAiSpendGroups() });
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        const body = await readJsonBody(req);
+        if (method === "POST") {
+          json(res, { ok: true, ...saveOtherAiSpendGroup(body) });
+        } else if (method === "PUT") {
+          json(res, { ok: true, ...(body?.action === "reorder"
+            ? reorderOtherAiSpendGroups(body)
+            : saveOtherAiSpendGroup(body)) });
+        } else if (method === "DELETE") {
+          json(res, { ok: true, ...deleteOtherAiSpendGroup(body) });
+        } else {
+          json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        }
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || "Unable to update other AI spend groups" }, e?.statusCode || 500);
+      }
       return true;
     }
 
@@ -5602,6 +6006,41 @@ function createLocalApiHandler({
       return true;
     }
 
+    if (p === "/functions/tokentracker-token-plans-order") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method !== "PUT") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const ids = Array.isArray(body?.ids) ? body.ids.map((id) => String(id || "").trim()) : [];
+        const records = readTokenPlanRecords();
+        const storedIds = records.map((record) => record.id);
+        const submitted = new Set(ids);
+        const valid = ids.length === storedIds.length
+          && submitted.size === ids.length
+          && ids.every((id) => storedIds.includes(id));
+        if (!valid) {
+          json(res, { ok: false, error: "套餐排序必须包含全部且不重复的记录 ID" }, 400);
+          return true;
+        }
+        const byId = new Map(records.map((record) => [record.id, record]));
+        const ordered = ids.map((id, index) => ({ ...byId.get(id), display_order: index }));
+        const config = readTrackerConfig();
+        config.tokenPlans = ordered;
+        writeTrackerConfig(config);
+        json(res, { ok: true, records: readTokenPlanRecords() });
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || "Unable to reorder token plans" }, e?.statusCode || 500);
+      }
+      return true;
+    }
+
     // --- token plans (F03: 鏀寔 auto refresh 瀛楁涓庢墜鍔?refresh endpoint) ---
     if (p === "/functions/tokentracker-token-plans") {
       const method = String(req.method || "GET").toUpperCase();
@@ -5619,6 +6058,19 @@ function createLocalApiHandler({
           json(res, { ok: true, ...upsertTokenPlanRecord(body) });
         } catch (e) {
           json(res, { ok: false, error: e?.message || "Unable to save token plan" }, e?.statusCode || 500);
+        }
+        return true;
+      }
+      if (method === "DELETE") {
+        if (!isAuthorizedLocalMutation(req)) {
+          json(res, { ok: false, error: "Unauthorized" }, 401);
+          return true;
+        }
+        try {
+          const body = await readJsonBody(req);
+          json(res, { ok: true, ...deleteTokenPlanRecord(body) });
+        } catch (e) {
+          json(res, { ok: false, error: e?.message || "Unable to delete token plan" }, e?.statusCode || 500);
         }
         return true;
       }
@@ -6141,6 +6593,25 @@ function createLocalApiHandler({
               lastSyncedAt: null,
             });
           }
+          if (String(c.authType || "").toLowerCase() === "official_console") {
+            const snapshot = resolveOfficialConsoleBalance(c);
+            if (snapshot) {
+              return providerApiBalance.makeBalance(c, {
+                status: providerApiBalance.STATUS_SYNCED,
+                balance: Number(snapshot.available_balance ?? snapshot.balance),
+                monthSpend: null,
+                lifetimeSpend: null,
+                currency: String(snapshot.currency || "CNY"),
+                lastSyncedAt: String(snapshot.provider_reported_at || new Date().toISOString()),
+              });
+            }
+            return providerApiBalance.makeBalance(c, {
+              status: providerApiBalance.STATUS_NOT_CONNECTED,
+              errorCode: providerApiBalance.ERROR_CODES.CREDENTIAL_MISSING,
+              errorMessage: "未完成官方控制台授权",
+              lastSyncedAt: null,
+            });
+          }
           // If no secret configured, return not-connected
           if (!c.apiKeyRef) {
             return providerApiBalance.makeBalance(c, {
@@ -6256,6 +6727,31 @@ function createLocalApiHandler({
       }
       return true;
     }
+    // --- local settings (machine-only; never uploaded) ---
+    if (p === "/functions/tokentracker-official-model-pricing") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method !== "POST") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const { verifyOfficialModelPricing } = require("./official-pricing");
+        json(res, await verifyOfficialModelPricing(body));
+      } catch (error) {
+        json(res, {
+          ok: false,
+          status: "manual_required",
+          error: error?.message || "官方自动核价失败。",
+        }, 502);
+      }
+      return true;
+    }
+
     // --- local settings (machine-only; never uploaded) ---
     if (p === "/functions/tokentracker-local-settings") {
       const method = String(req.method || "GET").toUpperCase();
@@ -6613,9 +7109,12 @@ function createLocalApiHandler({
           env: process.env,
           platform: process.platform,
         });
+        const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
+          ? tokenOnlyDirectoryStatesProvider(readLocalSettings())
+          : resolveTokenOnlyDirectoryStates(readLocalSettings());
         json(res, {
           ...data,
-          ...summarizeTokenOnlyUsage(readQueueData(qp)),
+          ...summarizeTokenOnlyUsage(readQueueData(qp), directoryStates),
         });
       } catch (e) {
         json(res, { error: e?.message || "Unknown error" }, 500);
@@ -6642,6 +7141,7 @@ function createLocalApiHandler({
 }
 
 module.exports = {
+  appendDetectedTokenOnlyProviders,
   createLocalApiHandler,
   resolveAllowedInsforgeBaseUrl,
   resolveQueuePath,

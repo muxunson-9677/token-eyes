@@ -1111,6 +1111,7 @@ spend.lifetime_combined,dashboard,SpendPage,SpendPage,lifetime_combined,"累计�
 spend.monthly_change.increase,dashboard,SpendPage,UsageStatsPanel,monthly_change_increase,"较上月新增 {{value}}%",,active
 spend.monthly_change.decrease,dashboard,SpendPage,UsageStatsPanel,monthly_change_decrease,"较上月减少 {{value}}%",,active
 spend.monthly_change.new_amount,dashboard,SpendPage,UsageStatsPanel,monthly_change_new_amount,"较上月新增 {{amount}}",,active
+spend.monthly_change.no_baseline,dashboard,SpendPage,UsageStatsPanel,monthly_change_no_baseline,"上月无基数",,active
 spend.monthly_change.flat,dashboard,SpendPage,UsageStatsPanel,monthly_change_flat,"与上月持平",,active
 spend.total_usd,dashboard,SpendPage,SpendPage,total_usd,"USD 合计",,active
 spend.total_cny,dashboard,SpendPage,SpendPage,total_cny,"CNY 合计",,active
@@ -1476,6 +1477,13 @@ settings.token_plan.cursor.official_desc,ui,SettingsPage,TokenPlanSection,cursor
 settings.token_plan.cursor.connect_account,ui,SettingsPage,TokenPlanSection,cursor_connect_account,"连接 Cursor 官网账号",,active
 settings.token_plan.cursor.login_started_desc,ui,SettingsPage,TokenPlanSection,cursor_login_started_desc,"官方登录窗口已打开，请在窗口内完成 Cursor 登录，Token Eyes 会自动同步额度。",,active
 settings.token_plan.cursor.connect_timeout,ui,SettingsPage,TokenPlanSection,cursor_connect_timeout,"等待 Cursor 登录超时，请重试。",,active
+settings.token_plan.cursor.account,ui,SettingsPage,TokenPlanSection,cursor_account,"账号",,active
+settings.token_plan.cursor.auth_id,ui,SettingsPage,TokenPlanSection,cursor_auth_id,"Auth ID",,active
+settings.token_plan.cursor.plan_name,ui,SettingsPage,TokenPlanSection,cursor_plan_name,"套餐",,active
+settings.token_plan.cursor.total_usage,ui,SettingsPage,TokenPlanSection,cursor_total_usage,"Total Usage",,active
+settings.token_plan.cursor.auto_composer_usage,ui,SettingsPage,TokenPlanSection,cursor_auto_composer_usage,"Auto + Composer Usage",,active
+settings.token_plan.cursor.api_usage,ui,SettingsPage,TokenPlanSection,cursor_api_usage,"API Usage",,active
+settings.token_plan.cursor.reset_at,ui,SettingsPage,TokenPlanSection,cursor_reset_at,"重置时间",,active
 settings.token_plan.kimi.connect_account,ui,SettingsPage,TokenPlanSection,kimi_connect_account,"连接 Kimi Code 官网账号",,active
 settings.token_plan.kimi.login_started_desc,ui,SettingsPage,TokenPlanSection,kimi_login_started_desc,"官方登录窗口已打开，请在窗口内完成 Kimi Code 登录，Token Eyes 会自动同步额度。",,active
 settings.token_plan.kimi.connect_timeout,ui,SettingsPage,TokenPlanSection,kimi_connect_timeout,"等待 Kimi Code 登录超时，请重试。",,active
@@ -1582,6 +1590,14 @@ spend.cost.summary.month_api,dashboard,SpendPage,CostAccumulation,summary_month_
 spend.cost.summary.month_subscription,dashboard,SpendPage,CostAccumulation,summary_month_subscription,"本月订阅成本",,active
 spend.cost.summary.month_total,dashboard,SpendPage,CostAccumulation,summary_month_total,"本月总成本",,active
 spend.cost.summary.lifetime_total,dashboard,SpendPage,CostAccumulation,summary_lifetime_total,"累计总成本",,active
+spend.cost.summary.api_suffix,dashboard,SpendPage,CostAccumulation,summary_api_suffix,"API 成本",,active
+spend.cost.summary.subscription_suffix,dashboard,SpendPage,CostAccumulation,summary_subscription_suffix,"套餐成本",,active
+spend.cost.summary.total_suffix,dashboard,SpendPage,CostAccumulation,summary_total_suffix,"总成本",,active
+spend.cost.month_picker.label,dashboard,SpendPage,CostAccumulation,month_picker_label,"选择成本月份",,active
+spend.cost.month_picker.previous,dashboard,SpendPage,CostAccumulation,month_picker_previous,"上一个月",,active
+spend.cost.month_picker.next,dashboard,SpendPage,CostAccumulation,month_picker_next,"下一个月",,active
+spend.cost.month_picker.value,dashboard,SpendPage,CostAccumulation,month_picker_value,"{{year}}年{{month}}月",,active
+spend.cost.month_picker.year_to_month,dashboard,SpendPage,CostAccumulation,month_picker_year_to_month,"{{year}}年截至{{month}}月",,active
 spend.cost.other_ai_groups.section,dashboard,SpendPage,CostAccumulation,other_ai_groups_section,"自定义花销分组",,active
 spend.cost.other_ai_groups.month,dashboard,SpendPage,CostAccumulation,other_ai_groups_month,"本月",,active
 spend.cost.other_ai_groups.year,dashboard,SpendPage,CostAccumulation,other_ai_groups_year,"本年",,active

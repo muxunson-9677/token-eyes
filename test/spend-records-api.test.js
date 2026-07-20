@@ -1127,6 +1127,301 @@ test("OTHER-AI: lifetime uses the requested local day across the UTC+8 date boun
   }
 });
 
+test("OTHER-AI: custom groups preserve favorite and explicit record order", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-groups-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-07-14T08:00:00.000Z"),
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const mutate = async (pathName, method, body) => readJsonResponse(await call(handler, pathName, {
+      method,
+      headers,
+      body: JSON.stringify(body),
+    }));
+
+    const learning = (await mutate("/functions/tokentracker-other-ai-groups", "POST", { name: "AI learning" })).group;
+    const loss = (await mutate("/functions/tokentracker-other-ai-groups", "POST", { name: "Account loss" })).group;
+    const favoriteLearning = (await mutate("/functions/tokentracker-other-ai-groups", "PUT", {
+      id: learning.id,
+      name: "AI learning",
+      favorite: true,
+    })).group;
+    assert.equal(favoriteLearning.favorite, true);
+    const first = (await mutate("/functions/tokentracker-spend-records", "POST", {
+      source: "other_ai",
+      plan_label: "Course",
+      amount: 10,
+      currency: "USD",
+      billing_cycle: "one_time",
+      start_date: "2026-07-01",
+      group_id: learning.id,
+      favorite: true,
+    })).record;
+    const second = (await mutate("/functions/tokentracker-spend-records", "POST", {
+      source: "other_ai",
+      plan_label: "Closed account",
+      amount: 20,
+      currency: "USD",
+      billing_cycle: "one_time",
+      start_date: "2026-07-02",
+      group_id: loss.id,
+      favorite: false,
+    })).record;
+
+    await mutate("/functions/tokentracker-spend-records", "PUT", {
+      action: "reorder",
+      ids: [first.id, second.id],
+    });
+    await mutate("/functions/tokentracker-other-ai-groups", "PUT", {
+      action: "reorder",
+      ids: [loss.id, learning.id],
+    });
+
+    let result = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?sources=other_ai",
+      { method: "GET" },
+    ));
+    assert.deepEqual(result.other_ai_groups.map((group) => group.id), [loss.id, learning.id]);
+    assert.equal(result.other_ai_groups.find((group) => group.id === learning.id).favorite, true);
+    assert.deepEqual(result.records.map((record) => record.id), [first.id, second.id]);
+    assert.equal(result.records[0].favorite, true);
+    assert.equal(result.records[0].group_id, learning.id);
+
+    await mutate("/functions/tokentracker-other-ai-groups", "DELETE", { id: learning.id });
+    result = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?sources=other_ai",
+      { method: "GET" },
+    ));
+    assert.deepEqual(result.other_ai_groups.map((group) => group.id), [loss.id]);
+    assert.equal(result.records.find((record) => record.id === first.id).group_id, "");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("OTHER-AI: groups persist one nested level and reject a third level", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-nested-groups-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-07-14T08:00:00.000Z"),
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const mutate = async (method, body) => {
+      const response = await call(handler, "/functions/tokentracker-other-ai-groups", {
+        method,
+        headers,
+        body: JSON.stringify(body),
+      });
+      return { status: response.statusCode, body: readJsonResponse(response) };
+    };
+
+    const root = (await mutate("POST", { name: "AI learning" })).body.group;
+    const childResult = await mutate("POST", { name: "Courses", parent_id: root.id });
+    assert.equal(childResult.status, 200);
+    assert.equal(childResult.body.group.parent_id, root.id);
+
+    const thirdLevel = await mutate("POST", { name: "Advanced", parent_id: childResult.body.group.id });
+    assert.equal(thirdLevel.status, 400);
+    assert.match(thirdLevel.body.error, /two levels/i);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("OTHER-AI: record reorder can atomically move a record into a group", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-move-group-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-07-14T08:00:00.000Z"),
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const mutate = async (pathName, method, body) => readJsonResponse(await call(handler, pathName, {
+      method,
+      headers,
+      body: JSON.stringify(body),
+    }));
+    const group = (await mutate("/functions/tokentracker-other-ai-groups", "POST", { name: "AI learning" })).group;
+    const first = (await mutate("/functions/tokentracker-spend-records", "POST", {
+      source: "other_ai", plan_label: "One", amount: 1, currency: "USD",
+      billing_cycle: "one_time", start_date: "2026-07-01",
+    })).record;
+    const second = (await mutate("/functions/tokentracker-spend-records", "POST", {
+      source: "other_ai", plan_label: "Two", amount: 2, currency: "USD",
+      billing_cycle: "one_time", start_date: "2026-07-02",
+    })).record;
+
+    await mutate("/functions/tokentracker-spend-records", "PUT", {
+      action: "reorder",
+      ids: [second.id, first.id],
+      moved_id: first.id,
+      group_id: group.id,
+    });
+    const result = readJsonResponse(await call(handler, "/functions/tokentracker-spend-records?sources=other_ai", { method: "GET" }));
+    assert.deepEqual(result.records.map((record) => record.id), [second.id, first.id]);
+    assert.equal(result.records.find((record) => record.id === first.id).group_id, group.id);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("OTHER-AI: deleting a parent group ungroups its child records safely", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-delete-parent-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({ queuePath: path.join(trackerDir, "queue.jsonl"), trackerDataDir: trackerDir });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = { "content-type": "application/json", "x-tokentracker-local-auth": readJsonResponse(auth).token, origin: "http://127.0.0.1:7680" };
+    const mutate = async (pathName, method, body) => readJsonResponse(await call(handler, pathName, { method, headers, body: JSON.stringify(body) }));
+    const root = (await mutate("/functions/tokentracker-other-ai-groups", "POST", { name: "Root" })).group;
+    const child = (await mutate("/functions/tokentracker-other-ai-groups", "POST", { name: "Child", parent_id: root.id })).group;
+    const record = (await mutate("/functions/tokentracker-spend-records", "POST", {
+      source: "other_ai", plan_label: "Course", amount: 1, currency: "USD",
+      billing_cycle: "one_time", start_date: "2026-07-01", group_id: child.id,
+    })).record;
+
+    await mutate("/functions/tokentracker-other-ai-groups", "DELETE", { id: root.id });
+    const result = readJsonResponse(await call(handler, "/functions/tokentracker-spend-records?sources=other_ai", { method: "GET" }));
+    assert.equal(result.other_ai_groups.length, 0);
+    assert.equal(result.records.find((item) => item.id === record.id).group_id, "");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("OTHER-AI: group summaries expose current month, current year, and lifetime totals", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-group-totals-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-07-14T08:00:00.000Z"),
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const mutate = async (pathName, method, body) => readJsonResponse(await call(handler, pathName, {
+      method,
+      headers,
+      body: JSON.stringify(body),
+    }));
+    const group = (await mutate("/functions/tokentracker-other-ai-groups", "POST", { name: "AI learning" })).group;
+
+    for (const [label, amount, date] of [
+      ["July", 10, "2026-07-01"],
+      ["January", 20, "2026-01-01"],
+      ["Previous year", 30, "2025-01-01"],
+      ["Future", 40, "2026-07-20"],
+    ]) {
+      await mutate("/functions/tokentracker-spend-records", "POST", {
+        source: "other_ai",
+        plan_label: label,
+        amount,
+        currency: "USD",
+        billing_cycle: "one_time",
+        start_date: date,
+        group_id: group.id,
+      });
+    }
+
+    const result = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?from=2026-07-01&to=2026-07-31&sources=other_ai",
+      { method: "GET" },
+    ));
+    const total = result.other_ai_group_totals.find((entry) => entry.group_id === group.id);
+    assert.equal(total.month_usd, 10);
+    assert.equal(total.year_usd, 30);
+    assert.equal(total.lifetime_usd, 60);
+    assert.equal(total.record_count, 4);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("OTHER-AI selected summary month controls month and year cutoff without changing lifetime", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-other-ai-selected-month-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-07-14T08:00:00.000Z"),
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const mutate = async (pathName, method, body) => readJsonResponse(await call(handler, pathName, {
+      method,
+      headers,
+      body: JSON.stringify(body),
+    }));
+    const group = (await mutate("/functions/tokentracker-other-ai-groups", "POST", { name: "Selected month" })).group;
+
+    for (const record of [
+      { plan_label: "Recurring", amount: 10, billing_cycle: "monthly", start_date: "2025-01-01" },
+      { plan_label: "June only", amount: 6, billing_cycle: "one_time", start_date: "2025-06-15" },
+      { plan_label: "July only", amount: 7, billing_cycle: "one_time", start_date: "2025-07-15" },
+      { plan_label: "Earlier lifetime", amount: 4, billing_cycle: "one_time", start_date: "2024-12-15" },
+    ]) {
+      await mutate("/functions/tokentracker-spend-records", "POST", {
+        source: "other_ai",
+        currency: "USD",
+        group_id: group.id,
+        ...record,
+      });
+    }
+
+    const result = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?summary_month=2025-06&sources=other_ai&tz=Asia%2FShanghai",
+      { method: "GET" },
+    ));
+    const total = result.other_ai_group_totals.find((entry) => entry.group_id === group.id);
+
+    assert.equal(total.summary_month, "2025-06");
+    assert.equal(total.month_usd, 16);
+    assert.equal(total.year_usd, 66);
+    assert.equal(total.lifetime_usd, 207);
+    assert.equal(total.record_count, 4);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("06: POST missing source returns 400 missing_required_field", async () => {
   const { tmp, handler, headers } = await setupSpendHandler();
   try {

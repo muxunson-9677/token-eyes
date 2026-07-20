@@ -10,7 +10,7 @@ import {
 } from "../lib/api";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
-import { computeRangeFromKey, getMonthComparisonRanges } from "../lib/date-range";
+import { computeRangeFromKey, getCostMonthRanges, getMonthComparisonRanges } from "../lib/date-range";
 import { getBrowserTimeZone, getBrowserTimeZoneOffsetMinutes } from "../lib/timezone";
 import { normalizeAccessToken } from "../lib/auth-token";
 import { DASHBOARD_AGENTS } from "../lib/agent-adapters-dashboard";
@@ -167,14 +167,11 @@ function SpendUsagePageInner({
   );
   const costSources = useMemo(
     () => {
-      if (visibleProviderIds.length === 0) return withOtherAiCostSource([]);
       const hasExplicitProviderScope = (filterState.agentIds?.length || 0) > 0
         || (filterState.sources?.length || 0) > 0;
-      return hasExplicitProviderScope
-        ? effectiveUsageSources
-        : withOtherAiCostSource(effectiveUsageSources);
+      return hasExplicitProviderScope ? effectiveUsageSources : null;
     },
-    [effectiveUsageSources, filterState.agentIds, filterState.sources, visibleProviderIds],
+    [effectiveUsageSources, filterState.agentIds, filterState.sources],
   );
   const {
     setRefreshInterval: dispatchRefreshInterval,
@@ -294,7 +291,7 @@ function SpendUsagePageInner({
     const requestId = financialRequestIdRef.current + 1;
     financialRequestIdRef.current = requestId;
 
-    if (costSources.length === 0) {
+    if (costSources?.length === 0) {
       setFinancialState({ scopeKey: financialScopeKey, totals: null, lastUpdatedAt: null });
       return;
     }
@@ -306,9 +303,7 @@ function SpendUsagePageInner({
     const requestMonth = (monthRange) => getSpendRecords({
       from: monthRange.from,
       to: monthRange.to,
-      timeZone,
-      tzOffsetMinutes,
-      sources: costSources,
+      ...(costSources ? { sources: costSources } : {}),
     });
 
     const [currentResult, previousResult] = await Promise.allSettled([
@@ -327,6 +322,10 @@ function SpendUsagePageInner({
         scopeKey: financialScopeKey,
         totals: currentTotals ? {
           ...currentTotals,
+          previous_api_usd: previousTotals?.api_usd ?? null,
+          previous_api_cny: previousTotals?.api_cny ?? null,
+          previous_subscription_usd: previousTotals?.subscription_usd ?? null,
+          previous_subscription_cny: previousTotals?.subscription_cny ?? null,
           previous_combined_usd: previousTotals?.combined_usd ?? null,
           previous_combined_cny: previousTotals?.combined_cny ?? null,
         } : null,
@@ -525,7 +524,7 @@ function SpendCostPageInner({
     [visibleProviderIds],
   );
 
-  const { state: filterState, refreshRevision, requestRefresh } = useUsageFilters();
+  const { refreshRevision, requestRefresh } = useUsageFilters();
 
   const authTokenAllowed = signedIn && !sessionSoftExpired;
   const effectiveAuthToken = authTokenAllowed ? auth : null;
@@ -535,24 +534,20 @@ function SpendCostPageInner({
 
   const timeZone = useMemo(() => getBrowserTimeZone() || "UTC", []);
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
+  const currentCostMonth = getCostMonthRanges({
+    timeZone,
+    offsetMinutes: tzOffsetMinutes,
+  }).selectedMonth;
+  const [selectedCostMonth, setSelectedCostMonth] = useState(currentCostMonth);
 
-  const range = useMemo(() => {
-    if (filterState.timeRange === "custom" && filterState.from && filterState.to) {
-      return { from: filterState.from, to: filterState.to };
-    }
-    return computeRangeFromKey(filterState.timeRange, {
-      timeZone,
-      offsetMinutes: tzOffsetMinutes,
-    });
-  }, [filterState.timeRange, filterState.from, filterState.to, timeZone, tzOffsetMinutes]);
-
-  const { from, to } = range;
+  useEffect(() => {
+    if (selectedCostMonth > currentCostMonth) setSelectedCostMonth(currentCostMonth);
+  }, [currentCostMonth, selectedCostMonth]);
 
   // Ticket-03: Cost Accumulation hook (token plans, api billing, subscription
   // records, cost summary). Refreshes when refreshRevision changes.
   const costAccumulation = useCostAccumulation({
-    from,
-    to,
+    selectedMonth: selectedCostMonth,
     timeZone,
     tzOffsetMinutes,
     refreshRevision,
@@ -563,6 +558,7 @@ function SpendCostPageInner({
     apiBillingAccounts,
     subscriptionRecords,
     costSummary,
+    otherAiGroupCosts,
     loading: costLoading,
     error: costError,
     refresh: refreshCostAccumulation,
@@ -650,7 +646,7 @@ function SpendCostPageInner({
   return (
     <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-none px-4 sm:px-6">
           <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
@@ -667,6 +663,10 @@ function SpendCostPageInner({
             apiBillingAccounts={apiBillingAccounts}
             subscriptionRecords={subscriptionRecords}
             costSummary={costSummary}
+            otherAiGroupCosts={otherAiGroupCosts}
+            selectedMonth={selectedCostMonth}
+            currentMonth={currentCostMonth}
+            onSelectedMonthChange={setSelectedCostMonth}
             loading={costLoading}
             error={costError}
             providerApiBalances={providerApiBalances}
