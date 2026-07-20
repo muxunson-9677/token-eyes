@@ -21,6 +21,11 @@ const {
 } = require("./source-metadata");
 const { accountSlugFor, fetchAccountUsage, mintAccessToken } = require("./cloud-account");
 const { getOrCreateMachineId, computeStableMachineId } = require("./machine-id");
+const {
+  assertCompactStateSize,
+  buildLeaderboardDeviceState,
+  stableStateHash,
+} = require("./leaderboard-state");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
@@ -4582,6 +4587,40 @@ function createLocalApiHandler({
     const p = url.pathname;
 
     if (prepareUsageAggregateResponseCache(req, res, url)) return true;
+
+    if (p === "/functions/tokentracker-leaderboard-state") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      try {
+        const state = buildLeaderboardDeviceState(readQueueData(qp), {
+          deviceId: getOrCreateMachineId(qp),
+          capturedAt: new Date(),
+        });
+        assertCompactStateSize(state);
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET",
+          "Access-Control-Allow-Headers": "Content-Type, X-TokenTracker-Local-Auth",
+        });
+        res.end(JSON.stringify({
+          ok: true,
+          summary_hash: stableStateHash(state),
+          state,
+        }));
+      } catch (error) {
+        json(res, {
+          ok: false,
+          error: error instanceof RangeError
+            ? "Compact leaderboard state exceeds the local size limit"
+            : "Unable to build leaderboard state",
+        }, error instanceof RangeError ? 413 : 500);
+      }
+      return true;
+    }
 
     if (p === "/api/local-auth") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {
