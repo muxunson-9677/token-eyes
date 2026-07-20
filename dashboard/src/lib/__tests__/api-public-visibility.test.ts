@@ -10,7 +10,13 @@ vi.mock("../insforge-config", () => ({
   getInsforgeRemoteUrl: getInsforgeRemoteUrlMock,
 }));
 
-import { getLeaderboard, getPublicVisibility, setPublicVisibility } from "../api";
+import {
+  deleteLeaderboardParticipation,
+  getLeaderboard,
+  getLocalLeaderboardActualCost,
+  getPublicVisibility,
+  setPublicVisibility,
+} from "../api";
 
 function makeJwt(payload: Record<string, unknown>) {
   const encode = (value: unknown) =>
@@ -74,7 +80,7 @@ describe("public visibility API", () => {
     expect(headers.apikey).toBe("anon-key");
   });
 
-  it("posts visibility settings through the edge function", async () => {
+  it("posts the leaderboard profile and actual-cost consent contract", async () => {
     const payload = {
       enabled: true,
       updated_at: "2026-03-28T16:05:00.000Z",
@@ -84,17 +90,58 @@ describe("public visibility API", () => {
     const accessToken = makeJwt({ sub: "writer-1" });
 
     await expect(
-      setPublicVisibility({ accessToken, enabled: true, anonymous: false }),
+      setPublicVisibility({
+        accessToken,
+        leaderboard_public: true,
+        display_name: "Writer",
+        share_actual_cost: false,
+      }),
     ).resolves.toEqual(payload);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://example.insforge.app/functions/tokentracker-public-visibility",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ enabled: true, anonymous: false }),
+        body: JSON.stringify({
+          leaderboard_public: true,
+          display_name: "Writer",
+          share_actual_cost: false,
+        }),
         headers: expect.objectContaining({
           Authorization: `Bearer ${accessToken}`,
           apikey: "anon-key",
+        }),
+      }),
+    );
+  });
+
+  it("reads only four local actual-cost totals before consent upload", async () => {
+    const fetchMock = mockJsonFetch({
+      period_costs_usd: { today: 1, week: 2, month: 3, total: 4 },
+    });
+    await expect(getLocalLeaderboardActualCost()).resolves.toEqual({
+      today: 1,
+      week: 2,
+      month: 3,
+      total: 4,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/functions/tokentracker-leaderboard-actual-cost",
+    );
+  });
+
+  it("deletes participation through the auth-bound cleanup RPC", async () => {
+    const fetchMock = mockJsonFetch({});
+    const accessToken = makeJwt({ sub: "writer-1" });
+    await deleteLeaderboardParticipation({ accessToken });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.insforge.app/api/database/rpc/delete_my_leaderboard_data",
+      expect.objectContaining({
+        method: "POST",
+        body: "{}",
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${accessToken}`,
+          Prefer: "return=minimal",
         }),
       }),
     );

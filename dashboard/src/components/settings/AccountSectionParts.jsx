@@ -4,6 +4,56 @@ import { useLoginModal } from "../../contexts/LoginModalContext.jsx";
 import { copy } from "../../lib/copy";
 import { SectionCard, ToggleSwitch } from "./Controls.jsx";
 
+const AVATAR_SIZE = 96;
+const AVATAR_MAX_BYTES = 16 * 1024;
+
+function canvasBlob(canvas, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, "image/webp", quality);
+  });
+}
+
+function readBlobBytes(blob) {
+  if (typeof blob.arrayBuffer === "function") return blob.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("Unable to read avatar"));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+export async function prepareLeaderboardAvatar(file) {
+  if (!file || typeof file.type !== "string" || !file.type.startsWith("image/")) {
+    throw new Error("Avatar must be an image");
+  }
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement("canvas");
+  canvas.width = AVATAR_SIZE;
+  canvas.height = AVATAR_SIZE;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas unavailable");
+  const side = Math.min(bitmap.width, bitmap.height);
+  const sx = (bitmap.width - side) / 2;
+  const sy = (bitmap.height - side) / 2;
+  context.drawImage(bitmap, sx, sy, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+  bitmap.close?.();
+
+  let blob = null;
+  for (const quality of [0.82, 0.68, 0.52, 0.4]) {
+    blob = await canvasBlob(canvas, quality);
+    if (blob && blob.size <= AVATAR_MAX_BYTES) break;
+  }
+  if (!blob || blob.type !== "image/webp" || blob.size > AVATAR_MAX_BYTES) {
+    throw new Error("Avatar cannot be compressed below 16 KiB");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", await readBlobBytes(blob));
+  const hash = [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+  return new File([blob], `${hash}.webp`, { type: "image/webp" });
+}
+
 function InlineEditorActions({ disabled, onCancel, onSave, saveLabel = copy("settings.account.save") }) {
   return (
     <>
@@ -134,35 +184,19 @@ function SettingsField({ actions, editing, editor, hint, label }) {
 }
 
 function DisplayNameActions({ name }) {
-  const title = name.anonymousOn
-    ? copy("settings.account.displayNameDisabledWhileAnon")
-    : undefined;
-
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      <EditButton
-        disabled={name.anonymousOn}
-        label={copy("settings.account.edit")}
-        onClick={name.startEditingName}
-        title={title}
-      />
-      <ToggleSwitch
-        checked={!name.anonymousOn}
-        onChange={name.handleAnonymousToggle}
-        disabled={name.profileLoading || name.profileSaving}
-        ariaLabel={copy("settings.account.displayName")}
-      />
-    </div>
+    <EditButton
+      label={copy("settings.account.edit")}
+      onClick={name.startEditingName}
+    />
   );
 }
 
 function DisplayNameField({ name }) {
   const {
-    anonymousOn,
     customDisplayName,
     displayName,
     editingName,
-    handleAnonymousToggle,
     handleSaveName,
     nameInput,
     profileLoading,
@@ -172,13 +206,11 @@ function DisplayNameField({ name }) {
     startEditingName,
   } = name;
 
-  const displayValue = anonymousOn
-    ? copy("settings.account.displayNameAnonymousHint")
-    : (customDisplayName || displayName);
+  const displayValue = customDisplayName || displayName;
 
   return (
     <SettingsField
-      label={copy("settings.account.displayName")}
+      label={copy("settings.account.nickname")}
       editing={editingName}
       hint={displayValue}
       editor={
@@ -214,7 +246,7 @@ function GithubProfileField({ github }) {
 
   return (
     <SettingsField
-      label={copy("settings.account.githubUrl")}
+      label={copy("settings.account.github")}
       editing={editingGithub}
       hint={githubUrl || copy("settings.account.githubUrlHint")}
       editor={
@@ -249,7 +281,7 @@ export function SignedOutAccountSection() {
     <SectionCard title={copy("settings.section.account")}>
       <div className="flex items-center justify-between gap-4 py-3">
         <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
-          {copy("settings.account.signedOutHint")}
+          {copy("settings.account.participationSignIn")}
         </p>
         <button
           type="button"
@@ -269,5 +301,51 @@ export function PublicProfileFields({ name, github }) {
       <DisplayNameField name={name} />
       <GithubProfileField github={github} />
     </>
+  );
+}
+
+export function AvatarField({ avatar }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <div>
+        <div className="text-sm text-oai-gray-900 dark:text-oai-gray-200">
+          {copy("settings.account.avatar")}
+        </div>
+        <div className="mt-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("settings.account.avatarHint")}
+        </div>
+      </div>
+      <label className="inline-flex h-8 cursor-pointer items-center rounded-md border border-oai-gray-200 px-3 text-xs dark:border-oai-gray-800">
+        {avatar.uploading ? copy("settings.account.saving") : copy("settings.account.avatarChoose")}
+        <input
+          className="sr-only"
+          type="file"
+          accept="image/*"
+          disabled={avatar.uploading}
+          onChange={(event) => avatar.handleAvatarFile(event.target.files?.[0] || null)}
+        />
+      </label>
+    </div>
+  );
+}
+
+export function ActualCostField({ checked, disabled, onChange }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <div>
+        <div className="text-sm text-oai-gray-900 dark:text-oai-gray-200">
+          {copy("settings.account.shareActualCost")}
+        </div>
+        <div className="mt-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("settings.account.shareActualCostHint")}
+        </div>
+      </div>
+      <ToggleSwitch
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        ariaLabel={copy("settings.account.shareActualCost")}
+      />
+    </div>
   );
 }

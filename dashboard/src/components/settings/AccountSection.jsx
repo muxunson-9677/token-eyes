@@ -3,12 +3,18 @@ import { Check, Copy, LogOut } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { useAccountProfileSettings } from "./useAccountProfileSettings.js";
 import { SectionCard } from "./Controls.jsx";
+import {
+  ActualCostField,
+  AvatarField,
+  PublicProfileFields,
+  SignedOutAccountSection,
+} from "./AccountSectionParts.jsx";
 
 export function AccountSection() {
   const settings = useAccountProfileSettings();
 
   if (!settings.enabled) return null;
-  if (!settings.signedIn) return null;
+  if (!settings.signedIn) return <SignedOutAccountSection />;
 
   return (
     <SectionCard
@@ -16,7 +22,26 @@ export function AccountSection() {
       subtitle={settings.email || (settings.name.customDisplayName || settings.name.displayName)}
       action={<SignOutButton onSignOut={settings.signOut} />}
     >
+      <PublicProfileFields name={settings.name} github={settings.github} />
+      <AvatarField avatar={settings.avatar} />
+      <ActualCostField
+        checked={settings.shareActualCost}
+        disabled={settings.actualCostSaving}
+        onChange={settings.handleActualCostToggle}
+      />
       <UserIdRow userId={settings.userId} />
+      <button
+        type="button"
+        disabled={settings.deleting}
+        onClick={() => {
+          if (window.confirm(copy("settings.account.deleteParticipationConfirm"))) {
+            settings.handleDeleteParticipation();
+          }
+        }}
+        className="mt-3 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 dark:text-red-400"
+      >
+        {copy("settings.account.deleteParticipation")}
+      </button>
     </SectionCard>
   );
 }

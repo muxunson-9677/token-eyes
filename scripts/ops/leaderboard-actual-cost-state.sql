@@ -165,6 +165,17 @@ begin
   where user_id = v_user_id;
 
   if to_regclass('public.tokentracker_leaderboard_avatar_metadata') is not null then
+    if to_regclass('storage.objects') is not null then
+      execute
+        'delete from storage.objects
+         where bucket_id = ''tokentracker-leaderboard-avatars''
+           and name in (
+             select object_key
+             from public.tokentracker_leaderboard_avatar_metadata
+             where user_id = $1
+           )'
+        using v_user_id;
+    end if;
     execute
       'delete from public.tokentracker_leaderboard_avatar_metadata where user_id = $1'
       using v_user_id;

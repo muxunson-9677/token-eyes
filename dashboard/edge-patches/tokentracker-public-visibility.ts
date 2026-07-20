@@ -96,39 +96,52 @@ export default async function (req: Request): Promise<Response> {
   if (req.method === "GET") {
     const { data } = await client.database
       .from("tokentracker_user_settings")
-      .select("leaderboard_public, leaderboard_anonymous, github_url, show_github_url, updated_at")
+      .select("leaderboard_public, github_url, show_github_url, updated_at")
       .eq("user_id", userId)
       .maybeSingle();
-    const { data: pv } = await client.database
-      .from("tokentracker_public_views")
-      .select("token_hash, updated_at")
+    const { data: actualCost } = await client.database
+      .from("tokentracker_actual_cost_state")
+      .select("share_actual_cost")
       .eq("user_id", userId)
-      .is("revoked_at", null)
       .maybeSingle();
     const { data: profile } = await client.database
       .from("tokentracker_user_profiles")
-      .select("display_name")
+      .select("display_name, avatar_url")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const { data: customAvatar } = await client.database
+      .from("tokentracker_leaderboard_avatar_metadata")
+      .select("avatar_url")
       .eq("user_id", userId)
       .maybeSingle();
     return json({
-      enabled: data?.leaderboard_public || false,
-      anonymous: data?.leaderboard_anonymous || false,
-      share_token: pv?.token_hash || null,
+      leaderboard_public: data?.leaderboard_public || false,
       updated_at: data?.updated_at || null,
       display_name: profile?.display_name || null,
+      avatar_url: customAvatar?.avatar_url || profile?.avatar_url || null,
       github_url: data?.github_url || null,
       show_github_url: data?.show_github_url || false,
+      share_actual_cost: actualCost?.share_actual_cost || false,
     });
   }
   if (req.method === "POST") {
     const body = await req.json().catch(() => ({})) as {
-      enabled?: boolean;
-      anonymous?: boolean;
+      leaderboard_public?: true;
       display_name?: string;
       github_url?: string | null;
       show_github_url?: boolean;
+      share_actual_cost?: boolean;
+      period_costs_usd?: {
+        today?: number;
+        week?: number;
+        month?: number;
+        total?: number;
+      };
     };
     const now = new Date().toISOString();
+    if (body.leaderboard_public !== undefined && body.leaderboard_public !== true) {
+      return json({ error: "Use the deletion action to leave the leaderboard" }, 400);
+    }
 
     // Validate github_url (optional). Accept public GitHub profile URLs only —
     // any host/path shape that isn't a bare user/org page is rejected so we
@@ -170,8 +183,7 @@ export default async function (req: Request): Promise<Response> {
     // so writing tokentracker_user_settings.display_name is exactly what makes
     // the subsequent GET (which reads the view) reflect the saved name.
     if (
-      body.enabled !== undefined ||
-      body.anonymous !== undefined ||
+      body.leaderboard_public === true ||
       normalizedGithubUrl !== undefined ||
       body.show_github_url !== undefined ||
       normalizedDisplayName !== undefined
@@ -180,8 +192,7 @@ export default async function (req: Request): Promise<Response> {
         user_id: userId,
         updated_at: now,
       };
-      if (body.enabled !== undefined) upsertRow.leaderboard_public = Boolean(body.enabled);
-      if (body.anonymous !== undefined) upsertRow.leaderboard_anonymous = Boolean(body.anonymous);
+      if (body.leaderboard_public === true) upsertRow.leaderboard_public = true;
       if (normalizedGithubUrl !== undefined) upsertRow.github_url = normalizedGithubUrl;
       if (body.show_github_url !== undefined) upsertRow.show_github_url = Boolean(body.show_github_url);
       if (normalizedDisplayName !== undefined) upsertRow.display_name = normalizedDisplayName;
@@ -194,12 +205,38 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
+    if (body.share_actual_cost !== undefined) {
+      const costs = body.period_costs_usd;
+      const values = [costs?.today, costs?.week, costs?.month, costs?.total];
+      if (
+        body.share_actual_cost &&
+        values.some((value) => typeof value !== "number" || !Number.isFinite(value) || value < 0)
+      ) {
+        return json({ error: "Four non-negative period costs are required" }, 400);
+      }
+      const { error: costError } = await client.database
+        .from("tokentracker_actual_cost_state")
+        .upsert({
+          user_id: userId,
+          share_actual_cost: Boolean(body.share_actual_cost),
+          today_usd: body.share_actual_cost ? costs!.today : null,
+          week_usd: body.share_actual_cost ? costs!.week : null,
+          month_usd: body.share_actual_cost ? costs!.month : null,
+          total_usd: body.share_actual_cost ? costs!.total : null,
+          captured_at: now,
+          updated_at: now,
+        }, { onConflict: "user_id" });
+      if (costError) return json({ error: costError.message }, 500);
+    }
+
     const result: Record<string, unknown> = { updated_at: now };
-    if (body.enabled !== undefined) result.enabled = Boolean(body.enabled);
-    if (body.anonymous !== undefined) result.anonymous = Boolean(body.anonymous);
+    if (body.leaderboard_public === true) result.leaderboard_public = true;
     if (normalizedDisplayName !== undefined) result.display_name = normalizedDisplayName;
     if (normalizedGithubUrl !== undefined) result.github_url = normalizedGithubUrl;
     if (body.show_github_url !== undefined) result.show_github_url = Boolean(body.show_github_url);
+    if (body.share_actual_cost !== undefined) {
+      result.share_actual_cost = Boolean(body.share_actual_cost);
+    }
     return json(result);
   }
   return json({ error: "Method not allowed" }, 405);

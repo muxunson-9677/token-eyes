@@ -697,24 +697,104 @@ export async function getPublicVisibility({ accessToken }: AnyRecord = {}) {
 
 export async function setPublicVisibility({
   accessToken,
-  enabled,
-  anonymous,
+  leaderboard_public,
   display_name,
   github_url,
   show_github_url,
+  share_actual_cost,
+  period_costs_usd,
 }: AnyRecord = {}) {
   const body: AnyRecord = {};
-  if (enabled !== undefined) body.enabled = Boolean(enabled);
-  if (anonymous !== undefined) body.anonymous = Boolean(anonymous);
+  if (leaderboard_public === true) body.leaderboard_public = true;
   if (display_name !== undefined) body.display_name = String(display_name);
-  // null is a valid value (clears the URL), so check for presence via `in`-style
   if (github_url !== undefined) body.github_url = github_url === null ? null : String(github_url);
   if (show_github_url !== undefined) body.show_github_url = Boolean(show_github_url);
+  if (share_actual_cost !== undefined) {
+    body.share_actual_cost = Boolean(share_actual_cost);
+    if (share_actual_cost && period_costs_usd) {
+      body.period_costs_usd = {
+        today: Number(period_costs_usd.today),
+        week: Number(period_costs_usd.week),
+        month: Number(period_costs_usd.month),
+        total: Number(period_costs_usd.total),
+      };
+    }
+  }
   return fetchInsforgeFunction("tokentracker-public-visibility", {
     accessToken,
     method: "POST",
     body,
   });
+}
+
+export async function getLocalLeaderboardActualCost() {
+  const response = await fetch("/functions/tokentracker-leaderboard-actual-cost", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
+  const data = await response.json();
+  const costs = data?.period_costs_usd;
+  const result = {
+    today: Number(costs?.today),
+    week: Number(costs?.week),
+    month: Number(costs?.month),
+    total: Number(costs?.total),
+  };
+  if (Object.values(result).some((value) => !Number.isFinite(value) || value < 0)) {
+    throw new Error("Invalid local actual-cost summary");
+  }
+  return result;
+}
+
+export async function deleteLeaderboardParticipation({ accessToken }: AnyRecord = {}) {
+  const baseUrl = getInsforgeRemoteUrl();
+  if (!baseUrl) throw new Error("InsForge base URL not configured");
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    Prefer: "return=minimal",
+  };
+  const anonKey = getInsforgeAnonKey();
+  if (anonKey) headers.apikey = anonKey;
+  if (accessToken && isValidJwtShape(accessToken)) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  const response = await fetch(
+    `${baseUrl.replace(/\/$/, "")}/api/database/rpc/delete_my_leaderboard_data`,
+    { method: "POST", headers, body: "{}" },
+  );
+  if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
+}
+
+export async function uploadLeaderboardAvatar({
+  accessToken,
+  file,
+}: {
+  accessToken?: string;
+  file: Blob;
+}) {
+  if (!file || file.type !== "image/webp" || file.size > 16 * 1024) {
+    throw new Error("Avatar must be a WebP image no larger than 16 KiB");
+  }
+  const baseUrl = getInsforgeRemoteUrl();
+  if (!baseUrl) throw new Error("InsForge base URL not configured");
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "image/webp",
+  };
+  const anonKey = getInsforgeAnonKey();
+  if (anonKey) headers.apikey = anonKey;
+  if (accessToken && isValidJwtShape(accessToken)) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  const response = await fetch(
+    `${baseUrl.replace(/\/$/, "")}/functions/tokentracker-avatar`,
+    { method: "PUT", headers, body: file },
+  );
+  if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
+  return response.json();
 }
 
 export async function refreshLeaderboard({ accessToken, period, source }: AnyRecord = {}) {

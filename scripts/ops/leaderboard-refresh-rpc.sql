@@ -339,7 +339,7 @@ begin
       end,
       case
         when coalesce(settings.leaderboard_anonymous, false) then null
-        else profile.avatar_url
+        else coalesce(custom_avatar.avatar_url, profile.avatar_url)
       end,
       case
         when coalesce(settings.leaderboard_anonymous, false)
@@ -357,6 +357,8 @@ begin
       and settings.leaderboard_public = true
     left join public.tokentracker_user_profiles profile
       on profile.user_id = ranked.user_id
+    left join public.tokentracker_leaderboard_avatar_metadata custom_avatar
+      on custom_avatar.user_id = ranked.user_id
     returning period, metric, source
   )
   select count(*)::integer

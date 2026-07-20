@@ -1,263 +1,235 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useInsforgeAuth } from "../../contexts/InsforgeAuthContext.jsx";
 import { resolveAuthAccessTokenWithRetry } from "../../lib/auth-token";
-import { getPublicVisibility, setPublicVisibility } from "../../lib/api";
+import {
+  deleteLeaderboardParticipation,
+  getLocalLeaderboardActualCost,
+  getPublicVisibility,
+  setPublicVisibility,
+  uploadLeaderboardAvatar,
+} from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { normalizeGithubProfileUrl, pickDisplayName, pickEmail } from "./AccountSectionUtils.js";
+import { prepareLeaderboardAvatar } from "./AccountSectionParts.jsx";
 
-function warnSettingsAction(label, error) {
+function warn(label, error) {
   console.warn(`[tokentracker] settings ${label}:`, error);
 }
 
-function useProfileState(user) {
-  const [publicProfileOn, setPublicProfileOn] = useState(false);
-  const [anonymousOn, setAnonymousOn] = useState(false);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [profileSaving, setProfileSaving] = useState(false);
+export function useAccountProfileSettings() {
+  const auth = useInsforgeAuth();
+  const displayName = useMemo(() => pickDisplayName(auth.user), [auth.user]);
+  const email = useMemo(() => pickEmail(auth.user), [auth.user]);
+  const userId = typeof auth.user?.id === "string" ? auth.user.id.trim() : "";
+
   const [customDisplayName, setCustomDisplayName] = useState(null);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
-  const [showGithubOn, setShowGithubOn] = useState(false);
   const [githubUrl, setGithubUrl] = useState("");
   const [githubInput, setGithubInput] = useState("");
+  const [showGithubOn, setShowGithubOn] = useState(false);
   const [editingGithub, setEditingGithub] = useState(false);
   const [githubError, setGithubError] = useState(null);
-  const displayName = useMemo(() => pickDisplayName(user), [user]);
-  const email = useMemo(() => pickEmail(user), [user]);
-  const userId = useMemo(() => (typeof user?.id === "string" ? user.id.trim() : ""), [user]);
-  const loadSetters = useMemo(() => ({
-    setAnonymousOn,
-    setCustomDisplayName,
-    setGithubUrl,
-    setProfileLoading,
-    setPublicProfileOn,
-    setShowGithubOn,
-  }), []);
+  const [shareActualCost, setShareActualCost] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [actualCostSaving, setActualCostSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  return {
-    anonymousOn,
-    customDisplayName,
-    displayName,
-    editingGithub,
-    editingName,
-    email,
-    githubError,
-    githubInput,
-    githubUrl,
-    loadSetters,
-    nameInput,
-    profileLoading,
-    profileSaving,
-    publicProfileOn,
-    setAnonymousOn,
-    setCustomDisplayName,
-    setEditingGithub,
-    setEditingName,
-    setGithubError,
-    setGithubInput,
-    setGithubUrl,
-    setNameInput,
-    setProfileLoading,
-    setProfileSaving,
-    setPublicProfileOn,
-    setShowGithubOn,
-    showGithubOn,
-    userId,
-  };
-}
+  const token = useCallback(
+    () => resolveAuthAccessTokenWithRetry({ getAccessToken: auth.getAccessToken }),
+    [auth.getAccessToken],
+  );
 
-function useProfileLoad(getAccessToken, signedIn, state) {
   useEffect(() => {
-    if (!signedIn) return undefined;
+    if (!auth.signedIn) return undefined;
     let active = true;
-    state.setProfileLoading(true);
-    (async () => {
+    setProfileLoading(true);
+    void (async () => {
       try {
-        const token = await resolveAuthAccessTokenWithRetry({ getAccessToken });
-        if (!active || !token) return;
-        const data = await getPublicVisibility({ accessToken: token });
+        const accessToken = await token();
+        if (!accessToken || !active) return;
+        const data = await getPublicVisibility({ accessToken });
         if (!active) return;
-        state.setPublicProfileOn(Boolean(data?.enabled));
-        state.setAnonymousOn(Boolean(data?.anonymous));
-        if (data?.display_name) state.setCustomDisplayName(data.display_name);
-        state.setShowGithubOn(Boolean(data?.show_github_url));
-        state.setGithubUrl(data?.github_url || "");
+        if (!data?.leaderboard_public) {
+          await setPublicVisibility({ accessToken, leaderboard_public: true });
+        }
+        setCustomDisplayName(data?.display_name || null);
+        setGithubUrl(data?.github_url || "");
+        setShowGithubOn(Boolean(data?.show_github_url));
+        setShareActualCost(Boolean(data?.share_actual_cost));
+        setAvatarUrl(data?.avatar_url || null);
       } catch (error) {
-        warnSettingsAction("load public profile", error);
+        warn("load leaderboard profile", error);
       } finally {
-        if (active) state.setProfileLoading(false);
+        if (active) setProfileLoading(false);
       }
     })();
     return () => {
       active = false;
     };
-  }, [getAccessToken, signedIn, state]);
-}
+  }, [auth.signedIn, token]);
 
-function useProfileMutation(getAccessToken, state) {
-  return useCallback(async (payload, { label, onError, onSuccess } = {}) => {
-    if (state.profileSaving) return false;
-    state.setProfileSaving(true);
+  const mutate = useCallback(async (payload) => {
+    setProfileSaving(true);
     try {
-      const token = await resolveAuthAccessTokenWithRetry({ getAccessToken });
-      if (!token) return false;
-      const response = await setPublicVisibility({ accessToken: token, ...payload });
-      onSuccess?.(response);
-      return true;
-    } catch (error) {
-      if (onError) onError(error);
-      else warnSettingsAction(label || "mutate profile", error);
-      return false;
+      const accessToken = await token();
+      if (!accessToken) return null;
+      return await setPublicVisibility({ accessToken, ...payload });
     } finally {
-      state.setProfileSaving(false);
+      setProfileSaving(false);
     }
-  }, [getAccessToken, state]);
-}
-
-function buildNameProps(state, actions) {
-  return {
-    anonymousOn: state.anonymousOn,
-    customDisplayName: state.customDisplayName,
-    displayName: state.displayName,
-    editingName: state.editingName,
-    handleAnonymousToggle: actions.handleAnonymousToggle,
-    handleSaveName: actions.handleSaveName,
-    nameInput: state.nameInput,
-    profileLoading: state.profileLoading,
-    profileSaving: state.profileSaving,
-    setEditingName: state.setEditingName,
-    setNameInput: state.setNameInput,
-    startEditingName: actions.startEditingName,
-  };
-}
-
-function buildGithubProps(state, actions) {
-  return {
-    editingGithub: state.editingGithub,
-    githubError: state.githubError,
-    githubInput: state.githubInput,
-    githubUrl: state.githubUrl,
-    handleSaveGithub: actions.handleSaveGithub,
-    handleShowGithubToggle: actions.handleShowGithubToggle,
-    profileLoading: state.profileLoading,
-    profileSaving: state.profileSaving,
-    setEditingGithub: state.setEditingGithub,
-    setGithubError: state.setGithubError,
-    setGithubInput: state.setGithubInput,
-    showGithubOn: state.showGithubOn,
-    startEditingGithub: actions.startEditingGithub,
-  };
-}
-
-function useVisibilityActions(state, mutateProfile) {
-  const handlePublicProfileToggle = useCallback(async () => {
-    const next = !state.publicProfileOn;
-    await mutateProfile(
-      { enabled: next },
-      { label: "toggle public profile", onSuccess: () => state.setPublicProfileOn(next) },
-    );
-  }, [mutateProfile, state]);
-
-  const handleAnonymousToggle = useCallback(async () => {
-    const next = !state.anonymousOn;
-    await mutateProfile(
-      { anonymous: next },
-      { label: "toggle anonymous", onSuccess: () => state.setAnonymousOn(next) },
-    );
-  }, [mutateProfile, state]);
-
-  return { handleAnonymousToggle, handlePublicProfileToggle };
-}
-
-function useNameActions(state, mutateProfile, refreshDisplayName) {
-  const handleSaveName = useCallback(async () => {
-    const trimmed = state.nameInput.trim().slice(0, 50);
-    if (!trimmed) return;
-    await mutateProfile({ display_name: trimmed }, {
-      label: "save display name",
-      onSuccess: () => {
-        state.setCustomDisplayName(trimmed);
-        state.setEditingName(false);
-        // Propagate to the shared auth-context displayName so the sidebar
-        // avatar/name updates immediately, without a full page reload. The
-        // leaderboard self-name comes from a server snapshot and updates on
-        // its own refresh cadence.
-        refreshDisplayName?.();
-      },
-    });
-  }, [mutateProfile, state, refreshDisplayName]);
+  }, [token]);
 
   const startEditingName = useCallback(() => {
-    state.setNameInput(state.customDisplayName || state.displayName);
-    state.setEditingName(true);
-  }, [state]);
+    setNameInput(customDisplayName || displayName);
+    setEditingName(true);
+  }, [customDisplayName, displayName]);
 
-  return { handleSaveName, startEditingName };
-}
-
-function useGithubActions(state, mutateProfile) {
-  const handleShowGithubToggle = useCallback(async () => {
-    if (!state.showGithubOn && !state.githubUrl) {
-      state.setEditingGithub(true);
-      state.setGithubInput("");
-      state.setGithubError(null);
-      return;
+  const handleSaveName = useCallback(async () => {
+    const value = nameInput.trim().slice(0, 50);
+    if (!value) return;
+    try {
+      await mutate({ display_name: value });
+      setCustomDisplayName(value);
+      setEditingName(false);
+      auth.refreshDisplayName?.();
+    } catch (error) {
+      warn("save nickname", error);
     }
-    const next = !state.showGithubOn;
-    await mutateProfile(
-      { show_github_url: next },
-      { label: "toggle GitHub profile", onSuccess: () => state.setShowGithubOn(next) },
-    );
-  }, [mutateProfile, state]);
-
-  const handleSaveGithub = useCallback(async () => {
-    const normalizedUrl = normalizeGithubProfileUrl(state.githubInput);
-    if (state.githubInput.trim() && !normalizedUrl) {
-      state.setGithubError(copy("settings.account.githubUrlInvalid"));
-      return;
-    }
-    state.setGithubError(null);
-    await mutateProfile(
-      { github_url: normalizedUrl, show_github_url: Boolean(normalizedUrl) },
-      {
-        label: "save GitHub profile",
-        onError: (error) => state.setGithubError(error?.message || copy("settings.account.githubUrlInvalid")),
-        onSuccess: (response) => {
-          state.setGithubUrl(response?.github_url || normalizedUrl || "");
-          state.setShowGithubOn(Boolean(normalizedUrl));
-          state.setEditingGithub(false);
-        },
-      },
-    );
-  }, [mutateProfile, state]);
+  }, [auth, mutate, nameInput]);
 
   const startEditingGithub = useCallback(() => {
-    state.setGithubInput(state.githubUrl);
-    state.setGithubError(null);
-    state.setEditingGithub(true);
-  }, [state]);
+    setGithubInput(githubUrl);
+    setGithubError(null);
+    setEditingGithub(true);
+  }, [githubUrl]);
 
-  return { handleSaveGithub, handleShowGithubToggle, startEditingGithub };
-}
+  const handleSaveGithub = useCallback(async () => {
+    const value = normalizeGithubProfileUrl(githubInput);
+    if (githubInput.trim() && !value) {
+      setGithubError(copy("settings.account.githubUrlInvalid"));
+      return;
+    }
+    try {
+      await mutate({ github_url: value, show_github_url: Boolean(value) });
+      setGithubUrl(value || "");
+      setShowGithubOn(Boolean(value));
+      setEditingGithub(false);
+    } catch (error) {
+      setGithubError(error?.message || copy("settings.account.githubUrlInvalid"));
+    }
+  }, [githubInput, mutate]);
 
-export function useAccountProfileSettings() {
-  const auth = useInsforgeAuth();
-  const state = useProfileState(auth.user);
-  useProfileLoad(auth.getAccessToken, auth.signedIn, state.loadSetters);
-  const mutateProfile = useProfileMutation(auth.getAccessToken, state);
-  const visibilityActions = useVisibilityActions(state, mutateProfile);
-  const nameActions = useNameActions(state, mutateProfile, auth.refreshDisplayName);
-  const githubActions = useGithubActions(state, mutateProfile);
+  const handleShowGithubToggle = useCallback(async () => {
+    if (!showGithubOn && !githubUrl) {
+      startEditingGithub();
+      return;
+    }
+    const next = !showGithubOn;
+    try {
+      await mutate({ show_github_url: next });
+      setShowGithubOn(next);
+    } catch (error) {
+      warn("toggle GitHub", error);
+    }
+  }, [githubUrl, mutate, showGithubOn, startEditingGithub]);
+
+  const handleActualCostToggle = useCallback(async () => {
+    if (actualCostSaving) return;
+    setActualCostSaving(true);
+    try {
+      const accessToken = await token();
+      if (!accessToken) return;
+      if (shareActualCost) {
+        await setPublicVisibility({ accessToken, share_actual_cost: false });
+        setShareActualCost(false);
+      } else {
+        const periodCosts = await getLocalLeaderboardActualCost();
+        await setPublicVisibility({
+          accessToken,
+          share_actual_cost: true,
+          period_costs_usd: periodCosts,
+        });
+        setShareActualCost(true);
+      }
+    } catch (error) {
+      warn("toggle actual cost", error);
+    } finally {
+      setActualCostSaving(false);
+    }
+  }, [actualCostSaving, shareActualCost, token]);
+
+  const handleAvatarFile = useCallback(async (file) => {
+    if (!file || uploading) return;
+    setUploading(true);
+    try {
+      const prepared = await prepareLeaderboardAvatar(file);
+      const accessToken = await token();
+      if (!accessToken) return;
+      const result = await uploadLeaderboardAvatar({ accessToken, file: prepared });
+      setAvatarUrl(result?.avatar_url || null);
+    } catch (error) {
+      warn("upload avatar", error);
+    } finally {
+      setUploading(false);
+    }
+  }, [token, uploading]);
+
+  const handleDeleteParticipation = useCallback(async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const accessToken = await token();
+      if (!accessToken) return;
+      await deleteLeaderboardParticipation({ accessToken });
+      await auth.signOut();
+    } catch (error) {
+      warn("delete leaderboard participation", error);
+    } finally {
+      setDeleting(false);
+    }
+  }, [auth, deleting, token]);
 
   return {
     ...auth,
-    email: state.email,
-    handlePublicProfileToggle: visibilityActions.handlePublicProfileToggle,
-    userId: state.userId,
-    name: buildNameProps(state, { ...visibilityActions, ...nameActions }),
-    github: buildGithubProps(state, githubActions),
-    profileLoading: state.profileLoading,
-    profileSaving: state.profileSaving,
-    publicProfileOn: state.publicProfileOn,
+    email,
+    userId,
+    shareActualCost,
+    actualCostSaving,
+    handleActualCostToggle,
+    deleting,
+    handleDeleteParticipation,
+    avatar: { avatarUrl, uploading, handleAvatarFile },
+    name: {
+      anonymousOn: false,
+      customDisplayName,
+      displayName,
+      editingName,
+      handleSaveName,
+      nameInput,
+      profileLoading,
+      profileSaving,
+      setEditingName,
+      setNameInput,
+      startEditingName,
+    },
+    github: {
+      editingGithub,
+      githubError,
+      githubInput,
+      githubUrl,
+      handleSaveGithub,
+      handleShowGithubToggle,
+      profileLoading,
+      profileSaving,
+      setEditingGithub,
+      setGithubError,
+      setGithubInput,
+      showGithubOn,
+      startEditingGithub,
+    },
   };
 }
