@@ -4831,6 +4831,10 @@ function createLocalApiHandler({
     }
 
     if (p === "/functions/tokentracker-leaderboard-state") {
+      if (!hasAllowedLoopbackOrigin(req?.headers || {})) {
+        writeCodexResetResponse(res, { ok: false, error: "Forbidden" }, 403);
+        return true;
+      }
       if (String(req.method || "GET").toUpperCase() !== "GET") {
         json(res, { ok: false, error: "Method Not Allowed" }, 405);
         return true;
@@ -4865,6 +4869,10 @@ function createLocalApiHandler({
     }
 
     if (p === "/functions/tokentracker-leaderboard-actual-cost") {
+      if (!hasAllowedLoopbackOrigin(req?.headers || {})) {
+        writeCodexResetResponse(res, { ok: false, error: "Forbidden" }, 403);
+        return true;
+      }
       if (String(req.method || "GET").toUpperCase() !== "GET") {
         json(res, { ok: false, error: "Method Not Allowed" }, 405);
         return true;

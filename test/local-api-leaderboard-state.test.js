@@ -75,10 +75,10 @@ function createHandler() {
   return createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
 }
 
-function request(method = "GET") {
+function request(method = "GET", headers = {}) {
   const req = Readable.from([]);
   req.method = method;
-  req.headers = { host: "127.0.0.1" };
+  req.headers = { host: "127.0.0.1", ...headers };
   return req;
 }
 
@@ -103,10 +103,10 @@ function response() {
   };
 }
 
-async function call(handler, method = "GET") {
+async function call(handler, method = "GET", headers = {}) {
   const res = response();
   const handled = await handler(
-    request(method),
+    request(method, headers),
     res,
     new URL("http://127.0.0.1/functions/tokentracker-leaderboard-state"),
   );
@@ -150,6 +150,17 @@ test("returns only compact allowlisted state without contacting InsForge", async
   ]) {
     assert.equal(serialized.includes(forbidden), false, `must omit ${forbidden}`);
   }
+});
+
+test("rejects leaderboard state reads from non-local web origins", async () => {
+  const res = await call(createHandler(), "GET", {
+    origin: "https://malicious.example",
+  });
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(JSON.parse(res.body()), {
+    ok: false,
+    error: "Forbidden",
+  });
 });
 
 test("rejects non-GET leaderboard state requests", async () => {

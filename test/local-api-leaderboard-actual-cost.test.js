@@ -127,10 +127,10 @@ function response() {
   };
 }
 
-async function call(handler, method = "GET") {
+async function call(handler, method = "GET", headers = {}) {
   const req = Readable.from([]);
   req.method = method;
-  req.headers = { host: "127.0.0.1" };
+  req.headers = { host: "127.0.0.1", ...headers };
   const res = response();
   const handled = await handler(
     req,
@@ -170,6 +170,17 @@ test("returns API, recurring, one-time, and other-AI cost as four private-free t
   ]) {
     assert.equal(serialized.includes(forbidden), false, `must omit ${forbidden}`);
   }
+});
+
+test("rejects actual-cost reads from non-local web origins", async () => {
+  const res = await call(setupHandler(), "GET", {
+    origin: "https://malicious.example",
+  });
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(JSON.parse(res.body()), {
+    ok: false,
+    error: "Forbidden",
+  });
 });
 
 test("rejects non-GET actual-cost requests", async () => {
