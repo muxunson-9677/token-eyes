@@ -12,6 +12,7 @@ import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
 import { clearDashboardUsageCachesForRealData } from "./lib/usage-cache";
 import { useLeaderboardParticipationSync } from "./hooks/use-leaderboard-participation-sync";
+import { CodexResetEventsProvider } from "./hooks/use-codex-reset-events";
 import { AppLayout } from "./ui/components/Sidebar.jsx";
 import { ToastProvider } from "./ui/components/Toast.jsx";
 import { UsageFiltersProvider } from "./hooks/use-usage-filters";
@@ -383,13 +384,15 @@ export default function App() {
         <ToastProvider>
           <LoginModalProvider>
             <UsageFiltersProvider>
-              <Suspense fallback={<AppBootSplash />}>{content}</Suspense>
-              <Suspense fallback={null}>
-                {showSidebar ? <CommandPalette /> : null}
-                <LoginModal />
-                {!isLocalMode && <Analytics />}
-                {!isLocalMode && <SpeedInsights />}
-              </Suspense>
+              <CodexResetEventsProvider enabled={isLocalMode && showSidebar}>
+                <Suspense fallback={<AppBootSplash />}>{content}</Suspense>
+                <Suspense fallback={null}>
+                  {showSidebar ? <CommandPalette /> : null}
+                  <LoginModal />
+                  {!isLocalMode && <Analytics />}
+                  {!isLocalMode && <SpeedInsights />}
+                </Suspense>
+              </CodexResetEventsProvider>
             </UsageFiltersProvider>
           </LoginModalProvider>
         </ToastProvider>

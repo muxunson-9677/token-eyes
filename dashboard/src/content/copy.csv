@@ -7,6 +7,23 @@ settings.cost.provider_api.guide_secret_warning,ui,SettingsPage,ProviderApiConfi
 settings.cost.other_ai.edit_group,ui,SettingsPage,OtherAiSpendSection,edit_group,"编辑分组",,active
 settings.cost.other_ai.favorite_group,ui,SettingsPage,OtherAiSpendSection,favorite_group,"收藏分组",,active
 settings.cost.other_ai.unfavorite_group,ui,SettingsPage,OtherAiSpendSection,unfavorite_group,"取消收藏分组",,active
+codex_reset.nav.unread,ui,Sidebar,Sidebar,codex_reset_unread,"Unread Codex reset notice",,active
+codex_reset.action.acknowledge,ui,*,CodexResetBanner,acknowledge,"Got it",,active
+codex_reset.action.open_codex,ui,*,CodexResetBanner,open_codex,"Open Codex",,active
+codex_reset.action.view_official,ui,*,CodexResetBanner,view_official,"View official notice",,active
+codex_reset.action.view_quota,ui,*,CodexResetBanner,view_quota,"View quota",,active
+codex_reset.upcoming.rolling_5_hour.title,ui,*,CodexResetBanner,upcoming_5h_title,"Codex 5-hour reset is approaching",,active
+codex_reset.upcoming.rolling_5_hour.summary,ui,*,CodexResetBanner,upcoming_5h_summary,"Your current 5-hour quota window is due to reset soon.",,active
+codex_reset.upcoming.rolling_weekly.title,ui,*,CodexResetBanner,upcoming_week_title,"Codex weekly reset is approaching",,active
+codex_reset.upcoming.rolling_weekly.summary,ui,*,CodexResetBanner,upcoming_week_summary,"Your current weekly quota window is due to reset soon.",,active
+codex_reset.completed.rolling_5_hour.title,ui,*,CodexResetBanner,completed_5h_title,"Codex quota reset",,active
+codex_reset.completed.rolling_5_hour.summary,ui,*,CodexResetBanner,completed_5h_summary,"Your 5-hour quota window appears to have reset.",,active
+codex_reset.completed.rolling_weekly.title,ui,*,CodexResetBanner,completed_week_title,"Codex weekly quota reset",,active
+codex_reset.completed.rolling_weekly.summary,ui,*,CodexResetBanner,completed_week_summary,"Your weekly quota window appears to have reset.",,active
+codex_reset.restored.title,ui,*,CodexResetBanner,restored_title,"Codex quota may have been restored",,active
+codex_reset.restored.summary,ui,*,CodexResetBanner,restored_summary,"A sustained quota increase was detected before the scheduled reset. Check Codex to confirm.",,active
+codex_reset.available.title,ui,*,CodexResetBanner,available_title,"A Codex reset may be available",,active
+codex_reset.available.summary,ui,*,CodexResetBanner,available_summary,"Open Codex to confirm whether this applies to your account.",,active
 header.auth.sign_in_aria,shared,*,InsforgeUserHeaderControls,sign_in_aria,"Sign in",,active
 login.back_home,shared,LoginPage,LoginPage,back_home,"Back to home",,active
 login.cloud_only,shared,LoginPage,LoginPage,cloud_only,"Cloud sign-in is not configured. Use the local dashboard on localhost.",,active

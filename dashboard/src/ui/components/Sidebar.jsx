@@ -17,6 +17,8 @@ import { cn } from "../../lib/cn";
 import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
 import { InsforgeUserHeaderControls } from "../../components/InsforgeUserHeaderControls.jsx";
+import { CodexResetBanner } from "../../components/CodexResetBanner";
+import { useCodexResetEvents } from "../../hooks/use-codex-reset-events";
 import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native-bridge.js";
 
 const STORAGE_KEY = "tt.sidebarCollapsed";
@@ -57,8 +59,14 @@ export function getNavGroups() {
       defaultChildTo: "/settings/basic",
       children: [
         { id: "settings-basic", to: "/settings/basic", label: copy("nav.settings.basic") },
-        { id: "settings-cost", to: "/settings/cost", label: copy("nav.settings.cost") },
+        {
+          id: "settings-cost",
+          to: "/settings/cost",
+          label: copy("nav.settings.cost"),
+          codexResetAttention: true,
+        },
       ],
+      codexResetAttention: true,
     },
   ];
 }
@@ -155,7 +163,18 @@ function NavGroupLabel({ label, collapsed, first }) {
   );
 }
 
-function NavItem({ item, collapsed, active, onClick }) {
+function UnreadDot({ count }) {
+  if (!count) return null;
+  return (
+    <span
+      className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-oai-white dark:ring-oai-gray-900"
+      aria-label={copy("codex_reset.nav.unread")}
+      title={copy("codex_reset.nav.unread")}
+    />
+  );
+}
+
+function NavItem({ item, collapsed, active, onClick, unreadCount = 0 }) {
   const Icon = item.icon;
   return (
     <Link
@@ -171,10 +190,20 @@ function NavItem({ item, collapsed, active, onClick }) {
           : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
       )}
     >
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+      <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
         <Icon className="h-[15px] w-[15px]" aria-hidden />
+        {collapsed && item.codexResetAttention ? (
+          <span className="absolute -right-0.5 -top-0.5">
+            <UnreadDot count={unreadCount} />
+          </span>
+        ) : null}
       </span>
-      {!collapsed && <span className="truncate">{item.label}</span>}
+      {!collapsed && (
+        <>
+          <span className="truncate flex-1">{item.label}</span>
+          {item.codexResetAttention ? <UnreadDot count={unreadCount} /> : null}
+        </>
+      )}
     </Link>
   );
 }
@@ -196,6 +225,7 @@ function NavParent({
   expanded,
   onToggleExpand,
   onItemClick,
+  unreadCount = 0,
 }) {
   const location = useLocation();
   const pathname = location?.pathname || "/";
@@ -235,12 +265,18 @@ function NavParent({
             : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
         )}
       >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+        <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
           <Icon className="h-[15px] w-[15px]" aria-hidden />
+          {collapsed && group.codexResetAttention ? (
+            <span className="absolute -right-0.5 -top-0.5">
+              <UnreadDot count={unreadCount} />
+            </span>
+          ) : null}
         </span>
         {!collapsed && (
           <>
             <span className="truncate flex-1 text-left">{group.label}</span>
+            {group.codexResetAttention ? <UnreadDot count={unreadCount} /> : null}
             <ChevronRight
               className={cn(
                 "h-3.5 w-3.5 shrink-0 text-oai-gray-400 transition-transform",
@@ -265,14 +301,15 @@ function NavParent({
                   to={child.to}
                   onClick={onItemClick}
                   aria-current={childActive ? "page" : undefined}
-                  className={cn(
-                    "flex items-center rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors",
+                    className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors",
                     childActive
                       ? "bg-oai-brand-50 text-oai-brand-700 font-semibold ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
                       : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
                   )}
                 >
-                  <span className="truncate">{child.label}</span>
+                  <span className="truncate flex-1">{child.label}</span>
+                  {child.codexResetAttention ? <UnreadDot count={unreadCount} /> : null}
                 </Link>
               </li>
             );
@@ -402,6 +439,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
   // Re-compute copy() via getNavGroups when locale changes, otherwise the
   // labels stay stale after a language switch.
   const { resolvedLocale } = useLocale();
+  const { unreadCount } = useCodexResetEvents();
   const navGroups = useMemo(() => getNavGroups(), [resolvedLocale]);
 
   // v2.0 IA: expanded parent groups. Initial state: a parent is expanded
@@ -509,6 +547,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
                   expanded={expandedSet.has(group.id)}
                   onToggleExpand={handleToggleExpand}
                   onItemClick={onItemClick}
+                  unreadCount={unreadCount}
                 />
               ) : (
                 group.items.map((item) => (
@@ -518,6 +557,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
                     collapsed={collapsed}
                     active={isActive(pathname, item.to)}
                     onClick={onItemClick}
+                    unreadCount={unreadCount}
                   />
                 ))
               )}
@@ -704,6 +744,7 @@ export function AppLayout({ children }) {
             )}
           >
             <MobileTopBar onOpenDrawer={openDrawer} />
+            <CodexResetBanner />
             <div className="flex-1 min-h-0 overflow-y-auto">
               {children}
             </div>

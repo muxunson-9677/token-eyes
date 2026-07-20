@@ -5,6 +5,14 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getNavGroups, AppLayout } from "../Sidebar.jsx";
 
+const codexResetContext = vi.hoisted(() => ({
+  value: {
+    events: [],
+    unreadCount: 0,
+    acknowledge: vi.fn(),
+  },
+}));
+
 // Sidebar two-level navigation tests for the v2.0 IA refactor (work order 01).
 // Verifies parent/child structure, activation, expansion, and that the
 // mobile drawer shares the same nav data and behavior.
@@ -42,6 +50,10 @@ vi.mock("../../../lib/native-bridge.js", () => ({
   isNativeApp: () => false,
   isNativeEmbed: () => false,
   isNativeWindowsApp: () => false,
+}));
+
+vi.mock("../../../hooks/use-codex-reset-events", () => ({
+  useCodexResetEvents: () => codexResetContext.value,
 }));
 
 describe("getNavGroups structure (v2.0 IA)", () => {
@@ -99,9 +111,18 @@ function renderSidebar(path = "/dashboard") {
 
 describe("Sidebar two-level nav rendering (desktop)", () => {
   beforeEach(() => {
+    codexResetContext.value.unreadCount = 0;
     // jsdom doesn't implement layout, so the desktop <aside> is always in
     // the DOM (lg:hidden only affects CSS, not presence). These tests rely
     // on that so we can assert nav structure without a real viewport.
+  });
+
+  it("shows Codex reset attention on settings and the cost child", () => {
+    codexResetContext.value.unreadCount = 1;
+    renderSidebar("/settings/cost");
+    expect(
+      screen.getAllByLabelText("copy:codex_reset.nav.unread").length,
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it("renders overview, leaderboard, spend parent, and settings parent labels", () => {
