@@ -183,6 +183,7 @@ async function cmdServe(argv) {
       openInBrowser(url);
     }
   }
+  handleApi.startCodexResetMonitor();
 
   server.on("error", (e) => {
     process.stderr.write(`Server error: ${e.message}\n`);
@@ -193,6 +194,7 @@ async function cmdServe(argv) {
   const shutdown = () => {
     process.stdout.write("\nShutting down...\n");
     try { handleApi.stopTokenPlanScheduler(); } catch (_e) {}
+    try { handleApi.stopCodexResetMonitor(); } catch (_e) {}
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000);
   };

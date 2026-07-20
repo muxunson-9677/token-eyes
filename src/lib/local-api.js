@@ -29,6 +29,13 @@ const {
 const {
   buildLeaderboardActualCostSummary,
 } = require("./leaderboard-actual-cost");
+const {
+  createCodexResetMonitorStore,
+} = require("./codex-reset-monitor-store");
+const {
+  createCodexResetMonitorService,
+} = require("./codex-reset-monitor-service");
+const { getCodexUsageLimits } = require("./usage-limits");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
@@ -1837,6 +1844,7 @@ function createLocalApiHandler({
   credentialStore: injectedCredentialStore,
   detectDataDirectories: detectDataDirectoriesOverride,
   detectAgentEnvironment: detectAgentEnvironmentOverride,
+  codexResetMonitorService: injectedCodexResetMonitorService,
   providerApiTestMode = false,
   providerApiTimeoutMs,
   usageLimitsProvider,
@@ -1915,6 +1923,33 @@ function createLocalApiHandler({
     };
     return false;
   }
+
+  const codexResetMonitorStore = injectedCodexResetMonitorService
+    ? null
+    : createCodexResetMonitorStore({ trackerDataDir });
+  const codexResetMonitorService = injectedCodexResetMonitorService
+    || createCodexResetMonitorService({
+      getCodexUsageLimits: () => {
+        const dataDirectoryPaths = resolveDataDirectoryPaths({
+          config: readTrackerConfigAt(trackerDataDir),
+          env: process.env,
+          home: os.homedir(),
+          platform: process.platform,
+        });
+        const codexHome = dataDirectoryPaths.codexHomes?.[0]
+          || dataDirectoryPaths.codexHome;
+        return getCodexUsageLimits({
+          home: os.homedir(),
+          env: codexHome
+            ? { ...process.env, CODEX_HOME: codexHome }
+            : process.env,
+          platform: process.platform,
+        });
+      },
+      loadState: codexResetMonitorStore.load,
+      saveState: codexResetMonitorStore.save,
+       enabled: process.env.TOKEN_EYES_CODEX_RESET_MONITOR_ENABLED !== "0",
+     });
 
   // 02-ia-api-balance: Provider API credential store + balance refresh manager.
   // Uses injected store for testing, or the OS-backed default (macOS Keychain /
@@ -7217,6 +7252,9 @@ function createLocalApiHandler({
   handleLocalApi.stopTokenPlanScheduler = stopTokenPlanScheduler;
   handleLocalApi.runTokenPlanDueRefresh = runTokenPlanDueRefresh;
   handleLocalApi.runTokenPlanRefreshById = runTokenPlanRefreshById;
+  handleLocalApi.startCodexResetMonitor = () => codexResetMonitorService.start();
+  handleLocalApi.stopCodexResetMonitor = () => codexResetMonitorService.stop();
+  handleLocalApi.codexResetMonitorService = codexResetMonitorService;
   // Q02: expose billing_mode derivation helpers so unit tests can lock the
   // rules down without standing up the full local-api handler.
   handleLocalApi.deriveModelBillingMode = deriveModelBillingMode;
