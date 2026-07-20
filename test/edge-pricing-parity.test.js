@@ -1,15 +1,17 @@
 "use strict";
 
-// The cloud edge functions each embed a hand-maintained copy of the model
+// The account/profile edge functions each embed a hand-maintained copy of the model
 // pricing table (MODEL_PRICING + getModelPricing fuzzy chain). These copies
-// MUST be byte-identical across all five files — drift silently prices the
+// MUST be byte-identical across all four files — drift silently prices the
 // same row differently per endpoint (real incident: leaderboard-profile
 // missed kimi-k2.6 + the mimo-v2.5 family until 2026-06, so the profile
 // modal showed $0 / -60% cost for those models while the leaderboard list
 // priced them correctly). This test fails loudly on any divergence.
 //
-// To change pricing: edit tokentracker-leaderboard-refresh.ts (canonical),
-// then copy the identical block into the other four files.
+// The leaderboard refresh wrapper intentionally has no pricing table: its
+// versioned server-side pricing seed is verified separately. To change this
+// client-facing pricing, edit tokentracker-account-daily.ts (canonical), then
+// copy the identical block into the other three files.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -19,9 +21,8 @@ const assert = require("node:assert");
 const ROOT = path.join(__dirname, "..");
 const EDGE_DIR = "dashboard/edge-patches";
 
-const CANONICAL = "tokentracker-leaderboard-refresh.ts";
+const CANONICAL = "tokentracker-account-daily.ts";
 const MIRRORS = [
-  "tokentracker-account-daily.ts",
   "tokentracker-account-summary.ts",
   "tokentracker-account-model-breakdown.ts",
   "tokentracker-leaderboard-profile.ts",
@@ -40,7 +41,7 @@ function extractBlock(name) {
   return m[0];
 }
 
-test("MODEL_PRICING + getModelPricing are byte-identical across all 5 edge files", () => {
+test("MODEL_PRICING + getModelPricing are byte-identical across all 4 account/profile edge files", () => {
   const canonical = extractBlock(CANONICAL);
   for (const name of MIRRORS) {
     assert.strictEqual(
