@@ -11,7 +11,7 @@ import { getBackendBaseUrl, getLeaderboardBaseUrl } from "./lib/config";
 import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
 import { clearDashboardUsageCachesForRealData } from "./lib/usage-cache";
-import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
+import { useLeaderboardParticipationSync } from "./hooks/use-leaderboard-participation-sync";
 import { AppLayout } from "./ui/components/Sidebar.jsx";
 import { ToastProvider } from "./ui/components/Toast.jsx";
 import { UsageFiltersProvider } from "./hooks/use-usage-filters";
@@ -102,7 +102,7 @@ export default function App() {
   const { resolvedLocale } = useLocale();
   const location = useLocation();
   const insforge = useInsforgeAuth();
-  useCloudUsageSync();
+  useLeaderboardParticipationSync();
   const dashboardMainContentVisibleRef = useRef(false);
   const dashboardResourcePreloadStartedRef = useRef(false);
   const leaderboardStatePreloadContextKeysRef = useRef(new Set());

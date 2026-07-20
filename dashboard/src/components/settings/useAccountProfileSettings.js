@@ -2,36 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useInsforgeAuth } from "../../contexts/InsforgeAuthContext.jsx";
 import { resolveAuthAccessTokenWithRetry } from "../../lib/auth-token";
 import { getPublicVisibility, setPublicVisibility } from "../../lib/api";
-import { runCloudUsageSyncNow } from "../../lib/cloud-sync";
-import {
-  getCloudSyncEnabled,
-  isLocalDashboardHost,
-  setCloudSyncEnabled,
-} from "../../lib/cloud-sync-prefs";
 import { copy } from "../../lib/copy";
 import { normalizeGithubProfileUrl, pickDisplayName, pickEmail } from "./AccountSectionUtils.js";
 
 function warnSettingsAction(label, error) {
   console.warn(`[tokentracker] settings ${label}:`, error);
-}
-
-function useCloudSyncControl(getAccessToken, enabled, signedIn) {
-  const [cloudSyncOn, setCloudSyncOn] = useState(() => getCloudSyncEnabled());
-  const showLocalCloudSync = enabled && signedIn && isLocalDashboardHost();
-
-  const handleCloudSyncToggle = useCallback(async () => {
-    const next = !cloudSyncOn;
-    setCloudSyncEnabled(next);
-    setCloudSyncOn(next);
-    if (!next) return;
-    try {
-      await runCloudUsageSyncNow(() => getAccessToken());
-    } catch (error) {
-      warnSettingsAction("cloud sync", error);
-    }
-  }, [cloudSyncOn, getAccessToken]);
-
-  return { cloudSyncOn, handleCloudSyncToggle, showLocalCloudSync };
 }
 
 function useProfileState(user) {
@@ -268,7 +243,6 @@ function useGithubActions(state, mutateProfile) {
 export function useAccountProfileSettings() {
   const auth = useInsforgeAuth();
   const state = useProfileState(auth.user);
-  const cloudSync = useCloudSyncControl(auth.getAccessToken, auth.enabled, auth.signedIn);
   useProfileLoad(auth.getAccessToken, auth.signedIn, state.loadSetters);
   const mutateProfile = useProfileMutation(auth.getAccessToken, state);
   const visibilityActions = useVisibilityActions(state, mutateProfile);
@@ -277,7 +251,6 @@ export function useAccountProfileSettings() {
 
   return {
     ...auth,
-    ...cloudSync,
     email: state.email,
     handlePublicProfileToggle: visibilityActions.handlePublicProfileToggle,
     userId: state.userId,
