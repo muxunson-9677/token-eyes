@@ -88,7 +88,9 @@ describe("AccountSection leaderboard participation", () => {
   it("confirms before deleting leaderboard participation", () => {
     const settings = signedInSettings();
     mocks.settings = settings;
-    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal("confirm", vi.fn(function confirmDelete() {
+      return true;
+    }));
     render(<AccountSection />);
 
     fireEvent.click(screen.getByRole("button", { name: "退出排行榜并删除数据" }));

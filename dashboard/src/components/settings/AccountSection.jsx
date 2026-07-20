@@ -14,7 +14,7 @@ export function AccountSection() {
   const settings = useAccountProfileSettings();
 
   if (!settings.enabled) return null;
-  if (!settings.signedIn) return <SignedOutAccountSection />;
+  if (!settings.signedIn) return React.createElement(SignedOutAccountSection);
 
   return (
     <SectionCard

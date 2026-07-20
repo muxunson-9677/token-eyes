@@ -1863,6 +1863,19 @@ function sanitizeCodexResetEvent(event) {
     const summary = boundedString(event.summary, 240);
     const expiresAt = safeIsoString(event.expiresAt);
     if (!sourceUrl || !title || !summary || !expiresAt) return null;
+    const parsedSourceUrl = new URL(sourceUrl);
+    if (parsedSourceUrl.hostname.toLowerCase() === "x.com") {
+      const sourceMatch = parsedSourceUrl.pathname.match(
+        /^\/(OpenAI|thsottiaux)\/status\/([0-9]+)\/?$/u,
+      );
+      if (
+        !sourceMatch
+        || event.sourceAuthor !== sourceMatch[1]
+        || event.sourcePostId !== sourceMatch[2]
+      ) {
+        return null;
+      }
+    }
     dto.source_url = sourceUrl;
     dto.source_author = boundedString(event.sourceAuthor, 32);
     dto.source_post_id = boundedString(event.sourcePostId, 32);

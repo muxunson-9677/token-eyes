@@ -126,10 +126,10 @@ export function CodexResetEventsProvider({
     checkNow,
   }), [acknowledge, available, checkNow, response]);
 
-  return (
-    <CodexResetEventsContext.Provider value={value}>
-      {children}
-    </CodexResetEventsContext.Provider>
+  return React.createElement(
+    CodexResetEventsContext.Provider,
+    { value },
+    children,
   );
 }
 
