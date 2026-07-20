@@ -1,3 +1,5 @@
+import { clearLeaderboardSyncState } from "./leaderboard-sync-state";
+
 const KEY_ENABLED = "tokentracker_cloud_sync_enabled";
 const KEY_DEVICE = "tokentracker_cloud_device_session_v1";
 const KEY_LAST_SYNC = "tokentracker_cloud_last_sync_ts";
@@ -89,11 +91,13 @@ export function syncCloudSyncPrefToLocalServer(): void {
   void mirrorCloudSyncPrefToLocalServer(getCloudSyncEnabled());
 }
 
+/** @deprecated Internal compatibility path for the legacy full cloud sync. */
 export function getStoredDeviceSession(): CloudDeviceSession | null {
   clearLegacyStoredDeviceSession();
   return memoryDeviceSession;
 }
 
+/** @deprecated Internal compatibility path for the legacy full cloud sync. */
 export function setStoredDeviceSession(session: CloudDeviceSession): void {
   memoryDeviceSession = session;
   clearLegacyStoredDeviceSession();
@@ -107,8 +111,10 @@ export function clearCloudDeviceSession(): void {
     /* ignore */
   }
   clearLegacyStoredDeviceSession();
+  clearLeaderboardSyncState();
 }
 
+/** @deprecated Internal compatibility path for the legacy full cloud sync. */
 export function getLastCloudSyncTs(): number {
   try {
     const n = Number(localStorage.getItem(KEY_LAST_SYNC));
@@ -118,6 +124,7 @@ export function getLastCloudSyncTs(): number {
   }
 }
 
+/** @deprecated Internal compatibility path for the legacy full cloud sync. */
 export function setLastCloudSyncTs(ts: number): void {
   try {
     localStorage.setItem(KEY_LAST_SYNC, String(ts));
