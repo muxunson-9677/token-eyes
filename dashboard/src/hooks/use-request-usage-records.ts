@@ -30,6 +30,7 @@ interface UseRequestUsageRecordsParams {
   cacheKey?: string;
   timeZone?: string;
   tzOffsetMinutes?: number;
+  visibleProviderIds?: string[];
   /** When false, skip network fetch (deferred until idle or tab switch). */
   fetchEnabled?: boolean;
   /** 单个 source 拉取的记录上限；默认 100。 */
@@ -246,7 +247,7 @@ export function useRequestUsageRecords({
     setError(null);
     try {
       const result = await getRequestUsageRecords({
-        sources: effectiveSources,
+        sources: hasExplicitVisibleProviderIds ? effectiveSources : undefined,
         from,
         to,
         timeZone,

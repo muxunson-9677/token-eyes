@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
 
-function getStaticTokenStyle(token, height) {
+export function getStaticTokenStyle(token, height) {
   if (token === ".") {
     return {
       width: "0.34ch",
@@ -15,6 +15,15 @@ function getStaticTokenStyle(token, height) {
       width: "0.08ch",
       justifyContent: "center",
       marginInline: "-0.30ch",
+    };
+  }
+
+  if (/\p{Script=Han}/u.test(String(token))) {
+    return {
+      width: "1em",
+      justifyContent: "center",
+      flexShrink: 0,
+      height,
     };
   }
 
@@ -96,7 +105,7 @@ function Digit({ place, value, height, digitStyle, shouldReduceMotion }) {
       <span
         data-counter-token="static"
         className="relative inline-flex items-center justify-center"
-        style={{ height, ...staticTokenStyle, ...digitStyle }}
+        style={{ height, ...staticTokenStyle }}
       >
         {place}
       </span>
@@ -219,7 +228,7 @@ export default function Counter({
           fontSize,
           display: "flex",
           gap,
-          overflow: "hidden",
+          overflow: "visible",
           borderRadius,
           paddingLeft: horizontalPadding,
           paddingRight: horizontalPadding,

@@ -64,6 +64,33 @@ export function formatCompactNumber(
   return formatWithSuffix(roundedK, thousandSuffix);
 }
 
+/**
+ * Format Token counts with the product's Chinese magnitude vocabulary.
+ * This is intentionally token-specific: money, request counts, ranks and
+ * participant counts must keep their own formatting semantics.
+ */
+export function formatChineseTokenCount(
+  value: any,
+  { decimals = 2 }: { decimals?: number } = {},
+) {
+  if (value == null || (typeof value === "string" && value.trim() === "")) return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+
+  const safeDecimals = Math.max(0, Math.min(4, Math.floor(decimals)));
+  const sign = number < 0 ? "-" : "";
+  const absolute = Math.abs(number);
+  const formatScaled = (divisor: number, suffix: string) => {
+    const rounded = Number((absolute / divisor).toFixed(safeDecimals));
+    return `${sign}${rounded}${suffix}`;
+  };
+
+  if (absolute >= 100_000_000) return formatScaled(100_000_000, "亿");
+  if (absolute >= 10_000_000) return formatScaled(10_000_000, "千万");
+  if (absolute >= 10_000) return formatScaled(10_000, "万");
+  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: safeDecimals }).format(number);
+}
+
 export function toFiniteNumber(value: any) {
   const n = Number(String(value));
   return Number.isFinite(n) ? n : null;

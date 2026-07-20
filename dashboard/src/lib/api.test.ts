@@ -3,7 +3,9 @@ import {
   getAgentEnvironment,
   getTokenPlans,
   openXiaomiMimoConsoleLogin,
+  reorderTokenPlans,
   triggerLocalSync,
+  verifyOfficialModelPricing,
   verifyXiaomiMimoConsoleSession,
 } from "./api";
 import { clearLocalApiAuthToken, getLocalApiAuthHeaders } from "./local-api-auth";
@@ -47,6 +49,34 @@ it("routes local function requests to the Tauri-reported loopback CLI API", asyn
   );
 });
 
+it("sends an authenticated atomic Token plan order update", async () => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async (url) => {
+    const payload = String(url).endsWith("/api/local-auth")
+      ? { token: "local-token" }
+      : { ok: true, records: [] };
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await reorderTokenPlans(["c", "a", "b"]);
+
+  expect(fetchMock).toHaveBeenLastCalledWith(
+    "http://127.0.0.1:17680/functions/tokentracker-token-plans-order",
+    expect.objectContaining({
+      method: "PUT",
+      body: JSON.stringify({ ids: ["c", "a", "b"] }),
+      headers: expect.objectContaining({
+        "Content-Type": "application/json",
+        "x-tokentracker-local-auth": "local-token",
+      }),
+    }),
+  );
+});
+
 it("passes the current unsaved data path to environment detection", async () => {
   setTauriRuntime(true);
   const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), {
@@ -79,6 +109,34 @@ it("routes local sync requests to the Tauri-reported loopback CLI API", async ()
   expect(fetchMock).toHaveBeenCalledWith(
     "http://127.0.0.1:17680/functions/tokentracker-local-sync",
     expect.objectContaining({ method: "POST", cache: "no-store" }),
+  );
+});
+
+it("sends model pricing verification to the authenticated local API", async () => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async (url) => {
+    const payload = String(url).endsWith("/api/local-auth")
+      ? { token: "local-token" }
+      : { ok: true, status: "verified" };
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await verifyOfficialModelPricing({ model: "gpt-5", source: "codex" });
+
+  expect(fetchMock).toHaveBeenLastCalledWith(
+    "http://127.0.0.1:17680/functions/tokentracker-official-model-pricing",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5", source: "codex" }),
+      headers: expect.objectContaining({
+        "Content-Type": "application/json",
+        "x-tokentracker-local-auth": "local-token",
+      }),
+    }),
   );
 });
 

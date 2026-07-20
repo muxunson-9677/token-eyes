@@ -3,7 +3,7 @@ import { X, ArrowUpRight, Check, Link2, Code2 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { copy } from "../../lib/copy";
-import { formatCompactNumber, formatUsdCurrency } from "../../lib/format";
+import { formatChineseTokenCount, formatCompactNumber, formatUsdCurrency } from "../../lib/format";
 import { useCurrency } from "../../hooks/useCurrency.js";
 import { getLeaderboardProfile } from "../../lib/api";
 import { resolveAuthAccessTokenWithRetry } from "../../lib/auth-token";
@@ -45,7 +45,7 @@ function formatCostCompact(value, currency, rate) {
 function formatTokens(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0";
-  return formatCompactNumber(n, { decimals: 1 });
+  return formatChineseTokenCount(n);
 }
 
 /**

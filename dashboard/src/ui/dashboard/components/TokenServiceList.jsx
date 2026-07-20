@@ -12,6 +12,7 @@ const PROVIDER_LABELS = {
   codex: "Codex",
   claude: "Claude",
   cursor: "Cursor",
+  trae: "Trae",
   glm: "GLM",
   kimi: "Kimi",
   minimax: "MiniMax",
@@ -45,7 +46,7 @@ function isExpired(expiresAt, now) {
   return timestamp !== null && timestamp <= now.getTime();
 }
 
-const WINDOW_PRIORITY = ["rolling_5_hour", "rolling_weekly", "total", "auto_composer", "api"];
+const WINDOW_PRIORITY = ["rolling_5_hour", "rolling_weekly", "total", "auto_composer", "api", "fast_request"];
 // Cockpit-aligned Cursor lanes: Total Usage / Auto+Composer / API Usage.
 const CURSOR_WINDOW_PRIORITY = ["total", "rolling_weekly", "auto_composer", "api"];
 
@@ -239,7 +240,7 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
     <aside
       data-testid="token-service-list"
       className={cn(
-        "flex min-h-[220px] min-w-0 flex-col rounded-xl border border-oai-gray-200 bg-white p-3 shadow-sm shadow-black/[0.04] dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:shadow-black/20",
+        "flex h-full min-h-[220px] min-w-0 flex-col rounded-xl border border-oai-gray-200 bg-white p-2.5 shadow-sm shadow-black/[0.04] dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:shadow-black/20",
         className,
       )}
     >
@@ -267,54 +268,63 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
           {copy("spend.usage.token_services.empty")}
         </div>
       ) : (
-        <ol className="min-h-0 flex-1 divide-y divide-oai-gray-100 dark:divide-oai-gray-800">
+        <ol data-testid="token-service-cards" className="mt-1.5 flex min-h-0 flex-1 flex-col gap-1.5">
           {pageRows.map((service, index) => {
             const rank = pageStart + index + 1;
+            const sharedResetAt = service.metrics.length > 0
+              && service.metrics[0].resetsAt
+              && service.metrics.every((metric) => metric.resetsAt === service.metrics[0].resetsAt)
+              ? service.metrics[0].resetsAt
+              : null;
             return (
-              <li key={service.id} data-testid="token-service-row" className="py-3">
-                <div className="flex min-w-0 items-start gap-2">
+              <li
+                key={service.id}
+                data-testid="token-service-row"
+                className="rounded-lg border border-oai-gray-200 bg-oai-gray-50/45 p-2 dark:border-oai-gray-700 dark:bg-oai-gray-800/35"
+              >
+                <div className="flex min-w-0 items-start gap-1.5">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-oai-gray-100 text-[11px] font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400">
                     {rank}
                   </span>
                   <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-oai-gray-50 text-oai-gray-700 ring-1 ring-inset ring-oai-gray-200 dark:bg-oai-gray-800 dark:text-oai-gray-200 dark:ring-oai-gray-700"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-oai-gray-700 ring-1 ring-inset ring-oai-gray-200 dark:bg-oai-gray-900 dark:text-oai-gray-200 dark:ring-oai-gray-700"
                     data-testid={`token-service-provider-icon-${service.providerId}`}
                   >
-                    <ProviderIcon provider={service.providerId} size={16} />
+                    <ProviderIcon provider={service.providerId} size={14} />
                   </span>
-                  <span className="min-w-0 flex-1 pt-0.5" title={[service.provider, service.planLabel].filter(Boolean).join(" · ")}>
-                    <span className="flex min-w-0 items-baseline gap-1.5">
-                      <span className="truncate text-xs font-semibold text-oai-gray-800 dark:text-oai-gray-200">
+                  <span className="min-w-0 flex-1" title={[service.provider, service.planLabel].filter(Boolean).join(" · ")}>
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                      <span className="break-words text-xs font-semibold text-oai-gray-800 dark:text-oai-gray-200">
                         {service.provider}
                       </span>
                       {service.planLabel && (
-                        <span className="truncate text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
+                        <span className="break-words text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
                           {service.planLabel}
                         </span>
                       )}
                     </span>
                     {service.notes && (
-                      <span className="mt-0.5 block truncate text-[9px] text-oai-gray-400 dark:text-oai-gray-500" title={service.notes}>
+                      <span className="mt-0.5 block break-words text-[9px] leading-3 text-oai-gray-400 dark:text-oai-gray-500" title={service.notes}>
                         {service.notes}
                       </span>
                     )}
                   </span>
                 </div>
-                <div className="mt-2 space-y-2">
+                <div className="mt-1.5 space-y-1.5">
                   {service.metrics.map((metric) => {
                     const roundedPercentage = Math.round(metric.percentage);
                     return (
                       <div key={metric.kind} data-testid={`token-service-window-${metric.kind}`}>
-                        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-oai-gray-500 dark:text-oai-gray-400">
-                          <span className="inline-flex items-center gap-1 font-medium">
+                        <div className="mb-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[10px] leading-3.5 text-oai-gray-500 dark:text-oai-gray-400">
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap font-medium">
                             {metric.kind === "total" ? null : <Clock3 className="h-3 w-3" aria-hidden="true" />}
                             {windowLabel(metric.kind)}
                           </span>
-                          <span className="font-semibold tabular-nums text-oai-gray-700 dark:text-oai-gray-300">
-                            {roundedPercentage}%
+                          <span className="tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                            {copy("spend.usage.token_services.used")} {formatQuota(metric.used, metric.unit)} / {copy("spend.usage.token_services.total")} {formatQuota(metric.total, metric.unit)} · <strong className="font-semibold text-oai-gray-700 dark:text-oai-gray-300">{roundedPercentage}%</strong>
                           </span>
                         </div>
-                        <div className="h-1 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
+                        <div className="h-0.5 overflow-hidden rounded-full bg-oai-gray-200 dark:bg-oai-gray-700">
                           <div
                             className={cn("h-full rounded-full", progressColor(roundedPercentage))}
                             style={{ width: `${roundedPercentage}%` }}
@@ -325,12 +335,8 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
                             aria-valuenow={roundedPercentage}
                           />
                         </div>
-                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
-                          <span>{copy("spend.usage.token_services.used")} {formatQuota(metric.used, metric.unit)}</span>
-                          <span>{copy("spend.usage.token_services.total")} {formatQuota(metric.total, metric.unit)}</span>
-                        </div>
-                        {metric.resetsAt && (
-                          <div className="mt-1 text-right text-[9px] tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
+                        {metric.resetsAt && !sharedResetAt && (
+                          <div className="mt-0.5 text-right text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
                             {copy("spend.usage.token_services.reset_at", { value: formatDateTime(metric.resetsAt, true) })}
                           </div>
                         )}
@@ -338,8 +344,14 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
                     );
                   })}
                 </div>
-                {service.expiresAt && (
-                  <div className="mt-2 flex items-center gap-1 text-[9px] tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
+                {sharedResetAt && (
+                  <div data-testid="token-service-shared-reset" className="mt-1 flex items-center gap-1 text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
+                    <Clock3 className="h-3 w-3" aria-hidden="true" />
+                    {copy("spend.usage.token_services.reset_at", { value: formatDateTime(sharedResetAt, true) })}
+                  </div>
+                )}
+                {service.expiresAt && service.expiresAt !== sharedResetAt && (
+                  <div className="mt-1 flex items-center gap-1 text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
                     <CalendarDays className="h-3 w-3" aria-hidden="true" />
                     {copy("spend.usage.token_services.expires_at", { value: formatDateTime(service.expiresAt) })}
                   </div>

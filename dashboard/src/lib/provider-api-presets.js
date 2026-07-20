@@ -85,25 +85,47 @@ const PROVIDER_API_PRESETS = [
     },
   },
   {
+    providerId: "xiaomi_mimo",
+    label: "Xiaomi MiMo",
+    aliases: ["xiaomi_mimo", "xiaomi", "mimo", "小米"],
+    hosts: ["api.xiaomimimo.com", "platform.xiaomimimo.com", "mimo.mi.com"],
+    fixedRequestUrl: true,
+    defaultRequestUrl: "https://platform.xiaomimimo.com/console/balance",
+    requestMethod: "GET",
+    authType: "official_console",
+    authHeaderName: "",
+    balancePath: "balance.available_balance",
+    monthSpendPath: "",
+    lifetimeSpendPath: "",
+    currencyPath: "balance.currency",
+    currencyValue: "CNY",
+    financialCapabilities: {
+      balance: "supported",
+      monthSpend: "unsupported",
+      lifetimeSpend: "unsupported",
+      tokenQuota: "unsupported",
+    },
+  },
+  {
     providerId: "minimax",
     label: "MiniMax",
     aliases: ["minimax", "mini max", "海螺"],
     hosts: ["api.minimax.io", "api.minimaxi.com", "platform.minimax.io"],
     fixedRequestUrl: true,
-    defaultRequestUrl: "https://platform.minimax.io/account/billing",
+    defaultRequestUrl: "https://platform.minimaxi.com/console/recharge-records",
     requestMethod: "GET",
-    authType: "bearer",
+    authType: "official_console",
     authHeaderName: "",
-    balancePath: "",
+    balancePath: "balance.available_balance",
     monthSpendPath: "",
     lifetimeSpendPath: "",
-    currencyPath: "",
-    currencyValue: "",
+    currencyPath: "balance.currency",
+    currencyValue: "CNY",
     financialCapabilities: {
-      balance: "unsupported",
+      balance: "supported",
       monthSpend: "unsupported",
       lifetimeSpend: "unsupported",
-      tokenQuota: "token_plan",
+      tokenQuota: "unsupported",
     },
   },
   {
@@ -111,19 +133,21 @@ const PROVIDER_API_PRESETS = [
     label: "智谱 GLM",
     aliases: ["glm", "zhipu", "智谱", "bigmodel", "智谱ai", "zhipuai"],
     hosts: ["open.bigmodel.cn", "www.bigmodel.cn", "bigmodel.cn"],
-    defaultRequestUrl: "https://open.bigmodel.cn/api/paas/v4",
+    fixedRequestUrl: true,
+    defaultRequestUrl: "https://www.bigmodel.cn/coding-plan/personal/usage",
     requestMethod: "GET",
-    authType: "bearer",
+    authType: "official_console",
     authHeaderName: "",
-    balancePath: "",
+    balancePath: "balance.available_balance",
     monthSpendPath: "",
     lifetimeSpendPath: "",
-    currencyPath: "",
+    currencyPath: "balance.currency",
+    currencyValue: "CNY",
     financialCapabilities: {
-      balance: "unsupported",
+      balance: "supported",
       monthSpend: "unsupported",
       lifetimeSpend: "unsupported",
-      tokenQuota: "token_plan",
+      tokenQuota: "unsupported",
     },
   },
 ];
@@ -183,6 +207,7 @@ export const PROVIDER_API_MODES = [
   { value: "moonshot", label: "Kimi" },
   { value: "aliyun_bss", label: "Alibaba Cloud / Qwen" },
   { value: "volcengine_billing", label: "Volcengine / Doubao" },
+  { value: "xiaomi_mimo", label: "Xiaomi MiMo" },
   { value: "minimax", label: "MiniMax" },
   { value: "glm", label: "智谱 GLM" },
   { value: "custom", copyKey: "settings.cost.provider_api.form.api_mode_custom" },
@@ -205,6 +230,25 @@ export function getProviderFinancialCapabilities(form) {
     monthSpend: String(form?.monthSpendPath || "").trim() ? "custom" : "unsupported",
     lifetimeSpend: String(form?.lifetimeSpendPath || "").trim() ? "custom" : "unsupported",
     tokenQuota: "unsupported",
+  };
+}
+
+export function getProviderConfigurationGuide(form) {
+  const preset = detectPreset(form);
+  return {
+    provider: preset?.label || String(form?.label || form?.providerId || "Custom"),
+    endpoint: preset?.defaultRequestUrl || String(form?.requestUrl || ""),
+    method: preset?.requestMethod || String(form?.requestMethod || "GET"),
+    authType: preset?.authType || String(form?.authType || "custom_header"),
+    balancePath: preset?.balancePath || String(form?.balancePath || ""),
+    currencyPath: preset?.currencyPath || String(form?.currencyPath || ""),
+    note: preset?.authType === "aliyun_rpc"
+      ? "Use an Alibaba Cloud RAM AccessKey with BSS ReadOnlyAccess. Sign QueryAccountBalance requests with Aliyun RPC signature v1.0."
+      : preset?.authType === "volcengine_hmac"
+      ? "Use a Volcengine access key with billing read permission and sign QueryBalanceAcct using Volcengine HMAC."
+      : preset?.authType === "official_console"
+      ? "Use the official account-console authorization flow. Do not paste browser cookies into chat or configuration fields."
+      : "Use the provider API key in the Authorization header. Never paste the secret into AI chat.",
   };
 }
 

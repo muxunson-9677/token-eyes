@@ -7,14 +7,14 @@ const { test } = require("node:test");
 const ROOT = path.join(__dirname, "..");
 
 const APPROVED_ICON_HASHES = {
-  "src-tauri/icons/icon.ico":
-    "44732AF1CE6075322EFB989408522D7F97B02D5A72ED83F582A1C26C491C4BC0",
-  "src-tauri/icons/32x32.png":
-    "6F128A4232CF973E5F0812DC06123D39716606244B059BBF5911374D46A9A3F0",
-  "src-tauri/icons/128x128.png":
-    "81F0D63B1B523A76FECB7DC519DCDBB23C88237FC3A5132960EE40BE22C44EA7",
-  "src-tauri/icons/128x128@2x.png":
-    "A9D86D7CB92067EF14CDC00FBA12E2547AA849884276E202D875DBEB9F2B28FF",
+  "src-tauri/icons/token-eyes-orange/icon.ico":
+    "ACB8C06AAF10C6239972D9B6B63AB87214C219067F43F4417D8CFDA29C74A0D5",
+  "src-tauri/icons/token-eyes-orange/32x32.png":
+    "37EB5809C3EC370734410DF67C055DAE6019428DF81CC160F4645500FD556F44",
+  "src-tauri/icons/token-eyes-orange/128x128.png":
+    "3D92409028B853831E140BC60B410E4A07CE2BEEB6324F09945EDE12C67EC6A3",
+  "src-tauri/icons/token-eyes-orange/128x128@2x.png":
+    "F5C75AEEF89D55627799CD81E8D9ED44ECA80EC5146E4BACEE4E70A00D9F315D",
 };
 
 function readJson(relPath) {
@@ -37,6 +37,6 @@ test("approved Token Eyes icon assets do not drift", () => {
 
 test("NSIS installer and uninstaller use the approved app icon", () => {
   const tauri = readJson("src-tauri/tauri.conf.json");
-  assert.equal(tauri.bundle.windows.nsis.installerIcon, "icons/icon.ico");
-  assert.equal(tauri.bundle.windows.nsis.uninstallerIcon, "icons/icon.ico");
+  assert.equal(tauri.bundle.windows.nsis.installerIcon, "icons/token-eyes-orange/icon.ico");
+  assert.equal(tauri.bundle.windows.nsis.uninstallerIcon, "icons/token-eyes-orange/icon.ico");
 });

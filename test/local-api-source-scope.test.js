@@ -7,6 +7,7 @@ const { test } = require("node:test");
 require("./helpers/home-shim.cjs");
 
 const {
+  appendDetectedTokenOnlyProviders,
   createLocalApiHandler,
   summarizeTokenOnlyUsage,
 } = require("../src/lib/local-api");
@@ -116,6 +117,36 @@ test("usage-limits appends Trae, CodeBuddy and OpenCode token-only totals", asyn
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
+});
+
+test("detected Trae and CodeBuddy stores remain visible without fabricated token totals", () => {
+  const states = {
+    trae: {
+      status: "detected",
+      trackingReady: false,
+      evidence: "encrypted_database",
+      dataPath: "C:\\Users\\admin\\AppData\\Roaming\\Trae CN",
+    },
+    codebuddy: {
+      status: "detected",
+      trackingReady: false,
+      evidence: "session_database",
+      dataPath: "C:\\Users\\admin\\AppData\\Roaming\\CodeBuddy CN",
+    },
+  };
+
+  const usage = summarizeTokenOnlyUsage([], states);
+  assert.equal(usage.trae.configured, true);
+  assert.equal(usage.trae.total_tokens, 0);
+  assert.equal(usage.trae.collection_status, "connected_no_precise_tokens");
+  assert.equal(usage.codebuddy.configured, true);
+  assert.equal(usage.codebuddy.total_tokens, 0);
+  assert.equal(usage.codebuddy.collection_status, "connected_no_precise_tokens");
+
+  const providers = appendDetectedTokenOnlyProviders([], states);
+  assert.deepEqual(providers.map((provider) => provider.source), ["trae", "codebuddy"]);
+  assert.ok(providers.every((provider) => provider.tokens === 0));
+  assert.ok(providers.every((provider) => provider.metric_availability === "connected_no_precise_tokens"));
 });
 
 test("usage-summary defaults to all scope and includes account-level Cursor usage", async () => {

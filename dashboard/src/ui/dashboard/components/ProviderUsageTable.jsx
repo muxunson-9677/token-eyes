@@ -4,7 +4,7 @@ import { Card } from "../../components";
 import { useCurrency } from "../../../hooks/useCurrency";
 import { copy } from "../../../lib/copy";
 import { getCurrencySymbol } from "../../../lib/currency";
-import { formatCompactNumber, formatUsdCurrency } from "../../../lib/format";
+import { formatChineseTokenCount, formatUsdCurrency } from "../../../lib/format";
 import { useProviderStats } from "../../../hooks/use-provider-stats";
 import { getProviderColor } from "./UsageOverview.jsx";
 
@@ -26,13 +26,7 @@ function safeNum(value) {
 
 function formatTokensCompact(value) {
   const n = safeNum(value);
-  if (n <= 0) return "0";
-  return formatCompactNumber(n, {
-    decimals: n >= 1000000 ? 1 : 0,
-    thousandSuffix: "k",
-    millionSuffix: "M",
-    billionSuffix: "B",
-  });
+  return formatChineseTokenCount(n);
 }
 
 function formatFullNum(value) {
@@ -213,6 +207,11 @@ export function ProviderUsageTable({
                         style={{ backgroundColor: dotColor }}
                       />
                       <span className="truncate max-w-[180px]" title={providerLabel}>{providerLabel}</span>
+                      {row.collection_status === "connected_no_precise_tokens" && (
+                        <span className="text-[10px] font-normal text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          {copy("usage.provider.connected_no_precise_tokens")}
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">

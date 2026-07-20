@@ -176,8 +176,10 @@ export default async function (req: Request): Promise<Response> {
     entries?: Array<Record<string, unknown>>;
     me?: Record<string, unknown> | null;
     participant_count?: number | string;
+    ranked_entry_count?: number | string;
     total_score?: number | string;
     aggregate_total_tokens?: number | string;
+    aggregate_total_cost_usd?: number | string;
     from?: string | null;
     to?: string | null;
     generated_at?: string | null;
@@ -187,6 +189,7 @@ export default async function (req: Request): Promise<Response> {
   ) as RankedPayload;
   const entries = Array.isArray(payload.entries) ? payload.entries : [];
   const participantCount = Math.max(Number(payload.participant_count) || 0, 0);
+  const rankedEntryCount = Math.max(Number(payload.ranked_entry_count) || 0, 0);
   const me = payload.me ?? null;
   const meUserId = typeof me?.user_id === "string" ? me.user_id : null;
 
@@ -197,11 +200,13 @@ export default async function (req: Request): Promise<Response> {
     })),
     me,
     participant_count: participantCount,
-    total_entries: participantCount,
+    ranked_entry_count: rankedEntryCount,
+    total_entries: rankedEntryCount,
     total_score: Number(payload.total_score) || 0,
     aggregate_total_tokens: Number(payload.aggregate_total_tokens) || 0,
+    aggregate_total_cost_usd: Number(payload.aggregate_total_cost_usd) || 0,
     page: Math.floor(offset / limit) + 1,
-    total_pages: Math.ceil(participantCount / limit),
+    total_pages: Math.ceil(rankedEntryCount / limit),
     period,
     agent,
     metric,

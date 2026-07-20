@@ -1,16 +1,32 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
+import { useNavigate } from "react-router-dom";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
 import { AccountSection } from "../components/settings/AccountSection.jsx";
 import { DataDirectoriesSection } from "../components/settings/DataDirectoriesSection.jsx";
 import { AgentPricingSection } from "../components/settings/AgentPricingSection.jsx";
-import { TokenPlanSection } from "../components/settings/TokenPlanSection.jsx";
-import { ProviderApiConfigSection } from "../components/settings/ProviderApiConfigSection.jsx";
-import { OtherAiSpendSection } from "../components/settings/OtherAiSpendSection.jsx";
 import { AppearanceSection } from "../components/settings/AppearanceSection.jsx";
 import { SectionCard, SegmentedControl } from "../components/settings/Controls.jsx";
 import { MenuBarSection, NativeAppFooter } from "../components/settings/MenuBarSection.jsx";
 import { LIMIT_DISPLAY_MODES, useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { copy } from "../lib/copy";
+
+const TokenPlanSection = lazy(() =>
+  import("../components/settings/TokenPlanSection.jsx").then((module) => ({ default: module.TokenPlanSection })),
+);
+const ProviderApiConfigSection = lazy(() =>
+  import("../components/settings/ProviderApiConfigSection.jsx").then((module) => ({ default: module.ProviderApiConfigSection })),
+);
+const OtherAiSpendSection = lazy(() =>
+  import("../components/settings/OtherAiSpendSection.jsx").then((module) => ({ default: module.OtherAiSpendSection })),
+);
+
+function SettingsCostFallback() {
+  return (
+    <div className="rounded-xl border border-oai-gray-200 bg-white px-5 py-8 text-center text-sm text-oai-gray-400 shadow-sm shadow-black/[0.04] dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-oai-gray-500 dark:shadow-black/20">
+      {copy("settings.cost.loading")}
+    </div>
+  );
+}
 
 // v2.0 IA refactor (work order 01): the old single SettingsPage is split into
 // two route components so each sub-module has its own URL.
@@ -80,6 +96,8 @@ export function SettingsBasicPage() {
 // ---------------------------------------------------------------------------
 
 export function SettingsCostPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
@@ -93,8 +111,9 @@ export function SettingsCostPage() {
             </p>
           </div>
 
-          <div className="space-y-4">
-            <TokenPlanSection />
+          <Suspense fallback={<SettingsCostFallback />}>
+            <div className="space-y-4">
+              <TokenPlanSection listOnly onNavigate={navigate} />
             {/*
               v2.0 IA — work order 03 wires ProviderApiConfigSection here.
               The data-provider-api-config-anchor attribute is retained as a
@@ -102,11 +121,12 @@ export function SettingsCostPage() {
               settings (no duplicate management entry). API Key editing lives
               ONLY here — never on /spend/cost.
             */}
-            <div data-provider-api-config-anchor>
-              <ProviderApiConfigSection />
+              <div data-provider-api-config-anchor>
+                <ProviderApiConfigSection />
+              </div>
+              <OtherAiSpendSection />
             </div>
-            <OtherAiSpendSection />
-          </div>
+          </Suspense>
         </div>
       </main>
     </div>

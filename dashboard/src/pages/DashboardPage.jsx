@@ -20,7 +20,7 @@ import { getDetailsSortColumns, sortDailyRows } from "../lib/daily";
 import { formatDateUTC, getRangeForPeriod } from "../lib/date-range";
 import { DETAILS_PAGE_SIZE, paginateRows, trimLeadingZeroMonths } from "../lib/details";
 import {
-  formatCompactNumber,
+  formatChineseTokenCount,
   toDisplayNumber,
   toFiniteNumber,
 } from "../lib/format";
@@ -30,7 +30,13 @@ import { getMockNow, isMockEnabled } from "../lib/mock-data";
 import { isLocalDashboardRuntime } from "../lib/local-api-url";
 import { publishUsageLimitsPreloadState } from "../lib/dashboard-preload.js";
 import { resolveSummaryCostUsd } from "../lib/usage-summary-cost";
-import { buildFleetData, buildTopModels, resolveDisplayTokens } from "../lib/model-breakdown";
+import {
+  appendConnectedTokenOnlySources,
+  buildFleetData,
+  buildModelUsageDistribution,
+  buildTopModels,
+  resolveDisplayTokens,
+} from "../lib/model-breakdown";
 import { safeWriteClipboard, safeWriteClipboardImage } from "../lib/safe-browser";
 import { isScreenshotModeEnabled } from "../lib/screenshot-mode";
 import {
@@ -145,10 +151,6 @@ export function DashboardPage({
   const [linkCodeExpiryTick, setLinkCodeExpiryTick] = useState(0);
   const [linkCodeRefreshToken, setLinkCodeRefreshToken] = useState(0);
   const [userStatus, setUserStatus] = useState(null);
-  const [compactSummary, setCompactSummary] = useState(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return false;
-    return window.matchMedia("(max-width: 640px)").matches;
-  });
   const screenshotMode = useMemo(() => {
     if (typeof window === "undefined") return false;
     return isScreenshotModeEnabled(window.location.search);
@@ -166,6 +168,7 @@ export function DashboardPage({
   const [intervalSettingsLoading, setIntervalSettingsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshInProgressRef = useRef(false);
+  const lastBackgroundLocalSyncAtRef = useRef(0);
   const mainContentVisibleNotifiedRef = useRef(false);
   const mockEnabled = isMockEnabled();
   const authTokenAllowed = signedIn && !sessionSoftExpired;
@@ -384,19 +387,6 @@ export function DashboardPage({
       window.removeEventListener("focus", handleVisibilityChange);
     };
   }, [linkCodeExpiresAt]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const media = window.matchMedia("(max-width: 640px)");
-    const sync = () => setCompactSummary(media.matches);
-    sync();
-    if (media.addEventListener) {
-      media.addEventListener("change", sync);
-      return () => media.removeEventListener("change", sync);
-    }
-    media.addListener(sync);
-    return () => media.removeListener(sync);
-  }, []);
 
   const timeZone = useMemo(() => getBrowserTimeZone(), []);
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
@@ -708,8 +698,9 @@ export function DashboardPage({
     if (row?.future) return "-";
     if (row?.missing) return copy("shared.status.unsynced");
     if (key === "total_tokens") {
-      return toDisplayNumber(getBillableTotal(row));
+      return formatChineseTokenCount(getBillableTotal(row));
     }
+    if (key.endsWith("_tokens")) return formatChineseTokenCount(row?.[key]);
     return toDisplayNumber(row?.[key]);
   }
 
@@ -851,6 +842,23 @@ export function DashboardPage({
   }, [isLocalMode, refreshAll]);
 
   useEffect(() => {
+    if (!isLocalMode || mockEnabled || publicMode) return undefined;
+    const refreshInBackground = () => {
+      const now = Date.now();
+      if (now - lastBackgroundLocalSyncAtRef.current < 30_000) return;
+      lastBackgroundLocalSyncAtRef.current = now;
+      void handleAutoRefresh();
+    };
+    const initialTimer = window.setTimeout(refreshInBackground, 0);
+    const refreshOnFocus = () => refreshInBackground();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
+  }, [handleAutoRefresh, isLocalMode, mockEnabled, publicMode]);
+
+  useEffect(() => {
     if (refreshInterval === "manual") return;
     const ms = INTERVAL_MS[refreshInterval];
     if (!ms) return;
@@ -956,28 +964,10 @@ export function DashboardPage({
 
   const summaryLabel = copy("usage.summary.total");
   const summaryTotalTokens = getBillableTotal(summary);
-  const thousandSuffix = copy("shared.unit.thousand_abbrev");
-  const millionSuffix = copy("shared.unit.million_abbrev");
-  const billionSuffix = copy("shared.unit.billion_abbrev");
-  const summaryNumber = toFiniteNumber(summaryTotalTokens);
-  const useCompactSummary =
-    compactSummary && summaryNumber != null && Math.abs(summaryNumber) >= 1000000000;
-  const summaryValue = useMemo(() => {
-    if (!useCompactSummary) return toDisplayNumber(summaryTotalTokens);
-    return formatCompactNumber(summaryNumber, {
-      thousandSuffix,
-      millionSuffix,
-      billionSuffix,
-      decimals: 1,
-    });
-  }, [
-    billionSuffix,
-    millionSuffix,
-    summaryTotalTokens,
-    summaryNumber,
-    thousandSuffix,
-    useCompactSummary,
-  ]);
+  const summaryValue = useMemo(
+    () => toFiniteNumber(summaryTotalTokens) == null ? "-" : formatChineseTokenCount(summaryTotalTokens),
+    [summaryTotalTokens],
+  );
 
   const coreIndexCollapseLabel = copy("dashboard.core_index.collapse_label");
   const coreIndexExpandLabel = copy("dashboard.core_index.expand_label");
@@ -1027,7 +1017,9 @@ export function DashboardPage({
 
     return { agentName, modelName, modelPercent };
   }, [modelBreakdown, placeholderShort]);
-  const displayTotalTokens = toDisplayNumber(summaryTotalTokens);
+  const displayTotalTokens = toFiniteNumber(summaryTotalTokens) == null
+    ? "-"
+    : formatChineseTokenCount(summaryTotalTokens);
   const twitterTotalTokens = displayTotalTokens === "-" ? placeholderShort : displayTotalTokens;
   const screenshotTwitterText = copy("dashboard.screenshot.twitter_text", {
     total_tokens: twitterTotalTokens,
@@ -1133,24 +1125,24 @@ export function DashboardPage({
     () => [
       {
         label: copy("usage.metric.total"),
-        value: toDisplayNumber(summaryTotalTokens),
+        value: formatChineseTokenCount(summaryTotalTokens),
         valueClassName: "text-white",
       },
       {
         label: copy("usage.metric.input"),
-        value: toDisplayNumber(summary?.input_tokens),
+        value: formatChineseTokenCount(summary?.input_tokens),
       },
       {
         label: copy("usage.metric.output"),
-        value: toDisplayNumber(summary?.output_tokens),
+        value: formatChineseTokenCount(summary?.output_tokens),
       },
       {
         label: copy("usage.metric.cached_input"),
-        value: toDisplayNumber(summary?.cached_input_tokens),
+        value: formatChineseTokenCount(summary?.cached_input_tokens),
       },
       {
         label: copy("usage.metric.reasoning_output"),
-        value: toDisplayNumber(summary?.reasoning_output_tokens),
+        value: formatChineseTokenCount(summary?.reasoning_output_tokens),
       },
     ],
     [
@@ -1183,11 +1175,22 @@ export function DashboardPage({
   );
 
   const fleetData = useMemo(
-    () => buildFleetData(modelBreakdown, { copyFn: copy }),
-    [modelBreakdown],
+    () => appendConnectedTokenOnlySources(
+      buildFleetData(modelBreakdown, { copyFn: copy }),
+      usageLimits,
+    ),
+    [modelBreakdown, usageLimits],
   );
   const topModels = useMemo(
     () => buildTopModels(modelBreakdown, { limit: 3, copyFn: copy }),
+    [modelBreakdown],
+  );
+  const modelUsageDistribution = useMemo(
+    () => buildModelUsageDistribution(modelBreakdown, {
+      limit: 5,
+      otherLabel: copy("dashboard.model_distribution.other"),
+      copyFn: copy,
+    }),
     [modelBreakdown],
   );
 
@@ -1367,6 +1370,7 @@ export function DashboardPage({
       timeZoneRangeLabel={timeZoneRangeLabel}
       usageSourceLabel={usageSourceLabel}
       fleetData={fleetData}
+      modelUsageDistribution={modelUsageDistribution}
       hasDetailsActual={hasDetailsActual}
       dailyEmptyPrefix={dailyEmptyPrefix}
       installSyncCmd={installSyncCmd}
@@ -1391,8 +1395,6 @@ export function DashboardPage({
       setDetailsPage={setDetailsPage}
       costModalOpen={costModalOpen}
       closeCostModal={closeCostModal}
-      requestUsageTimeZone={timeZone}
-      requestUsageTzOffsetMinutes={tzOffsetMinutes}
     />
     <ShareModal
       open={shareModalOpen}
@@ -1403,5 +1405,3 @@ export function DashboardPage({
     </>
   );
 }
-
-

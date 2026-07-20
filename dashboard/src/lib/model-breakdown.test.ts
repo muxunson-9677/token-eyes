@@ -1,10 +1,70 @@
 import { describe, expect, it } from "vitest";
 import {
   BILLING_FILTERS,
+  appendConnectedTokenOnlySources,
   buildFleetData,
+  buildModelUsageDistribution,
   filterFleetByBillingMode,
   normalizeBillingFilterValue,
 } from "./model-breakdown";
+
+describe("appendConnectedTokenOnlySources", () => {
+  it("shows detected Trae and CodeBuddy without inventing token usage", () => {
+    const fleet = appendConnectedTokenOnlySources([], {
+      trae: { configured: true, total_tokens: 0, collection_status: "connected_no_precise_tokens" },
+      codebuddy: { configured: true, total_tokens: 0, collection_status: "connected_no_precise_tokens" },
+    });
+
+    expect(fleet.map((entry) => entry.source)).toEqual(["trae", "codebuddy"]);
+    expect(fleet.every((entry) => entry.usage === 0)).toBe(true);
+    expect(fleet.every((entry) => entry.collectionStatus === "connected_no_precise_tokens")).toBe(true);
+  });
+
+  it("does not duplicate a source that already has measured usage", () => {
+    const measured = [{ source: "trae", label: "TRAE", usage: 42, models: [] }];
+    expect(appendConnectedTokenOnlySources(measured, {
+      trae: { configured: true, total_tokens: 0, collection_status: "connected_no_precise_tokens" },
+    })).toEqual(measured);
+  });
+});
+
+describe("buildModelUsageDistribution", () => {
+  it("merges the same model across providers and groups overflow into other", () => {
+    const breakdown = {
+      sources: [
+        {
+          source: "codex",
+          models: [
+            { model: "gpt-5.5", totals: { total_tokens: 600 } },
+            { model: "model-b", totals: { total_tokens: 300 } },
+            { model: "model-c", totals: { total_tokens: 200 } },
+            { model: "model-d", totals: { total_tokens: 100 } },
+          ],
+        },
+        {
+          source: "hermes",
+          models: [
+            { model: "GPT-5.5", totals: { total_tokens: 400 } },
+            { model: "model-e", totals: { total_tokens: 80 } },
+            { model: "model-f", totals: { total_tokens: 60 } },
+            { model: "model-g", totals: { total_tokens: 40 } },
+          ],
+        },
+      ],
+    };
+
+    const result = buildModelUsageDistribution(breakdown, {
+      limit: 5,
+      otherLabel: "其他",
+    });
+
+    expect(result.totalTokens).toBe(1780);
+    expect(result.rows[0]).toMatchObject({ name: "gpt-5.5", tokens: 1000 });
+    expect(result.rows).toHaveLength(6);
+    expect(result.rows[5]).toMatchObject({ name: "其他", tokens: 100 });
+    expect(result.rows.reduce((sum: number, row: any) => sum + row.tokens, 0)).toBe(1780);
+  });
+});
 
 // Q02: filter + recompute contract for the model-breakdown helper used by
 // UsageOverview. These tests pin the rules documented in

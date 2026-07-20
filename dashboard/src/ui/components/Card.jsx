@@ -11,7 +11,7 @@ export function Card({
   bodyClassName = "",
 }) {
   return (
-    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 transition-colors duration-200 ${className}`}>
+    <div className={`rounded-2xl border border-oai-gray-200/90 bg-white/95 shadow-oai-md transition-[background-color,border-color,box-shadow] duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900/95 dark:shadow-black/20 ${className}`}>
       {(title || subtitle) && (
         <div className="px-5 py-4 border-b border-oai-gray-200 dark:border-oai-gray-800 transition-colors duration-200">
           {title && (

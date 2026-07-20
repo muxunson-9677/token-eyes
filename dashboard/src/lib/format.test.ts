@@ -1,5 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { formatUsdCurrency } from "./format";
+import { formatChineseTokenCount, formatUsdCurrency } from "./format";
+
+describe("formatChineseTokenCount", () => {
+  it.each([
+    [0, "0"],
+    [9_999, "9,999"],
+    [10_000, "1万"],
+    [4_156_000, "415.6万"],
+    [9_999_999, "1000万"],
+    [10_000_000, "1千万"],
+    [32_770_000, "3.28千万"],
+    [99_999_999, "10千万"],
+    [100_000_000, "1亿"],
+    [3_315_880_286, "33.16亿"],
+    [104_336_606_257, "1043.37亿"],
+  ])("formats %s with Chinese Token units", (value, expected) => {
+    expect(formatChineseTokenCount(value)).toBe(expected);
+  });
+
+  it("supports numeric strings, negative values and invalid values", () => {
+    expect(formatChineseTokenCount("18_960_000".replaceAll("_", ""))).toBe("1.9千万");
+    expect(formatChineseTokenCount(-15_000)).toBe("-1.5万");
+    expect(formatChineseTokenCount(null)).toBe("-");
+    expect(formatChineseTokenCount("not-a-number")).toBe("-");
+  });
+
+  it("allows a caller to cap decimal precision", () => {
+    expect(formatChineseTokenCount(3_315_880_286, { decimals: 1 })).toBe("33.2亿");
+    expect(formatChineseTokenCount(3_315_880_286, { decimals: 0 })).toBe("33亿");
+  });
+});
 
 describe("formatUsdCurrency — null / empty handling", () => {
   it("returns '-' for null", () => {

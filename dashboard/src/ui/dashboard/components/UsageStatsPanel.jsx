@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Package, Target, HelpCircle, AlertCircle } from "lu
 import { Card } from "../../components";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
-import { formatCompactNumber } from "../../../lib/format";
+import { formatChineseTokenCount } from "../../../lib/format";
 import { ProviderIcon } from "./ProviderIcon";
 import { getProviderColor } from "./UsageOverview.jsx";
 
@@ -33,13 +33,7 @@ function safeNum(value) {
 
 function formatTokensCompact(value) {
   const n = safeNum(value);
-  if (n <= 0) return "0";
-  return formatCompactNumber(n, {
-    decimals: n >= 1000000 ? 1 : 0,
-    thousandSuffix: "k",
-    millionSuffix: "M",
-    billionSuffix: "B",
-  });
+  return formatChineseTokenCount(n);
 }
 
 function formatFullNum(value) {
@@ -79,9 +73,7 @@ export function getMonthlyCostComparison(currentValue, previousValue) {
   if (previous === 0) {
     return {
       kind: "increase",
-      text: copy("spend.monthly_change.new_amount", {
-        amount: formatCurrencyAmount(current, "USD"),
-      }),
+      text: copy("spend.monthly_change.no_baseline"),
     };
   }
 
@@ -89,13 +81,6 @@ export function getMonthlyCostComparison(currentValue, previousValue) {
   return difference > 0
     ? { kind: "increase", text: copy("spend.monthly_change.increase", { value: percent }) }
     : { kind: "decrease", text: copy("spend.monthly_change.decrease", { value: percent }) };
-}
-
-function formatApprox(value) {
-  const n = safeNum(value);
-  if (n >= 1e8) return `${(n / 1e8).toFixed(2)} 亿`;
-  if (n >= 1e4) return `${(n / 1e4).toFixed(1)} 万`;
-  return null;
 }
 
 function normalizeHitRate(value) {
@@ -145,9 +130,9 @@ const TOKEN_FIELDS = {
 };
 
 const COST_SUMMARY_CARDS = [
-  { labelKey: "spend.monthly_api", usdField: "api_usd", cnyField: "api_cny" },
-  { labelKey: "spend.monthly_subscription", usdField: "subscription_usd", cnyField: "subscription_cny" },
-  { labelKey: "spend.monthly_combined", usdField: "combined_usd", cnyField: "combined_cny" },
+  { labelKey: "spend.monthly_api", usdField: "api_usd", cnyField: "api_cny", previousUsdField: "previous_api_usd" },
+  { labelKey: "spend.monthly_subscription", usdField: "subscription_usd", cnyField: "subscription_cny", previousUsdField: "previous_subscription_usd" },
+  { labelKey: "spend.monthly_combined", usdField: "combined_usd", cnyField: "combined_cny", previousUsdField: "previous_combined_usd" },
   { labelKey: "spend.lifetime_combined", usdField: "lifetime_combined_usd", cnyField: "lifetime_combined_cny" },
 ];
 
@@ -169,7 +154,6 @@ export function UsageStatsPanel({
   const requestCount = requestCountValue == null ? null : safeNum(requestCountValue);
   const cost = safeNum(totals?.cost_usd ?? totals?.total_cost_usd);
   const hitRate = normalizeHitRate(totals?.cache_hit_rate);
-  const approx = formatApprox(totalTokens);
   const selectedAgentBrandColor = selectedAgent?.queueSource
     ? getProviderColor(selectedAgent.queueSource.toUpperCase(), 0)
     : null;
@@ -248,13 +232,8 @@ export function UsageStatsPanel({
                 <span>{copy("ticket02.stats.real_tokens")}</span>
               </div>
               <div className="mt-1 text-3xl font-semibold tracking-tight text-oai-black tabular-nums dark:text-white">
-                {formatFullNum(totalTokens)}
+                {formatChineseTokenCount(totalTokens)}
               </div>
-              {approx && (
-                <div className="mt-0.5 text-xs text-oai-gray-400 dark:text-oai-gray-500">
-                  {copy("ticket02.stats.approx", { value: approx })}
-                </div>
-              )}
             </div>
           </div>
 
@@ -293,10 +272,10 @@ export function UsageStatsPanel({
               data-testid="usage-cost-summary"
             >
               {COST_SUMMARY_CARDS.map((card) => {
-                const comparison = card.labelKey === "spend.monthly_combined"
+                const comparison = card.previousUsdField
                   ? getMonthlyCostComparison(
-                    costSummary.combined_usd,
-                    costSummary.previous_combined_usd,
+                    costSummary[card.usdField],
+                    costSummary[card.previousUsdField],
                   )
                   : null;
                 return (
@@ -304,28 +283,31 @@ export function UsageStatsPanel({
                     key={card.labelKey}
                     className="min-w-0 rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
                   >
-                    <div className="truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
-                      {copy(card.labelKey)}
+                    <div className="text-[10px] text-oai-gray-500 dark:text-oai-gray-400">
+                      <span className="truncate">{copy(card.labelKey)}</span>
                     </div>
                     <div className="mt-1 truncate text-base font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
                       {formatCurrencyAmount(costSummary[card.usdField], "USD")}
                     </div>
-                    <div className="mt-0.5 truncate text-[11px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
-                      {formatCurrencyAmount(costSummary[card.cnyField], "CNY")}
+                    <div
+                      className="mt-0.5 flex min-w-0 items-center justify-between gap-1 text-[11px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400"
+                      data-testid={comparison ? "monthly-cost-cny-row" : undefined}
+                    >
+                      <span className="truncate">{formatCurrencyAmount(costSummary[card.cnyField], "CNY")}</span>
+                      {comparison && (
+                        <span
+                          data-testid="monthly-cost-comparison"
+                          className={cn(
+                            "shrink-0 truncate text-[9px] font-medium leading-tight tabular-nums",
+                            comparison.kind === "increase" && "text-green-600 dark:text-green-400",
+                            comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
+                            comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",
+                          )}
+                        >
+                          {comparison.text}
+                        </span>
+                      )}
                     </div>
-                    {comparison && (
-                      <div
-                        data-testid="monthly-cost-comparison"
-                        className={cn(
-                          "mt-1 truncate text-[10px] font-medium leading-tight tabular-nums",
-                          comparison.kind === "increase" && "text-red-600 dark:text-red-400",
-                          comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
-                          comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",
-                        )}
-                      >
-                        {comparison.text}
-                      </div>
-                    )}
                   </div>
                 );
               })}

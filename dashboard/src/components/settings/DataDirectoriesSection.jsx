@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FolderOpen, Save, RefreshCw, CheckCircle, Search, XCircle } from "lucide-react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { FolderOpen, Save, RefreshCw, CheckCircle, Search, XCircle, GripVertical } from "lucide-react";
 import {
   detectLocalDataDirectories,
   getAgentEnvironment,
@@ -11,19 +14,51 @@ import {
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { SectionCard } from "./Controls.jsx";
-import { isNativeWindowsApp } from "../../lib/native-bridge.js";
+import { isNativeApp, isNativeWindowsApp } from "../../lib/native-bridge.js";
 import { selectDirectoryViaTauri } from "../../lib/tauri-directory.js";
 
 const DIRECTORY_FIELDS = [
   { key: "claude", labelKey: "settings.data_dirs.claude", hintKey: "settings.data_dirs.claude_hint" },
   { key: "codex", labelKey: "settings.data_dirs.codex", hintKey: "settings.data_dirs.codex_hint" },
-  { key: "hermes", labelKey: "settings.data_dirs.hermes", hintKey: "settings.data_dirs.hermes_hint" },
   { key: "cursor", labelKey: "settings.data_dirs.cursor", hintKey: "settings.data_dirs.cursor_hint" },
-  { key: "opencode", labelKey: "settings.data_dirs.opencode", hintKey: "settings.data_dirs.opencode_hint" },
+  { key: "trae", labelKey: "settings.data_dirs.trae", hintKey: "settings.data_dirs.trae_hint" },
+  { key: "codebuddy", labelKey: "settings.data_dirs.codebuddy", hintKey: "settings.data_dirs.codebuddy_hint" },
+  { key: "gemini", labelKey: "settings.data_dirs.gemini", hintKey: "settings.data_dirs.gemini_hint" },
+  { key: "hermes", labelKey: "settings.data_dirs.hermes", hintKey: "settings.data_dirs.hermes_hint" },
   { key: "openclaw", labelKey: "settings.data_dirs.openclaw", hintKey: "settings.data_dirs.openclaw_hint" },
+  { key: "opencode", labelKey: "settings.data_dirs.opencode", hintKey: "settings.data_dirs.opencode_hint" },
+  { key: "antigravity", labelKey: "settings.data_dirs.antigravity", hintKey: "settings.data_dirs.antigravity_hint" },
 ];
 
 const EMPTY_DIRS = Object.fromEntries(DIRECTORY_FIELDS.map((field) => [field.key, ""]));
+const DEFAULT_DIRECTORY_ORDER = DIRECTORY_FIELDS.map((field) => field.key);
+
+export function resolveDataDirectoryOrder(value) {
+  const known = new Set(DEFAULT_DIRECTORY_ORDER);
+  const seen = new Set();
+  const preferred = (Array.isArray(value) ? value : [])
+    .map((key) => String(key || "").trim().toLowerCase())
+    .filter((key) => known.has(key) && !seen.has(key) && seen.add(key));
+  return [...preferred, ...DEFAULT_DIRECTORY_ORDER.filter((key) => !seen.has(key))];
+}
+
+function SortableDirectoryRow({ fieldKey, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: fieldKey });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      data-testid="data-directory-row"
+      data-directory-key={fieldKey}
+      className={cn("flex items-start gap-1", isDragging && "relative z-10 bg-white shadow-lg dark:bg-oai-gray-900")}
+    >
+      <button type="button" {...attributes} {...listeners} aria-label={copy("settings.data_dirs.drag", { agent: fieldKey })} className="mt-4 cursor-grab rounded p-1 text-oai-gray-400 hover:bg-oai-gray-100 active:cursor-grabbing dark:hover:bg-oai-gray-800">
+        <GripVertical className="h-4 w-4" aria-hidden />
+      </button>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
 
 function normalizeDataDirectories(value) {
   const input = value && typeof value === "object" ? value : {};
@@ -32,9 +67,19 @@ function normalizeDataDirectories(value) {
   );
 }
 
+export function mergeDetectedDataDirectories(currentValue, detectedValue) {
+  const current = normalizeDataDirectories(currentValue);
+  const detected = normalizeDataDirectories(detectedValue);
+  return Object.fromEntries(
+    DIRECTORY_FIELDS.map(({ key }) => [key, detected[key] || current[key] || ""]),
+  );
+}
+
 export function DataDirectoriesSection() {
   const [draft, setDraft] = useState(EMPTY_DIRS);
   const [saved, setSaved] = useState(EMPTY_DIRS);
+  const [fieldOrder, setFieldOrder] = useState(DEFAULT_DIRECTORY_ORDER);
+  const [savedFieldOrder, setSavedFieldOrder] = useState(DEFAULT_DIRECTORY_ORDER);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectingField, setSelectingField] = useState("");
@@ -46,6 +91,10 @@ export function DataDirectoriesSection() {
   const [detectingPaths, setDetectingPaths] = useState(false);
   const [detectNotice, setDetectNotice] = useState(null);
   const [syncState, setSyncState] = useState("idle");
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const detectEnvironment = useCallback(async (field, dataPath) => {
     setDetectingField(field);
@@ -72,11 +121,32 @@ export function DataDirectoriesSection() {
     let cancelled = false;
     setLoading(true);
     getLocalSettings()
-      .then((settings) => {
+      .then(async (settings) => {
         if (cancelled) return;
-        const dirs = normalizeDataDirectories(settings?.dataDirectories);
+        let dirs = normalizeDataDirectories(settings?.dataDirectories);
+        const order = resolveDataDirectoryOrder(settings?.dataDirectoryOrder);
+        if (isNativeApp() && (!dirs.trae || !dirs.codebuddy)) {
+          try {
+            const detectedResult = await detectLocalDataDirectories();
+            if (cancelled) return;
+            dirs = mergeDetectedDataDirectories(dirs, detectedResult?.dataDirectories);
+            const persisted = await setLocalSettings({
+              dataDirectories: dirs,
+              dataDirectoryOrder: order,
+            });
+            if (cancelled) return;
+            dirs = mergeDetectedDataDirectories(dirs, persisted?.dataDirectories);
+            setEnvStatuses(Object.fromEntries(
+              DIRECTORY_FIELDS.map((field) => [field.key, detectedResult?.detected?.[field.key] || null]),
+            ));
+          } catch {
+            // Keep the settings page usable when background discovery is unavailable.
+          }
+        }
         setDraft(dirs);
         setSaved(dirs);
+        setFieldOrder(order);
+        setSavedFieldOrder(order);
         setError("");
       })
       .catch((err) => {
@@ -91,7 +161,10 @@ export function DataDirectoriesSection() {
     };
   }, []);
 
-  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(saved), [draft, saved]);
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(saved) || JSON.stringify(fieldOrder) !== JSON.stringify(savedFieldOrder),
+    [draft, fieldOrder, saved, savedFieldOrder],
+  );
 
   const updateField = (field) => (event) => {
     setDraft((current) => ({ ...current, [field]: event.target.value }));
@@ -144,10 +217,13 @@ export function DataDirectoriesSection() {
     setSavedNotice(false);
     setSyncState("idle");
     try {
-      const result = await setLocalSettings({ dataDirectories: draft });
+      const result = await setLocalSettings({ dataDirectories: draft, dataDirectoryOrder: fieldOrder });
       const dirs = normalizeDataDirectories(result?.dataDirectories);
+      const order = resolveDataDirectoryOrder(result?.dataDirectoryOrder || fieldOrder);
       setDraft(dirs);
       setSaved(dirs);
+      setFieldOrder(order);
+      setSavedFieldOrder(order);
       setSavedNotice(true);
       setSaving(false);
       setSyncState("syncing");
@@ -163,6 +239,16 @@ export function DataDirectoriesSection() {
     }
   };
 
+  const handleDirectoryDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    setFieldOrder((current) => {
+      const from = current.indexOf(String(active.id));
+      const to = current.indexOf(String(over.id));
+      return from < 0 || to < 0 ? current : arrayMove(current, from, to);
+    });
+    setSavedNotice(false);
+  };
+
   const detectPaths = async () => {
     setDetectingPaths(true);
     setDetectNotice(null);
@@ -171,9 +257,16 @@ export function DataDirectoriesSection() {
     setError("");
     try {
       const result = await detectLocalDataDirectories();
-      const discovered = normalizeDataDirectories(result?.dataDirectories);
+      const discovered = mergeDetectedDataDirectories(draft, result?.dataDirectories);
       const count = Object.values(discovered).filter(Boolean).length;
       setDraft(discovered);
+      const persisted = await setLocalSettings({
+        dataDirectories: discovered,
+        dataDirectoryOrder: fieldOrder,
+      });
+      const persistedDirectories = mergeDetectedDataDirectories(discovered, persisted?.dataDirectories);
+      setDraft(persistedDirectories);
+      setSaved(persistedDirectories);
       setEnvStatuses(Object.fromEntries(
         DIRECTORY_FIELDS.map((field) => [field.key, result?.detected?.[field.key] || null]),
       ));
@@ -190,10 +283,24 @@ export function DataDirectoriesSection() {
     }
   };
 
+  const orderedFields = useMemo(
+    () => {
+      return fieldOrder
+        .map(function resolveField(fieldKey) {
+          return DIRECTORY_FIELDS.find(function matchesField(candidate) {
+            return candidate.key === fieldKey;
+          });
+        })
+        .filter(Boolean);
+    },
+    [fieldOrder],
+  );
+
   return (
     <SectionCard
       title={copy("settings.section.data_dirs")}
       subtitle={copy("settings.data_dirs.subtitle")}
+      collapsible
       action={
         <div className="flex items-center gap-2">
           <button
@@ -239,22 +346,27 @@ export function DataDirectoriesSection() {
         </div>
       }
     >
-      {DIRECTORY_FIELDS.map((field) => (
-        <DirectoryInput
-          key={field.key}
-          label={copy(field.labelKey)}
-          hint={copy(field.hintKey)}
-          value={draft[field.key]}
-          onChange={updateField(field.key)}
-          onSelect={() => chooseDirectory(field.key)}
-          selecting={selectingField === field.key}
-          notice={selectNotice?.field === field.key ? selectNotice.message : ""}
-          disabled={loading || saving || detectingPaths}
-          envStatus={envStatuses[field.key] || null}
-          detecting={detectingField === field.key}
-          onDetect={() => detectEnvironment(field.key, draft[field.key])}
-        />
-      ))}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDirectoryDragEnd}>
+        <SortableContext items={fieldOrder} strategy={verticalListSortingStrategy}>
+          {orderedFields.map((field) => (
+              <SortableDirectoryRow key={field.key} fieldKey={field.key}>
+                <DirectoryInput
+                  label={copy(field.labelKey)}
+                  hint={copy(field.hintKey)}
+                  value={draft[field.key]}
+                  onChange={updateField(field.key)}
+                  onSelect={() => chooseDirectory(field.key)}
+                  selecting={selectingField === field.key}
+                  notice={selectNotice?.field === field.key ? selectNotice.message : ""}
+                  disabled={loading || saving || detectingPaths}
+                  envStatus={envStatuses[field.key] || null}
+                  detecting={detectingField === field.key}
+                  onDetect={() => detectEnvironment(field.key, draft[field.key])}
+                />
+              </SortableDirectoryRow>
+          ))}
+        </SortableContext>
+      </DndContext>
       {(error || savedNotice || detectNotice) && (
         <div className="py-3 text-xs">
           {error ? (
@@ -373,7 +485,7 @@ function DirectoryInput({
           ) : isReady ? (
             <CheckCircle className="h-3 w-3 text-emerald-500 dark:text-emerald-400" aria-hidden />
           ) : isDetected ? (
-            <CheckCircle className="h-3 w-3 text-amber-500 dark:text-amber-400" aria-hidden />
+            <CheckCircle className="h-3 w-3 text-emerald-500 dark:text-emerald-400" aria-hidden />
           ) : isNotDetected ? (
             <XCircle className="h-3 w-3 text-oai-gray-400 dark:text-oai-gray-500" aria-hidden />
           ) : (
@@ -432,7 +544,7 @@ function DirectoryInput({
               )}
             </span>
           ) : isDetected ? (
-            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
               <CheckCircle className="h-3 w-3" aria-hidden />
               {copy("settings.data_dirs.installed_no_data")}
               <span className="text-oai-gray-500 dark:text-oai-gray-400">({envLabel})</span>
@@ -455,6 +567,11 @@ function DirectoryInput({
           )}
         </div>
       )}
+      {envStatus?.dataPath && envStatus.dataPath !== value ? (
+        <span className="mt-1 block break-all font-mono text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("settings.data_dirs.resolved_data_path", { path: envStatus.dataPath })}
+        </span>
+      ) : null}
       {notice ? (
         <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">{notice}</span>
       ) : null}

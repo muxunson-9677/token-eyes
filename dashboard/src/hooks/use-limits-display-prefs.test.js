@@ -104,6 +104,8 @@ describe("useLimitsDisplayPrefs", () => {
       "claude",
       "codex",
       "cursor",
+      "trae",
+      "codebuddy",
       "gemini",
       "hermes",
       "openclaw",

@@ -27,12 +27,20 @@ export function LeaderboardRulesPage() {
                 {copy("leaderboard.rules.subtitle")}
               </p>
             </div>
-            <Link
-              to="/leaderboard"
-              className="shrink-0 text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
-            >
-              {copy("leaderboard.rules.back")}
-            </Link>
+            <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <Link
+                to="/dashboard"
+                className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
+              >
+                {copy("leaderboard.back_overview")}
+              </Link>
+              <Link
+                to="/leaderboard"
+                className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
+              >
+                {copy("leaderboard.rules.back")}
+              </Link>
+            </div>
           </div>
 
           <div className="divide-y divide-oai-gray-200 rounded-2xl border border-oai-gray-200 bg-white px-5 dark:divide-oai-gray-800 dark:border-oai-gray-800 dark:bg-oai-gray-950 sm:px-7">

@@ -2118,7 +2118,7 @@ async function fetchUsageLimitsUncached({
   const [claudeToken, claudeSubscription, codexAuth] = await Promise.all([
     Promise.resolve().then(() => readClaudeCodeAccessToken({ platform, securityRunner, home })),
     Promise.resolve().then(() => detectClaudeCodeSubscriptionDetails({ platform, securityRunner, home })),
-    readCodexAuthBundle({ home, env }),
+    readCodexAuthBundle({ home, env, platform }),
   ]);
   const claudePlanType = claudeSubscription?.planType || null;
 

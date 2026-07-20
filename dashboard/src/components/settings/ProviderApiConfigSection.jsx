@@ -8,12 +8,17 @@ import {
   CheckCircle,
   AlertCircle,
   XCircle,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
+  Copy,
 } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import {
   applyProviderApiPreset,
   getProviderFinancialCapabilities,
+  getProviderConfigurationGuide,
   PROVIDER_API_MODES,
 } from "../../lib/provider-api-presets.js";
 import {
@@ -23,6 +28,18 @@ import {
   saveProviderApiSecret,
   deleteProviderApiSecret,
   testProviderApiConfig,
+  createConsoleSession,
+  deleteConsoleSession,
+  verifyConsoleSession,
+  openXiaomiMimoConsoleLogin,
+  verifyXiaomiMimoConsoleSession,
+  deleteXiaomiMimoConsoleSession,
+  openGlmConsoleLogin,
+  verifyGlmConsoleSession,
+  deleteGlmConsoleSession,
+  openMiniMaxConsoleLogin,
+  verifyMiniMaxConsoleSession,
+  deleteMiniMaxConsoleSession,
 } from "../../lib/api";
 import { useProviderApiBalances } from "../../hooks/use-provider-api-balances.js";
 
@@ -107,6 +124,37 @@ function maskUrl(rawUrl) {
   } catch {
     return String(rawUrl || "");
   }
+}
+
+const OFFICIAL_CONSOLE_AUTH_TIMEOUT_MS = 120_000;
+
+function officialConsoleAdapter(providerId) {
+  if (providerId === "xiaomi_mimo") {
+    return {
+      open: openXiaomiMimoConsoleLogin,
+      verify: verifyXiaomiMimoConsoleSession,
+      close: deleteXiaomiMimoConsoleSession,
+    };
+  }
+  if (providerId === "glm") {
+    return {
+      open: openGlmConsoleLogin,
+      verify: verifyGlmConsoleSession,
+      close: deleteGlmConsoleSession,
+    };
+  }
+  if (providerId === "minimax") {
+    return {
+      open: openMiniMaxConsoleLogin,
+      verify: verifyMiniMaxConsoleSession,
+      close: deleteMiniMaxConsoleSession,
+    };
+  }
+  return null;
+}
+
+function waitForNextConsolePoll() {
+  return new Promise((resolve) => window.setTimeout(resolve, 750));
 }
 
 // Parse the nonSecretHeaders textarea ("Name: Value" per line) into an object.
@@ -213,6 +261,7 @@ export function ProviderApiConfigSection() {
   // Per-config transient action state: { [id]: { testing?, testResult? } }
   // (refreshing is now sourced from the hook's refreshingIds, not cardState.)
   const [cardState, setCardState] = useState({});
+  const [sectionOpen, setSectionOpen] = useState(true);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -371,6 +420,44 @@ export function ProviderApiConfigSection() {
   const handleTest = async (config) => {
     setCardState((prev) => ({ ...prev, [config.id]: { ...(prev[config.id] || {}), testing: true, testResult: null } }));
     try {
+      if (config.authType === "official_console") {
+        const adapter = officialConsoleAdapter(config.providerId);
+        if (!adapter) throw new Error("Unsupported official console provider");
+        const sessionRef = `provider-api/${config.providerId}/session/${crypto.randomUUID()}`;
+        const created = await createConsoleSession({
+          provider_id: config.providerId,
+          auth_kind: "official_console_session",
+          display_name: config.label || config.providerId,
+          session_ref: sessionRef,
+        });
+        let connected = false;
+        try {
+          await adapter.open(sessionRef);
+          const deadline = Date.now() + OFFICIAL_CONSOLE_AUTH_TIMEOUT_MS;
+          while (Date.now() < deadline) {
+            const nativeResult = await adapter.verify(sessionRef);
+            if (nativeResult?.connected && nativeResult?.balance) {
+              await verifyConsoleSession(created.session.id, {
+                ...nativeResult,
+                session_ref: nativeResult.session_ref || sessionRef,
+                state_code: "connected",
+              });
+              connected = true;
+              break;
+            }
+            if (["reauth_required", "unsupported", "failed", "session_not_found"].includes(nativeResult?.state_code)) {
+              await verifyConsoleSession(created.session.id, nativeResult).catch(() => null);
+              throw new Error(nativeResult.error_message || nativeResult.error_code || "Console verification failed");
+            }
+            await waitForNextConsolePoll();
+          }
+          if (!connected) throw new Error("Official console authorization timed out");
+        } catch (error) {
+          await adapter.close(sessionRef).catch(() => null);
+          await deleteConsoleSession(created.session.id).catch(() => null);
+          throw error;
+        }
+      }
       const result = await testProviderApiConfig(config.id);
       const balance = result?.data?.balance;
       setCardState((prev) => ({
@@ -407,17 +494,20 @@ export function ProviderApiConfigSection() {
   };
 
   return (
-    <section data-testid="provider-api-config-section" className="rounded-lg border border-oai-gray-200 p-4 dark:border-oai-gray-800">
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <section data-testid="provider-api-config-section" className="rounded-2xl border border-oai-gray-200/90 bg-white/95 p-5 shadow-oai-md transition-[background-color,border-color,box-shadow] duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900/95 dark:shadow-black/20">
+      <div className={cn("flex items-center justify-between gap-2", sectionOpen && "mb-3")}>
         <div>
-          <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">
-            {copy("settings.cost.provider_api.section")}
-          </h3>
-          <p className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          <button type="button" onClick={() => setSectionOpen((value) => !value)} aria-expanded={sectionOpen} className="flex items-center gap-2 text-left">
+            <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">
+              {copy("settings.cost.provider_api.section")}
+            </h3>
+            {sectionOpen ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
+          </button>
+          {sectionOpen ? <p className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
             {copy("settings.cost.provider_api.subtitle")}
-          </p>
+          </p> : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className={cn("flex items-center gap-2", !sectionOpen && "hidden")}>
           {/* F4: stale badge surfaces network failures without losing the last
               successful balance (the hook keeps it and marks `stale`). */}
           {stale && (
@@ -450,6 +540,7 @@ export function ProviderApiConfigSection() {
         </div>
       </div>
 
+      <div className={cn(!sectionOpen && "hidden")}>
       {editing !== null ? (
         <ProviderApiConfigForm
           form={form}
@@ -496,48 +587,53 @@ export function ProviderApiConfigSection() {
           ))}
         </div>
       )}
+      </div>
     </section>
   );
 }
 
 function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onDelete, onTest, onRefresh, onRevokeSecret }) {
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideCopied, setGuideCopied] = useState(false);
   const statusKey = balance?.status
     ? statusLabelKey(balance.status)
     : "settings.cost.provider_api.status.not_connected";
   const testResult = state.testResult;
   const isSynced = balance?.status === "synced";
   const capabilities = getProviderFinancialCapabilities(config);
-  // F4: financial fields are only meaningful when synced. For any other
-  // status (not-connected / error / unsupported / never-refreshed) we render
-  // "—" — NEVER 0. The balance object may be absent entirely (e.g. config has
-  // no apiKeyRef yet), which also yields "—".
   const balanceValue = capabilities.balance === "unsupported"
     ? copy("settings.cost.provider_api.capability.unsupported")
     : isSynced
     ? formatFinancialValue(balance?.balance, balance?.currency)
     : copy("settings.cost.provider_api.data_unknown");
-  const monthSpendValue = capabilities.monthSpend === "unsupported"
-    ? copy("settings.cost.provider_api.capability.unsupported")
-    : isSynced
-    ? formatFinancialValue(balance?.monthSpend, balance?.currency)
-    : copy("settings.cost.provider_api.data_unknown");
-  const lifetimeSpendValue = capabilities.lifetimeSpend === "unsupported"
-    ? copy("settings.cost.provider_api.capability.unsupported")
-    : isSynced
-    ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency)
-    : copy("settings.cost.provider_api.data_unknown");
-  const tokenQuotaValue = capabilities.tokenQuota === "token_plan"
-    ? copy("settings.cost.provider_api.capability.token_plan_settings")
-    : copy("settings.cost.provider_api.capability.unsupported");
+  const monthSpendValue = capabilities.monthSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : isSynced ? formatFinancialValue(balance?.monthSpend, balance?.currency) : copy("settings.cost.provider_api.data_unknown");
+  const lifetimeSpendValue = capabilities.lifetimeSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : isSynced ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : copy("settings.cost.provider_api.data_unknown");
+  const tokenQuotaValue = capabilities.tokenQuota === "token_plan" ? copy("settings.cost.provider_api.capability.token_plan_settings") : copy("settings.cost.provider_api.capability.unsupported");
   const currencyValue = isSynced && balance?.currency
     ? balance.currency
     : copy("settings.cost.provider_api.data_unknown");
+  const visibleTestResult = isSynced ? null : testResult;
+  const guide = getProviderConfigurationGuide(config);
+  const guideText = [
+    `Provider: ${guide.provider}`,
+    `Balance endpoint: ${guide.endpoint}`,
+    `Method: ${guide.method}`,
+    `Authentication: ${guide.authType}`,
+    `Balance field path: ${guide.balancePath || "not provided"}`,
+    `Currency field path: ${guide.currencyPath || "not provided"}`,
+    `Safety note: ${guide.note}`,
+  ].join("\n");
+
+  const copyGuide = async () => {
+    await navigator.clipboard.writeText(guideText);
+    setGuideCopied(true);
+  };
 
   return (
-    <div className="rounded-md border border-oai-gray-200 p-3 dark:border-oai-gray-800">
-      <div className="flex items-start justify-between gap-3">
+    <div data-testid={`provider-api-row-${config.id}`} data-layout="compact-two-line" className="rounded-xl border border-oai-gray-200 bg-white px-3 py-2.5 shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">
               {config.label}
             </span>
@@ -547,75 +643,17 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
             <span className="shrink-0 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400" title={copy("settings.cost.provider_api.url_masked")}>
               {maskUrl(config.requestUrl)}
             </span>
-            <span className={cn(
-              "shrink-0 rounded px-1.5 py-0.5 text-xs",
-              balance?.status === "synced"
-                ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400"
-                : balance?.status === "unsupported"
-                  ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
-                  : "bg-oai-gray-50 text-oai-gray-500 dark:bg-oai-gray-900/20 dark:text-oai-gray-400"
-            )}>
-              {copy(statusKey)}
-            </span>
-            {!config.enabled && (
-              <span className="shrink-0 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs text-oai-gray-400 dark:bg-oai-gray-800">
-                {copy("settings.cost.provider_api.form.enabled")}
-              </span>
-            )}
           </div>
-          {/* F4: financial data row — balance / monthSpend / lifetimeSpend /
-              currency, auto-loaded from the 02 endpoints via the shared hook.
-              Unknown values render "—"; a real 0 from the provider renders
-              "0.00". This row is the core F4 fix: previously the card only
-              showed lastSyncedAt + masked_saved and never rendered amounts. */}
-          <div
-            data-testid={`provider-api-card-financial-${config.id}`}
-            className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-oai-gray-600 dark:text-oai-gray-300 tabular-nums"
-          >
-            <span>
-              {copy("settings.cost.provider_api.balance")}:{" "}
-              <span data-testid={`provider-api-card-balance-${config.id}`}>{balanceValue}</span>
-            </span>
-            <span>
-              {copy("settings.cost.provider_api.month_spend")}:{" "}
-              <span data-testid={`provider-api-card-month-spend-${config.id}`}>{monthSpendValue}</span>
-            </span>
-            <span>
-              {copy("settings.cost.provider_api.lifetime_spend")}:{" "}
-              <span data-testid={`provider-api-card-lifetime-spend-${config.id}`}>{lifetimeSpendValue}</span>
-            </span>
-            <span>
-              {copy("settings.cost.provider_api.token_quota")}:{" "}
-              <span data-testid={`provider-api-card-token-quota-${config.id}`}>{tokenQuotaValue}</span>
-            </span>
-            <span>
-              {copy("settings.cost.provider_api.currency")}:{" "}
-              <span data-testid={`provider-api-card-currency-${config.id}`}>{currencyValue}</span>
-            </span>
-            {balance?.lastSyncedAt && (
-              <span>{copy("settings.cost.provider_api.last_synced")}: {balance.lastSyncedAt}</span>
-            )}
-            {config.apiKeyRef && (
-              <span>{copy("settings.cost.provider_api.masked_saved")}</span>
-            )}
-          </div>
-          {testResult && (
-            <div className={cn(
-              "mt-2 inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs",
-              testResult.tone === "success"
-                ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400"
-                : testResult.tone === "warn"
-                  ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
-                  : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"
-            )}>
-              {testResult.tone === "success"
-                ? <CheckCircle className="h-3 w-3" aria-hidden="true" />
-                : <AlertCircle className="h-3 w-3" aria-hidden="true" />}
-              {copy(testResult.key)}
-            </div>
-          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={() => setGuideOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-oai-gray-200 px-2 py-1 text-xs text-oai-gray-700 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+          >
+            <BookOpen className="h-3 w-3" aria-hidden="true" />
+            {copy("settings.cost.provider_api.guide")}
+          </button>
           <button
             type="button"
             onClick={onTest}
@@ -642,17 +680,6 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
             <Pencil className="h-3 w-3" aria-hidden="true" />
             {copy("settings.cost.provider_api.edit")}
           </button>
-          {config.apiKeyRef && (
-            <button
-              type="button"
-              onClick={onRevokeSecret}
-              disabled={state.deleting}
-              title={copy("settings.cost.provider_api.masked_saved")}
-              className="inline-flex items-center gap-1 rounded-md border border-oai-gray-200 px-2 py-1 text-xs text-oai-gray-500 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:hover:bg-oai-gray-800"
-            >
-              <XCircle className="h-3 w-3" aria-hidden="true" />
-            </button>
-          )}
           <button
             type="button"
             onClick={onDelete}
@@ -663,7 +690,35 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
             {copy("settings.cost.provider_api.delete")}
           </button>
         </div>
+        <div data-testid={`provider-api-card-financial-${config.id}`} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          <span className={cn("rounded px-1.5 py-0.5", isSynced ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : balance?.status === "unsupported" ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400" : "bg-oai-gray-50 text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400")}>{copy(statusKey)}</span>
+          <span className="tabular-nums text-oai-gray-700 dark:text-oai-gray-200">{copy("settings.cost.provider_api.balance")}: <span data-testid={`provider-api-card-balance-${config.id}`}>{balanceValue}</span></span>
+          {balance?.lastSyncedAt ? <span className="truncate">{copy("settings.cost.provider_api.last_synced")}: {balance.lastSyncedAt}</span> : null}
+          {visibleTestResult ? <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5", visibleTestResult.tone === "success" ? "bg-green-50 text-green-700" : visibleTestResult.tone === "warn" ? "bg-yellow-50 text-yellow-700" : "bg-red-50 text-red-700")}>{visibleTestResult.tone === "success" ? <CheckCircle className="h-3 w-3" aria-hidden="true" /> : <AlertCircle className="h-3 w-3" aria-hidden="true" />}{copy(visibleTestResult.key)}</span> : null}
+          <span className="sr-only" data-testid={`provider-api-card-month-spend-${config.id}`}>{monthSpendValue}</span>
+          <span className="sr-only" data-testid={`provider-api-card-lifetime-spend-${config.id}`}>{lifetimeSpendValue}</span>
+          <span className="sr-only" data-testid={`provider-api-card-currency-${config.id}`}>{currencyValue}</span>
+          <span className="sr-only" data-testid={`provider-api-card-token-quota-${config.id}`}>{tokenQuotaValue}</span>
+        </div>
+        <div className="flex justify-end">
+          {config.apiKeyRef ? <button type="button" onClick={onRevokeSecret} disabled={state.deleting} title={copy("settings.cost.provider_api.masked_saved")} className="rounded-md p-1 text-oai-gray-400 hover:bg-oai-gray-100 disabled:opacity-50 dark:hover:bg-oai-gray-800"><XCircle className="h-3.5 w-3.5" aria-hidden="true" /></button> : null}
+        </div>
       </div>
+      {guideOpen ? (
+        <div role="dialog" aria-modal="true" aria-label={`${copy("settings.cost.provider_api.guide")} ${config.label}`} className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setGuideOpen(false); }}>
+          <div className="w-full max-w-xl rounded-2xl border border-oai-gray-200 bg-white p-4 shadow-xl dark:border-oai-gray-700 dark:bg-oai-gray-900">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-base font-semibold text-oai-gray-900 dark:text-oai-gray-100">{copy("settings.cost.provider_api.guide")} · {config.label}</h3>
+              <button type="button" onClick={() => setGuideOpen(false)} aria-label={copy("settings.cost.provider_api.guide_close")} className="rounded-md p-1 text-oai-gray-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800"><XCircle className="h-4 w-4" /></button>
+            </div>
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl bg-oai-gray-50 p-3 text-xs leading-5 text-oai-gray-700 dark:bg-oai-gray-950 dark:text-oai-gray-300">{guideText}</pre>
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{copy("settings.cost.provider_api.guide_secret_warning")}</p>
+            <div className="mt-3 flex justify-end">
+              <button type="button" onClick={copyGuide} className="inline-flex items-center gap-1.5 rounded-lg bg-oai-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-oai-brand-700"><Copy className="h-3.5 w-3.5" />{copy(guideCopied ? "settings.cost.provider_api.guide_copied" : "settings.cost.provider_api.guide_copy")}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -693,6 +748,7 @@ function ProviderApiConfigForm({
   const selectedMode = providerApiModeValue(form.providerId);
   const usesAccessKeyPair = preview.authType === "aliyun_rpc"
     || preview.authType === "volcengine_hmac";
+  const usesOfficialConsole = preview.authType === "official_console";
   const usesFixedPreset = Boolean(selectedMode && selectedMode !== "custom");
   const showEditableUrl = !usesFixedPreset;
   const capabilityNoticeKey = selectedMode === "minimax"
@@ -773,6 +829,12 @@ function ProviderApiConfigForm({
         </div>
       )}
 
+      {usesOfficialConsole && (
+        <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+          {copy("settings.cost.provider_api.capability.official_console_hint")}
+        </div>
+      )}
+
       {!unsupportedKnownProvider && usesAccessKeyPair && (
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField label={copy("settings.cost.provider_api.form.access_key_id")}>
@@ -801,7 +863,7 @@ function ProviderApiConfigForm({
         </div>
       )}
 
-      {!unsupportedKnownProvider && !usesAccessKeyPair && (
+      {!unsupportedKnownProvider && !usesAccessKeyPair && !usesOfficialConsole && (
         <FormField label={copy("settings.cost.provider_api.form.api_key")}>
           <input
             type="password"

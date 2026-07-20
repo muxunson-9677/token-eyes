@@ -1,6 +1,6 @@
 [package]
 name = "token-eyes"
-version = "0.54.0"
+version = "0.54.6"
 description = "Token Eyes - AI Token Usage Tracker Desktop"
 authors = ["Muxunson"]
 license = "MIT"
@@ -24,6 +24,11 @@ tauri-plugin-dialog = "2.2.0"
 tauri-plugin-opener = "2.2.0"
 tauri-plugin-single-instance = "2"
 url = "2.5"
+base64 = "0.22"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+sha2 = "0.10"
+ring = "0.17"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

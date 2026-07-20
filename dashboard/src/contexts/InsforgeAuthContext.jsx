@@ -64,13 +64,23 @@ export function InsforgeAuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     if (!isCloudInsforgeConfigured()) {
       setClient(null);
       setUser(null);
       setLoading(false);
       return;
     }
-    setClient(getOrCreateInsforgeClient());
+    getOrCreateInsforgeClient()
+      .then((nextClient) => {
+        if (active) setClient(nextClient);
+      })
+      .catch(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {

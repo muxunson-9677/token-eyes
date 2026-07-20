@@ -406,7 +406,7 @@ test("normalizeProviderApiConfig configures the signed Volcengine account-balanc
   assert.equal(validateProviderApiConfig(normalized).ok, true);
 });
 
-test("MiniMax is a known unsupported balance source instead of a custom adapter", () => {
+test("MiniMax uses the official-console wallet balance adapter", () => {
   const normalized = normalizeProviderApiConfig({
     providerId: "minimax",
     label: "MiniMax",
@@ -418,18 +418,20 @@ test("MiniMax is a known unsupported balance source instead of a custom adapter"
     enabled: true,
   });
 
+  assert.equal(normalized.requestUrl, "https://platform.minimaxi.com/console/recharge-records");
+  assert.equal(normalized.authType, "official_console");
+  assert.equal(normalized.balancePath, "balance.available_balance");
   assert.deepEqual(getProviderFinancialCapabilities(normalized), {
-    balance: "unsupported",
+    balance: "supported",
     monthSpend: "unsupported",
     lifetimeSpend: "unsupported",
-    tokenQuota: "token_plan",
+    tokenQuota: "unsupported",
   });
   const validation = validateProviderApiConfig(normalized);
-  assert.equal(validation.ok, false);
-  assert.equal(validation.error_code, "unsupported_endpoint");
+  assert.equal(validation.ok, true, validation.error);
 });
 
-test("GLM model API is recognized but rejected as an unsupported financial source", () => {
+test("GLM model API is converted to the official-console balance adapter", () => {
   const normalized = normalizeProviderApiConfig({
     providerId: "",
     label: "智谱GLM",
@@ -443,20 +445,34 @@ test("GLM model API is recognized but rejected as an unsupported financial sourc
   });
 
   assert.equal(normalized.providerId, "glm");
-  assert.equal(normalized.requestUrl, "https://open.bigmodel.cn/api/paas/v4");
-  assert.equal(normalized.authType, "bearer");
-  assert.equal(normalized.balancePath, "");
+  assert.equal(normalized.requestUrl, "https://www.bigmodel.cn/coding-plan/personal/usage");
+  assert.equal(normalized.authType, "official_console");
+  assert.equal(normalized.balancePath, "balance.available_balance");
 
   assert.deepEqual(getProviderFinancialCapabilities(normalized), {
-    balance: "unsupported",
+    balance: "supported",
     monthSpend: "unsupported",
     lifetimeSpend: "unsupported",
-    tokenQuota: "token_plan",
+    tokenQuota: "unsupported",
   });
 
   const validation = validateProviderApiConfig(normalized);
-  assert.equal(validation.ok, false);
-  assert.equal(validation.error_code, "unsupported_endpoint");
+  assert.equal(validation.ok, true, validation.error);
+});
+
+test("Xiaomi MiMo uses the official-console account balance adapter", () => {
+  const normalized = normalizeProviderApiConfig({
+    providerId: "xiaomi_mimo",
+    label: "Xiaomi MiMo",
+    requestUrl: "https://api.xiaomimimo.com/v1",
+    refreshIntervalSeconds: 300,
+    enabled: true,
+  });
+
+  assert.equal(normalized.requestUrl, "https://platform.xiaomimimo.com/console/balance");
+  assert.equal(normalized.authType, "official_console");
+  assert.equal(normalized.balancePath, "balance.available_balance");
+  assert.equal(validateProviderApiConfig(normalized).ok, true);
 });
 
 test("DeepSeek capability metadata exposes balance without inventing spend history", () => {
@@ -756,7 +772,7 @@ test("provider-api-configs POST migrates a DashScope model URL to Alibaba Cloud 
   }
 });
 
-test("provider-api-configs POST rejects GLM quota as a cash-balance source", async () => {
+test("provider-api-configs POST migrates GLM model configuration to official-console balance", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-configs-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
@@ -784,9 +800,12 @@ test("provider-api-configs POST rejects GLM quota as a cash-balance source", asy
     });
 
     const body = readJsonResponse(created);
-    assert.equal(created.statusCode, 400, JSON.stringify(body));
-    assert.equal(body.error_code, "unsupported_endpoint");
-    assert.match(body.error, /Token 套餐设置/);
+    assert.equal(created.statusCode, 200, JSON.stringify(body));
+    assert.equal(body.config.providerId, "glm");
+    assert.equal(body.config.authType, "official_console");
+    assert.equal(body.config.requestUrl, "https://www.bigmodel.cn/coding-plan/personal/usage");
+    assert.equal(body.config.balancePath, "balance.available_balance");
+    assert.equal(body.config.apiKeyRef, "");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

@@ -35,6 +35,7 @@ const OAUTH_TOKEN_URL: &str = "https://api2.cursor.sh/oauth/token";
 const GET_USER_META_URL: &str = "https://api2.cursor.sh/aiserver.v1.AuthService/GetUserMeta";
 /// Official Cursor desktop OAuth client id (same as Cockpit Tools).
 const CURSOR_AUTH_CLIENT_ID: &str = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB";
+const CURSOR_ACCESS_TOKEN_REFRESH_THRESHOLD_SECONDS: i64 = 5 * 60;
 const PERCENT_SCALE: f64 = 100.0;
 
 /// The JS injected into the Cursor WebView via initialization_script.
@@ -325,6 +326,8 @@ pub struct CursorQuotaWindowDto {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CursorQuotaSnapshot {
     pub account_id: String,
+    pub display_name: String,
+    pub plan_name: String,
     pub total_usage_percent: f64,
     pub auto_composer_percent: Option<f64>,
     pub api_usage_percent: Option<f64>,
@@ -337,6 +340,8 @@ pub struct CursorQuotaSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CursorQuotaDto {
     pub account_id: String,
+    pub display_name: String,
+    pub plan_name: String,
     pub total_usage_percent: f64,
     pub auto_composer_percent: Option<f64>,
     pub api_usage_percent: Option<f64>,
@@ -524,8 +529,7 @@ fn save_account_meta(dir: &Path, meta: &CursorAccountMeta) -> Result<(), String>
     fs::create_dir_all(dir).map_err(|_| "Unable to create Cursor account storage".to_string())?;
     let raw = serde_json::to_vec(meta)
         .map_err(|_| "Unable to encode Cursor account metadata".to_string())?;
-    fs::write(meta_path(dir), raw)
-        .map_err(|_| "Unable to save Cursor account metadata".to_string())
+    fs::write(meta_path(dir), raw).map_err(|_| "Unable to save Cursor account metadata".to_string())
 }
 
 fn redact_email(email: &str) -> String {
@@ -540,13 +544,46 @@ fn redact_email(email: &str) -> String {
     format!("{prefix}***@{domain}")
 }
 
-pub fn extract_cursor_account_id(access_token: &str) -> Option<String> {
+fn decode_cursor_access_token_payload(access_token: &str) -> Option<serde_json::Value> {
     let payload = access_token.split('.').nth(1)?;
-    let decoded = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let value: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+    let decoded = URL_SAFE_NO_PAD
+        .decode(payload)
+        .or_else(|_| {
+            let normalized = payload.replace('-', "+").replace('_', "/");
+            let padded = match normalized.len() % 4 {
+                2 => format!("{normalized}=="),
+                3 => format!("{normalized}="),
+                _ => normalized,
+            };
+            base64::engine::general_purpose::STANDARD.decode(padded)
+        })
+        .ok()?;
+    serde_json::from_slice(&decoded).ok()
+}
+
+pub fn extract_cursor_account_id(access_token: &str) -> Option<String> {
+    let value = decode_cursor_access_token_payload(access_token)?;
     let subject = value.get("sub")?.as_str()?;
     let trimmed = subject.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn access_token_needs_refresh_at(access_token: &str, now: i64) -> bool {
+    let Some(exp) = decode_cursor_access_token_payload(access_token)
+        .and_then(|value| value.get("exp").and_then(serde_json::Value::as_i64))
+    else {
+        return true;
+    };
+    exp <= now + CURSOR_ACCESS_TOKEN_REFRESH_THRESHOLD_SECONDS
+}
+
+fn access_token_needs_refresh(access_token: &str) -> bool {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0);
+    access_token_needs_refresh_at(access_token, now)
 }
 
 pub fn parse_quota_eval_result(raw: &str) -> Result<Option<QuotaFetchResult>, String> {
@@ -690,6 +727,8 @@ pub fn map_quota_fetch_result_to_status(
             error_message: String::new(),
             quota: Some(CursorQuotaDto {
                 account_id: String::new(),
+                display_name: String::new(),
+                plan_name: String::new(),
                 total_usage_percent: used_quota,
                 auto_composer_percent: None,
                 api_usage_percent: None,
@@ -788,9 +827,7 @@ fn create_cursor_oauth_values() -> (String, String, String) {
 }
 
 pub fn build_cursor_session_cookie(access_token: &str) -> Option<String> {
-    let payload = access_token.split('.').nth(1)?;
-    let decoded = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let value: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+    let value = decode_cursor_access_token_payload(access_token)?;
     let subject = value.get("sub")?.as_str()?;
     let user_id = subject.rsplit('|').next().unwrap_or(subject);
     if !user_id.starts_with("user_") {
@@ -858,6 +895,8 @@ fn quota_dto_from_snapshot(snapshot: CursorQuotaSnapshot) -> CursorQuotaDto {
     }
     CursorQuotaDto {
         account_id: snapshot.account_id.clone(),
+        display_name: snapshot.display_name.clone(),
+        plan_name: snapshot.plan_name.clone(),
         total_usage_percent: used,
         auto_composer_percent: snapshot.auto_composer_percent,
         api_usage_percent: snapshot.api_usage_percent,
@@ -910,9 +949,19 @@ pub fn parse_cursor_quota_snapshot(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
+    let plan_name = payload
+        .get("membershipType")
+        .or_else(|| payload.get("membership_type"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown")
+        .to_string();
 
     Ok(CursorQuotaSnapshot {
         account_id: account_id.to_string(),
+        display_name: String::new(),
+        plan_name,
         total_usage_percent: total.clamp(0.0, PERCENT_SCALE),
         auto_composer_percent: auto_direct.map(|value| value.clamp(0.0, PERCENT_SCALE)),
         api_usage_percent: api_direct.map(|value| value.clamp(0.0, PERCENT_SCALE)),
@@ -1086,7 +1135,7 @@ async fn refresh_cursor_auth_bundle(
     mut refresh_token: String,
     known_account_id: Option<String>,
 ) -> Result<CursorAuthBundle, String> {
-    if !refresh_token.trim().is_empty() {
+    if !refresh_token.trim().is_empty() && access_token_needs_refresh(&access_token) {
         match exchange_cursor_refresh_token(client, &refresh_token).await {
             Ok(token_response) => {
                 if token_response.should_logout {
@@ -1209,7 +1258,12 @@ async fn fetch_cursor_quota(
     };
 
     let usage_result = match fetch_usage_summary_payload(client, &auth.access_token).await {
-        Ok(payload) => parse_cursor_quota_snapshot(&payload, &auth.account_id),
+        Ok(payload) => {
+            parse_cursor_quota_snapshot(&payload, &auth.account_id).map(|mut snapshot| {
+                snapshot.display_name = auth.display_name.clone();
+                snapshot
+            })
+        }
         Err(error) if error == "REAUTH_REQUIRED" => {
             return Ok((
                 build_status(
@@ -1562,6 +1616,29 @@ mod tests {
             build_cursor_session_cookie(&token).as_deref(),
             Some("WorkosCursorSessionToken=user_example%3A%3Aheader.eyJzdWIiOiJhdXRoMHx1c2VyX2V4YW1wbGUifQ.signature")
         );
+    }
+
+    #[test]
+    fn cursor_access_token_refresh_decision_matches_cockpit_five_minute_threshold() {
+        let now = 1_800_000_000_i64;
+        let token_with_exp = |exp: i64| {
+            let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .encode(format!(r#"{{"sub":"auth0|user_example","exp":{exp}}}"#));
+            format!("header.{payload}.signature")
+        };
+
+        assert!(!access_token_needs_refresh_at(
+            &token_with_exp(now + 301),
+            now
+        ));
+        assert!(access_token_needs_refresh_at(
+            &token_with_exp(now + 300),
+            now
+        ));
+        assert!(access_token_needs_refresh_at(
+            "header.invalid.signature",
+            now
+        ));
     }
 
     #[test]

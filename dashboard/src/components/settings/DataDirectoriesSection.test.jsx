@@ -1,5 +1,5 @@
 import React from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { DataDirectoriesSection } from "./DataDirectoriesSection.jsx";
@@ -82,7 +82,37 @@ it("re-detects the current unsaved path and clears the stale result after editin
   expect(screen.getAllByText("已就绪").length).toBeGreaterThan(0);
 });
 
-it("auto-detects evidence-backed data directories and clears missing agents", async () => {
+it("keeps a manually selected Trae install path and shows the resolved user-data path", async () => {
+  getAgentEnvironment.mockResolvedValueOnce({
+    ok: true,
+    result: {
+      agent: "trae",
+      environment: "win",
+      status: "detected",
+      trackingReady: false,
+      configuredPath: "E:\\Users\\admin\\AppData\\Local\\Programs\\Trae CN",
+      dataPath: "C:\\Users\\admin\\AppData\\Roaming\\Trae CN",
+    },
+  });
+  const user = userEvent.setup();
+  render(<DataDirectoriesSection />);
+  await screen.findAllByTestId("data-directory-row");
+  const row = document.querySelector('[data-directory-key="trae"]');
+  const input = row.querySelector("input");
+  await user.type(input, "E:\\Users\\admin\\AppData\\Local\\Programs\\Trae CN");
+  const detectButton = within(row).getAllByRole("button").find((button) => (
+    button.getAttribute("aria-label")?.includes("Trae") && button.getAttribute("aria-label")?.includes("环境")
+  ));
+  await user.click(detectButton);
+
+  expect(input).toHaveValue("E:\\Users\\admin\\AppData\\Local\\Programs\\Trae CN");
+  expect(within(row).getByText((_, element) => (
+    element?.tagName === "SPAN"
+      && element.textContent?.includes("C:\\Users\\admin\\AppData\\Roaming\\Trae CN")
+  ))).toBeInTheDocument();
+});
+
+it("auto-detects evidence-backed paths and persists the merged directory settings", async () => {
   const user = userEvent.setup();
   render(<DataDirectoriesSection />);
 
@@ -98,7 +128,47 @@ it("auto-detects evidence-backed data directories and clears missing agents", as
   expect(screen.getByLabelText("OpenCode 数据目录")).toHaveValue("C:\\Users\\admin\\.local\\share\\opencode");
   expect(screen.getByLabelText("OpenClaw 数据目录")).toHaveValue("");
   expect(screen.getByText("已识别 4 个可采集 Agent 路径，请确认后保存。")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  await waitFor(() => expect(setLocalSettings).toHaveBeenCalledWith(expect.objectContaining({
+    dataDirectories: expect.objectContaining({
+      claude: "C:\\Users\\admin\\.claude",
+      codex: "C:\\Users\\admin\\.codex",
+    }),
+  })));
+});
+
+it("auto-detects and persists missing Trae and CodeBuddy paths on desktop load", async () => {
+  window.localStorage.setItem("tokentracker_native_app", "1");
+  getLocalSettings.mockResolvedValueOnce({
+    dataDirectories: { trae: "", codebuddy: "" },
+  });
+  detectLocalDataDirectories.mockResolvedValueOnce({
+    ok: true,
+    dataDirectories: {
+      trae: "C:\\Users\\admin\\AppData\\Roaming\\Trae CN",
+      codebuddy: "C:\\Users\\admin\\AppData\\Roaming\\CodeBuddy CN",
+    },
+    detected: {
+      trae: { agent: "trae", environment: "win", status: "detected", trackingReady: false },
+      codebuddy: { agent: "codebuddy", environment: "win", status: "detected", trackingReady: false },
+    },
+  });
+
+  render(<DataDirectoriesSection />);
+
+  const traeRow = await waitFor(() => document.querySelector('[data-directory-key="trae"]'));
+  const codeBuddyRow = document.querySelector('[data-directory-key="codebuddy"]');
+  expect(traeRow.querySelector("input")).toHaveValue(
+    "C:\\Users\\admin\\AppData\\Roaming\\Trae CN",
+  );
+  expect(codeBuddyRow.querySelector("input")).toHaveValue(
+    "C:\\Users\\admin\\AppData\\Roaming\\CodeBuddy CN",
+  );
+  await waitFor(() => expect(setLocalSettings).toHaveBeenCalledWith(expect.objectContaining({
+    dataDirectories: expect.objectContaining({
+      trae: "C:\\Users\\admin\\AppData\\Roaming\\Trae CN",
+      codebuddy: "C:\\Users\\admin\\AppData\\Roaming\\CodeBuddy CN",
+    }),
+  })));
 });
 
 it("loads and saves data directory overrides", async () => {
@@ -109,7 +179,7 @@ it("loads and saves data directory overrides", async () => {
   const codexInput = screen.getByLabelText("Codex 数据目录");
   const saveButton = screen.getByRole("button", { name: "保存" });
   expect(screen.getByText("数据目录")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "选择文件夹" })).toHaveLength(6);
+  expect(screen.getAllByRole("button", { name: "选择文件夹" })).toHaveLength(10);
 
   expect(saveButton).toBeEnabled();
 
@@ -127,11 +197,19 @@ it("loads and saves data directory overrides", async () => {
       dataDirectories: {
         claude: claudeInput.value,
         codex: "C:\\Users\\admin\\.codex",
-        hermes: "",
         cursor: "",
-        opencode: "",
+        trae: "",
+        codebuddy: "",
+        gemini: "",
+        hermes: "",
         openclaw: "",
+        opencode: "",
+        antigravity: "",
       },
+      dataDirectoryOrder: [
+        "claude", "codex", "cursor", "trae", "codebuddy",
+        "gemini", "hermes", "openclaw", "opencode", "antigravity",
+      ],
     });
   });
   await waitFor(() => expect(triggerLocalSync).toHaveBeenCalledTimes(1));
@@ -235,12 +313,14 @@ it("handles C# PostWebMessageAsJson response as JSON string (real WebView2 behav
   const user = userEvent.setup();
   render(<DataDirectoriesSection />);
 
-  const buttons = await screen.findAllByRole("button", { name: "选择文件夹" });
+  const hermesInput = await screen.findByLabelText("Hermes Agent 数据目录");
+  const hermesRow = hermesInput.closest(".block.py-3");
+  const selectButton = within(hermesRow).getByRole("button", { name: "选择文件夹" });
   await act(async () => {
-    await user.click(buttons[2]);
+    await user.click(selectButton);
   });
 
   expect(selectLocalDirectory).not.toHaveBeenCalled();
   expect(postMessage).toHaveBeenCalledWith(expect.stringContaining('"type":"selectFolder"'));
-  expect(screen.getByLabelText("Hermes Agent 数据目录")).toHaveValue("D:\\data\\.hermes");
+  expect(hermesInput).toHaveValue("D:\\data\\.hermes");
 });

@@ -4,7 +4,7 @@ import { Card } from "../../components";
 import { useCurrency } from "../../../hooks/useCurrency";
 import { copy } from "../../../lib/copy";
 import { getCurrencySymbol } from "../../../lib/currency";
-import { formatCompactNumber, formatUsdCurrency } from "../../../lib/format";
+import { formatChineseTokenCount, formatUsdCurrency } from "../../../lib/format";
 import { useModelStats } from "../../../hooks/use-model-stats";
 
 /**
@@ -25,13 +25,7 @@ function safeNum(value) {
 
 function formatTokensCompact(value) {
   const n = safeNum(value);
-  if (n <= 0) return "0";
-  return formatCompactNumber(n, {
-    decimals: n >= 1000000 ? 1 : 0,
-    thousandSuffix: "k",
-    millionSuffix: "M",
-    billionSuffix: "B",
-  });
+  return formatChineseTokenCount(n);
 }
 
 function formatFullNum(value) {

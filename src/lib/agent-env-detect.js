@@ -187,7 +187,7 @@ function detectAgentEnvironment(agentId, config = {}, options = {}) {
   const trackingReady = Boolean(inspection.trackingReady);
   const status = trackingReady
     ? "ready"
-    : installation?.installed && inspection.status === "detected"
+    : inspection.status === "detected"
       ? "detected"
       : "not-detected";
 
@@ -200,6 +200,8 @@ function detectAgentEnvironment(agentId, config = {}, options = {}) {
     evidence: inspection.evidence,
     evidenceCount: inspection.evidenceCount,
     latestActivityAt: inspection.latestActivityAt,
+    configuredPath: detectedPath,
+    dataPath: inspection.dataPath || inspection.path || detectedPath,
     currentVersion: installation?.currentVersion || null,
     latestVersion: null,
     executablePath: installation?.executablePath || undefined,

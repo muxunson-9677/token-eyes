@@ -123,6 +123,11 @@ const REFRESH_METHOD_OPTIONS = ["manual", "official_api"];
 const LEGACY_REFRESH_METHODS = new Set(["manual", "official_api"]);
 const XIAOMI_AUTH_POLL_MS = 1000;
 const XIAOMI_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+const TRAE_AUTH_TIMEOUT_MS = 10 * 60 * 1000;
+
+export function quotaConsoleAuthTimeoutMs(providerId) {
+  return providerId === "trae" ? TRAE_AUTH_TIMEOUT_MS : XIAOMI_AUTH_TIMEOUT_MS;
+}
 const OFFICIAL_ACCOUNT_DETECTION_PROVIDERS = new Set([
   "xiaomi_mimo",
   "glm",
@@ -1031,6 +1036,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             last_sync_attempt_at: now,
             last_error_code: "",
             last_error_message: "",
+            last_refresh_status: "success",
+            last_refresh_error: "",
+            last_refresh_at: now,
+            next_refresh_at: "",
           });
           await deleteXiaomiMimoConsoleSession(sessionRef);
           setConsoleSessions((previous) => previous.map((session) =>
@@ -1438,7 +1447,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         await openLogin(sessionRef);
       }
 
-      const deadline = Date.now() + XIAOMI_AUTH_TIMEOUT_MS;
+      const deadline = Date.now() + quotaConsoleAuthTimeoutMs(providerId);
       while (Date.now() < deadline) {
         const nativeStatus = await verifySession(sessionRef);
         if (nativeStatus?.connected && nativeStatus?.quota) {
@@ -1474,6 +1483,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                   ...officialExtra,
                   session_ref: sessionRef,
                   account_id: nativeStatus.quota.account_id || "",
+                  display_name: nativeStatus.quota.display_name || "",
                   plan_name: nativeStatus.quota.plan_name || "",
                 },
               ),
@@ -1483,6 +1493,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             last_sync_attempt_at: now,
             last_error_code: "",
             last_error_message: "",
+            last_refresh_status: "success",
+            last_refresh_error: "",
+            last_refresh_at: now,
+            next_refresh_at: "",
           });
           if (!retainNativeSession) {
             await deleteNativeSession(sessionRef);
@@ -2414,6 +2428,9 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                     session_ref: nativeStatus.session_ref || boundSessionRef,
                     account_id: nativeStatus.quota.account_id
                       || plan.detection_config?.official_account?.account_id
+                      || "",
+                    display_name: nativeStatus.quota.display_name
+                      || plan.detection_config?.official_account?.display_name
                       || "",
                     plan_name: nativeStatus.quota.plan_name
                       || plan.detection_config?.official_account?.plan_name
@@ -3939,6 +3956,43 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   );
 }
 
+function maskCursorAccountId(value) {
+  const normalized = String(value || "").trim();
+  if (normalized.length <= 24) return normalized;
+  return `${normalized.slice(0, 24)}…`;
+}
+
+function formatCursorTimestamp(value) {
+  if (!value) return "--";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "--" : parsed.toLocaleString();
+}
+
+function CursorQuotaDetails({ record }) {
+  const official = record?.detection_config?.official_account || {};
+  const windows = Array.isArray(record?.quota_windows) ? record.quota_windows : [];
+  const total = windows.find((window) => window.kind === "total")
+    || windows.find((window) => window.kind === "rolling_weekly");
+  const auto = windows.find((window) => window.kind === "auto_composer");
+  const api = windows.find((window) => window.kind === "api");
+  const resetAt = total?.resets_at || auto?.resets_at || api?.resets_at || "";
+  const displayName = String(official.display_name || "").trim();
+  const accountId = maskCursorAccountId(official.account_id);
+  const planName = String(official.plan_name || record?.plan_label || "").trim();
+
+  return (
+    <div className="mt-1 space-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400" data-testid="cursor-live-quota-details">
+      {displayName && <div>{copy("settings.token_plan.cursor.account")}: {displayName}</div>}
+      {accountId && <div>{copy("settings.token_plan.cursor.auth_id")}: {accountId}</div>}
+      {planName && <div>{copy("settings.token_plan.cursor.plan_name")}: {planName}</div>}
+      {total && <div>{copy("settings.token_plan.cursor.total_usage")}: {Number(total.percentage ?? total.used).toLocaleString()}%</div>}
+      {auto && <div>{copy("settings.token_plan.cursor.auto_composer_usage")}: {Number(auto.percentage ?? auto.used).toLocaleString()}%</div>}
+      {api && <div>{copy("settings.token_plan.cursor.api_usage")}: {Number(api.percentage ?? api.used).toLocaleString()}%</div>}
+      {resetAt && <div>{copy("settings.token_plan.cursor.reset_at")}: {formatCursorTimestamp(resetAt)}</div>}
+    </div>
+  );
+}
+
 // W03-R3D: Unified sync status display for both detection methods
 function RecordSyncStatus({ record }) {
   if (!record) return null;
@@ -4027,7 +4081,10 @@ function RecordSyncStatus({ record }) {
           {errorCode ? `${errorCode}: ` : ""}{errorMsg}
         </div>
       )}
-      {Array.isArray(record.quota_windows) && record.quota_windows.length > 0 && (
+      {record.provider_id === "cursor" && Array.isArray(record.quota_windows) && record.quota_windows.length > 0 && (
+        <CursorQuotaDetails record={record} />
+      )}
+      {record.provider_id !== "cursor" && Array.isArray(record.quota_windows) && record.quota_windows.length > 0 && (
         <div className="mt-1 space-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
           {record.quota_windows.map((window) => (
             <div key={window.kind}>

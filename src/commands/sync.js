@@ -202,7 +202,9 @@ async function cmdSync(argv) {
       : [codexHome];
     const codeHome = dataDirectoryPaths.codeHome;
     const claudeProjectsDir = dataDirectoryPaths.claudeProjectsDir;
-    const geminiHome = process.env.GEMINI_HOME || path.join(home, ".gemini");
+    const geminiHome = dataDirectoryPaths.geminiHome;
+    const antigravityHome = dataDirectoryPaths.antigravityHome;
+    const codebuddyEnv = { ...process.env, CODEBUDDY_HOME: dataDirectoryPaths.codebuddyHome };
     const geminiTmpDir = path.join(geminiHome, "tmp");
     const xdgDataHome = process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
     const opencodeHome = dataDirectoryPaths.opencodeHome;
@@ -379,7 +381,7 @@ async function cmdSync(argv) {
       }
     }
 
-    const antigravityFiles = await listAntigravityTranscripts(geminiHome);
+    const antigravityFiles = await listAntigravityTranscripts(antigravityHome);
     let antigravityResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (antigravityFiles.length > 0) {
       if (progress?.enabled) {
@@ -882,7 +884,7 @@ async function cmdSync(argv) {
     // Tencent's CodeBuddy CLI is a Claude Code clone; no hook system, so we
     // tail the per-session JSONL conversation logs incrementally on each sync.
     let codebuddyResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    const codebuddyFiles = resolveCodebuddyProjectFiles(process.env);
+    const codebuddyFiles = resolveCodebuddyProjectFiles(codebuddyEnv);
     if (codebuddyFiles.length > 0) {
       if (progress?.enabled) {
         progress.start(`Parsing CodeBuddy ${renderBar(0)} | buckets 0`);
@@ -892,7 +894,7 @@ async function cmdSync(argv) {
           projectFiles: codebuddyFiles,
           cursors,
           queuePath,
-          env: process.env,
+          env: codebuddyEnv,
           onProgress: (p) => {
             if (!progress?.enabled) return;
             const pct = p.total > 0 ? p.index / p.total : 1;
@@ -2786,5 +2788,4 @@ async function collectClaudeMessageHashes(filePaths) {
   }
   return hashes;
 }
-
 

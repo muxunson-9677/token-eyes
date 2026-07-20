@@ -1,5 +1,3 @@
-import { createClient } from "@insforge/sdk";
-
 /**
  * Production InsForge cloud — hardcoded fallback so deployments that don't
  * inject `VITE_INSFORGE_*` at build time (notably the Vercel build for
@@ -66,16 +64,23 @@ export function isCloudInsforgeConfigured(): boolean {
  * OAuth 回调时 URL 上的 `insforge_code` 只会被处理一次；若在 React 18 Strict Mode 下
  * 每次挂载都 `createClient()`，第二次实例会错过回调且会话为空，右上角头像不更新。
  */
-let insforgeClientSingleton: ReturnType<typeof createClient> | null = null;
+type InsforgeClient = Awaited<ReturnType<(typeof import("@insforge/sdk"))["createClient"]>>;
 
-export function getOrCreateInsforgeClient(): ReturnType<typeof createClient> | null {
+let insforgeClientSingleton: InsforgeClient | null = null;
+let insforgeClientPromise: Promise<InsforgeClient> | null = null;
+
+export async function getOrCreateInsforgeClient(): Promise<InsforgeClient | null> {
   if (!isCloudInsforgeConfigured()) return null;
-  if (!insforgeClientSingleton) {
-    insforgeClientSingleton = createClient({
-      baseUrl: getInsforgeBaseUrl(),
-      anonKey: getInsforgeAnonKey() || undefined,
-      autoRefreshToken: true,
+  if (insforgeClientSingleton) return insforgeClientSingleton;
+  if (!insforgeClientPromise) {
+    insforgeClientPromise = import("@insforge/sdk").then(({ createClient }) => {
+      insforgeClientSingleton = createClient({
+        baseUrl: getInsforgeBaseUrl(),
+        anonKey: getInsforgeAnonKey() || undefined,
+        autoRefreshToken: true,
+      });
+      return insforgeClientSingleton;
     });
   }
-  return insforgeClientSingleton;
+  return insforgeClientPromise;
 }

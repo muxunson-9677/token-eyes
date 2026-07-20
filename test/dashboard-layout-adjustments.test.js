@@ -33,6 +33,11 @@ const installStatusPath = path.join(
   "lib",
   "install-status.js",
 );
+const spendPath = path.join(__dirname, "..", "dashboard", "src", "pages", "SpendPage.jsx");
+const sidebarPath = path.join(__dirname, "..", "dashboard", "src", "ui", "components", "Sidebar.jsx");
+const cardPath = path.join(__dirname, "..", "dashboard", "src", "ui", "components", "Card.jsx");
+const usageOverviewPath = path.join(__dirname, "..", "dashboard", "src", "ui", "dashboard", "components", "UsageOverview.jsx");
+const costAccumulationPath = path.join(__dirname, "..", "dashboard", "src", "ui", "dashboard", "components", "CostAccumulation.jsx");
 
 function readFile(filePath) {
   return fs.readFileSync(filePath, "utf8");
@@ -116,7 +121,8 @@ test("DashboardPage wires install panel gating through helper", () => {
   );
   assert.ok(containerSrc.includes("hasActiveDeviceToken"), "expected camelCase fallback usage");
   assert.ok(
-    containerSrc.includes("const shouldShowInstall = shouldShowInstallCard({"),
+    containerSrc.includes("const shouldShowInstall =") &&
+      containerSrc.includes("shouldShowInstallCard({"),
     "expected helper-based install gate assignment",
   );
   assert.ok(
@@ -199,4 +205,65 @@ test("DashboardPage supports force_install preview", () => {
     src.includes("forceInstall"),
     "expected forceInstall flag to influence install visibility",
   );
+});
+
+test("overview does not duplicate the request log from usage statistics", () => {
+  const src = readFile(viewPath);
+  assert.ok(!src.includes("RequestUsageLog"), "expected request log to exist only in usage statistics");
+});
+
+test("usage trend expands beside the readable 17rem Token service column", () => {
+  const src = readFile(spendPath);
+  assert.ok(
+    src.includes("lg:grid-cols-[minmax(0,1fr)_17rem]"),
+    "expected lower usage grid to reserve a readable 17rem Token service column",
+  );
+  assert.ok(!src.includes("lg:grid-cols-[minmax(0,1fr)_13rem]"), "expected the cramped 13rem Token service column removed");
+});
+
+test("overview places a model usage donut directly below the trend card", () => {
+  const src = readFile(viewPath);
+  const trendIndex = src.indexOf("<TrendMonitor");
+  const donutIndex = src.indexOf("<ModelUsageDonut", trendIndex);
+  const rightColumnIndex = src.indexOf("lg:col-span-8", trendIndex);
+
+  assert.ok(trendIndex !== -1, "expected usage trend");
+  assert.ok(donutIndex > trendIndex, "expected model donut after usage trend");
+  assert.ok(donutIndex < rightColumnIndex, "expected model donut to remain in the left column");
+});
+
+test("workspace and cards expose the approved layered surface hierarchy", () => {
+  const sidebarSrc = readFile(sidebarPath);
+  const cardSrc = readFile(cardPath);
+  const overviewSrc = readFile(usageOverviewPath);
+  const costSrc = readFile(costAccumulationPath);
+
+  assert.ok(sidebarSrc.includes("bg-oai-gray-100/80"), "expected a visible workspace wash");
+  assert.ok(sidebarSrc.includes("shadow-oai-lg"), "expected the main surface to float above the workspace");
+  assert.ok(cardSrc.includes("rounded-2xl"), "expected the shared card radius to be strengthened");
+  assert.ok(cardSrc.includes("shadow-oai-md"), "expected shared cards to have material depth");
+  assert.ok(overviewSrc.includes("ring-2 ring-oai-brand-200"), "expected provider selection to have a strong selected state");
+  assert.ok(costSrc.includes("shadow-oai-sm"), "expected cost cards to use the shared depth rhythm");
+});
+
+test("custom spend group cards wrap names and preserve readable responsive amount columns", () => {
+  const src = readFile(costAccumulationPath);
+  const sectionStart = src.indexOf("function OtherAiGroupCostSection");
+  const sectionEnd = src.indexOf("function TokenPackageSection", sectionStart);
+  const section = src.slice(sectionStart, sectionEnd);
+
+  assert.ok(section.includes("minmax(300px,1fr)"), "expected compact responsive card columns");
+  assert.ok(section.includes("minmax(108px,1fr)"), "expected amount columns to wrap below their readable minimum");
+  assert.ok(section.includes("break-words text-sm"), "expected group names to wrap at a readable size");
+  assert.ok(section.includes("break-words text-xs"), "expected USD/CNY amounts to stay readable");
+  assert.ok(!section.includes('<h4 className="truncate'), "group names must not use ellipsis truncation");
+});
+
+test("cost page can exercise 1280, 1440, and 1920 content widths without a fixed max-width cap", () => {
+  const src = readFile(spendPath);
+  const costPageStart = src.indexOf("function SpendCostPageInner");
+  const costPage = src.slice(costPageStart);
+
+  assert.ok(costPage.includes('className="mx-auto w-full max-w-none px-4 sm:px-6"'));
+  assert.ok(!costPage.includes('className="mx-auto max-w-5xl px-4 sm:px-6"'));
 });

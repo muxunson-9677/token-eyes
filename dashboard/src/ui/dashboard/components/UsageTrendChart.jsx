@@ -3,7 +3,7 @@ import { useCurrency } from "../../../hooks/useCurrency.js";
 import { useUsageTrend } from "../../../hooks/use-usage-trend";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
-import { formatCompactNumber, formatUsdCurrency } from "../../../lib/format";
+import { formatChineseTokenCount, formatUsdCurrency } from "../../../lib/format";
 import { getCurrencySymbol, CURRENCY_USD } from "../../../lib/currency";
 
 // ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ const DIMENSION_BY_KEY = Object.fromEntries(
 // ---------------------------------------------------------------------------
 // 图表布局常量
 // ---------------------------------------------------------------------------
-const CHART_HEIGHT = 320;
+const MIN_CHART_HEIGHT = 440;
 const PADDING = { top: 16, right: 56, bottom: 36, left: 56 };
 const MAX_RENDER_POINTS = 400;
 const Y_TICK_COUNT = 4; // 4 段 → 5 条刻度线
@@ -78,16 +78,11 @@ const X_TICK_MAX = 7;
 // 纯函数 helpers（导出便于单测）
 // ---------------------------------------------------------------------------
 
-/** Tokens 类轴标签：自动换算 k / M / B。 */
+/** Tokens 类轴标签：统一使用中文数量单位。 */
 export function formatTokenAxis(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0";
-  return formatCompactNumber(n, {
-    decimals: 1,
-    thousandSuffix: "k",
-    millionSuffix: "M",
-    billionSuffix: "B",
-  });
+  return formatChineseTokenCount(n);
 }
 
 /** 成本类轴标签：跟随用户货币偏好。 */
@@ -99,11 +94,11 @@ export function formatCostAxis(value, { currency = CURRENCY_USD, rate = 1 } = {}
   return formatUsdCurrency(n, { decimals: n < 1 ? 2 : 0, currency, rate });
 }
 
-/** Tooltip 内 Tokens 数值：完整千分位，不带单位后缀。 */
+/** Tooltip 内 Tokens 数值：统一使用中文数量单位。 */
 export function formatTooltipToken(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0";
-  return Math.round(n).toLocaleString();
+  return formatChineseTokenCount(n);
 }
 
 /** Tooltip 内成本数值：保留 6 位小数（与 CC Switch 口径一致）。 */
@@ -246,7 +241,7 @@ export function UsageTrendChart({
   onRetry,
 }) {
   const containerRef = useRef(null);
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [hiddenKeys, setHiddenKeys] = useState(() => new Set());
   const [highlightedKey, setHighlightedKey] = useState(null);
   const [hoveredBucket, setHoveredBucket] = useState(null);
@@ -268,13 +263,16 @@ export function UsageTrendChart({
     if (el) {
       const observer = new ResizeObserver((entries) => {
         for (const entry of entries) {
-          setContainerWidth(entry.contentRect.width);
+          setContainerSize({
+            width: entry.contentRect.width,
+            height: entry.contentRect.height,
+          });
         }
       });
       observer.observe(el);
       containerRef._observer = observer;
-      // Set initial width
-      setContainerWidth(el.getBoundingClientRect().width);
+      const initialRect = el.getBoundingClientRect();
+      setContainerSize({ width: initialRect.width, height: initialRect.height });
     }
   }, []);
 
@@ -293,9 +291,10 @@ export function UsageTrendChart({
     [series],
   );
 
-  const width = containerWidth || 640;
+  const width = containerSize.width || 640;
+  const height = Math.max(MIN_CHART_HEIGHT, containerSize.height || MIN_CHART_HEIGHT);
   const chartWidth = Math.max(0, width - PADDING.left - PADDING.right);
-  const chartHeight = Math.max(0, CHART_HEIGHT - PADDING.top - PADDING.bottom);
+  const chartHeight = Math.max(0, height - PADDING.top - PADDING.bottom);
   const baselineY = PADDING.top + chartHeight;
 
   const numBuckets = buckets.length;
@@ -432,9 +431,8 @@ export function UsageTrendChart({
 
   return (
     <div
-      ref={setContainerRef}
       className={cn(
-        "relative rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-4",
+        "relative flex h-full min-w-0 flex-col rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-4",
         className,
       )}
     >
@@ -451,10 +449,10 @@ export function UsageTrendChart({
       </div>
 
       {/* 图表 */}
-      <div className="relative" style={{ minHeight: CHART_HEIGHT }}>
+      <div ref={setContainerRef} data-testid="usage-trend-plot" className="relative min-h-[440px] min-w-0 flex-1">
         <svg
           width={width}
-          height={CHART_HEIGHT}
+          height={height}
           className="select-none"
           role="img"
           aria-label={copy("usage.trend.chart.aria.label")}
@@ -793,6 +791,7 @@ function Tooltip({ bucket, x, chartWidth, currency, rate, hiddenKeys }) {
   return (
     <div
       className="pointer-events-none absolute z-50"
+      data-testid="usage-trend-tooltip"
       style={{ left: `${left}px`, top: 0, transform: "translateX(-50%)" }}
     >
       <div className="backdrop-blur-md bg-white/95 dark:bg-oai-gray-900/95 border border-oai-gray-200/60 dark:border-oai-gray-800/60 shadow-xl rounded-lg p-3 min-w-[180px] max-w-[220px] flex flex-col gap-1.5">

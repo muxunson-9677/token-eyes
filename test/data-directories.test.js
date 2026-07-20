@@ -28,9 +28,12 @@ test("normalizeDataDirectories trims known directory overrides", () => {
       codex: "C:\\Users\\admin\\.codex",
       cursor: "",
       trae: "",
+      gemini: "",
       openclaw: "D:\\openclaw",
       opencode: "E:\\opencode",
       hermes: "",
+      codebuddy: "",
+      antigravity: "",
     },
   );
 });
@@ -44,6 +47,9 @@ test("resolveDataDirectoryPaths keeps TokenTracker defaults on non-Windows when 
   assert.equal(resolved.claudeProjectsDir, path.join(home, ".claude", "projects"));
   assert.equal(resolved.hermesPath, null);
   assert.equal(resolved.opencodeHome, path.join(home, ".local", "share", "opencode"));
+  assert.equal(resolved.geminiHome, path.join(home, ".gemini"));
+  assert.equal(resolved.codebuddyHome, path.join(home, ".codebuddy"));
+  assert.equal(resolved.antigravityHome, path.join(home, ".gemini"));
 });
 
 test("resolveDataDirectoryPaths applies MVP data directory overrides", () => {
@@ -85,6 +91,126 @@ test("inspectDataDirectory recognizes OpenCode SQLite and JSON message evidence"
     assert.equal(jsonInspection.trackingReady, true);
     assert.equal(jsonInspection.evidence, "token_logs");
     assert.equal(jsonInspection.evidenceCount, 1);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("inspectDataDirectory recognizes Gemini, CodeBuddy and Antigravity token logs", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-data-dirs-new-agents-"));
+  try {
+    const geminiHome = path.join(tmp, "gemini");
+    const geminiChat = path.join(geminiHome, "tmp", "project", "chats");
+    await fs.promises.mkdir(geminiChat, { recursive: true });
+    await fs.promises.writeFile(path.join(geminiChat, "session-1.json"), "{}", "utf8");
+    assert.equal(inspectDataDirectory("gemini", geminiHome).status, "ready");
+
+    const codebuddyHome = path.join(tmp, "codebuddy");
+    const codebuddyProject = path.join(codebuddyHome, "projects", "cwd");
+    await fs.promises.mkdir(codebuddyProject, { recursive: true });
+    await fs.promises.writeFile(path.join(codebuddyProject, "session.jsonl"), "{}\n", "utf8");
+    assert.equal(inspectDataDirectory("codebuddy", codebuddyHome).status, "ready");
+
+    const antigravityHome = path.join(tmp, "antigravity-root");
+    const transcriptDir = path.join(antigravityHome, "antigravity", "brain", "session", ".system_generated", "logs");
+    await fs.promises.mkdir(transcriptDir, { recursive: true });
+    await fs.promises.writeFile(path.join(transcriptDir, "transcript.jsonl"), "{}\n", "utf8");
+    assert.equal(inspectDataDirectory("antigravity", antigravityHome).status, "ready");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("inspectDataDirectory redirects Trae and CodeBuddy install folders to their roaming data", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-data-dirs-install-redirect-"));
+  try {
+    const appData = path.join(tmp, "AppData");
+    const traeInstall = path.join(appData, "Local", "Programs", "Trae CN");
+    const traeData = path.join(appData, "Roaming", "Trae CN", "ModularData", "ai-agent");
+    const codebuddyInstall = path.join(appData, "Local", "Programs", "CodeBuddy CN");
+    const codebuddyData = path.join(appData, "Roaming", "CodeBuddy CN");
+    await fs.promises.mkdir(traeInstall, { recursive: true });
+    await fs.promises.mkdir(traeData, { recursive: true });
+    await fs.promises.writeFile(path.join(traeData, "token_usage.jsonl"), "{}\n", "utf8");
+    await fs.promises.mkdir(codebuddyInstall, { recursive: true });
+    await fs.promises.mkdir(path.join(codebuddyData, "projects", "cwd"), { recursive: true });
+    await fs.promises.writeFile(path.join(codebuddyData, "projects", "cwd", "session.jsonl"), "{}\n", "utf8");
+
+    const traeInspection = inspectDataDirectory("trae", traeInstall);
+    const codebuddyInspection = inspectDataDirectory("codebuddy", codebuddyInstall);
+    assert.equal(traeInspection.path, path.join(appData, "Roaming", "Trae CN"));
+    assert.equal(traeInspection.status, "ready");
+    assert.equal(codebuddyInspection.path, codebuddyData);
+    assert.equal(codebuddyInspection.status, "ready");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("inspectDataDirectory uses the current APPDATA when the install directory is on another drive", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-data-dirs-cross-drive-"));
+  try {
+    const installRoot = path.join(tmp, "external-drive", "Users", "example", "AppData", "Local", "Programs");
+    const appData = path.join(tmp, "system-drive", "Users", "example", "AppData", "Roaming");
+    const traeInstall = path.join(installRoot, "Trae CN");
+    const traeData = path.join(appData, "Trae CN", "ModularData", "ai-agent");
+    const codebuddyInstall = path.join(installRoot, "CodeBuddy CN");
+    const codebuddyData = path.join(appData, "CodeBuddy CN", "User", "globalStorage");
+    await fs.promises.mkdir(traeInstall, { recursive: true });
+    await fs.promises.mkdir(traeData, { recursive: true });
+    await fs.promises.writeFile(path.join(traeData, "database.db"), "encrypted", "utf8");
+    await fs.promises.mkdir(codebuddyInstall, { recursive: true });
+    await fs.promises.mkdir(codebuddyData, { recursive: true });
+    await fs.promises.writeFile(path.join(codebuddyData, "state.vscdb"), "sqlite", "utf8");
+
+    const options = { env: { APPDATA: appData } };
+    const traeInspection = inspectDataDirectory("trae", traeInstall, options);
+    const codebuddyInspection = inspectDataDirectory("codebuddy", codebuddyInstall, options);
+    assert.equal(traeInspection.path, path.join(appData, "Trae CN"));
+    assert.equal(traeInspection.configuredPath, traeInstall);
+    assert.equal(traeInspection.dataPath, path.join(appData, "Trae CN"));
+    assert.equal(traeInspection.status, "detected");
+    assert.equal(traeInspection.evidence, "encrypted_database");
+    assert.equal(codebuddyInspection.path, path.join(appData, "CodeBuddy CN"));
+    assert.equal(codebuddyInspection.configuredPath, codebuddyInstall);
+    assert.equal(codebuddyInspection.dataPath, path.join(appData, "CodeBuddy CN"));
+    assert.equal(codebuddyInspection.status, "detected");
+    assert.equal(codebuddyInspection.evidence, "session_database");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("detectDataDirectoryPaths keeps recognized Trae and CodeBuddy stores even before exact token fields are available", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-data-dirs-recognized-"));
+  try {
+    const home = path.join(tmp, "Users", "example");
+    const appData = path.join(home, "AppData", "Roaming");
+    const localAppData = path.join(home, "AppData", "Local");
+    const traeHome = path.join(appData, "Trae CN");
+    const codebuddyHome = path.join(appData, "CodeBuddy CN");
+    await fs.promises.mkdir(path.join(traeHome, "ModularData", "ai-agent"), { recursive: true });
+    await fs.promises.writeFile(path.join(traeHome, "ModularData", "ai-agent", "database.db"), "encrypted", "utf8");
+    await fs.promises.mkdir(path.join(codebuddyHome, "User", "globalStorage"), { recursive: true });
+    await fs.promises.writeFile(path.join(codebuddyHome, "User", "globalStorage", "state.vscdb"), "sqlite", "utf8");
+
+    const result = detectDataDirectoryPaths({
+      home,
+      env: { APPDATA: appData, LOCALAPPDATA: localAppData },
+      platform: "win32",
+      wslRoots: [],
+      wslDistributions: [],
+      detectInstallation: () => ({ installed: false, executablePath: null, currentVersion: null }),
+    });
+
+    assert.equal(result.dataDirectories.trae, traeHome);
+    assert.equal(result.detected.trae.status, "detected");
+    assert.equal(result.detected.trae.evidence, "encrypted_database");
+    assert.equal(result.dataDirectories.codebuddy, codebuddyHome);
+    assert.equal(result.detected.codebuddy.status, "detected");
+    assert.equal(result.detected.codebuddy.evidence, "session_database");
+    assert.equal(result.missing.includes("trae"), false);
+    assert.equal(result.missing.includes("codebuddy"), false);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -165,12 +291,15 @@ test("detectDataDirectoryPaths chooses installed agents with live token evidence
       hermes: hermesHome,
       cursor: cursorHome,
       trae: "",
+      gemini: "",
       opencode: opencodeHome,
       openclaw: "",
+      codebuddy: "",
+      antigravity: "",
     });
     assert.equal(result.detected.claude.evidence, "token_logs");
     assert.equal(result.detected.hermes.evidence, "state_db_exists");
-    assert.deepEqual(result.missing.sort(), ["openclaw", "trae"].sort());
+    assert.deepEqual(result.missing.sort(), ["antigravity", "codebuddy", "gemini", "openclaw", "trae"].sort());
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -470,6 +599,39 @@ test("listTrackingReadyTraeHomes detects token_usage.jsonl export", async () => 
       platform: "win32",
     });
     assert.deepEqual(homes, [traeRoot]);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveDataDirectoryPaths uses detected Trae and CodeBuddy app-data roots", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-detected-app-roots-"));
+  try {
+    const appData = path.join(tmp, "AppData", "Roaming");
+    const localAppData = path.join(tmp, "AppData", "Local");
+    const traeHome = path.join(appData, "Trae CN");
+    const codebuddyHome = path.join(appData, "CodeBuddy CN");
+    await fs.promises.mkdir(path.join(traeHome, "ModularData", "ai-agent"), { recursive: true });
+    await fs.promises.writeFile(path.join(traeHome, "ModularData", "ai-agent", "database.db"), "encrypted");
+    await fs.promises.mkdir(codebuddyHome, { recursive: true });
+    await fs.promises.writeFile(path.join(codebuddyHome, "codebuddy-sessions.vscdb"), "sqlite");
+
+    const resolved = resolveDataDirectoryPaths({
+      config: {
+        dataDirectories: {
+          trae: path.join(localAppData, "Programs", "Trae CN"),
+          codebuddy: "",
+        },
+      },
+      env: { APPDATA: appData, LOCALAPPDATA: localAppData },
+      home: tmp,
+      platform: "win32",
+    });
+
+    assert.equal(resolved.traeHome, traeHome);
+    assert.deepEqual(resolved.traeHomes, [traeHome]);
+    assert.equal(resolved.codebuddyHome, codebuddyHome);
+    assert.deepEqual(resolved.codebuddyHomes, [codebuddyHome]);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

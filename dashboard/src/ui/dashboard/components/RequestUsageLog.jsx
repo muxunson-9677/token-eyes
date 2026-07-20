@@ -74,6 +74,16 @@ function formatFullNum(value) {
   return safeNum(value).toLocaleString();
 }
 
+function formatAverageLatency(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return copy("ticket06.metric.unavailable");
+  }
+  const milliseconds = Math.max(0, Number(value));
+  return milliseconds < 1_000
+    ? `${Math.round(milliseconds)}ms`
+    : `${(milliseconds / 1_000).toFixed(1)}s`;
+}
+
 function formatCost(value, currency, rate, pricingCoverage) {
   const n = Number(value);
   if (pricingCoverage === "unpriced") {
@@ -550,6 +560,25 @@ export function RequestUsageLog({
           </select>
         </div>
       </div>
+
+      {totals && (
+        <div className="mb-4 grid grid-cols-3 gap-2" data-testid="request-log-metrics">
+          <div data-testid="request-log-metric-requests" className="rounded-xl bg-oai-gray-50 px-3 py-2.5 dark:bg-oai-gray-800/70">
+            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.requests")}</div>
+            <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatFullNum(totals.request_count)}</div>
+          </div>
+          <div data-testid="request-log-metric-success-rate" className="rounded-xl bg-emerald-50/70 px-3 py-2.5 dark:bg-emerald-950/20">
+            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.success_rate")}</div>
+            <div className="mt-1 text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+              {totals.success_rate === null || totals.success_rate === undefined ? copy("ticket06.metric.unavailable") : `${safeNum(totals.success_rate).toFixed(1)}%`}
+            </div>
+          </div>
+          <div data-testid="request-log-metric-avg-latency" className="rounded-xl bg-oai-gray-50 px-3 py-2.5 dark:bg-oai-gray-800/70">
+            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.avg_latency")}</div>
+            <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatAverageLatency(totals.avg_latency_ms)}</div>
+          </div>
+        </div>
+      )}
 
       {body}
     </Card>

@@ -70,6 +70,43 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
   });
 
+  it("renders five compact independent cards without hiding multi-lane quota values", () => {
+    const sharedReset = "2026-08-06T14:31:29.000Z";
+    const cursor = plan("cursor-live", 0, 0, {
+      provider_id: "cursor",
+      plan_label: "Pro",
+      notes: "eve***@hotmail.com",
+      quota_source: "official",
+      quota_unit: "percent",
+      detection_method: "official_account",
+      sync_status: "success",
+      expires_at: null,
+      quota_windows: [
+        { kind: "total", unit: "percent", total: 100, used: 33.522, percentage: 33.522, resets_at: sharedReset },
+        { kind: "auto_composer", unit: "percent", total: 100, used: 27.82, percentage: 27.82, resets_at: sharedReset },
+        { kind: "api", unit: "percent", total: 100, used: 71.533, percentage: 71.533, resets_at: sharedReset },
+      ],
+    });
+
+    render(
+      <TokenServiceList
+        plans={[cursor, plan("A", 90), plan("B", 80), plan("C", 70), plan("D", 60)]}
+      />,
+    );
+
+    const list = screen.getByTestId("token-service-cards");
+    const rows = within(list).getAllByTestId("token-service-row");
+    expect(rows).toHaveLength(5);
+    expect(list).toHaveClass("gap-1.5");
+    for (const row of rows) expect(row).toHaveClass("border");
+    const cursorRow = screen.getByText("eve***@hotmail.com").closest("li");
+    expect(cursorRow).not.toBeNull();
+    expect(within(cursorRow).getByTestId("token-service-window-total")).toHaveTextContent("33.522");
+    expect(within(cursorRow).getByTestId("token-service-window-auto_composer")).toHaveTextContent("27.82");
+    expect(within(cursorRow).getByTestId("token-service-window-api")).toHaveTextContent("71.533");
+    expect(within(cursorRow).getAllByTestId("token-service-shared-reset")).toHaveLength(1);
+  });
+
   it("shows every live quota window when a rolling plan has no fixed total", () => {
     render(
       <TokenServiceList
@@ -92,6 +129,42 @@ describe("TokenServiceList", () => {
     expect(within(row).getByTestId("token-service-window-rolling_5_hour")).toHaveTextContent("20%");
     expect(within(row).getByTestId("token-service-window-rolling_weekly")).toHaveTextContent("每周");
     expect(row).toHaveTextContent("45%");
+  });
+
+  it("renders TRAE fast-request usage, percentage, and reset time", () => {
+    render(
+      <TokenServiceList
+        now={new Date("2026-07-20T01:23:22Z")}
+        plans={[plan("trae-live", 25, 100, {
+          source: "trae",
+          provider_id: "trae",
+          plan_label: "速通 Pro",
+          quota_source: "provider_reported",
+          quota_unit: "requests",
+          detection_method: "official_account",
+          sync_status: "success",
+          expires_at: null,
+          quota_windows: [{
+            kind: "fast_request",
+            unit: "requests",
+            total: 100,
+            used: 25,
+            remaining: 75,
+            percentage: 25,
+            resets_at: "2026-08-01T00:03:00Z",
+          }],
+        })]}
+      />,
+    );
+
+    const row = screen.getByTestId("token-service-row");
+    expect(row).toHaveTextContent("Trae");
+    expect(row).toHaveTextContent("速通 Pro");
+    const metric = within(row).getByTestId("token-service-window-fast_request");
+    expect(metric).toHaveTextContent("已用 25 requests");
+    expect(metric).toHaveTextContent("总量 100 requests");
+    expect(metric).toHaveTextContent("25%");
+    expect(within(row).getByTestId("token-service-shared-reset")).toBeInTheDocument();
   });
 
   it("hides a rolling service after its only official reset/validity timestamp has passed", () => {

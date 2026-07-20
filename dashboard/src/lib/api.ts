@@ -1522,6 +1522,8 @@ export async function deleteClaudeConsoleSession(sessionRef: string): Promise<vo
 
 export interface CursorQuotaSnapshot {
   account_id?: string;
+  display_name?: string;
+  plan_name?: string;
   total_usage_percent?: number;
   auto_composer_percent?: number | null;
   api_usage_percent?: number | null;

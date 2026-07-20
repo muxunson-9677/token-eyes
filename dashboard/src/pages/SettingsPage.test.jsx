@@ -129,32 +129,32 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders TokenPlanSection", () => {
+  it("renders TokenPlanSection", async () => {
     render(
       <MemoryRouter>
         <SettingsCostPage />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("token-plan-section")).toBeInTheDocument();
+    expect(await screen.findByTestId("token-plan-section")).toBeInTheDocument();
   });
 
   // 03-ia-api-balance: cost settings MUST contain provider API config.
-  it("renders ProviderApiConfigSection (03 work order)", () => {
+  it("renders ProviderApiConfigSection (03 work order)", async () => {
     render(
       <MemoryRouter>
         <SettingsCostPage />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("provider-api-config-section")).toBeInTheDocument();
+    expect(await screen.findByTestId("provider-api-config-section")).toBeInTheDocument();
   });
 
-  it("renders OtherAiSpendSection as the third cost-settings category", () => {
+  it("renders OtherAiSpendSection as the third cost-settings category", async () => {
     render(
       <MemoryRouter>
         <SettingsCostPage />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("other-ai-spend-section")).toBeInTheDocument();
+    expect(await screen.findByTestId("other-ai-spend-section")).toBeInTheDocument();
   });
 
   it("does NOT render Appearance / Account / DataDirs / AgentPricing / MenuBar", () => {

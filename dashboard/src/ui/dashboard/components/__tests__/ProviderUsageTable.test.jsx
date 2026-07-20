@@ -26,6 +26,7 @@ vi.mock("../../../../lib/copy", () => ({
       "ticket04.provider.column.cost": "Cost",
       "ticket04.provider.column.success_rate": "Success Rate",
       "ticket04.provider.column.avg_latency": "Avg Latency",
+      "usage.provider.connected_no_precise_tokens": "Connected; precise tokens unavailable",
     };
     return map[key] || key;
   },
@@ -123,6 +124,25 @@ describe("ProviderUsageTable", () => {
     // Codex (50000 tokens) should appear before Claude (1000 tokens)
     expect(rows[0].textContent).toContain("Codex");
     expect(rows[1].textContent).toContain("Claude");
+  });
+
+  it("keeps connected token-only sources visible without fabricating tokens", () => {
+    useProviderStats.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      providers: {
+        providers: [makeProvider({
+          source: "trae",
+          source_display_name: "Trae",
+          request_count: null,
+          tokens: 0,
+          collection_status: "connected_no_precise_tokens",
+        })],
+        totals: {},
+      },
+    });
+    render(<ProviderUsageTable from="2026-06-01" to="2026-06-30" />);
+    expect(screen.getByText("Trae")).toBeInTheDocument();
+    expect(screen.getByText("Connected; precise tokens unavailable")).toBeInTheDocument();
   });
 
   it("success rate 100% is green, <100% is orange", () => {

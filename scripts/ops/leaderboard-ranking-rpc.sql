@@ -70,6 +70,11 @@ AS $func$
       s.user_id::text = ANY(COALESCE(p_blocked_user_ids, ARRAY[]::text[]))
     )
   ),
+  participants AS (
+    SELECT *
+    FROM raw_scores
+    WHERE total_tokens > 0
+  ),
   eligible AS (
     SELECT *
     FROM raw_scores
@@ -128,10 +133,11 @@ AS $func$
   ),
   summary AS (
     SELECT
-      COUNT(*)::bigint AS participant_count,
-      COALESCE(SUM(score), 0::numeric) AS total_score,
-      COALESCE(SUM(total_tokens), 0::numeric) AS aggregate_total_tokens
-    FROM ranked
+      (SELECT COUNT(*)::bigint FROM participants) AS participant_count,
+      (SELECT COUNT(*)::bigint FROM ranked) AS ranked_entry_count,
+      (SELECT COALESCE(SUM(score), 0::numeric) FROM ranked) AS total_score,
+      (SELECT COALESCE(SUM(total_tokens), 0::numeric) FROM participants) AS aggregate_total_tokens,
+      (SELECT COALESCE(SUM(estimated_cost_usd), 0::numeric) FROM participants) AS aggregate_total_cost_usd
   )
   SELECT jsonb_build_object(
     'entries', COALESCE(
@@ -145,8 +151,10 @@ AS $func$
       LIMIT 1
     ),
     'participant_count', (SELECT summary.participant_count FROM summary),
+    'ranked_entry_count', (SELECT summary.ranked_entry_count FROM summary),
     'total_score', (SELECT summary.total_score FROM summary),
     'aggregate_total_tokens', (SELECT summary.aggregate_total_tokens FROM summary),
+    'aggregate_total_cost_usd', (SELECT summary.aggregate_total_cost_usd FROM summary),
     'from', (SELECT latest_window.from_day FROM latest_window),
     'to', (SELECT latest_window.to_day FROM latest_window),
     'generated_at', (SELECT latest_window.generated_at FROM latest_window)

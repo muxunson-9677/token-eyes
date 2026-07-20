@@ -6,6 +6,7 @@ const { execFileSync } = require("node:child_process");
 const { listDataDirectoryAdapterKeys } = require("./agent-adapters");
 
 const DATA_DIRECTORY_KEYS = listDataDirectoryAdapterKeys();
+const PROCESS_HOME = os.homedir();
 
 function normalizePathValue(value) {
   if (typeof value !== "string") return "";
@@ -35,7 +36,7 @@ function defaultWindowsDriveRoots() {
 }
 
 function isCurrentUserHome(home) {
-  return pathKey(home) === pathKey(os.homedir());
+  return pathKey(home) === pathKey(PROCESS_HOME);
 }
 
 function windowsAgentDataCodexCandidates({ env = process.env, home = os.homedir(), platform = process.platform, windowsDriveRoots = null } = {}) {
@@ -128,8 +129,8 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     home,
     platform,
   });
-  const traeHome = dataDirectories.trae || normalizePathValue(env.TRAE_HOME) || null;
-  const traeHomes = listTrackingReadyTraeHomes({
+  const configuredTraeHome = dataDirectories.trae || normalizePathValue(env.TRAE_HOME) || null;
+  const traeHomes = listDetectedTraeHomes({
     configured: dataDirectories.trae,
     env,
     home,
@@ -140,6 +141,15 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     || normalizePathValue(env.OPENCODE_HOME)
     || path.join(xdgDataHome, "opencode");
   const openclawHome = dataDirectories.openclaw || normalizePathValue(env.OPENCLAW_HOME) || path.join(home, ".openclaw");
+  const geminiHome = dataDirectories.gemini || normalizePathValue(env.GEMINI_HOME) || path.join(home, ".gemini");
+  const configuredCodebuddyHome = dataDirectories.codebuddy || normalizePathValue(env.CODEBUDDY_HOME) || path.join(home, ".codebuddy");
+  const codebuddyHomes = listDetectedCodeBuddyHomes({
+    configured: dataDirectories.codebuddy,
+    env,
+    home,
+    platform,
+  });
+  const antigravityHome = dataDirectories.antigravity || normalizePathValue(env.ANTIGRAVITY_HOME) || geminiHome;
 
   return {
     dataDirectories,
@@ -150,10 +160,14 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     hermesPath: dataDirectories.hermes || null,
     cursorHome: cursorHomes[0] || cursorHome,
     cursorHomes,
-    traeHome: traeHomes[0] || traeHome,
+    traeHome: traeHomes[0] || configuredTraeHome,
     traeHomes,
     opencodeHome,
     openclawHome,
+    geminiHome,
+    codebuddyHome: codebuddyHomes[0] || configuredCodebuddyHome,
+    codebuddyHomes,
+    antigravityHome,
   };
 }
 
@@ -250,8 +264,37 @@ function findEvidenceFiles(root, { extension = "", fileName = "", maxDepth = 4 }
   return { count, latestMs };
 }
 
-function inspectDataDirectory(agentId, directoryPath) {
+function redirectInstallDirectoryToAppData(agentId, directoryPath, { env = process.env } = {}) {
+  if (agentId !== "trae" && agentId !== "codebuddy") return "";
+  const normalized = normalizePathValue(directoryPath);
+  const match = normalized.match(/[\\/]AppData[\\/]Local[\\/]Programs[\\/][^\\/]+$/i);
+  if (!match || match.index == null) return "";
+  const userRoot = normalized.slice(0, match.index);
+  const configuredName = path.basename(normalized);
+  const names = agentId === "trae"
+    ? [configuredName, "Trae CN", "Trae", "TRAE SOLO CN"]
+    : [configuredName, "CodeBuddy CN", "CodeBuddy"];
+  const currentAppData = normalizePathValue(env.APPDATA);
+  return uniquePaths([
+    ...names.map((name) => path.join(userRoot, "AppData", "Roaming", name)),
+    ...names.map((name) => currentAppData ? path.join(currentAppData, name) : ""),
+  ])
+    .find((candidate) => isDirectory(candidate)) || "";
+}
+
+function inspectDataDirectory(agentId, directoryPath, options = {}) {
   const normalizedPath = normalizePathValue(directoryPath);
+  const redirectedPath = redirectInstallDirectoryToAppData(agentId, normalizedPath, options);
+  if (redirectedPath && pathKey(redirectedPath) !== pathKey(normalizedPath)) {
+    const redirected = inspectDataDirectory(agentId, redirectedPath, options);
+    if (redirected.status !== "not-detected") {
+      return {
+        ...redirected,
+        configuredPath: normalizedPath,
+        dataPath: redirected.path,
+      };
+    }
+  }
   const environment = dataPathEnvironment(normalizedPath);
   if (!isDirectory(normalizedPath)) {
     return {
@@ -312,9 +355,25 @@ function inspectDataDirectory(agentId, directoryPath) {
       decryptedDb?.mtimeMs || 0,
       tokenJsonl?.mtimeMs || 0,
     );
-    const count = (encryptedDb ? 1 : 0) + (decryptedDb ? 1 : 0) + (tokenJsonl ? 1 : 0);
+    const count = (decryptedDb ? 1 : 0) + (tokenJsonl ? 1 : 0);
     result = { count, latestMs };
     evidence = decryptedDb || tokenJsonl ? "token_logs" : encryptedDb ? "encrypted_database" : "trae_directory";
+  } else if (agentId === "gemini") {
+    const tmpDir = path.join(normalizedPath, "tmp");
+    recognized = isDirectory(tmpDir);
+    result = findEvidenceFiles(tmpDir, { extension: ".json", maxDepth: 5 });
+    evidence = result.count > 0 ? "token_logs" : "gemini_tmp_directory";
+  } else if (agentId === "codebuddy") {
+    const projectsDir = path.join(normalizedPath, "projects");
+    const sessionDb = fileStat(path.join(normalizedPath, "codebuddy-sessions.vscdb"));
+    const stateDb = fileStat(path.join(normalizedPath, "User", "globalStorage", "state.vscdb"));
+    recognized = isDirectory(projectsDir) || Boolean(sessionDb) || Boolean(stateDb);
+    result = findEvidenceFiles(projectsDir, { extension: ".jsonl", maxDepth: 3 });
+    evidence = result.count > 0 ? "token_logs" : sessionDb || stateDb ? "session_database" : "projects_directory";
+  } else if (agentId === "antigravity") {
+    recognized = isDirectory(normalizedPath);
+    result = findEvidenceFiles(normalizedPath, { fileName: "transcript.jsonl", maxDepth: 8 });
+    evidence = result.count > 0 ? "token_logs" : "antigravity_directory";
   } else if (agentId === "opencode") {
     const database = fileStat(path.join(normalizedPath, "opencode.db"));
     const databaseWal = fileStat(path.join(normalizedPath, "opencode.db-wal"));
@@ -340,6 +399,8 @@ function inspectDataDirectory(agentId, directoryPath) {
   const trackingReady = result.count > 0;
   return {
     path: normalizedPath,
+    configuredPath: normalizedPath,
+    dataPath: normalizedPath,
     environment,
     status: trackingReady ? "ready" : recognized ? "detected" : "not-detected",
     trackingReady,
@@ -353,6 +414,9 @@ const AGENT_COMMANDS = Object.freeze({
   claude: "claude",
   codex: "codex",
   cursor: "cursor",
+  trae: "trae",
+  codebuddy: "codebuddy",
+  gemini: "gemini",
   opencode: "opencode",
   openclaw: "openclaw",
   hermes: "hermes",
@@ -423,6 +487,26 @@ function defaultTraeAppDirs({ env, home, platform }) {
   return dirs;
 }
 
+function defaultCodeBuddyAppDirs({ env, home, platform }) {
+  const dirs = [];
+  if (platform === "win32") {
+    const appData = normalizePathValue(env.APPDATA) || path.join(home, "AppData", "Roaming");
+    const localAppData = normalizePathValue(env.LOCALAPPDATA) || path.join(home, "AppData", "Local");
+    for (const name of ["CodeBuddy CN", "CodeBuddy"]) {
+      dirs.push(path.join(appData, name));
+      dirs.push(path.join(localAppData, name));
+      dirs.push(path.join(localAppData, "Programs", name));
+    }
+  } else if (platform === "darwin") {
+    const base = path.join(home, "Library", "Application Support");
+    dirs.push(path.join(base, "CodeBuddy CN"), path.join(base, "CodeBuddy"));
+  } else {
+    const xdg = normalizePathValue(env.XDG_CONFIG_HOME) || path.join(home, ".config");
+    dirs.push(path.join(xdg, "CodeBuddy CN"), path.join(xdg, "CodeBuddy"));
+  }
+  return dirs;
+}
+
 function listCursorHomeCandidates({ configured, env = process.env, home = os.homedir(), platform = process.platform } = {}) {
   const candidates = [
     configured,
@@ -453,11 +537,44 @@ function listTraeHomeCandidates({ configured, env = process.env, home = os.homed
 }
 
 function listTrackingReadyTraeHomes(options = {}) {
-  return listTraeHomeCandidates(options)
+  return uniquePaths(listTraeHomeCandidates(options)
     .map((candidate) => inspectDataDirectory("trae", candidate))
     .filter((candidate) => candidate.trackingReady)
     .sort((a, b) => Date.parse(b.latestActivityAt || 0) - Date.parse(a.latestActivityAt || 0))
-    .map((candidate) => candidate.path);
+    .map((candidate) => candidate.path));
+}
+
+function listDetectedTraeHomes(options = {}) {
+  return uniquePaths(listTraeHomeCandidates(options)
+    .map((candidate) => inspectDataDirectory("trae", candidate, options))
+    .filter((candidate) => candidate.status !== "not-detected")
+    .sort((a, b) => {
+      const readiness = Number(b.trackingReady) - Number(a.trackingReady);
+      if (readiness !== 0) return readiness;
+      return Date.parse(b.latestActivityAt || 0) - Date.parse(a.latestActivityAt || 0);
+    })
+    .map((candidate) => candidate.path));
+}
+
+function listCodeBuddyHomeCandidates({ configured, env = process.env, home = os.homedir(), platform = process.platform } = {}) {
+  return uniquePaths([
+    configured,
+    normalizePathValue(env.CODEBUDDY_HOME),
+    path.join(home, ".codebuddy"),
+    ...defaultCodeBuddyAppDirs({ env, home, platform }),
+  ]);
+}
+
+function listDetectedCodeBuddyHomes(options = {}) {
+  return uniquePaths(listCodeBuddyHomeCandidates(options)
+    .map((candidate) => inspectDataDirectory("codebuddy", candidate, options))
+    .filter((candidate) => candidate.status !== "not-detected")
+    .sort((a, b) => {
+      const readiness = Number(b.trackingReady) - Number(a.trackingReady);
+      if (readiness !== 0) return readiness;
+      return Date.parse(b.latestActivityAt || 0) - Date.parse(a.latestActivityAt || 0);
+    })
+    .map((candidate) => candidate.path));
 }
 
 function uniquePaths(values) {
@@ -499,6 +616,19 @@ function detectDataDirectoryPaths({
     ],
     cursor: [configured.cursor, normalizePathValue(env.CURSOR_HOME), defaultCursorAppDir({ env, home, platform })],
     trae: [configured.trae, normalizePathValue(env.TRAE_HOME), ...defaultTraeAppDirs({ env, home, platform })],
+    gemini: [configured.gemini, normalizePathValue(env.GEMINI_HOME), path.join(home, ".gemini")],
+    codebuddy: [
+      configured.codebuddy,
+      normalizePathValue(env.CODEBUDDY_HOME),
+      path.join(home, ".codebuddy"),
+      ...defaultCodeBuddyAppDirs({ env, home, platform }),
+    ],
+    antigravity: [
+      configured.antigravity,
+      normalizePathValue(env.ANTIGRAVITY_HOME),
+      normalizePathValue(env.GEMINI_HOME),
+      path.join(home, ".gemini"),
+    ],
     opencode: [
       configured.opencode,
       normalizePathValue(env.OPENCODE_HOME),
@@ -519,6 +649,9 @@ function detectDataDirectoryPaths({
       candidates.hermes.push(path.join(wslHome, ".hermes"));
       candidates.cursor.push(path.join(wslHome, ".config", "Cursor"));
       candidates.trae.push(path.join(wslHome, ".config", "Trae CN"));
+      candidates.gemini.push(path.join(wslHome, ".gemini"));
+      candidates.codebuddy.push(path.join(wslHome, ".codebuddy"));
+      candidates.antigravity.push(path.join(wslHome, ".gemini"));
       candidates.opencode.push(path.join(wslHome, ".local", "share", "opencode"));
       candidates.openclaw.push(path.join(wslHome, ".openclaw"));
     }
@@ -533,7 +666,7 @@ function detectDataDirectoryPaths({
     const configuredIsDefaultCodex = key === "codex" && configuredKey === pathKey(path.join(home, ".codex"));
     const inspected = uniquePaths(candidates[key] || [])
       .map((candidate) => {
-        const inspection = inspectDataDirectory(key, candidate);
+        const inspection = inspectDataDirectory(key, candidate, { env });
         const installation = detectInstallation(key, inspection.environment, candidate);
         const candidateKey = normalizePathValue(candidate).toLowerCase();
         const isConfigured = Boolean(configuredKey && candidateKey === configuredKey);
@@ -544,7 +677,7 @@ function detectDataDirectoryPaths({
           configuredPriority: isConfigured && !configuredIsDefaultCodex,
         };
       })
-      .filter((candidate) => candidate.trackingReady || (candidate.installed && candidate.status !== "not-detected"))
+      .filter((candidate) => candidate.status !== "not-detected")
       .sort((a, b) => {
         const configuredFirst = Number(b.configuredPriority) - Number(a.configuredPriority);
         if (configuredFirst !== 0) return configuredFirst;
@@ -579,7 +712,10 @@ module.exports = {
   listCursorHomeCandidates,
   listTrackingReadyCursorHomes,
   listTraeHomeCandidates,
+  listDetectedTraeHomes,
   listTrackingReadyTraeHomes,
+  listCodeBuddyHomeCandidates,
+  listDetectedCodeBuddyHomes,
   normalizeDataDirectories,
   pickBestCodexHome,
   resolveDataDirectoryPaths,

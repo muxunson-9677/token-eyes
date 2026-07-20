@@ -26,6 +26,14 @@ import {
 const MIN_INTERVAL_MS = 60_000;
 const DEFAULT_INTERVAL_MS = 300_000;
 
+function isRefreshableConfig(config) {
+  return Boolean(
+    config
+    && config.enabled
+    && (config.apiKeyRef || config.authType === "official_console")
+  );
+}
+
 function clampInterval(ms) {
   // Invalid/zero → use the default. Below the 60s floor → clamp UP to the
   // minimum (NOT the default): the contract is "minimum 60s, default 300s",
@@ -37,7 +45,7 @@ function clampInterval(ms) {
 
 function pickPollInterval(configs) {
   if (!Array.isArray(configs) || configs.length === 0) return DEFAULT_INTERVAL_MS;
-  const enabled = configs.filter((c) => c && c.enabled && c.apiKeyRef);
+  const enabled = configs.filter(isRefreshableConfig);
   if (enabled.length === 0) return DEFAULT_INTERVAL_MS;
   let min = Infinity;
   for (const c of enabled) {
@@ -120,7 +128,7 @@ export function useProviderApiBalances() {
   }, [setRefreshing]);
 
   const refreshAll = useCallback(async () => {
-    const enabled = configsRef.current.filter((c) => c && c.enabled && c.apiKeyRef);
+    const enabled = configsRef.current.filter(isRefreshableConfig);
     if (enabled.length === 0) return;
     await Promise.all(enabled.map((c) => refreshOne(c.id)));
   }, [refreshOne]);
@@ -140,7 +148,7 @@ export function useProviderApiBalances() {
     (async () => {
       await loadCached();
       if (cancelledRef.current) return;
-      const enabled = configsRef.current.filter((c) => c && c.enabled && c.apiKeyRef);
+      const enabled = configsRef.current.filter(isRefreshableConfig);
       await Promise.all(enabled.map((c) => refreshOne(c.id)));
     })();
     return () => {

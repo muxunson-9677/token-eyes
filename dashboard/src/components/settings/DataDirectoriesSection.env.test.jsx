@@ -59,7 +59,7 @@ it("renders detect environment buttons for each agent", async () => {
   await screen.findByDisplayValue("\\\\wsl.localhost\\Ubuntu\\home\\agent\\.claude");
 
   const detectButtons = getDetectButtons();
-  expect(detectButtons).toHaveLength(6);
+  expect(detectButtons).toHaveLength(10);
 });
 
 it("shows ready status when environment detection succeeds", async () => {

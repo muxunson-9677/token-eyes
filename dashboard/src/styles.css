@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+.boot-splash {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #f7f8fa;
+  color: #1f2937;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.boot-splash__mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 14px;
+  background: #ffc400;
+  color: #151515;
+  font-size: 28px;
+  font-weight: 800;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.boot-splash__title { font-size: 18px; font-weight: 700; }
+.boot-splash__subtitle { margin-top: 3px; color: #6b7280; font-size: 13px; }
+
 :root {
   color-scheme: light;
 

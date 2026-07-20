@@ -45,6 +45,9 @@ vi.mock("../../../../lib/copy", () => ({
       "ticket04.request.status_error_aria": "Error status",
       "ticket04.request.status_success_aria": "Success status",
       "usage.request_log.totals": "Total",
+      "usage.request_log.metric.requests": "Requests",
+      "usage.request_log.metric.success_rate": "Success rate",
+      "usage.request_log.metric.avg_latency": "Average latency",
       "usage.request_log.source_filter_aria": "Select source",
     };
     return map[key] || key;
@@ -228,6 +231,25 @@ describe("RequestUsageLog", () => {
     // "Total" label appears in the totals row
     const totalLabels = screen.getAllByText("Total");
     expect(totalLabels.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows request count, success rate, and average latency as summary metrics", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord()],
+      totals: {
+        request_count: 25,
+        success_count: 24,
+        success_rate: 96,
+        avg_latency_ms: 830,
+      },
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByTestId("request-log-metric-requests")).toHaveTextContent("25");
+    expect(screen.getByTestId("request-log-metric-success-rate")).toHaveTextContent("96.0%");
+    expect(screen.getByTestId("request-log-metric-avg-latency")).toHaveTextContent("830ms");
   });
 
   // Note: Frontend sort is removed because backend doesn't support sort/order parameters.

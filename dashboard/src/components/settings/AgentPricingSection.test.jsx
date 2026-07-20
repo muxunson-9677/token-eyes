@@ -3,15 +3,18 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { AgentPricingSection } from "./AgentPricingSection.jsx";
-import { getLocalSettings, setLocalSettings } from "../../lib/api";
+import { getLocalSettings, getUsageModelBreakdown, setLocalSettings, verifyOfficialModelPricing } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
   getLocalSettings: vi.fn(),
+  getUsageModelBreakdown: vi.fn(),
   setLocalSettings: vi.fn(),
+  verifyOfficialModelPricing: vi.fn(),
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getUsageModelBreakdown.mockResolvedValue({ sources: [] });
   getLocalSettings.mockResolvedValue({
     agentDefaultPricing: {
       claude: { inputUsdPer1M: 1, outputUsdPer1M: 2 },
@@ -25,48 +28,93 @@ beforeEach(() => {
     agentDefaultPricing: payload.agentDefaultPricing,
     pricingRules: payload.pricingRules ?? [],
   }));
+  verifyOfficialModelPricing.mockResolvedValue({
+    ok: false,
+    status: "manual_required",
+    error: "未能自动核价",
+  });
 });
 
-it("loads and saves per-agent default pricing", async () => {
-  const user = userEvent.setup();
+it("removes default fallback price inputs and keeps user-defined rules", async () => {
   render(<AgentPricingSection />);
 
-  await screen.findByDisplayValue("3");
-  expect(screen.getByText("Agent 计费规则")).toBeInTheDocument();
-  // Default pricing section still renders its three input/output pairs.
-  expect(screen.getAllByText("输入")).toHaveLength(3);
-  expect(screen.getAllByText("输出")).toHaveLength(3);
-  const saveButton = screen.getByRole("button", { name: "保存" });
-  expect(saveButton).toBeDisabled();
+  expect(await screen.findByText("模型定价表")).toBeInTheDocument();
+  expect(screen.queryByText("默认计费（回退）")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "新增规则" })).toBeInTheDocument();
+  expect(screen.queryByLabelText("输入")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("输出")).not.toBeInTheDocument();
+});
 
-  // The default-pricing inputs are the number spinbuttons. Find the codex
-  // output (3rd agent's output = index 3 in the grid order claude-in/out,
-  // codex-in/out).
-  const inputs = screen.getAllByRole("spinbutton");
-  const codexOutput = inputs[3];
+it("uses a compact fixed pricing table without a forced 720px overflow width", async () => {
+  const { container } = render(<AgentPricingSection />);
+  expect(await screen.findByText("公开价目")).toBeInTheDocument();
 
-  await act(async () => {
-    await user.clear(codexOutput);
-    await user.type(codexOutput, "8.5");
+  const catalogTable = container.querySelector('[data-testid="model-pricing-table"]');
+  expect(catalogTable).toHaveClass("table-fixed");
+  expect(catalogTable).not.toHaveClass("min-w-[720px]");
+});
+
+it("renders the verified public model price table with official sources", async () => {
+  render(<AgentPricingSection />);
+
+  expect(await screen.findByText("公开价目")).toBeInTheDocument();
+  expect(screen.getByText("GPT-5.5")).toBeInTheDocument();
+  expect(screen.getByText("MiniMax-M2.7")).toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "官网" }).length).toBeGreaterThan(0);
+  expect(screen.getByText("价格核验于 2026-07-14")).toBeInTheDocument();
+});
+
+it("covers the requested model catalog and flags newly observed models", async () => {
+  getUsageModelBreakdown.mockResolvedValue({
+    sources: [{ source: "trae", models: [{ model: "brand-new-model-2026" }] }],
+  });
+  render(<AgentPricingSection />);
+
+  for (const label of [
+    "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "GPT-5 Mini",
+    "Claude Opus 4.8", "Claude Fable 5", "Claude Sonnet 5", "Claude Haiku 4.5",
+    "Gemini 3.1 Pro", "GLM-5.2", "GLM-5.1", "DeepSeek V4 Pro",
+    "DeepSeek V4 Flash", "MiniMax M3", "Kimi K2.7 Code", "Kimi K2.6",
+    "MiMo v2.5 Pro", "MiMo v2.5", "Grok 4 Fast",
+  ]) {
+    expect(await screen.findByText(label)).toBeInTheDocument();
+  }
+  expect(await screen.findByText("brand-new-model-2026")).toBeInTheDocument();
+  expect(screen.getByText("新检测模型 · 待核价")).toBeInTheDocument();
+});
+
+it("automatically verifies a newly observed model against official data and saves the rule", async () => {
+  const user = userEvent.setup();
+  getUsageModelBreakdown.mockResolvedValue({
+    sources: [{ source: "trae", models: [{ model: "gpt-5" }] }],
+  });
+  verifyOfficialModelPricing.mockResolvedValue({
+    ok: true,
+    status: "verified",
+    source: "trae",
+    source_url: "https://developers.openai.com/api/docs/models/gpt-5",
+    verified_at: "2026-07-15T00:00:00.000Z",
+    pricing: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: null, currency: "USD" },
   });
 
-  expect(saveButton).toBeEnabled();
+  render(<AgentPricingSection />);
+  await user.click(await screen.findByRole("button", { name: "自动核价 gpt-5" }));
 
-  await act(async () => {
-    await user.click(saveButton);
-  });
-
-  await waitFor(() => {
-    expect(setLocalSettings).toHaveBeenCalledWith({
-      agentDefaultPricing: {
-        claude: { inputUsdPer1M: 1, outputUsdPer1M: 2 },
-        codex: { inputUsdPer1M: 3, outputUsdPer1M: 8.5 },
-        hermes: { inputUsdPer1M: 5, outputUsdPer1M: 6 },
-      },
-      pricingRules: [],
-    });
-  });
-  expect(await screen.findByText("已保存到本地。刷新或同步用量后成本会更新。")).toBeInTheDocument();
+  await waitFor(() => expect(verifyOfficialModelPricing).toHaveBeenCalledWith({
+    model: "gpt-5",
+    model_id: "gpt-5",
+    source: "trae",
+  }));
+  await waitFor(() => expect(setLocalSettings).toHaveBeenCalledWith(expect.objectContaining({
+    pricingRules: expect.arrayContaining([expect.objectContaining({
+      source: "trae",
+      model: "gpt-5",
+      inputPricePer1M: 1.25,
+      outputPricePer1M: 10,
+      currency: "USD",
+    })]),
+  })));
+  expect(await screen.findByText("官网自动核价成功")).toBeInTheDocument();
 });
 
 it("shows the empty-state hint when no rules exist", async () => {
@@ -104,7 +152,7 @@ it("renders existing pricing rules in the table", async () => {
 it("adds a new pricing rule via the form and saves it", async () => {
   const user = userEvent.setup();
   render(<AgentPricingSection />);
-  await screen.findByDisplayValue("3");
+  await screen.findByRole("button", { name: "新增规则" });
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "新增规则" }));

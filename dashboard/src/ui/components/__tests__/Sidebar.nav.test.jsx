@@ -183,7 +183,7 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(usageChild).toHaveAttribute("aria-current", "page");
   });
 
-  it("clicking parent again does not make the current page disappear (stays expanded + active)", async () => {
+  it("clicking an active parent collapses its children and keeps the current route active", async () => {
     const user = userEvent.setup();
     renderSidebar("/spend/usage");
     const spendParent = screen.getByRole("button", { name: /copy:nav\.group\.spend/ });
@@ -191,8 +191,20 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     await act(async () => {
       await user.click(spendParent);
     });
-    expect(screen.getByRole("link", { name: "copy:nav.spend.usage" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "copy:nav.spend.usage" })).not.toBeInTheDocument();
+    expect(spendParent).toHaveAttribute("aria-expanded", "false");
     expect(spendParent).toHaveAttribute("aria-current", "page");
+  });
+
+  it("keeps an explicitly collapsed active parent closed after route effects run", async () => {
+    const user = userEvent.setup();
+    renderSidebar("/settings/cost");
+    const settingsParent = screen.getByRole("button", { name: /copy:nav\.group\.settings/ });
+    await act(async () => {
+      await user.click(settingsParent);
+    });
+    expect(settingsParent).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link", { name: "copy:nav.settings.cost" })).not.toBeInTheDocument();
   });
 
   it("children sub-navigation has an accessible label", () => {

@@ -2,25 +2,11 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
 import { motion } from "motion/react";
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import {
-  SortableContext,
-  horizontalListSortingStrategy,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
 import { isAccessTokenReady, resolveAuthAccessTokenWithRetry } from "../lib/auth-token";
 import { copy } from "../lib/copy";
-import { toDisplayNumber, formatCompactNumber } from "../lib/format";
+import { formatChineseTokenCount } from "../lib/format";
 import { cn } from "../lib/cn";
 import { useCurrency } from "../hooks/useCurrency.js";
 import { CURRENCY_USD, getCurrencySymbol } from "../lib/currency";
@@ -32,14 +18,13 @@ import {
   prependMeRowToPage,
 } from "../lib/leaderboard-ui";
 import {
-  LEADERBOARD_AGENTS,
   LEADERBOARD_DEFAULT_AGENT,
   LEADERBOARD_DEFAULT_METRIC,
   LEADERBOARD_DEFAULT_PERIOD,
-  normalizeLeaderboardAgent,
   normalizeLeaderboardMetric,
   normalizeLeaderboardPeriod,
 } from "../lib/leaderboard-query.js";
+import { normalizeAgentMetrics } from "../lib/leaderboard-agent-metrics.js";
 import { getLeaderboardBaseUrl } from "../lib/config";
 import { getDashboardEntryPath } from "../lib/host-mode";
 import { isMockEnabled } from "../lib/mock-data";
@@ -56,7 +41,6 @@ import {
 import { getCloudSyncEnabled, setCloudSyncEnabled } from "../lib/cloud-sync-prefs";
 import { runCloudUsageSyncNow } from "../lib/cloud-sync";
 import { LeaderboardAvatar } from "../components/LeaderboardAvatar.jsx";
-import { LeaderboardProviderColumnHeader } from "../components/LeaderboardProviderColumnHeader.jsx";
 
 const LeaderboardProfileModal = lazy(() =>
   import("../components/leaderboard/LeaderboardProfileModal.jsx").then((m) => ({
@@ -64,21 +48,11 @@ const LeaderboardProfileModal = lazy(() =>
   })),
 );
 import { LeaderboardSkeleton } from "../components/LeaderboardSkeleton.jsx";
-import { SortableColumnHeader } from "../components/SortableColumnHeader.jsx";
-import { useColumnOrder } from "../hooks/use-column-order.js";
 import { LeaderboardMeChip } from "../components/LeaderboardSummaryCard.jsx";
-import {
-  LB_STICKY_TH_RANK,
-  LB_STICKY_TH_USER,
-  LEADERBOARD_TOKEN_COLUMNS,
-  lbStickyTdRank,
-  lbStickyTdUser,
-} from "../lib/leaderboard-columns.js";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_STORAGE_KEY = "tokentracker:leaderboard:pageSize";
-const PRIMARY_AGENT_TABS = ["all", "codex", "claude", "hermes", "cursor"];
 const PERIOD_OPTIONS = [
   { value: "today", copyKey: "leaderboard.period.today" },
   { value: "yesterday", copyKey: "leaderboard.period.yesterday" },
@@ -114,49 +88,42 @@ function formatCost(value, currency, rate) {
   return `${symbol}${converted.toFixed(2)}`;
 }
 
-function formatRankingValue(value, metric, currency, rate) {
-  return metric === "estimated_cost"
-    ? formatCost(value, currency, rate)
-    : toDisplayNumber(value);
-}
-
-// Total-tokens value: compact ("79.6B") on phones where the column is tight,
-// full grouped digits at sm+ where the wide table has room.
 function TotalTokens({ value }) {
-  return (
-    <>
-      <span className="sm:hidden">{formatCompactNumber(value)}</span>
-      <span className="hidden sm:inline">{toDisplayNumber(value)}</span>
-    </>
-  );
+  return <span>{formatChineseTokenCount(value)}</span>;
 }
 
 function RankingScore({ entry, metric, currency, rate }) {
+  let value;
   if (metric === "estimated_cost") {
-    return formatCost(entry?.score ?? entry?.estimated_cost_usd, currency, rate);
+    value = formatCost(entry?.score ?? entry?.estimated_cost_usd, currency, rate);
+  } else {
+    const fallback = metric === "without_cache"
+      ? entry?.without_cache_tokens ?? entry?.total_tokens
+      : entry?.total_tokens;
+    value = <TotalTokens value={entry?.score ?? fallback} />;
   }
-  const fallback = metric === "without_cache"
-    ? entry?.without_cache_tokens ?? entry?.total_tokens
-    : entry?.total_tokens;
-  return <TotalTokens value={entry?.score ?? fallback} />;
+  return <span data-testid="leaderboard-score">{value}</span>;
 }
 
-function leaderboardTokenCells(entry, isMe, orderedColumns) {
-  const numCls = isMe
-    ? "text-oai-gray-700 dark:text-oai-gray-300"
-    : "text-oai-gray-500 dark:text-oai-gray-400";
-  const cellBg = isMe
-    ? "bg-oai-brand-50 dark:bg-oai-brand-900/10"
-    : "bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60";
-  return orderedColumns.map((col) => (
-    <td
-      key={col.key}
-      data-column-key={col.key}
-      className={cn("hidden sm:table-cell px-3 sm:px-4 py-4 whitespace-nowrap text-right tabular-nums", numCls, cellBg)}
+function AgentDistribution({ entry, metric, currency, rate }) {
+  const items = normalizeAgentMetrics(entry, metric);
+  const usesCost = metric === "estimated_cost" && Object.prototype.hasOwnProperty.call(entry || {}, "agent_metrics");
+  if (items.length === 0) return <span className="text-oai-gray-400 dark:text-oai-gray-600">—</span>;
+  return (
+    <div
+      className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-oai-gray-400 dark:text-oai-gray-500"
+      data-testid="leaderboard-user-meta"
     >
-      {toDisplayNumber(entry?.[col.key])}
-    </td>
-  ));
+      {items.map((item) => (
+        <span key={item.id} className="inline-flex items-baseline gap-1 whitespace-nowrap">
+          <span className="font-medium text-oai-gray-500 dark:text-oai-gray-400">{item.label}</span>
+          <span className="tabular-nums">
+            {usesCost ? formatCost(item.value, currency, rate) : formatChineseTokenCount(item.value)}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 const RANK_MEDAL = {
@@ -260,6 +227,101 @@ function GithubLinkWithTooltip({ githubUrl }) {
   );
 }
 
+function LeaderboardEntryRow({
+  entry,
+  entryIdx,
+  anonLabel,
+  meLabel,
+  metric,
+  currency,
+  rate,
+  placeholder,
+  openProfileModal,
+}) {
+  if (entry?.is_ellipsis) {
+    return (
+      <li
+        aria-hidden="true"
+        className="px-4 py-2 text-center text-xs tracking-[0.4em] text-oai-gray-400 dark:text-oai-gray-600"
+      >
+        …
+      </li>
+    );
+  }
+
+  const isMe = Boolean(entry?.is_me);
+  const isPinned = Boolean(entry?.is_pinned);
+  const profileUserId = typeof entry?.user_id === "string" ? entry.user_id : null;
+  const rawName = normalizeName(entry?.display_name);
+  const entryName = isAnonymousName(rawName) ? anonLabel : rawName;
+  const name = isMe ? meLabel : entryName;
+  const rowClickable = Boolean(profileUserId);
+  const openRow = rowClickable ? () => openProfileModal(profileUserId) : undefined;
+  const onRowKeyDown = rowClickable
+    ? (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openProfileModal(profileUserId);
+        }
+      }
+    : undefined;
+  const secondaryValue = metric === "estimated_cost"
+    ? formatChineseTokenCount(entry?.total_tokens)
+    : formatCost(entry?.estimated_cost_usd, currency, rate);
+
+  return (
+    <li
+      role={rowClickable ? "button" : undefined}
+      tabIndex={rowClickable ? 0 : undefined}
+      onClick={openRow}
+      onKeyDown={onRowKeyDown}
+      aria-label={rowClickable ? copy("leaderboard.profile_modal.row_aria", { name }) : undefined}
+      className={cn(
+        "relative grid min-h-[78px] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors sm:grid-cols-[2.25rem_minmax(0,1fr)_9rem] sm:gap-4 sm:px-5",
+        isMe ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white dark:bg-oai-gray-950",
+        isPinned && "before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r before:bg-oai-brand-500",
+        rowClickable && "cursor-pointer hover:bg-oai-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oai-brand-500/60 dark:hover:bg-oai-gray-900/60",
+      )}
+      data-entry-index={entryIdx}
+    >
+      <div className={cn("text-oai-gray-500 dark:text-oai-gray-400", isMe && "text-oai-brand-600 dark:text-oai-brand-400")}>
+        <RankCell rank={entry?.rank} placeholder={placeholder} />
+      </div>
+
+      <div className="flex min-w-0 items-center gap-3">
+        <LeaderboardAvatar
+          avatarUrl={entry?.avatar_url}
+          displayName={name}
+          seed={leaderboardAvatarSeed(entry, name)}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={cn(
+              "truncate text-sm font-semibold sm:text-base",
+              isMe ? "text-oai-brand-700 dark:text-oai-brand-300" : "text-oai-gray-900 dark:text-oai-gray-100",
+            )}>
+              {name}
+            </span>
+            {entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
+          </div>
+          <div className="mt-1 min-w-0">
+            <AgentDistribution entry={entry} metric={metric} currency={currency} rate={rate} />
+          </div>
+        </div>
+      </div>
+
+      <div className="min-w-[5.5rem] text-right tabular-nums sm:min-w-0">
+        <div className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100 sm:text-base">
+          <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
+        </div>
+        <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
+          {secondaryValue}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 export function LeaderboardPage({
   auth,
   signedIn,
@@ -298,34 +360,6 @@ export function LeaderboardPage({
 
   const placeholder = copy("shared.placeholder.short");
 
-  const defaultColumnKeys = useMemo(
-    () => LEADERBOARD_TOKEN_COLUMNS.map((c) => c.key),
-    [],
-  );
-  const { order: columnOrder, reorder: reorderColumns } = useColumnOrder(defaultColumnKeys);
-  const columnsByKey = useMemo(() => {
-    const map = new Map();
-    for (const c of LEADERBOARD_TOKEN_COLUMNS) map.set(c.key, c);
-    return map;
-  }, []);
-  const orderedColumns = useMemo(
-    () => columnOrder.map((k) => columnsByKey.get(k)).filter(Boolean),
-    [columnOrder, columnsByKey],
-  );
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-  const handleDragEnd = useCallback(
-    (event) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-      reorderColumns(String(active.id), String(over.id));
-    },
-    [reorderColumns],
-  );
-
   const [listPage, setListPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(readStoredPageSize);
   const [modalUserId, setModalUserId] = useState(null);
@@ -356,10 +390,7 @@ export function LeaderboardPage({
     const params = new URLSearchParams(location?.search || "");
     return normalizeLeaderboardPeriod(params.get("period") || LEADERBOARD_DEFAULT_PERIOD);
   }, [location?.search]);
-  const agent = useMemo(() => {
-    const params = new URLSearchParams(location?.search || "");
-    return normalizeLeaderboardAgent(params.get("agent") || LEADERBOARD_DEFAULT_AGENT);
-  }, [location?.search]);
+  const agent = LEADERBOARD_DEFAULT_AGENT;
   const metric = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
     return normalizeLeaderboardMetric(params.get("metric") || LEADERBOARD_DEFAULT_METRIC);
@@ -395,7 +426,7 @@ export function LeaderboardPage({
   }, [cloudAuthEnabled, cloudSignedIn, developerLoginEnabled, getPublicAuthConfig, leaderboardMockEnabled]);
 
   const handleDimensionChange = (key, value) => {
-    const current = key === "period" ? period : key === "agent" ? agent : metric;
+    const current = key === "period" ? period : metric;
     if (value === current) return;
     const params = new URLSearchParams(location?.search || "");
     params.set(key, value);
@@ -590,9 +621,11 @@ export function LeaderboardPage({
   const listData = currentListState.data;
 
   const totalPages = listData?.total_pages ?? null;
-  const totalEntries = listData?.total_entries ?? 0;
+  const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
   const participantCount = listData?.participant_count ?? totalEntries;
-  const totalScore = listData?.total_score ?? null;
+  const aggregateTotalTokens = listData?.aggregate_total_tokens
+    ?? (metric === "with_cache" ? listData?.total_score : null);
+  const aggregateTotalCost = listData?.aggregate_total_cost_usd ?? null;
   const currentPage = listData?.page ?? listPage;
   const pageItems = useMemo(() => {
     return buildPageItems(currentPage, totalPages);
@@ -607,36 +640,6 @@ export function LeaderboardPage({
   const periodLabel = copy(
     PERIOD_OPTIONS.find((option) => option.value === period)?.copyKey || "leaderboard.period.total",
   );
-  const agentOptions = useMemo(
-    () => LEADERBOARD_AGENTS.map((option) => ({ value: option.value, label: option.label })),
-    [],
-  );
-  const primaryAgentOptions = useMemo(
-    () => [
-      { value: "all", label: copy("leaderboard.agent.all") },
-      ...PRIMARY_AGENT_TABS.slice(1).map((value) => ({
-        value,
-        label: LEADERBOARD_AGENTS.find((option) => option.value === value)?.label || value,
-      })),
-    ],
-    [],
-  );
-  const overflowAgentOptions = useMemo(
-    () => [
-      { value: "__more__", label: copy("leaderboard.agent.more"), disabled: true },
-      ...agentOptions.filter((option) => !PRIMARY_AGENT_TABS.includes(option.value)),
-    ],
-    [agentOptions],
-  );
-  const overflowAgentValue = PRIMARY_AGENT_TABS.includes(agent) ? "__more__" : agent;
-  const selectedAgentLabel = agent === "all"
-    ? copy("leaderboard.agent.all")
-    : agentOptions.find((option) => option.value === agent)?.label || agent;
-  const selectedMetricLabel = copy(
-    METRIC_OPTIONS.find((option) => option.value === metric)?.copyKey || "leaderboard.metric.with_cache",
-  );
-  const scoreColumnLabel = `${selectedAgentLabel} · ${selectedMetricLabel}`;
-
   const displayEntries = useMemo(() => {
     const rows = Array.isArray(listData?.entries) ? listData.entries : [];
     return prependMeRowToPage({ entries: rows, me, meLabel });
@@ -681,166 +684,24 @@ export function LeaderboardPage({
     );
   } else if (hasEntries) {
     listBody = (
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        modifiers={[restrictToHorizontalAxis]}
-        onDragEnd={handleDragEnd}
-      >
-      <div className="w-full overflow-x-auto">
-        <table className="min-w-full sm:min-w-max w-full text-left text-sm">
-          <thead className="border-b border-oai-gray-200 dark:border-oai-gray-800">
-            <tr>
-              <th className={cn(LB_STICKY_TH_RANK, "text-[11px] font-semibold uppercase tracking-wider text-oai-gray-400 dark:text-oai-gray-500")}>
-                {copy("leaderboard.column.rank")}
-              </th>
-              <th className={cn(LB_STICKY_TH_USER, "text-[11px] font-semibold uppercase tracking-wider text-oai-gray-400 dark:text-oai-gray-500")}>
-                {copy("leaderboard.column.user")}
-              </th>
-              <th className="px-3 sm:px-4 py-4 text-[11px] font-semibold uppercase tracking-wider text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap text-right align-middle">
-                {scoreColumnLabel}
-              </th>
-              <th className="hidden sm:table-cell px-3 sm:px-4 py-4 text-[11px] font-semibold uppercase tracking-wider text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap text-right align-middle" title="Based on estimated API pricing, not actual billing">
-                {copy("leaderboard.column.est_cost")}
-              </th>
-              <SortableContext items={columnOrder} strategy={horizontalListSortingStrategy}>
-                {orderedColumns.map((col) => (
-                  <SortableColumnHeader
-                    key={col.key}
-                    id={col.key}
-                    thClassName="hidden sm:table-cell px-3 sm:px-4 py-4 text-[11px] font-semibold uppercase tracking-wider text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap align-middle"
-                  >
-                    <LeaderboardProviderColumnHeader iconSrc={col.icon} label={copy(col.copyKey)} />
-                  </SortableColumnHeader>
-                ))}
-              </SortableContext>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-oai-gray-100 dark:divide-oai-gray-800/50">
-            {displayEntries.map((entry, entryIdx) => {
-              if (entry?.is_ellipsis) {
-                const colSpan = 4 + orderedColumns.length;
-                return (
-                  <tr key={`ellipsis-${entryIdx}`} aria-hidden="true">
-                    <td
-                      colSpan={colSpan}
-                      className="px-4 py-2 text-center text-oai-gray-400 dark:text-oai-gray-600 bg-white dark:bg-oai-gray-950 select-none tracking-[0.4em] text-xs"
-                    >
-                      ···
-                    </td>
-                  </tr>
-                );
-              }
-              const isMe = Boolean(entry?.is_me);
-              const profileUserId = typeof entry?.user_id === "string" ? entry.user_id : null;
-              const rawName = normalizeName(entry?.display_name);
-              const entryName = isAnonymousName(rawName) ? anonLabel : rawName;
-              const name = isMe ? meLabel : entryName;
-              // Every row with a user_id opens the profile modal. Private /
-              // anonymous targets resolve to an empty-state inside the modal
-              // ("profile not public") — better feedback than a dead click.
-              const rowClickable = Boolean(profileUserId);
-              const handleRowOpen = rowClickable ? () => openProfileModal(profileUserId) : undefined;
-              const handleRowKey = rowClickable
-                ? (e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openProfileModal(profileUserId);
-                    }
-                  }
-                : undefined;
-              const rowInteractiveProps = rowClickable
-                ? {
-                    role: "button",
-                    tabIndex: 0,
-                    onClick: handleRowOpen,
-                    onKeyDown: handleRowKey,
-                    "aria-label": copy("leaderboard.profile_modal.row_aria", { name }),
-                  }
-                : {};
-
-              if (isMe) {
-                const isPinned = Boolean(entry?.is_pinned);
-                return (
-                  <tr
-                    key={`row-${entry?.rank}-${name}${isPinned ? "-pin" : ""}`}
-                    {...rowInteractiveProps}
-                    className={cn(
-                      "bg-oai-brand-50 dark:bg-oai-brand-900/10 transition-colors",
-                      isPinned
-                        ? "border-t border-b border-oai-brand-300/40 dark:border-oai-brand-500/20"
-                        : "border-y border-oai-brand-300/40 dark:border-oai-brand-500/30",
-                      rowClickable && "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60",
-                    )}
-                  >
-                    <td
-                      className={cn(
-                        lbStickyTdRank(true),
-                        "relative font-semibold text-oai-brand-600 dark:text-oai-brand-400",
-                        isPinned && "before:absolute before:left-0 before:top-[15%] before:h-[70%] before:w-[3px] before:rounded-r before:bg-oai-brand-500 dark:before:bg-oai-brand-400"
-                      )}
-                    >
-                      <RankCell rank={entry?.rank} placeholder={placeholder} />
-                    </td>
-                    <td className={lbStickyTdUser(true)}>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <LeaderboardAvatar
-                          avatarUrl={entry?.avatar_url}
-                          displayName={name}
-                          seed={leaderboardAvatarSeed(entry, name)}
-                        />
-                        <span className="truncate font-semibold text-oai-black dark:text-oai-white">{name}</span>
-                        {entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
-                      </div>
-                    </td>
-                    <td className="px-3 sm:px-4 py-4 font-medium text-oai-black dark:text-oai-white whitespace-nowrap text-right tabular-nums bg-oai-brand-50 dark:bg-oai-brand-900/10">
-                      <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
-                    </td>
-                    <td className="hidden sm:table-cell px-3 sm:px-4 py-4 font-medium text-oai-brand-600 dark:text-oai-brand-400 whitespace-nowrap text-right tabular-nums bg-oai-brand-50 dark:bg-oai-brand-900/10" title="Based on estimated API pricing, not actual billing">
-                      {formatCost(entry?.estimated_cost_usd, currency, rate)}
-                    </td>
-                    {leaderboardTokenCells(entry, true, orderedColumns)}
-                  </tr>
-                );
-              }
-
-              return (
-                <tr
-                  key={`row-${entry?.rank}-${name}`}
-                  {...rowInteractiveProps}
-                  className={cn(
-                    "group transition-colors",
-                    rowClickable && "cursor-pointer hover:bg-oai-gray-50 dark:hover:bg-oai-gray-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60",
-                  )}
-                >
-                  <td className={cn(lbStickyTdRank(false), "font-medium text-oai-gray-500 dark:text-oai-gray-400")}>
-                    <RankCell rank={entry?.rank} placeholder={placeholder} />
-                  </td>
-                  <td className={lbStickyTdUser(false)}>
-                    <div className="flex min-w-0 items-center gap-2">
-                      <LeaderboardAvatar
-                        avatarUrl={entry?.avatar_url}
-                        displayName={name}
-                        seed={leaderboardAvatarSeed(entry, name)}
-                      />
-                      <span className="truncate font-medium text-oai-gray-800 dark:text-oai-gray-200">{name}</span>
-                      {entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
-                    </div>
-                  </td>
-                  <td className="px-3 sm:px-4 py-4 font-semibold text-oai-gray-800 dark:text-oai-gray-200 whitespace-nowrap text-right tabular-nums bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60">
-                    <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
-                  </td>
-                  <td className="hidden sm:table-cell px-3 sm:px-4 py-4 text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap text-right tabular-nums bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60" title="Based on estimated API pricing, not actual billing">
-                    {formatCost(entry?.estimated_cost_usd, currency, rate)}
-                  </td>
-                  {leaderboardTokenCells(entry, false, orderedColumns)}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      </DndContext>
+      <ol className="divide-y divide-oai-gray-100 dark:divide-oai-gray-800/70">
+        {displayEntries.map((entry, entryIdx) => (
+          <LeaderboardEntryRow
+            key={entry?.is_ellipsis
+              ? `ellipsis-${entryIdx}`
+              : `row-${entry?.rank}-${entry?.user_id || entryIdx}-${entry?.is_pinned ? "pin" : "entry"}`}
+            entry={entry}
+            entryIdx={entryIdx}
+            anonLabel={anonLabel}
+            meLabel={meLabel}
+            metric={metric}
+            currency={currency}
+            rate={rate}
+            placeholder={placeholder}
+            openProfileModal={openProfileModal}
+          />
+        ))}
+      </ol>
     );
   } else {
     listBody = (
@@ -897,12 +758,14 @@ export function LeaderboardPage({
               <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-oai-black dark:text-white">
                 {copy("leaderboard.title")}
               </h1>
-              <Link
-                to="/leaderboard/rules"
-                className="shrink-0 text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
-              >
-                {copy("leaderboard.rules_link")}
-              </Link>
+              <div className="flex shrink-0 items-center gap-3">
+                <Link
+                  to="/leaderboard/rules"
+                  className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
+                >
+                  {copy("leaderboard.rules_link")}
+                </Link>
+              </div>
             </div>
             <p className="text-oai-gray-500 dark:text-oai-gray-400 text-sm sm:text-base">
               {period === "total"
@@ -916,65 +779,26 @@ export function LeaderboardPage({
                 </span>
               )}
             </p>
-            {totalScore != null && (
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
-                <span>
-                  {copy("leaderboard.summary.total_score", {
-                    value: formatRankingValue(totalScore, metric, currency, rate),
-                  })}
-                </span>
-                <span aria-hidden className="text-oai-gray-300 dark:text-oai-gray-700">·</span>
-                <span>
-                  {copy("leaderboard.summary.participants", {
-                    count: Number(participantCount || 0).toLocaleString(),
-                  })}
-                </span>
-              </div>
+            {listData && (
+              <dl className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="leaderboard-summary">
+                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
+                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.participant_label")}</dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">{Number(participantCount || 0).toLocaleString()}</dd>
+                </div>
+                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
+                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.tokens_label")}</dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">
+                    {aggregateTotalTokens == null ? "—" : formatChineseTokenCount(aggregateTotalTokens)}
+                  </dd>
+                </div>
+                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
+                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.cost_label")}</dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">
+                    {aggregateTotalCost == null ? "—" : formatCost(aggregateTotalCost, currency, rate)}
+                  </dd>
+                </div>
+              </dl>
             )}
-          </div>
-
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
-              {primaryAgentOptions.map((option) => {
-                const isActive = agent === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    onClick={() => handleDimensionChange("agent", option.value)}
-                    disabled={currentListState.loading}
-                    className={cn(
-                      "px-3 sm:px-4 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
-                      isActive
-                        ? "text-oai-black dark:text-white"
-                        : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200"
-                    )}
-                  >
-                    <span className="relative z-10">
-                      {option.label}
-                    </span>
-                    {isActive && (
-                      <motion.div
-                        layoutId="leaderboard-agent-active-bg"
-                        className="absolute inset-0 bg-oai-gray-200 dark:bg-oai-gray-800 rounded-full z-0"
-                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <Select
-              value={overflowAgentValue}
-              onValueChange={(value) => {
-                if (value !== "__more__") {
-                  handleDimensionChange("agent", normalizeLeaderboardAgent(value));
-                }
-              }}
-              options={overflowAgentOptions}
-              ariaLabel={copy("leaderboard.agent.more")}
-              disabled={currentListState.loading}
-              className="h-9 min-w-24 rounded-full px-3 text-sm"
-            />
           </div>
 
           <div className="mb-6 sm:mb-8 flex flex-wrap items-center justify-between gap-3">
@@ -987,10 +811,11 @@ export function LeaderboardPage({
                       key={option.value}
                       onClick={() => handleDimensionChange("period", option.value)}
                       disabled={currentListState.loading}
+                      aria-pressed={isActive}
                       className={cn(
                         "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
                         isActive
-                          ? "text-oai-black dark:text-white"
+                          ? "text-oai-brand-700 dark:text-oai-brand-200"
                           : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
                       )}
                     >
@@ -998,7 +823,7 @@ export function LeaderboardPage({
                       {isActive && (
                         <motion.div
                           layoutId="leaderboard-period-active-bg"
-                          className="absolute inset-0 bg-oai-gray-200 dark:bg-oai-gray-800 rounded-full z-0"
+                          className="absolute inset-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30 z-0"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -1014,10 +839,11 @@ export function LeaderboardPage({
                       key={option.value}
                       onClick={() => handleDimensionChange("metric", option.value)}
                       disabled={currentListState.loading}
+                      aria-pressed={isActive}
                       className={cn(
                         "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
                         isActive
-                          ? "text-oai-black dark:text-white"
+                          ? "text-oai-brand-700 dark:text-oai-brand-200"
                           : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
                       )}
                     >
@@ -1025,7 +851,7 @@ export function LeaderboardPage({
                       {isActive && (
                         <motion.div
                           layoutId="leaderboard-metric-active-bg"
-                          className="absolute inset-0 bg-oai-gray-200 dark:bg-oai-gray-800 rounded-full z-0"
+                          className="absolute inset-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30 z-0"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}

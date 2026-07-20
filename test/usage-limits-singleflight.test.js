@@ -132,14 +132,16 @@ describe("runCommand (async)", () => {
 
   it("runs commands concurrently without blocking the event loop", async () => {
     const sleeper = () =>
-      runCommand(null, process.execPath, ["-e", "setTimeout(() => {}, 400);"], { timeout: 10_000 });
+      runCommand(null, process.execPath, ["-e", "setTimeout(() => {}, 700);"], { timeout: 10_000 });
     const started = Date.now();
     const [a, b] = await Promise.all([sleeper(), sleeper()]);
     const elapsed = Date.now() - started;
     assert.equal(a.status, 0);
     assert.equal(b.status, 0);
-    // Two 400ms commands run serially (spawnSync behavior) would take >= 800ms.
-    assert.ok(elapsed < 780, `expected parallel execution, took ${elapsed}ms`);
+    // Two 700ms commands run serially (spawnSync behavior) would take >= 1400ms.
+    // Keep enough headroom for a busy full-suite Windows runner while still
+    // rejecting serial execution.
+    assert.ok(elapsed < 1200, `expected parallel execution, took ${elapsed}ms`);
   });
 
   it("kills the child and reports ETIMEDOUT when the timeout elapses", async () => {

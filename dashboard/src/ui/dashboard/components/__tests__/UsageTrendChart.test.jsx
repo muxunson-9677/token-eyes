@@ -1,18 +1,24 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 // jsdom doesn't ship ResizeObserver — install a no-op stub before the
 // component module evaluates so its useEffect never throws. observe() is a
 // no-op so containerWidth stays 0 and the chart falls back to its 640px
 // intrinsic width, which is plenty for these assertions.
+const resizeObservers = [];
+
 class ResizeObserverStub {
   constructor(callback) {
     this.callback = callback;
+    resizeObservers.push(this);
   }
   observe() {}
   unobserve() {}
   disconnect() {}
+  resize(width, height) {
+    this.callback([{ contentRect: { width, height } }]);
+  }
 }
 globalThis.ResizeObserver = ResizeObserverStub;
 
@@ -64,8 +70,7 @@ import {
 
 // 3-bucket single-source fixture. input_tokens dominates so we can verify the
 // left Y-axis rescales when Input is hidden. Values are chosen so the tooltip
-// output (formatTooltipToken = full integer) doesn't collide with Y-axis tick
-// labels (formatTokenAxis = compact "1k"/"2k" form).
+// output and axis labels both use the shared Chinese token formatter.
 function makeSeries() {
   return [
     {
@@ -96,10 +101,10 @@ describe("pure helpers", () => {
       expect(formatTokenAxis(-5)).toBe("0");
       expect(formatTokenAxis(NaN)).toBe("0");
     });
-    it("formats values with k/M/B suffixes", () => {
-      expect(formatTokenAxis(1500)).toBe("1.5k");
-      expect(formatTokenAxis(2_500_000)).toBe("2.5M");
-      expect(formatTokenAxis(3_000_000_000)).toBe("3B");
+    it("formats values with Chinese units", () => {
+      expect(formatTokenAxis(1500)).toBe("1,500");
+      expect(formatTokenAxis(2_500_000)).toBe("250万");
+      expect(formatTokenAxis(3_000_000_000)).toBe("30亿");
     });
   });
 
@@ -117,8 +122,8 @@ describe("pure helpers", () => {
     it("returns '0' for non-positive input", () => {
       expect(formatTooltipToken(0)).toBe("0");
     });
-    it("rounds to integer with locale separators", () => {
-      expect(formatTooltipToken(1234.5)).toBe("1,235");
+    it("uses the Chinese token formatter", () => {
+      expect(formatTooltipToken(12_345_000)).toBe("1.23千万");
     });
   });
 
@@ -236,6 +241,19 @@ describe("pure helpers", () => {
 });
 
 describe("UsageTrendChart", () => {
+  it("grows the plot SVG to the measured available height", () => {
+    resizeObservers.length = 0;
+    const { container } = render(<UsageTrendChart series={makeSeries()} />);
+    const plot = screen.getByTestId("usage-trend-plot");
+    expect(plot).toHaveClass("flex-1");
+
+    act(() => resizeObservers.at(-1).resize(900, 620));
+
+    const svg = container.querySelector('svg[role="img"]');
+    expect(svg).toHaveAttribute("width", "900");
+    expect(svg).toHaveAttribute("height", "620");
+  });
+
   it("renders the title and 5 legend buttons with aria-pressed=true", () => {
     render(<UsageTrendChart series={makeSeries()} />);
     expect(screen.getByText("Usage Trend")).toBeInTheDocument();
@@ -268,20 +286,19 @@ describe("UsageTrendChart", () => {
   });
 
   it("auto-rescales the left Y axis when the dominant token series is hidden", () => {
-    // Initial max tokens = 2000 (input bucket 1) → niceAxisMax(2000) = 2000
-    //   → top tick label "2k".
+    // Initial max tokens = 2000 (input bucket 1) → niceAxisMax(2000) = 2000.
     // After hiding Input, max visible tokens = 800 (output bucket 1) →
-    //   niceAxisMax(800) = 1000 → top tick label "1k".
+    //   niceAxisMax(800) = 1000.
     const { container } = render(<UsageTrendChart series={makeSeries()} />);
     const svg = container.querySelector('svg[role="img"]');
     const yTexts = () =>
       Array.from(svg.querySelectorAll("text")).map((t) => t.textContent);
 
-    expect(yTexts()).toContain("2k");
+    expect(yTexts()).toContain("2,000");
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Input visibility" }));
-    expect(yTexts()).toContain("1k");
-    expect(yTexts()).not.toContain("2k");
+    expect(yTexts()).toContain("1,000");
+    expect(yTexts()).not.toContain("2,000");
   });
 
   it("shows a tooltip with all visible dimensions on bucket hover", () => {
@@ -291,13 +308,12 @@ describe("UsageTrendChart", () => {
     fireEvent.mouseEnter(hitRect);
 
     // Bucket 0 values: input=1000, cacheCreation=200, cached=100, cost=1.5.
-    // formatTooltipToken → "1,000" / "200" / "100" (full integer, with comma
-    // for thousands). These don't collide with the compact Y-axis labels.
-    expect(screen.getByText("1,000")).toBeInTheDocument();
-    expect(screen.getByText("200")).toBeInTheDocument();
-    expect(screen.getByText("100")).toBeInTheDocument();
+    const tooltip = screen.getByTestId("usage-trend-tooltip");
+    expect(within(tooltip).getByText("1,000")).toBeInTheDocument();
+    expect(within(tooltip).getByText("200")).toBeInTheDocument();
+    expect(within(tooltip).getByText("100")).toBeInTheDocument();
     // Cost row uses 6 decimals — always unique to the tooltip.
-    expect(screen.getByText("$1.500000")).toBeInTheDocument();
+    expect(within(tooltip).getByText("$1.500000")).toBeInTheDocument();
   });
 
   it("renders loading state with copy text and no chart svg", () => {

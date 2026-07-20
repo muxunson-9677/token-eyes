@@ -12,6 +12,7 @@ const PROVIDER_CATALOG_FILES = {
   codex: "codex.catalog.json",
   claude: "claude.catalog.json",
   cursor: "cursor.catalog.json",
+  trae: "trae.catalog.json",
 };
 
 const CUSTOM_PROVIDER = {

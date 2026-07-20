@@ -1,21 +1,18 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/react";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { RuntimeErrorBanner } from "./components/RuntimeErrorBanner.jsx";
+import { AppBootSplash } from "./components/AppBootSplash.jsx";
 import { useLocale } from "./hooks/useLocale.js";
 import { ThemeProvider } from "./ui/foundation/ThemeProvider.jsx";
 import { useInsforgeAuth } from "./contexts/InsforgeAuthContext.jsx";
 import { LoginModalProvider } from "./contexts/LoginModalContext.jsx";
-import { LoginModal } from "./components/LoginModal.jsx";
 import { getBackendBaseUrl, getLeaderboardBaseUrl } from "./lib/config";
 import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
 import { clearDashboardUsageCachesForRealData } from "./lib/usage-cache";
 import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
 import { AppLayout } from "./ui/components/Sidebar.jsx";
-import { CommandPalette } from "./ui/dashboard/components/CommandPalette.jsx";
 import { ToastProvider } from "./ui/components/Toast.jsx";
 import { UsageFiltersProvider } from "./hooks/use-usage-filters";
 import { isTauriApp } from "./lib/native-bridge.js";
@@ -70,6 +67,9 @@ const SettingsBasicPage = lazy(() =>
 const SettingsCostPage = lazy(() =>
   import("./pages/SettingsPage.jsx").then((m) => ({ default: m.SettingsCostPage })),
 );
+const TokenPlanEditorPage = lazy(() =>
+  import("./pages/TokenPlanEditorPage.jsx").then((m) => ({ default: m.TokenPlanEditorPage })),
+);
 const SpendUsagePage = lazy(() =>
   import("./pages/SpendPage.jsx").then((m) => ({ default: m.SpendUsagePage })),
 );
@@ -81,6 +81,18 @@ const SkillsPage = lazy(() =>
 );
 const WidgetsPage = lazy(() =>
   import("./pages/WidgetsPage.jsx").then((m) => ({ default: m.WidgetsPage })),
+);
+const LoginModal = lazy(() =>
+  import("./components/LoginModal.jsx").then((m) => ({ default: m.LoginModal })),
+);
+const CommandPalette = lazy(() =>
+  import("./ui/dashboard/components/CommandPalette.jsx").then((m) => ({ default: m.CommandPalette })),
+);
+const Analytics = lazy(() =>
+  import("@vercel/analytics/react").then((m) => ({ default: m.Analytics })),
+);
+const SpeedInsights = lazy(() =>
+  import("@vercel/speed-insights/react").then((m) => ({ default: m.SpeedInsights })),
 );
 
 export default function App() {
@@ -212,9 +224,12 @@ export default function App() {
   // /spend and /settings paths redirect to their default children below.
   const isSettingsBasicPath = normalizedPath === "/settings/basic";
   const isSettingsCostPath = normalizedPath === "/settings/cost";
+  const isTokenPlanNewPath = normalizedPath === "/settings/cost/token-plans/new";
+  const isTokenPlanEditPath = /^\/settings\/cost\/token-plans\/[^/]+\/edit$/.test(normalizedPath);
+  const isTokenPlanEditorPath = isTokenPlanNewPath || isTokenPlanEditPath;
   const isSettingsRootPath = normalizedPath === "/settings";
   const isSettingsSubPath =
-    isSettingsBasicPath || isSettingsCostPath || isSettingsRootPath;
+    isSettingsBasicPath || isSettingsCostPath || isTokenPlanEditorPath || isSettingsRootPath;
   const isSpendUsagePath = normalizedPath === "/spend/usage";
   const isSpendCostPath = normalizedPath === "/spend/cost";
   const isSpendRootPath = normalizedPath === "/spend";
@@ -250,7 +265,12 @@ export default function App() {
     return <Navigate to="/settings/basic" replace />;
   }
   if (isTauriMode && (normalizedPath === "/" || normalizedPath === "/index.html")) {
-    return <Navigate to="/settings/basic" replace />;
+    return (
+      <>
+        <AppBootSplash />
+        <Navigate to="/settings/basic" replace />
+      </>
+    );
   }
 
   let PageComponent = DashboardPage;
@@ -264,6 +284,8 @@ export default function App() {
     PageComponent = LimitsPage;
   } else if (isSettingsBasicPath) {
     PageComponent = SettingsBasicPage;
+  } else if (isTokenPlanEditorPath) {
+    PageComponent = TokenPlanEditorPage;
   } else if (isSettingsCostPath) {
     PageComponent = SettingsCostPage;
   } else if (isSpendUsagePath) {
@@ -284,7 +306,8 @@ export default function App() {
     (normalizedPath === "/dashboard" ||
       normalizedPath === "/" ||
       isSettingsSubPath ||
-      isSpendSubPath);
+      isSpendSubPath ||
+      (isLocalMode && isPublicLeaderboardPath));
 
   // Public-host gating: on www.tokentracker.cc et al. there is no local
   // CLI :7680 to fall back to, so dashboard / settings / etc. require a
@@ -360,11 +383,13 @@ export default function App() {
         <ToastProvider>
           <LoginModalProvider>
             <UsageFiltersProvider>
-              <Suspense fallback={null}>{content}</Suspense>
-              {showSidebar ? <CommandPalette /> : null}
-              <LoginModal />
-              {!isLocalMode && <Analytics />}
-              {!isLocalMode && <SpeedInsights />}
+              <Suspense fallback={<AppBootSplash />}>{content}</Suspense>
+              <Suspense fallback={null}>
+                {showSidebar ? <CommandPalette /> : null}
+                <LoginModal />
+                {!isLocalMode && <Analytics />}
+                {!isLocalMode && <SpeedInsights />}
+              </Suspense>
             </UsageFiltersProvider>
           </LoginModalProvider>
         </ToastProvider>

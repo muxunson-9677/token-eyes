@@ -158,6 +158,29 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
     });
 }
 
+export function appendConnectedTokenOnlySources(fleetData: any[], usageLimits: any) {
+  const result = Array.isArray(fleetData) ? fleetData.slice() : [];
+  const existing = new Set(result.map((entry) => String(entry?.source || "").toLowerCase()));
+  for (const source of ["trae", "codebuddy", "opencode"]) {
+    if (existing.has(source)) continue;
+    const state = usageLimits?.[source];
+    if (!state?.configured || state.collection_status !== "connected_no_precise_tokens") continue;
+    result.push({
+      source,
+      label: source === "codebuddy" ? "CODEBUDDY" : source.toUpperCase(),
+      totalPercent: "0.0",
+      usd: 0,
+      usage: 0,
+      models: [],
+      billingMode: "unknown",
+      billingModes: [],
+      collectionStatus: state.collection_status,
+      dataPath: state.data_path || null,
+    });
+  }
+  return result;
+}
+
 /**
  * Filter a fleet dataset by billing_mode, recomputing per-source and overall
  * totals/percentages so the displayed numbers stay self-consistent under the
@@ -272,4 +295,37 @@ export function buildTopModels(modelBreakdown: any, { limit = 3, copyFn }: AnyRe
       return String(a.name).localeCompare(String(b.name));
     })
     .slice(0, normalizedLimit);
+}
+
+export function buildModelUsageDistribution(
+  modelBreakdown: any,
+  { limit = 5, otherLabel = "Other", copyFn }: AnyRecord = {},
+) {
+  const allModels = buildTopModels(modelBreakdown, {
+    limit: Number.MAX_SAFE_INTEGER,
+    copyFn,
+  });
+  const totalTokens = allModels.reduce((sum: number, model: AnyRecord) => sum + (Number(model.tokens) || 0), 0);
+  if (totalTokens <= 0) return { totalTokens: 0, rows: [] };
+
+  const normalizedLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 5;
+  const visible = allModels.slice(0, normalizedLimit);
+  const overflowTokens = allModels
+    .slice(normalizedLimit)
+    .reduce((sum: number, model: AnyRecord) => sum + (Number(model.tokens) || 0), 0);
+  const rows: AnyRecord[] = visible.map((model: AnyRecord) => ({
+    ...model,
+    percent: Number(((Number(model.tokens) / totalTokens) * 100).toFixed(1)),
+  }));
+
+  if (overflowTokens > 0) {
+    rows.push({
+      id: "other-models",
+      name: otherLabel,
+      tokens: overflowTokens,
+      percent: Number(((overflowTokens / totalTokens) * 100).toFixed(1)),
+    });
+  }
+
+  return { totalTokens, rows };
 }

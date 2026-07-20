@@ -18,6 +18,9 @@ import {
   deleteProviderApiSecret,
   testProviderApiConfig,
   refreshProviderApiBalance,
+  createConsoleSession,
+  deleteConsoleSession,
+  verifyConsoleSession,
 } from "../../lib/api";
 
 // 03-ia-api-balance: ProviderApiConfigSection tests.
@@ -42,6 +45,18 @@ vi.mock("../../lib/api", () => ({
   deleteProviderApiSecret: vi.fn(),
   testProviderApiConfig: vi.fn(),
   refreshProviderApiBalance: vi.fn(),
+  createConsoleSession: vi.fn(),
+  deleteConsoleSession: vi.fn(),
+  verifyConsoleSession: vi.fn(),
+  openXiaomiMimoConsoleLogin: vi.fn(),
+  verifyXiaomiMimoConsoleSession: vi.fn(),
+  deleteXiaomiMimoConsoleSession: vi.fn(),
+  openGlmConsoleLogin: vi.fn(),
+  verifyGlmConsoleSession: vi.fn(),
+  deleteGlmConsoleSession: vi.fn(),
+  openMiniMaxConsoleLogin: vi.fn(),
+  verifyMiniMaxConsoleSession: vi.fn(),
+  deleteMiniMaxConsoleSession: vi.fn(),
 }));
 
 vi.mock("../../lib/copy", () => ({
@@ -90,6 +105,9 @@ beforeEach(() => {
   deleteProviderApiSecret.mockResolvedValue({ ok: true });
   testProviderApiConfig.mockResolvedValue({ ok: true, data: { balance: null } });
   refreshProviderApiBalance.mockResolvedValue({ ok: true, data: { balance: null } });
+  createConsoleSession.mockResolvedValue({ session: { id: "console-session" }, sessions: [] });
+  deleteConsoleSession.mockResolvedValue({ ok: true });
+  verifyConsoleSession.mockResolvedValue({ ok: true, session: { id: "console-session", status: "connected" } });
 });
 
 // Helper: open the add form.
@@ -110,6 +128,7 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
       "moonshot",
       "aliyun_bss",
       "volcengine_billing",
+      "xiaomi_mimo",
       "minimax",
       "glm",
       "custom",
@@ -128,10 +147,10 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
       currencyValue: "CNY",
     });
     expect(getProviderFinancialCapabilities({ providerId: "minimax" })).toEqual({
-      balance: "unsupported",
+      balance: "supported",
       monthSpend: "unsupported",
       lifetimeSpend: "unsupported",
-      tokenQuota: "token_plan",
+      tokenQuota: "unsupported",
     });
   });
 
@@ -139,6 +158,7 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     render(<ProviderApiConfigSection />);
     expect(await screen.findByText("settings.cost.provider_api.section")).toBeInTheDocument();
     expect(screen.getByText("settings.cost.provider_api.empty")).toBeInTheDocument();
+    expect(screen.getByTestId("provider-api-config-section")).toHaveClass("rounded-2xl", "shadow-oai-md", "bg-white/95");
   });
 
   it("renders existing configs from getProviderApiConfigs", async () => {
@@ -149,6 +169,76 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     render(<ProviderApiConfigSection />);
     expect(await screen.findByText("OpenAI 主账户")).toBeInTheDocument();
     expect(screen.getByText("openai")).toBeInTheDocument();
+  });
+
+  it("renders every provider as a fixed two-line row and keeps test, refresh, edit, delete", async () => {
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [BASE_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: { balances: [{
+        configId: "cfg-1",
+        status: "synced",
+        balance: 46.69,
+        currency: "CNY",
+        lastSyncedAt: "2026-07-14T13:10:22.182Z",
+      }] },
+    });
+    render(<ProviderApiConfigSection />);
+
+    const row = await screen.findByTestId("provider-api-row-cfg-1");
+    expect(row).toHaveAttribute("data-layout", "compact-two-line");
+    expect(screen.queryByRole("button", { name: "settings.cost.provider_api.details" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.test" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.refresh" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.edit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.delete" })).toBeInTheDocument();
+    expect(screen.getByTestId("provider-api-card-balance-cfg-1")).toHaveTextContent("CNY 46.69");
+  });
+
+  it("opens a provider-specific copyable configuration guide without secrets", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    getProviderApiConfigs.mockResolvedValue({
+      ok: true,
+      data: { configs: [{ ...BASE_CONFIG, providerId: "deepseek", label: "DeepSeek", requestUrl: "https://api.deepseek.com/user/balance" }] },
+    });
+    render(<ProviderApiConfigSection />);
+
+    await user.click(await screen.findByRole("button", { name: "settings.cost.provider_api.guide" }));
+    expect(screen.getByRole("dialog", { name: "settings.cost.provider_api.guide DeepSeek" })).toHaveTextContent("https://api.deepseek.com/user/balance");
+    expect(screen.getByRole("dialog")).not.toHaveTextContent(TEST_SECRET);
+    await user.click(screen.getByRole("button", { name: "settings.cost.provider_api.guide_copy" }));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("balance_infos[*].total_balance"));
+  });
+
+  it("does not show a stale response-format error beside a currently synced Aliyun balance", async () => {
+    const aliyun = {
+      ...BASE_CONFIG,
+      providerId: "aliyun_bss",
+      label: "阿里云百炼",
+      requestUrl: "https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14",
+      authType: "aliyun_rpc",
+      balancePath: "Data.AvailableAmount",
+      currencyPath: "Data.Currency",
+    };
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [aliyun] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: { balances: [{ configId: "cfg-1", status: "synced", balance: 46.69, currency: "CNY" }] },
+    });
+    testProviderApiConfig.mockResolvedValue({
+      ok: true,
+      data: { balance: { configId: "cfg-1", status: "error", errorCode: "provider_response_invalid" } },
+    });
+    const user = userEvent.setup();
+    render(<ProviderApiConfigSection />);
+    await screen.findByText("阿里云百炼");
+    await user.click(screen.getByRole("button", { name: "settings.cost.provider_api.test" }));
+
+    await waitFor(() => expect(testProviderApiConfig).toHaveBeenCalledWith("cfg-1"));
+    expect(screen.getByTestId("provider-api-card-balance-cfg-1")).toHaveTextContent("CNY 46.69");
+    expect(screen.queryByText("settings.cost.provider_api.test_invalid")).not.toBeInTheDocument();
   });
 
   it("add form: API Key input is type=password and not prefilled", async () => {
@@ -367,7 +457,7 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(saveProviderApiSecret).not.toHaveBeenCalled();
   });
 
-  it("MiniMax mode clearly reports that automatic balance lookup is unavailable", async () => {
+  it("MiniMax mode uses official-console authorization without asking for an API key", async () => {
     const user = userEvent.setup();
     await openAddForm(user);
 
@@ -378,8 +468,8 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
       );
     });
 
-    expect(screen.getByText("settings.cost.provider_api.capability.minimax_balance_unsupported")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "settings.cost.provider_api.save" })).toBeDisabled();
+    expect(screen.getByText("settings.cost.provider_api.capability.official_console_hint")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.save" })).toBeEnabled();
     expect(document.querySelector("input[type='password']")).toBeNull();
   });
 
@@ -400,7 +490,7 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(screen.getByText("settings.cost.provider_api.form.balance_path")).toBeInTheDocument();
   });
 
-  it("GLM mode explains the unsupported public financial capability and never saves the key", async () => {
+  it("GLM mode uses official-console authorization and never saves an API key", async () => {
     const user = userEvent.setup();
     await openAddForm(user);
 
@@ -409,9 +499,8 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
       await user.selectOptions(modeSelect, "glm");
     });
 
-    expect(screen.getByText("settings.cost.provider_api.capability.glm_finance_unsupported")).toBeInTheDocument();
-    expect(screen.getByText("settings.cost.provider_api.capability.token_plan_settings")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "settings.cost.provider_api.save" })).toBeDisabled();
+    expect(screen.getByText("settings.cost.provider_api.capability.official_console_hint")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.save" })).toBeEnabled();
     expect(document.querySelector("input[type='password']")).toBeNull();
     expect(saveProviderApiConfig).not.toHaveBeenCalled();
     expect(saveProviderApiSecret).not.toHaveBeenCalled();

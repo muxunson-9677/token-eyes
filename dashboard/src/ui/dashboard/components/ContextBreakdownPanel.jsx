@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight, Info } from "lucide-react";
 import { copy } from "../../../lib/copy";
-import { formatCompactNumber } from "../../../lib/format";
+import { formatChineseTokenCount, formatCompactNumber } from "../../../lib/format";
 import { getUsageCategoryBreakdown } from "../../../lib/api";
 import { getBrowserTimeZone, getBrowserTimeZoneOffsetMinutes } from "../../../lib/timezone";
 
@@ -205,8 +205,7 @@ function categoryLabel(key) {
 }
 
 function formatTokens(n) {
-  if (!Number.isFinite(Number(n)) || Number(n) <= 0) return "0";
-  return formatCompactNumber(Number(n), { decimals: 1 });
+  return formatChineseTokenCount(n);
 }
 
 function formatToolDisplayName(name) {

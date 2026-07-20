@@ -1,0 +1,26 @@
+{
+  "provider_id": "trae",
+  "provider_name": "Trae CN",
+  "official_site": "https://www.trae.cn/",
+  "catalog_version": "2026-07-18",
+  "plans": [
+    {
+      "plan_id": "trae_cn_pro",
+      "display_name": "Trae CN Pro",
+      "quota": {
+        "kind": "subscription",
+        "total": 0,
+        "unit": "requests",
+        "display": "官方账户订阅额度"
+      },
+      "expires": { "kind": "provider_reported" },
+      "official_evidence_url": "https://www.trae.cn/"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "official_oauth_pkce",
+    "fields_available": ["subscription"],
+    "notes": "使用 Trae CN 官方 OAuth 授权并查询官方订阅额度。"
+  }
+}

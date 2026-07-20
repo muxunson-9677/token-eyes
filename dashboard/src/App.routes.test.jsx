@@ -19,6 +19,7 @@ const TEXT = {
   spendCost: "Spend cost page",
   settingsBasic: "Settings basic page",
   settingsCost: "Settings cost page",
+  tokenPlanEditor: "Token plan editor page",
   leaderboard: "Leaderboard page",
   leaderboardRules: "Leaderboard rules page",
   leaderboardProfile: "Leaderboard profile page",
@@ -146,6 +147,9 @@ vi.mock("./pages/SettingsPage.jsx", () => ({
   SettingsBasicPage: () => <main>{TEXT.settingsBasic}</main>,
   SettingsCostPage: () => <main>{TEXT.settingsCost}</main>,
 }));
+vi.mock("./pages/TokenPlanEditorPage.jsx", () => ({
+  TokenPlanEditorPage: () => <main>{TEXT.tokenPlanEditor}</main>,
+}));
 
 function renderApp(initialPath = "/dashboard") {
   window.history.pushState({}, "", initialPath);
@@ -192,6 +196,18 @@ describe("App routes (v2.0 IA refactor)", () => {
     expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
   });
 
+  it("/settings/cost/token-plans/new renders the child editor with sidebar", async () => {
+    renderApp("/settings/cost/token-plans/new");
+    expect(await screen.findByText(TEXT.tokenPlanEditor)).toBeInTheDocument();
+    expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+  });
+
+  it("/settings/cost/token-plans/:id/edit renders the child editor with sidebar", async () => {
+    renderApp("/settings/cost/token-plans/plan-1/edit");
+    expect(await screen.findByText(TEXT.tokenPlanEditor)).toBeInTheDocument();
+    expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+  });
+
   it("/spend redirects to /spend/usage (replace)", async () => {
     renderApp("/spend");
     expect(await screen.findByText(TEXT.spendUsage)).toBeInTheDocument();
@@ -212,6 +228,7 @@ describe("App routes (v2.0 IA refactor)", () => {
     expect(await screen.findByText(TEXT.leaderboard)).toBeInTheDocument();
     expect(screen.queryByText(TEXT.login)).not.toBeInTheDocument();
     expect(screen.queryByText(TEXT.dashboard)).not.toBeInTheDocument();
+    expect(screen.queryByText(TEXT.sidebarShell)).not.toBeInTheDocument();
   });
 
   it("/leaderboard/rules remains publicly reachable", async () => {
@@ -266,6 +283,36 @@ describe("App Tauri root entry", () => {
     // (the mocked module re-resolves asynchronously). Use findByText to
     // wait for the redirected page content to appear.
     expect(await screen.findByText(TEXT.settingsBasic)).toBeInTheDocument();
+    vi.doUnmock("./lib/native-bridge.js");
+    vi.resetModules();
+  });
+
+  it("Tauri leaderboard and rules routes render inside the sidebar shell", async () => {
+    vi.doMock("./lib/native-bridge.js", () => ({
+      isTauriApp: () => true,
+      isNativeApp: () => true,
+      isNativeEmbed: () => false,
+      isNativeWindowsApp: () => false,
+    }));
+    vi.resetModules();
+    const { default: AppFresh } = await import("./App.jsx");
+
+    const leaderboardRender = render(
+      <MemoryRouter initialEntries={["/leaderboard"]}>
+        <AppFresh />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(TEXT.leaderboard)).toBeInTheDocument();
+    expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+    leaderboardRender.unmount();
+
+    render(
+      <MemoryRouter initialEntries={["/leaderboard/rules"]}>
+        <AppFresh />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(TEXT.leaderboardRules)).toBeInTheDocument();
+    expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
     vi.doUnmock("./lib/native-bridge.js");
     vi.resetModules();
   });

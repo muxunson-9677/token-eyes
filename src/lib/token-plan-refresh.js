@@ -178,6 +178,10 @@ function normalizeDetectionConfig(config, fallback) {
       provider_home_url: String(oa.provider_home_url || "").trim(),
       account_binding_id: String(oa.account_binding_id || "").trim(),
       api_key_ref: isValidApiKeyRef(apiKeyRef) ? apiKeyRef : "",
+      ...(oa.session_ref ? { session_ref: String(oa.session_ref).trim().slice(0, 200) } : {}),
+      ...(oa.account_id ? { account_id: String(oa.account_id).trim().slice(0, 200) } : {}),
+      ...(oa.display_name ? { display_name: String(oa.display_name).trim().slice(0, 200) } : {}),
+      ...(oa.plan_name ? { plan_name: String(oa.plan_name).trim().slice(0, 100) } : {}),
       ...(claudeAccountMode ? { claude_account_mode: claudeAccountMode } : {}),
     };
   }
@@ -411,23 +415,30 @@ function getProviderAdapterForPlan(plan) {
 }
 
 function normalizeQuotaWindows(input, fallback = []) {
-  const allowedKinds = new Set(["rolling_5_hour", "rolling_weekly"]);
+  const allowedKinds = new Set(["rolling_5_hour", "rolling_weekly", "total", "auto_composer", "api", "fast_request"]);
   const source = Array.isArray(input) ? input : (Array.isArray(fallback) ? fallback : []);
-  const toSafeInteger = (value) => {
+  const toSafeNumber = (value, allowFraction) => {
     const number = Number(value);
-    return Number.isSafeInteger(number) && number >= 0 ? number : 0;
+    if (!Number.isFinite(number) || number < 0) return 0;
+    return allowFraction || Number.isSafeInteger(number) ? number : 0;
   };
   return source
     .filter((item) => item && allowedKinds.has(item.kind))
-    .map((item) => ({
-      kind: item.kind,
-      unit: "tokens",
-      total: toSafeInteger(item.total),
-      used: toSafeInteger(item.used),
-      remaining: toSafeInteger(item.remaining),
-      percentage: Math.max(0, Math.min(100, Number(item.percentage) || 0)),
-      resets_at: String(item.resets_at || ""),
-    }));
+    .map((item) => {
+      const unit = item.unit === "percent"
+        ? "percent"
+        : (item.unit === "requests" ? "requests" : "tokens");
+      const allowFraction = unit === "percent";
+      return {
+        kind: item.kind,
+        unit,
+        total: toSafeNumber(item.total, allowFraction),
+        used: toSafeNumber(item.used, allowFraction),
+        remaining: toSafeNumber(item.remaining, allowFraction),
+        percentage: Math.max(0, Math.min(100, Number(item.percentage) || 0)),
+        resets_at: String(item.resets_at || ""),
+      };
+    });
 }
 
 const { getPlanById } = require("./token-plan-catalog");
@@ -612,6 +623,24 @@ async function refreshPlan(plan, options = {}) {
     plan.detection_method,
     mapRefreshMethodToDetectionMethod(method),
   );
+
+  const providerId = String(plan.provider_id || plan.source || "").trim().toLowerCase();
+  const nativeSessionRef = String(
+    plan.detection_config?.official_account?.session_ref || "",
+  ).trim();
+  if (detectionMethod === "official_account" && providerId === "trae" && nativeSessionRef) {
+    // TRAE quota synchronization runs in the desktop process because its OAuth
+    // tokens are isolated there. The Node scheduler must not replace a valid
+    // native snapshot with PROVIDER_UNSUPPORTED between desktop syncs.
+    return {
+      status: "deferred_native",
+      error: "",
+      record: {
+        ...plan,
+        next_refresh_at: computeNextRefreshAt(plan, now),
+      },
+    };
+  }
 
   if (method === "manual" && detectionMethod === "not_configured") {
     // 手动方法 + 未配置检测 = 不自动刷新，保留手动录入；视为 no-op 成功。

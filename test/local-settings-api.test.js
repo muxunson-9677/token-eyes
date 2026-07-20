@@ -96,9 +96,12 @@ test("local settings API saves machine-only data directory and pricing overrides
       codex: "",
       cursor: "",
       trae: "",
+      gemini: "",
       opencode: "",
       openclaw: "",
       hermes: "",
+      codebuddy: "",
+      antigravity: "",
     });
     assert.deepEqual(readJsonResponse(initial).agentDefaultPricing, {
       claude: { inputUsdPer1M: 0, outputUsdPer1M: 0 },
@@ -106,6 +109,7 @@ test("local settings API saves machine-only data directory and pricing overrides
       hermes: { inputUsdPer1M: 0, outputUsdPer1M: 0 },
     });
     assert.deepEqual(readJsonResponse(initial).pricingRules, []);
+    assert.deepEqual(readJsonResponse(initial).dataDirectoryOrder, []);
 
     const auth = await call(handler, "/api/local-auth");
     const token = readJsonResponse(auth).token;
@@ -123,8 +127,11 @@ test("local settings API saves machine-only data directory and pricing overrides
       hermes: "\\\\wsl.localhost\\Ubuntu\\home\\agent\\.hermes",
       cursor: "C:\\Users\\admin\\AppData\\Roaming\\Cursor",
       trae: "C:\\Users\\admin\\AppData\\Roaming\\Trae",
+      gemini: "C:\\Users\\admin\\.gemini",
       opencode: "C:\\Users\\admin\\AppData\\Local\\opencode",
       openclaw: "D:\\OpenClaw",
+      codebuddy: "C:\\Users\\admin\\.codebuddy",
+      antigravity: "C:\\Users\\admin\\.gemini",
     };
     const saved = await call(handler, "/functions/tokentracker-local-settings", {
       method: "POST",
@@ -134,6 +141,14 @@ test("local settings API saves machine-only data directory and pricing overrides
 
     assert.equal(saved.statusCode, 200);
     assert.deepEqual(readJsonResponse(saved).dataDirectories, dataDirectories);
+
+    const dataDirectoryOrder = ["trae", "codebuddy", "codex", "claude"];
+    const orderSaved = await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ dataDirectoryOrder }),
+    });
+    assert.deepEqual(readJsonResponse(orderSaved).dataDirectoryOrder, dataDirectoryOrder);
 
     const agentDefaultPricing = {
       claude: { inputUsdPer1M: 1.25, outputUsdPer1M: 5 },
@@ -152,6 +167,7 @@ test("local settings API saves machine-only data directory and pricing overrides
 
     const config = JSON.parse(await fs.readFile(path.join(trackerDir, "config.json"), "utf8"));
     assert.deepEqual(config.dataDirectories, dataDirectories);
+    assert.deepEqual(config.dataDirectoryOrder, dataDirectoryOrder);
     assert.deepEqual(config.agentDefaultPricing, agentDefaultPricing);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });

@@ -1,13 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, createHashRouter, RouterProvider } from "react-router-dom";
-import { InsforgeAuthProvider } from "./contexts/InsforgeAuthContext.jsx";
-import { AccountViewProvider } from "./contexts/AccountViewContext.jsx";
-import { LocaleProvider } from "./ui/foundation/LocaleProvider.jsx";
-import { CurrencyProvider } from "./ui/foundation/CurrencyProvider.jsx";
 import { applyDocumentIdentity } from "./lib/app-identity.js";
-import { shouldUseHashRouter } from "./lib/router-mode.js";
-import App from "./App.jsx";
+import { AppBootSplash } from "./components/AppBootSplash.jsx";
 import "@fontsource/geist-mono/400.css";
 import "@fontsource/geist-mono/500.css";
 import "@fontsource/geist-mono/700.css";
@@ -15,21 +9,20 @@ import "@fontsource/geist-mono/900.css";
 import "./styles.css";
 
 applyDocumentIdentity();
+performance.mark?.("token-eyes-react-start");
+document.documentElement.dataset.tokenEyesBoot = "react-starting";
 
-const useHashRouter = shouldUseHashRouter(import.meta.env.VITE_TOKENTRACKER_HASH_ROUTER);
-const createRouter = useHashRouter ? createHashRouter : createBrowserRouter;
-const router = createRouter([{ path: "*", element: <App /> }]);
+const root = createRoot(document.getElementById("root"));
+root.render(<AppBootSplash />);
 
-createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <LocaleProvider>
-      <CurrencyProvider>
-        <InsforgeAuthProvider>
-          <AccountViewProvider>
-            <RouterProvider router={router} />
-          </AccountViewProvider>
-        </InsforgeAuthProvider>
-      </CurrencyProvider>
-    </LocaleProvider>
-  </React.StrictMode>,
-);
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    document.documentElement.dataset.tokenEyesBoot = "interactive";
+    performance.mark?.("token-eyes-interactive");
+    import("./AppRuntime.jsx")
+      .then(({ AppRuntime }) => root.render(<AppRuntime />))
+      .catch((error) => {
+        console.error("[Token Eyes] application runtime failed to load", error);
+      });
+  });
+});

@@ -41,6 +41,174 @@ async function call(handler, pathName, options) {
   return res;
 }
 
+test("Cursor native live snapshot persists fractional metrics and is not scheduled for Node fallback refresh", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-cursor-native-live-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const snapshot = {
+      source: "cursor",
+      provider_id: "cursor",
+      plan_id: "cursor_pro",
+      plan_label: "Pro",
+      quota_kind: "rolling_window",
+      quota_unit: "percent",
+      total_quota: 100,
+      used_quota: 33.52173913043478,
+      remaining_quota: 66.47826086956522,
+      refresh_enabled: true,
+      refresh_method: "official_api",
+      detection_method: "official_account",
+      sync_status: "success",
+      last_synced_at: "2026-07-20T00:01:56.714Z",
+      provider_reported_at: "2026-07-20T00:01:56.714Z",
+      detection_config: {
+        official_account: {
+          provider_home_url: "https://www.cursor.com/settings",
+          account_binding_id: "cursor-session-id",
+          session_ref: "token-plan/cursor/session/cursor-one",
+          account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+          display_name: "eve***@hotmail.com",
+          plan_name: "pro",
+        },
+      },
+      quota_windows: [
+        { kind: "total", unit: "percent", total: 100, used: 33.52173913043478, remaining: 66.47826086956522, percentage: 33.52173913043478, resets_at: "2026-08-06T14:31:29.000Z" },
+        { kind: "auto_composer", unit: "percent", total: 100, used: 27.82, remaining: 72.18, percentage: 27.82, resets_at: "2026-08-06T14:31:29.000Z" },
+        { kind: "api", unit: "percent", total: 100, used: 71.53333333333333, remaining: 28.46666666666667, percentage: 71.53333333333333, resets_at: "2026-08-06T14:31:29.000Z" },
+      ],
+    };
+
+    const response = await call(handler, "/functions/tokentracker-token-plans", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(snapshot),
+    });
+    const record = readJsonResponse(response).record;
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(record.total_quota, 100);
+    assert.equal(record.used_quota, 33.52173913043478);
+    assert.equal(record.remaining_quota, 66.47826086956522);
+    assert.equal(record.refresh_enabled, false);
+    assert.equal(record.sync_status, "success");
+    assert.equal(record.detection_config.official_account.account_id, snapshot.detection_config.official_account.account_id);
+    assert.equal(record.detection_config.official_account.display_name, "eve***@hotmail.com");
+    assert.equal(record.detection_config.official_account.plan_name, "pro");
+    assert.deepEqual(record.quota_windows.map((window) => window.kind), ["total", "auto_composer", "api"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("console session API accepts TRAE official account bindings", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-trae-console-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    const response = await call(handler, "/functions/tokentracker-token-plan-console-sessions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        provider_id: "trae",
+        auth_kind: "official_console_session",
+        display_name: "TRAE CN",
+        session_ref: "token-plan/trae/session/account-one",
+      }),
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(readJsonResponse(response).session.provider_id, "trae");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("TRAE live request quota survives save and subsequent reads", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-trae-live-quota-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const snapshot = {
+      source: "trae",
+      provider_id: "trae",
+      plan_id: "trae_cn_pro",
+      plan_label: "速通 Pro",
+      quota_kind: "subscription",
+      quota_unit: "requests",
+      total_quota: 100,
+      used_quota: 25,
+      remaining_quota: 75,
+      detection_method: "official_account",
+      sync_status: "success",
+      last_synced_at: "2026-07-20T01:23:22.565Z",
+      provider_reported_at: "2026-07-20T01:23:22Z",
+      detection_config: {
+        official_account: {
+          provider_home_url: "https://www.trae.cn/",
+          account_binding_id: "trae-session-id",
+          session_ref: "token-plan/trae/session/account-one",
+          account_id: "4267669818716825",
+          plan_name: "速通 Pro",
+        },
+      },
+      quota_windows: [{
+        kind: "fast_request",
+        unit: "requests",
+        total: 100,
+        used: 25,
+        remaining: 75,
+        percentage: 25,
+        resets_at: "2026-08-01T00:03:00Z",
+      }],
+    };
+
+    const saved = await call(handler, "/functions/tokentracker-token-plans", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(snapshot),
+    });
+    assert.equal(saved.statusCode, 200);
+
+    const listed = readJsonResponse(await call(handler, "/functions/tokentracker-token-plans"));
+    const record = listed.records[0];
+    assert.equal(record.total_quota, 100);
+    assert.equal(record.used_quota, 25);
+    assert.equal(record.remaining_quota, 75);
+    assert.deepEqual(record.quota_windows, snapshot.quota_windows);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("token plans API creates, lists, and updates manual local records", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-token-plans-"));
   try {
@@ -101,6 +269,110 @@ test("token plans API creates, lists, and updates manual local records", async (
   }
 });
 
+test("token plans API deletes only the requested local record", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-token-plans-delete-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    const ids = [];
+    for (const label of ["Keep", "Delete"]) {
+      const created = await call(handler, "/functions/tokentracker-token-plans", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ source: "claude", plan_label: label, total_quota: 100 }),
+      });
+      ids.push(readJsonResponse(created).record.id);
+    }
+
+    const deleted = await call(handler, "/functions/tokentracker-token-plans", {
+      method: "DELETE",
+      headers,
+      body: JSON.stringify({ id: ids[1] }),
+    });
+    assert.equal(deleted.statusCode, 200);
+    assert.deepEqual(readJsonResponse(deleted).records.map((record) => record.id), [ids[0]]);
+    assert.equal(readJsonResponse(deleted).records[0].display_order, 0);
+
+    const missing = await call(handler, "/functions/tokentracker-token-plans", {
+      method: "DELETE",
+      headers,
+      body: JSON.stringify({ id: ids[1] }),
+    });
+    assert.equal(missing.statusCode, 404);
+    const listed = await call(handler, "/functions/tokentracker-token-plans");
+    assert.deepEqual(readJsonResponse(listed).records.map((record) => record.id), [ids[0]]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("token plans order API persists an exact atomic order and rejects invalid ID sets", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-token-plans-order-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+
+    const ids = [];
+    for (const label of ["A", "B", "C"]) {
+      const response = await call(handler, "/functions/tokentracker-token-plans", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ source: "claude", plan_label: label, total_quota: 100 }),
+      });
+      ids.push(readJsonResponse(response).record.id);
+    }
+
+    const expected = [ids[2], ids[0], ids[1]];
+    const reordered = await call(handler, "/functions/tokentracker-token-plans-order", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ ids: expected }),
+    });
+    assert.equal(reordered.statusCode, 200);
+    assert.deepEqual(readJsonResponse(reordered).records.map((record) => record.id), expected);
+    assert.deepEqual(readJsonResponse(reordered).records.map((record) => record.display_order), [0, 1, 2]);
+
+    const invalidOrders = [
+      [ids[0], ids[0], ids[2]],
+      [ids[0], ids[1]],
+      [ids[0], ids[1], "unknown"],
+    ];
+    for (const invalid of invalidOrders) {
+      const rejected = await call(handler, "/functions/tokentracker-token-plans-order", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ ids: invalid }),
+      });
+      assert.equal(rejected.statusCode, 400);
+      const listed = await call(handler, "/functions/tokentracker-token-plans");
+      assert.deepEqual(readJsonResponse(listed).records.map((record) => record.id), expected);
+    }
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("token plans API persists F03 refresh fields", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-token-plans-"));
   try {
@@ -153,7 +425,7 @@ test("token plans API persists F03 refresh fields", async () => {
   }
 });
 
-test("token plans refresh endpoint writes failed status when no provider API", async () => {
+test("token plans refresh endpoint writes failed status when no provider adapter exists", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-token-plans-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
@@ -174,12 +446,12 @@ test("token plans refresh endpoint writes failed status when no provider API", a
       method: "POST",
       headers,
       body: JSON.stringify({
-        source: "codex",
-        plan_label: "ChatGPT Plus",
+        source: "hermes",
+        plan_label: "Hermes Custom",
         refresh_enabled: true,
         refresh_interval_minutes: 60,
         refresh_method: "official_api",
-        credential_ref: "codex_auth_json",
+        credential_ref: "",
       }),
     });
     const id = readJsonResponse(created).record.id;
@@ -736,14 +1008,14 @@ test("W03-R3A refresh failure only updates error status, does not clear last suc
       origin: "http://127.0.0.1:7680",
     };
 
-    // Create a non-xiaomi_mimo plan with official_api refresh method that will fail
-    // (xiaomi_mimo plans are forced to manual, so they'd always succeed as no-op)
+    // Create a plan whose source has no official quota adapter. Codex, Claude,
+    // and Cursor are intentionally excluded because they now have real adapters.
     const created = await call(handler, "/functions/tokentracker-token-plans", {
       method: "POST",
       headers,
       body: JSON.stringify({
-        source: "claude",
-        plan_label: "Claude Max",
+        source: "hermes",
+        plan_label: "Hermes Custom",
         total_quota: 11000000000,
         used_quota: 5000000000,
         remaining_quota: 6000000000,
@@ -751,7 +1023,7 @@ test("W03-R3A refresh failure only updates error status, does not clear last suc
         refresh_enabled: true,
         refresh_method: "official_api",
         refresh_interval_minutes: 60,
-        credential_ref: "claude_credentials_json",
+        credential_ref: "",
         detection_method: "official_account",
         sync_status: "success",
         last_synced_at: "2026-06-20T10:00:00Z",
@@ -760,7 +1032,7 @@ test("W03-R3A refresh failure only updates error status, does not clear last suc
     const record = readJsonResponse(created).record;
     assert.ok(record.id);
 
-    // Trigger a refresh that will fail (no provider adapter for claude source)
+    // Trigger a refresh that will fail (no provider adapter for Hermes).
     const refreshRes = await call(handler, "/functions/tokentracker-token-plans-refresh", {
       method: "POST",
       headers,

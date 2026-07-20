@@ -712,21 +712,25 @@ pub async fn verify_kimi_console_session(
     while poll_started.elapsed() < QUOTA_FETCH_TIMEOUT {
         let (sender, receiver) = std::sync::mpsc::sync_channel(1);
         window
-            .eval_with_callback("window.__tokenEyesKimiQuotaResult__ || null", move |value| {
-                let _ = sender.send(value);
-            })
+            .eval_with_callback(
+                "window.__tokenEyesKimiQuotaResult__ || null",
+                move |value| {
+                    let _ = sender.send(value);
+                },
+            )
             .map_err(|error| format!("Unable to inspect Kimi login state: {error}"))?;
 
-        let raw =
-            tauri::async_runtime::spawn_blocking(move || receiver.recv_timeout(Duration::from_secs(2)))
-                .await
-                .map_err(|error| format!("Kimi quota callback task failed: {error}"))?
-                .ok();
+        let raw = tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(2))
+        })
+        .await
+        .map_err(|error| format!("Kimi quota callback task failed: {error}"))?
+        .ok();
 
         if let Some(raw) = raw {
             if let Some(parsed) = parse_quota_eval_result(&raw)? {
-                let settled =
-                    parsed.status == "success" || parsed.error.as_deref().is_some_and(|e| !e.is_empty());
+                let settled = parsed.status == "success"
+                    || parsed.error.as_deref().is_some_and(|e| !e.is_empty());
                 if settled {
                     result = Some(parsed);
                     break;
@@ -821,10 +825,14 @@ mod tests {
     fn allows_only_kimi_hosts() {
         assert!(is_official_kimi_url("https://www.kimi.com/code"));
         assert!(is_official_kimi_url("https://kimi.com/code"));
-        assert!(is_official_kimi_url("https://auth.kimi.com/oauth/authorize"));
+        assert!(is_official_kimi_url(
+            "https://auth.kimi.com/oauth/authorize"
+        ));
         assert!(is_official_kimi_url("https://platform.kimi.com/dashboard"));
         assert!(!is_official_kimi_url("https://kimi.com.evil.example/login"));
-        assert!(!is_official_kimi_url("https://evil.example/?next=www.kimi.com"));
+        assert!(!is_official_kimi_url(
+            "https://evil.example/?next=www.kimi.com"
+        ));
         assert!(!is_official_kimi_url("https://phishing.example.com/"));
     }
 
@@ -921,12 +929,8 @@ mod tests {
 
     #[test]
     fn session_fetch_quota_returns_awaiting_when_no_login_yet() {
-        let status = map_quota_fetch_result_to_status(
-            "token-plan/kimi/session/uuid-1",
-            true,
-            true,
-            None,
-        );
+        let status =
+            map_quota_fetch_result_to_status("token-plan/kimi/session/uuid-1", true, true, None);
         assert!(!status.connected);
         assert_eq!(status.state_code, SessionStateCode::AwaitingVerification);
     }

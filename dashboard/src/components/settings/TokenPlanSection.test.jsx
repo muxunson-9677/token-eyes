@@ -2,8 +2,8 @@ import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { TokenPlanSection, resolveConsoleSessionForRecord } from "./TokenPlanSection.jsx";
-import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, discardCodexPendingSession, deleteCodexConsoleSession, verifyCursorConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+import { TokenPlanSection, quotaConsoleAuthTimeoutMs, resolveConsoleSessionForRecord } from "./TokenPlanSection.jsx";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, discardCodexPendingSession, deleteCodexConsoleSession, openCursorConsoleLogin, verifyCursorConsoleSession, saveTokenPlanSecret } from "../../lib/api";
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { copy } from "../../lib/copy";
 
@@ -61,6 +61,11 @@ const BASE_RECORD = {
   last_refresh_at: "",
   next_refresh_at: "",
 };
+
+it("keeps TRAE polling for the official 600-second OAuth lifetime", () => {
+  expect(quotaConsoleAuthTimeoutMs("trae")).toBe(10 * 60 * 1000);
+  expect(quotaConsoleAuthTimeoutMs("cursor")).toBe(5 * 60 * 1000);
+});
 
 async function expandAllPlans() {
   const user = userEvent.setup();
@@ -514,6 +519,99 @@ it("Trae catalog plans expose the official OAuth connect control", async () => {
   });
 
   expect(screen.getByTestId("detection-connect-trae")).toBeInTheDocument();
+});
+
+it("Cursor authorization persists the live usage snapshot instead of connected zero", async () => {
+  const user = userEvent.setup();
+  getTokenPlanCatalog.mockResolvedValueOnce({
+    providers: [
+      {
+        id: "cursor",
+        name: "Cursor",
+        plans: [{
+          plan_id: "cursor_pro",
+          display_name: "Pro",
+          quota_kind: "percent",
+          quota_unit: "percent",
+          total_quota: 100,
+          total_quota_display: "Official live usage",
+        }],
+      },
+      { id: "custom", name: "Custom", plans: [] },
+    ],
+  });
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeXiaomiSession({
+      id: "cursor-session-id",
+      provider_id: "cursor",
+      session_ref: params.session_ref,
+    }),
+    sessions: [],
+  }));
+  openCursorConsoleLogin.mockResolvedValue({ connected: false, state_code: "login_started" });
+  verifyCursorConsoleSession.mockImplementation(async (sessionRef) => ({
+    connected: true,
+    session_ref: sessionRef,
+    state_code: "connected",
+    quota: {
+      total_quota: 100,
+      used_quota: 33.52173913043478,
+      remaining_quota: 66.47826086956522,
+      provider_reported_at: "2026-07-20T00:01:56.714Z",
+      account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+      display_name: "eve***@hotmail.com",
+      plan_name: "pro",
+      quota_windows: [
+        { kind: "total", unit: "percent", total: 100, used: 33.52173913043478, remaining: 66.47826086956522, percentage: 33.52173913043478 },
+        { kind: "auto_composer", unit: "percent", total: 100, used: 27.82, remaining: 72.18, percentage: 27.82 },
+        { kind: "api", unit: "percent", total: 100, used: 71.53333333333333, remaining: 28.46666666666667, percentage: 71.53333333333333 },
+      ],
+    },
+  }));
+
+  render(<TokenPlanSection />);
+  await screen.findByText(copy("settings.section.token_plan"));
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.add") }));
+  });
+  await act(async () => {
+    await user.click(screen.getByTestId("token-plan-agent-card-select-trigger"));
+  });
+  await act(async () => {
+    await user.click(screen.getByTestId("token-plan-agent-card-select-option-hermes"));
+  });
+  await act(async () => {
+    await user.click(screen.getByTestId("token-plan-provider-card-select-trigger"));
+  });
+  await act(async () => {
+    await user.click(screen.getByTestId("token-plan-provider-card-select-option-cursor"));
+  });
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-cursor"));
+  });
+
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
+  expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+    provider_id: "cursor",
+    used_quota: 33.52173913043478,
+    remaining_quota: 66.47826086956522,
+    sync_status: "success",
+    last_refresh_status: "success",
+    last_refresh_error: "",
+    next_refresh_at: "",
+    quota_windows: expect.arrayContaining([
+      expect.objectContaining({ kind: "total", percentage: 33.52173913043478 }),
+      expect.objectContaining({ kind: "auto_composer", percentage: 27.82 }),
+      expect.objectContaining({ kind: "api", percentage: 71.53333333333333 }),
+    ]),
+    detection_config: expect.objectContaining({
+      official_account: expect.objectContaining({
+        account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+        display_name: "eve***@hotmail.com",
+        plan_name: "pro",
+      }),
+    }),
+  }));
 });
 
 it("selecting xiaomi_mimo provider shows only verified catalog plans", async () => {
@@ -2503,6 +2601,59 @@ it("Cursor refresh treats a missing native session as reauthorization instead of
     state_code: "session_not_found",
   }));
   expect(refreshTokenPlan).not.toHaveBeenCalled();
+});
+
+it("shows Cursor plan, bound account, Total, Auto + Composer, API, reset, and last sync separately", async () => {
+  const record = {
+    ...BASE_RECORD,
+    id: "cursor-live-plan",
+    source: "cursor",
+    provider_id: "cursor",
+    plan_id: "cursor_pro",
+    plan_label: "Pro",
+    detection_method: "official_account",
+    detection_config: {
+      official_account: {
+        account_binding_id: "cursor-live-session",
+        account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+        display_name: "eve***@hotmail.com",
+        plan_name: "pro",
+      },
+    },
+    total_quota: 100,
+    used_quota: 27,
+    remaining_quota: 73,
+    sync_status: "success",
+    last_synced_at: "2026-07-19T15:20:30.000Z",
+    quota_windows: [
+      { kind: "total", unit: "percent", total: 100, used: 27, remaining: 73, percentage: 27, resets_at: "2026-08-06T14:31:00.000Z" },
+      { kind: "auto_composer", unit: "percent", total: 100, used: 20, remaining: 80, percentage: 20, resets_at: "2026-08-06T14:31:00.000Z" },
+      { kind: "api", unit: "percent", total: 100, used: 72, remaining: 28, percentage: 72, resets_at: "2026-08-06T14:31:00.000Z" },
+    ],
+  };
+  getTokenPlans.mockResolvedValue({ records: [record] });
+  getConsoleSessions.mockResolvedValue({
+    sessions: [makeXiaomiSession({
+      id: "cursor-live-session",
+      provider_id: "cursor",
+      display_name: "eve***@hotmail.com",
+      session_ref: "token-plan/cursor/session/cursor-live",
+      status: "connected",
+    })],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/cursor \/ cursor \/ Pro/i);
+  await expandAllPlans();
+
+  expect(screen.getByText(/eve\*\*\*@hotmail\.com/i)).toBeInTheDocument();
+  expect(screen.getByText(/Auth ID: auth0\|user_01KWTPZG4VW30…/i)).toBeInTheDocument();
+  expect(screen.getByText(/套餐: pro/i)).toBeInTheDocument();
+  expect(screen.getByText(/Total Usage: 27%/i)).toBeInTheDocument();
+  expect(screen.getByText(/Auto \+ Composer Usage: 20%/i)).toBeInTheDocument();
+  expect(screen.getByText(/API Usage: 72%/i)).toBeInTheDocument();
+  expect(screen.getByText(/重置时间:/i)).toBeInTheDocument();
+  expect(screen.getByText(/最后同步时间:/i)).toBeInTheDocument();
 });
 
 it("formats Codex reset timestamps returned as Unix-second strings", async () => {

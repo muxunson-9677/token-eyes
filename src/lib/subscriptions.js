@@ -119,22 +119,26 @@ function readTrackerConfigFromHome(home) {
   }
 }
 
-function resolveCodexHomeSearchOrder({
-  home = os.homedir(),
-  env = process.env,
-  config,
-} = {}) {
+function resolveCodexHomeSearchOrder(options = {}) {
+  const hasExplicitHome = Object.prototype.hasOwnProperty.call(options, "home");
+  const hasExplicitEnv = options.env && typeof options.env === "object";
+  const home = options.home || os.homedir();
+  const env = hasExplicitEnv ? options.env : hasExplicitHome ? {} : process.env;
+  const config = options.config;
+  const platform = options.platform || process.platform;
   const trackerConfig = config && typeof config === "object" ? config : readTrackerConfigFromHome(home);
   const dataDirectories = normalizeDataDirectories(trackerConfig.dataDirectories);
   const readyHomes = listTrackingReadyCodexHomes({
     configured: dataDirectories.codex,
     env,
     home,
+    platform,
   });
   const primary = pickBestCodexHome({
     configured: dataDirectories.codex,
     env,
     home,
+    platform,
   });
   const ordered = [];
   const seen = new Set();
@@ -149,8 +153,8 @@ function resolveCodexHomeSearchOrder({
   return ordered;
 }
 
-function resolveCodexHome({ home, env, config } = {}) {
-  const ordered = resolveCodexHomeSearchOrder({ home, env, config });
+function resolveCodexHome({ home, env, config, platform } = {}) {
+  const ordered = resolveCodexHomeSearchOrder({ home, env, config, platform });
   return ordered[0] || path.join(home, ".codex");
 }
 
@@ -160,8 +164,8 @@ function resolveOpencodeDataDir({ home, env }) {
   return path.join(base, "opencode");
 }
 
-async function detectCodexChatgptSubscription({ home, env, config } = {}) {
-  const codexHome = resolveCodexHome({ home, env, config });
+async function detectCodexChatgptSubscription({ home, env, config, platform } = {}) {
+  const codexHome = resolveCodexHome({ home, env, config, platform });
   const authPath = path.join(codexHome, "auth.json");
   const auth = await readJson(authPath);
   if (!auth || typeof auth !== "object") return null;
@@ -435,9 +439,9 @@ function readClaudeCodeAccessToken({ platform = process.platform, securityRunner
   }
 }
 
-async function readCodexAccessToken({ home, env, config } = {}) {
+async function readCodexAccessToken({ home, env, config, platform } = {}) {
   try {
-    for (const codexHome of resolveCodexHomeSearchOrder({ home, env, config })) {
+    for (const codexHome of resolveCodexHomeSearchOrder({ home, env, config, platform })) {
       const authPath = path.join(codexHome, "auth.json");
       const auth = await readJson(authPath);
       const token = normalizeString(auth?.tokens?.access_token);
@@ -452,9 +456,9 @@ async function readCodexAccessToken({ home, env, config } = {}) {
 // Returns the access token + ChatGPT account id + plan type + auth.json path so callers can
 // also trigger a refresh if the tokens are stale (issue #52: stale tokens → wham 401 →
 // "Fetch failed" error after ~7-8 days of not running `codex`).
-async function readCodexAuthBundle({ home, env, config } = {}) {
+async function readCodexAuthBundle({ home, env, config, platform } = {}) {
   try {
-    for (const codexHome of resolveCodexHomeSearchOrder({ home, env, config })) {
+    for (const codexHome of resolveCodexHomeSearchOrder({ home, env, config, platform })) {
       const authPath = path.join(codexHome, "auth.json");
       const auth = await readJson(authPath);
       if (!auth || typeof auth !== "object") continue;

@@ -228,14 +228,22 @@ const PROVIDER_ICON_MAP = {
 // `fill="currentColor"`) must render through the inline component path so they
 // inherit the surrounding text color, since <img> doesn't resolve currentColor.
 const PROVIDER_LOGO_MAP = {
+  ALIYUN_BAILIAN: "https://img.alicdn.com/tfs/TB1_ZXuNcfpK1RjSZFOXXa6nFXa-32-32.ico",
   ANTIGRAVITY: "/brand-logos/antigravity.svg",
   CLAUDE: "/brand-logos/claude-code.svg",
+  CODEBUDDY: "/brand-logos/codebuddy.svg",
   CODEX: "/brand-logos/codex.svg",
+  CURSOR: "/brand-logos/cursor.svg",
   GEMINI: "/brand-logos/gemini.svg",
+  GLM: "https://static.bigmodel.cn/wd-paas-front/static/images/favicon.png",
   "KILO-CLI": "/brand-logos/kilo.svg",
   "KILO-CODE": "/brand-logos/kilo.svg",
+  KIMI: "/brand-logos/kimi.svg",
+  MINIMAX: "https://platform.minimaxi.com/docs/_mintlify/favicons/minimax-zh/DMz0Zpj7JInghPSs/_generated/favicon/favicon-32x32.png",
   OPENCLAW: "/brand-logos/openclaw.svg",
   OPENCODE: "/brand-logos/opencode.svg",
+  TRAE: "/brand-logos/trae.svg",
+  XIAOMI_MIMO: "https://cdn.cnbj1.fds.api.mi-img.com/aife/mimo-blog-fe/doc_build/mimo.ico",
 };
 
 function PlaceholderIcon({ size = 16, className = "" }) {

@@ -116,7 +116,7 @@ const AGENT_ADAPTERS = [
     statusSurface: true,
     diagnosticsSurface: true,
     usageLimitsSurface: true,
-    pathOverrideKey: null,
+    pathOverrideKey: "gemini",
     accountLevel: false,
     notes: "Google Gemini CLI (CLI hook + passive log reader).",
   },
@@ -281,7 +281,7 @@ const AGENT_ADAPTERS = [
     statusSurface: true,
     diagnosticsSurface: false,
     usageLimitsSurface: false,
-    pathOverrideKey: null,
+    pathOverrideKey: "codebuddy",
     accountLevel: false,
     notes: "Tencent CodeBuddy CLI; passive ~/.codebuddy/projects/**/*.jsonl reader.",
   },
@@ -416,7 +416,7 @@ const AGENT_ADAPTERS = [
     statusSurface: true,
     diagnosticsSurface: false,
     usageLimitsSurface: true,
-    pathOverrideKey: null,
+    pathOverrideKey: "antigravity",
     accountLevel: false,
     notes: "Antigravity passive transcript reader.",
   },
@@ -492,4 +492,3 @@ module.exports = {
   listDataDirectoryAdapterKeys,
   listAccountLevelSources,
 };
-

@@ -23,5 +23,9 @@ describe("LeaderboardRulesPage", () => {
       "href",
       "/leaderboard",
     );
+    expect(screen.getByRole("link", { name: "返回概览" })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
   });
 });

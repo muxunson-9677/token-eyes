@@ -4,7 +4,7 @@ import { buildActivityHeatmap } from "../../../lib/activity-heatmap";
 import { copy } from "../../../lib/copy";
 import { useTheme } from "../../../hooks/useTheme.js";
 import { useCurrency } from "../../../hooks/useCurrency.js";
-import { formatCompactNumber, formatUsdCurrency } from "../../../lib/format";
+import { formatChineseTokenCount, formatUsdCurrency } from "../../../lib/format";
 import { ActivityHeatmap3D, PALETTES, getAITooltipMessage } from "./ActivityHeatmap3D";
 import { Maximize2, RotateCcw, X, Flame, Terminal, TrendingUp, Info, Play, Pause } from "lucide-react";
 
@@ -29,15 +29,7 @@ const HEATMAP_COLORS_DARK = [
 ];
 
 function formatTokenValue(value) {
-  if (typeof value === "bigint") return value.toLocaleString();
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? Math.round(value).toLocaleString() : "0";
-  }
-  if (typeof value === "string") {
-    const n = Number(value);
-    return Number.isFinite(n) ? Math.round(n).toLocaleString() : value;
-  }
-  return "0";
+  return formatChineseTokenCount(value);
 }
 
 // Compact heatmap display — defers to the project-wide formatter for
@@ -45,10 +37,7 @@ function formatTokenValue(value) {
 // falls back to localized `toLocaleString()` for <1k so small daily totals
 // keep thousand separators ("999" stays "999", not "999.00").
 function formatCompactTokenValue(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "0";
-  if (num < 1000) return num.toLocaleString();
-  return formatCompactNumber(num, { decimals: 2 });
+  return formatChineseTokenCount(value);
 }
 
 function parseUtcDate(value) {

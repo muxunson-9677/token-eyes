@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { DollarSign, Plus, Pencil, Trash2 } from "lucide-react";
-import { getLocalSettings, setLocalSettings } from "../../lib/api";
+import { getLocalSettings, getUsageModelBreakdown, setLocalSettings, verifyOfficialModelPricing } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { SectionCard } from "./Controls.jsx";
@@ -12,6 +12,38 @@ const AGENTS = [
 ];
 
 const CURRENCIES = ["USD", "CNY"];
+
+export const VERIFIED_MODEL_PRICES = [
+  { model: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", currency: "USD", input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25, verification: "reference" },
+  { model: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", currency: "USD", input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 3.125, verification: "reference" },
+  { model: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", currency: "USD", input: 1, output: 6, cacheRead: 0.1, cacheWrite: 1.25, verification: "reference" },
+  { model: "GPT-5.5", currency: "USD", input: 5, output: 30, cacheRead: 0.5, cacheWrite: null, sourceUrl: "https://developers.openai.com/api/docs/models/compare" },
+  { model: "GPT-5.4", currency: "USD", input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: null, sourceUrl: "https://developers.openai.com/api/docs/models/compare" },
+  { model: "GPT-5 Mini", modelId: "gpt-5-mini", currency: "USD", input: 0.25, output: 2, cacheRead: 0.025, cacheWrite: 0.25, sourceUrl: "https://openai.com/api/pricing/" },
+  { model: "Claude Opus 4.8", modelId: "claude-opus-4-8", currency: "USD", input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, verification: "reference" },
+  { model: "Claude Fable 5", modelId: "claude-fable-5", currency: "USD", input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5, verification: "reference" },
+  { model: "Claude Sonnet 5", modelId: "claude-sonnet-5", currency: "USD", input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5, verification: "reference" },
+  { model: "Claude Opus 4.6", currency: "USD", input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, sourceUrl: "https://docs.anthropic.com/en/docs/about-claude/pricing" },
+  { model: "Claude Sonnet 4.6", currency: "USD", input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75, sourceUrl: "https://docs.anthropic.com/en/docs/about-claude/pricing" },
+  { model: "Claude Haiku 4.5", modelId: "claude-haiku-4-5", currency: "USD", input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25, verification: "reference" },
+  { model: "Gemini 3.1 Pro", modelId: "gemini-3.1-pro-preview", currency: "USD", input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2, verification: "reference" },
+  { model: "GLM-5.2", modelId: "glm-5.2", currency: "USD", input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 1.4, verification: "reference" },
+  { model: "GLM-5.1", modelId: "glm-5.1", currency: "USD", input: 1.05, output: 3.5, cacheRead: 0.525, cacheWrite: 0, verification: "reference" },
+  { model: "DeepSeek V4 Pro", modelId: "deepseek-v4-pro", currency: "USD", input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0, verification: "reference" },
+  { model: "DeepSeek V4 Flash", modelId: "deepseek-v4-flash", currency: "USD", input: 0.14, output: 0.28, cacheRead: 0.0028, cacheWrite: 0, verification: "reference" },
+  { model: "DeepSeek Chat", currency: "USD", input: 0.27, output: 1.1, cacheRead: 0.07, cacheWrite: null, sourceUrl: "https://api-docs.deepseek.com/quick_start/pricing-details-usd" },
+  { model: "MiniMax M3", modelId: "minimax-m3", currency: "USD", input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0.3, verification: "reference" },
+  { model: "MiniMax-M2.7", currency: "CNY", input: 2.1, output: 8.4, cacheRead: 0.42, cacheWrite: 2.625, sourceUrl: "https://platform.minimaxi.com/docs/guides/pricing-paygo" },
+  { model: "MiniMax-M2.7-highspeed", currency: "CNY", input: 4.2, output: 16.8, cacheRead: 0.42, cacheWrite: 2.625, sourceUrl: "https://platform.minimaxi.com/docs/guides/pricing-paygo" },
+  { model: "Kimi K2.7 Code", modelId: "kimi-k2.7-code", currency: "USD", input: 0.95, output: 4, cacheRead: 0.19, cacheWrite: 0.95, verification: "reference" },
+  { model: "Kimi K2.6", modelId: "moonshot/kimi-k2.6", currency: "USD", input: 0.95, output: 4, cacheRead: 0.16, cacheWrite: 0.95, verification: "reference" },
+  { model: "MiMo v2.5 Pro", modelId: "mimo-v2.5-pro", currency: "USD", input: 1, output: 3, cacheRead: 0.2, cacheWrite: 0, verification: "reference" },
+  { model: "MiMo v2.5", modelId: "mimo-v2.5", currency: "USD", input: 0.4, output: 2, cacheRead: 0.08, cacheWrite: 0, verification: "reference" },
+  { model: "Grok 4 Fast", modelId: "azure_ai/grok-4-fast-reasoning", currency: "USD", input: 0.2, output: 0.5, cacheRead: 0.2, cacheWrite: 0.2, verification: "reference" },
+  { model: "Qwen3.7 Max", currency: "CNY", input: 12, output: 36, cacheRead: null, cacheWrite: null, sourceUrl: "https://help.aliyun.com/zh/model-studio/model-pricing" },
+];
+
+const MODEL_PRICE_VERIFIED_AT = "2026-07-14";
 
 const EMPTY_PRICING = {
   claude: { inputUsdPer1M: 0, outputUsdPer1M: 0 },
@@ -83,6 +115,10 @@ export function AgentPricingSection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedNotice, setSavedNotice] = useState(false);
+  const [observedModels, setObservedModels] = useState([]);
+  const [verifyingModel, setVerifyingModel] = useState("");
+  const [verificationNotice, setVerificationNotice] = useState(null);
+  const [officialSnapshots, setOfficialSnapshots] = useState({});
 
   // Rule editor state. `editorMode` is "idle" | "add" | "edit". When "add" or
   // "edit" the form is visible; `editingId` holds the id being edited (null
@@ -118,6 +154,88 @@ export function AgentPricingSection() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    getUsageModelBreakdown({ from: "2000-01-01", to: new Date().toISOString().slice(0, 10) })
+      .then((result) => {
+        if (cancelled) return;
+        const models = (Array.isArray(result?.sources) ? result.sources : [])
+          .flatMap((source) => (Array.isArray(source?.models) ? source.models : [])
+            .map((model) => ({
+              source: String(source?.source || "").trim().toLowerCase(),
+              model: String(model?.model || model?.model_id || "").trim(),
+            })))
+          .filter((entry) => entry.source && entry.model);
+        setObservedModels(Array.from(
+          new Map(models.map((entry) => [`${entry.source}:${entry.model}`, entry])).values(),
+        ));
+      })
+      .catch(() => {
+        if (!cancelled) setObservedModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const uncataloguedModels = useMemo(() => {
+    const known = new Set(VERIFIED_MODEL_PRICES.flatMap((price) => [price.model, price.modelId].filter(Boolean).map((value) => value.toLowerCase())));
+    return observedModels.filter((entry) => !known.has(entry.model.toLowerCase()));
+  }, [observedModels]);
+
+  const autoVerifyModel = async ({ source, model, modelId = "", currency = "USD" }) => {
+    const verificationKey = `${source}:${model}`;
+    setVerifyingModel(verificationKey);
+    setVerificationNotice(null);
+    setError("");
+    try {
+      const result = await verifyOfficialModelPricing({
+        model,
+        model_id: modelId || model,
+        source,
+      });
+      if (!result?.ok || !result?.pricing) {
+        setVerificationNotice({ kind: "error", message: result?.error || copy("settings.agent_pricing.catalog.auto_failed") });
+        return;
+      }
+      const normalizedRule = normalizePricingRule({
+        source,
+        model: modelId || model,
+        inputPricePer1M: result.pricing.input,
+        outputPricePer1M: result.pricing.output,
+        currency: result.pricing.currency || currency,
+        updated_at: result.verified_at || new Date().toISOString(),
+      });
+      const nextRules = normalizePricingRules([
+        ...rules.filter((rule) => rule.id !== normalizedRule.id),
+        normalizedRule,
+      ]);
+      const normalizedDefault = normalizeAgentDefaultPricing(defaultDraft);
+      const saved = await setLocalSettings({
+        agentDefaultPricing: normalizedDefault,
+        pricingRules: nextRules,
+      });
+      const savedRules = normalizePricingRules(saved?.pricingRules || nextRules);
+      setRules(savedRules);
+      setRulesSaved(savedRules);
+      setDefaultDraft(normalizedDefault);
+      setDefaultSaved(normalizedDefault);
+      setOfficialSnapshots((current) => ({
+        ...current,
+        [model]: {
+          ...result.pricing,
+          sourceUrl: result.source_url,
+          verifiedAt: result.verified_at,
+        },
+      }));
+      setVerificationNotice({ kind: "success", message: copy("settings.agent_pricing.catalog.auto_success") });
+    } catch (err) {
+      setVerificationNotice({ kind: "error", message: err?.message || copy("settings.agent_pricing.catalog.auto_failed") });
+    } finally {
+      setVerifyingModel("");
+    }
+  };
+
   const defaultDirty = useMemo(
     () => JSON.stringify(defaultDraft) !== JSON.stringify(defaultSaved),
     [defaultDraft, defaultSaved],
@@ -127,19 +245,6 @@ export function AgentPricingSection() {
     [rules, rulesSaved],
   );
   const dirty = defaultDirty || rulesDirty;
-
-  // ── Default pricing (MVP fallback) field handlers ────────────────────────
-  const updateDefaultField = (agent, field) => (event) => {
-    const value = event.target.value;
-    setDefaultDraft((current) => ({
-      ...current,
-      [agent]: {
-        ...current[agent],
-        [field]: value === "" ? 0 : Number(value),
-      },
-    }));
-    setSavedNotice(false);
-  };
 
   // ── Pricing rules CRUD (local, committed on Save) ────────────────────────
   const startAddRule = () => {
@@ -241,6 +346,7 @@ export function AgentPricingSection() {
     <SectionCard
       title={copy("settings.section.agent_pricing")}
       subtitle={copy("settings.agent_pricing.subtitle")}
+      collapsible
       action={
         <button
           type="button"
@@ -257,8 +363,118 @@ export function AgentPricingSection() {
         </button>
       }
     >
-      {/* ── Agent + Model rules list ─────────────────────────────────────── */}
       <div className="space-y-3 py-3">
+        <div>
+          <div className="text-sm font-medium text-oai-gray-900 dark:text-oai-gray-200">
+            {copy("settings.agent_pricing.catalog.title")}
+          </div>
+          <div className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+            {copy("settings.agent_pricing.catalog.subtitle")}
+          </div>
+        </div>
+        <div className="overflow-hidden rounded-xl border border-oai-gray-200 bg-white shadow-sm shadow-black/[0.03] dark:border-oai-gray-800 dark:bg-oai-gray-950">
+          <table data-testid="model-pricing-table" className="w-full table-fixed text-[11px] sm:text-xs">
+            <colgroup>
+              <col className="w-[26%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[34%]" />
+            </colgroup>
+            <thead className="bg-oai-gray-50 text-left text-oai-gray-500 dark:bg-oai-gray-900 dark:text-oai-gray-400">
+              <tr>
+                <th className="px-2 py-2.5 font-medium">{copy("settings.agent_pricing.catalog.model")}</th>
+                <th className="px-1 py-2.5 text-right font-medium">{copy("settings.agent_pricing.catalog.input")}</th>
+                <th className="px-1 py-2.5 text-right font-medium">{copy("settings.agent_pricing.catalog.output")}</th>
+                <th className="px-1 py-2.5 text-right font-medium">{copy("settings.agent_pricing.catalog.cache_read")}</th>
+                <th className="px-1 py-2.5 text-right font-medium">{copy("settings.agent_pricing.catalog.cache_write")}</th>
+                <th className="px-2 py-2.5 text-right font-medium">{copy("settings.agent_pricing.catalog.source")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-oai-gray-100 dark:divide-oai-gray-800">
+              {VERIFIED_MODEL_PRICES.map((price) => {
+                const snapshot = officialSnapshots[price.model];
+                const displayPrice = snapshot ? { ...price, ...snapshot } : price;
+                const source = /^claude/i.test(price.model) ? "claude" : /^(gpt|o\d)/i.test(price.model) ? "codex" : "hermes";
+                const verificationKey = `${source}:${price.model}`;
+                return (
+                <tr key={price.model} className="text-oai-gray-700 dark:text-oai-gray-300">
+                  <td className="break-words px-2 py-2.5 font-medium text-oai-gray-900 dark:text-oai-gray-100">
+                    <span>{price.model}</span>
+                    {price.peakMultiplier === 2 ? (
+                      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                        {copy("settings.agent_pricing.catalog.peak_double")}
+                      </span>
+                    ) : null}
+                  </td>
+                  <PriceCell value={displayPrice.input} currency={displayPrice.currency} />
+                  <PriceCell value={displayPrice.output} currency={displayPrice.currency} />
+                  <PriceCell value={displayPrice.cacheRead} currency={displayPrice.currency} />
+                  <PriceCell value={displayPrice.cacheWrite} currency={displayPrice.currency} />
+                  <td className="break-words px-2 py-2.5 text-right leading-5">
+                    {displayPrice.sourceUrl ? (
+                      <a className="font-medium text-oai-brand-600 hover:underline dark:text-oai-brand-400" href={displayPrice.sourceUrl} target="_blank" rel="noreferrer">
+                        {copy("settings.agent_pricing.catalog.official")}
+                      </a>
+                    ) : (
+                      <span className="text-amber-600 dark:text-amber-300">{copy("settings.agent_pricing.catalog.pending_verification")}</span>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={copy("settings.agent_pricing.catalog.auto_verify_model", { model: price.model })}
+                      onClick={() => autoVerifyModel({ source, model: price.model, modelId: price.modelId, currency: price.currency })}
+                      disabled={Boolean(verifyingModel)}
+                      className="ml-2 font-medium text-oai-brand-600 hover:underline disabled:opacity-50 dark:text-oai-brand-400"
+                    >
+                      {verifyingModel === verificationKey
+                        ? copy("settings.agent_pricing.catalog.verifying")
+                        : copy("settings.agent_pricing.catalog.auto_verify")}
+                    </button>
+                  </td>
+                </tr>
+              );})}
+              {uncataloguedModels.map((entry) => (
+                <tr key={`observed:${entry.source}:${entry.model}`} className="bg-amber-50/40 text-oai-gray-700 dark:bg-amber-950/10 dark:text-oai-gray-300">
+                  <td className="break-words px-2 py-2.5 font-medium text-oai-gray-900 dark:text-oai-gray-100">{entry.model}</td>
+                  <PriceCell value={null} currency="USD" />
+                  <PriceCell value={null} currency="USD" />
+                  <PriceCell value={null} currency="USD" />
+                  <PriceCell value={null} currency="USD" />
+                  <td className="break-words px-2 py-2.5 text-right font-medium leading-5 text-amber-600 dark:text-amber-300">
+                    <span>{copy("settings.agent_pricing.catalog.new_model")}</span>
+                    <button
+                      type="button"
+                      aria-label={copy("settings.agent_pricing.catalog.auto_verify_model", { model: entry.model })}
+                      onClick={() => autoVerifyModel({ source: entry.source, model: entry.model, modelId: entry.model })}
+                      disabled={Boolean(verifyingModel)}
+                      className="ml-2 text-oai-brand-600 hover:underline disabled:opacity-50 dark:text-oai-brand-400"
+                    >
+                      {verifyingModel === `${entry.source}:${entry.model}`
+                        ? copy("settings.agent_pricing.catalog.verifying")
+                        : copy("settings.agent_pricing.catalog.auto_verify")}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
+          {copy("settings.agent_pricing.catalog.updated", { date: MODEL_PRICE_VERIFIED_AT })}
+        </div>
+        {verificationNotice && (
+          <div className={cn(
+            "text-xs",
+            verificationNotice.kind === "success" ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-300",
+          )}>
+            {verificationNotice.message}
+          </div>
+        )}
+      </div>
+
+      {/* ── Agent + Model rules list ─────────────────────────────────────── */}
+      <div className="space-y-3 border-t border-oai-gray-100 py-3 dark:border-oai-gray-800">
         <div>
           <div className="text-sm font-medium text-oai-gray-900 dark:text-oai-gray-200">
             {copy("settings.agent_pricing.rules.title")}
@@ -352,42 +568,6 @@ export function AgentPricingSection() {
         )}
       </div>
 
-      {/* ── Default pricing (MVP fallback) ──────────────────────────────── */}
-      <div className="space-y-3 border-t border-oai-gray-100 py-3 dark:border-oai-gray-800">
-        <div>
-          <div className="text-sm font-medium text-oai-gray-900 dark:text-oai-gray-200">
-            {copy("settings.agent_pricing.default.title")}
-          </div>
-          <div className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            {copy("settings.agent_pricing.default.subtitle")}
-          </div>
-        </div>
-        {AGENTS.map((agent) => (
-          <div key={agent.key} className="grid gap-2 sm:grid-cols-[120px_1fr_1fr] sm:items-end">
-            <div>
-              <div className="text-sm text-oai-gray-900 dark:text-oai-gray-200">
-                {copy(agent.labelKey)}
-              </div>
-              <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
-                {copy("settings.agent_pricing.per_1m")}
-              </div>
-            </div>
-            <PriceInput
-              label={copy("settings.agent_pricing.input")}
-              value={defaultDraft[agent.key]?.inputUsdPer1M ?? 0}
-              onChange={updateDefaultField(agent.key, "inputUsdPer1M")}
-              disabled={loading || saving}
-            />
-            <PriceInput
-              label={copy("settings.agent_pricing.output")}
-              value={defaultDraft[agent.key]?.outputUsdPer1M ?? 0}
-              onChange={updateDefaultField(agent.key, "outputUsdPer1M")}
-              disabled={loading || saving}
-            />
-          </div>
-        ))}
-      </div>
-
       {(error || savedNotice) && (
         <div className="pb-3 text-xs">
           {error ? (
@@ -400,6 +580,14 @@ export function AgentPricingSection() {
         </div>
       )}
     </SectionCard>
+  );
+}
+
+function PriceCell({ value, currency }) {
+  return (
+    <td className="px-1 py-2.5 text-right font-mono tabular-nums">
+      {value == null ? "—" : `${currency === "CNY" ? "¥" : "$"}${value}`}
+    </td>
   );
 }
 

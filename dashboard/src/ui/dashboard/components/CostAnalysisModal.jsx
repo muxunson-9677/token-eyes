@@ -2,7 +2,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 import React, { useMemo } from "react";
 import { copy } from "../../../lib/copy";
-import { formatCompactNumber, formatUsdCurrency, toFiniteNumber } from "../../../lib/format";
+import { formatChineseTokenCount, formatUsdCurrency, toFiniteNumber } from "../../../lib/format";
 import { useCurrency } from "../../../hooks/useCurrency.js";
 import { CURRENCY_USD, getCurrencySymbol } from "../../../lib/currency";
 
@@ -23,7 +23,7 @@ function formatCostCell(value, currency, rate) {
 function formatTokensCell(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return formatCompactNumber(n, { decimals: 1 });
+  return formatChineseTokenCount(n);
 }
 
 export const CostAnalysisModal = React.memo(function CostAnalysisModal({

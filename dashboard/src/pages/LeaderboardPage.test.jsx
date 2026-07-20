@@ -1,5 +1,5 @@
 import React from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -579,7 +579,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getByTestId("leaderboard-skeleton")).toBeInTheDocument();
   });
 
-  it("offers five periods, Agent ranking and three metric views", async () => {
+  it("offers five periods and three metric views without top Agent filters", async () => {
     const user = userEvent.setup();
     getLeaderboard.mockResolvedValue(preloadedData);
 
@@ -590,15 +590,13 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getByRole("button", { name: "近 7 日" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "近 30 日" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "总累计" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "总榜" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Codex" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "总榜" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Codex" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "含缓存" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "不含缓存" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "预估费用" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "今日" }));
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Codex" })[0]).not.toBeDisabled());
-    await user.click(screen.getAllByRole("button", { name: "Codex" })[0]);
     await waitFor(() => expect(screen.getByRole("button", { name: "不含缓存" })).not.toBeDisabled());
     await user.click(screen.getByRole("button", { name: "不含缓存" }));
 
@@ -607,7 +605,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
         baseUrl: "https://edge.example",
         userId: "user-1",
         period: "today",
-        agent: "codex",
+        agent: "all",
         metric: "without_cache",
         limit: 20,
         offset: 0,
@@ -615,7 +613,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
   });
 
-  it("renders the selected Agent and token metric as the primary ranking value", async () => {
+  it("ignores legacy Agent query filters and keeps the new client on the overall board", async () => {
     getLeaderboard.mockResolvedValue({
       ...preloadedData,
       entries: [{ ...preloadedData.entries[0], score: 987 }],
@@ -623,8 +621,47 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard?agent=codex&metric=without_cache");
 
-    expect(await screen.findByRole("columnheader", { name: "Codex · 不含缓存" })).toBeInTheDocument();
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledWith(expect.objectContaining({ agent: "all" })));
+    expect(screen.queryByRole("button", { name: "Codex" })).not.toBeInTheDocument();
     expect(screen.getAllByText("987").length).toBeGreaterThan(0);
+  });
+
+  it("renders only each user's actually used Agents inside that user's row", async () => {
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [{
+        ...preloadedData.entries[0],
+        display_name: "Distributed User",
+        score: 104_336_606_257,
+        agent_metrics: {
+          codex: { with_cache_tokens: 32_770_000, without_cache_tokens: 20_000_000 },
+          cursor: { with_cache_tokens: 4_156_000, without_cache_tokens: 3_000_000 },
+          claude: { with_cache_tokens: 0, without_cache_tokens: 0 },
+        },
+      }],
+    });
+
+    renderLeaderboard();
+
+    const row = await screen.findByRole("button", { name: /Distributed User/ });
+    expect(row).toHaveTextContent("Codex");
+    expect(row).toHaveTextContent("3.28千万");
+    expect(row).toHaveTextContent("Cursor");
+    expect(row).toHaveTextContent("415.6万");
+    expect(row).toHaveTextContent("1043.37亿");
+    expect(row).not.toHaveTextContent("Claude Code");
+    const userMeta = within(row).getByTestId("leaderboard-user-meta");
+    expect(userMeta).toHaveClass("text-oai-gray-400");
+    expect(screen.queryByRole("columnheader", { name: "Agent 使用分布" })).not.toBeInTheDocument();
+  });
+
+  it("uses the desktop sidebar as the exit and does not duplicate a return-overview link", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard();
+
+    expect(await screen.findByText("排行榜")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "返回概览" })).not.toBeInTheDocument();
   });
 
   it("formats an estimated-cost score as currency in the primary ranking column", async () => {
@@ -635,21 +672,27 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard?metric=estimated_cost");
 
-    expect(await screen.findByRole("columnheader", { name: "总榜 · 预估费用" })).toBeInTheDocument();
-    expect(screen.getAllByText("$7.89").length).toBeGreaterThan(0);
+    expect(await screen.findByTestId("leaderboard-score")).toHaveTextContent("$7.89");
   });
 
-  it("shows the participant count and aggregate score returned by the ranking RPC", async () => {
+  it("shows stable participant, Token and estimated-cost totals returned by the ranking RPC", async () => {
     getLeaderboard.mockResolvedValue({
       ...preloadedData,
       participant_count: 55,
-      total_entries: 55,
+      ranked_entry_count: 41,
+      total_entries: 41,
       total_score: 987654,
+      aggregate_total_tokens: 123456789,
+      aggregate_total_cost_usd: 4321.25,
     });
 
     renderLeaderboard();
 
-    expect(await screen.findByText("全员累计 987,654")).toBeInTheDocument();
-    expect(screen.getByText("参与人数 55")).toBeInTheDocument();
+    expect(await screen.findByText("总参与人数")).toBeInTheDocument();
+    expect(screen.getByText("55")).toBeInTheDocument();
+    expect(screen.getByText("全员累计 Token")).toBeInTheDocument();
+    expect(screen.getByText("1.23亿")).toBeInTheDocument();
+    expect(screen.getByText("全员累计预估花销")).toBeInTheDocument();
+    expect(screen.getByText("$4,321")).toBeInTheDocument();
   });
 });

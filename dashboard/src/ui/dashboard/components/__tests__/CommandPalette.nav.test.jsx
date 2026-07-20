@@ -102,13 +102,14 @@ describe("CommandPalette real render (F3 reproduction)", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
-  it("lists overview + the four secondary-nav children (no React issue 130)", async () => {
+  it("lists overview, leaderboard, and the four secondary-nav children (no React issue 130)", async () => {
     renderPalette();
     openWithCtrlK();
     const dialog = await screen.findByRole("dialog");
-    // The five navigable pages must all render as option buttons.
+    // All six navigable pages must render as option buttons.
     const expectedLabels = [
       "nav.usage",
+      "nav.leaderboard",
       "nav.spend.usage",
       "nav.spend.cost",
       "nav.settings.basic",
@@ -117,9 +118,9 @@ describe("CommandPalette real render (F3 reproduction)", () => {
     for (const label of expectedLabels) {
       expect(within(dialog).getByText(label)).toBeInTheDocument();
     }
-    // No React error boundary swallowed the list — there are 5 page options.
+    // No React error boundary swallowed the list — there are 6 page options.
     const options = within(dialog).getAllByRole("option");
-    expect(options.length).toBe(5);
+    expect(options.length).toBe(6);
   });
 
   it("clicking a secondary-nav child navigates to the correct URL", async () => {

@@ -177,13 +177,13 @@ test("codex and claude are NOT account-level per source-metadata", () => {
 
 test("listDataDirectoryAdapterKeys returns every configurable desktop source", () => {
   const keys = listDataDirectoryAdapterKeys();
-  for (const key of ["claude", "codex", "cursor", "hermes", "opencode", "openclaw", "trae"]) {
+  for (const key of ["claude", "codex", "cursor", "trae", "codebuddy", "gemini", "hermes", "openclaw", "opencode", "antigravity"]) {
     assert.ok(keys.includes(key), `${key} must be in path override keys; got: ${JSON.stringify(keys)}`);
   }
 });
 
 test("DATA_DIRECTORY_KEYS equals the registry-backed configurable directory keys", () => {
-  const expected = ["claude", "codex", "cursor", "hermes", "opencode", "openclaw", "trae"];
+  const expected = ["claude", "codex", "cursor", "trae", "codebuddy", "gemini", "hermes", "openclaw", "opencode", "antigravity"];
   assert.deepEqual(
     DATA_DIRECTORY_KEYS.sort(),
     expected.sort(),

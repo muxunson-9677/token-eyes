@@ -57,9 +57,7 @@ pub fn restore_main_window(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
         for _ in 0..RESTORE_LOOKUP_RETRIES {
-            std::thread::sleep(std::time::Duration::from_millis(
-                RESTORE_LOOKUP_DELAY_MS,
-            ));
+            std::thread::sleep(std::time::Duration::from_millis(RESTORE_LOOKUP_DELAY_MS));
             if try_restore_main_window(&app) {
                 return;
             }

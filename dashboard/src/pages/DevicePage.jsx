@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext";
-import { getOrCreateInsforgeClient } from "../lib/insforge-config";
 
 /**
  * /device — OAuth-style device flow approval page.
@@ -14,12 +13,8 @@ import { getOrCreateInsforgeClient } from "../lib/insforge-config";
  */
 
 function buildGrantUrl() {
-  // The Insforge baseUrl drives both the SDK and the edge functions; reading
-  // from getOrCreateInsforgeClient() avoids hardcoding the production URL
-  // here (dev/staging may differ).
-  const client = getOrCreateInsforgeClient();
-  // SDK doesn't expose its baseUrl as a public field; fall back to the same
-  // VITE env var that initialized the client.
+  // Keep this route independent from the cloud SDK chunk; the edge-function
+  // origin is the same public environment value used to initialize the SDK.
   const baseUrl =
     (import.meta.env && import.meta.env.VITE_INSFORGE_BASE_URL) ||
     "https://srctyff5.us-east.insforge.app";

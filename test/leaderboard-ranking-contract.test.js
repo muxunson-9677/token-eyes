@@ -122,6 +122,9 @@ test("ranking RPC selects the score dynamically and ranks before stable paging",
   assert.match(sql, /WHERE\s+score\s*>\s*0/i);
   assert.match(sql, /OFFSET\s+GREATEST\(p_offset,\s*0\)/i);
   assert.match(sql, /participant_count/i);
+  assert.match(sql, /ranked_entry_count/i);
+  assert.match(sql, /aggregate_total_cost_usd/i);
+  assert.match(sql, /WHERE\s+total_tokens\s*>\s*0/i);
   assert.match(sql, /total_score/i);
   assert.match(sql, /p_blocked_user_ids/i);
 });
@@ -141,5 +144,8 @@ test("public reader validates dimensions and delegates ranking to the RPC", () =
   assert.match(reader, /p_agent:\s*agent/);
   assert.match(reader, /p_metric:\s*metric/);
   assert.match(reader, /participant_count/);
+  assert.match(reader, /ranked_entry_count/);
+  assert.match(reader, /aggregate_total_cost_usd/);
+  assert.match(reader, /total_entries:\s*rankedEntryCount/);
   assert.doesNotMatch(reader, /\.select\("\*",\s*\{\s*count:\s*"exact"\s*\}\)/);
 });

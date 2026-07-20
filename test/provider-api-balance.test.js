@@ -228,6 +228,31 @@ test("parseBalanceResponse reads Alibaba Cloud account balance fields", async ()
 
   assert.equal(result.balance, 123.45);
   assert.equal(result.currency, "CNY");
+  assert.equal(result.error_code, undefined);
+});
+
+test("parseBalanceResponse keeps a valid Alibaba balance when optional spend paths are absent", () => {
+  const result = parseBalanceResponse(
+    {
+      Code: "Success",
+      Success: true,
+      Data: { AvailableAmount: "46.69", Currency: "CNY" },
+    },
+    validConfig({
+      providerId: "aliyun_bss",
+      balancePath: "Data.AvailableAmount",
+      monthSpendPath: "Data.MonthSpend",
+      lifetimeSpendPath: "Data.LifetimeSpend",
+      currencyPath: "Data.Currency",
+    }),
+  );
+
+  assert.deepEqual(result, {
+    balance: 46.69,
+    monthSpend: null,
+    lifetimeSpend: null,
+    currency: "CNY",
+  });
 });
 
 test("parseBalanceResponse reads Volcengine account balance and fixed currency", async () => {
@@ -508,6 +533,71 @@ test("refreshBalance blocks official GLM quota endpoint before secret read even 
 
   assert.equal(balance.status, "unsupported");
   assert.equal(balance.errorCode, ERROR_CODES.UNSUPPORTED_ENDPOINT);
+  assert.equal(readSecretCalls, 0);
+});
+
+test("refreshBalance reads an official-console snapshot without reading an API secret", async () => {
+  let readSecretCalls = 0;
+  const manager = createBalanceRefreshManager({
+    credentialStore: {
+      isAvailable: () => true,
+      readSecret() {
+        readSecretCalls += 1;
+        return "must-not-be-read";
+      },
+    },
+    resolveOfficialConsoleBalance(config) {
+      assert.equal(config.providerId, "glm");
+      return {
+        balance: 128.5,
+        available_balance: 96.25,
+        credit_balance: 32.25,
+        currency: "CNY",
+        provider_reported_at: "2026-07-14T06:00:00.000Z",
+      };
+    },
+  });
+
+  const balance = await manager.refreshBalance({
+    id: "glm-console",
+    providerId: "glm",
+    label: "智谱 GLM",
+    authType: "official_console",
+    requestUrl: "https://www.bigmodel.cn/coding-plan/personal/usage",
+    balancePath: "balance.available_balance",
+  });
+
+  assert.equal(balance.status, "synced");
+  assert.equal(balance.balance, 96.25);
+  assert.equal(balance.currency, "CNY");
+  assert.equal(balance.lastSyncedAt, "2026-07-14T06:00:00.000Z");
+  assert.equal(readSecretCalls, 0);
+});
+
+test("refreshBalance reports an unbound official console without reading an API secret", async () => {
+  let readSecretCalls = 0;
+  const manager = createBalanceRefreshManager({
+    credentialStore: {
+      isAvailable: () => true,
+      readSecret() {
+        readSecretCalls += 1;
+        return "must-not-be-read";
+      },
+    },
+    resolveOfficialConsoleBalance: () => null,
+  });
+
+  const balance = await manager.refreshBalance({
+    id: "minimax-console",
+    providerId: "minimax",
+    label: "MiniMax",
+    authType: "official_console",
+    requestUrl: "https://platform.minimaxi.com/console/recharge-records",
+    balancePath: "balance.available_balance",
+  });
+
+  assert.equal(balance.status, "not-connected");
+  assert.equal(balance.errorCode, ERROR_CODES.CREDENTIAL_MISSING);
   assert.equal(readSecretCalls, 0);
 });
 
@@ -1152,6 +1242,79 @@ test("GET /functions/tokentracker-provider-api-balances returns all configured b
     const balancesStr = JSON.stringify(balancesBody);
     assert.ok(!balancesStr.includes("sk-"), "no secret in balances response");
     assert.ok(!balancesStr.includes("Bearer "), "no Bearer in balances response");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("official-console balance is returned from a verified session without an API secret", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-console-balance-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(path.join(trackerDir, "config.json"), JSON.stringify({
+      providerApiConfigs: [{
+        id: "minimax-config",
+        providerId: "minimax",
+        label: "MiniMax",
+        requestUrl: "https://platform.minimaxi.com/console/recharge-records",
+        requestMethod: "GET",
+        authType: "official_console",
+        apiKeyRef: "",
+        balancePath: "balance.available_balance",
+        monthSpendPath: "",
+        lifetimeSpendPath: "",
+        currencyPath: "balance.currency",
+        refreshIntervalSeconds: 300,
+        enabled: true,
+      }],
+      consoleSessions: [{
+        id: "minimax-session",
+        provider_id: "minimax",
+        auth_kind: "official_console_session",
+        display_name: "MiniMax",
+        status: "connected",
+        session_ref: "provider-api/minimax/session/test",
+        connected_at: "2026-07-14T06:00:00.000Z",
+        last_verified_at: "2026-07-14T06:00:00.000Z",
+        balance: {
+          balance: 120,
+          available_balance: 88.5,
+          credit_balance: 10,
+          currency: "CNY",
+          provider_reported_at: "2026-07-14T06:00:00.000Z",
+        },
+      }],
+    }), "utf8");
+
+    let readSecretCalls = 0;
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      credentialStore: {
+        isAvailable: () => true,
+        readSecret() {
+          readSecretCalls += 1;
+          return null;
+        },
+        saveSecret: () => ({ ok: true, masked: "masked" }),
+        deleteSecret: () => true,
+      },
+    });
+
+    const listed = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-balances"));
+    assert.equal(listed.balances[0].status, "synced");
+    assert.equal(listed.balances[0].balance, 88.5);
+    assert.equal(listed.balances[0].currency, "CNY");
+
+    const headers = await getAuthHeaders(handler);
+    const refreshed = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-refresh?id=minimax-config", {
+      method: "POST",
+      headers,
+    }));
+    assert.equal(refreshed.balance.status, "synced");
+    assert.equal(refreshed.balance.balance, 88.5);
+    assert.equal(readSecretCalls, 0);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

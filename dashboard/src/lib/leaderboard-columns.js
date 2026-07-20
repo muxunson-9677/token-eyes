@@ -1,23 +1,5 @@
 import { cn } from "./cn";
 
-/**
- * Leaderboard token columns: one column per provider (no aggregated "Other").
- * `key` matches API / mock field names on each entry.
- */
-export const LEADERBOARD_TOKEN_COLUMNS = [
-  { key: "gpt_tokens", copyKey: "leaderboard.column.codex", icon: "/brand-logos/codex.svg" },
-  { key: "claude_tokens", copyKey: "leaderboard.column.claude", icon: "/brand-logos/claude-code.svg" },
-  { key: "gemini_tokens", copyKey: "leaderboard.column.gemini", icon: "/brand-logos/gemini.svg" },
-  { key: "cursor_tokens", copyKey: "leaderboard.column.cursor", icon: "/brand-logos/cursor.svg" },
-  { key: "kiro_tokens", copyKey: "leaderboard.column.kiro", icon: "/brand-logos/kiro.svg" },
-  { key: "copilot_tokens", copyKey: "leaderboard.column.copilot", icon: "/brand-logos/copilot.svg" },
-  { key: "kimi_tokens", copyKey: "leaderboard.column.kimi", icon: "/brand-logos/kimi.svg" },
-  { key: "opencode_tokens", copyKey: "leaderboard.column.opencode", icon: "/brand-logos/opencode.svg" },
-  { key: "openclaw_tokens", copyKey: "leaderboard.column.openclaw", icon: "/brand-logos/openclaw.svg" },
-  { key: "hermes_tokens", copyKey: "leaderboard.column.hermes", icon: "/brand-logos/hermes.svg" },
-  { key: "other_tokens", copyKey: "leaderboard.column.supplemental", icon: null },
-];
-
 // Divider between the two sticky columns lives on the SECOND cell's left
 // edge (not the first cell's right edge), and that cell is shifted 1px
 // left (`left-[71px]`) so it overlaps the rank column by a pixel. Without

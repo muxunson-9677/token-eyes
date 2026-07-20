@@ -6,10 +6,10 @@ import { DataDetails } from "../components/DataDetails.jsx";
 import { StatsPanel } from "../components/StatsPanel.jsx";
 import { UsageOverview } from "../components/UsageOverview.jsx";
 import { TrendMonitor } from "../components/TrendMonitor.jsx";
+import { ModelUsageDonut } from "../components/ModelUsageDonut.jsx";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { MacAppBanner } from "../components/MacAppBanner.jsx";
 import { WidgetOnboardingCard } from "../components/WidgetOnboardingCard.jsx";
-import { RequestUsageLog } from "../components/RequestUsageLog.jsx";
 import { LoginCard } from "../../../components/LoginCard.jsx";
 import { DashboardSkeleton } from "../../../components/DashboardSkeleton.jsx";
 import { cn } from "../../../lib/cn";
@@ -145,6 +145,7 @@ export function DashboardView(props) {
     usageLoadingState,
     initialDashboardLoading,
     fleetData,
+    modelUsageDistribution,
     hasDetailsActual,
     dailyEmptyPrefix,
     installSyncCmd,
@@ -170,8 +171,6 @@ export function DashboardView(props) {
     refreshInterval,
     onRefreshIntervalChange,
     lastUpdatedAt,
-    requestUsageTimeZone,
-    requestUsageTzOffsetMinutes,
   } = props;
 
   // Header 鍜?Footer 宸茬畝鍖?
@@ -300,7 +299,16 @@ export function DashboardView(props) {
                       period={period}
                       timeZoneLabel={trendTimeZoneLabel}
                       showTimeZoneLabel={false}
+                      chartHeightClass="h-64"
                       zoomConfig={trendZoomConfig}
+                    />
+                  </FadeIn>
+                ) : null}
+                {!screenshotMode ? (
+                  <FadeIn delay={nextLeft()}>
+                    <ModelUsageDonut
+                      rows={modelUsageDistribution?.rows}
+                      totalTokens={modelUsageDistribution?.totalTokens}
                     />
                   </FadeIn>
                 ) : null}
@@ -387,16 +395,6 @@ export function DashboardView(props) {
                     />
                   </FadeIn>
                 ) : null}
-                {isLocalMode && !screenshotMode ? (
-                  <FadeIn delay={D_DATA_DETAILS + 0.05}>
-                    <RequestUsageLog
-                      from={usageFrom}
-                      to={usageTo}
-                      timeZone={requestUsageTimeZone}
-                      tzOffsetMinutes={requestUsageTzOffsetMinutes}
-                    />
-                  </FadeIn>
-                ) : null}
               </div>
           </div>
         )}
@@ -405,5 +403,3 @@ export function DashboardView(props) {
     </>
   );
 }
-
-

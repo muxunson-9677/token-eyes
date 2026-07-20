@@ -1,12 +1,14 @@
 mod auto_launch;
 mod claude_session;
+mod codex_app_server;
+mod codex_oauth;
+mod codex_session;
 #[path = "commands.rs"]
 mod commands;
-mod codex_app_server;
-mod codex_session;
 mod cursor_session;
 mod glm_session;
 mod kimi_session;
+mod minimax_session;
 mod trae_session;
 mod tray;
 mod window_control;
@@ -56,6 +58,7 @@ pub fn run() {
         .manage(Mutex::new(CursorSessionState::default()))
         .manage(Mutex::new(glm_session::GlmSessionState::default()))
         .manage(Mutex::new(kimi_session::KimiSessionState::default()))
+        .manage(Mutex::new(minimax_session::MiniMaxSessionState::default()))
         .manage(Mutex::new(trae_session::TraeSessionState::default()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -86,6 +89,9 @@ pub fn run() {
             kimi_session::open_kimi_console_login,
             kimi_session::verify_kimi_console_session,
             kimi_session::delete_kimi_console_session,
+            minimax_session::open_minimax_console_login,
+            minimax_session::verify_minimax_console_session,
+            minimax_session::delete_minimax_console_session,
             trae_session::open_trae_console_login,
             trae_session::verify_trae_console_session,
             trae_session::sync_trae_console_quota,

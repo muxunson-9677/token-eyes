@@ -1,0 +1,13 @@
+export function getCachedNativeSystemDark(): boolean | null;
+export function subscribeNativeSystemAppearance(callback: (dark: boolean) => void): () => void;
+export function isNativeApp(): boolean;
+export function isTauriApp(): boolean;
+export function isNativeEmbed(): boolean;
+export function isNativeWindowsApp(): boolean;
+export function isBridgeAvailable(): boolean;
+export function requestNativeSettings(): void;
+export function setNativeSetting(key: string, value: unknown): void;
+export function nativeAction(name: string): void;
+export function requestNativeSystemAppearance(): void;
+export function syncNativeChromeAppearance(resolvedTheme: string, theme: string): void;
+export function onNativeSettings(handler: (settings: unknown) => void): () => void;

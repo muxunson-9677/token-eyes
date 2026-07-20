@@ -9,7 +9,7 @@ import { copy, getCopyLocale } from "../../../lib/copy";
 import { CURRENCY_USD, getCurrencySymbol } from "../../../lib/currency";
 import { DateRangePopover, formatDateShort, getDateFnsLocale } from "./DateRangePopover.jsx";
 import { ProviderIcon } from "./ProviderIcon.jsx";
-import { formatCompactNumber, formatUsdCurrency } from "../../../lib/format";
+import { formatChineseTokenCount, formatUsdCurrency } from "../../../lib/format";
 import { ContextBreakdownPanel } from "./ContextBreakdownPanel.jsx";
 import {
   BILLING_FILTERS,
@@ -39,7 +39,7 @@ function formatTokens(value) {
   if (!Number.isFinite(Number(value))) return null;
   const n = Number(value);
   if (n <= 0) return null;
-  return formatCompactNumber(n, { decimals: 1 });
+  return formatChineseTokenCount(n);
 }
 
 function formatCost(value, currency, rate) {
@@ -262,7 +262,7 @@ export function UsageOverview({
               const isActive = period === p.key;
               const tabClass = `shrink-0 whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
                 isActive
-                  ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                  ? "bg-oai-brand-50 text-oai-brand-700 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
                   : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
               }`;
 
@@ -375,7 +375,7 @@ export function UsageOverview({
                 gradientHeight={isDark ? 0 : 8}
                 gradientFrom={gradientFrom}
                 gradientTo={gradientTo}
-                counterStyle={{ paddingLeft: 0, paddingRight: 0, gap: 0 }}
+                counterStyle={{ paddingLeft: 2, paddingRight: 2, gap: 0, overflow: "visible" }}
                 digitStyle={{ width: "0.88ch" }}
               />
             ) : (
@@ -424,7 +424,7 @@ export function UsageOverview({
                     onClick={() => setBillingFilter(value)}
                     className={`shrink-0 whitespace-nowrap text-[11px] font-medium px-2.5 py-1 rounded transition-colors ${
                       isActive
-                        ? "bg-oai-white text-oai-black shadow-sm dark:bg-oai-gray-800 dark:text-oai-white"
+                        ? "bg-oai-brand-50 text-oai-brand-700 shadow-sm ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
                         : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white"
                     }`}
                   >
@@ -490,10 +490,10 @@ export function UsageOverview({
                       action: copy(isExpanded ? "usage.overview.collapse" : "usage.overview.expand"),
                     })}
                     onClick={() => setExpandedProvider(isExpanded ? null : provider.label)}
-                    className={`min-w-0 text-left p-3 rounded-lg border transition-colors duration-200 ${
+                    className={`min-w-0 text-left p-3 rounded-xl border transition-[background-color,border-color,box-shadow,transform] duration-200 ${
                       isExpanded
-                        ? "border-oai-gray-300 dark:border-oai-gray-600 bg-oai-gray-50 dark:bg-oai-gray-800"
-                        : "border-oai-gray-200 dark:border-oai-gray-700 hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
+                        ? "border-oai-brand-200 bg-oai-brand-50/60 shadow-oai-md ring-2 ring-oai-brand-200 dark:border-oai-brand-700 dark:bg-oai-brand-900/20 dark:ring-oai-brand-700/50"
+                        : "border-oai-gray-200 bg-white/80 shadow-oai-sm hover:-translate-y-px hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-700 dark:bg-oai-gray-900/80 dark:hover:border-oai-gray-600"
                     }`}
                   >
                     <div className="flex items-center gap-1.5 mb-1 min-w-0">
@@ -501,12 +501,20 @@ export function UsageOverview({
                       <span className="text-sm font-medium text-oai-black dark:text-oai-white truncate min-w-0 flex-1">{provider.label}</span>
                       <BillingBadge mode={sourceBillingMode} copyKey={sourceBillingKey} />
                     </div>
-                    <div className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">
-                      {provider.totalPercent}%
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-oai-gray-400 dark:text-oai-gray-400 tabular-nums">
-                      {copy("usage.overview.model_count", { count: provider.models.length })}
-                    </div>
+                    {provider.collectionStatus === "connected_no_precise_tokens" ? (
+                      <div className="mt-1 text-[11px] leading-4 text-emerald-600 dark:text-emerald-400">
+                        {copy("settings.data_dirs.installed_no_data")}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">
+                          {provider.totalPercent}%
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-oai-gray-400 dark:text-oai-gray-400 tabular-nums">
+                          {copy("usage.overview.model_count", { count: provider.models.length })}
+                        </div>
+                      </>
+                    )}
                   </button>
                 );
               })}
@@ -682,5 +690,3 @@ function ProviderExpandedSection({ provider, color, providerHeading, contextSour
                       </div>
   );
 }
-
-

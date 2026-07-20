@@ -405,11 +405,15 @@ function determineStatus(statusCode, options = {}) {
  * @param {Function} [options.writeBalance] - (configId, balance) => void
  * @param {boolean} [options.testMode=false] - Allow HTTP for mock servers
  * @param {number} [options.timeoutMs=15000] - Request timeout
+ * @param {Function} [options.resolveOfficialConsoleBalance] - (config) => sanitized balance snapshot | null
  */
 function createBalanceRefreshManager(options = {}) {
   const credentialStore = options.credentialStore;
   const testMode = Boolean(options.testMode);
   const timeoutMs = Number(options.timeoutMs) || 15_000;
+  const resolveOfficialConsoleBalance = typeof options.resolveOfficialConsoleBalance === "function"
+    ? options.resolveOfficialConsoleBalance
+    : () => null;
 
   // Concurrent refresh dedup: configId → Promise<ProviderAccountBalance>
   const pendingRefreshes = new Map();
@@ -457,6 +461,41 @@ function createBalanceRefreshManager(options = {}) {
         errorMessage: "该供应商没有可验证的公开现金余额查询接口",
         lastSyncedAt: null,
       });
+    }
+
+    if (String(config.authType || "").toLowerCase() === "official_console") {
+      const snapshot = resolveOfficialConsoleBalance(config);
+      if (!snapshot) {
+        return makeBalance(config, {
+          status: STATUS_NOT_CONNECTED,
+          errorCode: ERROR_CODES.CREDENTIAL_MISSING,
+          errorMessage: "未完成官方控制台授权",
+          lastSyncedAt: null,
+        });
+      }
+
+      const availableBalance = Number(snapshot.available_balance ?? snapshot.balance);
+      if (!Number.isFinite(availableBalance) || availableBalance < 0) {
+        return makeBalance(config, {
+          status: STATUS_ERROR,
+          errorCode: ERROR_CODES.PROVIDER_RESPONSE_INVALID,
+          errorMessage: "官方控制台余额响应无效",
+          lastSyncedAt: null,
+        });
+      }
+
+      const balance = makeBalance(config, {
+        status: STATUS_SYNCED,
+        balance: availableBalance,
+        monthSpend: null,
+        lifetimeSpend: null,
+        currency: String(snapshot.currency || "CNY"),
+        errorCode: undefined,
+        errorMessage: undefined,
+        lastSyncedAt: String(snapshot.provider_reported_at || now),
+      });
+      cache.set(config.id, { balance, timestamp: Date.now() });
+      return balance;
     }
 
     // Check if credential store is available

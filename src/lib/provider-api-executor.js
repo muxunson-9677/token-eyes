@@ -89,6 +89,7 @@ const FINANCIAL_KEYWORDS = [
   "invoice", "invoices",
   "quota", "quotas",
   "payment", "payments",
+  "recharge", "recharges",
 ];
 
 // 关键词匹配正则：关键词前后必须是字符串边界或路径分隔符（/ : . _ -）。

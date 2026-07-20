@@ -1,15 +1,22 @@
 {
-  "generatedAt": "2026-07-04T21:14:28.994Z",
+  "generatedAt": "2026-07-20T03:46:57.453Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 308,
-    "rawText": 205
+    "colors": 311,
+    "rawText": 239
   },
   "files": {
+    "dashboard/src/App.routes.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ", ); expect(await screen.findByText(TEXT.leaderboard)).toBeInTheDocument(); expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument(); leaderboardRender.unmount(); render("
+      ]
+    },
     "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
       "colors": 0,
       "rawText": 3,
@@ -66,18 +73,37 @@
     },
     "dashboard/src/components/settings/TokenPlanSection.jsx": {
       "colors": 0,
-      "rawText": 4,
+      "rawText": 29,
       "rawTextTokens": [
+        ") ) : form.provider_id === \"cursor\" ? (",
+        ") ) : form.provider_id === \"minimax\" ? (",
+        ") : codexStage === \"awaiting_verification\" ? (",
+        ") : codexStage === \"disconnected\" ? (",
+        ") : codexStage === \"failed\" || codexStage === \"desktop_not_verified\" ? (",
+        ") : codexStage === \"login_started\" ? (",
+        ") : form.provider_id === \"aliyun_bailian\" ? (",
+        ") : form.provider_id === \"claude\" ? ( claudeRoutingMode ? (",
+        ") : form.provider_id === \"codex\" ? (",
+        ") : form.provider_id === \"kimi\" ? ( form.plan_id === \"kimi_api_budget\" ? (",
+        ") : form.provider_id === \"trae\" ? (",
+        ") : form.provider_id === \"xiaomi_mimo\" ? (",
+        ") : glmStage === \"awaiting_verification\" ? (",
+        ") : glmStage === \"disconnected\" ? (",
+        ") : glmStage === \"failed\" || glmStage === \"desktop_not_verified\" ? (",
+        ") : glmStage === \"login_started\" ? (",
+        ") : stage === \"awaiting_verification\" ? (",
+        ") : stage === \"disconnected\" ? (",
+        ") : stage === \"failed\" || stage === \"desktop_not_verified\" ? (",
+        ") : stage === \"login_started\" ? (",
         ") : xiaomiMimoStage === \"awaiting_verification\" ? (",
         ") : xiaomiMimoStage === \"disconnected\" ? (",
         ") : xiaomiMimoStage === \"failed\" || xiaomiMimoStage === \"desktop_not_verified\" ? (",
-        ") : xiaomiMimoStage === \"login_started\" ? ("
+        ") : xiaomiMimoStage === \"login_started\" ? (",
+        "0 && (",
+        "record.id === id); const newIndex = Math.max(0, Math.min(records.length - 1, oldIndex + direction)); if (oldIndex",
+        "record.id === over.id); if (oldIndex",
+        "window.kind === \"api\"); const resetAt = total?.resets_at || auto?.resets_at || api?.resets_at || \"\"; const displayName = String(official.display_name || \"\").trim(); const accountId = maskCursorAccountId(official.account_id); const planName = String(official.plan_name || record?.plan_label || \"\").trim(); return ("
       ]
-    },
-    "dashboard/src/components/SortableColumnHeader.jsx": {
-      "colors": 4,
-      "rawText": 0,
-      "rawTextTokens": []
     },
     "dashboard/src/components/spend/SpendTrendChart.jsx": {
       "colors": 24,
@@ -91,6 +117,13 @@
       "rawText": 1,
       "rawTextTokens": [
         "setIsOpen(false), []); return ("
+      ]
+    },
+    "dashboard/src/main.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "root.render("
       ]
     },
     "dashboard/src/pages/DashboardPage.jsx": {
@@ -127,6 +160,13 @@
         "for the header row, NOT the semantic",
         "setTimeout(r, 1500)); let dnsServers = []; for (let attempt = 0; attempt",
         "sidesteps all UA semantics. return ("
+      ]
+    },
+    "dashboard/src/pages/LeaderboardPage.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "; return ("
       ]
     },
     "dashboard/src/pages/LeaderboardProfilePage.jsx": {
@@ -372,6 +412,18 @@
         "0 && ("
       ]
     },
+    "dashboard/src/ui/dashboard/components/TokenServiceList.jsx": {
+      "colors": 0,
+      "rawText": 6,
+      "rawTextTokens": [
+        ") : error ? (",
+        ") : pageRows.length === 0 ? (",
+        "0 && (",
+        "0 && (service.used",
+        "TOKEN_SERVICE_PAGE_SIZE && (",
+        "metric.resetsAt === service.metrics[0].resetsAt) ? service.metrics[0].resetsAt : null; return ("
+      ]
+    },
     "dashboard/src/ui/dashboard/components/TrendMonitor.jsx": {
       "colors": 30,
       "rawText": 9,
@@ -409,7 +461,7 @@
       ]
     },
     "dashboard/src/ui/dashboard/components/UsageOverview.jsx": {
-      "colors": 11,
+      "colors": 18,
       "rawText": 1,
       "rawTextTokens": [
         "0 && ("

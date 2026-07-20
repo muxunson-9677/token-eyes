@@ -17,11 +17,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-const OFFICIAL_DOMAINS: &[&str] = &[
-    "www.bigmodel.cn",
-    "open.bigmodel.cn",
-    "bigmodel.cn",
-];
+const OFFICIAL_DOMAINS: &[&str] = &["www.bigmodel.cn", "open.bigmodel.cn", "bigmodel.cn"];
 
 const LOGIN_URL: &str = "https://www.bigmodel.cn/coding-plan/personal/usage";
 const WINDOW_TITLE: &str = "GLM 官方控制台登录 - Token Eyes";
@@ -301,9 +297,11 @@ pub fn map_balance_fetch_result_to_status(
     };
 
     if result.status == "success" {
-        let (Some(balance), Some(available_balance), Some(credit_balance)) =
-            (result.balance, result.available_balance, result.credit_balance)
-        else {
+        let (Some(balance), Some(available_balance), Some(credit_balance)) = (
+            result.balance,
+            result.available_balance,
+            result.credit_balance,
+        ) else {
             return build_status(
                 session_ref,
                 false,
@@ -325,10 +323,7 @@ pub fn map_balance_fetch_result_to_status(
             .provider_reported_at
             .clone()
             .unwrap_or_else(|| String::new());
-        let currency = result
-            .currency
-            .clone()
-            .unwrap_or_else(|| "CNY".to_string());
+        let currency = result.currency.clone().unwrap_or_else(|| "CNY".to_string());
         return GlmSessionStatus {
             connected: true,
             session_ref: session_ref.to_string(),
@@ -539,11 +534,12 @@ pub async fn verify_glm_console_session(
             )
             .map_err(|error| format!("Unable to inspect GLM login state: {error}"))?;
 
-        let raw =
-            tauri::async_runtime::spawn_blocking(move || receiver.recv_timeout(Duration::from_secs(2)))
-                .await
-                .map_err(|error| format!("GLM balance callback task failed: {error}"))?
-                .ok();
+        let raw = tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(2))
+        })
+        .await
+        .map_err(|error| format!("GLM balance callback task failed: {error}"))?
+        .ok();
 
         if let Some(raw) = raw {
             if let Some(parsed) = parse_balance_eval_result(&raw)? {
@@ -578,10 +574,7 @@ pub async fn verify_glm_console_session(
 
 /// Deletes the active GLM console session.
 #[tauri::command]
-pub async fn delete_glm_console_session(
-    app: AppHandle,
-    session_ref: String,
-) -> Result<(), String> {
+pub async fn delete_glm_console_session(app: AppHandle, session_ref: String) -> Result<(), String> {
     let window_label = if let Some(state) = app.try_state::<Mutex<GlmSessionState>>() {
         if let Ok(mut guard) = state.lock() {
             take_active_window_label(&mut guard, &session_ref)
@@ -641,8 +634,12 @@ mod tests {
         ));
         assert!(is_official_glm_url("https://open.bigmodel.cn/login"));
         assert!(is_official_glm_url("https://account.bigmodel.cn/oauth"));
-        assert!(!is_official_glm_url("https://bigmodel.cn.evil.example/login"));
-        assert!(!is_official_glm_url("https://evil.example/?next=www.bigmodel.cn"));
+        assert!(!is_official_glm_url(
+            "https://bigmodel.cn.evil.example/login"
+        ));
+        assert!(!is_official_glm_url(
+            "https://evil.example/?next=www.bigmodel.cn"
+        ));
         assert!(!is_official_glm_url("https://phishing.example.com/"));
     }
 
@@ -657,7 +654,9 @@ mod tests {
     #[test]
     fn is_official_glm_url_accepts_subdomains_of_official_domains() {
         assert!(is_official_glm_url("https://api.open.bigmodel.cn/v1"));
-        assert!(is_official_glm_url("https://console.www.bigmodel.cn/dashboard"));
+        assert!(is_official_glm_url(
+            "https://console.www.bigmodel.cn/dashboard"
+        ));
     }
 
     #[test]
@@ -730,12 +729,8 @@ mod tests {
 
     #[test]
     fn session_fetch_balance_returns_awaiting_when_no_login_yet() {
-        let status = map_balance_fetch_result_to_status(
-            "token-plan/glm/session/uuid-1",
-            true,
-            true,
-            None,
-        );
+        let status =
+            map_balance_fetch_result_to_status("token-plan/glm/session/uuid-1", true, true, None);
         assert!(!status.connected);
         assert_eq!(status.state_code, SessionStateCode::AwaitingVerification);
     }

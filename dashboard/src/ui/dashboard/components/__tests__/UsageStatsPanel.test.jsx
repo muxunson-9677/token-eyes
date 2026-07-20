@@ -6,7 +6,7 @@ import { UsageStatsPanel } from "../UsageStatsPanel.jsx";
 // Ticket-02 F: UsageStatsPanel is a pure presentational component. All its
 // copy keys are ticket02.stats.* which resolve to the zh-CN CSV fallback in
 // any locale, so we pin zh-CN for determinism and assert the wired strings +
-// the data-derived formatted numbers (formatFullNum / formatApprox /
+// the data-derived formatted numbers (formatChineseTokenCount /
 // normalizeHitRate / formatCost).
 
 describe("UsageStatsPanel", () => {
@@ -14,7 +14,7 @@ describe("UsageStatsPanel", () => {
     setCopyLocale("zh-CN");
   });
 
-  it("renders main metric, approx, 4 dimension cards and 3 right cards when summary.totals present", () => {
+  it("renders Chinese token units, 4 dimension cards and 3 right cards when summary.totals present", () => {
     render(
       <UsageStatsPanel
         summary={{
@@ -32,18 +32,17 @@ describe("UsageStatsPanel", () => {
       />,
     );
 
-    // Main metric + approx
+    // Main metric uses one Chinese-unit value instead of a duplicated raw/approx pair.
     expect(screen.getByText("真实消耗 Tokens")).toBeInTheDocument();
-    expect(screen.getByText("643,308,077")).toBeInTheDocument();
-    expect(screen.getByText("≈ 6.43 亿")).toBeInTheDocument();
+    expect(screen.getByText("6.43亿")).toBeInTheDocument();
+    expect(screen.queryByText("643,308,077")).not.toBeInTheDocument();
 
     // 4 dimension card labels
     expect(screen.getByText("新增输入")).toBeInTheDocument();
     expect(screen.getByText("Output")).toBeInTheDocument();
     expect(screen.getByText("创建")).toBeInTheDocument();
     expect(screen.getByText("命中")).toBeInTheDocument();
-    // One compact-formatted dimension value to verify formatCompactNumber wiring
-    expect(screen.getByText("55.2M")).toBeInTheDocument();
+    expect(screen.getByText("5.52千万")).toBeInTheDocument();
 
     // Right-side cards
     expect(screen.getByText("总请求数")).toBeInTheDocument();
@@ -103,7 +102,7 @@ describe("UsageStatsPanel", () => {
 
     const selectedAgent = screen.getByTestId("usage-selected-agent");
     expect(selectedAgent).toHaveTextContent("Claude Code");
-    expect(screen.getByText("400,972,476")).toBeInTheDocument();
+    expect(screen.getByText("4.01亿")).toBeInTheDocument();
   });
 
   it("renders compact cost summaries in the same responsive four-column rhythm", () => {
@@ -156,7 +155,7 @@ describe("UsageStatsPanel", () => {
     { current: 120, previous: 100, expected: "较上月新增 20.0%" },
     { current: 80, previous: 100, expected: "较上月减少 20.0%" },
     { current: 100, previous: 100, expected: "与上月持平" },
-    { current: 15, previous: 0, expected: "较上月新增 USD 15.00" },
+    { current: 15, previous: 0, expected: "上月无基数" },
     { current: 0, previous: 0, expected: "与上月持平" },
   ])("renders the monthly total comparison without invalid zero-base percentages", ({ current, previous, expected }) => {
     render(
@@ -177,7 +176,68 @@ describe("UsageStatsPanel", () => {
       />,
     );
 
-    expect(screen.getByTestId("monthly-cost-comparison")).toHaveTextContent(expected);
+    const comparison = screen.getByTestId("monthly-cost-comparison");
+    expect(comparison).toHaveTextContent(expected);
+    expect(comparison.parentElement).toHaveAttribute("data-testid", "monthly-cost-cny-row");
+    expect(screen.queryByTestId("monthly-cost-heading-row")).not.toBeInTheDocument();
+  });
+
+  it("shows API, subscription and total month comparisons beside CNY", () => {
+    render(
+      <UsageStatsPanel
+        summary={{ totals: { total_tokens: 1 } }}
+        costSummary={{
+          api_usd: 120,
+          api_cny: 864,
+          previous_api_usd: 100,
+          subscription_usd: 80,
+          subscription_cny: 576,
+          previous_subscription_usd: 100,
+          combined_usd: 200,
+          combined_cny: 1440,
+          previous_combined_usd: 200,
+          lifetime_combined_usd: 500,
+          lifetime_combined_cny: 3600,
+        }}
+      />,
+    );
+
+    const comparisons = screen.getAllByTestId("monthly-cost-comparison");
+    expect(comparisons).toHaveLength(3);
+    expect(comparisons[0]).toHaveTextContent("20.0%");
+    expect(comparisons[1]).toHaveTextContent("20.0%");
+    expect(comparisons[2]).toHaveTextContent("持平");
+    expect(screen.getAllByTestId("monthly-cost-cny-row")).toHaveLength(3);
+    expect(comparisons[0]).toHaveClass("text-green-600");
+    expect(comparisons[1]).toHaveClass("text-green-600");
+  });
+
+  it("uses each installed-ledger bucket and renders delta rather than current/previous ratio", () => {
+    render(
+      <UsageStatsPanel
+        summary={{ totals: { total_tokens: 1 } }}
+        costSummary={{
+          api_usd: 6603.138389,
+          api_cny: 47542.596401,
+          previous_api_usd: 463.393724,
+          subscription_usd: 0,
+          subscription_cny: 0,
+          previous_subscription_usd: 0,
+          combined_usd: 6749.666167,
+          combined_cny: 48597.596401,
+          previous_combined_usd: 472.143724,
+          lifetime_combined_usd: 8637.381556,
+          lifetime_combined_cny: 62189.147203,
+        }}
+      />,
+    );
+
+    const comparisons = screen.getAllByTestId("monthly-cost-comparison");
+    expect(comparisons).toHaveLength(3);
+    expect(comparisons[0]).toHaveTextContent("较上月新增 1325.0%");
+    expect(comparisons[1]).toHaveTextContent("与上月持平");
+    expect(comparisons[2]).toHaveTextContent("较上月新增 1329.6%");
+    expect(screen.queryByText("较上月新增 1425.0%")).not.toBeInTheDocument();
   });
 
   it("keeps existing stats visible while refreshing", () => {
@@ -206,15 +266,14 @@ describe("UsageStatsPanel", () => {
     expect(screen.getByText("加载中")).toBeInTheDocument();
   });
 
-  it("formats approx as 万 for totals below 1e8 but at least 1e4", () => {
+  it("formats totals below 1e8 with Chinese units", () => {
     render(
       <UsageStatsPanel
         summary={{ totals: { total_tokens: 55193000 } }}
       />,
     );
 
-    // 55193000 / 1e4 = 5519.3 → "5519.3 万"
-    expect(screen.getByText("≈ 5519.3 万")).toBeInTheDocument();
+    expect(screen.getByText("5.52千万")).toBeInTheDocument();
   });
 
   it("normalizes cache_hit_rate from both 0-1 ratio and 0-100 percent", () => {

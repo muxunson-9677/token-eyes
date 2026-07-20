@@ -15,11 +15,53 @@ const {
   mapRefreshMethodToDetectionMethod,
   mapRefreshStatusToSyncStatus,
   normalizeDetectionFields,
+  normalizeDetectionConfig,
+  normalizeQuotaWindows,
   refreshPlan,
   createScheduler,
   registerProviderAdapter,
   getProviderAdapter,
 } = require("../src/lib/token-plan-refresh");
+
+test("Cursor official account metadata survives normalization without credentials", () => {
+  const normalized = normalizeDetectionConfig({
+    official_account: {
+      provider_home_url: "https://www.cursor.com/settings",
+      account_binding_id: "cursor-session-id",
+      session_ref: "token-plan/cursor/session/cursor-one",
+      account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+      display_name: "eve***@hotmail.com",
+      plan_name: "pro",
+    },
+  });
+
+  assert.deepEqual(normalized.official_account, {
+    provider_home_url: "https://www.cursor.com/settings",
+    account_binding_id: "cursor-session-id",
+    api_key_ref: "",
+    session_ref: "token-plan/cursor/session/cursor-one",
+    account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+    display_name: "eve***@hotmail.com",
+    plan_name: "pro",
+  });
+  assert.equal("access_token" in normalized.official_account, false);
+  assert.equal("refresh_token" in normalized.official_account, false);
+});
+
+test("Cursor percentage windows preserve fractional Total Auto and API dimensions", () => {
+  const windows = normalizeQuotaWindows([
+    { kind: "total", unit: "percent", total: 100, used: 33.52173913043478, remaining: 66.47826086956522, percentage: 33.52173913043478, resets_at: "2026-08-06T14:31:29.000Z" },
+    { kind: "auto_composer", unit: "percent", total: 100, used: 27.82, remaining: 72.18, percentage: 27.82, resets_at: "2026-08-06T14:31:29.000Z" },
+    { kind: "api", unit: "percent", total: 100, used: 71.53333333333333, remaining: 28.46666666666667, percentage: 71.53333333333333, resets_at: "2026-08-06T14:31:29.000Z" },
+  ]);
+
+  assert.equal(windows.length, 3);
+  assert.deepEqual(windows.map((window) => window.kind), ["total", "auto_composer", "api"]);
+  assert.equal(windows[0].unit, "percent");
+  assert.equal(windows[0].used, 33.52173913043478);
+  assert.equal(windows[1].used, 27.82);
+  assert.equal(windows[2].used, 71.53333333333333);
+});
 
 test("pickIntervalMinutes clamps to allowed set", () => {
   assert.equal(pickIntervalMinutes(15), 15);
@@ -52,6 +94,52 @@ test("normalizeRefreshFields merges input and fallback", () => {
   assert.equal(out.refresh_interval_minutes, 30);
   assert.equal(out.refresh_method, "official_api");
   assert.equal(out.credential_ref, "codex_auth_json");
+});
+
+test("backend refresh preserves a native TRAE quota until the desktop bridge syncs it", async () => {
+  const plan = {
+    id: "trae-live-plan",
+    provider_id: "trae",
+    plan_id: "trae_cn_pro",
+    detection_method: "official_account",
+    refresh_method: "official_api",
+    refresh_enabled: true,
+    refresh_interval_minutes: 5,
+    total_quota: 100,
+    used_quota: 25,
+    remaining_quota: 75,
+    quota_windows: [{
+      kind: "fast_request",
+      unit: "requests",
+      total: 100,
+      used: 25,
+      remaining: 75,
+      percentage: 25,
+    }],
+    sync_status: "success",
+    last_synced_at: "2026-07-20T01:23:22.565Z",
+    last_error_code: "",
+    last_error_message: "",
+    detection_config: {
+      official_account: {
+        account_binding_id: "console-trae-one",
+        session_ref: "token-plan/trae/session/one",
+        account_id: "4267669818716825",
+      },
+    },
+  };
+
+  const result = await refreshPlan(plan, { now: "2026-07-20T01:28:22.565Z" });
+
+  assert.equal(result.status, "deferred_native");
+  assert.equal(result.record.sync_status, "success");
+  assert.equal(result.record.last_synced_at, plan.last_synced_at);
+  assert.equal(result.record.last_error_code, "");
+  assert.equal(result.record.total_quota, 100);
+  assert.equal(result.record.used_quota, 25);
+  assert.equal(result.record.remaining_quota, 75);
+  assert.deepEqual(result.record.quota_windows, plan.quota_windows);
+  assert.equal(result.record.next_refresh_at, "2026-07-20T01:33:22.565Z");
 });
 
 test("ensureStatusFields sets next_refresh_at when enabled and non-manual", () => {

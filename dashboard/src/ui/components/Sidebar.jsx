@@ -25,9 +25,9 @@ const STORAGE_KEY = "tt.sidebarCollapsed";
 const EXPANDED_KEY = "tt.sidebarExpanded";
 
 // v2.0 IA: two-level navigation. Top-level "概览" is a single item; "支出"
-// and "设置" are parents that expand to show their child routes. Parents
-// navigate to their default child on click and never collapse the children
-// list once expanded (so the current page never disappears).
+// and "设置" are parents that expand to show their child routes. A click on
+// an active parent toggles its children; a click on an inactive parent opens
+// its default child.
 export function getNavGroups() {
   // copy() must be called at render time so locale switches apply.
   // Validator regex picks up these literal calls.
@@ -167,7 +167,7 @@ function NavItem({ item, collapsed, active, onClick }) {
         "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors",
         collapsed && "justify-center px-0 py-2",
         active
-          ? "bg-oai-gray-200/70 text-oai-black font-medium dark:bg-oai-gray-800 dark:text-white"
+          ? "bg-oai-brand-50 text-oai-brand-700 font-semibold ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
           : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
       )}
     >
@@ -181,8 +181,8 @@ function NavItem({ item, collapsed, active, onClick }) {
 
 /**
  * v2.0 IA: NavParent — a clickable parent that expands its children and
- * navigates to the default child route. Clicking again never collapses
- * (the current page must not disappear). The expand state is controlled
+ * navigates to the default child route. Clicking an active parent toggles
+ * its children without changing the current route. The expand state is controlled
  * by the caller so it can persist across renders and sync with the
  * mobile drawer.
  *
@@ -205,16 +205,17 @@ function NavParent({
   const childrenListId = `nav-children-${group.id}`;
 
   const handleClick = useCallback(() => {
-    // Always expand the children so the current page stays visible, then
-    // navigate to the default child. Per the IA spec, clicking again must
-    // not make the current page disappear.
+    if (active) {
+      onToggleExpand(group.id);
+      return;
+    }
     if (!expanded) onToggleExpand(group.id);
     navigate(group.defaultChildTo);
     // In the mobile drawer, onItemClick === onClose. Close the drawer so
     // the user sees the destination page instead of the nav overlay.
     // Desktop passes undefined (no-op).
     onItemClick?.();
-  }, [expanded, group.defaultChildTo, group.id, navigate, onToggleExpand, onItemClick]);
+  }, [active, expanded, group.defaultChildTo, group.id, navigate, onToggleExpand, onItemClick]);
 
   return (
     <div className="flex flex-col">
@@ -230,7 +231,7 @@ function NavParent({
           "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors",
           collapsed && "justify-center px-0 py-2",
           active
-            ? "bg-oai-gray-200/70 text-oai-black font-medium dark:bg-oai-gray-800 dark:text-white"
+            ? "bg-oai-brand-50 text-oai-brand-700 font-semibold ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
             : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
         )}
       >
@@ -267,7 +268,7 @@ function NavParent({
                   className={cn(
                     "flex items-center rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors",
                     childActive
-                      ? "bg-oai-gray-200/70 text-oai-black font-medium dark:bg-oai-gray-800 dark:text-white"
+                      ? "bg-oai-brand-50 text-oai-brand-700 font-semibold ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
                       : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
                   )}
                 >
@@ -445,9 +446,8 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
         next.add(groupId);
         return next;
       }
-      // Toggling an already-expanded group collapses it (only when the
-      // user explicitly toggles via the chevron, not via parent click —
-      // parent click always keeps it expanded).
+      // Toggling an already-expanded group collapses it while preserving the
+      // active child route.
       next.delete(groupId);
       return next;
     });
@@ -676,7 +676,11 @@ export function AppLayout({ children }) {
       className={cn(
         "fixed inset-0 flex flex-col text-oai-black dark:text-oai-white font-sans overflow-hidden",
         isNativeWindowsApp() && "tt-native-glass-shell",
-        nativeEmbed ? "bg-transparent" : "bg-oai-gray-100 dark:bg-oai-gray-950",
+        isNativeWindowsApp()
+          ? "bg-oai-gray-100/80 dark:bg-oai-gray-950"
+          : nativeEmbed
+            ? "bg-transparent"
+            : "bg-oai-gray-100/80 dark:bg-oai-gray-950",
       )}
     >
       {nativeEmbed && (
@@ -696,7 +700,7 @@ export function AppLayout({ children }) {
             className={cn(
               "flex-1 min-h-0 flex flex-col bg-oai-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden",
               nativeEmbed ? "tt-native-main-card" : "rounded-2xl",
-              !nativeEmbed && "shadow-sm",
+              (!nativeEmbed || isNativeWindowsApp()) && "shadow-oai-lg",
             )}
           >
             <MobileTopBar onOpenDrawer={openDrawer} />
@@ -709,4 +713,3 @@ export function AppLayout({ children }) {
     </div>
   );
 }
-

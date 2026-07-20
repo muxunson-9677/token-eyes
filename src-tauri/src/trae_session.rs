@@ -15,18 +15,19 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 const SESSION_PREFIX: &str = "token-plan/trae/session/";
 const CLIENT_ID: &str = "ono9krqynydwx5";
 const TRAE_APP_VERSION: &str = "3.5.66";
+const OAUTH_TIMEOUT: Duration = Duration::from_secs(600);
 /// Official Trae CN browser authorization origin (Cockpit successful OAuth link).
 /// Distinct from GetLoginGuidance API hosts such as api.trae.cn.
 const BROWSER_AUTH_ORIGIN_CN: &str = "https://www.trae.cn";
@@ -73,7 +74,155 @@ struct OAuthCallback {
 #[derive(Debug)]
 struct PendingTraeOAuth {
     verifier: String,
+    context: TraeLoginContext,
     receiver: Mutex<Receiver<Result<OAuthCallback, String>>>,
+}
+
+#[derive(Debug, Clone)]
+struct TraeLoginContext {
+    client_id: String,
+    plugin_version: String,
+    app_version: String,
+    app_type: String,
+    machine_id: String,
+    device_id: String,
+    device_brand: String,
+    device_type: String,
+    os_version: String,
+    environment: String,
+}
+
+fn nonempty_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn login_context_from_values(
+    product: &Value,
+    storage: &Value,
+    os_version: &str,
+) -> TraeLoginContext {
+    let app_type = nonempty_string(product.get("quality")).unwrap_or_else(|| "stable".to_string());
+    let client_id = product
+        .pointer(&format!("/iCubeApp/authConfig/TRAE/{app_type}"))
+        .and_then(|value| nonempty_string(Some(value)))
+        .unwrap_or_else(|| CLIENT_ID.to_string());
+    TraeLoginContext {
+        client_id,
+        plugin_version: nonempty_string(product.get("tronBuildVersion"))
+            .unwrap_or_else(|| "local".to_string()),
+        app_version: nonempty_string(product.get("appVersion"))
+            .unwrap_or_else(|| TRAE_APP_VERSION.to_string()),
+        app_type,
+        machine_id: nonempty_string(storage.get("telemetry.machineId"))
+            .or_else(|| recursive_string(storage, &["machineId", "machine_id"]))
+            .unwrap_or_else(|| random_urlsafe(18)),
+        device_id: recursive_string(storage, &["deviceId", "device_id", "x_device_id"])
+            .unwrap_or_else(|| "0".to_string()),
+        device_brand: "Windows".to_string(),
+        device_type: "windows".to_string(),
+        os_version: os_version.to_string(),
+        environment: nonempty_string(storage.get("x_env"))
+            .or_else(|| nonempty_string(storage.get("environment")))
+            .unwrap_or_default(),
+    }
+}
+
+fn read_json_value(path: &Path) -> Value {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| json!({}))
+}
+
+#[cfg(windows)]
+fn installed_trae_directory() -> Option<PathBuf> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    let current_user = RegKey::predef(HKEY_CURRENT_USER);
+    let uninstall = current_user
+        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall")
+        .ok()?;
+    for key_name in uninstall.enum_keys().flatten() {
+        let Ok(key) = uninstall.open_subkey(key_name) else {
+            continue;
+        };
+        let display_name: String = key.get_value("DisplayName").unwrap_or_default();
+        if !display_name.starts_with("Trae CN") {
+            continue;
+        }
+        let install_location: String = key.get_value("InstallLocation").unwrap_or_default();
+        if !install_location.trim().is_empty() {
+            return Some(PathBuf::from(install_location));
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+fn installed_trae_directory() -> Option<PathBuf> {
+    None
+}
+
+fn normalize_windows_product_name(name: &str, build: &str) -> String {
+    if build.parse::<u32>().unwrap_or_default() >= 22_000 {
+        name.replacen("Windows 10", "Windows 11", 1)
+    } else {
+        name.to_string()
+    }
+}
+
+#[cfg(windows)]
+fn system_os_version() -> String {
+    use winreg::enums::HKEY_LOCAL_MACHINE;
+    use winreg::RegKey;
+
+    let local_machine = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let Ok(key) = local_machine.open_subkey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion")
+    else {
+        return "Windows".to_string();
+    };
+    let name: String = key
+        .get_value("ProductName")
+        .unwrap_or_else(|_| "Windows".to_string());
+    let build: String = key.get_value("CurrentBuildNumber").unwrap_or_default();
+    let name = normalize_windows_product_name(&name, &build);
+    if build.is_empty() {
+        name
+    } else {
+        format!("{name} 10.0.{build}")
+    }
+}
+
+#[cfg(not(windows))]
+fn system_os_version() -> String {
+    std::env::consts::OS.to_string()
+}
+
+fn load_login_context() -> TraeLoginContext {
+    let install_dir = installed_trae_directory().or_else(|| {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .map(|path| path.join("Programs").join("Trae CN"))
+    });
+    let product = install_dir
+        .map(|path| read_json_value(&path.join("resources").join("app").join("product.json")))
+        .unwrap_or_else(|| json!({}));
+    let storage = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .map(|path| {
+            path.join("Trae CN")
+                .join("User")
+                .join("globalStorage")
+                .join("storage.json")
+        })
+        .map(|path| read_json_value(&path))
+        .unwrap_or_else(|| json!({}));
+    login_context_from_values(&product, &storage, &system_os_version())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,6 +299,10 @@ fn failed(session_ref: &str, code: &str, message: impl Into<String>) -> TraeSess
         error_message: message.into(),
         quota: None,
     }
+}
+
+fn callback_failed(session_ref: &str, message: impl Into<String>) -> TraeSessionStatus {
+    failed(session_ref, "TRAE_AUTH_CALLBACK_FAILED", message)
 }
 
 /// Auth file / tokens may exist while entitlement parse fails — never "connected" with zeros.
@@ -254,7 +407,10 @@ fn callback_from_target(target: &str) -> Result<OAuthCallback, String> {
     if parsed.path() != "/authorize" {
         return Err("Invalid TRAE OAuth callback path".to_string());
     }
-    let values = parsed.query_pairs().into_owned().collect::<HashMap<_, _>>();
+    let mut values = parsed.query_pairs().into_owned().collect::<HashMap<_, _>>();
+    if let Some(fragment) = parsed.fragment() {
+        values.extend(url::form_urlencoded::parse(fragment.as_bytes()).into_owned());
+    }
     if let Some(error) = first_query_value(&values, &["error", "error_code", "err", "errorCode"]) {
         return Err(format!("TRAE authorization failed: {error}"));
     }
@@ -294,11 +450,68 @@ fn callback_from_target(target: &str) -> Result<OAuthCallback, String> {
     })
 }
 
+fn callback_pending_html() -> &'static str {
+    r#"<!doctype html><meta charset=utf-8><title>Token Eyes</title>
+<p>正在接收 TRAE 授权结果…</p>
+<script>
+if (window.location.hash && window.location.hash.length > 1) {
+  const target = window.location.origin + window.location.pathname + '?' + window.location.hash.slice(1);
+  window.location.replace(target);
+}
+</script>"#
+}
+
+fn write_callback_response(stream: &mut std::net::TcpStream, body: &str) {
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(), body
+    );
+    let _ = stream.write_all(response.as_bytes());
+}
+
 /// Browser auth origin is never the GetLoginGuidance API host.
 /// Cockpit success URL: `https://www.trae.cn/authorization?login_version=1&auth_from=trae&...`
 fn resolve_browser_auth_origin(_login_host: &str) -> Result<url::Url, String> {
     url::Url::parse(BROWSER_AUTH_ORIGIN_CN)
         .map_err(|_| "TRAE browser authorization origin is invalid".to_string())
+}
+
+fn build_authorization_url_with_context(
+    login_host: &str,
+    redirect_uri: &str,
+    trace_id: &str,
+    challenge: &str,
+    context: &TraeLoginContext,
+) -> Result<url::Url, String> {
+    // login_host may be api.trae.cn (guidance/API). Do NOT Url::parse(login_host)+set_path.
+    let mut auth_url = resolve_browser_auth_origin(login_host)?;
+    auth_url.set_path(BROWSER_AUTH_PATH);
+    auth_url.set_query(None);
+    // Query param set mirrors Cockpit `build_verification_uri` for Trae CN (auth_from=trae).
+    auth_url
+        .query_pairs_mut()
+        .append_pair("login_version", "1")
+        .append_pair("auth_from", "trae")
+        .append_pair("login_channel", "native_ide")
+        .append_pair("plugin_version", &context.plugin_version)
+        .append_pair("auth_type", "local")
+        .append_pair("client_id", &context.client_id)
+        .append_pair("redirect", "0")
+        .append_pair("login_trace_id", trace_id)
+        .append_pair("auth_callback_url", redirect_uri)
+        .append_pair("machine_id", &context.machine_id)
+        .append_pair("device_id", &context.device_id)
+        .append_pair("x_device_id", &context.device_id)
+        .append_pair("x_machine_id", &context.machine_id)
+        .append_pair("x_device_brand", &context.device_brand)
+        .append_pair("x_device_type", &context.device_type)
+        .append_pair("x_os_version", &context.os_version)
+        .append_pair("x_env", &context.environment)
+        .append_pair("x_app_version", &context.app_version)
+        .append_pair("x_app_type", &context.app_type)
+        .append_pair("code_challenge", challenge)
+        .append_pair("code_challenge_method", "S256");
+    Ok(auth_url)
 }
 
 fn build_authorization_url(
@@ -307,37 +520,8 @@ fn build_authorization_url(
     trace_id: &str,
     challenge: &str,
 ) -> Result<url::Url, String> {
-    // login_host may be api.trae.cn (guidance/API). Do NOT Url::parse(login_host)+set_path.
-    let mut auth_url = resolve_browser_auth_origin(login_host)?;
-    auth_url.set_path(BROWSER_AUTH_PATH);
-    auth_url.set_query(None);
-    let machine_id = random_urlsafe(18);
-    let device_id = random_urlsafe(18);
-    // Query param set mirrors Cockpit `build_verification_uri` for Trae CN (auth_from=trae).
-    auth_url
-        .query_pairs_mut()
-        .append_pair("login_version", "1")
-        .append_pair("auth_from", "trae")
-        .append_pair("login_channel", "native_ide")
-        .append_pair("plugin_version", "local")
-        .append_pair("auth_type", "local")
-        .append_pair("client_id", CLIENT_ID)
-        .append_pair("redirect", "0")
-        .append_pair("login_trace_id", trace_id)
-        .append_pair("auth_callback_url", redirect_uri)
-        .append_pair("machine_id", &machine_id)
-        .append_pair("device_id", &device_id)
-        .append_pair("x_device_id", &device_id)
-        .append_pair("x_machine_id", &machine_id)
-        .append_pair("x_device_brand", "windows")
-        .append_pair("x_device_type", "desktop")
-        .append_pair("x_os_version", "Windows 10")
-        .append_pair("x_env", "prod")
-        .append_pair("x_app_version", TRAE_APP_VERSION)
-        .append_pair("x_app_type", "stable")
-        .append_pair("code_challenge", challenge)
-        .append_pair("code_challenge_method", "S256");
-    Ok(auth_url)
+    let context = login_context_from_values(&json!({}), &json!({}), "Windows");
+    build_authorization_url_with_context(login_host, redirect_uri, trace_id, challenge, &context)
 }
 
 fn start_listener(
@@ -353,39 +537,69 @@ fn start_listener(
     let redirect_uri = format!("http://127.0.0.1:{port}/authorize");
     let verifier = random_urlsafe(64);
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-    let auth_url = build_authorization_url(login_host, &redirect_uri, &trace_id, &challenge)?;
+    let context = load_login_context();
+    let auth_url = build_authorization_url_with_context(
+        login_host,
+        &redirect_uri,
+        &trace_id,
+        &challenge,
+        &context,
+    )?;
     let (sender, receiver) = mpsc::channel();
+    listener
+        .set_nonblocking(true)
+        .map_err(|_| "Unable to configure the TRAE OAuth callback listener".to_string())?;
     std::thread::spawn(move || {
-        let result = listener
-            .accept()
-            .map_err(|_| "Unable to receive the TRAE OAuth callback".to_string())
-            .and_then(|(mut stream, _)| {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(180)));
-                let mut buffer = [0u8; 8192];
-                let read = stream
-                    .read(&mut buffer)
-                    .map_err(|_| "Unable to read the TRAE OAuth callback".to_string())?;
-                let request = String::from_utf8_lossy(&buffer[..read]);
-                let target = request
-                    .lines()
-                    .next()
-                    .and_then(|line| line.split_whitespace().nth(1))
-                    .ok_or_else(|| "Invalid TRAE OAuth callback request".to_string())?;
-                let parsed = callback_from_target(target);
-                let body = if parsed.is_ok() {
-                    "<!doctype html><meta charset=utf-8><title>Token Eyes</title><h1>TRAE 授权已完成</h1><p>此页面将自动关闭。</p><script>setTimeout(()=>window.close(),800)</script>"
-                } else {
-                    "<!doctype html><meta charset=utf-8><title>Token Eyes</title><h1>TRAE 授权失败</h1><p>请返回 Token Eyes 查看原因。</p>"
-                };
-                let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.as_bytes().len(), body);
-                let _ = stream.write_all(response.as_bytes());
-                parsed
-            });
+        let deadline = Instant::now() + OAUTH_TIMEOUT;
+        let result = loop {
+            if Instant::now() >= deadline {
+                break Err("TRAE OAuth authorization timed out".to_string());
+            }
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                    let mut buffer = [0u8; 8192];
+                    let read = match stream.read(&mut buffer) {
+                        Ok(read) => read,
+                        Err(_) => {
+                            write_callback_response(&mut stream, callback_pending_html());
+                            continue;
+                        }
+                    };
+                    let request = String::from_utf8_lossy(&buffer[..read]);
+                    let Some(target) = request
+                        .lines()
+                        .next()
+                        .and_then(|line| line.split_whitespace().nth(1))
+                    else {
+                        write_callback_response(&mut stream, callback_pending_html());
+                        continue;
+                    };
+                    if !target.contains('?') && !target.contains('#') {
+                        write_callback_response(&mut stream, callback_pending_html());
+                        continue;
+                    }
+                    let parsed = callback_from_target(target);
+                    let body = if parsed.is_ok() {
+                        "<!doctype html><meta charset=utf-8><title>Token Eyes</title><h1>TRAE 授权已完成</h1><p>此页面将自动关闭。</p><script>setTimeout(()=>window.close(),800)</script>"
+                    } else {
+                        "<!doctype html><meta charset=utf-8><title>Token Eyes</title><h1>TRAE 授权失败</h1><p>请返回 Token Eyes 查看原因。</p>"
+                    };
+                    write_callback_response(&mut stream, body);
+                    break parsed;
+                }
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => break Err("Unable to receive the TRAE OAuth callback".to_string()),
+            }
+        };
         let _ = sender.send(result);
     });
     Ok((
         PendingTraeOAuth {
             verifier,
+            context,
             receiver: Mutex::new(receiver),
         },
         auth_url.to_string(),
@@ -718,9 +932,8 @@ pub fn parse_trae_quota_snapshot(value: &Value, account_id: &str) -> Result<Trae
     let plan_name = as_object(selected)
         .and_then(|map| object_string(map, "display_desc"))
         .or_else(|| {
-            pack_product_type(selected).map(|product_type| {
-                identity_from_product_type(product_type).to_string()
-            })
+            pack_product_type(selected)
+                .map(|product_type| identity_from_product_type(product_type).to_string())
         })
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "TRAE usage response missing plan/display_desc".to_string())?;
@@ -803,6 +1016,34 @@ fn generate_device_public_key() -> Result<String, String> {
     Ok(pem_wrap("PUBLIC KEY", &der))
 }
 
+fn auth_code_exchange_body(
+    context: &TraeLoginContext,
+    auth_code: &str,
+    verifier: &str,
+    device_public_key: &str,
+) -> Value {
+    json!({
+        "ClientID": context.client_id,
+        "AuthCode": auth_code,
+        "CodeVerifier": verifier,
+        "IDEVersion": context.app_version,
+        "DeviceInfo": {
+            "DeviceID": context.device_id,
+            "MachineID": context.machine_id,
+            "PlatformCode": "IDE_PC",
+            "DeviceType": "PC",
+            "DeviceName": "Token Eyes",
+            "DeviceModel": context.device_brand,
+            "ClientVersion": context.app_version,
+            "DevicePublicKey": device_public_key,
+            "DeviceBrand": context.device_brand,
+            "DeviceCPU": "",
+            "OSInfo": context.device_type,
+            "OSVersion": context.os_version,
+        },
+    })
+}
+
 fn exchange_roots(login_host: Option<&str>) -> Vec<String> {
     let mut roots = Vec::new();
     if let Some(host) = login_host {
@@ -833,32 +1074,18 @@ async fn exchange_tokens(
         let device_public_key = generate_device_public_key()?;
         (
             AUTH_CODE_EXCHANGE_PATH,
-            json!({
-                "ClientID": CLIENT_ID,
-                "AuthCode": auth_code,
-                "CodeVerifier": pending.verifier,
-                "IDEVersion": TRAE_APP_VERSION,
-                "DeviceInfo": {
-                    "DeviceID": random_urlsafe(18),
-                    "MachineID": random_urlsafe(18),
-                    "PlatformCode": "IDE_PC",
-                    "DeviceType": "PC",
-                    "DeviceName": "Token Eyes",
-                    "DeviceModel": "Microsoft",
-                    "ClientVersion": TRAE_APP_VERSION,
-                    "DevicePublicKey": device_public_key,
-                    "DeviceBrand": "Microsoft",
-                    "DeviceCPU": "",
-                    "OSInfo": "windows",
-                    "OSVersion": "Windows 10",
-                },
-            }),
+            auth_code_exchange_body(
+                &pending.context,
+                auth_code,
+                &pending.verifier,
+                &device_public_key,
+            ),
         )
     } else if let Some(refresh_token) = callback.refresh_token.as_deref() {
         (
             REFRESH_TOKEN_EXCHANGE_PATH,
             json!({
-                "ClientID": CLIENT_ID,
+                "ClientID": pending.context.client_id,
                 "RefreshToken": refresh_token,
                 "ClientSecret": "-",
                 "UserID": "",
@@ -915,6 +1142,14 @@ async fn exchange_tokens(
     Err("TRAE OAuth token exchange failed".to_string())
 }
 
+fn profile_auth_headers(access_token: &str) -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Ok(value) = reqwest::header::HeaderValue::from_str(access_token) {
+        headers.insert("x-cloudide-token", value);
+    }
+    headers
+}
+
 async fn fetch_account_id(tokens: &StoredTraeTokens) -> Option<String> {
     if !tokens.account_id.trim().is_empty() {
         return Some(tokens.account_id.trim().to_string());
@@ -923,10 +1158,7 @@ async fn fetch_account_id(tokens: &StoredTraeTokens) -> Option<String> {
     for root in exchange_roots(Some(&tokens.login_host)) {
         let response = client
             .post(format!("{root}{GET_USER_INFO_PATH}"))
-            .header(
-                "Authorization",
-                format!("Cloud-IDE-JWT {}", tokens.access_token),
-            )
+            .headers(profile_auth_headers(&tokens.access_token))
             .header("Accept", "application/json")
             .header("User-Agent", "Trae/1.0.0 Token-Eyes")
             .json(&json!({}))
@@ -1049,8 +1281,7 @@ async fn refresh_access_token(tokens: &StoredTraeTokens) -> Result<StoredTraeTok
                 .unwrap_or_else(|| tokens.refresh_token.clone()),
                 login_host: tokens.login_host.clone(),
                 cloudide_token: tokens.cloudide_token.clone(),
-                account_id: extract_account_id(&value)
-                    .unwrap_or_else(|| tokens.account_id.clone()),
+                account_id: extract_account_id(&value).unwrap_or_else(|| tokens.account_id.clone()),
             });
         }
     }
@@ -1135,7 +1366,7 @@ pub async fn verify_trae_console_session(
             .lock()
             .map_err(|_| "TRAE OAuth callback state is unavailable".to_string())?;
         match receiver.try_recv() {
-            Ok(result) => Some(result?),
+            Ok(result) => Some(result),
             Err(TryRecvError::Empty) => None,
             Err(TryRecvError::Disconnected) => {
                 return Ok(failed(
@@ -1146,7 +1377,7 @@ pub async fn verify_trae_console_session(
             }
         }
     };
-    let Some(callback) = callback else {
+    let Some(callback_result) = callback else {
         return Ok(status(&session_ref, "awaiting_verification"));
     };
     let pending = state
@@ -1155,6 +1386,10 @@ pub async fn verify_trae_console_session(
         .pending
         .remove(&session_ref)
         .ok_or_else(|| "TRAE OAuth session disappeared".to_string())?;
+    let callback = match callback_result {
+        Ok(callback) => callback,
+        Err(message) => return Ok(callback_failed(&session_ref, message)),
+    };
     let mut tokens = exchange_tokens(&pending, callback).await?;
     if let Some(account_id) = fetch_account_id(&tokens).await {
         tokens.account_id = account_id;
@@ -1308,6 +1543,15 @@ mod tests {
     }
 
     #[test]
+    fn callback_error_is_a_terminal_failed_status() {
+        let status = callback_failed("token-plan/trae/session/a", "authorization timed out");
+        assert_eq!(status.state_code, "failed");
+        assert_eq!(status.error_code, "TRAE_AUTH_CALLBACK_FAILED");
+        assert!(!status.authorized);
+        assert!(!status.connected);
+    }
+
+    #[test]
     fn guidance_fallbacks_prefer_current_public_routes() {
         assert_eq!(
             LOGIN_GUIDANCE_ENDPOINTS.first().copied(),
@@ -1348,6 +1592,131 @@ mod tests {
         assert_eq!(callback.refresh_token.as_deref(), Some("refresh-123"));
         assert_eq!(callback.cloudide_token.as_deref(), Some("cloud-123"));
         assert!(callback.auth_code.is_none());
+    }
+
+    #[test]
+    fn accepts_fragment_callback_parameters() {
+        let callback = callback_from_target(
+            "/authorize#authCode=fragment-123&loginHost=https%3A%2F%2Fapi.trae.cn",
+        )
+        .expect("fragment callback");
+        assert_eq!(callback.auth_code.as_deref(), Some("fragment-123"));
+        assert_eq!(callback.login_host.as_deref(), Some("https://api.trae.cn"));
+    }
+
+    #[test]
+    fn pending_callback_page_forwards_browser_fragment_and_keeps_waiting() {
+        let body = callback_pending_html();
+        assert!(body.contains("window.location.hash"));
+        assert!(body.contains("window.location.replace"));
+    }
+
+    #[test]
+    fn installed_trae_context_drives_oauth_identity_fields() {
+        let context = login_context_from_values(
+            &json!({
+                "tronBuildVersion": "2.3.53679",
+                "appVersion": "3.3.75",
+                "quality": "stable",
+                "iCubeApp": { "authConfig": { "TRAE": { "stable": "installed-client" } } }
+            }),
+            &json!({ "telemetry.machineId": "installed-machine" }),
+            "Windows 11 Pro 10.0.26200",
+        );
+        assert_eq!(context.client_id, "installed-client");
+        assert_eq!(context.plugin_version, "2.3.53679");
+        assert_eq!(context.app_version, "3.3.75");
+        assert_eq!(context.machine_id, "installed-machine");
+        assert_eq!(context.device_id, "0");
+        assert_eq!(context.device_brand, "Windows");
+        assert_eq!(context.device_type, "windows");
+        assert_eq!(context.os_version, "Windows 11 Pro 10.0.26200");
+        assert_eq!(context.environment, "");
+    }
+
+    #[test]
+    fn windows_11_build_is_not_reported_as_windows_10() {
+        assert_eq!(
+            normalize_windows_product_name("Windows 10 Pro", "26200"),
+            "Windows 11 Pro"
+        );
+    }
+
+    #[test]
+    fn authorization_url_reuses_installed_trae_context() {
+        let context = login_context_from_values(
+            &json!({
+                "tronBuildVersion": "2.3.53679",
+                "appVersion": "3.3.75",
+                "quality": "stable",
+                "iCubeApp": { "authConfig": { "TRAE": { "stable": "installed-client" } } }
+            }),
+            &json!({ "telemetry.machineId": "installed-machine" }),
+            "Windows 11 Pro 10.0.26200",
+        );
+        let url = build_authorization_url_with_context(
+            "https://www.trae.cn",
+            "http://127.0.0.1:1455/authorize",
+            "trace-installed",
+            "challenge-installed",
+            &context,
+        )
+        .expect("url");
+        let params = url.query_pairs().collect::<HashMap<_, _>>();
+        assert_eq!(
+            params.get("plugin_version").map(|v| v.as_ref()),
+            Some("2.3.53679")
+        );
+        assert_eq!(
+            params.get("client_id").map(|v| v.as_ref()),
+            Some("installed-client")
+        );
+        assert_eq!(
+            params.get("machine_id").map(|v| v.as_ref()),
+            Some("installed-machine")
+        );
+        assert_eq!(params.get("device_id").map(|v| v.as_ref()), Some("0"));
+        assert_eq!(
+            params.get("x_app_version").map(|v| v.as_ref()),
+            Some("3.3.75")
+        );
+        assert_eq!(
+            params.get("x_os_version").map(|v| v.as_ref()),
+            Some("Windows 11 Pro 10.0.26200")
+        );
+    }
+
+    #[test]
+    fn token_exchange_reuses_the_same_oauth_identity() {
+        let context = login_context_from_values(
+            &json!({
+                "tronBuildVersion": "2.3.53679",
+                "appVersion": "3.3.75",
+                "quality": "stable",
+                "iCubeApp": { "authConfig": { "TRAE": { "stable": "installed-client" } } }
+            }),
+            &json!({ "telemetry.machineId": "installed-machine", "deviceId": "0" }),
+            "Windows 11 Pro 10.0.26200",
+        );
+        let body = auth_code_exchange_body(&context, "auth-code", "verifier", "PUBLIC-KEY");
+        assert_eq!(body["ClientID"], "installed-client");
+        assert_eq!(body["IDEVersion"], "3.3.75");
+        assert_eq!(body["DeviceInfo"]["DeviceID"], "0");
+        assert_eq!(body["DeviceInfo"]["MachineID"], "installed-machine");
+        assert_eq!(body["DeviceInfo"]["ClientVersion"], "3.3.75");
+        assert_eq!(body["DeviceInfo"]["OSVersion"], "Windows 11 Pro 10.0.26200");
+    }
+
+    #[test]
+    fn user_info_uses_cloudide_token_header_not_quota_authorization() {
+        let headers = profile_auth_headers("access-123");
+        assert_eq!(
+            headers
+                .get("x-cloudide-token")
+                .and_then(|value| value.to_str().ok()),
+            Some("access-123")
+        );
+        assert!(headers.get("Authorization").is_none());
     }
 
     #[test]

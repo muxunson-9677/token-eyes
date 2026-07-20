@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Card } from "../../ui/components";
 
@@ -40,25 +41,58 @@ export function SettingsRow({ label, hint, control }) {
   );
 }
 
-export function SectionCard({ title, subtitle, action, children }) {
+export function SectionCard({ title, subtitle, action, children, collapsible = false, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const expanded = collapsible ? open : true;
+
   return (
     <Card>
-      <div className="mb-3 flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 tracking-wide">
-            {title}
-          </h2>
-          {subtitle ? (
-            <p className="mt-1 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
-              {subtitle}
-            </p>
-          ) : null}
+      <div className={cn("flex items-start justify-between gap-4", expanded && "mb-3")}>
+        {collapsible ? (
+          <button
+            type="button"
+            aria-label={title}
+            aria-expanded={expanded}
+            onClick={() => setOpen((current) => !current)}
+            className="group flex min-w-0 flex-1 items-start gap-2 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/50"
+          >
+            <ChevronDown
+              className={cn(
+                "mt-0.5 h-4 w-4 shrink-0 text-oai-gray-400 transition-transform group-hover:text-oai-gray-600 dark:group-hover:text-oai-gray-300",
+                expanded && "rotate-180",
+              )}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1">
+              <span role="heading" aria-level={2} className="block text-sm font-medium tracking-wide text-oai-gray-500 dark:text-oai-gray-300">
+                {title}
+              </span>
+              {subtitle ? (
+                <span className="mt-1 block truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                  {subtitle}
+                </span>
+              ) : null}
+            </span>
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 tracking-wide">
+              {title}
+            </h2>
+            {subtitle ? (
+              <p className="mt-1 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                {subtitle}
+              </p>
+            ) : null}
+          </div>
+        )}
+        {action && expanded ? <div className="shrink-0">{action}</div> : null}
+      </div>
+      {expanded ? (
+        <div className="-mb-3 divide-y divide-oai-gray-200/60 dark:divide-oai-gray-800/60">
+          {children}
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      <div className="-mb-3 divide-y divide-oai-gray-200/60 dark:divide-oai-gray-800/60">
-        {children}
-      </div>
+      ) : null}
     </Card>
   );
 }
@@ -77,7 +111,7 @@ export function SegmentedControl({ options, value, onChange }) {
             className={cn(
               "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
               active
-                ? "bg-white text-oai-black shadow-sm dark:bg-oai-gray-800 dark:text-white"
+                ? "bg-oai-brand-50 text-oai-brand-700 shadow-sm ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
                 : "text-oai-gray-500 hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white",
             )}
           >

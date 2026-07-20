@@ -184,3 +184,40 @@ test("detectAgentEnvironment does not call an empty residual directory ready", a
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("detectAgentEnvironment keeps a selected install path and reports the resolved Trae data path", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-agent-env-trae-install-"));
+  try {
+    const installPath = path.join(tmp, "external", "Users", "example", "AppData", "Local", "Programs", "Trae CN");
+    const appData = path.join(tmp, "system", "Users", "example", "AppData", "Roaming");
+    const dataPath = path.join(appData, "Trae CN");
+    await fs.promises.mkdir(installPath, { recursive: true });
+    await fs.promises.mkdir(path.join(dataPath, "ModularData", "ai-agent"), { recursive: true });
+    await fs.promises.writeFile(
+      path.join(dataPath, "ModularData", "ai-agent", "database.db"),
+      "encrypted",
+      "utf8",
+    );
+
+    const originalAppData = process.env.APPDATA;
+    process.env.APPDATA = appData;
+    try {
+      const result = detectAgentEnvironment(
+        "trae",
+        { dataDirectories: { trae: installPath } },
+        { detectInstallation: () => ({ installed: true, executablePath: installPath, currentVersion: null }) },
+      );
+
+      assert.equal(result.status, "detected");
+      assert.equal(result.trackingReady, false);
+      assert.equal(result.configuredPath, installPath);
+      assert.equal(result.dataPath, dataPath);
+      assert.equal(result.evidence, "encrypted_database");
+    } finally {
+      if (originalAppData == null) delete process.env.APPDATA;
+      else process.env.APPDATA = originalAppData;
+    }
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
