@@ -23,11 +23,27 @@ test("refresh RPC has bounded periods, server pricing, and public-only ranking",
   assert.match(sql, /array\['today',\s*'week',\s*'month',\s*'total'\]/i);
   assert.match(sql, /jsonb_array_elements\([^;]+payload\s*->\s*'periods'/is);
   assert.match(sql, /group by\s+[^;]*user_id[^;]*source[^;]*model/is);
-  assert.match(sql, /join public\.tokentracker_model_pricing/i);
+  assert.match(sql, /left join lateral[^;]+tokentracker_model_pricing/is);
+  assert.match(sql, /coalesce\(pricing\.input_usd_per_token,\s*0\)/i);
+  assert.match(sql, /order by[^;]+candidate\.pricing_key\s*=\s*grouped\.model[^;]+desc/is);
+  assert.match(sql, /unpriced_tokens/i);
   assert.doesNotMatch(sql, /client_(?:cost|amount|spend)/i);
   assert.match(sql, /leaderboard_public\s*=\s*true/i);
   assert.match(sql, /dense_rank\(\)\s*over/i);
   assert.match(sql, /at time zone\s+'Asia\/Shanghai'/i);
+  assert.match(
+    sql,
+    /state\.captured_at\s+at time zone\s+'Asia\/Shanghai'[^;]+selected\.period/is,
+  );
+  assert.match(sql, /selected\.period\s*=\s*'total'/i);
+  assert.match(sql, /extract\(isodow from v_shanghai_day\)/i);
+  assert.match(sql, /extract\(day from v_shanghai_day\)/i);
+  assert.match(
+    sql,
+    /actual\.captured_at\s+at time zone\s+'Asia\/Shanghai'[^;]+totals\.period/is,
+  );
+  assert.match(sql, /count\(distinct pricing_version\)/i);
+  assert.match(sql, /pricing seed must contain exactly one active version/i);
 });
 
 test("snapshot schema supports all metrics, exact tokens, and atomic run replacement", () => {

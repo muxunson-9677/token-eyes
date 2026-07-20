@@ -19,7 +19,7 @@ create table if not exists public.tokentracker_leaderboard_snapshots_v2 (
   rank integer not null check (rank > 0),
   user_id uuid not null,
   total_tokens numeric(30,0) not null check (total_tokens >= 0),
-  estimated_cost_usd numeric(24,6) not null check (estimated_cost_usd >= 0),
+  estimated_cost_usd numeric(30,6) not null check (estimated_cost_usd >= 0),
   actual_cost_usd numeric(20,6),
   source_breakdown jsonb not null default '[]'::jsonb,
   gpt_tokens numeric(30,0) not null default 0,
@@ -36,6 +36,9 @@ create table if not exists public.tokentracker_leaderboard_snapshots_v2 (
   snapshot_run_id uuid not null,
   is_public boolean not null default true
 );
+
+alter table public.tokentracker_leaderboard_snapshots_v2
+  alter column estimated_cost_usd type numeric(30,6);
 
 create index if not exists tokentracker_leaderboard_snapshot_v2_rank_idx
   on public.tokentracker_leaderboard_snapshots_v2
@@ -61,6 +64,7 @@ declare
   v_allowed_periods text[] := array['today', 'week', 'month', 'total'];
   v_periods text[] := array['today', 'week'];
   v_pricing_version text;
+  v_pricing_version_count integer;
   v_inserted integer := 0;
   v_row_counts jsonb := '{}'::jsonb;
 begin
@@ -75,12 +79,12 @@ begin
     v_periods := array_append(v_periods, 'total');
   end if;
 
-  select max(pricing_version)
-  into v_pricing_version
+  select min(pricing_version), count(distinct pricing_version)
+  into v_pricing_version, v_pricing_version_count
   from public.tokentracker_model_pricing;
 
-  if v_pricing_version is null then
-    raise exception 'leaderboard pricing seed is empty';
+  if v_pricing_version is null or v_pricing_version_count <> 1 then
+    raise exception 'pricing seed must contain exactly one active version';
   end if;
 
   with
@@ -118,6 +122,24 @@ begin
       and item.value ->> 4 ~ '^[0-9]+$'
       and item.value ->> 5 ~ '^[0-9]+$'
       and item.value ->> 6 ~ '^[0-9]+$'
+      and (state.captured_at at time zone 'Asia/Shanghai')::date <= v_shanghai_day
+      and (
+        selected.period = 'total'
+        or (
+          selected.period = 'today'
+          and (state.captured_at at time zone 'Asia/Shanghai')::date = v_shanghai_day
+        )
+        or (
+          selected.period = 'week'
+          and (state.captured_at at time zone 'Asia/Shanghai')::date
+            >= v_shanghai_day - (extract(isodow from v_shanghai_day)::integer - 1)
+        )
+        or (
+          selected.period = 'month'
+          and (state.captured_at at time zone 'Asia/Shanghai')::date
+            >= v_shanghai_day - (extract(day from v_shanghai_day)::integer - 1)
+        )
+      )
   ),
   by_user_source_model as (
     select
@@ -144,19 +166,34 @@ begin
         + grouped.reasoning_output_tokens
       )::numeric(30,0) as total_tokens,
       (
-        grouped.input_tokens * pricing.input_usd_per_token
-        + grouped.output_tokens * pricing.output_usd_per_token
-        + grouped.cached_input_tokens * pricing.cache_read_usd_per_token
-        + grouped.cache_creation_input_tokens * pricing.cache_write_usd_per_token
+        grouped.input_tokens * coalesce(pricing.input_usd_per_token, 0)
+        + grouped.output_tokens * coalesce(pricing.output_usd_per_token, 0)
+        + grouped.cached_input_tokens * coalesce(pricing.cache_read_usd_per_token, 0)
+        + grouped.cache_creation_input_tokens * coalesce(pricing.cache_write_usd_per_token, 0)
         + case
             when grouped.source in ('codex', 'every-code') then 0
-            else grouped.reasoning_output_tokens * pricing.output_usd_per_token
+            else grouped.reasoning_output_tokens * coalesce(pricing.output_usd_per_token, 0)
           end
-      )::numeric(24,6) as estimated_cost_usd
+      )::numeric(30,6) as estimated_cost_usd,
+      pricing.pricing_key
     from by_user_source_model grouped
-    join public.tokentracker_model_pricing pricing
-      on pricing.pricing_key = grouped.model
-      and pricing.pricing_version = v_pricing_version
+    left join lateral (
+      select candidate.*
+      from public.tokentracker_model_pricing candidate
+      where candidate.pricing_version = v_pricing_version
+        and (
+          candidate.pricing_key = grouped.model
+          or lower(candidate.pricing_key) = lower(grouped.model)
+          or lower(candidate.pricing_key)
+            = lower(regexp_replace(grouped.model, '^.*/', ''))
+        )
+      order by
+        (candidate.pricing_key = grouped.model) desc,
+        (lower(candidate.pricing_key) = lower(grouped.model)) desc,
+        char_length(candidate.pricing_key),
+        candidate.pricing_key
+      limit 1
+    ) pricing on true
   ),
   public_priced as (
     -- Privacy filter happens before any rank window, so a private high-volume
@@ -173,7 +210,10 @@ begin
       period,
       source,
       sum(total_tokens)::numeric(30,0) as total_tokens,
-      sum(estimated_cost_usd)::numeric(24,6) as estimated_cost_usd
+      sum(estimated_cost_usd)::numeric(30,6) as estimated_cost_usd,
+      sum(
+        case when pricing_key is null then total_tokens else 0 end
+      )::numeric(30,0) as unpriced_tokens
     from public_priced
     group by user_id, period, source
   ),
@@ -182,12 +222,13 @@ begin
       user_id,
       period,
       sum(total_tokens)::numeric(30,0) as total_tokens,
-      sum(estimated_cost_usd)::numeric(24,6) as estimated_cost_usd,
+      sum(estimated_cost_usd)::numeric(30,6) as estimated_cost_usd,
       jsonb_agg(
         jsonb_build_object(
           'source', source,
           'total_tokens', total_tokens,
-          'estimated_cost_usd', estimated_cost_usd
+          'estimated_cost_usd', estimated_cost_usd,
+          'unpriced_tokens', unpriced_tokens
         )
         order by total_tokens desc, source
       ) as source_breakdown
@@ -207,6 +248,24 @@ begin
     join public.tokentracker_actual_cost_state actual
       on actual.user_id = totals.user_id
       and actual.share_actual_cost = true
+      and (actual.captured_at at time zone 'Asia/Shanghai')::date <= v_shanghai_day
+      and (
+        totals.period = 'total'
+        or (
+          totals.period = 'today'
+          and (actual.captured_at at time zone 'Asia/Shanghai')::date = v_shanghai_day
+        )
+        or (
+          totals.period = 'week'
+          and (actual.captured_at at time zone 'Asia/Shanghai')::date
+            >= v_shanghai_day - (extract(isodow from v_shanghai_day)::integer - 1)
+        )
+        or (
+          totals.period = 'month'
+          and (actual.captured_at at time zone 'Asia/Shanghai')::date
+            >= v_shanghai_day - (extract(day from v_shanghai_day)::integer - 1)
+        )
+      )
   ),
   ranked_values as (
     select
@@ -220,7 +279,8 @@ begin
       jsonb_build_array(jsonb_build_object(
         'source', source_rows.source,
         'total_tokens', source_rows.total_tokens,
-        'estimated_cost_usd', source_rows.estimated_cost_usd
+        'estimated_cost_usd', source_rows.estimated_cost_usd,
+        'unpriced_tokens', source_rows.unpriced_tokens
       )) as source_breakdown,
       source_rows.total_tokens::numeric as sort_value
     from per_source source_rows
@@ -238,7 +298,8 @@ begin
       jsonb_build_array(jsonb_build_object(
         'source', source_rows.source,
         'total_tokens', source_rows.total_tokens,
-        'estimated_cost_usd', source_rows.estimated_cost_usd
+        'estimated_cost_usd', source_rows.estimated_cost_usd,
+        'unpriced_tokens', source_rows.unpriced_tokens
       )),
       source_rows.estimated_cost_usd
     from per_source source_rows
@@ -328,16 +389,22 @@ begin
       ranked.source,
       case ranked.period
         when 'today' then v_shanghai_day
-        when 'week' then date_trunc('week', v_shanghai_day::timestamp)::date
-        when 'month' then date_trunc('month', v_shanghai_day::timestamp)::date
+        when 'week' then
+          v_shanghai_day - (extract(isodow from v_shanghai_day)::integer - 1)
+        when 'month' then
+          v_shanghai_day - (extract(day from v_shanghai_day)::integer - 1)
         else date '1970-01-01'
       end,
       case ranked.period
         when 'today' then v_shanghai_day
         when 'week' then
-          (date_trunc('week', v_shanghai_day::timestamp) + interval '6 days')::date
+          v_shanghai_day - (extract(isodow from v_shanghai_day)::integer - 1) + 6
         when 'month' then
-          (date_trunc('month', v_shanghai_day::timestamp) + interval '1 month - 1 day')::date
+          (
+            v_shanghai_day
+            - (extract(day from v_shanghai_day)::integer - 1)
+            + interval '1 month - 1 day'
+          )::date
         else v_shanghai_day
       end,
       ranked.rank,

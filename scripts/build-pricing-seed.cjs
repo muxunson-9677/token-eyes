@@ -148,6 +148,9 @@ function buildPricingSql(snapshot, curated) {
     "  cache_write_usd_per_token = excluded.cache_write_usd_per_token,",
     "  pricing_version = excluded.pricing_version;",
     "",
+    "delete from public.tokentracker_model_pricing",
+    `where pricing_version <> '${pricingVersion}';`,
+    "",
     "commit;",
     "",
   ].join("\n");

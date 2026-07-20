@@ -85,6 +85,9 @@ begin
   if p_share is null or p_captured_at is null then
     raise exception 'share and captured_at are required' using errcode = '22023';
   end if;
+  if p_captured_at > now() + interval '5 minutes' then
+    raise exception 'captured_at is too far in the future' using errcode = '22023';
+  end if;
   if p_share and (
     p_today_usd is null or p_today_usd < 0
     or p_week_usd is null or p_week_usd < 0
@@ -132,6 +135,56 @@ revoke all on function public.set_my_leaderboard_actual_cost(
 ) from anon;
 grant execute on function public.set_my_leaderboard_actual_cost(
   boolean, numeric, numeric, numeric, numeric, timestamptz
+) to authenticated;
+
+create or replace function public.refresh_my_leaderboard_actual_cost(
+  p_today_usd numeric,
+  p_week_usd numeric,
+  p_month_usd numeric,
+  p_total_usd numeric,
+  p_captured_at timestamptz
+) returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is null then
+    raise exception 'authentication required' using errcode = '42501';
+  end if;
+  if p_captured_at is null
+     or p_captured_at > now() + interval '5 minutes'
+     or p_today_usd is null or p_today_usd < 0
+     or p_week_usd is null or p_week_usd < 0
+     or p_month_usd is null or p_month_usd < 0
+     or p_total_usd is null or p_total_usd < 0 then
+    raise exception 'invalid actual-cost refresh' using errcode = '22023';
+  end if;
+
+  update public.tokentracker_actual_cost_state
+  set today_usd = p_today_usd,
+      week_usd = p_week_usd,
+      month_usd = p_month_usd,
+      total_usd = p_total_usd,
+      captured_at = p_captured_at,
+      updated_at = now()
+  where user_id = v_user_id
+    and share_actual_cost = true;
+
+  return found;
+end;
+$function$;
+
+revoke all on function public.refresh_my_leaderboard_actual_cost(
+  numeric, numeric, numeric, numeric, timestamptz
+) from public;
+revoke all on function public.refresh_my_leaderboard_actual_cost(
+  numeric, numeric, numeric, numeric, timestamptz
+) from anon;
+grant execute on function public.refresh_my_leaderboard_actual_cost(
+  numeric, numeric, numeric, numeric, timestamptz
 ) to authenticated;
 
 create or replace function public.delete_my_leaderboard_data()

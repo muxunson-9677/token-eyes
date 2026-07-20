@@ -16,6 +16,7 @@ import {
   getLocalLeaderboardActualCost,
   getPublicVisibility,
   setLeaderboardActualCost,
+  refreshLeaderboardActualCost,
   setPublicVisibility,
 } from "../api";
 
@@ -159,6 +160,31 @@ describe("public visibility API", () => {
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/functions/tokentracker-leaderboard-actual-cost",
+    );
+  });
+
+  it("refreshes actual-cost amounts without enabling server consent", async () => {
+    const fetchMock = mockJsonFetch(false);
+    const accessToken = makeJwt({ sub: "writer-1" });
+
+    await expect(refreshLeaderboardActualCost({
+      accessToken,
+      periodCosts: { today: 1, week: 2, month: 3, total: 4 },
+      capturedAt: "2026-07-20T08:00:00.000Z",
+    })).resolves.toBe(false);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.insforge.app/api/database/rpc/refresh_my_leaderboard_actual_cost",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          p_today_usd: 1,
+          p_week_usd: 2,
+          p_month_usd: 3,
+          p_total_usd: 4,
+          p_captured_at: "2026-07-20T08:00:00.000Z",
+        }),
+      }),
     );
   });
 

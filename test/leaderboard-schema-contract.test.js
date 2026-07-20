@@ -64,12 +64,15 @@ test("device upsert is the only write path and validates the complete compact pa
   );
   assert.match(sql, /p_payload\s*-\s*array\['version',\s*'device_id',\s*'captured_at',\s*'periods'\]/i);
   assert.match(sql, /p_payload\s*\?\&\s*array\['version',\s*'device_id',\s*'captured_at',\s*'periods'\]/i);
+  assert.match(sql, /p_captured_at\s*>\s*now\(\)\s*\+\s*interval\s*'5 minutes'/i);
   assert.match(sql, /array\['today',\s*'week',\s*'month',\s*'total'\]/i);
   assert.match(sql, /jsonb_array_length\(v_rows\)\s*>\s*100/i);
   assert.match(sql, /jsonb_array_length\(v_item\)\s*<>\s*7/i);
   assert.match(sql, /char_length\(v_item\s*->>\s*0\)\s+not\s+between\s+1\s+and\s+64/i);
   assert.match(sql, /char_length\(v_item\s*->>\s*1\)\s+not\s+between\s+1\s+and\s+256/i);
-  assert.match(sql, /\^\[0-9\]\{1,24\}\$/i);
+  assert.match(sql, /\^\[0-9\]\{1,15\}\$/i);
+  assert.match(sql, /v_period_token_total\s*:=\s*v_period_token_total\s*\+\s*\(v_item\s*->>\s*v_token_index\)::numeric/i);
+  assert.match(sql, /v_period_token_total\s*>\s*10000000000000000/i);
 });
 
 test("device upsert serializes and enforces the three-device user cap", () => {
@@ -112,6 +115,17 @@ test("actual-cost schema stores consent atomically and keeps disabled amounts nu
   assert.doesNotMatch(signature[1], /user_id/);
   assert.match(sql, /v_user_id uuid := auth\.uid\(\)/);
   assert.match(sql, /if v_user_id is null then/);
+  assert.match(sql, /p_captured_at\s*>\s*now\(\)\s*\+\s*interval\s*'5 minutes'/i);
+  assert.match(sql, /function public\.refresh_my_leaderboard_actual_cost\(/i);
+  assert.match(
+    sql,
+    /update public\.tokentracker_actual_cost_state[^;]+where user_id = v_user_id[^;]+share_actual_cost = true/is,
+  );
+  const refreshSignature = sql.match(
+    /create or replace function public\.refresh_my_leaderboard_actual_cost\((.*?)\) returns boolean/s,
+  );
+  assert.ok(refreshSignature, "missing refresh_my_leaderboard_actual_cost RPC");
+  assert.doesNotMatch(refreshSignature[1], /p_share|user_id/);
 });
 
 test("cleanup RPC removes all leaderboard-owned data without deleting the auth user", () => {

@@ -98,6 +98,12 @@ describe("leaderboard state client", () => {
   it("calls only the authenticated RPC with a minimal, user-id-free body", async () => {
     const fetchMock = installFetch();
     const tokenWithSubject = "header.eyJzdWIiOiJ1c2VyLTEyMyJ9.signature";
+    setLeaderboardSyncState({
+      pending: true,
+      accountId: "account-a",
+      participationReady: true,
+      shareActualCost: true,
+    });
 
     await expect(syncLeaderboardState({
       reason: "leaderboard-open",
@@ -126,6 +132,12 @@ describe("leaderboard state client", () => {
     expect(JSON.stringify(body)).not.toContain("user-123");
     expect(body.user_id).toBeUndefined();
     expect(body.p_user_id).toBeUndefined();
+    expect(getLeaderboardSyncState()).toMatchObject({
+      pending: false,
+      accountId: "account-a",
+      participationReady: true,
+      shareActualCost: true,
+    });
   });
 
   it("skips an unchanged successful hash unless forced", async () => {

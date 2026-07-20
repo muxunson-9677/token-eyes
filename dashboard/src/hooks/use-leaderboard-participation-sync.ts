@@ -4,11 +4,14 @@ import { useInsforgeAuth } from "../contexts/InsforgeAuthContext";
 import {
   getLocalLeaderboardActualCost,
   getPublicVisibility,
-  setLeaderboardActualCost,
+  refreshLeaderboardActualCost,
   setPublicVisibility,
 } from "../lib/api";
 import { syncLeaderboardState } from "../lib/leaderboard-state-client";
-import { getLeaderboardSyncState } from "../lib/leaderboard-sync-state";
+import {
+  getLeaderboardSyncState,
+  setLeaderboardParticipationState,
+} from "../lib/leaderboard-sync-state";
 
 const DAILY_CATCHUP_MS = 24 * 60 * 60 * 1000;
 
@@ -17,8 +20,10 @@ function isLeaderboardPath(pathname: string): boolean {
   return normalized === "/leaderboard" || normalized.startsWith("/leaderboard/");
 }
 
-function dailyCatchupDue(nowMs = Date.now()): boolean {
-  const state = getLeaderboardSyncState();
+function dailyCatchupDue(
+  state: ReturnType<typeof getLeaderboardSyncState>,
+  nowMs = Date.now(),
+): boolean {
   if (state.pending) return true;
   const lastSuccessMs = Date.parse(state.lastSuccessAt || "");
   return !Number.isFinite(lastSuccessMs) || nowMs - lastSuccessMs >= DAILY_CATCHUP_MS;
@@ -29,24 +34,25 @@ export function useLeaderboardParticipationSync(): void {
   const auth = useInsforgeAuth();
   const previousSignedIn = useRef<boolean | null>(null);
   const previousLeaderboardPath = useRef(false);
-  const profileCheckedForSession = useRef(false);
   const inFlight = useRef(false);
 
   useEffect(() => {
     if (!auth.enabled || auth.loading) return;
 
     const signedIn = Boolean(auth.signedIn);
+    const accountId =
+      typeof auth.user?.id === "string" ? auth.user.id.trim().slice(0, 128) : "";
     const onLeaderboard = isLeaderboardPath(location.pathname || "/");
     const priorSignedIn = previousSignedIn.current;
     const enteredLeaderboard = onLeaderboard && !previousLeaderboardPath.current;
     previousSignedIn.current = signedIn;
     previousLeaderboardPath.current = onLeaderboard;
 
-    if (!signedIn) {
-      profileCheckedForSession.current = false;
+    if (!signedIn || !accountId) {
       return;
     }
     if (inFlight.current) return;
+    const syncState = getLeaderboardSyncState(accountId);
 
     let reason:
       | "first-login"
@@ -55,12 +61,12 @@ export function useLeaderboardParticipationSync(): void {
       | null = null;
     if (priorSignedIn === false) {
       reason = "first-login";
-    } else if (enteredLeaderboard && dailyCatchupDue()) {
+    } else if (enteredLeaderboard && dailyCatchupDue(syncState)) {
       reason = "leaderboard-open";
-    } else if (priorSignedIn === null && dailyCatchupDue()) {
+    } else if (priorSignedIn === null && dailyCatchupDue(syncState)) {
       reason = "daily-catchup";
     }
-    const refreshProfile = !profileCheckedForSession.current || reason !== null;
+    const refreshProfile = syncState.participationReady !== true;
     if (!reason && !refreshProfile) return;
 
     inFlight.current = true;
@@ -68,24 +74,31 @@ export function useLeaderboardParticipationSync(): void {
       const accessToken = await auth.getAccessToken();
       if (!accessToken) throw new Error("Leaderboard session token unavailable");
 
+      let shareActualCost = syncState.shareActualCost === true;
       if (refreshProfile) {
         const profile = await getPublicVisibility({ accessToken });
         if (!profile?.leaderboard_public) {
           await setPublicVisibility({ accessToken, leaderboard_public: true });
         }
-        profileCheckedForSession.current = true;
+        shareActualCost = profile?.share_actual_cost === true;
+        setLeaderboardParticipationState({ accountId, shareActualCost });
+      }
 
-        if (profile?.share_actual_cost) {
-          try {
-            const periodCosts = await getLocalLeaderboardActualCost();
-            await setLeaderboardActualCost({
-              accessToken,
-              share: true,
-              periodCosts,
+      if (shareActualCost && reason) {
+        try {
+          const periodCosts = await getLocalLeaderboardActualCost();
+          const stillEnabled = await refreshLeaderboardActualCost({
+            accessToken,
+            periodCosts,
+          });
+          if (!stillEnabled) {
+            setLeaderboardParticipationState({
+              accountId,
+              shareActualCost: false,
             });
-          } catch (error) {
-            console.warn("[tokentracker] leaderboard actual-cost refresh:", error);
           }
+        } catch (error) {
+          console.warn("[tokentracker] leaderboard actual-cost refresh:", error);
         }
       }
 
@@ -107,6 +120,7 @@ export function useLeaderboardParticipationSync(): void {
     auth.getAccessToken,
     auth.loading,
     auth.signedIn,
+    auth.user?.id,
     location.pathname,
   ]);
 }

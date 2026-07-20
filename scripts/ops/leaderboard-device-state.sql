@@ -68,6 +68,7 @@ declare
   v_rows jsonb;
   v_item jsonb;
   v_token_index integer;
+  v_period_token_total numeric(30,0);
   v_device_count integer;
 begin
   if v_user_id is null then
@@ -84,6 +85,9 @@ begin
   end if;
   if p_captured_at is null then
     raise exception 'captured_at is required' using errcode = '22023';
+  end if;
+  if p_captured_at > now() + interval '5 minutes' then
+    raise exception 'captured_at is too far in the future' using errcode = '22023';
   end if;
   if p_payload is null
      or jsonb_typeof(p_payload) <> 'object'
@@ -105,6 +109,7 @@ begin
 
   foreach v_period in array array['today', 'week', 'month', 'total']
   loop
+    v_period_token_total := 0;
     v_rows := p_payload -> 'periods' -> v_period;
     if jsonb_typeof(v_rows) <> 'array' or jsonb_array_length(v_rows) > 100 then
       raise exception 'invalid compact period rows' using errcode = '22023';
@@ -126,11 +131,16 @@ begin
       for v_token_index in 2..6
       loop
         if jsonb_typeof(v_item -> v_token_index) <> 'string'
-           or (v_item ->> v_token_index) !~ '^[0-9]{1,24}$' then
+           or (v_item ->> v_token_index) !~ '^[0-9]{1,15}$' then
           raise exception 'invalid compact token count' using errcode = '22023';
         end if;
+        v_period_token_total := v_period_token_total
+          + (v_item ->> v_token_index)::numeric;
       end loop;
     end loop;
+    if v_period_token_total > 10000000000000000 then
+      raise exception 'compact period token total exceeds limit' using errcode = '22023';
+    end if;
   end loop;
 
   -- Serialize per-user inserts so two new devices cannot race past the cap.

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     enabled: true,
     loading: false,
     signedIn: false,
+    user: null as null | { id: string },
     getAccessToken: vi.fn(async () => "jwt"),
   },
   getSyncState: vi.fn(() => ({ pending: false })),
@@ -19,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   setProfile: vi.fn(async () => ({})),
   getCosts: vi.fn(async () => ({ today: 1, week: 2, month: 3, total: 4 })),
   setActualCost: vi.fn(async () => undefined),
+  refreshActualCost: vi.fn(async () => true),
+  setParticipation: vi.fn(),
 }));
 
 vi.mock("../../contexts/InsforgeAuthContext", () => ({
@@ -31,6 +34,7 @@ vi.mock("../../lib/leaderboard-state-client", () => ({
 
 vi.mock("../../lib/leaderboard-sync-state", () => ({
   getLeaderboardSyncState: mocks.getSyncState,
+  setLeaderboardParticipationState: mocks.setParticipation,
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -38,6 +42,7 @@ vi.mock("../../lib/api", () => ({
   setPublicVisibility: mocks.setProfile,
   getLocalLeaderboardActualCost: mocks.getCosts,
   setLeaderboardActualCost: mocks.setActualCost,
+  refreshLeaderboardActualCost: mocks.refreshActualCost,
 }));
 
 import { useLeaderboardParticipationSync } from "../use-leaderboard-participation-sync";
@@ -64,6 +69,7 @@ describe("leaderboard participation lifecycle", () => {
     mocks.auth.enabled = true;
     mocks.auth.loading = false;
     mocks.auth.signedIn = false;
+    mocks.auth.user = null;
     mocks.auth.getAccessToken.mockClear();
     mocks.getSyncState.mockReset();
     mocks.getSyncState.mockReturnValue({ pending: false });
@@ -80,6 +86,9 @@ describe("leaderboard participation lifecycle", () => {
     mocks.getCosts.mockResolvedValue({ today: 1, week: 2, month: 3, total: 4 });
     mocks.setActualCost.mockReset();
     mocks.setActualCost.mockResolvedValue(undefined);
+    mocks.refreshActualCost.mockReset();
+    mocks.refreshActualCost.mockResolvedValue(true);
+    mocks.setParticipation.mockReset();
   });
 
   it("never syncs while signed out", async () => {
@@ -91,6 +100,7 @@ describe("leaderboard participation lifecycle", () => {
   it("syncs first-login only on a signed-out to signed-in transition", async () => {
     const view = renderProbe();
     mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
     view.rerender(
       <MemoryRouter initialEntries={["/dashboard"]}>
         <Probe />
@@ -107,6 +117,7 @@ describe("leaderboard participation lifecycle", () => {
 
   it("does not spend another upload when an authenticated user opens the leaderboard after a recent success", async () => {
     mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
     mocks.getSyncState.mockReturnValue({
       pending: false,
       lastSuccessAt: new Date().toISOString(),
@@ -119,9 +130,12 @@ describe("leaderboard participation lifecycle", () => {
 
   it("requests daily catch-up only when the last success is over 24 hours old", async () => {
     mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
     mocks.getSyncState.mockReturnValue({
       pending: false,
       lastSuccessAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+      participationReady: true,
+      shareActualCost: false,
     });
     renderProbe("/dashboard");
 
@@ -135,6 +149,7 @@ describe("leaderboard participation lifecycle", () => {
 
   it("makes every signed-in session public even when the daily upload is not due", async () => {
     mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
     mocks.getProfile.mockResolvedValue({
       leaderboard_public: false,
       share_actual_cost: false,
@@ -156,6 +171,7 @@ describe("leaderboard participation lifecycle", () => {
 
   it("refreshes the four actual-cost totals when consent remains enabled", async () => {
     mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
     mocks.getProfile.mockResolvedValue({
       leaderboard_public: true,
       share_actual_cost: true,
@@ -163,13 +179,14 @@ describe("leaderboard participation lifecycle", () => {
     mocks.getSyncState.mockReturnValue({
       pending: false,
       lastSuccessAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+      participationReady: true,
+      shareActualCost: true,
     });
     renderProbe("/dashboard");
 
     await waitFor(() => {
-      expect(mocks.setActualCost).toHaveBeenCalledWith({
+      expect(mocks.refreshActualCost).toHaveBeenCalledWith({
         accessToken: "jwt",
-        share: true,
         periodCosts: { today: 1, week: 2, month: 3, total: 4 },
       });
     });
@@ -177,11 +194,30 @@ describe("leaderboard participation lifecycle", () => {
       getAccessToken: expect.any(Function),
       reason: "daily-catchup",
     });
+    expect(mocks.getProfile).not.toHaveBeenCalled();
+  });
+
+  it("does not refresh profile or actual cost again inside the daily budget", async () => {
+    mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
+    mocks.getSyncState.mockReturnValue({
+      pending: false,
+      lastSuccessAt: new Date().toISOString(),
+      participationReady: true,
+      shareActualCost: true,
+    });
+    renderProbe("/dashboard");
+    await Promise.resolve();
+
+    expect(mocks.getProfile).not.toHaveBeenCalled();
+    expect(mocks.refreshActualCost).not.toHaveBeenCalled();
+    expect(mocks.sync).not.toHaveBeenCalled();
   });
 
   it("does not schedule polling or catch up after a recent success", async () => {
     const intervalSpy = vi.spyOn(window, "setInterval");
     mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
     mocks.getSyncState.mockReturnValue({
       pending: false,
       lastSuccessAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -191,5 +227,29 @@ describe("leaderboard participation lifecycle", () => {
 
     expect(mocks.sync).not.toHaveBeenCalled();
     expect(intervalSpy).not.toHaveBeenCalled();
+  });
+
+  it("re-reads the profile when the authenticated account changes", async () => {
+    mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-b" };
+    mocks.getSyncState.mockImplementation((accountId?: string) =>
+      accountId === "account-a"
+        ? {
+          pending: false,
+          accountId: "account-a",
+          participationReady: true,
+          shareActualCost: true,
+        }
+        : { pending: false },
+    );
+
+    renderProbe("/dashboard");
+
+    await waitFor(() => expect(mocks.getProfile).toHaveBeenCalled());
+    expect(mocks.setParticipation).toHaveBeenCalledWith({
+      accountId: "account-b",
+      shareActualCost: false,
+    });
+    expect(mocks.refreshActualCost).not.toHaveBeenCalled();
   });
 });

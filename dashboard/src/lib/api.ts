@@ -839,6 +839,54 @@ export async function setLeaderboardActualCost({
   if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
 }
 
+export async function refreshLeaderboardActualCost({
+  accessToken,
+  periodCosts,
+  capturedAt,
+}: AnyRecord = {}) {
+  const baseUrl = getInsforgeRemoteUrl();
+  if (!baseUrl) throw new Error("InsForge base URL not configured");
+  if (!accessToken || !isValidJwtShape(accessToken)) {
+    throw new Error("Authenticated leaderboard session required");
+  }
+
+  const normalized = {
+    today: Number(periodCosts?.today),
+    week: Number(periodCosts?.week),
+    month: Number(periodCosts?.month),
+    total: Number(periodCosts?.total),
+  };
+  if (Object.values(normalized).some((value) => !Number.isFinite(value) || value < 0)) {
+    throw new Error("Four non-negative period costs are required");
+  }
+  const captured = capturedAt ? new Date(capturedAt) : new Date();
+  if (!Number.isFinite(captured.getTime())) throw new Error("Invalid actual-cost capture time");
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  };
+  const anonKey = getInsforgeAnonKey();
+  if (anonKey) headers.apikey = anonKey;
+  const response = await fetch(
+    `${baseUrl.replace(/\/$/, "")}/api/database/rpc/refresh_my_leaderboard_actual_cost`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        p_today_usd: normalized.today,
+        p_week_usd: normalized.week,
+        p_month_usd: normalized.month,
+        p_total_usd: normalized.total,
+        p_captured_at: captured.toISOString(),
+      }),
+    },
+  );
+  if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
+  return (await response.json()) === true;
+}
+
 export async function getLocalLeaderboardActualCost() {
   const response = await fetch("/functions/tokentracker-leaderboard-actual-cost", {
     method: "GET",

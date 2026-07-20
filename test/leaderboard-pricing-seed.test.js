@@ -35,6 +35,10 @@ test("generated SQL creates the pricing table and keeps regression-prone mapping
   assert.match(sql, /cache_write_usd_per_token numeric\(24,12\) not null/i);
   assert.match(sql, /pricing_version text not null/i);
   assert.match(sql, /on conflict \(pricing_key\) do update/i);
+  assert.match(
+    sql,
+    /delete from public\.tokentracker_model_pricing\s+where pricing_version <> '[a-f0-9]{64}'/i,
+  );
 
   const expected = {
     "gpt-5.4": ["0.000002500000", "0.000015000000", "0.000000250000", "0.000000000000"],

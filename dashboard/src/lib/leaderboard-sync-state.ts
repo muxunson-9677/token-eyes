@@ -10,6 +10,9 @@ const REASONS = new Set([
 
 export type LeaderboardRetryState = {
   pending: boolean;
+  accountId?: string;
+  participationReady?: boolean;
+  shareActualCost?: boolean;
   summaryHash?: string;
   lastAttemptAt?: string;
   lastSuccessAt?: string;
@@ -27,12 +30,14 @@ function boundedString(value: unknown, maxLength: number): string | undefined {
   return value;
 }
 
-export function getLeaderboardSyncState(): LeaderboardRetryState {
+export function getLeaderboardSyncState(accountId?: string): LeaderboardRetryState {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") as
       | Record<string, unknown>
       | null;
     if (!parsed || typeof parsed !== "object") return emptyState();
+    const storedAccountId = boundedString(parsed.accountId, 128);
+    if (accountId && storedAccountId && storedAccountId !== accountId) return emptyState();
     const summaryHash = boundedString(parsed.summaryHash, 64);
     const lastAttemptAt = boundedString(parsed.lastAttemptAt, 40);
     const lastSuccessAt = boundedString(parsed.lastSuccessAt, 40);
@@ -42,6 +47,13 @@ export function getLeaderboardSyncState(): LeaderboardRetryState {
         : undefined;
     return {
       pending: parsed.pending === true,
+      ...(storedAccountId ? { accountId: storedAccountId } : {}),
+      ...(storedAccountId && parsed.participationReady === true
+        ? {
+          participationReady: true,
+          shareActualCost: parsed.shareActualCost === true,
+        }
+        : {}),
       ...(summaryHash && /^[a-f0-9]{64}$/.test(summaryHash) ? { summaryHash } : {}),
       ...(lastAttemptAt ? { lastAttemptAt } : {}),
       ...(lastSuccessAt ? { lastSuccessAt } : {}),
@@ -55,6 +67,13 @@ export function getLeaderboardSyncState(): LeaderboardRetryState {
 export function setLeaderboardSyncState(state: LeaderboardRetryState): void {
   const normalized: LeaderboardRetryState = {
     pending: state.pending === true,
+    ...(boundedString(state.accountId, 128) ? { accountId: state.accountId } : {}),
+    ...(state.participationReady === true
+      ? {
+        participationReady: true,
+        shareActualCost: state.shareActualCost === true,
+      }
+      : {}),
     ...(state.summaryHash && /^[a-f0-9]{64}$/.test(state.summaryHash)
       ? { summaryHash: state.summaryHash }
       : {}),
@@ -73,6 +92,21 @@ export function setLeaderboardSyncState(state: LeaderboardRetryState): void {
   } catch {
     /* retry metadata is best-effort */
   }
+}
+
+export function setLeaderboardParticipationState({
+  accountId,
+  shareActualCost,
+}: {
+  accountId: string;
+  shareActualCost: boolean;
+}): void {
+  setLeaderboardSyncState({
+    ...getLeaderboardSyncState(accountId),
+    accountId,
+    participationReady: true,
+    shareActualCost: shareActualCost === true,
+  });
 }
 
 export function clearLeaderboardSyncState(): void {

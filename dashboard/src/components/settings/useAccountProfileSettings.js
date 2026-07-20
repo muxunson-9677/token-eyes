@@ -10,6 +10,7 @@ import {
   uploadLeaderboardAvatar,
 } from "../../lib/api";
 import { copy } from "../../lib/copy";
+import { setLeaderboardParticipationState } from "../../lib/leaderboard-sync-state";
 import { normalizeGithubProfileUrl, pickDisplayName, pickEmail } from "./AccountSectionUtils.js";
 import { prepareLeaderboardAvatar } from "./AccountSectionParts.jsx";
 
@@ -61,6 +62,10 @@ export function useAccountProfileSettings() {
         setGithubUrl(data?.github_url || "");
         setShowGithubOn(Boolean(data?.show_github_url));
         setShareActualCost(Boolean(data?.share_actual_cost));
+        setLeaderboardParticipationState({
+          accountId: userId,
+          shareActualCost: Boolean(data?.share_actual_cost),
+        });
         setAvatarUrl(data?.avatar_url || null);
       } catch (error) {
         warn("load leaderboard profile", error);
@@ -71,7 +76,7 @@ export function useAccountProfileSettings() {
     return () => {
       active = false;
     };
-  }, [auth.signedIn, token]);
+  }, [auth.signedIn, token, userId]);
 
   const mutate = useCallback(async (payload) => {
     setProfileSaving(true);
@@ -146,6 +151,10 @@ export function useAccountProfileSettings() {
       if (!accessToken) return;
       if (shareActualCost) {
         await setLeaderboardActualCost({ accessToken, share: false });
+        setLeaderboardParticipationState({
+          accountId: userId,
+          shareActualCost: false,
+        });
         setShareActualCost(false);
       } else {
         const periodCosts = await getLocalLeaderboardActualCost();
@@ -154,6 +163,10 @@ export function useAccountProfileSettings() {
           share: true,
           periodCosts,
         });
+        setLeaderboardParticipationState({
+          accountId: userId,
+          shareActualCost: true,
+        });
         setShareActualCost(true);
       }
     } catch (error) {
@@ -161,7 +174,7 @@ export function useAccountProfileSettings() {
     } finally {
       setActualCostSaving(false);
     }
-  }, [actualCostSaving, shareActualCost, token]);
+  }, [actualCostSaving, shareActualCost, token, userId]);
 
   const handleAvatarFile = useCallback(async (file) => {
     if (!file || uploading) return;

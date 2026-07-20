@@ -130,6 +130,7 @@ export async function syncLeaderboardState(options: {
   }
 
   setLeaderboardSyncState({
+    ...getLeaderboardSyncState(),
     pending: false,
     summaryHash,
     lastAttemptAt: attemptedAt,

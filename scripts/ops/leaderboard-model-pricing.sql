@@ -3383,4 +3383,7 @@ on conflict (pricing_key) do update set
   cache_write_usd_per_token = excluded.cache_write_usd_per_token,
   pricing_version = excluded.pricing_version;
 
+delete from public.tokentracker_model_pricing
+where pricing_version <> '53a4f37e46eb78df6d7ef9c288812000c3d161e187eb3fbc42085ba464db9045';
+
 commit;
