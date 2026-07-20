@@ -174,6 +174,13 @@ async function fetchClaudeUsageLimits(accessToken, { fetchImpl = fetch, maxAttem
 // reading mislabels it as "5h". Aligned with steipete/CodexBar's rate-window normalizer.
 const CODEX_SESSION_WINDOW_SECONDS = 18000;
 const CODEX_WEEKLY_WINDOW_SECONDS = 604800;
+const CODEX_RESET_CREDIT_ALLOWLIST = Object.freeze([]);
+
+function parseCodexResetCreditFields(_body) {
+  // Intentionally disabled until an exact official response schema is captured
+  // as a redacted fixture and its field path is explicitly allowlisted.
+  return null;
+}
 
 function classifyCodexWindow(window) {
   if (!window || typeof window !== "object") return null;
@@ -326,6 +333,158 @@ async function fetchCodexUsageLimits(
   return {
     ...normalizeCodexRateWindows(body.rate_limit || {}),
     ...normalizeCodexSparkRateWindows(body.additional_rate_limits),
+  };
+}
+
+function toIsoResetAt(value) {
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const milliseconds = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+  const date = new Date(milliseconds);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function sanitizeCodexWindow(window) {
+  const normalized = normalizeCodexRateWindow(window);
+  if (!normalized) return null;
+  return {
+    used_percent: normalized.used_percent,
+    reset_at: toIsoResetAt(normalized.reset_at),
+  };
+}
+
+async function refreshCodexAuthBundle(codexAuth, { fetchImpl = fetch } = {}) {
+  if (!codexAuth) return { auth: null, refreshError: null };
+  if (!isTokenStale(codexAuth.lastRefresh) || !codexAuth.refreshToken) {
+    return { auth: codexAuth, refreshError: null };
+  }
+  try {
+    const newTokens = await refreshCodexTokens({
+      refreshToken: codexAuth.refreshToken,
+      fetchImpl,
+    });
+    const updatedAuth = await persistRefreshedAuth(
+      codexAuth.authPath,
+      codexAuth.authJson,
+      newTokens,
+    );
+    return {
+      auth: {
+        ...codexAuth,
+        accessToken: newTokens.access_token,
+        refreshToken: newTokens.refresh_token,
+        lastRefresh: updatedAuth.last_refresh,
+        authJson: updatedAuth,
+      },
+      refreshError: null,
+    };
+  } catch (refreshError) {
+    return { auth: codexAuth, refreshError };
+  }
+}
+
+async function getCodexUsageLimits({
+  home,
+  env,
+  fetchImpl = fetch,
+  now = new Date(),
+  providerTimeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS,
+} = {}) {
+  const checkedAt = new Date(now);
+  const checked_at = Number.isFinite(checkedAt.getTime())
+    ? checkedAt.toISOString()
+    : new Date().toISOString();
+  const codexAuth = await readCodexAuthBundle({ home, env });
+  if (!codexAuth) return { configured: false, checked_at };
+
+  const refreshed = await refreshCodexAuthBundle(codexAuth, { fetchImpl });
+  if (refreshed.refreshError?.code === "REFRESH_TOKEN_EXPIRED") {
+    return {
+      configured: true,
+      checked_at,
+      auth_action_required: "reauth",
+      error_code: "auth_refresh_expired",
+    };
+  }
+
+  const auth = refreshed.auth;
+  const headers = {
+    Authorization: `Bearer ${auth.accessToken}`,
+    Accept: "application/json",
+  };
+  if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
+
+  let response;
+  try {
+    response = await withProviderTimeout(
+      fetchImpl("https://chatgpt.com/backend-api/wham/usage", {
+        method: "GET",
+        headers,
+      }),
+      "Codex",
+      providerTimeoutMs,
+    );
+  } catch (_error) {
+    return { configured: true, checked_at, error_code: "network_error" };
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return {
+      configured: true,
+      checked_at,
+      auth_action_required: "reauth",
+      error_code: "auth_required",
+    };
+  }
+  if (response.status === 404) {
+    return {
+      configured: true,
+      checked_at,
+      unsupported: true,
+      error_code: "endpoint_unsupported",
+    };
+  }
+  if (!response.ok) {
+    return {
+      configured: true,
+      checked_at,
+      error_code: response.status >= 500 ? "upstream_5xx" : "upstream_http_error",
+    };
+  }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch (_error) {
+    return {
+      configured: true,
+      checked_at,
+      unsupported: true,
+      error_code: "response_unsupported",
+    };
+  }
+  const regular = normalizeCodexRateWindows(body?.rate_limit);
+  const spark = normalizeCodexSparkRateWindows(body?.additional_rate_limits);
+  if (!regular.primary_window && !regular.secondary_window) {
+    return {
+      configured: true,
+      checked_at,
+      unsupported: true,
+      error_code: "response_unsupported",
+    };
+  }
+  parseCodexResetCreditFields(body);
+  return {
+    configured: true,
+    checked_at,
+    primary_window: sanitizeCodexWindow(regular.primary_window),
+    secondary_window: sanitizeCodexWindow(regular.secondary_window),
+    spark_primary_window: sanitizeCodexWindow(spark.spark_primary_window),
+    spark_secondary_window: sanitizeCodexWindow(spark.spark_secondary_window),
   };
 }
 
@@ -2127,30 +2286,10 @@ async function fetchUsageLimitsUncached({
   // `codex` for >a week get wham 401 → "Fetch failed" (issue #52). Best-effort: any
   // refresh failure falls through to using the existing (possibly stale) token, then the
   // 4xx graceful path in fetchCodexUsageLimits surfaces a neutral state instead of red.
-  let refreshError = null;
-  let codexAuthRefreshed = codexAuth;
-  if (codexAuth && isTokenStale(codexAuth.lastRefresh) && codexAuth.refreshToken) {
-    try {
-      const newTokens = await refreshCodexTokens({
-        refreshToken: codexAuth.refreshToken,
-        fetchImpl,
-      });
-      const updatedAuth = await persistRefreshedAuth(
-        codexAuth.authPath,
-        codexAuth.authJson,
-        newTokens,
-      );
-      codexAuthRefreshed = {
-        ...codexAuth,
-        accessToken: newTokens.access_token,
-        refreshToken: newTokens.refresh_token,
-        lastRefresh: updatedAuth.last_refresh,
-        authJson: updatedAuth,
-      };
-    } catch (err) {
-      refreshError = err;
-    }
-  }
+  const {
+    auth: codexAuthRefreshed,
+    refreshError,
+  } = await refreshCodexAuthBundle(codexAuth, { fetchImpl });
 
   const codexToken = codexAuthRefreshed?.accessToken || null;
   const codexAccountId = codexAuthRefreshed?.accountId || null;
@@ -2286,6 +2425,8 @@ function resetUsageLimitsCache() {
 }
 
 module.exports = {
+  CODEX_RESET_CREDIT_ALLOWLIST,
+  getCodexUsageLimits,
   getUsageLimits,
   normalizePlanLabel,
   resetUsageLimitsCache,
@@ -2296,6 +2437,7 @@ module.exports = {
   normalizeGeminiQuotaResponse,
   normalizeKimiUsageResponse,
   parseKiroUsageOutput,
+  parseCodexResetCreditFields,
   normalizeAntigravityResponse,
   parseListeningPorts,
   detectAntigravityProcess,
