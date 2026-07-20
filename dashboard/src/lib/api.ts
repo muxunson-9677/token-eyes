@@ -705,6 +705,10 @@ export async function getMyLeaderboardRank({
   metric,
   source,
 }: AnyRecord = {}) {
+  if (isMockEnabled()) {
+    const data = getMockLeaderboard({ seed: accessToken, period, metric, source, limit: 100, offset: 0 });
+    return { me: data?.me || null, period, metric, source };
+  }
   return fetchInsforgeFunction("tokentracker-leaderboard-me", {
     accessToken,
     params: { period, metric, source },

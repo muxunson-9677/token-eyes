@@ -55,6 +55,31 @@ function boundedInteger(value: string | null, fallback: number, maximum: number)
   return Math.min(parsed, maximum);
 }
 
+function shanghaiRange(period: string) {
+  if (period === "total") return { from: null, to: null };
+  const shifted = new Date(Date.now() + 8 * 60 * 60_000);
+  const year = shifted.getUTCFullYear();
+  const month = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+  const current = new Date(Date.UTC(year, month, day));
+  if (period === "today") {
+    const value = current.toISOString().slice(0, 10);
+    return { from: value, to: value };
+  }
+  if (period === "month") {
+    return {
+      from: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10),
+      to: new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10),
+    };
+  }
+  const mondayOffset = (current.getUTCDay() + 6) % 7;
+  const from = new Date(current);
+  from.setUTCDate(from.getUTCDate() - mondayOffset);
+  const to = new Date(from);
+  to.setUTCDate(to.getUTCDate() + 6);
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+}
+
 export default async function (req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
@@ -96,6 +121,7 @@ export default async function (req: Request): Promise<Response> {
   const generatedMs = generatedAt ? Date.parse(generatedAt) : Number.NaN;
   const stale = !Number.isFinite(generatedMs) || Date.now() - generatedMs > STALE_AFTER_MS[period];
   const totalEntries = Number(count) || 0;
+  const range = shanghaiRange(period);
 
   return json({
     entries: rows,
@@ -106,6 +132,8 @@ export default async function (req: Request): Promise<Response> {
     offset,
     total_entries: totalEntries,
     total_pages: Math.ceil(totalEntries / limit),
+    from: range.from,
+    to: range.to,
     generated_at: generatedAt,
     pricing_version: pricingVersion,
     stale,

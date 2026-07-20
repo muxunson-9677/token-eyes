@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { LoginModal } from "./LoginModal.jsx";
+import { copy } from "../lib/copy";
 
 vi.mock("../contexts/InsforgeAuthContext.jsx", () => ({
   useInsforgeAuth: () => ({ enabled: true }),
@@ -20,7 +21,7 @@ beforeEach(() => {
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
 });
 
-it("does not render the cloud login modal inside the local Tauri desktop app", () => {
+it("renders voluntary leaderboard login inside the local Tauri desktop app", () => {
   Object.defineProperty(window, "__TAURI__", {
     configurable: true,
     value: { core: { invoke: vi.fn() } },
@@ -28,5 +29,13 @@ it("does not render the cloud login modal inside the local Tauri desktop app", (
 
   render(<LoginModal />);
 
-  expect(screen.queryByTestId("login-card")).not.toBeInTheDocument();
+  expect(screen.getByTestId("login-card")).toBeInTheDocument();
+});
+
+it("discloses automatic leaderboard participation and the upload boundary", () => {
+  render(<LoginModal />);
+
+  expect(screen.getByText(copy("login_modal.leaderboard_participation"))).toBeInTheDocument();
+  expect(screen.getByText(copy("login_modal.upload_boundary"))).toBeInTheDocument();
+  expect(screen.getByText(copy("login_modal.delete_participation"))).toBeInTheDocument();
 });

@@ -4,7 +4,7 @@ import { X } from "lucide-react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { useLoginModal } from "../contexts/LoginModalContext.jsx";
 import { LoginCard } from "./LoginCard.jsx";
-import { isTauriApp } from "../lib/native-bridge.js";
+import { copy } from "../lib/copy";
 
 export function LoginModal() {
   const { isOpen, closeLoginModal } = useLoginModal();
@@ -20,7 +20,7 @@ export function LoginModal() {
     return () => document.removeEventListener("keydown", onKey);
   }, [isOpen, closeLoginModal]);
 
-  if (!enabled || isTauriApp()) return null;
+  if (!enabled) return null;
 
   return (
     <AnimatePresence>
@@ -61,6 +61,11 @@ export function LoginModal() {
 
             {/* LoginCard Form */}
             <LoginCard onSuccess={closeLoginModal} className="p-6 bg-transparent" />
+            <div className="mx-6 mb-6 rounded-lg bg-oai-gray-50 px-4 py-3 text-xs leading-relaxed text-oai-gray-500 dark:bg-oai-gray-900 dark:text-oai-gray-400">
+              <p>{copy("login_modal.leaderboard_participation")}</p>
+              <p className="mt-1">{copy("login_modal.upload_boundary")}</p>
+              <p className="mt-1">{copy("login_modal.delete_participation")}</p>
+            </div>
           </motion.div>
         </motion.div>
       )}

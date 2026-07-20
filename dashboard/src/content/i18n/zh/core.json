@@ -1,4 +1,7 @@
 {
+  "login_modal.leaderboard_participation": "登录即自动参与排行榜，并上传汇总后的 Token 统计。",
+  "login_modal.upload_boundary": "永不上传代码、对话、项目、路径、Skills、MCP 或文件。",
+  "login_modal.delete_participation": "可随时在账户设置中删除排行榜参与数据。",
   "header.auth.sign_in_aria": "登录",
   "login.back_home": "返回首页",
   "login.cloud_only": "未配置云端登录。请使用 localhost 上的本地仪表盘。",
