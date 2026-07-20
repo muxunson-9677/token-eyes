@@ -169,6 +169,34 @@ test("POST cloud-sync-pref requires local auth, then persists and is reflected",
   assert.equal(JSON.parse(fs.readFileSync(prefFile, "utf8")).enabled, true, "pref must be unchanged");
 });
 
+test("legacy drain sync is disabled by default with a compact-state migration response", async () => {
+  const queuePath = path.join(tmpHome, "queue.jsonl");
+  writeQueue(queuePath, [SAMPLE_ROW]);
+  const previous = process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
+  delete process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
+
+  try {
+    const handler = freshHandler(queuePath);
+    const token = (await call(handler, { endpoint: "/api/local-auth" })).json().token;
+    const res = await call(handler, {
+      method: "POST",
+      endpoint: "/functions/tokentracker-local-sync",
+      headers: { "content-type": "application/json", "x-tokentracker-local-auth": token },
+      body: JSON.stringify({ drain: true, deviceToken: "legacy-device-token" }),
+    });
+
+    assert.equal(res.statusCode, 410);
+    assert.deepEqual(res.json(), {
+      ok: false,
+      error: "Legacy hourly leaderboard sync is disabled",
+      migration: "leaderboard-compact-state-v1",
+    });
+  } finally {
+    if (previous === undefined) delete process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
+    else process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED = previous;
+  }
+});
+
 test("usage-summary?account=1 falls back to local data when not signed in", async () => {
   const queuePath = path.join(tmpHome, "queue.jsonl");
   writeQueue(queuePath, [SAMPLE_ROW]);
@@ -404,4 +432,3 @@ test("usage-hourly?account=1 falls back to local hourly data when account hourly
     }
   }
 });
-

@@ -18,6 +18,34 @@ function json(data: unknown, status = 200) {
   });
 }
 
+const PRIVACY_FORBIDDEN_FIELDS = new Set([
+  "code",
+  "conversation",
+  "project",
+  "path",
+  "skill",
+  "mcp",
+  "file",
+]);
+
+function findPrivacyForbiddenField(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = findPrivacyForbiddenField(item);
+      if (nested) return nested;
+    }
+    return null;
+  }
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    const normalized = key.trim().toLowerCase();
+    if (PRIVACY_FORBIDDEN_FIELDS.has(normalized)) return normalized;
+    const nested = findPrivacyForbiddenField(nestedValue);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 async function sha256Hex(input: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(input);
@@ -38,6 +66,16 @@ export default async function (req: Request): Promise<Response> {
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return json({ error: "Invalid JSON body" }, 400);
+  const forbiddenField = findPrivacyForbiddenField(body);
+  if (forbiddenField) {
+    return json({ error: `Privacy-forbidden field: ${forbiddenField}` }, 400);
+  }
+  if (Deno.env.get("TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED") !== "true") {
+    return json({
+      error: "Legacy hourly leaderboard ingest is disabled",
+      migration: "leaderboard-compact-state-v1",
+    }, 410);
+  }
 
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")!;
   const serviceRoleKey = Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");

@@ -157,6 +157,8 @@ test("local sync accepts the configured insforgeBaseUrl override", async () => {
 
 test("local sync drain request runs sync with --drain", async () => {
   const calls = [];
+  const prevLegacy = process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
+  process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED = "true";
   const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
 
   try {
@@ -184,6 +186,8 @@ test("local sync drain request runs sync with --drain", async () => {
     assert.deepEqual(calls[0].args.slice(-3), [path.join(process.cwd(), "bin/tracker.js"), "sync", "--drain"]);
   } finally {
     restore();
+    if (prevLegacy === undefined) delete process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
+    else process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED = prevLegacy;
   }
 });
 
@@ -234,10 +238,12 @@ test("local sync drain request mints a device token from relayed login when none
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
   const prevBaseUrl = process.env.TOKENTRACKER_INSFORGE_BASE_URL;
+  const prevLegacy = process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
   const prevFetch = global.fetch;
   process.env.HOME = tmpHome;
   process.env.USERPROFILE = tmpHome;
   process.env.TOKENTRACKER_INSFORGE_BASE_URL = "https://cloud.example";
+  process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED = "true";
 
   const trackerDir = path.join(tmpHome, ".tokentracker", "tracker");
   fs.mkdirSync(trackerDir, { recursive: true });
@@ -313,6 +319,8 @@ test("local sync drain request mints a device token from relayed login when none
     else process.env.USERPROFILE = prevUserProfile;
     if (prevBaseUrl === undefined) delete process.env.TOKENTRACKER_INSFORGE_BASE_URL;
     else process.env.TOKENTRACKER_INSFORGE_BASE_URL = prevBaseUrl;
+    if (prevLegacy === undefined) delete process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
+    else process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED = prevLegacy;
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
 });
@@ -323,10 +331,12 @@ test("local sync drain request fails when relayed device token cannot be issued"
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
   const prevBaseUrl = process.env.TOKENTRACKER_INSFORGE_BASE_URL;
+  const prevLegacy = process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
   const prevFetch = global.fetch;
   process.env.HOME = tmpHome;
   process.env.USERPROFILE = tmpHome;
   process.env.TOKENTRACKER_INSFORGE_BASE_URL = "https://cloud.example";
+  process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED = "true";
 
   const trackerDir = path.join(tmpHome, ".tokentracker", "tracker");
   fs.mkdirSync(trackerDir, { recursive: true });
@@ -385,6 +395,8 @@ test("local sync drain request fails when relayed device token cannot be issued"
     else process.env.USERPROFILE = prevUserProfile;
     if (prevBaseUrl === undefined) delete process.env.TOKENTRACKER_INSFORGE_BASE_URL;
     else process.env.TOKENTRACKER_INSFORGE_BASE_URL = prevBaseUrl;
+    if (prevLegacy === undefined) delete process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED;
+    else process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED = prevLegacy;
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
 });

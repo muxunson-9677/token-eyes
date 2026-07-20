@@ -5031,6 +5031,17 @@ function createLocalApiHandler({
         } catch {
           body = {};
         }
+        if (
+          body.drain === true &&
+          String(process.env.TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED || "").toLowerCase() !== "true"
+        ) {
+          json(res, {
+            ok: false,
+            error: "Legacy hourly leaderboard sync is disabled",
+            migration: "leaderboard-compact-state-v1",
+          }, 410);
+          return true;
+        }
         const extraEnv = {};
         const drain = body.drain === true;
         if (typeof body.deviceToken === "string" && body.deviceToken.trim()) {

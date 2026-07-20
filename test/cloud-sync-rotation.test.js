@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 
-test("cloud sync source includes device-session rotation and recovery", () => {
+test("retired cloud sync source retains recovery code but exports network-free no-ops", () => {
   const src = fs.readFileSync(
     path.join(process.cwd(), "dashboard/src/lib/cloud-sync.ts"),
     "utf8",
@@ -14,7 +14,12 @@ test("cloud sync source includes device-session rotation and recovery", () => {
   assert.match(src, /issuedAtMs \+ DEVICE_TOKEN_ROTATE_AFTER_MS <= nowMs/);
   assert.match(src, /clearCloudDeviceSession\(\)/);
   assert.match(src, /await postLocalUsageSync/);
-  assert.match(src, /runCloudUsageSyncNow[\s\S]*syncCloudUsageWithRecovery\(getAccessToken,\s*\{\s*drain:\s*true\s*\}\)/);
+  assert.match(src, /runCloudUsageSyncIfDue[\s\S]*void getAccessToken/);
+  assert.match(src, /runCloudUsageSyncNow[\s\S]*void getAccessToken/);
+  assert.doesNotMatch(
+    src,
+    /export async function runCloudUsageSyncNow[\s\S]*syncCloudUsageWithRecovery\(getAccessToken,\s*\{\s*drain:\s*true\s*\}\)/,
+  );
 });
 
 test("local auth helper caches the per-process token in memory", async () => {

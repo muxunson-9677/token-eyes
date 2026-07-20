@@ -210,19 +210,13 @@ async function syncCloudUsageWithRecovery(
  * 若开启同步且具备条件：签发（或复用）device token 并运行本地 sync，将 queue 上传到云端。
  */
 export async function runCloudUsageSyncIfDue(getAccessToken: () => Promise<string | null>): Promise<void> {
-  const last = getLastCloudSyncTs();
-  if (Date.now() - last < MIN_SYNC_INTERVAL_MS) return;
-
-  const accessToken = await syncCloudUsageWithRecovery(getAccessToken);
-  if (!accessToken) return;
-  setLastCloudSyncTs(Date.now());
-  await triggerLeaderboardRefresh(accessToken, "cloud-sync-auto");
+  // Compatibility export only. New clients upload one compact aggregate state
+  // and must never issue device tokens, drain hourly rows, or refresh globally.
+  void getAccessToken;
 }
 
 /** 用户打开「同步到云端」后立即尝试一次（忽略节流） */
 export async function runCloudUsageSyncNow(getAccessToken: () => Promise<string | null>): Promise<void> {
-  const accessToken = await syncCloudUsageWithRecovery(getAccessToken, { drain: true });
-  if (!accessToken) return;
-  setLastCloudSyncTs(Date.now());
-  await triggerLeaderboardRefresh(accessToken, "cloud-sync-now");
+  // Compatibility export only; see runCloudUsageSyncIfDue.
+  void getAccessToken;
 }

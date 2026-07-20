@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { clearCloudDeviceSession } from "./cloud-sync-prefs";
 import { runCloudUsageSyncIfDue, runCloudUsageSyncNow } from "./cloud-sync";
 
 vi.mock("./insforge-config", () => ({
@@ -71,29 +70,23 @@ describe("cloud usage sync", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     installLocalStorageMock();
-    clearCloudDeviceSession();
   });
 
-  it("sends drain for manual sync", async () => {
-    const fetchMock = installFetchMock();
+  it("keeps the retired manual entry point as a network-free compatibility no-op", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
 
     await runCloudUsageSyncNow(async () => "access-token");
 
-    expect(getLocalSyncBody(fetchMock)).toMatchObject({
-      deviceToken: "device-token",
-      drain: true,
-      insforgeBaseUrl: "https://cloud.example",
-    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("does not send drain for scheduled sync", async () => {
-    const fetchMock = installFetchMock();
+  it("keeps the retired scheduled entry point as a network-free compatibility no-op", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
 
     await runCloudUsageSyncIfDue(async () => "access-token");
 
-    expect(getLocalSyncBody(fetchMock)).toEqual({
-      deviceToken: "device-token",
-      insforgeBaseUrl: "https://cloud.example",
-    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

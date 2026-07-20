@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { test } = require("node:test");
 
 function createStorage(initial = {}) {
@@ -52,5 +54,41 @@ test("cloud device session stays in memory and clears legacy localStorage", asyn
     assert.equal(mod.getStoredDeviceSession(), null);
   } finally {
     globalThis.localStorage = previous;
+  }
+});
+
+test("shipped dashboard has no caller for the retired hourly upload path", () => {
+  const dashboardRoot = path.join(__dirname, "..", "dashboard", "src");
+  const callers = [];
+
+  function visit(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(file);
+        continue;
+      }
+      if (!/\.[jt]sx?$/.test(entry.name) || /\.test\.[jt]sx?$/.test(entry.name)) continue;
+      if (file.endsWith(path.join("lib", "cloud-sync.ts"))) continue;
+      const source = fs.readFileSync(file, "utf8");
+      if (/runCloudUsageSync(?:IfDue|Now)|tokentracker-device-token-issue|drain\s*:\s*true/.test(source)) {
+        callers.push(path.relative(dashboardRoot, file));
+      }
+    }
+  }
+
+  visit(dashboardRoot);
+  assert.deepEqual(callers, []);
+});
+
+test("legacy edge uploads are server-gated and reject privacy-forbidden fields", () => {
+  const root = path.join(__dirname, "..", "dashboard", "edge-patches");
+  for (const name of ["tokentracker-ingest.ts", "tokentracker-device-token-issue.ts"]) {
+    const source = fs.readFileSync(path.join(root, name), "utf8");
+    assert.match(source, /TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED/);
+    assert.match(source, /leaderboard-compact-state-v1/);
+    for (const field of ["code", "conversation", "project", "path", "skill", "mcp", "file"]) {
+      assert.match(source, new RegExp(`["']${field}["']`, "i"), `${name} must reject ${field}`);
+    }
   }
 });
