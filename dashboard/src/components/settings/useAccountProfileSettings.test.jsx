@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   },
   getProfile: vi.fn(),
   setProfile: vi.fn(),
+  setActualCost: vi.fn(),
   getCosts: vi.fn(),
   deleteParticipation: vi.fn(),
 }));
@@ -25,6 +26,7 @@ vi.mock("../../lib/auth-token", () => ({
 vi.mock("../../lib/api", () => ({
   getPublicVisibility: mocks.getProfile,
   setPublicVisibility: mocks.setProfile,
+  setLeaderboardActualCost: mocks.setActualCost,
   getLocalLeaderboardActualCost: mocks.getCosts,
   deleteLeaderboardParticipation: mocks.deleteParticipation,
   uploadLeaderboardAvatar: vi.fn(),
@@ -41,6 +43,8 @@ describe("useAccountProfileSettings consent", () => {
     });
     mocks.setProfile.mockReset();
     mocks.setProfile.mockResolvedValue({});
+    mocks.setActualCost.mockReset();
+    mocks.setActualCost.mockResolvedValue(undefined);
     mocks.getCosts.mockReset();
     mocks.getCosts.mockResolvedValue({ today: 1, week: 2, month: 3, total: 4 });
     mocks.deleteParticipation.mockReset();
@@ -69,10 +73,10 @@ describe("useAccountProfileSettings consent", () => {
     await act(async () => result.current.handleActualCostToggle());
 
     expect(mocks.getCosts).toHaveBeenCalledTimes(1);
-    expect(mocks.setProfile).toHaveBeenLastCalledWith({
+    expect(mocks.setActualCost).toHaveBeenLastCalledWith({
       accessToken: "jwt",
-      share_actual_cost: true,
-      period_costs_usd: { today: 1, week: 2, month: 3, total: 4 },
+      share: true,
+      periodCosts: { today: 1, week: 2, month: 3, total: 4 },
     });
     expect(result.current.shareActualCost).toBe(true);
   });
@@ -83,7 +87,7 @@ describe("useAccountProfileSettings consent", () => {
       share_actual_cost: true,
     });
     let resolveSave;
-    mocks.setProfile.mockImplementation(() => new Promise((resolve) => {
+    mocks.setActualCost.mockImplementation(() => new Promise((resolve) => {
       resolveSave = resolve;
     }));
     const { result } = renderHook(() => useAccountProfileSettings());
@@ -95,9 +99,9 @@ describe("useAccountProfileSettings consent", () => {
     });
     expect(result.current.shareActualCost).toBe(true);
     await waitFor(() => {
-      expect(mocks.setProfile).toHaveBeenCalledWith({
+      expect(mocks.setActualCost).toHaveBeenCalledWith({
         accessToken: "jwt",
-        share_actual_cost: false,
+        share: false,
       });
     });
     expect(result.current.shareActualCost).toBe(true);

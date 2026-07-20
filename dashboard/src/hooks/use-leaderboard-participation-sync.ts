@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext";
+import {
+  getLocalLeaderboardActualCost,
+  getPublicVisibility,
+  setLeaderboardActualCost,
+  setPublicVisibility,
+} from "../lib/api";
 import { syncLeaderboardState } from "../lib/leaderboard-state-client";
 import { getLeaderboardSyncState } from "../lib/leaderboard-sync-state";
 
@@ -23,6 +29,7 @@ export function useLeaderboardParticipationSync(): void {
   const auth = useInsforgeAuth();
   const previousSignedIn = useRef<boolean | null>(null);
   const previousLeaderboardPath = useRef(false);
+  const profileCheckedForSession = useRef(false);
   const inFlight = useRef(false);
 
   useEffect(() => {
@@ -35,7 +42,11 @@ export function useLeaderboardParticipationSync(): void {
     previousSignedIn.current = signedIn;
     previousLeaderboardPath.current = onLeaderboard;
 
-    if (!signedIn || inFlight.current) return;
+    if (!signedIn) {
+      profileCheckedForSession.current = false;
+      return;
+    }
+    if (inFlight.current) return;
 
     let reason:
       | "first-login"
@@ -44,18 +55,47 @@ export function useLeaderboardParticipationSync(): void {
       | null = null;
     if (priorSignedIn === false) {
       reason = "first-login";
-    } else if (enteredLeaderboard) {
+    } else if (enteredLeaderboard && dailyCatchupDue()) {
       reason = "leaderboard-open";
     } else if (priorSignedIn === null && dailyCatchupDue()) {
       reason = "daily-catchup";
     }
-    if (!reason) return;
+    const refreshProfile = !profileCheckedForSession.current || reason !== null;
+    if (!reason && !refreshProfile) return;
 
     inFlight.current = true;
-    void syncLeaderboardState({
-      getAccessToken: auth.getAccessToken,
-      reason,
-    })
+    void (async () => {
+      const accessToken = await auth.getAccessToken();
+      if (!accessToken) throw new Error("Leaderboard session token unavailable");
+
+      if (refreshProfile) {
+        const profile = await getPublicVisibility({ accessToken });
+        if (!profile?.leaderboard_public) {
+          await setPublicVisibility({ accessToken, leaderboard_public: true });
+        }
+        profileCheckedForSession.current = true;
+
+        if (profile?.share_actual_cost) {
+          try {
+            const periodCosts = await getLocalLeaderboardActualCost();
+            await setLeaderboardActualCost({
+              accessToken,
+              share: true,
+              periodCosts,
+            });
+          } catch (error) {
+            console.warn("[tokentracker] leaderboard actual-cost refresh:", error);
+          }
+        }
+      }
+
+      if (reason) {
+        await syncLeaderboardState({
+          getAccessToken: async () => accessToken,
+          reason,
+        });
+      }
+    })()
       .catch((error) => {
         console.warn("[tokentracker] leaderboard participation sync:", error);
       })

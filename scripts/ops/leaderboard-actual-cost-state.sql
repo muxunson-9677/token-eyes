@@ -43,20 +43,9 @@ create policy leaderboard_actual_cost_select_own
 
 drop policy if exists leaderboard_actual_cost_insert_own
   on public.tokentracker_actual_cost_state;
-create policy leaderboard_actual_cost_insert_own
-  on public.tokentracker_actual_cost_state
-  for insert
-  to authenticated
-  with check (auth.uid() = user_id);
 
 drop policy if exists leaderboard_actual_cost_update_own
   on public.tokentracker_actual_cost_state;
-create policy leaderboard_actual_cost_update_own
-  on public.tokentracker_actual_cost_state
-  for update
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
 
 drop policy if exists leaderboard_actual_cost_delete_own
   on public.tokentracker_actual_cost_state;
@@ -68,7 +57,10 @@ create policy leaderboard_actual_cost_delete_own
 
 revoke all on table public.tokentracker_actual_cost_state from public;
 revoke all on table public.tokentracker_actual_cost_state from anon;
-grant select, insert, update, delete
+revoke insert, update
+  on table public.tokentracker_actual_cost_state
+  from authenticated;
+grant select, delete
   on table public.tokentracker_actual_cost_state
   to authenticated;
 

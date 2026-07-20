@@ -96,6 +96,14 @@ test("actual-cost schema stores consent atomically and keeps disabled amounts nu
   assert.match(sql, /auth\.uid\(\) = user_id/);
   assert.match(sql, /not p_share then null/);
   assert.doesNotMatch(sql, /to anon/);
+  assert.doesNotMatch(
+    sql,
+    /grant\s+select,\s*insert,\s*update,\s*delete\s+on table public\.tokentracker_actual_cost_state/i,
+  );
+  assert.match(
+    sql,
+    /grant\s+select,\s*delete\s+on table public\.tokentracker_actual_cost_state\s+to authenticated/i,
+  );
 
   const signature = sql.match(
     /create or replace function public\.set_my_leaderboard_actual_cost\((.*?)\) returns/s,

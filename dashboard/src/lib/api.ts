@@ -773,30 +773,70 @@ export async function setPublicVisibility({
   display_name,
   github_url,
   show_github_url,
-  share_actual_cost,
-  period_costs_usd,
 }: AnyRecord = {}) {
   const body: AnyRecord = {};
   if (leaderboard_public === true) body.leaderboard_public = true;
   if (display_name !== undefined) body.display_name = String(display_name);
   if (github_url !== undefined) body.github_url = github_url === null ? null : String(github_url);
   if (show_github_url !== undefined) body.show_github_url = Boolean(show_github_url);
-  if (share_actual_cost !== undefined) {
-    body.share_actual_cost = Boolean(share_actual_cost);
-    if (share_actual_cost && period_costs_usd) {
-      body.period_costs_usd = {
-        today: Number(period_costs_usd.today),
-        week: Number(period_costs_usd.week),
-        month: Number(period_costs_usd.month),
-        total: Number(period_costs_usd.total),
-      };
-    }
-  }
   return fetchInsforgeFunction("tokentracker-public-visibility", {
     accessToken,
     method: "POST",
     body,
   });
+}
+
+export async function setLeaderboardActualCost({
+  accessToken,
+  share,
+  periodCosts,
+  capturedAt,
+}: AnyRecord = {}) {
+  const baseUrl = getInsforgeRemoteUrl();
+  if (!baseUrl) throw new Error("InsForge base URL not configured");
+  if (!accessToken || !isValidJwtShape(accessToken)) {
+    throw new Error("Authenticated leaderboard session required");
+  }
+
+  const normalized = {
+    today: Number(periodCosts?.today),
+    week: Number(periodCosts?.week),
+    month: Number(periodCosts?.month),
+    total: Number(periodCosts?.total),
+  };
+  if (
+    share &&
+    Object.values(normalized).some((value) => !Number.isFinite(value) || value < 0)
+  ) {
+    throw new Error("Four non-negative period costs are required");
+  }
+  const captured = capturedAt ? new Date(capturedAt) : new Date();
+  if (!Number.isFinite(captured.getTime())) throw new Error("Invalid actual-cost capture time");
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    Prefer: "return=minimal",
+  };
+  const anonKey = getInsforgeAnonKey();
+  if (anonKey) headers.apikey = anonKey;
+  const response = await fetch(
+    `${baseUrl.replace(/\/$/, "")}/api/database/rpc/set_my_leaderboard_actual_cost`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        p_share: Boolean(share),
+        p_today_usd: share ? normalized.today : null,
+        p_week_usd: share ? normalized.week : null,
+        p_month_usd: share ? normalized.month : null,
+        p_total_usd: share ? normalized.total : null,
+        p_captured_at: captured.toISOString(),
+      }),
+    },
+  );
+  if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
 }
 
 export async function getLocalLeaderboardActualCost() {

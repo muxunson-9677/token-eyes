@@ -5,6 +5,7 @@ import {
   deleteLeaderboardParticipation,
   getLocalLeaderboardActualCost,
   getPublicVisibility,
+  setLeaderboardActualCost,
   setPublicVisibility,
   uploadLeaderboardAvatar,
 } from "../../lib/api";
@@ -144,14 +145,14 @@ export function useAccountProfileSettings() {
       const accessToken = await token();
       if (!accessToken) return;
       if (shareActualCost) {
-        await setPublicVisibility({ accessToken, share_actual_cost: false });
+        await setLeaderboardActualCost({ accessToken, share: false });
         setShareActualCost(false);
       } else {
         const periodCosts = await getLocalLeaderboardActualCost();
-        await setPublicVisibility({
+        await setLeaderboardActualCost({
           accessToken,
-          share_actual_cost: true,
-          period_costs_usd: periodCosts,
+          share: true,
+          periodCosts,
         });
         setShareActualCost(true);
       }

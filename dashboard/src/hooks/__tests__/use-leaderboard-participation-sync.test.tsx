@@ -12,6 +12,13 @@ const mocks = vi.hoisted(() => ({
   },
   getSyncState: vi.fn(() => ({ pending: false })),
   sync: vi.fn(async () => ({ status: "uploaded" })),
+  getProfile: vi.fn(async () => ({
+    leaderboard_public: true,
+    share_actual_cost: false,
+  })),
+  setProfile: vi.fn(async () => ({})),
+  getCosts: vi.fn(async () => ({ today: 1, week: 2, month: 3, total: 4 })),
+  setActualCost: vi.fn(async () => undefined),
 }));
 
 vi.mock("../../contexts/InsforgeAuthContext", () => ({
@@ -24,6 +31,13 @@ vi.mock("../../lib/leaderboard-state-client", () => ({
 
 vi.mock("../../lib/leaderboard-sync-state", () => ({
   getLeaderboardSyncState: mocks.getSyncState,
+}));
+
+vi.mock("../../lib/api", () => ({
+  getPublicVisibility: mocks.getProfile,
+  setPublicVisibility: mocks.setProfile,
+  getLocalLeaderboardActualCost: mocks.getCosts,
+  setLeaderboardActualCost: mocks.setActualCost,
 }));
 
 import { useLeaderboardParticipationSync } from "../use-leaderboard-participation-sync";
@@ -55,6 +69,17 @@ describe("leaderboard participation lifecycle", () => {
     mocks.getSyncState.mockReturnValue({ pending: false });
     mocks.sync.mockReset();
     mocks.sync.mockResolvedValue({ status: "uploaded" });
+    mocks.getProfile.mockReset();
+    mocks.getProfile.mockResolvedValue({
+      leaderboard_public: true,
+      share_actual_cost: false,
+    });
+    mocks.setProfile.mockReset();
+    mocks.setProfile.mockResolvedValue({});
+    mocks.getCosts.mockReset();
+    mocks.getCosts.mockResolvedValue({ today: 1, week: 2, month: 3, total: 4 });
+    mocks.setActualCost.mockReset();
+    mocks.setActualCost.mockResolvedValue(undefined);
   });
 
   it("never syncs while signed out", async () => {
@@ -74,13 +99,13 @@ describe("leaderboard participation lifecycle", () => {
 
     await waitFor(() => {
       expect(mocks.sync).toHaveBeenCalledWith({
-        getAccessToken: mocks.auth.getAccessToken,
+        getAccessToken: expect.any(Function),
         reason: "first-login",
       });
     });
   });
 
-  it("syncs when an authenticated user opens the leaderboard", async () => {
+  it("does not spend another upload when an authenticated user opens the leaderboard after a recent success", async () => {
     mocks.auth.signedIn = true;
     mocks.getSyncState.mockReturnValue({
       pending: false,
@@ -88,12 +113,8 @@ describe("leaderboard participation lifecycle", () => {
     });
     renderProbe("/leaderboard");
 
-    await waitFor(() => {
-      expect(mocks.sync).toHaveBeenCalledWith({
-        getAccessToken: mocks.auth.getAccessToken,
-        reason: "leaderboard-open",
-      });
-    });
+    await waitFor(() => expect(mocks.getProfile).toHaveBeenCalled());
+    expect(mocks.sync).not.toHaveBeenCalled();
   });
 
   it("requests daily catch-up only when the last success is over 24 hours old", async () => {
@@ -106,9 +127,55 @@ describe("leaderboard participation lifecycle", () => {
 
     await waitFor(() => {
       expect(mocks.sync).toHaveBeenCalledWith({
-        getAccessToken: mocks.auth.getAccessToken,
+        getAccessToken: expect.any(Function),
         reason: "daily-catchup",
       });
+    });
+  });
+
+  it("makes every signed-in session public even when the daily upload is not due", async () => {
+    mocks.auth.signedIn = true;
+    mocks.getProfile.mockResolvedValue({
+      leaderboard_public: false,
+      share_actual_cost: false,
+    });
+    mocks.getSyncState.mockReturnValue({
+      pending: false,
+      lastSuccessAt: new Date().toISOString(),
+    });
+    renderProbe("/dashboard");
+
+    await waitFor(() => {
+      expect(mocks.setProfile).toHaveBeenCalledWith({
+        accessToken: "jwt",
+        leaderboard_public: true,
+      });
+    });
+    expect(mocks.sync).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the four actual-cost totals when consent remains enabled", async () => {
+    mocks.auth.signedIn = true;
+    mocks.getProfile.mockResolvedValue({
+      leaderboard_public: true,
+      share_actual_cost: true,
+    });
+    mocks.getSyncState.mockReturnValue({
+      pending: false,
+      lastSuccessAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    });
+    renderProbe("/dashboard");
+
+    await waitFor(() => {
+      expect(mocks.setActualCost).toHaveBeenCalledWith({
+        accessToken: "jwt",
+        share: true,
+        periodCosts: { today: 1, week: 2, month: 3, total: 4 },
+      });
+    });
+    expect(mocks.sync).toHaveBeenCalledWith({
+      getAccessToken: expect.any(Function),
+      reason: "daily-catchup",
     });
   });
 

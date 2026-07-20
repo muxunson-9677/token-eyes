@@ -15,6 +15,7 @@ import {
   getLeaderboard,
   getLocalLeaderboardActualCost,
   getPublicVisibility,
+  setLeaderboardActualCost,
   setPublicVisibility,
 } from "../api";
 
@@ -80,7 +81,7 @@ describe("public visibility API", () => {
     expect(headers.apikey).toBe("anon-key");
   });
 
-  it("posts the leaderboard profile and actual-cost consent contract", async () => {
+  it("posts only the leaderboard profile contract", async () => {
     const payload = {
       enabled: true,
       updated_at: "2026-03-28T16:05:00.000Z",
@@ -94,7 +95,6 @@ describe("public visibility API", () => {
         accessToken,
         leaderboard_public: true,
         display_name: "Writer",
-        share_actual_cost: false,
       }),
     ).resolves.toEqual(payload);
 
@@ -105,7 +105,6 @@ describe("public visibility API", () => {
         body: JSON.stringify({
           leaderboard_public: true,
           display_name: "Writer",
-          share_actual_cost: false,
         }),
         headers: expect.objectContaining({
           Authorization: `Bearer ${accessToken}`,
@@ -113,6 +112,39 @@ describe("public visibility API", () => {
         }),
       }),
     );
+  });
+
+  it("writes actual-cost consent through the authenticated RPC without a user id", async () => {
+    const fetchMock = mockJsonFetch({});
+    const accessToken = makeJwt({ sub: "writer-1" });
+
+    await setLeaderboardActualCost({
+      accessToken,
+      share: true,
+      periodCosts: { today: 1, week: 2, month: 3, total: 4 },
+      capturedAt: "2026-07-20T08:00:00.000Z",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.insforge.app/api/database/rpc/set_my_leaderboard_actual_cost",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${accessToken}`,
+          apikey: "anon-key",
+          Prefer: "return=minimal",
+        }),
+        body: JSON.stringify({
+          p_share: true,
+          p_today_usd: 1,
+          p_week_usd: 2,
+          p_month_usd: 3,
+          p_total_usd: 4,
+          p_captured_at: "2026-07-20T08:00:00.000Z",
+        }),
+      }),
+    );
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).not.toContain("writer-1");
   });
 
   it("reads only four local actual-cost totals before consent upload", async () => {

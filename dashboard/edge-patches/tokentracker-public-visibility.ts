@@ -130,13 +130,6 @@ export default async function (req: Request): Promise<Response> {
       display_name?: string;
       github_url?: string | null;
       show_github_url?: boolean;
-      share_actual_cost?: boolean;
-      period_costs_usd?: {
-        today?: number;
-        week?: number;
-        month?: number;
-        total?: number;
-      };
     };
     const now = new Date().toISOString();
     if (body.leaderboard_public !== undefined && body.leaderboard_public !== true) {
@@ -205,38 +198,11 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
-    if (body.share_actual_cost !== undefined) {
-      const costs = body.period_costs_usd;
-      const values = [costs?.today, costs?.week, costs?.month, costs?.total];
-      if (
-        body.share_actual_cost &&
-        values.some((value) => typeof value !== "number" || !Number.isFinite(value) || value < 0)
-      ) {
-        return json({ error: "Four non-negative period costs are required" }, 400);
-      }
-      const { error: costError } = await client.database
-        .from("tokentracker_actual_cost_state")
-        .upsert({
-          user_id: userId,
-          share_actual_cost: Boolean(body.share_actual_cost),
-          today_usd: body.share_actual_cost ? costs!.today : null,
-          week_usd: body.share_actual_cost ? costs!.week : null,
-          month_usd: body.share_actual_cost ? costs!.month : null,
-          total_usd: body.share_actual_cost ? costs!.total : null,
-          captured_at: now,
-          updated_at: now,
-        }, { onConflict: "user_id" });
-      if (costError) return json({ error: costError.message }, 500);
-    }
-
     const result: Record<string, unknown> = { updated_at: now };
     if (body.leaderboard_public === true) result.leaderboard_public = true;
     if (normalizedDisplayName !== undefined) result.display_name = normalizedDisplayName;
     if (normalizedGithubUrl !== undefined) result.github_url = normalizedGithubUrl;
     if (body.show_github_url !== undefined) result.show_github_url = Boolean(body.show_github_url);
-    if (body.share_actual_cost !== undefined) {
-      result.share_actual_cost = Boolean(body.share_actual_cost);
-    }
     return json(result);
   }
   return json({ error: "Method not allowed" }, 405);

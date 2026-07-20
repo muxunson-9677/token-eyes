@@ -122,6 +122,21 @@ test("produces a stable SHA-256 hash for semantically identical row order", () =
   assert.equal(stableStateHash(first), stableStateHash(second));
 });
 
+test("stable hash ignores capture time when usage and device identity are unchanged", () => {
+  const rows = [row("2026-07-20T01:00:00.000Z", { input_tokens: 2 })];
+  const first = buildLeaderboardDeviceState(rows, {
+    deviceId: "stable-machine-id",
+    capturedAt: "2026-07-20T08:00:00.000Z",
+  });
+  const second = buildLeaderboardDeviceState(rows, {
+    deviceId: "stable-machine-id",
+    capturedAt: "2026-07-20T08:15:00.000Z",
+  });
+
+  assert.notEqual(first.captured_at, second.captured_at);
+  assert.equal(stableStateHash(first), stableStateHash(second));
+});
+
 test("enforces the compact state byte limit exactly", () => {
   assert.equal(COMPACT_STATE_MAX_BYTES, 8192);
   assert.equal(assertCompactStateSize("a".repeat(8192)), 8192);

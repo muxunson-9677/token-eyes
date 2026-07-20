@@ -131,9 +131,14 @@ function canonicalize(value) {
 }
 
 function stableStateHash(state) {
+  const hashableState = state && typeof state === "object"
+    ? Object.fromEntries(
+      Object.entries(state).filter(([key]) => key !== "captured_at"),
+    )
+    : state;
   return crypto
     .createHash("sha256")
-    .update(JSON.stringify(canonicalize(state)))
+    .update(JSON.stringify(canonicalize(hashableState)))
     .digest("hex");
 }
 
