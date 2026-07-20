@@ -29,5 +29,6 @@ export function getBackendBaseUrl() {
  * 与 `getInsforgeBaseUrl()` 相同；在 localhost 只要配置了 `VITE_INSFORGE_BASE_URL` 仍会请求云端。
  */
 export function getLeaderboardBaseUrl() {
-  return getInsforgeRemoteUrl();
+  const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
+  return (env?.VITE_LEADERBOARD_PUBLIC_BASE_URL || getInsforgeRemoteUrl()).trim();
 }

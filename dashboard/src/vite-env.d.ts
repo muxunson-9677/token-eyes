@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_TOKENTRACKER_BACKEND_ANON_KEY?: string;
   readonly VITE_INSFORGE_BASE_URL?: string;
   readonly VITE_INSFORGE_ANON_KEY?: string;
+  readonly VITE_LEADERBOARD_PUBLIC_BASE_URL?: string;
 }
 
 interface ImportMeta {

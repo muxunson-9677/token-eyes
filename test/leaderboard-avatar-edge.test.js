@@ -13,6 +13,10 @@ const SQL = fs.readFileSync(
   path.resolve("scripts/ops/leaderboard-avatar-storage.sql"),
   "utf8",
 );
+const PUBLIC_EDGE = fs.readFileSync(
+  path.resolve("dashboard/edge-patches/tokentracker-avatar-public.ts"),
+  "utf8",
+);
 
 test("avatar edge accepts only a tiny authenticated WebP body", () => {
   assert.match(EDGE, /req\.method\s*!==\s*"PUT"[^;]+req\.method\s*!==\s*"DELETE"/s);
@@ -41,4 +45,14 @@ test("storage bucket is private and object policies are user-folder scoped", () 
   assert.match(SQL, /auth\.uid\(\)::text\s*=\s*\(storage\.foldername\(name\)\)\[1\]/i);
   assert.match(SQL, /tokentracker_leaderboard_avatar_metadata/i);
   assert.match(SQL, /enable row level security/i);
+});
+
+test("public avatar edge resolves only metadata-backed SHA-256 WebP objects", () => {
+  assert.match(PUBLIC_EDGE, /\^\[a-f0-9\]\{64\}\$/);
+  assert.match(PUBLIC_EDGE, /\.eq\("content_hash",\s*hash\)/);
+  assert.match(PUBLIC_EDGE, /\.select\("object_key"\)/);
+  assert.match(PUBLIC_EDGE, /\.download\(metadata\.object_key\)/);
+  assert.match(PUBLIC_EDGE, /image\/webp/);
+  assert.match(PUBLIC_EDGE, /max-age=31536000,\s*immutable/);
+  assert.doesNotMatch(PUBLIC_EDGE, /searchParams\.get\("user_id"\)/);
 });

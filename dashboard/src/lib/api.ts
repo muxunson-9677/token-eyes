@@ -678,8 +678,23 @@ export async function getLeaderboard({
   if (mock || isMockEnabled()) {
     return getMockLeaderboard({ period, metric, source, limit, offset });
   }
+  const insforgeBaseUrl = getInsforgeRemoteUrl().replace(/\/$/, "");
+  const publicBaseUrl = String(baseUrl || insforgeBaseUrl).replace(/\/$/, "");
+  if (publicBaseUrl && publicBaseUrl !== insforgeBaseUrl) {
+    const url = new URL(`${publicBaseUrl}/leaderboard`);
+    for (const [key, value] of Object.entries({ period, metric, source, limit, offset })) {
+      if (value != null && value !== "") url.searchParams.set(key, String(value));
+    }
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "omit",
+    });
+    if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
+    return response.json();
+  }
   return fetchInsforgeFunction("tokentracker-leaderboard", {
-    baseUrl,
+    baseUrl: publicBaseUrl,
     params: { period, metric, source, limit, offset },
   });
 }

@@ -1,0 +1,12 @@
+name = "token-eyes-leaderboard-cache"
+main = "src/index.ts"
+compatibility_date = "2026-07-20"
+
+[vars]
+INSFORGE_PUBLIC_ORIGIN = "https://replace-with-staging.insforge.app"
+
+[env.staging]
+name = "token-eyes-leaderboard-cache-staging"
+
+[env.staging.vars]
+INSFORGE_PUBLIC_ORIGIN = "https://replace-with-staging.insforge.app"
