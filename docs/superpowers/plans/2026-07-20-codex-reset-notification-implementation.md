@@ -4,7 +4,7 @@
 
 **Goal:** Detect normal Codex quota resets, confirmed early quota restoration, and signed official reset/credit announcements, then show a prominent in-app alert without requesting operating-system notification permission.
 
-**Architecture:** The bundled local Node runtime reuses the existing Codex `wham/usage` integration and credentials already used by Token Eyes, but runs a Codex-only poller rather than refreshing every provider. A pure local state machine persists only quota percentages, reset times, event IDs, and acknowledgements. The dashboard reads local events and drives the banner, red dot, and Tauri tray label. A separately signed static JSON feed carries global announcements; invalid or non-official links are rejected.
+**Architecture:** The bundled local Node runtime reuses the existing Codex `wham/usage` integration and credentials already used by Token Eyes, but runs a Codex-only poller rather than refreshing every provider. A pure local state machine persists only quota percentages, reset times, event IDs, and acknowledgements. The dashboard reads local events and drives the banner, red dot, and Tauri tray label. A central candidate pipeline watches the exact X accounts `@OpenAI` and Codex head Tibo's `@thsottiaux` when optional X API access is configured, with manual URL intake as the free fallback; only reviewed candidates enter the separately signed static feed.
 
 **Tech Stack:** Node.js CommonJS + `node:test`, existing local API and Codex auth refresh code, Node `crypto` Ed25519 verification, React 18 + Vitest, minimal Tauri 2 Rust tray command and unit tests.
 
@@ -19,6 +19,8 @@
 - Failures back off 10 minutes, 30 minutes, then 2 hours; stale data never produces a reset event.
 - Early restoration requires two consecutive valid observations at least 5 minutes apart.
 - The same event is shown once across restarts until the user acknowledges it.
+- Client applications never scrape X or receive an X API credential.
+- X candidates never publish automatically: exact-author validation, relevance filtering, deduplication, and human approval precede signing.
 - Version 1 does not claim that a user owns a reset coupon unless a stable, explicitly allowlisted official numeric field is proven by a captured redacted fixture.
 - No OS notification plugin or new system permission is part of version 1.
 
@@ -346,6 +348,98 @@ git commit -m "feat: schedule and persist Codex reset checks"
 
 ## Phase 3: Signed global announcement feed
 
+### Task 5A: Collect X candidates centrally without making X a client dependency
+
+**Files:**
+- Create: `scripts/lib/codex-announcement-sources.mjs`
+- Create: `scripts/collect-codex-reset-candidates.mjs`
+- Create: `test/codex-announcement-sources.test.js`
+- Create: `.github/workflows/codex-reset-candidates.yml`
+- Modify: `docs/operations/codex-reset-notifications-runbook.md`
+
+- [ ] **Step 1: Write failing source-validation and relevance tests**
+
+Lock the initial author allowlist to:
+
+```js
+[
+  { username: "OpenAI", role: "company" },
+  { username: "thsottiaux", role: "head_of_codex" }
+]
+```
+
+Tests must prove:
+
+- only `https://x.com/OpenAI/status/<numeric-id>` and `https://x.com/thsottiaux/status/<numeric-id>` pass;
+- usernames are matched case-insensitively but the numeric status ID is mandatory;
+- display name “Tibo”, verified badges, reposts, quotes, replies, and lookalike usernames do not establish authorship;
+- a candidate must mention Codex and at least one allowlisted reset concept: `reset`, `rate limit`, `usage limit`, `quota`, `credit`, `extra usage`, `additional usage`, or an explicitly reviewed Chinese equivalent;
+- posts older than 48 hours at collection time are rejected in both API and manual modes;
+- unrelated product launches and general Codex posts are rejected;
+- `source_post_id` deduplicates repeated scans;
+- multiple posts assigned the same `campaign_key` produce one review item;
+- the sanitized candidate contains public source metadata only and never an API bearer token or response headers.
+
+Run:
+
+```powershell
+node --test test/codex-announcement-sources.test.js
+```
+
+Expected: FAIL because the source module does not exist.
+
+- [ ] **Step 2: Implement the validator and optional X recent-search adapter**
+
+Export:
+
+```js
+export const CODEX_ANNOUNCEMENT_X_AUTHORS;
+export function parseAllowlistedXStatusUrl(url);
+export function classifyCodexResetCandidate(post);
+export function mergeCodexResetCandidates(existing, incoming);
+export async function collectXRecentCandidates({ bearerToken, sinceId, fetchImpl });
+```
+
+The X query is fixed to:
+
+```text
+(from:OpenAI OR from:thsottiaux) Codex
+(reset OR "rate limit" OR "usage limit" OR quota OR credit OR "extra usage" OR "additional usage")
+-is:retweet
+```
+
+Request only `id`, `text`, `author_id`, `created_at`, and expanded username. Bound each run to 100 results and set `start_time` to exactly 48 hours before the injected/current clock; reject older posts again after parsing. Never log the bearer token or raw authorization header.
+
+- [ ] **Step 3: Provide the zero-cost manual fallback**
+
+The CLI supports both:
+
+```powershell
+node scripts/collect-codex-reset-candidates.mjs --x-api --output "$env:TEMP\\codex-reset-candidates.json"
+node scripts/collect-codex-reset-candidates.mjs --manual "https://x.com/thsottiaux/status/1234567890123456789" --text-file "$env:TEMP\\post.txt" --output "$env:TEMP\\codex-reset-candidates.json"
+```
+
+`--x-api` requires `X_BEARER_TOKEN` and exits with code 2 plus a neutral setup message when absent. `--manual` still runs exact URL, author, keyword, size, and deduplication checks; a maintainer visually verifies the public post before signing. Neither mode commits candidate text to the repository.
+
+- [ ] **Step 4: Add a central workflow, disabled unless explicitly configured**
+
+The GitHub workflow:
+
+- runs only by `workflow_dispatch` by default;
+- offers an optional schedule block documented but commented out;
+- uses `X_BEARER_TOKEN` only when a repository secret exists;
+- uploads the sanitized candidate JSON as a short-lived artifact;
+- never commits, signs, publishes, opens a PR, or deploys automatically;
+- explains that X API access may be pay-per-use and must not be enabled without an approved zero-cost/paid budget.
+
+- [ ] **Step 5: Test and commit**
+
+```powershell
+node --test test/codex-announcement-sources.test.js
+git add scripts/lib/codex-announcement-sources.mjs scripts/collect-codex-reset-candidates.mjs test/codex-announcement-sources.test.js .github/workflows/codex-reset-candidates.yml docs/operations/codex-reset-notifications-runbook.md
+git commit -m "feat: collect trusted Codex announcement candidates"
+```
+
 ### Task 5: Define, sign, and verify the static feed without storing a private key
 
 **Files:**
@@ -380,6 +474,9 @@ Decoded payload:
       "type": "official_reset_announcement",
       "title": "Codex 重置或额外额度活动",
       "summary": "可能适用于你的账户，请前往官方页面确认。",
+      "source_author": "thsottiaux",
+      "source_post_id": "1234567890123456789",
+      "source_url": "https://x.com/thsottiaux/status/1234567890123456789",
       "official_url": "https://help.openai.com/en/articles/20001271",
       "published_at": "2026-07-20T00:00:00.000Z",
       "expires_at": "2026-08-20T00:00:00.000Z"
@@ -398,7 +495,9 @@ Tests reject:
 - more than 20 announcements;
 - title over 80 characters or summary over 240;
 - non-HTTPS links;
-- links outside `help.openai.com`, `openai.com`, and `chatgpt.com`;
+- links outside `help.openai.com`, `openai.com`, `chatgpt.com`, and exact allowlisted X status URLs;
+- X source author/URL/post-ID mismatches;
+- X sources outside `@OpenAI` and `@thsottiaux`;
 - unsupported event types.
 
 Run:
@@ -449,7 +548,7 @@ node scripts/sign-codex-reset-feed.mjs --private "$env:USERPROFILE\\.token-eyes-
 node --test test/codex-reset-feed.test.js
 ```
 
-Expected: PASS. The signer must refuse an announcement without an allowlisted official URL.
+Expected: PASS. The signer must refuse an announcement without an allowlisted official source, must require review metadata for X candidates, and must never read directly from the unreviewed workflow artifact.
 
 - [ ] **Step 5: Commit**
 
@@ -496,7 +595,7 @@ git add src/lib/codex-reset-monitor-service.js test/codex-reset-monitor-service.
 git commit -m "feat: poll signed Codex announcements"
 ```
 
-Document the exact publication sequence: edit payload input, verify official link manually, sign offline, review decoded payload, deploy website, fetch production envelope, and verify it with the committed public key.
+Document the exact publication sequence: collect candidate, verify the exact `@OpenAI`/`@thsottiaux` public post or OpenAI page manually, merge duplicate campaign posts, write conservative copy, sign offline, review decoded payload, deploy website, fetch production envelope, and verify it with the committed public key.
 
 ## Phase 4: Local API and dashboard alerts
 
@@ -588,6 +687,7 @@ Prove:
 - reset events show “查看额度” and “前往 Codex”;
 - announcement events additionally show “查看官方说明”;
 - official links use the existing safe opener and allowlist;
+- X announcement actions open only the exact signed `source_url`;
 - unread events put a red dot on the Token 套餐/额度 entry;
 - no alert appears on the public website where the local API is unavailable;
 - quota-read errors show only in settings/status and never masquerade as restoration.
@@ -766,14 +866,15 @@ conversation
 skill
 mcp
 path
+x_bearer_token
 ```
 
-Permit `official_url` only for allowlisted HTTPS hosts.
+Permit `official_url` only for allowlisted OpenAI HTTPS hosts. Permit `source_url` on X only when its exact author and numeric post ID match the signed `source_author` and `source_post_id`.
 
 - [ ] **Step 2: Run the full focused suite**
 
 ```powershell
-node --test test/codex-usage-limits.test.js test/codex-reset-monitor.test.js test/codex-reset-monitor-store.test.js test/codex-reset-monitor-service.test.js test/codex-reset-feed.test.js test/local-api-codex-reset-events.test.js test/codex-reset-privacy-contract.test.js test/local-api-security.test.js test/usage-limits.test.js
+node --test test/codex-usage-limits.test.js test/codex-reset-monitor.test.js test/codex-reset-monitor-store.test.js test/codex-reset-monitor-service.test.js test/codex-announcement-sources.test.js test/codex-reset-feed.test.js test/local-api-codex-reset-events.test.js test/codex-reset-privacy-contract.test.js test/local-api-security.test.js test/usage-limits.test.js
 npm --prefix dashboard test -- src/hooks/__tests__/use-codex-reset-events.test.tsx src/components/CodexResetBanner.test.tsx src/lib/__tests__/api-codex-reset-events.test.ts src/lib/__tests__/codex-reset-tray.test.ts src/components/settings/TokenPlanSection.test.jsx
 cargo test --manifest-path src-tauri/Cargo.toml codex_session
 cargo test --manifest-path src-tauri/Cargo.toml tray
@@ -800,7 +901,10 @@ With fake quota responses:
 8. 401/403 → reauth state only;
 9. invalid signed feed → no announcement;
 10. valid unexpired feed → one announcement with official link;
-11. acknowledge and restart → event stays read.
+11. lookalike X author/general Codex post → no candidate;
+12. `@OpenAI` or `@thsottiaux` relevant post → review candidate only, never automatic publication;
+13. duplicate campaign posts → one announcement;
+14. acknowledge and restart → event stays read.
 
 - [ ] **Step 4: Verify the packaged Windows app**
 
@@ -812,7 +916,7 @@ Build using the repository release workflow, then verify:
 - clicking the banner opens the correct local settings section;
 - official link opens externally;
 - no Windows notification permission prompt appears;
-- Process Monitor/network capture shows quota traffic only to `chatgpt.com` and feed traffic only to `www.tokentracker.cc`;
+- Process Monitor/network capture shows client quota traffic only to `chatgpt.com` and client feed traffic only to `www.tokentracker.cc`; clients never contact X;
 - no event data is sent to InsForge.
 
 Record versions, timestamps, and redacted request destinations in the runbook.
@@ -833,6 +937,9 @@ Do not release if any of these is true:
 - Credentials, raw responses, account IDs, or local paths enter monitor state or logs.
 - The feed is parsed before signature verification.
 - A non-official URL can appear in an announcement action.
+- An X candidate can bypass exact `@OpenAI`/`@thsottiaux` author and status-ID validation.
+- A candidate collector can sign or publish without human review.
+- An X credential or candidate post body ships in the desktop client.
 - The monitor refreshes all providers every 10 minutes.
 - Restarting reproduces an acknowledged event.
 - The packaged app requests OS notification permission.

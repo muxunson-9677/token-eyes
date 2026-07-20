@@ -392,17 +392,19 @@ estimated_list_price =
 
 #### 账户级本地检测
 
-复用现有 `src-tauri/src/codex_session.rs`：
+复用现有 `src/lib/usage-limits.js` 的 Codex `wham/usage` 读取和令牌刷新能力，抽出只检查 Codex 的本地路径：
 
-- 用户在官方 `chatgpt.com` 页面登录。
-- WebView 在同源会话内调用官方使用量接口。
-- 只把白名单后的配额窗口数字返回 Rust。
-- 不读取 `document.cookie`、localStorage、sessionStorage 或页面 DOM。
-- 不记录原始响应，不上传 Access Token、Cookie、配额、重置时间。
+- 使用用户已经在 Codex CLI 中建立的本地官方登录状态，不新增 Token Eyes 云登录要求。
+- 只请求 OpenAI 官方使用量接口，不在 10 分钟轮询中连带刷新其他 AI Provider。
+- 只把白名单后的 5 小时/7 天配额窗口数字交给本地状态机。
+- 不读取页面 DOM、`document.cookie`、localStorage 或 sessionStorage。
+- 不记录原始响应，不上传 Access Token、Refresh Token、Cookie、账户 ID、配额或重置时间。
+
+现有 `src-tauri/src/codex_session.rs` 继续服务于可视化官方账户连接和人工验证，但后台重置监控不依赖登录 WebView 长期开启。
 
 该接口并非面向第三方承诺的公共稳定 API；必须保留结构漂移、重新认证和功能降级处理。
 
-#### 全局公告
+#### 全局公告与 X 候选来源
 
 维护一个可缓存、带签名的静态公告 JSON，由 Token Eyes 客户端直接读取：
 
@@ -412,6 +414,9 @@ estimated_list_price =
   "type": "codex_reset_or_credit",
   "title": "Codex 可能提供新的重置/额度活动",
   "summary": "请前往 Codex 使用页面确认你的账户是否符合条件。",
+  "source_author": "OpenAI",
+  "source_post_id": "1234567890123456789",
+  "source_url": "https://x.com/OpenAI/status/1234567890123456789",
   "official_url": "https://help.openai.com/...",
   "published_at": "2026-07-20T00:00:00Z",
   "expires_at": "2026-08-20T00:00:00Z",
@@ -419,8 +424,15 @@ estimated_list_price =
 }
 ```
 
-- 每条必须附 OpenAI 官方页面。
+- 中心侧候选源首批只允许 X 上的 `@OpenAI` 与 `@thsottiaux`，以及 `help.openai.com`、`openai.com`、`chatgpt.com` 的官方页面。
+- `@thsottiaux` 对应 Thibault “Tibo” Sottiaux；OpenAI 官方论坛将其标为 Head of Codex。账号改名或负责人变更必须更新白名单并重新签名发布，不能按昵称模糊匹配。
+- X 帖子只作为候选发现源。只有包含 Codex 且与 reset、rate limit、quota、usage、credit、extra usage 等重置/额度语义有关的帖子，才进入待审队列。
+- 自动发现优先使用中心侧 X 官方 recent-search API，并显式限定最近 48 小时；由于 X 读取能力可能按量计费，它是可选适配器，不是免费架构的运行前提。
+- 没有 X API 额度时，维护者可提交公开 X 帖子 URL 到同一候选校验器。客户端永远不直抓 X、不依赖第三方 Nitter/RSS 代理，也不按用户数放大 X 请求。
+- 候选帖子不能直接下发。必须校验精确作者/状态 URL、去重 `source_post_id`、人工确认语义，最后由离线私钥签入静态公告源。
+- 每条必须附官方来源；X 来源只接受 `https://x.com/OpenAI/status/<id>` 或 `https://x.com/thsottiaux/status/<id>`，可另附 OpenAI 帮助页。
 - 公告只能写“可能适用，请确认”，不能据此宣称某个用户已获得。
+- 同一活动的多条帖子合并成一条活动公告，保留主要来源链接，避免帖子很多时连续轰炸用户。
 - 静态资源优先放现有网站/CDN，不占用每用户 InsForge Edge Function 调用。
 - 客户端按 30 分钟缓存，离线继续显示已验证且未过期公告。
 
@@ -429,7 +441,7 @@ OpenAI 当前公开说明中，部分推广可能提供 Codex rate-limit reset�
 - https://help.openai.com/en/articles/20001271
 - https://help.openai.com/en/articles/11369540
 
-公开资料未提供第三方稳定的重置券 webhook/API。因此第一版不得通过 DOM 文案抓取“1 reset available”。
+公开资料未提供第三方稳定的重置券 webhook/API。因此第一版不得通过 DOM 文案抓取“1 reset available”。X 官方 recent search 的接口上限覆盖近 7 天，但 Token Eyes 每次只查询和接受最近 48 小时的帖子；无凭据时降级为人工提交候选，不影响本地配额检测或已签名公告读取。
 
 ### 本地检测状态机
 
@@ -465,11 +477,11 @@ OpenAI 当前公开说明中，部分推广可能提供 Codex rate-limit reset�
 ### 检查频率
 
 - 应用/托盘启动后延迟 30 秒检查一次。
-- 运行期间每 10 分钟检查一次账户配额；失败采用 10 分钟、30 分钟、1 小时退避。
+- 运行期间每 10 分钟检查一次账户配额；失败采用 10 分钟、30 分钟、2 小时退避。
 - 窗口重新聚焦或用户手动刷新时，如果距上次检查超过 5 分钟可再检查。
 - 公告源最多每 30 分钟请求一次，尊重缓存头。
 
-这些请求只发生在本机与 OpenAI 官方页面/静态公告源之间，不进入排行榜上传链路。
+客户端请求只发生在本机与 OpenAI 官方页面/静态公告源之间，不进入排行榜上传链路。X 候选采集只在中心维护流程运行，X API 凭据和候选帖子正文不进入客户端。
 
 ### 提醒表现
 
@@ -549,7 +561,8 @@ OpenAI 当前公开说明中，部分推广可能提供 Codex rate-limit reset�
 | `src-tauri/src/codex_session.rs` | 保留白名单解析，扩展重置状态所需字段（若官方响应明确支持） |
 | 新增本地 reset monitor | 状态持久化、事件判断、去重、退避 |
 | Dashboard 通知组件 | 醒目横幅、红点、官方链接 |
-| 静态公告资源 | 签名公告 JSON 与校验公钥 |
+| 中心公告候选采集 | `@OpenAI` / `@thsottiaux` 精确白名单、可选 X API recent search、人工 URL 回退、关键词筛选与去重 |
+| 静态公告资源 | 经人工确认的签名公告 JSON 与校验公钥；客户端不读取候选队列 |
 | `dashboard/src/content/copy.csv` | 全部新增用户文案 |
 
 ## 验证计划
@@ -601,6 +614,8 @@ OpenAI 当前公开说明中，部分推广可能提供 Codex rate-limit reset�
 4. 401/403 提示重新登录；404/结构漂移不误报。
 5. 不读取 DOM、Cookie、localStorage；测试继续验证初始化脚本禁用这些访问。
 6. 公告签名错误、过期、缺少官方 URL 时拒绝显示。
+7. X 候选只接受 `@OpenAI` 与 `@thsottiaux` 的精确状态 URL；昵称相同、转帖、引用、回复和其他账号不得自动发布。
+8. 相同 `source_post_id` 或同一活动的多条帖子不会重复提醒。
 7. 相同公告/重置事件重启应用后不重复提示。
 
 ### 仓库验证
@@ -641,6 +656,7 @@ OpenAI 当前公开说明中，部分推广可能提供 Codex rate-limit reset�
 
 - 定时重置和异常恢复本地状态机。
 - 醒目应用内提醒。
+- `@OpenAI` / `@thsottiaux` 中心候选采集、筛选与去重。
 - 签名官方公告源。
 - 仅在官方响应明确支持时增加重置券数量检测。
 
