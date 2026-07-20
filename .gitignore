@@ -138,3 +138,7 @@ skills-lock.json
 # test runner (vitest) on each `npm --prefix dashboard run test`. Not a source
 # or test fixture; ignored so it cannot contaminate future `git add -A`.
 /-json
+
+# Codex reset feed signing secrets
+.token-eyes-secrets/
+*-private.pem
