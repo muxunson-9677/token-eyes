@@ -25,6 +25,7 @@ function emptyState() {
     restoreCandidates: {},
     events: [],
     acknowledgedEventIds: [],
+    feed: null,
   };
 }
 
@@ -94,6 +95,9 @@ function normalizeState(state) {
     acknowledgedEventIds: Array.isArray(state.acknowledgedEventIds)
       ? state.acknowledgedEventIds.filter((id) => typeof id === "string")
       : [],
+    feed: state.feed && typeof state.feed === "object" && !Array.isArray(state.feed)
+      ? { ...state.feed }
+      : null,
   };
 }
 

@@ -1,15 +1,21 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const test = require("node:test");
 
 const {
+  FEED_CACHE_MS,
+  FEED_URL,
   FAILURE_BACKOFF_MS,
   FOCUS_FRESHNESS_MS,
   STARTUP_DELAY_MS,
   SUCCESS_INTERVAL_MS,
   createCodexResetMonitorService,
 } = require("../src/lib/codex-reset-monitor-service");
+const {
+  createSignedCodexResetFeedEnvelope,
+} = require("../src/lib/codex-reset-feed");
 
 const BASE = Date.parse("2026-07-20T08:00:00.000Z");
 
@@ -30,7 +36,7 @@ function validSnapshot(nowMs, used = 40) {
   };
 }
 
-function harness(reader) {
+function harness(reader, overrides = {}) {
   let nowMs = BASE;
   const timers = [];
   const cleared = [];
@@ -49,6 +55,7 @@ function harness(reader) {
     },
     clearTimer: (timer) => cleared.push(timer),
     enabled: true,
+    ...overrides,
   });
   return {
     service,
@@ -82,6 +89,141 @@ test("uses the exact startup, success, freshness, and failure schedules", async 
   const skipped = await h.service.check({ reason: "focus" });
   assert.equal(skipped.skipped, "fresh");
   assert.equal(reads.length, 1);
+});
+
+test("signed feed uses a fixed URL, 30-minute cache, and conditional requests", async () => {
+  assert.equal(FEED_URL, "https://www.tokentracker.cc/.well-known/token-eyes/codex-reset-feed.json");
+  assert.equal(FEED_CACHE_MS, 30 * 60_000);
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const requests = [];
+  const feedPayload = {
+    generated_at: new Date(BASE).toISOString(),
+    announcements: [{
+      id: "codex-reset-promo",
+      type: "official_reset_announcement",
+      title: "Codex 额外额度活动",
+      summary: "请前往官方页面确认是否适用于你的账户。",
+      source_url: "https://openai.com/index/introducing-codex/",
+      official_url: "https://chatgpt.com/codex",
+      published_at: new Date(BASE - 60_000).toISOString(),
+      expires_at: new Date(BASE + 24 * 60 * 60_000).toISOString(),
+    }],
+  };
+  const responses = [
+    {
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name) => ({
+          etag: "\"feed-v1\"",
+          "last-modified": "Sun, 20 Jul 2026 08:00:00 GMT",
+        })[name.toLowerCase()] || null,
+      },
+      json: async () => createSignedCodexResetFeedEnvelope(feedPayload, keys.privateKey),
+    },
+    { ok: false, status: 304, headers: { get: () => null } },
+  ];
+  const h = harness(async () => ({ configured: false, checked_at: new Date(BASE).toISOString() }), {
+    feedEnabled: true,
+    feedPublicKey: keys.publicKey,
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return responses.shift();
+    },
+  });
+
+  await h.service.checkFeed({ force: true });
+  assert.equal(requests[0].url, FEED_URL);
+  assert.deepEqual(requests[0].options.headers, { Accept: "application/json" });
+  assert.equal(h.service.listUnread()[0].type, "official_reset_announcement");
+
+  const cached = await h.service.checkFeed();
+  assert.equal(cached.skipped, "fresh");
+  assert.equal(requests.length, 1);
+
+  h.setNow(BASE + 31 * 60_000);
+  await h.service.checkFeed();
+  assert.equal(requests[1].options.headers["If-None-Match"], "\"feed-v1\"");
+  assert.equal(
+    requests[1].options.headers["If-Modified-Since"],
+    "Sun, 20 Jul 2026 08:00:00 GMT",
+  );
+  assert.equal(h.service.listUnread().length, 1);
+});
+
+test("offline or invalid feed keeps prior unexpired events and never blocks quota checks", async () => {
+  const keys = crypto.generateKeyPairSync("ed25519");
+  let quotaReads = 0;
+  let feedReads = 0;
+  const validPayload = {
+    generated_at: new Date(BASE).toISOString(),
+    announcements: [{
+      id: "official-reset",
+      type: "official_reset_announcement",
+      title: "Codex 重置活动",
+      summary: "请以官方页面为准。",
+      source_url: "https://openai.com/codex/",
+      official_url: "https://chatgpt.com/codex",
+      published_at: new Date(BASE - 60_000).toISOString(),
+      expires_at: new Date(BASE + 24 * 60 * 60_000).toISOString(),
+    }],
+  };
+  const h = harness(async () => {
+    quotaReads += 1;
+    return validSnapshot(h.getNow());
+  }, {
+    feedEnabled: true,
+    feedPublicKey: keys.publicKey,
+    fetchImpl: async () => {
+      feedReads += 1;
+      if (feedReads === 1) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          json: async () => createSignedCodexResetFeedEnvelope(validPayload, keys.privateKey),
+        };
+      }
+      if (feedReads === 2) throw new Error("offline secret");
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ version: 1, payload_b64: "bad", signature_b64: "bad" }),
+      };
+    },
+  });
+
+  await h.service.checkFeed({ force: true });
+  h.setNow(BASE + 31 * 60_000);
+  await h.service.check({ reason: "manual", force: true });
+  assert.equal(quotaReads, 1);
+  assert.equal(h.service.listUnread().some((event) => event.id === "official:official-reset"), true);
+  assert.equal(h.service.getStatus().feed_error_code, "network_error");
+
+  h.setNow(BASE + 62 * 60_000);
+  await h.service.checkFeed({ force: true });
+  assert.equal(h.service.listUnread().some((event) => event.id === "official:official-reset"), true);
+  assert.equal(h.service.getStatus().feed_error_code, "invalid_signature");
+  assert.doesNotMatch(JSON.stringify(h.service.getStatus()), /offline|secret/);
+
+  h.setNow(BASE + 25 * 60 * 60_000);
+  assert.equal(h.service.listUnread().some((event) => event.id === "official:official-reset"), false);
+});
+
+test("feed polling can be disabled independently", async () => {
+  let feedReads = 0;
+  const h = harness(async () => validSnapshot(BASE), {
+    feedEnabled: false,
+    fetchImpl: async () => {
+      feedReads += 1;
+    },
+  });
+  const result = await h.service.checkFeed({ force: true });
+  assert.equal(result.skipped, "disabled");
+  await h.service.check({ reason: "manual", force: true });
+  assert.equal(feedReads, 0);
+  assert.equal(h.service.getStatus().last_successful_at, new Date(BASE).toISOString());
 });
 
 test("backs off 10, 30, then 120 minutes and caps there", async () => {

@@ -14,6 +14,7 @@ function emptyState() {
     restoreCandidates: {},
     events: [],
     acknowledgedEventIds: [],
+    feed: null,
   };
 }
 

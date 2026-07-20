@@ -1924,6 +1924,8 @@ function createLocalApiHandler({
     return false;
   }
 
+  const codexResetFeedEnabled =
+    process.env.TOKEN_EYES_CODEX_RESET_FEED_ENABLED !== "0";
   const codexResetMonitorStore = injectedCodexResetMonitorService
     ? null
     : createCodexResetMonitorStore({ trackerDataDir });
@@ -1949,6 +1951,13 @@ function createLocalApiHandler({
       loadState: codexResetMonitorStore.load,
       saveState: codexResetMonitorStore.save,
        enabled: process.env.TOKEN_EYES_CODEX_RESET_MONITOR_ENABLED !== "0",
+       feedEnabled: codexResetFeedEnabled,
+      feedPublicKey: codexResetFeedEnabled
+        ? fs.readFileSync(
+          path.join(__dirname, "codex-reset-feed-public-key.pem"),
+          "utf8",
+         )
+         : null,
      });
 
   // 02-ia-api-balance: Provider API credential store + balance refresh manager.
