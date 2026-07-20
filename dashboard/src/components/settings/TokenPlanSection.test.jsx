@@ -7,6 +7,11 @@ import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getToke
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { copy } from "../../lib/copy";
 
+const codexResetMonitor = vi.hoisted(() => ({
+  status: null,
+  checkNow: vi.fn(),
+}));
+
 vi.mock("../../lib/api", () => ({
   getTokenPlans: vi.fn(),
   saveTokenPlan: vi.fn(),
@@ -42,6 +47,13 @@ vi.mock("../../lib/api", () => ({
   syncTraeConsoleQuota: vi.fn(),
   deleteTraeConsoleSession: vi.fn(),
   saveTokenPlanSecret: vi.fn(),
+}));
+
+vi.mock("../../hooks/use-codex-reset-events", () => ({
+  useCodexResetEvents: () => ({
+    status: codexResetMonitor.status,
+    checkNow: codexResetMonitor.checkNow,
+  }),
 }));
 
 const BASE_RECORD = {
@@ -83,6 +95,8 @@ async function expandAllPlans() {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  codexResetMonitor.status = null;
+  codexResetMonitor.checkNow.mockReset().mockResolvedValue(undefined);
   getTokenPlans.mockResolvedValue({ records: [{ ...BASE_RECORD }] });
   saveTokenPlan.mockImplementation(async (record) => ({
     ok: true,
@@ -209,6 +223,52 @@ it("displays Codex live quota block for source=codex records with 5h/7d windows"
   expect(screen.getByText("7 天")).toBeInTheDocument();
   expect(screen.getByText("70% 剩余")).toBeInTheDocument();
   expect(screen.getByText("50% 剩余")).toBeInTheDocument();
+});
+
+it("shows Codex reset monitor schedule and performs a shared manual check", async () => {
+  const user = userEvent.setup();
+  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
+  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
+  codexResetMonitor.status = {
+    enabled: true,
+    configured: true,
+    running: false,
+    last_successful_at: "2026-07-20T08:00:00.000Z",
+    next_check_at: "2026-07-20T08:10:00.000Z",
+    last_error_code: null,
+  };
+
+  render(<TokenPlanSection />);
+
+  expect(await screen.findByText(copy("codex_reset.monitor.title"))).toBeInTheDocument();
+  expect(screen.getByText(copy("codex_reset.monitor.last_success"))).toBeInTheDocument();
+  expect(screen.getByText(copy("codex_reset.monitor.next_check"))).toBeInTheDocument();
+  await act(async () => {
+    await user.click(screen.getByRole("button", {
+      name: copy("codex_reset.monitor.check_now"),
+    }));
+  });
+  expect(codexResetMonitor.checkNow).toHaveBeenCalledWith(true);
+});
+
+it.each([
+  [{ configured: false }, "codex_reset.monitor.unconfigured"],
+  [{ configured: true, last_error_code: "auth_required" }, "codex_reset.monitor.reauth"],
+  [{ configured: true, last_error_code: "endpoint_unsupported" }, "codex_reset.monitor.unsupported"],
+])("shows the neutral monitor state for %o", async (status, messageKey) => {
+  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
+  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
+  codexResetMonitor.status = {
+    enabled: true,
+    running: false,
+    last_successful_at: null,
+    next_check_at: null,
+    last_error_code: null,
+    ...status,
+  };
+
+  render(<TokenPlanSection />);
+  expect(await screen.findByText(copy(messageKey))).toBeInTheDocument();
 });
 
 it("does not display Codex quota block for non-codex records", async () => {

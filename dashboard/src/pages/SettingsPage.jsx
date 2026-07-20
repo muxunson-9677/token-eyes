@@ -113,7 +113,9 @@ export function SettingsCostPage() {
 
           <Suspense fallback={<SettingsCostFallback />}>
             <div className="space-y-4">
-              <TokenPlanSection listOnly onNavigate={navigate} />
+              <div id="codex-quota">
+                <TokenPlanSection listOnly onNavigate={navigate} />
+              </div>
             {/*
               v2.0 IA — work order 03 wires ProviderApiConfigSection here.
               The data-provider-api-config-anchor attribute is retained as a

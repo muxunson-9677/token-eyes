@@ -1,4 +1,15 @@
 key,module,page,component,slot,text,notes,status
+codex_reset.monitor.title,ui,SettingsCostPage,TokenPlanSection,monitor_title,"Codex reset monitor",,active
+codex_reset.monitor.unconfigured,ui,SettingsCostPage,TokenPlanSection,monitor_unconfigured,"Connect Codex to detect quota resets.",,active
+codex_reset.monitor.reauth,ui,SettingsCostPage,TokenPlanSection,monitor_reauth,"Codex authorization has expired.",,active
+codex_reset.monitor.reauth_action,ui,SettingsCostPage,TokenPlanSection,monitor_reauth_action,"Reconnect",,active
+codex_reset.monitor.unsupported,ui,SettingsCostPage,TokenPlanSection,monitor_unsupported,"Quota status is temporarily unavailable.",,active
+codex_reset.monitor.retrying,ui,SettingsCostPage,TokenPlanSection,monitor_retrying,"The last check failed. Token Eyes will retry automatically.",,active
+codex_reset.monitor.last_success,ui,SettingsCostPage,TokenPlanSection,monitor_last_success,"Last successful check",,active
+codex_reset.monitor.next_check,ui,SettingsCostPage,TokenPlanSection,monitor_next_check,"Next check",,active
+codex_reset.monitor.check_now,ui,SettingsCostPage,TokenPlanSection,monitor_check_now,"Check now",,active
+codex_reset.monitor.checking,ui,SettingsCostPage,TokenPlanSection,monitor_checking,"Checking…",,active
+codex_reset.monitor.disabled,ui,SettingsCostPage,TokenPlanSection,monitor_disabled,"Reset monitoring is disabled.",,active
 settings.cost.provider_api.guide,ui,SettingsPage,ProviderApiConfigSection,guide,"配置文档",,active
 settings.cost.provider_api.guide_close,ui,SettingsPage,ProviderApiConfigSection,guide_close,"关闭配置文档",,active
 settings.cost.provider_api.guide_copy,ui,SettingsPage,ProviderApiConfigSection,guide_copy,"复制给 AI",,active
