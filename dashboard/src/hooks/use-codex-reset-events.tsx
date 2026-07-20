@@ -16,6 +16,7 @@ import {
   type CodexResetEventsResponse,
   type CodexResetMonitorStatus,
 } from "../lib/api";
+import { syncCodexResetTrayStatus } from "../lib/codex-reset-tray";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -94,6 +95,10 @@ export function CodexResetEventsProvider({
       window.removeEventListener("focus", onFocus);
     };
   }, [checkNow, enabled, refresh]);
+
+  useEffect(() => {
+    void syncCodexResetTrayStatus(response?.events || []);
+  }, [response]);
 
   const acknowledge = useCallback(async (eventId: string) => {
     if (!enabled) return;

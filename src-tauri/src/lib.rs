@@ -65,6 +65,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::pick_directory,
             commands::local_server_status,
+            tray::set_codex_reset_tray_status,
             window_prefs::get_window_prefs,
             window_prefs::set_minimize_to_tray_on_close,
             window_prefs::set_launch_on_startup,
