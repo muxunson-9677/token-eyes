@@ -51,6 +51,38 @@ test("device upsert RPC derives the user from auth and never accepts user_id", (
   assert.match(sql, /values \(\s*v_user_id,\s*p_device_id/);
 });
 
+test("device upsert is the only write path and validates the complete compact payload", () => {
+  const sql = readSql(DEVICE_SQL_PATH);
+
+  assert.doesNotMatch(
+    sql,
+    /grant\s+select,\s*insert,\s*update,\s*delete\s+on table public\.tokentracker_leaderboard_device_state/i,
+  );
+  assert.match(
+    sql,
+    /grant\s+select,\s*delete\s+on table public\.tokentracker_leaderboard_device_state\s+to authenticated/i,
+  );
+  assert.match(sql, /p_payload\s*-\s*array\['version',\s*'device_id',\s*'captured_at',\s*'periods'\]/i);
+  assert.match(sql, /p_payload\s*\?\&\s*array\['version',\s*'device_id',\s*'captured_at',\s*'periods'\]/i);
+  assert.match(sql, /array\['today',\s*'week',\s*'month',\s*'total'\]/i);
+  assert.match(sql, /jsonb_array_length\(v_rows\)\s*>\s*100/i);
+  assert.match(sql, /jsonb_array_length\(v_item\)\s*<>\s*7/i);
+  assert.match(sql, /char_length\(v_item\s*->>\s*0\)\s+not\s+between\s+1\s+and\s+64/i);
+  assert.match(sql, /char_length\(v_item\s*->>\s*1\)\s+not\s+between\s+1\s+and\s+256/i);
+  assert.match(sql, /\^\[0-9\]\{1,24\}\$/i);
+});
+
+test("device upsert serializes and enforces the three-device user cap", () => {
+  const sql = readSql(DEVICE_SQL_PATH);
+  assert.match(sql, /pg_advisory_xact_lock/i);
+  assert.match(
+    sql,
+    /select count\(\*\)[^;]+tokentracker_leaderboard_device_state[^;]+user_id\s*=\s*v_user_id/is,
+  );
+  assert.match(sql, />=\s*3/i);
+  assert.match(sql, /device limit exceeded/i);
+});
+
 test("actual-cost schema stores consent atomically and keeps disabled amounts null", () => {
   const sql = readSql(ACTUAL_COST_SQL_PATH);
 

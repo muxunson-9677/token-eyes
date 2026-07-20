@@ -30,20 +30,9 @@ create policy leaderboard_device_state_select_own
 
 drop policy if exists leaderboard_device_state_insert_own
   on public.tokentracker_leaderboard_device_state;
-create policy leaderboard_device_state_insert_own
-  on public.tokentracker_leaderboard_device_state
-  for insert
-  to authenticated
-  with check (auth.uid() = user_id);
 
 drop policy if exists leaderboard_device_state_update_own
   on public.tokentracker_leaderboard_device_state;
-create policy leaderboard_device_state_update_own
-  on public.tokentracker_leaderboard_device_state
-  for update
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
 
 drop policy if exists leaderboard_device_state_delete_own
   on public.tokentracker_leaderboard_device_state;
@@ -55,7 +44,10 @@ create policy leaderboard_device_state_delete_own
 
 revoke all on table public.tokentracker_leaderboard_device_state from public;
 revoke all on table public.tokentracker_leaderboard_device_state from anon;
-grant select, insert, update, delete
+revoke insert, update
+  on table public.tokentracker_leaderboard_device_state
+  from authenticated;
+grant select, delete
   on table public.tokentracker_leaderboard_device_state
   to authenticated;
 
@@ -72,6 +64,11 @@ set search_path = public, pg_temp
 as $function$
 declare
   v_user_id uuid := auth.uid();
+  v_period text;
+  v_rows jsonb;
+  v_item jsonb;
+  v_token_index integer;
+  v_device_count integer;
 begin
   if v_user_id is null then
     raise exception 'authentication required' using errcode = '42501';
@@ -92,6 +89,67 @@ begin
      or jsonb_typeof(p_payload) <> 'object'
      or octet_length(p_payload::text) > 8192 then
     raise exception 'invalid compact payload' using errcode = '22023';
+  end if;
+  if not (p_payload ?& array['version', 'device_id', 'captured_at', 'periods'])
+     or p_payload - array['version', 'device_id', 'captured_at', 'periods'] <> '{}'::jsonb
+     or p_payload -> 'version' <> '1'::jsonb
+     or jsonb_typeof(p_payload -> 'device_id') <> 'string'
+     or p_payload ->> 'device_id' <> p_device_id
+     or jsonb_typeof(p_payload -> 'captured_at') <> 'string'
+     or (p_payload ->> 'captured_at')::timestamptz <> p_captured_at
+     or jsonb_typeof(p_payload -> 'periods') <> 'object'
+     or not ((p_payload -> 'periods') ?& array['today', 'week', 'month', 'total'])
+     or (p_payload -> 'periods') - array['today', 'week', 'month', 'total'] <> '{}'::jsonb then
+    raise exception 'invalid compact payload shape' using errcode = '22023';
+  end if;
+
+  foreach v_period in array array['today', 'week', 'month', 'total']
+  loop
+    v_rows := p_payload -> 'periods' -> v_period;
+    if jsonb_typeof(v_rows) <> 'array' or jsonb_array_length(v_rows) > 100 then
+      raise exception 'invalid compact period rows' using errcode = '22023';
+    end if;
+
+    for v_item in select value from jsonb_array_elements(v_rows)
+    loop
+      if jsonb_typeof(v_item) <> 'array'
+         or jsonb_array_length(v_item) <> 7
+         or jsonb_typeof(v_item -> 0) <> 'string'
+         or char_length(v_item ->> 0) not between 1 and 64
+         or (v_item ->> 0) !~ '^[^[:cntrl:]]+$'
+         or jsonb_typeof(v_item -> 1) <> 'string'
+         or char_length(v_item ->> 1) not between 1 and 256
+         or (v_item ->> 1) !~ '^[^[:cntrl:]]+$' then
+        raise exception 'invalid compact usage row' using errcode = '22023';
+      end if;
+
+      for v_token_index in 2..6
+      loop
+        if jsonb_typeof(v_item -> v_token_index) <> 'string'
+           or (v_item ->> v_token_index) !~ '^[0-9]{1,24}$' then
+          raise exception 'invalid compact token count' using errcode = '22023';
+        end if;
+      end loop;
+    end loop;
+  end loop;
+
+  -- Serialize per-user inserts so two new devices cannot race past the cap.
+  perform pg_advisory_xact_lock(
+    hashtext('tokentracker:leaderboard-device:' || v_user_id::text)
+  );
+  if not exists (
+    select 1
+    from public.tokentracker_leaderboard_device_state
+    where user_id = v_user_id
+      and device_id = p_device_id
+  ) then
+    select count(*)
+    into v_device_count
+    from public.tokentracker_leaderboard_device_state
+    where user_id = v_user_id;
+    if v_device_count >= 3 then
+      raise exception 'device limit exceeded' using errcode = '22023';
+    end if;
   end if;
 
   insert into public.tokentracker_leaderboard_device_state (
