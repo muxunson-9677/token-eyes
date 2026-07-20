@@ -163,7 +163,7 @@ async function windowBounds(client: any, period: string): Promise<{ from_day: st
     return { from_day, to_day };
   }
   const { data: latest } = await client.database
-    .from("tokentracker_leaderboard_snapshots")
+    .from("tokentracker_leaderboard_snapshots_v2")
     .select("from_day, to_day")
     .eq("period", "total")
     .order("to_day", { ascending: false })
@@ -298,12 +298,14 @@ export default async function (req: Request): Promise<Response> {
   }
 
   const { data, error } = await client.database
-    .from("tokentracker_leaderboard_snapshots")
+    .from("tokentracker_leaderboard_snapshots_v2")
     .select(
       "user_id, display_name, rank, total_tokens, estimated_cost_usd, gpt_tokens, claude_tokens, gemini_tokens, cursor_tokens, hermes_tokens, copilot_tokens, is_public, generated_at",
     )
     .eq("user_id", userId)
     .eq("period", period)
+    .eq("metric", "tokens")
+    .eq("source", "all")
     .eq("from_day", from_day)
     .eq("to_day", to_day)
     .order("generated_at", { ascending: false })

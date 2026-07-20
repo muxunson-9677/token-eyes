@@ -102,7 +102,7 @@ export default async function (req: Request): Promise<Response> {
     error,
     count,
   } = await client.database
-    .from("tokentracker_leaderboard_snapshots")
+    .from("tokentracker_leaderboard_snapshots_v2")
     .select(
       "rank,total_tokens,estimated_cost_usd,actual_cost_usd,source_breakdown,display_name,avatar_url,github_url,pricing_version,generated_at",
       { count: "exact" },

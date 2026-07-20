@@ -32,7 +32,11 @@ test("refresh RPC has bounded periods, server pricing, and public-only ranking",
 
 test("snapshot schema supports all metrics, exact tokens, and atomic run replacement", () => {
   const sql = readSql();
+  assert.match(sql, /create table if not exists public\.tokentracker_leaderboard_snapshots_v2/i);
+  assert.doesNotMatch(sql, /alter table public\.tokentracker_leaderboard_snapshots\b/i);
   assert.match(sql, /total_tokens numeric\(30,0\)/i);
+  assert.match(sql, /from_day date not null/i);
+  assert.match(sql, /to_day date not null/i);
   assert.match(sql, /metric text[^;]+tokens[^;]+estimated_spend[^;]+actual_cost/is);
   assert.match(sql, /actual_cost_usd numeric/i);
   assert.match(sql, /source_breakdown jsonb/i);
@@ -46,11 +50,23 @@ test("snapshot schema supports all metrics, exact tokens, and atomic run replace
     /create index[^;]+\(\s*user_id,\s*period,\s*metric,\s*source,\s*snapshot_run_id\s*\)/i,
   );
 
-  const insertAt = sql.search(/insert into public\.tokentracker_leaderboard_snapshots/i);
-  const deleteAt = sql.search(/delete from public\.tokentracker_leaderboard_snapshots/i);
+  const insertAt = sql.search(/insert into public\.tokentracker_leaderboard_snapshots_v2/i);
+  const deleteAt = sql.search(/delete from public\.tokentracker_leaderboard_snapshots_v2/i);
   assert.ok(insertAt >= 0, "must insert a complete new run");
   assert.ok(deleteAt > insertAt, "old rows may only be deleted after the insert succeeds");
   assert.match(sql, /actual_cost_usd\s+is\s+not\s+null/i);
+});
+
+test("refresh RPC is executable only by the scheduler service role", () => {
+  const sql = readSql();
+  assert.match(
+    sql,
+    /revoke all on function public\.refresh_leaderboard_snapshots\(boolean,\s*boolean\)\s+from public/i,
+  );
+  assert.match(
+    sql,
+    /grant execute on function public\.refresh_leaderboard_snapshots\(boolean,\s*boolean\)\s+to service_role/i,
+  );
 });
 
 test("refresh RPC returns operational metadata", () => {

@@ -92,7 +92,7 @@ export default async function (req: Request): Promise<Response> {
   if (!baseUrl || !serviceRoleKey) return json({ error: "server misconfigured" }, 500);
   const client = createClient({ baseUrl, edgeFunctionToken: serviceRoleKey });
   const { data, error } = await client.database
-    .from("tokentracker_leaderboard_snapshots")
+    .from("tokentracker_leaderboard_snapshots_v2")
     .select(
       "rank,total_tokens,estimated_cost_usd,actual_cost_usd,source_breakdown,display_name,avatar_url,github_url,pricing_version,generated_at",
     )

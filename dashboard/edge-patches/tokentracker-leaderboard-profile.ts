@@ -503,7 +503,7 @@ export default async function (req: Request): Promise<Response> {
   // (A `leaderboard_public=true` check would 404 ~60% of listed rows here.)
   if (!isSelf) {
     const { data: snap } = await client.database
-      .from("tokentracker_leaderboard_snapshots")
+      .from("tokentracker_leaderboard_snapshots_v2")
       .select("user_id")
       .eq("user_id", userId)
       .limit(1)
@@ -549,7 +549,7 @@ export default async function (req: Request): Promise<Response> {
     // total snapshots are keyed (1970-01-01, <refresh day>) — mirror the
     // reader (tokentracker-leaderboard.ts) and resolve the latest pair.
     const { data: latestTotal } = await client.database
-      .from("tokentracker_leaderboard_snapshots")
+      .from("tokentracker_leaderboard_snapshots_v2")
       .select("from_day, to_day")
       .eq("period", "total")
       .order("to_day", { ascending: false })
@@ -560,10 +560,12 @@ export default async function (req: Request): Promise<Response> {
     snapToDay = (lt?.to_day ?? new Date().toISOString()).slice(0, 10);
   }
   const { data: snapRow } = await client.database
-    .from("tokentracker_leaderboard_snapshots")
+    .from("tokentracker_leaderboard_snapshots_v2")
     .select("rank, display_name, avatar_url, generated_at")
     .eq("user_id", userId)
     .eq("period", period)
+    .eq("metric", "tokens")
+    .eq("source", "all")
     .eq("from_day", snapFromDay)
     .eq("to_day", snapToDay)
     .order("generated_at", { ascending: false })
