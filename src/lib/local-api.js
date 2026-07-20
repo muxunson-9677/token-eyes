@@ -49,6 +49,7 @@ const LOCAL_API_CAPABILITIES = Object.freeze([
   "agent_environment_detection",
   "data_directory_detection",
   "provider_api_balance",
+  "codex_reset_events",
 ]);
 
 // Avatar proxy (see /api/avatar-proxy below). In-memory LRU; survives the
@@ -1756,6 +1757,129 @@ function json(res, data, status) {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TokenTracker-Local-Auth",
+  });
+  res.end(JSON.stringify(data));
+}
+
+const CODEX_RESET_EVENT_TYPES = new Set([
+  "reset_upcoming",
+  "reset_completed",
+  "unexpected_quota_restore",
+  "banked_reset_available",
+  "official_reset_announcement",
+]);
+const CODEX_RESET_WINDOWS = new Set(["rolling_5_hour", "rolling_weekly"]);
+const CODEX_RESET_OFFICIAL_HOSTS = new Set([
+  "help.openai.com",
+  "openai.com",
+  "chatgpt.com",
+]);
+
+function boundedString(value, maximum) {
+  return typeof value === "string" && value.length > 0 && value.length <= maximum
+    ? value
+    : null;
+}
+
+function safeIsoString(value) {
+  if (typeof value !== "string") return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
+function safeCodexResetUrl(value, { allowX = false } = {}) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch (_error) {
+    return null;
+  }
+  if (
+    url.protocol !== "https:"
+    || url.username
+    || url.password
+    || url.port
+    || url.hash
+  ) {
+    return null;
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (CODEX_RESET_OFFICIAL_HOSTS.has(hostname)) return url.toString();
+  if (
+    allowX
+    && hostname === "x.com"
+    && !url.search
+    && /^\/(?:OpenAI|thsottiaux)\/status\/[0-9]+\/?$/iu.test(url.pathname)
+  ) {
+    return url.toString();
+  }
+  return null;
+}
+
+function sanitizeCodexResetStatus(status) {
+  const errorCode = (value) => (
+    typeof value === "string" && /^[a-z0-9_]{1,64}$/u.test(value) ? value : null
+  );
+  return {
+    enabled: status?.enabled === true,
+    configured: status?.configured === true
+      ? true
+      : status?.configured === false ? false : null,
+    running: status?.running === true,
+    last_checked_at: safeIsoString(status?.last_checked_at),
+    last_successful_at: safeIsoString(status?.last_successful_at),
+    next_check_at: safeIsoString(status?.next_check_at),
+    last_error_code: errorCode(status?.last_error_code),
+    failure_count: Number.isInteger(status?.failure_count)
+      ? Math.max(0, Math.min(status.failure_count, 1_000))
+      : 0,
+    unread_count: Number.isInteger(status?.unread_count)
+      ? Math.max(0, Math.min(status.unread_count, 1_000))
+      : 0,
+    feed_enabled: status?.feed_enabled === true,
+    feed_last_checked_at: safeIsoString(status?.feed_last_checked_at),
+    feed_error_code: errorCode(status?.feed_error_code),
+  };
+}
+
+function sanitizeCodexResetEvent(event) {
+  const id = boundedString(event?.id, 128);
+  const type = CODEX_RESET_EVENT_TYPES.has(event?.type) ? event.type : null;
+  const createdAt = safeIsoString(event?.createdAt);
+  const officialUrl = safeCodexResetUrl(event?.officialUrl);
+  if (!id || !type || !createdAt || !officialUrl) return null;
+  const dto = {
+    id,
+    type,
+    window: CODEX_RESET_WINDOWS.has(event.window) ? event.window : null,
+    created_at: createdAt,
+    reset_at: safeIsoString(event.resetAt),
+    official_url: officialUrl,
+    source: event.source === "signed_feed" ? "signed_feed" : "local_quota",
+  };
+  if (type === "official_reset_announcement") {
+    const sourceUrl = safeCodexResetUrl(event.sourceUrl, { allowX: true });
+    const title = boundedString(event.title, 80);
+    const summary = boundedString(event.summary, 240);
+    const expiresAt = safeIsoString(event.expiresAt);
+    if (!sourceUrl || !title || !summary || !expiresAt) return null;
+    dto.source_url = sourceUrl;
+    dto.source_author = boundedString(event.sourceAuthor, 32);
+    dto.source_post_id = boundedString(event.sourcePostId, 32);
+    dto.title = title;
+    dto.summary = summary;
+    dto.expires_at = expiresAt;
+  }
+  return dto;
+}
+
+function writeCodexResetResponse(res, data, status = 200) {
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST",
+    "Access-Control-Allow-Headers": "Content-Type, X-TokenTracker-Local-Auth",
   });
   res.end(JSON.stringify(data));
 }
@@ -4634,6 +4758,64 @@ function createLocalApiHandler({
     const p = url.pathname;
 
     if (prepareUsageAggregateResponseCache(req, res, url)) return true;
+
+    if (
+      p === "/functions/tokentracker-codex-reset-events"
+      || p === "/functions/tokentracker-codex-reset-events/ack"
+      || p === "/functions/tokentracker-codex-reset-events/check"
+    ) {
+      if (!hasAllowedLoopbackOrigin(req?.headers || {})) {
+        writeCodexResetResponse(res, { ok: false, error: "Forbidden" }, 403);
+        return true;
+      }
+      const method = String(req.method || "GET").toUpperCase();
+      const responseBody = () => ({
+        ok: true,
+        status: sanitizeCodexResetStatus(codexResetMonitorService.getStatus()),
+        events: codexResetMonitorService
+          .listUnread()
+          .map(sanitizeCodexResetEvent)
+          .filter(Boolean),
+      });
+      if (p === "/functions/tokentracker-codex-reset-events") {
+        if (method !== "GET") {
+          writeCodexResetResponse(res, { ok: false, error: "Method Not Allowed" }, 405);
+          return true;
+        }
+        writeCodexResetResponse(res, responseBody());
+        return true;
+      }
+      if (method !== "POST") {
+        writeCodexResetResponse(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        writeCodexResetResponse(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (_error) {
+        writeCodexResetResponse(res, { ok: false, error: "Invalid JSON" }, 400);
+        return true;
+      }
+      if (p.endsWith("/ack")) {
+        const eventId = boundedString(body?.event_id, 128);
+        if (!eventId || !/^[a-z0-9:._-]+$/iu.test(eventId)) {
+          writeCodexResetResponse(res, { ok: false, error: "Invalid event_id" }, 400);
+          return true;
+        }
+        codexResetMonitorService.acknowledge(eventId);
+      } else {
+        await codexResetMonitorService.check({
+          reason: "manual",
+          force: body?.force === true,
+        });
+      }
+      writeCodexResetResponse(res, responseBody());
+      return true;
+    }
 
     if (p === "/functions/tokentracker-leaderboard-state") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {

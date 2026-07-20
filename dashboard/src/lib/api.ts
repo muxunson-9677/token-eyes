@@ -19,6 +19,50 @@ import { buildLocalApiUrl, isTauriRuntime } from "./local-api-url";
 
 type AnyRecord = Record<string, any>;
 
+export type CodexResetEventType =
+  | "reset_upcoming"
+  | "reset_completed"
+  | "unexpected_quota_restore"
+  | "banked_reset_available"
+  | "official_reset_announcement";
+
+export interface CodexResetMonitorStatus {
+  enabled: boolean;
+  configured: boolean | null;
+  running: boolean;
+  last_checked_at: string | null;
+  last_successful_at: string | null;
+  next_check_at: string | null;
+  last_error_code: string | null;
+  failure_count: number;
+  unread_count: number;
+  feed_enabled: boolean;
+  feed_last_checked_at: string | null;
+  feed_error_code: string | null;
+}
+
+export interface CodexResetEvent {
+  id: string;
+  type: CodexResetEventType;
+  window: "rolling_5_hour" | "rolling_weekly" | null;
+  created_at: string;
+  reset_at: string | null;
+  official_url: string;
+  source: "local_quota" | "signed_feed";
+  source_url?: string;
+  source_author?: "OpenAI" | "thsottiaux" | null;
+  source_post_id?: string | null;
+  title?: string;
+  summary?: string;
+  expires_at?: string;
+}
+
+export interface CodexResetEventsResponse {
+  ok: boolean;
+  status: CodexResetMonitorStatus;
+  events: CodexResetEvent[];
+}
+
 const PATHS = {
   usageSummary: "tokentracker-usage-summary",
   usageDaily: "tokentracker-usage-daily",
@@ -31,6 +75,7 @@ const PATHS = {
   userStatus: "tokentracker-user-status",
   localSync: "tokentracker-local-sync",
   usageLimits: "tokentracker-usage-limits",
+  codexResetEvents: "tokentracker-codex-reset-events",
   localSettings: "tokentracker-local-settings",
   detectDataDirectories: "tokentracker-detect-data-directories",
   selectDirectory: "tokentracker-select-directory",
@@ -1100,6 +1145,40 @@ export async function getUsageMonthly({
 export async function getUsageLimits(opts: { refresh?: boolean } = {}) {
   const params = opts?.refresh ? { refresh: "1" } : undefined;
   return fetchLocalJson(PATHS.usageLimits, params);
+}
+
+export async function getCodexResetEvents(): Promise<CodexResetEventsResponse> {
+  return fetchLocalJson(PATHS.codexResetEvents) as Promise<CodexResetEventsResponse>;
+}
+
+export async function acknowledgeCodexResetEvent(
+  eventId: string,
+): Promise<void> {
+  const authHeaders = await getLocalApiAuthHeaders();
+  await fetchLocalJson(`${PATHS.codexResetEvents}/ack`, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ event_id: eventId }),
+  });
+}
+
+export async function checkCodexResetEvents(
+  force = false,
+): Promise<CodexResetEventsResponse> {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(`${PATHS.codexResetEvents}/check`, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ force: force === true }),
+  }) as Promise<CodexResetEventsResponse>;
 }
 
 export async function getUsageHeatmap({
