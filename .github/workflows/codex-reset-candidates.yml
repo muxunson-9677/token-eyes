@@ -1,0 +1,55 @@
+name: Codex reset candidate review
+
+on:
+  workflow_dispatch:
+    inputs:
+      since_id:
+        description: Optional last processed numeric X post ID
+        required: false
+        type: string
+  # Keep scheduled collection disabled until an X API budget is explicitly approved.
+  # schedule:
+  #   - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Collect review candidates
+        shell: bash
+        env:
+          SINCE_ID: ${{ inputs.since_id }}
+        run: |
+          if [ -z "$X_BEARER_TOKEN" ]; then
+            echo "X_BEARER_TOKEN is not configured; use the documented manual URL fallback."
+            exit 2
+          fi
+          args=(--x-api --output "$RUNNER_TEMP/codex-reset-candidates.json")
+          if [ -n "$SINCE_ID" ]; then
+            if [[ ! "$SINCE_ID" =~ ^[0-9]+$ ]]; then
+              echo "since_id must be numeric."
+              exit 2
+            fi
+            args+=(--since-id "$SINCE_ID")
+          fi
+          node scripts/collect-codex-reset-candidates.mjs "${args[@]}"
+
+      - name: Upload short-lived review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-reset-candidates
+          path: ${{ runner.temp }}/codex-reset-candidates.json
+          retention-days: 1
+          if-no-files-found: error
