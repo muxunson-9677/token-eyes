@@ -1,12 +1,5 @@
 import { getLeaderboard } from "./api";
-import {
-  LEADERBOARD_DEFAULT_AGENT,
-  LEADERBOARD_DEFAULT_METRIC,
-  LEADERBOARD_DEFAULT_PERIOD,
-  normalizeLeaderboardAgent,
-  normalizeLeaderboardMetric,
-  normalizeLeaderboardPeriod,
-} from "./leaderboard-query.js";
+import { LEADERBOARD_DEFAULT_PERIOD } from "./leaderboard-query.js";
 
 export const DASHBOARD_PRELOAD_TARGETS = Object.freeze(["limits", "leaderboard"]);
 
@@ -346,12 +339,6 @@ export function getLeaderboardPreloadPageSize() {
   return LEADERBOARD_DEFAULT_PAGE_SIZE;
 }
 
-function getLeaderboardPreloadUserId(options = {}) {
-  const explicitUserId = options.userId;
-  if (explicitUserId !== undefined) return explicitUserId || null;
-  return options.cloudUser?.id || null;
-}
-
 function getLeaderboardPreloadAccessMode(options = {}) {
   if (typeof options.accessMode === "string" && options.accessMode.trim()) {
     return options.accessMode.trim();
@@ -366,14 +353,13 @@ export function getLeaderboardPreloadContextKey(options = {}) {
   const baseUrl = options.baseUrl ?? "";
   return buildDashboardPreloadContextKey("leaderboard", {
     accessMode: getLeaderboardPreloadAccessMode({ ...options, baseUrl, mockEnabled }),
-    agent: normalizeLeaderboardAgent(options.agent || LEADERBOARD_DEFAULT_AGENT),
     baseUrl,
-    metric: normalizeLeaderboardMetric(options.metric || LEADERBOARD_DEFAULT_METRIC),
     mockEnabled,
     offset: options.offset ?? LEADERBOARD_DEFAULT_OFFSET,
     pageSize: options.pageSize ?? getLeaderboardPreloadPageSize(),
-    period: normalizeLeaderboardPeriod(options.period || LEADERBOARD_DEFAULT_PERIOD),
-    userId: getLeaderboardPreloadUserId(options),
+    period: options.period || LEADERBOARD_DEFAULT_PERIOD,
+    metric: options.metric || "tokens",
+    source: options.source || "all",
   });
 }
 
@@ -394,22 +380,20 @@ export function preloadLeaderboardDefaultState(options = {}) {
   const mockEnabled = Boolean(options.mockEnabled);
   const baseUrl = options.baseUrl ?? "";
   const accessMode = getLeaderboardPreloadAccessMode({ ...options, baseUrl, mockEnabled });
-  const period = normalizeLeaderboardPeriod(options.period || LEADERBOARD_DEFAULT_PERIOD);
-  const agent = normalizeLeaderboardAgent(options.agent || LEADERBOARD_DEFAULT_AGENT);
-  const metric = normalizeLeaderboardMetric(options.metric || LEADERBOARD_DEFAULT_METRIC);
+  const period = options.period || LEADERBOARD_DEFAULT_PERIOD;
+  const metric = options.metric || "tokens";
+  const source = options.source || "all";
   const pageSize = options.pageSize ?? getLeaderboardPreloadPageSize();
   const offset = options.offset ?? LEADERBOARD_DEFAULT_OFFSET;
-  const userId = getLeaderboardPreloadUserId(options);
   const contextKey = getLeaderboardPreloadContextKey({
     accessMode,
-    agent,
     baseUrl,
-    metric,
     mockEnabled,
     offset,
     pageSize,
     period,
-    userId,
+    metric,
+    source,
   });
 
   if (!mockEnabled && options.authLoading) {
@@ -446,10 +430,9 @@ export function preloadLeaderboardDefaultState(options = {}) {
     .then(() =>
       getLeaderboard({
         baseUrl,
-        agent,
-        userId,
-        metric,
         period,
+        metric,
+        source,
         limit: pageSize,
         offset,
       }),

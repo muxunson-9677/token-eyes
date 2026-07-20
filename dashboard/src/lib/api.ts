@@ -625,10 +625,11 @@ export async function getProviderApiBalances(): Promise<ProviderApiResult> {
 async function fetchInsforgeFunction(slug: string, options: {
   method?: string;
   accessToken?: string;
+  baseUrl?: string;
   params?: AnyRecord;
   body?: unknown;
 } = {}) {
-  const baseUrl = getInsforgeRemoteUrl();
+  const baseUrl = options.baseUrl || getInsforgeRemoteUrl();
   if (!baseUrl) throw new Error("InsForge base URL not configured");
   const root = baseUrl.replace(/\/$/, "");
   const url = new URL(`${root}/functions/${slug}`);
@@ -666,25 +667,32 @@ async function fetchInsforgeFunction(slug: string, options: {
 }
 
 export async function getLeaderboard({
-  accessToken,
-  userId,
+  baseUrl,
   period,
-  agent,
   metric,
+  source,
   limit,
   offset,
   mock = false,
 }: AnyRecord = {}) {
   if (mock || isMockEnabled()) {
-    return getMockLeaderboard({ seed: accessToken || userId, period, agent, metric, limit, offset });
+    return getMockLeaderboard({ period, metric, source, limit, offset });
   }
-  // Deliberately NOT passing accessToken. Leaderboard is a public read and
-  // InsForge's gateway returns opaque 500 (JWSError) for any JWT issue
-  // (bad signature, expired, rotated secret). Passing user_id as a query
-  // param lets the server compute `is_me` without ever touching the
-  // Authorization header.
   return fetchInsforgeFunction("tokentracker-leaderboard", {
-    params: { period, agent, metric, limit, offset, user_id: userId },
+    baseUrl,
+    params: { period, metric, source, limit, offset },
+  });
+}
+
+export async function getMyLeaderboardRank({
+  accessToken,
+  period,
+  metric,
+  source,
+}: AnyRecord = {}) {
+  return fetchInsforgeFunction("tokentracker-leaderboard-me", {
+    accessToken,
+    params: { period, metric, source },
   });
 }
 

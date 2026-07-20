@@ -31,7 +31,7 @@ describe("leaderboard default state preload", () => {
     window.localStorage.clear();
   });
 
-  it("builds the default leaderboard context from period, page size, offset, user, mock, base URL and access mode", async () => {
+  it("builds the public leaderboard context without private user identity", async () => {
     window.localStorage.setItem("tokentracker:leaderboard:pageSize", "50");
     const data = {
       entries: [{ rank: 1, display_name: "Ada", total_tokens: 1200 }],
@@ -45,11 +45,13 @@ describe("leaderboard default state preload", () => {
       baseUrl: "https://edge.example",
       mockEnabled: false,
       userId: "user-1",
+      metric: "estimated_spend",
+      source: "codex",
     });
 
     expect(getLeaderboardPreloadPageSize()).toBe(50);
     expect(contextKey).toBe(
-      "leaderboard:accessMode=cloud|agent=all|baseUrl=https://edge.example|metric=with_cache|mockEnabled=false|offset=0|pageSize=50|period=total|userId=user-1",
+      "leaderboard:accessMode=cloud|baseUrl=https://edge.example|metric=estimated_spend|mockEnabled=false|offset=0|pageSize=50|period=total|source=codex",
     );
 
     await expect(
@@ -59,6 +61,8 @@ describe("leaderboard default state preload", () => {
         signedIn: true,
         authLoading: false,
         userId: "user-1",
+        metric: "estimated_spend",
+        source: "codex",
       }),
     ).resolves.toMatchObject({
       status: "fulfilled",
@@ -66,12 +70,11 @@ describe("leaderboard default state preload", () => {
       contextKey,
     });
 
-    expect(getLeaderboard).toHaveBeenCalledWith({
-      baseUrl: "https://edge.example",
-      agent: "all",
-      userId: "user-1",
-      metric: "with_cache",
-      period: "total",
+      expect(getLeaderboard).toHaveBeenCalledWith({
+        baseUrl: "https://edge.example",
+        period: "total",
+      metric: "estimated_spend",
+      source: "codex",
       limit: 50,
       offset: 0,
     });
@@ -88,7 +91,8 @@ describe("leaderboard default state preload", () => {
       offset: 0,
       pageSize: 20,
       period: "total",
-      userId: "user-1",
+      metric: "tokens",
+      source: "all",
     };
     const contextKey = getLeaderboardPreloadContextKey(baseOptions);
     const data = { entries: [{ rank: 1, display_name: "Ada" }], page: 1 };
@@ -106,7 +110,8 @@ describe("leaderboard default state preload", () => {
       { metric: "without_cache" },
       { pageSize: 50 },
       { offset: 20 },
-      { userId: "user-2" },
+      { metric: "estimated_spend" },
+      { source: "codex" },
       { baseUrl: "https://other.example" },
       { mockEnabled: true, accessMode: "mock" },
       { accessMode: "public" },
@@ -153,12 +158,11 @@ describe("leaderboard default state preload", () => {
       }),
     ).resolves.toMatchObject({ status: "fulfilled" });
 
-    expect(getLeaderboard).toHaveBeenCalledWith({
-      baseUrl: "",
-      agent: "all",
-      userId: null,
-      metric: "with_cache",
-      period: "total",
+      expect(getLeaderboard).toHaveBeenCalledWith({
+        baseUrl: "",
+        period: "total",
+      metric: "tokens",
+      source: "all",
       limit: 20,
       offset: 0,
     });
@@ -189,12 +193,11 @@ describe("leaderboard default state preload", () => {
       contextKey,
     });
 
-    expect(getLeaderboard).toHaveBeenCalledWith({
-      baseUrl: "https://edge.example",
-      agent: "all",
-      userId: null,
-      metric: "with_cache",
-      period: "total",
+      expect(getLeaderboard).toHaveBeenCalledWith({
+        baseUrl: "https://edge.example",
+        period: "total",
+      metric: "tokens",
+      source: "all",
       limit: 20,
       offset: 0,
     });

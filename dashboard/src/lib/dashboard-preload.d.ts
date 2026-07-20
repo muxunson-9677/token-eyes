@@ -67,13 +67,13 @@ export interface LeaderboardPreloadOptions {
   accessMode?: string;
   authLoading?: boolean;
   baseUrl?: string;
-  cloudUser?: { id?: string | null } | null;
+  metric?: string;
   mockEnabled?: boolean;
   offset?: number;
   pageSize?: number;
   period?: string;
   signedIn?: boolean;
-  userId?: string | null;
+  source?: string;
 }
 
 export const DASHBOARD_PRELOAD_TARGETS: readonly DashboardPreloadTarget[];
