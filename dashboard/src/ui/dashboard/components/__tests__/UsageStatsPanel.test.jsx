@@ -152,12 +152,12 @@ describe("UsageStatsPanel", () => {
   });
 
   it.each([
-    { current: 120, previous: 100, expected: "较上月新增 20.0%" },
-    { current: 80, previous: 100, expected: "较上月减少 20.0%" },
-    { current: 100, previous: 100, expected: "与上月持平" },
-    { current: 15, previous: 0, expected: "上月无基数" },
-    { current: 0, previous: 0, expected: "与上月持平" },
-  ])("renders the monthly total comparison without invalid zero-base percentages", ({ current, previous, expected }) => {
+    { current: 120, previous: 100, expected: "较上月新增 20.0%", expectedClass: "text-green-600" },
+    { current: 80, previous: 100, expected: "较上月减少 20.0%", expectedClass: "text-green-600" },
+    { current: 100, previous: 100, expected: "与上月持平", expectedClass: "text-oai-gray-400" },
+    { current: 15, previous: 0, expected: "上月无基数", expectedClass: "text-green-600" },
+    { current: 0, previous: 0, expected: "与上月持平", expectedClass: "text-oai-gray-400" },
+  ])("renders the monthly total comparison without invalid zero-base percentages", ({ current, previous, expected, expectedClass }) => {
     render(
       <UsageStatsPanel
         summary={{ totals: { total_tokens: 1 } }}
@@ -178,6 +178,7 @@ describe("UsageStatsPanel", () => {
 
     const comparison = screen.getByTestId("monthly-cost-comparison");
     expect(comparison).toHaveTextContent(expected);
+    expect(comparison).toHaveClass(expectedClass);
     expect(comparison.parentElement).toHaveAttribute("data-testid", "monthly-cost-cny-row");
     expect(screen.queryByTestId("monthly-cost-heading-row")).not.toBeInTheDocument();
   });
@@ -208,7 +209,7 @@ describe("UsageStatsPanel", () => {
     expect(comparisons[1]).toHaveTextContent("20.0%");
     expect(comparisons[2]).toHaveTextContent("持平");
     expect(screen.getAllByTestId("monthly-cost-cny-row")).toHaveLength(3);
-    expect(comparisons[0]).toHaveClass("text-amber-600");
+    expect(comparisons[0]).toHaveClass("text-green-600");
     expect(comparisons[1]).toHaveClass("text-green-600");
   });
 

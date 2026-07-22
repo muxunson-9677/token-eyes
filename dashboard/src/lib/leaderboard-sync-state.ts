@@ -37,7 +37,7 @@ export function getLeaderboardSyncState(accountId?: string): LeaderboardRetrySta
       | null;
     if (!parsed || typeof parsed !== "object") return emptyState();
     const storedAccountId = boundedString(parsed.accountId, 128);
-    if (accountId && storedAccountId !== accountId) return emptyState();
+    if (accountId && storedAccountId && storedAccountId !== accountId) return emptyState();
     const summaryHash = boundedString(parsed.summaryHash, 64);
     const lastAttemptAt = boundedString(parsed.lastAttemptAt, 40);
     const lastSuccessAt = boundedString(parsed.lastSuccessAt, 40);

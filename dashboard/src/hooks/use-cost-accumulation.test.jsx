@@ -71,7 +71,7 @@ describe("useCostAccumulation selected month", () => {
       timeZone: "Asia/Shanghai",
       tzOffsetMinutes: 480,
     }));
-    expect(getSpendTimeseries.mock.calls[0][0]).not.toHaveProperty("sources");
+    expect(getSpendTimeseries.mock.calls[0][0]).toHaveProperty("sources", COST_SOURCES);
     expect(getSpendTimeseries).toHaveBeenNthCalledWith(2, expect.objectContaining({
       from: "2025-05-01",
       to: "2025-05-31",

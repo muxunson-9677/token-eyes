@@ -27,6 +27,12 @@ import {
   normalizeLeaderboardPeriod,
 } from "../lib/leaderboard-query.js";
 import { normalizeAgentMetrics } from "../lib/leaderboard-agent-metrics.js";
+import {
+  buildLocalLeaderboardRow,
+  getLeaderboardPeriodDateRange,
+} from "../lib/leaderboard-local-row";
+import { getLocalLeaderboardState } from "../lib/leaderboard-state-client";
+import { getLeaderboardSyncState } from "../lib/leaderboard-sync-state";
 import { getLeaderboardBaseUrl } from "../lib/config";
 import { getDashboardEntryPath } from "../lib/host-mode";
 import { isMockEnabled } from "../lib/mock-data";
@@ -34,7 +40,9 @@ import { isDeveloperLeaderboardLoginEnabled } from "../lib/developer-leaderboard
 import {
   getLeaderboard,
   getLeaderboardProfile,
+  getLocalLeaderboardActualCost,
   getMyLeaderboardRank,
+  getUsageSummary,
 } from "../lib/api";
 import {
   getLeaderboardPreloadContextKey,
@@ -174,7 +182,14 @@ function RankCell({ rank, placeholder }) {
       </span>
     );
   }
-  return <span className="inline-flex items-center justify-center h-7 w-7 text-sm">{rank ?? placeholder}</span>;
+  return (
+    <span className={cn(
+      "inline-flex h-7 items-center justify-center text-sm",
+      rank == null ? "min-w-7 whitespace-nowrap text-[10px]" : "w-7",
+    )}>
+      {rank ?? placeholder}
+    </span>
+  );
 }
 
 function normalizeLeaderboardError(err) {
@@ -318,7 +333,10 @@ function LeaderboardEntryRow({
       data-entry-index={entryIdx}
     >
       <div className={cn("text-oai-gray-500 dark:text-oai-gray-400", isMe && "text-oai-brand-600 dark:text-oai-brand-400")}>
-        <RankCell rank={entry?.rank} placeholder={placeholder} />
+        <RankCell
+          rank={entry?.rank}
+          placeholder={entry?.is_local_pending ? copy("leaderboard.rank_pending") : placeholder}
+        />
       </div>
 
       <div className="flex min-w-0 items-center gap-3">
@@ -367,6 +385,7 @@ export function LeaderboardPage({
     signedIn: cloudSignedIn,
     loading: authLoading,
     user: cloudUser,
+    displayName: cloudDisplayName,
   } = useInsforgeAuth();
   const { openLoginModal } = useLoginModal();
   const { currency, rate } = useCurrency();
@@ -614,6 +633,7 @@ export function LeaderboardPage({
   ]);
   const listData = currentListState.data;
   const [me, setMe] = useState(null);
+  const [localMe, setLocalMe] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -666,6 +686,60 @@ export function LeaderboardPage({
     };
   }, [cloudSignedIn, cloudUser?.id, effectiveAuthToken, effectiveSource, metric, period, syncRevision]);
 
+  useEffect(() => {
+    let active = true;
+    if (!cloudSignedIn || !cloudUser?.id) {
+      setLocalMe(null);
+      return () => {
+        active = false;
+      };
+    }
+    (async () => {
+      const localState = await getLocalLeaderboardState();
+      const range = getLeaderboardPeriodDateRange(period);
+      let estimatedCostUsd = null;
+      try {
+        const summary = await getUsageSummary({
+          ...range,
+          sources: effectiveSource === "all" ? undefined : [effectiveSource],
+          timeZone: "Asia/Shanghai",
+        });
+        estimatedCostUsd = summary?.total_cost_usd ?? summary?.totals?.total_cost_usd ?? null;
+      } catch {
+        // Token counts still render if local price aggregation is unavailable.
+      }
+
+      let actualCostUsd = null;
+      if (effectiveSource === "all" && getLeaderboardSyncState(cloudUser.id).shareActualCost === true) {
+        try {
+          const actualCosts = await getLocalLeaderboardActualCost();
+          actualCostUsd = actualCosts?.[period] ?? null;
+        } catch {
+          // Actual cost remains private/unavailable without blocking local Token display.
+        }
+      }
+
+      const metadata = cloudUser.user_metadata && typeof cloudUser.user_metadata === "object"
+        ? cloudUser.user_metadata
+        : {};
+      const localRow = buildLocalLeaderboardRow(localState, {
+        period,
+        source: effectiveSource,
+        userId: cloudUser.id,
+        displayName: cloudDisplayName || copy("leaderboard.me_label"),
+        avatarUrl: metadata.avatar_url || metadata.picture || null,
+        estimatedCostUsd,
+        actualCostUsd,
+      });
+      if (active) setLocalMe(localRow);
+    })().catch(() => {
+      if (active) setLocalMe(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [cloudDisplayName, cloudSignedIn, cloudUser, effectiveSource, period, syncRevision]);
+
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
   const participantCount = listData?.participant_count ?? totalEntries;
@@ -686,8 +760,9 @@ export function LeaderboardPage({
   );
   const displayEntries = useMemo(() => {
     const rows = Array.isArray(listData?.entries) ? listData.entries : [];
-    return prependMeRowToPage({ entries: rows, me, meLabel });
-  }, [listData?.entries, me, meLabel]);
+    const displayedMe = me?.rank ? me : localMe || me;
+    return prependMeRowToPage({ entries: rows, me: displayedMe, meLabel });
+  }, [listData?.entries, localMe, me, meLabel]);
 
   const myPage = useMemo(
     () => pageContainingRank(me?.rank, pageSize),

@@ -51,7 +51,7 @@ export function getMonthComparison(currentUsd, previousUsd, usdToCny) {
     }
     return {
       label: copy("spend.monthly_change.no_baseline"),
-      className: "text-amber-600 dark:text-amber-400",
+      className: "text-emerald-600 dark:text-emerald-400",
     };
   }
   const percentage = Math.abs(((current - previous) / previous) * 100).toFixed(1);
@@ -60,10 +60,10 @@ export function getMonthComparison(currentUsd, previousUsd, usdToCny) {
       const differenceCny = Math.abs(current - previous) * Number(usdToCny || 1);
       return {
         label: copy("spend.monthly_change.low_baseline", { value: differenceCny.toFixed(2) }),
-        className: "text-amber-600 dark:text-amber-400",
+        className: "text-emerald-600 dark:text-emerald-400",
       };
     }
-    return { label: copy("spend.monthly_change.increase", { value: percentage }), className: "text-amber-600 dark:text-amber-400" };
+    return { label: copy("spend.monthly_change.increase", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400" };
   }
   if (current < previous) {
     return { label: copy("spend.monthly_change.decrease", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400" };

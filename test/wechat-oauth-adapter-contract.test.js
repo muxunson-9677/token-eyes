@@ -70,7 +70,7 @@ test("OAuth persistence stores only digests and never raw WeChat credentials", (
   assert.doesNotMatch(sql, /\b(?:openid|unionid|wechat_access_token|raw_code)\b/i);
 });
 
-test("UserInfo returns an InsForge-compatible stable identity without phone login", () => {
+test("UserInfo remains compatible while the leaderboard uses email login", () => {
   const source = read(EDGE_PATH);
   const page = read(PAGE_PATH);
 
@@ -78,8 +78,9 @@ test("UserInfo returns an InsForge-compatible stable identity without phone logi
   assert.match(source, /@wechat\.invalid/);
   assert.match(source, /subject/);
   assert.doesNotMatch(source, /phone|password/i);
-  assert.doesNotMatch(page, /useLoginModal|openLoginModal/);
-  assert.match(page, /signInWithOAuth\("wechat",\s*redirectTo\)/);
+  assert.match(page, /useLoginModal|openLoginModal/);
+  assert.match(page, /openLoginModal\(\{\s*emailOnly:\s*true\s*\}\)/);
+  assert.doesNotMatch(page, /signInWithOAuth\("wechat",\s*redirectTo\)/);
 });
 
 test("deployment distinguishes provider callbacks from app redirect allowlists", () => {

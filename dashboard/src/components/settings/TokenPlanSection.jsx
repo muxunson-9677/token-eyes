@@ -42,7 +42,6 @@ import {
 } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
-import { useCodexResetEvents } from "../../hooks/use-codex-reset-events";
 import { limitProviderName, useLimitsDisplayPrefs } from "../../hooks/use-limits-display-prefs.js";
 import { SectionCard } from "./Controls.jsx";
 
@@ -591,8 +590,6 @@ function SortableTokenPlanCard({
   catalog,
   usageLimits,
   loadingUsageLimits,
-  codexResetStatus,
-  onCheckCodexResetNow,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
   const planLabel = record.plan_label || record.id;
@@ -710,19 +707,12 @@ function SortableTokenPlanCard({
           )}
         </div>
       )}
-      {isCodexSource(record.source) && (
-        <CodexResetMonitorStatus status={codexResetStatus} onCheckNow={onCheckCodexResetNow} />
-      )}
     </div>
   );
 }
 
 export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNavigate = () => {} }) {
   const { visibleOrdered: visibleLimitProviders } = useLimitsDisplayPrefs();
-  const {
-    status: codexResetStatus,
-    checkNow: checkCodexResetNow,
-  } = useCodexResetEvents();
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formOpen, setFormOpen] = useState(false);
@@ -3000,8 +2990,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                     catalog={catalog}
                     usageLimits={usageLimits}
                     loadingUsageLimits={loadingUsageLimits}
-                    codexResetStatus={codexResetStatus}
-                    onCheckCodexResetNow={() => checkCodexResetNow(true)}
                   />
                 ))}
               </div>
@@ -4233,102 +4221,6 @@ function SummaryMetric({ label, value }) {
     <div>
       <div className="text-oai-gray-500 dark:text-oai-gray-400">{label}</div>
       <div className="mt-0.5 font-mono text-sm text-oai-gray-900 dark:text-oai-gray-100">{value}</div>
-    </div>
-  );
-}
-
-function formatMonitorTimestamp(value) {
-  const timestamp = Date.parse(String(value || ""));
-  if (!Number.isFinite(timestamp)) return "--";
-  return new Intl.DateTimeFormat(undefined, {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(timestamp);
-}
-
-function CodexResetMonitorStatus({ status, onCheckNow }) {
-  if (!status) return null;
-
-  const errorCode = String(status.last_error_code || "").toLowerCase();
-  const authRequired = new Set([
-    "auth_required",
-    "auth_refresh_expired",
-    "reauth_required",
-  ]).has(errorCode);
-  const unsupported = new Set([
-    "endpoint_unsupported",
-    "response_unsupported",
-    "unsupported",
-  ]).has(errorCode);
-
-  let stateKey = "";
-  if (status.enabled === false) {
-    stateKey = "codex_reset.monitor.disabled";
-  } else if (status.configured === false) {
-    stateKey = "codex_reset.monitor.unconfigured";
-  } else if (authRequired) {
-    stateKey = "codex_reset.monitor.reauth";
-  } else if (unsupported) {
-    stateKey = "codex_reset.monitor.unsupported";
-  } else if (errorCode) {
-    stateKey = "codex_reset.monitor.retrying";
-  }
-
-  return (
-    <div className="mt-2 border-t border-oai-gray-200 pt-2 dark:border-oai-gray-800">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
-            {copy("codex_reset.monitor.title")}
-          </div>
-          {stateKey && (
-            <div className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-              {copy(stateKey)}
-              {authRequired && (
-                <>
-                  {" "}
-                  <a
-                    href="https://chatgpt.com/codex"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium text-oai-brand hover:text-oai-brand-dark"
-                  >
-                    {copy("codex_reset.monitor.reauth_action")}
-                  </a>
-                </>
-              )}
-            </div>
-          )}
-          {status.last_successful_at && (
-            <div className="mt-1 text-xs text-oai-gray-400 dark:text-oai-gray-500">
-              <span>{copy("codex_reset.monitor.last_success")}</span>
-              {" · "}
-              <span>{formatMonitorTimestamp(status.last_successful_at)}</span>
-            </div>
-          )}
-          {status.next_check_at && status.enabled !== false && (
-            <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
-              <span>{copy("codex_reset.monitor.next_check")}</span>
-              {" · "}
-              <span>{formatMonitorTimestamp(status.next_check_at)}</span>
-            </div>
-          )}
-        </div>
-        {status.enabled !== false && (
-          <button
-            type="button"
-            onClick={onCheckNow}
-            disabled={status.running}
-            className="shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {copy(status.running
-              ? "codex_reset.monitor.checking"
-              : "codex_reset.monitor.check_now")}
-          </button>
-        )}
-      </div>
     </div>
   );
 }

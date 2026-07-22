@@ -310,7 +310,7 @@ export function UsageStatsPanel({
                           data-testid="monthly-cost-comparison"
                           className={cn(
                             "shrink-0 truncate text-[9px] font-medium leading-tight tabular-nums",
-                            comparison.kind === "increase" && "text-amber-600 dark:text-amber-400",
+                            comparison.kind === "increase" && "text-green-600 dark:text-green-400",
                             comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
                             comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",
                           )}

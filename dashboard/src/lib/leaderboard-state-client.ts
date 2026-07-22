@@ -66,6 +66,20 @@ function isValidStateResponse(
   );
 }
 
+export async function getLocalLeaderboardState(): Promise<
+  Required<Pick<LocalStateResponse, "summary_hash" | "state">> & LocalStateResponse
+> {
+  const response = await fetch(LOCAL_STATE_URL, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
+  const local = (await response.json()) as LocalStateResponse;
+  if (!isValidStateResponse(local)) throw new Error("Invalid local leaderboard state");
+  return local;
+}
+
 export async function syncLeaderboardState(options: {
   getAccessToken: () => Promise<string | null>;
   reason: LeaderboardSyncReason;
@@ -77,18 +91,10 @@ export async function syncLeaderboardState(options: {
 }> {
   let local: LocalStateResponse;
   try {
-    const response = await fetch(LOCAL_STATE_URL, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
-    if (!response.ok) return defer(options.reason, options.accountId);
-    local = (await response.json()) as LocalStateResponse;
+    local = await getLocalLeaderboardState();
   } catch {
     return defer(options.reason, options.accountId);
   }
-
-  if (!isValidStateResponse(local)) return defer(options.reason, options.accountId);
   const summaryHash = local.summary_hash;
   const serializedState = JSON.stringify(local.state);
   if (new TextEncoder().encode(serializedState).byteLength > MAX_PAYLOAD_BYTES) {

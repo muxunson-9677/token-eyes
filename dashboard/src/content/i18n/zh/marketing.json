@@ -117,6 +117,7 @@
   "leaderboard.summary.tokens_label": "全员累计 Token",
   "leaderboard.summary.cost_label": "全员累计预估花销",
   "leaderboard.me_label": "你",
+  "leaderboard.rank_pending": "待更新",
   "leaderboard.anon_label": "匿名",
   "leaderboard.error.unknown": "未知错误",
   "leaderboard.loading": "加载中…",

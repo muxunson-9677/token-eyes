@@ -225,8 +225,7 @@ it("displays Codex live quota block for source=codex records with 5h/7d windows"
   expect(screen.getByText("50% 剩余")).toBeInTheDocument();
 });
 
-it("shows Codex reset monitor schedule and performs a shared manual check", async () => {
-  const user = userEvent.setup();
+it("keeps Codex reset monitoring out of the token-plan cards", async () => {
   const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
   getTokenPlans.mockResolvedValue({ records: [codexRecord] });
   codexResetMonitor.status = {
@@ -240,35 +239,10 @@ it("shows Codex reset monitor schedule and performs a shared manual check", asyn
 
   render(<TokenPlanSection />);
 
-  expect(await screen.findByText(copy("codex_reset.monitor.title"))).toBeInTheDocument();
-  expect(screen.getByText(copy("codex_reset.monitor.last_success"))).toBeInTheDocument();
-  expect(screen.getByText(copy("codex_reset.monitor.next_check"))).toBeInTheDocument();
-  await act(async () => {
-    await user.click(screen.getByRole("button", {
-      name: copy("codex_reset.monitor.check_now"),
-    }));
-  });
-  expect(codexResetMonitor.checkNow).toHaveBeenCalledWith(true);
-});
-
-it.each([
-  [{ configured: false }, "codex_reset.monitor.unconfigured"],
-  [{ configured: true, last_error_code: "auth_required" }, "codex_reset.monitor.reauth"],
-  [{ configured: true, last_error_code: "endpoint_unsupported" }, "codex_reset.monitor.unsupported"],
-])("shows the neutral monitor state for %o", async (status, messageKey) => {
-  const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
-  getTokenPlans.mockResolvedValue({ records: [codexRecord] });
-  codexResetMonitor.status = {
-    enabled: true,
-    running: false,
-    last_successful_at: null,
-    next_check_at: null,
-    last_error_code: null,
-    ...status,
-  };
-
-  render(<TokenPlanSection />);
-  expect(await screen.findByText(copy(messageKey))).toBeInTheDocument();
+  await screen.findByText(/codex \/ Pro/i);
+  expect(screen.queryByText(copy("codex_reset.monitor.title"))).not.toBeInTheDocument();
+  expect(screen.queryByText(copy("codex_reset.monitor.last_success"))).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: copy("codex_reset.monitor.check_now") })).not.toBeInTheDocument();
 });
 
 it("does not display Codex quota block for non-codex records", async () => {

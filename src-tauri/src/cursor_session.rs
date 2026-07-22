@@ -577,13 +577,48 @@ fn access_token_needs_refresh_at(access_token: &str, now: i64) -> bool {
     exp <= now + CURSOR_ACCESS_TOKEN_REFRESH_THRESHOLD_SECONDS
 }
 
-fn access_token_needs_refresh(access_token: &str) -> bool {
+fn should_exchange_refresh_token_at(
+    access_token: &str,
+    force_refresh: bool,
+    has_refresh_token: bool,
+    now: i64,
+) -> bool {
+    has_refresh_token && (force_refresh || access_token_needs_refresh_at(access_token, now))
+}
+
+fn should_exchange_refresh_token(
+    access_token: &str,
+    force_refresh: bool,
+    has_refresh_token: bool,
+) -> bool {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0);
-    access_token_needs_refresh_at(access_token, now)
+    should_exchange_refresh_token_at(access_token, force_refresh, has_refresh_token, now)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CursorAuthAction {
+    RefreshAndRetry,
+    RequireLogin,
+    ReturnFailure,
+}
+
+fn next_cursor_auth_action(
+    error: &str,
+    has_refresh_token: bool,
+    already_retried: bool,
+) -> CursorAuthAction {
+    if error != "REAUTH_REQUIRED" {
+        return CursorAuthAction::ReturnFailure;
+    }
+    if has_refresh_token && !already_retried {
+        CursorAuthAction::RefreshAndRetry
+    } else {
+        CursorAuthAction::RequireLogin
+    }
 }
 
 pub fn parse_quota_eval_result(raw: &str) -> Result<Option<QuotaFetchResult>, String> {
@@ -1134,8 +1169,13 @@ async fn refresh_cursor_auth_bundle(
     mut access_token: String,
     mut refresh_token: String,
     known_account_id: Option<String>,
+    force_refresh: bool,
 ) -> Result<CursorAuthBundle, String> {
-    if !refresh_token.trim().is_empty() && access_token_needs_refresh(&access_token) {
+    if should_exchange_refresh_token(
+        &access_token,
+        force_refresh,
+        !refresh_token.trim().is_empty(),
+    ) {
         match exchange_cursor_refresh_token(client, &refresh_token).await {
             Ok(token_response) => {
                 if token_response.should_logout {
@@ -1225,7 +1265,8 @@ async fn fetch_cursor_quota(
         client,
         access_token.to_string(),
         refresh_token.to_string(),
-        known_account_id,
+        known_account_id.clone(),
+        false,
     )
     .await
     {
@@ -1257,30 +1298,82 @@ async fn fetch_cursor_quota(
         Err(error) => return Err(error),
     };
 
-    let usage_result = match fetch_usage_summary_payload(client, &auth.access_token).await {
-        Ok(payload) => {
-            parse_cursor_quota_snapshot(&payload, &auth.account_id).map(|mut snapshot| {
-                snapshot.display_name = auth.display_name.clone();
-                snapshot
-            })
-        }
-        Err(error) if error == "REAUTH_REQUIRED" => {
-            return Ok((
-                build_status(
+    let mut active_auth = auth;
+    let mut already_retried = false;
+    loop {
+        match fetch_usage_summary_payload(client, &active_auth.access_token).await {
+            Ok(payload) => {
+                let usage_result = parse_cursor_quota_snapshot(&payload, &active_auth.account_id)
+                    .map(|mut snapshot| {
+                        snapshot.display_name = active_auth.display_name.clone();
+                        snapshot
+                    });
+                let status = map_cursor_auth_usage_outcome(
                     session_ref,
-                    false,
-                    SessionStateCode::ReauthRequired,
-                    "REAUTH_REQUIRED",
-                    "Cursor 授权已失效，请重新连接。",
-                ),
-                Some(auth),
-            ));
+                    Some(&active_auth.account_id),
+                    usage_result,
+                );
+                return Ok((status, Some(active_auth)));
+            }
+            Err(error) => match next_cursor_auth_action(
+                &error,
+                !active_auth.refresh_token.trim().is_empty(),
+                already_retried,
+            ) {
+                CursorAuthAction::RefreshAndRetry => {
+                    let refreshed = refresh_cursor_auth_bundle(
+                        client,
+                        active_auth.access_token.clone(),
+                        active_auth.refresh_token.clone(),
+                        known_account_id
+                            .clone()
+                            .or_else(|| Some(active_auth.account_id.clone())),
+                        true,
+                    )
+                    .await;
+                    match refreshed {
+                        Ok(next_auth) => {
+                            active_auth = next_auth;
+                            already_retried = true;
+                        }
+                        Err(refresh_error) if refresh_error == "REAUTH_REQUIRED" => {
+                            return Ok((
+                                build_status(
+                                    session_ref,
+                                    false,
+                                    SessionStateCode::ReauthRequired,
+                                    "REAUTH_REQUIRED",
+                                    "Cursor 授权已失效，请重新连接。",
+                                ),
+                                Some(active_auth),
+                            ));
+                        }
+                        Err(refresh_error) => return Err(refresh_error),
+                    }
+                }
+                CursorAuthAction::RequireLogin => {
+                    return Ok((
+                        build_status(
+                            session_ref,
+                            false,
+                            SessionStateCode::ReauthRequired,
+                            "REAUTH_REQUIRED",
+                            "Cursor 授权已失效，请重新连接。",
+                        ),
+                        Some(active_auth),
+                    ));
+                }
+                CursorAuthAction::ReturnFailure => {
+                    let status = map_cursor_auth_usage_outcome(
+                        session_ref,
+                        Some(&active_auth.account_id),
+                        Err(error),
+                    );
+                    return Ok((status, Some(active_auth)));
+                }
+            },
         }
-        Err(error) => Err(error),
-    };
-
-    let status = map_cursor_auth_usage_outcome(session_ref, Some(&auth.account_id), usage_result);
-    Ok((status, Some(auth)))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1639,6 +1732,34 @@ mod tests {
             "header.invalid.signature",
             now
         ));
+    }
+
+    #[test]
+    fn forced_cursor_retry_exchanges_an_unexpired_access_token() {
+        let now = 1_800_000_000_i64;
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(format!(r#"{{"sub":"auth0|user_example","exp":{}}}"#, now + 3600));
+        let token = format!("header.{payload}.signature");
+
+        assert!(!should_exchange_refresh_token_at(&token, false, true, now));
+        assert!(should_exchange_refresh_token_at(&token, true, true, now));
+        assert!(!should_exchange_refresh_token_at(&token, true, false, now));
+    }
+
+    #[test]
+    fn cursor_usage_unauthorized_requests_only_one_refresh_retry() {
+        assert_eq!(
+            next_cursor_auth_action("REAUTH_REQUIRED", true, false),
+            CursorAuthAction::RefreshAndRetry
+        );
+        assert_eq!(
+            next_cursor_auth_action("REAUTH_REQUIRED", true, true),
+            CursorAuthAction::RequireLogin
+        );
+        assert_eq!(
+            next_cursor_auth_action("USAGE_FETCH_FAILED:500", true, false),
+            CursorAuthAction::ReturnFailure
+        );
     }
 
     #[test]

@@ -57,10 +57,21 @@ export function getPaginationFlags({ page, totalPages }) {
 export function prependMeRowToPage({ entries, me, meLabel }) {
   const rows = Array.isArray(entries) ? entries : [];
   const meRank = me && typeof me.rank === "number" ? me.rank : null;
-  if (!meRank) return rows;
+  const isLocalPending = me?.is_local_pending === true;
+  if (!meRank && !isLocalPending) return rows;
   if (rows.some((e) => Boolean(e?.is_me))) return rows;
 
+  const matchingUserIndex = me?.user_id
+    ? rows.findIndex((entry) => entry?.user_id === me.user_id)
+    : -1;
+  if (matchingUserIndex >= 0) {
+    return rows.map((entry, index) => (
+      index === matchingUserIndex ? { ...entry, is_me: true } : entry
+    ));
+  }
+
   const pinnedRow = {
+    ...me,
     rank: meRank,
     is_me: true,
     is_pinned: true,

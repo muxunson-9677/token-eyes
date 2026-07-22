@@ -65,7 +65,7 @@ it("renders API, subscription, and total month comparisons beside the CNY line",
     const comparison = screen.getByTestId(`monthly-cost-comparison-${testId}`);
     expect(comparison.parentElement).toHaveTextContent("CNY");
   }
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-amber-600");
+  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-emerald-600");
   expect(screen.getByTestId("monthly-cost-comparison-subscription")).toHaveClass("text-emerald-600");
 });
 
@@ -122,11 +122,11 @@ it("lets the user browse historical cost months without advancing into the futur
 describe("getMonthComparison MoM copy boundary", () => {
   const usdToCny = 7.2;
 
-  it("labels an increase with the increase copy key and amber class", () => {
+  it("labels an increase with the increase copy key and emerald class", () => {
     const result = getMonthComparison(150, 100, usdToCny);
     expect(result.label).toContain("spend.monthly_change.increase");
     expect(result.label).toContain("50.0%");
-    expect(result.className).toContain("text-amber-600");
+    expect(result.className).toContain("text-emerald-600");
   });
 
   it("labels a decrease with the decrease copy key and emerald class", () => {
@@ -146,7 +146,7 @@ describe("getMonthComparison MoM copy boundary", () => {
     const result = getMonthComparison(50, 0, usdToCny);
     expect(result.label).toContain("spend.monthly_change.no_baseline");
     expect(result.label).not.toMatch(/Infinity|∞|NaN/);
-    expect(result.className).toContain("text-amber-600");
+    expect(result.className).toContain("text-emerald-600");
   });
 
   it("uses delta growth for the installed-ledger API and total values", () => {

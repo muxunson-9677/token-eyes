@@ -66,16 +66,43 @@ describe("prependMeRowToPage", () => {
     expect(result.some((r) => r?.is_pinned)).toBe(false);
   });
 
-  it("does not prepend when me rank is missing", () => {
+  it("prepends current local usage while the cloud rank is pending", () => {
     const entries = Array.from({ length: 5 }, (_, i) => ({
       rank: i + 1,
       total_tokens: "3",
     }));
 
-    const me = { rank: null };
+    const me = { rank: null, is_local_pending: true, total_tokens: "30" };
     const result = prependMeRowToPage({ entries, me, meLabel: "YOU" });
 
-    expect(result).toBe(entries);
+    expect(result).toHaveLength(6);
+    expect(result[0]).toMatchObject({
+      rank: null,
+      is_me: true,
+      is_pinned: true,
+      is_local_pending: true,
+      total_tokens: "30",
+      display_name: "YOU",
+    });
+  });
+
+  it("uses the public cloud row for the same user instead of duplicating it", () => {
+    const entries = [
+      { rank: 1, user_id: "another-user", total_tokens: "40" },
+      { rank: 2, user_id: "user-1", total_tokens: "30" },
+    ];
+    const me = {
+      rank: null,
+      user_id: "user-1",
+      is_local_pending: true,
+      total_tokens: "31",
+    };
+
+    const result = prependMeRowToPage({ entries, me, meLabel: "YOU" });
+
+    expect(result).toHaveLength(2);
+    expect(result[1]).toMatchObject({ rank: 2, user_id: "user-1", is_me: true });
+    expect(result.some((row) => row.is_pinned)).toBe(false);
   });
 
   it("returns entries unchanged when me is null", () => {

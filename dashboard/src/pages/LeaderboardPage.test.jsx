@@ -9,7 +9,14 @@ import {
   readLeaderboardPreloadState,
   resetDashboardPreload,
 } from "../lib/dashboard-preload.js";
-import { getLeaderboard, getMyLeaderboardRank } from "../lib/api";
+import {
+  getLeaderboard,
+  getLeaderboardProfile,
+  getLocalLeaderboardActualCost,
+  getMyLeaderboardRank,
+  getUsageSummary,
+} from "../lib/api";
+import { getLocalLeaderboardState } from "../lib/leaderboard-state-client";
 import { runCloudUsageSyncNow } from "../lib/cloud-sync";
 import { copy } from "../lib/copy";
 import { LeaderboardPage } from "./LeaderboardPage.jsx";
@@ -29,8 +36,15 @@ const insforgeAuthMock = vi.hoisted(() => ({
 
 vi.mock("../lib/api", () => ({
   getLeaderboard: vi.fn(),
+  getLeaderboardProfile: vi.fn(),
+  getLocalLeaderboardActualCost: vi.fn(),
   getMyLeaderboardRank: vi.fn(),
+  getUsageSummary: vi.fn(),
   refreshLeaderboard: vi.fn(),
+}));
+
+vi.mock("../lib/leaderboard-state-client", () => ({
+  getLocalLeaderboardState: vi.fn(),
 }));
 
 vi.mock("../lib/cloud-sync", () => ({
@@ -122,6 +136,28 @@ describe("LeaderboardPage window-session cache reuse", () => {
     getLeaderboard.mockReset();
     getMyLeaderboardRank.mockReset();
     getMyLeaderboardRank.mockResolvedValue({ me: null });
+    getLeaderboardProfile.mockReset();
+    getLeaderboardProfile.mockResolvedValue(null);
+    getUsageSummary.mockReset();
+    getUsageSummary.mockResolvedValue({ totals: { total_cost_usd: 4.25 } });
+    getLocalLeaderboardActualCost.mockReset();
+    getLocalLeaderboardActualCost.mockResolvedValue({ today: 1, week: 2, month: 3, total: 4 });
+    getLocalLeaderboardState.mockReset();
+    getLocalLeaderboardState.mockResolvedValue({
+      ok: true,
+      summary_hash: "a".repeat(64),
+      state: {
+        version: 1,
+        device_id: "device-1234",
+        captured_at: "2026-07-22T08:00:00.000Z",
+        periods: {
+          today: [],
+          week: [],
+          month: [],
+          total: [["codex", "gpt-5.4", "100", "20", "30", "0", "0"]],
+        },
+      },
+    });
     runCloudUsageSyncNow.mockReset();
     runCloudUsageSyncNow.mockResolvedValue(undefined);
     openLoginModalMock.mockReset();
@@ -163,6 +199,21 @@ describe("LeaderboardPage window-session cache reuse", () => {
       limit: 20,
       offset: 0,
     });
+  });
+
+  it("shows signed-in local usage beside public users before a cloud rank exists", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+
+    expect((await screen.findAllByText("Preloaded User")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText("150").length).toBeGreaterThan(0));
+    expect(getLocalLeaderboardState).toHaveBeenCalled();
+    expect(getUsageSummary).toHaveBeenCalledWith(expect.objectContaining({
+      from: "1970-01-01",
+      sources: undefined,
+      timeZone: "Asia/Shanghai",
+    }));
   });
 
   it("keeps matching cache visible under React StrictMode without render-time consumption", () => {
@@ -551,7 +602,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
   });
 
-  it("clears the visible rows instead of rendering stale data when switching to an uncached context", async () => {
+  it("clears stale public rows but keeps the signed-in local row for an uncached context", async () => {
     const user = userEvent.setup();
     const totalContextKey = getLeaderboardPreloadContextKey({
       accessMode: "cloud",
@@ -571,7 +622,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
 
     expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
-    expect(screen.getByTestId("leaderboard-skeleton")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(copy("leaderboard.rank_pending"))).toBeInTheDocument());
+    expect(screen.queryByTestId("leaderboard-skeleton")).not.toBeInTheDocument();
   });
 
   it("offers four periods and the three approved ranking metrics", async () => {

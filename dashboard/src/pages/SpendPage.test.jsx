@@ -709,7 +709,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     for (const [params] of getSpendTimeseries.mock.calls) {
       expect(params).toHaveProperty("timeZone");
       expect(params).toHaveProperty("tzOffsetMinutes");
-      expect(params).not.toHaveProperty("sources");
+      expect(params).toHaveProperty("sources", ["claude", "codex", "hermes", "other_ai"]);
     }
   });
 
