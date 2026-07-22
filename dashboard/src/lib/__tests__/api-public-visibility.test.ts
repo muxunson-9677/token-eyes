@@ -7,11 +7,12 @@ const { getInsforgeAnonKeyMock, getInsforgeRemoteUrlMock, getInsforgeFunctionsUr
 }));
 
 const { buildLocalApiUrlMock, getLocalApiAuthHeadersMock } = vi.hoisted(() => ({
-  buildLocalApiUrlMock: vi.fn(async (path: string) => `http://127.0.0.1:7681/functions/${path}`),
+  buildLocalApiUrlMock: vi.fn(async (path: string) => new URL(path, "http://127.0.0.1:7681").toString()),
   getLocalApiAuthHeadersMock: vi.fn(async () => ({
     "x-tokentracker-local-auth": "local-token",
   })),
 }));
+const tauriRuntime = vi.hoisted(() => ({ enabled: false }));
 
 vi.mock("../insforge-config", () => ({
   getInsforgeAnonKey: getInsforgeAnonKeyMock,
@@ -21,7 +22,7 @@ vi.mock("../insforge-config", () => ({
 
 vi.mock("../local-api-url", () => ({
   buildLocalApiUrl: buildLocalApiUrlMock,
-  isTauriRuntime: () => true,
+  isTauriRuntime: () => tauriRuntime.enabled,
 }));
 
 vi.mock("../local-api-auth", () => ({
@@ -63,6 +64,7 @@ describe("public visibility API", () => {
     getInsforgeFunctionsUrlMock.mockReturnValue("https://example.function2.insforge.app");
     buildLocalApiUrlMock.mockClear();
     getLocalApiAuthHeadersMock.mockClear();
+    tauriRuntime.enabled = false;
   });
 
   it("reads visibility through the public visibility edge function", async () => {
@@ -244,7 +246,9 @@ describe("public visibility API", () => {
 
 describe("leaderboard API", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+    tauriRuntime.enabled = false;
     getInsforgeRemoteUrlMock.mockReset();
     getInsforgeRemoteUrlMock.mockReturnValue("https://example.insforge.app");
     getInsforgeFunctionsUrlMock.mockReset();
@@ -267,6 +271,8 @@ describe("leaderboard API", () => {
       "https://example.function2.insforge.app/tokentracker-leaderboard?period=today&metric=tokens&source=codex&limit=20&offset=40",
     );
     expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
+    expect((options.headers as Record<string, string>).apikey).toBeUndefined();
+    expect((options.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
     expect(options.signal).toBeDefined();
   });
 
@@ -285,5 +291,85 @@ describe("leaderboard API", () => {
     expect(result.entries.length).toBeGreaterThan(0);
     expect(result.me).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the cached local proxy first in the Tauri desktop runtime", async () => {
+    tauriRuntime.enabled = true;
+    const payload = { entries: [{ rank: 1, display_name: "Desktop Cache" }] };
+    const fetchMock = mockJsonFetch(payload);
+
+    await expect(getLeaderboard({
+      period: "total",
+      source: "all",
+      metric: "tokens",
+      limit: 20,
+      offset: 0,
+    })).resolves.toEqual(payload);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-public?period=total&metric=tokens&source=all&limit=20&offset=0",
+    );
+  });
+
+  it("uses the public snapshot fallback when the edge function stalls", async () => {
+    vi.useFakeTimers();
+    const directRows = [{
+      rank: 1,
+      total_tokens: "1234",
+      estimated_cost_usd: "1.23",
+      actual_cost_usd: null,
+      source_breakdown: [],
+      display_name: "Fast Fallback",
+      avatar_url: null,
+      github_url: null,
+      pricing_version: "pricing-v1",
+      generated_at: "2026-07-22T08:00:00.000Z",
+    }];
+    const fetchMock = vi.fn((url: string, options: RequestInit = {}) => {
+      if (url.startsWith("https://example.function2.insforge.app/")) {
+        return new Promise((_, reject) => {
+          options.signal?.addEventListener("abort", () => {
+            reject(options.signal?.reason || new Error("signal is aborted without reason"));
+          }, { once: true });
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: (name: string) => name.toLowerCase() === "content-range" ? "0-0/1" : null },
+        json: async () => directRows,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = getLeaderboard({
+      period: "total",
+      source: "all",
+      metric: "tokens",
+      limit: 20,
+      offset: 0,
+    });
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(request).resolves.toMatchObject({
+      entries: directRows,
+      period: "total",
+      metric: "tokens",
+      source: "all",
+      total_entries: 1,
+      total_pages: 1,
+    });
+    const directCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/api/database/records/tokentracker_leaderboard_snapshots_v2"),
+    );
+    expect(directCall).toBeTruthy();
+    expect(String(directCall?.[0])).not.toContain("user_id");
+    expect(directCall?.[1]?.headers).toMatchObject({
+      apikey: "anon-key",
+      Authorization: "Bearer anon-key",
+      Prefer: "count=exact",
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
   });
 });

@@ -67,6 +67,13 @@ const AVATAR_PROXY_MAX_BYTES = 512 * 1024; // 512 KiB per image
 const AVATAR_PROXY_MAX_ENTRIES = 64;
 const avatarProxyCache = new Map();
 
+const LEADERBOARD_PUBLIC_UPSTREAM = "https://a62b9nf2.function2.insforge.app/tokentracker-leaderboard";
+const LEADERBOARD_PUBLIC_DATABASE = "https://a62b9nf2.ap-southeast.insforge.app";
+const LEADERBOARD_PUBLIC_ANON_KEY =
+  "anon_13e8a5d6400e9b50912a5c3612f3480ba06edbd2c331e84e5fbdf5fd16d3d381";
+const LEADERBOARD_PUBLIC_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const leaderboardPublicCache = new Map();
+
 // Request-usage-records list cache: avoids rebuilding/sorting the full capped
 // record set on every page request. Keyed by filters + queue mtime; TTL-bound.
 const REQUEST_USAGE_RECORDS_CACHE_TTL_MS = 60_000;
@@ -4972,6 +4979,152 @@ function createLocalApiHandler({
             ? "Compact leaderboard state exceeds the local size limit"
             : "Unable to build leaderboard state",
         }, error instanceof RangeError ? 413 : 500);
+      }
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-leaderboard-public") {
+      if (!hasAllowedLoopbackOrigin(req?.headers || {})) {
+        json(res, { ok: false, error: "Forbidden" }, 403);
+        return true;
+      }
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+
+      const allowedPeriods = new Set(["today", "week", "month", "total"]);
+      const allowedMetrics = new Set(["tokens", "estimated_spend", "actual_cost"]);
+      const allowedSources = new Set([
+        "all", "codex", "claude", "gemini", "cursor", "opencode", "openclaw",
+        "hermes", "kiro", "copilot", "kimi", "every-code", "other",
+      ]);
+      const dimension = (name, allowed, fallback) => {
+        const value = String(url.searchParams.get(name) || "").trim().toLowerCase();
+        return allowed.has(value) ? value : fallback;
+      };
+      const period = dimension("period", allowedPeriods, "total");
+      const metric = dimension("metric", allowedMetrics, "tokens");
+      const source = metric === "actual_cost"
+        ? "all"
+        : dimension("source", allowedSources, "all");
+      const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit")) || 20));
+      const offset = Math.max(0, Math.min(100_000, Number(url.searchParams.get("offset")) || 0));
+      const upstream = new URL(LEADERBOARD_PUBLIC_UPSTREAM);
+      for (const [key, value] of Object.entries({ period, metric, source, limit, offset })) {
+        upstream.searchParams.set(key, String(value));
+      }
+      const cacheKey = upstream.toString();
+      const cached = leaderboardPublicCache.get(cacheKey);
+      const writeResponse = (body, cacheStatus) => {
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Cache-Control": "private, max-age=60",
+          "X-Leaderboard-Cache": cacheStatus,
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET",
+        });
+        res.end(JSON.stringify(body));
+      };
+      if (cached && Date.now() - cached.fetchedAt < LEADERBOARD_PUBLIC_CACHE_TTL_MS) {
+        writeResponse(cached.body, "HIT");
+        return true;
+      }
+
+      try {
+        const fetchEdge = async () => {
+          const upstreamResponse = await fetch(cacheKey, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            signal: AbortSignal.timeout(5_000),
+          });
+          if (!upstreamResponse.ok) throw new Error(`Upstream ${upstreamResponse.status}`);
+          return upstreamResponse.json();
+        };
+        const fetchSnapshot = async () => {
+          const snapshotUrl = new URL(
+            `${LEADERBOARD_PUBLIC_DATABASE}/api/database/records/tokentracker_leaderboard_snapshots_v2`,
+          );
+          snapshotUrl.searchParams.set(
+            "select",
+            "rank,total_tokens,estimated_cost_usd,actual_cost_usd,source_breakdown,display_name,avatar_url,github_url,pricing_version,generated_at",
+          );
+          snapshotUrl.searchParams.set("period", `eq.${period}`);
+          snapshotUrl.searchParams.set("metric", `eq.${metric}`);
+          snapshotUrl.searchParams.set("source", `eq.${source}`);
+          snapshotUrl.searchParams.set("is_public", "eq.true");
+          snapshotUrl.searchParams.set("order", "rank.asc");
+          snapshotUrl.searchParams.set("offset", String(offset));
+          snapshotUrl.searchParams.set("limit", String(limit));
+          const snapshotResponse = await fetch(snapshotUrl.toString(), {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              apikey: LEADERBOARD_PUBLIC_ANON_KEY,
+              Authorization: `Bearer ${LEADERBOARD_PUBLIC_ANON_KEY}`,
+              Prefer: "count=exact",
+            },
+            signal: AbortSignal.timeout(5_000),
+          });
+          if (!snapshotResponse.ok) throw new Error(`Snapshot ${snapshotResponse.status}`);
+          const rows = await snapshotResponse.json();
+          if (!Array.isArray(rows)) throw new Error("Invalid leaderboard snapshot");
+          const range = snapshotResponse.headers.get("content-range") || "";
+          const totalMatch = range.match(/\/(\d+)$/u);
+          const totalEntries = totalMatch ? Number(totalMatch[1]) : rows.length;
+          return {
+            entries: rows,
+            period,
+            metric,
+            source,
+            limit,
+            offset,
+            total_entries: totalEntries,
+            total_pages: Math.ceil(totalEntries / limit),
+            generated_at: typeof rows[0]?.generated_at === "string" ? rows[0].generated_at : null,
+          };
+        };
+        const body = await new Promise((resolve, reject) => {
+          let settled = false;
+          let snapshotStarted = false;
+          let failures = 0;
+          let pending = 1;
+          const succeed = (value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(snapshotTimer);
+            resolve(value);
+          };
+          const fail = (error) => {
+            failures += 1;
+            pending -= 1;
+            if (!snapshotStarted) {
+              clearTimeout(snapshotTimer);
+              startSnapshot();
+              return;
+            }
+            if (!settled && pending === 0) reject(error || new Error(`${failures} leaderboard requests failed`));
+          };
+          const startSnapshot = () => {
+            if (settled || snapshotStarted) return;
+            snapshotStarted = true;
+            pending += 1;
+            Promise.resolve().then(fetchSnapshot).then(succeed, fail);
+          };
+          const snapshotTimer = setTimeout(startSnapshot, 100);
+          Promise.resolve().then(fetchEdge).then(succeed, fail);
+        });
+        if (!body || typeof body !== "object" || !Array.isArray(body.entries)) {
+          throw new Error("Invalid leaderboard response");
+        }
+        leaderboardPublicCache.set(cacheKey, { body, fetchedAt: Date.now() });
+        writeResponse(body, "MISS");
+      } catch (_error) {
+        if (cached) {
+          writeResponse(cached.body, "STALE");
+        } else {
+          json(res, { ok: false, error: "Public leaderboard is temporarily unavailable" }, 502);
+        }
       }
       return true;
     }

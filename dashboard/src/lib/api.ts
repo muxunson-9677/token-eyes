@@ -688,6 +688,7 @@ async function fetchInsforgeFunction(slug: string, options: {
   params?: AnyRecord;
   body?: unknown;
   timeoutMs?: number;
+  publicSimpleRequest?: boolean;
 } = {}) {
   const baseUrl = options.baseUrl || getInsforgeFunctionsUrl();
   if (!baseUrl) throw new Error("InsForge base URL not configured");
@@ -700,10 +701,10 @@ async function fetchInsforgeFunction(slug: string, options: {
   }
   const headers: Record<string, string> = {
     Accept: "application/json",
-    "Content-Type": "application/json",
   };
+  if (!options.publicSimpleRequest) headers["Content-Type"] = "application/json";
   const anonKey = getInsforgeAnonKey();
-  if (anonKey) headers.apikey = anonKey;
+  if (anonKey && !options.publicSimpleRequest) headers.apikey = anonKey;
   // Only attach Authorization if the token is a well-formed JWT. InsForge's
   // platform gateway validates the JWT before user code runs and returns
   // HTTP 500 (JWSError) for any malformed value 鈥?which would break
@@ -715,7 +716,11 @@ async function fetchInsforgeFunction(slug: string, options: {
 
   const timeoutMs = Math.max(500, Math.min(30_000, Number(options.timeoutMs) || 10_000));
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => {
+    const error = new Error(`Request timed out after ${timeoutMs}ms`);
+    error.name = "TimeoutError";
+    controller.abort(error);
+  }, timeoutMs);
   let res;
   try {
     res = await fetch(url.toString(), {
@@ -735,6 +740,201 @@ async function fetchInsforgeFunction(slug: string, options: {
   return res.json();
 }
 
+const LEADERBOARD_HEDGE_DELAY_MS = 100;
+const LEADERBOARD_SAFE_PERIODS = new Set(["today", "week", "month", "total"]);
+const LEADERBOARD_SAFE_METRICS = new Set(["tokens", "estimated_spend", "actual_cost"]);
+const LEADERBOARD_SAFE_SOURCES = new Set([
+  "all", "codex", "claude", "gemini", "cursor", "opencode", "openclaw",
+  "hermes", "kiro", "copilot", "kimi", "every-code", "other",
+]);
+const LEADERBOARD_STALE_AFTER_MS: Record<string, number> = {
+  today: 30 * 60_000,
+  week: 30 * 60_000,
+  month: 2 * 60 * 60_000,
+  total: 26 * 60 * 60_000,
+};
+
+function safeLeaderboardDimension(value: unknown, allowed: Set<string>, fallback: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return allowed.has(normalized) ? normalized : fallback;
+}
+
+function leaderboardShanghaiRange(period: string) {
+  if (period === "total") return { from: null, to: null };
+  const shifted = new Date(Date.now() + 8 * 60 * 60_000);
+  const year = shifted.getUTCFullYear();
+  const month = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+  const current = new Date(Date.UTC(year, month, day));
+  if (period === "today") {
+    const value = current.toISOString().slice(0, 10);
+    return { from: value, to: value };
+  }
+  if (period === "month") {
+    return {
+      from: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10),
+      to: new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10),
+    };
+  }
+  const mondayOffset = (current.getUTCDay() + 6) % 7;
+  const from = new Date(current);
+  from.setUTCDate(from.getUTCDate() - mondayOffset);
+  const to = new Date(from);
+  to.setUTCDate(to.getUTCDate() + 6);
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+}
+
+function exactCountFromRange(value: string | null, fallback: number) {
+  const match = String(value || "").match(/\/(\d+)$/);
+  return match ? Number(match[1]) : fallback;
+}
+
+async function fetchLeaderboardSnapshotDatabase({
+  period,
+  metric,
+  source,
+  limit,
+  offset,
+  timeoutMs,
+}: AnyRecord) {
+  const safePeriod = safeLeaderboardDimension(period, LEADERBOARD_SAFE_PERIODS, "today");
+  const safeMetric = safeLeaderboardDimension(metric, LEADERBOARD_SAFE_METRICS, "tokens");
+  const requestedSource = safeLeaderboardDimension(source, LEADERBOARD_SAFE_SOURCES, "all");
+  const safeSource = safeMetric === "actual_cost" ? "all" : requestedSource;
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+  const safeOffset = Math.max(0, Math.min(100_000, Number(offset) || 0));
+  const root = getInsforgeRemoteUrl().replace(/\/$/, "");
+  const anonKey = getInsforgeAnonKey();
+  if (!root || !anonKey) throw new Error("InsForge public database is not configured");
+
+  const url = new URL(`${root}/api/database/records/tokentracker_leaderboard_snapshots_v2`);
+  url.searchParams.set(
+    "select",
+    "rank,total_tokens,estimated_cost_usd,actual_cost_usd,source_breakdown,display_name,avatar_url,github_url,pricing_version,generated_at",
+  );
+  url.searchParams.set("period", `eq.${safePeriod}`);
+  url.searchParams.set("metric", `eq.${safeMetric}`);
+  url.searchParams.set("source", `eq.${safeSource}`);
+  url.searchParams.set("is_public", "eq.true");
+  url.searchParams.set("order", "rank.asc");
+  url.searchParams.set("offset", String(safeOffset));
+  url.searchParams.set("limit", String(safeLimit));
+
+  const controller = new AbortController();
+  const boundedTimeout = Math.max(500, Math.min(30_000, Number(timeoutMs) || 2_500));
+  const timeoutId = setTimeout(() => {
+    const error = new Error(`Leaderboard request timed out after ${boundedTimeout}ms`);
+    error.name = "TimeoutError";
+    controller.abort(error);
+  }, boundedTimeout);
+  let response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        Prefer: "count=exact",
+      },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (!response.ok) {
+    const error: any = new Error(`Request failed with HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  const entries = await response.json();
+  const rows = Array.isArray(entries) ? entries : [];
+  const totalEntries = exactCountFromRange(response.headers.get("content-range"), rows.length);
+  const generatedAt = typeof rows[0]?.generated_at === "string" ? rows[0].generated_at : null;
+  const pricingVersion = typeof rows[0]?.pricing_version === "string" ? rows[0].pricing_version : null;
+  const generatedMs = generatedAt ? Date.parse(generatedAt) : Number.NaN;
+  const range = leaderboardShanghaiRange(safePeriod);
+  return {
+    entries: rows,
+    period: safePeriod,
+    metric: safeMetric,
+    source: safeSource,
+    limit: safeLimit,
+    offset: safeOffset,
+    total_entries: totalEntries,
+    total_pages: Math.ceil(totalEntries / safeLimit),
+    from: range.from,
+    to: range.to,
+    generated_at: generatedAt,
+    pricing_version: pricingVersion,
+    stale: !Number.isFinite(generatedMs)
+      || Date.now() - generatedMs > LEADERBOARD_STALE_AFTER_MS[safePeriod],
+  };
+}
+
+async function fetchLocalLeaderboardPublic({
+  period,
+  metric,
+  source,
+  limit,
+  offset,
+}: AnyRecord) {
+  const url = new URL(await buildLocalApiUrl("/functions/tokentracker-leaderboard-public"));
+  for (const [key, value] of Object.entries({ period, metric, source, limit, offset })) {
+    if (value != null && value !== "") url.searchParams.set(key, String(value));
+  }
+  const response = await fetchLocalApi(url.toString(), {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!response.ok) throw await buildErrorFromResponse(response);
+  return response.json();
+}
+
+function hedgedLeaderboardRequest(
+  primary: () => Promise<any>,
+  fallback: () => Promise<any>,
+  hedgeDelayMs = LEADERBOARD_HEDGE_DELAY_MS,
+) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let fallbackStarted = false;
+    let pending = 1;
+    const errors: any[] = [];
+
+    const succeed = (value: any) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(fallbackTimer);
+      resolve(value);
+    };
+    const fail = (error: any) => {
+      errors.push(error);
+      pending -= 1;
+      if (!fallbackStarted) {
+        clearTimeout(fallbackTimer);
+        startFallback();
+        return;
+      }
+      if (!settled && pending === 0) {
+        settled = true;
+        reject(errors.find((item) => item?.name !== "AbortError") || errors[0]);
+      }
+    };
+    const startFallback = () => {
+      if (settled || fallbackStarted) return;
+      fallbackStarted = true;
+      pending += 1;
+      Promise.resolve().then(fallback).then(succeed, fail);
+    };
+
+    const fallbackTimer = setTimeout(startFallback, hedgeDelayMs);
+    Promise.resolve().then(primary).then(succeed, fail);
+  });
+}
+
 export async function getLeaderboard({
   baseUrl,
   period,
@@ -749,11 +949,23 @@ export async function getLeaderboard({
     return getMockLeaderboard({ period, metric, source, limit, offset });
   }
   const publicBaseUrl = String(baseUrl || getInsforgeFunctionsUrl()).replace(/\/$/, "");
-  return fetchInsforgeFunction("tokentracker-leaderboard", {
-    baseUrl: publicBaseUrl,
-    params: { period, metric, source, limit, offset },
-    timeoutMs,
-  });
+  const remoteRequest = () => hedgedLeaderboardRequest(
+    () => fetchInsforgeFunction("tokentracker-leaderboard", {
+      baseUrl: publicBaseUrl,
+      params: { period, metric, source, limit, offset },
+      timeoutMs,
+      publicSimpleRequest: true,
+    }),
+    () => fetchLeaderboardSnapshotDatabase({ period, metric, source, limit, offset, timeoutMs }),
+  );
+  if (isTauriRuntime()) {
+    return hedgedLeaderboardRequest(
+      () => fetchLocalLeaderboardPublic({ period, metric, source, limit, offset }),
+      remoteRequest,
+      2_000,
+    );
+  }
+  return remoteRequest();
 }
 
 export async function getMyLeaderboardRank({
@@ -901,7 +1113,7 @@ export async function refreshLeaderboardActualCost({
 
 export async function getLocalLeaderboardActualCost() {
   const [url, authHeaders] = await Promise.all([
-    buildLocalApiUrl("tokentracker-leaderboard-actual-cost"),
+    buildLocalApiUrl("/functions/tokentracker-leaderboard-actual-cost"),
     getLocalApiAuthHeaders(),
   ]);
   const response = await fetch(url, {

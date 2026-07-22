@@ -5,6 +5,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getLeaderboardPreloadContextKey,
+  preloadLeaderboardDefaultState,
   publishLeaderboardPreloadState,
   readLeaderboardPreloadState,
   resetDashboardPreload,
@@ -235,6 +236,22 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.queryByText("999,999")).not.toBeInTheDocument();
   });
 
+  it("uses the authenticated page account when the SDK user omits its id", async () => {
+    insforgeAuthMock.user = { email: "local@example.com" };
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", {
+      auth: {
+        getAccessToken: () => Promise.resolve("test-token"),
+        name: "Local User",
+        userId: "user-1",
+      },
+    });
+
+    await waitFor(() => expect(screen.getAllByText("150").length).toBeGreaterThan(0));
+    expect(screen.getAllByText(copy("leaderboard.me_label")).length).toBeGreaterThan(0);
+  });
+
   it("keeps matching cache visible under React StrictMode without render-time consumption", () => {
     const contextKey = getLeaderboardPreloadContextKey({
       accessMode: "cloud",
@@ -301,7 +318,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
     await waitFor(() => {
-      expect(screen.getByText(/network down/i)).toBeInTheDocument();
+      expect(screen.getByText(copy("leaderboard.error.network"))).toBeInTheDocument();
     });
     expect(screen.queryByTestId("leaderboard-skeleton")).not.toBeInTheDocument();
     expect(readLeaderboardPreloadState(contextKey)).toMatchObject({ data: preloadedData });
@@ -319,10 +336,60 @@ describe("LeaderboardPage window-session cache reuse", () => {
     renderLeaderboard();
 
     await waitFor(() => {
-      expect(screen.getByText(/network down/i)).toBeInTheDocument();
+      expect(screen.getByText(copy("leaderboard.error.network"))).toBeInTheDocument();
     });
     expect(screen.queryByTestId("leaderboard-skeleton")).not.toBeInTheDocument();
     expect(readLeaderboardPreloadState(contextKey)).toBeNull();
+  });
+
+  it("hides raw abort errors and lets the user retry the public list", async () => {
+    const user = userEvent.setup();
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    getLeaderboard
+      .mockRejectedValueOnce(new Error("signal is aborted without reason"))
+      .mockResolvedValueOnce(preloadedData);
+
+    renderLeaderboard("/leaderboard", { signedIn: false });
+
+    const retry = await screen.findByRole("button", { name: copy("leaderboard.retry") });
+    expect(screen.queryByText(/signal is aborted without reason/i)).not.toBeInTheDocument();
+    expect(screen.getByText(copy("leaderboard.error.network"))).toBeInTheDocument();
+
+    await user.click(retry);
+
+    await waitFor(() => {
+      expect(getLeaderboard).toHaveBeenCalledTimes(2);
+      expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("reuses a matching in-flight preload instead of starting a duplicate request", async () => {
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    let resolveLeaderboard;
+    getLeaderboard.mockReturnValue(new Promise((resolve) => {
+      resolveLeaderboard = resolve;
+    }));
+
+    const preload = preloadLeaderboardDefaultState({
+      accessMode: "public",
+      baseUrl: "https://edge.example",
+      signedIn: false,
+    });
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(1));
+
+    renderLeaderboard("/leaderboard", { signedIn: false });
+    expect(getLeaderboard).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveLeaderboard(preloadedData);
+      await preload;
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
+      expect(getLeaderboard).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("keeps the existing loading path when the preload context does not match the page defaults", () => {

@@ -120,6 +120,8 @@
   "leaderboard.rank_pending": "待更新",
   "leaderboard.anon_label": "匿名",
   "leaderboard.error.unknown": "未知错误",
+  "leaderboard.error.network": "排行榜暂时无法连接，请检查网络后重试",
+  "leaderboard.retry": "重新加载",
   "leaderboard.loading": "加载中…",
   "leaderboard.empty": "暂无数据",
   "leaderboard.column.rank": "排名",

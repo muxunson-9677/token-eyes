@@ -48,6 +48,7 @@ import {
   getLeaderboardPreloadContextKey,
   publishLeaderboardPreloadState,
   readLeaderboardPreloadState,
+  readPendingLeaderboardPreloadState,
 } from "../lib/dashboard-preload.js";
 import { LeaderboardAvatar } from "../components/LeaderboardAvatar.jsx";
 
@@ -196,6 +197,9 @@ function normalizeLeaderboardError(err) {
   if (!err) return copy("shared.error.prefix", { error: copy("leaderboard.error.unknown") });
   const msg = err?.message || String(err);
   const safe = String(msg || "").trim() || copy("leaderboard.error.unknown");
+  if (/abort|failed to fetch|fetch failed|network|timed?\s*out/i.test(safe)) {
+    return copy("leaderboard.error.network");
+  }
   return copy("shared.error.prefix", { error: safe });
 }
 
@@ -555,7 +559,9 @@ export function LeaderboardPage({
       });
     }
     (async () => {
-      const data = await getLeaderboard({
+      const pendingPreload = readPendingLeaderboardPreloadState(leaderboardPreloadContextKey);
+      const preloadedEntry = pendingPreload ? await pendingPreload : null;
+      const data = preloadedEntry?.data ?? await getLeaderboard({
         baseUrl: leaderboardBaseUrl,
         metric,
         period,
@@ -688,7 +694,13 @@ export function LeaderboardPage({
 
   useEffect(() => {
     let active = true;
-    if (!cloudSignedIn || !cloudUser?.id) {
+    const pageAccountId =
+      (typeof cloudUser?.id === "string" && cloudUser.id.trim())
+      || (authAccessToken && typeof authAccessToken === "object"
+        && typeof authAccessToken.userId === "string" && authAccessToken.userId.trim())
+      || (typeof me?.user_id === "string" && me.user_id.trim())
+      || "";
+    if (!cloudSignedIn || !pageAccountId) {
       setLocalMe(null);
       return () => {
         active = false;
@@ -710,7 +722,7 @@ export function LeaderboardPage({
       }
 
       let actualCostUsd = null;
-      const shareActualCost = getLeaderboardSyncState(cloudUser.id).shareActualCost === true;
+      const shareActualCost = getLeaderboardSyncState(pageAccountId).shareActualCost === true;
       if (effectiveSource === "all" && (metric === "actual_cost" || shareActualCost)) {
         try {
           const actualCosts = await getLocalLeaderboardActualCost();
@@ -720,14 +732,17 @@ export function LeaderboardPage({
         }
       }
 
-      const metadata = cloudUser.user_metadata && typeof cloudUser.user_metadata === "object"
+      const metadata = cloudUser?.user_metadata && typeof cloudUser.user_metadata === "object"
         ? cloudUser.user_metadata
         : {};
       const localRow = buildLocalLeaderboardRow(localState, {
         period,
         source: effectiveSource,
-        userId: cloudUser.id,
-        displayName: cloudDisplayName || copy("leaderboard.me_label"),
+        userId: pageAccountId,
+        displayName: cloudDisplayName
+          || (authAccessToken && typeof authAccessToken === "object" ? authAccessToken.name : "")
+          || me?.display_name
+          || copy("leaderboard.me_label"),
         avatarUrl: metadata.avatar_url || metadata.picture || null,
         estimatedCostUsd,
         actualCostUsd,
@@ -739,7 +754,18 @@ export function LeaderboardPage({
     return () => {
       active = false;
     };
-  }, [cloudDisplayName, cloudSignedIn, cloudUser, effectiveSource, metric, period, syncRevision]);
+  }, [
+    authAccessToken,
+    cloudDisplayName,
+    cloudSignedIn,
+    cloudUser,
+    effectiveSource,
+    me?.display_name,
+    me?.user_id,
+    metric,
+    period,
+    syncRevision,
+  ]);
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
@@ -790,6 +816,13 @@ export function LeaderboardPage({
     listBody = (
       <div className="px-6 py-12 text-center">
         <p className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>
+        <button
+          type="button"
+          onClick={() => setSyncRevision((value) => value + 1)}
+          className="mt-4 inline-flex h-9 items-center justify-center rounded-lg border border-oai-gray-200 px-4 text-sm font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+        >
+          {copy("leaderboard.retry")}
+        </button>
       </div>
     );
   } else if (hasEntries) {

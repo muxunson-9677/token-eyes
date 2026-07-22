@@ -343,6 +343,8 @@ leaderboard.me_label,dashboard,LeaderboardPage,LeaderboardPage,me_label,"You",,a
 leaderboard.rank_pending,dashboard,LeaderboardPage,LeaderboardPage,rank_pending,"Pending",,active
 leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"Anonymous",,active
 leaderboard.error.unknown,dashboard,LeaderboardPage,LeaderboardPage,error_unknown,"Unknown error",,active
+leaderboard.error.network,dashboard,LeaderboardPage,LeaderboardPage,error_network,"Leaderboard is temporarily unavailable. Check your connection and try again.",,active
+leaderboard.retry,dashboard,LeaderboardPage,LeaderboardPage,retry,"Reload",,active
 leaderboard.loading,dashboard,LeaderboardPage,LeaderboardPage,state_loading,"Loading…",,active
 leaderboard.empty,dashboard,LeaderboardPage,LeaderboardPage,state_empty,"No data",,active
 leaderboard.column.rank,dashboard,LeaderboardPage,LeaderboardPage,column_rank,"Rank",,active

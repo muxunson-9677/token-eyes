@@ -381,6 +381,21 @@ export function readLeaderboardPreloadState(contextKey) {
   return readReusablePageState("leaderboard", contextKey);
 }
 
+export function readPendingLeaderboardPreloadState(contextKey) {
+  const target = session.targets.leaderboard;
+  if (
+    target.stateStatus !== "pending"
+    || !target.statePromise
+    || target.pendingStateContextKey !== contextKey
+  ) {
+    return null;
+  }
+  return target.statePromise.then((entry) => {
+    if (entry?.status === "fulfilled") return entry;
+    throw new Error(target.error || "leaderboard-preload-failed");
+  });
+}
+
 export function getLeaderboardPreloadPageSize() {
   if (typeof window === "undefined") return LEADERBOARD_DEFAULT_PAGE_SIZE;
   try {
