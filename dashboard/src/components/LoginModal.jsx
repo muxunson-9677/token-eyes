@@ -7,7 +7,7 @@ import { LoginCard } from "./LoginCard.jsx";
 import { copy } from "../lib/copy";
 
 export function LoginModal() {
-  const { isOpen, closeLoginModal } = useLoginModal();
+  const { isOpen, options, closeLoginModal } = useLoginModal();
   const { enabled } = useInsforgeAuth();
 
   // Handle Escape key
@@ -60,7 +60,11 @@ export function LoginModal() {
             </button>
 
             {/* LoginCard Form */}
-            <LoginCard onSuccess={closeLoginModal} className="p-6 bg-transparent" />
+            <LoginCard
+              emailOnly={options?.emailOnly === true}
+              onSuccess={closeLoginModal}
+              className="p-6 bg-transparent"
+            />
             <div className="mx-6 mb-6 rounded-lg bg-oai-gray-50 px-4 py-3 text-xs leading-relaxed text-oai-gray-500 dark:bg-oai-gray-900 dark:text-oai-gray-400">
               <p>{copy("login_modal.leaderboard_participation")}</p>
               <p className="mt-1">{copy("login_modal.upload_boundary")}</p>

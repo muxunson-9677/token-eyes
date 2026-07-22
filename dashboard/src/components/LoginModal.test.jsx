@@ -4,16 +4,24 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { LoginModal } from "./LoginModal.jsx";
 import { copy } from "../lib/copy";
 
+const modalFixture = vi.hoisted(() => ({
+  options: { emailOnly: true },
+}));
+
 vi.mock("../contexts/InsforgeAuthContext.jsx", () => ({
   useInsforgeAuth: () => ({ enabled: true }),
 }));
 
 vi.mock("../contexts/LoginModalContext.jsx", () => ({
-  useLoginModal: () => ({ isOpen: true, closeLoginModal: vi.fn() }),
+  useLoginModal: () => ({
+    isOpen: true,
+    closeLoginModal: vi.fn(),
+    options: modalFixture.options,
+  }),
 }));
 
 vi.mock("./LoginCard.jsx", () => ({
-  LoginCard: () => <div data-testid="login-card" />,
+  LoginCard: ({ emailOnly }) => <div data-testid="login-card" data-email-only={String(Boolean(emailOnly))} />,
 }));
 
 beforeEach(() => {
@@ -30,6 +38,7 @@ it("renders voluntary leaderboard login inside the local Tauri desktop app", () 
   render(<LoginModal />);
 
   expect(screen.getByTestId("login-card")).toBeInTheDocument();
+  expect(screen.getByTestId("login-card")).toHaveAttribute("data-email-only", "true");
 });
 
 it("discloses automatic leaderboard participation and the upload boundary", () => {

@@ -17,6 +17,8 @@ export interface InsforgeAuthValue {
   signInWithOAuth: (provider: string, redirectToOverride?: string) => Promise<any>;
   signInWithPassword: (request: any) => Promise<any>;
   signUp: (request: any) => Promise<any>;
+  verifyEmail: (request: any) => Promise<any>;
+  resendVerificationEmail: (request: any) => Promise<any>;
   getPublicAuthConfig: () => Promise<any>;
   signOut: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;

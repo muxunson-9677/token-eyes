@@ -11,6 +11,7 @@ import {
 } from "../lib/dashboard-preload.js";
 import { getLeaderboard, getMyLeaderboardRank } from "../lib/api";
 import { runCloudUsageSyncNow } from "../lib/cloud-sync";
+import { copy } from "../lib/copy";
 import { LeaderboardPage } from "./LeaderboardPage.jsx";
 
 const openLoginModalMock = vi.hoisted(() => vi.fn());
@@ -354,7 +355,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     ).toMatchObject({ data: publicData });
   });
 
-  it("uses only GitHub login for leaderboard participation without opening the generic login modal", async () => {
+  it("opens the focused email modal for leaderboard participation", async () => {
     const user = userEvent.setup();
     insforgeAuthMock.signedIn = false;
     insforgeAuthMock.user = null;
@@ -362,19 +363,16 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard", { signedIn: false });
 
-    const button = await screen.findByRole("button", { name: "GitHub 登录" });
+    const button = await screen.findByRole("button", { name: "邮箱登录并参与排行榜" });
     expect(openLoginModalMock).not.toHaveBeenCalled();
-    expect(screen.queryByText(/邮箱|手机号|密码/)).not.toBeInTheDocument();
 
     await user.click(button);
 
-    expect(signInWithOAuthMock).toHaveBeenCalledWith(
-      "github",
-      expect.stringMatching(/\/leaderboard$/),
-    );
+    expect(openLoginModalMock).toHaveBeenCalledWith({ emailOnly: true });
+    expect(signInWithOAuthMock).not.toHaveBeenCalled();
   });
 
-  it("states clearly when the GitHub provider is not configured", async () => {
+  it("keeps email participation available when GitHub is not configured", async () => {
     insforgeAuthMock.signedIn = false;
     insforgeAuthMock.user = null;
     getPublicAuthConfigMock.mockResolvedValue({
@@ -385,9 +383,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard", { signedIn: false });
 
-    const button = await screen.findByRole("button", { name: "GitHub 登录服务尚未配置" });
-    expect(button).toBeDisabled();
+    const button = await screen.findByRole("button", { name: "邮箱登录并参与排行榜" });
+    expect(button).toBeEnabled();
     expect(signInWithOAuthMock).not.toHaveBeenCalled();
+    expect(getPublicAuthConfigMock).not.toHaveBeenCalled();
   });
 
   it("keeps developer direct login hidden in ordinary builds", async () => {
@@ -410,7 +409,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard", { signedIn: false });
 
-    const oauthPlaceholder = await screen.findByRole("button", { name: "GitHub 登录（占位）" });
+    const oauthPlaceholder = await screen.findByRole("button", { name: copy("leaderboard.developer_preview.wechat_placeholder") });
     expect(oauthPlaceholder).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "开发者直登" }));
 
@@ -441,7 +440,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
   });
 
-  it("uses the native callback relay for GitHub login inside the macOS app", async () => {
+  it("uses the same focused email modal inside the native app", async () => {
     const user = userEvent.setup();
     insforgeAuthMock.signedIn = false;
     insforgeAuthMock.user = null;
@@ -449,12 +448,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
     getLeaderboard.mockResolvedValue(preloadedData);
 
     renderLeaderboard("/leaderboard", { signedIn: false });
-    await user.click(await screen.findByRole("button", { name: "GitHub 登录" }));
+    await user.click(await screen.findByRole("button", { name: "邮箱登录并参与排行榜" }));
 
-    expect(signInWithOAuthMock).toHaveBeenCalledWith(
-      "github",
-      expect.stringMatching(/\/auth\/callback$/),
-    );
+    expect(openLoginModalMock).toHaveBeenCalledWith({ emailOnly: true });
+    expect(signInWithOAuthMock).not.toHaveBeenCalled();
   });
 
   it("reuses matching cache again after remounting in the same window session", () => {

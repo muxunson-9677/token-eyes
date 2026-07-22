@@ -1,11 +1,22 @@
-import { describe, expect, it, vi } from "vitest";
+import React from "react";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../lib/insforge-config", () => ({
-  getOrCreateInsforgeClient: () => null,
-  isCloudInsforgeConfigured: () => false,
+const authFixture = vi.hoisted(() => ({
+  configured: false,
+  client: null,
 }));
 
-import { resolveInsforgeClientAccessToken } from "../InsforgeAuthContext.jsx";
+vi.mock("../../lib/insforge-config", () => ({
+  getOrCreateInsforgeClient: async () => authFixture.client,
+  isCloudInsforgeConfigured: () => authFixture.configured,
+}));
+
+import {
+  InsforgeAuthProvider,
+  resolveInsforgeClientAccessToken,
+  useInsforgeAuth,
+} from "../InsforgeAuthContext.jsx";
 
 function makeJwt(expSeconds) {
   const encode = (value) =>
@@ -100,5 +111,49 @@ describe("resolveInsforgeClientAccessToken", () => {
 
     await expect(resolveInsforgeClientAccessToken(client)).resolves.toBe(accessToken);
     expect(client.auth.getCurrentUser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("InsforgeAuthProvider email verification", () => {
+  beforeEach(() => {
+    authFixture.configured = true;
+    authFixture.client = {
+      auth: {
+        getCurrentUser: vi.fn(async () => ({ data: { user: null }, error: null })),
+        verifyEmail: vi.fn(async () => ({
+          data: { user: { id: "verified-user", email: "person@example.com" }, accessToken: "token" },
+          error: null,
+        })),
+        resendVerificationEmail: vi.fn(async () => ({ data: {}, error: null })),
+      },
+    };
+  });
+
+  it("verifies the six-digit signup code and stores the returned user", async () => {
+    const wrapper = ({ children }) => <InsforgeAuthProvider>{children}</InsforgeAuthProvider>;
+    const { result } = renderHook(() => useInsforgeAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.verifyEmail({ email: "person@example.com", otp: "123456" });
+    });
+
+    expect(authFixture.client.auth.verifyEmail).toHaveBeenCalledWith({
+      email: "person@example.com",
+      otp: "123456",
+    });
+    await waitFor(() => expect(result.current.user?.id).toBe("verified-user"));
+  });
+
+  it("resends the signup verification email through InsForge", async () => {
+    const wrapper = ({ children }) => <InsforgeAuthProvider>{children}</InsforgeAuthProvider>;
+    const { result } = renderHook(() => useInsforgeAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await result.current.resendVerificationEmail({ email: "person@example.com" });
+
+    expect(authFixture.client.auth.resendVerificationEmail).toHaveBeenCalledWith({
+      email: "person@example.com",
+    });
   });
 });

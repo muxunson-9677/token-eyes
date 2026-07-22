@@ -52,6 +52,7 @@ export function LoginCard({
   tokenFromUrl = "",
   initialEmail = "",
   initialCode = "",
+  emailOnly = false,
 }) {
   useLocale();
   const {
@@ -60,6 +61,8 @@ export function LoginCard({
     refreshUser,
     signInWithPassword,
     signUp,
+    verifyEmail,
+    resendVerificationEmail,
     signInWithOAuth,
     getPublicAuthConfig,
     sendResetPasswordEmail,
@@ -77,10 +80,11 @@ export function LoginCard({
   const [error, setError] = useState(null);
   const [banner, setBanner] = useState(null);
   const [complete, setComplete] = useState(false);
-  const [emailExpanded, setEmailExpanded] = useState(initialMode !== "signin" || initialEmail ? true : false);
+  const [emailExpanded, setEmailExpanded] = useState(emailOnly || initialMode !== "signin" || Boolean(initialEmail));
   const [configLoading, setConfigLoading] = useState(true);
   const [oauthProviders, setOauthProviders] = useState([]);
   const [passwordMinLength, setPasswordMinLength] = useState(8);
+  const [verifyEmailMethod, setVerifyEmailMethod] = useState("link");
 
   // Sync initial state if they change externally (useful when ResetPasswordPage updates props)
   useEffect(() => {
@@ -111,6 +115,9 @@ export function LoginCard({
         setOauthProviders([...providers, ...custom]);
         if (typeof data.passwordMinLength === "number" && data.passwordMinLength > 0) {
           setPasswordMinLength(data.passwordMinLength);
+        }
+        if (data.verifyEmailMethod === "code" || data.verifyEmailMethod === "link") {
+          setVerifyEmailMethod(data.verifyEmailMethod);
         }
       }
       setConfigLoading(false);
@@ -153,7 +160,7 @@ export function LoginCard({
 
   // Auto-trigger OAuth when opened with ?native=1&provider=xxx
   useEffect(() => {
-    if (!enabled || configLoading || signedIn) return;
+    if (!enabled || configLoading || signedIn || emailOnly) return;
     if (typeof window === "undefined") return;
     const search = window.location.search;
     if (!search) return;
@@ -166,7 +173,7 @@ export function LoginCard({
         handleOAuth(autoProvider);
       }
     }
-  }, [enabled, configLoading, signedIn, oauthProviders, handleOAuth]);
+  }, [enabled, configLoading, signedIn, oauthProviders, handleOAuth, emailOnly]);
 
   const handleEmailAuth = useCallback(async (e) => {
     e.preventDefault();
@@ -184,8 +191,15 @@ export function LoginCard({
           return;
         }
         if (data?.requireEmailVerification) {
-          setBanner(copy("login.verify_email_pending"));
-          setMode("signin");
+          setPassword("");
+          if (verifyEmailMethod === "code") {
+            setCode("");
+            setBanner(null);
+            setMode("verify_email");
+          } else {
+            setBanner(copy("login.verify_email_pending"));
+            setMode("signin");
+          }
           return;
         }
         await refreshUser();
@@ -200,7 +214,41 @@ export function LoginCard({
     } finally {
       setBusy(false);
     }
-  }, [mode, email, password, name, signUp, signInWithPassword, refreshUser]);
+  }, [mode, email, password, name, signUp, signInWithPassword, refreshUser, verifyEmailMethod]);
+
+  const handleVerifyEmail = useCallback(async (e) => {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      const { error: verifyError } = await verifyEmail({
+        email: email.trim(),
+        otp: code.trim(),
+      });
+      if (verifyError) {
+        setError(verifyError.message || String(verifyError));
+        return;
+      }
+      await refreshUser();
+    } finally {
+      setBusy(false);
+    }
+  }, [code, email, refreshUser, verifyEmail]);
+
+  const handleResendVerification = useCallback(async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const { error: resendError } = await resendVerificationEmail({ email: email.trim() });
+      if (resendError) {
+        setError(resendError.message || String(resendError));
+        return;
+      }
+      setBanner(copy("login.verify_email_resent"));
+    } finally {
+      setBusy(false);
+    }
+  }, [email, resendVerificationEmail]);
 
   const handleResetRequest = useCallback(
     async (e) => {
@@ -273,11 +321,12 @@ export function LoginCard({
   if (!enabled) return null;
 
   const isResetMode = mode === "reset_email" || mode === "reset_confirm";
+  const isVerificationMode = mode === "verify_email";
 
   return (
     <div className={cn("w-full bg-white dark:bg-oai-gray-950 p-6 transition-colors duration-200", className)}>
       {/* Back Button for reset flows */}
-      {isResetMode && (
+      {(isResetMode || isVerificationMode) && (
         <button
           type="button"
           onClick={() => {
@@ -287,6 +336,7 @@ export function LoginCard({
             setComplete(false);
             setPassword("");
             setConfirmPassword("");
+            setCode("");
           }}
           className="flex items-center gap-1.5 text-xs font-medium text-oai-gray-500 hover:text-oai-black dark:hover:text-white transition-colors mb-4 focus:outline-none"
         >
@@ -296,8 +346,8 @@ export function LoginCard({
       )}
 
       {/* Header */}
-      <div className={cn("mb-6", isResetMode ? "text-left" : "text-center")}>
-        {!hideLogo && !isResetMode && (
+      <div className={cn("mb-6", (isResetMode || isVerificationMode) ? "text-left" : "text-center")}>
+        {!hideLogo && !isResetMode && !isVerificationMode && (
           <div className="flex items-center justify-center gap-2 mb-2">
             <img src="/app-icon.png" alt="" width={28} height={28} className="rounded-md" />
             <span className="text-lg font-semibold text-oai-black dark:text-white font-oai tracking-tight">
@@ -307,9 +357,13 @@ export function LoginCard({
         )}
         <h2 className={cn(
           "text-sm font-semibold text-oai-black dark:text-white tracking-tight mb-1",
-          (hideLogo || isResetMode) && "text-base font-bold md:text-lg"
+          (hideLogo || isResetMode || isVerificationMode) && "text-base font-bold md:text-lg"
         )}>
-          {isResetMode ? copy("reset_password.title") : (title || copy("login_modal.subtitle"))}
+          {isResetMode
+            ? copy("reset_password.title")
+            : isVerificationMode
+              ? copy("login.verify_email_title")
+              : (title || copy("login_modal.subtitle"))}
         </h2>
         {!isResetMode && subtitle && (
           <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400 mt-1.5 leading-relaxed max-w-[320px] mx-auto">
@@ -323,10 +377,15 @@ export function LoginCard({
               : copy("reset_password.subtitle")}
           </p>
         )}
+        {isVerificationMode && (
+          <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400 mt-1.5 leading-relaxed max-w-[320px]">
+            {copy("login.verify_email_description", { email: email.trim() })}
+          </p>
+        )}
       </div>
 
       {/* Banner */}
-      {banner && (!isResetMode || complete) && (
+      {banner && ((!isResetMode && !isVerificationMode) || complete || isVerificationMode) && (
         <div className="mb-4 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-oai-gray-50 dark:bg-oai-gray-900/50 px-3 py-2 text-xs text-oai-gray-700 dark:text-oai-gray-300">
           {banner}
         </div>
@@ -458,11 +517,49 @@ export function LoginCard({
         )
       )}
 
+      {isVerificationMode && (
+        <form onSubmit={handleVerifyEmail} className="space-y-3">
+          <div>
+            <label htmlFor="card-verify-code" className="block text-xs font-medium text-oai-gray-500 mb-1">
+              {copy("login.verify_email_code")}
+            </label>
+            <input
+              id="card-verify-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+              minLength={6}
+              maxLength={6}
+              pattern="[0-9]{6}"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="w-full h-10 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-oai-gray-50 dark:bg-oai-gray-900 px-3 text-sm text-oai-black dark:text-white placeholder-oai-gray-400 dark:placeholder-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand-500"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={busy || code.length !== 6}
+            className="w-full h-10 rounded-lg bg-oai-gray-900 dark:bg-white text-white dark:text-oai-gray-950 text-sm font-semibold hover:bg-oai-gray-800 dark:hover:bg-oai-gray-100 transition-colors disabled:opacity-50"
+          >
+            {copy("login.verify_email_submit")}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={handleResendVerification}
+            className="w-full text-xs font-medium text-oai-gray-500 hover:text-oai-black dark:hover:text-white disabled:opacity-50"
+          >
+            {copy("login.verify_email_resend")}
+          </button>
+        </form>
+      )}
+
       {/* Render normal signin/signup flows */}
-      {!isResetMode && (
+      {!isResetMode && !isVerificationMode && (
         <>
           {/* OAuth buttons */}
-          <div className="space-y-2.5 mb-5">
+          {!emailOnly && <div className="space-y-2.5 mb-5">
             {configLoading ? (
               <div className="space-y-2.5">
                 <div className="h-10 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-900/50 animate-pulse" />
@@ -486,12 +583,12 @@ export function LoginCard({
                 </button>
               ))
             )}
-          </div>
+          </div>}
 
           {/* Email section */}
           {!emailExpanded ? (
             <>
-              <div className="relative mb-5">
+              {!emailOnly && <div className="relative mb-5">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-oai-gray-200 dark:border-oai-gray-800" />
                 </div>
@@ -500,7 +597,7 @@ export function LoginCard({
                     {copy("login.divider")}
                   </span>
                 </div>
-              </div>
+              </div>}
               <button
                 type="button"
                 onClick={() => setEmailExpanded(true)}

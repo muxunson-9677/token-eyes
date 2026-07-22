@@ -214,6 +214,24 @@ export function InsforgeAuthProvider({ children }) {
     [client],
   );
 
+  const verifyEmail = useCallback(
+    async (request) => {
+      if (!client) return { data: null, error: new Error("InsForge client not configured") };
+      const { data, error } = await client.auth.verifyEmail(request);
+      if (data?.user) setUser(data.user);
+      return { data, error };
+    },
+    [client],
+  );
+
+  const resendVerificationEmail = useCallback(
+    async (request) => {
+      if (!client) return { data: null, error: new Error("InsForge client not configured") };
+      return client.auth.resendVerificationEmail(request);
+    },
+    [client],
+  );
+
   const sendResetPasswordEmail = useCallback(
     async (request) => {
       if (!client) return { data: null, error: new Error("InsForge client not configured") };
@@ -309,6 +327,8 @@ export function InsforgeAuthProvider({ children }) {
         signInWithOAuth: async () => ({ error: new Error("InsForge not configured") }),
         signInWithPassword: async () => ({ data: null, error: new Error("InsForge not configured") }),
         signUp: async () => ({ data: null, error: new Error("InsForge not configured") }),
+        verifyEmail: async () => ({ data: null, error: new Error("InsForge not configured") }),
+        resendVerificationEmail: async () => ({ data: null, error: new Error("InsForge not configured") }),
         sendResetPasswordEmail: async () => ({ data: null, error: new Error("InsForge not configured") }),
         exchangeResetPasswordToken: async () => ({ data: null, error: new Error("InsForge not configured") }),
         resetPassword: async () => ({ data: null, error: new Error("InsForge not configured") }),
@@ -329,6 +349,8 @@ export function InsforgeAuthProvider({ children }) {
       signInWithOAuth,
       signInWithPassword,
       signUp,
+      verifyEmail,
+      resendVerificationEmail,
       sendResetPasswordEmail,
       exchangeResetPasswordToken,
       resetPassword,
@@ -346,6 +368,8 @@ export function InsforgeAuthProvider({ children }) {
     signInWithOAuth,
     signInWithPassword,
     signUp,
+    verifyEmail,
+    resendVerificationEmail,
     sendResetPasswordEmail,
     exchangeResetPasswordToken,
     resetPassword,

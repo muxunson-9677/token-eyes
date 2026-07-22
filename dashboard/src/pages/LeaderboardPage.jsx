@@ -3,6 +3,7 @@ import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
 import { motion } from "motion/react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
+import { useLoginModal } from "../contexts/LoginModalContext.jsx";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
 import { resolveAuthAccessTokenWithRetry } from "../lib/auth-token";
 import { copy } from "../lib/copy";
@@ -364,9 +365,8 @@ export function LeaderboardPage({
     enabled: cloudAuthEnabled,
     signedIn: cloudSignedIn,
     loading: authLoading,
-    signInWithOAuth,
-    getPublicAuthConfig,
   } = useInsforgeAuth();
+  const { openLoginModal } = useLoginModal();
   const { currency, rate } = useCurrency();
   const leaderboardBaseUrl = useMemo(() => getLeaderboardBaseUrl(), []);
   const mockEnabled = isMockEnabled();
@@ -407,10 +407,6 @@ export function LeaderboardPage({
       // ignore
     }
   }, []);
-  const [oauthLoginBusy, setOauthLoginBusy] = useState(false);
-  const [oauthLoginError, setOauthLoginError] = useState(false);
-  const [oauthProviderAvailable, setOauthProviderAvailable] = useState(null);
-
   const period = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
     return normalizeLeaderboardPeriod(params.get("period") || LEADERBOARD_DEFAULT_PERIOD);
@@ -425,35 +421,6 @@ export function LeaderboardPage({
   }, [location?.search]);
   const effectiveSource = metric === "actual_cost" ? "all" : source;
 
-  useEffect(() => {
-    if (leaderboardMockEnabled || cloudSignedIn || developerLoginEnabled) return undefined;
-    if (!cloudAuthEnabled || typeof getPublicAuthConfig !== "function") {
-      setOauthProviderAvailable(false);
-      return undefined;
-    }
-    let active = true;
-    setOauthProviderAvailable(null);
-    (async () => {
-      try {
-        const { data, error } = await getPublicAuthConfig();
-        if (!active) return;
-        if (error || !data) {
-          setOauthProviderAvailable(false);
-          return;
-        }
-        const builtIn = Array.isArray(data.oAuthProviders) ? data.oAuthProviders : [];
-        const custom = Array.isArray(data.customOAuthProviders) ? data.customOAuthProviders : [];
-        setOauthProviderAvailable([...builtIn, ...custom].includes("github"));
-      } catch {
-        if (!active) return;
-        setOauthProviderAvailable(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [cloudAuthEnabled, cloudSignedIn, developerLoginEnabled, getPublicAuthConfig, leaderboardMockEnabled]);
-
   const handleDimensionChange = (key, value) => {
     const current = key === "period" ? period : key === "metric" ? metric : source;
     if (value === current) return;
@@ -463,21 +430,10 @@ export function LeaderboardPage({
     navigate(`${location?.pathname || "/leaderboard"}?${params.toString()}`, { replace: true });
   };
 
-  const handleOauthSignIn = useCallback(async () => {
-    if (!cloudAuthEnabled || oauthProviderAvailable !== true || oauthLoginBusy) return;
-    setOauthLoginBusy(true);
-    setOauthLoginError(false);
-    try {
-      const isNativeOAuth = Boolean(window.webkit?.messageHandlers?.nativeOAuth);
-      const redirectTo = `${window.location.origin}${isNativeOAuth ? "/auth/callback" : "/leaderboard"}`;
-      const result = await signInWithOAuth("github", redirectTo);
-      if (result?.error) throw result.error;
-    } catch {
-      setOauthLoginError(true);
-    } finally {
-      setOauthLoginBusy(false);
-    }
-  }, [cloudAuthEnabled, oauthLoginBusy, oauthProviderAvailable, signInWithOAuth]);
+  const handleEmailSignIn = useCallback(() => {
+    if (!cloudAuthEnabled) return;
+    openLoginModal({ emailOnly: true });
+  }, [cloudAuthEnabled, openLoginModal]);
 
   const handleDeveloperSignIn = useCallback(() => {
     const params = new URLSearchParams(location?.search || "");
@@ -956,24 +912,15 @@ export function LeaderboardPage({
                 <p className="text-oai-gray-500 dark:text-oai-gray-400">
                   {copy("leaderboard.signin_prompt")}
                 </p>
-                {oauthLoginError && (
-                  <p className="mt-1 text-red-500 dark:text-red-400" role="alert">
-                    {copy("leaderboard.signin_error")}
-                  </p>
-                )}
               </div>
               <button
-                onClick={handleOauthSignIn}
-                disabled={!cloudAuthEnabled || oauthProviderAvailable !== true || oauthLoginBusy}
+                onClick={handleEmailSignIn}
+                disabled={!cloudAuthEnabled}
                 className="shrink-0 whitespace-nowrap self-start sm:self-auto px-3 py-1.5 text-sm font-medium text-oai-gray-600 dark:text-oai-gray-300 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md hover:text-oai-black dark:hover:text-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
               >
-                {!cloudAuthEnabled || oauthProviderAvailable === false
+                {!cloudAuthEnabled
                   ? copy("leaderboard.signin_unavailable")
-                  : oauthProviderAvailable == null
-                    ? copy("leaderboard.signin_checking")
-                    : oauthLoginBusy
-                    ? copy("leaderboard.signin_busy")
-                    : copy("leaderboard.signin_button")}
+                  : copy("leaderboard.signin_button")}
               </button>
             </div>
           )}
