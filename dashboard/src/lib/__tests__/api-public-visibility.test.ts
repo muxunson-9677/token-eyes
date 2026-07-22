@@ -6,10 +6,26 @@ const { getInsforgeAnonKeyMock, getInsforgeRemoteUrlMock, getInsforgeFunctionsUr
   getInsforgeFunctionsUrlMock: vi.fn(() => "https://example.function2.insforge.app"),
 }));
 
+const { buildLocalApiUrlMock, getLocalApiAuthHeadersMock } = vi.hoisted(() => ({
+  buildLocalApiUrlMock: vi.fn(async (path: string) => `http://127.0.0.1:7681/functions/${path}`),
+  getLocalApiAuthHeadersMock: vi.fn(async () => ({
+    "x-tokentracker-local-auth": "local-token",
+  })),
+}));
+
 vi.mock("../insforge-config", () => ({
   getInsforgeAnonKey: getInsforgeAnonKeyMock,
   getInsforgeRemoteUrl: getInsforgeRemoteUrlMock,
   getInsforgeFunctionsUrl: getInsforgeFunctionsUrlMock,
+}));
+
+vi.mock("../local-api-url", () => ({
+  buildLocalApiUrl: buildLocalApiUrlMock,
+  isTauriRuntime: () => true,
+}));
+
+vi.mock("../local-api-auth", () => ({
+  getLocalApiAuthHeaders: getLocalApiAuthHeadersMock,
 }));
 
 import {
@@ -45,6 +61,8 @@ describe("public visibility API", () => {
     getInsforgeRemoteUrlMock.mockReturnValue("https://example.insforge.app");
     getInsforgeFunctionsUrlMock.mockReset();
     getInsforgeFunctionsUrlMock.mockReturnValue("https://example.function2.insforge.app");
+    buildLocalApiUrlMock.mockClear();
+    getLocalApiAuthHeadersMock.mockClear();
   });
 
   it("reads visibility through the public visibility edge function", async () => {
@@ -163,8 +181,14 @@ describe("public visibility API", () => {
       total: 4,
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "/functions/tokentracker-leaderboard-actual-cost",
+      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-actual-cost",
     );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: {
+        Accept: "application/json",
+        "x-tokentracker-local-auth": "local-token",
+      },
+    });
   });
 
   it("refreshes actual-cost amounts without enabling server consent", async () => {

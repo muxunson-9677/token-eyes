@@ -216,6 +216,25 @@ describe("LeaderboardPage window-session cache reuse", () => {
     }));
   });
 
+  it("keeps my displayed usage local while reusing only the cloud rank", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+    getMyLeaderboardRank.mockResolvedValue({
+      me: {
+        rank: 7,
+        user_id: "user-1",
+        display_name: "Cloud Me",
+        total_tokens: "999999",
+        estimated_cost_usd: 999,
+      },
+    });
+
+    renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+
+    await waitFor(() => expect(screen.getByText("7")).toBeInTheDocument());
+    expect(screen.getAllByText("150").length).toBeGreaterThan(0);
+    expect(screen.queryByText("999,999")).not.toBeInTheDocument();
+  });
+
   it("keeps matching cache visible under React StrictMode without render-time consumption", () => {
     const contextKey = getLeaderboardPreloadContextKey({
       accessMode: "cloud",
@@ -656,6 +675,28 @@ describe("LeaderboardPage window-session cache reuse", () => {
         offset: 0,
       });
     });
+  });
+
+  it("keeps metric buttons interactive while the public list refreshes", async () => {
+    const user = userEvent.setup();
+    getLeaderboard.mockReturnValue(new Promise(() => {}));
+
+    renderLeaderboard();
+
+    const actualCostButton = screen.getByRole("button", { name: copy("leaderboard.metric.actual_cost") });
+    expect(actualCostButton).not.toBeDisabled();
+    await user.click(actualCostButton);
+    expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("metric=actual_cost");
+  });
+
+  it("shows my local actual cost even when I have not chosen to publish it", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard?metric=actual_cost");
+
+    await waitFor(() => expect(getLocalLeaderboardActualCost).toHaveBeenCalled());
+    const scores = await screen.findAllByTestId("leaderboard-score");
+    expect(scores.some((score) => score.textContent === "$4.00")).toBe(true);
   });
 
   it("ignores legacy Agent query filters and keeps the new client on the overall board", async () => {

@@ -900,9 +900,13 @@ export async function refreshLeaderboardActualCost({
 }
 
 export async function getLocalLeaderboardActualCost() {
-  const response = await fetch("/functions/tokentracker-leaderboard-actual-cost", {
+  const [url, authHeaders] = await Promise.all([
+    buildLocalApiUrl("tokentracker-leaderboard-actual-cost"),
+    getLocalApiAuthHeaders(),
+  ]);
+  const response = await fetch(url, {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders },
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);

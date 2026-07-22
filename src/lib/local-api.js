@@ -413,6 +413,19 @@ function normalizeQueueRow(row) {
   return normalized;
 }
 
+function isKnownSyntheticOpenClawSmokeRow(row) {
+  return row?.source === "openclaw"
+    && row?.model === "gpt-5.3-codex"
+    && row?.hour_start === "2026-02-14T00:30:00.000Z"
+    && Number(row?.input_tokens) === 70
+    && Number(row?.output_tokens) === 30
+    && Number(row?.cached_input_tokens || 0) === 0
+    && Number(row?.cache_creation_input_tokens || 0) === 0
+    && Number(row?.reasoning_output_tokens || 0) === 0
+    && Number(row?.total_tokens) === 100
+    && Number(row?.conversation_count) === 1;
+}
+
 function readQueueData(queuePath) {
   const cacheKey = path.resolve(queuePath);
   const fingerprint = queueFileMtimeKey(cacheKey);
@@ -452,6 +465,10 @@ function readQueueData(queuePath) {
   // each (source, model, hour_start) keep only the latest (last) entry.
   const seen = new Map();
   for (const row of parsed) {
+    // A pre-release OpenClaw smoke check accidentally wrote this exact
+    // synthetic fixture to the default queue. Ignore only its full fingerprint;
+    // genuine OpenClaw history remains untouched.
+    if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
     const key = `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
     seen.set(key, normalizeQueueRow(row));
   }

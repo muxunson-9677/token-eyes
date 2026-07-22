@@ -710,7 +710,8 @@ export function LeaderboardPage({
       }
 
       let actualCostUsd = null;
-      if (effectiveSource === "all" && getLeaderboardSyncState(cloudUser.id).shareActualCost === true) {
+      const shareActualCost = getLeaderboardSyncState(cloudUser.id).shareActualCost === true;
+      if (effectiveSource === "all" && (metric === "actual_cost" || shareActualCost)) {
         try {
           const actualCosts = await getLocalLeaderboardActualCost();
           actualCostUsd = actualCosts?.[period] ?? null;
@@ -738,7 +739,7 @@ export function LeaderboardPage({
     return () => {
       active = false;
     };
-  }, [cloudDisplayName, cloudSignedIn, cloudUser, effectiveSource, period, syncRevision]);
+  }, [cloudDisplayName, cloudSignedIn, cloudUser, effectiveSource, metric, period, syncRevision]);
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
@@ -760,7 +761,13 @@ export function LeaderboardPage({
   );
   const displayEntries = useMemo(() => {
     const rows = Array.isArray(listData?.entries) ? listData.entries : [];
-    const displayedMe = me?.rank ? me : localMe || me;
+    const displayedMe = localMe
+      ? {
+        ...localMe,
+        rank: me?.rank ?? null,
+        is_local_pending: !me?.rank,
+      }
+      : me;
     return prependMeRowToPage({ entries: rows, me: displayedMe, meLabel });
   }, [listData?.entries, localMe, me, meLabel]);
 
@@ -924,7 +931,6 @@ export function LeaderboardPage({
                     <button
                       key={option.value}
                       onClick={() => handleDimensionChange("period", option.value)}
-                      disabled={currentListState.loading}
                       aria-pressed={isActive}
                       className={cn(
                         "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
@@ -952,7 +958,6 @@ export function LeaderboardPage({
                     <button
                       key={option.value}
                       onClick={() => handleDimensionChange("metric", option.value)}
-                      disabled={currentListState.loading}
                       aria-pressed={isActive}
                       className={cn(
                         "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",

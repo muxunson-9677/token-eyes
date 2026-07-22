@@ -98,7 +98,11 @@ export function buildLocalLeaderboardRow(response: LocalStateResponse, options: 
       || source === selectedSource
       || (selectedSource === "other" && !PUBLIC_SOURCE_FILTERS.has(source));
     if (!source || !selected) continue;
-    const total = row.slice(2, 7).reduce<bigint>((sum, value) => sum + tokenValue(value), 0n);
+    // Token Eyes' usage dashboard treats Codex/Every Code reasoning as an
+    // informational subset, while other providers include it in total usage.
+    // Keep the signed-in local leaderboard row on that same established basis.
+    const tokenEnd = source === "codex" || source === "every-code" ? 6 : 7;
+    const total = row.slice(2, tokenEnd).reduce<bigint>((sum, value) => sum + tokenValue(value), 0n);
     bySource.set(source, (bySource.get(source) || 0n) + total);
   }
 

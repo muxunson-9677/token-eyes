@@ -163,7 +163,10 @@ begin
         + grouped.output_tokens
         + grouped.cached_input_tokens
         + grouped.cache_creation_input_tokens
-        + grouped.reasoning_output_tokens
+        + case
+            when grouped.source in ('codex', 'every-code') then 0
+            else grouped.reasoning_output_tokens
+          end
       )::numeric(30,0) as total_tokens,
       (
         grouped.input_tokens * coalesce(pricing.input_usd_per_token, 0)

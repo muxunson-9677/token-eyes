@@ -7,6 +7,7 @@ const test = require("node:test");
 
 const DEVICE_SQL_PATH = path.resolve("scripts/ops/leaderboard-device-state.sql");
 const ACTUAL_COST_SQL_PATH = path.resolve("scripts/ops/leaderboard-actual-cost-state.sql");
+const REFRESH_SQL_PATH = path.resolve("scripts/ops/leaderboard-refresh-rpc.sql");
 
 function readSql(filePath) {
   return fs.readFileSync(filePath, "utf8").replace(/\s+/g, " ").toLowerCase();
@@ -139,4 +140,13 @@ test("cleanup RPC removes all leaderboard-owned data without deleting the auth u
   assert.match(combinedSql, /tokentracker_leaderboard_avatar_metadata/);
   assert.match(combinedSql, /where user_id = v_user_id/);
   assert.doesNotMatch(combinedSql, /delete from auth\.users/);
+});
+
+test("leaderboard refresh uses the same Codex token total basis as local usage statistics", () => {
+  const sql = readSql(REFRESH_SQL_PATH);
+
+  assert.match(
+    sql,
+    /case\s+when grouped\.source in \('codex', 'every-code'\) then 0\s+else grouped\.reasoning_output_tokens\s+end/i,
+  );
 });

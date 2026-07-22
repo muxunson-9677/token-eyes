@@ -171,3 +171,51 @@ test("rejects non-GET leaderboard state requests", async () => {
     error: "Method Not Allowed",
   });
 });
+
+test("does not publish the known pre-release OpenClaw smoke-test row", async () => {
+  const trackerDir = path.join(tmpHome, ".tokentracker", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  fs.mkdirSync(trackerDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(trackerDir, "config.json"),
+    JSON.stringify({ machineId: "stable-machine-id" }),
+  );
+  fs.writeFileSync(queuePath, [
+    {
+      source: "openclaw",
+      model: "gpt-5.3-codex",
+      hour_start: "2026-02-14T00:30:00.000Z",
+      input_tokens: 70,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 30,
+      reasoning_output_tokens: 0,
+      total_tokens: 100,
+      billable_total_tokens: 100,
+      conversation_count: 1,
+    },
+    {
+      source: "codex",
+      model: "gpt-5.4",
+      hour_start: "2026-02-14T01:00:00.000Z",
+      input_tokens: 10,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 5,
+      reasoning_output_tokens: 0,
+      total_tokens: 15,
+      billable_total_tokens: 15,
+      conversation_count: 1,
+    },
+  ].map((row) => JSON.stringify(row)).join("\n") + "\n");
+
+  delete require.cache[require.resolve("../src/lib/local-api")];
+  const { createLocalApiHandler } = require("../src/lib/local-api");
+  const handler = createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
+  const res = await call(handler);
+  const body = JSON.parse(res.body());
+
+  assert.deepEqual(body.state.periods.total, [
+    ["codex", "gpt-5.4", "10", "5", "0", "0", "0"],
+  ]);
+});
