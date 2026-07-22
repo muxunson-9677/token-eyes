@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 
 const { verifyCodexResetFeed } = require("../src/lib/codex-reset-feed");
 
-test("reset feed edge serves the committed signed envelope without secrets", () => {
+test("reset feed edge reads a private singleton and keeps a signed fallback", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../dashboard/edge-patches/tokentracker-codex-reset-feed.ts"),
     "utf8",
@@ -20,12 +20,16 @@ test("reset feed edge serves the committed signed envelope without secrets", () 
   );
 
   assert.match(source, /codex-reset-feed\.json/u);
-  assert.doesNotMatch(source, /API_KEY|JWT_SECRET|PRIVATE_KEY/u);
+  assert.match(source, /Deno\.env\.get\("API_KEY"\)/u);
+  assert.match(source, /tokentracker_codex_reset_feed_state/u);
+  assert.match(source, /\.eq\("singleton", true\)/u);
+  assert.match(source, /if-none-match/u);
+  assert.doesNotMatch(source, /SIGNING_KEY|PRIVATE_KEY/u);
   assert.deepEqual(verifyCodexResetFeed(envelope, {
     publicKey,
-    nowMs: Date.parse("2026-07-22T00:00:00.000Z"),
+    nowMs: Date.parse("2026-07-22T05:00:00.000Z"),
   }), {
-    generated_at: "2026-07-20T14:29:11.951Z",
+    generated_at: "2026-07-22T04:27:28.361Z",
     announcements: [],
   });
 });

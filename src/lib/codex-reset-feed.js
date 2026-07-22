@@ -8,6 +8,7 @@ const ALLOWED_OPENAI_HOSTS = new Set([
   "help.openai.com",
   "openai.com",
   "chatgpt.com",
+  "status.openai.com",
 ]);
 const X_AUTHORS = new Map([
   ["openai", "OpenAI"],

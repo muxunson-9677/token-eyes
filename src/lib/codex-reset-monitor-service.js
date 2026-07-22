@@ -7,15 +7,15 @@ const {
 } = require("./codex-reset-monitor");
 const { verifyCodexResetFeed } = require("./codex-reset-feed");
 
-const STARTUP_DELAY_MS = 30_000;
-const SUCCESS_INTERVAL_MS = 10 * 60_000;
-const FOCUS_FRESHNESS_MS = 5 * 60_000;
-const FEED_CACHE_MS = 30 * 60_000;
+const STARTUP_DELAY_MS = 10_000;
+const SUCCESS_INTERVAL_MS = 2 * 60_000;
+const FOCUS_FRESHNESS_MS = 60_000;
+const FEED_CACHE_MS = 5 * 60_000;
 const FEED_URL = "https://a62b9nf2.ap-southeast.insforge.app/functions/tokentracker-codex-reset-feed";
 const FAILURE_BACKOFF_MS = Object.freeze([
+  2 * 60_000,
   10 * 60_000,
   30 * 60_000,
-  2 * 60 * 60_000,
 ]);
 
 function emptyState() {

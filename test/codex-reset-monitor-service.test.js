@@ -70,10 +70,10 @@ function harness(reader, overrides = {}) {
 }
 
 test("uses the exact startup, success, freshness, and failure schedules", async () => {
-  assert.equal(STARTUP_DELAY_MS, 30_000);
-  assert.equal(SUCCESS_INTERVAL_MS, 10 * 60_000);
-  assert.equal(FOCUS_FRESHNESS_MS, 5 * 60_000);
-  assert.deepEqual(FAILURE_BACKOFF_MS, [10 * 60_000, 30 * 60_000, 2 * 60 * 60_000]);
+  assert.equal(STARTUP_DELAY_MS, 10_000);
+  assert.equal(SUCCESS_INTERVAL_MS, 2 * 60_000);
+  assert.equal(FOCUS_FRESHNESS_MS, 60_000);
+  assert.deepEqual(FAILURE_BACKOFF_MS, [2 * 60_000, 10 * 60_000, 30 * 60_000]);
 
   const reads = [];
   const h = harness(async () => {
@@ -91,12 +91,12 @@ test("uses the exact startup, success, freshness, and failure schedules", async 
   assert.equal(reads.length, 1);
 });
 
-test("signed feed uses a fixed URL, 30-minute cache, and conditional requests", async () => {
+test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", async () => {
   assert.equal(
     FEED_URL,
     "https://a62b9nf2.ap-southeast.insforge.app/functions/tokentracker-codex-reset-feed",
   );
-  assert.equal(FEED_CACHE_MS, 30 * 60_000);
+  assert.equal(FEED_CACHE_MS, 5 * 60_000);
   const keys = crypto.generateKeyPairSync("ed25519");
   const requests = [];
   const feedPayload = {
@@ -229,7 +229,7 @@ test("feed polling can be disabled independently", async () => {
   assert.equal(h.service.getStatus().last_successful_at, new Date(BASE).toISOString());
 });
 
-test("backs off 10, 30, then 120 minutes and caps there", async () => {
+test("backs off 2, 10, then 30 minutes and caps there", async () => {
   const h = harness(async () => {
     throw new Error("secret network detail");
   });

@@ -121,6 +121,14 @@ test("allows only exact official HTTPS links and matching X source metadata", ()
       source_url: "https://openai.com/index/introducing-codex/",
     }),
   ]), { nowMs: NOW }));
+  assert.doesNotThrow(() => validateCodexResetFeedPayload(payload([
+    announcement({
+      source_author: undefined,
+      source_post_id: undefined,
+      source_url: "https://status.openai.com/incidents/example",
+      official_url: "https://status.openai.com/",
+    }),
+  ]), { nowMs: NOW }));
 });
 
 test("rejects invalid generated timestamps and accepts an empty signed feed", () => {
