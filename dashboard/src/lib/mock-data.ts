@@ -519,11 +519,7 @@ function computeLeaderboardWindow(period: string) {
     const day = formatDateUTC(today);
     return { from: day, to: day };
   }
-  if (safe === "yesterday") {
-    const day = formatDateUTC(addUtcDays(today, -1));
-    return { from: day, to: day };
-  }
-  const days = safe === "30d" ? 30 : 7;
+  const days = safe === "month" ? 30 : 7;
   return {
     from: formatDateUTC(addUtcDays(today, -(days - 1))),
     to: formatDateUTC(today),
@@ -534,6 +530,7 @@ export function getMockLeaderboard({
   seed,
   period: rawPeriod,
   agent: rawAgent,
+  source: rawSource,
   metric,
   limit = 20,
   offset = 0,
@@ -542,7 +539,8 @@ export function getMockLeaderboard({
   const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20)));
   const safeOffset = Math.max(0, Math.min(10_000, Math.floor(Number(offset) || 0)));
   const safeMetric = normalizeLeaderboardMetric(metric);
-  const agent = normalizeLeaderboardAgent(rawAgent);
+  const agent = normalizeLeaderboardAgent(rawSource || rawAgent);
+  const source = agent;
   const period = normalizeLeaderboardPeriod(rawPeriod);
   const { from, to } = computeLeaderboardWindow(period);
   const totalEntries = 250;
@@ -620,8 +618,8 @@ export function getMockLeaderboard({
     const withCache = agentKey
       ? Number(entry[agentKey] || 0)
       : Math.floor(Number(entry.total_tokens || 0) * (0.01 + (hashString(agent) % 5) / 100));
-    if (safeMetric === "without_cache") return Math.max(0, Math.floor(withCache * 0.78));
-    if (safeMetric === "estimated_cost") return (withCache / 1_000_000) * 4;
+    if (safeMetric === "estimated_spend") return (withCache / 1_000_000) * 4;
+    if (safeMetric === "actual_cost") return (withCache / 1_000_000) * 4.5;
     return withCache;
   };
 
@@ -648,6 +646,7 @@ export function getMockLeaderboard({
       total_tokens: String(entry.total_tokens),
       without_cache_tokens: String(Math.floor(entry.total_tokens * 0.78)),
       estimated_cost_usd: Number(((entry.total_tokens / 1_000_000) * 4).toFixed(6)),
+      actual_cost_usd: Number(((entry.total_tokens / 1_000_000) * 4.5).toFixed(6)),
       score: String(scoreFor(entry)),
       is_public: Boolean(entry.is_public),
     }));
@@ -698,6 +697,7 @@ export function getMockLeaderboard({
   return {
     period,
     agent,
+    source,
     metric: safeMetric,
     from,
     to,

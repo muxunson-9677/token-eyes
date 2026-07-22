@@ -692,12 +692,12 @@ function SortableTokenPlanCard({
             </button>
           </div>
           {isCodexSource(record.source) && (
-            <>
-              <CodexQuotaBlock codexData={usageLimits?.codex} loading={loadingUsageLimits} />
-              <CodexResetMonitorStatus status={codexResetStatus} onCheckNow={onCheckCodexResetNow} />
-            </>
+            <CodexQuotaBlock codexData={usageLimits?.codex} loading={loadingUsageLimits} />
           )}
         </div>
+      )}
+      {isCodexSource(record.source) && (
+        <CodexResetMonitorStatus status={codexResetStatus} onCheckNow={onCheckCodexResetNow} />
       )}
     </div>
   );

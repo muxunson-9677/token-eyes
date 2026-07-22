@@ -89,7 +89,10 @@ test("offline generation is deterministic, sorted, and never calls fetch", () =>
     const firstSql = fs.readFileSync(firstPath, "utf8");
     const secondSql = fs.readFileSync(secondPath, "utf8");
     assert.equal(firstSql, secondSql);
-    assert.equal(firstSql, fs.readFileSync(SQL_PATH, "utf8"));
+    assert.equal(
+      firstSql.replace(/\r\n/g, "\n"),
+      fs.readFileSync(SQL_PATH, "utf8").replace(/\r\n/g, "\n"),
+    );
 
     const keys = [...firstSql.matchAll(/^\s*\('((?:''|[^'])+)'/gm)]
       .map((match) => match[1].replace(/''/g, "'"));

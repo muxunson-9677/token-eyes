@@ -2,20 +2,19 @@ import { DASHBOARD_AGENTS } from "./agent-adapters-dashboard";
 
 export const LEADERBOARD_DEFAULT_PERIOD = "total";
 export const LEADERBOARD_DEFAULT_AGENT = "all";
-export const LEADERBOARD_DEFAULT_METRIC = "with_cache";
+export const LEADERBOARD_DEFAULT_METRIC = "tokens";
 
 export const LEADERBOARD_PERIODS = Object.freeze([
   "today",
-  "yesterday",
-  "7d",
-  "30d",
+  "week",
+  "month",
   "total",
 ]);
 
 export const LEADERBOARD_METRICS = Object.freeze([
-  "with_cache",
-  "without_cache",
-  "estimated_cost",
+  "tokens",
+  "estimated_spend",
+  "actual_cost",
 ]);
 
 const AGENT_LABELS = new Map(
@@ -28,8 +27,8 @@ export const LEADERBOARD_AGENTS = Object.freeze(
 
 export function normalizeLeaderboardPeriod(value) {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (normalized === "week") return "7d";
-  if (normalized === "month") return "30d";
+  if (normalized === "7d") return "week";
+  if (normalized === "30d") return "month";
   return LEADERBOARD_PERIODS.includes(normalized) ? normalized : LEADERBOARD_DEFAULT_PERIOD;
 }
 
@@ -43,6 +42,8 @@ export function normalizeLeaderboardAgent(value) {
 
 export function normalizeLeaderboardMetric(value) {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "with_cache" || normalized === "without_cache") return "tokens";
+  if (normalized === "estimated_cost") return "estimated_spend";
   return LEADERBOARD_METRICS.includes(normalized)
     ? normalized
     : LEADERBOARD_DEFAULT_METRIC;

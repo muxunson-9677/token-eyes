@@ -4,7 +4,7 @@ import { Select } from "../ui/components";
 import { motion } from "motion/react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
-import { isAccessTokenReady, resolveAuthAccessTokenWithRetry } from "../lib/auth-token";
+import { resolveAuthAccessTokenWithRetry } from "../lib/auth-token";
 import { copy } from "../lib/copy";
 import { formatChineseTokenCount } from "../lib/format";
 import { cn } from "../lib/cn";
@@ -21,6 +21,7 @@ import {
   LEADERBOARD_DEFAULT_AGENT,
   LEADERBOARD_DEFAULT_METRIC,
   LEADERBOARD_DEFAULT_PERIOD,
+  normalizeLeaderboardAgent,
   normalizeLeaderboardMetric,
   normalizeLeaderboardPeriod,
 } from "../lib/leaderboard-query.js";
@@ -31,15 +32,13 @@ import { isMockEnabled } from "../lib/mock-data";
 import { isDeveloperLeaderboardLoginEnabled } from "../lib/developer-leaderboard-preview.js";
 import {
   getLeaderboard,
-  refreshLeaderboard,
+  getMyLeaderboardRank,
 } from "../lib/api";
 import {
   getLeaderboardPreloadContextKey,
   publishLeaderboardPreloadState,
   readLeaderboardPreloadState,
 } from "../lib/dashboard-preload.js";
-import { getCloudSyncEnabled, setCloudSyncEnabled } from "../lib/cloud-sync-prefs";
-import { runCloudUsageSyncNow } from "../lib/cloud-sync";
 import { LeaderboardAvatar } from "../components/LeaderboardAvatar.jsx";
 
 const LeaderboardProfileModal = lazy(() =>
@@ -55,15 +54,23 @@ const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_STORAGE_KEY = "tokentracker:leaderboard:pageSize";
 const PERIOD_OPTIONS = [
   { value: "today", copyKey: "leaderboard.period.today" },
-  { value: "yesterday", copyKey: "leaderboard.period.yesterday" },
-  { value: "7d", copyKey: "leaderboard.period.7d" },
-  { value: "30d", copyKey: "leaderboard.period.30d" },
+  { value: "week", copyKey: "leaderboard.period.week" },
+  { value: "month", copyKey: "leaderboard.period.month" },
   { value: "total", copyKey: "leaderboard.period.total" },
 ];
 const METRIC_OPTIONS = [
-  { value: "with_cache", copyKey: "leaderboard.metric.with_cache" },
-  { value: "without_cache", copyKey: "leaderboard.metric.without_cache" },
-  { value: "estimated_cost", copyKey: "leaderboard.metric.estimated_cost" },
+  { value: "tokens", copyKey: "leaderboard.metric.tokens" },
+  { value: "estimated_spend", copyKey: "leaderboard.metric.estimated_spend" },
+  { value: "actual_cost", copyKey: "leaderboard.metric.actual_cost" },
+];
+const SOURCE_OPTIONS = [
+  { value: "all", copyKey: "leaderboard.source.all" },
+  { value: "codex", copyKey: "leaderboard.source.codex" },
+  { value: "claude", copyKey: "leaderboard.source.claude" },
+  { value: "cursor", copyKey: "leaderboard.source.cursor" },
+  { value: "gemini", copyKey: "leaderboard.source.gemini" },
+  { value: "opencode", copyKey: "leaderboard.source.opencode" },
+  { value: "other", copyKey: "leaderboard.source.other" },
 ];
 
 function readStoredPageSize() {
@@ -92,22 +99,46 @@ function TotalTokens({ value }) {
   return <span>{formatChineseTokenCount(value)}</span>;
 }
 
+function getUnpricedTokens(entry) {
+  const rows = Array.isArray(entry?.source_breakdown) ? entry.source_breakdown : [];
+  return rows.reduce((sum, row) => {
+    const value = Number(row?.unpriced_tokens);
+    return sum + (Number.isFinite(value) && value > 0 ? value : 0);
+  }, 0);
+}
+
 function RankingScore({ entry, metric, currency, rate }) {
-  let value;
-  if (metric === "estimated_cost") {
-    value = formatCost(entry?.score ?? entry?.estimated_cost_usd, currency, rate);
-  } else {
-    const fallback = metric === "without_cache"
-      ? entry?.without_cache_tokens ?? entry?.total_tokens
-      : entry?.total_tokens;
-    value = <TotalTokens value={entry?.score ?? fallback} />;
+  let value = <TotalTokens value={entry?.total_tokens} />;
+  if (metric === "estimated_spend") {
+    value = formatCost(entry?.estimated_cost_usd, currency, rate);
+    const unpricedTokens = getUnpricedTokens(entry);
+    if (unpricedTokens > 0) {
+      const totalTokens = Number(entry?.total_tokens);
+      const fullyUnpriced = Number.isFinite(totalTokens)
+        && Math.sign(totalTokens) === 1
+        && Math.sign(unpricedTokens - totalTokens) !== -1;
+      const labelKey = fullyUnpriced ? "ticket06.pricing.unpriced" : "ticket06.pricing.partial";
+      const hintKey = fullyUnpriced ? "ticket06.pricing.unpriced_hint" : "ticket06.pricing.partial_hint";
+      value = (
+        <span className="inline-flex flex-col items-end">
+          <span>{value}</span>
+          <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400" title={copy(hintKey)}>
+            {copy(labelKey)}
+          </span>
+        </span>
+      );
+    }
+  } else if (metric === "actual_cost") {
+    value = entry?.actual_cost_usd == null
+      ? copy("leaderboard.actual_cost.private")
+      : formatCost(entry.actual_cost_usd, currency, rate);
   }
   return <span data-testid="leaderboard-score">{value}</span>;
 }
 
 function AgentDistribution({ entry, metric, currency, rate }) {
   const items = normalizeAgentMetrics(entry, metric);
-  const usesCost = metric === "estimated_cost" && Object.prototype.hasOwnProperty.call(entry || {}, "agent_metrics");
+  const usesCost = metric !== "tokens" && Object.prototype.hasOwnProperty.call(entry || {}, "agent_metrics");
   if (items.length === 0) return <span className="text-oai-gray-400 dark:text-oai-gray-600">—</span>;
   return (
     <div
@@ -265,9 +296,9 @@ function LeaderboardEntryRow({
         }
       }
     : undefined;
-  const secondaryValue = metric === "estimated_cost"
-    ? formatChineseTokenCount(entry?.total_tokens)
-    : formatCost(entry?.estimated_cost_usd, currency, rate);
+  const secondaryValue = metric === "tokens"
+    ? formatCost(entry?.estimated_cost_usd, currency, rate)
+    : formatChineseTokenCount(entry?.total_tokens);
 
   return (
     <li
@@ -333,7 +364,6 @@ export function LeaderboardPage({
     enabled: cloudAuthEnabled,
     signedIn: cloudSignedIn,
     loading: authLoading,
-    user: cloudUser,
     signInWithOAuth,
     getPublicAuthConfig,
   } = useInsforgeAuth();
@@ -356,7 +386,6 @@ export function LeaderboardPage({
     return null;
   }, [auth, authTokenAllowed]);
   const effectiveAuthToken = authTokenAllowed ? authAccessToken : null;
-  const authTokenReady = authTokenAllowed && isAccessTokenReady(effectiveAuthToken);
 
   const placeholder = copy("shared.placeholder.short");
 
@@ -378,10 +407,6 @@ export function LeaderboardPage({
       // ignore
     }
   }, []);
-  const [listReloadToken, setListReloadToken] = useState(0);
-
-  const [cloudSyncOn, setCloudSyncOn] = useState(() => getCloudSyncEnabled());
-  const [syncing, setSyncing] = useState(false);
   const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
   const [wechatLoginError, setWechatLoginError] = useState(false);
   const [wechatProviderAvailable, setWechatProviderAvailable] = useState(null);
@@ -390,11 +415,15 @@ export function LeaderboardPage({
     const params = new URLSearchParams(location?.search || "");
     return normalizeLeaderboardPeriod(params.get("period") || LEADERBOARD_DEFAULT_PERIOD);
   }, [location?.search]);
-  const agent = LEADERBOARD_DEFAULT_AGENT;
   const metric = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
     return normalizeLeaderboardMetric(params.get("metric") || LEADERBOARD_DEFAULT_METRIC);
   }, [location?.search]);
+  const source = useMemo(() => {
+    const params = new URLSearchParams(location?.search || "");
+    return normalizeLeaderboardAgent(params.get("source") || LEADERBOARD_DEFAULT_AGENT);
+  }, [location?.search]);
+  const effectiveSource = metric === "actual_cost" ? "all" : source;
 
   useEffect(() => {
     if (leaderboardMockEnabled || cloudSignedIn || developerLoginEnabled) return undefined;
@@ -426,7 +455,7 @@ export function LeaderboardPage({
   }, [cloudAuthEnabled, cloudSignedIn, developerLoginEnabled, getPublicAuthConfig, leaderboardMockEnabled]);
 
   const handleDimensionChange = (key, value) => {
-    const current = key === "period" ? period : metric;
+    const current = key === "period" ? period : key === "metric" ? metric : source;
     if (value === current) return;
     const params = new URLSearchParams(location?.search || "");
     params.set(key, value);
@@ -467,7 +496,7 @@ export function LeaderboardPage({
 
   useEffect(() => {
     setListPage(1);
-  }, [agent, metric, period]);
+  }, [metric, period, source]);
 
   const listOffset = useMemo(() => {
     const safePage = clampInt(listPage, { min: 1, max: 1_000_000, fallback: 1 });
@@ -475,27 +504,24 @@ export function LeaderboardPage({
   }, [listPage, pageSize]);
   const leaderboardAccessMode = useMemo(() => {
     if (leaderboardMockEnabled) return "mock";
-    if (authLoading) return "unavailable";
     if (cloudSignedIn) return "cloud";
-    if (signedIn) return "local";
     if (leaderboardBaseUrl) return "public";
     return "unavailable";
-  }, [authLoading, cloudSignedIn, leaderboardBaseUrl, leaderboardMockEnabled, signedIn]);
+  }, [cloudSignedIn, leaderboardBaseUrl, leaderboardMockEnabled]);
 
   const leaderboardPreloadContextKey = useMemo(
     () =>
       getLeaderboardPreloadContextKey({
         accessMode: leaderboardAccessMode,
-        agent,
         baseUrl: leaderboardBaseUrl,
         metric,
         mockEnabled: leaderboardMockEnabled,
-        userId: cloudUser?.id || null,
         period,
+        source: effectiveSource,
         pageSize,
         offset: listOffset,
       }),
-    [agent, cloudUser?.id, leaderboardAccessMode, leaderboardBaseUrl, leaderboardMockEnabled, listOffset, metric, pageSize, period],
+    [effectiveSource, leaderboardAccessMode, leaderboardBaseUrl, leaderboardMockEnabled, listOffset, metric, pageSize, period],
   );
 
   const [listState, setListState] = useState(() => {
@@ -542,10 +568,9 @@ export function LeaderboardPage({
     (async () => {
       const data = await getLeaderboard({
         baseUrl: leaderboardBaseUrl,
-        agent,
-        userId: cloudUser?.id || null,
         metric,
         period,
+        source: effectiveSource,
         limit: pageSize,
         offset: listOffset,
         ...(developerPreviewActive ? { mock: true } : {}),
@@ -554,7 +579,7 @@ export function LeaderboardPage({
       publishLeaderboardPreloadState(data, {
         activeContextKey: leaderboardPreloadContextKey,
         contextKey: leaderboardPreloadContextKey,
-        source: listReloadToken > 0 ? "manual-refresh" : "page-load",
+        source: "page-load",
       });
       setListState({
         loading: false,
@@ -578,12 +603,10 @@ export function LeaderboardPage({
   }, [
     leaderboardBaseUrl,
     leaderboardAccessMode,
-    agent,
-    cloudUser?.id,
     developerPreviewActive,
+    effectiveSource,
     leaderboardPreloadContextKey,
     listOffset,
-    listReloadToken,
     leaderboardMockEnabled,
     metric,
     period,
@@ -619,12 +642,38 @@ export function LeaderboardPage({
     renderCachedState,
   ]);
   const listData = currentListState.data;
+  const [me, setMe] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!cloudSignedIn || !effectiveAuthToken) {
+      setMe(null);
+      return () => {
+        active = false;
+      };
+    }
+    (async () => {
+      const accessToken = await resolveAuthAccessTokenWithRetry(effectiveAuthToken);
+      if (!accessToken) return;
+      const result = await getMyLeaderboardRank({
+        accessToken,
+        period,
+        metric,
+        source: effectiveSource,
+      });
+      if (active) setMe(result?.me || null);
+    })().catch(() => {
+      if (active) setMe(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [cloudSignedIn, effectiveAuthToken, effectiveSource, metric, period]);
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
   const participantCount = listData?.participant_count ?? totalEntries;
-  const aggregateTotalTokens = listData?.aggregate_total_tokens
-    ?? (metric === "with_cache" ? listData?.total_score : null);
+  const aggregateTotalTokens = listData?.aggregate_total_tokens ?? null;
   const aggregateTotalCost = listData?.aggregate_total_cost_usd ?? null;
   const currentPage = listData?.page ?? listPage;
   const pageItems = useMemo(() => {
@@ -634,7 +683,6 @@ export function LeaderboardPage({
   const from = listData?.from || null;
   const to = listData?.to || null;
   const generatedAt = listData?.generated_at || null;
-  const me = listData?.me || null;
   const meLabel = copy("leaderboard.me_label");
   const anonLabel = copy("leaderboard.anon_label");
   const periodLabel = copy(
@@ -653,22 +701,6 @@ export function LeaderboardPage({
   const handleJumpToMe = useCallback(() => {
     if (myPage != null) setListPage(myPage);
   }, [myPage]);
-
-  const handleEnableSync = async () => {
-    setSyncing(true);
-    try {
-      setCloudSyncEnabled(true);
-      setCloudSyncOn(true);
-      await runCloudUsageSyncNow(() => resolveAuthAccessTokenWithRetry(effectiveAuthToken));
-      const token = await resolveAuthAccessTokenWithRetry(effectiveAuthToken);
-      if (token) await refreshLeaderboard({ accessToken: token, period, source: "leaderboard-enable-sync" });
-      setListReloadToken((v) => v + 1);
-    } catch (e) {
-      console.warn("[tokentracker] sync:", e);
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   const { canPrev, canNext } = getPaginationFlags({ page: currentPage, totalPages });
 
@@ -859,6 +891,16 @@ export function LeaderboardPage({
                   );
                 })}
               </div>
+              <Select
+                value={effectiveSource}
+                onValueChange={(value) => handleDimensionChange("source", value)}
+                disabled={currentListState.loading || metric === "actual_cost"}
+                ariaLabel={copy("leaderboard.source.label")}
+                options={SOURCE_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: copy(option.copyKey),
+                }))}
+              />
             </div>
 
             <LeaderboardMeChip
@@ -932,19 +974,6 @@ export function LeaderboardPage({
                   : wechatLoginBusy
                     ? copy("leaderboard.signin_busy")
                     : copy("leaderboard.signin_button")}
-              </button>
-            </div>
-          )}
-
-          {authTokenAllowed && authTokenReady && !cloudSyncOn && (
-            <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
-              <p className="text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.sync_prompt")}</p>
-              <button
-                onClick={handleEnableSync}
-                disabled={syncing}
-                className="shrink-0 whitespace-nowrap self-start sm:self-auto px-3 py-1.5 text-sm font-medium text-oai-gray-600 dark:text-oai-gray-300 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md hover:text-oai-black dark:hover:text-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 disabled:opacity-50 transition-colors"
-              >
-                {syncing ? copy("leaderboard.sync_button.busy") : copy("leaderboard.sync_button.idle")}
               </button>
             </div>
           )}

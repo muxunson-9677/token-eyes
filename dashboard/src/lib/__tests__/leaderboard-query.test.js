@@ -11,14 +11,14 @@ import {
 import { getMockLeaderboard } from "../mock-data.ts";
 
 describe("leaderboard query dimensions", () => {
-  it("normalizes the five supported periods and keeps old links compatible", () => {
+  it("normalizes the four supported periods and keeps old links compatible", () => {
     expect(normalizeLeaderboardPeriod("today")).toBe("today");
-    expect(normalizeLeaderboardPeriod("yesterday")).toBe("yesterday");
-    expect(normalizeLeaderboardPeriod("7D")).toBe("7d");
-    expect(normalizeLeaderboardPeriod("30d")).toBe("30d");
+    expect(normalizeLeaderboardPeriod("week")).toBe("week");
+    expect(normalizeLeaderboardPeriod("month")).toBe("month");
     expect(normalizeLeaderboardPeriod("total")).toBe("total");
-    expect(normalizeLeaderboardPeriod("week")).toBe("7d");
-    expect(normalizeLeaderboardPeriod("month")).toBe("30d");
+    expect(normalizeLeaderboardPeriod("7D")).toBe("week");
+    expect(normalizeLeaderboardPeriod("30d")).toBe("month");
+    expect(normalizeLeaderboardPeriod("yesterday")).toBe(LEADERBOARD_DEFAULT_PERIOD);
     expect(normalizeLeaderboardPeriod("quarter")).toBe(LEADERBOARD_DEFAULT_PERIOD);
   });
 
@@ -31,28 +31,30 @@ describe("leaderboard query dimensions", () => {
     expect(getLeaderboardAgentLabel("codebuddy")).toBe("CodeBuddy");
   });
 
-  it("normalizes cache and estimated-cost metrics", () => {
-    expect(normalizeLeaderboardMetric("with_cache")).toBe("with_cache");
-    expect(normalizeLeaderboardMetric("without_cache")).toBe("without_cache");
-    expect(normalizeLeaderboardMetric("estimated_cost")).toBe("estimated_cost");
+  it("normalizes token, estimated-spend and actual-cost metrics", () => {
+    expect(normalizeLeaderboardMetric("tokens")).toBe("tokens");
+    expect(normalizeLeaderboardMetric("estimated_spend")).toBe("estimated_spend");
+    expect(normalizeLeaderboardMetric("actual_cost")).toBe("actual_cost");
+    expect(normalizeLeaderboardMetric("with_cache")).toBe("tokens");
+    expect(normalizeLeaderboardMetric("estimated_cost")).toBe("estimated_spend");
     expect(normalizeLeaderboardMetric("raw_cost")).toBe(LEADERBOARD_DEFAULT_METRIC);
   });
 });
 
 describe("mock leaderboard dimensions", () => {
-  it("mirrors the live Agent, period and cache-metric contract", () => {
+  it("mirrors the live source, period and metric contract", () => {
     const result = getMockLeaderboard({
       seed: "dimensions",
       period: "today",
-      agent: "codex",
-      metric: "without_cache",
+      source: "codex",
+      metric: "tokens",
       limit: 5,
     });
 
     expect(result).toMatchObject({
       period: "today",
-      agent: "codex",
-      metric: "without_cache",
+      source: "codex",
+      metric: "tokens",
       total_entries: 250,
     });
     expect(result.entries).toHaveLength(5);

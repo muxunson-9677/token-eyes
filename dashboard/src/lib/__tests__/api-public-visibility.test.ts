@@ -221,22 +221,20 @@ describe("leaderboard API", () => {
     getInsforgeRemoteUrlMock.mockReturnValue("https://example.insforge.app");
   });
 
-  it("sends period, Agent and metric dimensions without an Authorization header", async () => {
+  it("sends only public period, source and metric dimensions without an Authorization header", async () => {
     const fetchMock = mockJsonFetch({ entries: [], page: 1, total_entries: 0 });
 
     await getLeaderboard({
-      accessToken: makeJwt({ sub: "user-123" }),
-      userId: "user-123",
       period: "today",
-      agent: "codex",
-      metric: "without_cache",
+      source: "codex",
+      metric: "tokens",
       limit: 20,
       offset: 40,
     });
 
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe(
-      "https://example.insforge.app/functions/tokentracker-leaderboard?period=today&agent=codex&metric=without_cache&limit=20&offset=40&user_id=user-123",
+      "https://example.insforge.app/functions/tokentracker-leaderboard?period=today&metric=tokens&source=codex&limit=20&offset=40",
     );
     expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
   });
@@ -246,10 +244,9 @@ describe("leaderboard API", () => {
 
     const result = await getLeaderboard({
       mock: true,
-      userId: "developer-preview",
       period: "today",
-      agent: "codex",
-      metric: "with_cache",
+      source: "codex",
+      metric: "tokens",
       limit: 20,
       offset: 0,
     });

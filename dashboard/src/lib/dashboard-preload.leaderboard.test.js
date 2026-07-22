@@ -106,8 +106,6 @@ describe("leaderboard default state preload", () => {
 
     for (const variant of [
       { period: "week" },
-      { agent: "codex" },
-      { metric: "without_cache" },
       { pageSize: 50 },
       { offset: 20 },
       { metric: "estimated_spend" },
