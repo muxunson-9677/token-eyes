@@ -30,11 +30,13 @@ type LocalStateResponse = {
 
 function defer(
   reason: LeaderboardSyncReason,
+  accountId: string,
   summaryHash?: string,
 ): { status: "deferred"; summaryHash?: string } {
-  const previous = getLeaderboardSyncState();
+  const previous = getLeaderboardSyncState(accountId);
   setLeaderboardSyncState({
     ...previous,
+    accountId,
     pending: true,
     ...(summaryHash ? { summaryHash } : {}),
     lastAttemptAt: new Date().toISOString(),
@@ -67,6 +69,7 @@ function isValidStateResponse(
 export async function syncLeaderboardState(options: {
   getAccessToken: () => Promise<string | null>;
   reason: LeaderboardSyncReason;
+  accountId: string;
   force?: boolean;
 }): Promise<{
   status: "uploaded" | "unchanged" | "deferred";
@@ -79,29 +82,29 @@ export async function syncLeaderboardState(options: {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    if (!response.ok) return defer(options.reason);
+    if (!response.ok) return defer(options.reason, options.accountId);
     local = (await response.json()) as LocalStateResponse;
   } catch {
-    return defer(options.reason);
+    return defer(options.reason, options.accountId);
   }
 
-  if (!isValidStateResponse(local)) return defer(options.reason);
+  if (!isValidStateResponse(local)) return defer(options.reason, options.accountId);
   const summaryHash = local.summary_hash;
   const serializedState = JSON.stringify(local.state);
   if (new TextEncoder().encode(serializedState).byteLength > MAX_PAYLOAD_BYTES) {
-    return defer(options.reason, summaryHash);
+    return defer(options.reason, options.accountId, summaryHash);
   }
 
-  const previous = getLeaderboardSyncState();
+  const previous = getLeaderboardSyncState(options.accountId);
   if (!options.force && !previous.pending && previous.summaryHash === summaryHash) {
     return { status: "unchanged", summaryHash };
   }
 
   const accessToken = await options.getAccessToken();
-  if (!accessToken) return defer(options.reason, summaryHash);
+  if (!accessToken) return defer(options.reason, options.accountId, summaryHash);
 
   const baseUrl = getInsforgeRemoteUrl().trim().replace(/\/$/, "");
-  if (!/^https?:\/\//i.test(baseUrl)) return defer(options.reason, summaryHash);
+  if (!/^https?:\/\//i.test(baseUrl)) return defer(options.reason, options.accountId, summaryHash);
   const anonKey = getInsforgeAnonKey();
   const attemptedAt = new Date().toISOString();
 
@@ -124,13 +127,14 @@ export async function syncLeaderboardState(options: {
         p_payload: local.state,
       }),
     });
-    if (!response.ok) return defer(options.reason, summaryHash);
+    if (!response.ok) return defer(options.reason, options.accountId, summaryHash);
   } catch {
-    return defer(options.reason, summaryHash);
+    return defer(options.reason, options.accountId, summaryHash);
   }
 
   setLeaderboardSyncState({
-    ...getLeaderboardSyncState(),
+    ...getLeaderboardSyncState(options.accountId),
+    accountId: options.accountId,
     pending: false,
     summaryHash,
     lastAttemptAt: attemptedAt,

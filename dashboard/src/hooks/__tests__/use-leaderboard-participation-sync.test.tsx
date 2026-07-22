@@ -111,6 +111,7 @@ describe("leaderboard participation lifecycle", () => {
       expect(mocks.sync).toHaveBeenCalledWith({
         getAccessToken: expect.any(Function),
         reason: "first-login",
+        accountId: "account-a",
       });
     });
   });
@@ -143,6 +144,7 @@ describe("leaderboard participation lifecycle", () => {
       expect(mocks.sync).toHaveBeenCalledWith({
         getAccessToken: expect.any(Function),
         reason: "daily-catchup",
+        accountId: "account-a",
       });
     });
   });
@@ -193,6 +195,7 @@ describe("leaderboard participation lifecycle", () => {
     expect(mocks.sync).toHaveBeenCalledWith({
       getAccessToken: expect.any(Function),
       reason: "daily-catchup",
+      accountId: "account-a",
     });
     expect(mocks.getProfile).not.toHaveBeenCalled();
   });

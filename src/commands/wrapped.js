@@ -59,7 +59,7 @@ function renderAscii(wrapped) {
 
   lines.push(`╔${border}╗`);
   lines.push(center(""));
-  lines.push(center(`TokenTracker Wrapped · ${wrapped.year}`));
+  lines.push(center(`Token Eyes Wrapped · ${wrapped.year}`));
   lines.push(center(""));
   lines.push(`╠${border}╣`);
   lines.push(row("Total tokens", formatCompact(wrapped.totals.tokens)));

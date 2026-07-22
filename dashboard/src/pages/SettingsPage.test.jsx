@@ -80,7 +80,7 @@ describe("SettingsBasicPage (v2.0 IA split)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders Appearance, MenuBar, Account, DataDirs, AgentPricing, Limits, Footer", () => {
+  it("renders local settings without an account login card", () => {
     render(
       <MemoryRouter>
         <SettingsBasicPage />
@@ -88,7 +88,7 @@ describe("SettingsBasicPage (v2.0 IA split)", () => {
     );
     expect(screen.getByTestId("appearance-section")).toBeInTheDocument();
     expect(screen.getByTestId("menubar-section")).toBeInTheDocument();
-    expect(screen.getByTestId("account-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("account-section")).not.toBeInTheDocument();
     expect(screen.getByTestId("data-dirs-section")).toBeInTheDocument();
     expect(screen.getByTestId("agent-pricing-section")).toBeInTheDocument();
     expect(screen.getByTestId("limits-panel")).toBeInTheDocument();

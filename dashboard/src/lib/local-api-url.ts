@@ -138,6 +138,15 @@ async function resolveTauriLocalApiOrigin(): Promise<string> {
   // This handles the case where `local_server_status` returns
   // running=false but the server is actually up on a fallback port
   // (e.g. started by a separate `node serve` invocation).
+  if (isTauriRuntime()) {
+    const err = new LocalApiRuntimeError(
+      "E_RUNTIME_STARTUP_TIMEOUT",
+      "[E_RUNTIME_STARTUP_TIMEOUT] Bundled local API server did not become ready after retries",
+    );
+    lastRuntimeError = err;
+    throw err;
+  }
+
   const probePorts = [7680, 7681, 7682, 7683, 17680, 17681];
   for (const port of probePorts) {
     try {

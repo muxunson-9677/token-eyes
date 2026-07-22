@@ -13,8 +13,6 @@ import { getCostMonthRanges } from "../lib/date-range";
  * - Cost summary (computed from spend timeseries)
  */
 
-const USD_TO_CNY = 7.2; // Approximate exchange rate
-
 export function useCostAccumulation({
   selectedMonth,
   timeZone,
@@ -71,13 +69,13 @@ export function useCostAccumulation({
           })
         : Promise.resolve({ records: [] });
       const timeseriesPromise = hasSources
-        ? getSpendTimeseries({ ...monthRanges.selected, ...rangeParams }).catch((e) => {
+        ? getSpendTimeseries({ ...monthRanges.selected, ...rangeParams, sources }).catch((e) => {
             console.warn("[useCostAccumulation] failed to fetch spend timeseries:", e);
             return null;
           })
         : Promise.resolve(null);
       const previousTimeseriesPromise = hasSources
-        ? getSpendTimeseries({ ...monthRanges.comparison, ...rangeParams }).catch((e) => {
+        ? getSpendTimeseries({ ...monthRanges.comparison, ...rangeParams, sources }).catch((e) => {
             console.warn("[useCostAccumulation] failed to fetch previous-month spend timeseries:", e);
             return null;
           })
@@ -164,7 +162,7 @@ export function useCostAccumulation({
           previousMonthOtherAiCostUsd: previousTotals?.other_ai_usd ?? null,
           previousMonthTotalCostUsd: previousTotals?.combined_usd ?? null,
           lifetimeTotalCostUsd: totals.lifetime_combined_usd ?? null,
-          usdToCny: USD_TO_CNY,
+          usdToCny: Number(totals.usd_to_cny) > 0 ? Number(totals.usd_to_cny) : 7.2,
         };
       }
     }
@@ -182,7 +180,7 @@ export function useCostAccumulation({
       previousMonthOtherAiCostUsd: null,
       previousMonthTotalCostUsd: null,
       lifetimeTotalCostUsd: null,
-      usdToCny: USD_TO_CNY,
+      usdToCny: 7.2,
     };
   }, [spendTimeseries, previousMonthTimeseries]);
 

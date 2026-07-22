@@ -14,6 +14,17 @@ import {
 } from "../lib/leaderboard-sync-state";
 
 const DAILY_CATCHUP_MS = 24 * 60 * 60 * 1000;
+export const LEADERBOARD_SYNC_EVENT = "token-eyes:leaderboard-sync";
+
+function publishSyncStatus(status: "syncing" | "ready" | "deferred", error?: unknown): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(LEADERBOARD_SYNC_EVENT, {
+    detail: {
+      status,
+      message: error instanceof Error ? error.message : "",
+    },
+  }));
+}
 
 function isLeaderboardPath(pathname: string): boolean {
   const normalized = pathname.replace(/\/+$/, "") || "/";
@@ -70,6 +81,7 @@ export function useLeaderboardParticipationSync(): void {
     if (!reason && !refreshProfile) return;
 
     inFlight.current = true;
+    publishSyncStatus("syncing");
     void (async () => {
       const accessToken = await auth.getAccessToken();
       if (!accessToken) throw new Error("Leaderboard session token unavailable");
@@ -103,14 +115,20 @@ export function useLeaderboardParticipationSync(): void {
       }
 
       if (reason) {
-        await syncLeaderboardState({
+        const result = await syncLeaderboardState({
           getAccessToken: async () => accessToken,
           reason,
+          accountId,
         });
+        if (result.status === "deferred") {
+          throw new Error("Leaderboard usage upload failed");
+        }
       }
+      publishSyncStatus("ready");
     })()
       .catch((error) => {
         console.warn("[tokentracker] leaderboard participation sync:", error);
+        publishSyncStatus("deferred", error);
       })
       .finally(() => {
         inFlight.current = false;

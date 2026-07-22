@@ -208,7 +208,7 @@ describe("UsageStatsPanel", () => {
     expect(comparisons[1]).toHaveTextContent("20.0%");
     expect(comparisons[2]).toHaveTextContent("持平");
     expect(screen.getAllByTestId("monthly-cost-cny-row")).toHaveLength(3);
-    expect(comparisons[0]).toHaveClass("text-green-600");
+    expect(comparisons[0]).toHaveClass("text-amber-600");
     expect(comparisons[1]).toHaveClass("text-green-600");
   });
 
@@ -234,9 +234,9 @@ describe("UsageStatsPanel", () => {
 
     const comparisons = screen.getAllByTestId("monthly-cost-comparison");
     expect(comparisons).toHaveLength(3);
-    expect(comparisons[0]).toHaveTextContent("较上月新增 1325.0%");
+    expect(comparisons[0]).toHaveTextContent("上月同期基数较低");
     expect(comparisons[1]).toHaveTextContent("与上月持平");
-    expect(comparisons[2]).toHaveTextContent("较上月新增 1329.6%");
+    expect(comparisons[2]).toHaveTextContent("上月同期基数较低");
     expect(screen.queryByText("较上月新增 1425.0%")).not.toBeInTheDocument();
   });
 

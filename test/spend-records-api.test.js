@@ -1759,3 +1759,50 @@ test("06: PUT partial update (omit currency) preserves existing currency", async
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("Token Plan subscription cost is counted once and rejects a duplicate Other AI charge", async () => {
+  const { tmp, handler, headers } = await setupSpendHandler();
+  try {
+    const plan = await call(handler, "/functions/tokentracker-token-plans", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        source: "codex",
+        provider_id: "codex",
+        plan_id: "codex_plus",
+        plan_label: "Plus",
+        quota_kind: "manual",
+        quota_unit: "tokens",
+        subscription_amount: 200,
+        subscription_currency: "CNY",
+        subscription_cycle: "monthly",
+        subscription_start_date: "2026-07-01",
+      }),
+    });
+    assert.equal(plan.statusCode, 200);
+
+    const summary = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-spend-records?from=2026-07-01&to=2026-07-31",
+      { method: "GET" },
+    ));
+    assert.equal(summary.totals.subscription_cny, 200);
+
+    const duplicate = await call(handler, "/functions/tokentracker-spend-records", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        source: "other_ai",
+        plan_label: "Plus",
+        amount: 200,
+        currency: "CNY",
+        billing_cycle: "monthly",
+        start_date: "2026-07-01",
+      }),
+    });
+    assert.equal(duplicate.statusCode, 409);
+    assert.equal(readJsonResponse(duplicate).error_code, "duplicate_token_plan_cost");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

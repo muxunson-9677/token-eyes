@@ -249,6 +249,10 @@ fn find_running_token_tracker_api() -> Option<u16> {
         .find(|port| is_token_tracker_api_available(*port))
 }
 
+fn should_probe_existing_server(dev_runtime_allowed: bool) -> bool {
+    dev_runtime_allowed
+}
+
 fn choose_bindable_port() -> Option<u16> {
     if is_port_bindable(PREFERRED_LOCAL_SERVER_PORT) {
         return Some(PREFERRED_LOCAL_SERVER_PORT);
@@ -550,8 +554,10 @@ pub fn ensure_local_server_started(
 
     // 2. Probe for any already-running Token Tracker API on the local machine
     //    (e.g. a `node serve` started by another invocation).
-    if let Some(port) = find_running_token_tracker_api() {
-        return set_known_url(state, local_server_url(port));
+    if should_probe_existing_server(is_dev_runtime_allowed()) {
+        if let Some(port) = find_running_token_tracker_api() {
+            return set_known_url(state, local_server_url(port));
+        }
     }
 
     // 3. If we already spawned a child, wait for it (don't spawn a second one).
@@ -764,6 +770,12 @@ mod tests {
 
         assert!(!is_token_tracker_api_available(port));
         handle.join().expect("probe server thread");
+    }
+
+    #[test]
+    fn release_runtime_never_reuses_an_unowned_local_server() {
+        assert!(!should_probe_existing_server(false));
+        assert!(should_probe_existing_server(true));
     }
 
     #[test]

@@ -82,6 +82,7 @@ describe("leaderboard state client", () => {
 
     await expect(syncLeaderboardState({
       reason: "first-login",
+      accountId: "account-a",
       getAccessToken: async () => {
         events.push("token");
         return null;
@@ -107,6 +108,7 @@ describe("leaderboard state client", () => {
 
     await expect(syncLeaderboardState({
       reason: "leaderboard-open",
+      accountId: "account-a",
       getAccessToken: async () => tokenWithSubject,
     })).resolves.toEqual({ status: "uploaded", summaryHash: SUMMARY_HASH });
 
@@ -143,6 +145,7 @@ describe("leaderboard state client", () => {
   it("skips an unchanged successful hash unless forced", async () => {
     setLeaderboardSyncState({
       pending: false,
+      accountId: "account-a",
       summaryHash: SUMMARY_HASH,
       lastSuccessAt: "2026-07-20T08:01:00.000Z",
     });
@@ -150,9 +153,31 @@ describe("leaderboard state client", () => {
 
     await expect(syncLeaderboardState({
       reason: "daily-catchup",
+      accountId: "account-a",
       getAccessToken: async () => "jwt",
     })).resolves.toEqual({ status: "unchanged", summaryHash: SUMMARY_HASH });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uploads the same local hash again for a different signed-in account", async () => {
+    setLeaderboardSyncState({
+      pending: false,
+      accountId: "account-a",
+      summaryHash: SUMMARY_HASH,
+      lastSuccessAt: "2026-07-20T08:01:00.000Z",
+    });
+    const fetchMock = installFetch();
+
+    await expect(syncLeaderboardState({
+      reason: "first-login",
+      accountId: "account-b",
+      getAccessToken: async () => "jwt-b",
+    })).resolves.toEqual({ status: "uploaded", summaryHash: SUMMARY_HASH });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getLeaderboardSyncState("account-b")).toMatchObject({
+      accountId: "account-b",
+      pending: false,
+    });
   });
 
   it("checks the 8 KiB payload limit before any network write", async () => {
@@ -162,6 +187,7 @@ describe("leaderboard state client", () => {
 
     await expect(syncLeaderboardState({
       reason: "manual-list-refresh",
+      accountId: "account-a",
       getAccessToken: async () => "jwt",
     })).resolves.toEqual({ status: "deferred", summaryHash: SUMMARY_HASH });
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -173,6 +199,7 @@ describe("leaderboard state client", () => {
 
     await expect(syncLeaderboardState({
       reason: "app-exit",
+      accountId: "account-a",
       getAccessToken: async () => "jwt",
     })).resolves.toEqual({ status: "deferred", summaryHash: SUMMARY_HASH });
     expect(fetchMock).toHaveBeenCalledTimes(2);

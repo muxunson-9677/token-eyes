@@ -1,7 +1,6 @@
 import React, { lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
-import { AccountSection } from "../components/settings/AccountSection.jsx";
 import { DataDirectoriesSection } from "../components/settings/DataDirectoriesSection.jsx";
 import { AgentPricingSection } from "../components/settings/AgentPricingSection.jsx";
 import { AppearanceSection } from "../components/settings/AppearanceSection.jsx";
@@ -30,7 +29,7 @@ function SettingsCostFallback() {
 
 // v2.0 IA refactor (work order 01): the old single SettingsPage is split into
 // two route components so each sub-module has its own URL.
-//   - SettingsBasicPage (/settings/basic): appearance, menu bar, account,
+//   - SettingsBasicPage (/settings/basic): appearance, menu bar,
 //     data directories, agent pricing, limits display, native-app footer.
 //   - SettingsCostPage (/settings/cost): TokenPlanSection plus a documented
 //     insertion point for ProviderApiConfigSection (wired up by work order 03).
@@ -73,7 +72,6 @@ export function SettingsBasicPage() {
           <div className="space-y-4">
             <AppearanceSection />
             <MenuBarSection />
-            <AccountSection />
             <DataDirectoriesSection />
             <AgentPricingSection />
             <SectionCard

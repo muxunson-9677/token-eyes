@@ -78,6 +78,12 @@ export function getMonthlyCostComparison(currentValue, previousValue) {
   }
 
   const percent = Math.abs((difference / previous) * 100).toFixed(1);
+  if (difference > 0 && Number(percent) > 999) {
+    return {
+      kind: "increase",
+      text: copy("spend.monthly_change.low_baseline", { value: difference.toFixed(2) }),
+    };
+  }
   return difference > 0
     ? { kind: "increase", text: copy("spend.monthly_change.increase", { value: percent }) }
     : { kind: "decrease", text: copy("spend.monthly_change.decrease", { value: percent }) };
@@ -130,9 +136,9 @@ const TOKEN_FIELDS = {
 };
 
 const COST_SUMMARY_CARDS = [
-  { labelKey: "spend.monthly_api", usdField: "api_usd", cnyField: "api_cny", previousUsdField: "previous_api_usd" },
-  { labelKey: "spend.monthly_subscription", usdField: "subscription_usd", cnyField: "subscription_cny", previousUsdField: "previous_subscription_usd" },
-  { labelKey: "spend.monthly_combined", usdField: "combined_usd", cnyField: "combined_cny", previousUsdField: "previous_combined_usd" },
+  { labelKey: "spend.monthly_api", usdField: "api_usd", cnyField: "api_cny", previousUsdField: "previous_api_usd", previousCnyField: "previous_api_cny" },
+  { labelKey: "spend.monthly_subscription", usdField: "subscription_usd", cnyField: "subscription_cny", previousUsdField: "previous_subscription_usd", previousCnyField: "previous_subscription_cny" },
+  { labelKey: "spend.monthly_combined", usdField: "combined_usd", cnyField: "combined_cny", previousUsdField: "previous_combined_usd", previousCnyField: "previous_combined_cny" },
   { labelKey: "spend.lifetime_combined", usdField: "lifetime_combined_usd", cnyField: "lifetime_combined_cny" },
 ];
 
@@ -272,11 +278,16 @@ export function UsageStatsPanel({
               data-testid="usage-cost-summary"
             >
               {COST_SUMMARY_CARDS.map((card) => {
+                const exchangeRate = Number(costSummary.usd_to_cny)
+                  || (Number(costSummary[card.usdField]) !== 0
+                    ? Number(costSummary[card.cnyField]) / Number(costSummary[card.usdField])
+                    : 0);
+                const currentComparisonValue = costSummary[card.cnyField]
+                  ?? (Number(costSummary[card.usdField]) * exchangeRate);
+                const previousComparisonValue = costSummary[card.previousCnyField]
+                  ?? (Number(costSummary[card.previousUsdField]) * exchangeRate);
                 const comparison = card.previousUsdField
-                  ? getMonthlyCostComparison(
-                    costSummary[card.usdField],
-                    costSummary[card.previousUsdField],
-                  )
+                  ? getMonthlyCostComparison(currentComparisonValue, previousComparisonValue)
                   : null;
                 return (
                   <div
@@ -299,7 +310,7 @@ export function UsageStatsPanel({
                           data-testid="monthly-cost-comparison"
                           className={cn(
                             "shrink-0 truncate text-[9px] font-medium leading-tight tabular-nums",
-                            comparison.kind === "increase" && "text-green-600 dark:text-green-400",
+                            comparison.kind === "increase" && "text-amber-600 dark:text-amber-400",
                             comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
                             comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",
                           )}

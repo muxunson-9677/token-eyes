@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { copy } from "../../lib/copy";
 
 /**
  * Brand Logo component (kept for screenshot mode / standalone Shell usage)
@@ -9,13 +10,13 @@ function BrandLogo() {
     <Link to="/landing" className="flex items-center gap-2.5 no-underline hover:opacity-80 transition-opacity">
       <img
         src="/app-icon.png"
-        alt="Token Tracker"
+        alt="Token Eyes"
         width={28}
         height={28}
         className="rounded-md"
       />
       <span className="text-base font-semibold text-oai-black dark:text-oai-white leading-tight">
-        Token Tracker
+        {copy("shared.app_name")}
       </span>
     </Link>
   );

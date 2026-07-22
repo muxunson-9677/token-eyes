@@ -57,7 +57,7 @@ export function LeaderboardProfilePage({ auth, signedIn, sessionSoftExpired, use
             >
               <img src="/app-icon.png" alt="" width={24} height={24} className="rounded-md" />
               <span className="text-sm font-semibold tracking-wide text-oai-black dark:text-white uppercase">
-                Token Tracker
+                {copy("shared.app_name")}
               </span>
             </Link>
             <div className="hidden sm:block scale-90 origin-left opacity-90 hover:opacity-100 transition-opacity">

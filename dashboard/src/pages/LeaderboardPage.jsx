@@ -33,6 +33,7 @@ import { isMockEnabled } from "../lib/mock-data";
 import { isDeveloperLeaderboardLoginEnabled } from "../lib/developer-leaderboard-preview.js";
 import {
   getLeaderboard,
+  getLeaderboardProfile,
   getMyLeaderboardRank,
 } from "../lib/api";
 import {
@@ -365,6 +366,7 @@ export function LeaderboardPage({
     enabled: cloudAuthEnabled,
     signedIn: cloudSignedIn,
     loading: authLoading,
+    user: cloudUser,
   } = useInsforgeAuth();
   const { openLoginModal } = useLoginModal();
   const { currency, rate } = useCurrency();
@@ -390,6 +392,8 @@ export function LeaderboardPage({
   const placeholder = copy("shared.placeholder.short");
 
   const [listPage, setListPage] = useState(1);
+  const [syncRevision, setSyncRevision] = useState(0);
+  const [participationSync, setParticipationSync] = useState("idle");
   const [pageSize, setPageSizeState] = useState(readStoredPageSize);
   const [modalUserId, setModalUserId] = useState(null);
   const openProfileModal = useCallback((userId) => {
@@ -453,6 +457,16 @@ export function LeaderboardPage({
   useEffect(() => {
     setListPage(1);
   }, [metric, period, source]);
+
+  useEffect(() => {
+    const onSync = (event) => {
+      const status = event?.detail?.status || "idle";
+      setParticipationSync(status);
+      if (status === "ready") setSyncRevision((value) => value + 1);
+    };
+    window.addEventListener("token-eyes:leaderboard-sync", onSync);
+    return () => window.removeEventListener("token-eyes:leaderboard-sync", onSync);
+  }, []);
 
   const listOffset = useMemo(() => {
     const safePage = clampInt(listPage, { min: 1, max: 1_000_000, fallback: 1 });
@@ -567,6 +581,7 @@ export function LeaderboardPage({
     metric,
     period,
     pageSize,
+    syncRevision,
   ]);
 
   const renderCachedState = useMemo(() => {
@@ -617,14 +632,39 @@ export function LeaderboardPage({
         metric,
         source: effectiveSource,
       });
-      if (active) setMe(result?.me || null);
+      let nextMe = result?.me || null;
+      if (!nextMe && cloudUser?.id && period !== "today") {
+        const profile = await getLeaderboardProfile({
+          accessToken,
+          userId: cloudUser.id,
+          period,
+        });
+        if (profile?.totals) {
+          const byProvider = Array.isArray(profile.by_provider) ? profile.by_provider : [];
+          nextMe = {
+            user_id: cloudUser.id,
+            display_name: profile.user?.display_name || copy("leaderboard.me_label"),
+            avatar_url: profile.user?.avatar_url || null,
+            rank: profile.user?.rank ?? null,
+            total_tokens: Number(profile.totals.total_tokens) || 0,
+            estimated_cost_usd: Number(profile.totals.estimated_cost_usd) || 0,
+            source_breakdown: byProvider.map((row) => ({
+              source: row.source,
+              total_tokens: Number(row.total_tokens) || 0,
+              estimated_cost_usd: Number(row.estimated_cost_usd) || 0,
+            })),
+            is_me: true,
+          };
+        }
+      }
+      if (active) setMe(nextMe);
     })().catch(() => {
       if (active) setMe(null);
     });
     return () => {
       active = false;
     };
-  }, [cloudSignedIn, effectiveAuthToken, effectiveSource, metric, period]);
+  }, [cloudSignedIn, cloudUser?.id, effectiveAuthToken, effectiveSource, metric, period, syncRevision]);
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
@@ -788,6 +828,17 @@ export function LeaderboardPage({
               </dl>
             )}
           </div>
+
+          {cloudSignedIn && participationSync === "syncing" && (
+            <div className="mb-4 rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-4 py-2 text-sm text-oai-gray-600 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-oai-gray-300">
+              {copy("leaderboard.sync.syncing")}
+            </div>
+          )}
+          {cloudSignedIn && participationSync === "deferred" && (
+            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              {copy("leaderboard.sync.failed")}
+            </div>
+          )}
 
           <div className="mb-6 sm:mb-8 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">

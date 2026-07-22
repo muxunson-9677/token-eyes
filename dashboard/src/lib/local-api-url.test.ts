@@ -19,7 +19,7 @@ describe("isLocalDashboardRuntime", () => {
     expect(isLocalDashboardRuntime()).toBe(true);
   });
 
-  it("skips stale local API servers without provider API balance capability", async () => {
+  it("does not attach a Tauri release window to an unrelated nearby server", async () => {
     (window as any).__TAURI_INTERNALS__ = {
       invoke: vi.fn().mockResolvedValue({ running: false, url: "" }),
     };
@@ -32,19 +32,20 @@ describe("isLocalDashboardRuntime", () => {
           capabilities: ["spend_usage_v2", "provider_model_stats", "request_usage_records"],
         }), { status: 200, headers: { "content-type": "application/json" } });
       }
-      if (raw.includes(":7682/")) {
-        return new Response(JSON.stringify({
-          token: "current",
-          protocol_version: 2,
-          capabilities: ["spend_usage_v2", "provider_model_stats", "request_usage_records", "provider_api_balance"],
-        }), { status: 200, headers: { "content-type": "application/json" } });
-      }
+      if (raw.includes(":7682/")) return new Response(JSON.stringify({
+        token: "stale-worktree",
+        protocol_version: 2,
+        product_id: "token-eyes",
+        build_version: "0.54.6",
+        capabilities: ["spend_usage_v2", "provider_model_stats", "request_usage_records", "provider_api_balance"],
+      }), { status: 200, headers: { "content-type": "application/json" } });
       throw new TypeError("connect failed");
     });
 
-    const { getLocalApiOrigin } = await import("./local-api-url");
-    await expect(getLocalApiOrigin()).resolves.toBe("http://127.0.0.1:7682");
-    expect(fetchMock).toHaveBeenCalled();
+    const { getLocalApiOrigin, getLastLocalApiRuntimeError } = await import("./local-api-url");
+    await expect(getLocalApiOrigin()).rejects.toThrow();
+    expect(getLastLocalApiRuntimeError()?.code).toBe("E_RUNTIME_STARTUP_TIMEOUT");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("throws LocalApiRuntimeError when backend reports E_RUNTIME_MISSING_NODE", async () => {

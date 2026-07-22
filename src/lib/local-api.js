@@ -41,6 +41,14 @@ const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
 const MVP_USD_TO_CNY = 7.2;
 const LOCAL_API_PROTOCOL_VERSION = 2;
+const LOCAL_API_PRODUCT_ID = "token-eyes";
+const LOCAL_API_BUILD_VERSION = (() => {
+  try {
+    return String(require("../../package.json")?.version || "");
+  } catch {
+    return "";
+  }
+})();
 const LOCAL_API_CAPABILITIES = Object.freeze([
   "spend_usage_v2",
   "provider_model_stats",
@@ -1339,7 +1347,7 @@ function buildCodexCategoryFallbackFromQueue(queueRows, { from, to, timeZoneCont
       tools_total: 0,
       privacy: {
         includes_inputs: false,
-        note: "Codex rollout sessions were unavailable; totals come from TokenTracker queue rows.",
+        note: "Codex rollout sessions were unavailable; totals come from Token Eyes local usage rows.",
       },
     },
     exec_command_breakdown: {
@@ -2591,6 +2599,14 @@ function createLocalApiHandler({
     const displayOrder = Number.isSafeInteger(displayOrderValue) && displayOrderValue >= 0
       ? displayOrderValue
       : 0;
+    const now = new Date(nowProvider()).toISOString();
+    const subscriptionAmountRaw = Number(input.subscription_amount ?? fallbackInput.subscription_amount ?? 0);
+    const subscriptionCycle = String(input.subscription_cycle ?? fallbackInput.subscription_cycle ?? "").trim().toLowerCase();
+    const subscriptionCurrency = String(input.subscription_currency ?? fallbackInput.subscription_currency ?? "").trim().toUpperCase();
+    const subscriptionStartDate = String(input.subscription_start_date ?? fallbackInput.subscription_start_date ?? "").trim();
+    const subscriptionEndDate = String(input.subscription_end_date ?? fallbackInput.subscription_end_date ?? "").trim();
+    const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value)
+      && Number.isFinite(new Date(`${value}T00:00:00Z`).getTime());
 
     return {
       id: String(input.id ?? fallbackInput.id ?? crypto.randomUUID()).trim(),
@@ -2624,6 +2640,15 @@ function createLocalApiHandler({
       last_error_code: detectionFields.last_error_code,
       last_error_message: detectionFields.last_error_message,
       provider_reported_at: detectionFields.provider_reported_at,
+      subscription_amount: Number.isFinite(subscriptionAmountRaw) && subscriptionAmountRaw > 0
+        ? subscriptionAmountRaw
+        : 0,
+      subscription_currency: ["USD", "CNY"].includes(subscriptionCurrency) ? subscriptionCurrency : "",
+      subscription_cycle: ["monthly", "yearly", "one_time"].includes(subscriptionCycle) ? subscriptionCycle : "",
+      subscription_start_date: validDate(subscriptionStartDate) ? subscriptionStartDate : "",
+      subscription_end_date: validDate(subscriptionEndDate) ? subscriptionEndDate : "",
+      created_at: String(input.created_at ?? fallbackInput.created_at ?? now).trim(),
+      updated_at: String(input.updated_at ?? fallbackInput.updated_at ?? now).trim(),
       notes,
       display_order: displayOrder,
       ...(quotaWindows.length > 0 ? { quota_windows: quotaWindows } : {}),
@@ -2830,6 +2855,7 @@ function createLocalApiHandler({
     const fallback = existingIndex >= 0 ? current[existingIndex] : { id };
     validateTokenPlanCatalogSelection({ ...payload, id }, fallback);
     const record = normalizeTokenPlanRecord({ ...payload, id }, fallback);
+    record.updated_at = new Date(nowProvider()).toISOString();
     record.display_order = existingIndex >= 0
       ? Number.isSafeInteger(Number(fallback.display_order)) ? Number(fallback.display_order) : existingIndex
       : current.length;
@@ -3370,6 +3396,56 @@ function createLocalApiHandler({
     };
   }
 
+  function tokenPlanCostRecords(config) {
+    const plans = Array.isArray(config?.tokenPlans) ? config.tokenPlans : [];
+    return plans
+      .map((plan) => normalizeTokenPlanRecord(plan))
+      .filter((plan) => plan.subscription_amount > 0
+        && plan.subscription_currency
+        && plan.subscription_cycle
+        && plan.subscription_start_date)
+      .map((plan) => normalizeSpendRecord({
+        id: `token-plan-cost:${plan.id}`,
+        source: String(plan.source || plan.provider_id || "token_plan").trim().toLowerCase(),
+        plan_label: plan.plan_label,
+        amount: plan.subscription_amount,
+        currency: plan.subscription_currency,
+        billing_cycle: plan.subscription_cycle,
+        start_date: plan.subscription_start_date,
+        end_date: plan.subscription_end_date,
+        note: "Token Eyes Token Plan",
+        created_at: plan.created_at,
+        updated_at: plan.updated_at,
+      }));
+  }
+
+  function assertNoTokenPlanCostDuplicate(record, config) {
+    if (String(record?.source || "").toLowerCase() !== "other_ai") return;
+    const label = String(record.plan_label || "").trim().toLowerCase().replace(/\s+/g, "");
+    const duplicate = tokenPlanCostRecords(config).some((plan) =>
+      String(plan.plan_label || "").trim().toLowerCase().replace(/\s+/g, "") === label
+      && plan.amount === record.amount
+      && plan.currency === record.currency
+      && plan.start_date === record.start_date);
+    if (!duplicate) return;
+    const error = new Error("This cost is already recorded by a Token Plan");
+    error.statusCode = 409;
+    error.error_code = "duplicate_token_plan_cost";
+    throw error;
+  }
+
+  function withoutTokenPlanCostDuplicates(records, planCosts) {
+    return records.filter((record) => {
+      if (String(record?.source || "").toLowerCase() !== "other_ai") return true;
+      const label = String(record.plan_label || "").trim().toLowerCase().replace(/\s+/g, "");
+      return !planCosts.some((plan) =>
+        String(plan.plan_label || "").trim().toLowerCase().replace(/\s+/g, "") === label
+        && plan.amount === record.amount
+        && plan.currency === record.currency
+        && plan.start_date === record.start_date);
+    });
+  }
+
   function normalizeOtherAiSpendGroup(group, fallback = {}) {
     const input = group && typeof group === "object" ? group : {};
     const fallbackInput = fallback && typeof fallback === "object" ? fallback : {};
@@ -3713,12 +3789,20 @@ function createLocalApiHandler({
     const filteredRecords = sourcesSet
       ? normalized.filter((record) => sourcesSet.has((record.source || "unknown").toLowerCase()))
       : normalized;
+    const planCostRecords = tokenPlanCostRecords(config);
+    const canonicalRecords = withoutTokenPlanCostDuplicates(normalized, planCostRecords);
+    const filteredPlanCosts = sourcesSet
+      ? planCostRecords.filter((record) => sourcesSet.has((record.source || "unknown").toLowerCase()))
+      : planCostRecords;
+    const canonicalFilteredRecords = sourcesSet
+      ? canonicalRecords.filter((record) => sourcesSet.has((record.source || "unknown").toLowerCase()))
+      : canonicalRecords;
     const groups = readOtherAiSpendGroups(config);
     return {
       records: filteredRecords,
       other_ai_groups: groups,
       other_ai_group_totals: summarizeOtherAiSpendGroups(normalized, groups, timeZoneContext, summaryMonth),
-      ...summarizeSpendRecords(filteredRecords, fromStr, toStr, timeZoneContext, sources),
+      ...summarizeSpendRecords([...canonicalFilteredRecords, ...filteredPlanCosts], fromStr, toStr, timeZoneContext, sources),
     };
   }
 
@@ -3806,6 +3890,7 @@ function createLocalApiHandler({
       throw error;
     }
     const config = readTrackerConfig();
+    assertNoTokenPlanCostDuplicate(record, config);
     const current = Array.isArray(config.spendRecords) ? config.spendRecords : [];
     config.spendRecords = [record, ...current];
     writeTrackerConfig(config);
@@ -3851,6 +3936,7 @@ function createLocalApiHandler({
       error.field = "amount";
       throw error;
     }
+    assertNoTokenPlanCostDuplicate(record, config);
     // Preserve id and created_at from existing, refresh updated_at
     record.id = id;
     record.created_at = existing.created_at || record.created_at;
@@ -4266,7 +4352,11 @@ function createLocalApiHandler({
 
     const config = readTrackerConfig();
     const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
-    const normalizedRecords = records.map((r) => normalizeSpendRecord(r));
+    const planCosts = tokenPlanCostRecords(config);
+    const normalizedRecords = [
+      ...withoutTokenPlanCostDuplicates(records.map((r) => normalizeSpendRecord(r)), planCosts),
+      ...planCosts,
+    ];
     const spendSources = Array.isArray(filters.sources)
       ? new Set(filters.sources.map((source) => String(source).trim().toLowerCase()))
       : null;
@@ -4406,6 +4496,7 @@ function createLocalApiHandler({
     totals.api_usd = totals.api_cost_usd;
     totals.subscription_usd = totals.subscription_cost_usd;
     totals.other_ai_usd = totals.other_ai_cost_usd;
+    totals.usd_to_cny = usdToCny;
     try {
       const lifetimeSummary = summarizeSpendRecords(
         filteredSpendRecords, fromStr, toStr, timeZoneContext, filters.sources,
@@ -4667,7 +4758,7 @@ function createLocalApiHandler({
         // 蹇呴』鍜?dashboard/src/lib/cloud-sync.ts 浣跨敤鍚屼竴涓澶囪韩浠姐€?
         // 鏃т簯绔澶囨寜 (platform, device_name) 璁ら锛涘鏋滆繖閲屽彂鏄?
         // local-sync 韬唤锛屼細澶氬嚭涓€涓?active device锛岃处鎴疯鍥句細鎶婂巻鍙叉眰鍜屼袱娆°€?
-        device_name: `Token Tracker (dashboard) #${machineId.slice(0, 8)}`,
+        device_name: `Token Eyes (dashboard) #${machineId.slice(0, 8)}`,
         platform: dashboardPlatform,
         machine_id: machineId,
       }),
@@ -4880,7 +4971,11 @@ function createLocalApiHandler({
       try {
         const config = readTrackerConfig();
         const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
-        const normalizedRecords = records.map((record) => normalizeSpendRecord(record));
+        const planCosts = tokenPlanCostRecords(config);
+        const normalizedRecords = [
+          ...withoutTokenPlanCostDuplicates(records.map((record) => normalizeSpendRecord(record)), planCosts),
+          ...planCosts,
+        ];
         const timeZoneContext = { timeZone: "Asia/Shanghai", offsetMinutes: 480 };
         const summary = await buildLeaderboardActualCostSummary({
           capturedAt: new Date(),
@@ -4921,6 +5016,8 @@ function createLocalApiHandler({
       res.end(JSON.stringify({
         token: localAuthToken,
         protocol_version: LOCAL_API_PROTOCOL_VERSION,
+        product_id: LOCAL_API_PRODUCT_ID,
+        build_version: LOCAL_API_BUILD_VERSION,
         capabilities: LOCAL_API_CAPABILITIES,
       }));
       return true;

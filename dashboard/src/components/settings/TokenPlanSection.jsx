@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -85,6 +85,11 @@ const EMPTY_FORM = {
   used_quota: 0,
   remaining_quota: 0,
   expires_at: "",
+  subscription_amount: 0,
+  subscription_currency: "CNY",
+  subscription_cycle: "monthly",
+  subscription_start_date: "",
+  subscription_end_date: "",
   refresh_enabled: false,
   refresh_interval_minutes: 60,
   refresh_method: "manual",
@@ -667,6 +672,15 @@ function SortableTokenPlanCard({
               : ""}
             {record.expires_at ? ` · ${copy("settings.token_plan.expires_at")} ${record.expires_at}` : ""}
           </div>
+          <div className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+            {record.subscription_amount > 0
+              ? `${copy("settings.token_plan.subscription_cost")}: ${record.subscription_currency} ${Number(record.subscription_amount).toLocaleString()} · ${copy(`settings.token_plan.subscription_cycle.${record.subscription_cycle}`)}`
+              : `${copy("settings.token_plan.subscription_cost")}: ${copy("settings.token_plan.cost_not_set")}`}
+            {record.subscription_start_date ? ` · ${copy("settings.token_plan.subscription_start")} ${record.subscription_start_date}` : ""}
+          </div>
+          <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
+            {record.created_at ? `${copy("settings.token_plan.recorded_at")}: ${new Date(record.created_at).toLocaleString()}` : ""}
+          </div>
           <RecordNotesEditor record={record} onSave={onSaveNotes} disabled={saving} />
           <RecordSyncStatus record={record} />
           <div className="mt-2 flex justify-end gap-3">
@@ -738,6 +752,13 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const [expandedPlanIds, setExpandedPlanIds] = useState(() => new Set());
   const [editorInitialized, setEditorInitialized] = useState(false);
   const [editorMissing, setEditorMissing] = useState(false);
+  const recordsRef = useRef(records);
+  const consoleSessionsRef = useRef(consoleSessions);
+  const refreshRef = useRef(null);
+  const refreshingPlanIdsRef = useRef(new Set());
+  const autoCodexRefreshBusyRef = useRef(false);
+  recordsRef.current = records;
+  consoleSessionsRef.current = consoleSessions;
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -2288,6 +2309,8 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   };
 
   const refresh = async (id) => {
+    if (refreshingPlanIdsRef.current.has(id)) return;
+    refreshingPlanIdsRef.current.add(id);
     setRefreshingId(id);
     setError("");
     try {
@@ -2390,6 +2413,27 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           sync_status: reauthRequired ? "reauth_required" : "failed",
           last_sync_attempt_at: now,
           last_error_code: errorCode,
+          last_error_message: errorMessage,
+          last_refresh_status: "failed",
+          last_refresh_error: errorMessage,
+          last_refresh_at: now,
+        });
+        setRecords(normalizeRecords(result?.records));
+        setError(errorMessage);
+        return;
+      }
+      if (
+        plan &&
+        plan.provider_id === "codex" &&
+        plan.detection_method === "official_account"
+      ) {
+        const now = new Date().toISOString();
+        const errorMessage = copy("settings.token_plan.codex_quota.reauth");
+        const result = await saveTokenPlan({
+          ...plan,
+          sync_status: "reauth_required",
+          last_sync_attempt_at: now,
+          last_error_code: "SESSION_NOT_FOUND",
           last_error_message: errorMessage,
           last_refresh_status: "failed",
           last_refresh_error: errorMessage,
@@ -2581,9 +2625,44 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     } catch (err) {
       setError(err?.message || copy("settings.token_plan.refresh_failed"));
     } finally {
+      refreshingPlanIdsRef.current.delete(id);
       setRefreshingId("");
     }
   };
+  refreshRef.current = refresh;
+
+  useEffect(() => {
+    if (loading) return undefined;
+    let cancelled = false;
+    const run = async () => {
+      if (cancelled || autoCodexRefreshBusyRef.current || document.visibilityState === "hidden") return;
+      const ids = recordsRef.current
+        .filter((record) => record.provider_id === "codex"
+          && record.detection_method === "official_account"
+          && resolveConsoleSessionForRecord(record, consoleSessionsRef.current)?.status === "connected")
+        .map((record) => record.id)
+        .filter(Boolean);
+      if (ids.length === 0) return;
+      autoCodexRefreshBusyRef.current = true;
+      try {
+        for (const id of ids) {
+          if (cancelled) break;
+          await refreshRef.current?.(id);
+        }
+      } finally {
+        autoCodexRefreshBusyRef.current = false;
+      }
+    };
+    const onFocus = () => void run();
+    const timer = window.setInterval(run, 60_000);
+    window.addEventListener("focus", onFocus);
+    void run();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loading]);
 
   useEffect(() => {
     if (!planRefreshTargetId) return;
@@ -3032,6 +3111,43 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
               disabled={loading || saving || hasDetectionConfigured}
               placeholder={hasDetectionConfigured ? "" : "2026-12-31"}
               hint={hasDetectionConfigured ? copy("settings.token_plan.quota_from_detection") : undefined}
+            />
+            <NumberInput
+              label={copy("settings.token_plan.subscription_cost")}
+              value={form.subscription_amount}
+              onChange={updateField("subscription_amount")}
+              disabled={loading || saving}
+            />
+            <SelectInput
+              label={copy("settings.token_plan.subscription_currency")}
+              value={form.subscription_currency}
+              onChange={updateField("subscription_currency")}
+              disabled={loading || saving}
+              options={[{ value: "CNY", label: "CNY" }, { value: "USD", label: "USD" }]}
+            />
+            <SelectInput
+              label={copy("settings.token_plan.subscription_cycle_label")}
+              value={form.subscription_cycle}
+              onChange={updateField("subscription_cycle")}
+              disabled={loading || saving}
+              options={["monthly", "yearly", "one_time"].map((value) => ({
+                value,
+                label: copy(`settings.token_plan.subscription_cycle.${value}`),
+              }))}
+            />
+            <TextInput
+              label={copy("settings.token_plan.subscription_start")}
+              value={form.subscription_start_date}
+              onChange={updateField("subscription_start_date")}
+              disabled={loading || saving}
+              placeholder="2026-07-22"
+            />
+            <TextInput
+              label={copy("settings.token_plan.subscription_end")}
+              value={form.subscription_end_date}
+              onChange={updateField("subscription_end_date")}
+              disabled={loading || saving}
+              placeholder="2026-08-22"
             />
             <TextInput
               label={copy("settings.token_plan.notes")}

@@ -45,6 +45,6 @@
     "authorization": "api_key_for_balance_or_oauth_for_code_usage",
     "usage_endpoint_documented": true,
     "fields_available": ["rolling_5_hour", "rolling_weekly", "available_balance"],
-    "notes": "推荐 API Key 余额检测（与 CC Switch 相同端点）；Kimi Code 额度需本机 OAuth。"
+    "notes": "推荐使用 API Key 余额检测；Kimi Code 额度需本机 OAuth。"
   }
 }

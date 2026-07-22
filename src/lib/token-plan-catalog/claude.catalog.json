@@ -41,7 +41,7 @@
     },
     {
       "plan_id": "claude_routing",
-      "display_name": "路由模式（CC Switch 等）",
+      "display_name": "路由模式（仅 Token 统计）",
       "quota": {
         "kind": "manual",
         "total": 0,

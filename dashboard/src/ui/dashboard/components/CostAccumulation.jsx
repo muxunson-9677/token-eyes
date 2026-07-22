@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, ChevronLeft, ChevronRight, CreditCard, Package, Globe, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
+import { BarChart3, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CreditCard, Package, Globe, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 
@@ -51,12 +51,19 @@ export function getMonthComparison(currentUsd, previousUsd, usdToCny) {
     }
     return {
       label: copy("spend.monthly_change.no_baseline"),
-      className: "text-emerald-600 dark:text-emerald-400",
+      className: "text-amber-600 dark:text-amber-400",
     };
   }
   const percentage = Math.abs(((current - previous) / previous) * 100).toFixed(1);
   if (current > previous) {
-    return { label: copy("spend.monthly_change.increase", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400" };
+    if (Number(percentage) > 999) {
+      const differenceCny = Math.abs(current - previous) * Number(usdToCny || 1);
+      return {
+        label: copy("spend.monthly_change.low_baseline", { value: differenceCny.toFixed(2) }),
+        className: "text-amber-600 dark:text-amber-400",
+      };
+    }
+    return { label: copy("spend.monthly_change.increase", { value: percentage }), className: "text-amber-600 dark:text-amber-400" };
   }
   if (current < previous) {
     return { label: copy("spend.monthly_change.decrease", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400" };
@@ -243,16 +250,38 @@ function SummaryCard({ label, value, highlight = false }) {
   );
 }
 
+function FoldableSection({ id, icon, title, count, actions = null, children, className = "mb-6", testId }) {
+  const storageKey = `token-eyes:cost-section:${id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(storageKey) !== "closed";
+    } catch {
+      return true;
+    }
+  });
+  const toggle = () => setOpen((value) => {
+    const next = !value;
+    try { window.localStorage.setItem(storageKey, next ? "open" : "closed"); } catch { /* local preference only */ }
+    return next;
+  });
+  return (
+    <section className={className} data-cost-section={id} data-testid={testId}>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <button type="button" onClick={toggle} aria-expanded={open} className="flex min-w-0 items-center gap-2 text-left">
+          <SectionHeader icon={icon} title={title} count={count} />
+          {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
+        </button>
+        {actions}
+      </div>
+      {open ? children : null}
+    </section>
+  );
+}
+
 function OtherAiGroupCostSection({ groups = [], selectedMonth }) {
   if (!groups.length) return null;
   return (
-    <section className="mb-4">
-      <div className="mb-2 flex items-center gap-2">
-        <BarChart3 className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden="true" />
-        <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">
-          {copy("spend.cost.other_ai_groups.section")}
-        </h3>
-      </div>
+    <FoldableSection id="other-ai" icon={BarChart3} title={copy("spend.cost.other_ai_groups.section")} count={groups.length} className="mb-4">
       <div data-testid="compact-cost-group-grid" className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
         {groups.map((group) => (
           <article key={group.group_id || "ungrouped"} data-testid={`compact-cost-group-${group.group_id || "ungrouped"}`} data-layout="compact-cost-group" data-density="compact" className="rounded-md border border-oai-gray-200 bg-white px-2.5 py-2 shadow-oai-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
@@ -275,7 +304,7 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth }) {
           </article>
         ))}
       </div>
-    </section>
+    </FoldableSection>
   );
 }
 
@@ -285,12 +314,7 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth }) {
 
 function TokenPackageSection({ packages, loading }) {
   return (
-    <section className="mb-6">
-      <SectionHeader
-        icon={Package}
-        title={copy("spend.cost.token_package.section")}
-        count={packages.length}
-      />
+    <FoldableSection id="token-packages" icon={Package} title={copy("spend.cost.token_package.section")} count={packages.length}>
       {loading ? (
         <LoadingSkeleton />
       ) : packages.length === 0 ? (
@@ -302,7 +326,7 @@ function TokenPackageSection({ packages, loading }) {
           ))}
         </div>
       )}
-    </section>
+    </FoldableSection>
   );
 }
 
@@ -387,14 +411,13 @@ function ProviderApiAccountSection({
   const hasBalances = Array.isArray(balances) && balances.length > 0;
 
   return (
-    <section className="mb-6" data-testid="provider-api-account-section">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <SectionHeader
-          icon={Globe}
-          title={copy("spend.cost.provider_account.section")}
-          count={hasBalances ? balances.length : 0}
-        />
-        <div className="flex items-center gap-2">
+    <FoldableSection
+      id="provider-api"
+      icon={Globe}
+      title={copy("spend.cost.provider_account.section")}
+      count={hasBalances ? balances.length : 0}
+      testId="provider-api-account-section"
+      actions={<div className="flex items-center gap-2">
           {stale && (
             <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
               <AlertCircle className="h-3 w-3" aria-hidden="true" />
@@ -412,8 +435,8 @@ function ProviderApiAccountSection({
               {refreshing ? copy("spend.cost.provider_account.refreshing") : copy("spend.cost.provider_account.refresh_all")}
             </button>
           )}
-        </div>
-      </div>
+        </div>}
+    >
 
       {!hasBalances ? (
         <EmptyState message={copy("spend.cost.provider_account.empty")} />
@@ -441,7 +464,7 @@ function ProviderApiAccountSection({
           {copy("spend.cost.provider_account.config_link")}
         </button>
       </div>
-    </section>
+    </FoldableSection>
   );
 }
 
@@ -517,12 +540,7 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
 
 function ApiBillingSection({ accounts, loading }) {
   return (
-    <section className="mb-6">
-      <SectionHeader
-        icon={Globe}
-        title={copy("spend.cost.api_billing.section")}
-        count={accounts.length}
-      />
+    <FoldableSection id="api-billing" icon={Globe} title={copy("spend.cost.api_billing.section")} count={accounts.length}>
       {loading ? (
         <LoadingSkeleton />
       ) : accounts.length === 0 ? (
@@ -534,7 +552,7 @@ function ApiBillingSection({ accounts, loading }) {
           ))}
         </div>
       )}
-    </section>
+    </FoldableSection>
   );
 }
 
@@ -606,22 +624,20 @@ const SUBSCRIPTION_DEFAULT_FORM = {
 
 function SubscriptionSection({ records, loading, onAdd, onEdit, onDelete }) {
   return (
-    <section className="mb-6">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <SectionHeader
-          icon={CreditCard}
-          title={copy("spend.cost.subscription.section")}
-          count={records.length}
-        />
-        <button
+    <FoldableSection
+      id="subscriptions"
+      icon={CreditCard}
+      title={copy("spend.cost.subscription.section")}
+      count={records.length}
+      actions={<button
           type="button"
           onClick={onAdd}
           className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           {copy("spend.cost.subscription.add")}
-        </button>
-      </div>
+        </button>}
+    >
 
       {/* Separate-columns note — subscription fees vs provider API spend. */}
       <p className="mb-3 text-xs text-oai-gray-500 dark:text-oai-gray-400">
@@ -644,7 +660,7 @@ function SubscriptionSection({ records, loading, onAdd, onEdit, onDelete }) {
           ))}
         </div>
       )}
-    </section>
+    </FoldableSection>
   );
 }
 

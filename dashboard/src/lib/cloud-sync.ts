@@ -102,7 +102,7 @@ async function issueDeviceTokenForCloud(accessToken: string): Promise<CloudDevic
       : "web";
   const machineId = await resolveMachineId();
   if (!machineId) return null;
-  const deviceName = `Token Tracker (dashboard) #${machineId.slice(0, 8)}`;
+  const deviceName = `Token Eyes (dashboard) #${machineId.slice(0, 8)}`;
   // 云端 slug 为 tokentracker-device-token-issue（历史文档里的 vibeusage-* 在本项目未部署）
   const res = await fetch(`${root}/functions/tokentracker-device-token-issue`, {
     method: "POST",

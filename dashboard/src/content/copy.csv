@@ -1,4 +1,17 @@
 key,module,page,component,slot,text,notes,status
+leaderboard.sync.syncing,leaderboard,LeaderboardPage,ParticipationSync,status,"正在同步本地用量并生成你的排行……",,active
+leaderboard.sync.failed,leaderboard,LeaderboardPage,ParticipationSync,error,"本地用量尚未同步，请保持 Token Eyes 运行并重新打开排行榜重试。",,active
+settings.token_plan.subscription_cost,ui,SettingsPage,TokenPlanSection,subscription_cost,"套餐成本",,active
+settings.token_plan.cost_not_set,ui,SettingsPage,TokenPlanSection,cost_not_set,"未设置",,active
+settings.token_plan.subscription_currency,ui,SettingsPage,TokenPlanSection,subscription_currency,"成本币种",,active
+settings.token_plan.subscription_cycle_label,ui,SettingsPage,TokenPlanSection,subscription_cycle,"计费周期",,active
+settings.token_plan.subscription_cycle.monthly,ui,SettingsPage,TokenPlanSection,subscription_cycle_monthly,"每月",,active
+settings.token_plan.subscription_cycle.yearly,ui,SettingsPage,TokenPlanSection,subscription_cycle_yearly,"每年",,active
+settings.token_plan.subscription_cycle.one_time,ui,SettingsPage,TokenPlanSection,subscription_cycle_one_time,"一次性",,active
+settings.token_plan.subscription_start,ui,SettingsPage,TokenPlanSection,subscription_start,"订阅开始",,active
+settings.token_plan.subscription_end,ui,SettingsPage,TokenPlanSection,subscription_end,"订阅结束",,active
+settings.token_plan.recorded_at,ui,SettingsPage,TokenPlanSection,recorded_at,"记录时间",,active
+spend.monthly_change.low_baseline,dashboard,SpendPage,UsageStatsPanel,monthly_change_low_baseline,"上月同期基数较低，增加约 ¥{{value}}",,active
 login_modal.leaderboard_participation,ui,*,LoginModal,leaderboard_participation,"Signing in automatically joins the leaderboard and uploads aggregated Token statistics.",,active
 login_modal.upload_boundary,ui,*,LoginModal,upload_boundary,"Code, conversations, projects, paths, Skills, MCP data and files are never uploaded.",,active
 login_modal.delete_participation,ui,*,LoginModal,delete_participation,"You can delete leaderboard participation data at any time in account settings.",,active
@@ -139,7 +152,7 @@ landing.v2.compare.kicker,landing,LandingPage,MarketingLanding,compare_kicker,"S
 landing.v2.compare.title,landing,LandingPage,MarketingLanding,compare_title,"Stop guessing your AI usage.",,active
 landing.v2.compare.subtitle,landing,LandingPage,MarketingLanding,compare_subtitle,"AI CLI tools hide raw usage data in obscure local files. TokenTracker consolidates them into a local-first dashboard in real-time.",,active
 landing.v2.distill.body,landing,LandingPage,MarketingLanding,distill_body,"100% local processing. No prompts or code are ever collected.",,active
-landing.v2.compare.with.title,landing,LandingPage,MarketingLanding,with_title,"WITH TOKEN TRACKER",,active
+landing.v2.compare.with.title,landing,LandingPage,MarketingLanding,with_title,"WITH TOKEN EYES",,active
 landing.v2.compare.with.p1,landing,LandingPage,MarketingLanding,with_p1,"Centralized usage dashboard",,active
 landing.v2.compare.with.p2,landing,LandingPage,MarketingLanding,with_p2,"Real-time token metrics",,active
 landing.v2.compare.with.p3,landing,LandingPage,MarketingLanding,with_p3,"100% local, privacy-guaranteed",,active
@@ -149,7 +162,7 @@ landing.v2.compare.without.p1,landing,LandingPage,MarketingLanding,without_p1,"S
 landing.v2.compare.without.p2,landing,LandingPage,MarketingLanding,without_p2,"Blind to token consumption",,active
 landing.v2.compare.without.p3,landing,LandingPage,MarketingLanding,without_p3,"Unexpected API bills",,active
 landing.v2.compare.without.p4,landing,LandingPage,MarketingLanding,without_p4,"Zero historical audit logs",,active
-landing.v2.footer.line,landing,LandingPage,MarketingLanding,footer_line,"Token Tracker — Made by developers, for developers.",,active
+landing.v2.footer.line,landing,LandingPage,MarketingLanding,footer_line,"Token Eyes — Local-first AI token usage.",,active
 landing.v2.nav.status,landing,LandingPage,MarketingLanding,nav_status,"Status",,active
 landing.v2.nav.github,landing,LandingPage,MarketingLanding,nav_github,"GitHub",,active
 landing.v2.models.agent.codex,landing,LandingPage,MarketingLanding,agent_codex,"CODEX",,active
@@ -983,7 +996,7 @@ local_only.open_app,dashboard,LocalOnlyNotice,LocalOnlyNotice,open_app,"Open in 
 local_only.download,dashboard,LocalOnlyNotice,LocalOnlyNotice,download,"Get the Mac app",,active
 leaderboard.profile.like.aria_like,dashboard,LeaderboardProfileModal,LikeButton,aria_like,"Like profile",,active
 leaderboard.profile.like.aria_unlike,dashboard,LeaderboardProfileModal,LikeButton,aria_unlike,"Unlike profile",,active
-dashboard.auth_gate.title,dashboard,DashboardPage,DashboardView,auth_gate_title,"Sign in to Token Tracker",,active
+dashboard.auth_gate.title,dashboard,DashboardPage,DashboardView,auth_gate_title,"Sign in to Token Eyes",,active
 dashboard.auth_gate.subtitle,dashboard,DashboardPage,DashboardView,auth_gate_subtitle,"Sign in to sync and view your API usage, cost, and token consumption trends in the cloud.",,active
 dashboard.auth_gate.button,dashboard,DashboardPage,DashboardView,auth_gate_button,"Sign In",,active
 dashboard.expired_gate.title,dashboard,DashboardPage,DashboardView,expired_gate_title,"Session Expired",,active
@@ -1528,7 +1541,7 @@ settings.token_plan.codex.connect_timeout,ui,SettingsPage,TokenPlanSection,codex
 settings.token_plan.codex.quota_sync_failed,ui,SettingsPage,TokenPlanSection,codex_quota_sync_failed,"授权已完成，但额度同步暂时失败，可稍后重试。",,active
 settings.token_plan.claude.account_mode,ui,SettingsPage,TokenPlanSection,claude_account_mode,"Claude 检测模式",,active
 settings.token_plan.claude.account_mode.official,ui,SettingsPage,TokenPlanSection,claude_account_mode_official,"官方账号（同步 Anthropic 额度）",,active
-settings.token_plan.claude.account_mode.routing,ui,SettingsPage,TokenPlanSection,claude_account_mode_routing,"路由模式（CC Switch 等，仅 Token 统计）",,active
+settings.token_plan.claude.account_mode.routing,ui,SettingsPage,TokenPlanSection,claude_account_mode_routing,"路由模式（仅 Token 统计）",,active
 settings.token_plan.claude.routing_notice,ui,SettingsPage,TokenPlanSection,claude_routing_notice,"路由模式不会同步 Anthropic 官方额度，仅统计本地 Claude 日志 Token；请手工维护套餐余额。",,active
 settings.token_plan.claude.official_desc,ui,SettingsPage,TokenPlanSection,claude_official_desc,"连接 Anthropic 官网账号后自动同步 5 小时与 7 天利用率窗口（无需本机 Claude Code CLI）。",,active
 settings.token_plan.claude.connect_account,ui,SettingsPage,TokenPlanSection,claude_connect_account,"连接 Anthropic 官网账号",,active

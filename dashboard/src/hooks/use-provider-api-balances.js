@@ -110,7 +110,9 @@ export function useProviderApiBalances() {
       if (cancelledRef.current) return;
       const balance = result?.data?.balance;
       if (balance) {
-        setBalances((prev) => prev.map((b) => (b.configId === configId ? balance : b)));
+        setBalances((prev) => prev.some((b) => b.configId === configId)
+          ? prev.map((b) => (b.configId === configId ? balance : b))
+          : [...prev, balance]);
         setStale(false);
         setLastUpdatedAt(new Date().toISOString());
       } else if (!result?.ok) {

@@ -225,7 +225,7 @@ function renderWelcome() {
     [
       ASCII_LOGO,
       "",
-      `${BOLD}Token Tracker${RESET}  ${color("Local-first usage across " + providerCount + " AI CLIs", DIM)}`,
+      `${BOLD}Token Eyes${RESET}  ${color("Local-first usage across " + providerCount + " AI CLIs", DIM)}`,
       DIVIDER,
       `${CYAN}Nothing leaves your machine — token counts only, never prompts or responses.${RESET}`,
       DIVIDER,

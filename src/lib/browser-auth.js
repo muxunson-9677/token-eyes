@@ -71,7 +71,7 @@ async function startLocalCallbackServer({ callbackPath, timeoutMs, redirectUrl }
       res.end(
         [
           "<!doctype html>",
-          '<html><head><meta charset="utf-8"><title>TokenTracker</title></head>',
+          '<html><head><meta charset="utf-8"><title>Token Eyes</title></head>',
           "<body>",
           "<h2>Login succeeded</h2>",
           `<p>Redirecting to <a href="${redirectUrl}">dashboard</a>...</p>`,
@@ -83,7 +83,7 @@ async function startLocalCallbackServer({ callbackPath, timeoutMs, redirectUrl }
       res.end(
         [
           "<!doctype html>",
-          '<html><head><meta charset="utf-8"><title>TokenTracker</title></head>',
+          '<html><head><meta charset="utf-8"><title>Token Eyes</title></head>',
           "<body>",
           "<h2>Login succeeded</h2>",
           "<p>You can close this tab and return to the CLI.</p>",

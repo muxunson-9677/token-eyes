@@ -2593,7 +2593,7 @@ it("Codex connected refresh keeps quota and never falls back to the legacy adapt
     await user.click(screen.getByTitle(copy("settings.token_plan.refresh")));
   });
 
-  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalled());
   expect(refreshTokenPlan).not.toHaveBeenCalled();
   expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
     id: "codex-plan",

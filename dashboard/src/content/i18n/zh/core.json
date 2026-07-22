@@ -246,7 +246,7 @@
   "settings.account.copy": "复制",
   "settings.account.copied": "已复制",
   "settings.account.cloudSync": "云同步",
-  "settings.account.cloudSyncHint": "将本地用量上传到你的 Token Tracker 云端账号。",
+  "settings.account.cloudSyncHint": "将排行榜所需的本地汇总关联到你的 Token Eyes 账号。",
   "settings.account.publicProfile": "公开主页",
   "settings.account.publicProfileHint": "在公开排行榜中展示你的用量。",
   "settings.account.displayNameAnonymousHint": "匿名状态下，排行榜会隐藏你的名字和头像",

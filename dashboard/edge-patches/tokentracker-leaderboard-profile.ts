@@ -646,6 +646,38 @@ export default async function (req: Request): Promise<Response> {
     }
   }
 
+  // A newly participating user may have uploaded the compact privacy state
+  // before the daily public snapshot job has run. For the authenticated owner
+  // only, derive the token total and provider breakdown directly from those
+  // compact rows so the leaderboard can show "me" immediately. No project,
+  // prompt, or file data exists in this payload.
+  if (bucketMap.size === 0 && !snap && isSelf) {
+    const { data: compactStates } = await client.database
+      .from("tokentracker_leaderboard_device_state")
+      .select("payload")
+      .eq("user_id", userId)
+      .limit(3);
+    for (const state of Array.isArray(compactStates) ? compactStates : []) {
+      const payload = (state as { payload?: Record<string, unknown> })?.payload;
+      const periods = payload?.periods as Record<string, unknown> | undefined;
+      const rows = Array.isArray(periods?.[period]) ? periods?.[period] as unknown[] : [];
+      for (const raw of rows) {
+        if (!Array.isArray(raw) || raw.length !== 7) continue;
+        const source = canonicalSource(String(raw[0] || "other"));
+        const model = String(raw[1] || "");
+        const tokens = raw.slice(2, 7).reduce((sum, value) => {
+          const n = Number(value);
+          return sum + (Number.isFinite(n) && n > 0 ? n : 0);
+        }, 0);
+        periodTotalTokens += tokens;
+        const provider = periodByProvider.get(source) || { tokens: 0, cost: 0 };
+        provider.tokens += tokens;
+        periodByProvider.set(source, provider);
+        if (model) periodByModel.set(model, (periodByModel.get(model) || 0) + tokens);
+      }
+    }
+  }
+
   // best_day in period
   let bestDay: { date: string; total_tokens: number; estimated_cost_usd: number } | null = null;
   for (const [day, tokens] of periodByDay.entries()) {
