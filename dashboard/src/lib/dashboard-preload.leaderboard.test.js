@@ -77,6 +77,7 @@ describe("leaderboard default state preload", () => {
       source: "codex",
       limit: 50,
       offset: 0,
+      timeoutMs: 10_000,
     });
     expect(getLeaderboard.mock.calls[0][0]).not.toHaveProperty("accessToken");
     expect(getLeaderboard.mock.calls[0][0]).not.toHaveProperty("Authorization");
@@ -124,6 +125,20 @@ describe("leaderboard default state preload", () => {
     }
   });
 
+  it("restores the last public leaderboard from localStorage after a new app session", () => {
+    const contextKey = getLeaderboardPreloadContextKey({
+      accessMode: "public",
+      baseUrl: "https://edge.example",
+      period: "total",
+    });
+    const data = { entries: [{ rank: 1, display_name: "Cached User" }], total_entries: 1 };
+
+    publishLeaderboardPreloadState(data, { contextKey });
+    resetDashboardPreload();
+
+    expect(readLeaderboardPreloadState(contextKey)).toMatchObject({ data });
+  });
+
   it("skips silently when no leaderboard base URL is configured outside mock mode", async () => {
     await expect(
       preloadLeaderboardDefaultState({
@@ -163,6 +178,7 @@ describe("leaderboard default state preload", () => {
       source: "all",
       limit: 20,
       offset: 0,
+      timeoutMs: 10_000,
     });
   });
 
@@ -198,6 +214,7 @@ describe("leaderboard default state preload", () => {
       source: "all",
       limit: 20,
       offset: 0,
+      timeoutMs: 10_000,
     });
   });
 

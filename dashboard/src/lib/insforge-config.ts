@@ -11,6 +11,7 @@
  * has admin access and must never reach the frontend.) Explicit env vars still win.
  */
 const PROD_INSFORGE_BASE_URL = "https://a62b9nf2.ap-southeast.insforge.app";
+const PROD_INSFORGE_FUNCTIONS_URL = "https://a62b9nf2.function2.insforge.app";
 const PROD_INSFORGE_ANON_KEY =
   "anon_13e8a5d6400e9b50912a5c3612f3480ba06edbd2c331e84e5fbdf5fd16d3d381";
 
@@ -25,6 +26,15 @@ export function getInsforgeRemoteUrl(): string {
     env?.VITE_INSFORGE_BASE_URL ||
     env?.VITE_TOKENTRACKER_BACKEND_BASE_URL ||
     PROD_INSFORGE_BASE_URL
+  ).trim();
+}
+
+/** Direct edge-function runtime. It avoids the slower compatibility proxy. */
+export function getInsforgeFunctionsUrl(): string {
+  const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
+  return (
+    env?.VITE_INSFORGE_FUNCTIONS_BASE_URL ||
+    PROD_INSFORGE_FUNCTIONS_URL
   ).trim();
 }
 

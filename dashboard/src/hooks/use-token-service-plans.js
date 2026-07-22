@@ -8,6 +8,8 @@ import {
   verifyCursorConsoleSession,
 } from "../lib/api";
 
+const TOKEN_PLANS_CHANGED_EVENT = "token-eyes:token-plans-changed";
+
 function resolveNativeSessionRef(plan, sessions) {
   const official = plan?.detection_config?.official_account || {};
   if (official.session_ref) return official.session_ref;
@@ -73,11 +75,11 @@ export async function refreshConnectedCursorPlans(plans, sessions = []) {
           last_sync_attempt_at: now,
           last_error_code: status.error_code || "SYNC_FAILED",
           last_error_message: status.error_message || "Cursor usage sync failed",
-        });
+        }, { notify: false });
       }
       return;
     }
-    await saveTokenPlan(applyNativeQuotaToPlan(plan, status));
+    await saveTokenPlan(applyNativeQuotaToPlan(plan, status), { notify: false });
   }));
 }
 
@@ -92,7 +94,7 @@ export async function refreshConnectedCodexPlans(plans, sessions = []) {
     if (!sessionRef) return;
     const status = await syncCodexConsoleQuota(sessionRef);
     if (status?.state_code !== "connected" || !status?.quota) return;
-    await saveTokenPlan(applyNativeQuotaToPlan(plan, status));
+    await saveTokenPlan(applyNativeQuotaToPlan(plan, status), { notify: false });
   }));
 }
 
@@ -121,16 +123,23 @@ export async function refreshConnectedTraePlans(plans, sessions = []) {
           last_sync_attempt_at: now,
           last_error_code: status.error_code || "TRAE_QUOTA_FAILED",
           last_error_message: status.error_message || "TRAE quota sync failed",
-        });
+        }, { notify: false });
       }
       return;
     }
-    await saveTokenPlan(applyNativeQuotaToPlan(plan, status));
+    await saveTokenPlan(applyNativeQuotaToPlan(plan, status), { notify: false });
   }));
 }
 
 export function useTokenServicePlans(refreshRevision = 0) {
   const [state, setState] = useState({ plans: [], loading: true, error: null });
+  const [planRevision, setPlanRevision] = useState(0);
+
+  useEffect(() => {
+    const reload = () => setPlanRevision((value) => value + 1);
+    window.addEventListener(TOKEN_PLANS_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(TOKEN_PLANS_CHANGED_EVENT, reload);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,7 +169,7 @@ export function useTokenServicePlans(refreshRevision = 0) {
       });
 
     return () => { cancelled = true; };
-  }, [refreshRevision]);
+  }, [refreshRevision, planRevision]);
 
   return state;
 }

@@ -1,4 +1,4 @@
-import { getInsforgeRemoteUrl } from "./insforge-config";
+import { getInsforgeFunctionsUrl, getInsforgeRemoteUrl } from "./insforge-config";
 
 export const STATUSPAGE_URL = "https://tokentracker.statuspage.io/";
 
@@ -30,5 +30,5 @@ export function getBackendBaseUrl() {
  */
 export function getLeaderboardBaseUrl() {
   const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
-  return (env?.VITE_LEADERBOARD_PUBLIC_BASE_URL || getInsforgeRemoteUrl()).trim();
+  return (env?.VITE_LEADERBOARD_PUBLIC_BASE_URL || getInsforgeFunctionsUrl()).trim();
 }

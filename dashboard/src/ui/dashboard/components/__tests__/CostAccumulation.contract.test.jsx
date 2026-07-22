@@ -138,13 +138,14 @@ describe("getMonthComparison MoM copy boundary", () => {
 
   it("labels a flat comparison when both periods are zero", () => {
     const result = getMonthComparison(0, 0, usdToCny);
-    expect(result.label).toBe("spend.monthly_change.flat");
+    expect(result.label).toContain("spend.monthly_change.flat_percent");
     expect(result.className).toContain("text-oai-gray-400");
   });
 
-  it("avoids infinite percent when previous is zero and shows new-amount copy", () => {
+  it("uses a finite percentage when the previous month is zero", () => {
     const result = getMonthComparison(50, 0, usdToCny);
-    expect(result.label).toContain("spend.monthly_change.no_baseline");
+    expect(result.label).toContain("spend.monthly_change.increase");
+    expect(result.label).toContain("100.0%");
     expect(result.label).not.toMatch(/Infinity|∞|NaN/);
     expect(result.className).toContain("text-emerald-600");
   });
@@ -153,9 +154,9 @@ describe("getMonthComparison MoM copy boundary", () => {
     const api = getMonthComparison(6603.138389, 463.393724, usdToCny);
     const total = getMonthComparison(6749.666167, 472.143724, usdToCny);
 
-    expect(api.label).toContain("spend.monthly_change.low_baseline");
-    expect(total.label).toContain("spend.monthly_change.low_baseline");
-    expect(api.label).not.toContain("1425.0%");
+    expect(api.label).toContain("spend.monthly_change.increase");
+    expect(api.label).toContain("1325.0%");
+    expect(total.label).toContain("1329.6%");
   });
 });
 

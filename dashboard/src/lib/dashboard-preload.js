@@ -26,6 +26,7 @@ const LEADERBOARD_DEFAULT_PAGE_SIZE = 20;
 const LEADERBOARD_PAGE_SIZE_OPTIONS = Object.freeze([10, 20, 50, 100]);
 const LEADERBOARD_PAGE_SIZE_STORAGE_KEY = "tokentracker:leaderboard:pageSize";
 const LEADERBOARD_DEFAULT_MAX_ENTRIES = 20;
+const LEADERBOARD_PERSISTED_CACHE_KEY = "token-eyes:leaderboard:public-cache:v1";
 const PAGE_STATE_SOURCES = Object.freeze([
   "dashboard-existing",
   "silent-preload",
@@ -34,6 +35,53 @@ const PAGE_STATE_SOURCES = Object.freeze([
 ]);
 let sessionCounter = 0;
 let session;
+
+function canPersistLeaderboardContext(contextKey) {
+  return typeof contextKey === "string"
+    && contextKey.includes("mockEnabled=false")
+    && (contextKey.includes("accessMode=public") || contextKey.includes("accessMode=cloud"));
+}
+
+function readPersistedLeaderboardEntries() {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LEADERBOARD_PERSISTED_CACHE_KEY) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readPersistedLeaderboardEntry(contextKey) {
+  if (!canPersistLeaderboardContext(contextKey)) return null;
+  return readPersistedLeaderboardEntries()[contextKey] || null;
+}
+
+function persistLeaderboardEntry(entry, maxEntries) {
+  if (typeof window === "undefined" || !canPersistLeaderboardContext(entry?.contextKey)) return;
+  try {
+    const entries = readPersistedLeaderboardEntries();
+    entries[entry.contextKey] = entry;
+    const orderedKeys = Object.keys(entries)
+      .sort((left, right) => Number(entries[right]?.updatedAt || 0) - Number(entries[left]?.updatedAt || 0));
+    for (const key of orderedKeys.slice(maxEntries)) delete entries[key];
+    window.localStorage.setItem(LEADERBOARD_PERSISTED_CACHE_KEY, JSON.stringify(entries));
+  } catch {
+    // A cache write failure must never block the live leaderboard request.
+  }
+}
+
+function deletePersistedLeaderboardEntry(contextKey) {
+  if (typeof window === "undefined" || !contextKey) return;
+  try {
+    const entries = readPersistedLeaderboardEntries();
+    if (!Object.prototype.hasOwnProperty.call(entries, contextKey)) return;
+    delete entries[contextKey];
+    window.localStorage.setItem(LEADERBOARD_PERSISTED_CACHE_KEY, JSON.stringify(entries));
+  } catch {
+    // Cache cleanup is best-effort only.
+  }
+}
 
 class WindowSessionCache {
   constructor(options = {}) {
@@ -49,7 +97,11 @@ class WindowSessionCache {
       return cloneCacheEntry(this.limits);
     }
     if (!contextKey) return null;
-    return cloneCacheEntry(this.leaderboard.get(contextKey));
+    const memoryEntry = this.leaderboard.get(contextKey);
+    if (memoryEntry) return cloneCacheEntry(memoryEntry);
+    const persistedEntry = readPersistedLeaderboardEntry(contextKey);
+    if (persistedEntry) this.leaderboard.set(contextKey, persistedEntry);
+    return cloneCacheEntry(persistedEntry);
   }
 
   write(entry, options = {}) {
@@ -62,6 +114,7 @@ class WindowSessionCache {
     }
     this.leaderboard.set(entry.contextKey, entry);
     this.evictLeaderboardEntries(options.activeContextKey || entry.contextKey);
+    persistLeaderboardEntry(entry, this.leaderboardMaxEntries);
   }
 
   evictLeaderboardEntries(activeContextKey = null) {
@@ -70,6 +123,7 @@ class WindowSessionCache {
         Array.from(this.leaderboard.keys()).find((key) => key !== activeContextKey) ||
         this.leaderboard.keys().next().value;
       this.leaderboard.delete(evictionKey);
+      deletePersistedLeaderboardEntry(evictionKey);
     }
   }
 
@@ -435,6 +489,7 @@ export function preloadLeaderboardDefaultState(options = {}) {
         source,
         limit: pageSize,
         offset,
+        timeoutMs: options.timeoutMs ?? 10_000,
       }),
     )
     .then((data) => {

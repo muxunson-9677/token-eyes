@@ -68,22 +68,16 @@ export function getMonthlyCostComparison(currentValue, previousValue) {
 
   const difference = current - previous;
   if (Math.abs(difference) < 1e-9) {
-    return { kind: "flat", text: copy("spend.monthly_change.flat") };
+    return { kind: "flat", text: copy("spend.monthly_change.flat_percent", { value: "0.0" }) };
   }
   if (previous === 0) {
     return {
       kind: "increase",
-      text: copy("spend.monthly_change.no_baseline"),
+      text: copy("spend.monthly_change.increase", { value: "100.0" }),
     };
   }
 
   const percent = Math.abs((difference / previous) * 100).toFixed(1);
-  if (difference > 0 && Number(percent) > 999) {
-    return {
-      kind: "increase",
-      text: copy("spend.monthly_change.low_baseline", { value: difference.toFixed(2) }),
-    };
-  }
   return difference > 0
     ? { kind: "increase", text: copy("spend.monthly_change.increase", { value: percent }) }
     : { kind: "decrease", text: copy("spend.monthly_change.decrease", { value: percent }) };
@@ -292,7 +286,7 @@ export function UsageStatsPanel({
                 return (
                   <div
                     key={card.labelKey}
-                    className="min-w-0 rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
+                    className="min-w-0 overflow-hidden rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
                   >
                     <div className="text-[10px] text-oai-gray-500 dark:text-oai-gray-400">
                       <span className="truncate">{copy(card.labelKey)}</span>
@@ -309,7 +303,7 @@ export function UsageStatsPanel({
                         <span
                           data-testid="monthly-cost-comparison"
                           className={cn(
-                            "shrink-0 truncate text-[9px] font-medium leading-tight tabular-nums",
+                            "min-w-0 truncate text-[9px] font-medium leading-tight tabular-nums",
                             comparison.kind === "increase" && "text-green-600 dark:text-green-400",
                             comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
                             comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",

@@ -47,28 +47,21 @@ export function getMonthComparison(currentUsd, previousUsd, usdToCny) {
   const previous = Number(previousUsd);
   if (previous === 0) {
     if (current === 0) {
-      return { label: copy("spend.monthly_change.flat"), className: "text-oai-gray-400 dark:text-oai-gray-500" };
+      return { label: copy("spend.monthly_change.flat_percent", { value: "0.0" }), className: "text-oai-gray-400 dark:text-oai-gray-500" };
     }
     return {
-      label: copy("spend.monthly_change.no_baseline"),
+      label: copy("spend.monthly_change.increase", { value: "100.0" }),
       className: "text-emerald-600 dark:text-emerald-400",
     };
   }
   const percentage = Math.abs(((current - previous) / previous) * 100).toFixed(1);
   if (current > previous) {
-    if (Number(percentage) > 999) {
-      const differenceCny = Math.abs(current - previous) * Number(usdToCny || 1);
-      return {
-        label: copy("spend.monthly_change.low_baseline", { value: differenceCny.toFixed(2) }),
-        className: "text-emerald-600 dark:text-emerald-400",
-      };
-    }
     return { label: copy("spend.monthly_change.increase", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400" };
   }
   if (current < previous) {
     return { label: copy("spend.monthly_change.decrease", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400" };
   }
-  return { label: copy("spend.monthly_change.flat"), className: "text-oai-gray-400 dark:text-oai-gray-500" };
+  return { label: copy("spend.monthly_change.flat_percent", { value: "0.0" }), className: "text-oai-gray-400 dark:text-oai-gray-500" };
 }
 
 function formatDualAmount(usd, cny, comparison = null) {
@@ -86,10 +79,10 @@ function formatDualAmount(usd, cny, comparison = null) {
   return (
     <div className="flex flex-col">
       <span className="tabular-nums">{formatAmount(usd, "USD")}</span>
-      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">
-        <span>{formatAmount(cny, "CNY")}</span>
+      <span className="flex min-w-0 items-center gap-x-2 text-xs text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">
+        <span className="shrink-0">{formatAmount(cny, "CNY")}</span>
         {comparison ? (
-          <span data-testid={`monthly-cost-comparison-${comparison.id}`} className={cn("text-[10px] font-medium", comparison.className)}>
+          <span data-testid={`monthly-cost-comparison-${comparison.id}`} className={cn("min-w-0 truncate text-[10px] font-medium", comparison.className)}>
             {comparison.label}
           </span>
         ) : null}

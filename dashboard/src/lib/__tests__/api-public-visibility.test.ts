@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getInsforgeAnonKeyMock, getInsforgeRemoteUrlMock } = vi.hoisted(() => ({
+const { getInsforgeAnonKeyMock, getInsforgeRemoteUrlMock, getInsforgeFunctionsUrlMock } = vi.hoisted(() => ({
   getInsforgeAnonKeyMock: vi.fn(() => "anon-key"),
   getInsforgeRemoteUrlMock: vi.fn(() => "https://example.insforge.app"),
+  getInsforgeFunctionsUrlMock: vi.fn(() => "https://example.function2.insforge.app"),
 }));
 
 vi.mock("../insforge-config", () => ({
   getInsforgeAnonKey: getInsforgeAnonKeyMock,
   getInsforgeRemoteUrl: getInsforgeRemoteUrlMock,
+  getInsforgeFunctionsUrl: getInsforgeFunctionsUrlMock,
 }));
 
 import {
@@ -41,6 +43,8 @@ describe("public visibility API", () => {
     getInsforgeAnonKeyMock.mockClear();
     getInsforgeRemoteUrlMock.mockReset();
     getInsforgeRemoteUrlMock.mockReturnValue("https://example.insforge.app");
+    getInsforgeFunctionsUrlMock.mockReset();
+    getInsforgeFunctionsUrlMock.mockReturnValue("https://example.function2.insforge.app");
   });
 
   it("reads visibility through the public visibility edge function", async () => {
@@ -55,7 +59,7 @@ describe("public visibility API", () => {
     await expect(getPublicVisibility({ accessToken })).resolves.toEqual(payload);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://example.insforge.app/functions/tokentracker-public-visibility",
+      "https://example.function2.insforge.app/tokentracker-public-visibility",
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({
@@ -100,7 +104,7 @@ describe("public visibility API", () => {
     ).resolves.toEqual(payload);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://example.insforge.app/functions/tokentracker-public-visibility",
+      "https://example.function2.insforge.app/tokentracker-public-visibility",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -206,7 +210,7 @@ describe("public visibility API", () => {
   });
 
   it("throws clearly when the InsForge backend URL is not configured", async () => {
-    getInsforgeRemoteUrlMock.mockReturnValue("");
+    getInsforgeFunctionsUrlMock.mockReturnValue("");
 
     await expect(getPublicVisibility({ accessToken: "token" })).rejects.toThrow(
       "InsForge base URL not configured",
@@ -219,6 +223,8 @@ describe("leaderboard API", () => {
     vi.unstubAllGlobals();
     getInsforgeRemoteUrlMock.mockReset();
     getInsforgeRemoteUrlMock.mockReturnValue("https://example.insforge.app");
+    getInsforgeFunctionsUrlMock.mockReset();
+    getInsforgeFunctionsUrlMock.mockReturnValue("https://example.function2.insforge.app");
   });
 
   it("sends only public period, source and metric dimensions without an Authorization header", async () => {
@@ -234,9 +240,10 @@ describe("leaderboard API", () => {
 
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe(
-      "https://example.insforge.app/functions/tokentracker-leaderboard?period=today&metric=tokens&source=codex&limit=20&offset=40",
+      "https://example.function2.insforge.app/tokentracker-leaderboard?period=today&metric=tokens&source=codex&limit=20&offset=40",
     );
     expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
+    expect(options.signal).toBeDefined();
   });
 
   it("uses local leaderboard data when developer preview explicitly requests mock mode", async () => {

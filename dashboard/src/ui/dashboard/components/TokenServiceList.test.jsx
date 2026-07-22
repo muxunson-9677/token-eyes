@@ -233,7 +233,7 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("A")).toBeInTheDocument();
   });
 
-  it("shows only successful automatic services, keeps valid manual and exhausted services, and renders provider plus plan labels", () => {
+  it("keeps every saved non-expired plan visible even when automatic refresh fails", () => {
     render(
       <TokenServiceList
         now={new Date("2026-07-13T00:00:00Z")}
@@ -272,7 +272,7 @@ describe("TokenServiceList", () => {
     );
 
     const rows = screen.getAllByTestId("token-service-row");
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(5);
     const xiaomiRow = screen.getByText("Xiaomi").closest("li");
     expect(xiaomiRow).not.toBeNull();
     const xiaomiIcon = screen.getByTestId("token-service-provider-icon-xiaomi_mimo");
@@ -286,8 +286,8 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Plus")).toHaveClass("text-oai-gray-400");
     expect(screen.getByText("manual")).toBeInTheDocument();
-    expect(screen.queryByText("Lite")).not.toBeInTheDocument();
-    expect(screen.queryByText("Pro")).not.toBeInTheDocument();
+    expect(screen.getByText("Lite")).toBeInTheDocument();
+    expect(screen.getByText("Pro")).toBeInTheDocument();
   });
 
   it("formats token quota values with Chinese units", () => {

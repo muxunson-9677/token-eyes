@@ -154,9 +154,9 @@ describe("UsageStatsPanel", () => {
   it.each([
     { current: 120, previous: 100, expected: "较上月新增 20.0%", expectedClass: "text-green-600" },
     { current: 80, previous: 100, expected: "较上月减少 20.0%", expectedClass: "text-green-600" },
-    { current: 100, previous: 100, expected: "与上月持平", expectedClass: "text-oai-gray-400" },
-    { current: 15, previous: 0, expected: "上月无基数", expectedClass: "text-green-600" },
-    { current: 0, previous: 0, expected: "与上月持平", expectedClass: "text-oai-gray-400" },
+    { current: 100, previous: 100, expected: "较上月 0.0%", expectedClass: "text-oai-gray-400" },
+    { current: 15, previous: 0, expected: "较上月新增 100.0%", expectedClass: "text-green-600" },
+    { current: 0, previous: 0, expected: "较上月 0.0%", expectedClass: "text-oai-gray-400" },
   ])("renders the monthly total comparison without invalid zero-base percentages", ({ current, previous, expected, expectedClass }) => {
     render(
       <UsageStatsPanel
@@ -207,13 +207,13 @@ describe("UsageStatsPanel", () => {
     expect(comparisons).toHaveLength(3);
     expect(comparisons[0]).toHaveTextContent("20.0%");
     expect(comparisons[1]).toHaveTextContent("20.0%");
-    expect(comparisons[2]).toHaveTextContent("持平");
+    expect(comparisons[2]).toHaveTextContent("较上月 0.0%");
     expect(screen.getAllByTestId("monthly-cost-cny-row")).toHaveLength(3);
     expect(comparisons[0]).toHaveClass("text-green-600");
     expect(comparisons[1]).toHaveClass("text-green-600");
   });
 
-  it("uses each installed-ledger bucket and renders delta rather than current/previous ratio", () => {
+  it("shows only the requested month-over-month percentage even for a low baseline", () => {
     render(
       <UsageStatsPanel
         summary={{ totals: { total_tokens: 1 } }}
@@ -235,10 +235,10 @@ describe("UsageStatsPanel", () => {
 
     const comparisons = screen.getAllByTestId("monthly-cost-comparison");
     expect(comparisons).toHaveLength(3);
-    expect(comparisons[0]).toHaveTextContent("上月同期基数较低");
-    expect(comparisons[1]).toHaveTextContent("与上月持平");
-    expect(comparisons[2]).toHaveTextContent("上月同期基数较低");
-    expect(screen.queryByText("较上月新增 1425.0%")).not.toBeInTheDocument();
+    expect(comparisons[0]).toHaveTextContent("较上月新增 1325.0%");
+    expect(comparisons[1]).toHaveTextContent("较上月 0.0%");
+    expect(comparisons[2]).toHaveTextContent("较上月新增 1329.6%");
+    expect(comparisons[0].textContent).not.toContain("¥");
   });
 
   it("keeps existing stats visible while refreshing", () => {

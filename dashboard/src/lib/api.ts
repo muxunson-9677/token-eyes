@@ -12,12 +12,20 @@ import {
   getMockModelStats,
   isMockEnabled,
 } from "./mock-data";
-import { getInsforgeRemoteUrl, getInsforgeAnonKey } from "./insforge-config";
+import { getInsforgeFunctionsUrl, getInsforgeRemoteUrl, getInsforgeAnonKey } from "./insforge-config";
 import { isValidJwtShape } from "./auth-token";
 import { getLocalApiAuthHeaders } from "./local-api-auth";
 import { buildLocalApiUrl, isTauriRuntime } from "./local-api-url";
 
 type AnyRecord = Record<string, any>;
+
+export const TOKEN_PLANS_CHANGED_EVENT = "token-eyes:token-plans-changed";
+
+function notifyTokenPlansChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(TOKEN_PLANS_CHANGED_EVENT));
+  }
+}
 
 export type CodexResetEventType =
   | "reset_upcoming"
@@ -369,9 +377,9 @@ export async function getApiBillingAccounts() {
   return fetchLocalJson(PATHS.apiBillingAccounts);
 }
 
-export async function saveTokenPlan(record: AnyRecord = {}) {
+export async function saveTokenPlan(record: AnyRecord = {}, options: { notify?: boolean } = {}) {
   const authHeaders = await getLocalApiAuthHeaders();
-  return fetchLocalJson(PATHS.tokenPlans, undefined, {
+  const result = await fetchLocalJson(PATHS.tokenPlans, undefined, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -380,11 +388,13 @@ export async function saveTokenPlan(record: AnyRecord = {}) {
     },
     body: JSON.stringify(record),
   });
+  if (options.notify !== false) notifyTokenPlansChanged();
+  return result;
 }
 
 export async function deleteTokenPlan(id: string) {
   const authHeaders = await getLocalApiAuthHeaders();
-  return fetchLocalJson(PATHS.tokenPlans, undefined, {
+  const result = await fetchLocalJson(PATHS.tokenPlans, undefined, {
     method: "DELETE",
     headers: {
       Accept: "application/json",
@@ -393,11 +403,13 @@ export async function deleteTokenPlan(id: string) {
     },
     body: JSON.stringify({ id }),
   });
+  notifyTokenPlansChanged();
+  return result;
 }
 
 export async function reorderTokenPlans(ids: string[]) {
   const authHeaders = await getLocalApiAuthHeaders();
-  return fetchLocalJson(PATHS.tokenPlansOrder, undefined, {
+  const result = await fetchLocalJson(PATHS.tokenPlansOrder, undefined, {
     method: "PUT",
     headers: {
       Accept: "application/json",
@@ -406,6 +418,8 @@ export async function reorderTokenPlans(ids: string[]) {
     },
     body: JSON.stringify({ ids }),
   });
+  notifyTokenPlansChanged();
+  return result;
 }
 
 export async function getTokenPlanCatalog() {
@@ -673,11 +687,12 @@ async function fetchInsforgeFunction(slug: string, options: {
   baseUrl?: string;
   params?: AnyRecord;
   body?: unknown;
+  timeoutMs?: number;
 } = {}) {
-  const baseUrl = options.baseUrl || getInsforgeRemoteUrl();
+  const baseUrl = options.baseUrl || getInsforgeFunctionsUrl();
   if (!baseUrl) throw new Error("InsForge base URL not configured");
   const root = baseUrl.replace(/\/$/, "");
-  const url = new URL(`${root}/functions/${slug}`);
+  const url = new URL(`${root}/${slug}`);
   if (options.params) {
     for (const [key, value] of Object.entries(options.params)) {
       if (value != null && value !== "") url.searchParams.set(key, String(value));
@@ -698,11 +713,20 @@ async function fetchInsforgeFunction(slug: string, options: {
     headers.Authorization = `Bearer ${options.accessToken}`;
   }
 
-  const res = await fetch(url.toString(), {
-    method: options.method || "GET",
-    headers,
-    ...(options.body != null ? { body: JSON.stringify(options.body) } : {}),
-  });
+  const timeoutMs = Math.max(500, Math.min(30_000, Number(options.timeoutMs) || 10_000));
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetch(url.toString(), {
+      method: options.method || "GET",
+      headers,
+      signal: controller.signal,
+      ...(options.body != null ? { body: JSON.stringify(options.body) } : {}),
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const err: any = new Error(`Request failed with HTTP ${res.status}`);
     err.status = res.status;
@@ -718,29 +742,17 @@ export async function getLeaderboard({
   source,
   limit,
   offset,
+  timeoutMs = 2_500,
   mock = false,
 }: AnyRecord = {}) {
   if (mock || isMockEnabled()) {
     return getMockLeaderboard({ period, metric, source, limit, offset });
   }
-  const insforgeBaseUrl = getInsforgeRemoteUrl().replace(/\/$/, "");
-  const publicBaseUrl = String(baseUrl || insforgeBaseUrl).replace(/\/$/, "");
-  if (publicBaseUrl && publicBaseUrl !== insforgeBaseUrl) {
-    const url = new URL(`${publicBaseUrl}/leaderboard`);
-    for (const [key, value] of Object.entries({ period, metric, source, limit, offset })) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
-    }
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "omit",
-    });
-    if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
-    return response.json();
-  }
+  const publicBaseUrl = String(baseUrl || getInsforgeFunctionsUrl()).replace(/\/$/, "");
   return fetchInsforgeFunction("tokentracker-leaderboard", {
     baseUrl: publicBaseUrl,
     params: { period, metric, source, limit, offset },
+    timeoutMs,
   });
 }
 

@@ -1188,6 +1188,7 @@ spend.monthly_change.decrease,dashboard,SpendPage,UsageStatsPanel,monthly_change
 spend.monthly_change.new_amount,dashboard,SpendPage,UsageStatsPanel,monthly_change_new_amount,"较上月新增 {{amount}}",,active
 spend.monthly_change.no_baseline,dashboard,SpendPage,UsageStatsPanel,monthly_change_no_baseline,"上月无基数",,active
 spend.monthly_change.flat,dashboard,SpendPage,UsageStatsPanel,monthly_change_flat,"与上月持平",,active
+spend.monthly_change.flat_percent,dashboard,SpendPage,UsageStatsPanel,monthly_change_flat_percent,"较上月 {{value}}%",,active
 spend.total_usd,dashboard,SpendPage,SpendPage,total_usd,"USD 合计",,active
 spend.total_cny,dashboard,SpendPage,SpendPage,total_cny,"CNY 合计",,active
 spend.by_source_title,dashboard,SpendPage,SpendPage,by_source_title,"按来源拆分",,active

@@ -1,10 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   refreshConnectedCodexPlans,
   refreshConnectedCursorPlans,
   refreshConnectedTraePlans,
+  useTokenServicePlans,
 } from "./use-token-service-plans.js";
 import {
+  getConsoleSessions,
+  getTokenPlans,
   saveTokenPlan,
   syncCodexConsoleQuota,
   syncTraeConsoleQuota,
@@ -12,6 +16,7 @@ import {
 } from "../lib/api";
 
 vi.mock("../lib/api", () => ({
+  TOKEN_PLANS_CHANGED_EVENT: "token-eyes:token-plans-changed",
   getConsoleSessions: vi.fn(),
   getTokenPlans: vi.fn(),
   saveTokenPlan: vi.fn(),
@@ -19,6 +24,30 @@ vi.mock("../lib/api", () => ({
   syncTraeConsoleQuota: vi.fn(),
   verifyCursorConsoleSession: vi.fn(),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("useTokenServicePlans", () => {
+  it("reloads saved plans immediately after the settings page changes them", async () => {
+    getConsoleSessions.mockResolvedValue({ sessions: [] });
+    getTokenPlans
+      .mockResolvedValueOnce({ records: [] })
+      .mockResolvedValueOnce({ records: [] })
+      .mockResolvedValueOnce({ records: [{ id: "cursor-new", provider_id: "cursor" }] })
+      .mockResolvedValueOnce({ records: [{ id: "cursor-new", provider_id: "cursor" }] });
+
+    const { result } = renderHook(() => useTokenServicePlans());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => window.dispatchEvent(new Event("token-eyes:token-plans-changed")));
+
+    await waitFor(() => expect(result.current.plans).toEqual([
+      expect.objectContaining({ id: "cursor-new" }),
+    ]));
+  });
+});
 
 describe("refreshConnectedCodexPlans", () => {
   it("refreshes every bound Codex account independently", async () => {
@@ -47,8 +76,8 @@ describe("refreshConnectedCodexPlans", () => {
     expect(syncCodexConsoleQuota).toHaveBeenCalledTimes(2);
     expect(syncCodexConsoleQuota).toHaveBeenCalledWith("token-plan/codex/session/one");
     expect(syncCodexConsoleQuota).toHaveBeenCalledWith("token-plan/codex/session/two");
-    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({ id: "plan-one", used_quota: 12 }));
-    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({ id: "plan-two", used_quota: 63 }));
+    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({ id: "plan-one", used_quota: 12 }), { notify: false });
+    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({ id: "plan-two", used_quota: 63 }), { notify: false });
   });
 
   it("resolves a legacy account binding to its native Codex session", async () => {
@@ -66,7 +95,7 @@ describe("refreshConnectedCodexPlans", () => {
     }], [{ id: "console-account-one", session_ref: "token-plan/codex/session/account-one" }]);
 
     expect(syncCodexConsoleQuota).toHaveBeenCalledWith("token-plan/codex/session/account-one");
-    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({ id: "legacy-plan", used_quota: 24 }));
+    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({ id: "legacy-plan", used_quota: 24 }), { notify: false });
   });
 });
 
@@ -102,7 +131,7 @@ describe("refreshConnectedTraePlans", () => {
       used_quota: 25,
       remaining_quota: 75,
       sync_status: "success",
-    }));
+    }), { notify: false });
   });
 });
 
@@ -165,7 +194,7 @@ describe("refreshConnectedCursorPlans", () => {
           account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
         }),
       }),
-    }));
+    }), { notify: false });
     expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
       id: "cursor-b",
       used_quota: 6,
@@ -175,7 +204,7 @@ describe("refreshConnectedCursorPlans", () => {
           account_id: "google-oauth2|user_01KK9F07TG4FGF3DREDACTED",
         }),
       }),
-    }));
+    }), { notify: false });
   });
 
   it("marks sync_failed without inventing connected 0% usage", async () => {
@@ -201,6 +230,6 @@ describe("refreshConnectedCursorPlans", () => {
       sync_status: "failed",
       last_error_code: "SYNC_FAILED",
       used_quota: 12,
-    }));
+    }), { notify: false });
   });
 });

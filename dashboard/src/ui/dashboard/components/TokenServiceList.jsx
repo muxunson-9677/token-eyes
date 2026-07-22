@@ -163,7 +163,10 @@ export function normalizeTokenServices(plans, now = new Date()) {
       };
     })
     .filter((service) => {
-      if (!service.configured || service.expired) return false;
+      if (service.expired) return false;
+      // A saved plan is part of the user's Token service list. A temporary
+      // refresh/auth failure must not make the whole service disappear.
+      if (service.metrics.length === 0) return true;
       // Cursor percent lanes use total=100; 0% is a valid live reading (do not hide).
       if (service.providerId === "cursor") {
         return Number.isFinite(service.percentage) && (
