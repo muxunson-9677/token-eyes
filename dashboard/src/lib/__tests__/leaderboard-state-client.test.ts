@@ -5,9 +5,24 @@ const { getInsforgeAnonKeyMock, getInsforgeRemoteUrlMock } = vi.hoisted(() => ({
   getInsforgeRemoteUrlMock: vi.fn(() => "https://cloud.example"),
 }));
 
+const { buildLocalApiUrlMock, getLocalApiAuthHeadersMock } = vi.hoisted(() => ({
+  buildLocalApiUrlMock: vi.fn(async (path: string) => `http://127.0.0.1:7681${path}`),
+  getLocalApiAuthHeadersMock: vi.fn(async () => ({
+    "x-tokentracker-local-auth": "local-token",
+  })),
+}));
+
 vi.mock("../insforge-config", () => ({
   getInsforgeAnonKey: getInsforgeAnonKeyMock,
   getInsforgeRemoteUrl: getInsforgeRemoteUrlMock,
+}));
+
+vi.mock("../local-api-url", () => ({
+  buildLocalApiUrl: buildLocalApiUrlMock,
+}));
+
+vi.mock("../local-api-auth", () => ({
+  getLocalApiAuthHeaders: getLocalApiAuthHeadersMock,
 }));
 
 import { syncLeaderboardState } from "../leaderboard-state-client";
@@ -49,7 +64,7 @@ function installStorage() {
 
 function installFetch(options: { remoteOk?: boolean; state?: unknown } = {}) {
   const fetchMock = vi.fn(async (url: string) => {
-    if (url === "/functions/tokentracker-leaderboard-state") {
+    if (url === "http://127.0.0.1:7681/functions/tokentracker-leaderboard-state") {
       return response(true, {
         ok: true,
         state: options.state ?? STATE,
@@ -90,7 +105,7 @@ describe("leaderboard state client", () => {
     })).resolves.toEqual({ status: "deferred", summaryHash: SUMMARY_HASH });
 
     expect(events).toEqual([
-      "fetch:/functions/tokentracker-leaderboard-state",
+      "fetch:http://127.0.0.1:7681/functions/tokentracker-leaderboard-state",
       "token",
     ]);
     expect(getLeaderboardSyncState().pending).toBe(true);
@@ -113,6 +128,16 @@ describe("leaderboard state client", () => {
     })).resolves.toEqual({ status: "uploaded", summaryHash: SUMMARY_HASH });
 
     const remoteCall = fetchMock.mock.calls[1];
+    const localCall = fetchMock.mock.calls[0];
+    expect(localCall[0]).toBe(
+      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-state",
+    );
+    expect(localCall[1]).toMatchObject({
+      headers: {
+        Accept: "application/json",
+        "x-tokentracker-local-auth": "local-token",
+      },
+    });
     expect(remoteCall[0]).toBe(
       "https://cloud.example/api/database/rpc/upsert_my_leaderboard_device_state",
     );

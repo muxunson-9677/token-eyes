@@ -1,4 +1,6 @@
 import { getInsforgeAnonKey, getInsforgeRemoteUrl } from "./insforge-config";
+import { getLocalApiAuthHeaders } from "./local-api-auth";
+import { buildLocalApiUrl } from "./local-api-url";
 import {
   getLeaderboardSyncState,
   setLeaderboardSyncState,
@@ -69,9 +71,13 @@ function isValidStateResponse(
 export async function getLocalLeaderboardState(): Promise<
   Required<Pick<LocalStateResponse, "summary_hash" | "state">> & LocalStateResponse
 > {
-  const response = await fetch(LOCAL_STATE_URL, {
+  const [url, authHeaders] = await Promise.all([
+    buildLocalApiUrl(LOCAL_STATE_URL),
+    getLocalApiAuthHeaders(),
+  ]);
+  const response = await fetch(url, {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders },
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Request failed with HTTP ${response.status}`);
