@@ -16,13 +16,14 @@ export default async function (req: Request): Promise<Response> {
   if (!HASH_RE.test(hash)) return json({ error: "Not found" }, 404);
 
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL");
-  const serviceRoleKey = Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("API_KEY") ?? Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
   if (!baseUrl || !serviceRoleKey) return json({ error: "server misconfigured" }, 500);
   const client = createClient({ baseUrl, edgeFunctionToken: serviceRoleKey });
   const { data: metadata, error: metadataError } = await client.database
     .from("tokentracker_leaderboard_avatar_metadata")
     .select("object_key")
     .eq("content_hash", hash)
+    .limit(1)
     .maybeSingle();
   if (metadataError || !metadata?.object_key) return json({ error: "Not found" }, 404);
 

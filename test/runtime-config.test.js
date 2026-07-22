@@ -1,7 +1,16 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { resolveRuntimeConfig } = require("../src/lib/runtime-config");
+const {
+  DEFAULT_ANON_KEY,
+  DEFAULT_BASE_URL,
+  resolveRuntimeConfig,
+} = require("../src/lib/runtime-config");
+
+test("production defaults use the Token Eyes-owned InsForge project", () => {
+  assert.equal(DEFAULT_BASE_URL, "https://a62b9nf2.ap-southeast.insforge.app");
+  assert.match(DEFAULT_ANON_KEY, /^anon_[a-f0-9]{64}$/);
+});
 
 test("resolveRuntimeConfig prefers CLI flags over config and env", () => {
   const config = { baseUrl: "https://config.example", deviceToken: "cfg" };

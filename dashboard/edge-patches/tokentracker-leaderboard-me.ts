@@ -34,38 +34,10 @@ function json(value: unknown, status = 200) {
   });
 }
 
-function b64urlToBytes(value: string) {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(normalized + "=".repeat((4 - (normalized.length % 4)) % 4));
-  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
-}
-
-async function verifiedUserIdFromJwt(token: string): Promise<string | null> {
-  const secret = Deno.env.get("JWT_SECRET");
-  const parts = token.split(".");
-  if (!secret || parts.length !== 3) return null;
-  try {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const valid = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      b64urlToBytes(parts[2]),
-      new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
-    );
-    if (!valid) return null;
-    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[1]))) as Record<string, unknown>;
-    if (typeof payload.exp === "number" && payload.exp < Date.now() / 1000) return null;
-    const userId = payload.sub ?? payload.user_id;
-    return typeof userId === "string" && userId ? userId : null;
-  } catch {
-    return null;
-  }
+async function verifiedUserId(baseUrl: string, token: string): Promise<string | null> {
+  const authClient = createClient({ baseUrl, edgeFunctionToken: token });
+  const { data, error } = await authClient.auth.getCurrentUser();
+  return !error && typeof data?.user?.id === "string" ? data.user.id : null;
 }
 
 function choice(value: string | null, allowed: Set<string>, fallback: string) {
@@ -77,8 +49,10 @@ export default async function (req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
 
+  const baseUrl = Deno.env.get("INSFORGE_BASE_URL");
+  if (!baseUrl) return json({ error: "server misconfigured" }, 500);
   const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
-  const userId = await verifiedUserIdFromJwt(token);
+  const userId = await verifiedUserId(baseUrl, token);
   if (!userId) return json({ error: "Unauthorized" }, 401);
 
   const url = new URL(req.url);
@@ -87,8 +61,7 @@ export default async function (req: Request): Promise<Response> {
   const requestedSource = choice(url.searchParams.get("source"), KNOWN_SOURCES, "all");
   const source = metric === "actual_cost" ? "all" : requestedSource;
 
-  const baseUrl = Deno.env.get("INSFORGE_BASE_URL");
-  const serviceRoleKey = Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("API_KEY") ?? Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
   if (!baseUrl || !serviceRoleKey) return json({ error: "server misconfigured" }, 500);
   const client = createClient({ baseUrl, edgeFunctionToken: serviceRoleKey });
   const { data, error } = await client.database

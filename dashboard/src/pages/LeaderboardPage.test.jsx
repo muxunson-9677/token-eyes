@@ -128,7 +128,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     signInWithOAuthMock.mockResolvedValue({ data: {}, error: null });
     getPublicAuthConfigMock.mockReset();
     getPublicAuthConfigMock.mockResolvedValue({
-      data: { oAuthProviders: [], customOAuthProviders: ["wechat"] },
+      data: { oAuthProviders: ["github"], customOAuthProviders: [] },
       error: null,
     });
     insforgeAuthMock.enabled = true;
@@ -354,7 +354,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     ).toMatchObject({ data: publicData });
   });
 
-  it("uses only WeChat login for leaderboard participation without opening the generic login modal", async () => {
+  it("uses only GitHub login for leaderboard participation without opening the generic login modal", async () => {
     const user = userEvent.setup();
     insforgeAuthMock.signedIn = false;
     insforgeAuthMock.user = null;
@@ -362,30 +362,30 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard", { signedIn: false });
 
-    const button = await screen.findByRole("button", { name: "微信登录" });
+    const button = await screen.findByRole("button", { name: "GitHub 登录" });
     expect(openLoginModalMock).not.toHaveBeenCalled();
     expect(screen.queryByText(/邮箱|手机号|密码/)).not.toBeInTheDocument();
 
     await user.click(button);
 
     expect(signInWithOAuthMock).toHaveBeenCalledWith(
-      "wechat",
+      "github",
       expect.stringMatching(/\/leaderboard$/),
     );
   });
 
-  it("states clearly when the WeChat provider is not configured", async () => {
+  it("states clearly when the GitHub provider is not configured", async () => {
     insforgeAuthMock.signedIn = false;
     insforgeAuthMock.user = null;
     getPublicAuthConfigMock.mockResolvedValue({
-      data: { oAuthProviders: ["github"], customOAuthProviders: [] },
+      data: { oAuthProviders: ["google"], customOAuthProviders: [] },
       error: null,
     });
     getLeaderboard.mockResolvedValue(preloadedData);
 
     renderLeaderboard("/leaderboard", { signedIn: false });
 
-    const button = await screen.findByRole("button", { name: "微信登录服务尚未配置" });
+    const button = await screen.findByRole("button", { name: "GitHub 登录服务尚未配置" });
     expect(button).toBeDisabled();
     expect(signInWithOAuthMock).not.toHaveBeenCalled();
   });
@@ -401,7 +401,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.queryByRole("button", { name: "开发者直登" })).not.toBeInTheDocument();
   });
 
-  it("enters a local developer preview without starting WeChat OAuth", async () => {
+  it("enters a local developer preview without starting GitHub OAuth", async () => {
     const user = userEvent.setup();
     developerPreviewGate.enabled = true;
     insforgeAuthMock.signedIn = false;
@@ -410,8 +410,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard", { signedIn: false });
 
-    const wechatPlaceholder = await screen.findByRole("button", { name: "微信登录（占位）" });
-    expect(wechatPlaceholder).toBeDisabled();
+    const oauthPlaceholder = await screen.findByRole("button", { name: "GitHub 登录（占位）" });
+    expect(oauthPlaceholder).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "开发者直登" }));
 
     await waitFor(() => {
@@ -441,7 +441,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
   });
 
-  it("uses the native callback relay for WeChat login inside the macOS app", async () => {
+  it("uses the native callback relay for GitHub login inside the macOS app", async () => {
     const user = userEvent.setup();
     insforgeAuthMock.signedIn = false;
     insforgeAuthMock.user = null;
@@ -449,10 +449,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
     getLeaderboard.mockResolvedValue(preloadedData);
 
     renderLeaderboard("/leaderboard", { signedIn: false });
-    await user.click(await screen.findByRole("button", { name: "微信登录" }));
+    await user.click(await screen.findByRole("button", { name: "GitHub 登录" }));
 
     expect(signInWithOAuthMock).toHaveBeenCalledWith(
-      "wechat",
+      "github",
       expect.stringMatching(/\/auth\/callback$/),
     );
   });

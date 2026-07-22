@@ -81,7 +81,7 @@ test("refresh RPC is executable only by the scheduler service role", () => {
   );
   assert.match(
     sql,
-    /grant execute on function public\.refresh_leaderboard_snapshots\(boolean,\s*boolean\)\s+to service_role/i,
+    /grant execute on function public\.refresh_leaderboard_snapshots\(boolean,\s*boolean\)\s+to project_admin/i,
   );
 });
 

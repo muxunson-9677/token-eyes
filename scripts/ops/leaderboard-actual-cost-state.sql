@@ -206,18 +206,24 @@ begin
   delete from public.tokentracker_actual_cost_state
   where user_id = v_user_id;
 
-  delete from public.tokentracker_leaderboard_snapshots
-  where user_id = v_user_id;
+  if to_regclass('public.tokentracker_leaderboard_snapshots') is not null then
+    execute
+      'delete from public.tokentracker_leaderboard_snapshots where user_id = $1'
+      using v_user_id;
+  end if;
 
-  delete from public.tokentracker_leaderboard_snapshots_v2
-  where user_id = v_user_id;
+  if to_regclass('public.tokentracker_leaderboard_snapshots_v2') is not null then
+    execute
+      'delete from public.tokentracker_leaderboard_snapshots_v2 where user_id = $1'
+      using v_user_id;
+  end if;
 
   if to_regclass('public.tokentracker_leaderboard_avatar_metadata') is not null then
     if to_regclass('storage.objects') is not null then
       execute
         'delete from storage.objects
-         where bucket_id = ''tokentracker-leaderboard-avatars''
-           and name in (
+         where bucket = ''tokentracker-leaderboard-avatars''
+           and key in (
              select object_key
              from public.tokentracker_leaderboard_avatar_metadata
              where user_id = $1

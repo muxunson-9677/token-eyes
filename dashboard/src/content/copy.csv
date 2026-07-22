@@ -477,14 +477,14 @@ leaderboard.rules.deduplication.title,ui,LeaderboardRulesPage,LeaderboardRulesPa
 leaderboard.rules.deduplication.body,ui,LeaderboardRulesPage,LeaderboardRulesPage,deduplication_body,"Repeated reports for the same source, model and time bucket are deduplicated. Multiple devices are merged by the same aggregation rules rather than blindly added twice.",,active
 leaderboard.rules.cost.title,ui,LeaderboardRulesPage,LeaderboardRulesPage,cost_title,"Estimated cost",,active
 leaderboard.rules.cost.body,ui,LeaderboardRulesPage,LeaderboardRulesPage,cost_body,"Estimated cost is a reference calculation based on the current model price table. Discounts, grants and provider billing may differ from the final invoice.",,active
-leaderboard.signin_prompt,ui,LeaderboardPage,LeaderboardPage,signin_prompt,"Sign in with WeChat to sync usage and join the leaderboard",,active
-leaderboard.signin_button,ui,LeaderboardPage,LeaderboardPage,signin_button,"Sign in with WeChat",,active
-leaderboard.signin_checking,ui,LeaderboardPage,LeaderboardPage,signin_checking,"Checking WeChat sign-in...",,active
-leaderboard.signin_busy,ui,LeaderboardPage,LeaderboardPage,signin_busy,"Opening WeChat...",,active
-leaderboard.signin_unavailable,ui,LeaderboardPage,LeaderboardPage,signin_unavailable,"WeChat sign-in is not configured",,active
-leaderboard.signin_error,ui,LeaderboardPage,LeaderboardPage,signin_error,"Could not start WeChat sign-in. Please try again.",,active
+leaderboard.signin_prompt,ui,LeaderboardPage,LeaderboardPage,signin_prompt,"Sign in with GitHub to sync usage and join the leaderboard",,active
+leaderboard.signin_button,ui,LeaderboardPage,LeaderboardPage,signin_button,"Sign in with GitHub",,active
+leaderboard.signin_checking,ui,LeaderboardPage,LeaderboardPage,signin_checking,"Checking GitHub sign-in...",,active
+leaderboard.signin_busy,ui,LeaderboardPage,LeaderboardPage,signin_busy,"Opening GitHub...",,active
+leaderboard.signin_unavailable,ui,LeaderboardPage,LeaderboardPage,signin_unavailable,"GitHub sign-in is not configured",,active
+leaderboard.signin_error,ui,LeaderboardPage,LeaderboardPage,signin_error,"Could not start GitHub sign-in. Please try again.",,active
 leaderboard.developer_preview.prompt,ui,LeaderboardPage,LeaderboardPage,developer_preview_prompt,"WeChat sign-in is not connected yet. This test build can enter a local developer preview.",,active
-leaderboard.developer_preview.wechat_placeholder,ui,LeaderboardPage,LeaderboardPage,developer_preview_wechat_placeholder,"WeChat sign-in (placeholder)",,active
+leaderboard.developer_preview.wechat_placeholder,ui,LeaderboardPage,LeaderboardPage,developer_preview_wechat_placeholder,"GitHub sign-in (placeholder)",,active
 leaderboard.developer_preview.signin,ui,LeaderboardPage,LeaderboardPage,developer_preview_signin,"Developer sign-in",,active
 leaderboard.developer_preview.active,ui,LeaderboardPage,LeaderboardPage,developer_preview_active,"Developer preview signed in: this is a simulated leaderboard and no real data is uploaded.",,active
 leaderboard.developer_preview.signout,ui,LeaderboardPage,LeaderboardPage,developer_preview_signout,"Exit developer preview",,active

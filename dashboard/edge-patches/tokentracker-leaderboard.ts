@@ -93,7 +93,7 @@ export default async function (req: Request): Promise<Response> {
   const offset = boundedInteger(url.searchParams.get("offset"), 0, 100_000);
 
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL");
-  const serviceRoleKey = Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("API_KEY") ?? Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
   if (!baseUrl || !serviceRoleKey) return json({ error: "server misconfigured" }, 500);
   const client = createClient({ baseUrl, edgeFunctionToken: serviceRoleKey });
 

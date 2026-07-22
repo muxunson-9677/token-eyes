@@ -7,7 +7,7 @@ const fs = require("node:fs/promises");
 const { readJson, writeJson } = require("../lib/fs");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 
-const DEFAULT_BASE_URL = "https://srctyff5.us-east.insforge.app";
+const DEFAULT_BASE_URL = "https://a62b9nf2.ap-southeast.insforge.app";
 const POLL_INTERVAL_MS = 5_000;
 const ABSOLUTE_TIMEOUT_MS = 16 * 60 * 1000; // matches the 15-min server window with a small buffer
 

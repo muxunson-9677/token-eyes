@@ -10,9 +10,9 @@
  * (Previously this mistakenly hardcoded the full-access `ik_*` API key, which
  * has admin access and must never reach the frontend.) Explicit env vars still win.
  */
-const PROD_INSFORGE_BASE_URL = "https://srctyff5.us-east.insforge.app";
+const PROD_INSFORGE_BASE_URL = "https://a62b9nf2.ap-southeast.insforge.app";
 const PROD_INSFORGE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3OC0xMjM0LTU2NzgtOTBhYi1jZGVmMTIzNDU2NzgiLCJlbWFpbCI6ImFub25AaW5zZm9yZ2UuY29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNDU5NDd9.T0auta_IrVIh0uXW1bob5QSnzvsnJmN28r5XkSGEuQY";
+  "anon_13e8a5d6400e9b50912a5c3612f3480ba06edbd2c331e84e5fbdf5fd16d3d381";
 
 /**
  * InsForge 云端（SDK OAuth/Session）。`getInsforgeBaseUrl()` 在 localhost 有 env 时同样指向云端。

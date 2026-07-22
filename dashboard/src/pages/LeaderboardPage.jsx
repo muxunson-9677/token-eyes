@@ -407,9 +407,9 @@ export function LeaderboardPage({
       // ignore
     }
   }, []);
-  const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
-  const [wechatLoginError, setWechatLoginError] = useState(false);
-  const [wechatProviderAvailable, setWechatProviderAvailable] = useState(null);
+  const [oauthLoginBusy, setOauthLoginBusy] = useState(false);
+  const [oauthLoginError, setOauthLoginError] = useState(false);
+  const [oauthProviderAvailable, setOauthProviderAvailable] = useState(null);
 
   const period = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
@@ -428,25 +428,25 @@ export function LeaderboardPage({
   useEffect(() => {
     if (leaderboardMockEnabled || cloudSignedIn || developerLoginEnabled) return undefined;
     if (!cloudAuthEnabled || typeof getPublicAuthConfig !== "function") {
-      setWechatProviderAvailable(false);
+      setOauthProviderAvailable(false);
       return undefined;
     }
     let active = true;
-    setWechatProviderAvailable(null);
+    setOauthProviderAvailable(null);
     (async () => {
       try {
         const { data, error } = await getPublicAuthConfig();
         if (!active) return;
         if (error || !data) {
-          setWechatProviderAvailable(false);
+          setOauthProviderAvailable(false);
           return;
         }
         const builtIn = Array.isArray(data.oAuthProviders) ? data.oAuthProviders : [];
         const custom = Array.isArray(data.customOAuthProviders) ? data.customOAuthProviders : [];
-        setWechatProviderAvailable([...builtIn, ...custom].includes("wechat"));
+        setOauthProviderAvailable([...builtIn, ...custom].includes("github"));
       } catch {
         if (!active) return;
-        setWechatProviderAvailable(false);
+        setOauthProviderAvailable(false);
       }
     })();
     return () => {
@@ -463,21 +463,21 @@ export function LeaderboardPage({
     navigate(`${location?.pathname || "/leaderboard"}?${params.toString()}`, { replace: true });
   };
 
-  const handleWechatSignIn = useCallback(async () => {
-    if (!cloudAuthEnabled || wechatProviderAvailable !== true || wechatLoginBusy) return;
-    setWechatLoginBusy(true);
-    setWechatLoginError(false);
+  const handleOauthSignIn = useCallback(async () => {
+    if (!cloudAuthEnabled || oauthProviderAvailable !== true || oauthLoginBusy) return;
+    setOauthLoginBusy(true);
+    setOauthLoginError(false);
     try {
       const isNativeOAuth = Boolean(window.webkit?.messageHandlers?.nativeOAuth);
       const redirectTo = `${window.location.origin}${isNativeOAuth ? "/auth/callback" : "/leaderboard"}`;
-      const result = await signInWithOAuth("wechat", redirectTo);
+      const result = await signInWithOAuth("github", redirectTo);
       if (result?.error) throw result.error;
     } catch {
-      setWechatLoginError(true);
+      setOauthLoginError(true);
     } finally {
-      setWechatLoginBusy(false);
+      setOauthLoginBusy(false);
     }
-  }, [cloudAuthEnabled, signInWithOAuth, wechatLoginBusy, wechatProviderAvailable]);
+  }, [cloudAuthEnabled, oauthLoginBusy, oauthProviderAvailable, signInWithOAuth]);
 
   const handleDeveloperSignIn = useCallback(() => {
     const params = new URLSearchParams(location?.search || "");
@@ -956,22 +956,22 @@ export function LeaderboardPage({
                 <p className="text-oai-gray-500 dark:text-oai-gray-400">
                   {copy("leaderboard.signin_prompt")}
                 </p>
-                {wechatLoginError && (
+                {oauthLoginError && (
                   <p className="mt-1 text-red-500 dark:text-red-400" role="alert">
                     {copy("leaderboard.signin_error")}
                   </p>
                 )}
               </div>
               <button
-                onClick={handleWechatSignIn}
-                disabled={!cloudAuthEnabled || wechatProviderAvailable !== true || wechatLoginBusy}
+                onClick={handleOauthSignIn}
+                disabled={!cloudAuthEnabled || oauthProviderAvailable !== true || oauthLoginBusy}
                 className="shrink-0 whitespace-nowrap self-start sm:self-auto px-3 py-1.5 text-sm font-medium text-oai-gray-600 dark:text-oai-gray-300 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md hover:text-oai-black dark:hover:text-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
               >
-                {!cloudAuthEnabled || wechatProviderAvailable === false
+                {!cloudAuthEnabled || oauthProviderAvailable === false
                   ? copy("leaderboard.signin_unavailable")
-                  : wechatProviderAvailable == null
+                  : oauthProviderAvailable == null
                     ? copy("leaderboard.signin_checking")
-                  : wechatLoginBusy
+                    : oauthLoginBusy
                     ? copy("leaderboard.signin_busy")
                     : copy("leaderboard.signin_button")}
               </button>

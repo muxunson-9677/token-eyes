@@ -19,46 +19,10 @@ function json(value: unknown, status = 200, immutable = false) {
   });
 }
 
-function decodePayload(token: string): Record<string, unknown> | null {
-  try {
-    const part = token.split(".")[1];
-    const raw = atob(part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "="));
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-async function verifiedUserId(token: string): Promise<string | null> {
-  const secret = Deno.env.get("JWT_SECRET");
-  const parts = token.split(".");
-  if (!secret || parts.length !== 3) return null;
-  try {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const signature = Uint8Array.from(
-      atob(parts[2].replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(parts[2].length / 4) * 4, "=")),
-      (char) => char.charCodeAt(0),
-    );
-    const valid = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      signature,
-      new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
-    );
-    if (!valid) return null;
-    const payload = decodePayload(token);
-    if (!payload || (typeof payload.exp === "number" && payload.exp < Date.now() / 1000)) return null;
-    const userId = payload.sub ?? payload.user_id;
-    return typeof userId === "string" && userId ? userId : null;
-  } catch {
-    return null;
-  }
+async function verifiedUserId(baseUrl: string, token: string): Promise<string | null> {
+  const authClient = createClient({ baseUrl, edgeFunctionToken: token });
+  const { data, error } = await authClient.auth.getCurrentUser();
+  return !error && typeof data?.user?.id === "string" ? data.user.id : null;
 }
 
 function hex(bytes: ArrayBuffer) {
@@ -72,12 +36,12 @@ export default async function (req: Request): Promise<Response> {
   if (req.method !== "PUT" && req.method !== "DELETE") {
     return json({ error: "Method not allowed" }, 405);
   }
+  const baseUrl = Deno.env.get("INSFORGE_BASE_URL")!;
   const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
-  const userId = await verifiedUserId(token);
+  const userId = await verifiedUserId(baseUrl, token);
   if (!userId) return json({ error: "Unauthorized" }, 401);
 
-  const baseUrl = Deno.env.get("INSFORGE_BASE_URL")!;
-  const serviceRoleKey = Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("API_KEY") ?? Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
   if (!serviceRoleKey) return json({ error: "server misconfigured" }, 500);
   const client = createClient({ baseUrl, edgeFunctionToken: serviceRoleKey });
   const storage = client.storage.from(BUCKET);
@@ -112,7 +76,7 @@ export default async function (req: Request): Promise<Response> {
     if (uploadError) return json({ error: uploadError.message }, 500);
 
     const publicBase = (Deno.env.get("LEADERBOARD_AVATAR_PUBLIC_BASE") || "").replace(/\/$/, "");
-    const avatarUrl = `${publicBase}/${hash}.webp`;
+    const avatarUrl = `${publicBase}?hash=${hash}`;
     const { error: metadataError } = await client.database
       .from("tokentracker_leaderboard_avatar_metadata")
       .upsert({

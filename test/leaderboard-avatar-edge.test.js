@@ -37,19 +37,23 @@ test("server owns the immutable object path and switches metadata before cleanup
   assert.ok(upload >= 0 && metadata > upload);
   assert.ok(removePrevious > metadata);
   assert.match(EDGE, /cache-control[^;]+immutable/is);
+  assert.match(EDGE, /`\$\{publicBase\}\?hash=\$\{hash\}`/);
 });
 
-test("storage bucket is private and object policies are user-folder scoped", () => {
+test("InsForge storage stays edge-owned and metadata is user-scoped", () => {
   assert.match(SQL, /tokentracker-leaderboard-avatars/);
-  assert.match(SQL, /public\s*=\s*false/i);
-  assert.match(SQL, /auth\.uid\(\)::text\s*=\s*\(storage\.foldername\(name\)\)\[1\]/i);
+  assert.match(SQL, /create the bucket as private with the insforge cli/i);
   assert.match(SQL, /tokentracker_leaderboard_avatar_metadata/i);
   assert.match(SQL, /enable row level security/i);
+  assert.match(SQL, /auth\.uid\(\)\s*=\s*user_id/i);
+  assert.doesNotMatch(SQL, /insert into storage\.buckets/i);
+  assert.doesNotMatch(SQL, /create policy[^;]+on storage\.objects/is);
 });
 
 test("public avatar edge resolves only metadata-backed SHA-256 WebP objects", () => {
   assert.match(PUBLIC_EDGE, /\^\[a-f0-9\]\{64\}\$/);
   assert.match(PUBLIC_EDGE, /\.eq\("content_hash",\s*hash\)/);
+  assert.match(PUBLIC_EDGE, /\.limit\(1\)/);
   assert.match(PUBLIC_EDGE, /\.select\("object_key"\)/);
   assert.match(PUBLIC_EDGE, /\.download\(metadata\.object_key\)/);
   assert.match(PUBLIC_EDGE, /image\/webp/);

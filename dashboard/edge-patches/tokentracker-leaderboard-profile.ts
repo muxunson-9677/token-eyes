@@ -38,47 +38,19 @@ function json(data: unknown, status = 200) {
   });
 }
 
-function b64urlToBytes(s: string): Uint8Array {
-  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = (4 - (b64.length % 4)) % 4;
-  const raw = atob(b64 + "=".repeat(pad));
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
-
 async function verifyCallerUserId(req: Request): Promise<string | null> {
   const auth = req.headers.get("Authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
-  const secret = Deno.env.get("JWT_SECRET");
-  if (!secret) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  try {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-    const sig = b64urlToBytes(parts[2]);
-    const ok = await crypto.subtle.verify("HMAC", key, sig, data);
-    if (!ok) return null;
-    const payloadStr = new TextDecoder().decode(b64urlToBytes(parts[1]));
-    const payload = JSON.parse(payloadStr) as Record<string, unknown>;
-    if (typeof payload.exp === "number" && Date.now() / 1000 > payload.exp) return null;
-    const sub = payload.sub;
-    return typeof sub === "string" && sub.length > 0 ? sub : null;
-  } catch {
-    return null;
-  }
+  const baseUrl = Deno.env.get("INSFORGE_BASE_URL");
+  if (!baseUrl) return null;
+  const authClient = createClient({ baseUrl, edgeFunctionToken: token });
+  const { data, error } = await authClient.auth.getCurrentUser();
+  return !error && typeof data?.user?.id === "string" ? data.user.id : null;
 }
 
 function getClient() {
-  const serviceRoleKey = Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("API_KEY") ?? Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
   const anonKey = Deno.env.get("INSFORGE_ANON_KEY") ?? Deno.env.get("ANON_KEY");
   return createClient({
     baseUrl: Deno.env.get("INSFORGE_BASE_URL")!,
@@ -561,7 +533,7 @@ export default async function (req: Request): Promise<Response> {
   }
   const { data: snapRow } = await client.database
     .from("tokentracker_leaderboard_snapshots_v2")
-    .select("rank, display_name, avatar_url, generated_at")
+    .select("rank, total_tokens, estimated_cost_usd, source_breakdown, display_name, avatar_url, generated_at")
     .eq("user_id", userId)
     .eq("period", period)
     .eq("metric", "tokens")
@@ -571,7 +543,19 @@ export default async function (req: Request): Promise<Response> {
     .order("generated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const snap = (snapRow || null) as { rank?: number | null; display_name?: string | null; avatar_url?: string | null; generated_at?: string | null } | null;
+  const snap = (snapRow || null) as {
+    rank?: number | null;
+    total_tokens?: number | string | null;
+    estimated_cost_usd?: number | string | null;
+    source_breakdown?: Array<{
+      source?: string;
+      total_tokens?: number | string;
+      estimated_cost_usd?: number | string;
+    }> | null;
+    display_name?: string | null;
+    avatar_url?: string | null;
+    generated_at?: string | null;
+  } | null;
 
   // Heatmap window: trailing 365 days (always).
   const now = new Date();
@@ -596,8 +580,11 @@ export default async function (req: Request): Promise<Response> {
   let bucketMap: Map<string, HourlyRow>;
   try {
     bucketMap = await scanHourlyForUser(client, userId, scanStartIso, scanEndIso);
-  } catch (e) {
-    return json({ error: (e as Error).message || "scan failed" }, 500);
+  } catch {
+    // Privacy-minimal deployments intentionally have no tokentracker_hourly
+    // table. The public snapshot still carries the period total and per-source
+    // aggregates needed by the modal; detailed daily/model history stays local.
+    bucketMap = new Map();
   }
 
   // ── Aggregate into the modal's shape. Two parallel passes:
@@ -644,6 +631,18 @@ export default async function (req: Request): Promise<Response> {
       if (row.model) periodByModel.set(row.model, (periodByModel.get(row.model) || 0) + tokens);
       periodTotalTokens += tokens;
       periodTotalCost += cost;
+    }
+  }
+
+  if (bucketMap.size === 0 && snap) {
+    periodTotalTokens = Number(snap.total_tokens) || 0;
+    periodTotalCost = Number(snap.estimated_cost_usd) || 0;
+    for (const item of Array.isArray(snap.source_breakdown) ? snap.source_breakdown : []) {
+      const source = canonicalSource(String(item?.source || "other"));
+      periodByProvider.set(source, {
+        tokens: Number(item?.total_tokens) || 0,
+        cost: Number(item?.estimated_cost_usd) || 0,
+      });
     }
   }
 

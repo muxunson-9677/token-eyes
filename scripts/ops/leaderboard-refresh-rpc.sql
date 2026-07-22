@@ -512,6 +512,6 @@ revoke all on function public.refresh_leaderboard_snapshots(boolean, boolean)
 revoke all on function public.refresh_leaderboard_snapshots(boolean, boolean)
   from anon;
 grant execute on function public.refresh_leaderboard_snapshots(boolean, boolean)
-  to service_role;
+  to project_admin;
 
 commit;

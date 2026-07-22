@@ -17,7 +17,7 @@ function buildGrantUrl() {
   // origin is the same public environment value used to initialize the SDK.
   const baseUrl =
     (import.meta.env && import.meta.env.VITE_INSFORGE_BASE_URL) ||
-    "https://srctyff5.us-east.insforge.app";
+    "https://a62b9nf2.ap-southeast.insforge.app";
   return `${baseUrl.replace(/\/$/, "")}/functions/tokentracker-device-flow-grant`;
 }
 

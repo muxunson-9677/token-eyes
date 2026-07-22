@@ -142,3 +142,6 @@ skills-lock.json
 # Codex reset feed signing secrets
 .token-eyes-secrets/
 *-private.pem
+
+# Local InsForge project credentials
+.insforge/

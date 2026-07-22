@@ -92,7 +92,10 @@ test("uses the exact startup, success, freshness, and failure schedules", async 
 });
 
 test("signed feed uses a fixed URL, 30-minute cache, and conditional requests", async () => {
-  assert.equal(FEED_URL, "https://www.tokentracker.cc/.well-known/token-eyes/codex-reset-feed.json");
+  assert.equal(
+    FEED_URL,
+    "https://a62b9nf2.ap-southeast.insforge.app/functions/tokentracker-codex-reset-feed",
+  );
   assert.equal(FEED_CACHE_MS, 30 * 60_000);
   const keys = crypto.generateKeyPairSync("ed25519");
   const requests = [];

@@ -35,7 +35,7 @@ export default async function (req: Request): Promise<Response> {
   }
 
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL");
-  const serviceRoleKey = Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("API_KEY") ?? Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
   if (!baseUrl || !serviceRoleKey) return json({ error: "server misconfigured" }, 500);
 
   const slot = Math.floor(Date.now() / 1000 / 900);
