@@ -2,10 +2,12 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Settings as SettingsIcon } from "lucide-react";
 import { useUsageLimits } from "../hooks/use-usage-limits";
+import { useLimitAccounts } from "../hooks/use-limit-accounts";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { copy } from "../lib/copy";
 import { LimitsPageSkeleton } from "../components/LimitsPageSkeleton.jsx";
 import { UsageLimitsPanel } from "../ui/dashboard/components/UsageLimitsPanel.jsx";
+import { LimitAccountMatrix } from "../ui/dashboard/components/LimitAccountMatrix.jsx";
 import { LocalOnlyNotice } from "../components/LocalOnlyNotice.jsx";
 import { isMockEnabled } from "../lib/mock-data";
 import { readUsageLimitsPreloadState } from "../lib/dashboard-preload.js";
@@ -22,6 +24,7 @@ export function LimitsPage() {
       : { initialRefresh: true, publishToPreloadCache: true },
   );
   const prefs = useLimitsDisplayPrefs();
+  const { data: limitAccounts, error: limitAccountsError, isLoading: limitAccountsLoading } = useLimitAccounts();
 
   // Limits read the local plan/rate-limit tier from the machine running the
   // CLI; there's no cloud source. On the deployed web app, surface the
@@ -57,7 +60,7 @@ export function LimitsPage() {
             </Link>
           </div>
 
-          {isLoading ? (
+          {isLoading && limitAccountsLoading ? (
             <LimitsPageSkeleton />
           ) : (
             <>
@@ -85,6 +88,8 @@ export function LimitsPage() {
                 visibility={prefs.visibility}
                 displayMode={prefs.displayMode}
               />
+              {limitAccountsError ? <p className="mt-4 text-sm text-red-500">{copy("shared.error.prefix", { error: limitAccountsError })}</p> : null}
+              <div className="mt-8"><LimitAccountMatrix accounts={limitAccounts?.accounts} forecasts={limitAccounts?.forecasts} /></div>
             </>
           )}
         </div>

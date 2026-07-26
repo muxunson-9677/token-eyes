@@ -1900,3 +1900,10 @@ reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
 reset_history.completed,ui,ResetHistoryPage,ResetRecord,completed,"Quota reset completed",,active
 reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored early",,active
 reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active
+limits.matrix.title,ui,LimitsPage,LimitAccountMatrix,title,"账户配额",,active
+limits.matrix.subtitle,ui,LimitsPage,LimitAccountMatrix,subtitle,"本地账户的配额窗口与预测",,active
+limits.matrix.empty,ui,LimitsPage,LimitAccountMatrix,empty,"暂无账户配额数据",,active
+limits.matrix.window_unavailable,ui,LimitsPage,LimitAccountMatrix,window_unavailable,"额度暂不可用",,active
+limits.matrix.forecast_insufficient,ui,LimitsPage,LimitAccountMatrix,forecast_insufficient,"样本不足，暂不预测",,active
+limits.matrix.forecast_exhaust,ui,LimitsPage,LimitAccountMatrix,forecast_exhaust,"预计将在重置前耗尽：{{time}}",,active
+limits.matrix.forecast_safe,ui,LimitsPage,LimitAccountMatrix,forecast_safe,"预计不会在重置前耗尽",,active

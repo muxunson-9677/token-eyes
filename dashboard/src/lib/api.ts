@@ -89,6 +89,7 @@ const PATHS = {
   userStatus: "tokentracker-user-status",
   localSync: "tokentracker-local-sync",
   usageLimits: "tokentracker-usage-limits",
+  limitAccounts: "tokentracker-limit-accounts",
   codexResetEvents: "tokentracker-codex-reset-events",
   localSettings: "tokentracker-local-settings",
   detectDataDirectories: "tokentracker-detect-data-directories",
@@ -1537,6 +1538,10 @@ export async function getUsageMonthly({
 export async function getUsageLimits(opts: { refresh?: boolean } = {}) {
   const params = opts?.refresh ? { refresh: "1" } : undefined;
   return fetchLocalJson(PATHS.usageLimits, params);
+}
+
+export async function getLimitAccounts(opts: { refresh?: boolean } = {}) {
+  return fetchLocalJson(PATHS.limitAccounts, opts?.refresh ? { refresh: "1" } : undefined);
 }
 
 export async function getCodexResetEvents(): Promise<CodexResetEventsResponse> {
