@@ -111,6 +111,34 @@ describe("UsageLimitsPanel", () => {
     expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
   });
 
+  it("keeps a stale cached limit visible and labels its evidence", () => {
+    render(
+      <UsageLimitsPanel
+        cursor={{
+          configured: true,
+          error: null,
+          primary_window: { used_percent: 50, reset_at: "2026-08-10T10:39:54.000Z" },
+          evidence: {
+            source_kind: "cache",
+            accuracy: "exact",
+            coverage: "complete",
+            observed_at: "2026-07-26T00:00:00.000Z",
+            source_updated_at: "2026-07-26T00:00:00.000Z",
+            stale_after_seconds: 300,
+            is_stale: true,
+            pricing_source: null,
+            pricing_version: null,
+            note_code: "last_successful_value",
+          },
+        }}
+        order={["cursor"]}
+      />,
+    );
+
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText(copy("observability.evidence.cached"))).toBeInTheDocument();
+  });
+
   it("renders just the provider name when plan_label is null or absent", () => {
     const { rerender } = render(
       <UsageLimitsPanel

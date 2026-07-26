@@ -24,6 +24,7 @@ const {
 } = require("./cursor-config");
 const { fetchGrokLimits } = require("./grok-limits");
 const { readSqliteJsonRows } = require("./sqlite-reader");
+const { decorateUsageLimitsWithEvidence } = require("./data-evidence");
 
 // 2-minute in-memory cache
 let cache = { data: null, fetchedAt: 0 };
@@ -2416,8 +2417,9 @@ async function fetchUsageLimitsUncached({
     grok: withPlanLabel(grok, null, "Grok"),
   };
 
-  cache = { data, fetchedAt: nowMs };
-  return data;
+  const evidencedData = decorateUsageLimitsWithEvidence(data, { nowMs });
+  cache = { data: evidencedData, fetchedAt: nowMs };
+  return evidencedData;
 }
 
 function resetUsageLimitsCache() {

@@ -688,6 +688,15 @@ limits.status.not_connected,ui,LimitsPage,UsageLimitsPanel,status_not_connected,
 limits.status.token_only,ui,LimitsPage,UsageLimitsPanel,status_token_only,"Tokens tracked: {{tokens}} (no official total quota)",,active
 limits.status.no_data,ui,LimitsPage,UsageLimitsPanel,status_no_data,"No live limit data returned",,active
 limits.status.all_hidden,ui,LimitsPage,UsageLimitsPanel,status_all_hidden,"All limit providers are hidden. Open display settings to show them.",,active
+observability.evidence.official,dashboard,common,EvidenceBadge,official,"Official",,active
+observability.evidence.local_exact,dashboard,common,EvidenceBadge,local_exact,"Local exact",,active
+observability.evidence.local_normalized,dashboard,common,EvidenceBadge,local_normalized,"Local normalized",,active
+observability.evidence.estimated,dashboard,common,EvidenceBadge,estimated,"Estimated",,active
+observability.evidence.cached,dashboard,common,EvidenceBadge,cached,"Cached",,active
+observability.evidence.partial,dashboard,common,EvidenceBadge,partial,"Partial coverage",,active
+observability.evidence.unpriced,dashboard,common,EvidenceBadge,unpriced,"Unpriced",,active
+observability.evidence.unavailable,dashboard,common,EvidenceBadge,unavailable,"Unavailable",,active
+observability.evidence.stale_tooltip,dashboard,common,EvidenceBadge,stale_tooltip,"Showing the last successful value; it may be out of date.",,active
 shared.time.now,shared,*,Shared,time_now,"now",,active
 nav.ip_check,shared,*,Sidebar,nav_ip_check,Claude IP Check,,active
 nav.skills,shared,*,Sidebar,nav_skills,Skills,,active

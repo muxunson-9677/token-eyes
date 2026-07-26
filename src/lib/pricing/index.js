@@ -162,10 +162,15 @@ const SEED_SNAPSHOT_PATH = path.resolve(__dirname, "seed-snapshot.json");
 // ensurePricingLoaded() (e.g. tests, vite mock startup, edge functions) still
 // get LiteLLM-backed pricing instead of all-zero. ensurePricingLoaded() will
 // later upgrade this to fresh disk cache or upstream data.
+let seedSnapshotVersion = null;
+
 function loadSeedSync() {
   try {
     const raw = fs.readFileSync(SEED_SNAPSHOT_PATH, "utf8");
     const parsed = JSON.parse(raw);
+    seedSnapshotVersion = typeof parsed?._meta?.generated_at === "string"
+      ? parsed._meta.generated_at
+      : null;
     delete parsed._meta;
     return parsed;
   } catch (e) {
@@ -243,6 +248,26 @@ function getModelPricing(model, opts = {}) {
 
   state.negativeCache.add(cacheKey);
   return ZERO_PRICING;
+}
+
+function getPricingMetadata(model, opts = {}) {
+  if (!model) return { pricing_source: null, pricing_version: null };
+  let lookupSource = null;
+  if (typeof opts === "string") {
+    lookupSource = opts.toLowerCase();
+  } else if (typeof opts.source === "string") {
+    lookupSource = opts.source.toLowerCase();
+  }
+  const result = lookupPricing(model, {
+    curated: curatedOverrides,
+    litellm: state.litellmPerMillionMap,
+    source: lookupSource,
+  });
+  if (!result.hit) return { pricing_source: null, pricing_version: null };
+  return {
+    pricing_source: result.source,
+    pricing_version: seedSnapshotVersion || state.source || "unknown",
+  };
 }
 
 // Same formula and Codex/every-code reasoning-folding rule as the previous
@@ -354,6 +379,7 @@ const MODEL_PRICING = curatedOverrides.exact;
 module.exports = {
   ensurePricingLoaded,
   getModelPricing,
+  getPricingMetadata,
   computeRowCost,
   computeRowCostDetailed,
   resetPricingForTests,

@@ -11,6 +11,7 @@ import {
 import { computePace, resetToMs, resolveWindowSeconds } from "../../../lib/limit-pace.js";
 import { formatCompactNumber } from "../../../lib/format";
 import { ProviderIcon } from "./ProviderIcon.jsx";
+import { EvidenceBadge } from "./EvidenceBadge.jsx";
 import { PROVIDER_LIMIT_SPECS } from "./usage-limits-provider-specs.js";
 
 const LIMITS_PROVIDER_ICON_CLASS = "shrink-0 text-oai-black dark:text-oai-white";
@@ -156,7 +157,7 @@ function LimitDetail({ rows, mode }) {
   );
 }
 
-function ToolGroup({ name, providerId, children, expandable = false, expanded = false, onToggle }) {
+function ToolGroup({ name, providerId, evidence, children, expandable = false, expanded = false, onToggle }) {
   const providerKey = limitProviderIconKey(providerId);
   const header = (
     <div className="flex items-center gap-1.5">
@@ -164,6 +165,7 @@ function ToolGroup({ name, providerId, children, expandable = false, expanded = 
         <ProviderIcon provider={providerKey} size={14} className={LIMITS_PROVIDER_ICON_CLASS} />
       ) : null}
       <span className="text-sm font-medium text-oai-black dark:text-oai-white">{name}</span>
+      <EvidenceBadge evidence={evidence} />
     </div>
   );
 
@@ -256,7 +258,7 @@ function renderConfiguredProvider(id, data, title, mode, expanded, onToggle) {
     .map((s) => ({ spec: s, pace: paceForSpec(s, mode) }));
   const extra = renderProviderExtra(spec.extra, data);
   return (
-    <ToolGroup key={id} name={title} providerId={id} expandable={rows.length > 0} expanded={expanded} onToggle={onToggle}>
+    <ToolGroup key={id} name={title} providerId={id} evidence={data.evidence} expandable={rows.length > 0} expanded={expanded} onToggle={onToggle}>
       <LimitWindowSection mode={mode} rows={rows} extra={extra} />
       {expanded ? <LimitDetail rows={rows} mode={mode} /> : null}
     </ToolGroup>
@@ -267,14 +269,14 @@ function renderProviderGroup(id, data, mode, expanded, onToggle) {
   if (!PROVIDER_LIMIT_SPECS[id]) return null;
   if (!data?.configured) {
     return (
-      <ToolGroup key={id} name={limitProviderName(id)} providerId={id}>
+      <ToolGroup key={id} name={limitProviderName(id)} providerId={id} evidence={data?.evidence}>
         <StatusLine>{copy("limits.status.not_connected")}</StatusLine>
       </ToolGroup>
     );
   }
   if (data.error) {
     return (
-      <ToolGroup key={id} name={limitProviderName(id)} providerId={id}>
+      <ToolGroup key={id} name={limitProviderName(id)} providerId={id} evidence={data?.evidence}>
         <StatusLine tone="error">{copy("shared.error.prefix", { error: data.error })}</StatusLine>
       </ToolGroup>
     );
