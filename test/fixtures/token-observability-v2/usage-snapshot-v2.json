@@ -1,0 +1,23 @@
+{
+  "schema_version": "token-observability/v2",
+  "hour_start": "2026-07-26T00:00:00.000Z",
+  "dimensions": {
+    "device_id": "unknown",
+    "environment_id": "unknown",
+    "environment_kind": "unknown",
+    "agent_id": "codex",
+    "account_scope": null,
+    "project_key": null,
+    "session_key": null,
+    "model_id": "gpt-5"
+  },
+  "tokens": {
+    "input_tokens": 12,
+    "cached_input_tokens": 3,
+    "cache_creation_input_tokens": 2,
+    "output_tokens": 6,
+    "reasoning_output_tokens": 4,
+    "total_tokens": 27,
+    "conversation_count": 1
+  }
+}

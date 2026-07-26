@@ -1,0 +1,9 @@
+{
+  "fetched_at": "2026-07-26T00:00:00.000Z",
+  "claude": {
+    "configured": true,
+    "error": null,
+    "five_hour": { "utilization": 12, "resets_at": "2026-07-26T05:00:00.000Z" },
+    "seven_day": null
+  }
+}

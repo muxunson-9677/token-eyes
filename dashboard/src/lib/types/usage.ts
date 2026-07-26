@@ -1,6 +1,34 @@
 export type MetricAvailability = "measured" | "aggregate_only" | "unavailable";
 export type PricingCoverage = "complete" | "partial" | "unpriced";
 
+export type SourceKind = "official_api" | "session_log" | "sqlite" | "hook" | "otel" | "cache" | "estimated" | "user_override";
+export type EvidenceAccuracy = "exact" | "normalized" | "estimated" | "unknown";
+export type EvidenceCoverage = "complete" | "partial" | "unavailable" | "unpriced";
+
+export interface DataEvidenceV1 {
+  source_kind: SourceKind;
+  accuracy: EvidenceAccuracy;
+  coverage: EvidenceCoverage;
+  observed_at: string;
+  source_updated_at: string | null;
+  stale_after_seconds: number;
+  is_stale: boolean;
+  pricing_source: string | null;
+  pricing_version: string | null;
+  note_code: string | null;
+}
+
+export interface UsageDimensionsV1 {
+  device_id: string;
+  environment_id: string;
+  environment_kind: "native" | "wsl" | "ssh" | "container" | "unknown";
+  agent_id: string;
+  account_scope: string | null;
+  project_key: string | null;
+  session_key: string | null;
+  model_id: string | null;
+}
+
 export interface PricingCoverageFields {
   priced_tokens: number;
   unpriced_tokens: number;

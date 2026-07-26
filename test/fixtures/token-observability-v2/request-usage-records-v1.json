@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "records": [
+    {
+      "id": "codex:fixture",
+      "timestamp": "2026-07-26T00:00:00.000Z",
+      "source": "codex",
+      "model": "gpt-5",
+      "status": null,
+      "latency_ms": null,
+      "first_token_ms": null,
+      "total_tokens": 27
+    }
+  ],
+  "availability": { "request_records": "aggregate_only", "status": "unavailable", "latency": "unavailable" }
+}
