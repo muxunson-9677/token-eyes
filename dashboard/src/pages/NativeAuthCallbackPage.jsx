@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { useLocale } from "../hooks/useLocale.js";
 import { copy } from "../lib/copy";
+import { fetchAuthenticatedLocalApi } from "../lib/local-api-fetch";
 
 /**
  * Unified OAuth callback page at /auth/callback.
@@ -65,7 +66,10 @@ export function NativeAuthCallbackPage() {
 
     (async () => {
       try {
-        const resp = await fetch("/api/auth-bridge/verifier");
+        const resp = await fetchAuthenticatedLocalApi("/api/auth-bridge/verifier");
+        if (!resp.ok) {
+          throw new Error(`Native OAuth verifier failed with HTTP ${resp.status}`);
+        }
         const data = await resp.json();
         setIsNative(Boolean(data?.native));
       } catch {

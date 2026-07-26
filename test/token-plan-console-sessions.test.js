@@ -5,7 +5,7 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -65,7 +65,8 @@ test("GET /api/local-auth exposes CORS without caching the token", async () => {
     });
 
     assert.equal(res.statusCode, 200);
-    assert.equal(res.headers["Access-Control-Allow-Origin"], "*");
+    assert.equal(res.headers["Access-Control-Allow-Origin"], "http://127.0.0.1:5173");
+    assert.match(res.headers.Vary, /(?:^|,\s*)Origin(?:,|$)/);
     assert.equal(res.headers["Access-Control-Allow-Methods"], "GET, POST, PUT, DELETE, OPTIONS");
     assert.match(res.headers["Access-Control-Allow-Headers"], /X-TokenTracker-Local-Auth/i);
     assert.equal(res.headers["Cache-Control"], "no-store");

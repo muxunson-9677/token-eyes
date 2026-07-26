@@ -5,7 +5,7 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 // Q02 unit-level coverage of the derivation helpers exported on the handler.
 // These rules are documented in docs/dev-notes/billing-mode-display-spec.md

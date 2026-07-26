@@ -5,9 +5,11 @@ import { DataDirectoriesSection } from "../components/settings/DataDirectoriesSe
 import { AgentPricingSection } from "../components/settings/AgentPricingSection.jsx";
 import { TokenPlanSection } from "../components/settings/TokenPlanSection.jsx";
 import { ProviderApiConfigSection } from "../components/settings/ProviderApiConfigSection.jsx";
+import { OtherAiSpendSection } from "../components/settings/OtherAiSpendSection.jsx";
 import { AppearanceSection } from "../components/settings/AppearanceSection.jsx";
 import { SectionCard, SegmentedControl } from "../components/settings/Controls.jsx";
 import { MenuBarSection, NativeAppFooter } from "../components/settings/MenuBarSection.jsx";
+import { WindowBehaviorSection } from "../components/settings/WindowBehaviorSection.jsx";
 import { LIMIT_DISPLAY_MODES, useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { copy } from "../lib/copy";
 
@@ -55,6 +57,7 @@ export function SettingsBasicPage() {
 
           <div className="space-y-4">
             <AppearanceSection />
+            <WindowBehaviorSection />
             <MenuBarSection />
             <AccountSection />
             <DataDirectoriesSection />
@@ -104,6 +107,7 @@ export function SettingsCostPage() {
             <div data-provider-api-config-anchor>
               <ProviderApiConfigSection />
             </div>
+            <OtherAiSpendSection />
           </div>
         </div>
       </main>

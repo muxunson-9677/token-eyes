@@ -11,6 +11,35 @@ mod window_control;
 mod window_prefs;
 mod xiaomi_mimo_session;
 
+/// Pure, current-product contracts used by integration tests without exposing
+/// the Tauri command modules themselves as public API.
+pub mod current_product_contract {
+    pub use crate::claude_session::{
+        is_official_claude_url, validate_session_ref as validate_claude_session_ref,
+    };
+    pub use crate::codex_session::{
+        is_official_codex_url, validate_session_ref as validate_codex_session_ref,
+    };
+    pub use crate::commands::LocalServerState;
+    pub use crate::tray::{tray_click_restores_main_window, tray_menu_action, TrayMenuAction};
+    pub use crate::cursor_session::{
+        is_official_cursor_url, validate_session_ref as validate_cursor_session_ref,
+    };
+    pub use crate::glm_session::{
+        is_official_glm_url, validate_session_ref as validate_glm_session_ref,
+    };
+    pub use crate::kimi_session::{
+        is_official_kimi_url, validate_session_ref as validate_kimi_session_ref,
+    };
+    pub use crate::window_control::{
+        should_minimize_to_tray, RestoreTrigger, APP_DISPLAY_NAME, SINGLE_INSTANCE_RESTORE_TRIGGER,
+    };
+    pub use crate::CURRENT_TAURI_COMMANDS;
+    pub use crate::xiaomi_mimo_session::{
+        is_official_xiaomi_url, validate_session_ref as validate_xiaomi_session_ref,
+    };
+}
+
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -18,6 +47,51 @@ use claude_session::ClaudeSessionState;
 use codex_session::CodexSessionState;
 use cursor_session::CursorSessionState;
 use xiaomi_mimo_session::SessionState;
+
+macro_rules! current_tauri_commands {
+    ($consumer:ident) => {
+        $consumer!(
+            commands::pick_directory,
+            commands::local_server_status,
+            window_prefs::get_window_prefs,
+            window_prefs::set_minimize_to_tray_on_close,
+            window_prefs::set_launch_on_startup,
+            window_prefs::set_silent_startup,
+            xiaomi_mimo_session::open_xiaomi_mimo_console_login,
+            xiaomi_mimo_session::verify_xiaomi_mimo_console_session,
+            xiaomi_mimo_session::delete_xiaomi_mimo_console_session,
+            claude_session::open_claude_console_login,
+            claude_session::verify_claude_console_session,
+            claude_session::delete_claude_console_session,
+            codex_session::open_codex_console_login,
+            codex_session::verify_codex_console_session,
+            codex_session::delete_codex_console_session,
+            cursor_session::open_cursor_console_login,
+            cursor_session::verify_cursor_console_session,
+            cursor_session::delete_cursor_console_session,
+            glm_session::open_glm_console_login,
+            glm_session::verify_glm_console_session,
+            glm_session::delete_glm_console_session,
+            kimi_session::open_kimi_console_login,
+            kimi_session::verify_kimi_console_session,
+            kimi_session::delete_kimi_console_session,
+        )
+    };
+}
+
+macro_rules! build_current_handler {
+    ($($command:path),+ $(,)?) => {
+        tauri::generate_handler![$($command),+]
+    };
+}
+
+macro_rules! current_command_names {
+    ($($command:path),+ $(,)?) => {
+        &[$(stringify!($command)),+]
+    };
+}
+
+pub const CURRENT_TAURI_COMMANDS: &[&str] = current_tauri_commands!(current_command_names);
 
 /// Windows groups taskbar buttons and labels them by AppUserModelID (AUMID).
 /// Because Token Eyes started life as a "CC Switch" fork, a stale pin/shortcut
@@ -45,7 +119,10 @@ pub fn run() {
         // duplicate-instance bug and "shortcut won't reopen the tray-hidden
         // window").
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            window_control::restore_main_window(app);
+            window_control::restore_main_window_for_trigger(
+                app,
+                window_control::SINGLE_INSTANCE_RESTORE_TRIGGER,
+            );
         }))
         .manage(commands::LocalServerState::default())
         .manage(Mutex::new(SessionState::default()))
@@ -56,32 +133,7 @@ pub fn run() {
         .manage(Mutex::new(kimi_session::KimiSessionState::default()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            commands::pick_directory,
-            commands::local_server_status,
-            window_prefs::get_window_prefs,
-            window_prefs::set_minimize_to_tray_on_close,
-            window_prefs::set_launch_on_startup,
-            window_prefs::set_silent_startup,
-            xiaomi_mimo_session::open_xiaomi_mimo_console_login,
-            xiaomi_mimo_session::verify_xiaomi_mimo_console_session,
-            xiaomi_mimo_session::delete_xiaomi_mimo_console_session,
-            claude_session::open_claude_console_login,
-            claude_session::verify_claude_console_session,
-            claude_session::delete_claude_console_session,
-            codex_session::open_codex_console_login,
-            codex_session::verify_codex_console_session,
-            codex_session::delete_codex_console_session,
-            cursor_session::open_cursor_console_login,
-            cursor_session::verify_cursor_console_session,
-            cursor_session::delete_cursor_console_session,
-            glm_session::open_glm_console_login,
-            glm_session::verify_glm_console_session,
-            glm_session::delete_glm_console_session,
-            kimi_session::open_kimi_console_login,
-            kimi_session::verify_kimi_console_session,
-            kimi_session::delete_kimi_console_session,
-        ])
+        .invoke_handler(current_tauri_commands!(build_current_handler))
         .setup(|app| {
             window_control::enforce_main_window_title(app.handle());
 

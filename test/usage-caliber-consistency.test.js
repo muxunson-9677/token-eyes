@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 async function writeQueue(queuePath, rows) {
   await fs.promises.writeFile(

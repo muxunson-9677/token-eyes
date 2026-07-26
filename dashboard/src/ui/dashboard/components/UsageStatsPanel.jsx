@@ -128,11 +128,16 @@ const COST_SUMMARY_CARDS = [
 export function UsageStatsPanel({
   summary,
   costSummary = null,
+  combinedMomPct = null,
+  combinedMomHasLast = false,
   selectedAgent = null,
   loading = false,
   error = null,
   className,
 }) {
+  const momPct = typeof combinedMomPct === "number" && Number.isFinite(combinedMomPct)
+    ? combinedMomPct
+    : null;
   const totals = useMemo(
     () => summary?.totals ?? summary?.summary ?? null,
     [summary],
@@ -266,22 +271,52 @@ export function UsageStatsPanel({
               className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4"
               data-testid="usage-cost-summary"
             >
-              {COST_SUMMARY_CARDS.map((card) => (
-                <div
-                  key={card.labelKey}
-                  className="min-w-0 rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
-                >
-                  <div className="truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
-                    {copy(card.labelKey)}
+              {COST_SUMMARY_CARDS.map((card) => {
+                const isCombined = card.usdField === "combined_usd";
+                return (
+                  <div
+                    key={card.labelKey}
+                    className="min-w-0 rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
+                  >
+                    <div className="truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                      {copy(card.labelKey)}
+                    </div>
+                    <div className="mt-1 truncate text-base font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
+                      {formatCurrencyAmount(costSummary[card.usdField], "USD")}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                      {formatCurrencyAmount(costSummary[card.cnyField], "CNY")}
+                    </div>
+                    {isCombined && (
+                      combinedMomHasLast && momPct !== null ? (
+                        <div
+                          className={cn(
+                            "mt-0.5 flex items-center gap-0.5 text-[11px] font-medium leading-tight",
+                            momPct > 0
+                              ? "text-red-600 dark:text-red-400"
+                              : momPct < 0
+                                ? "text-green-600 dark:text-green-400"
+                                : "text-oai-gray-500 dark:text-oai-gray-400",
+                          )}
+                          data-testid="usage-cost-mom"
+                        >
+                          {momPct > 0 ? (
+                            <ArrowUp className="h-3 w-3" aria-hidden="true" />
+                          ) : momPct < 0 ? (
+                            <ArrowDown className="h-3 w-3" aria-hidden="true" />
+                          ) : null}
+                          <span className="tabular-nums">{Math.abs(momPct).toFixed(1)}%</span>
+                          <span>{copy("spend.mom.vs_last_month")}</span>
+                        </div>
+                      ) : (
+                        <div className="mt-0.5 text-[11px] leading-tight text-oai-gray-400">
+                          {copy("spend.mom.no_last_month")}
+                        </div>
+                      )
+                    )}
                   </div>
-                  <div className="mt-1 truncate text-base font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
-                    {formatCurrencyAmount(costSummary[card.usdField], "USD")}
-                  </div>
-                  <div className="mt-0.5 truncate text-[11px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
-                    {formatCurrencyAmount(costSummary[card.cnyField], "CNY")}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

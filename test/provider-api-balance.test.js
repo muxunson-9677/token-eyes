@@ -8,7 +8,7 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 const {
   parseBalanceResponse,
   determineStatus,

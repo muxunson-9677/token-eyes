@@ -20,7 +20,7 @@ function okJson(data: unknown): Response {
 }
 
 function installFetchMock() {
-  const fetchMock = vi.fn(async (url: string) => {
+  const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
     if (url === "/functions/tokentracker-machine-id") {
       return okJson({ machineId: "machine-abcdef12" });
     }
@@ -84,6 +84,18 @@ describe("cloud usage sync", () => {
       drain: true,
       insforgeBaseUrl: "https://cloud.example",
     });
+    const machineIdCall = fetchMock.mock.calls.find(
+      ([url]) => url === "/functions/tokentracker-machine-id",
+    );
+    expect(new Headers(machineIdCall?.[1]?.headers).get("x-tokentracker-local-auth")).toBe(
+      "local-token",
+    );
+    const localSyncCall = fetchMock.mock.calls.find(
+      ([url]) => url === "/functions/tokentracker-local-sync",
+    );
+    expect(new Headers(localSyncCall?.[1]?.headers).get("x-tokentracker-local-auth")).toBe(
+      "local-token",
+    );
   });
 
   it("does not send drain for scheduled sync", async () => {

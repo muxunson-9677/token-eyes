@@ -3,8 +3,144 @@ const { describe, it } = require("node:test");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const cp = require("node:child_process");
+const { runSql } = require("./helpers/sqlite-builder.cjs");
 
 require("./helpers/home-shim.cjs");
+
+const http = require("node:http");
+const https = require("node:https");
+
+describe("test environment preload", () => {
+  it("uses a repository-local temp directory and denies default network", async () => {
+    const repoRoot = path.resolve(__dirname, "..");
+    assert.ok(path.resolve(os.tmpdir()).startsWith(repoRoot + path.sep));
+    assert.equal(globalThis.fetch?.__tokentrackerTestNetworkDeny, true);
+    await assert.rejects(
+      globalThis.fetch("https://provider.example.test/usage"),
+      (error) => error?.code === "ERR_TEST_NETWORK_DISABLED",
+    );
+  });
+
+  it("denies non-loopback https.request before DNS lookup", async () => {
+    let lookupCalled = false;
+    const error = await new Promise((resolve) => {
+      const req = https.request({
+        hostname: "provider.example.test",
+        path: "/usage",
+        lookup(_hostname, _options, callback) {
+          lookupCalled = true;
+          const lookupError = new Error("fixture lookup blocked");
+          lookupError.code = "ERR_FIXTURE_LOOKUP_BLOCKED";
+          callback(lookupError);
+        },
+      });
+      req.once("error", resolve);
+      req.end();
+    });
+
+    assert.equal(error?.code, "ERR_TEST_NETWORK_DISABLED");
+    assert.equal(lookupCalled, false);
+  });
+
+  it("keeps loopback http.request available", async () => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(204);
+      res.end();
+    });
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    try {
+      const statusCode = await new Promise((resolve, reject) => {
+        const address = server.address();
+        const req = http.request({
+          hostname: "127.0.0.1",
+          port: address.port,
+          path: "/health",
+        }, (res) => {
+          res.resume();
+          res.once("end", () => resolve(res.statusCode));
+        });
+        req.once("error", reject);
+        req.end();
+      });
+      assert.equal(statusCode, 204);
+    } finally {
+      await new Promise((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  });
+
+  it("clears source-consumed path and credential overrides before module load", () => {
+    const keys = [
+      "CODE_HOME",
+      "CODEBUDDY_HOME",
+      "COPILOT_OTEL_ENABLED",
+      "COPILOT_OTEL_EXPORTER_TYPE",
+      "COPILOT_OTEL_FILE_EXPORTER_PATH",
+      "CRAFT_CONFIG_DIR",
+      "DROID_SESSIONS_DIR",
+      "FACTORY_DIR",
+      "GOOSE_PATH_ROOT",
+      "GROK_HOME",
+      "GROK_WORKSPACE_ROOT",
+      "KILO_HOME",
+      "KIRO_CLI_DB_PATH",
+      "KIRO_HOME",
+      "OMP_HOME",
+      "OPENCLAW_CONFIG_PATH",
+      "OPENCLAW_STATE_DIR",
+      "OPENCODE_CONFIG_DIR",
+      "OPENCODE_HOME",
+      "PI_CODING_AGENT_DIR",
+      "PI_CONFIG_DIR",
+      "TOKENTRACKER_ANTIGRAVITY_HOME",
+      "TOKENTRACKER_GOOSE_DB",
+      "TOKENTRACKER_GROK_BILLING_BASE_URL",
+      "TOKENTRACKER_GROK_HOME",
+      "TOKENTRACKER_HERMES_HOME",
+      "TOKENTRACKER_KILOCODE_ROOTS",
+      "TOKENTRACKER_OMP_AGENT_DIR",
+      "TOKENTRACKER_OPENCLAW_HOME",
+      "TOKENTRACKER_PI_AGENT_DIR",
+      "TOKENTRACKER_TRAE_DECRYPTED_DB",
+      "TOKENTRACKER_TRAE_ROOTS",
+      "TOKENTRACKER_ZED_DB",
+    ];
+    const repoRoot = path.resolve(__dirname, "..");
+    const preloadPath = path.join(__dirname, "helpers", "home-shim.cjs");
+    const childEnv = { ...process.env, R1_TEST_ENV_KEYS: JSON.stringify(keys) };
+    for (const key of keys) childEnv[key] = `fixture-bait-${key.toLowerCase()}`;
+    const script = [
+      "const keys = JSON.parse(process.env.R1_TEST_ENV_KEYS);",
+      "const present = Object.fromEntries(keys.map((key) => [key, Object.hasOwn(process.env, key)]));",
+      "require('./src/lib/rollout');",
+      "process.stdout.write(JSON.stringify(present));",
+    ].join("");
+
+    const result = cp.spawnSync(process.execPath, [
+      "--require",
+      preloadPath,
+      "-e",
+      script,
+    ], {
+      cwd: repoRoot,
+      env: childEnv,
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const present = JSON.parse(result.stdout);
+    assert.deepEqual(
+      Object.keys(present).filter((key) => present[key]),
+      [],
+    );
+  });
+});
 
 // Prevents real Windows user credentials (Cursor APPDATA, etc.) from leaking
 // into tests that only pass `home: tmp` — getUsageLimits falls back to
@@ -25,6 +161,7 @@ function isolateWindowsHomeEnv(tmp) {
 }
 
 const {
+  fetchKiroLimits,
   extractGeminiOauthClientCredentials,
   getUsageLimits,
   normalizePlanLabel,
@@ -39,6 +176,7 @@ const {
   detectAntigravityProcess,
   fetchAntigravityLimits,
 } = require("../src/lib/usage-limits");
+const { extractCursorSessionToken } = require("../src/lib/cursor-config");
 
 describe("extractGeminiOauthClientCredentials", () => {
   it("finds OAuth constants from bundled Gemini CLI chunk files", async () => {
@@ -146,6 +284,230 @@ function inactiveRunner() {
 }
 
 describe("getUsageLimits", () => {
+  it("threads injected Cursor env into the SQLite reader", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-cursor-sqlite-env-"));
+    try {
+      const appDir = path.join(tmp, "Cursor");
+      const stateDb = path.join(appDir, "User", "globalStorage", "state.vscdb");
+      fs.mkdirSync(path.dirname(stateDb), { recursive: true });
+      fs.writeFileSync(stateDb, "fixture", "utf8");
+      const home = path.join(tmp, "home");
+      fs.mkdirSync(path.join(home, ".cursor"), { recursive: true });
+      fs.writeFileSync(
+        path.join(home, ".cursor", "cli-config.json"),
+        JSON.stringify({ authInfo: { authId: "auth0|user_fixture" } }),
+      );
+
+      const injectedEnv = { PATH: "fixture-sqlite-path", TOKENTRACKER_DEBUG: "1" };
+      let observedEnv;
+      const auth = extractCursorSessionToken({
+        appDir,
+        home,
+        platform: "linux",
+        env: injectedEnv,
+        deps: {
+          execFileSync(_command, _args, options) {
+            observedEnv = options.env;
+            return JSON.stringify([{ value: "fixture-cursor-token-long-enough" }]);
+          },
+          requireFn() {
+            throw new Error("node:sqlite fallback should not run");
+          },
+        },
+      });
+
+      assert.equal(observedEnv, injectedEnv);
+      assert.equal(auth?.userId, "user_fixture");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("uses injected Cursor env and platform instead of ambient APPDATA", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-cursor-env-"));
+    const originalAppData = process.env.APPDATA;
+    try {
+      const ambientAppData = path.join(tmp, "ambient-appdata");
+      const ambientCursor = path.join(ambientAppData, "Cursor");
+      const stateDb = path.join(ambientCursor, "User", "globalStorage", "state.vscdb");
+      fs.mkdirSync(path.dirname(stateDb), { recursive: true });
+      runSql(
+        stateDb,
+        "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);"
+          + " INSERT INTO ItemTable VALUES ('cursorAuth/accessToken', 'fixture-cursor-token-long-enough');",
+      );
+      const home = path.join(tmp, "home");
+      fs.mkdirSync(path.join(home, ".cursor"), { recursive: true });
+      fs.writeFileSync(
+        path.join(home, ".cursor", "cli-config.json"),
+        JSON.stringify({ authInfo: { authId: "auth0|user_fixture" } }),
+      );
+      process.env.APPDATA = ambientAppData;
+
+      let cursorRequests = 0;
+      const result = await getUsageLimits({
+        home,
+        env: { APPDATA: path.join(tmp, "injected-appdata") },
+        platform: "win32",
+        providerTimeoutMs: 100,
+        securityRunner: inactiveRunner,
+        commandRunner: inactiveRunner,
+        fetchImpl(url) {
+          if (String(url).includes("cursor.com/api/usage-summary")) cursorRequests += 1;
+          return new Promise(() => {});
+        },
+      });
+
+      assert.equal(result.cursor.configured, false);
+      assert.equal(cursorRequests, 0);
+    } finally {
+      if (originalAppData === undefined) delete process.env.APPDATA;
+      else process.env.APPDATA = originalAppData;
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("uses injected platform and env for Kiro discovery and execution", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kiro-env-"));
+    try {
+      const calls = [];
+      const injectedEnv = { PATH: "fixture-path" };
+      const kiroPath = "C:\\fixture\\kiro-cli.exe";
+      const result = await getUsageLimits({
+        home: tmp,
+        env: injectedEnv,
+        platform: "win32",
+        providerTimeoutMs: 100,
+        securityRunner: inactiveRunner,
+        commandRunner(command, args, options) {
+          calls.push({ command, args, env: options.env });
+          if (command === "where") return { status: 0, stdout: `${kiroPath}\r\n` };
+          if (command === kiroPath) {
+            return {
+              status: 0,
+              stdout: "Plan: Kiro Professional\nUsage is managed by organization admin.\n",
+              stderr: "",
+            };
+          }
+          return { status: 1, stdout: "", stderr: "" };
+        },
+        fetchImpl() {
+          return new Promise(() => {});
+        },
+      });
+
+      assert.equal(result.kiro.configured, true);
+      assert.equal(result.kiro.plan_label, "Professional");
+      assert.deepEqual(
+        calls.filter(({ command }) => command === "where" || command === kiroPath),
+        [
+        { command: "where", args: ["kiro-cli"], env: injectedEnv },
+        {
+          command: kiroPath,
+          args: ["chat", "--no-interactive", "/usage"],
+          env: { ...injectedEnv, TERM: "xterm-256color" },
+        },
+        ],
+      );
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("redacts queue, Cookie, and account identifiers from provider errors", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-redaction-"));
+    try {
+      writeCodexAuth(tmp, "plus", { account_id: "acct-fixture-sensitive" });
+      const result = await getUsageLimits({
+        home: tmp,
+        env: {},
+        platform: "linux",
+        providerTimeoutMs: 1000,
+        securityRunner: inactiveRunner,
+        commandRunner: inactiveRunner,
+        fetchImpl(url) {
+          if (typeof url === "string" && url.includes("chatgpt.com/backend-api/wham/usage")) {
+            throw new Error(
+              'request failed; Cookie: session=fixture-cookie; account_id=acct-fixture-sensitive; queue=[{"source":"fixture"}]',
+            );
+          }
+          return new Promise(() => {});
+        },
+      });
+
+      assert.equal(result.codex.configured, true);
+      assert.equal(result.codex.error, "Provider request failed.");
+      assert.doesNotMatch(
+        JSON.stringify(result),
+        /fixture-cookie|acct-fixture-sensitive|queue=\[\{"source":"fixture"\}\]/,
+      );
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("redacts quoted and camelCase sensitive provider error fields", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-json-redaction-"));
+    try {
+      writeCodexAuth(tmp, "plus", { account_id: "acct-json-sensitive" });
+      const cases = [
+        ['{"accessToken":"fixture-access"}', "fixture-access"],
+        ['{"refresh_token":"fixture-refresh"}', "fixture-refresh"],
+        ['{"sessionCookie":"fixture-session"}', "fixture-session"],
+        ['{"Cookie":"fixture-cookie"}', "fixture-cookie"],
+        ['{"authorization":"Bearer fixture-auth"}', "fixture-auth"],
+        ['{"queue":"fixture-queue"}', "fixture-queue"],
+        ['{"accountId":"organization-json-sensitive"}', "organization-json-sensitive"],
+      ];
+      for (const [providerMessage, secret] of cases) {
+        resetUsageLimitsCache();
+        const result = await getUsageLimits({
+          home: tmp,
+          env: {},
+          platform: "linux",
+          providerTimeoutMs: 1000,
+          securityRunner: inactiveRunner,
+          commandRunner: inactiveRunner,
+          fetchImpl(url) {
+            if (String(url).includes("chatgpt.com/backend-api/wham/usage")) {
+              throw new Error(`upstream rejected ${providerMessage}`);
+            }
+            return new Promise(() => {});
+          },
+        });
+        assert.equal(result.codex.error, "Provider request failed.", providerMessage);
+        assert.doesNotMatch(JSON.stringify(result), new RegExp(secret), providerMessage);
+      }
+
+      resetUsageLimitsCache();
+      const safeResult = await getUsageLimits({
+        home: tmp,
+        env: {},
+        platform: "linux",
+        providerTimeoutMs: 1000,
+        securityRunner: inactiveRunner,
+        commandRunner: inactiveRunner,
+        fetchImpl(url) {
+          if (String(url).includes("chatgpt.com/backend-api/wham/usage")) {
+            throw new Error("Codex API error: HTTP 503");
+          }
+          return new Promise(() => {});
+        },
+      });
+      assert.equal(safeResult.codex.error, "Codex API error: HTTP 503");
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("classifies a 5h session window into primary regardless of slot position", async () => {
     resetUsageLimitsCache();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-codex-classify-"));
@@ -1323,6 +1685,41 @@ describe("getUsageLimits", () => {
       restoreWinEnv();
       resetUsageLimitsCache();
       fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("fetchKiroLimits", () => {
+  it("uses process.env by default for standalone production calls", async () => {
+    const markerKey = "R1_KIRO_STANDALONE_ENV_MARKER";
+    const originalMarker = process.env[markerKey];
+    process.env[markerKey] = "fixture-present";
+    try {
+      const observed = [];
+      const result = await fetchKiroLimits({
+        platform: "linux",
+        commandRunner(command, _args, options) {
+          observed.push({
+            command,
+            hasMarker: options.env?.[markerKey] === "fixture-present",
+          });
+          if (command === "which") return { status: 0, stdout: "/fixture/kiro-cli\n" };
+          return {
+            status: 0,
+            stdout: "Plan: Kiro Professional\nUsage is managed by organization admin.\n",
+            stderr: "",
+          };
+        },
+      });
+
+      assert.equal(result.configured, true);
+      assert.deepEqual(observed, [
+        { command: "which", hasMarker: true },
+        { command: "/fixture/kiro-cli", hasMarker: true },
+      ]);
+    } finally {
+      if (originalMarker === undefined) delete process.env[markerKey];
+      else process.env[markerKey] = originalMarker;
     }
   });
 });

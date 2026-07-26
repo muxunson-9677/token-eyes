@@ -40,21 +40,7 @@ export const PROVIDER_LIMIT_SPECS = {
       ];
     },
   },
-  hermes: {
-    windows() {
-      return [];
-    },
-  },
-  openclaw: {
-    windows() {
-      return [];
-    },
-  },
-  opencode: {
-    windows() {
-      return [];
-    },
-  },
+
   kimi: {
     extra: "kimi_parallel",
     windows(data) {

@@ -10,7 +10,7 @@ import {
 } from "../lib/api";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
-import { computeRangeFromKey } from "../lib/date-range";
+import { computeRangeFromKey, getRangeForPeriod, formatDateUTC } from "../lib/date-range";
 import { getBrowserTimeZone, getBrowserTimeZoneOffsetMinutes } from "../lib/timezone";
 import { normalizeAccessToken } from "../lib/auth-token";
 import { DASHBOARD_AGENTS } from "../lib/agent-adapters-dashboard";
@@ -20,6 +20,7 @@ import { ModelUsageTable } from "../ui/dashboard/components/ModelUsageTable.jsx"
 import { UsageTrendChartCard } from "../ui/dashboard/components/UsageTrendChart.jsx";
 import { UsageFilterBar } from "../ui/dashboard/components/UsageFilterBar.jsx";
 import { UsageStatsPanel } from "../ui/dashboard/components/UsageStatsPanel.jsx";
+import { TokenServiceListPanel } from "../ui/dashboard/components/TokenServiceListPanel.jsx";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import {
   normalizeVisibleProviderIds,
@@ -64,23 +65,30 @@ const SPEND_USAGE_TABS = [
 const HEAVY_USAGE_PANELS_DEFER_MS = 150;
 const REQUEST_LOG_IDLE_TIMEOUT_MS = 500;
 
-function useDeferredHeavyUsagePanels(enabled) {
-  const [ready, setReady] = useState(false);
+function useDeferredHeavyUsagePanels(enabled, immediate = false) {
+  const [ready, setReady] = useState(immediate && enabled);
 
   useEffect(() => {
+    if (immediate) {
+      setReady(enabled);
+      return undefined;
+    }
     if (!enabled || ready) return undefined;
     const timer = window.setTimeout(() => setReady(true), HEAVY_USAGE_PANELS_DEFER_MS);
     return () => window.clearTimeout(timer);
-  }, [enabled, ready]);
+  }, [enabled, immediate, ready]);
 
-  return enabled && ready;
+  return enabled && (immediate || ready);
 }
 
-/** Defer request-log API until the browser is idle (or a short timeout). */
-function useDeferredRequestLogFetch(enabled) {
-  const [ready, setReady] = useState(false);
+function useDeferredRequestLogFetch(enabled, immediate = false) {
+  const [ready, setReady] = useState(immediate && enabled);
 
   useEffect(() => {
+    if (immediate) {
+      setReady(enabled);
+      return undefined;
+    }
     if (!enabled) {
       setReady(false);
       return undefined;
@@ -105,9 +113,9 @@ function useDeferredRequestLogFetch(enabled) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [enabled, ready]);
+  }, [enabled, immediate, ready]);
 
-  return ready;
+  return enabled && (immediate || ready);
 }
 
 // ---------------------------------------------------------------------------
@@ -133,8 +141,10 @@ function SpendUsagePageInner({
   sessionSoftExpired,
   publicMode = false,
   publicToken = null,
+  contestPreview = false,
 }) {
   const [totals, setTotals] = useState(null);
+  const [monthlyCombinedMom, setMonthlyCombinedMom] = useState({ pct: null, hasLast: false });
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const initialIntervalLoaded = useRef(false);
@@ -145,7 +155,10 @@ function SpendUsagePageInner({
     () => normalizeVisibleProviderIds(visibleOrdered),
     [visibleOrdered],
   );
-  const heavyUsagePanelsReady = useDeferredHeavyUsagePanels(visibleProviderIds.length > 0);
+  const heavyUsagePanelsReady = useDeferredHeavyUsagePanels(
+    visibleProviderIds.length > 0,
+    contestPreview,
+  );
 
   // Ticket-02: filter state from UsageFiltersContext
   const { state: filterState, refreshRevision, requestRefresh } = useUsageFilters();
@@ -171,6 +184,7 @@ function SpendUsagePageInner({
   }, []);
   const requestLogFetchReady = useDeferredRequestLogFetch(
     heavyUsagePanelsReady && activeUsageTab === "requests",
+    contestPreview,
   ) || requestLogForced;
   const selectedUsageAgent = useMemo(() => {
     const selectedAgentId = filterState.agentIds?.length === 1 ? filterState.agentIds[0] : null;
@@ -289,6 +303,42 @@ function SpendUsagePageInner({
     fetchTotals();
   }, [fetchTotals]);
 
+  // #9 本月总成本「较上月 +/-X%」: compare this calendar month's combined cost
+  // against the previous calendar month. Independent of the filter-bar range
+  // (which drives the card values) so the MoM figure is always month-over-month
+  // as the label implies. prev==0 → "上月无数据" (avoid divide-by-zero / bogus %).
+  const fetchMonthlyMom = useCallback(async () => {
+    if (effectiveUsageSources.length === 0) {
+      setMonthlyCombinedMom({ pct: null, hasLast: false });
+      return;
+    }
+    try {
+      const current = getRangeForPeriod("month", { timeZone, offsetMinutes: tzOffsetMinutes });
+      const [cy, cm] = current.from.split("-").map(Number); // cm is 1-based
+      const prevFromDate = new Date(Date.UTC(cy, cm - 2, 1));
+      const prevToDate = new Date(Date.UTC(cy, cm - 1, 0));
+      const previous = { from: formatDateUTC(prevFromDate), to: formatDateUTC(prevToDate) };
+      const [currentRes, previousRes] = await Promise.all([
+        getSpendRecords({ from: current.from, to: current.to, timeZone, tzOffsetMinutes, sources: effectiveUsageSources }),
+        getSpendRecords({ from: previous.from, to: previous.to, timeZone, tzOffsetMinutes, sources: effectiveUsageSources }),
+      ]);
+      const currentUsd = Number(currentRes?.totals?.combined_usd ?? currentRes?.totals?.combined_cost_usd ?? 0);
+      const previousUsd = Number(previousRes?.totals?.combined_usd ?? previousRes?.totals?.combined_cost_usd ?? 0);
+      if (!(previousUsd > 0)) {
+        setMonthlyCombinedMom({ pct: null, hasLast: false });
+        return;
+      }
+      setMonthlyCombinedMom({ pct: ((currentUsd - previousUsd) / previousUsd) * 100, hasLast: true });
+    } catch (err) {
+      console.error("[SpendUsagePage] Failed to load month-over-month cost:", err);
+      setMonthlyCombinedMom({ pct: null, hasLast: false });
+    }
+  }, [effectiveUsageSources, timeZone, tzOffsetMinutes]);
+
+  useEffect(() => {
+    fetchMonthlyMom();
+  }, [fetchMonthlyMom]);
+
   // Ticket-02: load saved refresh interval from local settings on mount
   useEffect(() => {
     let cancelled = false;
@@ -323,7 +373,8 @@ function SpendUsagePageInner({
     if (refreshRevision === 0) return;
     setIsRefreshing(true);
     fetchTotals({ silent: true }).finally(() => setIsRefreshing(false));
-  }, [refreshRevision, fetchTotals]);
+    fetchMonthlyMom();
+  }, [refreshRevision, fetchTotals, fetchMonthlyMom]);
 
   // Ticket-02: auto-refresh based on filterState.refreshInterval
   useEffect(() => {
@@ -341,7 +392,7 @@ function SpendUsagePageInner({
   return (
     <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
@@ -377,43 +428,52 @@ function SpendUsagePageInner({
               <UsageStatsPanel
                 summary={summary}
                 costSummary={totals}
+                combinedMomPct={monthlyCombinedMom.pct}
+                combinedMomHasLast={monthlyCombinedMom.hasLast}
                 selectedAgent={selectedUsageAgent}
                 loading={summaryLoading}
                 error={summaryError}
               />
 
               {heavyUsagePanelsReady && (
-                <>
-                  {/* Usage Trend Chart */}
-                  <div className="mb-6">
-                    <UsageTrendChartCard
+                <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+                  {/* Left column: trend chart + usage detail tables */}
+                  <div className="min-w-0">
+                    <div className="mb-6">
+                      <UsageTrendChartCard
+                        from={from}
+                        to={to}
+                        accessToken={accessToken}
+                        baseUrl={baseUrl}
+                        guestAllowed={guestAllowed}
+                        cacheKey={cacheKey}
+                        timeZone={timeZone}
+                        tzOffsetMinutes={tzOffsetMinutes}
+                        allowedSources={visibleProviderIds}
+                      />
+                    </div>
+
+                    <UsageDetailTabs
+                      activeTab={activeUsageTab}
+                      onTabChange={handleUsageTabChange}
+                      requestLogFetchReady={requestLogFetchReady}
                       from={from}
                       to={to}
-                      accessToken={accessToken}
-                      baseUrl={baseUrl}
-                      guestAllowed={guestAllowed}
-                      cacheKey={cacheKey}
                       timeZone={timeZone}
                       tzOffsetMinutes={tzOffsetMinutes}
-                      allowedSources={visibleProviderIds}
+                      visibleProviderIds={visibleProviderIds}
+                      baseUrl={baseUrl}
+                      accessToken={accessToken}
+                      guestAllowed={guestAllowed}
+                      cacheKey={cacheKey}
                     />
                   </div>
 
-                  <UsageDetailTabs
-                    activeTab={activeUsageTab}
-                    onTabChange={handleUsageTabChange}
-                    requestLogFetchReady={requestLogFetchReady}
-                    from={from}
-                    to={to}
-                    timeZone={timeZone}
-                    tzOffsetMinutes={tzOffsetMinutes}
-                    visibleProviderIds={visibleProviderIds}
-                    baseUrl={baseUrl}
-                    accessToken={accessToken}
-                    guestAllowed={guestAllowed}
-                    cacheKey={cacheKey}
-                  />
-                </>
+                  {/* Right column: 在用 Token 套餐额度用量 */}
+                  <aside className="lg:sticky lg:top-6">
+                    <TokenServiceListPanel refreshRevision={refreshRevision} />
+                  </aside>
+                </div>
               )}
             </>
           )}

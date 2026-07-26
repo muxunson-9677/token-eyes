@@ -18,6 +18,7 @@
  */
 
 const crypto = require("node:crypto");
+const { listProviderIdsByCapability } = require("./provider-capabilities");
 const {
   isModelEndpoint,
   isFinancialProviderEndpoint,
@@ -464,7 +465,41 @@ const KNOWN_PROVIDER_PRESETS = [
     lifetimeSpendPath: "",
     currencyPath: "",
   },
+  {
+    providerId: "siliconflow",
+    label: "SiliconFlow",
+    aliases: ["siliconflow", "silicon flow"],
+    hosts: ["api.siliconflow.cn", "api.siliconflow.com"],
+    defaultRequestUrl: "https://api.siliconflow.cn/v1/user/info",
+    requestMethod: "GET",
+    authType: "bearer",
+    authHeaderName: "",
+    balancePath: "data.totalBalance",
+    monthSpendPath: "",
+    lifetimeSpendPath: "",
+    currencyPath: "",
+  },
+  {
+    providerId: "openrouter",
+    label: "OpenRouter",
+    aliases: ["openrouter", "open router"],
+    hosts: ["openrouter.ai"],
+    defaultRequestUrl: "https://openrouter.ai/api/v1/auth/key",
+    requestMethod: "GET",
+    authType: "bearer",
+    authHeaderName: "",
+    balancePath: "data.limit_remaining",
+    monthSpendPath: "data.usage",
+    lifetimeSpendPath: "",
+    currencyPath: "",
+  },
 ];
+
+const providerBalanceIds = listProviderIdsByCapability("provider_balance").sort();
+const presetProviderIds = KNOWN_PROVIDER_PRESETS.map((preset) => preset.providerId).sort();
+if (JSON.stringify(providerBalanceIds) !== JSON.stringify(presetProviderIds)) {
+  throw new Error("Provider balance presets do not match the capability manifest");
+}
 
 function lowerTrim(value) {
   return String(value || "").trim().toLowerCase();
@@ -698,6 +733,7 @@ function writeProviderApiConfigs(config, configs) {
 
 module.exports = {
   CONFIG_KEY,
+  PROVIDER_API_PRESET_IDS: Object.freeze(KNOWN_PROVIDER_PRESETS.map((preset) => preset.providerId)),
   ERROR_CODES,
   validateDotPath,
   isSecretLikeValue,

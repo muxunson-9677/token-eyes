@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
-import { applyProviderApiPreset } from "../../lib/provider-api-presets.js";
+import { applyProviderApiPreset, detectProviderApiPreset } from "../../lib/provider-api-presets.js";
 import {
   saveProviderApiConfig,
   updateProviderApiConfig,
@@ -611,6 +611,16 @@ function ProviderApiConfigForm({
 }) {
   const isEdit = editing && editing !== "new";
   const hasExistingKey = Boolean(isEdit && editing.apiKeyRef);
+  // #6: surface which provider the URL/label auto-matched so URL+Key users see
+  // the preset kicked in (paths/method/auth are auto-filled on save).
+  const detected = useMemo(
+    () => detectProviderApiPreset({
+      providerId: form.providerId,
+      label: form.label,
+      requestUrl: form.requestUrl,
+    }),
+    [form.providerId, form.label, form.requestUrl],
+  );
 
   return (
     <div className="space-y-3 rounded-md border border-oai-gray-200 p-3 dark:border-oai-gray-800">
@@ -639,9 +649,16 @@ function ProviderApiConfigForm({
         />
       </FormField>
 
-      <div className="rounded-md bg-oai-gray-50 px-3 py-2 text-xs text-oai-gray-600 dark:bg-oai-gray-900 dark:text-oai-gray-300">
-        {copy("settings.cost.provider_api.form.auto_hint")}
-      </div>
+      {detected ? (
+        <div className="flex items-center gap-1.5 rounded-md bg-green-50 px-3 py-2 text-xs text-green-700 dark:bg-green-900/20 dark:text-green-400">
+          <CheckCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {copy("settings.cost.provider_api.form.detected", { provider: detected.label })}
+        </div>
+      ) : (
+        <div className="rounded-md bg-oai-gray-50 px-3 py-2 text-xs text-oai-gray-600 dark:bg-oai-gray-900 dark:text-oai-gray-300">
+          {copy("settings.cost.provider_api.form.auto_hint")}
+        </div>
+      )}
 
       <FormField label={copy("settings.cost.provider_api.form.api_key")}>
         <input

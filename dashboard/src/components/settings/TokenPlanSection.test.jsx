@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TokenPlanSection } from "./TokenPlanSection.jsx";
-import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, verifyKimiConsoleSession, saveTokenPlanSecret } from "../../lib/api";
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { copy } from "../../lib/copy";
 
@@ -161,6 +161,192 @@ it("triggers manual refresh and updates status", async () => {
   });
 });
 
+it("persists Kimi API Budget with api_key_ref only, then reloads and refreshes", async () => {
+  const user = userEvent.setup();
+  const record = {
+    ...BASE_RECORD,
+    id: "kimi-budget-plan",
+    source: "hermes",
+    provider_id: "kimi",
+    plan_id: "kimi_api_budget",
+    plan_label: "API Budget",
+    detection_method: "official_account",
+    detection_config: {
+      official_account: {
+        provider_home_url: "https://www.kimi.com/code",
+        account_binding_id: "stale-console-session",
+      },
+    },
+  };
+  getTokenPlanCatalog.mockResolvedValue({
+    providers: [{
+      id: "kimi",
+      name: "Kimi",
+      plans: [{
+        plan_id: "kimi_api_budget",
+        display_name: "API Budget",
+        quota_kind: "manual_budget",
+        quota_unit: "CNY",
+        total_quota: 0,
+        total_quota_display: "手动填写",
+      }],
+    }],
+  });
+  getTokenPlans.mockResolvedValue({ records: [record] });
+  saveTokenPlanSecret.mockResolvedValue({
+    ok: true,
+    api_key_ref: "token-plan/kimi/balance-api/ref-1",
+  });
+
+  const firstRender = render(<TokenPlanSection />);
+  await screen.findByText(/hermes \/ kimi \/ API Budget/i);
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+  await act(async () => {
+    await user.type(screen.getByLabelText(/API Key/i), "sk-kimi-budget");
+  });
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalled());
+  const saved = saveTokenPlan.mock.calls.at(-1)[0];
+  expect(saved.detection_config.official_account).toEqual(expect.objectContaining({
+    api_key_ref: "token-plan/kimi/balance-api/ref-1",
+    provider_home_url: "https://platform.moonshot.cn/console/account",
+  }));
+  expect(saved.detection_config.official_account.account_binding_id).toBeUndefined();
+
+  firstRender.unmount();
+  getTokenPlans.mockResolvedValue({ records: [{ ...saved, id: record.id }] });
+  refreshTokenPlan.mockResolvedValue({
+    ok: true,
+    plan: { ...saved, id: record.id, last_refresh_status: "success" },
+    records: [{ ...saved, id: record.id, last_refresh_status: "success" }],
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/hermes \/ kimi \/ API Budget/i);
+  saveTokenPlan.mockClear();
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalled());
+  const reloadedSaved = saveTokenPlan.mock.calls.at(-1)[0];
+  expect(reloadedSaved.detection_config.official_account).toEqual(expect.objectContaining({
+    api_key_ref: "token-plan/kimi/balance-api/ref-1",
+    provider_home_url: "https://platform.moonshot.cn/console/account",
+  }));
+  expect(reloadedSaved.detection_config.official_account.account_binding_id).toBeUndefined();
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "立即刷新" }));
+  });
+  await waitFor(() => expect(refreshTokenPlan).toHaveBeenCalledWith(record.id));
+});
+
+it("persists Kimi Code with its console binding, then reloads and refreshes", async () => {
+  const user = userEvent.setup();
+  const record = {
+    ...BASE_RECORD,
+    id: "kimi-code-plan",
+    source: "hermes",
+    provider_id: "kimi",
+    plan_id: "kimi_code_official",
+    plan_label: "Kimi Code",
+    detection_method: "official_account",
+    detection_config: {
+      official_account: {
+        provider_home_url: "https://platform.moonshot.cn/console/account",
+        api_key_ref: "stale-api-key-ref",
+      },
+    },
+  };
+  getTokenPlanCatalog.mockResolvedValue({
+    providers: [{
+      id: "kimi",
+      name: "Kimi",
+      plans: [{
+        plan_id: "kimi_code_official",
+        display_name: "Kimi Code",
+        quota_kind: "rolling_window",
+        quota_unit: "tokens",
+        total_quota: 0,
+        total_quota_display: "官方动态额度",
+      }],
+    }],
+  });
+  getTokenPlans.mockResolvedValue({ records: [record] });
+  getConsoleSessions.mockResolvedValue({
+    sessions: [{
+      id: "kimi-code-session",
+      provider_id: "kimi",
+      status: "connected",
+      session_ref: "kimi/session/ref",
+    }],
+  });
+
+  const firstRender = render(<TokenPlanSection />);
+  await screen.findByText(/hermes \/ kimi \/ Kimi Code/i);
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalled());
+  const saved = saveTokenPlan.mock.calls.at(-1)[0];
+  expect(saved.detection_config.official_account).toEqual(expect.objectContaining({
+    account_binding_id: "kimi-code-session",
+    provider_home_url: "https://www.kimi.com/code",
+  }));
+  expect(saved.detection_config.official_account.api_key_ref).toBeUndefined();
+
+  firstRender.unmount();
+  getTokenPlans.mockResolvedValue({ records: [{ ...saved, id: record.id }] });
+  verifyKimiConsoleSession.mockResolvedValue({
+    connected: true,
+    quota: {
+      used_quota: 25,
+      remaining_quota: 75,
+      quota_windows: [],
+    },
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText(/hermes \/ kimi \/ Kimi Code/i);
+  saveTokenPlan.mockClear();
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+  });
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "保存" }));
+  });
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalled());
+  const reloadedSaved = saveTokenPlan.mock.calls.at(-1)[0];
+  expect(reloadedSaved.detection_config.official_account).toEqual(expect.objectContaining({
+    account_binding_id: "kimi-code-session",
+    provider_home_url: "https://www.kimi.com/code",
+  }));
+  expect(reloadedSaved.detection_config.official_account.api_key_ref).toBeUndefined();
+  saveTokenPlan.mockClear();
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "立即刷新" }));
+  });
+  await waitFor(() => expect(verifyKimiConsoleSession).toHaveBeenCalledWith("kimi/session/ref"));
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalled());
+  const refreshed = saveTokenPlan.mock.calls.at(-1)[0];
+  expect(refreshed.detection_config.official_account).toEqual(expect.objectContaining({
+    account_binding_id: "kimi-code-session",
+    provider_home_url: "https://www.kimi.com/code",
+  }));
+  expect(refreshed.detection_config.official_account.api_key_ref).toBeUndefined();
+  expect(refreshTokenPlan).not.toHaveBeenCalled();
+});
 it("displays Codex live quota block for source=codex records with 5h/7d windows", async () => {
   const codexRecord = { ...BASE_RECORD, id: "codex-plan", source: "codex", plan_label: "Pro" };
   getTokenPlans.mockResolvedValue({ records: [codexRecord] });

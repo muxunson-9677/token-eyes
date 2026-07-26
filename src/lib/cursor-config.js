@@ -78,13 +78,17 @@ function readCursorAccessTokenFromStateDb(stateDbPath, deps = {}) {
  */
 function extractCursorSessionToken({ appDir, home, platform, env, deps } = {}) {
   const { stateDbPath, cliConfigPath } = resolveCursorPaths({ appDir, home, platform, env });
+  const resolvedDeps = {
+    ...deps,
+    env: deps?.env === undefined ? env : deps.env,
+  };
 
   // 1. Extract JWT from SQLite
   if (!fs.existsSync(stateDbPath)) {
-    cursorDebugLog(`Cursor state DB not found at ${stateDbPath}`, deps?.env);
+    cursorDebugLog(`Cursor state DB not found at ${stateDbPath}`, resolvedDeps.env);
     return null;
   }
-  const jwt = readCursorAccessTokenFromStateDb(stateDbPath, deps);
+  const jwt = readCursorAccessTokenFromStateDb(stateDbPath, resolvedDeps);
   if (!jwt || jwt.length < 10) return null;
 
   // 2. Extract userId — try cli-config.json first, fall back to JWT decode

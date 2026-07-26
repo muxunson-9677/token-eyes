@@ -1,17 +1,15 @@
+import providerCapabilities from "../../../shared/provider-capabilities.json";
 import { copy } from "./copy";
 
 /** Canonical usage-limits provider ids (order defaults in useLimitsDisplayPrefs). */
-export const LIMIT_PROVIDER_IDS = [
-  "claude",
-  "codex",
-  "cursor",
-  "trae",
-  "gemini",
-  "hermes",
-  "openclaw",
-  "opencode",
-  "antigravity",
-];
+export const LIMIT_PROVIDER_IDS = providerCapabilities.providers
+  .filter((provider) => provider.desktop_visibility)
+  .map((provider) => provider.id);
+
+export function providerHasCapability(id, capability) {
+  const provider = providerCapabilities.providers.find((entry) => entry.id === id);
+  return provider?.[capability] === true;
+}
 
 /** Keys for ProviderIcon; mono logos use inline SVG and colored logos use /brand-logos/. */
 export const LIMIT_PROVIDER_ICON_KEYS = {

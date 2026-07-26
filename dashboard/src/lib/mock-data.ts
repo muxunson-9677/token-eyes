@@ -51,6 +51,7 @@ const MOCK_LEADERBOARD_NAMES = [
 
 export function isMockEnabled() {
   if (typeof window !== "undefined") {
+    if ((window as AnyRecord).__TOKENTRACKER_FORCE_MOCK__) return true;
     const search = window.location?.search || "";
     const params = new URLSearchParams(search);
     const q = String(params.get("mock") || "").toLowerCase();
@@ -1127,5 +1128,216 @@ export function getMockModelStats({ from, to, seed }: AnyRecord = {}) {
     to,
     models,
     totals: withCost(totals),
+  };
+}
+
+const MOCK_REQUEST_MODELS = [
+  { source: "codex", source_display_name: "Codex", model: "gpt-5.2-codex" },
+  { source: "codex", source_display_name: "Codex", model: "gpt-5.2" },
+  { source: "claude", source_display_name: "Claude Code", model: "claude-sonnet-4" },
+  { source: "claude", source_display_name: "Claude Code", model: "claude-opus-4" },
+  { source: "gemini", source_display_name: "Gemini CLI", model: "gemini-2.5-pro" },
+];
+
+export function getMockRequestUsageRecords({
+  from,
+  to,
+  seed,
+  sources,
+  page = 1,
+  pageSize = 10,
+}: AnyRecord = {}) {
+  const summary = getMockUsageSummary({ from, to, seed, rolling: true });
+  const totals = summary?.totals || {};
+  const allowed = Array.isArray(sources) && sources.length > 0
+    ? sources.map((s) => String(s).toLowerCase())
+    : null;
+  const models = allowed
+    ? MOCK_REQUEST_MODELS.filter((row) => allowed.includes(row.source))
+    : MOCK_REQUEST_MODELS;
+  const pool = models.length > 0 ? models : MOCK_REQUEST_MODELS;
+  const now = getMockNow() || new Date();
+  const records = Array.from({ length: 24 }, (_, index) => {
+    const spec = pool[index % pool.length];
+    const input = 800 + (index % 7) * 220;
+    const output = 400 + (index % 5) * 180;
+    const cached = index % 3 === 0 ? 120 : 0;
+    const total = input + output + cached;
+    const hour = String(9 + (index % 10)).padStart(2, "0");
+    const minute = String((index * 7) % 60).padStart(2, "0");
+    return {
+      id: `mock-req-${index + 1}`,
+      record_kind: "request_event",
+      timestamp: `${formatDateUTC(now)}T${hour}:${minute}:00.000Z`,
+      hour_start: `${formatDateUTC(now)}T${hour}:00:00.000Z`,
+      source: spec.source,
+      source_display_name: spec.source_display_name,
+      model: spec.model,
+      input_tokens: input,
+      output_tokens: output,
+      cached_input_tokens: cached,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: index % 4 === 0 ? 80 : 0,
+      total_tokens: total + (index % 4 === 0 ? 80 : 0),
+      cost_usd: Number((total * 0.0000025).toFixed(4)),
+      conversation_count: 1,
+      status: index % 9 === 0 ? 500 : 200,
+      latency_ms: 900 + index * 35,
+      first_token_ms: 180 + index * 12,
+      request_source: "mock",
+      pricing_coverage: "complete",
+      priced_tokens: total,
+      unpriced_tokens: 0,
+    };
+  });
+
+  const start = Math.max(0, (Number(page) - 1) * Number(pageSize));
+  const pageRecords = records.slice(start, start + Number(pageSize));
+  const requestCount = records.length;
+  const successCount = records.filter((row) => row.status === 200).length;
+
+  return {
+    ok: true,
+    from,
+    to,
+    records: pageRecords,
+    totals: {
+      input_tokens: Number(totals.input_tokens || 0),
+      output_tokens: Number(totals.output_tokens || 0),
+      cached_input_tokens: Number(totals.cached_input_tokens || 0),
+      cache_creation_input_tokens: Number(totals.cache_creation_input_tokens || 0),
+      reasoning_output_tokens: Number(totals.reasoning_output_tokens || 0),
+      total_tokens: Number(totals.total_tokens || 0),
+      cost_usd: Number(totals.cost_usd || 0),
+      request_count: requestCount,
+      success_count: successCount,
+      success_rate: requestCount > 0 ? Math.round((successCount / requestCount) * 1000) / 10 : null,
+      avg_latency_ms: 1240,
+      priced_tokens: Number(totals.total_tokens || 0),
+      unpriced_tokens: 0,
+      pricing_coverage: "complete",
+      cache_hit_rate: Number(totals.cache_hit_rate || 0),
+      status_sample_count: requestCount,
+      latency_sample_count: requestCount,
+    },
+    page: {
+      page: Number(page),
+      page_size: Number(pageSize),
+      total: requestCount,
+      total_pages: Math.max(1, Math.ceil(requestCount / Number(pageSize))),
+    },
+  };
+}
+
+const MOCK_SPEND_SOURCES = [
+  { source: "codex", weight: 0.55 },
+  { source: "claude", weight: 0.3 },
+  { source: "gemini", weight: 0.15 },
+];
+
+export function getMockSpendTimeseries({ from, to, seed, sources }: AnyRecord = {}) {
+  const rows = buildDailyRows({ from, to, seed });
+  const allowed = Array.isArray(sources) && sources.length > 0
+    ? sources.map((s) => String(s).toLowerCase())
+    : null;
+  const providers = MOCK_SPEND_SOURCES.filter(
+    (p) => !allowed || allowed.includes(p.source),
+  );
+  const pool = providers.length > 0 ? providers : MOCK_SPEND_SOURCES;
+
+  const series: AnyRecord[] = [];
+  const bySourceMap = new Map<string, AnyRecord>();
+
+  for (const row of rows) {
+    const day = row.day;
+    const bucketStart = `${day}T00:00:00.000Z`;
+    const bucketEnd = `${day}T23:59:59.999Z`;
+    for (const provider of pool) {
+      const scaled = scaleTotals(row, provider.weight);
+      const costUsd = Number(formatUsdFromTokens(scaled.total_tokens));
+      series.push({
+        bucket_start: bucketStart,
+        bucket_end: bucketEnd,
+        label: day,
+        source: provider.source,
+        input_tokens: scaled.input_tokens,
+        output_tokens: scaled.output_tokens,
+        cached_input_tokens: scaled.cached_input_tokens,
+        cache_creation_input_tokens: 0,
+        reasoning_output_tokens: scaled.reasoning_output_tokens,
+        total_tokens: scaled.total_tokens,
+        cost_usd: costUsd,
+        api_cost_usd: costUsd,
+        api_cost_cny: Number((costUsd * 7.2).toFixed(4)),
+        subscription_cost_usd: 0,
+        subscription_cost_cny: 0,
+        combined_usd: costUsd,
+        combined_cny: Number((costUsd * 7.2).toFixed(4)),
+        models: Object.entries(row.models || {}).map(([model, tokens]) => ({
+          model,
+          input_tokens: Math.round(Number(tokens) * 0.46),
+          output_tokens: Math.round(Number(tokens) * 0.34),
+          cached_input_tokens: Math.round(Number(tokens) * 0.14),
+          cache_creation_input_tokens: 0,
+          reasoning_output_tokens: 0,
+          total_tokens: Number(tokens),
+          cost_usd: Number(formatUsdFromTokens(tokens)),
+        })),
+      });
+
+      const prev = bySourceMap.get(provider.source) || {
+        source: provider.source,
+        input_tokens: 0,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 0,
+        cost_usd: 0,
+        api_cost_usd: 0,
+        subscription_cost_usd: 0,
+        combined_usd: 0,
+      };
+      prev.input_tokens += scaled.input_tokens;
+      prev.output_tokens += scaled.output_tokens;
+      prev.cached_input_tokens += scaled.cached_input_tokens;
+      prev.reasoning_output_tokens += scaled.reasoning_output_tokens;
+      prev.total_tokens += scaled.total_tokens;
+      prev.cost_usd += costUsd;
+      prev.api_cost_usd += costUsd;
+      prev.combined_usd += costUsd;
+      bySourceMap.set(provider.source, prev);
+    }
+  }
+
+  const totals = sumDailyRows(rows);
+  const withCostTotals = withCost(totals);
+  const apiCostUsd = Number(withCostTotals.total_cost_usd || 0);
+
+  return {
+    ok: true,
+    from,
+    to,
+    bucket: "day",
+    timezone: "UTC",
+    currency: "USD",
+    sources: pool.map((p) => p.source),
+    series,
+    by_source: Array.from(bySourceMap.values()),
+    totals: {
+      input_tokens: totals.input_tokens,
+      output_tokens: totals.output_tokens,
+      cached_input_tokens: totals.cached_input_tokens,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: totals.reasoning_output_tokens,
+      total_tokens: totals.total_tokens,
+      cost_usd: apiCostUsd,
+      api_cost_usd: apiCostUsd,
+      subscription_cost_usd: 0,
+      combined_usd: apiCostUsd,
+      api_cost_cny: Number((apiCostUsd * 7.2).toFixed(4)),
+      subscription_cost_cny: 0,
+      combined_cny: Number((apiCostUsd * 7.2).toFixed(4)),
+    },
   };
 }

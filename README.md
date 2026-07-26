@@ -6,7 +6,7 @@
 
 ### Know exactly what you're spending on AI — across every CLI
 
-Auto-collect token counts from **22 AI coding tools**, aggregate them locally, and see real cost trends in a beautiful dashboard. No cloud account, no API keys, no setup — just one command.
+Auto-collect token counts from **26 AI coding tools**, aggregate them locally, and see real cost trends in a beautiful dashboard. Core local collection needs no cloud account or provider API key; optional remote capabilities are documented below.
 
 [![npm version](https://img.shields.io/npm/v/tokentracker-cli.svg?color=blue)](https://www.npmjs.com/package/tokentracker-cli)
 [![npm downloads](https://img.shields.io/npm/dm/tokentracker-cli.svg?color=brightgreen)](https://www.npmjs.com/package/tokentracker-cli)
@@ -52,12 +52,12 @@ That's it. First run installs hooks, syncs your data, and opens the dashboard at
 **What you get in 30 seconds:**
 - 📊 A local dashboard at `localhost:7680` with usage trends, model breakdown, cost analysis
 - 🔌 Auto-detected hooks for every supported AI tool you have installed
-- 🏠 100% local — no account, no API keys, no network calls (except optional leaderboard)
-- 🧩 *Optional:* a Skills tab that browses 250+ public skills and syncs them across Claude · Codex · Grok · Antigravity · Gemini · OpenCode · Hermes
+- 🏠 Local-first collection — usage logs and aggregates stay on this machine by default; remote quota, pricing, exchange-rate, sign-in, and cloud features can make network requests
+- 🧩 *MVP-hidden:* Skills Manager code is present, but `/skills` currently redirects to the dashboard
 
 > **Want a native desktop app?**
 > - **macOS** — [Download `TokenTrackerBar.dmg`](https://github.com/mm7894215/TokenTracker/releases/latest/download/TokenTrackerBar.dmg) → drag to Applications. Menu bar status icon, desktop widgets, and the dashboard in a WKWebView.
-> - **Windows** — [Download `TokenTracker-Setup.exe`](https://github.com/mm7894215/TokenTracker/releases/latest/download/TokenTracker-Setup.exe) → run the per-user installer (no admin needed). System-tray app with the dashboard in WebView2. Portable zip also on the [releases page](https://github.com/mm7894215/TokenTracker/releases/latest).
+> - **Windows** — Open the [latest release](https://github.com/mm7894215/TokenTracker/releases/latest) and download the Tauri `.msi` or `*-setup.exe` installer. The current workflow publishes those MSI/NSIS artifacts; the system-tray app hosts the dashboard in WebView2.
 
 Install globally for shorter commands:
 
@@ -91,21 +91,34 @@ Upgrade with `brew upgrade --cask mm7894215/tokentracker/tokentracker`. The tap 
 
 ## ✨ Features
 
-- 🔌 **22 AI tools out of the box** — Claude Code, Codex CLI, Cursor, Gemini CLI, Antigravity, Kiro, OpenCode, OpenClaw, Every Code, Hermes Agent, GitHub Copilot, Kimi Code, CodeBuddy, Grok Build, oh-my-pi, pi, Craft Agents, Kilo CLI, Kilo Code, Roo Code, Zed Agent, Goose
-- 🏠 **100% local** — Token data never leaves your machine. No account, no API keys.
+- 🔌 **26 token collectors out of the box** — Claude Code, Codex CLI, Cursor, Trae, Gemini CLI, Hermes Agent, OpenClaw, OpenCode, Antigravity, Every Code, Kilo CLI, Kilo Code, Roo Code, Kiro, Kiro CLI, Kimi, Kimi Code, CodeBuddy, oh-my-pi, pi, Craft Agents, Grok Build, GitHub Copilot, Zed Agent, Goose, Droid
+- 🏠 **Local-first** — Local collection does not upload prompts, responses, or usage by default. Remote features are explicit and documented below.
 - 🚀 **Zero config** — Hooks auto-install on first run. From zero to dashboard in 30 seconds.
-- 📊 **Beautiful dashboard** — Usage trends, cost breakdowns by model, GitHub-style activity heatmap, project attribution
+- 📊 **Dashboard** — Usage trends, cost breakdowns by model, and project attribution
 - 🖥️ **Native desktop app** — macOS menu bar (+ widgets) and Windows system tray, each with an embedded server and the dashboard in a native webview
-- 🎨 **4 desktop widgets** — Pin Usage / Activity Heatmap / Top Models / Usage Limits to your desktop
-- 📈 **Real-time rate limit tracking** — Claude / Codex / Cursor / Gemini / Kiro / Copilot / Antigravity quota windows with reset countdowns
+- 🎨 **4 desktop widget implementations (MVP-hidden)** — Usage / Activity Heatmap / Top Models / Usage Limits exist in code, while `/widgets` currently redirects to the dashboard
+- 📈 **Rate-limit adapters** — 13 providers are registry-declared for official quota checks; availability depends on a valid local session or credential, and the dedicated `/limits` page is MVP-hidden
 - 💰 **Cost engine** — 2,200+ models priced via [LiteLLM](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) (auto-refreshed daily) + curated overrides for niche tools (Kiro, Cursor Composer, Kimi, CodeBuddy hy3); 24h disk cache + bundled offline snapshot mean accurate USD without an internet connection. Models without published vendor pricing (e.g. Tencent hy3-preview) are tracked by tokens but show $0 cost until the vendor publishes a rate.
-- 🌐 **Optional leaderboard** — Compare with developers worldwide; drag-to-reorder columns to focus on the providers you care about (opt-in, sign in to participate)
-- 🔄 **Cross-device account view** — Opt in to cloud sync and the dashboard merges your usage across every machine you work on (laptop + desktop + server) into one combined view — totals, trends, heatmap and model breakdown all device-aggregated (opt-in, sign in; the default local-only experience stays instant and offline)
-- 🧩 **Optional Skills tab** — browse 250+ public skills from `anthropics/skills`, `ComposioHQ/awesome-claude-skills`, `skills.sh` and any GitHub repo you add; sync them across Claude / Codex / Grok / Antigravity / Gemini / OpenCode / Hermes with named targets and one-click Undo
+- 🌐 **Leaderboard (MVP-hidden)** — The opt-in cloud implementation exists, but `/leaderboard` and public profile routes currently redirect to the dashboard
+- 🔄 **Cross-device account view (optional cloud)** — Opt in to merge totals, trends, and model breakdown across signed-in devices; the default local-only experience stays instant and offline
+- 🧩 **Skills Manager (MVP-hidden)** — GitHub-backed browsing and cross-tool sync are implemented, but the current MVP route redirects to the dashboard
 - 🔒 **Privacy-first** — Only token counts and timestamps. Never prompts, responses, or file contents.
 
----
+## Current product boundary
 
+<!-- provider-registry-count: 35 -->
+<!-- token-collector-count: 26 -->
+<!-- official-rate-limit-count: 13 -->
+
+The counts above are checked against [`shared/provider-capabilities.json`](shared/provider-capabilities.json): **35 providers** participate in account/quota/balance capability metadata, while **26** currently collect token usage. These are different product dimensions.
+
+- **Currently visible:** dashboard overview, spend usage/cost, and basic/cost settings. The CLI and local API read the local `queue.jsonl` snapshot; the Windows desktop target is Tauri/WebView2 and the macOS target is `TokenTrackerBar` (Swift/WKWebView).
+- **MVP-hidden:** `/leaderboard`, `/u/:userId`, `/limits`, `/skills`, `/widgets`, `/ip-check`, and `/wrapped` are implemented but currently redirect to `/dashboard`. The **Leaderboard is not open in this MVP**.
+- **Optional cloud:** account sign-in, cross-device sync, public profiles, badges, and leaderboard participation require explicit opt-in. Hidden routes do not make those features currently available from the MVP navigation.
+- **Legacy shells:** `TokenTrackerWin` (.NET) and the retained CC Switch command/tests are historical references, not current Token Eyes desktop deliverables.
+- **Network access:** local log parsing and cached dashboard data work offline. Official quota/balance calls, pricing refreshes, exchange rates, authentication, cloud sync, leaderboard/badges, and GitHub-backed Skills browsing can contact remote services; failures must fall back to cached/error states rather than fabricate data.
+
+---
 ## 🖼️ Showcase
 
 <table>
@@ -135,7 +148,7 @@ Upgrade with `brew upgrade --cask mm7894215/tokentracker/tokentracker`. The tap 
 </td>
 <td width="50%">
 
-**Global Leaderboard** — compare with developers worldwide
+**Global Leaderboard (MVP-hidden)** — implementation preview; the current route redirects to the dashboard
 
 <img src="https://raw.githubusercontent.com/mm7894215/tokentracker/main/docs/screenshots/leaderboard.png" alt="Leaderboard" />
 
@@ -144,7 +157,7 @@ Upgrade with `brew upgrade --cask mm7894215/tokentracker/tokentracker`. The tap 
 <tr>
 <td colspan="2">
 
-**Skills Manager** — browse 250+ public skills from GitHub & `skills.sh`, install once, sync to Claude / Codex / Grok / Antigravity / Gemini / OpenCode / Hermes. Per-target toggles, one-click Undo, no manual file copying.
+**Skills Manager (MVP-hidden)** — implementation preview; GitHub-backed browsing and sync are not exposed by the current route.
 
 <img src="https://raw.githubusercontent.com/mm7894215/tokentracker/main/docs/screenshots/skills.png" alt="Skills Manager" />
 
@@ -161,7 +174,9 @@ Upgrade with `brew upgrade --cask mm7894215/tokentracker/tokentracker`. The tap 
 | **Claude Code** | ✅ Auto | SessionEnd hook in `settings.json` |
 | **Codex CLI** | ✅ Auto | TOML notify hook in `config.toml` |
 | **Cursor** | ✅ Auto | API + SQLite auth token |
+| **Trae** | ✅ Auto | Passive local SQLite / token JSONL reader |
 | **Kiro** | ✅ Auto | SQLite + JSONL hybrid |
+| **Kiro CLI** | ✅ Auto | Passive CLI session JSONL / SQLite reader |
 | **Gemini CLI** | ✅ Auto | SessionEnd hook |
 | **OpenCode** | ✅ Auto | Plugin system + SQLite |
 | **OpenClaw** | ✅ Auto | Session plugin |
@@ -169,6 +184,7 @@ Upgrade with `brew upgrade --cask mm7894215/tokentracker/tokentracker`. The tap 
 | **Hermes Agent** | ✅ Auto | SQLite sessions table (`~/.hermes/state.db`) |
 | **GitHub Copilot** | ✅ Auto | OpenTelemetry file exporter (`COPILOT_OTEL_FILE_EXPORTER_PATH`) |
 | **Kimi Code** | ✅ Auto | Passive `wire.jsonl` reader (`~/.kimi/sessions/**/wire.jsonl`) |
+| **Kimi** | ✅ Auto | Passive session wire reader with incremental de-duplication |
 | **oh-my-pi (Pi Coding Agent)** | ✅ Auto | Passive reader (`~/.omp/agent/sessions/**/*.jsonl`) |
 | **CodeBuddy** (Tencent) | ✅ Auto | SessionEnd hook in `~/.codebuddy/settings.json` (Claude-Code fork) |
 | **Grok Build** (xAI) | ✅ Auto | SessionEnd hook + passive `updates.jsonl` / `signals.json` scan (`~/.grok/sessions/**/`) |
@@ -180,6 +196,7 @@ Upgrade with `brew upgrade --cask mm7894215/tokentracker/tokentracker`. The tap 
 | **Roo Code** (VS Code extension) | ✅ Auto | Passive `ui_messages.json` reader (`rooveterinaryinc.roo-cline`) |
 | **Zed Agent** | ✅ Auto | Passive SQLite reader (`threads.db`, all providers — hosted `zed.dev` + bring-your-own) |
 | **Goose** (Block) | ✅ Auto | Passive SQLite reader (`sessions.db`, cumulative deltas) |
+| **Droid** (Factory CLI) | ✅ Auto | Passive `sessions/*.settings.json` reader with cumulative deltas |
 
 > **Do I need to install any plugin or hook manually?** No. `tokentracker` (or `tokentracker init`) handles everything on first run:
 > - **Hook-based** tools (Claude Code, Codex, Gemini, Every Code, **CodeBuddy**, **Grok Build**) — we write a SessionEnd hook or TOML notify entry into the tool's own config.
@@ -197,18 +214,18 @@ Missing your tool? [Open an issue](https://github.com/mm7894215/TokenTracker/iss
 
 ## 🆚 Why TokenTracker? <a id="ccusage-alternative"></a>
 
-> **Looking for a ccusage alternative with a GUI?** TokenTracker covers 22 tools (not just Claude Code), adds a native macOS menu bar app + desktop widgets, and de-duplicates token records correctly across providers — so your numbers match the providers' own billing.
+> **Looking for a ccusage alternative with a GUI?** TokenTracker has 26 registry-checked token collectors (not just Claude Code), native macOS and Windows shells, and provider-aware token de-duplication.
 
 |                          | **TokenTracker** | ccusage     | Cursor stats |
 |--------------------------|:---:|:---:|:---:|
-| **AI tools supported**   | **22**           | 1 (Claude)  | 1 (Cursor)   |
+| **Token collectors**     | **26**           | 1 (Claude)  | 1 (Cursor)   |
 | **Local-first, no account** | ✅            | ✅           | ❌            |
 | **Native desktop app**   | ✅ macOS + Windows | ❌           | ❌            |
 | **Desktop widgets**      | ✅ 4 widgets      | ❌           | ❌            |
-| **Rate-limit tracking**  | ✅ 7 providers    | ❌           | Cursor only  |
+| **Rate-limit tracking**  | ✅ 13 registry-declared providers | ❌ | Cursor only |
 | **Accurate multi-provider dedup** | ✅      | ❌ ¹         | —            |
 
-<sub>¹ `reqId`-based deduplication over-counts providers that omit a request ID (DeepSeek / Kimi / MiniMax / Claude sub-agents) by 1.6–3.7×. TokenTracker dedups on a composite key, so totals match each provider's own billing dashboard.</sub>
+<sub>¹ TokenTracker uses provider-specific incremental cursors and stable event IDs when source logs expose them. Strict fixture audits reject duplicate stable IDs and invalid cumulative snapshots.</sub>
 
 ---
 
@@ -218,7 +235,7 @@ Missing your tool? [Open an issue](https://github.com/mm7894215/TokenTracker/iss
 flowchart LR
     A["AI CLI Tools<br/>Claude Code · Codex · Cursor · Gemini · Kiro<br/>OpenCode · OpenClaw · Every Code · Hermes · Copilot<br/>Kimi Code · CodeBuddy · Grok Build · Kilo CLI · Kilo Code · <br/>Antigravity · oh-my-pi · pi · Craft Agents · Roo Code · Zed · Goose"]
     A -->|hooks trigger| B[Token Tracker]
-    B -->|parse logs<br/>30-min UTC buckets| C[(Local SQLite)]
+    B -->|parse logs<br/>30-min UTC buckets| C[(Local queue.jsonl + state)]
     C --> D[Web Dashboard]
     C --> E[Menu Bar App]
     C --> F[Desktop Widgets]
@@ -238,9 +255,9 @@ flowchart LR
 | Protection | Description |
 |---|---|
 | **No content upload** | Only token counts and timestamps. Never prompts, responses, or file contents. |
-| **Local-only by default** | All data stays on your machine. The leaderboard is fully opt-in. |
+| **Local-first by default** | Usage parsing and local aggregates stay on this machine unless you explicitly enable a cloud feature. |
 | **Auditable** | Open source. Read [`src/lib/rollout.js`](src/lib/rollout.js) — only numbers and timestamps. |
-| **No telemetry** | No analytics, no crash reporting, no phone-home. |
+| **Hosted analytics boundary** | The hosted web build includes Vercel Analytics/Speed Insights; CLI/local usage records are not uploaded by default. |
 
 ---
 
@@ -417,7 +434,7 @@ Once granted, the permission is remembered. Note that ad-hoc signed builds re-pr
 Show off your token usage on your GitHub profile or project README.
 
 To get `YOUR_USER_ID`:
-1. Run `tokentracker`, open the dashboard, and sign in to the leaderboard.
+1. This flow is currently MVP-hidden. When cloud account routes are reopened, run `tokentracker`, sign in, and enable public sharing.
 2. Go to **Settings → Account**.
 3. Use the **User ID** shown there. On headless machines, `tokentracker device-login` also writes the same `user_id` to `~/.tokentracker/tracker/config.json`.
 

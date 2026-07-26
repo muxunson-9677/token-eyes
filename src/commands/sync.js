@@ -81,7 +81,10 @@ const {
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { resolveRuntimeConfig } = require("../lib/runtime-config");
-const { resolveDataDirectoryPaths } = require("../lib/data-directories");
+const {
+  resolveDataDirectoryPaths,
+  shouldScanDefaultWindowsDrives,
+} = require("../lib/data-directories");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -195,7 +198,12 @@ async function cmdSync(argv) {
     }
     let grokHookSignalConsumed = false;
 
-    const dataDirectoryPaths = resolveDataDirectoryPaths({ config: config || {}, env: process.env, home });
+    const dataDirectoryPaths = resolveDataDirectoryPaths({
+      config: config || {},
+      env: process.env,
+      home,
+      scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
+    });
     const codexHome = dataDirectoryPaths.codexHome;
     const codexHomes = Array.isArray(dataDirectoryPaths.codexHomes) && dataDirectoryPaths.codexHomes.length > 0
       ? dataDirectoryPaths.codexHomes
@@ -2786,5 +2794,3 @@ async function collectClaudeMessageHashes(filePaths) {
   }
   return hashes;
 }
-
-

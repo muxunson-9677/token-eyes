@@ -5,7 +5,7 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -770,12 +770,9 @@ test("W03-R3A refresh failure only updates error status, does not clear last suc
     assert.equal(refreshRes.statusCode, 200);
 
     // Refresh should have failed but quota must be preserved
-    // W03-R3D: official_account without provider adapter returns "unsupported" (not "failed")
+    // A registered official adapter without a saved native session is truthfully not_configured.
     const refreshedPlan = refreshBody.plan;
-    assert.ok(
-      refreshedPlan.sync_status === "failed" || refreshedPlan.sync_status === "unsupported",
-      `sync_status should be failed or unsupported, got: ${refreshedPlan.sync_status}`
-    );
+    assert.equal(refreshedPlan.sync_status, "not_configured");
     assert.ok(refreshedPlan.last_error_message, "last_error_message should be set");
     assert.ok(refreshedPlan.last_sync_attempt_at, "last_sync_attempt_at should be updated");
 

@@ -1,4 +1,5 @@
 import { createClient } from "@insforge/sdk";
+import { fetchAuthenticatedLocalApi } from "./local-api-fetch";
 
 /**
  * Production InsForge cloud — hardcoded fallback so deployments that don't
@@ -68,6 +69,19 @@ export function isCloudInsforgeConfigured(): boolean {
  */
 let insforgeClientSingleton: ReturnType<typeof createClient> | null = null;
 
+async function insforgeFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  if (typeof window === "undefined") return fetch(input, init);
+  const rawUrl = input instanceof Request ? input.url : String(input);
+  const url = new URL(rawUrl, window.location.href);
+  const isLocalAuthProxy = (
+    url.origin === window.location.origin
+    && url.pathname.startsWith("/api/")
+    && url.pathname !== "/api/local-auth"
+  );
+  if (!isLocalAuthProxy) return fetch(input, init);
+  return fetchAuthenticatedLocalApi(input, init);
+}
+
 export function getOrCreateInsforgeClient(): ReturnType<typeof createClient> | null {
   if (!isCloudInsforgeConfigured()) return null;
   if (!insforgeClientSingleton) {
@@ -75,6 +89,7 @@ export function getOrCreateInsforgeClient(): ReturnType<typeof createClient> | n
       baseUrl: getInsforgeBaseUrl(),
       anonKey: getInsforgeAnonKey() || undefined,
       autoRefreshToken: true,
+      fetch: insforgeFetch,
     });
   }
   return insforgeClientSingleton;

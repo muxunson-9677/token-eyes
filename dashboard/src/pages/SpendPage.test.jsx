@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { ThemeProvider } from "../ui/foundation/ThemeProvider.jsx";
+import { LocaleProvider } from "../ui/foundation/LocaleProvider.jsx";
 import { SpendUsagePage, SpendCostPage } from "./SpendPage.jsx";
 import {
   createSpendRecord,
@@ -107,6 +109,18 @@ const SAMPLE_RECORD = {
 
 const VISIBLE_PROVIDERS = ["claude", "codex", "hermes"];
 
+function renderSpendUsagePage(props = {}) {
+  return render(
+    <MemoryRouter initialEntries={["/spend/usage"]}>
+      <ThemeProvider>
+        <LocaleProvider>
+          {/* SpendUsagePage supplies the usage-filter context internally. */}
+          <SpendUsagePage {...props} />
+        </LocaleProvider>
+      </ThemeProvider>
+    </MemoryRouter>,
+  );
+}
 beforeEach(() => {
   vi.clearAllMocks();
   useCurrency.mockReturnValue({ currency: "USD", rate: 1 });
@@ -193,7 +207,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       by_source: [{ source: "claude", subscription_usd: 10, subscription_cny: 72, api_usd: 0, api_cny: 0, combined_usd: 10, combined_cny: 72 }],
     });
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
 
     expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
     expect(await screen.findByText("本月订阅成本")).toBeInTheDocument();
@@ -214,7 +228,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       by_source: [],
     });
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
 
     expect(await screen.findByText("本月 API 成本")).toBeInTheDocument();
     expect(screen.getByText("本月订阅成本")).toBeInTheDocument();
@@ -229,7 +243,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       by_source: [{ source: "claude", subscription_usd: 10, subscription_cny: 72, api_usd: 0, api_cny: 0, combined_usd: 10, combined_cny: 72 }],
     });
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
 
     expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
     expect(screen.queryByText("按来源拆分")).not.toBeInTheDocument();
@@ -237,7 +251,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   });
 
   it("does NOT render the top-level '使用统计 / 成本累积' Tab UI", async () => {
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
     // The old top-level tabs must not appear as toggle buttons.
     expect(screen.queryByRole("button", { name: "成本累积" })).not.toBeInTheDocument();
@@ -258,7 +272,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       by_source: [],
     });
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
 
     const costRow = await screen.findByTestId("usage-cost-summary");
     expect(within(costRow).getByText("USD 5.00")).toBeInTheDocument();
@@ -269,7 +283,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   it("mirrors the selected AgentSwitcher agent in the real-token headline", async () => {
     const user = userEvent.setup();
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
 
     const claudeButton = await screen.findByTitle("Claude Code");
     await act(async () => {
@@ -281,7 +295,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   });
 
   it("initial load defers trend chart and request log until after first paint", async () => {
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
 
     expect(getSpendTimeseries).not.toHaveBeenCalled();
     expect(getRequestUsageRecords).not.toHaveBeenCalled();
@@ -294,8 +308,10 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   });
 
   it("range switching calls both APIs with the same from/to params", async () => {
-    const { rerender } = render(<SpendUsagePage />);
+    renderSpendUsagePage();
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalled());
+    await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
     vi.clearAllMocks();
 
     const user = userEvent.setup();
@@ -329,12 +345,12 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       currency: { base: "USD", usd_to_cny: 7.2 },
     });
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     await waitFor(() => expect(screen.getByText("暂无趋势数据")).toBeInTheDocument());
   });
 
   it("renders usage statistics and request/provider/model tabs", async () => {
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
     expect(screen.getByText("总请求数")).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "请求日志" })).toBeInTheDocument();
@@ -344,7 +360,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   });
 
   it("does not mount inactive provider/model detail tabs on initial load", async () => {
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
 
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
 
@@ -380,7 +396,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       currency: { base: "USD", usd_to_cny: 7.2 },
     });
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     await waitFor(() => expect(screen.getByRole("img", { name: "使用趋势图" })).toBeInTheDocument());
   });
 
@@ -400,7 +416,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       ],
     });
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     const providerTab = await screen.findByRole("tab", { name: "Provider 统计" });
     await act(async () => {
       await user.click(providerTab);
@@ -425,7 +441,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       ],
     });
 
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     const modelTab = await screen.findByRole("tab", { name: "模型统计" });
     await act(async () => {
       await user.click(modelTab);
@@ -434,7 +450,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   });
 
   it("getSpendRecords receives sources filter from visibleProviderIds", async () => {
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     const callWithSources = getSpendRecords.mock.calls.find((call) => Array.isArray(call[0]?.sources));
     expect(callWithSources).toBeDefined();
@@ -442,7 +458,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   });
 
   it("getUsageSummary receives sources filter from visibleProviderIds", async () => {
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
     const callArgs = getUsageSummary.mock.calls[0][0];
     expect(callArgs?.sources).toEqual(["claude", "codex", "hermes"]);
@@ -450,7 +466,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
   it("getProviderStats receives sources filter from visibleProviderIds", async () => {
     const user = userEvent.setup();
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     const providerTab = await screen.findByRole("tab", { name: "Provider 统计" });
     await act(async () => {
       await user.click(providerTab);
@@ -462,7 +478,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
   it("empty allowlist shows empty state and does not fetch", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     await waitFor(() => expect(screen.getByText("请在显示设置中启用至少一个 Provider。")).toBeInTheDocument());
     expect(getSpendRecords).not.toHaveBeenCalled();
     expect(getSpendTimeseries).not.toHaveBeenCalled();
@@ -955,7 +971,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
 
 describe("SpendUsagePage does not call provider balance endpoints (03 work order)", () => {
   it("/spend/usage does NOT call getProviderApiConfigs / getProviderApiBalances / refreshProviderApiBalance", async () => {
-    render(<SpendUsagePage />);
+    renderSpendUsagePage();
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     // Allow the page to settle all mount effects.
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());

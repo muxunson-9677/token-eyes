@@ -1,3 +1,5 @@
+import providerCapabilities from "../../../shared/provider-capabilities.json";
+
 const PROVIDER_API_PRESETS = [
   {
     providerId: "deepseek",
@@ -48,14 +50,55 @@ const PROVIDER_API_PRESETS = [
     hosts: ["open.bigmodel.cn", "www.bigmodel.cn", "bigmodel.cn"],
     defaultRequestUrl: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
     requestMethod: "GET",
-    authType: "header",
-    authHeaderName: "Authorization",
+    // #6: 智谱 API keys authenticate as `Authorization: Bearer <key>`; the old
+    // "header" mode sent the raw key with no scheme and 401'd. NOTE: 智谱 account
+    // balance/recharge is often only exposed to the console session, so the
+    // 官网检测 (glm_session.rs) path may still be the reliable one — verify this
+    // preset against a real key.
+    authType: "bearer",
+    authHeaderName: "",
     balancePath: "data.limits[*].usage",
     monthSpendPath: "",
     lifetimeSpendPath: "",
     currencyPath: "",
   },
+  {
+    providerId: "siliconflow",
+    label: "硅基流动 SiliconFlow",
+    aliases: ["siliconflow", "硅基流动", "silicon flow", "硅基"],
+    hosts: ["api.siliconflow.cn", "api.siliconflow.com"],
+    defaultRequestUrl: "https://api.siliconflow.cn/v1/user/info",
+    requestMethod: "GET",
+    authType: "bearer",
+    authHeaderName: "",
+    balancePath: "data.totalBalance",
+    monthSpendPath: "",
+    lifetimeSpendPath: "",
+    currencyPath: "",
+  },
+  {
+    providerId: "openrouter",
+    label: "OpenRouter",
+    aliases: ["openrouter", "open router"],
+    hosts: ["openrouter.ai"],
+    defaultRequestUrl: "https://openrouter.ai/api/v1/auth/key",
+    requestMethod: "GET",
+    authType: "bearer",
+    authHeaderName: "",
+    balancePath: "data.limit_remaining",
+    monthSpendPath: "data.usage",
+    lifetimeSpendPath: "",
+    currencyPath: "",
+  },
 ];
+export const PROVIDER_API_PRESET_IDS = PROVIDER_API_PRESETS.map((preset) => preset.providerId);
+const balanceCapabilityIds = providerCapabilities.providers
+  .filter((provider) => provider.provider_balance)
+  .map((provider) => provider.id)
+  .sort();
+if (JSON.stringify([...PROVIDER_API_PRESET_IDS].sort()) !== JSON.stringify(balanceCapabilityIds)) {
+  throw new Error("Provider balance presets do not match the capability manifest");
+}
 
 function lowerTrim(value) {
   return String(value || "").trim().toLowerCase();
@@ -133,6 +176,14 @@ function applyPresetFields(form, preset) {
   }
 
   return next;
+}
+
+// #6: lightweight detection used purely for UX — lets the config form show
+// "已识别为 <provider>" so URL+Key users get confirmation the auto-fill matched
+// a known provider. Returns null when nothing matches (custom endpoint).
+export function detectProviderApiPreset(form) {
+  const preset = detectPreset(form);
+  return preset ? { providerId: preset.providerId, label: preset.label } : null;
 }
 
 export function applyProviderApiPreset(form) {

@@ -120,9 +120,10 @@ if [[ "${CI:-}" == "true" ]]; then
         BG_ARGS=(--background "$BG_IMAGE")
     fi
 
-    # The Homebrew create-dmg tool stages the .app, builds the DMG, applies
-    # background + icon positions, and finalizes — all without Finder.
-    # Note: it expects to create the OUTPUT file, so remove any leftover.
+    # create-dmg copies the contents of its source folder and creates the
+    # Applications link itself. Passing APP_PATH would flatten Contents/ at
+    # the DMG root; keeping our pre-created link would duplicate that entry.
+    rm -f "$STAGING/Applications"
     rm -f "$FINAL_DMG"
     create-dmg \
         --volname "$VOLUME_NAME" \
@@ -133,7 +134,7 @@ if [[ "${CI:-}" == "true" ]]; then
         --app-drop-link "$APPS_X" "$APPS_Y" \
         "${BG_ARGS[@]}" \
         "$FINAL_DMG" \
-        "$APP_PATH"
+        "$STAGING"
 
     FINAL_SIZE=$(du -sh "$FINAL_DMG" | cut -f1)
     echo ""

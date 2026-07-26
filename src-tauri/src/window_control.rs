@@ -2,6 +2,15 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 
 pub const APP_DISPLAY_NAME: &str = "Token Eyes";
 const MAIN_WINDOW_LABEL: &str = "main";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoreTrigger {
+    SingleInstance,
+    TrayMenu,
+    TrayClick,
+}
+
+pub const SINGLE_INSTANCE_RESTORE_TRIGGER: RestoreTrigger = RestoreTrigger::SingleInstance;
 const RESTORE_LOOKUP_RETRIES: usize = 20;
 const RESTORE_LOOKUP_DELAY_MS: u64 = 50;
 
@@ -65,6 +74,10 @@ pub fn restore_main_window(app: &AppHandle) {
             }
         }
     });
+}
+
+pub fn restore_main_window_for_trigger(app: &AppHandle, _trigger: RestoreTrigger) {
+    restore_main_window(app);
 }
 
 pub fn should_minimize_to_tray(window_label: &str, minimize_to_tray: bool) -> bool {

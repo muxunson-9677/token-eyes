@@ -163,6 +163,7 @@
   "limits.label.antigravity_flash": "Flash",
   "limits.bar.sub_one_percent": "<1",
   "limits.status.not_connected": "未连接",
+  "limits.status.manual_only": "仅支持手动套餐；暂无官方额度查询。",
   "limits.status.no_data": "未返回实时限额数据",
   "limits.status.all_hidden": "所有限额提供商都已隐藏。请打开显示设置重新显示。",
   "nav.usage": "概览",

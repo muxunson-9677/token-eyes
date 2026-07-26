@@ -1,3 +1,5 @@
+require("./helpers/home-shim.cjs");
+
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
@@ -8,7 +10,10 @@ const { test } = require("node:test");
 function createRequest({ method = "GET", headers = {}, body } = {}) {
   const req = new EventEmitter();
   req.method = method;
-  req.headers = headers;
+  req.headers = { host: "127.0.0.1:7680", ...headers };
+  req[Symbol.asyncIterator] = async function* iterateBody() {
+    if (body != null) yield Buffer.from(body);
+  };
 
   process.nextTick(() => {
     if (body != null) req.emit("data", Buffer.from(body));
@@ -16,6 +21,21 @@ function createRequest({ method = "GET", headers = {}, body } = {}) {
   });
 
   return req;
+}
+
+async function callLocalApi(handler, pathname, {
+  method = "GET",
+  headers = {},
+  body,
+} = {}) {
+  const req = createRequest({ method, headers, body });
+  const res = createResponse();
+  const handled = await handler(
+    req,
+    res,
+    new URL(pathname, "http://127.0.0.1:7680"),
+  );
+  return { handled, req, res };
 }
 
 function createResponse() {
@@ -438,8 +458,327 @@ test("auth bridge mutation requires the local auth token", async () => {
 
     assert.equal(handled, true);
     assert.equal(res.statusCode, 401);
-    assert.deepEqual(JSON.parse(res.body.toString("utf8")), { error: "Unauthorized" });
+    assert.deepEqual(JSON.parse(res.body.toString("utf8")), {
+      ok: false,
+      error: "Unauthorized",
+    });
   } finally {
     restore();
   }
+});
+
+test("rejects malicious Origin on preflight, handshake, sensitive GET, and POST", async () => {
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-malicious-origin-queue.jsonl"),
+    listeningPort: 7680,
+  });
+  const maliciousOrigin = "https://attacker.example";
+
+  for (const request of [
+    {
+      pathname: "/functions/tokentracker-usage-summary",
+      method: "OPTIONS",
+      headers: {
+        origin: maliciousOrigin,
+        "access-control-request-method": "GET",
+      },
+    },
+    {
+      pathname: "/api/local-auth",
+      headers: { origin: maliciousOrigin },
+    },
+    {
+      pathname: "/functions/tokentracker-usage-summary",
+      headers: { origin: maliciousOrigin },
+    },
+    {
+      pathname: "/functions/tokentracker-local-sync",
+      method: "POST",
+      headers: { origin: maliciousOrigin },
+    },
+  ]) {
+    const { handled, res } = await callLocalApi(handler, request.pathname, request);
+    assert.equal(handled, true);
+    assert.equal(res.statusCode, 403);
+    assert.notEqual(res.headers?.["Access-Control-Allow-Origin"], "*");
+    assert.deepEqual(JSON.parse(res.body.toString("utf8")), { error: "Forbidden" });
+  }
+});
+
+test("rejects public, rebinding, and wrong-port Host headers", async () => {
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-host-queue.jsonl"),
+    listeningPort: 7680,
+  });
+
+  for (const host of [
+    "attacker.example:7680",
+    "127.0.0.1.attacker.example:7680",
+    "127.0.0.1:9999",
+    "localhost:9999",
+  ]) {
+    const { res } = await callLocalApi(handler, "/api/local-auth", {
+      headers: { host },
+    });
+    assert.equal(res.statusCode, 403, host);
+    assert.deepEqual(JSON.parse(res.body.toString("utf8")), { error: "Forbidden" });
+  }
+});
+
+test("sensitive GET requires a current local auth token", async () => {
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-sensitive-get-queue.jsonl"),
+    listeningPort: 7680,
+  });
+
+  for (const token of [undefined, "fake-token"]) {
+    const headers = token ? { "x-tokentracker-local-auth": token } : {};
+    const { res } = await callLocalApi(
+      handler,
+      "/functions/tokentracker-usage-summary",
+      { headers },
+    );
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.headers["X-TokenTracker-Local-Auth-Required"], "1");
+    assert.deepEqual(JSON.parse(res.body.toString("utf8")), {
+      ok: false,
+      error: "Unauthorized",
+    });
+  }
+
+  const token = await getLocalAuthToken(handler);
+  const replacementHandler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-expired-token-queue.jsonl"),
+    listeningPort: 7680,
+  });
+  const { res: expiredRes } = await callLocalApi(
+    replacementHandler,
+    "/functions/tokentracker-usage-summary",
+    { headers: { "x-tokentracker-local-auth": token } },
+  );
+  assert.equal(expiredRes.statusCode, 401);
+  assert.equal(expiredRes.headers["X-TokenTracker-Local-Auth-Required"], "1");
+
+  const currentToken = await getLocalAuthToken(replacementHandler);
+  const { res: validRes } = await callLocalApi(
+    replacementHandler,
+    "/functions/tokentracker-usage-summary",
+    { headers: { "x-tokentracker-local-auth": currentToken } },
+  );
+  assert.equal(validRes.statusCode, 200);
+});
+
+test("allows dev, Tauri, same-origin, and strict no-Origin CLI handshakes", async () => {
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-allowed-origin-queue.jsonl"),
+    listeningPort: 7680,
+  });
+
+  for (const origin of [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:7680",
+    "http://127.0.0.1:7680",
+    "http://tauri.localhost",
+    "tauri://localhost",
+    undefined,
+  ]) {
+    const headers = origin ? { origin } : {};
+    const { res } = await callLocalApi(handler, "/api/local-auth", { headers });
+    assert.equal(res.statusCode, 200, origin || "no Origin");
+    assert.equal(res.headers["Cache-Control"], "no-store");
+    assert.notEqual(res.headers["Access-Control-Allow-Origin"], "*");
+    if (origin) {
+      assert.equal(res.headers["Access-Control-Allow-Origin"], origin);
+      assert.match(res.headers.Vary || "", /(?:^|,\s*)Origin(?:,|$)/);
+    } else {
+      assert.equal(res.headers["Access-Control-Allow-Origin"], undefined);
+    }
+  }
+});
+
+test("rejects tauri.localhost origins with arbitrary ports", async () => {
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-tauri-origin-port-queue.jsonl"),
+    listeningPort: 7680,
+  });
+
+  for (const origin of [
+    "http://tauri.localhost:7680",
+    "http://tauri.localhost:5173",
+    "https://tauri.localhost:4433",
+  ]) {
+    const { res } = await callLocalApi(handler, "/api/local-auth", {
+      headers: { origin },
+    });
+    assert.equal(res.statusCode, 403, origin);
+  }
+});
+
+test("accepts IPv6 loopback Host only when the server is bound to IPv6 loopback", () => {
+  const { validateLocalApiRequest } = require("../src/lib/local-api");
+  assert.equal(validateLocalApiRequest(
+    { headers: { host: "[::1]:7680" } },
+    { listeningPort: 7680, bindHost: "::1" },
+  ).ok, true);
+  assert.equal(validateLocalApiRequest(
+    { headers: { host: "[::1]:7680" } },
+    { listeningPort: 7680, bindHost: "127.0.0.1" },
+  ).ok, false);
+  assert.equal(validateLocalApiRequest(
+    { headers: { host: "[::2]:7680" } },
+    { listeningPort: 7680, bindHost: "::1" },
+  ).ok, false);
+});
+
+test("anonymous verifier GET cannot consume the one-time OAuth flag", async () => {
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-auth-verifier-queue.jsonl"),
+    listeningPort: 7680,
+  });
+  const token = await getLocalAuthToken(handler);
+  const { res: setPending } = await callLocalApi(handler, "/api/auth-bridge/verifier", {
+    method: "PUT",
+    headers: { "x-tokentracker-local-auth": token },
+    body: JSON.stringify({ native: true }),
+  });
+  assert.equal(setPending.statusCode, 200);
+
+  const { res: anonymous } = await callLocalApi(handler, "/api/auth-bridge/verifier");
+  assert.equal(anonymous.statusCode, 401);
+  assert.equal(anonymous.headers["X-TokenTracker-Local-Auth-Required"], "1");
+
+  const { res: authorized } = await callLocalApi(handler, "/api/auth-bridge/verifier", {
+    headers: { "x-tokentracker-local-auth": token },
+  });
+  assert.equal(authorized.statusCode, 200);
+  assert.deepEqual(JSON.parse(authorized.body.toString("utf8")), { native: true });
+});
+
+test("rejects every unauthenticated local API write before route handling", async () => {
+  const originalFetch = global.fetch;
+  let fetchCalls = 0;
+  global.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error("write must not reach upstream");
+  };
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-write-auth-queue.jsonl"),
+    listeningPort: 7680,
+  });
+
+  try {
+    for (const method of ["POST", "PUT", "DELETE"]) {
+      const { res } = await callLocalApi(handler, "/api/auth/session", {
+        method,
+        body: "{}",
+      });
+      assert.equal(res.statusCode, 401, method);
+      assert.deepEqual(JSON.parse(res.body.toString("utf8")), {
+        ok: false,
+        error: "Unauthorized",
+      });
+    }
+    assert.equal(fetchCalls, 0);
+
+    const { res: localAuthWrite } = await callLocalApi(handler, "/api/local-auth", {
+      method: "POST",
+    });
+    assert.equal(localAuthWrite.statusCode, 405);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("sensitive auth GET requires local auth before reaching upstream", async () => {
+  const originalFetch = global.fetch;
+  let fetchCalls = 0;
+  global.fetch = async () => {
+    fetchCalls += 1;
+    return new Response(JSON.stringify({ user: { id: "local-test-user" } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-auth-get-queue.jsonl"),
+    listeningPort: 7680,
+  });
+
+  try {
+    const { res: unauthorized } = await callLocalApi(
+      handler,
+      "/api/auth/sessions/current",
+    );
+    assert.equal(unauthorized.statusCode, 401);
+    assert.deepEqual(JSON.parse(unauthorized.body.toString("utf8")), {
+      ok: false,
+      error: "Unauthorized",
+    });
+    assert.equal(fetchCalls, 0);
+
+    const token = await getLocalAuthToken(handler);
+    const { res: authorized } = await callLocalApi(
+      handler,
+      "/api/auth/sessions/current",
+      { headers: { "x-tokentracker-local-auth": token } },
+    );
+    assert.equal(authorized.statusCode, 200, authorized.body.toString("utf8"));
+    assert.equal(fetchCalls, 1);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("ipcheck upstream wildcard CORS cannot override the validated local Origin", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      Vary: "Accept-Encoding",
+    },
+  });
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-ipcheck-cors-queue.jsonl"),
+    listeningPort: 7680,
+  });
+
+  try {
+    const { res } = await callLocalApi(
+      handler,
+      "/proxy/ipcheck/api/geoip/127.0.0.1",
+      { headers: { origin: "http://localhost:5173" } },
+    );
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers["Access-Control-Allow-Origin"], "http://localhost:5173");
+    assert.notEqual(res.headers["Access-Control-Allow-Origin"], "*");
+    assert.match(res.headers.Vary, /(?:^|,\s*)Origin(?:,|$)/);
+    assert.match(res.headers.Vary, /(?:^|,\s*)Accept-Encoding(?:,|$)/i);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("createLocalApiHandler is secure by default when no options are provided", async () => {
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-default-secure-queue.jsonl"),
+  });
+  const { res } = await callLocalApi(handler, "/api/local-auth", {
+    headers: { host: "attacker.example:7680" },
+  });
+  assert.equal(res.statusCode, 403);
+});
+
+test("production callers cannot disable request security with a boolean option", async () => {
+  const handler = require("../src/lib/local-api").createLocalApiHandler({
+    queuePath: path.join(os.tmpdir(), "r2-no-public-security-switch-queue.jsonl"),
+    listeningPort: 7680,
+    enforceRequestSecurity: false,
+  });
+  const { res } = await callLocalApi(handler, "/api/local-auth", {
+    headers: { host: "attacker.example:7680" },
+  });
+  assert.equal(res.statusCode, 403);
 });

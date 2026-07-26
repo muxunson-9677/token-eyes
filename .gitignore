@@ -138,3 +138,6 @@ skills-lock.json
 # test runner (vitest) on each `npm --prefix dashboard run test`. Not a source
 # or test fixture; ignored so it cannot contaminate future `git add -A`.
 /-json
+
+# Brainstorm / local assistant scratch
+.superpowers/

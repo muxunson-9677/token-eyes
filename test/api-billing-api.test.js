@@ -1,11 +1,18 @@
+require("./helpers/home-shim.cjs");
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { Readable } = require("node:stream");
 const { test } = require("node:test");
+const childProcess = require("node:child_process");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
+const {
+  collectApiBillingAccounts,
+  shouldUseSystemKeychain,
+} = require("../src/lib/api-billing");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -55,6 +62,131 @@ test("api billing accounts endpoint returns accounts array when no spend records
     assert.equal(res.statusCode, 200);
     assert.ok(Array.isArray(body.accounts));
   } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("api billing accounts endpoint scans only the injected Windows drive roots", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-drive-"));
+  try {
+    const fakeDrive = path.join(tmp, "D-drive");
+    const codexHome = path.join(fakeDrive, "AgentData", "Codex");
+    await fs.mkdir(path.join(codexHome, "sessions"), { recursive: true });
+    await fs.writeFile(path.join(codexHome, "sessions", "fixture.jsonl"), "{}\n", "utf8");
+    await fs.writeFile(
+      path.join(codexHome, "auth.json"),
+      JSON.stringify({ tokens: { account_id: "fake-drive-account" } }),
+      "utf8",
+    );
+
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      apiBillingOptions: {
+        home: path.join(tmp, "home"),
+        env: {},
+        platform: "win32",
+        scanDefaultWindowsDrives: true,
+        windowsDriveRoots: [fakeDrive],
+      },
+    });
+
+    const res = await call(handler, "/functions/tokentracker-api-billing-accounts");
+    const body = readJsonResponse(res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(
+      body.accounts.find((account) => account.provider === "openai")?.accountName,
+      "fake-dri...",
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("api billing collection uses an injected macOS Keychain runner", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-keychain-"));
+  try {
+    let calls = 0;
+    const accounts = await collectApiBillingAccounts({
+      options: {
+        home: tmp,
+        env: {},
+        platform: "darwin",
+        securityRunner(command, args) {
+          calls += 1;
+          assert.equal(command, "/usr/bin/security");
+          assert.deepEqual(args, [
+            "find-generic-password",
+            "-s",
+            "Claude Code-credentials",
+            "-w",
+          ]);
+          return { status: 0, stdout: Buffer.from("fixture-keychain-secret\n") };
+        },
+      },
+    });
+
+    assert.equal(calls, 1);
+    assert.ok(accounts.some((account) => account.provider === "anthropic"));
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("api billing collection does not probe the real Keychain for injected context", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-no-keychain-"));
+  const originalSpawnSync = childProcess.spawnSync;
+  let calls = 0;
+  childProcess.spawnSync = () => {
+    calls += 1;
+    return { status: 1, stdout: Buffer.alloc(0) };
+  };
+  try {
+    await collectApiBillingAccounts({
+      options: {
+        home: tmp,
+        env: {},
+        platform: "darwin",
+      },
+    });
+    assert.equal(calls, 0);
+  } finally {
+    childProcess.spawnSync = originalSpawnSync;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("system Keychain decision is enabled for production and disabled by test marker", () => {
+  assert.equal(shouldUseSystemKeychain({}), true);
+  assert.equal(
+    shouldUseSystemKeychain({ TOKENTRACKER_TEST_DISABLE_SYSTEM_KEYCHAIN: "1" }),
+    false,
+  );
+});
+
+test("normal local API billing endpoint honors the preload Keychain disable marker", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-preload-keychain-"));
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+  const originalSpawnSync = childProcess.spawnSync;
+  let calls = 0;
+  childProcess.spawnSync = () => {
+    calls += 1;
+    return { status: 1, stdout: Buffer.alloc(0) };
+  };
+  Object.defineProperty(process, "platform", { ...originalPlatform, value: "darwin" });
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const res = await call(handler, "/functions/tokentracker-api-billing-accounts");
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls, 0);
+  } finally {
+    Object.defineProperty(process, "platform", originalPlatform);
+    childProcess.spawnSync = originalSpawnSync;
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });

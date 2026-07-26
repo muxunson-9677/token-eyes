@@ -626,6 +626,16 @@ pub async fn open_cursor_console_login(
 
     let window_label = format!("cursor_login_{}", uuid_simple());
 
+    // #3: stable, identity-independent WebView2 data dir → login cookies
+    // persist across restarts so users log in once (see codex_session.rs).
+    let session_data_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("webview-sessions")
+        .join("cursor");
+    let _ = std::fs::create_dir_all(&session_data_dir);
+
     let window = WebviewWindowBuilder::new(
         &app,
         &window_label,
@@ -639,6 +649,7 @@ pub async fn open_cursor_console_login(
     .inner_size(960.0, 720.0)
     .resizable(true)
     .center()
+    .data_directory(session_data_dir)
     .initialization_script(SESSION_FETCH_JS)
     .on_navigation(|url| is_official_cursor_url(url.as_str()))
     .build()

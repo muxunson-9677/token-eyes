@@ -54,6 +54,7 @@ test("tests gate the publish on a supported Node", () => {
     "test job should run on Node 24"
   );
   assert.ok(testSection.includes("npm test"), "test job should run the suite");
+  assert.ok(testSection.includes("dtolnay/rust-toolchain"), "test job should install Rust before cargo tests");
 });
 
 test("workflow sets npm registry URL", () => {
@@ -131,4 +132,16 @@ test("package.json files array includes dashboard/dist", () => {
     pkg.files.includes("dashboard/dist/"),
     "published package must include dashboard/dist/"
   );
+});
+
+test("Linux Rust gate installs Tauri system dependencies", () => {
+  const content = loadWorkflow();
+  assert.match(content, /libwebkit2gtk-4\.1-dev/);
+  assert.match(content, /libayatana-appindicator3-dev/);
+  assert.match(content, /librsvg2-dev/);
+});
+
+test("published package includes shared provider manifest", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
+  assert.ok(pkg.files.includes("shared/"), "published CLI must include shared/provider-capabilities.json");
 });

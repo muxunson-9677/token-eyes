@@ -1,4 +1,6 @@
-﻿"use strict";
+"use strict";
+
+const { listProviderIdsByCapability } = require("./provider-capabilities");
 
 /**
  * Central registry of known AI tool adapters (agent sources).
@@ -22,7 +24,6 @@
  * @property {string[]} resolverExports  - rollout.js export names of file-discovery fns.
  * @property {boolean} statusSurface     - Should appear in `tracker status`.
  * @property {boolean} diagnosticsSurface - Should appear in diagnostics output.
- * @property {boolean} usageLimitsSurface - Should appear in Usage Limits prefs.
  * @property {string|null} pathOverrideKey - Key in dataDirectories config; null if not overridable.
  * @property {boolean} accountLevel      - Account-level source (tokens aggregated across machines).
  * @property {string} [notes]            - Maintenance notes for future contributors.
@@ -40,7 +41,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["listClaudeProjectFiles"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: true,
     pathOverrideKey: "claude",
     accountLevel: false,
     notes: "Claude Code sessions under ~/.claude/projects/.",
@@ -55,7 +55,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["listRolloutFiles", "listRolloutFilesDeep"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: true,
     pathOverrideKey: "codex",
     accountLevel: false,
     notes: "OpenAI Codex CLI sessions/ JSONL; archived_sessions is scanned with event dedup.",
@@ -70,7 +69,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["listRolloutFiles", "listRolloutFilesDeep"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "EveryCode CLI (OpenAI Codex fork); shares parseRolloutIncremental with codex.",
@@ -85,7 +83,6 @@ const AGENT_ADAPTERS = [
     resolverExports: [],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: true,
     pathOverrideKey: "cursor",
     accountLevel: true,
     notes: "Cursor API (CSV fetch); account-level because it is a cloud-backed subscription.",
@@ -100,7 +97,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["listTraeDataRoots"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: true,
     pathOverrideKey: "trae",
     accountLevel: false,
     notes: "Trae CN local ai-agent store (decrypted DB or token_usage.jsonl export).",
@@ -115,7 +111,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["listGeminiSessionFiles"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: true,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Google Gemini CLI (CLI hook + passive log reader).",
@@ -130,7 +125,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["listOpencodeMessageFiles"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: true,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "OpenCode CLI (SQLite message store + JSON file fallback).",
@@ -145,7 +139,6 @@ const AGENT_ADAPTERS = [
     resolverExports: [],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: true,
     pathOverrideKey: "openclaw",
     accountLevel: false,
     notes: "OpenClaw session plugin / hook; triggered by --from-openclaw flag.",
@@ -160,7 +153,6 @@ const AGENT_ADAPTERS = [
     resolverExports: [],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Kilo CLI (kilo.ai); reuses parseOpencodeDbIncremental with separate cursor namespace.",
@@ -175,7 +167,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveKilocodeTaskFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Kilo Code VS Code extension (Cline-style ui_messages.json).",
@@ -190,7 +181,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveRoocodeTaskFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Roo Code VS Code extension (Cline-derived; rooveterinaryinc.roo-cline).",
@@ -205,7 +195,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveKiroDbPath", "resolveKiroJsonlPath"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Kiro IDE (SQLite + JSONL fallback); tokens merged transparently with kiro-cli.",
@@ -220,7 +209,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveKiroCliSessionFiles", "resolveKiroCliDbPath"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Kiro CLI; tokens approximated at 4 chars/token (credit-based billing). Merged under 'kiro' in dashboards.",
@@ -235,7 +223,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveHermesPath"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: true,
     pathOverrideKey: "hermes",
     accountLevel: false,
     notes: "Hermes Agent SQLite sessions.",
@@ -250,7 +237,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveKimiWireFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Kimi (moonshot-ai/kimi) passive wire.jsonl reader.",
@@ -265,7 +251,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveKimiCodeWireFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Moonshot-ai/kimi-code official CLI (different wire.jsonl path than kimi).",
@@ -280,7 +265,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveCodebuddyProjectFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Tencent CodeBuddy CLI; passive ~/.codebuddy/projects/**/*.jsonl reader.",
@@ -295,7 +279,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveOmpSessionFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "oh-my-pi passive ~/.omp/agent/sessions/**/*.jsonl reader.",
@@ -310,7 +293,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolvePiSessionFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "@mariozechner/pi-coding-agent passive ~/.pi/agent/sessions/**/*.jsonl reader.",
@@ -325,7 +307,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveCraftSessionFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Craft Agents passive session.jsonl reader.",
@@ -340,7 +321,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveGrokBuildSessions"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "xAI Grok Build (passive session scan + optional hook).",
@@ -355,7 +335,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveCopilotOtelPaths"],
     statusSurface: true,
     diagnosticsSurface: true,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "GitHub Copilot OTEL JSONL file reader.",
@@ -370,7 +349,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveZedDbPath"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Zed Agent (all providers; cumulative-delta over SQLite threads).",
@@ -385,7 +363,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["resolveGooseDbPath"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Goose (Block) SQLite sessions with cumulative tokens.",
@@ -400,7 +377,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["listDroidSettingsFiles"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: false,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Factory CLI (Droid) passive ~/.factory/sessions/*.settings.json reader.",
@@ -415,7 +391,6 @@ const AGENT_ADAPTERS = [
     resolverExports: ["listAntigravityTranscripts"],
     statusSurface: true,
     diagnosticsSurface: false,
-    usageLimitsSurface: true,
     pathOverrideKey: null,
     accountLevel: false,
     notes: "Antigravity passive transcript reader.",
@@ -455,17 +430,8 @@ function getAgentAdapter(id) {
  * @returns {string[]}
  */
 function listUsageLimitAdapterIds() {
-  return [
-    "claude",
-    "codex",
-    "cursor",
-    "trae",
-    "gemini",
-    "hermes",
-    "openclaw",
-    "opencode",
-    "antigravity",
-  ].filter((id) => getAgentAdapter(id)?.usageLimitsSurface);
+  return listProviderIdsByCapability("desktop_visibility")
+    .filter((id) => getAgentAdapter(id));
 }
 
 /**

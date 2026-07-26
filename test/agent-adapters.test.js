@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -13,6 +13,12 @@ const {
   listDataDirectoryAdapterKeys,
   listAccountLevelSources,
 } = require("../src/lib/agent-adapters");
+const {
+  PROVIDER_CAPABILITY_KEYS,
+  listProviderIdsByCapability,
+  getProviderCapabilities,
+  getProviderRecord,
+} = require("../src/lib/provider-capabilities");
 
 const { isAccountLevelSource } = require("../src/lib/source-metadata");
 const { DATA_DIRECTORY_KEYS } = require("../src/lib/data-directories");
@@ -183,7 +189,7 @@ test("listDataDirectoryAdapterKeys returns claude, codex, cursor, hermes and ope
 });
 
 test("DATA_DIRECTORY_KEYS equals the registry-backed configurable directory keys", () => {
-  const expected = ["claude", "codex", "cursor", "hermes", "openclaw"];
+  const expected = ["claude", "codex", "cursor", "hermes", "openclaw", "trae"];
   assert.deepEqual(
     DATA_DIRECTORY_KEYS.sort(),
     expected.sort(),
@@ -201,18 +207,43 @@ test("listUsageLimitAdapterIds is a non-empty array", () => {
   assert.ok(ids.length > 0, "usage limits adapters must not be empty");
 });
 
-test("listUsageLimitAdapterIds matches the supported limits display sources", () => {
-  const ids = listUsageLimitAdapterIds();
-  assert.deepEqual(ids, [
-    "claude",
-    "codex",
-    "cursor",
-    "gemini",
-    "hermes",
-    "openclaw",
-    "opencode",
-    "antigravity",
+test("listUsageLimitAdapterIds derives desktop visibility from the capability manifest", () => {
+  assert.deepEqual(
+    listUsageLimitAdapterIds(),
+    listProviderIdsByCapability("desktop_visibility"),
+  );
+});
+
+test("provider capabilities keep Trae collection/manual-only semantics explicit", () => {
+  assert.deepEqual(PROVIDER_CAPABILITY_KEYS, [
+    "token_usage_collection",
+    "official_rate_limit",
+    "manual_token_plan",
+    "provider_balance",
+    "desktop_visibility",
   ]);
+  assert.deepEqual(getProviderCapabilities("trae"), {
+    token_usage_collection: true,
+    official_rate_limit: false,
+    manual_token_plan: true,
+    provider_balance: false,
+    desktop_visibility: true,
+  });
+});
+
+test("every agent adapter is marked for token usage collection in the capability manifest", () => {
+  assert.deepEqual(
+    listProviderIdsByCapability("token_usage_collection").sort(),
+    AGENT_ADAPTERS.map((entry) => entry.id).sort(),
+  );
+  assert.ok(AGENT_ADAPTERS.every((entry) => !("usageLimitsSurface" in entry)));
+  for (const entry of AGENT_ADAPTERS) {
+    const provider = getProviderRecord(entry.id);
+    assert.ok(provider, `capability record missing for ${entry.id}`);
+    assert.equal(provider.agent_display_name, entry.displayName);
+    assert.equal(provider.queue_source, entry.queueSource);
+    assert.equal(provider.manual_token_plan, true);
+  }
 });
 
 // ---------------------------------------------------------------------------

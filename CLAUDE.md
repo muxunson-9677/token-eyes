@@ -10,19 +10,19 @@ For Token Eyes TE-NEXT/V01 work, Windows verification follows the Tauri stack: R
 
 Token Tracker is a local-first AI token usage tracker.
 
-- **CLI** (`src/`, CommonJS, Node ≥20) — entry `bin/tracker.js` → `src/cli.js`. `serve` runs a local HTTP server on `:7680`, `sync` parses logs into `~/.tokentracker/queue.jsonl`.
+- **CLI** (`src/`, CommonJS, Node ≥20) — entry `bin/tracker.js` → `src/cli.js`. `serve` runs a local HTTP server on `:7680`, `sync` parses logs into `~/.tokentracker/tracker/queue.jsonl`.
 - **Dashboard** (`dashboard/`, React 18 + Vite 7 + TS strict + Tailwind) — built to `dashboard/dist/`, served by the CLI locally and by Vercel at `www.tokentracker.cc`.
 - **macOS app** (`TokenTrackerBar/`, Swift 5.9, XcodeGen) — menu bar + WidgetKit. `EmbeddedServer/` bundles the CLI runtime + built dashboard so the `.app` is self-contained.
-- **Windows app** (`TokenTrackerWin/`, .NET 8 WinForms + WPF + WebView2) — system-tray counterpart of the macOS app. Launches the bundled CLI `serve` on a dynamic loopback port (avoids the DoSvc-held `:7680`), hosts the dashboard in WebView2, registers the `tokentracker://` deep-link for OAuth. Built `EmbeddedServer/` (Node + CLI + dashboard) is bundled by `scripts/bundle-node.ps1` so the `.exe` is self-contained. Dashboard adaptations are gated behind `isNativeWindowsApp()` (`dashboard/src/lib/native-bridge.js`) so macOS/web paths are untouched.
+- **Windows app** (`src-tauri/`, Rust + Tauri 2 + WebView2) — current system-tray target. It launches the bundled CLI on loopback, enforces single-instance restore behavior, and embeds `dashboard/dist`; `src-tauri/scripts/bundle-runtime.ps1` creates the self-contained Node/CLI/shared-manifest runtime. `TokenTrackerWin/` is retained as a legacy .NET shell and is not a current Token Eyes deliverable.
 
 Data flow: AI CLI runs → hook fires → `rollout.js` parses → `queue.jsonl` → local API → dashboard.
 
-For the canonical list of supported providers, grep `parse*Incremental` in `src/lib/rollout.js` — the source of truth, not this file.
+The canonical provider/capability registry is `shared/provider-capabilities.json`; `src/lib/rollout.js` contains the concrete token parsers. Keep consumers and generated Swift constants aligned with the registry.
 
 ## Frequently used commands
 
 ```bash
-npm test                                  # node --test test/*.test.js  (97 files)
+npm test                                  # isolated Node test suite (`test/*.test.js`)
 node --test test/<name>.test.js           # single test file
 npm run ci:local                          # tests + validations + builds
 npm run dashboard:dev                     # Vite dev server with local API mock (port 5173)
@@ -93,26 +93,26 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 
 ## Release workflow
 
-**Any change under `src/` or `dashboard/` ships npm + DMG + Windows**, because both `TokenTrackerBar/EmbeddedServer/` (macOS) and `TokenTrackerWin/EmbeddedServer/` (Windows) bundle the CLI runtime and built dashboard. Bumping only `package.json` leaves desktop-app users on the stale embedded copy.
+**Any change under `src/` or `dashboard/` ships npm + DMG + Windows**, because both `TokenTrackerBar/EmbeddedServer/` (macOS) and `src-tauri/EmbeddedServer/` (Windows Tauri) bundle the CLI runtime and built dashboard. Bumping only `package.json` leaves desktop-app users on the stale embedded copy.
 
-The macOS + Windows release is **one workflow**: `release-dmg.yml` (display name **`release (macOS + Windows)`**). A `create-release` job makes the `vX.Y.Z` release as a **draft**, then a macOS `build` job and a `windows` job (which calls the reusable `release-windows.yml` via `workflow_call`) both `needs: create-release` and run **in parallel**, each uploading its assets to the draft with `--clobber`. A final `publish` job (`needs: [build, windows]`) flips the draft live (`gh release edit --draft=false`) and notifies the Homebrew tap. The draft stays invisible until then, so `releases/latest` never serves a half-published release (and a failed platform leaves it unpublished rather than half-public). A **single** `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` ships **both** platforms. `release-windows.yml` can still be dispatched standalone for a Windows-only build.
+The macOS + Windows release is **one workflow**: `release-dmg.yml` (display name **`release (macOS + Windows)`**). A `create-release` job makes the `vX.Y.Z` release as a **draft**, then a macOS `build` job and a `windows` job (which calls the reusable `release-windows.yml` via `workflow_call`) both `needs: create-release` and run **in parallel**, each uploading its assets to the draft with `--clobber`. A final `publish` job (`needs: [build, windows]`) flips the draft live (`gh release edit --draft=false`) and notifies the Homebrew tap. The draft stays invisible until then, so `releases/latest` never serves a half-published release (and a failed platform leaves it unpublished rather than half-public). A **single** `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z -f notes='One English release line'` ships **both** platforms. `release-windows.yml` can still be dispatched standalone for a Windows-only build.
 
-| Change scope | Bump `package.json` | Bump `project.yml` `MARKETING_VERSION` | Bump `TokenTrackerWin.csproj` `<Version>` | Trigger DMG workflow (→ also builds Windows) |
-|---|---|---|---|---|
-| `src/` or `dashboard/` | ✅ | ✅ | ✅ | ✅ |
-| `TokenTrackerBar/` Swift only | ✅ | ✅ | ✅ | ✅ |
-| `TokenTrackerWin/` only | ✅ | ✅ | ✅ | ✅ |
-| `dashboard/edge-patches/`, scripts, docs, CI | — | — | — | — |
+| Change scope | `package.json` | `project.yml` two `MARKETING_VERSION` values | `tauri.conf.json` | `Cargo.toml` | Trigger combined desktop workflow |
+|---|---|---|---|---|---|
+| `src/` or `dashboard/` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `TokenTrackerBar/` Swift only | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `src-tauri/` Windows/Tauri only | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Legacy `TokenTrackerWin/`, docs, tests, CI only | — | — | — | — | — |
 
-All four version locations must match or the workflows' "Verify version" steps fail (DMG checks `package.json` + `project.yml`; Windows checks `package.json` + `csproj`).
+All five version values across these four files must match. The DMG job checks `package.json` plus both `project.yml` targets; Windows checks `package.json`, `tauri.conf.json`, and `Cargo.toml`.
 
 When the user says "release" or "发 release", that is explicit approval for the release commit(s) + push — do not ask again for commit/push permission within that scope.
 
 ### Steps
 
-1. Bump `package.json`, `project.yml`'s two `MARKETING_VERSION` entries (App + Widget targets), and `TokenTrackerWin/TokenTrackerWin.csproj`'s `<Version>` — keep all four in lockstep.
+1. Bump `package.json`, both `project.yml` `MARKETING_VERSION` entries, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` — keep all five values in lockstep.
 2. `git commit && git push origin main` → `npm-publish.yml` auto-publishes when version is new.
-3. For DMG-eligible changes: `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` → cloud builds DMG **and** the Windows zip + installer (in parallel), attaching all to the GitHub Release.
+3. Run `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z -f notes='One English release line'` → cloud builds the DMG and Windows Tauri MSI/NSIS installers in parallel, attaching all assets to one draft before publishing.
 4. Homebrew tap `mm7894215/homebrew-tokentracker` self-updates via dispatch (~40s if `HOMEBREW_DISPATCH_TOKEN` set) or hourly cron (≤1h fallback). **Never edit the tap repo manually for routine releases.**
 
 Release notes: one English line, no markdown sections (`Fix token stats inflation caused by duplicate queue entries`).
@@ -120,10 +120,11 @@ Release notes: one English line, no markdown sections (`Fix token stats inflatio
 ### Local DMG build (testing only — CI is authoritative)
 
 ```bash
-cd TokenTrackerBar && npm run dashboard:build && ./scripts/bundle-node.sh
+npm run dashboard:build && bash TokenTrackerBar/scripts/bundle-node.sh
+cd TokenTrackerBar
 xcodegen generate && ruby scripts/patch-pbxproj-icon.rb
-xcodebuild -scheme TokenTrackerBar -configuration Release clean build
-APP="$(find ~/Library/Developer/Xcode/DerivedData/TokenTrackerBar-*/Build/Products/Release -name 'TokenTrackerBar.app' -maxdepth 1)"
+xcodebuild -scheme TokenTrackerBar -configuration Release -derivedDataPath build/DerivedData clean build
+APP="build/DerivedData/Build/Products/Release/TokenTrackerBar.app"
 bash scripts/create-dmg.sh "$APP"
 ```
 

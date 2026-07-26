@@ -172,9 +172,7 @@ export function useUsageTrend({
     }
     setError(null);
     try {
-      // getSpendTimeseries does not short-circuit on isMockEnabled and does
-      // not accept `baseUrl` (it always goes through fetchLocalJson). We pass
-      // only time + filter params; baseUrl is used solely for storageKey host.
+      // getSpendTimeseries short-circuits to mock data when isMockEnabled() is true.
       const res = await getSpendTimeseries({
         from,
         to,
@@ -186,7 +184,7 @@ export function useUsageTrend({
         accessToken: token,
       });
       setTrend(res as SpendTimeseriesResponse);
-      setSource("edge");
+      setSource(mockEnabled ? "mock" : "edge");
       setFetchedAt(new Date().toISOString());
       if (cacheAllowed) writeCache(res as SpendTimeseriesResponse);
       else clearCache();
@@ -255,10 +253,7 @@ export function useUsageTrend({
     void refresh({ background: Boolean(trend) });
   }, [refreshRevision, refresh, trend]);
 
-  // Note: getSpendTimeseries has no isMockEnabled short-circuit, so even when
-  // mock mode is on the real local API is hit (returns empty series if no
-  // server). We therefore report the actual source ("edge"|"cache") rather
-  // than pretending it was mock data.
+  // getSpendTimeseries short-circuits to mock data when isMockEnabled() is true.
   return {
     trend,
     source,

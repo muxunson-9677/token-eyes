@@ -10,6 +10,7 @@ const {
   detectAgentInstallation,
   inspectDataDirectory,
   resolveDataDirectoryPaths,
+  shouldScanDefaultWindowsDrives,
 } = require("./data-directories");
 const { detectPathKind } = require("./project-path");
 
@@ -168,6 +169,7 @@ function detectAgentEnvironment(agentId, config = {}, options = {}) {
     config,
     env: process.env,
     home: os.homedir(),
+    scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
   });
 
   const detectedPath = agentId === "claude"

@@ -5,7 +5,7 @@ vi.mock("../../lib/insforge-config", () => ({
   isCloudInsforgeConfigured: () => false,
 }));
 
-import { resolveInsforgeClientAccessToken } from "../InsforgeAuthContext.jsx";
+import { markNativeOAuthPending, resolveInsforgeClientAccessToken } from "../InsforgeAuthContext.jsx";
 
 function makeJwt(expSeconds) {
   const encode = (value) =>
@@ -100,5 +100,31 @@ describe("resolveInsforgeClientAccessToken", () => {
 
     await expect(resolveInsforgeClientAccessToken(client)).resolves.toBe(accessToken);
     expect(client.auth.getCurrentUser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("markNativeOAuthPending", () => {
+  it("accepts a successful authenticated verifier marker", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 200 }));
+
+    await expect(markNativeOAuthPending(fetchImpl)).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/auth-bridge/verifier",
+      expect.objectContaining({ method: "PUT" }),
+    );
+  });
+
+  it("rejects a non-2xx verifier marker", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 503 }));
+
+    await expect(markNativeOAuthPending(fetchImpl)).rejects.toThrow("HTTP 503");
+  });
+
+  it("propagates verifier transport failures", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("bridge unavailable");
+    });
+
+    await expect(markNativeOAuthPending(fetchImpl)).rejects.toThrow("bridge unavailable");
   });
 });

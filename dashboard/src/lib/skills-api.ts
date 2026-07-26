@@ -1,17 +1,19 @@
-import { getLocalApiAuthHeaders } from "./local-api-auth";
+import { fetchAuthenticatedLocalApi } from "./local-api-fetch";
 
 type AnyRecord = Record<string, any>;
 
 const SLUG = "tokentracker-skills";
 
 async function fetchSkillsJson(params?: AnyRecord) {
-  const url = new URL(`/functions/${SLUG}`, window.location.origin);
+  const searchParams = new URLSearchParams();
   if (params) {
     for (const [key, value] of Object.entries(params)) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
+      if (value != null && value !== "") searchParams.set(key, String(value));
     }
   }
-  const response = await fetch(url.toString(), {
+  const query = searchParams.toString();
+  const url = `/functions/${SLUG}${query ? `?${query}` : ""}`;
+  const response = await fetchAuthenticatedLocalApi(url, {
     headers: { Accept: "application/json" },
     cache: "no-store",
   });
@@ -23,13 +25,11 @@ async function fetchSkillsJson(params?: AnyRecord) {
 }
 
 async function mutateSkillsJson(body: AnyRecord) {
-  const authHeaders = await getLocalApiAuthHeaders();
-  const response = await fetch(`/functions/${SLUG}`, {
+  const response = await fetchAuthenticatedLocalApi(`/functions/${SLUG}`, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     cache: "no-store",
     body: JSON.stringify(body),

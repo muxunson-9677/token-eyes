@@ -14,6 +14,15 @@ const WORKFLOW_PATH = path.join(
 function loadWorkflow() {
   return fs.readFileSync(WORKFLOW_PATH, "utf8");
 }
+const README_PATH = path.join(__dirname, "..", "README.md");
+
+test("README points Windows users to the current MSI/NSIS release assets", () => {
+  const readme = fs.readFileSync(README_PATH, "utf8");
+  assert.match(readme, /releases\/latest/);
+  assert.match(readme, /Tauri `\.msi` or `\*-setup\.exe` installer/);
+  assert.doesNotMatch(readme, /TokenTracker-Setup\.exe/);
+  assert.doesNotMatch(readme, /Portable zip/);
+});
 
 // ── Workflow structure ──────────────────────────────────────────────────────
 
@@ -181,6 +190,21 @@ test("workflow has write permissions for release creation", () => {
   assert.ok(content.includes("contents: write"));
 });
 
+test("workflow validates Cargo version and runs the complete local CI gate", () => {
+  const content = loadWorkflow();
+  assert.match(content, /src-tauri\/Cargo\.toml/);
+  assert.match(content, /npm run ci:local/);
+  assert.match(content, /Validate version input/);
+  assert.match(content, /Version must be X\.Y\.Z/);
+});
+
+test("standalone dispatch publishes while reusable invocation leaves publishing to the caller", () => {
+  const content = loadWorkflow();
+  assert.match(content, /workflow_call:[\s\S]*?publish:[\s\S]*?default:\s*false/);
+  assert.match(content, /workflow_dispatch:[\s\S]*?publish:[\s\S]*?default:\s*true/);
+  assert.match(content, /gh release view[\s\S]*?gh release create[\s\S]*?gh release upload/);
+  assert.match(content, /if:\s*\$\{\{\s*inputs\.publish\s*\}\}[\s\S]*?gh release edit[^\n]*--draft=false/);
+});
 // ── Legacy Inno Setup installer file tests ──────────────────────────────────
 // The legacy TokenTrackerWin .NET + Inno Setup path is retained on disk for
 // historical reference but is NOT the Token Eyes Windows deliverable. These
@@ -295,4 +319,20 @@ test("macOS + Windows build in parallel off a shared create-release job", () => 
     /build:\s*\n\s*needs:\s*create-release/.test(dmg),
     "macOS build job must also depend on create-release"
   );
+});
+
+test("standalone release creation uses the required release notes input", () => {
+  const content = loadWorkflow();
+  assert.match(content, /workflow_call:[\s\S]*?notes:[\s\S]*?required:\s*true/);
+  assert.match(content, /workflow_dispatch:[\s\S]*?notes:[\s\S]*?required:\s*true/);
+  assert.match(content, /RELEASE_NOTES:\s*\$\{\{\s*inputs\.notes\s*\}\}/);
+  assert.match(content, /gh release create[^\n]*--notes "\$env:RELEASE_NOTES"/);
+  assert.doesNotMatch(content, /--notes\s+""/);
+});
+
+test("Windows release note input is validated as one non-empty ASCII line", () => {
+  const content = loadWorkflow();
+  assert.match(content, /IsNullOrWhiteSpace/);
+  assert.match(content, /\[\\r\\n\]/);
+  assert.match(content, /Release notes must be one non-empty English\/ASCII line/);
 });

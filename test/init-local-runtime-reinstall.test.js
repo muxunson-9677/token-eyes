@@ -89,6 +89,7 @@ test("installLocalTrackerApp replaces stale installed runtime and writes a packa
     assert.equal(typeof marker.version, "string");
     await fs.stat(path.join(appDir, "src", "lib", "codex-context-breakdown.js"));
     await fs.stat(path.join(appDir, "dashboard", "dist", "index.html"));
+    await fs.stat(path.join(appDir, "shared", "provider-capabilities.json"));
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

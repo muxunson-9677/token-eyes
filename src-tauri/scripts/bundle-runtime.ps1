@@ -1,4 +1,4 @@
-﻿# ----------------------------------------------
+# ----------------------------------------------
 # bundle-runtime.ps1
 #
 # Tauri self-contained runtime bundler for Token Eyes (Windows).
@@ -16,6 +16,7 @@
 #     tokentracker/
 #       bin/tracker.js
 #       src/                    # CLI source (production only)
+#       shared/                 # Provider capability manifest
 #       package.json
 #       package-lock.json
 #       dashboard/dist/        # Built dashboard
@@ -55,11 +56,13 @@ if ($NodeVersion -ne $ExpectedNodeVersion) {
 $trackerJs = Join-Path $RepoRoot 'bin\tracker.js'
 $packageJson = Join-Path $RepoRoot 'package.json'
 $packageLock = Join-Path $RepoRoot 'package-lock.json'
+$sharedManifest = Join-Path $RepoRoot 'shared\provider-capabilities.json'
 $dashDist = Join-Path $RepoRoot 'dashboard\dist\index.html'
 
 if (-not (Test-Path $trackerJs))   { throw "Missing $trackerJs — run from repo root" }
 if (-not (Test-Path $packageJson)) { throw "Missing $packageJson" }
 if (-not (Test-Path $packageLock)) { throw "Missing $packageLock — required for reproducible production deps" }
+if (-not (Test-Path $sharedManifest)) { throw "Missing $sharedManifest" }
 if (-not (Test-Path $dashDist)) {
     throw "Missing dashboard/dist/index.html — run 'npm run dashboard:build' first"
 }
@@ -160,6 +163,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $ttDir 'bin') | Out-Null
 
 Copy-Item $trackerJs (Join-Path $ttDir 'bin\')
 Copy-Item (Join-Path $RepoRoot 'src') (Join-Path $ttDir 'src') -Recurse
+Copy-Item (Join-Path $RepoRoot 'shared') (Join-Path $ttDir 'shared') -Recurse
 Copy-Item $packageJson $ttDir
 Copy-Item $packageLock $ttDir
 
@@ -203,6 +207,14 @@ try {
     Pop-Location
 }
 
+$bundledSharedManifest = Join-Path $ttDir 'shared\provider-capabilities.json'
+if (-not (Test-Path $bundledSharedManifest)) {
+    throw "Bundled provider capability manifest missing: $bundledSharedManifest"
+}
+& (Join-Path $EmbedDir 'node.exe') (Join-Path $ttDir 'bin\tracker.js') --help | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Bundled Token Eyes CLI smoke test failed (exit $LASTEXITCODE)"
+}
 # -- 4. Trim node_modules bloat (keep LICENSE files for legal compliance) --
 $nm = Join-Path $ttDir 'node_modules'
 if (Test-Path $nm) {

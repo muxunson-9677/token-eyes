@@ -1,5 +1,9 @@
+require("./helpers/home-shim.cjs");
+
 const assert = require("node:assert/strict");
+const { spawn } = require("node:child_process");
 const http = require("node:http");
+const path = require("node:path");
 const { test } = require("node:test");
 
 const {
@@ -14,7 +18,7 @@ test("serve port collision hint references the published npm package name", () =
   assert.equal(NPM_PACKAGE_NAME, "tokentracker-cli");
   assert.equal(
     buildPortInUseHint(7681),
-    "Port 7681 is still in use after cleanup. Try: npx tokentracker-cli serve --port 7682\n",
+    "Port 7681 is already in use. Try: npx tokentracker-cli serve --port 7682\n",
   );
 });
 
@@ -95,4 +99,60 @@ test("serve respects explicit port from --port and PORT env", () => {
     open: true,
     sync: true,
   });
+});
+
+test("an unrelated child process occupying an explicit port stays alive", async (t) => {
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      [
+        "const http=require('node:http');",
+        "const server=http.createServer((_req,res)=>res.end('unrelated'));",
+        "server.listen(0,'127.0.0.1',()=>console.log(server.address().port));",
+      ].join(""),
+    ],
+    {
+      cwd: path.join(__dirname, ".."),
+      env: { ...process.env, NODE_OPTIONS: "" },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  t.after(() => {
+    if (child.exitCode === null) child.kill();
+  });
+
+  const occupiedPort = await new Promise((resolve, reject) => {
+    let output = "";
+    child.stdout.on("data", (chunk) => {
+      output += chunk;
+      const match = output.match(/(\d+)/);
+      if (match) resolve(Number(match[1]));
+    });
+    child.once("error", reject);
+    child.once("exit", (code) => reject(new Error(`occupier exited early (${code})`)));
+  });
+
+  const contender = http.createServer();
+  t.after(() => closeServer(contender));
+  await assert.rejects(
+    listenOnAvailablePort(contender, occupiedPort, { allowFallback: false }),
+    (error) => isPortUnavailableError(error),
+  );
+
+  assert.equal(child.exitCode, null);
+  const response = await new Promise((resolve, reject) => {
+    http.get(`http://127.0.0.1:${occupiedPort}`, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => resolve(body));
+    }).on("error", reject);
+  });
+  assert.equal(response, "unrelated");
+
+  const source = require("node:fs").readFileSync(
+    path.join(__dirname, "..", "src", "commands", "serve.js"),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /process\.kill\s*\(/);
 });

@@ -1,7 +1,9 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
+import { BookOpen, Users } from "lucide-react";
 import { Select } from "../ui/components";
 import { motion } from "motion/react";
+import { LeaderboardRulesModal } from "../components/leaderboard/LeaderboardRulesModal.jsx";
 import {
   DndContext,
   KeyboardSensor,
@@ -69,6 +71,25 @@ import {
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_STORAGE_KEY = "tokentracker:leaderboard:pageSize";
+
+// #10 tokenrank alignment — FRONTEND PLACEHOLDERS.
+// Real periods (week/month/total) drive the live cloud query; today/yesterday
+// are UI placeholders that show a "coming soon" panel instead of hitting an
+// endpoint that has no such snapshot yet. The 计费口径 (metric) toggle and 各
+// Agent 分榜 selector are likewise visual placeholders — they render so the
+// features are discoverable, but only surface a "即将上线" notice for now.
+const PERIOD_TABS = [
+  { id: "today", placeholder: true, labelKey: "leaderboard.period.today" },
+  { id: "yesterday", placeholder: true, labelKey: "leaderboard.period.yesterday" },
+  { id: "week", placeholder: false, labelKey: "leaderboard.period.week" },
+  { id: "month", placeholder: false, labelKey: "leaderboard.period.month" },
+  { id: "total", placeholder: false, labelKey: "leaderboard.period.total" },
+];
+const METRIC_TABS = [
+  { id: "with_cache", labelKey: "leaderboard.metric.with_cache", placeholder: false },
+  { id: "without_cache", labelKey: "leaderboard.metric.without_cache", placeholder: true },
+  { id: "est_cost", labelKey: "leaderboard.metric.est_cost", placeholder: true },
+];
 
 function readStoredPageSize() {
   if (typeof window === "undefined") return DEFAULT_PAGE_SIZE;
@@ -307,6 +328,12 @@ export function LeaderboardPage({
   const [cloudSyncOn, setCloudSyncOn] = useState(() => getCloudSyncEnabled());
   const [syncing, setSyncing] = useState(false);
 
+  // #10 tokenrank placeholders (frontend-only for now).
+  const [placeholderTab, setPlaceholderTab] = useState(null); // "today" | "yesterday" | null
+  const [placeholderMetric, setPlaceholderMetric] = useState("with_cache");
+  const [soonNotice, setSoonNotice] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+
   const period = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
     return normalizePeriod(params.get("period")) || "total";
@@ -321,6 +348,28 @@ export function LeaderboardPage({
     params.set("period", normalized);
     setListPage(1);
     navigate(`${location?.pathname || "/leaderboard"}?${params.toString()}`, { replace: true });
+  };
+
+  // Period tab click: real periods drive the live query; placeholder periods
+  // (today/yesterday) just flip the "coming soon" panel without touching the
+  // cloud fetch.
+  const handleSelectTab = (tabDef) => {
+    if (!tabDef) return;
+    if (tabDef.placeholder) {
+      setPlaceholderTab(tabDef.id);
+      return;
+    }
+    setPlaceholderTab(null);
+    handlePeriodChange(tabDef.id);
+  };
+
+  const handleSelectMetric = (metricDef) => {
+    if (!metricDef) return;
+    if (metricDef.placeholder) {
+      setSoonNotice(true);
+      return;
+    }
+    setPlaceholderMetric(metricDef.id);
   };
 
   useEffect(() => {
@@ -495,6 +544,13 @@ export function LeaderboardPage({
   const monthLabel = copy("leaderboard.period.month");
   const totalLabel = copy("leaderboard.period.total");
   const periodLabel = period === "month" ? monthLabel : period === "total" ? totalLabel : weekLabel;
+
+  // Active tab = a placeholder period if one is selected, else the live period.
+  const activeTab = placeholderTab || period;
+  const showPlaceholderPanel = Boolean(placeholderTab);
+  const placeholderTabLabel = placeholderTab
+    ? copy(PERIOD_TABS.find((t) => t.id === placeholderTab)?.labelKey || "leaderboard.period.today")
+    : "";
 
   const displayEntries = useMemo(() => {
     const rows = Array.isArray(listData?.entries) ? listData.entries : [];
@@ -773,23 +829,28 @@ export function LeaderboardPage({
               drops its name/percentile below sm so both fit on a single line. */}
           <div className="mb-6 sm:mb-8 flex flex-row items-center justify-between gap-3">
             <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
-              {["week", "month", "total"].map((p) => {
-                const isActive = period === p;
+              {PERIOD_TABS.map((tab) => {
+                const isActive = activeTab === tab.id;
                 return (
                   <button
-                    key={p}
-                    onClick={() => handlePeriodChange(p)}
-                    disabled={currentListState.loading}
+                    key={tab.id}
+                    onClick={() => handleSelectTab(tab)}
+                    disabled={currentListState.loading && !tab.placeholder}
+                    title={tab.placeholder ? copy("leaderboard.soon.badge") : undefined}
                     className={cn(
-                      "px-3 sm:px-4 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
+                      "px-2.5 sm:px-4 h-7 text-sm font-medium rounded-full flex items-center justify-center gap-1 transition-colors relative",
                       isActive
                         ? "text-oai-black dark:text-white"
                         : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200"
                     )}
                   >
-                    <span className="relative z-10">
-                      {p === "week" ? weekLabel : p === "month" ? monthLabel : totalLabel}
-                    </span>
+                    <span className="relative z-10">{copy(tab.labelKey)}</span>
+                    {tab.placeholder && (
+                      <span
+                        className="relative z-10 h-1.5 w-1.5 rounded-full bg-amber-400"
+                        aria-hidden="true"
+                      />
+                    )}
                     {isActive && (
                       <motion.div
                         layoutId="leaderboard-period-active-bg"
@@ -812,6 +873,84 @@ export function LeaderboardPage({
               className="shrink-0"
             />
           </div>
+
+          {/* #10 tokenrank-style controls (FRONTEND PLACEHOLDERS): 计费口径 toggle
+              + 各 Agent 分榜 + 参与人数 + 规则说明. Only 含缓存 / 总榜 are live
+              today; the rest surface a "即将上线" notice. */}
+          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-oai-gray-400 dark:text-oai-gray-500">
+                {copy("leaderboard.metric.label")}
+              </span>
+              <div className="inline-flex rounded-lg border border-oai-gray-200 p-0.5 dark:border-oai-gray-800">
+                {METRIC_TABS.map((m) => {
+                  const isActive = placeholderMetric === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleSelectMetric(m)}
+                      title={m.placeholder ? copy("leaderboard.soon.badge") : undefined}
+                      className={cn(
+                        "flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                        isActive
+                          ? "bg-oai-gray-100 text-oai-black dark:bg-oai-gray-800 dark:text-white"
+                          : "text-oai-gray-500 hover:text-oai-gray-800 dark:text-oai-gray-400 dark:hover:text-oai-gray-200",
+                      )}
+                    >
+                      {copy(m.labelKey)}
+                      {m.placeholder && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSoonNotice(true)}
+              title={copy("leaderboard.soon.badge")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-oai-gray-200 px-2.5 py-1.5 text-xs font-medium text-oai-gray-500 transition-colors hover:text-oai-gray-800 dark:border-oai-gray-800 dark:text-oai-gray-400 dark:hover:text-oai-gray-200"
+            >
+              <span className="text-oai-black dark:text-white">{copy("leaderboard.board.overall")}</span>
+              <span className="text-oai-gray-300 dark:text-oai-gray-600">/</span>
+              {copy("leaderboard.board.by_agent")}
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
+            </button>
+
+            <div className="ml-auto flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                {copy("leaderboard.participants")}
+                <span className="font-semibold tabular-nums text-oai-black dark:text-white">
+                  {toDisplayNumber(totalEntries)}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setRulesOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-oai-gray-200 px-2.5 py-1.5 text-xs font-medium text-oai-gray-600 transition-colors hover:border-oai-gray-400 hover:text-oai-black dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:border-oai-gray-600 dark:hover:text-white"
+              >
+                <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                {copy("leaderboard.rules.button")}
+              </button>
+            </div>
+          </div>
+
+          {soonNotice && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
+              <span>{copy("leaderboard.soon.notice")}</span>
+              <button
+                type="button"
+                onClick={() => setSoonNotice(false)}
+                className="shrink-0 font-medium underline underline-offset-2 hover:opacity-80"
+              >
+                {copy("leaderboard.soon.dismiss")}
+              </button>
+            </div>
+          )}
 
           {!signedIn && (
             <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
@@ -839,12 +978,34 @@ export function LeaderboardPage({
           )}
 
           <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden">
-            {currentListState.error && hasEntries ? (
-              <div className="border-b border-oai-gray-200 dark:border-oai-gray-800 px-6 py-3">
-                <p className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>
+            {showPlaceholderPanel ? (
+              <div className="px-6 py-16 text-center">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
+                  {copy("leaderboard.soon.badge")}
+                </span>
+                <h3 className="mt-4 text-base font-semibold text-oai-black dark:text-white">
+                  {copy("leaderboard.soon.period_title")}
+                </h3>
+                <p className="mx-auto mt-1.5 max-w-md text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                  {copy("leaderboard.soon.period_desc", { name: placeholderTabLabel })}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPlaceholderTab(null)}
+                  className="mt-5 rounded-lg border border-oai-gray-300 px-4 py-1.5 text-sm font-medium text-oai-gray-600 transition-colors hover:border-oai-gray-400 hover:text-oai-black dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:border-oai-gray-600 dark:hover:text-white"
+                >
+                  {copy("leaderboard.soon.back")}
+                </button>
               </div>
-            ) : null}
-            {listBody}
+            ) : (
+              <>
+                {currentListState.error && hasEntries ? (
+                  <div className="border-b border-oai-gray-200 dark:border-oai-gray-800 px-6 py-3">
+                    <p className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>
+                  </div>
+                ) : null}
+                {listBody}
 
             <div className="px-6 py-3 border-t border-oai-gray-200 dark:border-oai-gray-800 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
               <div className="flex items-center gap-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
@@ -889,6 +1050,8 @@ export function LeaderboardPage({
                 {copy("leaderboard.pagination.next")}
               </button>
             </div>
+              </>
+            )}
           </div>
         </div>
       </main>
@@ -916,6 +1079,8 @@ export function LeaderboardPage({
           onClose={closeProfileModal}
         />
       </Suspense>
+
+      <LeaderboardRulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
     </div>
   );
 }

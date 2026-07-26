@@ -10,7 +10,7 @@ const { loadDashboardModule } = require("./helpers/load-dashboard-module");
 // boundary tests below need it; kept lazy so module-load cost isn't paid
 // by the existing dashboard-only tests.
 // ─────────────────────────────────────────────────────────────────────────────
-const localApi = require("../src/lib/local-api");
+const localApi = require("./helpers/local-api.cjs");
 const leaderboardRefreshPath = path.resolve(
   __dirname,
   "../dashboard/edge-patches/tokentracker-leaderboard-refresh.ts",

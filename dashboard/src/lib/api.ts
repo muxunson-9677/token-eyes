@@ -10,11 +10,13 @@ import {
   getMockLeaderboard,
   getMockProviderStats,
   getMockModelStats,
+  getMockRequestUsageRecords,
+  getMockSpendTimeseries,
   isMockEnabled,
 } from "./mock-data";
 import { getInsforgeRemoteUrl, getInsforgeAnonKey } from "./insforge-config";
 import { isValidJwtShape } from "./auth-token";
-import { getLocalApiAuthHeaders } from "./local-api-auth";
+import { fetchAuthenticatedLocalApi } from "./local-api-fetch";
 import { buildLocalApiUrl, isTauriRuntime } from "./local-api-url";
 
 type AnyRecord = Record<string, any>;
@@ -48,7 +50,7 @@ const PATHS = {
   apiBillingAccounts: "tokentracker-api-billing-accounts",
   // 03-ia-api-balance: provider API config / secret / balance endpoints.
   // Backed by the 02 work order's local-api.js handlers. Mutations require
-  // the x-tokentracker-local-auth header (getLocalApiAuthHeaders).
+  // the x-tokentracker-local-auth header (fetchAuthenticatedLocalApi).
   providerApiConfigs: "tokentracker-provider-api-configs",
   providerApiSecrets: "tokentracker-provider-api-secrets",
   providerApiTest: "tokentracker-provider-api-test",
@@ -70,24 +72,6 @@ const USAGE_TO_ACCOUNT_SLUG: Record<string, string> = {
   "tokentracker-usage-heatmap": "tokentracker-account-heatmap",
   "tokentracker-usage-model-breakdown": "tokentracker-account-model-breakdown",
 };
-
-function sleep(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-async function fetchLocalApi(url: string, init: RequestInit) {
-  const attempts = isTauriRuntime() ? 10 : 1;
-  let lastError: unknown = null;
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      return await fetch(url, init);
-    } catch (err) {
-      lastError = err;
-      if (i < attempts - 1) await sleep(250);
-    }
-  }
-  throw lastError;
-}
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -170,10 +154,13 @@ async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRec
     }
   }
   const { accessToken: _omit, ...fetchOptions } = options || {};
-  const response = await fetchLocalApi(url.toString(), {
-    headers: { Accept: "application/json" },
+  const response = await fetchAuthenticatedLocalApi(url.toString(), {
     cache: "no-store",
     ...fetchOptions,
+    headers: {
+      Accept: "application/json",
+      ...(fetchOptions.headers || {}),
+    },
   });
   if (!response.ok) {
     throw await buildErrorFromResponse(response);
@@ -266,25 +253,21 @@ export async function detectLocalDataDirectories() {
 }
 
 export async function setLocalSettings(settings: AnyRecord = {}) {
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.localSettings, undefined, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     body: JSON.stringify(settings),
   });
 }
 
 export async function selectLocalDirectory() {
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.selectDirectory, undefined, {
     method: "POST",
     headers: {
       Accept: "application/json",
-      ...authHeaders,
     },
   });
 }
@@ -309,13 +292,11 @@ export async function getApiBillingAccounts() {
 }
 
 export async function saveTokenPlan(record: AnyRecord = {}) {
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.tokenPlans, undefined, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     body: JSON.stringify(record),
   });
@@ -326,12 +307,41 @@ export async function getTokenPlanCatalog() {
 }
 
 export async function getSpendRecords(params?: AnyRecord) {
+  if (isMockEnabled()) {
+    const summary = getMockUsageSummary({
+      from: params?.from,
+      to: params?.to,
+      seed: params?.accessToken,
+      rolling: true,
+    });
+    const costUsd = Number(summary?.totals?.cost_usd || 0);
+    return {
+      ok: true,
+      from: params?.from,
+      to: params?.to,
+      records: [],
+      totals: {
+        api_cost_usd: costUsd,
+        combined_usd: costUsd,
+        subscription_cost_usd: 0,
+        lifetime_cost_usd: costUsd * 4,
+      },
+    };
+  }
   const tzParams = buildTimeZoneParams(params || {});
   const multiParams = buildMultiFilterParams(params || {});
   return fetchLocalJson(PATHS.spendRecords, { ...(params || {}), ...tzParams, ...multiParams });
 }
 
 export async function getSpendTimeseries(params?: AnyRecord) {
+  if (isMockEnabled()) {
+    return getMockSpendTimeseries({
+      from: params?.from,
+      to: params?.to,
+      seed: params?.accessToken,
+      sources: params?.sources,
+    });
+  }
   const tzParams = buildTimeZoneParams(params || {});
   const multiParams = buildMultiFilterParams(params || {});
   return fetchLocalJson(PATHS.spendTimeseries, { ...(params || {}), ...tzParams, ...multiParams });
@@ -351,6 +361,19 @@ export async function getRequestUsageRecords({
   pageSize,
   accessToken,
 }: AnyRecord = {}) {
+  if (isMockEnabled()) {
+    return getMockRequestUsageRecords({
+      from,
+      to,
+      seed: accessToken,
+      sources,
+      models,
+      agentIds,
+      page,
+      pageSize,
+      limit,
+    });
+  }
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildFilterParams({ source });
   const multiParams = buildMultiFilterParams({ sources, models, agentIds });
@@ -364,13 +387,11 @@ export async function getRequestUsageRecords({
 }
 
 export async function refreshTokenPlan(id: string) {
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.tokenPlansRefresh, undefined, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     body: JSON.stringify({ id }),
   });
@@ -384,52 +405,44 @@ export async function saveTokenPlanSecret(params: {
   purpose: string;
   secret: string;
 }): Promise<{ ok: boolean; api_key_ref?: string; error_code?: string; error?: string }> {
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.tokenPlanSecrets, undefined, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     body: JSON.stringify(params),
   });
 }
 
 export async function createSpendRecord(record: AnyRecord = {}) {
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.spendRecords, undefined, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     body: JSON.stringify(record),
   });
 }
 
 export async function updateSpendRecord(record: AnyRecord = {}) {
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.spendRecords, undefined, {
     method: "PUT",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     body: JSON.stringify(record),
   });
 }
 
 export async function deleteSpendRecord(id: string) {
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.spendRecords, undefined, {
     method: "DELETE",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     body: JSON.stringify({ id }),
   });
@@ -443,7 +456,7 @@ export async function deleteSpendRecord(id: string) {
 // on non-2xx HTTP status. The existing fetchLocalJson helper throws on
 // !response.ok without exposing the parsed body, so the UI could not read
 // error_code. requestProviderApi reuses the SAME fetch infrastructure
-// (buildLocalApiUrl / getLocalApiAuthHeaders / fetchLocalApi /
+// (buildLocalApiUrl / fetchAuthenticatedLocalApi /
 // readJsonResponse) — it only adapts the result shape to carry the body and
 // error_code on failure. No parallel fetch plumbing is introduced.
 //
@@ -466,10 +479,9 @@ async function requestProviderApi(
     method?: string;
     params?: AnyRecord;
     body?: unknown;
-    auth?: boolean;
   } = {},
 ): Promise<ProviderApiResult> {
-  const { method = "GET", params, body, auth = false } = options;
+  const { method = "GET", params, body } = options;
   const url = new URL(await buildLocalApiUrl(`/functions/${slug}`));
   if (params) {
     for (const [key, value] of Object.entries(params)) {
@@ -478,11 +490,7 @@ async function requestProviderApi(
   }
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (auth) {
-    const authHeaders = await getLocalApiAuthHeaders();
-    Object.assign(headers, authHeaders);
-  }
-  const response = await fetchLocalApi(url.toString(), {
+  const response = await fetchAuthenticatedLocalApi(url.toString(), {
     method,
     headers,
     cache: "no-store",
@@ -508,17 +516,17 @@ export async function getProviderApiConfigs(): Promise<ProviderApiResult> {
 
 /** POST /functions/tokentracker-provider-api-configs → { config } (auth required) */
 export async function saveProviderApiConfig(config: AnyRecord): Promise<ProviderApiResult> {
-  return requestProviderApi(PATHS.providerApiConfigs, { method: "POST", body: config, auth: true });
+  return requestProviderApi(PATHS.providerApiConfigs, { method: "POST", body: config });
 }
 
 /** PUT /functions/tokentracker-provider-api-configs?id=<id> → { config } (auth required) */
 export async function updateProviderApiConfig(id: string, config: AnyRecord): Promise<ProviderApiResult> {
-  return requestProviderApi(PATHS.providerApiConfigs, { method: "PUT", params: { id }, body: config, auth: true });
+  return requestProviderApi(PATHS.providerApiConfigs, { method: "PUT", params: { id }, body: config });
 }
 
 /** DELETE /functions/tokentracker-provider-api-configs?id=<id> → { ok } (auth required) */
 export async function deleteProviderApiConfig(id: string): Promise<ProviderApiResult> {
-  return requestProviderApi(PATHS.providerApiConfigs, { method: "DELETE", params: { id }, auth: true });
+  return requestProviderApi(PATHS.providerApiConfigs, { method: "DELETE", params: { id } });
 }
 
 /** POST /functions/tokentracker-provider-api-secrets { configId, secret } → { ok, apiKeyRef, masked } */
@@ -526,22 +534,22 @@ export async function saveProviderApiSecret(params: {
   configId: string;
   secret: string;
 }): Promise<ProviderApiResult> {
-  return requestProviderApi(PATHS.providerApiSecrets, { method: "POST", body: params, auth: true });
+  return requestProviderApi(PATHS.providerApiSecrets, { method: "POST", body: params });
 }
 
 /** DELETE /functions/tokentracker-provider-api-secrets?id=<configId> → { ok } */
 export async function deleteProviderApiSecret(configId: string): Promise<ProviderApiResult> {
-  return requestProviderApi(PATHS.providerApiSecrets, { method: "DELETE", params: { id: configId }, auth: true });
+  return requestProviderApi(PATHS.providerApiSecrets, { method: "DELETE", params: { id: configId } });
 }
 
 /** POST /functions/tokentracker-provider-api-test?id=<id> → { balance } (always 200; balance.status carries errors) */
 export async function testProviderApiConfig(id: string): Promise<ProviderApiResult> {
-  return requestProviderApi(PATHS.providerApiTest, { method: "POST", params: { id }, auth: true });
+  return requestProviderApi(PATHS.providerApiTest, { method: "POST", params: { id } });
 }
 
 /** POST /functions/tokentracker-provider-api-refresh?id=<id> → { balance } */
 export async function refreshProviderApiBalance(id: string): Promise<ProviderApiResult> {
-  return requestProviderApi(PATHS.providerApiRefresh, { method: "POST", params: { id }, auth: true });
+  return requestProviderApi(PATHS.providerApiRefresh, { method: "POST", params: { id } });
 }
 
 /** GET /functions/tokentracker-provider-api-balances → { balances: ProviderAccountBalance[] } (cached, no network) */
@@ -771,10 +779,9 @@ export async function getUserStatus(_opts: AnyRecord = {}) {
 }
 
 export async function triggerLocalSync({ signal }: AnyRecord = {}) {
-  const authHeaders = await getLocalApiAuthHeaders();
-  const response = await fetchLocalApi(await buildLocalApiUrl(`/functions/${PATHS.localSync}`), {
+  const response = await fetchAuthenticatedLocalApi(await buildLocalApiUrl(`/functions/${PATHS.localSync}`), {
     method: "POST",
-    headers: { Accept: "application/json", ...authHeaders },
+    headers: { Accept: "application/json" },
     cache: "no-store",
     signal,
   });
@@ -1186,13 +1193,11 @@ export async function createConsoleSession(params: {
   if (!isTauriRuntime()) {
     throw new Error("该功能仅桌面端支持");
   }
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(PATHS.consoleSessions, undefined, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
     body: JSON.stringify(params),
   }) as Promise<CreateConsoleSessionResult>;
@@ -1202,13 +1207,11 @@ export async function deleteConsoleSession(id: string): Promise<{ ok: boolean }>
   if (!isTauriRuntime()) {
     throw new Error("该功能仅桌面端支持");
   }
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(`${PATHS.consoleSessions}?id=${encodeURIComponent(id)}`, undefined, {
     method: "DELETE",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...authHeaders,
     },
   }) as Promise<{ ok: boolean }>;
 }
@@ -1242,7 +1245,6 @@ export async function verifyConsoleSession(
   if (!isTauriRuntime()) {
     throw new Error("该功能仅桌面端支持");
   }
-  const authHeaders = await getLocalApiAuthHeaders();
   return fetchLocalJson(
     `${PATHS.consoleSessions}/${encodeURIComponent(id)}/verify`,
     undefined,
@@ -1251,7 +1253,6 @@ export async function verifyConsoleSession(
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        ...authHeaders,
       },
       body: JSON.stringify({ native_result: nativeResult }),
     },
@@ -1477,4 +1478,3 @@ export async function deleteKimiConsoleSession(sessionRef: string): Promise<void
   if (!invoke) throw new Error("Tauri runtime not available");
   return invoke("delete_kimi_console_session", { sessionRef });
 }
-

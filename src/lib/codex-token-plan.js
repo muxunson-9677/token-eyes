@@ -159,8 +159,21 @@ async function fetchCodexWhamUsage(accessToken, { fetchImpl = globalThis.fetch, 
   return payload;
 }
 
-async function fetchCodexQuota({ home, env, fetchImpl = globalThis.fetch } = {}) {
-  const auth = await readCodexAuthBundle({ home, env });
+async function fetchCodexQuota({
+  home,
+  env,
+  platform,
+  scanDefaultWindowsDrives,
+  windowsDriveRoots,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const auth = await readCodexAuthBundle({
+    home,
+    env,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  });
   if (!auth?.accessToken) {
     throw new CodexTokenPlanError("CODEX_REAUTH_REQUIRED", "Codex is not configured — run `codex` to log in");
   }
@@ -190,7 +203,14 @@ async function fetchCodexQuota({ home, env, fetchImpl = globalThis.fetch } = {})
   };
 }
 
-function createCodexProviderAdapter({ fetchImpl = globalThis.fetch, home, env } = {}) {
+function createCodexProviderAdapter({
+  fetchImpl = globalThis.fetch,
+  home,
+  env,
+  platform,
+  scanDefaultWindowsDrives,
+  windowsDriveRoots,
+} = {}) {
   return async function codexProviderAdapter(plan) {
     if (plan?.detection_method === "official_account") {
       throw new CodexTokenPlanError(
@@ -198,7 +218,14 @@ function createCodexProviderAdapter({ fetchImpl = globalThis.fetch, home, env } 
         "请点击「连接并同步」通过 ChatGPT 官网登录刷新额度",
       );
     }
-    return fetchCodexQuota({ home, env, fetchImpl });
+    return fetchCodexQuota({
+      home,
+      env,
+      platform,
+      scanDefaultWindowsDrives,
+      windowsDriveRoots,
+      fetchImpl,
+    });
   };
 }
 

@@ -6,7 +6,7 @@ const { test } = require("node:test");
 
 require("./helpers/home-shim.cjs");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 async function writeQueue(queuePath, rows) {
   await fs.promises.writeFile(queuePath, rows.map((row) => JSON.stringify(row)).join("\n") + "\n");

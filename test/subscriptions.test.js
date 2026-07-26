@@ -1,3 +1,5 @@
+require("./helpers/home-shim.cjs");
+
 const assert = require("node:assert/strict");
 const os = require("node:os");
 const path = require("node:path");
@@ -7,6 +9,7 @@ const { test } = require("node:test");
 const {
   collectLocalSubscriptions,
   detectClaudeCodeSubscriptionDetails,
+  readCodexAuthBundle,
   readClaudeCodeAccessToken,
 } = require("../src/lib/subscriptions");
 
@@ -55,6 +58,79 @@ test("collectLocalSubscriptions returns paid ChatGPT plans from codex + opencode
     assert.equal(subs.length, 2);
     assert.ok(subs.some((s) => s.tool === "codex" && s.planType === "pro"));
     assert.ok(subs.some((s) => s.tool === "opencode" && s.planType === "plus"));
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("collectLocalSubscriptions ignores process CODEX_HOME after home is injected", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-subscriptions-isolated-"));
+  const bait = path.join(tmp, "fixture-bait-codex");
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = bait;
+
+  try {
+    const baitJwt = makeJwt({
+      "https://api.openai.com/auth": {
+        chatgpt_plan_type: "pro",
+        chatgpt_account_id: "acct-fixture-bait",
+      },
+    });
+    await writeJson(path.join(bait, "auth.json"), {
+      tokens: { access_token: baitJwt },
+    });
+
+    const subs = await collectLocalSubscriptions({
+      home: path.join(tmp, "isolated-home"),
+      platform: "linux",
+    });
+
+    assert.deepEqual(subs, []);
+    assert.doesNotMatch(JSON.stringify(subs), /acct-fixture-bait|fixture-bait-codex/);
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("readCodexAuthBundle scans fake Windows drives when production scan is enabled", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-subscriptions-production-scan-"));
+  try {
+    const codexHome = path.join(tmp, "AgentData", "Codex");
+    await writeJson(path.join(codexHome, "auth.json"), {
+      tokens: { access_token: "fixture-production-access-token" },
+    });
+
+    const bundle = await readCodexAuthBundle({
+      env: {},
+      platform: "win32",
+      scanDefaultWindowsDrives: true,
+      windowsDriveRoots: [tmp],
+    });
+
+    assert.equal(bundle?.codexHome, codexHome);
+    assert.equal(bundle?.accessToken, "fixture-production-access-token");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("readCodexAuthBundle does not scan fake Windows drives for an injected home by default", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-subscriptions-injected-scan-"));
+  try {
+    await writeJson(path.join(tmp, "AgentData", "Codex", "auth.json"), {
+      tokens: { access_token: "fixture-bait-access-token" },
+    });
+
+    const bundle = await readCodexAuthBundle({
+      home: path.join(tmp, "injected-home"),
+      env: {},
+      platform: "win32",
+      windowsDriveRoots: [tmp],
+    });
+
+    assert.equal(bundle, null);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

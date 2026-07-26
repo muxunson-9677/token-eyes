@@ -1,54 +1,23 @@
-// ESM mirror of the agent registry for the dashboard bundle.
-//
-// `src/lib/agent-adapters.js` is CommonJS (runs in the Node CLI) and cannot
-// be imported by the ESM dashboard bundle without a build-time shim. This
-// file re-declares only the fields the dashboard UI needs ({ id, displayName,
-// queueSource }) so components like AgentSwitcher / SourceFilter can render
-// the agent list without crossing the CJS/ESM boundary.
-//
-// KEEP IN SYNC with `src/lib/agent-adapters.js` → `AGENT_ADAPTERS`. When you
-// add or rename an adapter there, mirror the change here. The `id` and
-// `queueSource` values must match exactly — they are the values stored in
-// queue.jsonl and accepted by the `agent_ids` / `sources` API params.
+import providerCapabilities from "../../../shared/provider-capabilities.json";
 
 export interface DashboardAgent {
   /** Stable lowercase registry id (matches AGENT_ADAPTERS[].id). */
   id: string;
   /** UI display name. */
   displayName: string;
-  /** Value written to queue.jsonl `source` field (matches AGENT_ADAPTERS[].queueSource). */
+  /** Value written to queue.jsonl `source` field. */
   queueSource: string;
 }
 
-export const DASHBOARD_AGENTS: readonly DashboardAgent[] = [
-  { id: "claude", displayName: "Claude Code", queueSource: "claude" },
-  { id: "codex", displayName: "Codex", queueSource: "codex" },
-  { id: "every-code", displayName: "Every Code", queueSource: "every-code" },
-  { id: "cursor", displayName: "Cursor", queueSource: "cursor" },
-  { id: "trae", displayName: "Trae", queueSource: "trae" },
-  { id: "gemini", displayName: "Gemini CLI", queueSource: "gemini" },
-  { id: "opencode", displayName: "OpenCode", queueSource: "opencode" },
-  { id: "openclaw", displayName: "OpenClaw", queueSource: "openclaw" },
-  { id: "kilo-cli", displayName: "Kilo CLI", queueSource: "kilo-cli" },
-  { id: "kilocode", displayName: "Kilo Code", queueSource: "kilocode" },
-  { id: "roocode", displayName: "Roo Code", queueSource: "roocode" },
-  { id: "kiro", displayName: "Kiro", queueSource: "kiro" },
-  { id: "kiro-cli", displayName: "Kiro CLI", queueSource: "kiro-cli" },
-  { id: "hermes", displayName: "Hermes Agent", queueSource: "hermes" },
-  { id: "kimi", displayName: "Kimi", queueSource: "kimi" },
-  { id: "kimi-code", displayName: "Kimi Code", queueSource: "kimi-code" },
-  { id: "codebuddy", displayName: "CodeBuddy", queueSource: "codebuddy" },
-  { id: "omp", displayName: "oh-my-pi", queueSource: "omp" },
-  { id: "pi", displayName: "pi", queueSource: "pi" },
-  { id: "craft", displayName: "Craft Agents", queueSource: "craft" },
-  { id: "grok", displayName: "Grok Build", queueSource: "grok" },
-  { id: "copilot", displayName: "GitHub Copilot", queueSource: "copilot" },
-  { id: "zed", displayName: "Zed Agent", queueSource: "zed" },
-  { id: "goose", displayName: "Goose", queueSource: "goose" },
-  { id: "droid", displayName: "Droid", queueSource: "droid" },
-  { id: "antigravity", displayName: "Antigravity", queueSource: "antigravity" },
-] as const;
-
+/** Agent metadata is sourced from the shared capability manifest. */
+export const DASHBOARD_AGENTS: readonly DashboardAgent[] = providerCapabilities.providers
+  .filter((provider) => provider.token_usage_collection)
+  .sort((a, b) => (a.agent_order ?? 0) - (b.agent_order ?? 0))
+  .map((provider) => ({
+    id: provider.id,
+    displayName: provider.agent_display_name || provider.display_name,
+    queueSource: provider.queue_source || provider.id,
+  }));
 /**
  * Map a queueSource (the `source` value in queue.jsonl / API responses) back
  * to the dashboard agent id. Multiple adapters can share a queueSource in

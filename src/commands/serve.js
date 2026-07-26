@@ -2,10 +2,13 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const fssync = require("node:fs");
-const cp = require("node:child_process");
 
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
-const { createLocalApiHandler, resolveQueuePath } = require("../lib/local-api");
+const {
+  createLocalApiHandler,
+  resolveQueuePath,
+  validateLocalApiRequest,
+} = require("../lib/local-api");
 const { ensurePricingLoaded } = require("../lib/pricing");
 const { serveStaticFile } = require("../lib/static-server");
 const { openInBrowser } = require("../lib/browser-auth");
@@ -16,7 +19,7 @@ const NPM_PACKAGE_NAME = "tokentracker-cli";
 const LOCAL_BIND_HOST = "127.0.0.1";
 
 function buildPortInUseHint(port) {
-  return `Port ${port} is still in use after cleanup. Try: npx ${NPM_PACKAGE_NAME} serve --port ${port + 1}\n`;
+  return `Port ${port} is already in use. Try: npx ${NPM_PACKAGE_NAME} serve --port ${port + 1}\n`;
 }
 
 function isPortUnavailableError(error) {
@@ -25,6 +28,63 @@ function isPortUnavailableError(error) {
 
 function getLocalServerUrl(port) {
   return `http://${LOCAL_BIND_HOST}:${port}`;
+}
+
+function createServeRequestListener({
+  handleApi,
+  dashboardDir,
+  getPort,
+  serveStaticFileFn = serveStaticFile,
+} = {}) {
+  return async function serveRequestListener(req, res) {
+    try {
+      const port = getPort();
+      const requestSecurity = validateLocalApiRequest(req, {
+        listeningPort: port,
+        bindHost: LOCAL_BIND_HOST,
+      });
+      if (!requestSecurity.ok) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Forbidden" }));
+        return;
+      }
+      const url = new URL(req.url || "/", getLocalServerUrl(port));
+
+      const isApiPath = (
+        url.pathname.startsWith("/functions/")
+        || url.pathname.startsWith("/api/")
+        || url.pathname.startsWith("/proxy/")
+      );
+      if (req.method === "OPTIONS" && !isApiPath) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Not Found" }));
+        return;
+      }
+
+      if (isApiPath) {
+        const handled = await handleApi(req, res, url);
+        if (handled) return;
+        res.writeHead(404, {
+          "Content-Type": "application/json",
+          ...requestSecurity.corsHeaders,
+        });
+        res.end(JSON.stringify({ error: "Not Found" }));
+        return;
+      }
+
+      const served = await serveStaticFileFn(dashboardDir, url.pathname, res);
+      if (served) return;
+      await serveStaticFileFn(dashboardDir, "/index.html", res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Internal Server Error");
+      } else if (!res.writableEnded) {
+        if (typeof res.destroy === "function") res.destroy(error);
+        else res.end();
+      }
+    }
+  };
 }
 
 async function cmdServe(argv) {
@@ -91,8 +151,14 @@ async function cmdServe(argv) {
     return;
   }
 
-  // 3. Create handler
-  const handleApi = createLocalApiHandler({ queuePath });
+  // 3. Create handler. Requests cannot arrive until listen succeeds and
+  // updates this value to the actual fallback port.
+  let port = opts.port;
+  const handleApi = createLocalApiHandler({
+    queuePath,
+    listeningPort: () => port,
+    bindHost: LOCAL_BIND_HOST,
+  });
 
   // 3.1 F03: Token Plan 鑷姩鍒锋柊璋冨害鍣ㄣ€?
   //     鍚姩鏃跺仛涓€娆?due refresh锛堜笉闃诲鐩戝惉锛夛紝鐒跺悗鍚姩鍚庡彴瀹氭椂鍣ㄣ€?
@@ -104,52 +170,17 @@ async function cmdServe(argv) {
   }
   handleApi.startTokenPlanScheduler();
 
-  const server = http.createServer(async (req, res) => {
-    try {
-      const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-
-      // CORS preflight
-      if (req.method === "OPTIONS") {
-        res.writeHead(204, {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TokenTracker-Local-Auth",
-        });
-        res.end();
-        return;
-      }
-
-      // API routes
-      if (
-        url.pathname.startsWith("/functions/")
-        || url.pathname.startsWith("/api/")
-        || url.pathname.startsWith("/proxy/")
-      ) {
-        const handled = await handleApi(req, res, url);
-        if (handled) return;
-      }
-
-      // Static files
-      const served = await serveStaticFile(dashboardDir, url.pathname, res);
-      if (served) return;
-
-      // SPA fallback
-      await serveStaticFile(dashboardDir, "/index.html", res);
-    } catch (e) {
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "text/plain" });
-        res.end("Internal Server Error");
-      }
-    }
-  });
+  const server = http.createServer(createServeRequestListener({
+    handleApi,
+    dashboardDir,
+    getPort: () => port,
+  }));
 
   // 4. Listen. Default startup follows README behavior and picks the next
   // available port; an explicit --port/PORT remains strict.
-  let port;
   try {
     port = await listenOnAvailablePort(server, opts.port, {
       allowFallback: !opts.portExplicit,
-      ensurePortFreeFn: opts.portExplicit ? ensurePortFree : null,
       onRetry: (failedPort) => {
         process.stdout.write(`Port ${failedPort} unavailable, trying ${failedPort + 1}...\n`);
       },
@@ -203,47 +234,6 @@ async function cmdServe(argv) {
   await new Promise(() => {});
 }
 
-function findPidOnPort(port) {
-  try {
-    const out = cp.execFileSync("lsof", ["-ti", `tcp:${port}`], { encoding: "utf8", timeout: 5000 });
-    const pids = out.trim().split(/\s+/).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-    return pids;
-  } catch (_e) {
-    return [];
-  }
-}
-
-async function ensurePortFree(port) {
-  const pids = findPidOnPort(port);
-  if (pids.length === 0) return;
-
-  // Don't kill ourselves
-  const self = process.pid;
-  const targets = pids.filter((p) => p !== self);
-  if (targets.length === 0) return;
-
-  process.stdout.write(`Stopping previous server on port ${port} (pid ${targets.join(", ")})...\n`);
-  for (const pid of targets) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch (_e) {}
-  }
-
-  // Wait briefly for port to free up
-  for (let i = 0; i < 10; i++) {
-    await new Promise((r) => setTimeout(r, 300));
-    if (findPidOnPort(port).length === 0) return;
-  }
-
-  // Force kill if still alive
-  for (const pid of targets) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch (_e) {}
-  }
-  await new Promise((r) => setTimeout(r, 500));
-}
-
 function listenOnce(server, port, host) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -278,7 +268,6 @@ async function listenOnAvailablePort(
     host = LOCAL_BIND_HOST,
     allowFallback = false,
     maxAttempts = DEFAULT_MAX_PORT_ATTEMPTS,
-    ensurePortFreeFn = null,
     onRetry = null,
   } = {},
 ) {
@@ -287,10 +276,6 @@ async function listenOnAvailablePort(
   let lastError = null;
 
   for (let i = 0; i < attempts && port < 65536; i++, port++) {
-    if (ensurePortFreeFn) {
-      await ensurePortFreeFn(port);
-    }
-
     try {
       await listenOnce(server, port, host);
       return port;
@@ -352,6 +337,7 @@ function parseArgs(argv, env = process.env) {
 module.exports = {
   cmdServe,
   buildPortInUseHint,
+  createServeRequestListener,
   NPM_PACKAGE_NAME,
   LOCAL_BIND_HOST,
   isPortUnavailableError,

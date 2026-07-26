@@ -5,7 +5,7 @@
  */
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 describe("serve startup token plan scheduler hooks", () => {
   let handler;

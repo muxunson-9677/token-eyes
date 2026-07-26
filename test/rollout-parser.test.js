@@ -313,7 +313,7 @@ test("parseRolloutIncremental emits project usage buckets with canonicalized pro
       cached_input_tokens: 1,
       output_tokens: 3,
       reasoning_output_tokens: 0,
-      total_tokens: 6,
+      total_tokens: 5,
     };
 
     const lines = [
@@ -353,7 +353,7 @@ test("parseRolloutIncremental emits project usage buckets with canonicalized pro
     assert.equal(projectQueued[0].cached_input_tokens, usage.cached_input_tokens);
     assert.equal(projectQueued[0].output_tokens, usage.output_tokens);
     assert.equal(projectQueued[0].reasoning_output_tokens, usage.reasoning_output_tokens);
-    assert.equal(projectQueued[0].total_tokens, usage.total_tokens);
+    assert.equal(projectQueued[0].total_tokens, 5);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -887,21 +887,21 @@ test("parseRolloutIncremental handles total_token_usage reset by counting last_t
     const cursors = { version: 1, files: {}, updatedAt: null };
 
     const usageA = {
-      input_tokens: 0,
+      input_tokens: 10,
       cached_input_tokens: 0,
       output_tokens: 0,
       reasoning_output_tokens: 0,
       total_tokens: 10,
     };
     const usageB = {
-      input_tokens: 0,
+      input_tokens: 5,
       cached_input_tokens: 0,
       output_tokens: 0,
       reasoning_output_tokens: 0,
       total_tokens: 5,
     };
     const usageReset = {
-      input_tokens: 0,
+      input_tokens: 7,
       cached_input_tokens: 0,
       output_tokens: 0,
       reasoning_output_tokens: 0,
@@ -909,7 +909,7 @@ test("parseRolloutIncremental handles total_token_usage reset by counting last_t
     };
 
     const totalsA = usageA;
-    const totalsB = { ...usageA, total_tokens: usageA.total_tokens + usageB.total_tokens };
+    const totalsB = { ...usageA, input_tokens: usageA.input_tokens + usageB.input_tokens, total_tokens: usageA.total_tokens + usageB.total_tokens };
     const totalsReset = usageReset; // reset: totals decreased from totalsB.total_tokens
 
     const lines = [
@@ -946,14 +946,14 @@ test("parseRolloutIncremental handles total_token_usage reset when last_token_us
     const cursors = { version: 1, files: {}, updatedAt: null };
 
     const usageA = {
-      input_tokens: 0,
+      input_tokens: 4,
       cached_input_tokens: 0,
       output_tokens: 0,
       reasoning_output_tokens: 0,
       total_tokens: 4,
     };
     const usageB = {
-      input_tokens: 0,
+      input_tokens: 6,
       cached_input_tokens: 0,
       output_tokens: 0,
       reasoning_output_tokens: 0,
@@ -961,8 +961,8 @@ test("parseRolloutIncremental handles total_token_usage reset when last_token_us
     };
 
     const totalsA = usageA;
-    const totalsB = { ...usageA, total_tokens: usageA.total_tokens + usageB.total_tokens };
-    const totalsReset = { ...usageA, total_tokens: 5 };
+    const totalsB = { ...usageA, input_tokens: usageA.input_tokens + usageB.input_tokens, total_tokens: usageA.total_tokens + usageB.total_tokens };
+    const totalsReset = { ...usageA, input_tokens: 5, total_tokens: 5 };
 
     const lines = [
       buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usageA, total: totalsA }),
@@ -1728,9 +1728,9 @@ test("parseRolloutIncremental subtracts cached_input_tokens from Codex input_tok
     assert.equal(queued[0].cached_input_tokens, 950_000);
     assert.equal(queued[0].output_tokens, 10_000);
     assert.equal(queued[0].reasoning_output_tokens, 4_000);
-    // total_tokens left as reported: still equals non_cached + cached + output
-    // numerically, so downstream aggregation stays stable.
-    assert.equal(queued[0].total_tokens, 1_010_000);
+    // The persisted contract is additive across every displayed token column,
+    // so informational vendor reasoning is included in canonical total_tokens.
+    assert.equal(queued[0].total_tokens, 1_014_000);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -1748,7 +1748,7 @@ test("parseRolloutIncremental handles Every Code token_count envelope", async ()
       cached_input_tokens: 1,
       output_tokens: 3,
       reasoning_output_tokens: 0,
-      total_tokens: 6,
+      total_tokens: 5,
     };
 
     const lines = [
@@ -7738,14 +7738,14 @@ test("collectRolloutRequestUsageRecords extracts request-level token records fro
       cached_input_tokens: 2,
       output_tokens: 5,
       reasoning_output_tokens: 1,
-      total_tokens: 18,
+      total_tokens: 15,
     };
     const usage2 = {
       input_tokens: 8,
       cached_input_tokens: 1,
       output_tokens: 4,
       reasoning_output_tokens: 0,
-      total_tokens: 13,
+      total_tokens: 12,
     };
 
     const lines = [
@@ -7777,7 +7777,7 @@ test("collectRolloutRequestUsageRecords extracts request-level token records fro
     assert.equal(record1.cached_input_tokens, usage1.cached_input_tokens);
     assert.equal(record1.output_tokens, usage1.output_tokens);
     assert.equal(record1.reasoning_output_tokens, usage1.reasoning_output_tokens);
-    assert.equal(record1.total_tokens, usage1.total_tokens);
+    assert.equal(record1.total_tokens, 16);
     assert.equal(record1.agent, "Codex");
     assert.equal(record1.origin, "codex_rollout_token_count");
 
@@ -7791,7 +7791,7 @@ test("collectRolloutRequestUsageRecords extracts request-level token records fro
     assert.equal(result.totals.cached_input_tokens, usage1.cached_input_tokens + usage2.cached_input_tokens);
     assert.equal(result.totals.output_tokens, usage1.output_tokens + usage2.output_tokens);
     assert.equal(result.totals.reasoning_output_tokens, usage1.reasoning_output_tokens + usage2.reasoning_output_tokens);
-    assert.equal(result.totals.total_tokens, usage1.total_tokens + usage2.total_tokens);
+    assert.equal(result.totals.total_tokens, 28);
     assert.equal(Object.prototype.hasOwnProperty.call(record1, "content"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(record1, "message"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(record1, "encrypted_content"), false);

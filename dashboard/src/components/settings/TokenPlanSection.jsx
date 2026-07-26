@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import providerCapabilities from "../../../../shared/provider-capabilities.json";
 import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert } from "lucide-react";
 import {
   getTokenPlans,
@@ -110,18 +111,17 @@ const REFRESH_METHOD_OPTIONS = ["manual", "official_api"];
 const LEGACY_REFRESH_METHODS = new Set(["manual", "official_api"]);
 const XIAOMI_AUTH_POLL_MS = 1000;
 const XIAOMI_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
-const OFFICIAL_ACCOUNT_DETECTION_PROVIDERS = new Set([
-  "xiaomi_mimo",
-  "glm",
-  "kimi",
-  "minimax",
-  "aliyun_bailian",
-  "codex",
-  "claude",
-  "cursor",
-]);
+const OFFICIAL_ACCOUNT_DETECTION_PROVIDERS = new Set(
+  providerCapabilities.providers
+    .filter((provider) => provider.catalog_token_plan && provider.official_rate_limit)
+    .map((provider) => provider.id),
+);
 
-const WEBVIEW_CONSOLE_PROVIDERS = new Set(["xiaomi_mimo", "glm", "codex", "claude", "cursor", "kimi"]);
+const WEBVIEW_CONSOLE_PROVIDERS = new Set(
+  providerCapabilities.providers
+    .filter((provider) => provider.native_session_bridge)
+    .map((provider) => provider.id),
+);
 
 function resolveProviderHomeUrl(providerId, planId = "") {
   switch (providerId) {
@@ -1406,7 +1406,7 @@ export function TokenPlanSection() {
     form.detection_config?.official_account?.claude_account_mode,
   );
   const isStaticCatalogPlan = Boolean(isCatalogPlan) && !supportsOfficialAccountDetection;
-  const showRefreshControls = !Boolean(isCatalogPlan);
+  const showRefreshControls = !isCatalogPlan;
   // W03-R3D: When a detection method is configured, disable manual quota entry.
   // Detection is the primary path — used_quota/remaining_quota/expires_at come from the detection source.
   const hasDetectionConfigured = form.detection_method && form.detection_method !== "not_configured";
@@ -1755,15 +1755,22 @@ export function TokenPlanSection() {
         payload.detection_method === "official_account" &&
         form.provider_id === "kimi"
       ) {
+        const officialAccount = {
+          ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
+          provider_home_url: resolveProviderHomeUrl("kimi", form.plan_id),
+        };
+        if (form.plan_id === "kimi_api_budget") {
+          officialAccount.api_key_ref = officialApiKeyRef;
+          delete officialAccount.account_binding_id;
+        } else {
+          officialAccount.account_binding_id = formKimiSession?.id
+            || payload.detection_config?.official_account?.account_binding_id
+            || "";
+          delete officialAccount.api_key_ref;
+        }
         payload.detection_config = {
           ...payload.detection_config,
-          official_account: {
-            ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
-            ...(form.plan_id === "kimi_api_budget" ? { api_key_ref: officialApiKeyRef } : {}),
-            provider_home_url: form.plan_id === "kimi_api_budget"
-              ? "https://platform.moonshot.cn/console/account"
-              : "https://www.kimi.com/code",
-          },
+          official_account: officialAccount,
         };
       } else if (
         payload.detection_method === "official_account" &&
@@ -1835,21 +1842,7 @@ export function TokenPlanSection() {
               || "",
           },
         };
-      } else if (
-        payload.detection_method === "official_account" &&
-        form.provider_id === "kimi" &&
-        form.plan_id !== "kimi_api_budget"
-      ) {
-        payload.detection_config = {
-          ...payload.detection_config,
-          official_account: {
-            ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
-            provider_home_url: resolveProviderHomeUrl("kimi", form.plan_id),
-            account_binding_id: formKimiSession?.id
-              || payload.detection_config?.official_account?.account_binding_id
-              || "",
-          },
-        };
+
       }
       if (isClaudeRoutingMode(form.provider_id, form.plan_id, form.detection_config?.official_account?.claude_account_mode)) {
         payload.detection_method = "";

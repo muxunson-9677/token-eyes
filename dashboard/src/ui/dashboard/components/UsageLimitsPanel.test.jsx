@@ -62,7 +62,7 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText(copy("limits.status.not_connected"))).toBeInTheDocument();
   });
 
-  it("keeps Hermes, OpenClaw and OpenCode visible as display sources without live limit data", () => {
+  it("keeps all manual-only desktop sources visible without inventing official connections", () => {
     render(
       <UsageLimitsPanel
         order={["hermes", "openclaw", "opencode"]}
@@ -72,7 +72,16 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText("Hermes")).toBeInTheDocument();
     expect(screen.getByText("OpenClaw")).toBeInTheDocument();
     expect(screen.getByText("OpenCode")).toBeInTheDocument();
-    expect(screen.getAllByText(copy("limits.status.not_connected"))).toHaveLength(3);
+    expect(screen.getAllByText(copy("limits.status.manual_only"))).toHaveLength(3);
+    expect(screen.queryByText(copy("limits.status.not_connected"))).not.toBeInTheDocument();
+  });
+
+  it("shows Trae as manual-only without inventing an official quota", () => {
+    render(<UsageLimitsPanel order={["trae"]} />);
+
+    expect(screen.getByText("Trae")).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.status.manual_only"))).toBeInTheDocument();
+    expect(screen.queryByText(copy("limits.status.not_connected"))).not.toBeInTheDocument();
   });
 
   it("appends plan_label to the provider title when present", () => {

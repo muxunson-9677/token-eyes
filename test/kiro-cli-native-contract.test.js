@@ -17,7 +17,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const localApi = require("../src/lib/local-api");
+const localApi = require("./helpers/local-api.cjs");
 
 async function callModelBreakdown(queuePath) {
   const handler = localApi.createLocalApiHandler({ queuePath });

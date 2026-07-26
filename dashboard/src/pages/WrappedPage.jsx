@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { formatCompactNumber } from "../lib/format";
+import { fetchAuthenticatedLocalApi } from "../lib/local-api-fetch";
 
 /**
  * /wrapped — year-end summary page.
@@ -41,7 +42,7 @@ export default function WrappedPage() {
     const url = year
       ? `/functions/tokentracker-wrapped?year=${encodeURIComponent(year)}`
       : "/functions/tokentracker-wrapped";
-    fetch(url)
+    fetchAuthenticatedLocalApi(url)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();

@@ -38,7 +38,7 @@ function freshHandler(queuePath) {
   // Re-require so module-level state (token cache) and the trackerDataDir
   // resolved at construction reflect the temp HOME.
   delete require.cache[require.resolve("../src/lib/local-api")];
-  const { createLocalApiHandler } = require("../src/lib/local-api");
+  const { createLocalApiHandler } = require("./helpers/local-api.cjs");
   return createLocalApiHandler({ queuePath });
 }
 
@@ -404,4 +404,3 @@ test("usage-hourly?account=1 falls back to local hourly data when account hourly
     }
   }
 });
-

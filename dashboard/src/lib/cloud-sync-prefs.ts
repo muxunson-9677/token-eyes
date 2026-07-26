@@ -66,11 +66,10 @@ export function setCloudSyncEnabled(enabled: boolean): void {
 async function mirrorCloudSyncPrefToLocalServer(enabled: boolean): Promise<void> {
   if (!isLocalDashboardHost()) return;
   try {
-    const { getLocalApiAuthHeaders } = await import("./local-api-auth");
-    const authHeaders = await getLocalApiAuthHeaders();
-    await fetch("/functions/tokentracker-cloud-sync-pref", {
+    const { fetchAuthenticatedLocalApi } = await import("./local-api-fetch.ts");
+    await fetchAuthenticatedLocalApi("/functions/tokentracker-cloud-sync-pref", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json", ...authHeaders },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       cache: "no-store",
       body: JSON.stringify({ enabled }),
     });

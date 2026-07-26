@@ -18,7 +18,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const { normalizeCursorUsage } = require("../src/lib/cursor-config");
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 // ── parser layer ──────────────────────────────────────────────────────────
 

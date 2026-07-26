@@ -43,6 +43,14 @@ vi.mock("../components/settings/AppearanceSection.jsx", () => ({
   AppearanceSection: () => <section data-testid="appearance-section">Appearance</section>,
 }));
 
+vi.mock("../components/settings/WindowBehaviorSection.jsx", () => ({
+  WindowBehaviorSection: () => <section data-testid="window-behavior-section">WindowBehavior</section>,
+}));
+
+vi.mock("../components/settings/OtherAiSpendSection.jsx", () => ({
+  OtherAiSpendSection: () => <section data-testid="other-ai-spend-section">OtherAiSpend</section>,
+}));
+
 vi.mock("../components/settings/Controls.jsx", () => ({
   SectionCard: ({ title, children }) => (
     <section data-testid="section-card">
@@ -76,13 +84,14 @@ describe("SettingsBasicPage (v2.0 IA split)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders Appearance, MenuBar, Account, DataDirs, AgentPricing, Limits, Footer", () => {
+  it("renders Appearance, WindowBehavior, MenuBar, Account, DataDirs, AgentPricing, Limits, Footer", () => {
     render(
       <MemoryRouter>
         <SettingsBasicPage />
       </MemoryRouter>,
     );
     expect(screen.getByTestId("appearance-section")).toBeInTheDocument();
+    expect(screen.getByTestId("window-behavior-section")).toBeInTheDocument();
     expect(screen.getByTestId("menubar-section")).toBeInTheDocument();
     expect(screen.getByTestId("account-section")).toBeInTheDocument();
     expect(screen.getByTestId("data-dirs-section")).toBeInTheDocument();
@@ -142,6 +151,15 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId("provider-api-config-section")).toBeInTheDocument();
+  });
+
+  it("renders OtherAiSpendSection (其他 AI 花销)", () => {
+    render(
+      <MemoryRouter>
+        <SettingsCostPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("other-ai-spend-section")).toBeInTheDocument();
   });
 
   it("does NOT render Appearance / Account / DataDirs / AgentPricing / MenuBar", () => {

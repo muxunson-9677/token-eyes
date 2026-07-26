@@ -7,6 +7,7 @@ import {
   LIMIT_PROVIDER_IDS,
   limitProviderIconKey,
   limitProviderName,
+  providerHasCapability,
 } from "../../../lib/limits-providers.js";
 import { computePace, resetToMs, resolveWindowSeconds } from "../../../lib/limit-pace.js";
 import { ProviderIcon } from "./ProviderIcon.jsx";
@@ -254,6 +255,16 @@ function renderConfiguredProvider(id, data, title, mode, expanded, onToggle) {
 }
 
 function renderProviderGroup(id, data, mode, expanded, onToggle) {
+  const isManualOnly = providerHasCapability(id, "desktop_visibility")
+    && providerHasCapability(id, "manual_token_plan")
+    && !providerHasCapability(id, "official_rate_limit");
+  if (isManualOnly) {
+    return (
+      <ToolGroup key={id} name={limitProviderName(id)} providerId={id}>
+        <StatusLine>{copy("limits.status.manual_only")}</StatusLine>
+      </ToolGroup>
+    );
+  }
   if (!PROVIDER_LIMIT_SPECS[id]) return null;
   if (!data?.configured) {
     return (

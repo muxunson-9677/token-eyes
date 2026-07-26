@@ -7,7 +7,7 @@ import {
   setStoredDeviceSession,
   type CloudDeviceSession,
 } from "./cloud-sync-prefs";
-import { getLocalApiAuthHeaders } from "./local-api-auth";
+import { fetchAuthenticatedLocalApi } from "./local-api-fetch";
 
 const MIN_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const DEVICE_TOKEN_ROTATE_AFTER_MS = 12 * 60 * 60 * 1000;
@@ -67,7 +67,7 @@ async function triggerLeaderboardRefresh(
  */
 async function resolveMachineId(): Promise<string | null> {
   try {
-    const res = await fetch("/functions/tokentracker-machine-id", {
+    const res = await fetchAuthenticatedLocalApi("/functions/tokentracker-machine-id", {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
@@ -143,11 +143,9 @@ async function postLocalUsageSync(options: {
   if (drain === true) body.drain = true;
   const bu = insforgeBaseUrl || getInsforgeRemoteUrl();
   if (isRemoteHttpBase(bu)) body.insforgeBaseUrl = bu.trim();
-  const authHeaders = await getLocalApiAuthHeaders();
-
-  const res = await fetch("/functions/tokentracker-local-sync", {
+  const res = await fetchAuthenticatedLocalApi("/functions/tokentracker-local-sync", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json", ...authHeaders },
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;

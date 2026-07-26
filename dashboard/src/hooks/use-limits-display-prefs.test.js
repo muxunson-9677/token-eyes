@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import providerCapabilities from "../../../shared/provider-capabilities.json";
 import { LIMIT_PROVIDER_IDS } from "../lib/limits-providers.js";
 import {
   LIMIT_DISPLAY_MODES,
@@ -100,16 +101,11 @@ describe("useLimitsDisplayPrefs", () => {
 
   it("matches the provider list used for visibility/order keys", () => {
     // Must match Swift LimitsSettingsStore.allProviders (see limits-providers.js).
-    expect(LIMIT_PROVIDER_IDS).toEqual([
-      "claude",
-      "codex",
-      "cursor",
-      "gemini",
-      "hermes",
-      "openclaw",
-      "opencode",
-      "antigravity",
-    ]);
+    expect(LIMIT_PROVIDER_IDS).toEqual(
+      providerCapabilities.providers
+        .filter((provider) => provider.desktop_visibility)
+        .map((provider) => provider.id),
+    );
     expect(LIMIT_PROVIDER_IDS).not.toEqual(
       expect.arrayContaining(["kimi", "kiro", "grok", "copilot"]),
     );

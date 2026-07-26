@@ -71,12 +71,16 @@ test("workflow uses v-prefixed tag for all gh release commands", () => {
   }
 });
 
-test("workflow verifies version matches package.json", () => {
+test("workflow verifies version matches package.json and both macOS targets", () => {
   const content = loadWorkflow();
   assert.ok(
     content.includes("Verify version"),
     "should have a version verification step"
   );
+  assert.match(content, /MARKETING_VERSION/);
+  assert.match(content, /TokenTrackerBar\/project\.yml/);
+  assert.match(content, /Validate version input/);
+  assert.match(content, /Version must be X\.Y\.Z/);
 });
 
 test("workflow builds dashboard before bundling", () => {
@@ -250,4 +254,41 @@ test("create-dmg.sh supports CI headless mode", () => {
     dmgScript.includes('CI:-}'),
     "create-dmg.sh should check CI env var for headless mode"
   );
+});
+
+test("workflow uses a deterministic derived-data app path", () => {
+  const content = loadWorkflow();
+  assert.match(content, /-derivedDataPath build\/DerivedData/);
+  assert.match(content, /create-dmg\.sh TokenTrackerBar\/build\/DerivedData\/Build\/Products\/Release\/TokenTrackerBar\.app/);
+  assert.doesNotMatch(content, /find[^\n]*-maxdepth/);
+});
+
+test("Homebrew secret is guarded through job env, not a direct secrets expression", () => {
+  const content = loadWorkflow();
+  assert.match(content, /HOMEBREW_DISPATCH_TOKEN:\s*\$\{\{\s*secrets\.HOMEBREW_DISPATCH_TOKEN\s*\}\}/);
+  assert.match(content, /if:\s*env\.HOMEBREW_DISPATCH_TOKEN\s*!=\s*''/);
+  assert.doesNotMatch(content, /if:[^\n]*secrets\.HOMEBREW_DISPATCH_TOKEN/);
+});
+
+test("draft release receives the required one-line release note", () => {
+  const content = loadWorkflow();
+  assert.match(content, /notes:[\s\S]*?required:\s*true/);
+  assert.match(content, /RELEASE_NOTES:\s*\$\{\{\s*inputs\.notes\s*\}\}/);
+  assert.match(content, /gh release create[^\n]*--notes "\$RELEASE_NOTES"/);
+  assert.doesNotMatch(content, /--notes\s+""/);
+});
+
+test("release note input is validated as one non-empty ASCII line", () => {
+  const content = loadWorkflow();
+  assert.match(content, /Release notes must be one non-empty English\/ASCII line/);
+  assert.match(content, /RELEASE_NOTES\/\/\[\[:space:\]\]\//);
+  assert.match(content, /\^\[\[:print:\]\]\+\$/);
+});
+
+test("CI create-dmg copies the staging folder rather than flattening the app bundle", () => {
+  const script = fs.readFileSync(path.join(__dirname, "..", "TokenTrackerBar", "scripts", "create-dmg.sh"), "utf8");
+  const ciBranch = script.slice(script.indexOf('if [[ "${CI:-}" == "true" ]]'));
+  assert.match(ciBranch, /rm -f "\$STAGING\/Applications"/);
+  assert.match(ciBranch, /"\$FINAL_DMG" \\\n        "\$STAGING"/);
+  assert.doesNotMatch(ciBranch, /"\$FINAL_DMG" \\\n        "\$APP_PATH"/);
 });

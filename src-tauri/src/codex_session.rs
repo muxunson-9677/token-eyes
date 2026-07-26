@@ -545,6 +545,21 @@ pub async fn open_codex_console_login(
 
     let window_label = format!("codex_login_{}", uuid_simple());
 
+    // #3: pin a stable, identity-independent WebView2 data directory so the
+    // official-console login cookies persist across restarts (and survive a
+    // future rebrand of the bundle identifier). Users then log in ONCE per
+    // provider instead of every time a detection window opens. Best-effort:
+    // fall back to the temp dir and ignore mkdir errors so login never fails
+    // to open. Safe on Windows because these login windows set no
+    // `additional_browser_args` and are created from an async command.
+    let session_data_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("webview-sessions")
+        .join("codex");
+    let _ = std::fs::create_dir_all(&session_data_dir);
+
     let window = WebviewWindowBuilder::new(
         &app,
         &window_label,
@@ -558,6 +573,7 @@ pub async fn open_codex_console_login(
     .inner_size(960.0, 720.0)
     .resizable(true)
     .center()
+    .data_directory(session_data_dir)
     .initialization_script(SESSION_FETCH_JS)
     .on_navigation(|url| is_official_codex_url(url.as_str()))
     .build()

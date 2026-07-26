@@ -1,10 +1,12 @@
+require("./helpers/home-shim.cjs");
+
 const assert = require("node:assert");
 const { describe, it } = require("node:test");
 const { createLocalApiHandler } = require("../src/lib/local-api");
 
 describe("local-api handshake", () => {
   it("returns protocol_version and capabilities in local-auth response", async () => {
-    const handler = createLocalApiHandler({ queuePath: "" });
+    const handler = createLocalApiHandler({ queuePath: "", listeningPort: 7680 });
     
     let responseBody = null;
     let statusCode = null;
@@ -14,7 +16,10 @@ describe("local-api handshake", () => {
       const url = new URL("/api/local-auth", "http://localhost:7680");
       const req = {
         method: "GET",
-        headers: { origin: "http://tauri.localhost" },
+        headers: {
+          host: "127.0.0.1:7680",
+          origin: "http://tauri.localhost",
+        },
         url,
       };
       const res = {
@@ -33,7 +38,8 @@ describe("local-api handshake", () => {
     assert.strictEqual(statusCode, 200);
     assert.strictEqual(headers["Content-Type"], "application/json");
     assert.strictEqual(headers["Cache-Control"], "no-store");
-    assert.strictEqual(headers["Access-Control-Allow-Origin"], "*");
+    assert.strictEqual(headers["Access-Control-Allow-Origin"], "http://tauri.localhost");
+    assert.match(headers.Vary, /(?:^|,\s*)Origin(?:,|$)/);
     
     const body = JSON.parse(responseBody);
     assert.strictEqual(body.protocol_version, 2);

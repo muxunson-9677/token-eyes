@@ -108,22 +108,27 @@ mkdir -p "$TT_DIR/bin"
 
 cp "$REPO_ROOT/bin/tracker.js" "$TT_DIR/bin/"
 cp -R "$REPO_ROOT/src" "$TT_DIR/src"
+cp -R "$REPO_ROOT/shared" "$TT_DIR/shared"
 cp "$REPO_ROOT/package.json" "$TT_DIR/"
+cp "$REPO_ROOT/package-lock.json" "$TT_DIR/"
 
 # Dashboard build artifacts
 if [[ -d "$REPO_ROOT/dashboard/dist" ]]; then
   mkdir -p "$TT_DIR/dashboard"
   cp -R "$REPO_ROOT/dashboard/dist" "$TT_DIR/dashboard/dist"
 else
-  echo "⚠️  dashboard/dist/ not found — run 'npm run dashboard:build' first"
-  echo "   Continuing without dashboard assets..."
+  echo "dashboard/dist/ not found - run 'npm run dashboard:build' first" >&2
+  exit 1
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 3. Install production dependencies
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 echo "📥 Installing production dependencies..."
-(cd "$TT_DIR" && npm install --omit=dev --no-optional --ignore-scripts 2>&1 | tail -1)
+(cd "$TT_DIR" && npm ci --omit=dev --omit=optional --ignore-scripts 2>&1 | tail -1)
+
+test -f "$TT_DIR/shared/provider-capabilities.json"
+"$EMBED_DIR/node" "$TT_DIR/bin/tracker.js" --help >/dev/null
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 4. Clean node_modules bloat

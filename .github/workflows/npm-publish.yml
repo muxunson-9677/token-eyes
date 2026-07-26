@@ -1,0 +1,74 @@
+name: npm Publish
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: npm ci
+      - run: npm ci --prefix dashboard
+      - run: npm test
+      - run: npm --prefix dashboard run typecheck
+      - run: npm --prefix dashboard run lint
+      - run: npm --prefix dashboard test -- --run
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: npm run validate:copy
+      - run: npm run validate:ui-hardcode
+      - run: npm run validate:guardrails
+      - run: npm run providers:check
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - name: Check if version already published
+        id: version-check
+        run: |
+          CURRENT_VERSION=$(jq -r '.version' package.json)
+          if npm view tokentracker-cli@$CURRENT_VERSION version >/dev/null 2>&1; then
+            echo "version-exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version-exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install root dependencies
+        if: steps.version-check.outputs.version-exists == 'false'
+        run: npm ci
+      - name: Install dashboard dependencies
+        if: steps.version-check.outputs.version-exists == 'false'
+        run: npm ci --prefix dashboard
+      - name: Build dashboard
+        if: steps.version-check.outputs.version-exists == 'false'
+        run: npm run dashboard:build
+      - name: Publish to npm
+        if: steps.version-check.outputs.version-exists == 'false'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

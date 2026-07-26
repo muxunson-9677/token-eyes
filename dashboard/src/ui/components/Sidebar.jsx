@@ -17,6 +17,7 @@ import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
 import { InsforgeUserHeaderControls } from "../../components/InsforgeUserHeaderControls.jsx";
 import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native-bridge.js";
+import { isContestShowcaseEnabled } from "../../lib/contest-showcase.js";
 
 const STORAGE_KEY = "tt.sidebarCollapsed";
 // v2.0 IA: remembers which parent groups the user has expanded so the
@@ -453,7 +454,8 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
 
   return (
     <>
-      {/* Top: identity only 鈥?full-width, aligned with nav items (px-2) */}
+      {/* Top: identity only — hidden in contest demo (no cloud login). */}
+      {!isContestShowcaseEnabled() && (
       <div className={cn("px-2 pt-2 pb-2", collapsed && "flex justify-center")}>
         {showCloseButton ? (
           <div className="flex items-center gap-2">
@@ -482,6 +484,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
           />
         )}
       </div>
+      )}
 
       {/* Nav */}
       <nav

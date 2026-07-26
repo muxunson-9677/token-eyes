@@ -13,6 +13,7 @@ use tauri_plugin_dialog::DialogExt;
 use std::os::windows::process::CommandExt;
 
 const LOCAL_SERVER_HOST: &str = "127.0.0.1";
+const TAURI_LOCAL_ORIGIN: &str = "http://tauri.localhost";
 const PREFERRED_LOCAL_SERVER_PORT: u16 = 7680;
 const FALLBACK_LOCAL_SERVER_PORT_START: u16 = 17680;
 const FALLBACK_LOCAL_SERVER_PORT_END: u16 = 17720;
@@ -77,8 +78,33 @@ fn sanitize_message(msg: impl AsRef<str>) -> String {
 
 #[derive(Default)]
 pub struct LocalServerState {
+    startup: Mutex<()>,
     child: Mutex<Option<Child>>,
     url: Mutex<Option<String>>,
+}
+
+impl LocalServerState {
+    pub fn known_url(&self) -> Result<Option<String>, String> {
+        self.url
+            .lock()
+            .map(|guard| guard.clone())
+            .map_err(|_| "Local server URL lock poisoned".to_string())
+    }
+
+    pub fn record_ready_url(&self, url: String) -> Result<String, String> {
+        let mut guard = self
+            .url
+            .lock()
+            .map_err(|_| "Local server URL lock poisoned".to_string())?;
+        *guard = Some(url.clone());
+        Ok(url)
+    }
+
+    pub fn clear_ready_url(&self) {
+        if let Ok(mut guard) = self.url.lock() {
+            *guard = None;
+        }
+    }
 }
 
 impl Drop for LocalServerState {
@@ -152,8 +178,8 @@ fn is_token_tracker_api_available(port: u16) -> bool {
     let _ = stream.set_write_timeout(Some(Duration::from_millis(300)));
 
     let request = format!(
-        "GET /api/local-auth HTTP/1.1\r\nHost: {}:{}\r\nOrigin: http://tauri.localhost\r\nConnection: close\r\n\r\n",
-        LOCAL_SERVER_HOST, port
+        "GET /api/local-auth HTTP/1.1\r\nHost: {}:{}\r\nOrigin: {}\r\nConnection: close\r\n\r\n",
+        LOCAL_SERVER_HOST, port, TAURI_LOCAL_ORIGIN
     );
     if stream.write_all(request.as_bytes()).is_err() {
         return false;
@@ -188,8 +214,11 @@ fn is_token_tracker_api_available(port: u16) -> bool {
     if !response.starts_with("HTTP/") || !response.contains(" 200 ") {
         return false;
     }
+    let has_expected_cors_origin = lower
+        .lines()
+        .any(|line| line.trim() == "access-control-allow-origin: http://tauri.localhost");
     if !lower.contains("application/json")
-        || !lower.contains("access-control-allow-origin: *")
+        || !has_expected_cors_origin
         || !lower.contains("cache-control: no-store")
     {
         return false;
@@ -213,6 +242,15 @@ fn is_token_tracker_api_available(port: u16) -> bool {
         Ok(v) => v,
         Err(_) => return false,
     };
+
+    let token = json
+        .get("token")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    if token.is_empty() {
+        return false;
+    }
 
     let protocol_version = json
         .get("protocol_version")
@@ -242,12 +280,6 @@ fn is_token_tracker_api_available(port: u16) -> bool {
     true
 }
 
-fn find_running_token_tracker_api() -> Option<u16> {
-    std::iter::once(PREFERRED_LOCAL_SERVER_PORT)
-        .chain(NEARBY_PORT_PROBE_START..=NEARBY_PORT_PROBE_END)
-        .chain(FALLBACK_LOCAL_SERVER_PORT_START..=FALLBACK_LOCAL_SERVER_PORT_END)
-        .find(|port| is_token_tracker_api_available(*port))
-}
 
 fn choose_bindable_port() -> Option<u16> {
     if is_port_bindable(PREFERRED_LOCAL_SERVER_PORT) {
@@ -258,28 +290,6 @@ fn choose_bindable_port() -> Option<u16> {
         .find(|port| is_port_bindable(*port))
 }
 
-fn get_known_url(state: &LocalServerState) -> Result<Option<String>, String> {
-    state
-        .url
-        .lock()
-        .map(|guard| guard.clone())
-        .map_err(|_| "Local server URL lock poisoned".to_string())
-}
-
-fn set_known_url(state: &LocalServerState, url: String) -> Result<String, String> {
-    let mut guard = state
-        .url
-        .lock()
-        .map_err(|_| "Local server URL lock poisoned".to_string())?;
-    *guard = Some(url.clone());
-    Ok(url)
-}
-
-fn clear_known_url(state: &LocalServerState) {
-    if let Ok(mut guard) = state.url.lock() {
-        *guard = None;
-    }
-}
 
 fn push_candidate_ancestors(candidates: &mut Vec<PathBuf>, start: PathBuf) {
     let mut current = Some(start.as_path());
@@ -541,20 +551,16 @@ pub fn ensure_local_server_started(
     app: &AppHandle,
     state: &LocalServerState,
 ) -> Result<String, String> {
-    // 1. Fast path: known URL is still serving.
-    if let Some(url) = get_known_url(state)? {
-        if port_from_url(&url).is_some_and(is_token_tracker_api_available) {
-            return Ok(url);
-        }
-    }
+    // Serialize the complete inspect/choose/spawn/publish sequence. Startup is
+    // triggered both by app setup and the first WebView status request.
+    let _startup_guard = state
+        .startup
+        .lock()
+        .map_err(|_| "Local server startup lock poisoned".to_string())?;
 
-    // 2. Probe for any already-running Token Tracker API on the local machine
-    //    (e.g. a `node serve` started by another invocation).
-    if let Some(port) = find_running_token_tracker_api() {
-        return set_known_url(state, local_server_url(port));
-    }
-
-    // 3. If we already spawned a child, wait for it (don't spawn a second one).
+    // 1. Reuse only a child spawned and owned by this app process. A public
+    // handshake is not process identity, so never adopt a matching service
+    // discovered by scanning localhost ports.
     {
         let mut guard = state
             .child
@@ -563,8 +569,7 @@ pub fn ensure_local_server_started(
         if let Some(child) = guard.as_mut() {
             match child.try_wait() {
                 Ok(None) => {
-                    // Child still running — wait for readiness on its known port.
-                    if let Some(url) = get_known_url(state)? {
+                    if let Some(url) = state.known_url()? {
                         if let Some(port) = port_from_url(&url) {
                             if wait_for_ready(
                                 port,
@@ -572,23 +577,25 @@ pub fn ensure_local_server_started(
                             ) {
                                 return Ok(url);
                             }
-                            // Stale child — kill it and respawn below.
-                            let _ = child.kill();
-                            let _ = child.wait();
                         }
                     }
+                    // The owned child is running without a valid ready URL.
+                    // Stop only that child before spawning its replacement.
+                    let _ = child.kill();
+                    let _ = child.wait();
                     *guard = None;
-                    clear_known_url(state);
+                    state.clear_ready_url();
                 }
                 Ok(Some(_)) | Err(_) => {
                     *guard = None;
-                    clear_known_url(state);
+                    state.clear_ready_url();
                 }
             }
         }
     }
 
-    // 4. Choose a bindable port.
+    // 2. Choose a bindable port. Occupied ports are skipped, never probed for
+    // adoption and never terminated.
     let port = choose_bindable_port().ok_or_else(|| {
         format!(
             "{} no free local API port found; tried {} and {}-{}",
@@ -599,10 +606,10 @@ pub fn ensure_local_server_started(
         )
     })?;
 
-    // 5. Resolve the runtime (bundled first; dev fallback only if allowed).
+    // 3. Resolve the runtime (bundled first; dev fallback only if allowed).
     let runtime = resolve_runtime(app)?;
 
-    // 6. Spawn the backend.
+    // 4. Spawn the backend.
     let child = spawn_local_server(app, &runtime, port)?;
     write_runtime_log(
         app,
@@ -623,18 +630,18 @@ pub fn ensure_local_server_started(
     }
 
     let url = local_server_url(port);
+    // Publish the URL only alongside the owned child so a concurrent status
+    // request can wait for this exact process instead of spawning another one.
+    state.record_ready_url(url.clone())?;
 
-    // 7. Wait for the server to become ready. First launch after install can be
+    // 5. Wait for the server to become ready. First launch after install can be
     // slower on Windows because WebView/Defender may scan the embedded Node tree.
     if wait_for_ready(port, Duration::from_secs(LOCAL_SERVER_READY_TIMEOUT_SECS)) {
-        let result = set_known_url(state, url);
-        if result.is_ok() {
-            write_runtime_log(app, "INFO", &format!("local API ready on port {}", port));
-        }
-        return result;
+        write_runtime_log(app, "INFO", &format!("local API ready on port {}", port));
+        return Ok(url);
     }
 
-    // 8. Server didn't become ready — diagnose and return a structured error.
+    // 6. Server didn't become ready — diagnose and return a structured error.
     let crashed_status = {
         let mut guard = state
             .child
@@ -662,7 +669,7 @@ pub fn ensure_local_server_started(
             None
         }
     };
-    clear_known_url(state);
+    state.clear_ready_url();
 
     let err = match crashed_status {
         Some(status) => format!(
@@ -757,6 +764,28 @@ mod tests {
     }
 
     #[test]
+    fn local_server_state_serializes_startup_attempts() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let state = Arc::new(LocalServerState::default());
+        let first_guard = state.startup.lock().expect("first startup lock");
+        let acquired = Arc::new(AtomicBool::new(false));
+        let second_state = Arc::clone(&state);
+        let second_acquired = Arc::clone(&acquired);
+        let handle = thread::spawn(move || {
+            let _guard = second_state.startup.lock().expect("second startup lock");
+            second_acquired.store(true, Ordering::SeqCst);
+        });
+
+        thread::sleep(Duration::from_millis(50));
+        assert!(!acquired.load(Ordering::SeqCst));
+        drop(first_guard);
+        handle.join().expect("second startup waiter");
+        assert!(acquired.load(Ordering::SeqCst));
+    }
+
+    #[test]
     fn api_probe_rejects_legacy_server_without_tauri_cors_contract() {
         let (port, handle) = serve_probe_response(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 20\r\n\r\n{\"token\":\"legacy\"}",
@@ -769,7 +798,7 @@ mod tests {
     #[test]
     fn api_probe_rejects_server_without_protocol_version() {
         let (port, handle) = serve_probe_response(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 21\r\n\r\n{\"token\":\"current\"}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nContent-Length: 21\r\n\r\n{\"token\":\"current\"}",
         );
 
         assert!(!is_token_tracker_api_available(port));
@@ -779,7 +808,7 @@ mod tests {
     #[test]
     fn api_probe_rejects_server_with_old_protocol_version() {
         let (port, handle) = serve_probe_response(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 62\r\n\r\n{\"token\":\"v1\",\"protocol_version\":1,\"capabilities\":[\"spend_usage_v1\"]}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nContent-Length: 62\r\n\r\n{\"token\":\"v1\",\"protocol_version\":1,\"capabilities\":[\"spend_usage_v1\"]}",
         );
 
         assert!(!is_token_tracker_api_available(port));
@@ -789,7 +818,7 @@ mod tests {
     #[test]
     fn api_probe_rejects_server_missing_capability() {
         let (port, handle) = serve_probe_response(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 113\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\"]}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nContent-Length: 113\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\"]}",
         );
 
         assert!(!is_token_tracker_api_available(port));
@@ -799,7 +828,27 @@ mod tests {
     #[test]
     fn api_probe_rejects_server_without_provider_api_balance_capability() {
         let (port, handle) = serve_probe_response(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 145\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\"]}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nContent-Length: 145\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\"]}",
+        );
+
+        assert!(!is_token_tracker_api_available(port));
+        handle.join().expect("probe server thread");
+    }
+
+    #[test]
+    fn api_probe_rejects_empty_local_auth_token() {
+        let (port, handle) = serve_probe_response(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nContent-Length: 166\r\n\r\n{\"token\":\"\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\",\"provider_api_balance\"]}",
+        );
+
+        assert!(!is_token_tracker_api_available(port));
+        handle.join().expect("probe server thread");
+    }
+
+    #[test]
+    fn api_probe_rejects_wildcard_cors_even_with_full_protocol_contract() {
+        let (port, handle) = serve_probe_response(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 168\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\",\"provider_api_balance\"]}",
         );
 
         assert!(!is_token_tracker_api_available(port));
@@ -809,7 +858,7 @@ mod tests {
     #[test]
     fn api_probe_accepts_server_with_full_protocol_contract() {
         let (port, handle) = serve_probe_response(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 168\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\",\"provider_api_balance\"]}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nContent-Length: 168\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\",\"provider_api_balance\"]}",
         );
 
         assert!(is_token_tracker_api_available(port));
@@ -824,7 +873,7 @@ mod tests {
             padding
         );
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nContent-Length: {}\r\n\r\n{}",
             body.len(),
             body
         );
@@ -836,7 +885,7 @@ mod tests {
 
     #[test]
     fn api_probe_accepts_response_before_connection_close() {
-        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 168\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\",\"provider_api_balance\"]}";
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nContent-Length: 168\r\n\r\n{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\",\"provider_api_balance\"]}";
         let (port, handle) =
             serve_probe_response_with_close_delay(response, Duration::from_millis(800));
 
@@ -848,7 +897,7 @@ mod tests {
     fn api_probe_accepts_chunked_local_auth_response() {
         let body = "{\"token\":\"v2\",\"protocol_version\":2,\"capabilities\":[\"spend_usage_v2\",\"provider_model_stats\",\"request_usage_records\",\"provider_api_balance\"]}";
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{}\r\n0\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: http://tauri.localhost\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{}\r\n0\r\n\r\n",
             body.len(),
             body
         );

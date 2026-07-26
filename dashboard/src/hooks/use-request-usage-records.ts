@@ -30,6 +30,8 @@ interface UseRequestUsageRecordsParams {
   cacheKey?: string;
   timeZone?: string;
   tzOffsetMinutes?: number;
+  /** Provider visibility is tri-state: undefined=unrestricted, []=hide all. */
+  visibleProviderIds?: string[];
   /** When false, skip network fetch (deferred until idle or tab switch). */
   fetchEnabled?: boolean;
   /** 单个 source 拉取的记录上限；默认 100。 */
@@ -132,11 +134,13 @@ export function useRequestUsageRecords({
   );
 
   const effectiveSources = useMemo(
-    () => resolveEffectiveUsageSources({
-      sources: filterParams.sources,
-      agentIds: filterParams.agentIds,
-      visibleProviderIds: normalizedVisibleProviderIds,
-    }),
+    () => (hasExplicitVisibleProviderIds
+      ? resolveEffectiveUsageSources({
+        sources: filterParams.sources,
+        agentIds: filterParams.agentIds,
+        visibleProviderIds: normalizedVisibleProviderIds,
+      })
+      : filterParams.sources),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       Array.isArray(filterParams.sources) ? filterParams.sources.join(",") : filterParams.sources,
@@ -158,7 +162,7 @@ export function useRequestUsageRecords({
   // change whenever the set of queried providers changes (independent of the
   // upstream filter context).
   const visibleKey = useMemo(
-    () => effectiveSources.join(","),
+    () => effectiveSources?.join(",") ?? "all",
     [effectiveSources],
   );
 
@@ -232,7 +236,7 @@ export function useRequestUsageRecords({
       return;
     }
 
-    if (hasExplicitVisibleProviderIds && effectiveSources.length === 0) {
+    if (hasExplicitVisibleProviderIds && effectiveSources?.length === 0) {
       setRecords([]);
       setTotals(EMPTY_TOTALS);
       setSource(mockEnabled ? "mock" : "edge");

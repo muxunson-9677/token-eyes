@@ -1340,6 +1340,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       if (alignedModel && !group.buckets.has(alignedModel)) {
         toAppend.push(
           JSON.stringify({
+            record_kind: "bucket_snapshot",
+            snapshot_kind: "correction",
             source: group.source,
             model: alignedModel,
             hour_start: group.hourStart,
@@ -1363,11 +1365,14 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         if (unknownBucket.retractedUnknownKey !== zeroKey) {
           toAppend.push(
             JSON.stringify({
+              record_kind: "bucket_snapshot",
+              snapshot_kind: "correction",
               source: group.source,
               model: DEFAULT_MODEL,
               hour_start: group.hourStart,
               input_tokens: zeroTotals.input_tokens,
               cached_input_tokens: zeroTotals.cached_input_tokens,
+              cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
               output_tokens: zeroTotals.output_tokens,
               reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
               total_tokens: zeroTotals.total_tokens,
@@ -1390,6 +1395,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         if (bucket.queuedKey === key) continue;
         toAppend.push(
           JSON.stringify({
+            record_kind: "bucket_snapshot",
+            snapshot_kind: "cumulative",
             source: group.source,
             model,
             hour_start: group.hourStart,
@@ -1418,11 +1425,14 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     if (alignedModel && alignedModel !== nextAligned) {
       toAppend.push(
         JSON.stringify({
+          record_kind: "bucket_snapshot",
+          snapshot_kind: "correction",
           source: group.source,
           model: alignedModel,
           hour_start: group.hourStart,
           input_tokens: zeroTotals.input_tokens,
           cached_input_tokens: zeroTotals.cached_input_tokens,
+          cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
           output_tokens: zeroTotals.output_tokens,
           reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
           total_tokens: zeroTotals.total_tokens,
@@ -1440,6 +1450,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       if (unknownBucket.retractedUnknownKey !== zeroKey) {
         toAppend.push(
           JSON.stringify({
+            record_kind: "bucket_snapshot",
+            snapshot_kind: "correction",
             source: group.source,
             model: DEFAULT_MODEL,
             hour_start: group.hourStart,
@@ -1462,6 +1474,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     if (unknownBucket.queuedKey === outputKey) continue;
     toAppend.push(
       JSON.stringify({
+        record_kind: "bucket_snapshot",
+        snapshot_kind: "cumulative",
         source: group.source,
         model: outputModel,
         hour_start: group.hourStart,
@@ -1509,6 +1523,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       if (groupQueued[groupKey] === key) continue;
       toAppend.push(
         JSON.stringify({
+          record_kind: "bucket_snapshot",
+          snapshot_kind: "cumulative",
           source: group.source,
           model,
           hour_start: group.hourStart,
@@ -2388,10 +2404,15 @@ function normalizeUsage(u) {
   // bytes twice: once at the full input rate and again at the cache_read
   // rate, producing ~6–7x cost inflation on cache-heavy Codex sessions
   // (verified against ccusage's per-day numbers on the same rollouts).
-  // We intentionally leave `total_tokens` unchanged: Codex reports
-  // total = input(inclusive of cached) + output, which numerically equals
-  // our schema's non_cached + cached + output + 0 (cache_creation=0 here).
   out.input_tokens = Math.max(0, out.input_tokens - out.cached_input_tokens);
+  // The persisted queue contract is column-additive even when the vendor's
+  // raw total treats reasoning as an informational subset of output.
+  out.total_tokens =
+    out.input_tokens +
+    out.cached_input_tokens +
+    out.cache_creation_input_tokens +
+    out.output_tokens +
+    out.reasoning_output_tokens;
   return out;
 }
 
@@ -9156,6 +9177,8 @@ module.exports = {
   totalsKey,
   claudeMessageDedupKey,
   groupBucketKey,
+  // Exposed for the R6 queue idempotence regression test.
+  enqueueTouchedBuckets,
   // Exposed for regression tests covering nested-group remote URLs.
   canonicalizeProjectRef,
   deriveProjectKeyFromRef,

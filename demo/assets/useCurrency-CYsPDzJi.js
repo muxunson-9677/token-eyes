@@ -1,0 +1,1 @@
+import{r as e,cM as r,cN as t,D as c}from"./main-DoX28NZi.js";const s=Object.freeze({currency:c,rate:1,symbol:"$",rates:{...t},rateSource:"default",rateFetchedAt:null,setCurrency:()=>{},refreshRates:async()=>null});function u(){return e.useContext(r)??s}export{u};

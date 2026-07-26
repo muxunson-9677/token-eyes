@@ -5,7 +5,7 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -91,7 +91,7 @@ test("local settings API saves machine-only data directory and pricing overrides
     const handler = createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
 
     const initial = await call(handler, "/functions/tokentracker-local-settings");
-    assert.deepEqual(readJsonResponse(initial).dataDirectories, { claude: "", codex: "", hermes: "", cursor: "", openclaw: "" });
+    assert.deepEqual(readJsonResponse(initial).dataDirectories, { claude: "", codex: "", hermes: "", cursor: "", trae: "", openclaw: "" });
     assert.deepEqual(readJsonResponse(initial).agentDefaultPricing, {
       claude: { inputUsdPer1M: 0, outputUsdPer1M: 0 },
       codex: { inputUsdPer1M: 0, outputUsdPer1M: 0 },
@@ -114,6 +114,7 @@ test("local settings API saves machine-only data directory and pricing overrides
       codex: "C:\\Users\\admin\\.codex",
       hermes: "\\\\wsl.localhost\\Ubuntu\\home\\agent\\.hermes",
       cursor: "C:\\Users\\admin\\AppData\\Roaming\\Cursor",
+      trae: "C:\\Users\\admin\\AppData\\Roaming\\Trae",
       openclaw: "D:\\OpenClaw",
     };
     const saved = await call(handler, "/functions/tokentracker-local-settings", {

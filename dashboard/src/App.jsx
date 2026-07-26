@@ -12,6 +12,8 @@ import { LoginModal } from "./components/LoginModal.jsx";
 import { getBackendBaseUrl, getLeaderboardBaseUrl } from "./lib/config";
 import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
+import { isContestShowcaseEnabled } from "./lib/contest-showcase.js";
+import { copy } from "./lib/copy";
 import { clearDashboardUsageCachesForRealData } from "./lib/usage-cache";
 import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
 import { AppLayout } from "./ui/components/Sidebar.jsx";
@@ -80,6 +82,19 @@ const WidgetsPage = lazy(() =>
   import("./pages/WidgetsPage.jsx").then((m) => ({ default: m.WidgetsPage })),
 );
 
+/** Contest demo: settings routes keep sidebar nav but hide real settings UI. */
+function ContestSettingsBlank() {
+  return (
+    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
+      <main className="flex flex-1 items-center justify-center px-6 py-20">
+        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("contest.settings.not_public")}
+        </p>
+      </main>
+    </div>
+  );
+}
+
 export default function App() {
   // Subscribing to locale here makes App rerender on language switch, which
   // rebuilds every child element reference and triggers copy() re-evaluation
@@ -92,6 +107,7 @@ export default function App() {
   const dashboardResourcePreloadStartedRef = useRef(false);
   const leaderboardStatePreloadContextKeysRef = useRef(new Set());
   const mockEnabled = isMockEnabled();
+  const contestShowcase = isContestShowcaseEnabled();
   const screenshotMode = useMemo(() => {
     if (typeof window === "undefined") return false;
     return isScreenshotModeEnabled(window.location.search);
@@ -258,9 +274,9 @@ export default function App() {
   } else if (isLimitsPath) {
     PageComponent = LimitsPage;
   } else if (isSettingsBasicPath) {
-    PageComponent = SettingsBasicPage;
+    PageComponent = contestShowcase ? ContestSettingsBlank : SettingsBasicPage;
   } else if (isSettingsCostPath) {
-    PageComponent = SettingsCostPage;
+    PageComponent = contestShowcase ? ContestSettingsBlank : SettingsCostPage;
   } else if (isSpendUsagePath) {
     PageComponent = SpendUsagePage;
   } else if (isSpendCostPath) {
@@ -287,6 +303,7 @@ export default function App() {
   // exceptions that handle themselves.
   const publicHostNeedsLogin =
     !isLocalMode &&
+    !mockEnabled &&
     !cloudAuthSignedIn &&
     !publicMode &&
     !insforge.loading &&
@@ -319,8 +336,8 @@ export default function App() {
     // confusion. Auth check happens inside DevicePage itself.
     content = <DevicePage />;
   } else if (normalizedPath === "/wrapped") {
-    // Year-end Wrapped page. Reads from /functions/tokentracker-wrapped
-    // (provided by the local CLI server) 鈥?no auth required.
+    // Year-end Wrapped page. Reads from the authenticated local
+    // /functions/tokentracker-wrapped endpoint.
     content = <WrappedPage />;
   } else if (gate === "landing") {
     content = <LandingPage signInUrl="/login" signUpUrl="/login" />;
@@ -339,6 +356,7 @@ export default function App() {
         signInUrl="/login"
         signUpUrl="/login"
         onMainContentVisible={handleDashboardMainContentVisible}
+        contestPreview={contestShowcase && isSpendUsagePath}
       />
     );
     if (showSidebar) {
@@ -357,7 +375,7 @@ export default function App() {
             <UsageFiltersProvider>
               <Suspense fallback={null}>{content}</Suspense>
               {showSidebar ? <CommandPalette /> : null}
-              <LoginModal />
+              {!contestShowcase ? <LoginModal /> : null}
               {!isLocalMode && <Analytics />}
               {!isLocalMode && <SpeedInsights />}
             </UsageFiltersProvider>

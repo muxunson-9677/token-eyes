@@ -329,6 +329,18 @@ header.auth.open_settings,shared,*,InsforgeUserHeaderControls,open_settings,"Ope
 settings.page.title,ui,SettingsPage,SettingsPage,title,"Settings",,active
 settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage your account, appearance, and display preferences.",,active
 settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,"Appearance",,active
+settings.section.window_behavior,ui,SettingsPage,WindowBehaviorSection,sec_window,"窗口行为",,active
+settings.section.auto_start,ui,SettingsPage,WindowBehaviorSection,sec_autostart,"开机自启",,active
+settings.window.close_behavior,ui,SettingsPage,WindowBehaviorSection,win_close,"关闭按钮行为",,active
+settings.window.close_behavior_hint,ui,SettingsPage,WindowBehaviorSection,win_close_hint,"点击窗口右上角 × 时：最小化到托盘保持后台运行，或直接退出程序",,active
+settings.window.close_option_minimize,ui,SettingsPage,WindowBehaviorSection,win_close_min,"最小化到托盘",,active
+settings.window.close_option_exit,ui,SettingsPage,WindowBehaviorSection,win_close_exit,"直接退出",,active
+settings.window.launch_on_startup,ui,SettingsPage,WindowBehaviorSection,win_launch,"开机时自动启动",,active
+settings.window.launch_on_startup_hint,ui,SettingsPage,WindowBehaviorSection,win_launch_hint,"登录 Windows 时自动启动 Token Eyes",,active
+settings.window.silent_startup,ui,SettingsPage,WindowBehaviorSection,win_silent,"静默启动",,active
+settings.window.silent_startup_hint,ui,SettingsPage,WindowBehaviorSection,win_silent_hint,"开机自启时不弹出主窗口，只驻留托盘",,active
+settings.window.load_failed,ui,SettingsPage,WindowBehaviorSection,win_load_fail,"无法读取窗口设置",,active
+settings.window.update_failed,ui,SettingsPage,WindowBehaviorSection,win_update_fail,"更新窗口设置失败",,active
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,"Account",,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,"Limits Display",,active
 settings.appearance.theme.label,ui,SettingsPage,SettingsPage,theme_label,"Theme",,active
@@ -557,6 +569,7 @@ limits.label.antigravity_gpro,ui,LimitsPage,UsageLimitsPanel,antigravity_gpro,"G
 limits.label.antigravity_flash,ui,LimitsPage,UsageLimitsPanel,antigravity_flash,"Flash",,active
 limits.bar.sub_one_percent,ui,LimitsPage,UsageLimitsPanel,bar_sub_one_percent,"<1",,active
 limits.status.not_connected,ui,LimitsPage,UsageLimitsPanel,status_not_connected,"Not connected",,active
+limits.status.manual_only,ui,LimitsPage,UsageLimitsPanel,status_manual_only,"Manual token plan only; no official quota is available.",,active
 limits.status.no_data,ui,LimitsPage,UsageLimitsPanel,status_no_data,"No live limit data returned",,active
 limits.status.all_hidden,ui,LimitsPage,UsageLimitsPanel,status_all_hidden,"All limit providers are hidden. Open display settings to show them.",,active
 shared.time.now,shared,*,Shared,time_now,"now",,active
@@ -1530,6 +1543,7 @@ settings.cost.provider_api.form.auth_header,ui,SettingsPage,ProviderApiConfigSec
 settings.cost.provider_api.form.title_add,ui,SettingsPage,ProviderApiConfigSection,form_title_add,"新增供应商 API 配置",,active
 settings.cost.provider_api.form.title_edit,ui,SettingsPage,ProviderApiConfigSection,form_title_edit,"编辑供应商 API 配置",,active
 settings.cost.provider_api.form.auto_hint,ui,SettingsPage,ProviderApiConfigSection,form_auto_hint,"与 CC Switch 相同：只需填写 API URL 和 API Key，常见供应商会自动识别并补齐余额查询配置。",,active
+settings.cost.provider_api.form.detected,ui,SettingsPage,ProviderApiConfigSection,form_detected,"已自动识别为 {{provider}}，将套用其余额查询预设（可在高级配置中调整）。",,active
 settings.cost.provider_api.form.advanced_show,ui,SettingsPage,ProviderApiConfigSection,form_advanced_show,"展开高级配置",,active
 settings.cost.provider_api.form.advanced_hide,ui,SettingsPage,ProviderApiConfigSection,form_advanced_hide,"收起高级配置",,active
 settings.cost.provider_api.status.synced,ui,SettingsPage,ProviderApiConfigSection,status_synced,"已连接",,active
@@ -1592,3 +1606,66 @@ spend.cost.subscription.form.save,dashboard,SpendPage,CostAccumulation,subscript
 spend.cost.subscription.form.cancel,dashboard,SpendPage,CostAccumulation,subscription_form_cancel,"取消",,active
 spend.cost.subscription.note_separate,dashboard,SpendPage,CostAccumulation,subscription_note_separate,"订阅费用与供应商 API 账户花销分栏展示，不重复计算。",,active
 spend.cost.subscription.error_save,dashboard,SpendPage,CostAccumulation,subscription_error_save,"保存订阅记录失败，请重试。",,active
+contest.settings.not_public,ui,App,ContestSettingsBlank,message,"暂未公开",,active
+spend.mom.vs_last_month,dashboard,SpendPage,UsageStatsPanel,mom_vs_last_month,"较上月",,active
+spend.mom.no_last_month,dashboard,SpendPage,UsageStatsPanel,mom_no_last_month,"上月无数据",,active
+spend.usage.token_services.title,dashboard,SpendPage,TokenServiceListPanel,title,"Token 服务列表",,active
+spend.usage.token_services.subtitle,dashboard,SpendPage,TokenServiceListPanel,subtitle,"在用套餐额度用量",,active
+spend.usage.token_services.empty,dashboard,SpendPage,TokenServiceListPanel,empty,"尚未配置 Token 套餐。",,active
+spend.usage.token_services.empty_cta,dashboard,SpendPage,TokenServiceListPanel,empty_cta,"前往成本设置添加",,active
+spend.usage.token_services.used,dashboard,SpendPage,TokenServiceListPanel,used,"已用",,active
+spend.usage.token_services.total,dashboard,SpendPage,TokenServiceListPanel,total,"总量",,active
+spend.usage.token_services.status_ok,dashboard,SpendPage,TokenServiceListPanel,status_ok,"正常",,active
+spend.usage.token_services.status_warn,dashboard,SpendPage,TokenServiceListPanel,status_warn,"即将耗尽",,active
+spend.usage.token_services.status_full,dashboard,SpendPage,TokenServiceListPanel,status_full,"已用尽",,active
+spend.usage.token_services.unknown_quota,dashboard,SpendPage,TokenServiceListPanel,unknown_quota,"额度未知",,active
+spend.usage.token_services.loading,dashboard,SpendPage,TokenServiceListPanel,loading,"加载中…",,active
+settings.cost.other_ai.title,ui,SettingsPage,OtherAiSpendSection,title,"其他 AI 花销",,active
+settings.cost.other_ai.subtitle,ui,SettingsPage,OtherAiSpendSection,subtitle,"记录未接入统计的 AI 花销（如已封禁账号的充值），支持备注与自定义金额。",,active
+settings.cost.other_ai.add,ui,SettingsPage,OtherAiSpendSection,add,"新增花销",,active
+settings.cost.other_ai.empty,ui,SettingsPage,OtherAiSpendSection,empty,"还没有记录，点击“新增花销”添加。",,active
+settings.cost.other_ai.loading,ui,SettingsPage,OtherAiSpendSection,loading,"加载中…",,active
+settings.cost.other_ai.name_label,ui,SettingsPage,OtherAiSpendSection,name_label,"名称",,active
+settings.cost.other_ai.name_placeholder,ui,SettingsPage,OtherAiSpendSection,name_placeholder,"如：某平台账号充值",,active
+settings.cost.other_ai.amount_label,ui,SettingsPage,OtherAiSpendSection,amount_label,"金额",,active
+settings.cost.other_ai.currency_label,ui,SettingsPage,OtherAiSpendSection,currency_label,"币种",,active
+settings.cost.other_ai.date_label,ui,SettingsPage,OtherAiSpendSection,date_label,"日期",,active
+settings.cost.other_ai.note_label,ui,SettingsPage,OtherAiSpendSection,note_label,"备注",,active
+settings.cost.other_ai.note_placeholder,ui,SettingsPage,OtherAiSpendSection,note_placeholder,"如：账号被封，余额无法退回",,active
+settings.cost.other_ai.save,ui,SettingsPage,OtherAiSpendSection,save,"保存",,active
+settings.cost.other_ai.saving,ui,SettingsPage,OtherAiSpendSection,saving,"保存中…",,active
+settings.cost.other_ai.cancel,ui,SettingsPage,OtherAiSpendSection,cancel,"取消",,active
+settings.cost.other_ai.edit,ui,SettingsPage,OtherAiSpendSection,edit,"编辑",,active
+settings.cost.other_ai.delete,ui,SettingsPage,OtherAiSpendSection,delete,"删除",,active
+settings.cost.other_ai.confirm_delete,ui,SettingsPage,OtherAiSpendSection,confirm_delete,"确定删除这条花销记录吗？",,active
+settings.cost.other_ai.error_save,ui,SettingsPage,OtherAiSpendSection,error_save,"保存失败，请重试。",,active
+settings.cost.other_ai.error_required,ui,SettingsPage,OtherAiSpendSection,error_required,"请填写名称和金额。",,active
+settings.cost.other_ai.subtotal,ui,SettingsPage,OtherAiSpendSection,subtotal,"合计",,active
+leaderboard.period.today,dashboard,LeaderboardPage,LeaderboardPage,period_today,"今日",,active
+leaderboard.period.yesterday,dashboard,LeaderboardPage,LeaderboardPage,period_yesterday,"昨日",,active
+leaderboard.soon.badge,dashboard,LeaderboardPage,LeaderboardPage,soon_badge,"即将上线",,active
+leaderboard.soon.period_title,dashboard,LeaderboardPage,LeaderboardPage,soon_period_title,"该榜单维度即将上线",,active
+leaderboard.soon.period_desc,dashboard,LeaderboardPage,LeaderboardPage,soon_period_desc,"「{{name}}」榜单正在开发中，敬请期待。当前可查看本周 / 本月 / 总榜。",,active
+leaderboard.soon.notice,dashboard,LeaderboardPage,LeaderboardPage,soon_notice,"该功能即将上线，当前为占位展示，敬请期待。",,active
+leaderboard.soon.back,dashboard,LeaderboardPage,LeaderboardPage,soon_back,"返回总榜",,active
+leaderboard.soon.dismiss,dashboard,LeaderboardPage,LeaderboardPage,soon_dismiss,"知道了",,active
+leaderboard.metric.label,dashboard,LeaderboardPage,LeaderboardPage,metric_label,"计费口径",,active
+leaderboard.metric.with_cache,dashboard,LeaderboardPage,LeaderboardPage,metric_with_cache,"含缓存",,active
+leaderboard.metric.without_cache,dashboard,LeaderboardPage,LeaderboardPage,metric_without_cache,"不含缓存",,active
+leaderboard.metric.est_cost,dashboard,LeaderboardPage,LeaderboardPage,metric_est_cost,"预估费用",,active
+leaderboard.board.label,dashboard,LeaderboardPage,LeaderboardPage,board_label,"榜单",,active
+leaderboard.board.overall,dashboard,LeaderboardPage,LeaderboardPage,board_overall,"总榜",,active
+leaderboard.board.by_agent,dashboard,LeaderboardPage,LeaderboardPage,board_by_agent,"各 Agent 分榜",,active
+leaderboard.participants,dashboard,LeaderboardPage,LeaderboardPage,participants,"参与人数",,active
+leaderboard.rules.button,dashboard,LeaderboardPage,LeaderboardPage,rules_button,"排行榜规则",,active
+leaderboard.rules.title,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_title,"排行榜规则说明",,active
+leaderboard.rules.intro,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_intro,"参考「生财有道 Token 排行榜」的玩法，Token Eyes 排行榜规则如下：",,active
+leaderboard.rules.item1,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_item1,"数据来源：仅统计你本地各 AI 编程工具的 token 用量，开启云同步后上传参与排名。",,active
+leaderboard.rules.item2,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_item2,"排名口径：默认按累计消耗的总 token 数排序；后续支持「含缓存 / 不含缓存 / 预估费用」多口径切换。",,active
+leaderboard.rules.item3,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_item3,"时间维度：今日 / 昨日 / 本周 / 本月 / 总累积（今日、昨日为即将上线的占位）。",,active
+leaderboard.rules.item4,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_item4,"分榜：后续将按不同 Agent（Claude / Codex / Cursor / Gemini 等）分别出榜。",,active
+leaderboard.rules.item5,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_item5,"我的排名：登录并开启云同步后，可在榜单中高亮定位到自己的名次。",,active
+leaderboard.rules.item6,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_item6,"隐私：仅上传 token 数量与费用估算，绝不上传任何对话内容；未开启云同步不参与排名。",,active
+leaderboard.rules.item7,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_item7,"费用为基于公开定价的预估值，非真实账单。",,active
+leaderboard.rules.disclaimer,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_disclaimer,"注：今日/昨日、多口径切换、各 Agent 分榜当前为前端占位，真实数据陆续开放。",,active
+leaderboard.rules.close,dashboard,LeaderboardPage,LeaderboardRulesModal,rules_close,"知道了",,active

@@ -12,7 +12,7 @@ test("Token Eyes native shell uses one restoration path for second launch and tr
 
   assert.match(
     lib,
-    /tauri_plugin_single_instance::init\(\|app, _argv, _cwd\| \{\s*window_control::restore_main_window\(app\);\s*\}\)/,
+    /tauri_plugin_single_instance::init\(\|app, _argv, _cwd\| \{\s*window_control::restore_main_window_for_trigger\(\s*app,\s*window_control::SINGLE_INSTANCE_RESTORE_TRIGGER,\s*\);\s*\}\)/,
   );
   assert.match(lib, /window_control::enforce_main_window_title\(app\.handle\(\)\)/);
   assert.match(lib, /#\[path = "commands\.rs"\]\s*mod commands;/);
@@ -22,11 +22,14 @@ test("Token Eyes native shell uses one restoration path for second launch and tr
   );
   assert.match(
     tray,
-    /use crate::window_control::\{restore_main_window, APP_DISPLAY_NAME\}/,
+    /use crate::window_control::\{\s*restore_main_window_for_trigger, RestoreTrigger, APP_DISPLAY_NAME,\s*\}/,
   );
-  assert.match(tray, /"show" => restore_main_window\(app\)/);
-  assert.match(tray, /restore_main_window\(tray\.app_handle\(\)\)/);
-  assert.equal((tray.match(/restore_main_window\(/g) || []).length, 2);
+  assert.match(tray, /RestoreMainWindow => \{\s*restore_main_window_for_trigger\(app, RestoreTrigger::TrayMenu\)/);
+  assert.match(
+    tray,
+    /restore_main_window_for_trigger\(\s*tray\.app_handle\(\),\s*RestoreTrigger::TrayClick,\s*\)/,
+  );
+  assert.equal((tray.match(/restore_main_window_for_trigger\(/g) || []).length, 2);
   assert.doesNotMatch(tray, /fn show_main_window/);
 });
 

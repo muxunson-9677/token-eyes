@@ -25,8 +25,8 @@ function pathKey(value) {
   return normalizePathValue(value).toLowerCase();
 }
 
-function defaultWindowsDriveRoots() {
-  if (process.platform !== "win32") return [];
+function defaultWindowsDriveRoots(platform = process.platform) {
+  if (platform !== "win32") return [];
   const roots = [];
   for (let code = 65; code <= 90; code += 1) {
     roots.push(`${String.fromCharCode(code)}:\\`);
@@ -34,11 +34,33 @@ function defaultWindowsDriveRoots() {
   return roots;
 }
 
-function isCurrentUserHome(home) {
-  return pathKey(home) === pathKey(os.homedir());
+function resolveDataDirectoryContext(options = {}) {
+  const hasInjectedHome = typeof options.home === "string" && options.home.length > 0;
+  const env = options.env === undefined
+    ? hasInjectedHome ? {} : process.env
+    : options.env || {};
+  return {
+    env,
+    home: hasInjectedHome ? options.home : os.homedir(),
+    platform: options.platform === undefined ? process.platform : options.platform,
+    scanDefaultWindowsDrives: options.scanDefaultWindowsDrives === undefined
+      ? !hasInjectedHome && shouldScanDefaultWindowsDrives(env)
+      : Boolean(options.scanDefaultWindowsDrives),
+  };
 }
 
-function windowsAgentDataCodexCandidates({ env = process.env, home = os.homedir(), platform = process.platform, windowsDriveRoots = null } = {}) {
+function shouldScanDefaultWindowsDrives(env = process.env) {
+  return env?.TOKENTRACKER_TEST_DISABLE_WINDOWS_DRIVE_SCAN !== "1";
+}
+
+function windowsAgentDataCodexCandidates(options = {}) {
+  const {
+    env,
+    home,
+    platform,
+    scanDefaultWindowsDrives,
+  } = resolveDataDirectoryContext(options);
+  const { windowsDriveRoots = null } = options;
   if (platform !== "win32") return [];
   const roots = [];
   const rawAgentDataRoots = normalizePathValue(env.TOKENTRACKER_AGENTDATA_ROOTS);
@@ -48,8 +70,11 @@ function windowsAgentDataCodexCandidates({ env = process.env, home = os.homedir(
   const rawAgentData = normalizePathValue(env.AGENTDATA);
   if (rawAgentData) roots.push(rawAgentData);
 
-  const scanDefaultDrives = !Array.isArray(windowsDriveRoots) && isCurrentUserHome(home);
-  const driveRoots = Array.isArray(windowsDriveRoots) ? windowsDriveRoots : scanDefaultDrives ? defaultWindowsDriveRoots() : [];
+  const driveRoots = !scanDefaultWindowsDrives
+    ? []
+    : Array.isArray(windowsDriveRoots)
+      ? windowsDriveRoots
+      : defaultWindowsDriveRoots(platform);
   for (const root of driveRoots) {
     const normalizedRoot = normalizePathValue(root);
     if (!normalizedRoot) continue;
@@ -57,7 +82,7 @@ function windowsAgentDataCodexCandidates({ env = process.env, home = os.homedir(
   }
 
   const homeRoot = path.parse(home || "").root;
-  if (homeRoot && (Array.isArray(windowsDriveRoots) || isCurrentUserHome(home))) {
+  if (homeRoot && scanDefaultWindowsDrives) {
     roots.push(path.join(homeRoot, "AgentData"));
   }
 
@@ -67,26 +92,36 @@ function windowsAgentDataCodexCandidates({ env = process.env, home = os.homedir(
   }));
 }
 
-function listCodexHomeCandidates({ configured, env = process.env, home = os.homedir(), platform = process.platform, windowsDriveRoots = null } = {}) {
+function listCodexHomeCandidates(options = {}) {
+  const { env, home, platform, scanDefaultWindowsDrives } = resolveDataDirectoryContext(options);
+  const { configured, windowsDriveRoots = null } = options;
   const defaultCodex = path.join(home, ".codex");
   const configuredCodex = normalizePathValue(configured);
   return uniquePaths([
     configuredCodex,
     normalizePathValue(env.CODEX_HOME),
     defaultCodex,
-    ...windowsAgentDataCodexCandidates({ env, home, platform, windowsDriveRoots }),
+    ...windowsAgentDataCodexCandidates({
+      env,
+      home,
+      platform,
+      windowsDriveRoots,
+      scanDefaultWindowsDrives,
+    }),
   ]);
 }
 
-function listTrackingReadyCodexHomes({ configured, env = process.env, home = os.homedir(), platform = process.platform, windowsDriveRoots = null } = {}) {
-  return listCodexHomeCandidates({ configured, env, home, platform, windowsDriveRoots })
+function listTrackingReadyCodexHomes(options = {}) {
+  return listCodexHomeCandidates(options)
     .map((candidate) => inspectDataDirectory("codex", candidate))
     .filter((candidate) => candidate.trackingReady)
     .sort((a, b) => Date.parse(b.latestActivityAt || 0) - Date.parse(a.latestActivityAt || 0))
     .map((candidate) => candidate.path);
 }
 
-function pickBestCodexHome({ configured, env = process.env, home = os.homedir(), platform = process.platform, windowsDriveRoots = null } = {}) {
+function pickBestCodexHome(options = {}) {
+  const { env, home, platform, scanDefaultWindowsDrives } = resolveDataDirectoryContext(options);
+  const { configured, windowsDriveRoots = null } = options;
   const defaultCodex = path.join(home, ".codex");
   const envCodex = normalizePathValue(env.CODEX_HOME);
   const configuredCodex = normalizePathValue(configured);
@@ -99,11 +134,20 @@ function pickBestCodexHome({ configured, env = process.env, home = os.homedir(),
 
   if (envCodex) return envCodex;
 
-  const ready = listTrackingReadyCodexHomes({ configured, env, home, platform, windowsDriveRoots });
+  const ready = listTrackingReadyCodexHomes({
+    configured,
+    env,
+    home,
+    platform,
+    windowsDriveRoots,
+    scanDefaultWindowsDrives,
+  });
   return ready[0] || fallback;
 }
 
-function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.homedir(), platform = process.platform, windowsDriveRoots = null } = {}) {
+function resolveDataDirectoryPaths(options = {}) {
+  const { env, home, platform, scanDefaultWindowsDrives } = resolveDataDirectoryContext(options);
+  const { config = {}, windowsDriveRoots = null } = options;
   const dataDirectories = normalizeDataDirectories(config.dataDirectories);
   const codexHome = pickBestCodexHome({
     configured: dataDirectories.codex,
@@ -111,6 +155,7 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     home,
     platform,
     windowsDriveRoots,
+    scanDefaultWindowsDrives,
   });
   const codexHomes = listTrackingReadyCodexHomes({
     configured: dataDirectories.codex,
@@ -118,6 +163,7 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     home,
     platform,
     windowsDriveRoots,
+    scanDefaultWindowsDrives,
   });
   const codeHome = normalizePathValue(env.CODE_HOME) || path.join(home, ".code");
   const claudeHome = dataDirectories.claude || path.join(home, ".claude");
@@ -402,7 +448,9 @@ function defaultTraeAppDirs({ env, home, platform }) {
   return dirs;
 }
 
-function listCursorHomeCandidates({ configured, env = process.env, home = os.homedir(), platform = process.platform } = {}) {
+function listCursorHomeCandidates(options = {}) {
+  const { env, home, platform } = resolveDataDirectoryContext(options);
+  const { configured } = options;
   const candidates = [
     configured,
     normalizePathValue(env.CURSOR_HOME),
@@ -423,7 +471,9 @@ function listTrackingReadyCursorHomes(options = {}) {
     .map((candidate) => candidate.path);
 }
 
-function listTraeHomeCandidates({ configured, env = process.env, home = os.homedir(), platform = process.platform } = {}) {
+function listTraeHomeCandidates(options = {}) {
+  const { env, home, platform } = resolveDataDirectoryContext(options);
+  const { configured } = options;
   return uniquePaths([
     configured,
     normalizePathValue(env.TRAE_HOME),
@@ -451,16 +501,15 @@ function uniquePaths(values) {
   });
 }
 
-function detectDataDirectoryPaths({
-  config = {},
-  env = process.env,
-  home = os.homedir(),
-  platform = process.platform,
-  windowsDriveRoots = null,
-  wslRoots = ["\\\\wsl.localhost", "\\\\wsl$"],
-  wslDistributions = null,
-  detectInstallation = detectAgentInstallation,
-} = {}) {
+function detectDataDirectoryPaths(options = {}) {
+  const { env, home, platform, scanDefaultWindowsDrives } = resolveDataDirectoryContext(options);
+  const {
+    config = {},
+    windowsDriveRoots = null,
+    wslRoots = ["\\\\wsl.localhost", "\\\\wsl$"],
+    wslDistributions = null,
+    detectInstallation = detectAgentInstallation,
+  } = options;
   const configured = normalizeDataDirectories(config.dataDirectories);
   const candidates = {
     claude: [configured.claude, normalizePathValue(env.CLAUDE_HOME), path.join(home, ".claude")],
@@ -468,7 +517,13 @@ function detectDataDirectoryPaths({
       configured.codex,
       normalizePathValue(env.CODEX_HOME),
       path.join(home, ".codex"),
-      ...windowsAgentDataCodexCandidates({ env, home, platform, windowsDriveRoots }),
+      ...windowsAgentDataCodexCandidates({
+        env,
+        home,
+        platform,
+        windowsDriveRoots,
+        scanDefaultWindowsDrives,
+      }),
     ],
     hermes: [
       configured.hermes,
@@ -556,4 +611,5 @@ module.exports = {
   normalizeDataDirectories,
   pickBestCodexHome,
   resolveDataDirectoryPaths,
+  shouldScanDefaultWindowsDrives,
 };

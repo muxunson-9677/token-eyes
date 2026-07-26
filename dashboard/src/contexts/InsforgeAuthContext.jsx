@@ -3,7 +3,8 @@ import { getOrCreateInsforgeClient, isCloudInsforgeConfigured } from "../lib/ins
 import { clearCloudDeviceSession, setCloudSyncEnabled } from "../lib/cloud-sync-prefs";
 import { isLikelyExpiredAccessToken } from "../lib/auth-token";
 import { getPublicVisibility } from "../lib/api";
-import { clearLocalApiAuthToken, getLocalApiAuthHeaders } from "../lib/local-api-auth";
+import { clearLocalApiAuthToken } from "../lib/local-api-auth";
+import { fetchAuthenticatedLocalApi } from "../lib/local-api-fetch";
 import { isNativeWindowsApp } from "../lib/native-bridge.js";
 
 const InsforgeAuthContext = createContext(null);
@@ -56,6 +57,19 @@ export async function resolveInsforgeClientAccessToken(client, options = {}) {
   }
 
   return token || null;
+}
+
+export async function markNativeOAuthPending(
+  fetchImpl = fetchAuthenticatedLocalApi,
+) {
+  const response = await fetchImpl("/api/auth-bridge/verifier", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ native: true }),
+  });
+  if (!response.ok) {
+    throw new Error(`Native OAuth bridge marker failed with HTTP ${response.status}`);
+  }
 }
 
 export function InsforgeAuthProvider({ children }) {
@@ -156,14 +170,12 @@ export function InsforgeAuthProvider({ children }) {
           // Tell the local server that the next /auth/callback is a native app flow.
           // The callback page (in system browser) checks this flag to relay code back to app.
           try {
-            const authHeaders = await getLocalApiAuthHeaders();
-            await fetch("/api/auth-bridge/verifier", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json", ...authHeaders },
-              body: JSON.stringify({ native: true }),
-            });
-          } catch {
-            // Best effort: native OAuth can still continue without the bridge marker.
+            await markNativeOAuthPending();
+          } catch (error) {
+            return {
+              data: null,
+              error: error instanceof Error ? error : new Error(String(error)),
+            };
           }
           nativeBridge.postMessage(result.data.url);
         }

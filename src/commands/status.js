@@ -21,6 +21,7 @@ const {
   isOpencodePluginInstalled,
 } = require("../lib/opencode-config");
 const { collectLocalSubscriptions } = require("../lib/subscriptions");
+const { shouldScanDefaultWindowsDrives } = require("../lib/data-directories");
 const {
   describeCopilotOtelStatus,
   readCopilotOauthToken,
@@ -168,6 +169,7 @@ async function cmdStatus(argv = []) {
   const subscriptions = await collectLocalSubscriptions({
     home,
     env: process.env,
+    scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
     probeKeychain: opts.probeKeychain,
     probeKeychainDetails: opts.probeKeychainDetails,
   });

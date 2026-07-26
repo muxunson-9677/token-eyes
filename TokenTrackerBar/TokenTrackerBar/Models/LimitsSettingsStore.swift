@@ -34,18 +34,21 @@ final class LimitsSettingsStore: ObservableObject {
     static let shared = LimitsSettingsStore(userDefaults: .standard)
 
     /// All known provider identifiers, in default display order.
-    static let allProviders: [String] = ["claude", "codex", "cursor", "gemini", "hermes", "openclaw", "opencode", "antigravity"]
+    // BEGIN GENERATED PROVIDER CAPABILITIES — run npm run providers:generate
+    static let allProviders: [String] = ["claude", "codex", "cursor", "trae", "gemini", "hermes", "openclaw", "opencode", "antigravity"]
 
     static let displayNames: [String: String] = [
         "claude": "Claude",
         "codex": "Codex",
         "cursor": "Cursor",
+        "trae": "Trae",
         "gemini": "Gemini",
         "hermes": "Hermes",
         "openclaw": "OpenClaw",
         "opencode": "OpenCode",
         "antigravity": "Antigravity",
     ]
+    // END GENERATED PROVIDER CAPABILITIES
 
     static let iconNames: [String: String] = [
         "claude": "ClaudeLogo",

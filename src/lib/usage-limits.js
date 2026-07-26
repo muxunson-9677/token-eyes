@@ -17,12 +17,14 @@ const {
   refreshCodexTokens,
   persistRefreshedAuth,
 } = require("./codex-token-refresh");
+const { shouldScanDefaultWindowsDrives } = require("./data-directories");
 const {
   isCursorInstalled,
   extractCursorSessionToken,
   fetchCursorUsageSummary,
 } = require("./cursor-config");
 const { fetchGrokLimits } = require("./grok-limits");
+const { providerHasCapability } = require("./provider-capabilities");
 const { readSqliteJsonRows } = require("./sqlite-reader");
 
 // 2-minute in-memory cache
@@ -46,6 +48,19 @@ const CLAUDE_LIMITS_CACHE_FRESH_TTL_MS = 10 * 60 * 1000;
 const CLAUDE_RATE_LIMIT_FILE = "claude-usage-rate-limit.json";
 const CLAUDE_RATE_LIMIT_DEFAULT_COOLDOWN_SEC = 5 * 60;
 const CLAUDE_RATE_LIMIT_MAX_COOLDOWN_SEC = 60 * 60;
+
+function safeProviderErrorMessage(error) {
+  const message = typeof error?.message === "string" && error.message
+    ? error.message
+    : "Unknown error";
+  const sensitiveField =
+    /(?:^|[\s{[(,;])["']?(?:cookie|authorization|chatgpt[_ -]?account[_ -]?id|account[_ -]?id|access[_ -]?token|refresh[_ -]?token|session(?:[_ -]?(?:id|token|cookie))?|queue)["']?\s*[:=]/i;
+  const containsSensitiveContext = [
+    sensitiveField,
+    /\b(?:acct|acc)[-_][a-z0-9_-]{4,}\b/i,
+  ].some((pattern) => pattern.test(message));
+  return containsSensitiveContext ? "Provider request failed." : message;
+}
 
 function clampPercent(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -399,11 +414,11 @@ function normalizeCursorUsageSummary(body) {
   };
 }
 
-async function fetchCursorLimits({ home, fetchImpl = fetch } = {}) {
-  if (!isCursorInstalled({ home })) {
+async function fetchCursorLimits({ home, env, platform, fetchImpl = fetch } = {}) {
+  if (!isCursorInstalled({ home, env, platform })) {
     return { configured: false };
   }
-  const auth = extractCursorSessionToken({ home });
+  const auth = extractCursorSessionToken({ home, env, platform, deps: { env } });
   if (!auth?.cookie) {
     return { configured: false };
   }
@@ -417,7 +432,7 @@ async function fetchCursorLimits({ home, fetchImpl = fetch } = {}) {
   } catch (error) {
     return {
       configured: true,
-      error: error?.message || "Unknown error",
+      error: safeProviderErrorMessage(error),
     };
   }
 }
@@ -615,7 +630,7 @@ async function fetchKimiLimits({ home, env, fetchImpl = fetch } = {}) {
   } catch (error) {
     return {
       configured: true,
-      error: error?.message || "Unknown error",
+      error: safeProviderErrorMessage(error),
     };
   }
 }
@@ -938,7 +953,7 @@ async function fetchGeminiLimits({ home, env, fetchImpl = fetch, commandRunner }
   } catch (error) {
     return {
       configured: true,
-      error: error?.message || "Unknown error",
+      error: safeProviderErrorMessage(error),
     };
   }
 }
@@ -1025,15 +1040,15 @@ function runCommand(commandRunner, command, args, options = {}) {
   });
 }
 
-async function whichBinary(binary, { commandRunner } = {}) {
-  const result = await runCommand(commandRunner, "which", [binary], { timeout: 2000 });
+async function whichBinary(binary, { commandRunner, env, platform } = {}) {
+  const lookupCommand = platform === "win32" ? "where" : "which";
+  const result = await runCommand(commandRunner, lookupCommand, [binary], {
+    timeout: 2000,
+    env,
+  });
   if (result?.error || result?.status !== 0) return null;
   const stdout = typeof result?.stdout === "string" ? result.stdout.trim() : "";
-  return stdout ? stdout.split("\n")[0] : null;
-}
-
-async function isBinaryAvailable(binary, { commandRunner } = {}) {
-  return (await whichBinary(binary, { commandRunner })) !== null;
+  return stdout ? stdout.split(/\r?\n/)[0] : null;
 }
 
 function stripAnsi(text) {
@@ -1412,22 +1427,28 @@ async function fetchCopilotLimits({
       ...otel,
     };
   } catch (error) {
-    return { configured: true, error: error?.message || "Unknown error", ...otel };
+    return { configured: true, error: safeProviderErrorMessage(error), ...otel };
   }
 }
 
-async function fetchKiroLimits({ commandRunner, now = new Date() } = {}) {
-  if (!(await isBinaryAvailable("kiro-cli", { commandRunner }))) {
+async function fetchKiroLimits({
+  commandRunner,
+  env = process.env,
+  platform = process.platform,
+  now = new Date(),
+} = {}) {
+  const kiroBinary = await whichBinary("kiro-cli", { commandRunner, env, platform });
+  if (!kiroBinary) {
     return { configured: false };
   }
 
   const result = await runCommand(
     commandRunner,
-    "kiro-cli",
+    kiroBinary,
     ["chat", "--no-interactive", "/usage"],
     {
       timeout: 20_000,
-      env: { ...process.env, TERM: "xterm-256color" },
+      env: { ...env, TERM: "xterm-256color" },
     },
   );
 
@@ -1451,7 +1472,7 @@ async function fetchKiroLimits({ commandRunner, now = new Date() } = {}) {
   } catch (error) {
     return {
       configured: true,
-      error: error?.message || "Unknown error",
+      error: safeProviderErrorMessage(error),
     };
   }
 }
@@ -2045,7 +2066,7 @@ async function fetchAntigravityLimits({ home, commandRunner, requestFn, timeoutM
     if (cached) return cached;
     const message = error?.message === "timeout"
       ? "Antigravity quota request timed out."
-      : error?.message || "Unknown error";
+      : safeProviderErrorMessage(error);
     return {
       configured: true,
       error: message,
@@ -2102,23 +2123,37 @@ async function getUsageLimits(options = {}) {
   return promise;
 }
 
-async function fetchUsageLimitsUncached({
-  home,
-  env,
-  platform,
-  securityRunner,
-  fetchImpl = fetch,
-  commandRunner,
-  requestFn,
-  now = new Date(),
-  providerTimeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS,
-} = {}) {
+async function fetchUsageLimitsUncached(options = {}) {
+  const hasInjectedHome = typeof options.home === "string" && options.home.length > 0;
+  const home = hasInjectedHome ? options.home : os.homedir();
+  const env = options.env === undefined
+    ? hasInjectedHome ? {} : process.env
+    : options.env || {};
+  const platform = options.platform === undefined ? process.platform : options.platform;
+  const scanDefaultWindowsDrives = options.scanDefaultWindowsDrives === undefined
+    ? !hasInjectedHome && shouldScanDefaultWindowsDrives(env)
+    : Boolean(options.scanDefaultWindowsDrives);
+  const windowsDriveRoots = options.windowsDriveRoots;
+  const {
+    securityRunner,
+    fetchImpl = globalThis.fetch,
+    commandRunner,
+    requestFn,
+    now = new Date(),
+    providerTimeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS,
+  } = options;
   const nowMs = Date.now();
 
   const [claudeToken, claudeSubscription, codexAuth] = await Promise.all([
     Promise.resolve().then(() => readClaudeCodeAccessToken({ platform, securityRunner, home })),
     Promise.resolve().then(() => detectClaudeCodeSubscriptionDetails({ platform, securityRunner, home })),
-    readCodexAuthBundle({ home, env }),
+    readCodexAuthBundle({
+      home,
+      env,
+      platform,
+      scanDefaultWindowsDrives,
+      windowsDriveRoots,
+    }),
   ]);
   const claudePlanType = claudeSubscription?.planType || null;
 
@@ -2183,18 +2218,18 @@ async function fetchUsageLimitsUncached({
           (reason) => ({ status: "rejected", reason }),
         )
       : Promise.resolve(null),
-    withProviderTimeout(fetchCursorLimits({ home, fetchImpl: providerFetch }), "Cursor", providerTimeoutMs)
-      .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
+    withProviderTimeout(fetchCursorLimits({ home, env, platform, fetchImpl: providerFetch }), "Cursor", providerTimeoutMs)
+      .catch((reason) => ({ configured: true, error: safeProviderErrorMessage(reason) })),
     withProviderTimeout(fetchKimiLimits({ home, env, fetchImpl: providerFetch }), "Kimi", providerTimeoutMs)
-      .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
+      .catch((reason) => ({ configured: true, error: safeProviderErrorMessage(reason) })),
     withProviderTimeout(fetchGeminiLimits({ home, env, fetchImpl: providerFetch, commandRunner }), "Gemini", providerTimeoutMs)
-      .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
-    fetchKiroLimits({ commandRunner, now }),
+      .catch((reason) => ({ configured: true, error: safeProviderErrorMessage(reason) })),
+    fetchKiroLimits({ commandRunner, env, platform, now }),
     fetchAntigravityLimits({ home, commandRunner, requestFn, nowMs }),
     withProviderTimeout(fetchCopilotLimits({ home, env, fetchImpl: providerFetch, platform, securityRunner }), "GitHub Copilot", providerTimeoutMs)
-      .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
+      .catch((reason) => ({ configured: true, error: safeProviderErrorMessage(reason) })),
     withProviderTimeout(fetchGrokLimits({ home, env, fetchImpl: providerFetch }), "Grok Build", providerTimeoutMs)
-      .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
+      .catch((reason) => ({ configured: true, error: safeProviderErrorMessage(reason) })),
   ]);
 
   let claude;
@@ -2230,7 +2265,7 @@ async function fetchUsageLimitsUncached({
         configured: true,
         error: retryAtMs
           ? formatClaudeRateLimitMessage(Math.round((retryAtMs - nowMs) / 1000))
-          : reason?.message || "Unknown error",
+          : safeProviderErrorMessage(reason),
       };
     }
   }
@@ -2247,7 +2282,7 @@ async function fetchUsageLimitsUncached({
       auth_action_required: "reauth",
     };
   } else if (!codexResult || codexResult.status === "rejected") {
-    codex = { configured: true, error: codexResult?.reason?.message || "Unknown error" };
+    codex = { configured: true, error: safeProviderErrorMessage(codexResult?.reason) };
   } else {
     codex = {
       configured: true,
@@ -2277,6 +2312,12 @@ async function fetchUsageLimitsUncached({
     grok: withPlanLabel(grok, null, "Grok"),
   };
 
+  for (const providerId of Object.keys(data).filter((id) => id !== "fetched_at")) {
+    if (!providerHasCapability(providerId, "official_rate_limit")) {
+      throw new Error(`Usage limits provider ${providerId} is not declared as official`);
+    }
+  }
+
   cache = { data, fetchedAt: nowMs };
   return data;
 }
@@ -2287,6 +2328,7 @@ function resetUsageLimitsCache() {
 
 module.exports = {
   getUsageLimits,
+  fetchKiroLimits,
   normalizePlanLabel,
   resetUsageLimitsCache,
   runCommand,

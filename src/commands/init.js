@@ -1048,6 +1048,7 @@ async function installLocalTrackerApp({ appDir }) {
   const srcFrom = path.join(packageRoot, "src");
   const binFrom = path.join(packageRoot, "bin", "tracker.js");
   const packageJsonFrom = path.join(packageRoot, "package.json");
+  const sharedFrom = path.join(packageRoot, "shared");
   const nodeModulesFrom = path.join(packageRoot, "node_modules");
   const dashboardDistFrom = path.join(packageRoot, "dashboard", "dist");
 
@@ -1061,6 +1062,7 @@ async function installLocalTrackerApp({ appDir }) {
   const binToDir = path.join(appDir, "bin");
   const binTo = path.join(binToDir, "tracker.js");
   const nodeModulesTo = path.join(appDir, "node_modules");
+  const sharedTo = path.join(appDir, "shared");
   const dashboardDistTo = path.join(appDir, "dashboard", "dist");
 
   await fs.rm(appDir, { recursive: true, force: true }).catch(() => {});
@@ -1070,6 +1072,7 @@ async function installLocalTrackerApp({ appDir }) {
   await fs.copyFile(binFrom, binTo);
   await fs.chmod(binTo, 0o755).catch(() => {});
   await fs.copyFile(packageJsonFrom, path.join(appDir, "package.json")).catch(() => {});
+  await fs.cp(sharedFrom, sharedTo, { recursive: true });
   if (await isDir(dashboardDistFrom)) {
     await fs.cp(dashboardDistFrom, dashboardDistTo, { recursive: true });
   }

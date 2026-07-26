@@ -1,4 +1,7 @@
+require("./helpers/home-shim.cjs");
+
 const assert = require("node:assert/strict");
+const cp = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -6,6 +9,7 @@ const { test } = require("node:test");
 
 const {
   detectDataDirectoryPaths,
+  listCodexHomeCandidates,
   listTrackingReadyCodexHomes,
   normalizeDataDirectories,
   resolveDataDirectoryPaths,
@@ -32,6 +36,93 @@ test("normalizeDataDirectories trims known directory overrides", () => {
   );
 });
 
+test("preload disables production default-drive scans while explicit fake roots remain available", async () => {
+  const repoRoot = path.resolve(__dirname, "..");
+  const preloadPath = path.join(__dirname, "helpers", "home-shim.cjs");
+  const preloadedScript = String.raw`
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const safeRoot = path.resolve(process.env.TOKENTRACKER_TEST_TEMP_ROOT);
+    const realStatSync = fs.statSync;
+    const realWrite = process.stdout.write.bind(process.stdout);
+    let externalAgentDataProbe = false;
+    fs.statSync = function guardedStatSync(candidate, ...args) {
+      const resolved = path.resolve(String(candidate));
+      if (/^[A-Za-z]:[\\/]+AgentData(?:[\\/]|$)/i.test(resolved) && !resolved.startsWith(safeRoot)) {
+        externalAgentDataProbe = true;
+        const error = new Error("blocked external AgentData probe");
+        error.code = "ENOENT";
+        throw error;
+      }
+      return realStatSync.call(this, candidate, ...args);
+    };
+    process.stdout.write = () => true;
+    require("./src/commands/status").cmdStatus([]).then(() => {
+      realWrite(JSON.stringify({
+        markerEnabled: process.env.TOKENTRACKER_TEST_DISABLE_WINDOWS_DRIVE_SCAN === "1",
+        externalAgentDataProbe,
+      }));
+    }).catch((error) => {
+      realWrite(JSON.stringify({ errorName: error && error.name }));
+      process.exitCode = 1;
+    });
+  `;
+  const preloaded = cp.spawnSync(
+    process.execPath,
+    ["--require", preloadPath, "-e", preloadedScript],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        TOKENTRACKER_TEST_DISABLE_WINDOWS_DRIVE_SCAN: "",
+      },
+      encoding: "utf8",
+    },
+  );
+  assert.equal(preloaded.status, 0, preloaded.stderr);
+  assert.deepEqual(JSON.parse(preloaded.stdout), {
+    markerEnabled: true,
+    externalAgentDataProbe: false,
+  });
+
+  const fakeDrive = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-explicit-drive-"));
+  try {
+    const explicitScript = String.raw`
+      const path = require("node:path");
+      const { readCodexAuthBundle } = require("./src/lib/subscriptions");
+      const fakeDrive = process.env.TOKENTRACKER_TEST_FAKE_DRIVE;
+      readCodexAuthBundle({
+        home: path.join(fakeDrive, "home"),
+        env: {},
+        platform: "win32",
+        scanDefaultWindowsDrives: true,
+        windowsDriveRoots: [fakeDrive],
+      }).then((bundle) => {
+        process.stdout.write(JSON.stringify({ explicitScanFoundAuth: Boolean(bundle && bundle.accessToken) }));
+      });
+    `;
+    await fs.promises.mkdir(path.join(fakeDrive, "AgentData", "Codex"), { recursive: true });
+    await fs.promises.writeFile(
+      path.join(fakeDrive, "AgentData", "Codex", "auth.json"),
+      JSON.stringify({ tokens: { access_token: "fixture-explicit-scan-token" } }),
+      "utf8",
+    );
+    const explicit = cp.spawnSync(process.execPath, ["-e", explicitScript], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        TOKENTRACKER_TEST_DISABLE_WINDOWS_DRIVE_SCAN: "",
+        TOKENTRACKER_TEST_FAKE_DRIVE: fakeDrive,
+      },
+      encoding: "utf8",
+    });
+    assert.equal(explicit.status, 0, explicit.stderr);
+    assert.deepEqual(JSON.parse(explicit.stdout), { explicitScanFoundAuth: true });
+  } finally {
+    await fs.promises.rm(fakeDrive, { recursive: true, force: true });
+  }
+});
+
 test("resolveDataDirectoryPaths keeps TokenTracker defaults on non-Windows when overrides are empty", () => {
   const home = path.join("C:", "Users", "example");
   const resolved = resolveDataDirectoryPaths({ config: { dataDirectories: {} }, env: {}, home, platform: "linux" });
@@ -40,6 +131,21 @@ test("resolveDataDirectoryPaths keeps TokenTracker defaults on non-Windows when 
   assert.equal(resolved.codeHome, path.join(home, ".code"));
   assert.equal(resolved.claudeProjectsDir, path.join(home, ".claude", "projects"));
   assert.equal(resolved.hermesPath, null);
+});
+
+test("listCodexHomeCandidates does not read process CODEX_HOME after home is injected", () => {
+  const home = path.join("C:", "isolated-test-home");
+  const bait = path.join(__dirname, "fixtures", "bait-codex-home");
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = bait;
+  try {
+    const candidates = listCodexHomeCandidates({ home, platform: "linux" });
+    assert.deepEqual(candidates, [path.join(home, ".codex")]);
+    assert.ok(!candidates.includes(bait));
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  }
 });
 
 test("resolveDataDirectoryPaths applies MVP data directory overrides", () => {
@@ -178,6 +284,7 @@ test("detectDataDirectoryPaths discovers Windows AgentData Codex home without CO
       wslRoots: [],
       wslDistributions: [],
       windowsDriveRoots: [tmp],
+      scanDefaultWindowsDrives: true,
       detectInstallation: () => ({ installed: false, executablePath: null, currentVersion: null }),
     });
 
@@ -234,6 +341,7 @@ test("resolveDataDirectoryPaths respects explicit CODEX_HOME even when Windows A
       env: { CODEX_HOME: envCodexHome },
       platform: "win32",
       windowsDriveRoots: [tmp],
+      scanDefaultWindowsDrives: true,
       config: { dataDirectories: {} },
     });
 
@@ -294,6 +402,7 @@ test("listTrackingReadyCodexHomes returns every tracking-ready Codex directory",
       env: {},
       platform: "win32",
       windowsDriveRoots: [tmp],
+      scanDefaultWindowsDrives: true,
       configured: defaultCodex,
     });
 
@@ -321,6 +430,7 @@ test("resolveDataDirectoryPaths exposes codexHomes for multi-directory ingest", 
       env: { CODEX_HOME: desktopCodex },
       platform: "win32",
       windowsDriveRoots: [tmp],
+      scanDefaultWindowsDrives: true,
       config: { dataDirectories: { codex: defaultCodex } },
     });
 

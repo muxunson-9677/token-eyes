@@ -1,0 +1,130 @@
+name: Release Windows
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      notes:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        required: false
+        default: false
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        required: true
+      notes:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: release-windows-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Validate version input
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+        run: |
+          if ($env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "Version must be X.Y.Z"
+            exit 1
+          }
+          if (
+            [string]::IsNullOrWhiteSpace($env:RELEASE_NOTES) -or
+            $env:RELEASE_NOTES -match '[\r\n]' -or
+            $env:RELEASE_NOTES -match '[^\x20-\x7E]'
+          ) {
+            Write-Error "Release notes must be one non-empty English/ASCII line"
+            exit 1
+          }
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm ci --prefix dashboard
+      - name: Verify version
+        run: |
+          $expected = "${{ inputs.version }}"
+          $pkgVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargoVersion = ((Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value)
+          if ($pkgVersion -ne $expected) {
+            Write-Error "package.json version $pkgVersion does not match input $expected"
+            exit 1
+          }
+          if ($tauriVersion -ne $expected) {
+            Write-Error "tauri.conf.json version $tauriVersion does not match input $expected"
+            exit 1
+          }
+          if ($cargoVersion -ne $expected) {
+            Write-Error "Cargo.toml version $cargoVersion does not match input $expected"
+            exit 1
+          }
+      - name: Run local CI gate
+        run: npm run ci:local
+      - name: Build dashboard
+        run: npm run dashboard:build
+      - name: Build Tauri release
+        run: npm run tauri:build
+      - name: Verify Tauri bundle output
+        run: |
+          $bundleDir = "src-tauri/target/release/bundle"
+          if (-not (Test-Path $bundleDir)) {
+            Write-Error "Tauri bundle directory not found: $bundleDir"
+            exit 1
+          }
+          $artifacts = @()
+          $artifacts += Get-ChildItem "$bundleDir/msi/*.msi" -ErrorAction SilentlyContinue
+          $artifacts += Get-ChildItem "$bundleDir/nsis/*-setup.exe" -ErrorAction SilentlyContinue
+          if ($artifacts.Count -eq 0) {
+            Write-Error "No Tauri installer found in $bundleDir"
+            exit 1
+          }
+          $artifacts | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+      - name: Ensure release exists
+        run: |
+          $tag = "v${{ inputs.version }}"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --draft --title $tag --notes "$env:RELEASE_NOTES"
+          }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+      - name: Upload to release
+        run: |
+          $bundleDir = "src-tauri/target/release/bundle"
+          $artifacts = @()
+          $artifacts += Get-ChildItem "$bundleDir/msi/*.msi" -ErrorAction SilentlyContinue
+          $artifacts += Get-ChildItem "$bundleDir/nsis/*-setup.exe" -ErrorAction SilentlyContinue
+          gh release upload "v${{ inputs.version }}" $artifacts --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish standalone Windows release
+        if: ${{ inputs.publish }}
+        run: gh release edit "v${{ inputs.version }}" --draft=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

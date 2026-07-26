@@ -29,9 +29,10 @@ function warnSqliteUnavailable({ dbPath, label, cliError, nodeSqliteError, env, 
   }
 }
 
-function readSqliteRowsWithCli(dbPath, sql, { execFileSync, timeout, maxBuffer }) {
+function readSqliteRowsWithCli(dbPath, sql, { execFileSync, env, timeout, maxBuffer }) {
   const raw = execFileSync("sqlite3", ["-json", dbPath, sql], {
     encoding: "utf8",
+    env,
     maxBuffer,
     timeout,
     stdio: ["pipe", "pipe", "pipe"],
@@ -91,7 +92,7 @@ function readSqliteJsonRows(dbPath, sql, options = {}) {
 
   let cliError = null;
   try {
-    return readSqliteRowsWithCli(dbPath, sql, { execFileSync, timeout, maxBuffer });
+    return readSqliteRowsWithCli(dbPath, sql, { execFileSync, env, timeout, maxBuffer });
   } catch (err) {
     cliError = err;
   }

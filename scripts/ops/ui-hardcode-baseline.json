@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-04T21:14:28.994Z",
+  "generatedAt": "2026-07-11T13:52:24.073Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 308,
-    "rawText": 205
+    "colors": 315,
+    "rawText": 234
   },
   "files": {
     "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
@@ -55,6 +55,14 @@
         "GitHub"
       ]
     },
+    "dashboard/src/components/settings/OtherAiSpendSection.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        ") : records.length === 0 ? ( !formOpen && (",
+        "); return ("
+      ]
+    },
     "dashboard/src/components/settings/ProviderApiConfigSection.jsx": {
       "colors": 0,
       "rawText": 3,
@@ -66,12 +74,32 @@
     },
     "dashboard/src/components/settings/TokenPlanSection.jsx": {
       "colors": 0,
-      "rawText": 4,
+      "rawText": 24,
       "rawTextTokens": [
+        ") ) : form.provider_id === \"cursor\" ? (",
+        ") ) : form.provider_id === \"minimax\" ? (",
+        ") : codexStage === \"awaiting_verification\" ? (",
+        ") : codexStage === \"disconnected\" ? (",
+        ") : codexStage === \"failed\" || codexStage === \"desktop_not_verified\" ? (",
+        ") : codexStage === \"login_started\" ? (",
+        ") : form.provider_id === \"aliyun_bailian\" ? (",
+        ") : form.provider_id === \"claude\" ? ( claudeRoutingMode ? (",
+        ") : form.provider_id === \"codex\" ? (",
+        ") : form.provider_id === \"kimi\" ? ( form.plan_id === \"kimi_api_budget\" ? (",
+        ") : form.provider_id === \"xiaomi_mimo\" ? (",
+        ") : glmStage === \"awaiting_verification\" ? (",
+        ") : glmStage === \"disconnected\" ? (",
+        ") : glmStage === \"failed\" || glmStage === \"desktop_not_verified\" ? (",
+        ") : glmStage === \"login_started\" ? (",
+        ") : stage === \"awaiting_verification\" ? (",
+        ") : stage === \"disconnected\" ? (",
+        ") : stage === \"failed\" || stage === \"desktop_not_verified\" ? (",
+        ") : stage === \"login_started\" ? (",
         ") : xiaomiMimoStage === \"awaiting_verification\" ? (",
         ") : xiaomiMimoStage === \"disconnected\" ? (",
         ") : xiaomiMimoStage === \"failed\" || xiaomiMimoStage === \"desktop_not_verified\" ? (",
-        ") : xiaomiMimoStage === \"login_started\" ? ("
+        ") : xiaomiMimoStage === \"login_started\" ? (",
+        "0 && ("
       ]
     },
     "dashboard/src/components/SortableColumnHeader.jsx": {
@@ -139,7 +167,7 @@
     },
     "dashboard/src/pages/SettingsPage.test.jsx": {
       "colors": 0,
-      "rawText": 9,
+      "rawText": 11,
       "rawTextTokens": [
         "Account",
         "AgentPricing",
@@ -148,8 +176,10 @@
         "Footer",
         "LimitsPanel",
         "MenuBar",
+        "OtherAiSpend",
         "ProviderApiConfig",
-        "TokenPlan"
+        "TokenPlan",
+        "WindowBehavior"
       ]
     },
     "dashboard/src/pages/SkillDetailPanel.jsx": {
@@ -372,6 +402,14 @@
         "0 && ("
       ]
     },
+    "dashboard/src/ui/dashboard/components/TokenServiceListPanel.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        ") : items.length === 0 ? (",
+        "plans.map(derivePlan), [plans]); return ("
+      ]
+    },
     "dashboard/src/ui/dashboard/components/TrendMonitor.jsx": {
       "colors": 30,
       "rawText": 9,
@@ -409,7 +447,7 @@
       ]
     },
     "dashboard/src/ui/dashboard/components/UsageOverview.jsx": {
-      "colors": 11,
+      "colors": 18,
       "rawText": 1,
       "rawTextTokens": [
         "0 && ("
@@ -417,9 +455,12 @@
     },
     "dashboard/src/ui/dashboard/components/UsageStatsPanel.jsx": {
       "colors": 0,
-      "rawText": 1,
+      "rawText": 4,
       "rawTextTokens": [
-        ") : pricingCoverage === \"partial\" ? ("
+        ") : momPct",
+        ") : pricingCoverage === \"partial\" ? (",
+        "0 ? \"text-red-600 dark:text-red-400\" : momPct",
+        "0 ? ("
       ]
     },
     "dashboard/src/ui/dashboard/components/UsageTrendChart.jsx": {

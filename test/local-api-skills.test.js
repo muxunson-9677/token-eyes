@@ -12,7 +12,7 @@ process.env.TOKENTRACKER_GROK_HOME = path.join(sandboxHome, ".grok");
 delete process.env.GROK_HOME;
 delete process.env.TOKENTRACKER_ANTIGRAVITY_HOME;
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 const queuePath = path.join(sandboxHome, "queue.jsonl");
 fs.writeFileSync(queuePath, "");

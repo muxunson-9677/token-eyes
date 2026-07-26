@@ -7,7 +7,7 @@ const { test } = require("node:test");
 // Must load before src modules so os.homedir() honors the temp HOME on Windows.
 require("./helpers/home-shim.cjs");
 
-const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createLocalApiHandler } = require("./helpers/local-api.cjs");
 
 function createRequest({ method = "GET", headers = {}, body } = {}) {
   return {

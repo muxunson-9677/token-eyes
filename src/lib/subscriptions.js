@@ -6,7 +6,13 @@ const cp = require("node:child_process");
 const { readJson } = require("./fs");
 const { resolveTrackerPaths } = require("./tracker-paths");
 const { probeOpenclawSessionPluginState } = require("./openclaw-session-plugin");
-const { pickBestCodexHome, listTrackingReadyCodexHomes, normalizeDataDirectories } = require("./data-directories");
+const {
+  pickBestCodexHome,
+  listCodexHomeCandidates,
+  listTrackingReadyCodexHomes,
+  normalizeDataDirectories,
+  shouldScanDefaultWindowsDrives,
+} = require("./data-directories");
 
 const OPENAI_AUTH_CLAIM = "https://api.openai.com/auth";
 const MACOS_SECURITY_BIN = "/usr/bin/security";
@@ -119,22 +125,60 @@ function readTrackerConfigFromHome(home) {
   }
 }
 
-function resolveCodexHomeSearchOrder({ home, env, config } = {}) {
+function resolveSubscriptionContext(options = {}) {
+  const hasInjectedHome = typeof options.home === "string" && options.home.length > 0;
+  const env = options.env === undefined
+    ? hasInjectedHome ? {} : process.env
+    : options.env || {};
+  return {
+    home: hasInjectedHome ? options.home : os.homedir(),
+    env,
+    platform: options.platform === undefined ? process.platform : options.platform,
+    scanDefaultWindowsDrives: options.scanDefaultWindowsDrives === undefined
+      ? !hasInjectedHome && shouldScanDefaultWindowsDrives(env)
+      : Boolean(options.scanDefaultWindowsDrives),
+    windowsDriveRoots: options.windowsDriveRoots,
+  };
+}
+
+function resolveCodexHomeSearchOrder(options = {}) {
+  const {
+    home,
+    env,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  } = resolveSubscriptionContext(options);
+  const { config } = options;
   const trackerConfig = config && typeof config === "object" ? config : readTrackerConfigFromHome(home);
   const dataDirectories = normalizeDataDirectories(trackerConfig.dataDirectories);
   const readyHomes = listTrackingReadyCodexHomes({
     configured: dataDirectories.codex,
     env,
     home,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  });
+  const candidateHomes = listCodexHomeCandidates({
+    configured: dataDirectories.codex,
+    env,
+    home,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
   });
   const primary = pickBestCodexHome({
     configured: dataDirectories.codex,
     env,
     home,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
   });
   const ordered = [];
   const seen = new Set();
-  for (const candidate of [primary, ...readyHomes]) {
+  for (const candidate of [primary, ...readyHomes, ...candidateHomes]) {
     const normalized = normalizeString(candidate);
     if (!normalized) continue;
     const key = normalized.toLowerCase();
@@ -145,8 +189,9 @@ function resolveCodexHomeSearchOrder({ home, env, config } = {}) {
   return ordered;
 }
 
-function resolveCodexHome({ home, env, config } = {}) {
-  const ordered = resolveCodexHomeSearchOrder({ home, env, config });
+function resolveCodexHome(options = {}) {
+  const { home } = resolveSubscriptionContext(options);
+  const ordered = resolveCodexHomeSearchOrder(options);
   return ordered[0] || path.join(home, ".codex");
 }
 
@@ -156,8 +201,22 @@ function resolveOpencodeDataDir({ home, env }) {
   return path.join(base, "opencode");
 }
 
-async function detectCodexChatgptSubscription({ home, env, config } = {}) {
-  const codexHome = resolveCodexHome({ home, env, config });
+async function detectCodexChatgptSubscription(options = {}) {
+  const {
+    home,
+    env,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  } = resolveSubscriptionContext(options);
+  const codexHome = resolveCodexHome({
+    home,
+    env,
+    platform,
+    config: options.config,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  });
   const authPath = path.join(codexHome, "auth.json");
   const auth = await readJson(authPath);
   if (!auth || typeof auth !== "object") return null;
@@ -181,7 +240,8 @@ async function detectCodexChatgptSubscription({ home, env, config } = {}) {
   };
 }
 
-async function detectOpencodeChatgptSubscription({ home, env }) {
+async function detectOpencodeChatgptSubscription(options = {}) {
+  const { home, env } = resolveSubscriptionContext(options);
   const dataDir = resolveOpencodeDataDir({ home, env });
   const authPath = path.join(dataDir, "auth.json");
   const auth = await readJson(authPath);
@@ -348,17 +408,28 @@ function detectClaudeCodeSubscriptionDetails({ platform = process.platform, secu
   return null;
 }
 
-async function collectLocalSubscriptions({
-  home = os.homedir(),
-  env = process.env,
-  platform = process.platform,
-  securityRunner,
-  probeKeychain = false,
-  probeKeychainDetails = false,
-} = {}) {
+async function collectLocalSubscriptions(options = {}) {
+  const {
+    home,
+    env,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  } = resolveSubscriptionContext(options);
+  const {
+    securityRunner,
+    probeKeychain = false,
+    probeKeychainDetails = false,
+  } = options;
   const out = [];
 
-  const codex = await detectCodexChatgptSubscription({ home, env });
+  const codex = await detectCodexChatgptSubscription({
+    home,
+    env,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  });
   if (codex) out.push(codex);
 
   const opencode = await detectOpencodeChatgptSubscription({ home, env });
@@ -431,9 +502,23 @@ function readClaudeCodeAccessToken({ platform = process.platform, securityRunner
   }
 }
 
-async function readCodexAccessToken({ home, env, config } = {}) {
+async function readCodexAccessToken(options = {}) {
+  const {
+    home,
+    env,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  } = resolveSubscriptionContext(options);
   try {
-    for (const codexHome of resolveCodexHomeSearchOrder({ home, env, config })) {
+    for (const codexHome of resolveCodexHomeSearchOrder({
+      home,
+      env,
+      platform,
+      config: options.config,
+      scanDefaultWindowsDrives,
+      windowsDriveRoots,
+    })) {
       const authPath = path.join(codexHome, "auth.json");
       const auth = await readJson(authPath);
       const token = normalizeString(auth?.tokens?.access_token);
@@ -448,9 +533,23 @@ async function readCodexAccessToken({ home, env, config } = {}) {
 // Returns the access token + ChatGPT account id + plan type + auth.json path so callers can
 // also trigger a refresh if the tokens are stale (issue #52: stale tokens → wham 401 →
 // "Fetch failed" error after ~7-8 days of not running `codex`).
-async function readCodexAuthBundle({ home, env, config } = {}) {
+async function readCodexAuthBundle(options = {}) {
+  const {
+    home,
+    env,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  } = resolveSubscriptionContext(options);
   try {
-    for (const codexHome of resolveCodexHomeSearchOrder({ home, env, config })) {
+    for (const codexHome of resolveCodexHomeSearchOrder({
+      home,
+      env,
+      platform,
+      config: options.config,
+      scanDefaultWindowsDrives,
+      windowsDriveRoots,
+    })) {
       const authPath = path.join(codexHome, "auth.json");
       const auth = await readJson(authPath);
       if (!auth || typeof auth !== "object") continue;

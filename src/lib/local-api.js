@@ -9,6 +9,7 @@ const {
   detectDataDirectoryPaths,
   normalizeDataDirectories,
   resolveDataDirectoryPaths,
+  shouldScanDefaultWindowsDrives,
 } = require("./data-directories");
 const {
   filterRowsByUsageScope,
@@ -167,6 +168,7 @@ async function buildRequestUsageRecordsList({
         config: readTrackerConfigAt(trackerDataDir),
         env: process.env,
         home: os.homedir(),
+        scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
       });
       const rolloutFiles = await listCodexRolloutFilesFromHomes(
         dataDirectoryPaths.codexHomes?.length ? dataDirectoryPaths.codexHomes : [dataDirectoryPaths.codexHome],
@@ -237,7 +239,10 @@ const { computeCodexContextBreakdown } = require("./codex-context-breakdown");
 const tokenPlanRefresh = require("./token-plan-refresh");
 const { getPlanById, listProviderOptions, getProviderCatalog } = require("./token-plan-catalog");
 const { getAgentAdapter, listAgentAdapters } = require("./agent-adapters");
-const { collectApiBillingAccounts } = require("./api-billing");
+const {
+  collectApiBillingAccounts,
+  shouldUseSystemKeychain,
+} = require("./api-billing");
 
 // 02-ia-api-balance: provider API balance/spend backend (financial query only)
 const providerApiConfigs = require("./provider-api-configs");
@@ -1370,43 +1375,94 @@ function resolveAllowedInsforgeBaseUrl(value) {
   return allowed.has(requested) ? requested : null;
 }
 
-function parseCookieHeader(value) {
-  const out = new Map();
-  if (typeof value !== "string" || !value.trim()) return out;
-  for (const part of value.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx < 1) continue;
-    const key = part.slice(0, idx).trim();
-    const rawValue = part.slice(idx + 1).trim();
-    if (key) out.set(key, rawValue);
-  }
-  return out;
+function normalizePort(value) {
+  const port = Number(value);
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
 }
 
-function isLoopbackHostname(hostname) {
-  return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1" || hostname === "[::1]";
-}
-
-function isAllowedLocalAppOrigin(raw) {
+function isAllowedLocalAppOrigin(raw, listeningPort) {
   try {
     const url = new URL(String(raw));
-    if (url.protocol === "http:" && isLoopbackHostname(url.hostname)) return true;
-    if ((url.protocol === "http:" || url.protocol === "https:") && url.hostname === "tauri.localhost") {
+    const port = normalizePort(listeningPort);
+    if (
+      url.protocol === "http:"
+      && (url.hostname === "127.0.0.1" || url.hostname === "localhost")
+      && (Number(url.port || 80) === port || Number(url.port || 80) === 5173)
+    ) {
       return true;
     }
-    return url.protocol === "tauri:" && url.hostname === "localhost";
+    if (url.protocol === "http:" && url.hostname === "tauri.localhost") {
+      return !url.port && url.pathname === "/" && !url.search && !url.hash;
+    }
+    return (
+      url.protocol === "tauri:"
+      && url.hostname === "localhost"
+      && (url.pathname === "" || url.pathname === "/")
+      && !url.search
+      && !url.hash
+    );
   } catch (_e) {
     return false;
   }
 }
 
-function hasAllowedLoopbackOrigin(headers = {}) {
-  const candidates = [headers.origin, headers.referer];
-  for (const raw of candidates) {
-    if (raw == null || raw === "") continue;
-    if (!isAllowedLocalAppOrigin(raw)) return false;
+function isAllowedLocalHost(rawHost, listeningPort, bindHost = "127.0.0.1") {
+  if (typeof rawHost !== "string" || !rawHost.trim()) return false;
+  const port = normalizePort(listeningPort);
+  if (!port) return false;
+  try {
+    const parsed = new URL(`http://${rawHost}`);
+    if (parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+      return false;
+    }
+    if (Number(parsed.port || 80) !== port) return false;
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "127.0.0.1" || hostname === "localhost") return true;
+    return hostname === "[::1]" && (bindHost === "::1" || bindHost === "[::1]");
+  } catch (_e) {
+    return false;
   }
-  return true;
+}
+
+function resolveRequestOrigin(headers = {}) {
+  const origin = typeof headers.origin === "string" ? headers.origin.trim() : "";
+  if (origin) return origin;
+  const referer = typeof headers.referer === "string" ? headers.referer.trim() : "";
+  if (!referer) return "";
+  try {
+    return new URL(referer).origin;
+  } catch (_e) {
+    return "__invalid__";
+  }
+}
+
+function validateLocalApiRequest(req, {
+  listeningPort,
+  bindHost = "127.0.0.1",
+} = {}) {
+  const actualPort = typeof listeningPort === "function" ? listeningPort() : listeningPort;
+  const headers = req?.headers || {};
+  if (!isAllowedLocalHost(headers.host, actualPort, bindHost)) {
+    return { ok: false, status: 403, origin: "", corsHeaders: {} };
+  }
+  const origin = resolveRequestOrigin(headers);
+  if (origin && !isAllowedLocalAppOrigin(origin, actualPort)) {
+    return { ok: false, status: 403, origin: "", corsHeaders: {} };
+  }
+  return {
+    ok: true,
+    status: 200,
+    origin,
+    corsHeaders: origin
+      ? {
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TokenTracker-Local-Auth",
+          "Access-Control-Expose-Headers": "X-TokenTracker-Local-Auth-Required",
+          Vary: "Origin",
+        }
+      : {},
+  };
 }
 
 function readJsonBody(req) {
@@ -1578,11 +1634,42 @@ function scanClaudeProjects(projectMap) {
 function json(res, data, status) {
   res.writeHead(status || 200, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TokenTracker-Local-Auth",
+    ...(res.localApiCorsHeaders || {}),
   });
   res.end(JSON.stringify(data));
+}
+
+function localAuthUnauthorized(res) {
+  res.writeHead(401, {
+    "Content-Type": "application/json",
+    "X-TokenTracker-Local-Auth-Required": "1",
+    ...(res.localApiCorsHeaders || {}),
+  });
+  res.end(JSON.stringify({ ok: false, error: "Unauthorized" }));
+}
+
+function mergeLocalCorsResponseHeaders(responseHeaders, localCorsHeaders) {
+  const merged = {};
+  const varyValues = [];
+  for (const [name, value] of Object.entries(responseHeaders || {})) {
+    const lowerName = name.toLowerCase();
+    if (lowerName.startsWith("access-control-")) continue;
+    if (lowerName === "vary") {
+      varyValues.push(...String(value || "").split(","));
+      continue;
+    }
+    merged[name] = value;
+  }
+  for (const [name, value] of Object.entries(localCorsHeaders || {})) {
+    if (name.toLowerCase() === "vary") {
+      varyValues.push(...String(value || "").split(","));
+      continue;
+    }
+    merged[name] = value;
+  }
+  const normalizedVary = [...new Set(varyValues.map((value) => value.trim()).filter(Boolean))];
+  if (normalizedVary.length > 0) merged.Vary = normalizedVary.join(", ");
+  return merged;
 }
 
 // ---------------------------------------------------------------------------
@@ -1604,6 +1691,10 @@ const IP_CHECK_TARGET = "https://ip.net.coffee";
 // 6.24.1 shipped with Node 22.22.2, throws UND_ERR_INVALID_ARG and turns
 // every proxied POST into a 502. Keep this set authoritative for every
 // reverse-proxy site in this module.
+const LOCAL_ONLY_PROXY_HEADERS = new Set([
+  "x-tokentracker-local-auth",
+]);
+
 const HOP_BY_HOP_HEADERS = new Set([
   "host",
   "connection",
@@ -1648,7 +1739,11 @@ function buildProxyHeaders(headers) {
 
   const out = {};
   for (const [key, rawValue] of normalized) {
-    if (HOP_BY_HOP_HEADERS.has(key) || connectionNamed.has(key)) continue;
+    if (
+      HOP_BY_HOP_HEADERS.has(key)
+      || LOCAL_ONLY_PROXY_HEADERS.has(key)
+      || connectionNamed.has(key)
+    ) continue;
     if (Array.isArray(rawValue)) {
       const joined = rawValue.filter((e) => e != null).map(String).join(", ");
       if (joined) out[key] = joined;
@@ -1669,8 +1764,11 @@ function createLocalApiHandler({
   credentialStore: injectedCredentialStore,
   detectDataDirectories: detectDataDirectoriesOverride,
   detectAgentEnvironment: detectAgentEnvironmentOverride,
+  apiBillingOptions: apiBillingOptionsOverride,
   providerApiTestMode = false,
   providerApiTimeoutMs,
+  listeningPort = 7680,
+  bindHost = "127.0.0.1",
 } = {}) {
   const qp = queuePath || resolveQueuePath();
   const detectDataDirectories = detectDataDirectoriesOverride || detectDataDirectoryPaths;
@@ -1907,6 +2005,7 @@ function createLocalApiHandler({
       config,
       env: process.env,
       home: os.homedir(),
+      scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
     });
     const codexRows = await collectCodexRolloutQueueRows({
       codexHomes: dataDirectoryPaths.codexHomes?.length
@@ -3945,28 +4044,79 @@ function createLocalApiHandler({
 
   function isAuthorizedLocalMutation(req) {
     const headerToken = req?.headers?.["x-tokentracker-local-auth"];
-    const cookieToken = parseCookieHeader(req?.headers?.cookie).get("tokentracker_local_auth");
-    const token = typeof headerToken === "string" && headerToken.trim()
-      ? headerToken.trim()
-      : cookieToken || "";
+    const token = typeof headerToken === "string" ? headerToken.trim() : "";
     if (!token || token !== localAuthToken) return false;
-    return hasAllowedLoopbackOrigin(req?.headers || {});
+    return true;
   }
 
   async function handleLocalApi(req, res, url) {
     const p = url.pathname;
+    const hasTestSecurityBypass = (
+      Boolean(process.env.NODE_TEST_CONTEXT)
+      && req?.[Symbol.for("tokentracker.test.localApiSecurityBypass")] === true
+    );
+    const requestSecurity = !hasTestSecurityBypass
+      ? validateLocalApiRequest(req, { listeningPort, bindHost })
+      : (() => {
+          const origin = resolveRequestOrigin(req?.headers || {});
+          const allowedOrigin = origin && isAllowedLocalAppOrigin(origin, 7680) ? origin : "";
+          return {
+            ok: true,
+            status: 200,
+            origin: allowedOrigin,
+            corsHeaders: allowedOrigin
+              ? {
+                  "Access-Control-Allow-Origin": allowedOrigin,
+                  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TokenTracker-Local-Auth",
+                  "Access-Control-Expose-Headers": "X-TokenTracker-Local-Auth-Required",
+                  Vary: "Origin",
+                }
+              : {},
+          };
+        })();
+    res.localApiCorsHeaders = requestSecurity.corsHeaders;
+    const originalWriteHead = res.writeHead;
+    res.writeHead = function writeHeadWithLocalCors(statusCode, statusMessageOrHeaders, headers) {
+      if (typeof statusMessageOrHeaders === "string") {
+        return originalWriteHead.call(
+          this,
+          statusCode,
+          statusMessageOrHeaders,
+          mergeLocalCorsResponseHeaders(headers, requestSecurity.corsHeaders),
+        );
+      }
+      return originalWriteHead.call(
+        this,
+        statusCode,
+        mergeLocalCorsResponseHeaders(statusMessageOrHeaders, requestSecurity.corsHeaders),
+      );
+    };
+    if (!requestSecurity.ok) {
+      json(res, { error: "Forbidden" }, 403);
+      return true;
+    }
+
+    const method = String(req.method || "GET").toUpperCase();
+    if (method === "OPTIONS") {
+      if (!requestSecurity.origin) {
+        json(res, { error: "Forbidden" }, 403);
+        return true;
+      }
+      res.writeHead(204, requestSecurity.corsHeaders);
+      res.end();
+      return true;
+    }
 
     if (p === "/api/local-auth") {
-      if (String(req.method || "GET").toUpperCase() !== "GET") {
+      if (method !== "GET") {
         json(res, { error: "Method Not Allowed" }, 405);
         return true;
       }
       res.writeHead(200, {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TokenTracker-Local-Auth",
+        ...requestSecurity.corsHeaders,
       });
       res.end(JSON.stringify({
         token: localAuthToken,
@@ -3976,12 +4126,27 @@ function createLocalApiHandler({
       return true;
     }
 
+    const isWrite = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+    const requiresLocalAuth = (
+      p.startsWith("/functions/")
+      || p.startsWith("/api/auth/")
+      || p === "/api/auth-bridge/verifier"
+      || (
+        isWrite
+        && (p.startsWith("/api/") || p.startsWith("/proxy/"))
+      )
+    );
+    if (!hasTestSecurityBypass && requiresLocalAuth && !isAuthorizedLocalMutation(req)) {
+      localAuthUnauthorized(res);
+      return true;
+    }
+
     // --- Auth bridge: native OAuth flag (WebView 鈫?system browser) ---
     if (p === "/api/auth-bridge/verifier") {
       const method = String(req.method || "GET").toUpperCase();
       if (method === "PUT" || method === "POST") {
         if (!isAuthorizedLocalMutation(req)) {
-          json(res, { error: "Unauthorized" }, 401);
+          localAuthUnauthorized(res);
           return true;
         }
         const body = await readJsonBody(req);
@@ -5504,6 +5669,13 @@ function createLocalApiHandler({
         const accounts = await collectApiBillingAccounts({
           spendRecords: spendResult.records || [],
           queuePath: qp,
+          options: apiBillingOptionsOverride || {
+            home: os.homedir(),
+            env: process.env,
+            platform: process.platform,
+            scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
+            allowSystemKeychain: shouldUseSystemKeychain(process.env),
+          },
         });
 
         // 02-ia-api-balance: Augment accounts with provider API config info.
@@ -6340,6 +6512,7 @@ function createLocalApiHandler({
           home: os.homedir(),
           env: process.env,
           platform: process.platform,
+          scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
         });
         json(res, data);
       } catch (e) {
@@ -6368,6 +6541,7 @@ function createLocalApiHandler({
 
 module.exports = {
   createLocalApiHandler,
+  validateLocalApiRequest,
   resolveAllowedInsforgeBaseUrl,
   resolveQueuePath,
   // Exported for cross-consumer tests (pricing + native contract lock).
@@ -6387,4 +6561,3 @@ module.exports = {
   computeStableMachineId,
   clearRequestUsageRecordsListCacheForTests,
 };
-

@@ -21,6 +21,7 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 const cp = require("child_process");
+const { shouldScanDefaultWindowsDrives } = require("./data-directories");
 
 // Sync status constants (same as token-plan-refresh.js)
 const SYNC_STATUSES = {
@@ -34,6 +35,10 @@ const BILLING_SOURCES = {
   CONSOLE: "console",
   MANUAL: "manual",
 };
+
+function shouldUseSystemKeychain(env = process.env) {
+  return env?.TOKENTRACKER_TEST_DISABLE_SYSTEM_KEYCHAIN !== "1";
+}
 
 // Provider display names
 const PROVIDER_NAMES = {
@@ -112,13 +117,29 @@ function collectBillingFromSpendRecords(spendRecords = []) {
  * Detect API credentials presence from local auth files.
  * Returns list of detected accounts with their providers.
  */
-function detectCredentialsFromAuthFiles({ home = os.homedir(), env = process.env } = {}) {
+function detectCredentialsFromAuthFiles(options = {}) {
+  const hasInjectedHome = typeof options.home === "string" && options.home.length > 0;
+  const home = hasInjectedHome ? options.home : os.homedir();
+  const env = options.env === undefined
+    ? hasInjectedHome ? {} : process.env
+    : options.env || {};
+  const platform = options.platform === undefined ? process.platform : options.platform;
+  const scanDefaultWindowsDrives = options.scanDefaultWindowsDrives === undefined
+    ? !hasInjectedHome && shouldScanDefaultWindowsDrives(env)
+    : Boolean(options.scanDefaultWindowsDrives);
+  const windowsDriveRoots = options.windowsDriveRoots;
   const detected = [];
 
   // Check Codex auth.json across all tracking-ready homes (AgentData + ~/.codex).
   try {
     const { listTrackingReadyCodexHomes } = require("./data-directories");
-    const codexHomes = listTrackingReadyCodexHomes({ env, home });
+    const codexHomes = listTrackingReadyCodexHomes({
+      env,
+      home,
+      platform,
+      scanDefaultWindowsDrives,
+      windowsDriveRoots,
+    });
     const homesToScan = codexHomes.length > 0 ? codexHomes : [path.join(home, ".codex")];
     for (const codexHome of homesToScan) {
       const authPath = path.join(codexHome, "auth.json");
@@ -141,8 +162,8 @@ function detectCredentialsFromAuthFiles({ home = os.homedir(), env = process.env
 
   // Check Opencode auth
   try {
-    const opencodeDataDir = process.env.XDG_DATA_HOME
-      ? path.join(process.env.XDG_DATA_HOME, "opencode")
+    const opencodeDataDir = env.XDG_DATA_HOME
+      ? path.join(env.XDG_DATA_HOME, "opencode")
       : path.join(home, ".local", "share", "opencode");
     const authPath = path.join(opencodeDataDir, "auth.json");
     if (fs.existsSync(authPath)) {
@@ -188,12 +209,13 @@ function detectCredentialsFromKeychain({ platform = process.platform, securityRu
   const detected = [];
 
   if (platform !== "darwin") return detected;
+  const runner = typeof securityRunner === "function" ? securityRunner : cp.spawnSync;
 
   const keychainServices = ["Claude Code-credentials"];
 
   for (const service of keychainServices) {
     try {
-      const result = cp.spawnSync(
+      const result = runner(
         "/usr/bin/security",
         ["find-generic-password", "-s", service, "-w"],
         { stdio: ["ignore", "pipe", "ignore"], timeout: 2000 }
@@ -327,9 +349,23 @@ async function collectApiBillingAccounts({
   options = {},
   queuePath = null,
 } = {}) {
-  const home = options.home || os.homedir();
-  const env = options.env || process.env;
-  const platform = options.platform || process.platform;
+  const hasInjectedHome = typeof options.home === "string" && options.home.length > 0;
+  const home = hasInjectedHome ? options.home : os.homedir();
+  const env = options.env === undefined
+    ? hasInjectedHome ? {} : process.env
+    : options.env || {};
+  const platform = options.platform === undefined ? process.platform : options.platform;
+  const scanDefaultWindowsDrives = options.scanDefaultWindowsDrives === undefined
+    ? !hasInjectedHome && shouldScanDefaultWindowsDrives(env)
+    : Boolean(options.scanDefaultWindowsDrives);
+  const windowsDriveRoots = options.windowsDriveRoots;
+  const securityRunner = options.securityRunner;
+  const allowSystemKeychain = options.allowSystemKeychain === undefined
+    ? !hasInjectedHome
+      && options.env === undefined
+      && options.platform === undefined
+      && shouldUseSystemKeychain(env)
+    : Boolean(options.allowSystemKeychain);
 
   const costStats = queuePath ? calculateUsageCosts(readQueueRows(queuePath)) : new Map();
 
@@ -337,10 +373,18 @@ async function collectApiBillingAccounts({
   const spendAccounts = collectBillingFromSpendRecords(spendRecords);
 
   // Detect credentials from local files
-  const detectedCredentials = detectCredentialsFromAuthFiles({ home, env });
+  const detectedCredentials = detectCredentialsFromAuthFiles({
+    home,
+    env,
+    platform,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+  });
 
   // Detect credentials from macOS Keychain
-  const keychainCredentials = detectCredentialsFromKeychain({ platform });
+  const keychainCredentials = securityRunner || allowSystemKeychain
+    ? detectCredentialsFromKeychain({ platform, securityRunner })
+    : [];
   detectedCredentials.push(...keychainCredentials);
 
   // Merge all sources
@@ -426,6 +470,7 @@ module.exports = {
   BILLING_SOURCES,
   PROVIDER_NAMES,
   collectApiBillingAccounts,
+  shouldUseSystemKeychain,
   collectBillingFromSpendRecords,
   detectCredentialsFromAuthFiles,
   detectCredentialsFromKeychain,

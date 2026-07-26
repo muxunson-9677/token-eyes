@@ -1127,13 +1127,21 @@ async function proxyToLocalCli(req, res) {
   }
 }
 
-function localDataApiPlugin() {
+export function localDataApiPlugin() {
   return {
     name: "tokentracker-local-data-api",
     configureServer(server) {
-      // 添加中间件到最前面，拦截所有请求
+      // 添加中间件到最前面，拦截所有本地 API 请求。
       server.middlewares.use((req, res, next) => {
-        if (typeof req.url === "string" && req.url.startsWith("/functions/")) {
+        if (typeof req.url !== "string") {
+          next();
+          return;
+        }
+        if (req.url.startsWith("/api/")) {
+          Promise.resolve(proxyToLocalCli(req, res)).catch(next);
+          return;
+        }
+        if (req.url.startsWith("/functions/")) {
           const url = new URL(req.url, `http://${req.headers.host}`);
           Promise.resolve(handleLocalApi(req, res, url))
             .then((handled) => {
@@ -1165,20 +1173,29 @@ export default defineConfig(({ mode }) => {
   // off by default makes the macOS + web builds byte-identical to a no-pet build —
   // this matters because this project has a history of chunk-split changes subtly
   // breaking the native OAuth callback (see CLAUDE.md). macOS never loads pet.html.
-  const rollupInput = {
-    main: path.resolve(ROOT_DIR, "index.html"),
-    share: path.resolve(ROOT_DIR, "share.html"),
-  };
+  const isSingleFileBuild = process.env.TOKENTRACKER_SINGLE_FILE === "1";
+  const rollupInput = isSingleFileBuild
+    ? { main: path.resolve(ROOT_DIR, "index.html") }
+    : {
+        main: path.resolve(ROOT_DIR, "index.html"),
+        share: path.resolve(ROOT_DIR, "share.html"),
+      };
   if (process.env.TOKENTRACKER_BUILD_PET === "1") {
     rollupInput.pet = path.resolve(ROOT_DIR, "pet.html");
   }
 
+  const rollupOutput = isSingleFileBuild
+    ? { inlineDynamicImports: true, manualChunks: undefined }
+    : undefined;
+
   return {
+    base: isSingleFileBuild ? "./" : "/",
     plugins: [react(), richLinkMetaPlugin(), localDataApiPlugin()],
     ...(Object.keys(define).length ? { define } : {}),
     build: {
       rollupOptions: {
         input: rollupInput,
+        ...(rollupOutput ? { output: rollupOutput } : {}),
       },
     },
     server: {
