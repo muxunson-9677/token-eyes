@@ -33,10 +33,10 @@
 - Test: `test/observability-export.test.js`
 - Test: `test/tray-compact.test.js`
 
-- [ ] **Step 1:** Add one failing API-contract test for each of request diagnostics, redacted export, and compact tray data.
-- [ ] **Step 2:** Expose only safe, local data through the existing local API dispatcher.
-- [ ] **Step 3:** Run the three focused Node tests; expect zero failures.
-- [ ] **Step 4:** Commit the tested local API wiring.
+- [x] **Step 1:** Add one failing API-contract test for each of request diagnostics, redacted export, and compact tray data.
+- [x] **Step 2:** Expose only safe, local data through the existing local API dispatcher.
+- [x] **Step 3:** Run the three focused Node tests; expect zero failures.
+- [x] **Step 4:** Commit the tested local API wiring.
 
 ### Task 3: Port installer repair without changing product behavior
 
@@ -52,11 +52,11 @@
 - Create: `src-tauri/EmbeddedServer-0.54.21/.gitkeep`
 - Test: `test/windows-bundled-runtime-smoke.test.cjs`
 
-- [ ] **Step 1:** Add a failing smoke assertion for a versioned runtime resource directory.
-- [ ] **Step 2:** Port only the 0.54.20 runtime path and shared-manifest bundling logic, parameterized by the current app version.
-- [ ] **Step 3:** Set all five release version values to `0.54.21` and update lock metadata.
-- [ ] **Step 4:** Run the versioned-runtime smoke test after preparation; expect it to locate the bundled server resources.
-- [ ] **Step 5:** Commit the packaging repair.
+- [x] **Step 1:** Add a failing smoke assertion for a versioned runtime resource directory.
+- [x] **Step 2:** Port only the 0.54.20 runtime path and shared-manifest bundling logic, parameterized by the current app version.
+- [x] **Step 3:** Set all five release version values to `0.54.21` and update lock metadata.
+- [x] **Step 4:** Run the versioned-runtime smoke test after preparation; expect it to locate the bundled server resources.
+- [x] **Step 5:** Commit the packaging repair.
 
 ### Task 4: Build and adversarially verify the release candidate
 
