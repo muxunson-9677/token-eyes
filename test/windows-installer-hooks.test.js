@@ -31,8 +31,13 @@ test("Windows NSIS installer preinstall hook stops only Token Eyes bundled node"
   );
   assert.match(
     hookSource,
-    /EmbeddedServer\\node\.exe/,
-    "cleanup script must target the bundled node.exe under the install directory",
+    /EmbeddedServer-\*/,
+    "cleanup script must target this release's versioned runtime directory",
+  );
+  assert.match(
+    hookSource,
+    /Join-Path \$\$_\.FullName 'node\.exe'/,
+    "cleanup script must target node.exe inside every installed versioned runtime directory",
   );
   assert.doesNotMatch(
     hookSource,

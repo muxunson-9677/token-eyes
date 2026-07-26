@@ -334,7 +334,11 @@ struct ResolvedRuntime {
     tracker_root: PathBuf,
 }
 
-/// Resolve the bundled `EmbeddedServer` runtime from Tauri's resource
+fn bundled_runtime_dir_name() -> String {
+    format!("EmbeddedServer-{}", env!("CARGO_PKG_VERSION"))
+}
+
+/// Resolve this release's versioned bundled runtime from Tauri's resource
 /// directory. Verifies `node.exe`, `bin/tracker.js`,
 /// `dashboard/dist/index.html`, and `runtime-manifest.json` all exist.
 fn resolve_bundled_runtime(app: &AppHandle) -> Result<ResolvedRuntime, String> {
@@ -350,7 +354,7 @@ fn resolve_bundled_runtime(app: &AppHandle) -> Result<ResolvedRuntime, String> {
 /// Every missing-file path returns its own bracketed `[E_RUNTIME_*]` code
 /// so the frontend can render a targeted retry/diagnostic UI.
 fn resolve_bundled_runtime_at(resource_dir: &std::path::Path) -> Result<ResolvedRuntime, String> {
-    let embedded_dir = resource_dir.join("EmbeddedServer");
+    let embedded_dir = resource_dir.join(bundled_runtime_dir_name());
     let node_exe = embedded_dir.join("node.exe");
     let tracker_root = embedded_dir.join("tokentracker");
     let tracker_js = tracker_root.join("bin").join("tracker.js");
@@ -950,7 +954,7 @@ mod tests {
     // [E_RUNTIME_*] 错误码，前端依赖这些码渲染定向重试 UI。
     // 不允许静默回退到默认端口或 PATH node。
 
-    /// Build a temp dir with a complete EmbeddedServer layout. The caller
+    /// Build a temp dir with this release's complete versioned runtime layout. The caller
     /// owns cleanup via `std::fs::remove_dir_all`. We avoid pulling in the
     /// `tempfile` crate just for these probes — `std::env::temp_dir()` +
     /// a high-resolution suffix is enough for test isolation.
@@ -960,7 +964,7 @@ mod tests {
             .expect("system time")
             .as_nanos();
         let root = std::env::temp_dir().join(format!("token-eyes-r1-neg-{ns}"));
-        let embedded = root.join("EmbeddedServer");
+        let embedded = root.join(bundled_runtime_dir_name());
         let tracker_root = embedded.join("tokentracker");
         std::fs::create_dir_all(tracker_root.join("bin")).expect("create bin dir");
         std::fs::create_dir_all(tracker_root.join("dashboard").join("dist"))
@@ -985,6 +989,28 @@ mod tests {
     }
 
     #[test]
+    fn bundled_runtime_directory_is_versioned_by_package_version() {
+        assert_eq!(
+            bundled_runtime_dir_name(),
+            format!("EmbeddedServer-{}", env!("CARGO_PKG_VERSION"))
+        );
+    }
+
+    #[test]
+    fn resolve_bundled_runtime_at_does_not_reuse_a_legacy_runtime_directory() {
+        let root = make_complete_runtime_root();
+        std::fs::rename(
+            root.join(bundled_runtime_dir_name()),
+            root.join("EmbeddedServer"),
+        )
+        .expect("move runtime to legacy location");
+
+        let err = resolve_bundled_runtime_at(&root).expect_err("legacy runtime must not be reused");
+        std::fs::remove_dir_all(&root).ok();
+        assert!(err.starts_with("[E_RUNTIME_MISSING_NODE]"), "got: {err}");
+    }
+
+    #[test]
     fn resolve_bundled_runtime_at_succeeds_with_complete_layout() {
         let root = make_complete_runtime_root();
         let result = resolve_bundled_runtime_at(&root);
@@ -999,7 +1025,7 @@ mod tests {
     #[test]
     fn resolve_bundled_runtime_at_returns_missing_node_when_node_exe_absent() {
         let root = make_complete_runtime_root();
-        std::fs::remove_file(root.join("EmbeddedServer").join("node.exe")).unwrap();
+        std::fs::remove_file(root.join(bundled_runtime_dir_name()).join("node.exe")).unwrap();
         let err = resolve_bundled_runtime_at(&root).expect_err("missing node should fail");
         std::fs::remove_dir_all(&root).ok();
         assert!(err.starts_with("[E_RUNTIME_MISSING_NODE]"), "got: {err}");
@@ -1009,7 +1035,7 @@ mod tests {
     fn resolve_bundled_runtime_at_returns_missing_tracker_when_tracker_js_absent() {
         let root = make_complete_runtime_root();
         std::fs::remove_file(
-            root.join("EmbeddedServer")
+            root.join(bundled_runtime_dir_name())
                 .join("tokentracker")
                 .join("bin")
                 .join("tracker.js"),
@@ -1024,7 +1050,7 @@ mod tests {
     fn resolve_bundled_runtime_at_returns_missing_dashboard_when_index_absent() {
         let root = make_complete_runtime_root();
         std::fs::remove_file(
-            root.join("EmbeddedServer")
+            root.join(bundled_runtime_dir_name())
                 .join("tokentracker")
                 .join("dashboard")
                 .join("dist")
@@ -1042,7 +1068,7 @@ mod tests {
     #[test]
     fn resolve_bundled_runtime_at_returns_missing_manifest_when_manifest_absent() {
         let root = make_complete_runtime_root();
-        std::fs::remove_file(root.join("EmbeddedServer").join("runtime-manifest.json")).unwrap();
+        std::fs::remove_file(root.join(bundled_runtime_dir_name()).join("runtime-manifest.json")).unwrap();
         let err = resolve_bundled_runtime_at(&root).expect_err("missing manifest should fail");
         std::fs::remove_dir_all(&root).ok();
         assert!(
@@ -1058,7 +1084,7 @@ mod tests {
         // not a path or any other prefix. This guards against regressions
         // where someone prepends a log level or timestamp.
         let root = make_complete_runtime_root();
-        std::fs::remove_file(root.join("EmbeddedServer").join("node.exe")).unwrap();
+        std::fs::remove_file(root.join(bundled_runtime_dir_name()).join("node.exe")).unwrap();
         let err = resolve_bundled_runtime_at(&root).expect_err("should fail");
         std::fs::remove_dir_all(&root).ok();
         assert!(
