@@ -266,7 +266,7 @@ test("local sync drain request mints a device token from relayed login when none
       assert.equal(opts.headers.Authorization, "Bearer access-token");
       const body = JSON.parse(String(opts.body || "{}"));
       assert.equal(body.machine_id, "machine-abcdef12");
-      assert.equal(body.device_name, "Token Tracker (dashboard) #machine-");
+      assert.equal(body.device_name, "Token Eyes (dashboard) #machine-");
       assert.equal(
         body.platform,
         process.platform === "darwin" ? "MacIntel" :

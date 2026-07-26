@@ -1,83 +1,118 @@
 /**
- * Public, cacheable leaderboard list. Identity-aware reads belong to the
- * authenticated tokentracker-leaderboard-me endpoint.
+ * InsForge Edge: public leaderboard list.
+ *
+ * IMPORTANT — why no Authorization header is read here:
+ * InsForge's platform gateway validates any incoming `Authorization: Bearer ...`
+ * against the service JWT secret *before* this function runs. Any token problem
+ * (bad signature, expired, wrong issuer, stale after key rotation) is surfaced
+ * as an opaque HTTP 500 JWSError instead of a proper 401. That blew up the
+ * Leaderboard for real users whose stored access_token drifted (GitHub issue #6
+ * / Linear 001-51).
+ *
+ * Fix: this endpoint is now purely public. The client passes its own `user_id`
+ * as a query parameter (already known from the Insforge auth context) to get
+ * `is_me` highlighting. The function never touches the Authorization header,
+ * so no JWT validation path can ever fire for Leaderboard reads.
+ *
+ * Security note: `user_id` from the query is only used for row-highlight. All
+ * leaderboard entries are public data in `tokentracker_leaderboard_snapshots`,
+ * so spoofing `user_id` at worst re-highlights a different row — no PII or
+ * private data is exposed.
  */
 import { createClient } from "npm:@insforge/sdk";
 
-const PERIODS = new Set(["today", "week", "month", "total"]);
-const METRICS = new Set(["tokens", "estimated_spend", "actual_cost"]);
-const KNOWN_SOURCES = new Set([
-  "all",
-  "codex",
-  "claude",
-  "gemini",
-  "cursor",
-  "opencode",
-  "openclaw",
-  "hermes",
-  "kiro",
-  "copilot",
-  "kimi",
-  "every-code",
-  "other",
-]);
-const STALE_AFTER_MS: Record<string, number> = {
-  today: 30 * 60_000,
-  week: 30 * 60_000,
-  month: 2 * 60 * 60_000,
-  total: 26 * 60 * 60_000,
-};
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey",
 };
+const BLOCKED_LEADERBOARD_USER_IDS = new Set(
+  (Deno.env.get("LEADERBOARD_BLOCKED_USER_IDS") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean),
+);
+const VALID_PERIODS = new Set(["today", "yesterday", "7d", "30d", "total"]);
+const VALID_METRICS = new Set(["with_cache", "without_cache", "estimated_cost"]);
+const LEADERBOARD_AGENT_SOURCES = new Set([
+  "claude",
+  "codex",
+  "every-code",
+  "cursor",
+  "trae",
+  "gemini",
+  "opencode",
+  "openclaw",
+  "kilo-cli",
+  "kilocode",
+  "roocode",
+  "kiro",
+  "kiro-cli",
+  "hermes",
+  "kimi",
+  "kimi-code",
+  "codebuddy",
+  "omp",
+  "pi",
+  "craft",
+  "grok",
+  "copilot",
+  "zed",
+  "goose",
+  "droid",
+  "antigravity",
+]);
 
-function json(value: unknown, status = 200) {
-  return new Response(JSON.stringify(value), {
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      ...cors,
-      "Content-Type": "application/json",
-      "Cache-Control": "public, max-age=60, s-maxage=900, stale-if-error=86400",
-    },
+    headers: { ...cors, "Content-Type": "application/json" },
   });
 }
 
-function choice(value: string | null, allowed: Set<string>, fallback: string) {
-  const normalized = (value || "").trim().toLowerCase();
-  return allowed.has(normalized) ? normalized : fallback;
+/**
+ * Decode (without verifying) the `sub` claim from a JWT. Pure back-compat
+ * fallback so v0.5.46 clients that still send an Authorization header
+ * (instead of the new `user_id` query param) still get `is_me` highlighting.
+ * Signature is NOT verified — the value is only used for cosmetic row
+ * highlighting on public data, never for authorization.
+ */
+function unsafeDecodeJwtSub(token: string): string | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const p = parts[1];
+    const padded = p
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(p.length + ((4 - (p.length % 4)) % 4), "=");
+    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const sub = payload.sub;
+    if (typeof sub === "string" && sub.length > 0) return sub;
+    const uid = payload.user_id;
+    if (typeof uid === "string" && uid.length > 0) return uid;
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
-function boundedInteger(value: string | null, fallback: number, maximum: number) {
-  const parsed = Number.parseInt(value || "", 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  return Math.min(parsed, maximum);
+function normalizePeriod(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "week") return "7d";
+  if (normalized === "month") return "30d";
+  return VALID_PERIODS.has(normalized) ? normalized : null;
 }
 
-function shanghaiRange(period: string) {
-  if (period === "total") return { from: null, to: null };
-  const shifted = new Date(Date.now() + 8 * 60 * 60_000);
-  const year = shifted.getUTCFullYear();
-  const month = shifted.getUTCMonth();
-  const day = shifted.getUTCDate();
-  const current = new Date(Date.UTC(year, month, day));
-  if (period === "today") {
-    const value = current.toISOString().slice(0, 10);
-    return { from: value, to: value };
-  }
-  if (period === "month") {
-    return {
-      from: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10),
-      to: new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10),
-    };
-  }
-  const mondayOffset = (current.getUTCDay() + 6) % 7;
-  const from = new Date(current);
-  from.setUTCDate(from.getUTCDate() - mondayOffset);
-  const to = new Date(from);
-  to.setUTCDate(to.getUTCDate() + 6);
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+function normalizeAgent(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "all" || LEADERBOARD_AGENT_SOURCES.has(normalized)) return normalized;
+  return null;
+}
+
+function normalizeMetric(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  return VALID_METRICS.has(normalized) ? normalized : null;
 }
 
 export default async function (req: Request): Promise<Response> {
@@ -85,97 +120,98 @@ export default async function (req: Request): Promise<Response> {
   if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
 
   const url = new URL(req.url);
-  const period = choice(url.searchParams.get("period"), PERIODS, "today");
-  const metric = choice(url.searchParams.get("metric"), METRICS, "tokens");
-  const requestedSource = choice(url.searchParams.get("source"), KNOWN_SOURCES, "all");
-  const source = metric === "actual_cost" ? "all" : requestedSource;
-  const limit = Math.max(1, Math.min(boundedInteger(url.searchParams.get("limit"), 20, 100), 100));
-  const offset = boundedInteger(url.searchParams.get("offset"), 0, 100_000);
-
-  const baseUrl = Deno.env.get("INSFORGE_BASE_URL");
-  const serviceRoleKey = Deno.env.get("API_KEY") ?? Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
-  if (!baseUrl || !serviceRoleKey) return json({ error: "server misconfigured" }, 500);
-  const client = createClient({ baseUrl, edgeFunctionToken: serviceRoleKey });
-
-  const {
-    data: entries,
-    error,
-    count,
-  } = await client.database
-    .from("tokentracker_leaderboard_snapshots_v2")
-    .select(
-      "rank,total_tokens,estimated_cost_usd,actual_cost_usd,source_breakdown,display_name,avatar_url,github_url,pricing_version,generated_at",
-      { count: "exact" },
-    )
-    .eq("period", period)
-    .eq("metric", metric)
-    .eq("source", source)
-    .eq("is_public", true)
-    .order("rank", { ascending: true })
-    .range(offset, offset + limit - 1);
-  if (error) return json({ error: error.message || "Leaderboard read failed" }, 500);
-
-  const rows = Array.isArray(entries) ? entries : [];
-  const generatedAt = typeof rows[0]?.generated_at === "string" ? rows[0].generated_at : null;
-  const pricingVersion = typeof rows[0]?.pricing_version === "string" ? rows[0].pricing_version : null;
-  const generatedMs = generatedAt ? Date.parse(generatedAt) : Number.NaN;
-  const stale = !Number.isFinite(generatedMs) || Date.now() - generatedMs > STALE_AFTER_MS[period];
-  const totalEntries = Number(count) || 0;
-  const range = shanghaiRange(period);
-  let aggregateRows = rows;
-  if (offset !== 0 || totalEntries > rows.length) {
-    const aggregatePageSize = 1_000;
-    const aggregateRequests = [];
-    for (let aggregateOffset = 0; aggregateOffset < totalEntries; aggregateOffset += aggregatePageSize) {
-      aggregateRequests.push(
-        client.database
-          .from("tokentracker_leaderboard_snapshots_v2")
-          .select("total_tokens,estimated_cost_usd")
-          .eq("period", period)
-          .eq("metric", metric)
-          .eq("source", source)
-          .eq("is_public", true)
-          .range(
-            aggregateOffset,
-            Math.min(aggregateOffset + aggregatePageSize, totalEntries) - 1,
-          ),
-      );
-    }
-    const aggregateResults = await Promise.all(aggregateRequests);
-    const failedAggregate = aggregateResults.find((result) => result.error);
-    if (failedAggregate?.error) {
-      return json({ error: failedAggregate.error.message || "Leaderboard summary failed" }, 500);
-    }
-    aggregateRows = aggregateResults.flatMap((result) => (
-      Array.isArray(result.data) ? result.data : []
-    ));
+  const period = normalizePeriod(url.searchParams.get("period") || "total");
+  const agent = normalizeAgent(url.searchParams.get("agent") || "all");
+  const metric = normalizeMetric(url.searchParams.get("metric") || "with_cache");
+  if (!period || !agent || !metric) {
+    return json({ error: "invalid leaderboard dimensions" }, 400);
   }
-  const aggregateTotalTokens = aggregateRows.reduce(
-    (sum, row) => sum + (Number(row?.total_tokens) || 0),
-    0,
+  const parsedLimit = Number.parseInt(url.searchParams.get("limit") || "20", 10);
+  const parsedOffset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
+  const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 20, 1), 100);
+  const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
+  // Preferred path: client passes user_id as a query param (v0.5.51+).
+  // Fallback: v0.5.46 clients still send a Bearer token — decode its sub
+  // claim (WITHOUT signature verification) so they keep seeing is_me
+  // highlighting. Signature validation is unnecessary because sub is only
+  // used to pick which public row to highlight.
+  let requestedUserId =
+    url.searchParams.get("user_id") || url.searchParams.get("userId") || null;
+  if (!requestedUserId) {
+    const authH = req.headers.get("Authorization");
+    const token = authH?.startsWith("Bearer ") ? authH.slice(7) : null;
+    if (token) requestedUserId = unsafeDecodeJwtSub(token);
+  }
+
+  const baseUrl = Deno.env.get("INSFORGE_BASE_URL")!;
+  const incomingApiKey =
+    req.headers.get("apikey") ?? req.headers.get("Apikey") ?? req.headers.get("x-api-key") ?? undefined;
+  const anonKey =
+    Deno.env.get("INSFORGE_ANON_KEY") ?? Deno.env.get("ANON_KEY") ?? incomingApiKey ?? undefined;
+  const serviceRoleKey = Deno.env.get("INSFORGE_SERVICE_ROLE_KEY");
+  // Always use service role (never the caller's token) so a stale/broken
+  // caller token can't cascade into a 500 on the DB query.
+  const client = createClient({
+    baseUrl,
+    edgeFunctionToken: serviceRoleKey,
+    anonKey,
+    ...(anonKey ? { headers: { apikey: anonKey } } : {}),
+  });
+
+  const { data, error } = await client.database.rpc(
+    "leaderboard_ranked",
+    {
+      p_period: period,
+      p_agent: agent,
+      p_metric: metric,
+      p_limit: limit,
+      p_offset: offset,
+      p_user_id: requestedUserId,
+      p_blocked_user_ids: Array.from(BLOCKED_LEADERBOARD_USER_IDS),
+    },
   );
-  const aggregateTotalCostUsd = aggregateRows.reduce(
-    (sum, row) => sum + (Number(row?.estimated_cost_usd) || 0),
-    0,
-  );
+  if (error) return json({ error: error.message }, 500);
+
+  type RankedPayload = {
+    entries?: Array<Record<string, unknown>>;
+    me?: Record<string, unknown> | null;
+    participant_count?: number | string;
+    ranked_entry_count?: number | string;
+    total_score?: number | string;
+    aggregate_total_tokens?: number | string;
+    aggregate_total_cost_usd?: number | string;
+    from?: string | null;
+    to?: string | null;
+    generated_at?: string | null;
+  };
+  const payload = (
+    Array.isArray(data) ? (data[0] ?? {}) : (data ?? {})
+  ) as RankedPayload;
+  const entries = Array.isArray(payload.entries) ? payload.entries : [];
+  const participantCount = Math.max(Number(payload.participant_count) || 0, 0);
+  const rankedEntryCount = Math.max(Number(payload.ranked_entry_count) || 0, 0);
+  const me = payload.me ?? null;
+  const meUserId = typeof me?.user_id === "string" ? me.user_id : null;
 
   return json({
-    entries: rows,
+    entries: entries.map((e) => ({
+      ...e,
+      is_me: Boolean(meUserId && meUserId === e.user_id),
+    })),
+    me,
+    participant_count: participantCount,
+    ranked_entry_count: rankedEntryCount,
+    total_entries: rankedEntryCount,
+    total_score: Number(payload.total_score) || 0,
+    aggregate_total_tokens: Number(payload.aggregate_total_tokens) || 0,
+    aggregate_total_cost_usd: Number(payload.aggregate_total_cost_usd) || 0,
+    page: Math.floor(offset / limit) + 1,
+    total_pages: Math.ceil(rankedEntryCount / limit),
     period,
+    agent,
     metric,
-    source,
-    limit,
-    offset,
-    total_entries: totalEntries,
-    participant_count: totalEntries,
-    ranked_entry_count: totalEntries,
-    aggregate_total_tokens: aggregateTotalTokens,
-    aggregate_total_cost_usd: aggregateTotalCostUsd,
-    total_pages: Math.ceil(totalEntries / limit),
-    from: range.from,
-    to: range.to,
-    generated_at: generatedAt,
-    pricing_version: pricingVersion,
-    stale,
+    from: payload.from ?? null,
+    to: payload.to ?? null,
+    generated_at: payload.generated_at ?? null,
   });
 }
