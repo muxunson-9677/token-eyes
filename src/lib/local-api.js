@@ -1889,6 +1889,8 @@ function sanitizeCodexResetEvent(event) {
     official_url: officialUrl,
     source: event.source === "signed_feed" ? "signed_feed" : "local_quota",
   };
+  const occurredAt = safeIsoString(event.occurredAt);
+  if (occurredAt) dto.occurred_at = occurredAt;
   if (type === "official_reset_announcement") {
     const sourceUrl = safeCodexResetUrl(event.sourceUrl, { allowX: true });
     const title = boundedString(event.title, 80);
@@ -4904,6 +4906,10 @@ function createLocalApiHandler({
           .listUnread()
           .map(sanitizeCodexResetEvent)
           .filter(Boolean),
+        history: codexResetMonitorService
+          .listHistory()
+          .map(sanitizeCodexResetEvent)
+          .filter(Boolean),
       });
       if (p === "/functions/tokentracker-codex-reset-events") {
         if (method !== "GET") {
@@ -5016,6 +5022,10 @@ function createLocalApiHandler({
       }
       const cacheKey = upstream.toString();
       const cached = leaderboardPublicCache.get(cacheKey);
+      const hasCompleteSummary = (body) => body
+        && Number.isFinite(Number(body.participant_count))
+        && Number.isFinite(Number(body.aggregate_total_tokens))
+        && Number.isFinite(Number(body.aggregate_total_cost_usd));
       const writeResponse = (body, cacheStatus) => {
         res.writeHead(200, {
           "Content-Type": "application/json",
@@ -5026,7 +5036,11 @@ function createLocalApiHandler({
         });
         res.end(JSON.stringify(body));
       };
-      if (cached && Date.now() - cached.fetchedAt < LEADERBOARD_PUBLIC_CACHE_TTL_MS) {
+      if (
+        cached
+        && hasCompleteSummary(cached.body)
+        && Date.now() - cached.fetchedAt < LEADERBOARD_PUBLIC_CACHE_TTL_MS
+      ) {
         writeResponse(cached.body, "HIT");
         return true;
       }
@@ -5072,6 +5086,48 @@ function createLocalApiHandler({
           const range = snapshotResponse.headers.get("content-range") || "";
           const totalMatch = range.match(/\/(\d+)$/u);
           const totalEntries = totalMatch ? Number(totalMatch[1]) : rows.length;
+          let aggregateRows = rows;
+          if (offset !== 0 || totalEntries > rows.length) {
+            const aggregatePageSize = 1_000;
+            const aggregateRequests = [];
+            for (let aggregateOffset = 0; aggregateOffset < totalEntries; aggregateOffset += aggregatePageSize) {
+              const aggregateUrl = new URL(
+                `${LEADERBOARD_PUBLIC_DATABASE}/api/database/records/tokentracker_leaderboard_snapshots_v2`,
+              );
+              aggregateUrl.searchParams.set("select", "total_tokens,estimated_cost_usd");
+              aggregateUrl.searchParams.set("period", `eq.${period}`);
+              aggregateUrl.searchParams.set("metric", `eq.${metric}`);
+              aggregateUrl.searchParams.set("source", `eq.${source}`);
+              aggregateUrl.searchParams.set("is_public", "eq.true");
+              aggregateUrl.searchParams.set("offset", String(aggregateOffset));
+              aggregateUrl.searchParams.set("limit", String(aggregatePageSize));
+              aggregateRequests.push(fetch(aggregateUrl.toString(), {
+                method: "GET",
+                headers: {
+                  Accept: "application/json",
+                  apikey: LEADERBOARD_PUBLIC_ANON_KEY,
+                  Authorization: `Bearer ${LEADERBOARD_PUBLIC_ANON_KEY}`,
+                },
+                signal: AbortSignal.timeout(5_000),
+              }));
+            }
+            const aggregateResponses = await Promise.all(aggregateRequests);
+            if (aggregateResponses.some((response) => !response.ok)) {
+              throw new Error("Snapshot summary unavailable");
+            }
+            const aggregatePages = await Promise.all(
+              aggregateResponses.map((response) => response.json()),
+            );
+            aggregateRows = aggregatePages.flatMap((page) => (Array.isArray(page) ? page : []));
+          }
+          const aggregateTotalTokens = aggregateRows.reduce(
+            (sum, row) => sum + (Number(row?.total_tokens) || 0),
+            0,
+          );
+          const aggregateTotalCostUsd = aggregateRows.reduce(
+            (sum, row) => sum + (Number(row?.estimated_cost_usd) || 0),
+            0,
+          );
           return {
             entries: rows,
             period,
@@ -5080,6 +5136,10 @@ function createLocalApiHandler({
             limit,
             offset,
             total_entries: totalEntries,
+            participant_count: totalEntries,
+            ranked_entry_count: totalEntries,
+            aggregate_total_tokens: aggregateTotalTokens,
+            aggregate_total_cost_usd: aggregateTotalCostUsd,
             total_pages: Math.ceil(totalEntries / limit),
             generated_at: typeof rows[0]?.generated_at === "string" ? rows[0].generated_at : null,
           };

@@ -94,6 +94,17 @@ function harness() {
       access_token: "must-not-leak",
       path: "C:\\private",
     }],
+    listHistory: () => [{
+      id: "completed:rolling_5_hour:2026-07-20",
+      type: "reset_completed",
+      window: "rolling_5_hour",
+      createdAt: "2026-07-20T08:01:00.000Z",
+      resetAt: "2026-07-20T08:00:00.000Z",
+      occurredAt: "2026-07-20T08:00:00.000Z",
+      officialUrl: "https://chatgpt.com/codex",
+      source: "local_quota",
+      access_token: "must-not-leak",
+    }],
     acknowledge: (id) => acknowledgements.push(id),
     check: async (options) => {
       checks.push(options);
@@ -117,6 +128,9 @@ test("GET returns no-store sanitized status and unread events without auth", asy
     assert.equal(body.status.unread_count, 1);
     assert.equal(body.events[0].id, "official:reset-july");
     assert.equal(body.events[0].source_url, "https://x.com/thsottiaux/status/2078990367241046272");
+    assert.equal(body.history.length, 1);
+    assert.equal(body.history[0].type, "reset_completed");
+    assert.equal(body.history[0].occurred_at, "2026-07-20T08:00:00.000Z");
     assert.doesNotMatch(JSON.stringify(body), /access_token|raw_response|C:\\\\private/i);
   } finally {
     fs.rmSync(h.root, { recursive: true, force: true });

@@ -122,6 +122,42 @@ export default async function (req: Request): Promise<Response> {
   const stale = !Number.isFinite(generatedMs) || Date.now() - generatedMs > STALE_AFTER_MS[period];
   const totalEntries = Number(count) || 0;
   const range = shanghaiRange(period);
+  let aggregateRows = rows;
+  if (offset !== 0 || totalEntries > rows.length) {
+    const aggregatePageSize = 1_000;
+    const aggregateRequests = [];
+    for (let aggregateOffset = 0; aggregateOffset < totalEntries; aggregateOffset += aggregatePageSize) {
+      aggregateRequests.push(
+        client.database
+          .from("tokentracker_leaderboard_snapshots_v2")
+          .select("total_tokens,estimated_cost_usd")
+          .eq("period", period)
+          .eq("metric", metric)
+          .eq("source", source)
+          .eq("is_public", true)
+          .range(
+            aggregateOffset,
+            Math.min(aggregateOffset + aggregatePageSize, totalEntries) - 1,
+          ),
+      );
+    }
+    const aggregateResults = await Promise.all(aggregateRequests);
+    const failedAggregate = aggregateResults.find((result) => result.error);
+    if (failedAggregate?.error) {
+      return json({ error: failedAggregate.error.message || "Leaderboard summary failed" }, 500);
+    }
+    aggregateRows = aggregateResults.flatMap((result) => (
+      Array.isArray(result.data) ? result.data : []
+    ));
+  }
+  const aggregateTotalTokens = aggregateRows.reduce(
+    (sum, row) => sum + (Number(row?.total_tokens) || 0),
+    0,
+  );
+  const aggregateTotalCostUsd = aggregateRows.reduce(
+    (sum, row) => sum + (Number(row?.estimated_cost_usd) || 0),
+    0,
+  );
 
   return json({
     entries: rows,
@@ -131,6 +167,10 @@ export default async function (req: Request): Promise<Response> {
     limit,
     offset,
     total_entries: totalEntries,
+    participant_count: totalEntries,
+    ranked_entry_count: totalEntries,
+    aggregate_total_tokens: aggregateTotalTokens,
+    aggregate_total_cost_usd: aggregateTotalCostUsd,
     total_pages: Math.ceil(totalEntries / limit),
     from: range.from,
     to: range.to,

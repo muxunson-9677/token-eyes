@@ -23,6 +23,7 @@ const TEXT = {
   leaderboard: "Leaderboard page",
   leaderboardRules: "Leaderboard rules page",
   leaderboardProfile: "Leaderboard profile page",
+  resetHistory: "Reset history page",
   login: "Login page",
   sidebarShell: "Sidebar shell",
 };
@@ -135,6 +136,9 @@ vi.mock("./pages/LeaderboardPage.jsx", () => ({
 vi.mock("./pages/LeaderboardRulesPage.jsx", () => ({
   LeaderboardRulesPage: () => <main>{TEXT.leaderboardRules}</main>,
 }));
+vi.mock("./pages/ResetHistoryPage", () => ({
+  ResetHistoryPage: () => <main>{TEXT.resetHistory}</main>,
+}));
 
 // SpendPage.jsx must export SpendUsagePage and SpendCostPage.
 vi.mock("./pages/SpendPage.jsx", () => ({
@@ -193,6 +197,12 @@ describe("App routes (v2.0 IA refactor)", () => {
   it("/settings/cost renders SettingsCostPage with sidebar", async () => {
     renderApp("/settings/cost");
     expect(await screen.findByText(TEXT.settingsCost)).toBeInTheDocument();
+    expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+  });
+
+  it("/reset-history renders ResetHistoryPage with sidebar", async () => {
+    renderApp("/reset-history");
+    expect(await screen.findByText(TEXT.resetHistory)).toBeInTheDocument();
     expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
   });
 

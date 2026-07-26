@@ -11,6 +11,7 @@ import {
   Monitor,
   ChevronRight,
   Trophy,
+  History,
 } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
@@ -40,6 +41,13 @@ export function getNavGroups() {
       items: [
         { id: "usage", to: "/dashboard", icon: BarChart3, label: copy("nav.usage") },
         { id: "leaderboard", to: "/leaderboard", icon: Trophy, label: copy("nav.leaderboard") },
+        {
+          id: "reset-history",
+          to: "/reset-history",
+          icon: History,
+          label: copy("nav.reset_history"),
+          codexResetAttention: true,
+        },
       ],
     },
     {
@@ -59,14 +67,8 @@ export function getNavGroups() {
       defaultChildTo: "/settings/basic",
       children: [
         { id: "settings-basic", to: "/settings/basic", label: copy("nav.settings.basic") },
-        {
-          id: "settings-cost",
-          to: "/settings/cost",
-          label: copy("nav.settings.cost"),
-          codexResetAttention: true,
-        },
+        { id: "settings-cost", to: "/settings/cost", label: copy("nav.settings.cost") },
       ],
-      codexResetAttention: true,
     },
   ];
 }

@@ -24,6 +24,9 @@ test("public leaderboard has a bounded, privacy-safe read contract", () => {
   assert.match(source, /generated_at/);
   assert.match(source, /pricing_version/);
   assert.match(source, /stale/);
+  assert.match(source, /participant_count/);
+  assert.match(source, /aggregate_total_tokens/);
+  assert.match(source, /aggregate_total_cost_usd/);
 });
 
 test("authenticated self-rank endpoint derives identity only from a verified JWT", () => {
@@ -32,7 +35,7 @@ test("authenticated self-rank endpoint derives identity only from a verified JWT
   assert.match(source, /\.from\("tokentracker_leaderboard_snapshots_v2"\)/);
   assert.match(source, /Authorization/);
   assert.match(source, /verifiedUserIdFromJwt|verifiedUserId/);
-  assert.match(source, /JWT_SECRET/);
+  assert.match(source, /auth\.getCurrentUser\(\)/);
   assert.match(source, /\.eq\("user_id",\s*userId\)/);
   assert.doesNotMatch(source, /searchParams\.get\("user_id"\)/);
   assert.match(source, /Cache-Control":\s*"private, no-store"/);

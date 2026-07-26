@@ -40,6 +40,16 @@ const response = {
     official_url: "https://chatgpt.com/codex",
     source: "local_quota" as const,
   }],
+  history: [{
+    id: "reset-1",
+    type: "reset_completed" as const,
+    window: "rolling_5_hour" as const,
+    created_at: "2026-07-20T08:01:00.000Z",
+    reset_at: "2026-07-20T08:00:00.000Z",
+    occurred_at: "2026-07-20T08:00:00.000Z",
+    official_url: "https://chatgpt.com/codex",
+    source: "local_quota" as const,
+  }],
 };
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -63,6 +73,7 @@ describe("Codex reset events provider", () => {
     await act(async () => Promise.resolve());
     expect(api.getCodexResetEvents).toHaveBeenCalledTimes(1);
     expect(result.current.unreadCount).toBe(1);
+    expect(result.current.history).toEqual(response.history);
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);

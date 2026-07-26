@@ -172,6 +172,7 @@ test("local reset DTO strips secrets and rejects mismatched X source identity", 
         sourcePostId: "2078990367241046272",
       },
     ],
+    listHistory: () => [],
   });
 
   assertNoForbiddenKeys(dto);

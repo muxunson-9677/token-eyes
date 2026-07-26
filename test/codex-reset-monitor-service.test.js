@@ -290,3 +290,35 @@ test("valid snapshots enter the state machine and acknowledgement persists", asy
   assert.equal(h.service.listUnread().length, 0);
   assert.ok(h.getSaved().acknowledgedEventIds.includes(unread[0].id));
 });
+
+test("service exposes only the latest five actual reset records", () => {
+  const events = Array.from({ length: 6 }, (_, index) => ({
+    id: `completed-${index}`,
+    type: "reset_completed",
+    window: "rolling_5_hour",
+    createdAt: new Date(BASE + index * 60_000).toISOString(),
+    resetAt: new Date(BASE + index * 60_000).toISOString(),
+    officialUrl: "https://chatgpt.com/codex",
+    source: "local_quota",
+  }));
+  events.push({
+    ...events[0],
+    id: "upcoming",
+    type: "reset_upcoming",
+    createdAt: new Date(BASE + 30 * 60_000).toISOString(),
+  });
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 1,
+      events,
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: [],
+    }),
+  });
+
+  assert.deepEqual(
+    h.service.listHistory().map((event) => event.id),
+    ["completed-5", "completed-4", "completed-3", "completed-2", "completed-1"],
+  );
+});

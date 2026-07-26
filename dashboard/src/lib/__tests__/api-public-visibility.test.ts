@@ -359,6 +359,10 @@ describe("leaderboard API", () => {
       source: "all",
       total_entries: 1,
       total_pages: 1,
+      participant_count: 1,
+      ranked_entry_count: 1,
+      aggregate_total_tokens: 1234,
+      aggregate_total_cost_usd: 1.23,
     });
     const directCall = fetchMock.mock.calls.find(([url]) =>
       String(url).includes("/api/database/records/tokentracker_leaderboard_snapshots_v2"),

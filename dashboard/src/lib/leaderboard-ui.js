@@ -61,12 +61,17 @@ export function prependMeRowToPage({ entries, me, meLabel }) {
   if (!meRank && !isLocalPending) return rows;
   if (rows.some((e) => Boolean(e?.is_me))) return rows;
 
-  const matchingUserIndex = me?.user_id
+  let matchingUserIndex = me?.user_id
     ? rows.findIndex((entry) => entry?.user_id === me.user_id)
     : -1;
+  if (matchingUserIndex < 0 && meRank != null) {
+    matchingUserIndex = rows.findIndex((entry) => Number(entry?.rank) === meRank);
+  }
   if (matchingUserIndex >= 0) {
     return rows.map((entry, index) => (
-      index === matchingUserIndex ? { ...entry, is_me: true } : entry
+      index === matchingUserIndex
+        ? { ...entry, ...me, rank: entry?.rank ?? meRank, is_me: true, is_pinned: false }
+        : entry
     ));
   }
 

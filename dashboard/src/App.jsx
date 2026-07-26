@@ -51,6 +51,9 @@ const LeaderboardRulesPage = lazy(() =>
 const LeaderboardProfilePage = lazy(() =>
   import("./pages/LeaderboardProfilePage.jsx").then((m) => ({ default: m.LeaderboardProfilePage })),
 );
+const ResetHistoryPage = lazy(() =>
+  import("./pages/ResetHistoryPage").then((m) => ({ default: m.ResetHistoryPage })),
+);
 const LimitsPage = lazy(() =>
   import("./pages/LimitsPage.jsx").then((m) => ({ default: m.LimitsPage })),
 );
@@ -152,7 +155,7 @@ export default function App() {
       : cloudAuthSignedIn
         ? "cloud"
         : signedIn
-          ? "local"
+          ? "public"
           : "unavailable";
 
   const tryPreloadLeaderboardDefaultState = useCallback(() => {
@@ -221,6 +224,7 @@ export default function App() {
   if (profileUserId) gate = "dashboard";
 
   const isLimitsPath = normalizedPath === "/limits";
+  const isResetHistoryPath = normalizedPath === "/reset-history";
   // v2.0 IA: settings and spend are split into sub-routes. The bare
   // /spend and /settings paths redirect to their default children below.
   const isSettingsBasicPath = normalizedPath === "/settings/basic";
@@ -240,6 +244,7 @@ export default function App() {
   const isIpCheckPath = normalizedPath === "/ip-check";
   if (
     isLimitsPath ||
+    isResetHistoryPath ||
     isSettingsSubPath ||
     isSpendSubPath ||
     isSkillsPath ||
@@ -281,6 +286,8 @@ export default function App() {
     PageComponent = LeaderboardRulesPage;
   } else if (normalizedPath === "/leaderboard") {
     PageComponent = LeaderboardPage;
+  } else if (isResetHistoryPath) {
+    PageComponent = ResetHistoryPage;
   } else if (isLimitsPath) {
     PageComponent = LimitsPage;
   } else if (isSettingsBasicPath) {
@@ -306,6 +313,7 @@ export default function App() {
     !isAuthGateTriggered &&
     (normalizedPath === "/dashboard" ||
       normalizedPath === "/" ||
+      isResetHistoryPath ||
       isSettingsSubPath ||
       isSpendSubPath ||
       (isLocalMode && isPublicLeaderboardPath));

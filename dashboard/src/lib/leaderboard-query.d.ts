@@ -1,5 +1,5 @@
-export type LeaderboardPeriod = "today" | "yesterday" | "7d" | "30d" | "total";
-export type LeaderboardMetric = "with_cache" | "without_cache" | "estimated_cost";
+export type LeaderboardPeriod = "today" | "week" | "month" | "total";
+export type LeaderboardMetric = "tokens" | "estimated_spend" | "actual_cost";
 
 export const LEADERBOARD_DEFAULT_PERIOD: LeaderboardPeriod;
 export const LEADERBOARD_DEFAULT_AGENT: "all";

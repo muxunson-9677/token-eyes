@@ -28,10 +28,9 @@ import {
 } from "../lib/leaderboard-query.js";
 import { normalizeAgentMetrics } from "../lib/leaderboard-agent-metrics.js";
 import {
-  buildLocalLeaderboardRow,
+  buildLocalLeaderboardRowFromProviderStats,
   getLeaderboardPeriodDateRange,
 } from "../lib/leaderboard-local-row";
-import { getLocalLeaderboardState } from "../lib/leaderboard-state-client";
 import { getLeaderboardSyncState } from "../lib/leaderboard-sync-state";
 import { getLeaderboardBaseUrl } from "../lib/config";
 import { getDashboardEntryPath } from "../lib/host-mode";
@@ -42,7 +41,7 @@ import {
   getLeaderboardProfile,
   getLocalLeaderboardActualCost,
   getMyLeaderboardRank,
-  getUsageSummary,
+  getProviderStats,
 } from "../lib/api";
 import {
   getLeaderboardPreloadContextKey,
@@ -658,7 +657,8 @@ export function LeaderboardPage({
         metric,
         source: effectiveSource,
       });
-      let nextMe = result?.me || null;
+      const rawMe = result?.me;
+      let nextMe = Array.isArray(rawMe) ? rawMe[0] || null : rawMe || null;
       if (!nextMe && cloudUser?.id && period !== "today") {
         const profile = await getLeaderboardProfile({
           accessToken,
@@ -707,23 +707,24 @@ export function LeaderboardPage({
       };
     }
     (async () => {
-      const localState = await getLocalLeaderboardState();
       const range = getLeaderboardPeriodDateRange(period);
-      let estimatedCostUsd = null;
-      try {
-        const summary = await getUsageSummary({
-          ...range,
-          sources: effectiveSource === "all" ? undefined : [effectiveSource],
-          timeZone: "Asia/Shanghai",
-        });
-        estimatedCostUsd = summary?.total_cost_usd ?? summary?.totals?.total_cost_usd ?? null;
-      } catch {
-        // Token counts still render if local price aggregation is unavailable.
-      }
+      const requestedSources = effectiveSource === "all" || effectiveSource === "other"
+        ? undefined
+        : [effectiveSource];
+      const providerStats = await getProviderStats({
+        ...range,
+        sources: requestedSources,
+        timeZone: "Asia/Shanghai",
+      });
+      const estimatedCostUsd = (Array.isArray(providerStats?.providers) ? providerStats.providers : [])
+        .reduce((total, row) => {
+          const cost = Number(row?.cost_usd);
+          return total + (Number.isFinite(cost) && cost > 0 ? cost : 0);
+        }, 0);
 
       let actualCostUsd = null;
       const shareActualCost = getLeaderboardSyncState(pageAccountId).shareActualCost === true;
-      if (effectiveSource === "all" && (metric === "actual_cost" || shareActualCost)) {
+      if (effectiveSource === "all" && shareActualCost) {
         try {
           const actualCosts = await getLocalLeaderboardActualCost();
           actualCostUsd = actualCosts?.[period] ?? null;
@@ -735,7 +736,7 @@ export function LeaderboardPage({
       const metadata = cloudUser?.user_metadata && typeof cloudUser.user_metadata === "object"
         ? cloudUser.user_metadata
         : {};
-      const localRow = buildLocalLeaderboardRow(localState, {
+      const localRow = buildLocalLeaderboardRowFromProviderStats(providerStats, {
         period,
         source: effectiveSource,
         userId: pageAccountId,
@@ -770,8 +771,26 @@ export function LeaderboardPage({
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
   const participantCount = listData?.participant_count ?? totalEntries;
-  const aggregateTotalTokens = listData?.aggregate_total_tokens ?? null;
-  const aggregateTotalCost = listData?.aggregate_total_cost_usd ?? null;
+  const aggregateTotalTokens = useMemo(() => {
+    const aggregate = Number(listData?.aggregate_total_tokens);
+    if (!Number.isFinite(aggregate)) return null;
+    if (!localMe || !me?.rank) return aggregate;
+    return Math.max(
+      0,
+      aggregate + (Number(localMe.total_tokens) || 0) - (Number(me.total_tokens) || 0),
+    );
+  }, [listData?.aggregate_total_tokens, localMe, me]);
+  const aggregateTotalCost = useMemo(() => {
+    const aggregate = Number(listData?.aggregate_total_cost_usd);
+    if (!Number.isFinite(aggregate)) return null;
+    if (!localMe || !me?.rank) return aggregate;
+    return Math.max(
+      0,
+      aggregate
+        + (Number(localMe.estimated_cost_usd) || 0)
+        - (Number(me.estimated_cost_usd) || 0),
+    );
+  }, [listData?.aggregate_total_cost_usd, localMe, me]);
   const currentPage = listData?.page ?? listPage;
   const pageItems = useMemo(() => {
     return buildPageItems(currentPage, totalPages);

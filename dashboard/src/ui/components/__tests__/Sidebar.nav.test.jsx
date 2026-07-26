@@ -64,12 +64,18 @@ describe("getNavGroups structure (v2.0 IA)", () => {
 
     const overview = groups.find((g) => g.id === "overview");
     expect(overview).toBeDefined();
-    expect(overview.items).toHaveLength(2);
+    expect(overview.items).toHaveLength(3);
     expect(overview.items[0].to).toBe("/dashboard");
     expect(overview.items[1]).toMatchObject({
       id: "leaderboard",
       to: "/leaderboard",
       label: "copy:nav.leaderboard",
+    });
+    expect(overview.items[2]).toMatchObject({
+      id: "reset-history",
+      to: "/reset-history",
+      label: "copy:nav.reset_history",
+      codexResetAttention: true,
     });
 
     const spend = groups.find((g) => g.id === "spend");
@@ -117,18 +123,19 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     // on that so we can assert nav structure without a real viewport.
   });
 
-  it("shows Codex reset attention on settings and the cost child", () => {
+  it("shows Codex reset attention only on the reset-history item", () => {
     codexResetContext.value.unreadCount = 1;
-    renderSidebar("/settings/cost");
-    expect(
-      screen.getAllByLabelText("copy:codex_reset.nav.unread").length,
-    ).toBeGreaterThanOrEqual(2);
+    renderSidebar("/reset-history");
+    expect(screen.getAllByLabelText("copy:codex_reset.nav.unread")).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: /copy:nav\.reset_history/ }))
+      .toHaveLength(1);
   });
 
-  it("renders overview, leaderboard, spend parent, and settings parent labels", () => {
+  it("renders overview, leaderboard, reset history, spend parent, and settings parent labels", () => {
     renderSidebar("/dashboard");
     expect(screen.getByText("copy:nav.usage")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.leaderboard")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.reset_history")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.group.spend")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.group.settings")).toBeInTheDocument();
   });

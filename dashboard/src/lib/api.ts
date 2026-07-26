@@ -65,10 +65,16 @@ export interface CodexResetEvent {
   expires_at?: string;
 }
 
+export interface CodexResetHistoryEvent extends CodexResetEvent {
+  type: "reset_completed" | "unexpected_quota_restore";
+  occurred_at: string;
+}
+
 export interface CodexResetEventsResponse {
   ok: boolean;
   status: CodexResetMonitorStatus;
   events: CodexResetEvent[];
+  history: CodexResetHistoryEvent[];
 }
 
 const PATHS = {
@@ -789,6 +795,13 @@ function exactCountFromRange(value: string | null, fallback: number) {
   return match ? Number(match[1]) : fallback;
 }
 
+function sumLeaderboardAggregates(rows: AnyRecord[]) {
+  return rows.reduce((totals, row) => ({
+    tokens: totals.tokens + (Number(row?.total_tokens) || 0),
+    estimatedCostUsd: totals.estimatedCostUsd + (Number(row?.estimated_cost_usd) || 0),
+  }), { tokens: 0, estimatedCostUsd: 0 });
+}
+
 async function fetchLeaderboardSnapshotDatabase({
   period,
   metric,
@@ -851,6 +864,44 @@ async function fetchLeaderboardSnapshotDatabase({
   const entries = await response.json();
   const rows = Array.isArray(entries) ? entries : [];
   const totalEntries = exactCountFromRange(response.headers.get("content-range"), rows.length);
+  let aggregateRows = rows;
+  if (safeOffset !== 0 || totalEntries > rows.length) {
+    const aggregatePageSize = 1_000;
+    const aggregateRequests = [];
+    for (let aggregateOffset = 0; aggregateOffset < totalEntries; aggregateOffset += aggregatePageSize) {
+      const aggregateUrl = new URL(`${root}/api/database/records/tokentracker_leaderboard_snapshots_v2`);
+      aggregateUrl.searchParams.set("select", "total_tokens,estimated_cost_usd");
+      aggregateUrl.searchParams.set("period", `eq.${safePeriod}`);
+      aggregateUrl.searchParams.set("metric", `eq.${safeMetric}`);
+      aggregateUrl.searchParams.set("source", `eq.${safeSource}`);
+      aggregateUrl.searchParams.set("is_public", "eq.true");
+      aggregateUrl.searchParams.set("offset", String(aggregateOffset));
+      aggregateUrl.searchParams.set(
+        "limit",
+        String(Math.min(aggregatePageSize, totalEntries - aggregateOffset)),
+      );
+      aggregateRequests.push(fetch(aggregateUrl.toString(), {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+        },
+        signal: controller.signal,
+        cache: "no-store",
+      }));
+    }
+    const aggregateResponses = await Promise.all(aggregateRequests);
+    const failedAggregateResponse = aggregateResponses.find((item) => !item.ok);
+    if (failedAggregateResponse) {
+      const error: any = new Error(`Request failed with HTTP ${failedAggregateResponse.status}`);
+      error.status = failedAggregateResponse.status;
+      throw error;
+    }
+    aggregateRows = (await Promise.all(aggregateResponses.map((item) => item.json())))
+      .flatMap((payload) => (Array.isArray(payload) ? payload : []));
+  }
+  const aggregates = sumLeaderboardAggregates(aggregateRows);
   const generatedAt = typeof rows[0]?.generated_at === "string" ? rows[0].generated_at : null;
   const pricingVersion = typeof rows[0]?.pricing_version === "string" ? rows[0].pricing_version : null;
   const generatedMs = generatedAt ? Date.parse(generatedAt) : Number.NaN;
@@ -863,6 +914,10 @@ async function fetchLeaderboardSnapshotDatabase({
     limit: safeLimit,
     offset: safeOffset,
     total_entries: totalEntries,
+    participant_count: totalEntries,
+    ranked_entry_count: totalEntries,
+    aggregate_total_tokens: aggregates.tokens,
+    aggregate_total_cost_usd: aggregates.estimatedCostUsd,
     total_pages: Math.ceil(totalEntries / safeLimit),
     from: range.from,
     to: range.to,

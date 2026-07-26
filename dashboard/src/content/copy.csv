@@ -1882,3 +1882,12 @@ dashboard.model_distribution.total,dashboard,DashboardView,ModelUsageDonut,total
 dashboard.model_distribution.empty,dashboard,DashboardView,ModelUsageDonut,empty,"当前范围暂无模型消耗",,active
 dashboard.model_distribution.chart_aria,dashboard,DashboardView,ModelUsageDonut,chart_aria,"模型消耗分布图",,active
 dashboard.model_distribution.other,dashboard,DashboardPage,model_usage_distribution,other,"其他",,active
+nav.reset_history,ui,Sidebar,Sidebar,reset_history,"Reset history",,active
+reset_history.title,ui,ResetHistoryPage,ResetHistoryPage,title,"Reset history",,active
+reset_history.subtitle,ui,ResetHistoryPage,ResetHistoryPage,subtitle,"Codex quota resets detected on this device",,active
+reset_history.today_title,ui,ResetHistoryPage,ResetHistoryPage,today_title,"Today's reminder",,active
+reset_history.history_title,ui,ResetHistoryPage,ResetHistoryPage,history_title,"History",,active
+reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
+reset_history.completed,ui,ResetHistoryPage,ResetRecord,completed,"Quota reset completed",,active
+reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored early",,active
+reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active

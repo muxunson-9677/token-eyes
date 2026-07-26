@@ -15,11 +15,11 @@ import {
   getLeaderboardProfile,
   getLocalLeaderboardActualCost,
   getMyLeaderboardRank,
-  getUsageSummary,
+  getProviderStats,
 } from "../lib/api";
-import { getLocalLeaderboardState } from "../lib/leaderboard-state-client";
 import { runCloudUsageSyncNow } from "../lib/cloud-sync";
 import { copy } from "../lib/copy";
+import { setLeaderboardParticipationState } from "../lib/leaderboard-sync-state";
 import { LeaderboardPage } from "./LeaderboardPage.jsx";
 
 const openLoginModalMock = vi.hoisted(() => vi.fn());
@@ -40,12 +40,8 @@ vi.mock("../lib/api", () => ({
   getLeaderboardProfile: vi.fn(),
   getLocalLeaderboardActualCost: vi.fn(),
   getMyLeaderboardRank: vi.fn(),
-  getUsageSummary: vi.fn(),
+  getProviderStats: vi.fn(),
   refreshLeaderboard: vi.fn(),
-}));
-
-vi.mock("../lib/leaderboard-state-client", () => ({
-  getLocalLeaderboardState: vi.fn(),
 }));
 
 vi.mock("../lib/cloud-sync", () => ({
@@ -139,26 +135,16 @@ describe("LeaderboardPage window-session cache reuse", () => {
     getMyLeaderboardRank.mockResolvedValue({ me: null });
     getLeaderboardProfile.mockReset();
     getLeaderboardProfile.mockResolvedValue(null);
-    getUsageSummary.mockReset();
-    getUsageSummary.mockResolvedValue({ totals: { total_cost_usd: 4.25 } });
+    getProviderStats.mockReset();
+    getProviderStats.mockResolvedValue({
+      providers: [
+        { source: "codex", tokens: 100, cost_usd: 3 },
+        { source: "cursor", tokens: 50, cost_usd: 1.25 },
+      ],
+      totals: { total_tokens: 150 },
+    });
     getLocalLeaderboardActualCost.mockReset();
     getLocalLeaderboardActualCost.mockResolvedValue({ today: 1, week: 2, month: 3, total: 4 });
-    getLocalLeaderboardState.mockReset();
-    getLocalLeaderboardState.mockResolvedValue({
-      ok: true,
-      summary_hash: "a".repeat(64),
-      state: {
-        version: 1,
-        device_id: "device-1234",
-        captured_at: "2026-07-22T08:00:00.000Z",
-        periods: {
-          today: [],
-          week: [],
-          month: [],
-          total: [["codex", "gpt-5.4", "100", "20", "30", "0", "0"]],
-        },
-      },
-    });
     runCloudUsageSyncNow.mockReset();
     runCloudUsageSyncNow.mockResolvedValue(undefined);
     openLoginModalMock.mockReset();
@@ -209,12 +195,12 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     expect((await screen.findAllByText("Preloaded User")).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getAllByText("150").length).toBeGreaterThan(0));
-    expect(getLocalLeaderboardState).toHaveBeenCalled();
-    expect(getUsageSummary).toHaveBeenCalledWith(expect.objectContaining({
+    expect(getProviderStats).toHaveBeenCalledWith(expect.objectContaining({
       from: "1970-01-01",
       sources: undefined,
       timeZone: "Asia/Shanghai",
     }));
+    expect(screen.getAllByText("$4.25").length).toBeGreaterThan(0);
   });
 
   it("keeps my displayed usage local while reusing only the cloud rank", async () => {
@@ -234,6 +220,43 @@ describe("LeaderboardPage window-session cache reuse", () => {
     await waitFor(() => expect(screen.getByText("7")).toBeInTheDocument());
     expect(screen.getAllByText("150").length).toBeGreaterThan(0);
     expect(screen.queryByText("999,999")).not.toBeInTheDocument();
+  });
+
+  it("normalizes an array-shaped self-rank response and replaces the stale cloud row", async () => {
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [{
+        rank: 1,
+        display_name: "Watermelon",
+        total_tokens: "6950299812",
+        estimated_cost_usd: 2061,
+      }],
+      participant_count: 1,
+      aggregate_total_tokens: 6950299812,
+      aggregate_total_cost_usd: 2061,
+    });
+    getProviderStats.mockResolvedValue({
+      providers: [{ source: "codex", tokens: 7075588836, cost_usd: 11156 }],
+      totals: { total_tokens: 7075588836 },
+    });
+    getMyLeaderboardRank.mockResolvedValue({
+      me: [{
+        rank: 1,
+        display_name: "Watermelon",
+        total_tokens: "6950299812",
+        estimated_cost_usd: 2061,
+      }],
+    });
+
+    renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+
+    await waitFor(() => expect(getMyLeaderboardRank).toHaveBeenCalled());
+    expect(screen.queryByText(copy("leaderboard.rank_pending"))).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("leaderboard-score")).toHaveLength(1);
+    expect(screen.getAllByText("70.76\u4ebf").length).toBeGreaterThan(0);
+    const summary = screen.getByTestId("leaderboard-summary");
+    expect(within(summary).getByText("70.76\u4ebf")).toBeInTheDocument();
+    expect(within(summary).getByText("$11,156")).toBeInTheDocument();
   });
 
   it("uses the authenticated page account when the SDK user omits its id", async () => {
@@ -756,8 +779,20 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("metric=actual_cost");
   });
 
-  it("shows my local actual cost even when I have not chosen to publish it", async () => {
+  it("keeps my local actual cost private until I choose to publish it", async () => {
     getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard?metric=actual_cost");
+
+    await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
+    expect(getLocalLeaderboardActualCost).not.toHaveBeenCalled();
+    const scores = await screen.findAllByTestId("leaderboard-score");
+    expect(scores.some((score) => score.textContent === "$4.00")).toBe(false);
+  });
+
+  it("shows the combined Cost Accumulation total after actual-cost consent", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+    setLeaderboardParticipationState({ accountId: "user-1", shareActualCost: true });
 
     renderLeaderboard("/leaderboard?metric=actual_cost");
 
@@ -825,7 +860,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard?metric=estimated_spend");
 
-    expect(await screen.findByTestId("leaderboard-score")).toHaveTextContent("$7.89");
+    const scores = await screen.findAllByTestId("leaderboard-score");
+    expect(scores.some((score) => score.textContent === "$7.89")).toBe(true);
   });
 
   it("shows stable participant, Token and estimated-cost totals returned by the ranking RPC", async () => {

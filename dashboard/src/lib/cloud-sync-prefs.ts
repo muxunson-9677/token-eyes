@@ -1,4 +1,4 @@
-import { clearLeaderboardSyncState } from "./leaderboard-sync-state.ts";
+import { clearLeaderboardSyncState } from "./leaderboard-sync-state";
 
 const KEY_ENABLED = "tokentracker_cloud_sync_enabled";
 const KEY_DEVICE = "tokentracker_cloud_device_session_v1";

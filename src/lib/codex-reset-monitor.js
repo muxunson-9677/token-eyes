@@ -8,6 +8,7 @@ const RESTORE_DROP_POINTS = 20;
 const RESTORE_CONFIRM_MS = 5 * 60 * 1000;
 const SNAPSHOT_FRESH_MS = 15 * 60 * 1000;
 const EVENT_HISTORY_LIMIT = 100;
+const RESET_HISTORY_LIMIT = 5;
 const ACKNOWLEDGEMENT_LIMIT = 200;
 const OFFICIAL_CODEX_URL = "https://chatgpt.com/codex";
 
@@ -122,8 +123,54 @@ function addEvent(state, { type, window, resetAt, nowMs }) {
   });
 }
 
+function codexResetOccurredAt(event) {
+  if (event?.type === "reset_completed") return normalizeIso(event.resetAt);
+  if (event?.type === "unexpected_quota_restore") return normalizeIso(event.createdAt);
+  return null;
+}
+
+function listCodexResetHistory(state, { limit = RESET_HISTORY_LIMIT } = {}) {
+  const safeLimit = Number.isInteger(limit) && limit >= 0
+    ? Math.min(limit, RESET_HISTORY_LIMIT)
+    : RESET_HISTORY_LIMIT;
+  if (safeLimit === 0) return [];
+  return normalizeState(state).events
+    .map((event) => {
+      const occurredAt = codexResetOccurredAt(event);
+      return occurredAt ? { ...event, occurredAt } : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) => (
+      Date.parse(right.occurredAt) - Date.parse(left.occurredAt)
+      || String(right.id).localeCompare(String(left.id))
+    ))
+    .slice(0, safeLimit);
+}
+
+function compactCodexResetEvents(events) {
+  const source = Array.isArray(events)
+    ? events.filter((event) => event && typeof event.id === "string")
+    : [];
+  const actualIds = new Set(
+    listCodexResetHistory({ events: source }).map((event) => event.id),
+  );
+  const actual = source.filter((event) => actualIds.has(event.id));
+  const other = source
+    .filter((event) => (
+      event.type !== "reset_completed"
+      && event.type !== "unexpected_quota_restore"
+    ))
+    .slice(-(EVENT_HISTORY_LIMIT - actual.length));
+  return [...other, ...actual]
+    .sort((left, right) => (
+      Date.parse(left.createdAt || left.resetAt || 0)
+      - Date.parse(right.createdAt || right.resetAt || 0)
+    ))
+    .slice(-EVENT_HISTORY_LIMIT);
+}
+
 function capState(state) {
-  state.events = state.events.slice(-EVENT_HISTORY_LIMIT);
+  state.events = compactCodexResetEvents(state.events);
   state.acknowledgedEventIds =
     [...new Set(state.acknowledgedEventIds)].slice(-ACKNOWLEDGEMENT_LIMIT);
   return state;
@@ -236,9 +283,12 @@ function listUnreadCodexResetEvents(state) {
 
 module.exports = {
   MONITOR_STATE_VERSION,
+  RESET_HISTORY_LIMIT,
   acknowledgeCodexResetEvent,
   buildCodexResetEventId,
+  compactCodexResetEvents,
   evaluateCodexResetSnapshot,
+  listCodexResetHistory,
   listUnreadCodexResetEvents,
   normalizeCodexResetSnapshot,
 };

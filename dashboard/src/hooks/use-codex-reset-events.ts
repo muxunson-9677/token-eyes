@@ -14,6 +14,7 @@ import {
   getCodexResetEvents,
   type CodexResetEvent,
   type CodexResetEventsResponse,
+  type CodexResetHistoryEvent,
   type CodexResetMonitorStatus,
 } from "../lib/api";
 import { syncCodexResetTrayStatus } from "../lib/codex-reset-tray";
@@ -23,6 +24,7 @@ const REFRESH_INTERVAL_MS = 60_000;
 interface CodexResetEventsContextValue {
   available: boolean;
   events: CodexResetEvent[];
+  history: CodexResetHistoryEvent[];
   unreadCount: number;
   status: CodexResetMonitorStatus | null;
   acknowledge: (eventId: string) => Promise<void>;
@@ -32,6 +34,7 @@ interface CodexResetEventsContextValue {
 const EMPTY_CONTEXT: CodexResetEventsContextValue = {
   available: false,
   events: [],
+  history: [],
   unreadCount: 0,
   status: null,
   acknowledge: async () => {},
@@ -120,6 +123,7 @@ export function CodexResetEventsProvider({
   const value = useMemo<CodexResetEventsContextValue>(() => ({
     available,
     events: response?.events || [],
+    history: response?.history || [],
     unreadCount: response?.events.length || 0,
     status: response?.status || null,
     acknowledge,

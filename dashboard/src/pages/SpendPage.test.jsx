@@ -512,9 +512,9 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     // One call each is expected for the top filter dropdown metadata. Hidden
     // detail tabs must not add extra provider/model stats requests.
     expect(getProviderStats).toHaveBeenCalledTimes(1);
-    expect(getProviderStats.mock.calls[0][0]?.sources).toEqual(["claude", "codex", "hermes"]);
+    expect(getProviderStats.mock.calls[0][0]?.sources).toBeUndefined();
     expect(getModelStats).toHaveBeenCalledTimes(1);
-    expect(getModelStats.mock.calls[0][0]?.sources).toEqual(["claude", "codex", "hermes"]);
+    expect(getModelStats.mock.calls[0][0]?.sources).toBeUndefined();
   });
 
   it("renders UsageTrendChartCard", async () => {
@@ -660,14 +660,16 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(getSpendRecords.mock.calls[0][0]).not.toHaveProperty("sources");
   });
 
-  it("getUsageSummary receives sources filter from visibleProviderIds", async () => {
+  it("does not let Token-plan card visibility remove Cursor from usage totals", async () => {
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["claude"] });
     render(<SpendUsagePage />);
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
     const callArgs = getUsageSummary.mock.calls[0][0];
-    expect(callArgs?.sources).toEqual(["claude", "codex", "hermes"]);
+    expect(callArgs?.sources).toEqual([]);
   });
 
-  it("getProviderStats receives sources filter from visibleProviderIds", async () => {
+  it("does not let Token-plan card visibility remove Cursor from provider statistics", async () => {
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["claude"] });
     const user = userEvent.setup();
     render(<SpendUsagePage />);
     const providerTab = await screen.findByRole("tab", { name: "Provider 统计" });
@@ -676,20 +678,16 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     });
     await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
     const callArgs = getProviderStats.mock.calls[0][0];
-    expect(callArgs?.sources).toEqual(["claude", "codex", "hermes"]);
+    expect(callArgs?.sources).toBeUndefined();
   });
 
-  it("empty Token allowlist shows its empty state but still fetches all-ledger costs", async () => {
+  it("empty Token-plan card visibility does not disable local usage statistics", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
     render(<SpendUsagePage />);
-    await waitFor(() => expect(screen.getByText("请在显示设置中启用至少一个 Provider。")).toBeInTheDocument());
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     expect(getSpendRecords.mock.calls[0][0]).not.toHaveProperty("sources");
-    expect(getSpendTimeseries).not.toHaveBeenCalled();
-    expect(getUsageSummary).not.toHaveBeenCalled();
-    expect(getRequestUsageRecords).not.toHaveBeenCalled();
-    expect(getProviderStats).not.toHaveBeenCalled();
-    expect(getModelStats).not.toHaveBeenCalled();
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
+    await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
   });
 });
 

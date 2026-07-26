@@ -101,7 +101,37 @@ describe("prependMeRowToPage", () => {
     const result = prependMeRowToPage({ entries, me, meLabel: "YOU" });
 
     expect(result).toHaveLength(2);
-    expect(result[1]).toMatchObject({ rank: 2, user_id: "user-1", is_me: true });
+    expect(result[1]).toMatchObject({
+      rank: 2,
+      user_id: "user-1",
+      is_me: true,
+      total_tokens: "31",
+    });
+    expect(result.some((row) => row.is_pinned)).toBe(false);
+  });
+
+  it("replaces the anonymous public row at my cloud rank with current local usage", () => {
+    const entries = [
+      { rank: 1, display_name: "Old cloud profile", total_tokens: "6950299812" },
+      { rank: 2, display_name: "Another user", total_tokens: "100" },
+    ];
+    const me = {
+      rank: 1,
+      user_id: "user-1",
+      is_local_pending: false,
+      display_name: "Local profile",
+      total_tokens: "7035384780",
+    };
+
+    const result = prependMeRowToPage({ entries, me, meLabel: "YOU" });
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      rank: 1,
+      user_id: "user-1",
+      is_me: true,
+      total_tokens: "7035384780",
+    });
     expect(result.some((row) => row.is_pinned)).toBe(false);
   });
 

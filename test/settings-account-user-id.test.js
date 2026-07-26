@@ -16,7 +16,7 @@ test("Settings account section exposes the signed-in user id for README badges",
   const sectionSrc = read("dashboard/src/components/settings/AccountSection.jsx");
   const copyCsv = read("dashboard/src/content/copy.csv");
 
-  assert.match(hookSrc, /userId: state\.userId/, "expected account settings hook to expose userId");
+  assert.match(hookSrc, /\n\s+userId,/, "expected account settings hook to expose userId");
   assert.match(sectionSrc, /<UserIdRow userId=\{settings\.userId\}/, "expected account section to render user id row");
   assert.doesNotMatch(sectionSrc, /CloudSyncRow/, "cloud sync row should not be visible in Token Eyes MVP");
   assert.doesNotMatch(sectionSrc, /PublicProfileToggleRow/, "public profile row should not be visible in Token Eyes MVP");

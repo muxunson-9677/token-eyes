@@ -2,7 +2,9 @@
 
 const {
   acknowledgeCodexResetEvent,
+  compactCodexResetEvents,
   evaluateCodexResetSnapshot,
+  listCodexResetHistory,
   listUnreadCodexResetEvents,
 } = require("./codex-reset-monitor");
 const { verifyCodexResetFeed } = require("./codex-reset-feed");
@@ -44,7 +46,7 @@ function initializeState(value) {
       value.restoreCandidates && typeof value.restoreCandidates === "object"
         ? value.restoreCandidates
         : {},
-    events: Array.isArray(value.events) ? value.events : [],
+    events: compactCodexResetEvents(value.events),
     acknowledgedEventIds: Array.isArray(value.acknowledgedEventIds)
       ? value.acknowledgedEventIds
       : [],
@@ -129,6 +131,10 @@ function createCodexResetMonitorService({
       event.type !== "official_reset_announcement"
       || (typeof event.expiresAt === "string" && Date.parse(event.expiresAt) > currentMs)
     ));
+  }
+
+  function listHistory() {
+    return listCodexResetHistory(state);
   }
 
   function scheduleFeed(delay = FEED_CACHE_MS) {
@@ -224,7 +230,10 @@ function createCodexResetMonitorService({
       );
       const nextState = {
         ...state,
-        events: [...localEvents, ...announcements.map(officialEvent)].slice(-100),
+        events: compactCodexResetEvents([
+          ...localEvents,
+          ...announcements.map(officialEvent),
+        ]),
         feed: {
           fetchedAt: new Date(now()).toISOString(),
           etag: safeHeader(response.headers?.get?.("etag")),
@@ -336,6 +345,7 @@ function createCodexResetMonitorService({
     check,
     checkFeed,
     getStatus,
+    listHistory,
     listUnread,
     start,
     stop,

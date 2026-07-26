@@ -146,11 +146,11 @@ function SpendUsagePageInner({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const initialIntervalLoaded = useRef(false);
 
-  const { visibleOrdered } = useLimitsDisplayPrefs();
-  // Ticket-07 Task 4: normalize visible provider IDs for API calls
+  // Usage statistics must reflect every locally collected provider. Token-plan
+  // card visibility is a layout preference and must never alter token totals.
   const visibleProviderIds = useMemo(
-    () => normalizeVisibleProviderIds(visibleOrdered),
-    [visibleOrdered],
+    () => normalizeVisibleProviderIds(DASHBOARD_AGENTS.map((agent) => agent.queueSource)),
+    [],
   );
   const heavyUsagePanelsReady = useDeferredHeavyUsagePanels(visibleProviderIds.length > 0);
 
@@ -272,7 +272,6 @@ function SpendUsagePageInner({
     cacheKey,
     timeZone,
     tzOffsetMinutes,
-    allowedSources: visibleProviderIds,
   });
   const { sources: sourceOptions, modelsBySource } = useUsageFilterOptions({
     baseUrl,
@@ -281,7 +280,6 @@ function SpendUsagePageInner({
     cacheKey,
     timeZone,
     tzOffsetMinutes,
-    allowedSources: visibleProviderIds,
   });
 
   // The financial cards use adjacent natural months in the browser timezone.

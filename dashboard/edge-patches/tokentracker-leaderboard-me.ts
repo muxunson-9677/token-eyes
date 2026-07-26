@@ -77,5 +77,6 @@ export default async function (req: Request): Promise<Response> {
     .maybeSingle();
   if (error) return json({ error: error.message || "Self rank read failed" }, 500);
 
-  return json({ me: data || null, period, metric, source });
+  const me = Array.isArray(data) ? data[0] || null : data || null;
+  return json({ me, period, metric, source });
 }

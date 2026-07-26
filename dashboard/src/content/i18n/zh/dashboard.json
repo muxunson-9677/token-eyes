@@ -470,5 +470,14 @@
     "dashboard.context_breakdown.exec_details.group_by_command":  "按命令",
     "dashboard.context_breakdown.exec_details.group_by_duration":  "按耗时",
     "dashboard.context_breakdown.exec_details.group_by_output":  "按输出",
-    "dashboard.context_breakdown.exec_details.group_by_exit":  "按退出码"
+    "dashboard.context_breakdown.exec_details.group_by_exit":  "按退出码",
+    "nav.reset_history":  "重置记录",
+    "reset_history.title":  "重置记录",
+    "reset_history.subtitle":  "本机检测到的 Codex 套餐额度重置时间",
+    "reset_history.today_title":  "今日提醒",
+    "reset_history.history_title":  "历史记录",
+    "reset_history.codex":  "Codex",
+    "reset_history.completed":  "额度已重置",
+    "reset_history.restored":  "额度提前恢复",
+    "reset_history.empty":  "暂无重置记录"
 }

@@ -16,6 +16,7 @@ const TEXT = {
   ipCheck: "IP check",
   landing: "Landing page",
   leaderboard: "Leaderboard page",
+  resetHistory: "Reset history page",
   limits: "Limits page",
   limitsNav: "Limits nav",
   login: "Login page",
@@ -146,6 +147,9 @@ vi.mock("./pages/LeaderboardPage.jsx", () => ({
     return <main>{TEXT.leaderboard}</main>;
   },
 }));
+vi.mock("./pages/ResetHistoryPage", () => ({
+  ResetHistoryPage: () => <main>{TEXT.resetHistory}</main>,
+}));
 
 vi.mock("./pages/NativeAuthCallbackPage.jsx", () => ({
   NativeAuthCallbackPage: () => <main>{TEXT.nativeCallback}</main>,
@@ -224,7 +228,7 @@ describe("App deferred dashboard preload", () => {
     });
   });
 
-  it("uses local dashboard access for leaderboard state preload eligibility", async () => {
+  it("preloads the public leaderboard context from the local dashboard", async () => {
     const user = userEvent.setup();
     insforgeMock.signedIn = false;
     insforgeMock.user = null;
@@ -237,7 +241,7 @@ describe("App deferred dashboard preload", () => {
     await waitFor(() => {
       expect(preloadDashboardPageResources).toHaveBeenCalledTimes(1);
       expect(preloadLeaderboardDefaultState).toHaveBeenCalledWith({
-        accessMode: "local",
+        accessMode: "public",
         baseUrl: "https://edge.example",
         mockEnabled: false,
         signedIn: true,
@@ -269,7 +273,7 @@ describe("App deferred dashboard preload", () => {
     await waitFor(() => {
       expect(preloadLeaderboardDefaultState).toHaveBeenCalledTimes(1);
       expect(preloadLeaderboardDefaultState).toHaveBeenLastCalledWith({
-        accessMode: "local",
+        accessMode: "public",
         baseUrl: "https://edge.example",
         mockEnabled: false,
         signedIn: true,

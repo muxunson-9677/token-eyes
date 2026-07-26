@@ -95,7 +95,7 @@ export async function syncLeaderboardState(options: {
   status: "uploaded" | "unchanged" | "deferred";
   summaryHash?: string;
 }> {
-  let local: LocalStateResponse;
+  let local: Awaited<ReturnType<typeof getLocalLeaderboardState>>;
   try {
     local = await getLocalLeaderboardState();
   } catch {

@@ -79,7 +79,12 @@ test("serves a repeated public leaderboard request from the local cache", async 
   let calls = 0;
   global.fetch = async () => {
     calls += 1;
-    return new Response(JSON.stringify({ entries: [] }), {
+    return new Response(JSON.stringify({
+      entries: [],
+      participant_count: 0,
+      aggregate_total_tokens: 0,
+      aggregate_total_cost_usd: 0,
+    }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -103,6 +108,15 @@ test("falls back to the public snapshot table when the edge function is slow or 
     if (String(url).includes("function2.insforge.app")) {
       return new Response("unavailable", { status: 503 });
     }
+    if (String(url).includes("select=total_tokens%2Cestimated_cost_usd")) {
+      return new Response(JSON.stringify([
+        { total_tokens: "4321", estimated_cost_usd: "4.32" },
+        { total_tokens: "679", estimated_cost_usd: "0.68" },
+      ]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify([{
       rank: 1,
       total_tokens: "4321",
@@ -113,7 +127,7 @@ test("falls back to the public snapshot table when the edge function is slow or 
       generated_at: "2026-07-22T08:00:00.000Z",
     }]), {
       status: 200,
-      headers: { "Content-Type": "application/json", "Content-Range": "0-0/1" },
+      headers: { "Content-Type": "application/json", "Content-Range": "0-0/2" },
     });
   };
   const { createLocalApiHandler } = require("../src/lib/local-api");
@@ -123,7 +137,10 @@ test("falls back to the public snapshot table when the edge function is slow or 
 
   assert.equal(res.statusCode, 200);
   assert.equal(JSON.parse(res.body()).entries[0].display_name, "Snapshot User");
-  assert.equal(JSON.parse(res.body()).total_entries, 1);
-  assert.equal(calls.length, 2);
+  assert.equal(JSON.parse(res.body()).total_entries, 2);
+  assert.equal(JSON.parse(res.body()).participant_count, 2);
+  assert.equal(JSON.parse(res.body()).aggregate_total_tokens, 5000);
+  assert.equal(JSON.parse(res.body()).aggregate_total_cost_usd, 5);
+  assert.equal(calls.length, 3);
   assert.match(calls[1], /leaderboard_snapshots_v2/);
 });
