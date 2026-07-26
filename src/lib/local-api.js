@@ -58,6 +58,9 @@ const LOCAL_API_CAPABILITIES = Object.freeze([
   "data_directory_detection",
   "provider_api_balance",
   "codex_reset_events",
+  "request_diagnostics_v2",
+  "observability_export_v2",
+  "tray_compact_v2",
 ]);
 
 // Avatar proxy (see /api/avatar-proxy below). In-memory LRU; survives the
@@ -2035,6 +2038,7 @@ function createLocalApiHandler({
   providerApiTestMode = false,
   providerApiTimeoutMs,
   usageLimitsProvider,
+  limitAccountsProvider,
   tokenOnlyDirectoryStatesProvider,
   now: nowProvider = () => new Date(),
 } = {}) {
@@ -7838,6 +7842,58 @@ function createLocalApiHandler({
           scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
         });
         json(res, data);
+      } catch (e) {
+        json(res, { error: e?.message || "Unknown error" }, 500);
+      }
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-request-diagnostics") {
+      const { buildRequestDiagnosticsResponse } = require("./request-diagnostics");
+      const rows = readQueueData(qp, { dedupeMode: "dimensions" });
+      json(res, buildRequestDiagnosticsResponse({
+        rows,
+        filter: {
+          source: url.searchParams.get("source") || "",
+          model: url.searchParams.get("model") || "",
+        },
+        page: url.searchParams.get("page") || 1,
+        pageSize: url.searchParams.get("limit") || 50,
+        observedAt: nowProvider().toISOString(),
+      }));
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-observability-export") {
+      const { exportRows } = require("./observability-export");
+      const format = url.searchParams.get("format") === "csv" ? "csv" : "json";
+      json(res, {
+        schema_version: "token-observability/v2",
+        format,
+        content: exportRows(readQueueData(qp, { dedupeMode: "dimensions" }), { format }),
+      });
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-tray-compact") {
+      const { handleLimitAccountsRequest } = require("./limit-accounts-handler");
+      const { buildTrayCompactView, TRAY_DENSITY } = require("./tray-compact");
+      try {
+        const data = typeof limitAccountsProvider === "function"
+          ? await limitAccountsProvider({ refresh: false })
+          : await handleLimitAccountsRequest({
+            home: os.homedir(),
+            env: process.env,
+            platform: process.platform,
+            scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
+          });
+        const density = Object.values(TRAY_DENSITY).includes(url.searchParams.get("density"))
+          ? url.searchParams.get("density")
+          : TRAY_DENSITY.STANDARD;
+        json(res, buildTrayCompactView(data.accounts, data.forecasts, {
+          density,
+          nowMs: nowProvider().getTime(),
+        }));
       } catch (e) {
         json(res, { error: e?.message || "Unknown error" }, 500);
       }
