@@ -6,15 +6,6 @@ const readline = require("node:readline");
 const crypto = require("node:crypto");
 const { ensureDir } = require("./fs");
 const { readSqliteJsonRows } = require("./sqlite-reader");
-const { getOrCreateMachineId } = require("./machine-id");
-const {
-  attachDimensionsToQueueRow,
-  resolveEnqueueDimensionsContext,
-} = require("./queue-usage-snapshot");
-
-function serializeQueueRow(row, dimContext, extras = {}) {
-  return JSON.stringify(attachDimensionsToQueueRow(row, dimContext, extras));
-}
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
@@ -1333,11 +1324,6 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
 
   const codexDominants = collectCodexDominantModels(hourlyState);
 
-  const dimContext = resolveEnqueueDimensionsContext({
-    queuePath,
-    getMachineId: getOrCreateMachineId,
-  });
-
   const toAppend = [];
   for (const group of groupedBuckets.values()) {
     const unknownBucket = group.buckets.get(DEFAULT_MODEL) || null;
@@ -1353,24 +1339,19 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     if (dominantModel) {
       if (alignedModel && !group.buckets.has(alignedModel)) {
         toAppend.push(
-          serializeQueueRow(
-            {
-              record_kind: "bucket_snapshot",
-              snapshot_kind: "correction",
-              source: group.source,
-              model: alignedModel,
-              hour_start: group.hourStart,
-              input_tokens: zeroTotals.input_tokens,
-              cached_input_tokens: zeroTotals.cached_input_tokens,
-              cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
-              output_tokens: zeroTotals.output_tokens,
-              reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-              total_tokens: zeroTotals.total_tokens,
-              billable_total_tokens: zeroTotals.billable_total_tokens,
-              conversation_count: zeroTotals.conversation_count,
-            },
-            dimContext,
-          ),
+          JSON.stringify({
+            source: group.source,
+            model: alignedModel,
+            hour_start: group.hourStart,
+            input_tokens: zeroTotals.input_tokens,
+            cached_input_tokens: zeroTotals.cached_input_tokens,
+            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
+            output_tokens: zeroTotals.output_tokens,
+            reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
+            total_tokens: zeroTotals.total_tokens,
+            billable_total_tokens: zeroTotals.billable_total_tokens,
+            conversation_count: zeroTotals.conversation_count,
+          }),
         );
       }
       if (
@@ -1381,24 +1362,18 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       ) {
         if (unknownBucket.retractedUnknownKey !== zeroKey) {
           toAppend.push(
-            serializeQueueRow(
-              {
-                record_kind: "bucket_snapshot",
-                snapshot_kind: "correction",
-                source: group.source,
-                model: DEFAULT_MODEL,
-                hour_start: group.hourStart,
-                input_tokens: zeroTotals.input_tokens,
-                cached_input_tokens: zeroTotals.cached_input_tokens,
-                cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
-                output_tokens: zeroTotals.output_tokens,
-                reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-                total_tokens: zeroTotals.total_tokens,
-                billable_total_tokens: zeroTotals.billable_total_tokens,
-                conversation_count: zeroTotals.conversation_count,
-              },
-              dimContext,
-            ),
+            JSON.stringify({
+              source: group.source,
+              model: DEFAULT_MODEL,
+              hour_start: group.hourStart,
+              input_tokens: zeroTotals.input_tokens,
+              cached_input_tokens: zeroTotals.cached_input_tokens,
+              output_tokens: zeroTotals.output_tokens,
+              reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
+              total_tokens: zeroTotals.total_tokens,
+              billable_total_tokens: zeroTotals.billable_total_tokens,
+              conversation_count: zeroTotals.conversation_count,
+            }),
           );
           unknownBucket.retractedUnknownKey = zeroKey;
         }
@@ -1414,24 +1389,19 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         const key = totalsKey(totals);
         if (bucket.queuedKey === key) continue;
         toAppend.push(
-          serializeQueueRow(
-            {
-              record_kind: "bucket_snapshot",
-              snapshot_kind: "cumulative",
-              source: group.source,
-              model,
-              hour_start: group.hourStart,
-              input_tokens: totals.input_tokens,
-              cached_input_tokens: totals.cached_input_tokens,
-              cache_creation_input_tokens: totals.cache_creation_input_tokens,
-              output_tokens: totals.output_tokens,
-              reasoning_output_tokens: totals.reasoning_output_tokens,
-              total_tokens: totals.total_tokens,
-              billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
-              conversation_count: totals.conversation_count,
-            },
-            dimContext,
-          ),
+          JSON.stringify({
+            source: group.source,
+            model,
+            hour_start: group.hourStart,
+            input_tokens: totals.input_tokens,
+            cached_input_tokens: totals.cached_input_tokens,
+            cache_creation_input_tokens: totals.cache_creation_input_tokens,
+            output_tokens: totals.output_tokens,
+            reasoning_output_tokens: totals.reasoning_output_tokens,
+            total_tokens: totals.total_tokens,
+            billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
+            conversation_count: totals.conversation_count,
+          }),
         );
         bucket.queuedKey = key;
       }
@@ -1447,24 +1417,18 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     const nextAligned = outputModel !== DEFAULT_MODEL ? outputModel : null;
     if (alignedModel && alignedModel !== nextAligned) {
       toAppend.push(
-        serializeQueueRow(
-          {
-            record_kind: "bucket_snapshot",
-            snapshot_kind: "correction",
-            source: group.source,
-            model: alignedModel,
-            hour_start: group.hourStart,
-            input_tokens: zeroTotals.input_tokens,
-            cached_input_tokens: zeroTotals.cached_input_tokens,
-            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
-            output_tokens: zeroTotals.output_tokens,
-            reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-            total_tokens: zeroTotals.total_tokens,
-            billable_total_tokens: zeroTotals.billable_total_tokens,
-            conversation_count: zeroTotals.conversation_count,
-          },
-          dimContext,
-        ),
+        JSON.stringify({
+          source: group.source,
+          model: alignedModel,
+          hour_start: group.hourStart,
+          input_tokens: zeroTotals.input_tokens,
+          cached_input_tokens: zeroTotals.cached_input_tokens,
+          output_tokens: zeroTotals.output_tokens,
+          reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
+          total_tokens: zeroTotals.total_tokens,
+          billable_total_tokens: zeroTotals.billable_total_tokens,
+          conversation_count: zeroTotals.conversation_count,
+        }),
       );
     }
     if (
@@ -1475,24 +1439,19 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     ) {
       if (unknownBucket.retractedUnknownKey !== zeroKey) {
         toAppend.push(
-          serializeQueueRow(
-            {
-              record_kind: "bucket_snapshot",
-              snapshot_kind: "correction",
-              source: group.source,
-              model: DEFAULT_MODEL,
-              hour_start: group.hourStart,
-              input_tokens: zeroTotals.input_tokens,
-              cached_input_tokens: zeroTotals.cached_input_tokens,
-              cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
-              output_tokens: zeroTotals.output_tokens,
-              reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-              total_tokens: zeroTotals.total_tokens,
-              billable_total_tokens: zeroTotals.billable_total_tokens,
-              conversation_count: zeroTotals.conversation_count,
-            },
-            dimContext,
-          ),
+          JSON.stringify({
+            source: group.source,
+            model: DEFAULT_MODEL,
+            hour_start: group.hourStart,
+            input_tokens: zeroTotals.input_tokens,
+            cached_input_tokens: zeroTotals.cached_input_tokens,
+            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
+            output_tokens: zeroTotals.output_tokens,
+            reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
+            total_tokens: zeroTotals.total_tokens,
+            billable_total_tokens: zeroTotals.billable_total_tokens,
+            conversation_count: zeroTotals.conversation_count,
+          }),
         );
         unknownBucket.retractedUnknownKey = zeroKey;
       }
@@ -1502,24 +1461,19 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     const outputKey = outputModel === DEFAULT_MODEL ? key : `${key}|${outputModel}`;
     if (unknownBucket.queuedKey === outputKey) continue;
     toAppend.push(
-      serializeQueueRow(
-        {
-          record_kind: "bucket_snapshot",
-          snapshot_kind: "cumulative",
-          source: group.source,
-          model: outputModel,
-          hour_start: group.hourStart,
-          input_tokens: unknownBucket.totals.input_tokens,
-          cached_input_tokens: unknownBucket.totals.cached_input_tokens,
-          cache_creation_input_tokens: unknownBucket.totals.cache_creation_input_tokens,
-          output_tokens: unknownBucket.totals.output_tokens,
-          reasoning_output_tokens: unknownBucket.totals.reasoning_output_tokens,
-          total_tokens: unknownBucket.totals.total_tokens,
-          billable_total_tokens: unknownBucket.totals.billable_total_tokens ?? unknownBucket.totals.total_tokens,
-          conversation_count: unknownBucket.totals.conversation_count,
-        },
-        dimContext,
-      ),
+      JSON.stringify({
+        source: group.source,
+        model: outputModel,
+        hour_start: group.hourStart,
+        input_tokens: unknownBucket.totals.input_tokens,
+        cached_input_tokens: unknownBucket.totals.cached_input_tokens,
+        cache_creation_input_tokens: unknownBucket.totals.cache_creation_input_tokens,
+        output_tokens: unknownBucket.totals.output_tokens,
+        reasoning_output_tokens: unknownBucket.totals.reasoning_output_tokens,
+        total_tokens: unknownBucket.totals.total_tokens,
+        billable_total_tokens: unknownBucket.totals.billable_total_tokens ?? unknownBucket.totals.total_tokens,
+        conversation_count: unknownBucket.totals.conversation_count,
+      }),
     );
     unknownBucket.queuedKey = outputKey;
   }
@@ -1554,24 +1508,19 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       const groupKey = groupBucketKey(group.source, group.hourStart);
       if (groupQueued[groupKey] === key) continue;
       toAppend.push(
-        serializeQueueRow(
-          {
-            record_kind: "bucket_snapshot",
-            snapshot_kind: "cumulative",
-            source: group.source,
-            model,
-            hour_start: group.hourStart,
-            input_tokens: group.totals.input_tokens,
-            cached_input_tokens: group.totals.cached_input_tokens,
-            cache_creation_input_tokens: group.totals.cache_creation_input_tokens,
-            output_tokens: group.totals.output_tokens,
-            reasoning_output_tokens: group.totals.reasoning_output_tokens,
-            total_tokens: group.totals.total_tokens,
-            billable_total_tokens: group.totals.billable_total_tokens ?? group.totals.total_tokens,
-            conversation_count: group.totals.conversation_count,
-          },
-          dimContext,
-        ),
+        JSON.stringify({
+          source: group.source,
+          model,
+          hour_start: group.hourStart,
+          input_tokens: group.totals.input_tokens,
+          cached_input_tokens: group.totals.cached_input_tokens,
+          cache_creation_input_tokens: group.totals.cache_creation_input_tokens,
+          output_tokens: group.totals.output_tokens,
+          reasoning_output_tokens: group.totals.reasoning_output_tokens,
+          total_tokens: group.totals.total_tokens,
+          billable_total_tokens: group.totals.billable_total_tokens ?? group.totals.total_tokens,
+          conversation_count: group.totals.conversation_count,
+        }),
       );
       groupQueued[groupKey] = key;
     }
@@ -1601,11 +1550,6 @@ async function enqueueTouchedProjectBuckets({
 
   await ensureDir(path.dirname(projectQueuePath));
 
-  const dimContext = resolveEnqueueDimensionsContext({
-    queuePath: projectQueuePath,
-    getMachineId: getOrCreateMachineId,
-  });
-
   const toAppend = [];
   for (const key of projectTouchedBuckets) {
     const bucket = projectState.buckets[key];
@@ -1618,26 +1562,22 @@ async function enqueueTouchedProjectBuckets({
     if (!projectRef || !projectKey) continue;
 
     toAppend.push(
-      serializeQueueRow(
-        {
-          project_ref: projectRef,
-          project_key: projectKey,
-          repo_root: bucket.repo_root,
-          source: bucket.source,
-          model: bucket.model || DEFAULT_MODEL,
-          hour_start: bucket.hour_start,
-          input_tokens: totals.input_tokens,
-          cached_input_tokens: totals.cached_input_tokens,
-          cache_creation_input_tokens: totals.cache_creation_input_tokens,
-          output_tokens: totals.output_tokens,
-          reasoning_output_tokens: totals.reasoning_output_tokens,
-          total_tokens: totals.total_tokens,
-          billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
-          conversation_count: totals.conversation_count,
-        },
-        dimContext,
-        { projectKey, projectRef },
-      ),
+      JSON.stringify({
+        project_ref: projectRef,
+        project_key: projectKey,
+        repo_root: bucket.repo_root,
+        source: bucket.source,
+        model: bucket.model || DEFAULT_MODEL,
+        hour_start: bucket.hour_start,
+        input_tokens: totals.input_tokens,
+        cached_input_tokens: totals.cached_input_tokens,
+        cache_creation_input_tokens: totals.cache_creation_input_tokens,
+        output_tokens: totals.output_tokens,
+        reasoning_output_tokens: totals.reasoning_output_tokens,
+        total_tokens: totals.total_tokens,
+        billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
+        conversation_count: totals.conversation_count,
+      }),
     );
     bucket.queuedKey = queuedKey;
   }
@@ -2448,15 +2388,10 @@ function normalizeUsage(u) {
   // bytes twice: once at the full input rate and again at the cache_read
   // rate, producing ~6–7x cost inflation on cache-heavy Codex sessions
   // (verified against ccusage's per-day numbers on the same rollouts).
+  // We intentionally leave `total_tokens` unchanged: Codex reports
+  // total = input(inclusive of cached) + output, which numerically equals
+  // our schema's non_cached + cached + output + 0 (cache_creation=0 here).
   out.input_tokens = Math.max(0, out.input_tokens - out.cached_input_tokens);
-  // The persisted queue contract is column-additive even when the vendor's
-  // raw total treats reasoning as an informational subset of output.
-  out.total_tokens =
-    out.input_tokens +
-    out.cached_input_tokens +
-    out.cache_creation_input_tokens +
-    out.output_tokens +
-    out.reasoning_output_tokens;
   return out;
 }
 
@@ -9221,8 +9156,6 @@ module.exports = {
   totalsKey,
   claudeMessageDedupKey,
   groupBucketKey,
-  // Exposed for the R6 queue idempotence regression test.
-  enqueueTouchedBuckets,
   // Exposed for regression tests covering nested-group remote URLs.
   canonicalizeProjectRef,
   deriveProjectKeyFromRef,
