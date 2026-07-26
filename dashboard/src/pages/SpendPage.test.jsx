@@ -15,6 +15,7 @@ import {
   getRequestUsageRecords,
   getUsageSummary,
   getProviderStats,
+  getUsageAttribution,
   getModelStats,
   getTokenPlans,
   getConsoleSessions,
@@ -47,6 +48,7 @@ vi.mock("../lib/api", () => ({
   setLocalSettings: vi.fn(),
   getUsageSummary: vi.fn(),
   getProviderStats: vi.fn(),
+  getUsageAttribution: vi.fn(),
   getModelStats: vi.fn(),
   getTokenPlans: vi.fn(),
   getConsoleSessions: vi.fn(),
@@ -187,6 +189,7 @@ beforeEach(() => {
     },
   });
   getProviderStats.mockResolvedValue({ providers: [] });
+  getUsageAttribution.mockResolvedValue({ snapshots: [] });
   getModelStats.mockResolvedValue({ models: [] });
   getTokenPlans.mockResolvedValue({ records: [] });
   getConsoleSessions.mockResolvedValue({ sessions: [] });
@@ -213,6 +216,24 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
     expect(await screen.findByText("本月订阅成本")).toBeInTheDocument();
+  });
+
+  it("loads the local dimension-aware attribution snapshots", async () => {
+    getUsageAttribution.mockResolvedValue({
+      snapshots: [
+        { dimensions: { environment_id: "native" }, tokens: { total_tokens: 40, conversation_count: 1 } },
+        { dimensions: { environment_id: "wsl:Ubuntu" }, tokens: { total_tokens: 60, conversation_count: 1 } },
+      ],
+    });
+
+    render(<SpendUsagePage />);
+
+    expect(await screen.findByRole("cell", { name: "native" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "wsl:Ubuntu" })).toBeInTheDocument();
+    expect(getUsageAttribution).toHaveBeenCalledWith(expect.objectContaining({
+      sources: expect.arrayContaining(VISIBLE_PROVIDERS),
+      timeZone: expect.any(String),
+    }));
   });
 
   it("displays monthly API, subscription, combined, and lifetime costs", async () => {

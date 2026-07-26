@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import {
   getAgentEnvironment,
+  getUsageAttribution,
   getTokenPlans,
   openXiaomiMimoConsoleLogin,
   reorderTokenPlans,
@@ -46,6 +47,29 @@ it("routes local function requests to the Tauri-reported loopback CLI API", asyn
       cache: "no-store",
       headers: expect.objectContaining({ Accept: "application/json" }),
     }),
+  );
+});
+
+it("requests local-only usage attribution with the active source and model filters", async () => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ snapshots: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getUsageAttribution({
+    from: "2026-07-01",
+    to: "2026-07-27",
+    sources: ["codex"],
+    models: ["gpt-5"],
+    timeZone: "Asia/Shanghai",
+    tzOffsetMinutes: 480,
+  });
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://127.0.0.1:17680/functions/tokentracker-usage-attribution?from=2026-07-01&to=2026-07-27&group_by=environment&sources=codex&models=gpt-5&tz=Asia%2FShanghai&tz_offset_minutes=480",
+    expect.any(Object),
   );
 });
 

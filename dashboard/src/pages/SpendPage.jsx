@@ -7,6 +7,7 @@ import {
   createSpendRecord,
   updateSpendRecord,
   deleteSpendRecord,
+  getUsageAttribution,
 } from "../lib/api";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
@@ -39,6 +40,7 @@ import { useCostAccumulation } from "../hooks/use-cost-accumulation.js";
 import { useProviderApiBalances } from "../hooks/use-provider-api-balances.js";
 import { useTokenServicePlans } from "../hooks/use-token-service-plans.js";
 import { CostAccumulation } from "../ui/dashboard/components/CostAccumulation.jsx";
+import { UsageAttributionPanel } from "../ui/dashboard/components/UsageAttributionPanel.jsx";
 
 // v2.0 IA refactor (work order 01): the old single SpendPage with a top-level
 // "使用统计 / 成本累积" Tab UI is split into two route components.
@@ -144,6 +146,7 @@ function SpendUsagePageInner({
   });
   const financialRequestIdRef = useRef(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [attributionState, setAttributionState] = useState({ snapshots: [], loading: true, error: null });
   const initialIntervalLoaded = useRef(false);
 
   // Usage statistics must reflect every locally collected provider. Token-plan
@@ -343,6 +346,26 @@ function SpendUsagePageInner({
     fetchTotals();
   }, [fetchTotals]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setAttributionState((previous) => ({ ...previous, loading: true, error: null }));
+    getUsageAttribution({
+      from,
+      to,
+      sources: effectiveUsageSources,
+      models: filterState.models,
+      agentIds: filterState.agentIds,
+      timeZone,
+      tzOffsetMinutes,
+      accessToken,
+    }).then((result) => {
+      if (!cancelled) setAttributionState({ snapshots: Array.isArray(result?.snapshots) ? result.snapshots : [], loading: false, error: null });
+    }).catch((error) => {
+      if (!cancelled) setAttributionState({ snapshots: [], loading: false, error: error?.message || "未知错误" });
+    });
+    return () => { cancelled = true; };
+  }, [from, to, effectiveUsageSources, filterState.models, filterState.agentIds, timeZone, tzOffsetMinutes, accessToken, refreshRevision]);
+
   // Ticket-02: load saved refresh interval from local settings on mount
   useEffect(() => {
     let cancelled = false;
@@ -435,6 +458,8 @@ function SpendUsagePageInner({
                 loading={summaryLoading}
                 error={summaryError}
               />
+
+              <UsageAttributionPanel {...attributionState} />
 
               {heavyUsagePanelsReady && (
                 <>

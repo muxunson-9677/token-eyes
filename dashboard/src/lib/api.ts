@@ -102,6 +102,7 @@ const PATHS = {
   spendTimeseries: "tokentracker-spend-timeseries",
   requestUsageRecords: "tokentracker-request-usage-records",
   providerStats: "tokentracker-provider-stats",
+  usageAttribution: "tokentracker-usage-attribution",
   modelStats: "tokentracker-model-stats",
   consoleSessions: "tokentracker-token-plan-console-sessions",
   tokenPlanSecrets: "tokentracker-token-plan-secrets",
@@ -1422,6 +1423,26 @@ export async function getProviderStats({
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildMultiFilterParams({ sources, models, agentIds });
   return fetchLocalJson(PATHS.providerStats, { from, to, ...filterParams, ...tzParams }, { accessToken });
+}
+
+/** O3: local-only, dimension-aware usage attribution. */
+export async function getUsageAttribution({
+  from,
+  to,
+  sources,
+  models,
+  agentIds,
+  timeZone,
+  tzOffsetMinutes,
+  accessToken,
+}: AnyRecord = {}) {
+  const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
+  const filterParams = buildMultiFilterParams({ sources, models, agentIds });
+  return fetchLocalJson(
+    PATHS.usageAttribution,
+    { from, to, group_by: "environment", ...filterParams, ...tzParams },
+    { accessToken },
+  );
 }
 
 /** TICKET-01 A5: model stats (per source×model aggregate leaderboard). */

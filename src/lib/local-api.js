@@ -433,15 +433,16 @@ function isKnownSyntheticOpenClawSmokeRow(row) {
     && Number(row?.conversation_count) === 1;
 }
 
-function readQueueData(queuePath) {
-  const cacheKey = path.resolve(queuePath);
-  const fingerprint = queueFileMtimeKey(cacheKey);
+function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
+  const resolvedQueuePath = path.resolve(queuePath);
+  const cacheKey = `${resolvedQueuePath}\u0001${dedupeMode}`;
+  const fingerprint = queueFileMtimeKey(resolvedQueuePath);
   const cached = queueDataCache.get(cacheKey);
   if (cached?.fingerprint === fingerprint) return cached.rows;
 
   let raw;
   try {
-    raw = fs.readFileSync(cacheKey, "utf8");
+    raw = fs.readFileSync(resolvedQueuePath, "utf8");
   } catch (e) {
     // ENOENT is legitimate (never synced yet); anything else is a signal we
     // don't want to hide behind an empty array forever 鈥?the dashboard would
@@ -476,7 +477,9 @@ function readQueueData(queuePath) {
     // synthetic fixture to the default queue. Ignore only its full fingerprint;
     // genuine OpenClaw history remains untouched.
     if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
-    const key = `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
+    const key = dedupeMode === "dimensions"
+      ? `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}|${queueRowDimensionsKey(row)}`
+      : `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
     seen.set(key, normalizeQueueRow(row));
   }
   const rows = Array.from(seen.values());
@@ -488,6 +491,19 @@ function readQueueData(queuePath) {
     queueDataCache.delete(oldestKey);
   }
   return rows;
+}
+
+function queueRowDimensionsKey(row) {
+  const dimensions = row?.dimensions;
+  if (!dimensions || typeof dimensions !== "object" || Array.isArray(dimensions)) return "legacy";
+  return [
+    dimensions.device_id,
+    dimensions.environment_id,
+    dimensions.agent_id,
+    dimensions.account_scope,
+    dimensions.project_key,
+    dimensions.model_id,
+  ].map((value) => value == null ? "" : String(value)).join("\u0001");
 }
 
 function clearQueueDataCacheForTests() {
@@ -5861,6 +5877,32 @@ function createLocalApiHandler({
         providers,
         totals,
       });
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-usage-attribution") {
+      const groupBy = url.searchParams.get("group_by") || "agent";
+      const from = url.searchParams.get("from") || "";
+      const to = url.searchParams.get("to") || "";
+      const timeZoneContext = getTimeZoneContext(url);
+      const sources = mergeSourceFilters(
+        parseMultiParam(url, "sources"),
+        parseMultiParam(url, "agent_ids"),
+      );
+      const models = parseMultiParam(url, "models");
+      const rows = readQueueData(qp, { dedupeMode: "dimensions" }).filter((row) => {
+        const day = rowDayKey(row, timeZoneContext);
+        if (from && day < from) return false;
+        if (to && day > to) return false;
+        if (sources && !sources.includes(String(row.source || "").toLowerCase())) return false;
+        return !models || models.includes(String(row.model || "").toLowerCase());
+      });
+      try {
+        const { buildUsageAttributionResponse } = require("./usage-attribution-handler");
+        json(res, buildUsageAttributionResponse({ rows, groupBy }));
+      } catch (error) {
+        json(res, { error: error?.message || "Invalid attribution request" }, 400);
+      }
       return true;
     }
 
