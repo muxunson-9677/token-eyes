@@ -6,6 +6,8 @@
 
 const { getLimitAccounts, resetLimitAccountsCache } = require("./limit-accounts");
 const { getDefaultAdapters } = require("./limit-account-adapters");
+const { appendQuotaSamplesFromAccounts, readQuotaSamples } = require("./quota-history");
+const { computeQuotaForecastsForAccounts } = require("./quota-forecast");
 
 async function handleLimitAccountsRequest({
   refresh = false,
@@ -19,12 +21,15 @@ async function handleLimitAccountsRequest({
   providerTimeoutMs,
   fetchImpl,
   adapters,
+  nowMs = Date.now(),
+  recordSamples = true,
+  includeForecasts = true,
 } = {}) {
   if (refresh) {
     resetLimitAccountsCache();
   }
 
-  return getLimitAccounts({
+  const data = await getLimitAccounts({
     home,
     env,
     platform,
@@ -36,6 +41,16 @@ async function handleLimitAccountsRequest({
     fetchImpl,
     adapters: adapters || getDefaultAdapters(),
   });
+
+  if (recordSamples) {
+    try { appendQuotaSamplesFromAccounts(data.accounts, { home, nowMs }); } catch { /* history is best-effort */ }
+  }
+  if (!includeForecasts) return data;
+  try {
+    return { ...data, forecasts: computeQuotaForecastsForAccounts(data.accounts, readQuotaSamples({ home }), { nowMs }) };
+  } catch {
+    return { ...data, forecasts: [] };
+  }
 }
 
 module.exports = {
