@@ -7,8 +7,8 @@
 # production dependencies (from package-lock.json), and emits a
 # runtime-manifest.json so the Rust side can verify integrity at startup.
 #
-# Output layout (src-tauri/EmbeddedServer/):
-#   EmbeddedServer/
+# Output layout (src-tauri/EmbeddedServer-<app-version>/):
+#   EmbeddedServer-<app-version>/
 #     node.exe                  # Bundled Node.js (verified SHA256)
 #     runtime-manifest.json     # Versions, SHA256, HEAD, build time, file count
 #     LICENSE.node              # Node.js license (from archive)
@@ -23,7 +23,7 @@
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File src-tauri/scripts/bundle-runtime.ps1
-#   ... -Clean       # wipe EmbeddedServer\ and exit
+#   ... -Clean       # wipe this version's EmbeddedServer-<app-version>\ and exit
 # ----------------------------------------------
 param([switch]$Clean)
 
@@ -39,7 +39,12 @@ $NodeVersion = if ($env:NODE_VERSION) { $env:NODE_VERSION } else { $ExpectedNode
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $TauriDir   = Split-Path -Parent $ScriptDir      # src-tauri/
 $RepoRoot   = Split-Path -Parent $TauriDir        # repo root
-$EmbedDir   = Join-Path $TauriDir 'EmbeddedServer'
+$tauriConf = Get-Content (Join-Path $TauriDir 'tauri.conf.json') -Raw | ConvertFrom-Json
+$appVersion = $tauriConf.version
+if ([string]::IsNullOrWhiteSpace($appVersion)) {
+    throw 'Missing app version in src-tauri/tauri.conf.json'
+}
+$EmbedDir   = Join-Path $TauriDir ("EmbeddedServer-" + $appVersion)
 
 if ($Clean) {
     if (Test-Path $EmbedDir) { Remove-Item -Recurse -Force $EmbedDir }
@@ -55,32 +60,24 @@ if ($NodeVersion -ne $ExpectedNodeVersion) {
 $trackerJs = Join-Path $RepoRoot 'bin\tracker.js'
 $packageJson = Join-Path $RepoRoot 'package.json'
 $packageLock = Join-Path $RepoRoot 'package-lock.json'
+$providerCapabilities = Join-Path $RepoRoot 'shared\provider-capabilities.json'
 $dashDist = Join-Path $RepoRoot 'dashboard\dist\index.html'
 
 if (-not (Test-Path $trackerJs))   { throw "Missing $trackerJs — run from repo root" }
 if (-not (Test-Path $packageJson)) { throw "Missing $packageJson" }
 if (-not (Test-Path $packageLock)) { throw "Missing $packageLock — required for reproducible production deps" }
+if (-not (Test-Path $providerCapabilities)) { throw "Missing $providerCapabilities" }
 if (-not (Test-Path $dashDist)) {
     throw "Missing dashboard/dist/index.html — run 'npm run dashboard:build' first"
 }
 
-# Always start fresh — never layer over a stale EmbeddedServer/
+# Always start fresh — never layer over a stale runtime for this version.
 if (Test-Path $EmbedDir) { Remove-Item -Recurse -Force $EmbedDir }
 New-Item -ItemType Directory -Force -Path $EmbedDir | Out-Null
-# Recreate the .gitkeep placeholder so the directory stays tracked by git
-# and Tauri's `resources` glob (`EmbeddedServer/**/*`) validates at build
-# script check time even when EmbeddedServer/ has been cleaned.
-# Use [System.IO.File]::WriteAllText with a BOM-less UTF8 encoder because
-# PowerShell 5.1's `Set-Content -Encoding UTF8` emits a BOM, which would
-# flip the tracked .gitkeep on every bundle run and create git noise.
+# Keep a tracked placeholder in the current version directory so Tauri can
+# validate its exact resource path before this script creates the real runtime.
 $gitkeepPath = Join-Path $EmbedDir '.gitkeep'
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-# Write with CRLF line ending + trailing newline so the file matches
-# git's normalized working-tree form under core.autocrlf=true (the
-# default on Windows). Writing LF-only would produce a perpetual
-# `No newline at end of file` or CRLF/LF diff on every bundle run.
-# BOM-less UTF8 is still required (PowerShell 5.1's Set-Content
-# -Encoding UTF8 emits a BOM).
 [System.IO.File]::WriteAllText($gitkeepPath, "# placeholder -- real runtime created by bundle-runtime.ps1`r`n", $utf8NoBom)
 
 # -- 1. Download Node.js win-x64 + verify SHA256 against official SHASUMS --
@@ -160,6 +157,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $ttDir 'bin') | Out-Null
 
 Copy-Item $trackerJs (Join-Path $ttDir 'bin\')
 Copy-Item (Join-Path $RepoRoot 'src') (Join-Path $ttDir 'src') -Recurse
+Copy-Item (Join-Path $RepoRoot 'shared') (Join-Path $ttDir 'shared') -Recurse
 Copy-Item $packageJson $ttDir
 Copy-Item $packageLock $ttDir
 
@@ -219,10 +217,6 @@ if (Test-Path $nm) {
 
 # -- 5. Generate runtime-manifest.json --
 Write-Host 'Generating runtime-manifest.json...'
-
-# Read app version from tauri.conf.json
-$tauriConf = Get-Content (Join-Path $TauriDir 'tauri.conf.json') -Raw | ConvertFrom-Json
-$appVersion = $tauriConf.version
 
 # Capture current HEAD for traceability. Use try/catch + explicit
 # exit-code check because PowerShell 5.1 under `$ErrorActionPreference='Stop'`
@@ -288,7 +282,7 @@ if ($savedManifest.node.sha256 -ne $savedManifest.node.official_sha256) {
 $totalMB = [math]::Round($totalBytes / 1MB, 1)
 Write-Host ""
 Write-Host "======================================="
-Write-Host "  EmbeddedServer Bundle Report"
+Write-Host "  Versioned Runtime Bundle Report"
 Write-Host "======================================="
 Write-Host "  App version:     $appVersion"
 Write-Host "  Node version:    v$ExpectedNodeVersion"
