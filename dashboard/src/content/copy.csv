@@ -1900,3 +1900,31 @@ reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
 reset_history.completed,ui,ResetHistoryPage,ResetRecord,completed,"Quota reset completed",,active
 reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored early",,active
 reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active
+o3.attribution.title,dashboard,SpendPage,UsageAttributionMatrix,title,"Token attribution",,active
+o3.attribution.subtitle,dashboard,SpendPage,UsageAttributionMatrix,subtitle,"Local attribution by device / environment / agent / project / model.",,active
+o3.attribution.empty,dashboard,SpendPage,UsageAttributionMatrix,empty,"No attribution data for the current filter.",,active
+o3.attribution.error,dashboard,SpendPage,UsageAttributionMatrix,error,"Attribution unavailable.",,active
+o3.attribution.retry,dashboard,SpendPage,UsageAttributionMatrix,retry,"Retry",,active
+o3.attribution.column.bucket,dashboard,SpendPage,UsageAttributionMatrix,column_bucket,"Bucket",,active
+o3.attribution.column.tokens,dashboard,SpendPage,UsageAttributionMatrix,column_tokens,"Total tokens",,active
+o3.attribution.column.input,dashboard,SpendPage,UsageAttributionMatrix,column_input,"Input",,active
+o3.attribution.column.output,dashboard,SpendPage,UsageAttributionMatrix,column_output,"Output",,active
+o3.attribution.column.cache_read,dashboard,SpendPage,UsageAttributionMatrix,column_cache_read,"Cache read",,active
+o3.attribution.column.cache_write,dashboard,SpendPage,UsageAttributionMatrix,column_cache_write,"Cache write",,active
+o3.attribution.column.reasoning,dashboard,SpendPage,UsageAttributionMatrix,column_reasoning,"Reasoning",,active
+o3.attribution.column.conversations,dashboard,SpendPage,UsageAttributionMatrix,column_conversations,"Conversations",,active
+o3.attribution.unknown_bucket,dashboard,SpendPage,UsageAttributionMatrix,unknown_bucket,"Unknown",,active
+o3.attribution.group_by.device,dashboard,SpendPage,UsageAttributionMatrix,group_by_device,"Device",,active
+o3.attribution.group_by.environment,dashboard,SpendPage,UsageAttributionMatrix,group_by_environment,"Environment",,active
+o3.attribution.group_by.agent,dashboard,SpendPage,UsageAttributionMatrix,group_by_agent,"Agent",,active
+o3.attribution.group_by.project,dashboard,SpendPage,UsageAttributionMatrix,group_by_project,"Project",,active
+o3.attribution.group_by.model,dashboard,SpendPage,UsageAttributionMatrix,group_by_model,"Model",,active
+o3.attribution.unattributed_label,dashboard,SpendPage,UsageAttributionMatrix,unattributed_label,"Unattributed (estimated)",,active
+o3.attribution.unattributed_tooltip,dashboard,SpendPage,UsageAttributionMatrix,unattributed_tooltip,"Official quota delta minus locally observed contribution. Always an estimate.",,active
+o3.attribution.panel.title,dashboard,SpendPage,UsageAttributionPanel,title,"Usage attribution",,active
+o3.attribution.panel.subtitle,dashboard,SpendPage,UsageAttributionPanel,subtitle,"Shared filter for overview and table. Device environment project and session stay local.",,active
+o3.attribution.panel.group_by,dashboard,SpendPage,UsageAttributionPanel,group_by,"Group by",,active
+o3.attribution.panel.filter_all,dashboard,SpendPage,UsageAttributionPanel,filter_all,"All",,active
+o3.attribution.panel.overview.total,dashboard,SpendPage,UsageAttributionPanel,overview_total,"Total tokens",,active
+o3.attribution.panel.overview.groups,dashboard,SpendPage,UsageAttributionPanel,overview_groups,"Groups",,active
+o3.attribution.panel.overview.conversations,dashboard,SpendPage,UsageAttributionPanel,overview_conversations,"Conversations",,active

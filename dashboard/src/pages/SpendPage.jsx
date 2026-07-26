@@ -39,6 +39,9 @@ import { useCostAccumulation } from "../hooks/use-cost-accumulation.js";
 import { useProviderApiBalances } from "../hooks/use-provider-api-balances.js";
 import { useTokenServicePlans } from "../hooks/use-token-service-plans.js";
 import { CostAccumulation } from "../ui/dashboard/components/CostAccumulation.jsx";
+import { UsageAttributionPanel } from "../ui/dashboard/components/UsageAttributionPanel.jsx";
+import { snapshotsFromProviderStats } from "../lib/usage-attribution-from-summary";
+import { getProviderStats } from "../lib/api";
 
 // v2.0 IA refactor (work order 01): the old single SpendPage with a top-level
 // "使用统计 / 成本累积" Tab UI is split into two route components.
@@ -273,6 +276,11 @@ function SpendUsagePageInner({
     timeZone,
     tzOffsetMinutes,
   });
+  const [attributionProviders, setAttributionProviders] = useState([]);
+  const attributionSnapshots = useMemo(
+    () => snapshotsFromProviderStats(attributionProviders),
+    [attributionProviders],
+  );
   const { sources: sourceOptions, modelsBySource } = useUsageFilterOptions({
     baseUrl,
     accessToken,
@@ -343,6 +351,43 @@ function SpendUsagePageInner({
     fetchTotals();
   }, [fetchTotals]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (visibleProviderIds.length === 0 || effectiveUsageSources.length === 0) {
+        setAttributionProviders([]);
+        return;
+      }
+      try {
+        const result = await getProviderStats({
+          from,
+          to,
+          timeZone,
+          tzOffsetMinutes,
+          sources: effectiveUsageSources,
+          accessToken,
+        });
+        if (!cancelled) {
+          setAttributionProviders(Array.isArray(result?.providers) ? result.providers : []);
+        }
+      } catch (err) {
+        console.error("[SpendUsagePage] Failed to load attribution providers:", err);
+        if (!cancelled) setAttributionProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    from,
+    to,
+    timeZone,
+    tzOffsetMinutes,
+    visibleProviderIds,
+    effectiveUsageSources,
+    accessToken,
+    refreshRevision,
+  ]);
   // Ticket-02: load saved refresh interval from local settings on mount
   useEffect(() => {
     let cancelled = false;
@@ -435,6 +480,13 @@ function SpendUsagePageInner({
                 loading={summaryLoading}
                 error={summaryError}
               />
+
+              <div className="mt-6">
+                <UsageAttributionPanel
+                  snapshots={attributionSnapshots}
+                  error={summaryError}
+                />
+              </div>
 
               {heavyUsagePanelsReady && (
                 <>
