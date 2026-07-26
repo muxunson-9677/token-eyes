@@ -7783,6 +7783,25 @@ function createLocalApiHandler({
       return true;
     }
 
+    // --- limit-accounts (O2 multi-account matrix; thin mount of independent handler) ---
+    if (p === "/functions/tokentracker-limit-accounts") {
+      const { handleLimitAccountsRequest } = require("./limit-accounts-handler");
+      try {
+        const forceRefresh = url.searchParams.get("refresh");
+        const data = await handleLimitAccountsRequest({
+          refresh: forceRefresh === "1" || forceRefresh === "true",
+          home: os.homedir(),
+          env: process.env,
+          platform: process.platform,
+          scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
+        });
+        json(res, data);
+      } catch (e) {
+        json(res, { error: e?.message || "Unknown error" }, 500);
+      }
+      return true;
+    }
+
     return false;
   };
 
