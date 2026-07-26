@@ -9,21 +9,19 @@ const ROOT = path.join(__dirname, "..");
 const read = (name) =>
   fs.readFileSync(path.join(ROOT, "dashboard", "edge-patches", name), "utf8");
 
-test("public leaderboard has a bounded, privacy-safe read contract", () => {
+test("public leaderboard has a bounded, privacy-safe ranking RPC contract", () => {
   const source = read("tokentracker-leaderboard.ts");
 
-  assert.match(source, /\.from\("tokentracker_leaderboard_snapshots_v2"\)/);
-  assert.match(source, /today.*week.*month.*total/s);
-  assert.match(source, /tokens.*estimated_spend.*actual_cost/s);
-  assert.match(source, /KNOWN_SOURCES/);
+  assert.match(source, /\.rpc\(\s*"leaderboard_ranked"/);
+  assert.match(source, /today.*yesterday.*7d.*30d.*total/s);
+  assert.match(source, /with_cache.*without_cache.*estimated_cost/s);
+  assert.match(source, /LEADERBOARD_AGENT_SOURCES/);
   assert.match(source, /const limit = .*Math\.min\(.*100.*\)/);
-  assert.match(source, /\.range\(offset,\s*offset \+ limit - 1\)/);
-  assert.match(source, /\.eq\("is_public",\s*true\)/);
-  assert.doesNotMatch(source, /searchParams\.get\("user_id"\)/);
-  assert.doesNotMatch(source, /unsafeDecodeJwtSub/);
+  assert.match(source, /p_limit:\s*limit/);
+  assert.match(source, /p_offset:\s*offset/);
+  assert.match(source, /p_blocked_user_ids/);
+  assert.doesNotMatch(source, /\.database\.from\(/);
   assert.match(source, /generated_at/);
-  assert.match(source, /pricing_version/);
-  assert.match(source, /stale/);
   assert.match(source, /participant_count/);
   assert.match(source, /aggregate_total_tokens/);
   assert.match(source, /aggregate_total_cost_usd/);
@@ -41,9 +39,8 @@ test("authenticated self-rank endpoint derives identity only from a verified JWT
   assert.match(source, /Cache-Control":\s*"private, no-store"/);
 });
 
-test("all current leaderboard consumers read the v2 snapshot table", () => {
+test("direct leaderboard consumers read the v2 snapshot table", () => {
   for (const name of [
-    "tokentracker-leaderboard.ts",
     "tokentracker-leaderboard-me.ts",
     "tokentracker-leaderboard-profile.ts",
     "tokentracker-badge-svg.ts",

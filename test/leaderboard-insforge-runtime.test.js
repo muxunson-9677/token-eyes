@@ -12,7 +12,6 @@ const EDGE_FILES = [
   "tokentracker-public-visibility.ts",
   "tokentracker-avatar.ts",
   "tokentracker-avatar-public.ts",
-  "tokentracker-leaderboard-refresh.ts",
 ];
 
 test("deployed leaderboard edges accept InsForge Cloud's reserved API_KEY", () => {
