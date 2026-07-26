@@ -59,7 +59,6 @@ export function prependMeRowToPage({ entries, me, meLabel }) {
   const meRank = me && typeof me.rank === "number" ? me.rank : null;
   const isLocalPending = me?.is_local_pending === true;
   if (!meRank && !isLocalPending) return rows;
-  if (rows.some((e) => Boolean(e?.is_me))) return rows;
 
   let matchingUserIndex = me?.user_id
     ? rows.findIndex((entry) => entry?.user_id === me.user_id)
@@ -71,7 +70,7 @@ export function prependMeRowToPage({ entries, me, meLabel }) {
     return rows.map((entry, index) => (
       index === matchingUserIndex
         ? { ...entry, ...me, rank: entry?.rank ?? meRank, is_me: true, is_pinned: false }
-        : entry
+        : { ...entry, is_me: false, is_pinned: false }
     ));
   }
 
@@ -102,7 +101,7 @@ export function prependMeRowToPage({ entries, me, meLabel }) {
     source_breakdown: me?.source_breakdown ?? null,
   };
 
-  return [pinnedRow, ...rows];
+  return [pinnedRow, ...rows.map((entry) => ({ ...entry, is_me: false, is_pinned: false }))];
 }
 
 export function pageContainingRank(rank, pageSize) {

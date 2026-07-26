@@ -62,7 +62,9 @@ describe("prependMeRowToPage", () => {
     const me = { rank: 8, total_tokens: "30" };
     const result = prependMeRowToPage({ entries, me, meLabel: "YOU" });
 
-    expect(result).toBe(entries);
+    expect(result).not.toBe(entries);
+    expect(result.filter((row) => row.is_me)).toHaveLength(1);
+    expect(result[7]?.total_tokens).toBe("30");
     expect(result.some((r) => r?.is_pinned)).toBe(false);
   });
 
@@ -133,6 +135,22 @@ describe("prependMeRowToPage", () => {
       total_tokens: "7035384780",
     });
     expect(result.some((row) => row.is_pinned)).toBe(false);
+  });
+
+  it("keeps exactly one current-user row when stale cloud rows also claim is_me", () => {
+    const entries = [
+      { rank: 1, user_id: "old-user", is_me: true, total_tokens: "100" },
+      { rank: 2, user_id: "user-1", is_me: false, total_tokens: "30" },
+    ];
+    const result = prependMeRowToPage({
+      entries,
+      me: { user_id: "user-1", rank: 2, is_local_pending: false, total_tokens: "31" },
+      meLabel: "YOU",
+    });
+
+    expect(result.filter((row) => row.is_me)).toHaveLength(1);
+    expect(result[0].is_me).toBe(false);
+    expect(result[1]).toMatchObject({ user_id: "user-1", is_me: true, total_tokens: "31" });
   });
 
   it("returns entries unchanged when me is null", () => {
