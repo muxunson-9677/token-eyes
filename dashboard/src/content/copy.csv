@@ -1900,6 +1900,19 @@ reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
 reset_history.completed,ui,ResetHistoryPage,ResetRecord,completed,"Quota reset completed",,active
 reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored early",,active
 reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active
+usage.attribution.title,ui,SpendPage,UsageAttributionPanel,title,"Usage attribution",,active
+usage.attribution.subtitle,ui,SpendPage,UsageAttributionPanel,subtitle,"Break down verified local collection environments without cloud legacy records.",,active
+usage.attribution.group_label,ui,SpendPage,UsageAttributionPanel,group_label,"Group by",,active
+usage.attribution.group.environment,ui,SpendPage,UsageAttributionPanel,group_environment,"Environment",,active
+usage.attribution.group.device,ui,SpendPage,UsageAttributionPanel,group_device,"Device",,active
+usage.attribution.group.agent,ui,SpendPage,UsageAttributionPanel,group_agent,"Agent",,active
+usage.attribution.group.project,ui,SpendPage,UsageAttributionPanel,group_project,"Project",,active
+usage.attribution.group.model,ui,SpendPage,UsageAttributionPanel,group_model,"Model",,active
+usage.attribution.loading,ui,SpendPage,UsageAttributionPanel,loading,"Loading local attribution data...",,active
+usage.attribution.error,ui,SpendPage,UsageAttributionPanel,error,"Unable to load attribution data: {{error}}",,active
+usage.attribution.column.tokens,ui,SpendPage,UsageAttributionPanel,column_tokens,"Tokens",,active
+usage.attribution.column.conversations,ui,SpendPage,UsageAttributionPanel,column_conversations,"Conversations",,active
+usage.attribution.empty,ui,SpendPage,UsageAttributionPanel,empty,"No attributable local usage data",,active
 limits.matrix.title,ui,LimitsPage,LimitAccountMatrix,title,"账户配额",,active
 limits.matrix.subtitle,ui,LimitsPage,LimitAccountMatrix,subtitle,"本地账户的配额窗口与预测",,active
 limits.matrix.empty,ui,LimitsPage,LimitAccountMatrix,empty,"暂无账户配额数据",,active
