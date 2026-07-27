@@ -55,6 +55,11 @@ test("observability APIs expose diagnostics, redacted export, and compact tray d
     assert.equal(diagnosticBody.diagnostics.length, 1);
     assert.equal(JSON.stringify(diagnosticBody).includes("private prompt"), false);
 
+    const limitAccounts = response();
+    await handler(request(), limitAccounts, new URL("http://127.0.0.1:7680/functions/tokentracker-limit-accounts"));
+    assert.equal(limitAccounts.statusCode, 200);
+    assert.equal(JSON.parse(limitAccounts.body.toString("utf8")).accounts[0].provider_id, "codex");
+
     const exported = response();
     await handler(request(), exported, new URL("http://127.0.0.1:7680/functions/tokentracker-observability-export?format=json"));
     assert.equal(exported.body.toString("utf8").includes("private prompt"), false);

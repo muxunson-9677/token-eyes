@@ -519,7 +519,7 @@ function computeLeaderboardWindow(period: string) {
     const day = formatDateUTC(today);
     return { from: day, to: day };
   }
-  const days = safe === "month" ? 30 : 7;
+  const days = safe === "month" || String(safe) === "30d" ? 30 : 7;
   return {
     from: formatDateUTC(addUtcDays(today, -(days - 1))),
     to: formatDateUTC(today),

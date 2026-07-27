@@ -255,7 +255,6 @@ export default function App() {
   const isMvpHiddenProductPath =
     isLimitsPath ||
     isSkillsPath ||
-    isWidgetsPath ||
     isIpCheckPath ||
     normalizedPath === "/wrapped";
   if (isMvpHiddenProductPath) {
@@ -316,6 +315,7 @@ export default function App() {
       isResetHistoryPath ||
       isSettingsSubPath ||
       isSpendSubPath ||
+      isWidgetsPath ||
       (isLocalMode && isPublicLeaderboardPath));
 
   // Public-host gating: on www.tokentracker.cc et al. there is no local

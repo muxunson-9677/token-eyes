@@ -337,8 +337,8 @@ leaderboard.metric.estimated_cost,dashboard,LeaderboardPage,LeaderboardPage,metr
 leaderboard.summary.total_score,dashboard,LeaderboardPage,LeaderboardPage,summary_total_score,"All participants {{value}}",,active
 leaderboard.summary.participants,dashboard,LeaderboardPage,LeaderboardPage,summary_participants,"Participants {{count}}",,active
 leaderboard.summary.participant_label,dashboard,LeaderboardPage,LeaderboardPage,summary_participant_label,"Total participants",,active
-leaderboard.summary.tokens_label,dashboard,LeaderboardPage,LeaderboardPage,summary_tokens_label,"All-user cumulative Token",,active
-leaderboard.summary.cost_label,dashboard,LeaderboardPage,LeaderboardPage,summary_cost_label,"All-user cumulative estimated spend",,active
+leaderboard.summary.tokens_label,dashboard,LeaderboardPage,LeaderboardPage,summary_tokens_label,"All-user Token",,active
+leaderboard.summary.cost_label,dashboard,LeaderboardPage,LeaderboardPage,summary_cost_label,"All-user estimated spend",,active
 leaderboard.me_label,dashboard,LeaderboardPage,LeaderboardPage,me_label,"You",,active
 leaderboard.rank_pending,dashboard,LeaderboardPage,LeaderboardPage,rank_pending,"Pending",,active
 leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"Anonymous",,active

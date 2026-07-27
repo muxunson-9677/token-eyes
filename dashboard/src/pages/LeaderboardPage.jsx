@@ -66,6 +66,7 @@ const PAGE_SIZE_STORAGE_KEY = "tokentracker:leaderboard:pageSize";
 const PERIOD_OPTIONS = [
   { value: "today", copyKey: "leaderboard.period.today" },
   { value: "week", copyKey: "leaderboard.period.week" },
+  { value: "30d", copyKey: "leaderboard.period.30d" },
   { value: "month", copyKey: "leaderboard.period.month" },
   { value: "total", copyKey: "leaderboard.period.total" },
 ];

@@ -1,4 +1,4 @@
-export type LeaderboardPeriod = "today" | "week" | "month" | "total";
+export type LeaderboardPeriod = "today" | "week" | "30d" | "month" | "total";
 export type LeaderboardMetric = "tokens" | "estimated_spend" | "actual_cost";
 
 export const LEADERBOARD_DEFAULT_PERIOD: LeaderboardPeriod;

@@ -25,6 +25,12 @@ function mondayKey(dayKey) {
   return date.toISOString().slice(0, 10);
 }
 
+function rolling30DayKey(dayKey) {
+  const date = new Date(`${dayKey}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - 29);
+  return date.toISOString().slice(0, 10);
+}
+
 function nonNegativeCost(value, label) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue) || numberValue < 0) {
@@ -51,9 +57,10 @@ async function buildLeaderboardActualCostSummary({
   const periods = [
     { name: "today", from: today, to: today },
     { name: "week", from: mondayKey(today), to: today },
+    { name: "30d", from: rolling30DayKey(today), to: today },
     { name: "month", from: `${today.slice(0, 7)}-01`, to: today },
   ];
-  const [todayResult, weekResult, monthResult] = await Promise.all(
+  const [todayResult, weekResult, rolling30DayResult, monthResult] = await Promise.all(
     periods.map((period) => readCombinedCost(period)),
   );
 
@@ -62,6 +69,7 @@ async function buildLeaderboardActualCostSummary({
     period_costs_usd: {
       today: nonNegativeCost(todayResult?.totals?.combined_usd, "today"),
       week: nonNegativeCost(weekResult?.totals?.combined_usd, "week"),
+      "30d": nonNegativeCost(rolling30DayResult?.totals?.combined_usd, "30d"),
       month: nonNegativeCost(monthResult?.totals?.combined_usd, "month"),
       total: nonNegativeCost(monthResult?.totals?.lifetime_combined_usd, "total"),
     },

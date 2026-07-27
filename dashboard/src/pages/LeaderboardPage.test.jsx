@@ -146,7 +146,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
       totals: { total_tokens: 150 },
     });
     getLocalLeaderboardActualCost.mockReset();
-    getLocalLeaderboardActualCost.mockResolvedValue({ today: 1, week: 2, month: 3, total: 4 });
+    getLocalLeaderboardActualCost.mockResolvedValue({ today: 1, week: 2, "30d": 4, month: 3, total: 4 });
     runCloudUsageSyncNow.mockReset();
     runCloudUsageSyncNow.mockResolvedValue(undefined);
     openLoginModalMock.mockReset();
@@ -185,7 +185,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
       metric: "tokens",
-      period: "total",
+      period: "30d",
       source: "all",
       limit: 20,
       offset: 0,
@@ -200,10 +200,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect((await screen.findAllByText("Preloaded User")).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getAllByText("150").length).toBeGreaterThan(0));
     expect(getProviderStats).toHaveBeenCalledWith(expect.objectContaining({
-      from: "1970-01-01",
       sources: undefined,
       timeZone: "Asia/Shanghai",
     }));
+    expect(getProviderStats.mock.calls[0][0].from).not.toBe("1970-01-01");
     expect(screen.getAllByText("$4.25").length).toBeGreaterThan(0);
   });
 
@@ -478,7 +478,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
       metric: "tokens",
-      period: "total",
+      period: "30d",
       source: "all",
       limit: 20,
       offset: 0,
@@ -541,7 +541,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
       expect(getLeaderboard).toHaveBeenCalledWith({
         baseUrl: "https://edge.example",
         metric: "tokens",
-        period: "total",
+        period: "30d",
         source: "all",
         limit: 20,
         offset: 0,
@@ -698,7 +698,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
       metric: "tokens",
-      period: "total",
+      period: "30d",
       source: "all",
       limit: 50,
       offset: 0,
@@ -750,7 +750,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "总累计" }));
+      await user.click(screen.getByRole("button", { name: copy("leaderboard.period.30d") }));
     });
 
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
@@ -780,7 +780,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.queryByTestId("leaderboard-skeleton")).not.toBeInTheDocument();
   });
 
-  it("offers four periods and the three approved ranking metrics", async () => {
+  it("offers five periods and the three approved ranking metrics", async () => {
     const user = userEvent.setup();
     getLeaderboard.mockResolvedValue(preloadedData);
 
@@ -788,6 +788,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     expect(screen.getByRole("button", { name: "今日" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "本周" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: copy("leaderboard.period.30d") })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "本月" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "总累计" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "总榜" })).not.toBeInTheDocument();
@@ -924,9 +925,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     expect(await screen.findByText("总参与人数")).toBeInTheDocument();
     expect(screen.getByText("55")).toBeInTheDocument();
-    expect(screen.getByText("全员累计 Token")).toBeInTheDocument();
+    expect(screen.getByText("全员 Token")).toBeInTheDocument();
     expect(screen.getByText("1.23亿")).toBeInTheDocument();
-    expect(screen.getByText("全员累计预估花销")).toBeInTheDocument();
+    expect(screen.getByText("全员预估花销")).toBeInTheDocument();
     expect(screen.getByText("$4,321")).toBeInTheDocument();
   });
 });

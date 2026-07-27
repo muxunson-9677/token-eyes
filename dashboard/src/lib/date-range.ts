@@ -82,7 +82,7 @@ export function getRangeForPeriod(
 
   if (period === "30d") {
     const fromDate = new Date(today);
-    fromDate.setUTCDate(fromDate.getUTCDate() - 30);
+    fromDate.setUTCDate(fromDate.getUTCDate() - 29);
     return { from: formatDateUTC(fromDate), to };
   }
 
@@ -227,7 +227,7 @@ export function computeRangeFromKey(
     const n = Number(dayMatch[1]);
     if (Number.isFinite(n) && n > 0) {
       const fromDate = new Date(today);
-      fromDate.setUTCDate(fromDate.getUTCDate() - n);
+      fromDate.setUTCDate(fromDate.getUTCDate() - (key === "30d" ? n - 1 : n));
       return { from: formatDateUTC(fromDate), to };
     }
   }

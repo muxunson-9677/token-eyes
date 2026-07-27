@@ -136,7 +136,7 @@ export default async function (req: Request): Promise<Response> {
   const result = (data || {}) as Record<string, unknown>;
   return json({
     ok: true,
-    periods: ["today", "week", ...(refreshMonth ? ["month"] : []), ...(refreshTotal ? ["total"] : [])],
+    periods: ["today", "week", "30d", ...(refreshMonth ? ["month"] : []), ...(refreshTotal ? ["total"] : [])],
     row_counts: result.row_counts || {},
     rows_inserted: result.rows_inserted || 0,
     duration_ms: result.duration_ms || 0,

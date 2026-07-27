@@ -5,7 +5,7 @@ const { loadDashboardModule } = require("./helpers/load-dashboard-module");
 test("mock leaderboard returns entries and me", async () => {
   const { getMockLeaderboard } = await loadDashboardModule("dashboard/src/lib/mock-data.ts");
   const res = getMockLeaderboard({ seed: "demo", limit: 30, offset: 0 });
-  assert.equal(res.period, "total");
+  assert.equal(res.period, "30d");
   assert.equal(Array.isArray(res.entries), true);
   assert.ok(res.entries.length <= 30);
   assert.ok(res.me);

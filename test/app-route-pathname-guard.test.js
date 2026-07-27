@@ -29,11 +29,11 @@ test("App.jsx keeps MVP routes reachable", () => {
   assert.equal(source.includes("SettingsPage"), true, "SettingsPage should be referenced");
 });
 
-test("App.jsx keeps unrequested product routes hidden while keeping leaderboard public", () => {
+test("App.jsx keeps only unrequested product routes hidden while keeping leaderboard and widgets reachable", () => {
   const appPath = path.join(repoRoot, "dashboard/src/App.jsx");
   const source = fs.readFileSync(appPath, "utf8");
   assert.equal(source.includes("isMvpHiddenProductPath"), true, "unrequested routes must stay behind the MVP redirect");
-  for (const route of ["/limits", "/skills", "/widgets", "/ip-check", "/wrapped"]) {
+  for (const route of ["/limits", "/skills", "/ip-check", "/wrapped"]) {
     assert.equal(source.includes(`normalizedPath === "${route}"`) || source.includes(`normalizedPath === '${route}'`), true, `${route} should remain routable`);
   }
   assert.equal(source.includes('normalizedPath === "/leaderboard"'), true, "/leaderboard route should remain reachable");
@@ -47,9 +47,10 @@ test("Sidebar excludes unrequested product routes", () => {
   assert.equal(source.includes('to: "/leaderboard"'), true, "/leaderboard nav item should exist");
   assert.equal(source.includes('to: "/spend/'), true, "/spend/* nav item should exist (v2.0 IA sub-routes)");
   assert.equal(source.includes('to: "/settings/'), true, "/settings/* nav item should exist (v2.0 IA sub-routes)");
-  for (const route of ["/limits", "/skills", "/widgets", "/ip-check"]) {
+  for (const route of ["/limits", "/skills", "/ip-check"]) {
     assert.equal(source.includes(`to: "${route}"`), false, `${route} must not be exposed in navigation`);
   }
+  assert.equal(source.includes('to: "/widgets"'), true, "/widgets must remain available as pending macOS-only functionality");
 });
 
 test("Sidebar imports router APIs used by layout", () => {

@@ -34,6 +34,7 @@ test("authenticated self-rank endpoint derives identity only from a verified JWT
   assert.match(source, /Authorization/);
   assert.match(source, /verifiedUserIdFromJwt|verifiedUserId/);
   assert.match(source, /auth\.getCurrentUser\(\)/);
+  assert.match(source, /const PERIODS\s*=\s*new Set\(\["today", "week", "30d", "month", "total"\]\)/);
   assert.match(source, /\.eq\("user_id",\s*userId\)/);
   assert.doesNotMatch(source, /searchParams\.get\("user_id"\)/);
   assert.match(source, /Cache-Control":\s*"private, no-store"/);

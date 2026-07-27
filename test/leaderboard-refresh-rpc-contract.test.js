@@ -20,7 +20,7 @@ test("refresh RPC has bounded periods, server pricing, and public-only ranking",
     sql,
     /function public\.refresh_leaderboard_snapshots\(\s*p_refresh_month boolean,\s*p_refresh_total boolean\s*\)/i,
   );
-  assert.match(sql, /array\['today',\s*'week',\s*'month',\s*'total'\]/i);
+  assert.match(sql, /array\['today',\s*'week',\s*'30d',\s*'month',\s*'total'\]/i);
   assert.match(sql, /jsonb_array_elements\([^;]+payload\s*->\s*'periods'/is);
   assert.match(sql, /group by\s+[^;]*user_id[^;]*source[^;]*model/is);
   assert.match(sql, /left join lateral[^;]+tokentracker_model_pricing/is);
@@ -36,6 +36,9 @@ test("refresh RPC has bounded periods, server pricing, and public-only ranking",
     /state\.captured_at\s+at time zone\s+'Asia\/Shanghai'[^;]+selected\.period/is,
   );
   assert.match(sql, /selected\.period\s*=\s*'total'/i);
+  assert.match(sql, /selected\.period\s*=\s*'30d'/i);
+  assert.match(sql, /when\s+'30d'\s+then\s+actual\."30d_usd"/i);
+  assert.match(sql, /when\s+'30d'\s+then\s+v_shanghai_day\s*-\s*29/i);
   assert.match(sql, /extract\(isodow from v_shanghai_day\)/i);
   assert.match(sql, /extract\(day from v_shanghai_day\)/i);
   assert.match(

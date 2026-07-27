@@ -750,7 +750,7 @@ async function fetchInsforgeFunction(slug: string, options: {
 }
 
 const LEADERBOARD_HEDGE_DELAY_MS = 100;
-const LEADERBOARD_SAFE_PERIODS = new Set(["today", "week", "month", "total"]);
+const LEADERBOARD_SAFE_PERIODS = new Set(["today", "week", "30d", "month", "total"]);
 const LEADERBOARD_SAFE_METRICS = new Set(["tokens", "estimated_spend", "actual_cost"]);
 const LEADERBOARD_SAFE_SOURCES = new Set([
   "all", "codex", "claude", "gemini", "cursor", "opencode", "openclaw",
@@ -759,6 +759,7 @@ const LEADERBOARD_SAFE_SOURCES = new Set([
 const LEADERBOARD_STALE_AFTER_MS: Record<string, number> = {
   today: 30 * 60_000,
   week: 30 * 60_000,
+  "30d": 2 * 60 * 60_000,
   month: 2 * 60 * 60_000,
   total: 26 * 60 * 60_000,
 };
@@ -783,6 +784,14 @@ function leaderboardShanghaiRange(period: string) {
     return {
       from: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10),
       to: new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10),
+    };
+  }
+  if (period === "30d") {
+    const from = new Date(current);
+    from.setUTCDate(from.getUTCDate() - 29);
+    return {
+      from: from.toISOString().slice(0, 10),
+      to: current.toISOString().slice(0, 10),
     };
   }
   const mondayOffset = (current.getUTCDay() + 6) % 7;
@@ -1083,6 +1092,7 @@ export async function setLeaderboardActualCost({
   const normalized = {
     today: Number(periodCosts?.today),
     week: Number(periodCosts?.week),
+    "30d": Number(periodCosts?.["30d"]),
     month: Number(periodCosts?.month),
     total: Number(periodCosts?.total),
   };
@@ -1090,7 +1100,7 @@ export async function setLeaderboardActualCost({
     share &&
     Object.values(normalized).some((value) => !Number.isFinite(value) || value < 0)
   ) {
-    throw new Error("Four non-negative period costs are required");
+    throw new Error("Five non-negative period costs are required");
   }
   const captured = capturedAt ? new Date(capturedAt) : new Date();
   if (!Number.isFinite(captured.getTime())) throw new Error("Invalid actual-cost capture time");
@@ -1112,6 +1122,7 @@ export async function setLeaderboardActualCost({
         p_share: Boolean(share),
         p_today_usd: share ? normalized.today : null,
         p_week_usd: share ? normalized.week : null,
+        p_30d_usd: share ? normalized["30d"] : null,
         p_month_usd: share ? normalized.month : null,
         p_total_usd: share ? normalized.total : null,
         p_captured_at: captured.toISOString(),
@@ -1135,11 +1146,12 @@ export async function refreshLeaderboardActualCost({
   const normalized = {
     today: Number(periodCosts?.today),
     week: Number(periodCosts?.week),
+    "30d": Number(periodCosts?.["30d"]),
     month: Number(periodCosts?.month),
     total: Number(periodCosts?.total),
   };
   if (Object.values(normalized).some((value) => !Number.isFinite(value) || value < 0)) {
-    throw new Error("Four non-negative period costs are required");
+    throw new Error("Five non-negative period costs are required");
   }
   const captured = capturedAt ? new Date(capturedAt) : new Date();
   if (!Number.isFinite(captured.getTime())) throw new Error("Invalid actual-cost capture time");
@@ -1159,6 +1171,7 @@ export async function refreshLeaderboardActualCost({
       body: JSON.stringify({
         p_today_usd: normalized.today,
         p_week_usd: normalized.week,
+        p_30d_usd: normalized["30d"],
         p_month_usd: normalized.month,
         p_total_usd: normalized.total,
         p_captured_at: captured.toISOString(),
@@ -1185,6 +1198,7 @@ export async function getLocalLeaderboardActualCost() {
   const result = {
     today: Number(costs?.today),
     week: Number(costs?.week),
+    "30d": Number(costs?.["30d"]),
     month: Number(costs?.month),
     total: Number(costs?.total),
   };

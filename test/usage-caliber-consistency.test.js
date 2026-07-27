@@ -630,6 +630,8 @@ test("dashboard 30d period matches spend 30d rolling window", async () => {
   };
   const dashboardRange = dateRange.getRangeForPeriod("30d", opts);
   const spendRange = dateRange.computeRangeFromKey("30d", opts);
+  assert.deepEqual(dashboardRange, { from: "2026-06-08", to: "2026-07-07" });
+  assert.deepEqual(spendRange, { from: "2026-06-08", to: "2026-07-07" });
   assert.equal(dashboardRange.from, spendRange.from);
   assert.equal(dashboardRange.to, spendRange.to);
 });

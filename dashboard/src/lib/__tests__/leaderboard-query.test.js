@@ -11,13 +11,14 @@ import {
 import { getMockLeaderboard } from "../mock-data.ts";
 
 describe("leaderboard query dimensions", () => {
-  it("normalizes the four supported periods and keeps old links compatible", () => {
+  it("defaults to the same rolling 30-day window as usage statistics and keeps old links compatible", () => {
+    expect(LEADERBOARD_DEFAULT_PERIOD).toBe("30d");
     expect(normalizeLeaderboardPeriod("today")).toBe("today");
     expect(normalizeLeaderboardPeriod("week")).toBe("week");
     expect(normalizeLeaderboardPeriod("month")).toBe("month");
     expect(normalizeLeaderboardPeriod("total")).toBe("total");
     expect(normalizeLeaderboardPeriod("7D")).toBe("week");
-    expect(normalizeLeaderboardPeriod("30d")).toBe("month");
+    expect(normalizeLeaderboardPeriod("30d")).toBe("30d");
     expect(normalizeLeaderboardPeriod("yesterday")).toBe(LEADERBOARD_DEFAULT_PERIOD);
     expect(normalizeLeaderboardPeriod("quarter")).toBe(LEADERBOARD_DEFAULT_PERIOD);
   });

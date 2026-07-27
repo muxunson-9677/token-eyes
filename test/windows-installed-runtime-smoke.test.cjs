@@ -85,9 +85,15 @@ test("Windows NSIS installer deploys and starts the versioned bundled runtime", 
   const nodeExe = path.join(runtimeDir, "node.exe");
   const trackerEntry = path.join(trackerRoot, "bin", "tracker.js");
   const manifest = path.join(runtimeDir, "runtime-manifest.json");
+  const localApiSource = path.join(trackerRoot, "src", "lib", "local-api.js");
   assert.ok(fs.existsSync(nodeExe), "installer must deploy the versioned node runtime");
   assert.ok(fs.existsSync(trackerEntry), "installer must deploy tracker.js under the versioned runtime");
   assert.ok(fs.existsSync(manifest), "installer must deploy the runtime manifest");
+  assert.doesNotMatch(
+    fs.readFileSync(localApiSource, "utf8"),
+    /shouldScanDefaultWindowsDrives/,
+    "installed runtime must not contain the removed undefined Windows-drive helper",
+  );
 
   const port = await findFreePort();
   const smokeHome = path.join(installRoot, "home");

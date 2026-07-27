@@ -27,7 +27,7 @@ function row(hourStart, overrides = {}) {
   };
 }
 
-test("builds UTC+8 today, Monday week, month, and total periods at exact boundaries", () => {
+test("builds UTC+8 today, Monday week, rolling 30-day, month, and total periods at exact boundaries", () => {
   const state = buildLeaderboardDeviceState([
     row("2026-06-30T15:30:00.000Z", { input_tokens: 1 }),
     row("2026-06-30T16:00:00.000Z", { input_tokens: 2 }),
@@ -45,6 +45,7 @@ test("builds UTC+8 today, Monday week, month, and total periods at exact boundar
     periods: {
       today: [["codex", "gpt-5.4", "8", "20", "10", "0", "0"]],
       week: [["codex", "gpt-5.4", "8", "20", "10", "0", "0"]],
+      "30d": [["codex", "gpt-5.4", "15", "80", "40", "0", "0"]],
       month: [["codex", "gpt-5.4", "14", "60", "30", "0", "0"]],
       total: [["codex", "gpt-5.4", "15", "80", "40", "0", "0"]],
     },

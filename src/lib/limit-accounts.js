@@ -365,7 +365,17 @@ async function fetchLimitAccountsUncached(options = {}) {
   const salt = loadOrCreateIdentitySalt({ home });
   const labels = loadAccountLabels({ home });
   const adapterEntries = Object.entries(adapters);
-  const rawAccounts = await runAdaptersWithConcurrency(adapterEntries, salt, previousAccounts, { home, env });
+  const rawAccounts = await runAdaptersWithConcurrency(adapterEntries, salt, previousAccounts, {
+    home,
+    env,
+    platform: options.platform,
+    scanDefaultWindowsDrives: options.scanDefaultWindowsDrives,
+    windowsDriveRoots: options.windowsDriveRoots,
+    securityRunner: options.securityRunner,
+    commandRunner: options.commandRunner,
+    providerTimeoutMs: options.providerTimeoutMs,
+    fetchImpl: options.fetchImpl,
+  });
   const accounts = applyAccountLabels(rawAccounts, labels);
 
   lastGoodAccounts = mergeLastGoodAccounts(previousAccounts, accounts);

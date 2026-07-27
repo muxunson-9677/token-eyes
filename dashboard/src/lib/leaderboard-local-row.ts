@@ -89,6 +89,11 @@ export function getLeaderboardPeriodDateRange(period: string, now = new Date()) 
     monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
     return { from: monday.toISOString().slice(0, 10), to };
   }
+  if (period === "30d") {
+    const start = new Date(`${to}T00:00:00.000Z`);
+    start.setUTCDate(start.getUTCDate() - 29);
+    return { from: start.toISOString().slice(0, 10), to };
+  }
   return { from: "1970-01-01", to };
 }
 

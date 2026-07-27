@@ -1,6 +1,6 @@
 import { createClient } from "npm:@insforge/sdk";
 
-const PERIODS = new Set(["today", "week", "month", "total"]);
+const PERIODS = new Set(["today", "week", "30d", "month", "total"]);
 const METRICS = new Set(["tokens", "estimated_spend", "actual_cost"]);
 const KNOWN_SOURCES = new Set([
   "all",

@@ -107,6 +107,10 @@ describe("buildLocalLeaderboardRow", () => {
       from: "2026-07-20",
       to: "2026-07-22",
     });
+    expect(getLeaderboardPeriodDateRange("30d", now)).toEqual({
+      from: "2026-06-23",
+      to: "2026-07-22",
+    });
     expect(getLeaderboardPeriodDateRange("month", now)).toEqual({
       from: "2026-07-01",
       to: "2026-07-22",

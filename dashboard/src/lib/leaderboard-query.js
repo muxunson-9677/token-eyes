@@ -1,12 +1,13 @@
 import { DASHBOARD_AGENTS } from "./agent-adapters-dashboard";
 
-export const LEADERBOARD_DEFAULT_PERIOD = "total";
+export const LEADERBOARD_DEFAULT_PERIOD = "30d";
 export const LEADERBOARD_DEFAULT_AGENT = "all";
 export const LEADERBOARD_DEFAULT_METRIC = "tokens";
 
 export const LEADERBOARD_PERIODS = Object.freeze([
   "today",
   "week",
+  "30d",
   "month",
   "total",
 ]);
@@ -28,7 +29,6 @@ export const LEADERBOARD_AGENTS = Object.freeze(
 export function normalizeLeaderboardPeriod(value) {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (normalized === "7d") return "week";
-  if (normalized === "30d") return "month";
   return LEADERBOARD_PERIODS.includes(normalized) ? normalized : LEADERBOARD_DEFAULT_PERIOD;
 }
 

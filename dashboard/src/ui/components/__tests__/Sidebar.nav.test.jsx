@@ -57,14 +57,14 @@ vi.mock("../../../hooks/use-codex-reset-events", () => ({
 }));
 
 describe("getNavGroups structure (v2.0 IA)", () => {
-  it("returns overview and leaderboard items + spend and settings parents with children", () => {
+  it("returns overview, leaderboard and pending-widget items + spend and settings parents with children", () => {
     const groups = getNavGroups();
     // Three top-level groups: overview, spend, settings
     expect(groups).toHaveLength(3);
 
     const overview = groups.find((g) => g.id === "overview");
     expect(overview).toBeDefined();
-    expect(overview.items).toHaveLength(3);
+    expect(overview.items).toHaveLength(4);
     expect(overview.items[0].to).toBe("/dashboard");
     expect(overview.items[1]).toMatchObject({
       id: "leaderboard",
@@ -77,10 +77,16 @@ describe("getNavGroups structure (v2.0 IA)", () => {
       label: "copy:nav.reset_history",
       codexResetAttention: true,
     });
+    expect(overview.items[3]).toMatchObject({
+      id: "widgets",
+      to: "/widgets",
+      label: "copy:nav.widgets",
+    });
     expect(overview.items.map((item) => item.to)).toEqual([
       "/dashboard",
       "/leaderboard",
       "/reset-history",
+      "/widgets",
     ]);
 
     const spend = groups.find((g) => g.id === "spend");
@@ -136,14 +142,14 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
       .toHaveLength(1);
   });
 
-  it("does not render unrequested product routes in the overview navigation", () => {
+  it("keeps only the user-approved pending widgets route in the overview navigation", () => {
     renderSidebar("/dashboard");
     expect(screen.getByText("copy:nav.usage")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.leaderboard")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.reset_history")).toBeInTheDocument();
     expect(screen.queryByText("copy:nav.limits")).not.toBeInTheDocument();
     expect(screen.queryByText("copy:nav.skills")).not.toBeInTheDocument();
-    expect(screen.queryByText("copy:nav.widgets")).not.toBeInTheDocument();
+    expect(screen.getByText("copy:nav.widgets")).toBeInTheDocument();
     expect(screen.queryByText("copy:nav.ip_check")).not.toBeInTheDocument();
     expect(screen.getByText("copy:nav.group.spend")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.group.settings")).toBeInTheDocument();

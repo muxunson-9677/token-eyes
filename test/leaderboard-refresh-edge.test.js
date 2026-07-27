@@ -27,7 +27,7 @@ test("one 15-minute schedule gives hourly month and daily total refreshes", () =
   assert.match(source, /Math\.floor\([^;]+\/\s*900\)/);
   assert.match(source, /slot\s*%\s*4\s*===\s*0/);
   assert.match(source, /slot\s*%\s*96\s*===\s*0/);
-  assert.match(source, /today[^]*week/i);
+  assert.match(source, /today[^]*week[^]*30d/i);
 });
 
 test("response exposes operations metadata but never user rows", () => {

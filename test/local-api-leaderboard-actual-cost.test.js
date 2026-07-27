@@ -149,6 +149,7 @@ test("returns API, recurring, one-time, and other-AI cost as four private-free t
   assert.deepEqual(body.period_costs_usd, {
     today: 16,
     week: 16,
+    "30d": 16,
     month: 16,
     total: 16,
   });

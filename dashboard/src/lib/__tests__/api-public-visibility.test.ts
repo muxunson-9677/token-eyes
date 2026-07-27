@@ -146,7 +146,7 @@ describe("public visibility API", () => {
     await setLeaderboardActualCost({
       accessToken,
       share: true,
-      periodCosts: { today: 1, week: 2, month: 3, total: 4 },
+      periodCosts: { today: 1, week: 2, "30d": 2.5, month: 3, total: 4 },
       capturedAt: "2026-07-20T08:00:00.000Z",
     });
 
@@ -163,6 +163,7 @@ describe("public visibility API", () => {
           p_share: true,
           p_today_usd: 1,
           p_week_usd: 2,
+          p_30d_usd: 2.5,
           p_month_usd: 3,
           p_total_usd: 4,
           p_captured_at: "2026-07-20T08:00:00.000Z",
@@ -172,13 +173,14 @@ describe("public visibility API", () => {
     expect(String(fetchMock.mock.calls[0]?.[1]?.body)).not.toContain("writer-1");
   });
 
-  it("reads only four local actual-cost totals before consent upload", async () => {
+  it("reads the local rolling 30-day actual cost before consent upload", async () => {
     const fetchMock = mockJsonFetch({
-      period_costs_usd: { today: 1, week: 2, month: 3, total: 4 },
+      period_costs_usd: { today: 1, week: 2, "30d": 2.5, month: 3, total: 4 },
     });
     await expect(getLocalLeaderboardActualCost()).resolves.toEqual({
       today: 1,
       week: 2,
+      "30d": 2.5,
       month: 3,
       total: 4,
     });
@@ -199,7 +201,7 @@ describe("public visibility API", () => {
 
     await expect(refreshLeaderboardActualCost({
       accessToken,
-      periodCosts: { today: 1, week: 2, month: 3, total: 4 },
+      periodCosts: { today: 1, week: 2, "30d": 2.5, month: 3, total: 4 },
       capturedAt: "2026-07-20T08:00:00.000Z",
     })).resolves.toBe(false);
 
@@ -210,6 +212,7 @@ describe("public visibility API", () => {
         body: JSON.stringify({
           p_today_usd: 1,
           p_week_usd: 2,
+          p_30d_usd: 2.5,
           p_month_usd: 3,
           p_total_usd: 4,
           p_captured_at: "2026-07-20T08:00:00.000Z",
@@ -299,7 +302,7 @@ describe("leaderboard API", () => {
     const fetchMock = mockJsonFetch(payload);
 
     await expect(getLeaderboard({
-      period: "total",
+      period: "30d",
       source: "all",
       metric: "tokens",
       limit: 20,
@@ -308,7 +311,7 @@ describe("leaderboard API", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-public?period=total&metric=tokens&source=all&limit=20&offset=0",
+      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-public?period=30d&metric=tokens&source=all&limit=20&offset=0",
     );
   });
 
@@ -344,7 +347,7 @@ describe("leaderboard API", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const request = getLeaderboard({
-      period: "total",
+      period: "30d",
       source: "all",
       metric: "tokens",
       limit: 20,
@@ -354,7 +357,7 @@ describe("leaderboard API", () => {
 
     await expect(request).resolves.toMatchObject({
       entries: directRows,
-      period: "total",
+      period: "30d",
       metric: "tokens",
       source: "all",
       total_entries: 1,

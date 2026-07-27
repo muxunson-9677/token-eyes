@@ -50,4 +50,30 @@ describe("handleLimitAccountsRequest", () => {
       fs.rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it("preserves Windows discovery options for every account adapter", async () => {
+    const home = makeTmpHome();
+    try {
+      let received = null;
+      await handleLimitAccountsRequest({
+        home,
+        env: { TOKENTRACKER_AGENTDATA_ROOTS: "D:\\AgentData" },
+        platform: "win32",
+        scanDefaultWindowsDrives: true,
+        windowsDriveRoots: ["D:\\"],
+        adapters: {
+          codex: async (options) => {
+            received = options;
+            return [];
+          },
+        },
+      });
+
+      assert.equal(received.platform, "win32");
+      assert.equal(received.scanDefaultWindowsDrives, true);
+      assert.deepEqual(received.windowsDriveRoots, ["D:\\"]);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
 });

@@ -48,7 +48,7 @@ async function call(handler, search = "") {
   return res;
 }
 
-test("proxies only allowlisted public leaderboard dimensions without credentials", async () => {
+test("preserves the rolling 30-day public leaderboard period without credentials", async () => {
   const calls = [];
   global.fetch = async (url, options) => {
     calls.push([url, options]);
@@ -60,7 +60,7 @@ test("proxies only allowlisted public leaderboard dimensions without credentials
   const { createLocalApiHandler } = require("../src/lib/local-api");
   const handler = createLocalApiHandler({ queuePath: "" });
 
-  const res = await call(handler, "?period=total&metric=tokens&source=all&limit=20&offset=0");
+  const res = await call(handler, "?period=30d&metric=tokens&source=all&limit=20&offset=0");
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(JSON.parse(res.body()), {
@@ -69,7 +69,7 @@ test("proxies only allowlisted public leaderboard dimensions without credentials
   assert.equal(calls.length, 1);
   const upstream = new URL(calls[0][0]);
   assert.equal(upstream.hostname, "a62b9nf2.function2.insforge.app");
-  assert.equal(upstream.searchParams.get("period"), "total");
+  assert.equal(upstream.searchParams.get("period"), "30d");
   assert.equal(upstream.searchParams.get("metric"), "tokens");
   assert.equal(upstream.searchParams.get("source"), "all");
   assert.deepEqual(calls[0][1].headers, { Accept: "application/json" });

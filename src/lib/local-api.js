@@ -5019,7 +5019,7 @@ function createLocalApiHandler({
         return true;
       }
 
-      const allowedPeriods = new Set(["today", "week", "month", "total"]);
+      const allowedPeriods = new Set(["today", "week", "30d", "month", "total"]);
       const allowedMetrics = new Set(["tokens", "estimated_spend", "actual_cost"]);
       const allowedSources = new Set([
         "all", "codex", "claude", "gemini", "cursor", "opencode", "openclaw",
@@ -7834,13 +7834,14 @@ function createLocalApiHandler({
       const { handleLimitAccountsRequest } = require("./limit-accounts-handler");
       try {
         const forceRefresh = url.searchParams.get("refresh");
-        const data = await handleLimitAccountsRequest({
-          refresh: forceRefresh === "1" || forceRefresh === "true",
-          home: os.homedir(),
-          env: process.env,
-          platform: process.platform,
-          scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
-        });
+        const data = typeof limitAccountsProvider === "function"
+          ? await limitAccountsProvider({ refresh: forceRefresh === "1" || forceRefresh === "true" })
+          : await handleLimitAccountsRequest({
+            refresh: forceRefresh === "1" || forceRefresh === "true",
+            home: os.homedir(),
+            env: process.env,
+            platform: process.platform,
+          });
         json(res, data);
       } catch (e) {
         json(res, { error: e?.message || "Unknown error" }, 500);
@@ -7885,7 +7886,6 @@ function createLocalApiHandler({
             home: os.homedir(),
             env: process.env,
             platform: process.platform,
-            scanDefaultWindowsDrives: shouldScanDefaultWindowsDrives(process.env),
           });
         const density = Object.values(TRAY_DENSITY).includes(url.searchParams.get("density"))
           ? url.searchParams.get("density")

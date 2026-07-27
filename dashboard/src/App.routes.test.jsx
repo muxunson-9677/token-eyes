@@ -24,6 +24,7 @@ const TEXT = {
   leaderboardRules: "Leaderboard rules page",
   leaderboardProfile: "Leaderboard profile page",
   resetHistory: "Reset history page",
+  widgets: "Widgets page",
   login: "Login page",
   sidebarShell: "Sidebar shell",
 };
@@ -129,7 +130,7 @@ vi.mock("./pages/LoginPage.jsx", () => ({
 vi.mock("./pages/DevicePage.jsx", () => ({ default: () => null }));
 vi.mock("./pages/WrappedPage.jsx", () => ({ default: () => null }));
 vi.mock("./pages/SkillsPage.jsx", () => ({ SkillsPage: () => null }));
-vi.mock("./pages/WidgetsPage.jsx", () => ({ WidgetsPage: () => null }));
+vi.mock("./pages/WidgetsPage.jsx", () => ({ WidgetsPage: () => <main>{TEXT.widgets}</main> }));
 vi.mock("./pages/LeaderboardPage.jsx", () => ({
   LeaderboardPage: () => <main>{TEXT.leaderboard}</main>,
 }));
@@ -203,6 +204,12 @@ describe("App routes (v2.0 IA refactor)", () => {
   it("/reset-history renders ResetHistoryPage with sidebar", async () => {
     renderApp("/reset-history");
     expect(await screen.findByText(TEXT.resetHistory)).toBeInTheDocument();
+    expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+  });
+
+  it("/widgets remains reachable with the sidebar as pending macOS-only functionality", async () => {
+    renderApp("/widgets");
+    expect(await screen.findByText(TEXT.widgets)).toBeInTheDocument();
     expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
   });
 

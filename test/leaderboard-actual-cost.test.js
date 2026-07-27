@@ -7,7 +7,7 @@ const {
   buildLeaderboardActualCostSummary,
 } = require("../src/lib/leaderboard-actual-cost");
 
-test("builds four Shanghai periods from the same combined-cost reader and exposes totals only", async () => {
+test("builds rolling 30-day Shanghai cost alongside the existing periods", async () => {
   const calls = [];
   const privateTimeseries = {
     today: {
@@ -25,6 +25,9 @@ test("builds four Shanghai periods from the same combined-cost reader and expose
       notes: "Private note",
       provider_account_name: "private@example.com",
     },
+    "30d": {
+      totals: { combined_usd: 20.5, lifetime_combined_usd: 240 },
+    },
   };
 
   const result = await buildLeaderboardActualCostSummary({
@@ -38,6 +41,7 @@ test("builds four Shanghai periods from the same combined-cost reader and expose
   assert.deepEqual(calls, [
     { name: "today", from: "2026-07-20", to: "2026-07-20" },
     { name: "week", from: "2026-07-20", to: "2026-07-20" },
+    { name: "30d", from: "2026-06-21", to: "2026-07-20" },
     { name: "month", from: "2026-07-01", to: "2026-07-20" },
   ]);
   assert.deepEqual(result, {
@@ -45,6 +49,7 @@ test("builds four Shanghai periods from the same combined-cost reader and expose
     period_costs_usd: {
       today: 1.25,
       week: 8.5,
+      "30d": 20.5,
       month: 31.75,
       total: 240,
     },

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Trophy,
   History,
+  PanelsTopLeft,
 } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
@@ -48,6 +49,7 @@ export function getNavGroups() {
           label: copy("nav.reset_history"),
           codexResetAttention: true,
         },
+        { id: "widgets", to: "/widgets", icon: PanelsTopLeft, label: copy("nav.widgets") },
       ],
     },
     {

@@ -1,4 +1,4 @@
--- Optional actual-cost consent and four-period aggregate.
+-- Optional actual-cost consent and rolling-30-day aggregate.
 -- Apply after leaderboard-device-state.sql.
 
 begin;
@@ -8,6 +8,7 @@ create table if not exists public.tokentracker_actual_cost_state (
   share_actual_cost boolean not null default false,
   today_usd numeric(20,6),
   week_usd numeric(20,6),
+  "30d_usd" numeric(20,6),
   month_usd numeric(20,6),
   total_usd numeric(20,6),
   captured_at timestamptz not null,
@@ -17,6 +18,7 @@ create table if not exists public.tokentracker_actual_cost_state (
       share_actual_cost
       and today_usd is not null and today_usd >= 0
       and week_usd is not null and week_usd >= 0
+      and "30d_usd" is not null and "30d_usd" >= 0
       and month_usd is not null and month_usd >= 0
       and total_usd is not null and total_usd >= 0
     )
@@ -25,6 +27,7 @@ create table if not exists public.tokentracker_actual_cost_state (
       not share_actual_cost
       and today_usd is null
       and week_usd is null
+      and "30d_usd" is null
       and month_usd is null
       and total_usd is null
     )
@@ -68,6 +71,7 @@ create or replace function public.set_my_leaderboard_actual_cost(
   p_share boolean,
   p_today_usd numeric,
   p_week_usd numeric,
+  p_30d_usd numeric,
   p_month_usd numeric,
   p_total_usd numeric,
   p_captured_at timestamptz
@@ -91,6 +95,7 @@ begin
   if p_share and (
     p_today_usd is null or p_today_usd < 0
     or p_week_usd is null or p_week_usd < 0
+    or p_30d_usd is null or p_30d_usd < 0
     or p_month_usd is null or p_month_usd < 0
     or p_total_usd is null or p_total_usd < 0
   ) then
@@ -102,6 +107,7 @@ begin
     share_actual_cost,
     today_usd,
     week_usd,
+    "30d_usd",
     month_usd,
     total_usd,
     captured_at,
@@ -111,6 +117,7 @@ begin
     p_share,
     case when not p_share then null else p_today_usd end,
     case when not p_share then null else p_week_usd end,
+    case when not p_share then null else p_30d_usd end,
     case when not p_share then null else p_month_usd end,
     case when not p_share then null else p_total_usd end,
     p_captured_at,
@@ -120,6 +127,7 @@ begin
   set share_actual_cost = excluded.share_actual_cost,
       today_usd = excluded.today_usd,
       week_usd = excluded.week_usd,
+      "30d_usd" = excluded."30d_usd",
       month_usd = excluded.month_usd,
       total_usd = excluded.total_usd,
       captured_at = excluded.captured_at,
@@ -128,18 +136,19 @@ end;
 $function$;
 
 revoke all on function public.set_my_leaderboard_actual_cost(
-  boolean, numeric, numeric, numeric, numeric, timestamptz
+  boolean, numeric, numeric, numeric, numeric, numeric, timestamptz
 ) from public;
 revoke all on function public.set_my_leaderboard_actual_cost(
-  boolean, numeric, numeric, numeric, numeric, timestamptz
+  boolean, numeric, numeric, numeric, numeric, numeric, timestamptz
 ) from anon;
 grant execute on function public.set_my_leaderboard_actual_cost(
-  boolean, numeric, numeric, numeric, numeric, timestamptz
+  boolean, numeric, numeric, numeric, numeric, numeric, timestamptz
 ) to authenticated;
 
 create or replace function public.refresh_my_leaderboard_actual_cost(
   p_today_usd numeric,
   p_week_usd numeric,
+  p_30d_usd numeric,
   p_month_usd numeric,
   p_total_usd numeric,
   p_captured_at timestamptz
@@ -158,6 +167,7 @@ begin
      or p_captured_at > now() + interval '5 minutes'
      or p_today_usd is null or p_today_usd < 0
      or p_week_usd is null or p_week_usd < 0
+     or p_30d_usd is null or p_30d_usd < 0
      or p_month_usd is null or p_month_usd < 0
      or p_total_usd is null or p_total_usd < 0 then
     raise exception 'invalid actual-cost refresh' using errcode = '22023';
@@ -166,6 +176,7 @@ begin
   update public.tokentracker_actual_cost_state
   set today_usd = p_today_usd,
       week_usd = p_week_usd,
+      "30d_usd" = p_30d_usd,
       month_usd = p_month_usd,
       total_usd = p_total_usd,
       captured_at = p_captured_at,
@@ -178,13 +189,13 @@ end;
 $function$;
 
 revoke all on function public.refresh_my_leaderboard_actual_cost(
-  numeric, numeric, numeric, numeric, timestamptz
+  numeric, numeric, numeric, numeric, numeric, timestamptz
 ) from public;
 revoke all on function public.refresh_my_leaderboard_actual_cost(
-  numeric, numeric, numeric, numeric, timestamptz
+  numeric, numeric, numeric, numeric, numeric, timestamptz
 ) from anon;
 grant execute on function public.refresh_my_leaderboard_actual_cost(
-  numeric, numeric, numeric, numeric, timestamptz
+  numeric, numeric, numeric, numeric, numeric, timestamptz
 ) to authenticated;
 
 create or replace function public.delete_my_leaderboard_data()

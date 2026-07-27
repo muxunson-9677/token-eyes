@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 
 const COMPACT_STATE_MAX_BYTES = 8 * 1024;
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
-const PERIOD_NAMES = ["today", "week", "month", "total"];
+const PERIOD_NAMES = ["today", "week", "30d", "month", "total"];
 const TOKEN_FIELDS = [
   "input_tokens",
   "output_tokens",
@@ -37,6 +37,12 @@ function mondayKey(dayKey) {
   const date = new Date(`${dayKey}T00:00:00.000Z`);
   const daysSinceMonday = (date.getUTCDay() + 6) % 7;
   date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  return date.toISOString().slice(0, 10);
+}
+
+function rolling30DayKey(dayKey) {
+  const date = new Date(`${dayKey}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - 29);
   return date.toISOString().slice(0, 10);
 }
 
@@ -89,6 +95,7 @@ function buildLeaderboardDeviceState(rows, options = {}) {
 
   const todayKey = shanghaiDayKey(capturedDate);
   const weekKey = mondayKey(todayKey);
+  const rolling30DayKeyValue = rolling30DayKey(todayKey);
   const monthKey = `${todayKey.slice(0, 7)}-01`;
   const periodMaps = Object.fromEntries(PERIOD_NAMES.map((name) => [name, new Map()]));
 
@@ -102,6 +109,7 @@ function buildLeaderboardDeviceState(rows, options = {}) {
     const groupKey = `${source}\u0000${model}`;
     const includedPeriods = ["total"];
     if (rowKey >= monthKey) includedPeriods.push("month");
+    if (rowKey >= rolling30DayKeyValue) includedPeriods.push("30d");
     if (rowKey >= weekKey) includedPeriods.push("week");
     if (rowKey >= todayKey) includedPeriods.push("today");
 
