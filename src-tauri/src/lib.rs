@@ -120,6 +120,8 @@ pub fn run() {
                 let state = handle.state::<commands::LocalServerState>();
                 if let Err(err) = commands::ensure_local_server_started(&handle, state.inner()) {
                     eprintln!("[Token Eyes] local API startup warning: {err}");
+                } else {
+                    tray::refresh_compact_quota_status(&handle);
                 }
             });
             Ok(())

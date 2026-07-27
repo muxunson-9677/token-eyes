@@ -44,6 +44,7 @@ import {
   getProviderStats,
 } from "../lib/api";
 import {
+  clearLeaderboardPreloadState,
   getLeaderboardPreloadContextKey,
   publishLeaderboardPreloadState,
   readLeaderboardPreloadState,
@@ -589,11 +590,12 @@ export function LeaderboardPage({
     })().catch((err) => {
       if (!active) return;
       const error = normalizeLeaderboardError(err);
-      setListState((prev) => {
-        if (prev.contextKey === leaderboardPreloadContextKey) {
-          return { ...prev, loading: false, error };
-        }
-        return { loading: false, error, data: null, contextKey: leaderboardPreloadContextKey };
+      clearLeaderboardPreloadState(leaderboardPreloadContextKey);
+      setListState({
+        loading: false,
+        error,
+        data: null,
+        contextKey: leaderboardPreloadContextKey,
       });
     });
     return () => {

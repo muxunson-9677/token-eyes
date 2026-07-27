@@ -102,7 +102,7 @@ describe("CommandPalette real render (F3 reproduction)", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
-  it("lists every shipped observability page and the four secondary-nav children", async () => {
+  it("lists only the approved overview and secondary-nav pages", async () => {
     renderPalette();
     openWithCtrlK();
     const dialog = await screen.findByRole("dialog");
@@ -111,10 +111,6 @@ describe("CommandPalette real render (F3 reproduction)", () => {
       "nav.usage",
       "nav.leaderboard",
       "nav.reset_history",
-      "nav.limits",
-      "nav.skills",
-      "nav.widgets",
-      "nav.ip_check",
       "nav.spend.usage",
       "nav.spend.cost",
       "nav.settings.basic",
@@ -125,7 +121,7 @@ describe("CommandPalette real render (F3 reproduction)", () => {
     }
     // No React error boundary swallowed the list — there are 6 page options.
     const options = within(dialog).getAllByRole("option");
-    expect(options.length).toBe(11);
+    expect(options.length).toBe(7);
   });
 
   it("clicking a secondary-nav child navigates to the correct URL", async () => {

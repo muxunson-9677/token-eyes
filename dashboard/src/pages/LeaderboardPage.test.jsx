@@ -370,7 +370,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
   });
 
-  it("keeps cached data visible when the background refresh fails", async () => {
+  it("clears cached cloud rows and totals when the signed-in refresh fails", async () => {
     const contextKey = getLeaderboardPreloadContextKey({
       accessMode: "cloud",
       baseUrl: "https://edge.example",
@@ -385,9 +385,11 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByText(copy("leaderboard.error.network"))).toBeInTheDocument();
+      expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
+      expect(screen.queryByTestId("leaderboard-summary")).not.toBeInTheDocument();
+      expect(readLeaderboardPreloadState(contextKey)).toBeNull();
     });
     expect(screen.queryByTestId("leaderboard-skeleton")).not.toBeInTheDocument();
-    expect(readLeaderboardPreloadState(contextKey)).toMatchObject({ data: preloadedData });
   });
 
   it("shows an error when cold-start fetch fails without cached data", async () => {

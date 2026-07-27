@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import {
   getAgentEnvironment,
+  getObservabilityExport,
   getUsageAttribution,
   getTokenPlans,
   openXiaomiMimoConsoleLogin,
@@ -70,6 +71,22 @@ it("requests local-only usage attribution with the active source and model filte
   expect(fetchMock).toHaveBeenCalledWith(
     "http://127.0.0.1:17680/functions/tokentracker-usage-attribution?from=2026-07-01&to=2026-07-27&group_by=environment&sources=codex&models=gpt-5&tz=Asia%2FShanghai&tz_offset_minutes=480",
     expect.any(Object),
+  );
+});
+
+it("requests redacted JSON and CSV exports only through the Tauri loopback API", async () => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: "[]" }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getObservabilityExport({ format: "csv" });
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://127.0.0.1:17680/functions/tokentracker-observability-export?format=csv",
+    expect.objectContaining({ cache: "no-store" }),
   );
 });
 

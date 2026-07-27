@@ -125,6 +125,20 @@ function statusIsError(status) {
   return s === 0 || s >= 400;
 }
 
+function getCacheDiagnostic(record) {
+  if (record?.record_kind === "aggregate_bucket") {
+    return copy("observability.request.cache.unavailable");
+  }
+  return safeNum(record?.cached_input_tokens) > 0
+    ? copy("observability.request.cache.hit")
+    : copy("observability.request.cache.miss");
+}
+
+function getPricingDiagnostic(record) {
+  const coverage = record?.pricing_coverage || "complete";
+  return copy(`observability.request.pricing.${coverage}`);
+}
+
 const COLUMNS = [
   { id: "time", labelKey: "ticket04.request.column.time" },
   { id: "provider", labelKey: "ticket04.request.column.provider" },
@@ -134,10 +148,11 @@ const COLUMNS = [
   { id: "cost", labelKey: "ticket04.request.column.cost" },
   { id: "latency", labelKey: "ticket04.request.column.latency_first" },
   { id: "status", labelKey: "ticket04.request.column.status" },
+  { id: "cache_pricing", labelKey: "observability.request.column.cache_pricing" },
   { id: "source", labelKey: "ticket04.request.column.source" },
 ];
 
-const COLUMN_ORDER = ["time", "provider", "model", "input", "output", "cost", "latency", "status", "source"];
+const COLUMN_ORDER = ["time", "provider", "model", "input", "output", "cost", "latency", "status", "cache_pricing", "source"];
 
 function getColumnMeta(colId) {
   return COLUMNS.find((c) => c.id === colId);
@@ -265,7 +280,7 @@ export function RequestUsageLog({
                 {COLUMN_ORDER.map((colId) => {
                   // First three columns left-aligned, rest right-aligned.
                   const meta = getColumnMeta(colId);
-                  const align = ["time", "provider", "model", "source"].includes(colId) ? "text-left" : "text-right";
+                  const align = ["time", "provider", "model", "cache_pricing", "source"].includes(colId) ? "text-left" : "text-right";
                   return (
                     <th
                       key={colId}
@@ -338,6 +353,12 @@ export function RequestUsageLog({
                         </span>
                       )}
                     </td>
+                    <td className="px-3 py-2 text-xs text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap">
+                      <div>{getCacheDiagnostic(record)}</div>
+                      <div className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
+                        {getPricingDiagnostic(record)}
+                      </div>
+                    </td>
                     <td className="px-3 py-2 text-xs text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap">
                       {record.request_source || record.origin || "-"}
                     </td>
@@ -381,6 +402,7 @@ export function RequestUsageLog({
                       "-"
                     )}
                   </td>
+                  <td className="px-3 py-2" />
                   <td className="px-3 py-2" />
                 </tr>
               )}

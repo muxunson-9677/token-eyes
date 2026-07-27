@@ -1920,3 +1920,13 @@ limits.matrix.window_unavailable,ui,LimitsPage,LimitAccountMatrix,window_unavail
 limits.matrix.forecast_insufficient,ui,LimitsPage,LimitAccountMatrix,forecast_insufficient,"样本不足，暂不预测",,active
 limits.matrix.forecast_exhaust,ui,LimitsPage,LimitAccountMatrix,forecast_exhaust,"预计将在重置前耗尽：{{time}}",,active
 limits.matrix.forecast_safe,ui,LimitsPage,LimitAccountMatrix,forecast_safe,"预计不会在重置前耗尽",,active
+observability.export.json,ui,SpendPage,ObservabilityExportActions,json,"导出 JSON",,active
+observability.export.csv,ui,SpendPage,ObservabilityExportActions,csv,"导出 CSV",,active
+observability.export.error,ui,SpendPage,ObservabilityExportActions,error,"导出失败，请重试。",,active
+observability.request.column.cache_pricing,ui,SpendPage,RequestUsageLog,cache_pricing,"缓存 / 计价",,active
+observability.request.cache.hit,ui,SpendPage,RequestUsageLog,cache_hit,"命中",,active
+observability.request.cache.miss,ui,SpendPage,RequestUsageLog,cache_miss,"未命中",,active
+observability.request.cache.unavailable,ui,SpendPage,RequestUsageLog,cache_unavailable,"未记录",,active
+observability.request.pricing.complete,ui,SpendPage,RequestUsageLog,pricing_complete,"完整计价",,active
+observability.request.pricing.partial,ui,SpendPage,RequestUsageLog,pricing_partial,"部分计价",,active
+observability.request.pricing.unpriced,ui,SpendPage,RequestUsageLog,pricing_unpriced,"未计价",,active

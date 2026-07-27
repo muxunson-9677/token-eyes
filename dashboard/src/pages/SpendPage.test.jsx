@@ -16,6 +16,8 @@ import {
   getUsageSummary,
   getProviderStats,
   getUsageAttribution,
+  getLimitAccounts,
+  getObservabilityExport,
   getModelStats,
   getTokenPlans,
   getConsoleSessions,
@@ -49,6 +51,8 @@ vi.mock("../lib/api", () => ({
   getUsageSummary: vi.fn(),
   getProviderStats: vi.fn(),
   getUsageAttribution: vi.fn(),
+  getLimitAccounts: vi.fn(),
+  getObservabilityExport: vi.fn(),
   getModelStats: vi.fn(),
   getTokenPlans: vi.fn(),
   getConsoleSessions: vi.fn(),
@@ -190,6 +194,8 @@ beforeEach(() => {
   });
   getProviderStats.mockResolvedValue({ providers: [] });
   getUsageAttribution.mockResolvedValue({ snapshots: [] });
+  getLimitAccounts.mockResolvedValue({ accounts: [], forecasts: [] });
+  getObservabilityExport.mockResolvedValue({ format: "json", content: "[]" });
   getModelStats.mockResolvedValue({ models: [] });
   getTokenPlans.mockResolvedValue({ records: [] });
   getConsoleSessions.mockResolvedValue({ sessions: [] });
@@ -234,6 +240,32 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       sources: expect.arrayContaining(VISIBLE_PROVIDERS),
       timeZone: expect.any(String),
     }));
+  });
+
+  it("renders the approved local account quota matrix and burn-rate forecast", async () => {
+    getLimitAccounts.mockResolvedValue({
+      accounts: [{
+        provider_id: "codex",
+        account_key: "hashed-work",
+        account_label: "Work",
+        status: "ok",
+        windows: [{ kind: "five_hour", label: "5h", used_percent: 80, evidence: null }],
+      }],
+      forecasts: [{
+        account_key: "hashed-work",
+        window_kind: "five_hour",
+        window_label: "5h",
+        advice: "danger",
+        exhausts_before_reset: true,
+        exhaust_at: "2026-07-27T03:00:00.000Z",
+      }],
+    });
+
+    render(<SpendUsagePage />);
+
+    expect(await screen.findByTestId("limit-account-row")).toHaveTextContent("Work");
+    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByTestId("limit-account-row").querySelector('[data-advice="danger"]')).not.toBeNull();
   });
 
   it("displays monthly API, subscription, combined, and lifetime costs", async () => {

@@ -381,6 +381,12 @@ export function readLeaderboardPreloadState(contextKey) {
   return readReusablePageState("leaderboard", contextKey);
 }
 
+export function clearLeaderboardPreloadState(contextKey) {
+  if (!contextKey) return;
+  session.cache.leaderboard.delete(contextKey);
+  deletePersistedLeaderboardEntry(contextKey);
+}
+
 export function readPendingLeaderboardPreloadState(contextKey) {
   const target = session.targets.leaderboard;
   if (

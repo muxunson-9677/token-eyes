@@ -29,17 +29,17 @@ test("App.jsx keeps MVP routes reachable", () => {
   assert.equal(source.includes("SettingsPage"), true, "SettingsPage should be referenced");
 });
 
-test("App.jsx keeps shipped observability routes reachable while keeping leaderboard public", () => {
+test("App.jsx keeps unrequested product routes hidden while keeping leaderboard public", () => {
   const appPath = path.join(repoRoot, "dashboard/src/App.jsx");
   const source = fs.readFileSync(appPath, "utf8");
-  assert.equal(source.includes("isMvpHiddenProductPath"), false, "shipped routes must not be hidden behind an MVP redirect");
+  assert.equal(source.includes("isMvpHiddenProductPath"), true, "unrequested routes must stay behind the MVP redirect");
   for (const route of ["/limits", "/skills", "/widgets", "/ip-check", "/wrapped"]) {
     assert.equal(source.includes(`normalizedPath === "${route}"`) || source.includes(`normalizedPath === '${route}'`), true, `${route} should remain routable`);
   }
   assert.equal(source.includes('normalizedPath === "/leaderboard"'), true, "/leaderboard route should remain reachable");
 });
 
-test("Sidebar exposes shipped observability routes", () => {
+test("Sidebar excludes unrequested product routes", () => {
   const sidebarPath = path.join(repoRoot, "dashboard/src/ui/components/Sidebar.jsx");
   const source = fs.readFileSync(sidebarPath, "utf8");
   // v2.0 IA: two-level navigation. Dashboard stays flat; Spend/Settings use sub-routes.
@@ -48,7 +48,7 @@ test("Sidebar exposes shipped observability routes", () => {
   assert.equal(source.includes('to: "/spend/'), true, "/spend/* nav item should exist (v2.0 IA sub-routes)");
   assert.equal(source.includes('to: "/settings/'), true, "/settings/* nav item should exist (v2.0 IA sub-routes)");
   for (const route of ["/limits", "/skills", "/widgets", "/ip-check"]) {
-    assert.equal(source.includes(`to: "${route}"`), true, `${route} nav item should be reachable`);
+    assert.equal(source.includes(`to: "${route}"`), false, `${route} must not be exposed in navigation`);
   }
 });
 

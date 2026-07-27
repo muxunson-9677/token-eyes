@@ -104,6 +104,7 @@ const PATHS = {
   requestUsageRecords: "tokentracker-request-usage-records",
   providerStats: "tokentracker-provider-stats",
   usageAttribution: "tokentracker-usage-attribution",
+  observabilityExport: "tokentracker-observability-export",
   modelStats: "tokentracker-model-stats",
   consoleSessions: "tokentracker-token-plan-console-sessions",
   tokenPlanSecrets: "tokentracker-token-plan-secrets",
@@ -1444,6 +1445,12 @@ export async function getUsageAttribution({
     { from, to, group_by: "environment", ...filterParams, ...tzParams },
     { accessToken },
   );
+}
+
+/** O6: server-redacted local observability export for a user-triggered download. */
+export async function getObservabilityExport({ format = "json" }: AnyRecord = {}) {
+  const safeFormat = format === "csv" ? "csv" : "json";
+  return fetchLocalJson(PATHS.observabilityExport, { format: safeFormat });
 }
 
 /** TICKET-01 A5: model stats (per source×model aggregate leaderboard). */

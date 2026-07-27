@@ -214,10 +214,6 @@ describe("App deferred dashboard preload", () => {
   });
 
   it.each([
-    ["/limits", TEXT.limits],
-    ["/skills", TEXT.skills],
-    ["/widgets", TEXT.widgets],
-    ["/ip-check", TEXT.ipCheck],
     ["/leaderboard", TEXT.leaderboard],
   ])("does not start dashboard preload for non-dashboard path %s", async (path, pageText) => {
     renderApp(path);

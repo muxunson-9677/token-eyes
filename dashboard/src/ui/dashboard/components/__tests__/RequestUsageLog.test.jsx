@@ -40,6 +40,13 @@ vi.mock("../../../../lib/copy", () => ({
       "ticket04.request.column.cost": "Cost",
       "ticket04.request.column.latency_first": "Latency",
       "ticket04.request.column.status": "Status",
+      "observability.request.column.cache_pricing": "Cache / pricing",
+      "observability.request.cache.hit": "Hit",
+      "observability.request.cache.miss": "Miss",
+      "observability.request.cache.unavailable": "Not recorded",
+      "observability.request.pricing.complete": "Complete price",
+      "observability.request.pricing.partial": "Partial price",
+      "observability.request.pricing.unpriced": "Unpriced",
       "ticket04.request.column.source": "Source",
       "ticket04.request.sort_aria": `Sort by ${vars.column}`,
       "ticket04.request.status_error_aria": "Error status",
@@ -132,16 +139,18 @@ describe("RequestUsageLog", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("renders 9 column headers", () => {
+  it("renders request diagnostics including cache-hit and pricing basis", () => {
     useRequestUsageRecords.mockReturnValue({
       ...HOOK_DEFAULTS,
-      records: [makeRecord()],
+      records: [makeRecord({ cached_input_tokens: 40, pricing_coverage: "complete" })],
     });
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
-    const expectedHeaders = ["Time", "Provider", "Model", "Input", "Output", "Cost", "Latency", "Status", "Source"];
+    const expectedHeaders = ["Time", "Provider", "Model", "Input", "Output", "Cost", "Latency", "Status", "Cache / pricing", "Source"];
     for (const header of expectedHeaders) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
+    expect(screen.getByText("Hit")).toBeInTheDocument();
+    expect(screen.getByText("Complete price")).toBeInTheDocument();
   });
 
   it("does not render inert sort controls when request ordering is server-owned", () => {

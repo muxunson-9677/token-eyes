@@ -39,8 +39,11 @@ import { useUsageFilterOptions } from "../hooks/use-usage-filter-options";
 import { useCostAccumulation } from "../hooks/use-cost-accumulation.js";
 import { useProviderApiBalances } from "../hooks/use-provider-api-balances.js";
 import { useTokenServicePlans } from "../hooks/use-token-service-plans.js";
+import { useLimitAccounts } from "../hooks/use-limit-accounts.ts";
 import { CostAccumulation } from "../ui/dashboard/components/CostAccumulation.jsx";
 import { UsageAttributionPanel } from "../ui/dashboard/components/UsageAttributionPanel.jsx";
+import { LimitAccountMatrix } from "../ui/dashboard/components/LimitAccountMatrix.jsx";
+import { ObservabilityExportActions } from "../ui/dashboard/components/ObservabilityExportActions.jsx";
 
 // v2.0 IA refactor (work order 01): the old single SpendPage with a top-level
 // "使用统计 / 成本累积" Tab UI is split into two route components.
@@ -148,6 +151,11 @@ function SpendUsagePageInner({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [attributionState, setAttributionState] = useState({ snapshots: [], loading: true, error: null });
   const initialIntervalLoaded = useRef(false);
+  const {
+    data: limitAccounts,
+    error: limitAccountsError,
+    isLoading: limitAccountsLoading,
+  } = useLimitAccounts();
 
   // Usage statistics must reflect every locally collected provider. Token-plan
   // card visibility is a layout preference and must never alter token totals.
@@ -428,6 +436,7 @@ function SpendUsagePageInner({
                 {copy("spend.usage.page.subtitle")}
               </p>
             </div>
+            <ObservabilityExportActions />
           </div>
 
           {/* Ticket-02: Filter Bar */}
@@ -458,6 +467,18 @@ function SpendUsagePageInner({
                 loading={summaryLoading}
                 error={summaryError}
               />
+
+              {limitAccountsError ? (
+                <p className="mb-4 text-sm text-red-500 dark:text-red-400">
+                  {copy("shared.error.prefix", { error: limitAccountsError })}
+                </p>
+              ) : null}
+              {!limitAccountsLoading ? (
+                <LimitAccountMatrix
+                  accounts={limitAccounts?.accounts}
+                  forecasts={limitAccounts?.forecasts}
+                />
+              ) : null}
 
               <UsageAttributionPanel {...attributionState} />
 
