@@ -25,6 +25,7 @@ import { LeaderboardPage } from "./LeaderboardPage.jsx";
 const openLoginModalMock = vi.hoisted(() => vi.fn());
 const signInWithOAuthMock = vi.hoisted(() => vi.fn());
 const getPublicAuthConfigMock = vi.hoisted(() => vi.fn());
+const signOutMock = vi.hoisted(() => vi.fn());
 const developerPreviewGate = vi.hoisted(() => ({ enabled: false }));
 const insforgeAuthMock = vi.hoisted(() => ({
   enabled: true,
@@ -33,6 +34,7 @@ const insforgeAuthMock = vi.hoisted(() => ({
   user: { id: "user-1" },
   signInWithOAuth: signInWithOAuthMock,
   getPublicAuthConfig: getPublicAuthConfigMock,
+  signOut: signOutMock,
 }));
 
 vi.mock("../lib/api", () => ({
@@ -155,6 +157,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
       data: { oAuthProviders: ["github"], customOAuthProviders: [] },
       error: null,
     });
+    signOutMock.mockReset();
+    signOutMock.mockResolvedValue(undefined);
     insforgeAuthMock.enabled = true;
     insforgeAuthMock.signedIn = true;
     insforgeAuthMock.loading = false;
@@ -203,6 +207,22 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("$4.25").length).toBeGreaterThan(0);
   });
 
+  it("keeps account controls available before the first rank is generated", async () => {
+    const user = userEvent.setup();
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+
+    const accountButton = await screen.findByRole("button", { name: copy("settings.section.account") });
+    await user.click(accountButton);
+    await waitFor(() => {
+      expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("/settings/basic");
+    });
+
+    await user.click(screen.getByRole("button", { name: copy("settings.account.signOut") }));
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps my displayed usage local while reusing only the cloud rank", async () => {
     getLeaderboard.mockResolvedValue(preloadedData);
     getMyLeaderboardRank.mockResolvedValue({
@@ -220,6 +240,29 @@ describe("LeaderboardPage window-session cache reuse", () => {
     await waitFor(() => expect(screen.getByText("7")).toBeInTheDocument());
     expect(screen.getAllByText("150").length).toBeGreaterThan(0);
     expect(screen.queryByText("999,999")).not.toBeInTheDocument();
+  });
+
+  it("never substitutes a stale cloud total when local usage statistics are unavailable", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+    getProviderStats.mockRejectedValue(new Error("local provider stats unavailable"));
+    getMyLeaderboardRank.mockResolvedValue({
+      me: {
+        rank: 7,
+        user_id: "user-1",
+        display_name: "Cloud Me",
+        total_tokens: "999999",
+        estimated_cost_usd: 999,
+      },
+    });
+
+    const { container } = renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+
+    await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
+    await waitFor(() => expect(getMyLeaderboardRank).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(within(container.querySelector("ol")).queryByText("Cloud Me")).not.toBeInTheDocument();
   });
 
   it("normalizes an array-shaped self-rank response and replaces the stale cloud row", async () => {

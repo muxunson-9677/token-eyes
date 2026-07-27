@@ -48,6 +48,10 @@ export function getNavGroups() {
           label: copy("nav.reset_history"),
           codexResetAttention: true,
         },
+        { id: "limits", to: "/limits", icon: BarChart3, label: copy("nav.limits") },
+        { id: "skills", to: "/skills", icon: BarChart3, label: copy("nav.skills") },
+        { id: "widgets", to: "/widgets", icon: BarChart3, label: copy("nav.widgets") },
+        { id: "ip-check", to: "/ip-check", icon: BarChart3, label: copy("nav.ip_check") },
       ],
     },
     {

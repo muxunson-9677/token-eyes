@@ -64,7 +64,7 @@ describe("getNavGroups structure (v2.0 IA)", () => {
 
     const overview = groups.find((g) => g.id === "overview");
     expect(overview).toBeDefined();
-    expect(overview.items).toHaveLength(3);
+    expect(overview.items).toHaveLength(7);
     expect(overview.items[0].to).toBe("/dashboard");
     expect(overview.items[1]).toMatchObject({
       id: "leaderboard",
@@ -77,6 +77,12 @@ describe("getNavGroups structure (v2.0 IA)", () => {
       label: "copy:nav.reset_history",
       codexResetAttention: true,
     });
+    expect(overview.items.map((item) => item.to)).toEqual(expect.arrayContaining([
+      "/limits",
+      "/skills",
+      "/widgets",
+      "/ip-check",
+    ]));
 
     const spend = groups.find((g) => g.id === "spend");
     expect(spend).toBeDefined();
@@ -131,11 +137,15 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
       .toHaveLength(1);
   });
 
-  it("renders overview, leaderboard, reset history, spend parent, and settings parent labels", () => {
+  it("renders every shipped observability route in the overview navigation", () => {
     renderSidebar("/dashboard");
     expect(screen.getByText("copy:nav.usage")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.leaderboard")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.reset_history")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.limits")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.skills")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.widgets")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.ip_check")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.group.spend")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.group.settings")).toBeInTheDocument();
   });

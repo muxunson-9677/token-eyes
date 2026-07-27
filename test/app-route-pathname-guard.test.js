@@ -29,18 +29,17 @@ test("App.jsx keeps MVP routes reachable", () => {
   assert.equal(source.includes("SettingsPage"), true, "SettingsPage should be referenced");
 });
 
-test("App.jsx redirects hidden product routes to dashboard while keeping leaderboard public", () => {
+test("App.jsx keeps shipped observability routes reachable while keeping leaderboard public", () => {
   const appPath = path.join(repoRoot, "dashboard/src/App.jsx");
   const source = fs.readFileSync(appPath, "utf8");
-  assert.equal(source.includes("isMvpHiddenProductPath"), true, "hidden route guard should exist");
-  assert.equal(source.includes('<Navigate to="/dashboard" replace />'), true, "hidden routes should redirect to dashboard");
+  assert.equal(source.includes("isMvpHiddenProductPath"), false, "shipped routes must not be hidden behind an MVP redirect");
   for (const route of ["/limits", "/skills", "/widgets", "/ip-check", "/wrapped"]) {
-    assert.equal(source.includes(`normalizedPath === "${route}"`) || source.includes(`normalizedPath === '${route}'`), true, `${route} should be covered by hidden route logic`);
+    assert.equal(source.includes(`normalizedPath === "${route}"`) || source.includes(`normalizedPath === '${route}'`), true, `${route} should remain routable`);
   }
   assert.equal(source.includes('normalizedPath === "/leaderboard"'), true, "/leaderboard route should remain reachable");
 });
 
-test("Sidebar exposes Dashboard, Leaderboard, Spend, and Settings nav items", () => {
+test("Sidebar exposes shipped observability routes", () => {
   const sidebarPath = path.join(repoRoot, "dashboard/src/ui/components/Sidebar.jsx");
   const source = fs.readFileSync(sidebarPath, "utf8");
   // v2.0 IA: two-level navigation. Dashboard stays flat; Spend/Settings use sub-routes.
@@ -49,7 +48,7 @@ test("Sidebar exposes Dashboard, Leaderboard, Spend, and Settings nav items", ()
   assert.equal(source.includes('to: "/spend/'), true, "/spend/* nav item should exist (v2.0 IA sub-routes)");
   assert.equal(source.includes('to: "/settings/'), true, "/settings/* nav item should exist (v2.0 IA sub-routes)");
   for (const route of ["/limits", "/skills", "/widgets", "/ip-check"]) {
-    assert.equal(source.includes(`to: "${route}"`), false, `${route} nav item should be hidden`);
+    assert.equal(source.includes(`to: "${route}"`), true, `${route} nav item should be reachable`);
   }
 });
 

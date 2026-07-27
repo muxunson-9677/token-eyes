@@ -252,15 +252,6 @@ export default function App() {
     isIpCheckPath
   )
     gate = "dashboard";
-  const isMvpHiddenProductPath =
-    isLimitsPath ||
-    isSkillsPath ||
-    isWidgetsPath ||
-    isIpCheckPath ||
-    normalizedPath === "/wrapped";
-  if (isMvpHiddenProductPath) {
-    return <Navigate to="/dashboard" replace />;
-  }
   // v2.0 IA: legacy bare routes redirect to the default child (replace so
   // the bare URL doesn't linger in history). Tauri root now lands on the
   // basic settings page per the IA spec.
@@ -313,9 +304,13 @@ export default function App() {
     !isAuthGateTriggered &&
     (normalizedPath === "/dashboard" ||
       normalizedPath === "/" ||
+      isLimitsPath ||
       isResetHistoryPath ||
       isSettingsSubPath ||
       isSpendSubPath ||
+      isSkillsPath ||
+      isWidgetsPath ||
+      isIpCheckPath ||
       (isLocalMode && isPublicLeaderboardPath));
 
   // Public-host gating: on www.tokentracker.cc et al. there is no local

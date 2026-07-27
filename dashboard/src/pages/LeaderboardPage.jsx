@@ -389,6 +389,7 @@ export function LeaderboardPage({
     loading: authLoading,
     user: cloudUser,
     displayName: cloudDisplayName,
+    signOut: cloudSignOut,
   } = useInsforgeAuth();
   const { openLoginModal } = useLoginModal();
   const { currency, rate } = useCurrency();
@@ -475,6 +476,10 @@ export function LeaderboardPage({
     const search = params.toString();
     navigate(`${location?.pathname || "/leaderboard"}${search ? `?${search}` : ""}`, { replace: true });
   }, [location?.pathname, location?.search, navigate]);
+
+  const handleAccountSignOut = useCallback(() => {
+    void cloudSignOut?.();
+  }, [cloudSignOut]);
 
   useEffect(() => {
     setListPage(1);
@@ -812,7 +817,7 @@ export function LeaderboardPage({
         rank: me?.rank ?? null,
         is_local_pending: !me?.rank,
       }
-      : me;
+      : null;
     return prependMeRowToPage({ entries: rows, me: displayedMe, meLabel });
   }, [listData?.entries, localMe, me, meLabel]);
 
@@ -921,6 +926,24 @@ export function LeaderboardPage({
                 {copy("leaderboard.title")}
               </h1>
               <div className="flex shrink-0 items-center gap-3">
+                {cloudSignedIn && (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/settings/basic")}
+                    className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
+                  >
+                    {copy("settings.section.account")}
+                  </button>
+                )}
+                {cloudSignedIn && (
+                  <button
+                    type="button"
+                    onClick={handleAccountSignOut}
+                    className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
+                  >
+                    {copy("settings.account.signOut")}
+                  </button>
+                )}
                 <Link
                   to="/leaderboard/rules"
                   className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
