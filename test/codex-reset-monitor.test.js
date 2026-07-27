@@ -179,7 +179,7 @@ test("acknowledgement hides unread event but retains bounded history", () => {
   assert.equal(state.acknowledgedEventIds.length, 200);
 });
 
-test("reset history contains only the latest five actual resets in occurrence order", () => {
+test("reset history contains only the latest three actual resets in occurrence order", () => {
   const completed = Array.from({ length: 6 }, (_, index) => ({
     id: `completed-${index}`,
     type: "reset_completed",
@@ -217,16 +217,16 @@ test("reset history contains only the latest five actual resets in occurrence or
     events: [...completed, restored, ...ignored],
   });
 
-  assert.equal(history.length, 5);
+  assert.equal(history.length, 3);
   assert.deepEqual(
     history.map((event) => event.id),
-    ["restored-latest", "completed-5", "completed-4", "completed-3", "completed-2"],
+    ["restored-latest", "completed-5", "completed-4"],
   );
   assert.equal(history[0].occurredAt, restored.createdAt);
   assert.equal(history[1].occurredAt, completed[5].resetAt);
 });
 
-test("event compaction keeps five actual resets without deleting other reminder types", () => {
+test("event compaction keeps three actual resets without deleting other reminder types", () => {
   const actual = Array.from({ length: 7 }, (_, index) => ({
     id: `actual-${index}`,
     type: "reset_completed",
@@ -253,7 +253,7 @@ test("event compaction keeps five actual resets without deleting other reminder 
 
   assert.equal(
     compacted.filter((event) => event.type === "reset_completed").length,
-    5,
+    3,
   );
   assert.equal(compacted.some((event) => event.id === "upcoming"), true);
   assert.equal(compacted.some((event) => event.id === "official"), true);

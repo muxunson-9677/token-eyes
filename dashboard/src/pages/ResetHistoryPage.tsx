@@ -70,7 +70,7 @@ export function ResetHistoryPage() {
       todayEvent: today,
       pastEvents: history
         .filter((event) => !isSameLocalDay(new Date(event.occurred_at), now))
-        .slice(0, 5),
+        .slice(0, 3),
     };
   }, [history, now.getDate(), now.getMonth(), now.getFullYear()]);
 

@@ -73,7 +73,7 @@ describe("ResetHistoryPage", () => {
     expect(historyRegion).not.toHaveTextContent("2026年7月26日 14:32");
   });
 
-  it("leaves today's reminder content empty and shows up to five past timestamps", () => {
+  it("leaves today's reminder content empty and shows up to three past timestamps", () => {
     resetContext.value.history = Array.from({ length: 5 }, (_, index) =>
       resetEvent(
         `past-${index}`,
@@ -84,7 +84,7 @@ describe("ResetHistoryPage", () => {
     render(<ResetHistoryPage />);
 
     expect(screen.getByTestId("reset-today")).toBeEmptyDOMElement();
-    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(5);
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(3);
     expect(screen.queryByText(/今天|昨天|本周/u)).not.toBeInTheDocument();
   });
 });

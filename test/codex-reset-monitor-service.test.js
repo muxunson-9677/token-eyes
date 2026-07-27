@@ -291,7 +291,7 @@ test("valid snapshots enter the state machine and acknowledgement persists", asy
   assert.ok(h.getSaved().acknowledgedEventIds.includes(unread[0].id));
 });
 
-test("service exposes only the latest five actual reset records", () => {
+test("service exposes only the latest three actual reset records", () => {
   const events = Array.from({ length: 6 }, (_, index) => ({
     id: `completed-${index}`,
     type: "reset_completed",
@@ -319,6 +319,6 @@ test("service exposes only the latest five actual reset records", () => {
 
   assert.deepEqual(
     h.service.listHistory().map((event) => event.id),
-    ["completed-5", "completed-4", "completed-3", "completed-2", "completed-1"],
+    ["completed-5", "completed-4", "completed-3"],
   );
 });

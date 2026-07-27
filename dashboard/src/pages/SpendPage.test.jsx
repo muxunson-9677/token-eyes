@@ -224,48 +224,14 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(await screen.findByText("本月订阅成本")).toBeInTheDocument();
   });
 
-  it("loads the local dimension-aware attribution snapshots", async () => {
-    getUsageAttribution.mockResolvedValue({
-      snapshots: [
-        { dimensions: { environment_id: "native" }, tokens: { total_tokens: 40, conversation_count: 1 } },
-        { dimensions: { environment_id: "wsl:Ubuntu" }, tokens: { total_tokens: 60, conversation_count: 1 } },
-      ],
-    });
-
+  it("does not fetch or display unrequested account quota and usage attribution panels", async () => {
     render(<SpendUsagePage />);
 
-    expect(await screen.findByRole("cell", { name: "native" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "wsl:Ubuntu" })).toBeInTheDocument();
-    expect(getUsageAttribution).toHaveBeenCalledWith(expect.objectContaining({
-      sources: expect.arrayContaining(VISIBLE_PROVIDERS),
-      timeZone: expect.any(String),
-    }));
-  });
-
-  it("renders the approved local account quota matrix and burn-rate forecast", async () => {
-    getLimitAccounts.mockResolvedValue({
-      accounts: [{
-        provider_id: "codex",
-        account_key: "hashed-work",
-        account_label: "Work",
-        status: "ok",
-        windows: [{ kind: "five_hour", label: "5h", used_percent: 80, evidence: null }],
-      }],
-      forecasts: [{
-        account_key: "hashed-work",
-        window_kind: "five_hour",
-        window_label: "5h",
-        advice: "danger",
-        exhausts_before_reset: true,
-        exhaust_at: "2026-07-27T03:00:00.000Z",
-      }],
-    });
-
-    render(<SpendUsagePage />);
-
-    expect(await screen.findByTestId("limit-account-row")).toHaveTextContent("Work");
-    expect(screen.getByText("5h")).toBeInTheDocument();
-    expect(screen.getByTestId("limit-account-row").querySelector('[data-advice="danger"]')).not.toBeNull();
+    await screen.findByText("真实消耗 Tokens");
+    expect(getLimitAccounts).not.toHaveBeenCalled();
+    expect(getUsageAttribution).not.toHaveBeenCalled();
+    expect(screen.queryByText("账户配额")).not.toBeInTheDocument();
+    expect(screen.queryByText("使用归因")).not.toBeInTheDocument();
   });
 
   it("displays monthly API, subscription, combined, and lifetime costs", async () => {
