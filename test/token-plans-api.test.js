@@ -6,6 +6,7 @@ const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
+const { createInMemoryCredentialStore } = require("../src/lib/provider-api-secrets");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -1175,6 +1176,7 @@ test("W03-R3D P0 POST to token-plan-secrets stores in-memory and returns api_key
     const handler = createLocalApiHandler({
       queuePath: path.join(trackerDir, "queue.jsonl"),
       trackerDataDir: trackerDir,
+      credentialStore: createInMemoryCredentialStore(),
     });
 
     const auth = await call(handler, "/api/local-auth");
@@ -1495,6 +1497,7 @@ test("R3D P2 save secret then refresh custom_api plan succeeds (in-memory store)
     const handler = createLocalApiHandler({
       queuePath: path.join(trackerDir, "queue.jsonl"),
       trackerDataDir: trackerDir,
+      credentialStore: createInMemoryCredentialStore(),
     });
 
     // 1. Get local auth token
