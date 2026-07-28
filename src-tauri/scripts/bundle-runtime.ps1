@@ -29,6 +29,19 @@ param([switch]$Clean)
 
 $ErrorActionPreference = 'Stop'
 
+function Get-Sha256Hex {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '')
+    } finally {
+        $stream.Dispose()
+        $sha256.Dispose()
+    }
+}
+
 # Keep this pinned version in sync with TokenTrackerBar/scripts/bundle-node.sh
 # and TokenTrackerWin/scripts/bundle-node.ps1. Any bump must come paired with
 # running `npm test` against the new undici (Node minor releases regularly
@@ -107,7 +120,7 @@ for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         $expectedHash = (Select-String -Path $sumsPath -Pattern ([regex]::Escape($zipName)) |
             Select-Object -First 1).Line.Split(' ')[0].Trim()
         if (-not $expectedHash) { throw "No checksum found for $zipName in SHASUMS256.txt" }
-        $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+        $actualHash = Get-Sha256Hex $zipPath
         if ($actualHash -ne $expectedHash.ToUpper()) {
             throw "Checksum mismatch for $zipName (expected $expectedHash, got $actualHash)"
         }
@@ -147,7 +160,7 @@ if ($bundledVersion -ne $ExpectedNodeVersion) {
 # node.exe file hash — traceability only. This is NOT compared against the
 # official SHASUMS256.txt because that file documents the zip archive hash,
 # not the extracted binary. The zip-level check already happened above.
-$nodeExeSha256 = (Get-FileHash -Path (Join-Path $EmbedDir 'node.exe') -Algorithm SHA256).Hash.ToLower()
+$nodeExeSha256 = (Get-Sha256Hex (Join-Path $EmbedDir 'node.exe')).ToLower()
 Write-Host "Node.js ready - v$bundledVersion (zip SHA-256 = $zipActualSha256, exe SHA-256 = $nodeExeSha256)"
 
 # -- 2. Bundle tokentracker source + dashboard dist + lockfile --
