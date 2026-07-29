@@ -74,7 +74,7 @@ describe("useDesktopWidget", () => {
     expect(invoke.mock.calls.some(([command]) => command.includes("size"))).toBe(false);
   });
 
-  it("acknowledges the widget and tray only, then refreshes the same card", async () => {
+  it("acknowledges the alert globally, then refreshes the same card", async () => {
     const { result } = renderHook(() => useDesktopWidget());
     await act(async () => {
       await Promise.resolve();
@@ -83,10 +83,7 @@ describe("useDesktopWidget", () => {
     await act(async () => {
       await result.current.acknowledgePendingReset();
     });
-    expect(api.acknowledgeCodexResetEvent).toHaveBeenCalledWith(
-      "reset-1",
-      ["widget", "tray"],
-    );
+    expect(api.acknowledgeCodexResetEvent).toHaveBeenCalledWith("reset-1");
     expect(api.getDesktopWidgetViewModel).toHaveBeenCalledTimes(2);
   });
 });

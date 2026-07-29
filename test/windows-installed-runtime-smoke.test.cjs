@@ -11,6 +11,14 @@ const repoRoot = path.resolve(__dirname, "..");
 const config = JSON.parse(fs.readFileSync(path.join(repoRoot, "src-tauri", "tauri.conf.json"), "utf8"));
 const installerPath = path.join(repoRoot, "src-tauri", "target", "release", "bundle", "nsis", `Token Eyes_${config.version}_x64-setup.exe`);
 
+test("Tauri bundles the runtime matching the app version", () => {
+  const expectedRuntimeResource = `EmbeddedServer-${config.version}/**/*`;
+  assert.ok(
+    config.bundle.resources.includes(expectedRuntimeResource),
+    `tauri.conf.json must bundle ${expectedRuntimeResource}`,
+  );
+});
+
 function findFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();

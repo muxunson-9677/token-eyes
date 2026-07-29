@@ -125,19 +125,16 @@ describe("Codex reset events provider", () => {
     expect(result.current.unreadCount).toBe(0);
   });
 
-  it("acknowledges only widget and tray surfaces without clearing the banner", async () => {
+  it("acknowledges the reset globally and restores every surface", async () => {
     const { result } = renderHook(() => useCodexResetEvents(), { wrapper });
     await act(async () => Promise.resolve());
     await act(async () => {
       await result.current.acknowledgeWidget("reset-1");
     });
 
-    expect(api.acknowledgeCodexResetEvent).toHaveBeenCalledWith(
-      "reset-1",
-      ["widget", "tray"],
-    );
+    expect(api.acknowledgeCodexResetEvent).toHaveBeenCalledWith("reset-1");
     expect(result.current.widgetEvents).toEqual([]);
-    expect(result.current.events).toHaveLength(1);
+    expect(result.current.events).toEqual([]);
   });
 
   it("claims each native notification before showing it and does not repeat it", async () => {

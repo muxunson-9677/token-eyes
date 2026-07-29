@@ -88,6 +88,31 @@ describe("UsageStatsPanel", () => {
     expect(screen.getByText("1,193")).toBeInTheDocument();
   });
 
+  it("shows a compact, inspectable ledger-integrity line below the totals", () => {
+    render(
+      <UsageStatsPanel
+        summary={{
+          totals: { total_tokens: 8022132528 },
+          data_integrity: {
+            status: "verified",
+            visible_records: 2844,
+            visible_from: "2026-03-16T05:30:00.000Z",
+            visible_to: "2026-07-29T11:00:00.000Z",
+            raw_records: 3391,
+            duplicate_records: 547,
+            malformed_records: 0,
+            updated_at: "2026-07-29T11:01:00.000Z",
+          },
+        }}
+      />,
+    );
+
+    const integrity = screen.getByTestId("usage-data-integrity");
+    expect(integrity).toHaveTextContent("2,844");
+    expect(integrity).toHaveAttribute("title", expect.stringContaining("3,391"));
+    expect(integrity).toHaveAttribute("title", expect.stringContaining("547"));
+  });
+
   it("renders the selected agent identity beside the real-token label", () => {
     render(
       <UsageStatsPanel

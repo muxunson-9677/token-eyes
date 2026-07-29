@@ -8,12 +8,16 @@ const widget = vi.hoisted(() => ({
   acknowledgePendingReset: vi.fn(),
   value: {} as any,
 }));
+const startDragging = vi.hoisted(() => vi.fn());
 
 vi.mock("../hooks/use-desktop-widget", () => ({
   useDesktopWidget: () => widget.value,
 }));
 vi.mock("../lib/copy", () => ({
   copy: (key: string) => `copy:${key}`,
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ startDragging }),
 }));
 
 import { DesktopWidgetPage } from "./DesktopWidgetPage";
@@ -30,6 +34,7 @@ const prefs = {
   material: "frost",
   opacity: 0.72,
   alwaysOnTop: true,
+  selectedProjectIds: [],
 };
 
 const viewModel = {
@@ -78,6 +83,7 @@ describe("DesktopWidgetPage", () => {
   beforeEach(() => {
     widget.updatePrefs.mockReset().mockResolvedValue(undefined);
     widget.acknowledgePendingReset.mockReset().mockResolvedValue(undefined);
+    startDragging.mockReset().mockResolvedValue(undefined);
     widget.value = {
       prefs,
       viewModel,
@@ -116,6 +122,27 @@ describe("DesktopWidgetPage", () => {
     expect(lights[0]).toHaveAttribute("data-active", "false");
     expect(lights[1]).toHaveAttribute("data-active", "true");
     expect(lights[2]).toHaveAttribute("data-active", "false");
+  });
+
+  it("drags from the data surface but not from controls", async () => {
+    const user = userEvent.setup();
+    render(<DesktopWidgetPage />);
+    await user.pointer({ keys: "[MouseLeft>]", target: screen.getByTestId("widget-drag-surface") });
+    expect(startDragging).toHaveBeenCalledTimes(1);
+
+    startDragging.mockClear();
+    await user.pointer({ keys: "[MouseLeft>]", target: screen.getByRole("button", { name: "copy:widget.mode_menu" }) });
+    expect(startDragging).not.toHaveBeenCalled();
+  });
+
+  it("keeps project selection out of the desktop capsule", () => {
+    render(<DesktopWidgetPage />);
+    expect(
+      screen.queryByRole("button", { name: "copy:widget.projects.filter" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menu", { name: "copy:widget.projects.filter" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses one scroll region for expanded limit and model details", () => {

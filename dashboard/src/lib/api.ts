@@ -76,7 +76,7 @@ export interface CodexResetEvent {
 }
 
 export interface CodexResetHistoryEvent extends CodexResetEvent {
-  type: "reset_completed" | "manual_reset" | "unexpected_quota_restore";
+  type: "official_reset_announcement";
   occurred_at: string;
 }
 
@@ -110,6 +110,7 @@ export interface DesktopWidgetPrefs {
   material: DesktopWidgetMaterial;
   opacity: number;
   alwaysOnTop: boolean;
+  selectedProjectIds: string[];
 }
 
 export interface DesktopWidgetViewModel {
@@ -158,7 +159,7 @@ export interface DesktopWidgetViewModel {
   pendingReset: {
     id: string;
     agent: string;
-    window: "rolling_5_hour" | "rolling_weekly";
+    window: "rolling_5_hour" | "rolling_weekly" | null;
     occurredAt: string;
     previousUsedPercent: number | null;
     currentUsedPercent: number | null;

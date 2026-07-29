@@ -40,6 +40,28 @@ function formatFullNum(value) {
   return safeNum(value).toLocaleString();
 }
 
+function formatIntegrityDay(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function formatIntegrityTime(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatCost(value) {
   const n = safeNum(value);
   if (n <= 0) return "$0";
@@ -159,6 +181,7 @@ export function UsageStatsPanel({
     : null;
   // pricing_coverage determines cost display semantics
   const pricingCoverage = totals?.pricing_coverage ?? "complete";
+  const integrity = summary?.data_integrity ?? null;
 
   if (loading && !totals) {
     return (
@@ -316,6 +339,43 @@ export function UsageStatsPanel({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {integrity && (
+            <div
+              className={cn(
+                "mt-3 flex items-center gap-2 text-[11px]",
+                integrity.status === "verified"
+                  ? "text-green-700 dark:text-green-400"
+                  : "text-amber-700 dark:text-amber-400",
+              )}
+              data-testid="usage-data-integrity"
+              title={copy("spend.usage.integrity.details", {
+                raw: formatFullNum(integrity.raw_records),
+                duplicates: formatFullNum(integrity.duplicate_records),
+                malformed: formatFullNum(integrity.malformed_records),
+                updated: formatIntegrityTime(integrity.updated_at),
+              })}
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  integrity.status === "verified" ? "bg-green-500" : "bg-amber-500",
+                )}
+                aria-hidden="true"
+              />
+              <span>
+                {integrity.status === "verified"
+                  ? copy("spend.usage.integrity.verified", {
+                    records: formatFullNum(integrity.visible_records ?? integrity.valid_records),
+                    from: formatIntegrityDay(integrity.visible_from),
+                    to: formatIntegrityDay(integrity.visible_to),
+                  })
+                  : copy("spend.usage.integrity.attention", {
+                    delta: formatFullNum(integrity.token_delta),
+                  })}
+              </span>
             </div>
           )}
         </div>

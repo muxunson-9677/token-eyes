@@ -562,6 +562,8 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     render(<SpendUsagePage />);
     await waitFor(() => expect(screen.getByRole("img", { name: "使用趋势图" })).toBeInTheDocument());
+    expect(screen.getByText("2026-06-01")).toBeInTheDocument();
+    expect(screen.queryByText(/1970-01-01/)).not.toBeInTheDocument();
   });
 
   it("places a compact paginated Token service list beside the usage trend", async () => {

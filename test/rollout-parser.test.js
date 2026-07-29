@@ -7829,6 +7829,70 @@ test("collectRolloutRequestUsageRecords treats date-only to as end of day", asyn
   }
 });
 
+test("collectRolloutRequestUsageRecords links real Codex task outcomes and latency to token records", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-request-lifecycle-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-test.jsonl");
+    const usage = {
+      input_tokens: 10,
+      cached_input_tokens: 2,
+      output_tokens: 5,
+      reasoning_output_tokens: 1,
+      total_tokens: 18,
+    };
+    const lines = [
+      JSON.stringify({
+        timestamp: "2026-07-29T08:00:00.000Z",
+        type: "event_msg",
+        payload: { type: "task_started", turn_id: "turn-complete" },
+      }),
+      buildTokenCountLine({ ts: "2026-07-29T08:00:05.000Z", last: usage, total: usage }),
+      JSON.stringify({
+        timestamp: "2026-07-29T08:00:12.000Z",
+        type: "event_msg",
+        payload: {
+          type: "task_complete",
+          turn_id: "turn-complete",
+          duration_ms: 12_000,
+          time_to_first_token_ms: 5_000,
+          last_agent_message: "must never be returned",
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-07-29T08:01:00.000Z",
+        type: "event_msg",
+        payload: { type: "task_started", turn_id: "turn-aborted" },
+      }),
+      buildTokenCountLine({ ts: "2026-07-29T08:01:03.000Z", last: usage, total: usage }),
+      JSON.stringify({
+        timestamp: "2026-07-29T08:01:08.000Z",
+        type: "event_msg",
+        payload: { type: "turn_aborted", turn_id: "turn-aborted" },
+      }),
+    ];
+    await fs.writeFile(rolloutPath, `${lines.join("\n")}\n`, "utf8");
+
+    const result = await collectRolloutRequestUsageRecords({
+      rolloutFiles: [rolloutPath],
+      source: "codex",
+    });
+
+    assert.equal(result.records.length, 2);
+    const completed = result.records.find((record) => record.task_id === "turn-complete");
+    const aborted = result.records.find((record) => record.task_id === "turn-aborted");
+    assert.equal(completed.status, 200);
+    assert.equal(completed.latency_ms, 12_000);
+    assert.equal(completed.first_token_ms, 5_000);
+    assert.equal(completed.task_status, "completed");
+    assert.equal(aborted.status, 499);
+    assert.equal(aborted.latency_ms, 8_000);
+    assert.equal(aborted.task_status, "interrupted");
+    assert.doesNotMatch(JSON.stringify(result), /must never be returned/u);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("collectRolloutRequestUsageRecords filters by time range", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-request-usage-range-"));
   try {

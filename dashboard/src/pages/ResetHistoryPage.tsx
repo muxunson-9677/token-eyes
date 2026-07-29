@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { History, RotateCcw } from "lucide-react";
+import { ArrowUpRight, History, RotateCcw } from "lucide-react";
 
 import { useCodexResetEvents } from "../hooks/use-codex-reset-events";
 import { copy, getCopyLocale } from "../lib/copy";
@@ -40,28 +40,6 @@ function formatGroupDate(iso: string) {
   }).format(date);
 }
 
-function eventLabel(event: CodexResetHistoryEvent) {
-  if (event.type === "manual_reset") return copy("reset_history.manual");
-  if (event.type === "unexpected_quota_restore") {
-    return copy("reset_history.restored");
-  }
-  return copy("reset_history.completed");
-}
-
-function windowLabel(event: CodexResetHistoryEvent) {
-  return event.window === "rolling_weekly" ? "7d" : "5h";
-}
-
-function usageChange(event: CodexResetHistoryEvent) {
-  if (
-    event.previous_used_percent == null
-    || event.current_used_percent == null
-  ) {
-    return "—";
-  }
-  return `${event.previous_used_percent}% → ${event.current_used_percent}%`;
-}
-
 function ResetRecord({ event }: { event: CodexResetHistoryEvent }) {
   return (
     <div
@@ -74,11 +52,22 @@ function ResetRecord({ event }: { event: CodexResetHistoryEvent }) {
         </span>
         <div className="min-w-0">
           <p className="font-medium text-oai-black dark:text-white">
-            Codex · {event.account_key}
+            {event.title || "Codex"}
           </p>
           <p className="mt-0.5 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-            {windowLabel(event)} · {eventLabel(event)} · {usageChange(event)}
+            {event.summary || "Codex"}
           </p>
+          {event.source_url ? (
+            <a
+              href={event.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-700 hover:underline dark:text-emerald-300"
+            >
+              {copy("codex_reset.action.view_official")}
+              <ArrowUpRight className="h-3 w-3" aria-hidden />
+            </a>
+          ) : null}
         </div>
       </div>
       <time
@@ -94,7 +83,9 @@ function ResetRecord({ event }: { event: CodexResetHistoryEvent }) {
 export function ResetHistoryPage() {
   const { history } = useCodexResetEvents();
   const groups = useMemo(() => {
-    const sorted = [...history].sort((left, right) => (
+    const sorted = history
+      .filter((event) => event.type === "official_reset_announcement")
+      .sort((left, right) => (
       Date.parse(right.occurred_at) - Date.parse(left.occurred_at)
     ));
     const byDate: ResetHistoryGroups = new Map();

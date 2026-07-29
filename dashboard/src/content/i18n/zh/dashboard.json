@@ -486,7 +486,7 @@
     "dashboard.context_breakdown.exec_details.group_by_exit":  "按退出码",
     "nav.reset_history":  "重置记录",
     "reset_history.title":  "重置记录",
-    "reset_history.subtitle":  "本机检测到的 Codex 套餐额度重置时间",
+    "reset_history.subtitle":  "最近 30 天的 Codex 官方额外重置公告",
     "reset_history.today_title":  "今日提醒",
     "reset_history.history_title":  "历史记录",
     "reset_history.codex":  "Codex",

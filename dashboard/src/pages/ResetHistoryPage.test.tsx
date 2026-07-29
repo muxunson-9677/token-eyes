@@ -49,7 +49,30 @@ function resetEvent(
     alert_eligible: false,
     official_url: "https://chatgpt.com/codex",
     source: "local_quota",
-  };
+  } as unknown as CodexResetHistoryEvent;
+}
+
+function officialReset(id: string, occurredAt: Date): CodexResetHistoryEvent {
+  return {
+    id,
+    type: "official_reset_announcement",
+    agent: "codex",
+    account_key: null,
+    window: null,
+    created_at: occurredAt.toISOString(),
+    reset_at: null,
+    occurred_at: occurredAt.toISOString(),
+    observed_at: occurredAt.toISOString(),
+    previous_used_percent: null,
+    current_used_percent: null,
+    confidence: "confirmed",
+    alert_eligible: true,
+    official_url: "https://chatgpt.com/codex",
+    source_url: "https://x.com/thsottiaux/status/2082317452755751098",
+    source: "signed_feed",
+    title: "Codex 额外额度已重置",
+    summary: "官方已为 ChatGPT Work 与 Codex 用户重置使用限制。",
+  } as unknown as CodexResetHistoryEvent;
 }
 
 describe("ResetHistoryPage", () => {
@@ -63,31 +86,32 @@ describe("ResetHistoryPage", () => {
     vi.useRealTimers();
   });
 
-  it("groups every record by local date and shows the required reset metadata", () => {
+  it("shows only official extra resets with their exact source and time", () => {
     resetContext.value.history = [
-      resetEvent("today", "reset_completed", new Date(2026, 6, 26, 14, 32)),
+      officialReset("today", new Date(2026, 6, 26, 14, 32)),
       resetEvent("past", "manual_reset", new Date(2026, 6, 25, 9, 8), 64, 3),
     ];
 
     render(<ResetHistoryPage />);
 
     const historyRegion = screen.getByTestId("reset-history-list");
-    expect(screen.getAllByTestId("reset-history-group")).toHaveLength(2);
-    expect(within(historyRegion).getAllByTestId("reset-history-item")).toHaveLength(2);
+    expect(screen.getAllByTestId("reset-history-group")).toHaveLength(1);
+    expect(within(historyRegion).getAllByTestId("reset-history-item")).toHaveLength(1);
     expect(historyRegion).toHaveTextContent("Codex");
-    expect(historyRegion).toHaveTextContent("account-a");
-    expect(historyRegion).toHaveTextContent("5h");
-    expect(historyRegion).toHaveTextContent("64% → 3%");
-    expect(historyRegion).toHaveTextContent("copy:reset_history.manual");
+    expect(historyRegion).toHaveTextContent("Codex 额外额度已重置");
+    expect(historyRegion).not.toHaveTextContent("account-a");
+    expect(historyRegion).not.toHaveTextContent("5h");
     expect(historyRegion).toHaveTextContent("2026年7月26日 14:32");
-    expect(historyRegion).toHaveTextContent("2026年7月25日 09:08");
+    expect(within(historyRegion).getByRole("link")).toHaveAttribute(
+      "href",
+      "https://x.com/thsottiaux/status/2082317452755751098",
+    );
   });
 
   it("shows all retained records in descending occurrence order instead of capping at three", () => {
     resetContext.value.history = Array.from({ length: 5 }, (_, index) =>
-      resetEvent(
+      officialReset(
         `past-${index}`,
-        "reset_completed",
         new Date(2026, 6, 25 - index, 8, index),
       ));
 

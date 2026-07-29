@@ -123,14 +123,14 @@ test("backfills 30 days of rollout resets without making them notification pendi
   assert.equal(typeof h.service.backfill, "function");
   await h.service.backfill();
   assert.equal(calls[0].sinceMs, BASE - 30 * 24 * 60 * 60_000);
-  assert.equal(h.service.listHistory().length, 1);
+  assert.equal(h.service.listHistory().length, 0);
   assert.equal(h.service.listNotificationPending().length, 0);
   assert.equal(h.getSaved().rolloutCursor.files.abcdef0123456789abcdef0123456789.offset, 42);
   assert.doesNotMatch(JSON.stringify(h.getSaved().rolloutCursor), /private|codex-home/u);
 });
 
-test("confirmed quota restores remain eligible for native notification", () => {
-  const event = {
+test("only signed official extra resets reach unread, history, and native notification surfaces", () => {
+  const localEvent = {
     id: "restore-1",
     type: "unexpected_quota_restore",
     window: "rolling_5_hour",
@@ -142,10 +142,22 @@ test("confirmed quota restores remain eligible for native notification", () => {
     alertEligible: true,
     deliveredChannels: [],
   };
+  const official = {
+    id: "official:x:2082317452755751098",
+    type: "official_reset_announcement",
+    window: null,
+    createdAt: new Date(BASE + 60_000).toISOString(),
+    sourceUrl: "https://x.com/thsottiaux/status/2082317452755751098",
+    officialUrl: "https://chatgpt.com/codex",
+    source: "signed_feed",
+    alertEligible: true,
+    deliveredChannels: [],
+    expiresAt: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
+  };
   const h = harness(async () => validSnapshot(BASE), {
     loadState: () => ({
       version: 2,
-      events: [event],
+      events: [localEvent, official],
       windows: {},
       restoreCandidates: {},
       acknowledgedEventIds: [],
@@ -153,8 +165,10 @@ test("confirmed quota restores remain eligible for native notification", () => {
   });
   assert.deepEqual(
     h.service.listNotificationPending().map((item) => item.id),
-    ["restore-1"],
+    [official.id],
   );
+  assert.deepEqual(h.service.listUnread().map((item) => item.id), [official.id]);
+  assert.deepEqual(h.service.listHistory().map((item) => item.id), [official.id]);
 });
 
 test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", async () => {
@@ -337,27 +351,31 @@ test("single-flight, unconfigured state, valid-only evaluation, and stop are saf
   assert.ok(h.cleared.length >= 1);
 });
 
-test("valid snapshots enter the state machine and acknowledgement persists", async () => {
+test("rolling quota snapshots never create a user-facing reset alert", async () => {
   const resetAt = new Date(BASE + 60 * 60_000).toISOString();
   const h = harness(async () => ({
-    ...validSnapshot(BASE, 80),
+    ...validSnapshot(BASE, h.getNow() <= Date.parse(resetAt) ? 80 : 0),
     checked_at: new Date(h.getNow()).toISOString(),
     primary_window: {
-      used_percent: 80,
-      reset_at: resetAt,
+      used_percent: h.getNow() <= Date.parse(resetAt) ? 80 : 0,
+      reset_at: h.getNow() <= Date.parse(resetAt)
+        ? resetAt
+        : new Date(h.getNow() + 5 * 60 * 60_000).toISOString(),
     },
   }));
   await h.service.check({ reason: "manual", force: true });
-  h.setNow(BASE + 31 * 60_000);
+  h.setNow(BASE + 61 * 60_000);
   await h.service.check({ reason: "manual", force: true });
-  const unread = h.service.listUnread();
-  assert.equal(unread.length, 1);
-  h.service.acknowledge(unread[0].id);
+  const localEvent = h.getSaved().events.find((event) => event.type === "reset_completed");
+  assert.ok(localEvent);
   assert.equal(h.service.listUnread().length, 0);
-  assert.ok(h.getSaved().acknowledgedEventIds.includes(unread[0].id));
+  assert.equal(h.service.listHistory().length, 0);
+  h.service.acknowledge(localEvent.id);
+  assert.equal(h.service.listUnread().length, 0);
+  assert.ok(h.getSaved().acknowledgedEventIds.includes(localEvent.id));
 });
 
-test("service exposes all actual reset records retained by the 30-day ledger", () => {
+test("service hides rolling-window ledger records from the official reset history", () => {
   const events = Array.from({ length: 6 }, (_, index) => ({
     id: `completed-${index}`,
     type: "reset_completed",
@@ -383,15 +401,5 @@ test("service exposes all actual reset records retained by the 30-day ledger", (
     }),
   });
 
-  assert.deepEqual(
-    h.service.listHistory().map((event) => event.id),
-    [
-      "completed-5",
-      "completed-4",
-      "completed-3",
-      "completed-2",
-      "completed-1",
-      "completed-0",
-    ],
-  );
+  assert.deepEqual(h.service.listHistory(), []);
 });

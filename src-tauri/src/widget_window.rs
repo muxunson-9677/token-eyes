@@ -7,7 +7,7 @@ use tauri::{
 };
 
 pub const WIDGET_LABEL: &str = "desktop-widget";
-const PREFS_VERSION: u8 = 2;
+const PREFS_VERSION: u8 = 3;
 const DEFAULT_WIDTH: u32 = 322;
 const DEFAULT_HEIGHT: u32 = 72;
 const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
@@ -32,6 +32,7 @@ pub struct WidgetPrefs {
     pub material: String,
     pub opacity: f64,
     pub always_on_top: bool,
+    pub selected_project_ids: Vec<String>,
 }
 
 impl Default for WidgetPrefs {
@@ -52,6 +53,7 @@ impl Default for WidgetPrefs {
             material: "frost".into(),
             opacity: 0.72,
             always_on_top: true,
+            selected_project_ids: Vec::new(),
         }
     }
 }
@@ -106,6 +108,18 @@ fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
     } else {
         0.72
     };
+    prefs.selected_project_ids = prefs
+        .selected_project_ids
+        .into_iter()
+        .filter(|id| {
+            !id.is_empty()
+                && id.len() <= 96
+                && id.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || ":._-".contains(character)
+                })
+        })
+        .take(100)
+        .collect();
     prefs
 }
 
@@ -116,6 +130,7 @@ fn merge_display_prefs(mut current: WidgetPrefs, requested: WidgetPrefs) -> Widg
     current.material = requested.material;
     current.opacity = requested.opacity;
     current.always_on_top = requested.always_on_top;
+    current.selected_project_ids = requested.selected_project_ids;
     normalize_prefs(current)
 }
 
@@ -462,7 +477,7 @@ mod tests {
             material: "invalid".into(),
             ..WidgetPrefs::default()
         });
-        assert_eq!(prefs.version, 2);
+        assert_eq!(prefs.version, 3);
         assert_eq!((prefs.width, prefs.height), (300, 72));
         assert_eq!(prefs.opacity, 0.4);
         assert_eq!(prefs.selected_agent, "all");

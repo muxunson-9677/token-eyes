@@ -11,8 +11,8 @@ import {
 import { getMockLeaderboard } from "../mock-data.ts";
 
 describe("leaderboard query dimensions", () => {
-  it("defaults to the same rolling 30-day window as usage statistics and keeps old links compatible", () => {
-    expect(LEADERBOARD_DEFAULT_PERIOD).toBe("30d");
+  it("defaults to cumulative usage and keeps old links compatible", () => {
+    expect(LEADERBOARD_DEFAULT_PERIOD).toBe("total");
     expect(normalizeLeaderboardPeriod("today")).toBe("today");
     expect(normalizeLeaderboardPeriod("week")).toBe("week");
     expect(normalizeLeaderboardPeriod("month")).toBe("month");

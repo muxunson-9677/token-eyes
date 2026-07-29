@@ -111,6 +111,7 @@ describe("CommandPalette real render (F3 reproduction)", () => {
       "nav.usage",
       "nav.leaderboard",
       "nav.reset_history",
+      "nav.widgets",
       "nav.spend.usage",
       "nav.spend.cost",
       "nav.settings.basic",
@@ -121,7 +122,7 @@ describe("CommandPalette real render (F3 reproduction)", () => {
     }
     // No React error boundary swallowed the list — there are 6 page options.
     const options = within(dialog).getAllByRole("option");
-    expect(options.length).toBe(7);
+    expect(options.length).toBe(8);
   });
 
   it("clicking a secondary-nav child navigates to the correct URL", async () => {

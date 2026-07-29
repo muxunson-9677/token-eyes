@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { copy, setCopyLocale } from "../lib/copy";
 import { EN_LOCALE, ZH_CN_LOCALE } from "../lib/locale";
+import { resetLocalApiOriginForTests } from "../lib/local-api-url";
 import { WidgetsPage } from "./WidgetsPage.jsx";
 
 function installNativeBridge(settings) {
@@ -27,6 +28,7 @@ function installNativeBridge(settings) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  resetLocalApiOriginForTests();
   setCopyLocale(EN_LOCALE);
   window.history.pushState({}, "", "/");
   if (typeof window.localStorage?.removeItem === "function") {
@@ -130,6 +132,12 @@ describe("WidgetsPage menu bar configurator", () => {
 });
 
 describe("WidgetsPage Windows desktop widget", () => {
+  it("does not offer the removed usage overview or heatmap cards", () => {
+    render(<WidgetsPage />);
+    expect(screen.queryByText(copy("widgets.summary.name"))).not.toBeInTheDocument();
+    expect(screen.queryByText(copy("widgets.heatmap.name"))).not.toBeInTheDocument();
+  });
+
   it("shows and hides the independent widget without macOS-only settings", async () => {
     const user = userEvent.setup();
     const invoke = vi.fn(async (command) => {
@@ -155,5 +163,76 @@ describe("WidgetsPage Windows desktop widget", () => {
 
     await user.click(screen.getByRole("button", { name: copy("widgets.windows.hide") }));
     expect(invoke).toHaveBeenCalledWith("hide_desktop_widget");
+  });
+
+  it("configures visible projects on the Widgets page instead of inside the capsule", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.fn(async (command, payload) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          selectedProjectIds: ["project-a"],
+        };
+      }
+      if (command === "set_desktop_widget_prefs") return payload?.prefs;
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      if (String(url).includes("/api/local-auth")) {
+        return {
+          ok: true,
+          json: async () => ({ token: "local-test-token" }),
+          text: async () => JSON.stringify({ token: "local-test-token" }),
+          headers: new Headers({ "content-type": "application/json" }),
+        };
+      }
+      const body = {
+        projectStatus: {
+          projects: [
+            { id: "project-a", label: "Token Eyes" },
+            { id: "project-b", label: "Website" },
+          ],
+        },
+      };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+
+    const search = await screen.findByRole("searchbox", {
+      name: copy("widgets.windows.projects.search"),
+    });
+    expect(await screen.findByRole("checkbox", { name: "Token Eyes" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Website" })).not.toBeChecked();
+
+    await user.type(search, "web");
+    expect(screen.queryByRole("checkbox", { name: "Token Eyes" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Website" }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
+        prefs: expect.objectContaining({
+          selectedProjectIds: ["project-a", "project-b"],
+        }),
+      });
+    });
+
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.windows.projects.use_recent"),
+    }));
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
+        prefs: expect.objectContaining({ selectedProjectIds: [] }),
+      });
+    });
   });
 });

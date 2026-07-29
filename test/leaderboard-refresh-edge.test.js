@@ -9,24 +9,28 @@ const EDGE_PATH = path.resolve(
   "dashboard/edge-patches/tokentracker-leaderboard-refresh.ts",
 );
 
-test("leaderboard refresh is a scheduler-secret-only SQL wrapper", () => {
+test("leaderboard refresh accepts the scheduler or a verified compact-state owner", () => {
   const source = fs.readFileSync(EDGE_PATH, "utf8");
   assert.match(source, /LEADERBOARD_SCHEDULER_SECRET/);
   assert.match(source, /x-leaderboard-scheduler-secret/i);
   assert.match(source, /timingSafeEqual|constantTimeEqual/);
+  assert.match(source, /auth\.getCurrentUser/);
+  assert.match(source, /Authorization/i);
+  assert.match(source, /tokentracker_leaderboard_device_state/);
+  assert.match(source, /captured_at/);
+  assert.match(source, /generated_at/);
   assert.match(source, /refresh_leaderboard_snapshots/);
   assert.match(source, /p_refresh_month/);
   assert.match(source, /p_refresh_total/);
   assert.doesNotMatch(source, /tokentracker_hourly/);
   assert.doesNotMatch(source, /MODEL_PRICING|getModelPricing|computeRowCost/);
-  assert.doesNotMatch(source, /Authorization:\s*`Bearer \$\{accessToken\}`/);
 });
 
-test("one 15-minute schedule gives hourly month and daily total refreshes", () => {
+test("one 15-minute schedule keeps total current and refreshes month hourly", () => {
   const source = fs.readFileSync(EDGE_PATH, "utf8");
   assert.match(source, /Math\.floor\([^;]+\/\s*900\)/);
   assert.match(source, /slot\s*%\s*4\s*===\s*0/);
-  assert.match(source, /slot\s*%\s*96\s*===\s*0/);
+  assert.match(source, /const refreshTotal\s*=\s*true/);
   assert.match(source, /today[^]*week[^]*30d/i);
 });
 

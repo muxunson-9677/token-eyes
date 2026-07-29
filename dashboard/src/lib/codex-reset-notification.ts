@@ -7,10 +7,6 @@ import {
 import type { CodexResetEvent } from "./api";
 import { isTauriRuntime } from "./local-api-url";
 
-function resetWindowLabel(event: CodexResetEvent): string {
-  return event.window === "rolling_weekly" ? "weekly" : "5-hour";
-}
-
 export async function showCodexResetNotification(
   event: CodexResetEvent,
 ): Promise<void> {
@@ -24,14 +20,8 @@ export async function showCodexResetNotification(
     throw new Error("notification_permission_denied");
   }
 
-  const change = (
-    event.previous_used_percent != null
-    && event.current_used_percent != null
-  )
-    ? ` ${event.previous_used_percent}% → ${event.current_used_percent}%.`
-    : "";
   sendNotification({
-    title: "Codex quota reset",
-    body: `Your ${resetWindowLabel(event)} quota has reset.${change}`,
+    title: event.title || "Codex 官方额外重置",
+    body: event.summary || "检测到官方为 Codex 用户额外重置了使用限制。",
   });
 }

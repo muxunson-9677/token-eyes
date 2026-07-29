@@ -98,6 +98,9 @@ fn codex_reset_tray_label(unread_count: u32, latest_type: Option<&str>) -> Strin
     if bounded_count == 1 && latest_type == Some("reset_completed") {
         return "Codex 额度已恢复".to_string();
     }
+    if bounded_count == 1 && latest_type == Some("official_reset_announcement") {
+        return "Codex 官方额外重置：待确认".to_string();
+    }
     format!("Codex 重置通知：{bounded_count} 条新提醒")
 }
 

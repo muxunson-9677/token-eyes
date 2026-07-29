@@ -9,7 +9,7 @@ import {
 const POLL_INTERVAL_MS = 30_000;
 
 const DEFAULT_PREFS: DesktopWidgetPrefs = {
-  version: 2,
+  version: 3,
   visible: true,
   x: null,
   y: null,
@@ -24,6 +24,7 @@ const DEFAULT_PREFS: DesktopWidgetPrefs = {
   material: "frost",
   opacity: 0.72,
   alwaysOnTop: true,
+  selectedProjectIds: [],
 };
 
 function getInvoke() {
@@ -102,7 +103,7 @@ export function useDesktopWidget() {
   const acknowledgePendingReset = useCallback(async () => {
     const eventId = viewModel?.pendingReset?.id;
     if (!eventId) return;
-    await acknowledgeCodexResetEvent(eventId, ["widget", "tray"]);
+    await acknowledgeCodexResetEvent(eventId);
     await refresh();
   }, [refresh, viewModel?.pendingReset?.id]);
 

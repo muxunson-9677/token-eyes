@@ -64,12 +64,11 @@ test("builds filtered status, limits, model totals, and one pending reset", () =
     ],
     pendingResets: [{
       id: "reset-safe",
-      type: "reset_completed",
+      type: "official_reset_announcement",
       agent: "codex",
-      window: "rolling_5_hour",
       occurred_at: "2026-07-29T08:00:00.000Z",
-      previous_used_percent: 21,
-      current_used_percent: 0,
+      title: "Codex limits reset",
+      source_url: "https://x.com/thsottiaux/status/2082317452755751098",
       alertEligible: true,
     }],
   });
@@ -99,11 +98,45 @@ test("builds filtered status, limits, model totals, and one pending reset", () =
   assert.deepEqual(result.pendingReset, {
     id: "reset-safe",
     agent: "codex",
-    window: "rolling_5_hour",
+    window: null,
     occurredAt: "2026-07-29T08:00:00.000Z",
-    previousUsedPercent: 21,
-    currentUsedPercent: 0,
+    previousUsedPercent: null,
+    currentUsedPercent: null,
   });
+});
+
+test("deduplicates archived and active copies of one session and keeps the newest status", () => {
+  const result = buildWidgetViewModel({
+    sessions: [
+      {
+        agent: "codex",
+        projectId: "project-a",
+        projectLabel: "Token Eyes",
+        sessionId: "same-session",
+        status: "completed",
+        updatedAt: "2026-07-29T07:00:00.000Z",
+      },
+      {
+        agent: "codex",
+        projectId: "project-a",
+        projectLabel: "Token Eyes",
+        sessionId: "same-session",
+        status: "running",
+        updatedAt: "2026-07-29T08:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(result.projectStatus.projects[0].sessions.length, 1);
+  assert.equal(result.projectStatus.projects[0].sessions[0].status, "yellow");
+  assert.deepEqual(
+    {
+      red: result.projectStatus.red,
+      yellow: result.projectStatus.yellow,
+      green: result.projectStatus.green,
+    },
+    { red: 0, yellow: 1, green: 0 },
+  );
 });
 
 test("returns compact empty states and does not expose raw paths or unknown fields", () => {
@@ -151,17 +184,14 @@ test("returns compact empty states and does not expose raw paths or unknown fiel
   assert.equal(result.pendingReset, null);
 });
 
-test("a reset alert overrides the capsule regardless of the selected agent", () => {
+test("an official extra reset alert overrides the capsule regardless of the selected agent", () => {
   const result = buildWidgetViewModel({
     agent: "claude",
     pendingResets: [{
       id: "codex-reset",
-      type: "manual_reset",
+      type: "official_reset_announcement",
       agent: "codex",
-      window: "rolling_weekly",
       occurred_at: "2026-07-29T08:00:00.000Z",
-      previous_used_percent: 64,
-      current_used_percent: 0,
       alertEligible: true,
     }],
   });
@@ -170,7 +200,7 @@ test("a reset alert overrides the capsule regardless of the selected agent", () 
   assert.equal(result.pendingReset.agent, "codex");
 });
 
-test("upcoming and recovered history events never replace the widget capsule", () => {
+test("local rolling-window events never replace the widget capsule", () => {
   const result = buildWidgetViewModel({
     pendingResets: [
       {
@@ -189,17 +219,9 @@ test("upcoming and recovered history events never replace the widget capsule", (
         occurredAt: "2026-07-29T07:30:00.000Z",
         alertEligible: false,
       },
-      {
-        id: "actual",
-        type: "unexpected_quota_restore",
-        agent: "codex",
-        window: "rolling_5_hour",
-        occurredAt: "2026-07-29T08:00:00.000Z",
-        alertEligible: true,
-      },
     ],
   });
-  assert.equal(result.pendingReset.id, "actual");
+  assert.equal(result.pendingReset, null);
 });
 
 test("flattens the existing usage-limit payload without credentials", () => {

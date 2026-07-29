@@ -51,12 +51,18 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
     })}\n`, "utf8");
     const reset = {
       id: "reset-safe",
-      type: "reset_completed",
-      agent: "codex",
-      window: "rolling_5_hour",
+      type: "official_reset_announcement",
+      window: null,
+      createdAt: "2026-07-29T08:30:00.000Z",
       occurredAt: "2026-07-29T08:30:00.000Z",
-      previousUsedPercent: 21,
-      currentUsedPercent: 0,
+      officialUrl: "https://chatgpt.com/codex",
+      sourceUrl: "https://x.com/thsottiaux/status/2082317452755751098",
+      sourceAuthor: "thsottiaux",
+      sourcePostId: "2082317452755751098",
+      title: "Codex 官方额外重置",
+      summary: "OpenAI 已为 Codex 用户额外重置使用额度。",
+      expiresAt: "2026-08-29T08:30:00.000Z",
+      source: "signed_feed",
       alertEligible: true,
     };
     const service = {

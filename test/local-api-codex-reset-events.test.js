@@ -60,6 +60,26 @@ function harness() {
   const acknowledgements = [];
   const checks = [];
   const deliveries = [];
+  const officialEvent = {
+    id: "official:reset-july",
+    type: "official_reset_announcement",
+    window: null,
+    createdAt: "2026-07-20T08:00:00.000Z",
+    occurredAt: "2026-07-20T08:00:00.000Z",
+    resetAt: null,
+    officialUrl: "https://chatgpt.com/codex",
+    sourceUrl: "https://x.com/thsottiaux/status/2078990367241046272",
+    sourceAuthor: "thsottiaux",
+    sourcePostId: "2078990367241046272",
+    title: "Codex 官方额外重置",
+    summary: "OpenAI 已为 Codex 用户额外重置使用额度。",
+    expiresAt: "2026-08-20T08:00:00.000Z",
+    source: "signed_feed",
+    confidence: "confirmed",
+    alertEligible: true,
+    access_token: "must-not-leak",
+    path: "C:\\private",
+  };
   const service = {
     start() {},
     stop() {},
@@ -78,41 +98,8 @@ function harness() {
       feed_error_code: null,
       raw_response: "must-not-leak",
     }),
-    listUnread: () => [{
-      id: "official:reset-july",
-      type: "official_reset_announcement",
-      window: null,
-      createdAt: "2026-07-20T08:00:00.000Z",
-      resetAt: null,
-      officialUrl: "https://chatgpt.com/codex",
-      sourceUrl: "https://x.com/thsottiaux/status/2078990367241046272",
-      sourceAuthor: "thsottiaux",
-      sourcePostId: "2078990367241046272",
-      title: "Codex 重置活动",
-      summary: "请前往官方页面确认。",
-      expiresAt: "2026-08-20T08:00:00.000Z",
-      source: "signed_feed",
-      access_token: "must-not-leak",
-      path: "C:\\private",
-    }],
-    listHistory: () => [{
-      id: "completed:rolling_5_hour:2026-07-20",
-      type: "reset_completed",
-      agent: "codex",
-      accountKey: "default",
-      window: "rolling_5_hour",
-      createdAt: "2026-07-20T08:01:00.000Z",
-      resetAt: "2026-07-20T08:00:00.000Z",
-      occurredAt: "2026-07-20T08:00:00.000Z",
-      observedAt: "2026-07-20T08:01:00.000Z",
-      previousUsedPercent: 21,
-      currentUsedPercent: 0,
-      confidence: "confirmed",
-      alertEligible: true,
-      officialUrl: "https://chatgpt.com/codex",
-      source: "live_usage",
-      access_token: "must-not-leak",
-    }],
+    listUnread: () => [officialEvent],
+    listHistory: () => [officialEvent],
     listNotificationPending() {
       return this.listHistory();
     },
@@ -130,7 +117,7 @@ function harness() {
   return { root, handler, acknowledgements, checks, deliveries };
 }
 
-test("GET returns no-store sanitized status and unread events without auth", async () => {
+test("GET returns no-store sanitized official reset events without auth", async () => {
   const h = harness();
   try {
     const res = await call(h.handler, "/functions/tokentracker-codex-reset-events");
@@ -141,13 +128,9 @@ test("GET returns no-store sanitized status and unread events without auth", asy
     assert.equal(body.events[0].id, "official:reset-july");
     assert.equal(body.events[0].source_url, "https://x.com/thsottiaux/status/2078990367241046272");
     assert.equal(body.history.length, 1);
-    assert.equal(body.history[0].type, "reset_completed");
-    assert.equal(body.history[0].agent, "codex");
-    assert.equal(body.history[0].account_key, "default");
+    assert.equal(body.history[0].type, "official_reset_announcement");
+    assert.equal(body.history[0].source_url, "https://x.com/thsottiaux/status/2078990367241046272");
     assert.equal(body.history[0].occurred_at, "2026-07-20T08:00:00.000Z");
-    assert.equal(body.history[0].observed_at, "2026-07-20T08:01:00.000Z");
-    assert.equal(body.history[0].previous_used_percent, 21);
-    assert.equal(body.history[0].current_used_percent, 0);
     assert.equal(body.history[0].confidence, "confirmed");
     assert.equal(body.history[0].alert_eligible, true);
     assert.equal(body.notification_events.length, 1);
@@ -172,14 +155,14 @@ test("delivery endpoint persists the allowlisted Windows channel with local auth
         method: "POST",
         headers,
         body: {
-          event_id: "completed:rolling_5_hour:2026-07-20",
+          event_id: "official:reset-july",
           channel: "windows_notification",
         },
       },
     );
     assert.equal(delivered.statusCode, 200);
     assert.deepEqual(h.deliveries, [{
-      id: "completed:rolling_5_hour:2026-07-20",
+      id: "official:reset-july",
       channel: "windows_notification",
     }]);
   } finally {

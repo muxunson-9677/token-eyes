@@ -86,10 +86,9 @@ export function getRangeForPeriod(
     return { from: formatDateUTC(fromDate), to };
   }
 
-  // "total": last 24 months (local month window).
+  // "total": the complete local ledger.
   if (period === "total") {
-    const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 23, 1));
-    return { from: formatDateUTC(start), to };
+    return { from: "1970-01-01", to };
   }
 
   // Default to week (safe fallback)
@@ -216,6 +215,10 @@ export function computeRangeFromKey(
   const to = formatDateParts(parts);
   const today = parseDateString(to);
   if (!today) return { from: to, to };
+
+  if (key === "total") {
+    return { from: "1970-01-01", to };
+  }
 
   if (key === "today") {
     return { from: to, to };

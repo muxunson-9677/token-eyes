@@ -188,6 +188,9 @@ function addEvent(state, {
 function codexResetOccurredAt(event) {
   const occurredAt = normalizeIso(event?.occurredAt);
   if (occurredAt) return occurredAt;
+  if (event?.type === "official_reset_announcement") {
+    return normalizeIso(event.createdAt);
+  }
   if (event?.type === "reset_completed") return normalizeIso(event.resetAt);
   if (event?.type === "manual_reset") return normalizeIso(event.observedAt || event.createdAt);
   if (event?.type === "unexpected_quota_restore") return normalizeIso(event.createdAt);
@@ -224,6 +227,7 @@ function compactCodexResetEvents(events, { nowMs = Date.now() } = {}) {
       event.type !== "reset_completed"
       && event.type !== "manual_reset"
       && event.type !== "unexpected_quota_restore"
+      && event.type !== "official_reset_announcement"
     ))
     .slice(-EVENT_HISTORY_LIMIT);
   return [...other, ...actual]

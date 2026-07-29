@@ -46,12 +46,12 @@
 
 .widget-toolbar {
   display: grid;
-  grid-template-columns: 48px minmax(80px, 1fr) 30px 30px 30px;
+  grid-template-columns: 44px minmax(80px, 1fr);
   align-items: center;
   gap: 4px;
   box-sizing: border-box;
   height: 61px;
-  padding: 8px 9px;
+  padding: 8px 10px;
 }
 
 .widget-agent-control {
@@ -106,13 +106,29 @@
 .widget-summary {
   min-width: 0;
   overflow: hidden;
+  padding-right: 74px;
 }
 
 .widget-icon-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  color: rgba(255, 255, 255, 0.72);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.widget-corner-controls {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  display: flex;
+  gap: 2px;
+  opacity: 0.62;
+  transition: opacity 150ms ease;
+}
+
+.desktop-widget-card:hover .widget-corner-controls,
+.widget-corner-controls:focus-within {
+  opacity: 1;
 }
 
 .widget-icon-button[aria-expanded="true"] {
@@ -409,6 +425,35 @@
   font-size: 12px;
 }
 
+.widget-project-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 31px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.widget-project-option:hover {
+  background: rgba(74, 155, 255, 0.16);
+}
+
+.widget-project-option input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #5ba8ff;
+}
+
+.widget-project-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .widget-menu button:hover,
 .widget-menu button[aria-checked="true"] {
   background: rgba(74, 155, 255, 0.16);
@@ -456,6 +501,21 @@
 
   .widget-menu button > svg:last-child {
     display: none;
+  }
+
+  .widget-menu[data-menu-kind="project"] {
+    display: flex;
+    grid-auto-flow: unset;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .widget-menu[data-menu-kind="project"] .widget-project-option {
+    flex: 0 0 124px;
+    min-width: 0;
+    min-height: 46px;
+    padding: 4px 7px;
   }
 }
 

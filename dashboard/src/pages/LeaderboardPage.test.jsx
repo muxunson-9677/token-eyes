@@ -185,7 +185,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
       metric: "tokens",
-      period: "30d",
+      period: "total",
       source: "all",
       limit: 20,
       offset: 0,
@@ -203,8 +203,27 @@ describe("LeaderboardPage window-session cache reuse", () => {
       sources: undefined,
       timeZone: "Asia/Shanghai",
     }));
-    expect(getProviderStats.mock.calls[0][0].from).not.toBe("1970-01-01");
+    expect(getProviderStats.mock.calls[0][0].from).toBe("1970-01-01");
     expect(screen.getAllByText("$4.25").length).toBeGreaterThan(0);
+  });
+
+  it("keeps pending local usage out of authoritative cloud summary totals", async () => {
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [],
+      total_entries: 0,
+      participant_count: 0,
+      aggregate_total_tokens: 0,
+      aggregate_total_cost_usd: 0,
+    });
+
+    renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+
+    const summary = await screen.findByTestId("leaderboard-summary");
+    await waitFor(() => {
+      expect(within(summary).getAllByText("0")).toHaveLength(2);
+      expect(within(summary).getByText("-")).toBeInTheDocument();
+    });
   });
 
   it("keeps account controls available before the first rank is generated", async () => {
@@ -298,8 +317,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByTestId("leaderboard-score")).toHaveLength(1);
     expect(screen.getAllByText("70.76\u4ebf").length).toBeGreaterThan(0);
     const summary = screen.getByTestId("leaderboard-summary");
-    expect(within(summary).getByText("70.76\u4ebf")).toBeInTheDocument();
-    expect(within(summary).getByText("$11,156")).toBeInTheDocument();
+    expect(within(summary).getByText("69.5\u4ebf")).toBeInTheDocument();
+    expect(within(summary).getByText("$2,061")).toBeInTheDocument();
   });
 
   it("uses the authenticated page account when the SDK user omits its id", async () => {
@@ -478,7 +497,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
       metric: "tokens",
-      period: "30d",
+      period: "total",
       source: "all",
       limit: 20,
       offset: 0,
@@ -541,7 +560,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
       expect(getLeaderboard).toHaveBeenCalledWith({
         baseUrl: "https://edge.example",
         metric: "tokens",
-        period: "30d",
+        period: "total",
         source: "all",
         limit: 20,
         offset: 0,
@@ -698,7 +717,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",
       metric: "tokens",
-      period: "30d",
+      period: "total",
       source: "all",
       limit: 50,
       offset: 0,
@@ -750,7 +769,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: copy("leaderboard.period.30d") }));
+      await user.click(screen.getByRole("button", { name: copy("leaderboard.period.total") }));
     });
 
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);

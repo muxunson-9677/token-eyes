@@ -55,7 +55,18 @@ function statusKey(value) {
 
 function buildProjectStatus(sessions, selectedAgent) {
   const projects = new Map();
+  const newestSessions = new Map();
   for (const item of Array.isArray(sessions) ? sessions : []) {
+    const key = `${agentKey(item?.agent)}:${safeId(item?.sessionId, "session")}`;
+    const previous = newestSessions.get(key);
+    if (
+      !previous
+      || Date.parse(item?.updatedAt || 0) > Date.parse(previous?.updatedAt || 0)
+    ) {
+      newestSessions.set(key, item);
+    }
+  }
+  for (const item of newestSessions.values()) {
     const itemAgent = agentKey(item?.agent);
     if (selectedAgent !== "all" && itemAgent !== selectedAgent) continue;
     const projectId = safeId(item?.projectId, "project");
@@ -161,11 +172,7 @@ function buildTotals(usage, selectedAgent) {
 function buildPendingReset(events) {
   const event = (Array.isArray(events) ? events : []).find((candidate) => (
     candidate?.alertEligible === true
-    && [
-      "reset_completed",
-      "manual_reset",
-      "unexpected_quota_restore",
-    ].includes(candidate.type)
+    && candidate.type === "official_reset_announcement"
   ));
   if (!event) return null;
   const occurredAt = safeIso(event.occurred_at || event.occurredAt);
@@ -174,7 +181,7 @@ function buildPendingReset(events) {
   return {
     id,
     agent: agentKey(event.agent) || "codex",
-    window: event.window === "rolling_weekly" ? "rolling_weekly" : "rolling_5_hour",
+    window: null,
     occurredAt,
     previousUsedPercent: usedPercent(
       event.previous_used_percent ?? event.previousUsedPercent,

@@ -1,4 +1,7 @@
 key,module,page,component,slot,text,notes,status
+spend.usage.integrity.verified,dashboard,SpendPage,UsageStatsPanel,integrity_verified,"本地账本已核对 · {{records}} 条有效汇总 · {{from}} 至 {{to}}",,active
+spend.usage.integrity.attention,dashboard,SpendPage,UsageStatsPanel,integrity_attention,"本地账本需要检查 · Token 差值 {{delta}}",,active
+spend.usage.integrity.details,dashboard,SpendPage,UsageStatsPanel,integrity_details,"原始 {{raw}} 行；合并 {{duplicates}} 条重复累计记录；跳过 {{malformed}} 条损坏记录；最后更新 {{updated}}",,active
 leaderboard.sync.syncing,leaderboard,LeaderboardPage,ParticipationSync,status,"正在同步本地用量并生成你的排行……",,active
 leaderboard.sync.failed,leaderboard,LeaderboardPage,ParticipationSync,error,"本地用量尚未同步，请保持 Token Eyes 运行并重新打开排行榜重试。",,active
 settings.token_plan.subscription_cost,ui,SettingsPage,TokenPlanSection,subscription_cost,"套餐成本",,active
@@ -1421,6 +1424,7 @@ ticket02.refresh.seconds_ago,dashboard,SpendPage,RefreshIntervalPicker,seconds_a
 ticket02.refresh.minutes_ago,dashboard,SpendPage,RefreshIntervalPicker,minutes_ago,"{{count}} 分钟前",,active
 ticket02.refresh.hours_ago,dashboard,SpendPage,RefreshIntervalPicker,hours_ago,"{{count}} 小时前",,active
 ticket02.time.aria,dashboard,SpendPage,TimeRangePicker,aria,"时间范围",,active
+ticket02.time.total,dashboard,SpendPage,TimeRangePicker,total,"累计",,active
 ticket02.time.today,dashboard,SpendPage,TimeRangePicker,today,"当天",,active
 ticket02.time.1d,dashboard,SpendPage,TimeRangePicker,1d,"1d",,active
 ticket02.time.7d,dashboard,SpendPage,TimeRangePicker,7d,"7d",,active
@@ -1893,7 +1897,7 @@ dashboard.model_distribution.chart_aria,dashboard,DashboardView,ModelUsageDonut,
 dashboard.model_distribution.other,dashboard,DashboardPage,model_usage_distribution,other,"其他",,active
 nav.reset_history,ui,Sidebar,Sidebar,reset_history,"Reset history",,active
 reset_history.title,ui,ResetHistoryPage,ResetHistoryPage,title,"Reset history",,active
-reset_history.subtitle,ui,ResetHistoryPage,ResetHistoryPage,subtitle,"Codex quota resets detected on this device",,active
+reset_history.subtitle,ui,ResetHistoryPage,ResetHistoryPage,subtitle,"Official Codex extra reset announcements from the last 30 days",,active
 reset_history.today_title,ui,ResetHistoryPage,ResetHistoryPage,today_title,"Today's reminder",,active
 reset_history.history_title,ui,ResetHistoryPage,ResetHistoryPage,history_title,"History",,active
 reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
@@ -1943,6 +1947,7 @@ widget.mode.projects,ui,DesktopWidgetPage,WidgetModeMenu,projects,"Projects",,ac
 widget.mode.limits,ui,DesktopWidgetPage,WidgetModeMenu,limits,"Usage limits",,active
 widget.mode.models,ui,DesktopWidgetPage,WidgetModeMenu,models,"Model usage",,active
 widget.projects.summary,ui,DesktopWidgetPage,ProjectSummary,summary,"Conversation status",,active
+widget.projects.filter,ui,DesktopWidgetPage,ProjectFilter,button,"选择显示的项目",,active
 widget.models.tokens,ui,DesktopWidgetPage,ModelSummary,tokens,"Tokens",,active
 widget.models.cost,ui,DesktopWidgetPage,ModelSummary,cost,"Cost",,active
 widget.empty,ui,DesktopWidgetPage,WidgetContent,empty,"No data",,active
@@ -1962,6 +1967,13 @@ widget.reset.title,ui,DesktopWidgetPage,ResetAlert,title,"Quota reset",,active
 widget.reset.acknowledge,ui,DesktopWidgetPage,ResetAlert,acknowledge,"Acknowledge quota reset",,active
 widgets.windows.show,ui,WidgetsPage,WindowsWidgetToggle,show,"Show desktop widget",,active
 widgets.windows.hide,ui,WidgetsPage,WindowsWidgetToggle,hide,"Hide desktop widget",,active
+widgets.windows.projects.title,ui,WidgetsPage,WindowsWidgetProjectSettings,title,"桌面小组件项目",,active
+widgets.windows.projects.recent_hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"默认显示最近 24 小时活跃的项目",,active
+widgets.windows.projects.selected_count,ui,WidgetsPage,WindowsWidgetProjectSettings,count,"已选择 {count} 个项目",,active
+widgets.windows.projects.use_recent,ui,WidgetsPage,WindowsWidgetProjectSettings,reset,"恢复最近活跃项目",,active
+widgets.windows.projects.search,ui,WidgetsPage,WindowsWidgetProjectSettings,search,"搜索项目",,active
+widgets.windows.projects.load_failed,ui,WidgetsPage,WindowsWidgetProjectSettings,error,"项目列表加载失败，请确认 Token Eyes 正在运行。",,active
+widgets.windows.projects.empty,ui,WidgetsPage,WindowsWidgetProjectSettings,empty,"没有匹配的项目",,active
 limits.accounts.refreshing,ui,LimitsPage,UsageLimitsPanel,refreshing,"Refreshing {{count}} accounts…",,active
 limits.accounts.row_refreshing,ui,LimitsPage,UsageLimitsPanel,row_refreshing,"Refreshing…",,active
 limits.accounts.error,ui,LimitsPage,UsageLimitsPanel,account_error,"Refresh failed: {{error}}",,active

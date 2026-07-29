@@ -647,6 +647,17 @@ export function LeaderboardPage({
   const listData = currentListState.data;
   const [me, setMe] = useState(null);
   const [localMe, setLocalMe] = useState(null);
+  const [localRefreshRevision, bumpLocalRefreshRevision] = useState(0);
+
+  useEffect(() => {
+    const refreshLocal = () => bumpLocalRefreshRevision((revision) => revision + 1);
+    const interval = window.setInterval(refreshLocal, 60_000);
+    window.addEventListener("focus", refreshLocal);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshLocal);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -773,32 +784,22 @@ export function LeaderboardPage({
     me?.user_id,
     metric,
     period,
+    localRefreshRevision,
     syncRevision,
   ]);
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
-  const participantCount = listData?.participant_count ?? totalEntries;
-  const aggregateTotalTokens = useMemo(() => {
-    const aggregate = Number(listData?.aggregate_total_tokens);
-    if (!Number.isFinite(aggregate)) return null;
-    if (!localMe || !me?.rank) return aggregate;
-    return Math.max(
-      0,
-      aggregate + (Number(localMe.total_tokens) || 0) - (Number(me.total_tokens) || 0),
-    );
-  }, [listData?.aggregate_total_tokens, localMe, me]);
-  const aggregateTotalCost = useMemo(() => {
-    const aggregate = Number(listData?.aggregate_total_cost_usd);
-    if (!Number.isFinite(aggregate)) return null;
-    if (!localMe || !me?.rank) return aggregate;
-    return Math.max(
-      0,
-      aggregate
-        + (Number(localMe.estimated_cost_usd) || 0)
-        - (Number(me.estimated_cost_usd) || 0),
-    );
-  }, [listData?.aggregate_total_cost_usd, localMe, me]);
+  const participantCount = Math.max(
+    0,
+    Number(listData?.participant_count ?? totalEntries) || 0,
+  );
+  const aggregateTotalTokens = Number.isFinite(Number(listData?.aggregate_total_tokens))
+    ? Math.max(0, Number(listData.aggregate_total_tokens))
+    : null;
+  const aggregateTotalCost = Number.isFinite(Number(listData?.aggregate_total_cost_usd))
+    ? Math.max(0, Number(listData.aggregate_total_cost_usd))
+    : null;
   const currentPage = listData?.page ?? listPage;
   const pageItems = useMemo(() => {
     return buildPageItems(currentPage, totalPages);

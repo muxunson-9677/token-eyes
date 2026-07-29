@@ -447,6 +447,43 @@ test("P02: bucket limit exceeded returns 400", async () => {
   }
 });
 
+test("P02: total range clamps to the earliest real ledger bucket instead of 1970", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-timeseries-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queueFile = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(queueFile, `${JSON.stringify({
+      source: "claude",
+      model: "claude-sonnet",
+      hour_start: "2026-02-14T08:00:00.000Z",
+      input_tokens: 100,
+      output_tokens: 20,
+      total_tokens: 120,
+      conversation_count: 1,
+    })}\n`);
+    const handler = createLocalApiHandler({
+      queuePath: queueFile,
+      trackerDataDir: trackerDir,
+    });
+
+    const result = await call(
+      handler,
+      "/functions/tokentracker-spend-timeseries?from=1970-01-01&to=2026-07-29",
+      { method: "GET" },
+    );
+    const body = readJsonResponse(result);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.from, "2026-02-14");
+    assert.equal(body.to, "2026-07-29");
+    assert.equal(body.bucket, "week");
+    assert.equal(body.totals.total_tokens, 120);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("P02: auto bucket selection", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-timeseries-"));
   try {

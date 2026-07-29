@@ -392,7 +392,7 @@ export function DashboardPage({
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
   const mockNow = useMemo(() => getMockNow(), []);
   const cacheKey = publicMode ? null : auth?.userId || auth?.email || "default";
-  const [selectedPeriod, setSelectedPeriod] = useState("30d");
+  const [selectedPeriod, setSelectedPeriod] = useState("total");
   const [customFrom, setCustomFrom] = useState(null);
   const [customTo, setCustomTo] = useState(null);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
@@ -754,10 +754,10 @@ export function DashboardPage({
     return 0;
   }, [signedIn, mockEnabled, publicMode, isLocalMode]);
 
-  const [prevPeriod, setPrevPeriod] = useState("30d");
+  const [prevPeriod, setPrevPeriod] = useState("total");
   const handlePeriodChange = useCallback((p) => {
     if (p === "custom") {
-      setPrevPeriod((prev) => (prev === "custom" ? "30d" : prev));
+      setPrevPeriod((prev) => (prev === "custom" ? "total" : prev));
       setSelectedPeriod((cur) => {
         // If already have custom dates, switch to custom immediately
         if (customFrom && customTo) return "custom";

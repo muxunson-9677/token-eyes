@@ -507,6 +507,52 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
   return rows;
 }
 
+function readQueueDiagnostics(queuePath, { dedupeMode = "legacy" } = {}) {
+  let raw = "";
+  let updatedAt = null;
+  try {
+    raw = fs.readFileSync(queuePath, "utf8");
+    updatedAt = fs.statSync(queuePath).mtime.toISOString();
+  } catch {
+    return {
+      raw_records: 0,
+      valid_records: 0,
+      duplicate_records: 0,
+      malformed_records: 0,
+      ignored_synthetic_records: 0,
+      updated_at: null,
+      dedupe_basis: "latest_cumulative_bucket",
+    };
+  }
+
+  const lines = raw.split("\n").filter((line) => line.trim());
+  let malformedRecords = 0;
+  let ignoredSyntheticRecords = 0;
+  let parsedRecords = 0;
+  for (const line of lines) {
+    try {
+      const row = JSON.parse(line);
+      parsedRecords += 1;
+      if (isKnownSyntheticOpenClawSmokeRow(row)) ignoredSyntheticRecords += 1;
+    } catch {
+      malformedRecords += 1;
+    }
+  }
+  const validRecords = readQueueData(queuePath, { dedupeMode }).length;
+  return {
+    raw_records: lines.length,
+    valid_records: validRecords,
+    duplicate_records: Math.max(
+      0,
+      parsedRecords - ignoredSyntheticRecords - validRecords,
+    ),
+    malformed_records: malformedRecords,
+    ignored_synthetic_records: ignoredSyntheticRecords,
+    updated_at: updatedAt,
+    dedupe_basis: "latest_cumulative_bucket",
+  };
+}
+
 function queueRowDimensionsKey(row) {
   const dimensions = row?.dimensions;
   if (!dimensions || typeof dimensions !== "object" || Array.isArray(dimensions)) return "legacy";
@@ -4406,11 +4452,54 @@ function createLocalApiHandler({
   async function readSpendTimeseries(fromStr, toStr, requestedBucket, timeZoneContext, filters = {}) {
     const usdToCny = getUsdToCny();
     const pricingOptions = getPricingOptions();
-
     const today = new Date();
+    const config = readTrackerConfig();
+    const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
+    const planCosts = tokenPlanCostRecords(config);
+    const normalizedRecords = [
+      ...withoutTokenPlanCostDuplicates(records.map((r) => normalizeSpendRecord(r)), planCosts),
+      ...planCosts,
+    ];
+    const spendSources = Array.isArray(filters.sources)
+      ? new Set(filters.sources.map((source) => String(source).trim().toLowerCase()))
+      : null;
+    const filteredSpendRecords = spendSources
+      ? normalizedRecords.filter((record) => spendSources.has(String(record.source || "").toLowerCase()))
+      : normalizedRecords;
+    const totalRangeRequested = fromStr === "1970-01-01";
+    let preloadedRows = readQueueData(qp);
+    let effectiveFromStr = fromStr;
+
+    if (totalRangeRequested) {
+      preloadedRows = await withCodexRolloutRows(preloadedRows, {
+        from: "",
+        to: toStr,
+        timeZoneContext,
+        sources: filters.sources || null,
+      });
+      const sourceFilter = Array.isArray(filters.sources) ? new Set(filters.sources) : null;
+      const modelFilter = Array.isArray(filters.models)
+        ? new Set(filters.models.map((model) => String(model).trim().toLowerCase()))
+        : null;
+      const ledgerDays = preloadedRows
+        .filter((row) => {
+          const source = normalizeSource(row?.source);
+          if (sourceFilter && !sourceFilter.has(source)) return false;
+          const model = String(row?.model || "").trim().toLowerCase();
+          return !modelFilter || modelFilter.has(model);
+        })
+        .map((row) => rowDayKey(row, timeZoneContext))
+        .filter((day) => day && (!toStr || day <= toStr));
+      const spendDays = filteredSpendRecords
+        .map((record) => String(record?.start_date || ""))
+        .filter((day) => day && (!toStr || day <= toStr));
+      const earliestDay = [...ledgerDays, ...spendDays].sort()[0];
+      effectiveFromStr = earliestDay || toStr || new Date().toISOString().slice(0, 10);
+    }
+
     let fromDate, toDate;
-    if (fromStr) {
-      const [y, m, d] = fromStr.split("-").map(Number);
+    if (effectiveFromStr) {
+      const [y, m, d] = effectiveFromStr.split("-").map(Number);
       fromDate = new Date(Date.UTC(y, m - 1, d));
       if (Number.isFinite(timeZoneContext.offsetMinutes)) {
         fromDate.setUTCMinutes(fromDate.getUTCMinutes() - timeZoneContext.offsetMinutes);
@@ -4441,27 +4530,15 @@ function createLocalApiHandler({
     const toPartsForRows = getZonedParts(toDate, timeZoneContext);
     const fromKeyForRows = fromPartsForRows ? formatPartsDayKey(fromPartsForRows) : fromDate.toISOString().slice(0, 10);
     const toKeyForRows = toPartsForRows ? formatPartsDayKey(toPartsForRows) : toDate.toISOString().slice(0, 10);
-    const allRows = await withCodexRolloutRows(readQueueData(qp), {
-      from: fromKeyForRows,
-      to: toKeyForRows,
-      timeZoneContext,
-      sources: filters.sources || null,
-    });
+    const allRows = totalRangeRequested
+      ? preloadedRows
+      : await withCodexRolloutRows(readQueueData(qp), {
+          from: fromKeyForRows,
+          to: toKeyForRows,
+          timeZoneContext,
+          sources: filters.sources || null,
+        });
     const apiAggregate = aggregateUsageBySourceModelBucket(allRows, fromDate, toDate, bucket, timeZoneContext, pricingOptions, filters);
-
-    const config = readTrackerConfig();
-    const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
-    const planCosts = tokenPlanCostRecords(config);
-    const normalizedRecords = [
-      ...withoutTokenPlanCostDuplicates(records.map((r) => normalizeSpendRecord(r)), planCosts),
-      ...planCosts,
-    ];
-    const spendSources = Array.isArray(filters.sources)
-      ? new Set(filters.sources.map((source) => String(source).trim().toLowerCase()))
-      : null;
-    const filteredSpendRecords = spendSources
-      ? normalizedRecords.filter((record) => spendSources.has(String(record.source || "").toLowerCase()))
-      : normalizedRecords;
 
     const subAllocations = [];
     for (const record of filteredSpendRecords) {
@@ -5951,6 +6028,13 @@ function createLocalApiHandler({
       const pricedTokens = queueTotals.priced_tokens;
       const unpricedTokens = queueTotals.unpriced_tokens;
       const pricingCoverage = queueTotals.pricing_coverage;
+      const queueDiagnostics = readQueueDiagnostics(qp);
+      const visibleBucketTimes = rows
+        .map((row) => String(row?.hour_start || ""))
+        .filter(Boolean)
+        .sort();
+      const tokenDelta = Number(totals.total_tokens || 0)
+        - Number(queueTotals.total_tokens || 0);
 
       json(res, {
         ok: true,
@@ -5972,6 +6056,18 @@ function createLocalApiHandler({
           unpriced_tokens: unpricedTokens,
           pricing_coverage: pricingCoverage,
           metric_availability: "aggregate_only",
+        },
+        data_integrity: {
+          ...queueDiagnostics,
+          visible_records: rows.length,
+          visible_from: visibleBucketTimes[0] || null,
+          visible_to: visibleBucketTimes.at(-1) || null,
+          displayed_total_tokens: Number(totals.total_tokens || 0),
+          reconciled_total_tokens: Number(queueTotals.total_tokens || 0),
+          token_delta: tokenDelta,
+          status: tokenDelta === 0 && queueDiagnostics.malformed_records === 0
+            ? "verified"
+            : "attention",
         },
         rolling: {
           last_7d: { from: l7fromStr, to: todayStr, active_days: l7.length, totals: l7t },

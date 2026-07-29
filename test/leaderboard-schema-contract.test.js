@@ -66,7 +66,7 @@ test("device upsert is the only write path and validates the complete compact pa
   assert.match(sql, /p_payload\s*-\s*array\['version',\s*'device_id',\s*'captured_at',\s*'periods'\]/i);
   assert.match(sql, /p_payload\s*\?\&\s*array\['version',\s*'device_id',\s*'captured_at',\s*'periods'\]/i);
   assert.match(sql, /p_captured_at\s*>\s*now\(\)\s*\+\s*interval\s*'5 minutes'/i);
-  assert.match(sql, /array\['today',\s*'week',\s*'month',\s*'total'\]/i);
+  assert.match(sql, /array\['today',\s*'week',\s*'30d',\s*'month',\s*'total'\]/i);
   assert.match(sql, /jsonb_array_length\(v_rows\)\s*>\s*100/i);
   assert.match(sql, /jsonb_array_length\(v_item\)\s*<>\s*7/i);
   assert.match(sql, /char_length\(v_item\s*->>\s*0\)\s+not\s+between\s+1\s+and\s+64/i);

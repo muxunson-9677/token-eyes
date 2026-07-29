@@ -8927,18 +8927,25 @@ async function collectRolloutRequestUsageRecords(options) {
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
     let model = DEFAULT_MODEL;
+    const tasks = new Map();
+    let currentTaskId = null;
 
     try {
       for await (const line of rl) {
         if (!line) continue;
 
         const maybeTokenCount = line.includes('"token_count"');
+        const maybeLifecycle =
+          line.includes('"task_started"') ||
+          line.includes('"task_complete"') ||
+          line.includes('"turn_aborted"') ||
+          line.includes('"type":"error"');
         const maybeTurnContext =
           !maybeTokenCount &&
           (line.includes('"turn_context"') || line.includes('"session_meta"')) &&
           line.includes('"model"');
 
-        if (!maybeTokenCount && !maybeTurnContext) continue;
+        if (!maybeTokenCount && !maybeTurnContext && !maybeLifecycle) continue;
 
         let obj;
         try {
@@ -8955,6 +8962,95 @@ async function collectRolloutRequestUsageRecords(options) {
           if (typeof obj.payload.model === "string") {
             model = obj.payload.model;
           }
+          continue;
+        }
+
+        const lifecycleType = String(obj?.payload?.type || "");
+        if (lifecycleType === "task_started") {
+          const taskId = String(obj?.payload?.turn_id || `${sessionId}:${obj?.timestamp || tasks.size}`);
+          const startedTs = new Date(obj?.timestamp || "").getTime();
+          tasks.set(taskId, {
+            id: taskId,
+            startedTs: Number.isFinite(startedTs) ? startedTs : null,
+            recordIndexes: [],
+          });
+          currentTaskId = taskId;
+          continue;
+        }
+
+        if (
+          lifecycleType === "task_complete" ||
+          lifecycleType === "turn_aborted" ||
+          lifecycleType === "error"
+        ) {
+          const taskId = String(obj?.payload?.turn_id || currentTaskId || "");
+          const task = tasks.get(taskId);
+          const terminalTs = new Date(obj?.timestamp || "").getTime();
+          const durationFromPayload = Number(obj?.payload?.duration_ms);
+          const durationMs = Number.isFinite(durationFromPayload) && durationFromPayload >= 0
+            ? Math.round(durationFromPayload)
+            : task?.startedTs != null && Number.isFinite(terminalTs)
+              ? Math.max(0, Math.round(terminalTs - task.startedTs))
+              : null;
+          const firstTokenFromPayload = Number(obj?.payload?.time_to_first_token_ms);
+          const firstRecord = task?.recordIndexes?.length
+            ? records[task.recordIndexes[0]]
+            : null;
+          const firstRecordTs = new Date(firstRecord?.timestamp || "").getTime();
+          const firstTokenMs = Number.isFinite(firstTokenFromPayload) && firstTokenFromPayload >= 0
+            ? Math.round(firstTokenFromPayload)
+            : task?.startedTs != null && Number.isFinite(firstRecordTs)
+              ? Math.max(0, Math.round(firstRecordTs - task.startedTs))
+              : null;
+          const status = lifecycleType === "task_complete"
+            ? 200
+            : lifecycleType === "turn_aborted"
+              ? 499
+              : 500;
+          const taskStatus = lifecycleType === "task_complete"
+            ? "completed"
+            : lifecycleType === "turn_aborted"
+              ? "interrupted"
+              : "error";
+          const recordIndex = task?.recordIndexes?.at(-1);
+          let record = Number.isInteger(recordIndex) ? records[recordIndex] : null;
+          const terminalTimestamp = typeof obj?.timestamp === "string" ? obj.timestamp : null;
+          const terminalInRange = Number.isFinite(terminalTs)
+            && (fromTs == null || terminalTs >= fromTs)
+            && (toTs == null || terminalTs <= toTs);
+          if (!record && terminalTimestamp && terminalInRange) {
+            record = {
+              id: `${normalizedSource}:${sessionId}:${taskId || terminalTimestamp}:lifecycle`,
+              timestamp: terminalTimestamp,
+              hour_start: toUtcHalfHourStart(terminalTimestamp) || terminalTimestamp,
+              source: normalizedSource,
+              agent: "Codex",
+              model: model || DEFAULT_MODEL,
+              input_tokens: 0,
+              cached_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+              output_tokens: 0,
+              reasoning_output_tokens: 0,
+              total_tokens: 0,
+              cost_usd: 0,
+              priced_tokens: 0,
+              unpriced_tokens: 0,
+              pricing_coverage: "complete",
+              origin: "codex_rollout_lifecycle",
+            };
+            records.push(record);
+          }
+          if (record) {
+            record.task_id = taskId || null;
+            record.task_status = taskStatus;
+            record.status = status;
+            record.latency_ms = durationMs;
+            record.first_token_ms = firstTokenMs;
+            record.request_source = "codex_rollout_lifecycle";
+            record.record_kind = "request_event";
+          }
+          tasks.delete(taskId);
+          if (currentTaskId === taskId) currentTaskId = null;
           continue;
         }
 
@@ -8999,6 +9095,9 @@ async function collectRolloutRequestUsageRecords(options) {
           cost_usd: 0,
           origin: "codex_rollout_token_count",
         };
+        if (currentTaskId) {
+          record.task_id = currentTaskId;
+        }
 
         const { computeRowCostDetailed } = require("./pricing");
         const costResult = computeRowCostDetailed(record, pricingOptions);
@@ -9008,6 +9107,8 @@ async function collectRolloutRequestUsageRecords(options) {
         record.pricing_coverage = costResult.pricing_coverage;
 
         records.push(record);
+        const task = currentTaskId ? tasks.get(currentTaskId) : null;
+        if (task) task.recordIndexes.push(records.length - 1);
       }
     } finally {
       rl.close();

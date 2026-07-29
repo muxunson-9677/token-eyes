@@ -87,3 +87,26 @@ test("expanding the widget reapplies clamped monitor geometry", () => {
   assert.ok(setter, "widget preference setter must exist");
   assert.match(setter, /apply_geometry\(&window,\s*&prefs\)/u);
 });
+
+test("desktop widget grants native dragging and starts it only from non-interactive surfaces", () => {
+  const capability = read("src-tauri/capabilities/default.json");
+  const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
+  assert.match(capability, /core:window:allow-start-dragging/u);
+  assert.match(widget, /startDragging/u);
+  assert.match(widget, /closest\(/u);
+  assert.match(widget, /button|input|menu|slider/u);
+});
+
+test("desktop widget persists a project selection preference", () => {
+  const hook = read("dashboard/src/hooks/use-desktop-widget.ts");
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  assert.match(hook, /selectedProjectIds/u);
+  assert.match(widgetWindow, /selected_project_ids/u);
+  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*3/u);
+});
+
+test("compact widget keeps long project selectors scrollable instead of growing", () => {
+  const css = read("dashboard/src/pages/desktop-widget.css");
+  assert.match(css, /\.widget-menu\[data-menu-kind="project"\][\s\S]*overflow-x:\s*auto/u);
+  assert.match(css, /\.widget-menu\[data-menu-kind="project"\]\s+\.widget-project-option[\s\S]*flex:\s*0 0 124px/u);
+});

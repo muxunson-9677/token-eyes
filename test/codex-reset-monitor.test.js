@@ -278,7 +278,7 @@ test("acknowledgement hides unread event but retains bounded history", () => {
   assert.equal(state.acknowledgedEventIds.length, 200);
 });
 
-test("reset history retains every actual reset from the last 30 days in occurrence order", () => {
+test("reset history retains local and official resets from the last 30 days in occurrence order", () => {
   const completed = Array.from({ length: 6 }, (_, index) => ({
     id: `completed-${index}`,
     type: "reset_completed",
@@ -324,10 +324,11 @@ test("reset history retains every actual reset from the last 30 days in occurren
   );
 
   assert.equal(RESET_HISTORY_DAYS, 30);
-  assert.equal(history.length, 7);
+  assert.equal(history.length, 8);
   assert.deepEqual(
     history.map((event) => event.id),
     [
+      "official",
       "restored-latest",
       "completed-0",
       "completed-1",
@@ -337,8 +338,9 @@ test("reset history retains every actual reset from the last 30 days in occurren
       "completed-5",
     ],
   );
-  assert.equal(history[0].occurredAt, restored.createdAt);
-  assert.equal(history[1].occurredAt, completed[0].resetAt);
+  assert.equal(history[0].occurredAt, ignored[1].createdAt);
+  assert.equal(history[1].occurredAt, restored.createdAt);
+  assert.equal(history[2].occurredAt, completed[0].resetAt);
 });
 
 test("event compaction keeps all 30-day resets without deleting other reminder types", () => {

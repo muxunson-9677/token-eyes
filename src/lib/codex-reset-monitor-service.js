@@ -86,6 +86,9 @@ function officialEvent(announcement) {
     summary: announcement.summary,
     expiresAt: announcement.expires_at,
     source: "signed_feed",
+    alertEligible: true,
+    deliveredChannels: [],
+    acknowledgedChannels: [],
   };
 }
 
@@ -141,24 +144,23 @@ function createCodexResetMonitorService({
   function listUnread(channel = "banner") {
     const currentMs = now();
     return listUnreadCodexResetEvents(state, { channel }).filter((event) => (
-      event.type !== "official_reset_announcement"
-      || (typeof event.expiresAt === "string" && Date.parse(event.expiresAt) > currentMs)
+      event.type === "official_reset_announcement"
+      && typeof event.expiresAt === "string"
+      && Date.parse(event.expiresAt) > currentMs
     ));
   }
 
   function listHistory() {
-    return listCodexResetHistory(state, { nowMs: now() });
+    return listCodexResetHistory(state, { nowMs: now() })
+      .filter((event) => event.type === "official_reset_announcement");
   }
 
   function listNotificationPending() {
     return state.events.filter((event) => (
-      (
-        event.type === "reset_completed"
-        || event.type === "manual_reset"
-        || event.type === "unexpected_quota_restore"
-      )
+      event.type === "official_reset_announcement"
       && event.alertEligible === true
       && !event.deliveredChannels?.includes("windows_notification")
+      && !state.acknowledgedEventIds.includes(event.id)
     ));
   }
 

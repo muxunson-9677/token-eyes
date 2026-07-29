@@ -18,6 +18,7 @@ import { getCopyLocale } from "../../../lib/copy";
  * setTimeRange("custom", from, to)。
  */
 const QUICK_KEYS = [
+  { key: "total", labelKey: "ticket02.time.total" },
   { key: "today", labelKey: "ticket02.time.today" },
   { key: "1d", labelKey: "ticket02.time.1d" },
   { key: "7d", labelKey: "ticket02.time.7d" },
@@ -42,7 +43,7 @@ export function TimeRangePicker({ timeZone, offsetMinutes }) {
       return copy("ticket02.time.custom");
     }
     const opt = QUICK_KEYS.find((o) => o.key === state.timeRange);
-    return opt ? copy(opt.labelKey) : copy("ticket02.time.30d");
+    return opt ? copy(opt.labelKey) : copy("ticket02.time.total");
   }, [state.timeRange, state.from, state.to]);
 
   const handleOpenChange = (next) => {

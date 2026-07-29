@@ -9,6 +9,7 @@ import {
   PinOff,
   X,
 } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useDesktopWidget } from "../hooks/use-desktop-widget";
 import {
   type DesktopWidgetAgent,
@@ -134,14 +135,50 @@ function CompactSummary({
   return React.createElement(TrafficLights, { status: model.projectStatus });
 }
 
-function ExpandedProjects({ model }: { model: DesktopWidgetViewModel }) {
+function filteredProjectStatus(
+  status: DesktopWidgetViewModel["projectStatus"],
+  selectedProjectIds: string[],
+) {
+  let projects = status.projects;
+  if (selectedProjectIds.length > 0) {
+    const selected = new Set(selectedProjectIds);
+    projects = projects.filter((project) => selected.has(project.id));
+  } else {
+    const cutoff = Date.now() - 24 * 60 * 60_000;
+    const recent = projects.filter((project) => project.sessions.some(
+      (session) => session.updatedAt && Date.parse(session.updatedAt) >= cutoff,
+    ));
+    if (recent.length > 0) {
+      projects = recent;
+    } else if (projects.length > 0) {
+      projects = [projects[0]];
+    }
+  }
+  return projects.reduce((result, project) => ({
+    red: result.red + project.red,
+    yellow: result.yellow + project.yellow,
+    green: result.green + project.green,
+    unknown: result.unknown + project.unknown,
+    projects: [...result.projects, project],
+  }), {
+    red: 0,
+    yellow: 0,
+    green: 0,
+    unknown: 0,
+    projects: [] as DesktopWidgetViewModel["projectStatus"]["projects"],
+  });
+}
+
+function ExpandedProjects({ status }: {
+  status: DesktopWidgetViewModel["projectStatus"];
+}) {
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
-  if (!model.projectStatus.projects.length) {
+  if (!status.projects.length) {
     return <div className="widget-detail-empty">{copy("widget.empty")}</div>;
   }
   return (
     <div className="widget-project-list">
-      {model.projectStatus.projects.map((project) => {
+      {status.projects.map((project) => {
         const open = expandedProject === project.id;
         return (
           <div className="widget-project" key={project.id}>
@@ -267,10 +304,25 @@ export function DesktopWidgetPage() {
   }, []);
 
   const model = viewModel;
+  const selectedProjectIds = prefs.selectedProjectIds ?? [];
+  const visibleProjectStatus = model
+    ? filteredProjectStatus(model.projectStatus, selectedProjectIds)
+    : null;
+  const visibleModel = model && visibleProjectStatus
+    ? { ...model, projectStatus: visibleProjectStatus }
+    : model;
   const pendingReset = model?.pendingReset;
   const rootStyle = {
     "--widget-opacity": prefs.opacity,
   } as React.CSSProperties;
+  const handleDragStart = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, input, label, a, select, textarea, [role='menu'], [role='slider'], .widget-scroll-region")) {
+      return;
+    }
+    void getCurrentWindow().startDragging();
+  };
 
   if (pendingReset) {
     const change = pendingReset.previousUsedPercent == null
@@ -282,7 +334,7 @@ export function DesktopWidgetPage() {
         <article
           className={`desktop-widget-card desktop-widget-card--${prefs.material} desktop-widget-card--reset`}
           data-testid="desktop-widget-card"
-          data-tauri-drag-region
+          onPointerDown={handleDragStart}
         >
           <button
             type="button"
@@ -315,9 +367,9 @@ export function DesktopWidgetPage() {
       <article
         className={`desktop-widget-card desktop-widget-card--${prefs.material} ${prefs.expanded ? "is-expanded" : ""}`}
         data-testid="desktop-widget-card"
-        data-tauri-drag-region
+        onPointerDown={handleDragStart}
       >
-        <div className="widget-toolbar" data-tauri-drag-region>
+        <div className="widget-toolbar">
           <div className="widget-agent-control">
             <button
               type="button"
@@ -339,9 +391,9 @@ export function DesktopWidgetPage() {
             </button>
           </div>
 
-          <div className="widget-summary">
-            {model ? (
-              <CompactSummary mode={prefs.mode} model={model} />
+          <div className="widget-summary" data-testid="widget-drag-surface">
+            {visibleModel ? (
+              <CompactSummary mode={prefs.mode} model={visibleModel} />
             ) : (
               <span className="widget-empty">
                 {loading ? copy("widget.loading") : error ? copy("widget.unavailable") : copy("widget.empty")}
@@ -349,43 +401,45 @@ export function DesktopWidgetPage() {
             )}
           </div>
 
-          <button
-            ref={modeMenuAnchor}
-            type="button"
-            className="widget-icon-button"
-            aria-label={copy("widget.mode_menu")}
-            aria-expanded={openMenu === "mode"}
-            onClick={() => setOpenMenu(openMenu === "mode" ? null : "mode")}
-          >
-            <Layers3 size={16} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="widget-icon-button"
-            aria-label={copy("widget.appearance")}
-            aria-expanded={appearanceOpen}
-            onClick={() => {
-              setAppearanceOpen(!appearanceOpen);
-              setOpenMenu(null);
-            }}
-          >
-            <Palette size={16} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="widget-icon-button"
-            aria-label={copy(prefs.alwaysOnTop ? "widget.unpin" : "widget.pin")}
-            onClick={() => void updatePrefs({ alwaysOnTop: !prefs.alwaysOnTop })}
-          >
-            {prefs.alwaysOnTop ? <Pin size={15} aria-hidden /> : <PinOff size={15} aria-hidden />}
-          </button>
+          <div className="widget-corner-controls">
+            <button
+              ref={modeMenuAnchor}
+              type="button"
+              className="widget-icon-button"
+              aria-label={copy("widget.mode_menu")}
+              aria-expanded={openMenu === "mode"}
+              onClick={() => setOpenMenu(openMenu === "mode" ? null : "mode")}
+            >
+              <Layers3 size={11} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="widget-icon-button"
+              aria-label={copy("widget.appearance")}
+              aria-expanded={appearanceOpen}
+              onClick={() => {
+                setAppearanceOpen(!appearanceOpen);
+                setOpenMenu(null);
+              }}
+            >
+              <Palette size={11} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="widget-icon-button"
+              aria-label={copy(prefs.alwaysOnTop ? "widget.unpin" : "widget.pin")}
+              onClick={() => void updatePrefs({ alwaysOnTop: !prefs.alwaysOnTop })}
+            >
+              {prefs.alwaysOnTop ? <Pin size={10} aria-hidden /> : <PinOff size={10} aria-hidden />}
+            </button>
+          </div>
         </div>
 
-        {prefs.expanded && model ? (
+        {prefs.expanded && visibleModel ? (
           <div className="widget-scroll-region" data-widget-scroll-region>
-            {prefs.mode === "projects" ? <ExpandedProjects model={model} /> : null}
-            {prefs.mode === "limits" ? <ExpandedLimits model={model} /> : null}
-            {prefs.mode === "models" ? <ExpandedModels model={model} /> : null}
+            {prefs.mode === "projects" ? <ExpandedProjects status={visibleModel.projectStatus} /> : null}
+            {prefs.mode === "limits" ? <ExpandedLimits model={visibleModel} /> : null}
+            {prefs.mode === "models" ? <ExpandedModels model={visibleModel} /> : null}
           </div>
         ) : null}
 
@@ -469,6 +523,7 @@ export function DesktopWidgetPage() {
           ))}
         </PortalMenu>
       ) : null}
+
     </main>
   );
 }

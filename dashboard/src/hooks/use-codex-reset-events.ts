@@ -141,15 +141,20 @@ export function CodexResetEventsProvider({
 
   const acknowledgeWidget = useCallback(async (eventId: string) => {
     if (!enabled) return;
-    await acknowledgeCodexResetEvent(eventId, ["widget", "tray"]);
+    await acknowledgeCodexResetEvent(eventId);
     setResponse((current) => {
       if (!current) return current;
       return {
         ...current,
+        events: current.events.filter((event) => event.id !== eventId),
         widget_events: (current.widget_events || [])
           .filter((event) => event.id !== eventId),
         tray_events: (current.tray_events || [])
           .filter((event) => event.id !== eventId),
+        status: {
+          ...current.status,
+          unread_count: Math.max(0, current.status.unread_count - 1),
+        },
       };
     });
   }, [enabled]);

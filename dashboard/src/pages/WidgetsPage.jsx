@@ -11,6 +11,7 @@ import {
 } from "../lib/menu-bar-display.js";
 import { ToggleSwitch } from "../components/settings/Controls.jsx";
 import { FadeIn, StaggerContainer, StaggerItem } from "../ui/foundation/FadeIn.jsx";
+import { getDesktopWidgetViewModel } from "../lib/api.ts";
 
 /* ---------- SVG widget illustrations ----------
  * Hand-drawn previews of the real macOS widgets. Pure SVG so they stay
@@ -80,99 +81,6 @@ function PreviewShell({ size = "sm", children }) {
         {children}
       </div>
     </div>
-  );
-}
-
-function SummaryWidgetPreview({ size = "sm" }) {
-  // Sparkline curve — extended flat at both ends so it spans the full tile
-  // width (x=0 → x=264) instead of leaving visible gaps at the widget edges.
-  const sparklinePath =
-    "M0,104 L14,104 C26,98 34,100 44,96 S58,88 68,92 80,100 90,94 102,80 112,82 126,92 136,88 150,74 162,76 178,88 188,86 204,72 216,74 236,84 250,80 L264,80";
-  // Closed area: follow the curve then drop to the baseline and back.
-  const areaPath = `${sparklinePath} L264,124 L0,124 Z`;
-  const gradientId = `sparkArea-${size}`;
-  return (
-    <PreviewShell size={size}>
-      <svg viewBox="0 0 264 124" className="h-full w-full" aria-hidden="true">
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0A84FF" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#0A84FF" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* TODAY column */}
-        <text x="14" y="20" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="700" letterSpacing="0.6">TODAY</text>
-        <text x="14" y="46" className="fill-oai-black dark:fill-white" fontSize="22" fontWeight="700" fontFamily={ROUNDED_FONT}>203.2M</text>
-        <text x="14" y="60" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="500" fontFamily={ROUNDED_FONT}>$129.56 ±0%</text>
-        {/* 7 DAYS column */}
-        <text x="134" y="20" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="700" letterSpacing="0.6">7 DAYS</text>
-        <text x="134" y="46" className="fill-oai-black dark:fill-white" fontSize="22" fontWeight="700" fontFamily={ROUNDED_FONT}>880.9M</text>
-        <text x="134" y="60" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="500" fontFamily={ROUNDED_FONT}>$673.61</text>
-        {/* Area fill under the curve */}
-        <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
-        {/* Sparkline stroke on top */}
-        <path d={sparklinePath} fill="none" stroke="#0A84FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </PreviewShell>
-  );
-}
-
-// Deterministic heatmap cells — 26 weeks × 7 days, matching Swift
-// HeatmapWidget.weeks for systemMedium. Uses a sin-hash (GLSL classic)
-// because modular PRNG on small seed ranges produces a visible "letter"
-// pattern. Computed once at module load.
-const HEATMAP_CELLS = (() => {
-  const weeks = 26;
-  const days = 7;
-  const cells = [];
-  for (let w = 0; w < weeks; w++) {
-    for (let d = 0; d < days; d++) {
-      const n = Math.sin((w + 1) * 12.9898 + (d + 1) * 78.233 + 17) * 43758.5453;
-      const v = Math.floor(Math.abs(n - Math.floor(n)) * 100);
-      cells.push({ w, d, v });
-    }
-  }
-  return cells;
-})();
-
-// Mirrors WidgetTheme.heatmapLevels — gray base + four steps of accent blue.
-// Empty cells snap to oai-gray-200 / -800 (design tokens); blue stays as
-// the macOS system accent, matching SwiftUI's Color.accentColor.
-function heatmapFill(v, dark) {
-  if (v < 18) return dark ? "#262626" /* oai-gray-800 */ : "#e5e5e5" /* oai-gray-200 */;
-  if (v < 38) return "rgba(10, 132, 255, 0.28)";
-  if (v < 58) return "rgba(10, 132, 255, 0.50)";
-  if (v < 80) return "rgba(10, 132, 255, 0.75)";
-  return "#0A84FF";
-}
-
-function HeatmapWidgetPreview() {
-  // 264×124 tile: cellW 7.5, cellH 8, gap 1.2
-  //   grid width  = 26*7.5 + 25*1.2 = 225   → left margin (264-225)/2 = 19.5
-  //   grid height = 7*8   + 6*1.2  = 63.2  → top margin 10
-  //   footer baseline at y=102 → ~22px clear above the bottom edge
-  const cellW = 7.5;
-  const cellH = 8;
-  const gap = 1.2;
-  const gridX = 19.5;
-  const gridY = 10;
-  return (
-    <PreviewShell>
-      <svg viewBox="0 0 264 124" className="h-full w-full" aria-hidden="true">
-        <g transform={`translate(${gridX}, ${gridY})`} className="hidden dark:inline">
-          {HEATMAP_CELLS.map((c) => (
-            <rect key={`d-${c.w}-${c.d}`} x={c.w * (cellW + gap)} y={c.d * (cellH + gap)} width={cellW} height={cellH} rx="1.3" fill={heatmapFill(c.v, true)} />
-          ))}
-        </g>
-        <g transform={`translate(${gridX}, ${gridY})`} className="dark:hidden">
-          {HEATMAP_CELLS.map((c) => (
-            <rect key={`l-${c.w}-${c.d}`} x={c.w * (cellW + gap)} y={c.d * (cellH + gap)} width={cellW} height={cellH} rx="1.3" fill={heatmapFill(c.v, false)} />
-          ))}
-        </g>
-        <text x={gridX} y="102" className="fill-oai-black dark:fill-white" fontSize="10" fontWeight="700" fontFamily={ROUNDED_FONT}>10.3B</text>
-        <text x={gridX + 30} y="102" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="9" fontWeight="500">tokens · 202 active days</text>
-      </svg>
-    </PreviewShell>
   );
 }
 
@@ -566,6 +474,125 @@ function WindowsWidgetToggle() {
   );
 }
 
+function WindowsWidgetProjectSettings() {
+  const [prefs, setPrefs] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const invoke = getTauriInvoke();
+    if (!invoke) return undefined;
+    let mounted = true;
+    void Promise.all([
+      invoke("get_desktop_widget_prefs"),
+      getDesktopWidgetViewModel("all"),
+    ]).then(([nextPrefs, model]) => {
+      if (!mounted) return;
+      setPrefs(nextPrefs || {});
+      setProjects(Array.isArray(model?.projectStatus?.projects)
+        ? model.projectStatus.projects
+        : []);
+      setError(false);
+    }).catch(() => {
+      if (mounted) setError(true);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const selectedIds = Array.isArray(prefs?.selectedProjectIds)
+    ? prefs.selectedProjectIds
+    : [];
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleProjects = normalizedQuery
+    ? projects.filter((project) => (
+      String(project?.label || "").toLocaleLowerCase().includes(normalizedQuery)
+    ))
+    : projects;
+
+  const saveSelectedProjects = async (nextIds) => {
+    const invoke = getTauriInvoke();
+    if (!invoke || !prefs) return;
+    const nextPrefs = { ...prefs, selectedProjectIds: nextIds };
+    setPrefs(nextPrefs);
+    await invoke("set_desktop_widget_prefs", { prefs: nextPrefs });
+  };
+
+  return (
+    <div className="mb-5 rounded-xl border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-[15px] font-semibold text-oai-black dark:text-white">
+            {copy("widgets.windows.projects.title")}
+          </h3>
+          <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+            {selectedIds.length > 0
+              ? copy("widgets.windows.projects.selected_count", { count: selectedIds.length })
+              : copy("widgets.windows.projects.recent_hint")}
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label={copy("widgets.windows.projects.use_recent")}
+          disabled={!prefs || selectedIds.length === 0}
+          onClick={() => void saveSelectedProjects([])}
+          className="rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 disabled:cursor-default disabled:opacity-45 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+        >
+          {copy("widgets.windows.projects.use_recent")}
+        </button>
+      </div>
+
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        aria-label={copy("widgets.windows.projects.search")}
+        placeholder={copy("widgets.windows.projects.search")}
+        className="mt-4 h-9 w-full rounded-lg border border-oai-gray-200 bg-transparent px-3 text-sm outline-none transition-colors placeholder:text-oai-gray-400 focus:border-oai-gray-400 dark:border-oai-gray-700 dark:focus:border-oai-gray-500"
+      />
+
+      <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-oai-gray-100 dark:border-oai-gray-800">
+        {error ? (
+          <p className="px-3 py-4 text-sm text-red-600 dark:text-red-400">
+            {copy("widgets.windows.projects.load_failed")}
+          </p>
+        ) : visibleProjects.length > 0 ? (
+          visibleProjects.map((project) => {
+            const id = String(project.id || "");
+            const checked = selectedIds.includes(id);
+            return (
+              <label
+                key={id}
+                className="flex min-h-10 cursor-pointer items-center gap-3 border-b border-oai-gray-100 px-3 py-2 text-sm last:border-b-0 dark:border-oai-gray-800"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  aria-label={project.label}
+                  onChange={() => {
+                    const nextIds = checked
+                      ? selectedIds.filter((value) => value !== id)
+                      : [...selectedIds, id];
+                    void saveSelectedProjects(nextIds);
+                  }}
+                  className="h-4 w-4 accent-oai-brand-600"
+                />
+                <span className="min-w-0 truncate">{project.label}</span>
+              </label>
+            );
+          })
+        ) : (
+          <p className="px-3 py-4 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+            {copy("widgets.windows.projects.empty")}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function HeaderCta({ platform }) {
 
   // Reserve space so the layout doesn't jump once detection resolves.
@@ -616,8 +643,6 @@ function HeaderCta({ platform }) {
 /* ---------- Secondary catalog data ---------- */
 
 const SECONDARY_WIDGETS = [
-  { id: "summary",  Preview: SummaryWidgetPreview,      nameKey: "widgets.summary.name",   descKey: "widgets.summary.description" },
-  { id: "heatmap",   Preview: HeatmapWidgetPreview,    nameKey: "widgets.heatmap.name",   descKey: "widgets.heatmap.description" },
   { id: "topModels", Preview: TopModelsWidgetPreview,  nameKey: "widgets.topModels.name", descKey: "widgets.topModels.description" },
   { id: "limits",    Preview: UsageLimitsWidgetPreview, nameKey: "widgets.limits.name",   descKey: "widgets.limits.description" },
 ];
@@ -680,6 +705,7 @@ export function WidgetsPage() {
           {/* Desktop Widgets gallery */}
           <section aria-label={copy("widgets.gallery.section.title")}>
             <SectionTitle titleKey="widgets.gallery.section.title" />
+            {platform === "windows" ? <WindowsWidgetProjectSettings /> : null}
             <StaggerContainer staggerDelay={0.08} initialDelay={0.04}>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
                 {SECONDARY_WIDGETS.map(({ id, Preview, nameKey, descKey }) => (

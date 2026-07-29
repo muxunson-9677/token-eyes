@@ -921,8 +921,8 @@ export function UsageTrendChartCard({
       series={series}
       loading={loading}
       error={error}
-      from={from}
-      to={to}
+      from={trend?.from || from}
+      to={trend?.to || to}
       bucket={bucket}
       className={className}
       onRetry={handleRetry}

@@ -102,12 +102,12 @@ begin
      or jsonb_typeof(p_payload -> 'captured_at') <> 'string'
      or (p_payload ->> 'captured_at')::timestamptz <> p_captured_at
      or jsonb_typeof(p_payload -> 'periods') <> 'object'
-     or not ((p_payload -> 'periods') ?& array['today', 'week', 'month', 'total'])
-     or (p_payload -> 'periods') - array['today', 'week', 'month', 'total'] <> '{}'::jsonb then
+     or not ((p_payload -> 'periods') ?& array['today', 'week', '30d', 'month', 'total'])
+     or (p_payload -> 'periods') - array['today', 'week', '30d', 'month', 'total'] <> '{}'::jsonb then
     raise exception 'invalid compact payload shape' using errcode = '22023';
   end if;
 
-  foreach v_period in array array['today', 'week', 'month', 'total']
+  foreach v_period in array array['today', 'week', '30d', 'month', 'total']
   loop
     v_period_token_total := 0;
     v_rows := p_payload -> 'periods' -> v_period;
