@@ -48,13 +48,38 @@ test("corrupt state is quarantined and replaced by an empty state", () => {
       now: () => Date.parse("2026-07-20T08:00:00.000Z"),
     });
     const state = store.load();
-    assert.equal(state.version, 1);
+    assert.equal(state.version, 2);
     assert.deepEqual(state.events, []);
     assert.equal(fs.existsSync(statePath), false);
     assert.equal(
       fs.readdirSync(root).some((name) => name.includes(".corrupt.2026-07-20T08-00-00-000Z")),
       true,
     );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("version one state migrates recovered resets without making them alert eligible", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-reset-migrate-"));
+  try {
+    const statePath = resolveCodexResetMonitorStatePath(root);
+    fs.writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      events: [{
+        id: "legacy-restore",
+        type: "unexpected_quota_restore",
+        window: "rolling_weekly",
+        createdAt: "2026-07-20T08:00:00.000Z",
+        resetAt: "2026-07-27T08:00:00.000Z",
+      }],
+      acknowledgedEventIds: [],
+    }));
+    const state = createCodexResetMonitorStore({ trackerDataDir: root }).load();
+    assert.equal(state.version, 2);
+    assert.equal(state.events[0].type, "manual_reset");
+    assert.equal(state.events[0].alertEligible, false);
+    assert.deepEqual(state.events[0].legacyIds, ["legacy-restore"]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -2,6 +2,7 @@
 
 use crate::commands;
 use crate::window_control::{restore_main_window, APP_DISPLAY_NAME};
+use crate::widget_window;
 use serde::Deserialize;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -105,6 +106,7 @@ fn supported_latest_type(latest_type: Option<&str>) -> Option<&str> {
         Some(
             value @ ("reset_upcoming"
             | "reset_completed"
+            | "manual_reset"
             | "unexpected_quota_restore"
             | "banked_reset_available"
             | "official_reset_announcement"),
@@ -141,7 +143,14 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let show = MenuItem::with_id(app, "show", "打开主窗口", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&quota_status, &quota_five_hour, &quota_seven_day, &quota_month, &refresh_quota, &codex_status, &show, &quit])?;
+    let widget = MenuItem::with_id(
+        app,
+        "toggle-desktop-widget",
+        "\u{663e}\u{793a}/\u{9690}\u{85cf}\u{684c}\u{9762}\u{5c0f}\u{7ec4}\u{4ef6}",
+        true,
+        None::<&str>,
+    )?;
+    let menu = Menu::with_items(app, &[&quota_status, &quota_five_hour, &quota_seven_day, &quota_month, &refresh_quota, &codex_status, &show, &widget, &quit])?;
     app.manage(CodexTrayState {
         status_item: codex_status,
     });
@@ -158,6 +167,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => restore_main_window(app),
+            "toggle-desktop-widget" => widget_window::toggle_desktop_widget(app),
             "refresh-quota-status" => refresh_compact_quota_status(app),
             "quit" => {
                 app.exit(0);

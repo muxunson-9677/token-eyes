@@ -1,6 +1,6 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -106,5 +106,22 @@ describe("Codex reset banner", () => {
   it("renders nothing without an unread event", () => {
     const { container } = renderBanner();
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("uses the green reset treatment and ignores non-completed notices", async () => {
+    resetContext.value.events = [resetEvent()];
+    const { container, rerender } = renderBanner();
+    expect(container.querySelector("[role='status']")).toHaveClass("bg-emerald-50");
+
+    resetContext.value.events = [{
+      ...resetEvent(),
+      type: "reset_upcoming",
+    }];
+    rerender(
+      <MemoryRouter>
+        <CodexResetBanner />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 });

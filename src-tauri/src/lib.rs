@@ -13,6 +13,7 @@ mod trae_session;
 mod tray;
 mod window_control;
 mod window_prefs;
+mod widget_window;
 mod xiaomi_mimo_session;
 
 use std::sync::Mutex;
@@ -61,11 +62,17 @@ pub fn run() {
         .manage(Mutex::new(minimax_session::MiniMaxSessionState::default()))
         .manage(Mutex::new(trae_session::TraeSessionState::default()))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::pick_directory,
             commands::local_server_status,
             tray::set_codex_reset_tray_status,
+            widget_window::show_desktop_widget,
+            widget_window::hide_desktop_widget,
+            widget_window::get_desktop_widget_prefs,
+            widget_window::set_desktop_widget_prefs,
+            widget_window::set_desktop_widget_always_on_top,
             window_prefs::get_window_prefs,
             window_prefs::set_minimize_to_tray_on_close,
             window_prefs::set_launch_on_startup,
@@ -111,6 +118,8 @@ pub fn run() {
                 }
             }
 
+            widget_window::restore_if_visible(app.handle());
+
             // Non-blocking: show the WebView shell immediately; bundled backend
             // startup (port probe + node spawn + readiness wait) runs in a
             // background thread. The dashboard resolves the API URL via
@@ -126,17 +135,33 @@ pub fn run() {
             });
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let prefs = window_prefs::load(window.app_handle());
-                if window_control::should_minimize_to_tray(
-                    window.label(),
-                    prefs.minimize_to_tray_on_close,
-                ) {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                if widget_window::is_widget_window(window.label()) {
                     api.prevent_close();
-                    let _ = window.hide();
+                    let _ = widget_window::hide_desktop_widget(window.app_handle().clone());
+                } else {
+                    let prefs = window_prefs::load(window.app_handle());
+                    if window_control::should_minimize_to_tray(
+                        window.label(),
+                        prefs.minimize_to_tray_on_close,
+                    ) {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
             }
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+                if widget_window::is_widget_window(window.label()) =>
+            {
+                if let Some(widget) = window
+                    .app_handle()
+                    .get_webview_window(widget_window::WIDGET_LABEL)
+                {
+                    widget_window::persist_geometry(&widget);
+                }
+            }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

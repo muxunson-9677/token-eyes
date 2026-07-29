@@ -28,18 +28,27 @@ import { ResetHistoryPage } from "./ResetHistoryPage";
 
 function resetEvent(
   id: string,
-  type: "reset_completed" | "unexpected_quota_restore",
+  type: "reset_completed" | "manual_reset" | "unexpected_quota_restore",
   occurredAt: Date,
-) {
+  before = 21,
+  after = 0,
+): CodexResetHistoryEvent {
   return {
     id,
     type,
-    window: "rolling_5_hour" as const,
+    agent: "codex",
+    account_key: "account-a",
+    window: "rolling_5_hour",
     created_at: occurredAt.toISOString(),
     reset_at: occurredAt.toISOString(),
     occurred_at: occurredAt.toISOString(),
+    observed_at: occurredAt.toISOString(),
+    previous_used_percent: before,
+    current_used_percent: after,
+    confidence: "confirmed",
+    alert_eligible: false,
     official_url: "https://chatgpt.com/codex",
-    source: "local_quota" as const,
+    source: "local_quota",
   };
 }
 
@@ -54,26 +63,27 @@ describe("ResetHistoryPage", () => {
     vi.useRealTimers();
   });
 
-  it("prominently shows today's latest reset once and keeps older records in history", () => {
-    const today = new Date(2026, 6, 26, 14, 32);
-    const yesterday = new Date(2026, 6, 25, 9, 8);
+  it("groups every record by local date and shows the required reset metadata", () => {
     resetContext.value.history = [
-      resetEvent("today", "reset_completed", today),
-      resetEvent("past", "unexpected_quota_restore", yesterday),
+      resetEvent("today", "reset_completed", new Date(2026, 6, 26, 14, 32)),
+      resetEvent("past", "manual_reset", new Date(2026, 6, 25, 9, 8), 64, 3),
     ];
 
     render(<ResetHistoryPage />);
 
-    const todayRegion = screen.getByTestId("reset-today");
-    expect(todayRegion).toHaveTextContent("2026年7月26日 14:32");
-    expect(within(todayRegion).getByText("copy:reset_history.completed")).toBeInTheDocument();
-
     const historyRegion = screen.getByTestId("reset-history-list");
+    expect(screen.getAllByTestId("reset-history-group")).toHaveLength(2);
+    expect(within(historyRegion).getAllByTestId("reset-history-item")).toHaveLength(2);
+    expect(historyRegion).toHaveTextContent("Codex");
+    expect(historyRegion).toHaveTextContent("account-a");
+    expect(historyRegion).toHaveTextContent("5h");
+    expect(historyRegion).toHaveTextContent("64% → 3%");
+    expect(historyRegion).toHaveTextContent("copy:reset_history.manual");
+    expect(historyRegion).toHaveTextContent("2026年7月26日 14:32");
     expect(historyRegion).toHaveTextContent("2026年7月25日 09:08");
-    expect(historyRegion).not.toHaveTextContent("2026年7月26日 14:32");
   });
 
-  it("leaves today's reminder content empty and shows up to three past timestamps", () => {
+  it("shows all retained records in descending occurrence order instead of capping at three", () => {
     resetContext.value.history = Array.from({ length: 5 }, (_, index) =>
       resetEvent(
         `past-${index}`,
@@ -83,8 +93,9 @@ describe("ResetHistoryPage", () => {
 
     render(<ResetHistoryPage />);
 
-    expect(screen.getByTestId("reset-today")).toBeEmptyDOMElement();
-    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(3);
-    expect(screen.queryByText(/今天|昨天|本周/u)).not.toBeInTheDocument();
+    const items = screen.getAllByTestId("reset-history-item");
+    expect(items).toHaveLength(5);
+    expect(items[0]).toHaveTextContent("2026年7月25日 08:00");
+    expect(items[4]).toHaveTextContent("2026年7月21日 08:04");
   });
 });

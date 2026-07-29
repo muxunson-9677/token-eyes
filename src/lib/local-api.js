@@ -35,6 +35,16 @@ const {
 const {
   createCodexResetMonitorService,
 } = require("./codex-reset-monitor-service");
+const {
+  collectCodexResetSnapshots,
+} = require("./codex-reset-rollout-reader");
+const {
+  collectCodexLifecycleSessions,
+} = require("./codex-lifecycle-reader");
+const {
+  buildWidgetViewModel,
+  flattenUsageLimitsPayload,
+} = require("./widget-view-model");
 const { getCodexUsageLimits } = require("./usage-limits");
 
 const SYNC_TIMEOUT_MS = 120_000;
@@ -58,6 +68,7 @@ const LOCAL_API_CAPABILITIES = Object.freeze([
   "data_directory_detection",
   "provider_api_balance",
   "codex_reset_events",
+  "desktop_widget_view_model",
   "request_diagnostics_v2",
   "observability_export_v2",
   "tray_compact_v2",
@@ -1815,11 +1826,18 @@ function json(res, data, status) {
 const CODEX_RESET_EVENT_TYPES = new Set([
   "reset_upcoming",
   "reset_completed",
+  "manual_reset",
   "unexpected_quota_restore",
   "banked_reset_available",
   "official_reset_announcement",
 ]);
 const CODEX_RESET_WINDOWS = new Set(["rolling_5_hour", "rolling_weekly"]);
+const CODEX_RESET_SOURCES = new Set([
+  "local_quota",
+  "live_usage",
+  "codex_rollout",
+  "signed_feed",
+]);
 const CODEX_RESET_OFFICIAL_HOSTS = new Set([
   "help.openai.com",
   "openai.com",
@@ -1890,6 +1908,7 @@ function sanitizeCodexResetStatus(status) {
     feed_enabled: status?.feed_enabled === true,
     feed_last_checked_at: safeIsoString(status?.feed_last_checked_at),
     feed_error_code: errorCode(status?.feed_error_code),
+    backfill_error_code: errorCode(status?.backfill_error_code),
   };
 }
 
@@ -1899,14 +1918,31 @@ function sanitizeCodexResetEvent(event) {
   const createdAt = safeIsoString(event?.createdAt);
   const officialUrl = safeCodexResetUrl(event?.officialUrl);
   if (!id || !type || !createdAt || !officialUrl) return null;
+  const percent = (value) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 && numeric <= 100
+      ? Math.round(numeric)
+      : null;
+  };
+  const accountKey = (
+    typeof event.accountKey === "string"
+    && /^[a-z0-9_-]{1,32}$/u.test(event.accountKey)
+  ) ? event.accountKey : "default";
   const dto = {
     id,
     type,
+    agent: event.agent === "codex" ? "codex" : "codex",
+    account_key: accountKey,
     window: CODEX_RESET_WINDOWS.has(event.window) ? event.window : null,
     created_at: createdAt,
     reset_at: safeIsoString(event.resetAt),
     official_url: officialUrl,
-    source: event.source === "signed_feed" ? "signed_feed" : "local_quota",
+    source: CODEX_RESET_SOURCES.has(event.source) ? event.source : "local_quota",
+    observed_at: safeIsoString(event.observedAt || event.createdAt),
+    previous_used_percent: percent(event.previousUsedPercent),
+    current_used_percent: percent(event.currentUsedPercent),
+    confidence: event.confidence === "recovered" ? "recovered" : "confirmed",
+    alert_eligible: event.alertEligible === true,
   };
   const occurredAt = safeIsoString(event.occurredAt);
   if (occurredAt) dto.occurred_at = occurredAt;
@@ -2038,6 +2074,7 @@ function createLocalApiHandler({
   providerApiTestMode = false,
   providerApiTimeoutMs,
   usageLimitsProvider,
+  codexLifecycleProvider,
   limitAccountsProvider,
   tokenOnlyDirectoryStatesProvider,
   now: nowProvider = () => new Date(),
@@ -2141,6 +2178,22 @@ function createLocalApiHandler({
       },
       loadState: codexResetMonitorStore.load,
       saveState: codexResetMonitorStore.save,
+      collectCodexResetSnapshots,
+      getCodexHomes: () => {
+        const dataDirectoryPaths = resolveDataDirectoryPaths({
+          config: readTrackerConfigAt(trackerDataDir),
+          env: process.env,
+          home: os.homedir(),
+          platform: process.platform,
+        });
+        return [...new Set(
+          (dataDirectoryPaths.codexHomes?.length
+            ? dataDirectoryPaths.codexHomes
+            : [dataDirectoryPaths.codexHome])
+            .filter(Boolean)
+            .map((value) => path.resolve(value)),
+        )];
+      },
        enabled: process.env.TOKEN_EYES_CODEX_RESET_MONITOR_ENABLED !== "0",
        feedEnabled: codexResetFeedEnabled,
       feedPublicKey: codexResetFeedEnabled
@@ -4909,10 +4962,76 @@ function createLocalApiHandler({
 
     if (prepareUsageAggregateResponseCache(req, res, url)) return true;
 
+    if (p === "/functions/tokentracker-desktop-widget") {
+      if (!hasAllowedLoopbackOrigin(req?.headers || {})) {
+        writeCodexResetResponse(res, { ok: false, error: "Forbidden" }, 403);
+        return true;
+      }
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        writeCodexResetResponse(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      try {
+        const loadUsageLimits = typeof usageLimitsProvider === "function"
+          ? usageLimitsProvider
+          : require("./usage-limits").getUsageLimits;
+        const dataDirectoryPaths = resolveDataDirectoryPaths({
+          config: readTrackerConfigAt(trackerDataDir),
+          env: process.env,
+          home: os.homedir(),
+          platform: process.platform,
+        });
+        const codexHomes = [...new Set(
+          (dataDirectoryPaths.codexHomes?.length
+            ? dataDirectoryPaths.codexHomes
+            : [dataDirectoryPaths.codexHome])
+            .filter(Boolean)
+            .map((value) => path.resolve(value)),
+        )];
+        const [usageLimits, sessions] = await Promise.all([
+          loadUsageLimits({
+            home: os.homedir(),
+            env: process.env,
+            platform: process.platform,
+          }),
+          typeof codexLifecycleProvider === "function"
+            ? codexLifecycleProvider({ homes: codexHomes, nowMs: nowProvider().getTime() })
+            : collectCodexLifecycleSessions({
+              homes: codexHomes,
+              nowMs: nowProvider().getTime(),
+            }),
+        ]);
+        const usage = aggregateByModel(readQueueData(qp), {
+          pricingOptions: getPricingOptions(),
+        }).map((model) => ({
+          agent: model.source,
+          model: model.model,
+          tokens: model.tokens,
+          costUsd: model.cost_usd,
+        }));
+        const viewModel = buildWidgetViewModel({
+          agent: url.searchParams.get("agent") || "all",
+          usage,
+          sessions,
+          limits: flattenUsageLimitsPayload(usageLimits),
+          pendingResets: codexResetMonitorService.listUnread("widget"),
+        });
+        writeCodexResetResponse(res, viewModel);
+      } catch (error) {
+        writeCodexResetResponse(
+          res,
+          { ok: false, error: "widget_view_model_unavailable" },
+          500,
+        );
+      }
+      return true;
+    }
+
     if (
       p === "/functions/tokentracker-codex-reset-events"
       || p === "/functions/tokentracker-codex-reset-events/ack"
       || p === "/functions/tokentracker-codex-reset-events/check"
+      || p === "/functions/tokentracker-codex-reset-events/delivered"
     ) {
       if (!hasAllowedLoopbackOrigin(req?.headers || {})) {
         writeCodexResetResponse(res, { ok: false, error: "Forbidden" }, 403);
@@ -4923,7 +5042,20 @@ function createLocalApiHandler({
         ok: true,
         status: sanitizeCodexResetStatus(codexResetMonitorService.getStatus()),
         events: codexResetMonitorService
-          .listUnread()
+          .listUnread("banner")
+          .map(sanitizeCodexResetEvent)
+          .filter(Boolean),
+        tray_events: codexResetMonitorService
+          .listUnread("tray")
+          .map(sanitizeCodexResetEvent)
+          .filter(Boolean),
+        widget_events: codexResetMonitorService
+          .listUnread("widget")
+          .map(sanitizeCodexResetEvent)
+          .filter(Boolean),
+        notification_events: (
+          codexResetMonitorService.listNotificationPending?.() || []
+        )
           .map(sanitizeCodexResetEvent)
           .filter(Boolean),
         history: codexResetMonitorService
@@ -4960,7 +5092,25 @@ function createLocalApiHandler({
           writeCodexResetResponse(res, { ok: false, error: "Invalid event_id" }, 400);
           return true;
         }
-        codexResetMonitorService.acknowledge(eventId);
+        const channels = Array.isArray(body?.channels)
+          ? [...new Set(body.channels.filter((channel) => (
+            channel === "banner" || channel === "tray" || channel === "widget"
+          )))]
+          : [];
+        codexResetMonitorService.acknowledge(
+          eventId,
+          channels.length > 0 ? { channels } : undefined,
+        );
+      } else if (p.endsWith("/delivered")) {
+        const eventId = boundedString(body?.event_id, 128);
+        const channel = body?.channel === "windows_notification"
+          ? body.channel
+          : null;
+        if (!eventId || !channel || !/^[a-z0-9:._-]+$/iu.test(eventId)) {
+          writeCodexResetResponse(res, { ok: false, error: "Invalid delivery" }, 400);
+          return true;
+        }
+        codexResetMonitorService.markDelivered(eventId, channel);
       } else {
         await codexResetMonitorService.check({
           reason: "manual",

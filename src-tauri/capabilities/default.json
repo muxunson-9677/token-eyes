@@ -3,11 +3,13 @@
   "identifier": "default",
   "description": "enables the default permissions",
   "windows": [
-    "main"
+    "main",
+    "desktop-widget"
   ],
   "permissions": [
     "core:default",
     "dialog:default",
-    "opener:default"
+    "opener:default",
+    "notification:default"
   ]
 }

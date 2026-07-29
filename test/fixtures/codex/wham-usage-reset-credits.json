@@ -1,0 +1,16 @@
+{
+  "rate_limit": {
+    "primary_window": {
+      "used_percent": 21,
+      "limit_window_seconds": 604800,
+      "reset_at": 1785814743
+    }
+  },
+  "rate_limit_reset_credits": {
+    "available_count": 2,
+    "applicable_available_count": 1
+  },
+  "additional_rate_limits": [],
+  "account_id": "must-not-be-returned",
+  "access_token": "must-not-be-returned"
+}

@@ -1,0 +1,265 @@
+"use strict";
+
+const crypto = require("node:crypto");
+
+const WIDGET_AGENTS = Object.freeze(["all", "claude", "codex", "cursor", "hermes"]);
+const STATUS_ORDER = Object.freeze({ red: 0, yellow: 1, green: 2, unknown: 3 });
+const WINDOW_ORDER = Object.freeze({ "5h": 0, "7d": 1, monthly: 2 });
+
+function agentKey(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "every-code") return "codex";
+  return normalized;
+}
+
+function safeId(value, prefix) {
+  const text = String(value || "").trim();
+  if (/^[a-z0-9][a-z0-9:._-]{0,95}$/iu.test(text)) return text;
+  return `${prefix}-${crypto.createHash("sha256").update(text).digest("hex").slice(0, 12)}`;
+}
+
+function safeLabel(value, fallback) {
+  const parts = String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/gu, "")
+    .split(/[\\/]/u)
+    .filter(Boolean);
+  const label = String(parts.at(-1) || fallback || "").trim();
+  return label.slice(0, 80) || String(fallback || "").slice(0, 80);
+}
+
+function finiteNonNegative(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
+}
+
+function usedPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  return Math.round(numeric);
+}
+
+function safeIso(value) {
+  const time = Date.parse(String(value || ""));
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
+function statusKey(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["approval", "waiting_approval", "error", "interrupted", "aborted"].includes(normalized)) {
+    return "red";
+  }
+  if (["running", "task_started"].includes(normalized)) return "yellow";
+  if (["completed", "task_complete"].includes(normalized)) return "green";
+  return "unknown";
+}
+
+function buildProjectStatus(sessions, selectedAgent) {
+  const projects = new Map();
+  for (const item of Array.isArray(sessions) ? sessions : []) {
+    const itemAgent = agentKey(item?.agent);
+    if (selectedAgent !== "all" && itemAgent !== selectedAgent) continue;
+    const projectId = safeId(item?.projectId, "project");
+    if (!projects.has(projectId)) {
+      projects.set(projectId, {
+        id: projectId,
+        label: safeLabel(item?.projectLabel, projectId),
+        red: 0,
+        yellow: 0,
+        green: 0,
+        unknown: 0,
+        sessions: [],
+      });
+    }
+    const project = projects.get(projectId);
+    const status = statusKey(item?.status);
+    project[status] += 1;
+    const sessionId = safeId(item?.sessionId, "session");
+    project.sessions.push({
+      id: sessionId,
+      label: safeLabel(item?.sessionLabel, sessionId),
+      status,
+      updatedAt: safeIso(item?.updatedAt),
+    });
+  }
+
+  const output = {
+    red: 0,
+    yellow: 0,
+    green: 0,
+    unknown: 0,
+    projects: Array.from(projects.values()),
+  };
+  for (const project of output.projects) {
+    output.red += project.red;
+    output.yellow += project.yellow;
+    output.green += project.green;
+    output.unknown += project.unknown;
+    project.sessions.sort((left, right) => (
+      STATUS_ORDER[left.status] - STATUS_ORDER[right.status]
+      || Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0)
+      || left.id.localeCompare(right.id)
+    ));
+  }
+  output.projects.sort((left, right) => (
+    Number(right.red > 0) - Number(left.red > 0)
+    || Number(right.yellow > 0) - Number(left.yellow > 0)
+    || Number(right.green > 0) - Number(left.green > 0)
+    || left.label.localeCompare(right.label)
+  ));
+  return output;
+}
+
+function buildLimits(limits, selectedAgent) {
+  return (Array.isArray(limits) ? limits : [])
+    .filter((item) => (
+      selectedAgent === "all" || agentKey(item?.agent) === selectedAgent
+    ))
+    .map((item) => ({
+      id: safeId(item?.id, "limit"),
+      agent: agentKey(item?.agent) || "unknown",
+      provider: safeLabel(item?.provider, "Unknown"),
+      accountLabel: safeLabel(item?.accountLabel, "Default"),
+      window: Object.hasOwn(WINDOW_ORDER, item?.window) ? item.window : "other",
+      usedPercent: usedPercent(item?.usedPercent),
+      resetAt: safeIso(item?.resetAt),
+      error: typeof item?.error === "string" ? safeLabel(item.error, "").slice(0, 120) : null,
+    }))
+    .sort((left, right) => (
+      (WINDOW_ORDER[left.window] ?? 99) - (WINDOW_ORDER[right.window] ?? 99)
+      || left.provider.localeCompare(right.provider)
+      || left.accountLabel.localeCompare(right.accountLabel)
+    ))
+    .slice(0, 24);
+}
+
+function buildTotals(usage, selectedAgent) {
+  const models = new Map();
+  for (const item of Array.isArray(usage) ? usage : []) {
+    if (selectedAgent !== "all" && agentKey(item?.agent) !== selectedAgent) continue;
+    const name = safeLabel(item?.model, "unknown");
+    const current = models.get(name) || { name, tokens: 0, costUsd: 0 };
+    current.tokens += finiteNonNegative(item?.tokens);
+    current.costUsd += finiteNonNegative(item?.costUsd);
+    models.set(name, current);
+  }
+  const entries = Array.from(models.values())
+    .sort((left, right) => right.tokens - left.tokens || left.name.localeCompare(right.name));
+  const tokens = entries.reduce((total, model) => total + model.tokens, 0);
+  const costUsd = entries.reduce((total, model) => total + model.costUsd, 0);
+  return {
+    tokens: Math.round(tokens),
+    costUsd: Number(costUsd.toFixed(6)),
+    models: entries.slice(0, 24).map((model) => ({
+      name: model.name,
+      tokens: Math.round(model.tokens),
+      share: tokens > 0 ? Number(((model.tokens / tokens) * 100).toFixed(1)) : 0,
+      costUsd: Number(model.costUsd.toFixed(6)),
+    })),
+  };
+}
+
+function buildPendingReset(events) {
+  const event = (Array.isArray(events) ? events : []).find((candidate) => (
+    candidate?.alertEligible === true
+    && [
+      "reset_completed",
+      "manual_reset",
+      "unexpected_quota_restore",
+    ].includes(candidate.type)
+  ));
+  if (!event) return null;
+  const occurredAt = safeIso(event.occurred_at || event.occurredAt);
+  const id = safeId(event.id, "reset");
+  if (!occurredAt) return null;
+  return {
+    id,
+    agent: agentKey(event.agent) || "codex",
+    window: event.window === "rolling_weekly" ? "rolling_weekly" : "rolling_5_hour",
+    occurredAt,
+    previousUsedPercent: usedPercent(
+      event.previous_used_percent ?? event.previousUsedPercent,
+    ),
+    currentUsedPercent: usedPercent(
+      event.current_used_percent ?? event.currentUsedPercent,
+    ),
+  };
+}
+
+function limitResetIso(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const milliseconds = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+  return new Date(milliseconds).toISOString();
+}
+
+function flattenUsageLimitsPayload(payload) {
+  const providerNames = {
+    claude: "Claude",
+    codex: "Codex",
+    cursor: "Cursor",
+    hermes: "Hermes",
+  };
+  const output = [];
+  for (const [agent, provider] of Object.entries(providerNames)) {
+    const data = payload?.[agent];
+    if (!data || data.configured !== true) continue;
+    const windows = [
+      ["primary_window", data.primary_window],
+      ["secondary_window", data.secondary_window],
+    ];
+    for (const [field, window] of windows) {
+      if (!window || typeof window !== "object") continue;
+      const seconds = Number(window.limit_window_seconds);
+      const windowName = seconds === 18_000
+        ? "5h"
+        : seconds === 604_800 ? "7d" : field === "primary_window" ? "5h" : "7d";
+      output.push({
+        id: `${agent}:default:${windowName}`,
+        agent,
+        provider,
+        accountLabel: safeLabel(data.account_label || data.plan_label, provider),
+        window: windowName,
+        usedPercent: usedPercent(window.used_percent),
+        resetAt: limitResetIso(window.reset_at),
+        error: null,
+      });
+    }
+    if (output.every((item) => item.agent !== agent) && typeof data.error === "string") {
+      output.push({
+        id: `${agent}:default:error`,
+        agent,
+        provider,
+        accountLabel: safeLabel(data.account_label || data.plan_label, provider),
+        window: "other",
+        usedPercent: null,
+        resetAt: null,
+        error: safeLabel(data.error, "Refresh failed").slice(0, 120),
+      });
+    }
+  }
+  return output;
+}
+
+function buildWidgetViewModel({
+  agent = "all",
+  usage = [],
+  sessions = [],
+  limits = [],
+  pendingResets = [],
+} = {}) {
+  const selectedAgent = WIDGET_AGENTS.includes(agentKey(agent)) ? agentKey(agent) : "all";
+  return {
+    agents: [...WIDGET_AGENTS],
+    selectedAgent,
+    projectStatus: buildProjectStatus(sessions, selectedAgent),
+    limits: buildLimits(limits, selectedAgent),
+    totals: buildTotals(usage, selectedAgent),
+    pendingReset: buildPendingReset(pendingResets),
+  };
+}
+
+module.exports = {
+  WIDGET_AGENTS,
+  buildWidgetViewModel,
+  flattenUsageLimitsPayload,
+};

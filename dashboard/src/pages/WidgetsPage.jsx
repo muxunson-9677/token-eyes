@@ -3,7 +3,7 @@ import { ArrowUpRight, Download, Monitor } from "lucide-react";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
 import { Select } from "../ui/components";
-import { isNativeEmbed, nativeAction } from "../lib/native-bridge.js";
+import { isNativeEmbed, isTauriApp, nativeAction } from "../lib/native-bridge.js";
 import { useNativeSettings } from "../hooks/use-native-settings.js";
 import {
   FALLBACK_MENU_BAR_ITEMS,
@@ -502,6 +502,10 @@ function useClientPlatform() {
       setPlatform("native");
       return;
     }
+    if (isTauriApp()) {
+      setPlatform("windows");
+      return;
+    }
     const ua = (navigator.userAgent || "").toLowerCase();
     const isMac = /mac/.test(ua) && !/iphone|ipad/.test(ua);
     setPlatform(isMac ? "mac-web" : "other");
@@ -509,8 +513,60 @@ function useClientPlatform() {
   return platform;
 }
 
-function HeaderCta() {
-  const platform = useClientPlatform();
+function getTauriInvoke() {
+  if (typeof window === "undefined") return null;
+  return window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || null;
+}
+
+function WindowsWidgetToggle() {
+  const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    const invoke = getTauriInvoke();
+    if (!invoke) {
+      setBusy(false);
+      return;
+    }
+    let mounted = true;
+    void invoke("get_desktop_widget_prefs")
+      .then((prefs) => {
+        if (mounted) setVisible(prefs?.visible === true);
+      })
+      .finally(() => {
+        if (mounted) setBusy(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const toggle = async () => {
+    const invoke = getTauriInvoke();
+    if (!invoke || busy) return;
+    setBusy(true);
+    try {
+      await invoke(visible ? "hide_desktop_widget" : "show_desktop_widget");
+      setVisible(!visible);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => void toggle()}
+      className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white transition-colors hover:bg-oai-gray-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+    >
+      <Monitor className="h-4 w-4" aria-hidden="true" />
+      {copy(visible ? "widgets.windows.hide" : "widgets.windows.show")}
+    </button>
+  );
+}
+
+function HeaderCta({ platform }) {
 
   // Reserve space so the layout doesn't jump once detection resolves.
   if (platform === "loading") {
@@ -528,6 +584,10 @@ function HeaderCta() {
         <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
       </button>
     );
+  }
+
+  if (platform === "windows") {
+    return <WindowsWidgetToggle />;
   }
 
   if (platform === "mac-web") {
@@ -589,6 +649,7 @@ function SectionTitle({ titleKey }) {
 }
 
 export function WidgetsPage() {
+  const platform = useClientPlatform();
   return (
     <div className="flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
@@ -601,18 +662,20 @@ export function WidgetsPage() {
                 {copy("widgets.page.title")}
               </h1>
               <div className="shrink-0">
-                <HeaderCta />
+                <HeaderCta platform={platform} />
               </div>
             </header>
           </FadeIn>
 
           {/* Menu Bar — own section, dedicated card */}
-          <FadeIn y={12} delay={0.06}>
-            <section aria-label={copy("widgets.menubar.section.title")} className="mb-12 sm:mb-14">
-              <SectionTitle titleKey="widgets.menubar.section.title" />
-              <MenuBarDisplayCard />
-            </section>
-          </FadeIn>
+          {platform !== "windows" ? (
+            <FadeIn y={12} delay={0.06}>
+              <section aria-label={copy("widgets.menubar.section.title")} className="mb-12 sm:mb-14">
+                <SectionTitle titleKey="widgets.menubar.section.title" />
+                <MenuBarDisplayCard />
+              </section>
+            </FadeIn>
+          ) : null}
 
           {/* Desktop Widgets gallery */}
           <section aria-label={copy("widgets.gallery.section.title")}>

@@ -4,17 +4,56 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const STATE_FILE = "codex-reset-monitor-state.json";
+const STATE_VERSION = 2;
 
 function emptyState() {
   return {
-    version: 1,
+    version: STATE_VERSION,
     lastCheckedAt: null,
     lastSuccessfulAt: null,
     windows: {},
+    resetCredits: null,
     restoreCandidates: {},
     events: [],
     acknowledgedEventIds: [],
+    rolloutCursor: { files: {} },
     feed: null,
+  };
+}
+
+function migrateState(value) {
+  if (value?.version === STATE_VERSION) return value;
+  const base = emptyState();
+  const events = Array.isArray(value?.events)
+    ? value.events.map((event) => {
+      if (event?.type !== "unexpected_quota_restore") return event;
+      return {
+        ...event,
+        type: "manual_reset",
+        agent: "codex",
+        accountKey: "default",
+        occurredAt: event.createdAt || null,
+        observedAt: event.createdAt || null,
+        source: "live_usage",
+        confidence: "recovered",
+        alertEligible: false,
+        deliveredChannels: [],
+        legacyIds: [event.id],
+      };
+    })
+    : [];
+  return {
+    ...base,
+    ...value,
+    version: STATE_VERSION,
+    resetCredits: value?.resetCredits || null,
+    events,
+    acknowledgedEventIds: Array.isArray(value?.acknowledgedEventIds)
+      ? value.acknowledgedEventIds
+      : [],
+    rolloutCursor: value?.rolloutCursor?.files
+      ? value.rolloutCursor
+      : { files: {} },
   };
 }
 
@@ -46,7 +85,7 @@ function createCodexResetMonitorStore({
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new TypeError("invalid monitor state");
       }
-      return parsed;
+      return migrateState(parsed);
     } catch (error) {
       if (error?.code === "ENOENT") return emptyState();
       ensureDirectory();

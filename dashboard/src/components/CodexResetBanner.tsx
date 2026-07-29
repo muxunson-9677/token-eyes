@@ -50,7 +50,7 @@ function localEventCopy(event: CodexResetEvent) {
           summary: copy("codex_reset.upcoming.rolling_5_hour.summary"),
         };
   }
-  if (event.type === "reset_completed") {
+  if (event.type === "reset_completed" || event.type === "manual_reset") {
     return weekly
       ? {
           title: copy("codex_reset.completed.rolling_weekly.title"),
@@ -94,7 +94,9 @@ function ExternalAction({ href, children }: {
 export function CodexResetBanner() {
   const reduceMotion = useReducedMotion();
   const { events, acknowledge } = useCodexResetEvents();
-  const event = events[0];
+  const event = events.find((candidate) => (
+    candidate.type === "reset_completed" || candidate.type === "manual_reset"
+  )) || events.find((candidate) => candidate.type === "official_reset_announcement");
   const announcement = event?.type === "official_reset_announcement";
   const text = event
     ? announcement
@@ -117,16 +119,16 @@ export function CodexResetBanner() {
           animate={{ opacity: 1, y: 0 }}
           exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
           transition={{ duration: reduceMotion ? 0 : 0.18, ease: "easeOut" }}
-          className="shrink-0 border-b border-amber-300/70 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800/70 dark:bg-amber-950/45 dark:text-amber-50 sm:px-5"
+          className="shrink-0 border-b border-emerald-300/70 bg-emerald-50 px-4 py-3 text-emerald-950 dark:border-emerald-800/70 dark:bg-emerald-950/45 dark:text-emerald-50 sm:px-5"
         >
           <div className="mx-auto flex max-w-6xl items-start gap-3">
             <BellRing
-              className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300"
+              className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300"
               aria-hidden
             />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold leading-5">{text.title}</p>
-              <p className="mt-0.5 text-xs leading-5 text-amber-900/75 dark:text-amber-100/75">
+              <p className="mt-0.5 text-xs leading-5 text-emerald-900/75 dark:text-emerald-100/75">
                 {text.summary}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -149,7 +151,7 @@ export function CodexResetBanner() {
             <button
               type="button"
               onClick={() => void acknowledge(event.id)}
-              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-amber-900/70 transition-colors hover:bg-amber-200/60 hover:text-amber-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 dark:text-amber-100/70 dark:hover:bg-amber-800/50 dark:hover:text-amber-50"
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-emerald-900/70 transition-colors hover:bg-emerald-200/60 hover:text-emerald-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 dark:text-emerald-100/70 dark:hover:bg-emerald-800/50 dark:hover:text-emerald-50"
             >
               {copy("codex_reset.action.acknowledge")}
             </button>

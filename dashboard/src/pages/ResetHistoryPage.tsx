@@ -5,11 +5,7 @@ import { useCodexResetEvents } from "../hooks/use-codex-reset-events";
 import { copy, getCopyLocale } from "../lib/copy";
 import type { CodexResetHistoryEvent } from "../lib/api";
 
-function isSameLocalDay(left: Date, right: Date) {
-  return left.getFullYear() === right.getFullYear()
-    && left.getMonth() === right.getMonth()
-    && left.getDate() === right.getDate();
-}
+type ResetHistoryGroups = Map<string, CodexResetHistoryEvent[]>;
 
 export function formatResetDateTime(iso: string) {
   const date = new Date(iso);
@@ -24,34 +20,70 @@ export function formatResetDateTime(iso: string) {
   }).format(date);
 }
 
+function localDateKey(iso: string) {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function formatGroupDate(iso: string) {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat(getCopyLocale(), {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(date);
+}
+
 function eventLabel(event: CodexResetHistoryEvent) {
-  return event.type === "unexpected_quota_restore"
-    ? copy("reset_history.restored")
-    : copy("reset_history.completed");
+  if (event.type === "manual_reset") return copy("reset_history.manual");
+  if (event.type === "unexpected_quota_restore") {
+    return copy("reset_history.restored");
+  }
+  return copy("reset_history.completed");
+}
+
+function windowLabel(event: CodexResetHistoryEvent) {
+  return event.window === "rolling_weekly" ? "7d" : "5h";
+}
+
+function usageChange(event: CodexResetHistoryEvent) {
+  if (
+    event.previous_used_percent == null
+    || event.current_used_percent == null
+  ) {
+    return "—";
+  }
+  return `${event.previous_used_percent}% → ${event.current_used_percent}%`;
 }
 
 function ResetRecord({ event }: { event: CodexResetHistoryEvent }) {
   return (
     <div
       data-testid="reset-history-item"
-      className="flex items-center justify-between gap-4 px-4 py-4 sm:px-5"
+      className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5"
     >
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-oai-gray-100 text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
           <RotateCcw className="h-4 w-4" aria-hidden />
         </span>
         <div className="min-w-0">
           <p className="font-medium text-oai-black dark:text-white">
-            {copy("reset_history.codex")}
+            Codex · {event.account_key}
           </p>
           <p className="mt-0.5 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-            {eventLabel(event)}
+            {windowLabel(event)} · {eventLabel(event)} · {usageChange(event)}
           </p>
         </div>
       </div>
       <time
         dateTime={event.occurred_at}
-        className="shrink-0 text-sm tabular-nums text-oai-gray-600 dark:text-oai-gray-300"
+        className="pl-12 text-sm tabular-nums text-oai-gray-600 dark:text-oai-gray-300 sm:pl-0"
       >
         {formatResetDateTime(event.occurred_at)}
       </time>
@@ -61,18 +93,24 @@ function ResetRecord({ event }: { event: CodexResetHistoryEvent }) {
 
 export function ResetHistoryPage() {
   const { history } = useCodexResetEvents();
-  const now = new Date();
-  const { todayEvent, pastEvents } = useMemo(() => {
-    const today = history.find((event) => (
-      isSameLocalDay(new Date(event.occurred_at), now)
-    )) || null;
-    return {
-      todayEvent: today,
-      pastEvents: history
-        .filter((event) => !isSameLocalDay(new Date(event.occurred_at), now))
-        .slice(0, 3),
-    };
-  }, [history, now.getDate(), now.getMonth(), now.getFullYear()]);
+  const groups = useMemo(() => {
+    const sorted = [...history].sort((left, right) => (
+      Date.parse(right.occurred_at) - Date.parse(left.occurred_at)
+    ));
+    const byDate: ResetHistoryGroups = new Map();
+    for (const event of sorted) {
+      const key = localDateKey(event.occurred_at);
+      if (!key) continue;
+      const group = byDate.get(key) || [];
+      group.push(event);
+      byDate.set(key, group);
+    }
+    return Array.from(byDate.entries()).map(([key, events]) => ({
+      key,
+      label: formatGroupDate(events[0].occurred_at),
+      events,
+    }));
+  }, [history]);
 
   return (
     <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
@@ -87,47 +125,27 @@ export function ResetHistoryPage() {
             </p>
           </div>
 
-          <section aria-labelledby="reset-today-title">
-            <h2 id="reset-today-title" className="mb-3 text-base font-semibold">
-              {copy("reset_history.today_title")}
-            </h2>
-            <div data-testid="reset-today">
-              {todayEvent ? (
-                <div className="flex items-center gap-4 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-5 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/10">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-400 text-amber-950">
-                    <RotateCcw className="h-5 w-5" aria-hidden />
-                  </span>
-                  <div>
-                    <p className="font-semibold text-amber-950 dark:text-amber-100">
-                      {eventLabel(todayEvent)}
-                    </p>
-                    <time
-                      dateTime={todayEvent.occurred_at}
-                      className="mt-1 block text-lg font-semibold tabular-nums text-amber-900 dark:text-amber-200"
-                    >
-                      {formatResetDateTime(todayEvent.occurred_at)}
-                    </time>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section aria-labelledby="reset-history-title" className="mt-9">
+          <section aria-labelledby="reset-history-title">
             <div className="mb-3 flex items-center gap-2">
               <History className="h-4 w-4 text-oai-gray-500" aria-hidden />
               <h2 id="reset-history-title" className="text-base font-semibold">
                 {copy("reset_history.history_title")}
               </h2>
             </div>
-            <div
-              data-testid="reset-history-list"
-              className="divide-y divide-oai-gray-200 overflow-hidden rounded-2xl border border-oai-gray-200 bg-white dark:divide-oai-gray-800 dark:border-oai-gray-800 dark:bg-oai-gray-900"
-            >
-              {pastEvents.length > 0 ? (
-                pastEvents.map((event) => <ResetRecord key={event.id} event={event} />)
-              ) : (
-                <p className="px-5 py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
+            <div data-testid="reset-history-list" className="space-y-5">
+              {groups.length > 0 ? groups.map((group) => (
+                <section key={group.key} data-testid="reset-history-group">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+                    {group.label}
+                  </h3>
+                  <div className="divide-y divide-oai-gray-200 overflow-hidden rounded-2xl border border-oai-gray-200 bg-white dark:divide-oai-gray-800 dark:border-oai-gray-800 dark:bg-oai-gray-900">
+                    {group.events.map((event) => (
+                      <ResetRecord key={event.id} event={event} />
+                    ))}
+                  </div>
+                </section>
+              )) : (
+                <p className="rounded-2xl border border-oai-gray-200 bg-white px-5 py-8 text-center text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-oai-gray-400">
                   {copy("reset_history.empty")}
                 </p>
               )}

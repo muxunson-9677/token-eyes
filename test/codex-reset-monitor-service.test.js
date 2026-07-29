@@ -71,7 +71,7 @@ function harness(reader, overrides = {}) {
 
 test("uses the exact startup, success, freshness, and failure schedules", async () => {
   assert.equal(STARTUP_DELAY_MS, 10_000);
-  assert.equal(SUCCESS_INTERVAL_MS, 2 * 60_000);
+  assert.equal(SUCCESS_INTERVAL_MS, 30_000);
   assert.equal(FOCUS_FRESHNESS_MS, 60_000);
   assert.deepEqual(FAILURE_BACKOFF_MS, [2 * 60_000, 10 * 60_000, 30 * 60_000]);
 
@@ -89,6 +89,72 @@ test("uses the exact startup, success, freshness, and failure schedules", async 
   const skipped = await h.service.check({ reason: "focus" });
   assert.equal(skipped.skipped, "fresh");
   assert.equal(reads.length, 1);
+});
+
+test("backfills 30 days of rollout resets without making them notification pending", async () => {
+  const calls = [];
+  const h = harness(async () => validSnapshot(BASE), {
+    getCodexHomes: () => ["C:/private/codex-home"],
+    collectCodexResetSnapshots: async (options) => {
+      calls.push(options);
+      return {
+        snapshots: [
+          {
+            observedAt: new Date(BASE).toISOString(),
+            window: "rolling_weekly",
+            usedPercent: 21,
+            resetAt: new Date(BASE + 6 * 24 * 60 * 60_000).toISOString(),
+            accountKey: null,
+            source: "codex_rollout",
+          },
+          {
+            observedAt: new Date(BASE + 60_000).toISOString(),
+            window: "rolling_weekly",
+            usedPercent: 0,
+            resetAt: new Date(BASE + 7 * 24 * 60 * 60_000 + 60_000).toISOString(),
+            accountKey: null,
+            source: "codex_rollout",
+          },
+        ],
+        cursor: { files: { abcdef0123456789abcdef0123456789: { offset: 42 } } },
+      };
+    },
+  });
+  assert.equal(typeof h.service.backfill, "function");
+  await h.service.backfill();
+  assert.equal(calls[0].sinceMs, BASE - 30 * 24 * 60 * 60_000);
+  assert.equal(h.service.listHistory().length, 1);
+  assert.equal(h.service.listNotificationPending().length, 0);
+  assert.equal(h.getSaved().rolloutCursor.files.abcdef0123456789abcdef0123456789.offset, 42);
+  assert.doesNotMatch(JSON.stringify(h.getSaved().rolloutCursor), /private|codex-home/u);
+});
+
+test("confirmed quota restores remain eligible for native notification", () => {
+  const event = {
+    id: "restore-1",
+    type: "unexpected_quota_restore",
+    window: "rolling_5_hour",
+    createdAt: new Date(BASE).toISOString(),
+    occurredAt: new Date(BASE).toISOString(),
+    resetAt: new Date(BASE + 60 * 60_000).toISOString(),
+    officialUrl: "https://chatgpt.com/codex",
+    source: "live_usage",
+    alertEligible: true,
+    deliveredChannels: [],
+  };
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 2,
+      events: [event],
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: [],
+    }),
+  });
+  assert.deepEqual(
+    h.service.listNotificationPending().map((item) => item.id),
+    ["restore-1"],
+  );
 });
 
 test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", async () => {
@@ -291,7 +357,7 @@ test("valid snapshots enter the state machine and acknowledgement persists", asy
   assert.ok(h.getSaved().acknowledgedEventIds.includes(unread[0].id));
 });
 
-test("service exposes only the latest three actual reset records", () => {
+test("service exposes all actual reset records retained by the 30-day ledger", () => {
   const events = Array.from({ length: 6 }, (_, index) => ({
     id: `completed-${index}`,
     type: "reset_completed",
@@ -319,6 +385,13 @@ test("service exposes only the latest three actual reset records", () => {
 
   assert.deepEqual(
     h.service.listHistory().map((event) => event.id),
-    ["completed-5", "completed-4", "completed-3"],
+    [
+      "completed-5",
+      "completed-4",
+      "completed-3",
+      "completed-2",
+      "completed-1",
+      "completed-0",
+    ],
   );
 });

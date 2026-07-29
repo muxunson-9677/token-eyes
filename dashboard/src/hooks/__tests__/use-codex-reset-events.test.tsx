@@ -6,16 +6,21 @@ const api = vi.hoisted(() => ({
   acknowledgeCodexResetEvent: vi.fn(),
   checkCodexResetEvents: vi.fn(),
   getCodexResetEvents: vi.fn(),
+  markCodexResetEventDelivered: vi.fn(),
+}));
+const notification = vi.hoisted(() => ({
+  showCodexResetNotification: vi.fn(),
 }));
 
 vi.mock("../../lib/api", () => api);
+vi.mock("../../lib/codex-reset-notification", () => notification);
 
 import {
   CodexResetEventsProvider,
   useCodexResetEvents,
 } from "../use-codex-reset-events";
 
-const response = {
+const response: any = {
   ok: true,
   status: {
     enabled: true,
@@ -30,6 +35,7 @@ const response = {
     feed_enabled: true,
     feed_last_checked_at: null,
     feed_error_code: null,
+    backfill_error_code: null,
   },
   events: [{
     id: "reset-1",
@@ -39,6 +45,22 @@ const response = {
     reset_at: "2026-07-20T08:00:00.000Z",
     official_url: "https://chatgpt.com/codex",
     source: "local_quota" as const,
+  }],
+  notification_events: [{
+    id: "reset-1",
+    type: "reset_completed" as const,
+    agent: "codex" as const,
+    account_key: "default",
+    window: "rolling_5_hour" as const,
+    created_at: "2026-07-20T08:00:00.000Z",
+    reset_at: "2026-07-20T08:00:00.000Z",
+    official_url: "https://chatgpt.com/codex",
+    source: "local_quota" as const,
+    observed_at: "2026-07-20T08:00:00.000Z",
+    previous_used_percent: 21,
+    current_used_percent: 0,
+    confidence: "confirmed" as const,
+    alert_eligible: true,
   }],
   history: [{
     id: "reset-1",
@@ -51,6 +73,8 @@ const response = {
     source: "local_quota" as const,
   }],
 };
+response.tray_events = response.events;
+response.widget_events = response.events;
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <CodexResetEventsProvider enabled>{children}</CodexResetEventsProvider>;
@@ -62,6 +86,8 @@ describe("Codex reset events provider", () => {
     api.getCodexResetEvents.mockReset().mockResolvedValue(response);
     api.checkCodexResetEvents.mockReset().mockResolvedValue(response);
     api.acknowledgeCodexResetEvent.mockReset().mockResolvedValue(undefined);
+    api.markCodexResetEventDelivered.mockReset().mockResolvedValue(undefined);
+    notification.showCodexResetNotification.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -97,6 +123,48 @@ describe("Codex reset events provider", () => {
     expect(api.acknowledgeCodexResetEvent).toHaveBeenCalledWith("reset-1");
     expect(result.current.events).toEqual([]);
     expect(result.current.unreadCount).toBe(0);
+  });
+
+  it("acknowledges only widget and tray surfaces without clearing the banner", async () => {
+    const { result } = renderHook(() => useCodexResetEvents(), { wrapper });
+    await act(async () => Promise.resolve());
+    await act(async () => {
+      await result.current.acknowledgeWidget("reset-1");
+    });
+
+    expect(api.acknowledgeCodexResetEvent).toHaveBeenCalledWith(
+      "reset-1",
+      ["widget", "tray"],
+    );
+    expect(result.current.widgetEvents).toEqual([]);
+    expect(result.current.events).toHaveLength(1);
+  });
+
+  it("claims each native notification before showing it and does not repeat it", async () => {
+    renderHook(() => useCodexResetEvents(), { wrapper });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.markCodexResetEventDelivered).toHaveBeenCalledWith(
+      "reset-1",
+      "windows_notification",
+    );
+    expect(notification.showCodexResetNotification).toHaveBeenCalledWith(
+      response.notification_events[0],
+    );
+    expect(api.markCodexResetEventDelivered.mock.invocationCallOrder[0]).toBeLessThan(
+      notification.showCodexResetNotification.mock.invocationCallOrder[0],
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(notification.showCodexResetNotification).toHaveBeenCalledTimes(1);
   });
 
   it("does not contact the local API when disabled for the public website", async () => {

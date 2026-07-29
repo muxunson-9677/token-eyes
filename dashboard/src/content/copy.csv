@@ -1930,3 +1930,40 @@ observability.request.cache.unavailable,ui,SpendPage,RequestUsageLog,cache_unava
 observability.request.pricing.complete,ui,SpendPage,RequestUsageLog,pricing_complete,"完整计价",,active
 observability.request.pricing.partial,ui,SpendPage,RequestUsageLog,pricing_partial,"部分计价",,active
 observability.request.pricing.unpriced,ui,SpendPage,RequestUsageLog,pricing_unpriced,"未计价",,active
+reset_history.manual,ui,ResetHistoryPage,ResetHistoryList,manual_reset,"Manual reset",,active
+widget.expand,ui,DesktopWidgetPage,WidgetToolbar,expand,"Expand details",,active
+widget.collapse,ui,DesktopWidgetPage,WidgetToolbar,collapse,"Collapse details",,active
+widget.agent_menu,ui,DesktopWidgetPage,WidgetToolbar,agent_menu,"Choose agent",,active
+widget.mode_menu,ui,DesktopWidgetPage,WidgetToolbar,mode_menu,"Choose information mode",,active
+widget.appearance,ui,DesktopWidgetPage,WidgetToolbar,appearance,"Appearance",,active
+widget.pin,ui,DesktopWidgetPage,WidgetToolbar,pin,"Keep on top",,active
+widget.unpin,ui,DesktopWidgetPage,WidgetToolbar,unpin,"Stop keeping on top",,active
+widget.mode.projects,ui,DesktopWidgetPage,WidgetModeMenu,projects,"Projects",,active
+widget.mode.limits,ui,DesktopWidgetPage,WidgetModeMenu,limits,"Usage limits",,active
+widget.mode.models,ui,DesktopWidgetPage,WidgetModeMenu,models,"Model usage",,active
+widget.projects.summary,ui,DesktopWidgetPage,ProjectSummary,summary,"Conversation status",,active
+widget.models.tokens,ui,DesktopWidgetPage,ModelSummary,tokens,"Tokens",,active
+widget.models.cost,ui,DesktopWidgetPage,ModelSummary,cost,"Cost",,active
+widget.empty,ui,DesktopWidgetPage,WidgetContent,empty,"No data",,active
+widget.loading,ui,DesktopWidgetPage,WidgetContent,loading,"Loading",,active
+widget.unavailable,ui,DesktopWidgetPage,WidgetContent,unavailable,"Data unavailable",,active
+widget.refresh_failed,ui,DesktopWidgetPage,LimitDetails,refresh_failed,"Refresh failed",,active
+widget.status.red,ui,DesktopWidgetPage,ProjectDetails,status_red,"Needs attention",,active
+widget.status.yellow,ui,DesktopWidgetPage,ProjectDetails,status_yellow,"Running",,active
+widget.status.green,ui,DesktopWidgetPage,ProjectDetails,status_green,"Completed",,active
+widget.status.unknown,ui,DesktopWidgetPage,ProjectDetails,status_unknown,"Unknown",,active
+widget.material.frost,ui,DesktopWidgetPage,AppearancePanel,frost,"Frost",,active
+widget.material.graphite,ui,DesktopWidgetPage,AppearancePanel,graphite,"Graphite",,active
+widget.material.ocean,ui,DesktopWidgetPage,AppearancePanel,ocean,"Ocean",,active
+widget.material.sand,ui,DesktopWidgetPage,AppearancePanel,sand,"Sand",,active
+widget.opacity,ui,DesktopWidgetPage,AppearancePanel,opacity,"Opacity",,active
+widget.reset.title,ui,DesktopWidgetPage,ResetAlert,title,"Quota reset",,active
+widget.reset.acknowledge,ui,DesktopWidgetPage,ResetAlert,acknowledge,"Acknowledge quota reset",,active
+widgets.windows.show,ui,WidgetsPage,WindowsWidgetToggle,show,"Show desktop widget",,active
+widgets.windows.hide,ui,WidgetsPage,WindowsWidgetToggle,hide,"Hide desktop widget",,active
+limits.accounts.refreshing,ui,LimitsPage,UsageLimitsPanel,refreshing,"Refreshing {{count}} accounts…",,active
+limits.accounts.row_refreshing,ui,LimitsPage,UsageLimitsPanel,row_refreshing,"Refreshing…",,active
+limits.accounts.error,ui,LimitsPage,UsageLimitsPanel,account_error,"Refresh failed: {{error}}",,active
+limits.accounts.stale,ui,LimitsPage,UsageLimitsPanel,account_stale,"Showing the last successful value",,active
+limits.accounts.refresh_all,ui,LimitsPage,LimitsHeader,refresh_all,"Refresh all accounts",,active
+limits.accounts.refreshing_short,ui,LimitsPage,LimitsHeader,refreshing_short,"Refreshing…",,active

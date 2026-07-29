@@ -6,11 +6,12 @@ const {
   evaluateCodexResetSnapshot,
   listCodexResetHistory,
   listUnreadCodexResetEvents,
+  mergeCodexResetSnapshots,
 } = require("./codex-reset-monitor");
 const { verifyCodexResetFeed } = require("./codex-reset-feed");
 
 const STARTUP_DELAY_MS = 10_000;
-const SUCCESS_INTERVAL_MS = 2 * 60_000;
+const SUCCESS_INTERVAL_MS = 30_000;
 const FOCUS_FRESHNESS_MS = 60_000;
 const FEED_CACHE_MS = 5 * 60_000;
 const FEED_URL = "https://a62b9nf2.ap-southeast.insforge.app/functions/tokentracker-codex-reset-feed";
@@ -22,13 +23,15 @@ const FAILURE_BACKOFF_MS = Object.freeze([
 
 function emptyState() {
   return {
-    version: 1,
+    version: 2,
     lastCheckedAt: null,
     lastSuccessfulAt: null,
     windows: {},
+    resetCredits: null,
     restoreCandidates: {},
     events: [],
     acknowledgedEventIds: [],
+    rolloutCursor: { files: {} },
     feed: null,
   };
 }
@@ -42,6 +45,9 @@ function initializeState(value) {
     windows: value.windows && typeof value.windows === "object"
       ? value.windows
       : {},
+    resetCredits: value.resetCredits && typeof value.resetCredits === "object"
+      ? value.resetCredits
+      : null,
     restoreCandidates:
       value.restoreCandidates && typeof value.restoreCandidates === "object"
         ? value.restoreCandidates
@@ -50,6 +56,9 @@ function initializeState(value) {
     acknowledgedEventIds: Array.isArray(value.acknowledgedEventIds)
       ? value.acknowledgedEventIds
       : [],
+    rolloutCursor: value.rolloutCursor?.files
+      ? value.rolloutCursor
+      : { files: {} },
     feed: value.feed && typeof value.feed === "object" ? value.feed : null,
   };
 }
@@ -92,6 +101,8 @@ function createCodexResetMonitorService({
   feedUrl = FEED_URL,
   feedPublicKey,
   fetchImpl = fetch,
+  collectCodexResetSnapshots,
+  getCodexHomes = () => [],
 }) {
   if (typeof getCodexUsageLimits !== "function") {
     throw new TypeError("getCodexUsageLimits is required");
@@ -109,6 +120,8 @@ function createCodexResetMonitorService({
   let nextCheckAt = null;
   let feedErrorCode = null;
   let lastFeedAttemptAt = 0;
+  let backfillInFlight = null;
+  let backfillErrorCode = null;
 
   function schedule(delay) {
     if (!started) return;
@@ -125,16 +138,74 @@ function createCodexResetMonitorService({
     saveState?.(state);
   }
 
-  function listUnread() {
+  function listUnread(channel = "banner") {
     const currentMs = now();
-    return listUnreadCodexResetEvents(state).filter((event) => (
+    return listUnreadCodexResetEvents(state, { channel }).filter((event) => (
       event.type !== "official_reset_announcement"
       || (typeof event.expiresAt === "string" && Date.parse(event.expiresAt) > currentMs)
     ));
   }
 
   function listHistory() {
-    return listCodexResetHistory(state);
+    return listCodexResetHistory(state, { nowMs: now() });
+  }
+
+  function listNotificationPending() {
+    return state.events.filter((event) => (
+      (
+        event.type === "reset_completed"
+        || event.type === "manual_reset"
+        || event.type === "unexpected_quota_restore"
+      )
+      && event.alertEligible === true
+      && !event.deliveredChannels?.includes("windows_notification")
+    ));
+  }
+
+  function markDelivered(eventId, channel) {
+    if (channel !== "windows_notification") return false;
+    const index = state.events.findIndex((event) => event.id === eventId);
+    if (index < 0) return false;
+    const deliveredChannels = [...new Set([
+      ...(Array.isArray(state.events[index].deliveredChannels)
+        ? state.events[index].deliveredChannels
+        : []),
+      channel,
+    ])];
+    const events = state.events.slice();
+    events[index] = { ...events[index], deliveredChannels };
+    persist({ ...state, events });
+    return true;
+  }
+
+  function backfill() {
+    if (typeof collectCodexResetSnapshots !== "function") {
+      return Promise.resolve({ skipped: "unavailable", status: getStatus() });
+    }
+    if (backfillInFlight) return backfillInFlight;
+    backfillInFlight = (async () => {
+      const result = await collectCodexResetSnapshots({
+        codexHomes: getCodexHomes(),
+        sinceMs: now() - 30 * 24 * 60 * 60_000,
+        cursor: state.rolloutCursor,
+      });
+      const merged = mergeCodexResetSnapshots(state, result.snapshots, {
+        nowMs: now(),
+        backfill: true,
+      });
+      persist({
+        ...merged,
+        rolloutCursor: result.cursor?.files ? result.cursor : { files: {} },
+      });
+      backfillErrorCode = null;
+      return { status: getStatus() };
+    })().catch(() => {
+      backfillErrorCode = "backfill_failed";
+      return { status: getStatus() };
+    }).finally(() => {
+      backfillInFlight = null;
+    });
+    return backfillInFlight;
   }
 
   function scheduleFeed(delay = FEED_CACHE_MS) {
@@ -160,6 +231,7 @@ function createCodexResetMonitorService({
       feed_enabled: feedEnabled,
       feed_last_checked_at: state.feed?.fetchedAt || null,
       feed_error_code: feedErrorCode,
+      backfill_error_code: backfillErrorCode,
     };
   }
 
@@ -319,6 +391,7 @@ function createCodexResetMonitorService({
   function start() {
     if (started) return;
     started = true;
+    void backfill();
     if (enabled) schedule(STARTUP_DELAY_MS);
     scheduleFeed(STARTUP_DELAY_MS);
   }
@@ -336,16 +409,19 @@ function createCodexResetMonitorService({
     }
   }
 
-  function acknowledge(eventId) {
-    persist(acknowledgeCodexResetEvent(state, eventId));
+  function acknowledge(eventId, options) {
+    persist(acknowledgeCodexResetEvent(state, eventId, options));
   }
 
   return {
     acknowledge,
+    backfill,
     check,
     checkFeed,
     getStatus,
     listHistory,
+    listNotificationPending,
+    markDelivered,
     listUnread,
     start,
     stop,

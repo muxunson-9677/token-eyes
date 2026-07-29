@@ -25,6 +25,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource/geist-mono": "^5.2.8",
     "@insforge/sdk": "^1.2.2",
+    "@tauri-apps/plugin-notification": "2.3.3",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "clsx": "^2.1.1",

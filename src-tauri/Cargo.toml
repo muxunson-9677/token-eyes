@@ -1,6 +1,6 @@
 [package]
 name = "token-eyes"
-version = "0.54.25"
+version = "0.54.26"
 description = "Token Eyes - AI Token Usage Tracker Desktop"
 authors = ["Muxunson"]
 license = "MIT"
@@ -22,6 +22,7 @@ serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2.8.2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2.2.0"
 tauri-plugin-opener = "2.2.0"
+tauri-plugin-notification = "2.3.3"
 tauri-plugin-single-instance = "2"
 url = "2.5"
 base64 = "0.22"

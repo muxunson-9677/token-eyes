@@ -30,6 +30,7 @@ function notifyTokenPlansChanged() {
 export type CodexResetEventType =
   | "reset_upcoming"
   | "reset_completed"
+  | "manual_reset"
   | "unexpected_quota_restore"
   | "banked_reset_available"
   | "official_reset_announcement";
@@ -47,16 +48,25 @@ export interface CodexResetMonitorStatus {
   feed_enabled: boolean;
   feed_last_checked_at: string | null;
   feed_error_code: string | null;
+  backfill_error_code: string | null;
 }
 
 export interface CodexResetEvent {
   id: string;
   type: CodexResetEventType;
+  agent: "codex";
+  account_key: string;
   window: "rolling_5_hour" | "rolling_weekly" | null;
   created_at: string;
   reset_at: string | null;
   official_url: string;
-  source: "local_quota" | "signed_feed";
+  source: "local_quota" | "live_usage" | "codex_rollout" | "signed_feed";
+  observed_at: string | null;
+  previous_used_percent: number | null;
+  current_used_percent: number | null;
+  confidence: "confirmed" | "recovered";
+  alert_eligible: boolean;
+  occurred_at?: string;
   source_url?: string;
   source_author?: "OpenAI" | "thsottiaux" | null;
   source_post_id?: string | null;
@@ -66,7 +76,7 @@ export interface CodexResetEvent {
 }
 
 export interface CodexResetHistoryEvent extends CodexResetEvent {
-  type: "reset_completed" | "unexpected_quota_restore";
+  type: "reset_completed" | "manual_reset" | "unexpected_quota_restore";
   occurred_at: string;
 }
 
@@ -74,7 +84,83 @@ export interface CodexResetEventsResponse {
   ok: boolean;
   status: CodexResetMonitorStatus;
   events: CodexResetEvent[];
+  tray_events: CodexResetEvent[];
+  widget_events: CodexResetEvent[];
+  notification_events: CodexResetEvent[];
   history: CodexResetHistoryEvent[];
+}
+
+export type DesktopWidgetAgent = "all" | "claude" | "codex" | "cursor" | "hermes";
+export type DesktopWidgetMode = "projects" | "limits" | "models";
+export type DesktopWidgetMaterial = "frost" | "graphite" | "ocean" | "sand";
+
+export interface DesktopWidgetPrefs {
+  version: number;
+  visible: boolean;
+  x?: number | null;
+  y?: number | null;
+  width: number;
+  height: number;
+  scaleFactor: number;
+  selectedAgent: DesktopWidgetAgent;
+  mode: DesktopWidgetMode;
+  expanded: boolean;
+  material: DesktopWidgetMaterial;
+  opacity: number;
+  alwaysOnTop: boolean;
+}
+
+export interface DesktopWidgetViewModel {
+  agents: DesktopWidgetAgent[];
+  selectedAgent: DesktopWidgetAgent;
+  projectStatus: {
+    red: number;
+    yellow: number;
+    green: number;
+    unknown: number;
+    projects: Array<{
+      id: string;
+      label: string;
+      red: number;
+      yellow: number;
+      green: number;
+      unknown: number;
+      sessions: Array<{
+        id: string;
+        label: string;
+        status: "red" | "yellow" | "green" | "unknown";
+        updatedAt: string | null;
+      }>;
+    }>;
+  };
+  limits: Array<{
+    id: string;
+    agent: string;
+    provider: string;
+    accountLabel: string;
+    window: string;
+    usedPercent: number | null;
+    resetAt: string | null;
+    error: string | null;
+  }>;
+  totals: {
+    tokens: number;
+    costUsd: number;
+    models: Array<{
+      name: string;
+      tokens: number;
+      share: number;
+      costUsd: number;
+    }>;
+  };
+  pendingReset: {
+    id: string;
+    agent: string;
+    window: "rolling_5_hour" | "rolling_weekly";
+    occurredAt: string;
+    previousUsedPercent: number | null;
+    currentUsedPercent: number | null;
+  } | null;
 }
 
 const PATHS = {
@@ -91,6 +177,7 @@ const PATHS = {
   usageLimits: "tokentracker-usage-limits",
   limitAccounts: "tokentracker-limit-accounts",
   codexResetEvents: "tokentracker-codex-reset-events",
+  desktopWidget: "tokentracker-desktop-widget",
   localSettings: "tokentracker-local-settings",
   detectDataDirectories: "tokentracker-detect-data-directories",
   selectDirectory: "tokentracker-select-directory",
@@ -1569,8 +1656,15 @@ export async function getCodexResetEvents(): Promise<CodexResetEventsResponse> {
   return fetchLocalJson(PATHS.codexResetEvents) as Promise<CodexResetEventsResponse>;
 }
 
+export async function getDesktopWidgetViewModel(
+  agent: DesktopWidgetAgent = "all",
+): Promise<DesktopWidgetViewModel> {
+  return fetchLocalJson(PATHS.desktopWidget, { agent }) as Promise<DesktopWidgetViewModel>;
+}
+
 export async function acknowledgeCodexResetEvent(
   eventId: string,
+  channels?: Array<"banner" | "tray" | "widget">,
 ): Promise<void> {
   const authHeaders = await getLocalApiAuthHeaders();
   await fetchLocalJson(`${PATHS.codexResetEvents}/ack`, undefined, {
@@ -1580,7 +1674,26 @@ export async function acknowledgeCodexResetEvent(
       "Content-Type": "application/json",
       ...authHeaders,
     },
-    body: JSON.stringify({ event_id: eventId }),
+    body: JSON.stringify({
+      event_id: eventId,
+      ...(channels?.length ? { channels } : {}),
+    }),
+  });
+}
+
+export async function markCodexResetEventDelivered(
+  eventId: string,
+  channel: "windows_notification",
+): Promise<void> {
+  const authHeaders = await getLocalApiAuthHeaders();
+  await fetchLocalJson(`${PATHS.codexResetEvents}/delivered`, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ event_id: eventId, channel }),
   });
 }
 

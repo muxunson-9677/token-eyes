@@ -177,8 +177,24 @@ test("shape drift is unsupported and unconfigured Codex performs no request", as
   assert.equal(unconfigured.configured, false);
 });
 
-test("reset-credit parsing is disabled until a captured schema is allowlisted", () => {
-  assert.deepEqual(CODEX_RESET_CREDIT_ALLOWLIST, []);
-  assert.equal(parseCodexResetCreditFields({ reset_credits: 3 }), null);
-  assert.equal(parseCodexResetCreditFields({ credits: { resets: 3 } }), null);
+test("allowlists only official reset-credit counters", () => {
+  const fixture = require("./fixtures/codex/wham-usage-reset-credits.json");
+  assert.deepEqual(CODEX_RESET_CREDIT_ALLOWLIST, [
+    "rate_limit_reset_credits.available_count",
+    "rate_limit_reset_credits.applicable_available_count",
+  ]);
+  assert.deepEqual(parseCodexResetCreditFields(fixture), {
+    available_count: 2,
+    applicable_available_count: 1,
+  });
+  assert.equal(parseCodexResetCreditFields({
+    rate_limit_reset_credits: {
+      available_count: -1,
+      applicable_available_count: "secret",
+    },
+  }), null);
+  assert.doesNotMatch(
+    JSON.stringify(parseCodexResetCreditFields(fixture)),
+    /account_id|access_token|must-not-be-returned/u,
+  );
 });

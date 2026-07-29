@@ -30,6 +30,7 @@ import {
 // param has already been removed 鈥?the page then falls through to the
 // "Sign-in incomplete" failure state.
 import { NativeAuthCallbackPage } from "./pages/NativeAuthCallbackPage.jsx";
+import { DesktopWidgetPage } from "./pages/DesktopWidgetPage";
 
 // Pages are lazy-loaded so each route ships in its own chunk; keeps the
 // initial main bundle small (was 1.9 MB before splitting, all 11 pages
@@ -135,6 +136,7 @@ export default function App() {
       isTauriMode);
 
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+  const isDesktopWidgetPath = normalizedPath === "/desktop-widget";
   const isDashboardDefaultPath = normalizedPath === "/" || normalizedPath === "/dashboard";
   const isLeaderboardPath = normalizedPath === "/leaderboard";
   const isLeaderboardRulesPath = normalizedPath === "/leaderboard/rules";
@@ -222,6 +224,7 @@ export default function App() {
   if (normalizedPath === "/dashboard") gate = "dashboard";
   if (isPublicLeaderboardPath) gate = "dashboard";
   if (profileUserId) gate = "dashboard";
+  if (isDesktopWidgetPath) gate = "dashboard";
 
   const isLimitsPath = normalizedPath === "/limits";
   const isResetHistoryPath = normalizedPath === "/reset-history";
@@ -344,7 +347,9 @@ export default function App() {
   }
 
   let content = null;
-  if (normalizedPath === "/auth/callback" || normalizedPath === "/auth/native-callback") {
+  if (isDesktopWidgetPath) {
+    content = <DesktopWidgetPage />;
+  } else if (normalizedPath === "/auth/callback" || normalizedPath === "/auth/native-callback") {
     content = <NativeAuthCallbackPage />;
   } else if (normalizedPath === "/login") {
     content = <LoginPage />;

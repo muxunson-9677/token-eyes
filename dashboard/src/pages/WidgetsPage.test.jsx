@@ -33,6 +33,7 @@ afterEach(() => {
     window.localStorage.removeItem("tokentracker_native_app");
   }
   delete window.webkit;
+  delete window.__TAURI__;
 });
 
 describe("WidgetsPage menu bar configurator", () => {
@@ -125,5 +126,34 @@ describe("WidgetsPage menu bar configurator", () => {
 
     expect(primary).toHaveTextContent(copy("menubar.metric.codex_spark_5h"));
     expect(secondary).toHaveTextContent(copy("menubar.metric.codex_spark_7d"));
+  });
+});
+
+describe("WidgetsPage Windows desktop widget", () => {
+  it("shows and hides the independent widget without macOS-only settings", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.fn(async (command) => {
+      if (command === "get_desktop_widget_prefs") return { visible: false };
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+
+    render(<WidgetsPage />);
+
+    const toggle = await screen.findByRole("button", {
+      name: copy("widgets.windows.show"),
+    });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(screen.queryByText(copy("settings.menubar.animatedIcon"))).not.toBeInTheDocument();
+    expect(screen.queryByText(copy("settings.menubar.confettiOnReset"))).not.toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(invoke).toHaveBeenCalledWith("show_desktop_widget");
+    expect(
+      screen.getByRole("button", { name: copy("widgets.windows.hide") }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: copy("widgets.windows.hide") }));
+    expect(invoke).toHaveBeenCalledWith("hide_desktop_widget");
   });
 });

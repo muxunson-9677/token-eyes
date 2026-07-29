@@ -287,6 +287,59 @@ function renderProviderGroup(id, data, mode, expanded, onToggle) {
   return renderConfiguredProvider(id, data, title, mode, expanded, onToggle);
 }
 
+function AccountServiceRows({ providerId, accounts, mode, refreshing }) {
+  const providerName = limitProviderName(providerId);
+  return accounts.map((account) => {
+    const title = [
+      providerName,
+      account.account_label,
+      account.plan_label,
+    ].filter(Boolean).join(" · ");
+    const windows = Array.isArray(account.windows) ? account.windows : [];
+    const hasError = ["unavailable", "auth_error", "rate_limited"].includes(account.status);
+    return (
+      <div
+        key={account.account_key}
+        data-testid="limit-account-service-row"
+        data-refreshing={refreshing ? "true" : "false"}
+        className="rounded-lg border border-oai-gray-100 px-2.5 py-2 dark:border-oai-gray-800/80"
+      >
+        <ToolGroup
+          name={title}
+          providerId={providerId}
+          evidence={windows[0]?.evidence}
+        >
+          {windows.map((window) => (
+            <LimitBar
+              key={`${window.kind || "window"}:${window.label || ""}`}
+              label={window.label || copy("limits.matrix.window_unavailable")}
+              pct={window.used_percent}
+              reset={formatReset(window.reset_at)}
+              mode={mode}
+            />
+          ))}
+          {hasError ? (
+            <StatusLine tone="error">
+              {copy("limits.accounts.error", {
+                error: account.error_code || account.status,
+              })}
+            </StatusLine>
+          ) : null}
+          {account.status === "stale" ? (
+            <StatusLine>{copy("limits.accounts.stale")}</StatusLine>
+          ) : null}
+          {!hasError && windows.length === 0 ? (
+            <StatusLine>{copy("limits.status.no_data")}</StatusLine>
+          ) : null}
+          {refreshing ? (
+            <StatusLine>{copy("limits.accounts.row_refreshing")}</StatusLine>
+          ) : null}
+        </ToolGroup>
+      </div>
+    );
+  });
+}
+
 function CopilotOtelHint({ defaultDir }) {
   const [copied, setCopied] = useState(false);
   const dir = defaultDir || "$HOME/.copilot/otel";
@@ -351,7 +404,7 @@ function useWidestLabelWidth(containerRef) {
   return labelWidth;
 }
 
-export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, order, visibility, displayMode }) {
+export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, accounts = [], accountsRefreshing = false, order, visibility, displayMode }) {
   const dataById = { claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot };
   const containerRef = useRef(null);
   const labelWidth = useWidestLabelWidth(containerRef);
@@ -363,18 +416,39 @@ export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemin
   const modeLabel = effectiveMode === LIMIT_DISPLAY_MODES.REMAINING
     ? copy("limits.settings.display_mode_remaining")
     : copy("limits.settings.display_mode_used");
+  const accountRows = Array.isArray(accounts)
+    ? accounts.filter((account) => account?.provider_id && account?.account_key)
+    : [];
+  const accountsByProvider = new Map();
+  for (const account of accountRows) {
+    const providerAccounts = accountsByProvider.get(account.provider_id) || [];
+    providerAccounts.push(account);
+    accountsByProvider.set(account.provider_id, providerAccounts);
+  }
 
   const groups = effectiveOrder
     .filter((id) => !visibility || visibility[id] !== false)
-    .map((id) =>
-      renderProviderGroup(
+    .map((id) => {
+      const providerAccounts = accountsByProvider.get(id);
+      if (providerAccounts?.length) {
+        return (
+          <AccountServiceRows
+            key={id}
+            providerId={id}
+            accounts={providerAccounts}
+            mode={effectiveMode}
+            refreshing={accountsRefreshing}
+          />
+        );
+      }
+      return renderProviderGroup(
         id,
         dataById[id],
         effectiveMode,
         expandedId === id,
         () => setExpandedId((prev) => (prev === id ? null : id)),
-      ),
-    )
+      );
+    })
     .filter(Boolean);
 
   return (
@@ -388,7 +462,12 @@ export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemin
           <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
             {copy("limits.panel.title")}{copy("limits.panel.mode_separator")}{modeLabel}
           </h3>
-          {groups.length > 0 ? groups : <StatusLine>{copy("limits.status.all_hidden")}</StatusLine>}
+          {accountsRefreshing && accountRows.length ? (
+            <StatusLine>
+              {copy("limits.accounts.refreshing", { count: accountRows.length })}
+            </StatusLine>
+          ) : null}
+          {groups.length ? groups : <StatusLine>{copy("limits.status.all_hidden")}</StatusLine>}
         </div>
       </Card>
     </FadeIn>
