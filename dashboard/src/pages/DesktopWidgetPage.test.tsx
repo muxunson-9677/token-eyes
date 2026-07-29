@@ -147,6 +147,9 @@ describe("DesktopWidgetPage", () => {
     expect(within(card).getAllByRole("radio")).toHaveLength(4);
     expect(within(card).getByRole("slider", { name: "copy:widget.opacity" })).toBeInTheDocument();
     expect(screen.getAllByTestId("desktop-widget-card")).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "copy:widget.appearance.close" }));
+    expect(screen.queryByRole("dialog", { name: "copy:widget.appearance" })).not.toBeInTheDocument();
   });
 
   it("keeps a reset alert until the user acknowledges it without navigation", async () => {

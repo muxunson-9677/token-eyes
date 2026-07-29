@@ -9,12 +9,14 @@ import {
 const POLL_INTERVAL_MS = 30_000;
 
 const DEFAULT_PREFS: DesktopWidgetPrefs = {
-  version: 1,
+  version: 2,
   visible: true,
   x: null,
   y: null,
   width: 322,
   height: 72,
+  collapsedHeight: 72,
+  expandedHeight: 360,
   scaleFactor: 1,
   selectedAgent: "all",
   mode: "projects",

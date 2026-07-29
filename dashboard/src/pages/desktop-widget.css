@@ -472,10 +472,32 @@
   backdrop-filter: blur(25px);
 }
 
+.widget-appearance-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.widget-appearance-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+}
+
 .widget-material-options {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
+  padding-right: 20px;
 }
 
 .widget-material-option {

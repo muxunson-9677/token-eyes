@@ -7,6 +7,7 @@ import {
   Palette,
   Pin,
   PinOff,
+  X,
 } from "lucide-react";
 import { useDesktopWidget } from "../hooks/use-desktop-widget";
 import {
@@ -390,6 +391,14 @@ export function DesktopWidgetPage() {
 
         {appearanceOpen ? (
           <div className="widget-appearance" role="dialog" aria-label={copy("widget.appearance")}>
+            <button
+              type="button"
+              className="widget-appearance-close"
+              aria-label={copy("widget.appearance.close")}
+              onClick={() => setAppearanceOpen(false)}
+            >
+              <X size={12} aria-hidden />
+            </button>
             <div className="widget-material-options">
               {(Object.keys(MATERIAL_KEYS) as DesktopWidgetMaterial[]).map((material) => (
                 <label key={material} className={`widget-material-option widget-material-option--${material}`}>

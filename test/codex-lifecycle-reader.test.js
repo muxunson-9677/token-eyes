@@ -97,3 +97,13 @@ test("maps completion, interruption, and error evidence without stale-time guess
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("reads lifecycle evidence from bounded file slices instead of streaming whole rollouts", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "src", "lib", "codex-lifecycle-reader.js"),
+    "utf8",
+  );
+  assert.match(source, /TAIL_READ_CHUNK_BYTES/u);
+  assert.match(source, /readLatestLifecycleEvidence/u);
+  assert.doesNotMatch(source, /for await\s*\(const line of lines\)/u);
+});

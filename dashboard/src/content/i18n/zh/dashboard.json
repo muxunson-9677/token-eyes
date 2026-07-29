@@ -499,6 +499,7 @@
     "widget.agent_menu":  "选择 Agent",
     "widget.mode_menu":  "选择信息模式",
     "widget.appearance":  "外观",
+    "widget.appearance.close":  "关闭外观",
     "widget.pin":  "置顶",
     "widget.unpin":  "取消置顶",
     "widget.mode.projects":  "项目",

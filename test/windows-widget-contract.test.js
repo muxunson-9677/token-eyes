@@ -43,3 +43,47 @@ test("compact widget menus stay inside the native 72px window", () => {
   assert.match(css, /@media\s*\(max-height:\s*120px\)/u);
   assert.match(css, /grid-auto-flow:\s*column/u);
 });
+
+test("native widget loads its application route directly instead of rewriting about:blank", () => {
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  assert.match(
+    widgetWindow,
+    /WebviewUrl::App\("desktop-widget"\.into\(\)\)/u,
+  );
+  assert.doesNotMatch(widgetWindow, /\.initialization_script\(/u);
+});
+
+test("desktop widget is preloaded during app setup before frontend commands can show it", () => {
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  const restoreBody = widgetWindow.match(
+    /pub fn restore_if_visible[\s\S]*?\n\}\n\npub fn toggle_desktop_widget/u,
+  )?.[0];
+  assert.ok(restoreBody, "restore_if_visible implementation must exist");
+  assert.doesNotMatch(restoreBody, /if !prefs\.visible\s*\{\s*return;/u);
+  assert.match(restoreBody, /widget_window\(app,\s*&prefs\)/u);
+});
+
+test("frontend and Rust use the same prefs argument for widget updates", () => {
+  const hook = read("dashboard/src/hooks/use-desktop-widget.ts");
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  assert.match(hook, /invoke\("set_desktop_widget_prefs",\s*\{\s*prefs:\s*next\s*\}\)/u);
+  assert.match(
+    widgetWindow,
+    /pub fn set_desktop_widget_prefs\(\s*app:\s*AppHandle,\s*prefs:\s*WidgetPrefs,/u,
+  );
+});
+
+test("widget preload cannot block the UI while the local backend starts", () => {
+  const commands = read("src-tauri/src/commands.rs");
+  assert.match(commands, /pub async fn local_server_status\(/u);
+  assert.match(commands, /spawn_blocking\(move \|\|/u);
+});
+
+test("expanding the widget reapplies clamped monitor geometry", () => {
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  const setter = widgetWindow.match(
+    /pub fn set_desktop_widget_prefs[\s\S]*?\n\}\n\n#\[tauri::command\]/u,
+  )?.[0];
+  assert.ok(setter, "widget preference setter must exist");
+  assert.match(setter, /apply_geometry\(&window,\s*&prefs\)/u);
+});

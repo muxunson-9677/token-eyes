@@ -1936,6 +1936,7 @@ widget.collapse,ui,DesktopWidgetPage,WidgetToolbar,collapse,"Collapse details",,
 widget.agent_menu,ui,DesktopWidgetPage,WidgetToolbar,agent_menu,"Choose agent",,active
 widget.mode_menu,ui,DesktopWidgetPage,WidgetToolbar,mode_menu,"Choose information mode",,active
 widget.appearance,ui,DesktopWidgetPage,WidgetToolbar,appearance,"Appearance",,active
+widget.appearance.close,ui,DesktopWidgetPage,AppearancePanel,close,"Close appearance",,active
 widget.pin,ui,DesktopWidgetPage,WidgetToolbar,pin,"Keep on top",,active
 widget.unpin,ui,DesktopWidgetPage,WidgetToolbar,unpin,"Stop keeping on top",,active
 widget.mode.projects,ui,DesktopWidgetPage,WidgetModeMenu,projects,"Projects",,active

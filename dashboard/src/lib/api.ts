@@ -101,6 +101,8 @@ export interface DesktopWidgetPrefs {
   y?: number | null;
   width: number;
   height: number;
+  collapsedHeight: number;
+  expandedHeight: number;
   scaleFactor: number;
   selectedAgent: DesktopWidgetAgent;
   mode: DesktopWidgetMode;

@@ -7,9 +7,10 @@ use tauri::{
 };
 
 pub const WIDGET_LABEL: &str = "desktop-widget";
-const PREFS_VERSION: u8 = 1;
+const PREFS_VERSION: u8 = 2;
 const DEFAULT_WIDTH: u32 = 322;
 const DEFAULT_HEIGHT: u32 = 72;
+const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
 const MIN_WIDTH: u32 = 300;
 const MIN_HEIGHT: u32 = 72;
 
@@ -22,6 +23,8 @@ pub struct WidgetPrefs {
     pub y: Option<i32>,
     pub width: u32,
     pub height: u32,
+    pub collapsed_height: u32,
+    pub expanded_height: u32,
     pub scale_factor: f64,
     pub selected_agent: String,
     pub mode: String,
@@ -40,6 +43,8 @@ impl Default for WidgetPrefs {
             y: None,
             width: DEFAULT_WIDTH,
             height: DEFAULT_HEIGHT,
+            collapsed_height: DEFAULT_HEIGHT,
+            expanded_height: DEFAULT_EXPANDED_HEIGHT,
             scale_factor: 1.0,
             selected_agent: "all".into(),
             mode: "projects".into(),
@@ -68,9 +73,18 @@ struct MonitorBounds {
 }
 
 fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
+    if prefs.version < 2 {
+        if prefs.expanded {
+            prefs.expanded_height = prefs.height.max(DEFAULT_EXPANDED_HEIGHT);
+        } else {
+            prefs.collapsed_height = prefs.height.max(DEFAULT_HEIGHT);
+        }
+    }
     prefs.version = PREFS_VERSION;
     prefs.width = prefs.width.max(MIN_WIDTH);
     prefs.height = prefs.height.max(MIN_HEIGHT);
+    prefs.collapsed_height = prefs.collapsed_height.max(DEFAULT_HEIGHT);
+    prefs.expanded_height = prefs.expanded_height.max(DEFAULT_EXPANDED_HEIGHT);
     prefs.scale_factor = if prefs.scale_factor.is_finite() && prefs.scale_factor > 0.0 {
         prefs.scale_factor
     } else {
@@ -127,6 +141,17 @@ fn physical_size(width: u32, height: u32, scale_factor: f64) -> PhysicalSize<u32
         (width as f64 * scale_factor).round() as u32,
         (height as f64 * scale_factor).round() as u32,
     )
+}
+
+fn transition_height(current: &WidgetPrefs, requested_expanded: bool) -> Option<u32> {
+    if current.expanded == requested_expanded {
+        return None;
+    }
+    Some(if requested_expanded {
+        current.expanded_height
+    } else {
+        current.collapsed_height
+    })
 }
 
 fn intersection_area(geometry: Geometry, monitor: MonitorBounds) -> i64 {
@@ -240,7 +265,7 @@ fn create_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, 
     let window = WebviewWindowBuilder::new(
         app,
         WIDGET_LABEL,
-        WebviewUrl::App("index.html".into()),
+        WebviewUrl::App("desktop-widget".into()),
     )
     .title("Token Eyes Widget")
     .inner_size(prefs.width as f64, prefs.height as f64)
@@ -252,9 +277,6 @@ fn create_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, 
     .always_on_top(prefs.always_on_top)
     .skip_taskbar(true)
     .visible(false)
-    .initialization_script(
-        "history.replaceState({}, '', '/desktop-widget?app=1');",
-    )
     .build()
     .map_err(|error| format!("create desktop widget: {error}"))?;
     apply_geometry(&window, prefs);
@@ -284,6 +306,11 @@ pub fn persist_geometry(window: &WebviewWindow) {
     if let Ok(size) = window.inner_size() {
         let scale_factor = window.scale_factor().unwrap_or(1.0);
         (prefs.width, prefs.height) = logical_size(size, scale_factor);
+        if prefs.expanded {
+            prefs.expanded_height = prefs.height;
+        } else {
+            prefs.collapsed_height = prefs.height;
+        }
         prefs.scale_factor = scale_factor;
     }
     let _ = save(window.app_handle(), &prefs);
@@ -291,11 +318,10 @@ pub fn persist_geometry(window: &WebviewWindow) {
 
 pub fn restore_if_visible(app: &AppHandle) {
     let prefs = load(app);
-    if !prefs.visible {
-        return;
-    }
     if let Ok(window) = widget_window(app, &prefs) {
-        let _ = window.show();
+        if prefs.visible {
+            let _ = window.show();
+        }
     }
 }
 
@@ -344,15 +370,25 @@ pub fn get_desktop_widget_prefs(app: AppHandle) -> WidgetPrefs {
 #[tauri::command]
 pub fn set_desktop_widget_prefs(
     app: AppHandle,
-    requested: WidgetPrefs,
+    prefs: WidgetPrefs,
 ) -> Result<WidgetPrefs, String> {
     if let Some(window) = app.get_webview_window(WIDGET_LABEL) {
         persist_geometry(&window);
     }
-    let prefs = merge_display_prefs(load(&app), requested);
+    let current = load(&app);
+    let next_height = transition_height(&current, prefs.expanded);
+    let mut prefs = merge_display_prefs(current, prefs);
+    if let Some(height) = next_height {
+        prefs.height = height;
+    }
     save(&app, &prefs)?;
     if let Some(window) = app.get_webview_window(WIDGET_LABEL) {
         let _ = window.set_always_on_top(prefs.always_on_top);
+        if next_height.is_some() {
+            apply_geometry(&window, &prefs);
+            persist_geometry(&window);
+            prefs = load(&app);
+        }
     }
     Ok(prefs)
 }
@@ -381,6 +417,7 @@ mod tests {
     fn defaults_to_the_compact_resizable_glass_capsule() {
         let prefs = WidgetPrefs::default();
         assert_eq!((prefs.width, prefs.height), (322, 72));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
         assert!(prefs.always_on_top);
         assert_eq!(prefs.material, "frost");
         assert_eq!(prefs.opacity, 0.72);
@@ -425,7 +462,7 @@ mod tests {
             material: "invalid".into(),
             ..WidgetPrefs::default()
         });
-        assert_eq!(prefs.version, 1);
+        assert_eq!(prefs.version, 2);
         assert_eq!((prefs.width, prefs.height), (300, 72));
         assert_eq!(prefs.opacity, 0.4);
         assert_eq!(prefs.selected_agent, "all");
@@ -484,5 +521,25 @@ mod tests {
     fn logical_size_round_trips_across_dpi_changes() {
         assert_eq!(logical_size(PhysicalSize::new(483, 216), 1.5), (322, 144));
         assert_eq!(physical_size(322, 144, 2.0), PhysicalSize::new(644, 288));
+    }
+
+    #[test]
+    fn expand_and_collapse_transitions_produce_usable_window_heights() {
+        let compact = WidgetPrefs {
+            height: 200,
+            collapsed_height: 200,
+            expanded_height: 520,
+            expanded: false,
+            ..WidgetPrefs::default()
+        };
+        assert_eq!(transition_height(&compact, true), Some(520));
+
+        let expanded = WidgetPrefs {
+            height: 520,
+            expanded: true,
+            ..compact
+        };
+        assert_eq!(transition_height(&expanded, false), Some(200));
+        assert_eq!(transition_height(&expanded, true), None);
     }
 }
