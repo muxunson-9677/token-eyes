@@ -35,6 +35,14 @@
   box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.10), 0 7px 16px rgba(0, 0, 0, 0.10);
 }
 
+.tt-surface-nested.tt-cost-summary-total {
+  border-color: var(--brand-200);
+}
+
+:root.dark .tt-surface-nested.tt-cost-summary-total {
+  border-color: var(--brand-800);
+}
+
 .tt-pressable {
   transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
 }

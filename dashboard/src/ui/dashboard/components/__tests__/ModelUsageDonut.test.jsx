@@ -48,7 +48,7 @@ describe("ModelUsageDonut", () => {
     }));
     const { container } = render(<ModelUsageDonut totalTokens={6790} rows={rows} />);
 
-    expect(container.firstChild).toHaveClass("tt-surface-nested", "tt-overview-secondary");
+    expect(container.firstChild).toHaveClass("tt-surface-nested");
     expect(container.firstChild).not.toHaveClass("tt-surface");
     for (const row of rows) {
       expect(screen.getByText(row.name)).toBeInTheDocument();

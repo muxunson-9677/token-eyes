@@ -108,6 +108,8 @@ it("visually separates the summary and each existing management section without 
     expect(card).toHaveClass("tt-surface-nested");
     expect(card).not.toHaveClass("tt-surface");
   }
+  expect(screen.getByTestId("cost-summary-icon-total").closest("[data-testid='cost-summary-card']"))
+    .toHaveAttribute("data-cost-summary-card", "total");
   expect(screen.getAllByTestId("cost-summary-icon")).toHaveLength(4);
   expect(screen.getByTestId("cost-summary-icon-api")).toHaveAttribute("data-tone", "blue");
   expect(screen.getByTestId("cost-summary-icon-subscription")).toHaveAttribute("data-tone", "violet");
@@ -122,7 +124,11 @@ it("visually separates the summary and each existing management section without 
     expect(section).not.toHaveClass("tt-surface");
     expect(within(section).getByTestId("cost-section-icon")).toBeInTheDocument();
     const toggle = within(section).getByRole("button", { expanded: true });
-    expect(toggle).toHaveClass("tt-pressable", "rounded-[var(--tt-control-radius)]");
+    expect(toggle).toHaveClass(
+      "tt-analytics-focusable",
+      "tt-pressable",
+      "rounded-[var(--tt-control-radius)]",
+    );
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(toggle);

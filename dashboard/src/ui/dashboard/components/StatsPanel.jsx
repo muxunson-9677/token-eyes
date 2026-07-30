@@ -135,7 +135,7 @@ export function StatsPanel({
   const hasMeasuredModels = Boolean(measuredModels.length);
 
   return (
-    <Card variant="nested" className={`tt-overview-secondary h-full ${className}`}>
+    <Card variant="nested" className={`h-full ${className}`}>
         {hasRollingCards && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {rollingCards.map((card) => {

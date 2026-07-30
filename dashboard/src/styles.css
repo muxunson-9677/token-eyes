@@ -309,6 +309,11 @@ body {
   outline-offset: -2px !important;
 }
 
+.tt-analytics-focusable:focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: -2px !important;
+}
+
 .tt-usage-filter-toolbar button:focus-visible {
   outline: 2px solid var(--oai-black) !important;
   outline-offset: -2px !important;

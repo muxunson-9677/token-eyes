@@ -266,9 +266,10 @@ function SummaryCard({ id, label, value, highlight = false, icon: Icon, iconTone
   return (
     <div
       data-testid="cost-summary-card"
+      data-cost-summary-card={id}
       className={cn(
         "tt-surface-nested rounded-lg p-3",
-        highlight ? "border-oai-brand-200 dark:border-oai-brand-800" : "",
+        highlight ? "tt-cost-summary-total" : "",
       )}
     >
       <div className="flex items-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
@@ -321,7 +322,7 @@ function FoldableSection({ id, icon, iconTone = "blue", title, count, actions = 
           type="button"
           onClick={toggle}
           aria-expanded={open}
-          className="tt-pressable -m-1.5 flex min-w-0 items-center gap-2 rounded-[var(--tt-control-radius)] p-1.5 text-left"
+          className="tt-analytics-focusable tt-pressable -m-1.5 flex min-w-0 items-center gap-2 rounded-[var(--tt-control-radius)] p-1.5 text-left"
         >
           <SectionHeader icon={icon} iconTone={iconTone} title={title} count={count} />
           {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}

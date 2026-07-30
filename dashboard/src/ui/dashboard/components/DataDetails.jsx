@@ -57,7 +57,7 @@ export function DataDetails({
   }, [dailyBreakdownRows]);
 
   return (
-    <Card variant="nested" className="tt-overview-secondary">
+    <Card variant="nested">
       {/* Tab Switcher + Controls */}
       <div className="flex items-center justify-between gap-3 mb-4">
         <div role="tablist" aria-label="Data view" className="flex gap-1">
@@ -66,7 +66,7 @@ export function DataDetails({
             aria-selected={activeTab === "daily"}
             type="button"
             onClick={() => setActiveTab("daily")}
-            className={`tt-pressable inline-flex items-center gap-1.5 rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`tt-analytics-focusable tt-pressable inline-flex items-center gap-1.5 rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
               activeTab === "daily"
                 ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                 : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
@@ -80,7 +80,7 @@ export function DataDetails({
             aria-selected={activeTab === "projects"}
             type="button"
             onClick={() => setActiveTab("projects")}
-            className={`tt-pressable inline-flex items-center gap-1.5 rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`tt-analytics-focusable tt-pressable inline-flex items-center gap-1.5 rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
               activeTab === "projects"
                 ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                 : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"

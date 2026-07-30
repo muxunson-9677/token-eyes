@@ -25,7 +25,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
     return (
       <Card
         variant="nested"
-        className={`tt-overview-secondary ${className}`}
+        className={className}
         bodyClassName="min-h-48 flex flex-col"
       >
         <div>
@@ -45,7 +45,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
 
   let offset = 0;
   return (
-    <Card variant="nested" className={`tt-overview-secondary ${className}`}>
+    <Card variant="nested" className={className}>
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-oai-black dark:text-oai-white">
           {copy("dashboard.model_distribution.title")}

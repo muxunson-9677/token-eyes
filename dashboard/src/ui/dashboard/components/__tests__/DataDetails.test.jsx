@@ -273,8 +273,16 @@ describe("DataDetails daily rows", () => {
 
     const dailyTab = screen.getByRole("tab", { name: copy("dashboard.daily.title") });
     const projectsTab = screen.getByRole("tab", { name: copy("dashboard.projects.title") });
-    expect(dailyTab).toHaveClass("tt-pressable", "rounded-[var(--tt-control-radius)]");
-    expect(projectsTab).toHaveClass("tt-pressable", "rounded-[var(--tt-control-radius)]");
+    expect(dailyTab).toHaveClass(
+      "tt-analytics-focusable",
+      "tt-pressable",
+      "rounded-[var(--tt-control-radius)]",
+    );
+    expect(projectsTab).toHaveClass(
+      "tt-analytics-focusable",
+      "tt-pressable",
+      "rounded-[var(--tt-control-radius)]",
+    );
     expect(dailyTab.querySelector("svg")).not.toBeNull();
     expect(projectsTab.querySelector("svg")).not.toBeNull();
   });
@@ -292,7 +300,7 @@ describe("DataDetails daily rows", () => {
       />,
     );
 
-    expect(container.firstChild).toHaveClass("tt-surface-nested", "tt-overview-secondary");
+    expect(container.firstChild).toHaveClass("tt-surface-nested");
     expect(container.firstChild).not.toHaveClass("tt-surface");
     expect(screen.queryByText("2026-07-24")).not.toBeInTheDocument();
     expect(screen.getByText("2026-07-25")).toBeInTheDocument();

@@ -41,7 +41,7 @@ describe("TrendMonitor", () => {
     );
     const bars = Array.from(container.querySelectorAll('[data-trend-bar="true"]'));
 
-    expect(container.firstChild).toHaveClass("tt-surface", "tt-overview-primary");
+    expect(container.firstChild).toHaveClass("tt-surface");
     expect(container.firstChild).not.toHaveClass("tt-surface-nested");
     expect(bars).toHaveLength(rows.length);
     expect(parseFloat(bars[0].parentElement?.style.height ?? "")).toBeGreaterThan(30);
@@ -105,7 +105,7 @@ describe("TrendMonitor", () => {
     const withCfg = render(
       <TrendMonitor rows={rows} zoomConfig={{ baseUrl: "http://localhost" }} showTimeZoneLabel={false} />,
     );
-    expect(withCfg.queryByRole("button")).not.toBeNull();
+    expect(withCfg.getByRole("button")).toHaveClass("tt-analytics-focusable");
   });
 });
 

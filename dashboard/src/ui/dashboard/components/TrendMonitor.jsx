@@ -478,7 +478,7 @@ export function TrendMonitor({
       className={cn(
         "relative",
         !embedded &&
-          "tt-surface tt-overview-primary rounded-[var(--tt-card-radius)] p-5",
+          "tt-surface rounded-[var(--tt-card-radius)] p-5",
         isZoom && "flex h-full flex-col",
         className,
       )}
@@ -503,7 +503,7 @@ export function TrendMonitor({
               onClick={() => setIsZoomOpen(true)}
               aria-label={copy("trend.zoom.open_aria")}
               title={copy("trend.zoom.open_aria")}
-              className="tt-pressable shrink-0 rounded-[var(--tt-control-radius)] p-1.5 text-oai-gray-400 transition-colors hover:bg-oai-gray-100 hover:text-oai-gray-700 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200"
+              className="tt-analytics-focusable tt-pressable shrink-0 rounded-[var(--tt-control-radius)] p-1.5 text-oai-gray-400 transition-colors hover:bg-oai-gray-100 hover:text-oai-gray-700 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200"
             >
               <Maximize2 size={14} />
             </button>
