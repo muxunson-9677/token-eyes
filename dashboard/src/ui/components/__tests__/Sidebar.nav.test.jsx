@@ -8,7 +8,16 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getNavGroups, AppLayout } from "../Sidebar.jsx";
 
-const { codexResetContext, setTheme } = vi.hoisted(() => ({
+const { authContext, codexResetContext, setTheme } = vi.hoisted(() => ({
+  authContext: {
+    value: {
+      enabled: true,
+      loading: false,
+      signedIn: false,
+      user: null,
+      displayName: "",
+    },
+  },
   codexResetContext: {
     value: {
       events: [],
@@ -48,13 +57,18 @@ vi.mock("../../../hooks/useLocale.js", () => ({
   useLocale: () => ({ resolvedLocale: "en" }),
 }));
 
-vi.mock("../../../components/InsforgeUserHeaderControls.jsx", () => ({
-  InsforgeUserHeaderControls: () => <div data-testid="user-controls" />,
+vi.mock("../../../contexts/InsforgeAuthContext.jsx", () => ({
+  useInsforgeAuth: () => authContext.value,
+}));
+
+vi.mock("../../../contexts/LoginModalContext.jsx", () => ({
+  useLoginModal: () => ({ openLoginModal: vi.fn() }),
 }));
 
 vi.mock("../../../lib/native-bridge.js", () => ({
   isNativeApp: () => false,
   isNativeEmbed: () => false,
+  isTauriApp: () => false,
   isNativeWindowsApp: () => false,
 }));
 
@@ -134,6 +148,13 @@ function renderSidebar(path = "/dashboard") {
 
 describe("Sidebar two-level nav rendering (desktop)", () => {
   beforeEach(() => {
+    authContext.value = {
+      enabled: true,
+      loading: false,
+      signedIn: false,
+      user: null,
+      displayName: "",
+    };
     codexResetContext.value.unreadCount = 0;
     setTheme.mockClear();
     window.localStorage.clear();
@@ -291,6 +312,8 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     const overviewLink = screen.getByRole("link", { name: "copy:nav.usage" });
 
     await user.tab();
+    expect(screen.getByRole("button", { name: "copy:header.auth.sign_in_aria" })).toHaveFocus();
+    await user.tab();
 
     expect(overviewLink).toHaveFocus();
     expect(overviewLink).toHaveClass("tt-sidebar-focusable");
@@ -310,6 +333,39 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     for (const menuItem of within(menu).getAllByRole("menuitem")) {
       expect(menuItem).toHaveClass("tt-sidebar-focusable");
     }
+  });
+
+  it("applies the shared focus hook to every mobile and identity control", async () => {
+    const user = userEvent.setup();
+    renderSidebar("/dashboard");
+
+    expect(screen.getByRole("button", { name: "copy:nav.menu" })).toHaveClass("tt-sidebar-focusable");
+    expect(screen.getByRole("link", { name: "copy:shared.app_name" })).toHaveClass("tt-sidebar-focusable");
+    expect(screen.getByRole("button", { name: "copy:header.auth.sign_in_aria" })).toHaveClass("tt-sidebar-focusable");
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "copy:nav.menu" }));
+    });
+
+    expect(screen.getByRole("button", { name: "copy:nav.close_menu" })).toHaveClass("tt-sidebar-focusable");
+    for (const identityControl of screen.getAllByRole("button", { name: "copy:header.auth.sign_in_aria" })) {
+      expect(identityControl).toHaveClass("tt-sidebar-focusable");
+    }
+  });
+
+  it("applies the shared focus hook to the signed-in identity control", () => {
+    authContext.value = {
+      enabled: true,
+      loading: false,
+      signedIn: true,
+      user: null,
+      displayName: "Ada",
+    };
+
+    renderSidebar("/dashboard");
+
+    expect(screen.getByRole("button", { name: "copy:header.auth.open_settings" }))
+      .toHaveClass("tt-sidebar-focusable");
   });
 
   it("keeps light, dark, and system choices wired to the existing theme setter", async () => {

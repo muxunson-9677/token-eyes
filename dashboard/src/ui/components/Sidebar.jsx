@@ -329,7 +329,7 @@ function NavParent({
  */
 function IconButton({ as = "button", title, onClick, href, children, className: extraClassName, ...rest }) {
   const className = cn(
-    "flex h-10 w-10 items-center justify-center rounded-lg text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
+    "tt-sidebar-focusable flex h-10 w-10 items-center justify-center rounded-lg text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
     extraClassName,
   );
   if (as === "a") {
@@ -513,7 +513,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
               onClick={onClose}
               aria-label={copy("nav.close_menu")}
               title={copy("nav.close_menu")}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
+              className="tt-sidebar-focusable flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
             >
               <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
             </button>
@@ -683,7 +683,7 @@ function MobileTopBar({ onOpenDrawer }) {
       </IconButton>
       <Link
         to="/landing"
-        className="flex items-center gap-2 no-underline hover:opacity-80 transition-opacity"
+        className="tt-sidebar-focusable flex items-center gap-2 no-underline hover:opacity-80 transition-opacity"
         aria-label={copy("shared.app_name")}
       >
         <img src="/app-icon.png" alt="" width={24} height={24} className="rounded-md" />
