@@ -20,6 +20,10 @@ import {
 } from "../lib/api";
 import { showCodexResetNotification } from "../lib/codex-reset-notification";
 import { syncCodexResetTrayStatus } from "../lib/codex-reset-tray";
+import {
+  claimOfficialResetCelebration,
+  toOfficialResetCelebrationEvent,
+} from "../lib/official-reset-celebration";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -49,6 +53,30 @@ const EMPTY_CONTEXT: CodexResetEventsContextValue = {
 
 const CodexResetEventsContext =
   createContext<CodexResetEventsContextValue>(EMPTY_CONTEXT);
+
+function resetAnnouncementRecency(event: CodexResetEvent): number {
+  const occurredAt = Date.parse(event.occurred_at || "");
+  if (Number.isFinite(occurredAt)) return occurredAt;
+  // A newer malformed record must block fallback to an older celebration.
+  const createdAt = Date.parse(event.created_at);
+  return Number.isFinite(createdAt) ? createdAt : Number.NEGATIVE_INFINITY;
+}
+
+function latestOfficialResetAnnouncement(
+  events: CodexResetEvent[],
+): CodexResetEvent | null {
+  let latest: CodexResetEvent | null = null;
+  let latestRecency = Number.NEGATIVE_INFINITY;
+  for (const event of events) {
+    if (event.type !== "official_reset_announcement") continue;
+    const recency = resetAnnouncementRecency(event);
+    if (!latest || recency > latestRecency) {
+      latest = event;
+      latestRecency = recency;
+    }
+  }
+  return latest;
+}
 
 export function CodexResetEventsProvider({
   children,
@@ -108,6 +136,18 @@ export function CodexResetEventsProvider({
 
   useEffect(() => {
     void syncCodexResetTrayStatus(response?.tray_events || response?.events || []);
+  }, [response]);
+
+  useEffect(() => {
+    if (!response) return;
+    const latest = latestOfficialResetAnnouncement(response.events);
+    if (!latest) return;
+    const celebration = toOfficialResetCelebrationEvent(latest, response.status);
+    if (!celebration || !claimOfficialResetCelebration(celebration)) return;
+    window.dispatchEvent(new CustomEvent(
+      "token-eyes:official-reset-celebration",
+      { detail: celebration },
+    ));
   }, [response]);
 
   useEffect(() => {
