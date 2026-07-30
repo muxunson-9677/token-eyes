@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import {
   Check,
   ChevronDown,
-  Layers3,
   Palette,
   Pin,
   PinOff,
@@ -19,6 +18,9 @@ import {
   type DesktopWidgetViewModel,
 } from "../lib/api";
 import { copy, getCopyLocale } from "../lib/copy";
+// PillNav is a JSX module with a stable prop contract but no declaration file.
+// @ts-expect-error importing an untyped JSX component
+import { PillNav } from "../ui/components/PillNav";
 // ProviderIcon is a legacy JSX module; its props are stable but it has no declaration file.
 // @ts-expect-error importing an untyped JSX component
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon";
@@ -412,10 +414,9 @@ export function DesktopWidgetPage() {
     setPopoverOpen,
     acknowledgePendingReset,
   } = useDesktopWidget();
-  const [openMenu, setOpenMenu] = useState(null as "agent" | "mode" | null);
+  const [openMenu, setOpenMenu] = useState(null as "agent" | null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const agentMenuAnchor = useRef(null as HTMLButtonElement | null);
-  const modeMenuAnchor = useRef(null as HTMLButtonElement | null);
   const appearanceAnchor = useRef(null as HTMLButtonElement | null);
 
   useEffect(() => {
@@ -469,6 +470,9 @@ export function DesktopWidgetPage() {
   const rootStyle = {
     "--widget-opacity": prefs.opacity,
   } as React.CSSProperties;
+  const setMode = (mode: string) => {
+    void updatePrefs({ mode: mode as DesktopWidgetMode });
+  };
   const handleDragStart = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
@@ -561,20 +565,17 @@ export function DesktopWidgetPage() {
             )}
           </div>
 
+          <PillNav
+            value={prefs.mode}
+            options={(Object.keys(MODE_KEYS) as DesktopWidgetMode[]).map((mode) => ({
+              value: mode,
+              label: copy(MODE_KEYS[mode]),
+            }))}
+            onValueChange={setMode}
+            ariaLabel={copy("widget.mode_menu")}
+          />
+
           <div className="widget-corner-controls">
-            <button
-              ref={modeMenuAnchor}
-              type="button"
-              className="widget-icon-button"
-              aria-label={copy("widget.mode_menu")}
-              aria-expanded={openMenu === "mode"}
-              onClick={() => {
-                setAppearanceOpen(false);
-                setOpenMenu(openMenu === "mode" ? null : "mode");
-              }}
-            >
-              <Layers3 size={11} aria-hidden />
-            </button>
             <button
               ref={appearanceAnchor}
               type="button"
@@ -625,26 +626,6 @@ export function DesktopWidgetPage() {
               <AgentIcon agent={agent} size={17} />
               <span>{AGENT_LABELS[agent]}</span>
               {prefs.selectedAgent === agent ? <Check size={14} aria-hidden /> : null}
-            </button>
-          ))}
-        </PortalMenu>
-      ) : null}
-
-      {openMenu === "mode" ? (
-        <PortalMenu anchor={modeMenuAnchor} label={copy("widget.mode_menu")} kind="mode">
-          {(Object.keys(MODE_KEYS) as DesktopWidgetMode[]).map((mode) => (
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={prefs.mode === mode}
-              key={mode}
-              onClick={() => {
-                setOpenMenu(null);
-                void updatePrefs({ mode });
-              }}
-            >
-              <span>{copy(MODE_KEYS[mode])}</span>
-              {prefs.mode === mode ? <Check size={14} aria-hidden /> : null}
             </button>
           ))}
         </PortalMenu>

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,6 +28,20 @@ vi.mock("../lib/copy", () => ({
 }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ startDragging }),
+}));
+vi.mock("motion/react", () => ({
+  LayoutGroup: ({ children }: { children: React.ReactNode }) => children,
+  motion: {
+    span: ({
+      layoutId: _layoutId,
+      transition: _transition,
+      ...props
+    }: React.HTMLAttributes<HTMLSpanElement> & {
+      layoutId?: string;
+      transition?: unknown;
+    }) => <span {...props} />,
+  },
+  useReducedMotion: () => false,
 }));
 
 import { DesktopWidgetPage } from "./DesktopWidgetPage";
@@ -106,7 +120,7 @@ describe("DesktopWidgetPage", () => {
     };
   });
 
-  it("keeps one card, separates expand and agent controls, and portals menus", async () => {
+  it("keeps one card, separates expand and agent controls, and portals the agent menu", async () => {
     const user = userEvent.setup();
     render(<DesktopWidgetPage />);
 
@@ -123,10 +137,42 @@ describe("DesktopWidgetPage", () => {
     expect(within(agentMenu).getAllByRole("menuitemradio")).toHaveLength(5);
     expect(widget.setPopoverOpen).toHaveBeenCalledWith(true);
 
-    await user.click(screen.getByRole("button", { name: "copy:widget.mode_menu" }));
-    const modeMenu = screen.getByRole("menu", { name: "copy:widget.mode_menu" });
-    expect(modeMenu.parentElement).toBe(document.body);
-    expect(within(modeMenu).getAllByRole("menuitemradio")).toHaveLength(3);
+    expect(screen.queryByRole("menu", { name: "copy:widget.mode_menu" })).not.toBeInTheDocument();
+  });
+
+  it("uses the controlled three-mode Pill Nav in collapsed and expanded states", async () => {
+    const user = userEvent.setup();
+    const originalPrefs = { ...prefs };
+    const { rerender } = render(<DesktopWidgetPage />);
+
+    const nav = screen.getByRole("navigation", { name: "copy:widget.mode_menu" });
+    const projects = within(nav).getByRole("button", { name: "copy:widget.mode.projects" });
+    const limits = within(nav).getByRole("button", { name: "copy:widget.mode.limits" });
+    expect(within(nav).getByRole("button", { name: "copy:widget.mode.models" })).toBeInTheDocument();
+    expect(projects).toHaveAttribute("aria-pressed", "true");
+
+    await act(async () => user.hover(limits));
+    expect(nav).toHaveAttribute("data-preview-value", "limits");
+    expect(widget.updatePrefs).not.toHaveBeenCalled();
+    await act(async () => user.unhover(limits));
+    expect(nav).toHaveAttribute("data-preview-value", "projects");
+
+    await act(async () => user.click(limits));
+    expect(widget.updatePrefs).toHaveBeenCalledTimes(1);
+    expect(widget.updatePrefs).toHaveBeenCalledWith({ mode: "limits" });
+    expect(widget.value.prefs).toEqual(originalPrefs);
+    expect(projects).toHaveAttribute("aria-pressed", "true");
+
+    widget.value = {
+      ...widget.value,
+      prefs: { ...originalPrefs, expanded: true, mode: "limits" },
+    };
+    rerender(<DesktopWidgetPage />);
+    const expandedNav = screen.getByRole("navigation", { name: "copy:widget.mode_menu" });
+    expect(expandedNav).toBeInTheDocument();
+    expect(
+      within(expandedNav).getByRole("button", { name: "copy:widget.mode.limits" }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
   it("renders all three traffic lights and grays zero counts", () => {
@@ -145,7 +191,10 @@ describe("DesktopWidgetPage", () => {
     expect(startDragging).toHaveBeenCalledTimes(1);
 
     startDragging.mockClear();
-    await user.pointer({ keys: "[MouseLeft>]", target: screen.getByRole("button", { name: "copy:widget.mode_menu" }) });
+    await act(async () => user.pointer({
+      keys: "[MouseLeft>]",
+      target: screen.getByRole("button", { name: "copy:widget.mode.limits" }),
+    }));
     expect(startDragging).not.toHaveBeenCalled();
   });
 
