@@ -180,6 +180,42 @@ describe("PillNav", () => {
     );
   });
 
+  it("keeps the keyboard preview when the pointer leaves until focus leaves the navigation", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <PillNav
+          value="projects"
+          options={options}
+          onValueChange={vi.fn()}
+          ariaLabel="Information mode"
+        />
+        <button type="button" data-testid="outside" />
+      </>,
+    );
+
+    const nav = screen.getByRole("navigation", { name: "Information mode" });
+    const projects = screen.getByRole("button", { name: "Projects" });
+    const limits = screen.getByRole("button", { name: "Usage limits" });
+    const models = screen.getByRole("button", { name: "Model usage" });
+
+    await act(async () => user.hover(models));
+    expect(nav).toHaveAttribute("data-preview-value", "models");
+
+    await act(async () => user.tab());
+    expect(projects).toHaveFocus();
+    await act(async () => user.keyboard("{ArrowRight}"));
+    expect(limits).toHaveFocus();
+    expect(nav).toHaveAttribute("data-preview-value", "limits");
+
+    await act(async () => user.unhover(models));
+    expect(limits).toHaveFocus();
+    expect(nav).toHaveAttribute("data-preview-value", "limits");
+
+    await act(async () => user.click(screen.getByTestId("outside")));
+    expect(nav).toHaveAttribute("data-preview-value", "projects");
+  });
+
   it("removes indicator motion when reduced motion is requested", () => {
     motionState.reduced = true;
     render(

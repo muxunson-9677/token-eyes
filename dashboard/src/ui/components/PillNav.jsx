@@ -42,6 +42,18 @@ export function PillNav({
     buttonRefs.current.get(nextValue)?.focus();
   };
 
+  const handleMouseLeave = () => {
+    const focusedValue = options.find(
+      (option) => buttonRefs.current.get(option.value) === document.activeElement,
+    )?.value;
+    if (focusedValue && optionValues.includes(focusedValue)) {
+      setRovingValue(focusedValue);
+      setPreviewValue(focusedValue);
+      return;
+    }
+    setPreviewValue(null);
+  };
+
   return (
     <LayoutGroup id={groupId}>
       <nav
@@ -50,7 +62,7 @@ export function PillNav({
         aria-label={ariaLabel}
         data-preview-value={visiblePreview}
         data-reduced-motion={shouldReduceMotion ? "true" : "false"}
-        onMouseLeave={() => setPreviewValue(null)}
+        onMouseLeave={handleMouseLeave}
         onBlur={(event) => {
           if (event.currentTarget.contains(event.relatedTarget)) return;
           setPreviewValue(null);

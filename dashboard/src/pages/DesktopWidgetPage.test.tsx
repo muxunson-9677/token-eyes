@@ -1,4 +1,7 @@
 import React from "react";
+// Vitest provides Node at runtime; this project intentionally omits Node type declarations.
+// @ts-expect-error node:fs is available in the Vitest runtime
+import { readFileSync } from "node:fs";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,6 +48,8 @@ vi.mock("motion/react", () => ({
 }));
 
 import { DesktopWidgetPage } from "./DesktopWidgetPage";
+
+const widgetStyles = readFileSync("src/pages/desktop-widget.css", "utf8");
 
 const prefs = {
   version: 1,
@@ -310,6 +315,32 @@ describe("DesktopWidgetPage", () => {
     expect(capsule).toHaveTextContent("12,345");
     expect(capsule).toHaveTextContent("$1.25");
     expect(capsule).not.toHaveTextContent("gpt-5-codex");
+  });
+
+  it("keeps the collapsed model summary compact above the Pill Nav", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, expanded: false, mode: "models" },
+    };
+    render(<DesktopWidgetPage />);
+
+    const capsule = screen.getByTestId("widget-model-summary");
+    expect(capsule).toHaveTextContent("copy:widget.models.tokens");
+    expect(capsule).toHaveTextContent("12,345");
+    expect(capsule).toHaveTextContent("copy:widget.models.cost");
+    expect(capsule).toHaveTextContent("$1.25");
+
+    const rule = (selector: string) => {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const matches = [
+        ...widgetStyles.matchAll(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, "g")),
+      ];
+      return matches.at(-1)?.[1] ?? "";
+    };
+    expect(rule(".widget-summary")).toContain("align-self: stretch");
+    expect(rule(".widget-model-summary")).toContain("max-height: 23px");
+    expect(rule(".widget-model-summary small")).toContain("line-height: 9px");
+    expect(rule(".widget-model-summary strong")).toContain("line-height: 14px");
   });
 
   it("portals appearance controls outside the capsule and temporarily expands the native window", async () => {
