@@ -54,3 +54,16 @@
 .tt-pressable[aria-disabled="true"] {
   transform: none;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-pressable {
+    transition: none;
+  }
+
+  .tt-pressable:not(:disabled):not([aria-disabled="true"]):hover,
+  .tt-pressable:not(:disabled):not([aria-disabled="true"]):active,
+  .tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-pressed="true"],
+  .tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-current="page"] {
+    transform: none;
+  }
+}
