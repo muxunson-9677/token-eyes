@@ -259,7 +259,12 @@ test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", a
   await h.service.checkFeed({ force: true });
   assert.equal(requests[0].url, FEED_URL);
   assert.deepEqual(requests[0].options.headers, { Accept: "application/json" });
-  assert.equal(h.service.listUnread()[0].type, "official_reset_announcement");
+  const [unread] = h.service.listUnread();
+  assert.equal(unread.type, "official_reset_announcement");
+  assert.equal(
+    unread.occurredAt,
+    feedPayload.announcements[0].published_at,
+  );
 
   const cached = await h.service.checkFeed();
   assert.equal(cached.skipped, "fresh");
@@ -317,6 +322,7 @@ test("startup rematerializes cached official events when a newer app adds feed m
   assert.equal(event.resetKind, "hard");
   assert.equal(event.resetScope, "all_codex_work_users");
   assert.equal(event.sourcePostId, "2082317452755751098");
+  assert.equal(event.occurredAt, announcement.published_at);
 });
 
 test("offline or invalid feed keeps prior unexpired events and never blocks quota checks", async () => {

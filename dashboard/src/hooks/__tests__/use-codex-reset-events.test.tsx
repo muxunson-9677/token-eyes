@@ -76,27 +76,87 @@ const response: any = {
 response.tray_events = response.events;
 response.widget_events = response.events;
 
-function officialReset(overrides: Record<string, unknown> = {}) {
+function officialReset({
+  publishedAt = "2026-07-30T12:00:00.000Z",
+  ...overrides
+}: Record<string, unknown> = {}) {
   return {
     id: "official-reset-42",
     type: "official_reset_announcement" as const,
     agent: "codex" as const,
     account_key: "default",
     window: null,
-    created_at: "2026-07-30T12:00:01.000Z",
+    created_at: publishedAt,
     reset_at: null,
     official_url: "https://chatgpt.com/codex",
     source: "signed_feed" as const,
-    observed_at: "2026-07-30T12:00:01.000Z",
+    observed_at: publishedAt,
     previous_used_percent: null,
     current_used_percent: null,
     confidence: "confirmed" as const,
     alert_eligible: true,
-    occurred_at: "2026-07-30T12:00:00.000Z",
+    occurred_at: publishedAt,
     source_url: "https://x.com/OpenAI/status/1950000000000000000",
     reset_kind: "hard" as const,
     reset_scope: "all_paid_users" as const,
     ...overrides,
+  };
+}
+
+function createQueuedLockManager() {
+  let tail: Promise<unknown> = Promise.resolve();
+  const request = vi.fn(<T,>(
+    name: string,
+    options: LockOptions,
+    callback: LockGrantedCallback<T>,
+  ): Promise<T> => {
+    const result = tail.then(() => callback({
+      name,
+      mode: options.mode || "exclusive",
+    }));
+    tail = result.then(() => undefined, () => undefined);
+    return result;
+  });
+  return {
+    manager: {
+      request,
+      query: async () => ({ held: [], pending: [] }),
+    } as LockManager,
+    request,
+  };
+}
+
+function createControlledLockManager() {
+  let tail: Promise<unknown> = Promise.resolve();
+  const releases: Array<() => void> = [];
+  const request = vi.fn(<T,>(
+    name: string,
+    options: LockOptions,
+    callback: LockGrantedCallback<T>,
+  ): Promise<T> => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    releases.push(release);
+    const result = tail
+      .then(() => gate)
+      .then(() => callback({
+        name,
+        mode: options.mode || "exclusive",
+      }));
+    tail = result.then(() => undefined, () => undefined);
+    return result;
+  });
+  return {
+    manager: {
+      request,
+      query: async () => ({ held: [], pending: [] }),
+    } as LockManager,
+    request,
+    grantNext() {
+      releases.shift()?.();
+    },
   };
 }
 
@@ -119,9 +179,17 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe("Codex reset events provider", () => {
+  let lockRequest: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     vi.useFakeTimers();
     window.localStorage.clear();
+    const locks = createQueuedLockManager();
+    lockRequest = locks.request;
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: locks.manager,
+    });
     api.getCodexResetEvents.mockReset().mockResolvedValue(response);
     api.checkCodexResetEvents.mockReset().mockResolvedValue(response);
     api.acknowledgeCodexResetEvent.mockReset().mockResolvedValue(undefined);
@@ -130,6 +198,8 @@ describe("Codex reset events provider", () => {
   });
 
   afterEach(() => {
+    Reflect.deleteProperty(navigator, "locks");
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -206,8 +276,7 @@ describe("Codex reset events provider", () => {
   it("dispatches the exact latest applicable official reset celebration once", async () => {
     const older = officialReset({
       id: "official-reset-old",
-      occurred_at: "2026-07-29T12:00:00.000Z",
-      created_at: "2026-07-29T12:00:01.000Z",
+      publishedAt: "2026-07-29T12:00:00.000Z",
     });
     const latest = officialReset();
     const nextResponse = responseWithEvents([older, latest]);
@@ -300,15 +369,15 @@ describe("Codex reset events provider", () => {
     const events = [
       officialReset({
         id: "middle",
-        occurred_at: "2026-07-29T12:00:00.000Z",
+        publishedAt: "2026-07-29T12:00:00.000Z",
       }),
       officialReset({
         id: "newest",
-        occurred_at: "2026-07-30T12:00:00.000Z",
+        publishedAt: "2026-07-30T12:00:00.000Z",
       }),
       officialReset({
         id: "oldest",
-        occurred_at: "2026-07-28T12:00:00.000Z",
+        publishedAt: "2026-07-28T12:00:00.000Z",
       }),
     ];
     api.getCodexResetEvents.mockResolvedValue(responseWithEvents(events));
@@ -341,11 +410,11 @@ describe("Codex reset events provider", () => {
     const events = [
       officialReset({
         id: "older-valid",
-        occurred_at: "2026-07-29T12:00:00.000Z",
+        publishedAt: "2026-07-29T12:00:00.000Z",
       }),
       officialReset({
         id: "latest-untraceable",
-        occurred_at: "not-a-date",
+        occurred_at: undefined,
         created_at: "2026-07-30T12:00:01.000Z",
       }),
     ];
@@ -369,7 +438,7 @@ describe("Codex reset events provider", () => {
       )).toBeNull();
       expect(warn).toHaveBeenCalledWith(
         "[official-reset-celebration] skipped",
-        { reason: "invalid-occurred-at" },
+        { reason: "missing-occurred-at" },
       );
     } finally {
       warn.mockRestore();
@@ -401,6 +470,180 @@ describe("Codex reset events provider", () => {
     );
     expect(notification.showCodexResetNotification).toHaveBeenCalledWith(
       official,
+    );
+  });
+
+  it("uses one shared exclusive lock across concurrent provider instances", async () => {
+    api.getCodexResetEvents.mockResolvedValue(
+      responseWithEvents([officialReset()]),
+    );
+    const onCelebration = vi.fn();
+    window.addEventListener(
+      "token-eyes:official-reset-celebration",
+      onCelebration,
+    );
+
+    try {
+      renderHook(() => useCodexResetEvents(), { wrapper });
+      renderHook(() => useCodexResetEvents(), { wrapper });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(lockRequest).toHaveBeenCalledTimes(2);
+      expect(onCelebration).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(
+        "token-eyes:official-reset-celebration",
+        onCelebration,
+      );
+    }
+  });
+
+  it("cancels a stale queued claim and lets the current response dispatch", async () => {
+    const firstEvent = officialReset({
+      id: "official-reset-first",
+      publishedAt: "2026-07-29T12:00:00.000Z",
+    });
+    const currentEvent = officialReset({
+      id: "official-reset-current",
+      publishedAt: "2026-07-30T12:00:00.000Z",
+    });
+    api.getCodexResetEvents
+      .mockResolvedValueOnce(responseWithEvents([firstEvent]))
+      .mockResolvedValue(responseWithEvents([currentEvent]));
+    const locks = createControlledLockManager();
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: locks.manager,
+    });
+    const details: any[] = [];
+    const onCelebration = (event: Event) => {
+      details.push((event as CustomEvent).detail);
+    };
+    window.addEventListener(
+      "token-eyes:official-reset-celebration",
+      onCelebration,
+    );
+
+    try {
+      renderHook(() => useCodexResetEvents(), { wrapper });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(locks.request).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(locks.request).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        locks.grantNext();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(details).toEqual([]);
+      expect(window.localStorage.getItem(
+        "token-eyes:official-reset-celebrated:v1",
+      )).toBeNull();
+
+      await act(async () => {
+        locks.grantNext();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(details).toHaveLength(1);
+      expect(details[0].eventId).toBe("official-reset-current");
+      expect(window.localStorage.getItem(
+        "token-eyes:official-reset-celebrated:v1",
+      )).toBe("official-reset-current");
+    } finally {
+      window.removeEventListener(
+        "token-eyes:official-reset-celebration",
+        onCelebration,
+      );
+    }
+  });
+
+  it("fails closed without Web Locks and leaves the event unclaimed", async () => {
+    Reflect.deleteProperty(navigator, "locks");
+    api.getCodexResetEvents.mockResolvedValue(
+      responseWithEvents([officialReset()]),
+    );
+    const onCelebration = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    window.addEventListener(
+      "token-eyes:official-reset-celebration",
+      onCelebration,
+    );
+
+    try {
+      renderHook(() => useCodexResetEvents(), { wrapper });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onCelebration).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem(
+        "token-eyes:official-reset-celebrated:v1",
+      )).toBeNull();
+      expect(warn).toHaveBeenCalledWith(
+        "[official-reset-celebration] skipped",
+        { reason: "lock-unavailable" },
+      );
+    } finally {
+      window.removeEventListener(
+        "token-eyes:official-reset-celebration",
+        onCelebration,
+      );
+    }
+  });
+
+  it("keeps a claimed event deduplicated when dispatch throws", async () => {
+    api.getCodexResetEvents.mockResolvedValue(
+      responseWithEvents([officialReset()]),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const dispatch = vi.spyOn(window, "dispatchEvent")
+      .mockImplementation((event: Event) => {
+        if (event.type === "token-eyes:official-reset-celebration") {
+          throw new DOMException("dispatch failed");
+        }
+        return true;
+      });
+
+    renderHook(() => useCodexResetEvents(), { wrapper });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(window.localStorage.getItem(
+      "token-eyes:official-reset-celebrated:v1",
+    )).toBe("official-reset-42");
+    expect(warn).toHaveBeenCalledWith(
+      "[official-reset-celebration] skipped",
+      { reason: "dispatch-failed" },
+    );
+
+    dispatch.mockClear();
+    renderHook(() => useCodexResetEvents(), { wrapper });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "token-eyes:official-reset-celebration",
+      }),
     );
   });
 

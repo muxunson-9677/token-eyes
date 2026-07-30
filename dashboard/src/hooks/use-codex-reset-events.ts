@@ -22,6 +22,7 @@ import { showCodexResetNotification } from "../lib/codex-reset-notification";
 import { syncCodexResetTrayStatus } from "../lib/codex-reset-tray";
 import {
   claimOfficialResetCelebration,
+  reportOfficialResetCelebrationFailure,
   toOfficialResetCelebrationEvent,
 } from "../lib/official-reset-celebration";
 
@@ -54,22 +55,21 @@ const EMPTY_CONTEXT: CodexResetEventsContextValue = {
 const CodexResetEventsContext =
   createContext<CodexResetEventsContextValue>(EMPTY_CONTEXT);
 
-function resetAnnouncementRecency(event: CodexResetEvent): number {
-  const occurredAt = Date.parse(event.occurred_at || "");
-  if (Number.isFinite(occurredAt)) return occurredAt;
-  // A newer malformed record must block fallback to an older celebration.
-  const createdAt = Date.parse(event.created_at);
-  return Number.isFinite(createdAt) ? createdAt : Number.NEGATIVE_INFINITY;
-}
-
 function latestOfficialResetAnnouncement(
   events: CodexResetEvent[],
 ): CodexResetEvent | null {
+  const announcements = events.filter(
+    (event) => event.type === "official_reset_announcement",
+  );
+  const untraceable = announcements.find(
+    (event) => !Number.isFinite(Date.parse(event.occurred_at || "")),
+  );
+  if (untraceable) return untraceable;
+
   let latest: CodexResetEvent | null = null;
   let latestRecency = Number.NEGATIVE_INFINITY;
-  for (const event of events) {
-    if (event.type !== "official_reset_announcement") continue;
-    const recency = resetAnnouncementRecency(event);
+  for (const event of announcements) {
+    const recency = Date.parse(event.occurred_at!);
     if (!latest || recency > latestRecency) {
       latest = event;
       latestRecency = recency;
@@ -140,14 +140,28 @@ export function CodexResetEventsProvider({
 
   useEffect(() => {
     if (!response) return;
+    let current = true;
     const latest = latestOfficialResetAnnouncement(response.events);
     if (!latest) return;
     const celebration = toOfficialResetCelebrationEvent(latest, response.status);
-    if (!celebration || !claimOfficialResetCelebration(celebration)) return;
-    window.dispatchEvent(new CustomEvent(
-      "token-eyes:official-reset-celebration",
-      { detail: celebration },
-    ));
+    if (!celebration) return;
+    void claimOfficialResetCelebration(celebration, {
+      isCurrent: () => current,
+      onClaim: () => {
+        if (!current) return;
+        try {
+          window.dispatchEvent(new CustomEvent(
+            "token-eyes:official-reset-celebration",
+            { detail: celebration },
+          ));
+        } catch {
+          reportOfficialResetCelebrationFailure("dispatch-failed");
+        }
+      },
+    });
+    return () => {
+      current = false;
+    };
   }, [response]);
 
   useEffect(() => {

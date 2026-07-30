@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexResetEvent, CodexResetMonitorStatus } from "./api";
 import {
   CELEBRATED_EVENT_KEY,
+  OFFICIAL_RESET_CELEBRATION_LOCK,
   claimOfficialResetCelebration,
   toOfficialResetCelebrationEvent,
   type OfficialResetCelebrationEvent,
@@ -64,15 +65,45 @@ function celebration(
   };
 }
 
+function createQueuedLockManager(): LockManager {
+  let tail: Promise<unknown> = Promise.resolve();
+  const request = vi.fn(<T>(
+    name: string,
+    optionsOrCallback: LockOptions | LockGrantedCallback<T>,
+    callback?: LockGrantedCallback<T>,
+  ): Promise<T> => {
+    const granted = typeof optionsOrCallback === "function"
+      ? optionsOrCallback
+      : callback!;
+    const mode = typeof optionsOrCallback === "function"
+      ? "exclusive"
+      : optionsOrCallback.mode || "exclusive";
+    const result = tail.then(() => granted({ name, mode }));
+    tail = result.then(() => undefined, () => undefined);
+    return result;
+  });
+  return {
+    request,
+    async query() {
+      return { held: [], pending: [] };
+    },
+  } as LockManager;
+}
+
 describe("official reset celebration contract", () => {
   let warn: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     window.localStorage.clear();
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: createQueuedLockManager(),
+    });
     warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
+    Reflect.deleteProperty(navigator, "locks");
     vi.restoreAllMocks();
   });
 
@@ -113,13 +144,13 @@ describe("official reset celebration contract", () => {
     [{ configured: false }, true],
     [{ configured: null }, true],
     [{ configured: true }, false],
-  ])("marks non-applicable announcements honestly", (statusOverride, eligible) => {
+  ])("marks non-applicable announcements honestly", async (statusOverride, eligible) => {
     const normalized = toOfficialResetCelebrationEvent(
       officialEvent({ alert_eligible: eligible }),
       { ...status, ...statusOverride },
     );
     expect(normalized?.appliesToCurrentUsage).toBe(false);
-    expect(claimOfficialResetCelebration(normalized!)).toBe(false);
+    expect(await claimOfficialResetCelebration(normalized!)).toBe(false);
   });
 
   it.each(["all_paid_users", "all_codex_work_users"] as const)(
@@ -132,20 +163,20 @@ describe("official reset celebration contract", () => {
     },
   );
 
-  it("rejects an unsupported scope", () => {
+  it("rejects an unsupported scope", async () => {
     const normalized = toOfficialResetCelebrationEvent(
       officialEvent({ reset_scope: "unknown" }),
       status,
     );
     expect(normalized?.appliesToCurrentUsage).toBe(false);
-    expect(claimOfficialResetCelebration(normalized!)).toBe(false);
+    expect(await claimOfficialResetCelebration(normalized!)).toBe(false);
   });
 
-  it("claims a valid event once and persists its stable id", () => {
-    expect(claimOfficialResetCelebration(celebration())).toBe(true);
+  it("claims a valid event once and persists its stable id", async () => {
+    expect(await claimOfficialResetCelebration(celebration())).toBe(true);
     expect(window.localStorage.getItem(CELEBRATED_EVENT_KEY))
       .toBe("official-reset-42");
-    expect(claimOfficialResetCelebration(celebration())).toBe(false);
+    expect(await claimOfficialResetCelebration(celebration())).toBe(false);
   });
 
   it.each([
@@ -154,8 +185,8 @@ describe("official reset celebration contract", () => {
     "https://chatgpt.com/codex",
     "https://x.com/OpenAI/status/1950000000000000000",
     "https://x.com/thsottiaux/status/1950000000000000001/",
-  ])("accepts an exact official HTTPS source: %s", (sourceUrl) => {
-    expect(claimOfficialResetCelebration(celebration({
+  ])("accepts an exact official HTTPS source: %s", async (sourceUrl) => {
+    expect(await claimOfficialResetCelebration(celebration({
       eventId: `accepted-${sourceUrl}`,
       sourceUrl,
     }))).toBe(true);
@@ -177,48 +208,102 @@ describe("official reset celebration contract", () => {
     "https://x.com/OpenAI/status/1950000000000000000/more",
     "https://x.com/other/status/1950000000000000000",
     "not a URL",
-  ])("rejects an untrusted source boundary: %s", (sourceUrl) => {
-    expect(claimOfficialResetCelebration(celebration({
+  ])("rejects an untrusted source boundary: %s", async (sourceUrl) => {
+    expect(await claimOfficialResetCelebration(celebration({
       eventId: `rejected-${sourceUrl}`,
       sourceUrl,
     }))).toBe(false);
   });
 
-  it("rejects an invalid occurrence timestamp", () => {
-    expect(claimOfficialResetCelebration(celebration({
+  it("rejects an invalid occurrence timestamp", async () => {
+    expect(await claimOfficialResetCelebration(celebration({
       occurredAt: "not-a-date",
     }))).toBe(false);
   });
 
-  it("does not claim a different reset kind", () => {
-    expect(claimOfficialResetCelebration({
+  it("does not claim a different reset kind", async () => {
+    expect(await claimOfficialResetCelebration({
       ...celebration(),
       resetKind: "quota-rollover",
     } as unknown as OfficialResetCelebrationEvent)).toBe(false);
   });
 
-  it("does not throw or dispatch a claim when localStorage cannot be read", () => {
+  it("does not throw or dispatch a claim when localStorage cannot be read", async () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new DOMException("denied");
     });
 
-    expect(() => claimOfficialResetCelebration(celebration())).not.toThrow();
-    expect(claimOfficialResetCelebration(celebration())).toBe(false);
+    expect(await claimOfficialResetCelebration(celebration())).toBe(false);
     expect(warn).not.toHaveBeenCalledWith(
       expect.stringContaining("official-reset-42"),
       expect.anything(),
     );
   });
 
-  it("does not claim an event when its id cannot be persisted", () => {
+  it("does not claim an event when its id cannot be persisted", async () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("quota");
     });
 
-    expect(claimOfficialResetCelebration(celebration())).toBe(false);
+    expect(await claimOfficialResetCelebration(celebration())).toBe(false);
     expect(warn).toHaveBeenCalledWith(
       "[official-reset-celebration] skipped",
       { reason: "storage-write-failed" },
+    );
+  });
+
+  it("serializes concurrent same-origin claims so only one callback runs", async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+
+    const results = await Promise.all([
+      claimOfficialResetCelebration(celebration(), { onClaim: first }),
+      claimOfficialResetCelebration(celebration(), { onClaim: second }),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(first.mock.calls.length + second.mock.calls.length).toBe(1);
+    expect(navigator.locks.request).toHaveBeenCalledWith(
+      OFFICIAL_RESET_CELEBRATION_LOCK,
+      { mode: "exclusive" },
+      expect.any(Function),
+    );
+    expect(window.localStorage.getItem(CELEBRATED_EVENT_KEY))
+      .toBe("official-reset-42");
+  });
+
+  it("fails closed when Web Locks are unavailable", async () => {
+    Reflect.deleteProperty(navigator, "locks");
+    const onClaim = vi.fn();
+
+    expect(await claimOfficialResetCelebration(
+      celebration(),
+      { onClaim },
+    )).toBe(false);
+    expect(onClaim).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      "[official-reset-celebration] skipped",
+      { reason: "lock-unavailable" },
+    );
+  });
+
+  it("fails closed when the exclusive lock request is rejected", async () => {
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: vi.fn().mockRejectedValue(new DOMException("denied")),
+      },
+    });
+    const onClaim = vi.fn();
+
+    expect(await claimOfficialResetCelebration(
+      celebration(),
+      { onClaim },
+    )).toBe(false);
+    expect(onClaim).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      "[official-reset-celebration] skipped",
+      { reason: "lock-request-failed" },
     );
   });
 });

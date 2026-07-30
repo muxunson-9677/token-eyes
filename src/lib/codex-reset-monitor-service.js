@@ -102,6 +102,7 @@ function officialEvent(announcement) {
     type: "official_reset_announcement",
     window: null,
     createdAt: announcement.published_at,
+    occurredAt: announcement.published_at,
     resetAt: null,
     officialUrl: announcement.official_url,
     sourceUrl: announcement.source_url,

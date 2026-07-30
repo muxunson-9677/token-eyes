@@ -11,6 +11,8 @@ export interface OfficialResetCelebrationEvent {
 
 export const CELEBRATED_EVENT_KEY =
   "token-eyes:official-reset-celebrated:v1";
+export const OFFICIAL_RESET_CELEBRATION_LOCK =
+  "token-eyes:official-reset-celebration:v1";
 
 const OFFICIAL_RESET_HOSTS = new Set([
   "help.openai.com",
@@ -21,6 +23,10 @@ const OFFICIAL_RESET_HOSTS = new Set([
 
 function diagnose(reason: string) {
   console.warn("[official-reset-celebration] skipped", { reason });
+}
+
+export function reportOfficialResetCelebrationFailure(reason: "dispatch-failed") {
+  diagnose(reason);
 }
 
 function isValidDate(value: string) {
@@ -86,9 +92,15 @@ export function toOfficialResetCelebrationEvent(
   };
 }
 
-export function claimOfficialResetCelebration(
+interface ClaimOfficialResetCelebrationOptions {
+  isCurrent?: () => boolean;
+  onClaim?: () => void;
+}
+
+export async function claimOfficialResetCelebration(
   event: OfficialResetCelebrationEvent,
-): boolean {
+  options: ClaimOfficialResetCelebrationOptions = {},
+): Promise<boolean> {
   if (event.resetKind !== "official-extra-reset") {
     diagnose("unsupported-reset-kind");
     return false;
@@ -106,20 +118,49 @@ export function claimOfficialResetCelebration(
     return false;
   }
 
-  let storage: Storage;
+  let locks: LockManager | undefined;
   try {
-    storage = window.localStorage;
-    if (storage.getItem(CELEBRATED_EVENT_KEY) === event.eventId) return false;
+    locks = typeof navigator === "undefined" ? undefined : navigator.locks;
   } catch {
-    diagnose("storage-read-failed");
+    diagnose("lock-unavailable");
+    return false;
+  }
+  if (!locks || typeof locks.request !== "function") {
+    diagnose("lock-unavailable");
     return false;
   }
 
   try {
-    storage.setItem(CELEBRATED_EVENT_KEY, event.eventId);
+    return await locks.request(
+      OFFICIAL_RESET_CELEBRATION_LOCK,
+      { mode: "exclusive" },
+      () => {
+        if (options.isCurrent?.() === false) return false;
+
+        let storage: Storage;
+        try {
+          storage = window.localStorage;
+          if (storage.getItem(CELEBRATED_EVENT_KEY) === event.eventId) {
+            return false;
+          }
+        } catch {
+          diagnose("storage-read-failed");
+          return false;
+        }
+
+        if (options.isCurrent?.() === false) return false;
+        try {
+          storage.setItem(CELEBRATED_EVENT_KEY, event.eventId);
+        } catch {
+          diagnose("storage-write-failed");
+          return false;
+        }
+        options.onClaim?.();
+        return true;
+      },
+    );
   } catch {
-    diagnose("storage-write-failed");
+    diagnose("lock-request-failed");
     return false;
   }
-  return true;
 }

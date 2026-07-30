@@ -150,6 +150,21 @@ test("rejects invalid generated timestamps and accepts an empty signed feed", ()
   );
 });
 
+test("rejects missing or invalid signed publication timestamps without guessing", () => {
+  const missing = announcement();
+  delete missing.published_at;
+  assert.throws(
+    () => validateCodexResetFeedPayload(payload([missing]), { nowMs: NOW }),
+    /published/i,
+  );
+  assert.throws(
+    () => validateCodexResetFeedPayload(payload([
+      announcement({ published_at: "not-a-date" }),
+    ]), { nowMs: NOW }),
+    /published/i,
+  );
+});
+
 test("key generator and signer create a verifiable empty feed without exposing the private key", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-feed-sign-"));
   try {

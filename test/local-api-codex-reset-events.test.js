@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -8,6 +9,12 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
+const {
+  createCodexResetMonitorService,
+} = require("../src/lib/codex-reset-monitor-service");
+const {
+  createSignedCodexResetFeedEnvelope,
+} = require("../src/lib/codex-reset-feed");
 
 function request({ method = "GET", headers = {}, body } = {}) {
   const req = new EventEmitter();
@@ -142,6 +149,66 @@ test("GET returns no-store sanitized official reset events without auth", async 
     assert.doesNotMatch(JSON.stringify(body), /access_token|raw_response|C:\\\\private/i);
   } finally {
     fs.rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
+test("GET projects the signed publication time from a real monitor event", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-reset-api-"));
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const nowMs = Date.parse("2026-07-20T08:00:00.000Z");
+  const publishedAt = "2026-07-20T07:00:00.000Z";
+  const payload = {
+    generated_at: "2026-07-20T07:30:00.000Z",
+    announcements: [{
+      id: "official-reset-real-feed",
+      type: "official_reset_announcement",
+      title: "Codex official extra reset",
+      summary: "Usage limits were reset for eligible Codex users.",
+      source_url: "https://openai.com/index/introducing-codex/",
+      official_url: "https://chatgpt.com/codex",
+      published_at: publishedAt,
+      expires_at: "2026-08-20T00:00:00.000Z",
+      reset_kind: "hard",
+      reset_scope: "all_codex_work_users",
+    }],
+  };
+  const service = createCodexResetMonitorService({
+    getCodexUsageLimits: async () => ({ configured: true }),
+    loadState: () => null,
+    saveState() {},
+    now: () => nowMs,
+    enabled: true,
+    feedEnabled: true,
+    feedPublicKey: keys.publicKey,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => createSignedCodexResetFeedEnvelope(
+        payload,
+        keys.privateKey,
+      ),
+    }),
+  });
+  const handler = createLocalApiHandler({
+    queuePath: path.join(root, "queue.jsonl"),
+    trackerDataDir: root,
+    codexResetMonitorService: service,
+  });
+
+  try {
+    await service.checkFeed({ force: true });
+    const res = await call(
+      handler,
+      "/functions/tokentracker-codex-reset-events",
+    );
+    assert.equal(res.statusCode, 200);
+    const body = res.json();
+    assert.equal(body.events.length, 1);
+    assert.equal(body.events[0].occurred_at, publishedAt);
+    assert.equal(body.history[0].occurred_at, publishedAt);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
