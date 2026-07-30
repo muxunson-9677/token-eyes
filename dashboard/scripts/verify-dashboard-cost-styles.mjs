@@ -9,6 +9,7 @@ const DASHBOARD_DIR = path.resolve(__dirname, "..");
 const VITE_CLI = path.join(DASHBOARD_DIR, "node_modules", "vite", "bin", "vite.js");
 const MOCK_QUERY =
   "mock=1&mock_seed=baseline&mock_today=2025-12-31&mock_now=2025-12-31T12:00:00Z";
+const AUDIT_TARGET_TIMEOUT_MS = 15_000;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -122,6 +123,74 @@ function hasVisibleFocus(style) {
   return outlineVisible || shadowVisible;
 }
 
+async function waitForAuditTargets(page, pageName, theme) {
+  const scenario = `${pageName}/${theme}`;
+  try {
+    const readinessHandle = await page.waitForFunction(
+      (name) => {
+        const isVisible = (node) => {
+          if (!(node instanceof HTMLElement) || node.getClientRects().length === 0) return false;
+          const style = getComputedStyle(node);
+          return style.display !== "none" && style.visibility !== "hidden";
+        };
+        const blockingState = [
+          ...document.querySelectorAll('[data-state="loading"], [data-state="error"]'),
+        ].find(isVisible);
+
+        if (name === "dashboard") {
+          const title = document.querySelector('[data-testid="trend-monitor-title"]');
+          const trendRoot = title?.parentElement?.parentElement?.parentElement;
+          const trendZoom = trendRoot?.querySelector("button");
+          const dataTabList = document.querySelector('[role="tablist"][aria-label="Data view"]');
+          const dataTabs = [
+            ...(dataTabList?.querySelectorAll('button[role="tab"]') ?? []),
+          ];
+          if (
+            blockingState
+            || !isVisible(trendZoom)
+            || dataTabs.length !== 2
+            || !dataTabs.every(isVisible)
+          ) {
+            return false;
+          }
+          return { trendZoom: 1, dataTabs: dataTabs.length };
+        }
+
+        const total = document.querySelector('[data-cost-summary-card="total"]');
+        const sections = [...document.querySelectorAll("[data-cost-section]")];
+        const toggles = sections.map(
+          (section) => section.querySelector("button[aria-expanded]"),
+        );
+        const summaryRegion = document.querySelector('[data-testid="cost-summary-region"]');
+        const costError = summaryRegion?.parentElement?.querySelector(
+          ":scope > .border-red-200.text-red-600",
+        );
+        if (
+          blockingState
+          || isVisible(costError)
+          || !isVisible(total)
+          || sections.length < 4
+          || toggles.length !== sections.length
+          || !toggles.every(isVisible)
+        ) {
+          return false;
+        }
+        return { costTotal: 1, foldableToggles: toggles.length };
+      },
+      pageName,
+      { timeout: AUDIT_TARGET_TIMEOUT_MS },
+    );
+    const readiness = await readinessHandle.jsonValue();
+    await readinessHandle.dispose();
+    console.log(`READY scenario=${scenario} ${JSON.stringify(readiness)}`);
+  } catch (error) {
+    throw new Error(
+      `Audit targets did not become ready for scenario=${scenario} within ` +
+      `${AUDIT_TARGET_TIMEOUT_MS}ms: ${error}`,
+    );
+  }
+}
+
 async function tagAuditTargets(page, pageName) {
   return page.evaluate((name) => {
     const targets = [];
@@ -223,7 +292,7 @@ async function auditPage(browser, baseUrl, pageName, pathName, theme) {
     await page.goto(`${baseUrl}${pathName}?theme=${theme}&${MOCK_QUERY}`, {
       waitUntil: "networkidle",
     });
-    await page.waitForTimeout(500);
+    await waitForAuditTargets(page, pageName, theme);
     const targetNames = await tagAuditTargets(page, pageName);
     const focusStyles = await readKeyboardFocusStyles(page, targetNames);
     const failures = [];
