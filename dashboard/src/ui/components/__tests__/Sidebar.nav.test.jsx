@@ -1,6 +1,9 @@
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import postcss from "postcss";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getNavGroups, AppLayout } from "../Sidebar.jsx";
@@ -274,6 +277,41 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(spendParent.tagName).toBe("BUTTON");
   });
 
+  it("applies the shared focus hook to single, parent, and child nav items", () => {
+    renderSidebar("/spend/usage");
+
+    expect(screen.getByRole("link", { name: "copy:nav.usage" })).toHaveClass("tt-sidebar-focusable");
+    expect(screen.getByRole("button", { name: "copy:nav.group.spend" })).toHaveClass("tt-sidebar-focusable");
+    expect(screen.getByRole("link", { name: "copy:nav.spend.usage" })).toHaveClass("tt-sidebar-focusable");
+  });
+
+  it("reaches a focus-hooked sidebar item by keyboard tabbing", async () => {
+    const user = userEvent.setup();
+    renderSidebar("/dashboard");
+    const overviewLink = screen.getByRole("link", { name: "copy:nav.usage" });
+
+    await user.tab();
+
+    expect(overviewLink).toHaveFocus();
+    expect(overviewLink).toHaveClass("tt-sidebar-focusable");
+  });
+
+  it("applies the shared focus hook to the theme trigger and choices", async () => {
+    const user = userEvent.setup();
+    renderSidebar("/dashboard");
+    const themeTrigger = screen.getByRole("button", { name: "copy:settings.appearance.theme.label" });
+
+    expect(themeTrigger).toHaveClass("tt-sidebar-focusable");
+    await act(async () => {
+      await user.click(themeTrigger);
+    });
+
+    const menu = screen.getByRole("menu");
+    for (const menuItem of within(menu).getAllByRole("menuitem")) {
+      expect(menuItem).toHaveClass("tt-sidebar-focusable");
+    }
+  });
+
   it("keeps light, dark, and system choices wired to the existing theme setter", async () => {
     const user = userEvent.setup();
     renderSidebar("/dashboard");
@@ -310,5 +348,30 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
       parents: within(nav).getAllByRole("button").map((button) => button.getAttribute("aria-label")),
     });
     expect(getNavLabels(navRegions[1])).toEqual(getNavLabels(navRegions[0]));
+  });
+});
+
+describe("Sidebar keyboard focus styles", () => {
+  it("overrides the global important focus suppression with an inset visible outline", () => {
+    const stylesheet = postcss.parse(readFileSync(resolve("src/styles.css"), "utf8"));
+    const rules = stylesheet.nodes.filter((node) => node.type === "rule");
+    const suppressionIndex = rules.findIndex((rule) =>
+      rule.selector.split(",").map((selector) => selector.trim()).includes("*:focus-visible"),
+    );
+    const focusIndex = rules.findIndex(
+      (rule) => rule.selector === ".tt-sidebar-focusable:focus-visible",
+    );
+
+    expect(suppressionIndex).toBeGreaterThanOrEqual(0);
+    expect(focusIndex).toBeGreaterThan(suppressionIndex);
+
+    const focusRule = rules[focusIndex];
+    const outline = focusRule.nodes.find((node) => node.prop === "outline");
+    const outlineOffset = focusRule.nodes.find((node) => node.prop === "outline-offset");
+
+    expect(outline?.value).toBe("2px solid var(--oai-black)");
+    expect(outline?.important).toBe(true);
+    expect(Number.parseFloat(outlineOffset?.value)).toBeLessThan(0);
+    expect(outlineOffset?.important).toBe(true);
   });
 });

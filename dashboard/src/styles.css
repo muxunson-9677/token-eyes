@@ -304,6 +304,11 @@ body {
   --tw-ring-offset-shadow: 0 0 #0000 !important;
 }
 
+.tt-sidebar-focusable:focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: -2px !important;
+}
+
 /* TokenTrackerBar WKWebView: `native-app` on <html> (inline head script + Swift); NSVisualEffectView under transparent WKWebView. */
 html.native-app,
 html.native-app.dark {

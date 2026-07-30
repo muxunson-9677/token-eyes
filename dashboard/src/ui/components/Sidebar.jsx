@@ -187,7 +187,7 @@ function NavItem({ item, collapsed, active, onClick, unreadCount = 0 }) {
       title={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "tt-sidebar-item tt-pressable flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline",
+        "tt-sidebar-item tt-sidebar-focusable tt-pressable flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline",
         collapsed && "justify-center px-0 py-2",
         active
           ? "text-oai-black font-medium dark:text-white"
@@ -262,7 +262,7 @@ function NavParent({
         aria-controls={childrenListId}
         aria-label={group.label}
         className={cn(
-          "tt-sidebar-item tt-pressable flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]",
+          "tt-sidebar-item tt-sidebar-focusable tt-pressable flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]",
           collapsed && "justify-center px-0 py-2",
           active
             ? "text-oai-black font-medium dark:text-white"
@@ -306,7 +306,7 @@ function NavParent({
                   onClick={onItemClick}
                   aria-current={childActive ? "page" : undefined}
                   className={cn(
-                    "tt-sidebar-item tt-pressable flex items-center rounded-md px-2 py-1.5 text-[13px] no-underline",
+                    "tt-sidebar-item tt-sidebar-focusable tt-pressable flex items-center rounded-md px-2 py-1.5 text-[13px] no-underline",
                     childActive
                       ? "text-oai-black font-medium dark:text-white"
                       : "text-oai-gray-600 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-white",
@@ -388,7 +388,7 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
         title={themeLabel}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "tt-pressable inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
+          "tt-sidebar-focusable tt-pressable inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
           glassChrome
             ? "border border-gray-500/20 dark:border-gray-500/30 bg-gray-500/[0.04] dark:bg-gray-500/[0.06] backdrop-blur-[2px] text-oai-gray-700 dark:text-oai-gray-300 hover:bg-gray-500/10 dark:hover:bg-gray-500/12 hover:border-gray-500/30 dark:hover:border-gray-500/40 hover:text-oai-black dark:hover:text-white"
             : "border border-oai-gray-200 dark:border-oai-gray-700 text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white hover:border-oai-gray-300 dark:hover:border-oai-gray-600",
@@ -410,7 +410,7 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
                 role="menuitem"
                 onClick={() => { onSetTheme(value); setOpen(false); }}
                 className={cn(
-                  "flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] transition-colors",
+                  "tt-sidebar-focusable flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] transition-colors",
                   active
                     ? "text-oai-black dark:text-white bg-oai-gray-100 dark:bg-oai-gray-800"
                     : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/60 hover:text-oai-black dark:hover:text-white",

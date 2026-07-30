@@ -328,7 +328,11 @@ export function UsageStatsPanel({
                   className={cn("rounded-lg p-2.5", card.bgClass)}
                 >
                   <div className="flex items-center gap-1.5 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
-                    <Icon className={cn("h-3.5 w-3.5", card.iconClass)} aria-hidden="true" />
+                    <Icon
+                      className={cn("h-3.5 w-3.5", card.iconClass)}
+                      aria-hidden="true"
+                      data-testid="usage-dimension-icon"
+                    />
                     <span>{copy(`ticket02.stats.${card.key}`)}</span>
                     {card.tooltip && (
                       <span
