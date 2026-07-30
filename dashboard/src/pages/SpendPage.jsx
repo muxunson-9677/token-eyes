@@ -154,11 +154,9 @@ function SpendUsagePageInner({
     () => normalizeVisibleProviderIds(visibleOrdered),
     [visibleOrdered],
   );
-  const heavyUsagePanelsReady = useDeferredHeavyUsagePanels(visibleProviderIds.length > 0);
 
   // Ticket-02: filter state from UsageFiltersContext
   const { state: filterState, refreshRevision, requestRefresh } = useUsageFilters();
-  const tokenServices = useTokenServicePlans(refreshRevision);
   const effectiveUsageSources = useMemo(
     () => resolveEffectiveUsageSources({
       sources: filterState.sources,
@@ -187,9 +185,6 @@ function SpendUsagePageInner({
     if (tab === "requests") setRequestLogForced(true);
     setActiveUsageTab(tab);
   }, []);
-  const requestLogFetchReady = useDeferredRequestLogFetch(
-    heavyUsagePanelsReady && activeUsageTab === "requests",
-  ) || requestLogForced;
   const selectedUsageAgent = useMemo(() => {
     const selectedAgentId = filterState.agentIds?.length === 1 ? filterState.agentIds[0] : null;
     if (!selectedAgentId) return null;
@@ -278,6 +273,7 @@ function SpendUsagePageInner({
 
   // Ticket-02: usage summary + filter options
   const { summary, loading: summaryLoading, error: summaryError } = useUsageSummary({
+    enabled: !usageDateBounds.loading,
     baseUrl,
     accessToken,
     guestAllowed,
@@ -288,7 +284,20 @@ function SpendUsagePageInner({
     tzOffsetMinutes,
     allowedSources: visibleProviderIds,
   });
+  const [primaryUsageBootstrapped, setPrimaryUsageBootstrapped] = useState(false);
+  const [initialTrendSettled, setInitialTrendSettled] = useState(false);
+  const handleInitialTrendSettled = useCallback(() => {
+    setInitialTrendSettled(true);
+  }, []);
+  useEffect(() => {
+    if (!summaryLoading && (summary || summaryError)) {
+      setPrimaryUsageBootstrapped(true);
+    }
+  }, [summary, summaryError, summaryLoading]);
+  const primaryUsagePanelsEnabled = primaryUsageBootstrapped && visibleProviderIds.length > 0;
+  const secondaryUsageEnabled = primaryUsagePanelsEnabled && initialTrendSettled;
   const { sources: sourceOptions, modelsBySource } = useUsageFilterOptions({
+    enabled: secondaryUsageEnabled,
     baseUrl,
     accessToken,
     guestAllowed,
@@ -297,6 +306,15 @@ function SpendUsagePageInner({
     tzOffsetMinutes,
     allowedSources: visibleProviderIds,
   });
+  const tokenServices = useTokenServicePlans(refreshRevision, {
+    enabled: secondaryUsageEnabled,
+  });
+  const heavyUsagePanelsReady = useDeferredHeavyUsagePanels(
+    primaryUsagePanelsEnabled,
+  );
+  const requestLogFetchReady = useDeferredRequestLogFetch(
+    heavyUsagePanelsReady && activeUsageTab === "requests",
+  ) || requestLogForced;
 
   // The financial cards use adjacent natural months in the browser timezone.
   // Agent/provider source filters still apply, while the Token trend's rolling
@@ -357,8 +375,17 @@ function SpendUsagePageInner({
   }, [financialScopeKey, timeZone, tzOffsetMinutes, mockNow, costSources]);
 
   useEffect(() => {
+    if (
+      visibleProviderIds.length > 0
+      && (!primaryUsageBootstrapped || !initialTrendSettled)
+    ) return;
     fetchTotals();
-  }, [fetchTotals]);
+  }, [
+    fetchTotals,
+    initialTrendSettled,
+    primaryUsageBootstrapped,
+    visibleProviderIds.length,
+  ]);
 
   // Ticket-02: load saved refresh interval from local settings on mount
   useEffect(() => {
@@ -471,11 +498,12 @@ function SpendUsagePageInner({
                       timeZone={timeZone}
                       tzOffsetMinutes={tzOffsetMinutes}
                       allowedSources={visibleProviderIds}
+                      onSettled={handleInitialTrendSettled}
                       className="min-w-0"
                     />
                     <TokenServiceList
                       plans={tokenServices.plans}
-                      loading={tokenServices.loading}
+                      loading={!secondaryUsageEnabled || tokenServices.loading}
                       error={tokenServices.error}
                       className="min-w-0"
                     />

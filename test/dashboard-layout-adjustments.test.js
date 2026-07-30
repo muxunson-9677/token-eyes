@@ -38,6 +38,7 @@ const sidebarPath = path.join(__dirname, "..", "dashboard", "src", "ui", "compon
 const cardPath = path.join(__dirname, "..", "dashboard", "src", "ui", "components", "Card.jsx");
 const usageOverviewPath = path.join(__dirname, "..", "dashboard", "src", "ui", "dashboard", "components", "UsageOverview.jsx");
 const costAccumulationPath = path.join(__dirname, "..", "dashboard", "src", "ui", "dashboard", "components", "CostAccumulation.jsx");
+const appleGlassPath = path.join(__dirname, "..", "dashboard", "src", "ui", "foundation", "apple-glass.css");
 
 function readFile(filePath) {
   return fs.readFileSync(filePath, "utf8");
@@ -192,10 +193,14 @@ test("TrendMonitor root does not force full height", () => {
     ),
   );
   assert.ok(src.includes("export function TrendMonitor"), "expected TrendMonitor component");
-  const lines = src.split("\n");
-  const rootLine = lines.find((line) => line.includes('"rounded-xl border border-oai-gray-200'));
-  assert.ok(rootLine, "expected TrendMonitor root className line");
-  assert.ok(!rootLine.includes("h-full"), "expected TrendMonitor root to avoid h-full");
+  assert.ok(
+    src.includes('"tt-surface rounded-[var(--tt-card-radius)] p-5"'),
+    "expected TrendMonitor to use the shared surface without forcing full height",
+  );
+  assert.ok(
+    src.includes('isZoom && "flex h-full flex-col"'),
+    "expected full height to remain limited to the zoom presentation",
+  );
 });
 
 test("DashboardPage supports force_install preview", () => {
@@ -245,13 +250,15 @@ test("workspace and cards expose the approved layered surface hierarchy", () => 
   const cardSrc = readFile(cardPath);
   const overviewSrc = readFile(usageOverviewPath);
   const costSrc = readFile(costAccumulationPath);
+  const appleGlassSrc = readFile(appleGlassPath);
 
   assert.ok(sidebarSrc.includes("bg-oai-gray-100/80"), "expected a visible workspace wash");
-  assert.ok(sidebarSrc.includes("shadow-oai-lg"), "expected the main surface to float above the workspace");
-  assert.ok(cardSrc.includes("rounded-2xl"), "expected the shared card radius to be strengthened");
-  assert.ok(cardSrc.includes("shadow-oai-md"), "expected shared cards to have material depth");
+  assert.ok(sidebarSrc.includes("tt-main-work-surface"), "expected the main surface to float above the workspace");
+  assert.ok(cardSrc.includes("rounded-[var(--tt-card-radius)]"), "expected cards to use the shared radius");
+  assert.ok(cardSrc.includes('"tt-surface"'), "expected shared cards to use the glass surface");
+  assert.ok(appleGlassSrc.includes("box-shadow: var(--tt-surface-shadow)"), "expected glass surfaces to have material depth");
   assert.ok(overviewSrc.includes("ring-2 ring-oai-brand-200"), "expected provider selection to have a strong selected state");
-  assert.ok(costSrc.includes("shadow-oai-sm"), "expected cost cards to use the shared depth rhythm");
+  assert.ok(costSrc.includes("tt-surface-nested"), "expected cost cards to use the nested surface depth");
 });
 
 test("custom spend group cards wrap names and preserve readable responsive amount columns", () => {

@@ -186,7 +186,14 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
     expect(container.querySelectorAll('[data-testid="leaderboard-period-control"] button')).toHaveLength(5);
     expect(container.querySelectorAll('[data-testid="leaderboard-metric-control"] button')).toHaveLength(3);
-    expect(screen.getByTestId("leaderboard-filter-toolbar")).toHaveClass("tt-surface-nested");
+    expect(screen.getByTestId("leaderboard-filter-toolbar")).toHaveClass(
+      "tt-surface-nested",
+      "mb-6",
+      "sm:mb-8",
+    );
+    expect(screen.getByTestId("leaderboard-filter-toolbar")).not.toHaveClass("p-2");
+    expect(screen.getByTestId("leaderboard-period-control")).toHaveClass("rounded-full");
+    expect(screen.getByTestId("leaderboard-metric-control")).toHaveClass("rounded-full");
     expect(screen.getByTestId("leaderboard-list-surface")).toHaveClass("tt-surface");
     expect(screen.getAllByText("Preloaded User")[0].closest("li")).toHaveClass(
       "tt-product-focusable",

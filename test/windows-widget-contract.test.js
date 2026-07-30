@@ -40,9 +40,11 @@ test("compact widget menus temporarily expand the native window and stay vertica
   const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
   const css = read("dashboard/src/pages/desktop-widget.css");
   const widgetWindow = read("src-tauri/src/widget_window.rs");
+  const menuCss = css.match(/\.widget-menu\s*\{[\s\S]*?\n\}/u)?.[0];
   assert.match(widget, /data-menu-layout="vertical"/u);
   assert.match(widgetWindow, /set_desktop_widget_popover/u);
-  assert.doesNotMatch(css, /grid-auto-flow:\s*column/u);
+  assert.ok(menuCss, "widget menu CSS must exist");
+  assert.doesNotMatch(menuCss, /grid-auto-flow:\s*column/u);
 });
 
 test("native widget loads its application route directly instead of rewriting about:blank", () => {

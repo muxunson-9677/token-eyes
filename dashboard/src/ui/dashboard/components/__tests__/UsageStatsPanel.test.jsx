@@ -86,14 +86,13 @@ describe("UsageStatsPanel", () => {
       expect(screen.getByTestId("usage-request-summary")).toHaveClass("tt-surface-nested");
       expect(screen.getByTestId("usage-total-cost-summary")).toHaveClass("tt-surface-nested");
       expect(screen.getByTestId("usage-summary-rail")).toHaveClass(
-        "grid-cols-2",
-        "sm:grid-cols-3",
-        "lg:flex",
+        "flex",
+        "flex-row",
+        "lg:w-52",
+        "lg:flex-col",
       );
       expect(screen.getByTestId("usage-cache-hit-summary")).toHaveClass(
         "tt-surface-nested",
-        "col-span-2",
-        "sm:col-span-1",
       );
       expect(screen.getByText("5,634")).toBeInTheDocument();
       expect(screen.getByText("$228.07")).toBeInTheDocument();

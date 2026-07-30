@@ -32,6 +32,7 @@ export interface UsageFilterOptions {
 }
 
 interface UseUsageFilterOptionsParams {
+  enabled?: boolean;
   baseUrl?: string;
   accessToken?: string | null;
   guestAllowed?: boolean;
@@ -94,6 +95,7 @@ interface CachedPayload {
  * universe, so it does not change when filters change).
  */
 export function useUsageFilterOptions({
+  enabled = true,
   baseUrl,
   accessToken,
   guestAllowed = false,
@@ -174,6 +176,11 @@ export function useUsageFilterOptions({
   }, [storageKey]);
 
   const refresh = useCallback(async () => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+
     const token = await resolveAuthAccessToken(accessToken);
     if (!token && !mockEnabled && !guestAllowed && !isLocalMode) {
       setLoading(false);
@@ -257,6 +264,7 @@ export function useUsageFilterOptions({
     tzOffsetMinutes,
     disabledByVisibility,
     normalizedAllowedSources,
+    enabled,
   ]);
 
   useEffect(() => {
@@ -267,6 +275,10 @@ export function useUsageFilterOptions({
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
       setProviders(null);
       setModels(null);
@@ -288,13 +300,14 @@ export function useUsageFilterOptions({
     }
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh, cacheAllowed, tokenReady, mockEnabled, guestAllowed]);
+  }, [refresh, cacheAllowed, tokenReady, mockEnabled, guestAllowed, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (handledRefreshRevision.current === refreshRevision) return;
     handledRefreshRevision.current = refreshRevision;
     void refresh();
-  }, [refreshRevision, refresh]);
+  }, [refreshRevision, refresh, enabled]);
 
   // Derive the option lists from the raw responses. Sorting is stable so the
   // dropdown order does not flicker between renders.

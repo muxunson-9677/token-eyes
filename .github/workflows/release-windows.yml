@@ -88,7 +88,7 @@ jobs:
       - name: Build dashboard
         run: npm run dashboard:build
       - name: Build Tauri release
-        run: npm run tauri:build
+        run: npm run tauri:build:ci
       - name: Verify Tauri bundle output
         run: |
           $bundleDir = "src-tauri/target/release/bundle"

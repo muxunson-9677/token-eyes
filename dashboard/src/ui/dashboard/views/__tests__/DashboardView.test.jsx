@@ -27,7 +27,9 @@ vi.mock("../../components/UsageOverview.jsx", () => ({
   UsageOverview: () => <div data-testid="dashboard-usage-overview" />,
 }));
 vi.mock("../../components/TrendMonitor.jsx", () => ({
-  TrendMonitor: () => <div data-testid="dashboard-trend" />,
+  TrendMonitor: ({ chartHeightClass }) => (
+    <div data-testid="dashboard-trend" data-chart-height={chartHeightClass} />
+  ),
 }));
 vi.mock("../../components/ModelUsageDonut.jsx", () => ({
   ModelUsageDonut: () => <div data-testid="dashboard-models" />,
@@ -43,7 +45,7 @@ vi.mock("../../../marketing/LogoCarousel.jsx", () => ({ LogoCarousel: () => null
 vi.mock("../../../marketing/agent-logos.js", () => ({ AGENT_LOGOS: [] }));
 
 describe("DashboardView overview hierarchy", () => {
-  it("keeps the trend in the wide primary workspace and quieter model/detail content around it", () => {
+  it("preserves the original overview layout while applying the visual theme", () => {
     render(
       <DashboardView
         copy={(key) => key}
@@ -65,10 +67,13 @@ describe("DashboardView overview hierarchy", () => {
 
     expect(primary).toHaveClass("lg:col-span-8");
     expect(within(primary).getByTestId("dashboard-usage-overview")).toBeInTheDocument();
-    expect(within(primary).getByTestId("dashboard-trend")).toBeInTheDocument();
     expect(within(primary).getByTestId("dashboard-data-details")).toBeInTheDocument();
     expect(within(secondary).getByTestId("dashboard-stats")).toBeInTheDocument();
+    expect(within(secondary).getByTestId("dashboard-trend")).toHaveAttribute(
+      "data-chart-height",
+      "h-64",
+    );
     expect(within(secondary).getByTestId("dashboard-models")).toBeInTheDocument();
-    expect(within(secondary).queryByTestId("dashboard-trend")).not.toBeInTheDocument();
+    expect(within(primary).queryByTestId("dashboard-trend")).not.toBeInTheDocument();
   });
 });

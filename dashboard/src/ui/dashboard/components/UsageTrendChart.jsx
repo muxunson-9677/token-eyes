@@ -906,6 +906,7 @@ export function UsageTrendChartCard({
   tzOffsetMinutes,
   className,
   onRetry,
+  onSettled,
   allowedSources,
 }) {
   const { trend, loading, error, refresh } = useUsageTrend({
@@ -922,6 +923,11 @@ export function UsageTrendChartCard({
   const series = trend?.series ?? [];
   const bucket = trend?.bucket ?? "day";
   const handleRetry = onRetry || refresh;
+  useEffect(() => {
+    if (!loading && (trend || error)) {
+      onSettled?.();
+    }
+  }, [error, loading, onSettled, trend]);
   return (
     <UsageTrendChart
       series={series}

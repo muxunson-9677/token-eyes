@@ -491,6 +491,105 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
   });
 
+  it("finishes the primary usage summary before starting secondary aggregation requests", async () => {
+    const summaryRequest = deferred();
+    const trendRequest = deferred();
+    getUsageSummary.mockReturnValue(summaryRequest.promise);
+    getSpendTimeseries.mockReturnValue(trendRequest.promise);
+
+    render(<SpendUsagePage />);
+
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    });
+
+    expect(getSpendTimeseries).not.toHaveBeenCalled();
+    expect(getRequestUsageRecords).not.toHaveBeenCalled();
+    expect(getProviderStats).not.toHaveBeenCalled();
+    expect(getModelStats).not.toHaveBeenCalled();
+    expect(getTokenPlans).not.toHaveBeenCalled();
+    expect(getSpendRecords).not.toHaveBeenCalled();
+
+    await act(async () => {
+      summaryRequest.resolve({
+        totals: {
+          total_tokens: 0,
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cached_input_tokens: 0,
+          request_count: 0,
+          cost_usd: 0,
+          cache_hit_rate: 0,
+        },
+      });
+      await summaryRequest.promise;
+    });
+
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    });
+    expect(getRequestUsageRecords).not.toHaveBeenCalled();
+    expect(getProviderStats).not.toHaveBeenCalled();
+    expect(getModelStats).not.toHaveBeenCalled();
+    expect(getTokenPlans).not.toHaveBeenCalled();
+    expect(getSpendRecords).not.toHaveBeenCalled();
+
+    await act(async () => {
+      trendRequest.resolve({
+        sources: [],
+        series: [],
+        totals: {
+          api_cost_usd: 0,
+          api_cost_cny: 0,
+          subscription_cost_usd: 0,
+          subscription_cost_cny: 0,
+          combined_usd: 0,
+          combined_cny: 0,
+        },
+        by_source: [],
+        bucket: "day",
+        from: "2026-06-01",
+        to: "2026-06-30",
+        timezone: { tz: "UTC", tz_offset_minutes: 0 },
+        currency: { base: "USD", usd_to_cny: 7.2 },
+      });
+      await trendRequest.promise;
+    });
+
+    await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
+    await waitFor(() => expect(getModelStats).toHaveBeenCalled());
+    await waitFor(() => expect(getTokenPlans).toHaveBeenCalled());
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+  });
+
+  it("waits for the usage date bounds before requesting the cumulative summary", async () => {
+    const boundsRequest = deferred();
+    window.localStorage.clear();
+    getUsageBounds.mockReturnValue(boundsRequest.promise);
+
+    render(<SpendUsagePage />);
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    });
+    expect(getUsageSummary).not.toHaveBeenCalled();
+
+    await act(async () => {
+      boundsRequest.resolve({
+        ok: true,
+        from: "2026-06-01",
+        to: "2026-06-30",
+        empty: false,
+      });
+      await boundsRequest.promise;
+    });
+
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalledTimes(1));
+  });
+
   it("range switching leaves natural-month finance totals unchanged", async () => {
     render(<SpendUsagePage />);
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
@@ -620,7 +719,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     const layout = await screen.findByTestId("usage-chart-token-services-layout");
     expect(within(layout).getByText("Token 服务列表")).toBeInTheDocument();
-    expect(within(layout).getAllByTestId("token-service-row")).toHaveLength(5);
+    expect(await within(layout).findAllByTestId("token-service-row")).toHaveLength(5);
     expect(layout).toHaveClass("lg:items-stretch");
     expect(layout).toHaveClass("lg:grid-cols-[minmax(0,1fr)_17rem]");
     expect(within(layout).getByTestId("token-service-list")).toHaveClass("h-full");

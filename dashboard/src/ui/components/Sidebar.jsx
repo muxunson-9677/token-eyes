@@ -659,7 +659,7 @@ function MobileDrawer({ open, onClose }) {
       />
       <aside
         aria-label={copy("nav.aside_label")}
-        className="tt-sidebar-material tt-mobile-drawer relative w-[272px] max-w-[calc(100vw-16px)] flex flex-col"
+        className="tt-sidebar-material tt-mobile-drawer relative flex w-[260px] max-w-[80vw] flex-col"
       >
         <SidebarBody
           collapsed={false}

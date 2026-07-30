@@ -297,6 +297,21 @@ export function DashboardView(props) {
 
                 {!screenshotMode ? (
                   <FadeIn delay={nextLeft()}>
+                    <TrendMonitor
+                      rows={trendRowsForDisplay}
+                      from={trendFromForDisplay}
+                      to={trendToForDisplay}
+                      period={period}
+                      timeZoneLabel={trendTimeZoneLabel}
+                      showTimeZoneLabel={false}
+                      chartHeightClass="h-64"
+                      zoomConfig={trendZoomConfig}
+                    />
+                  </FadeIn>
+                ) : null}
+
+                {!screenshotMode ? (
+                  <FadeIn delay={nextLeft()}>
                     <ModelUsageDonut
                       rows={modelUsageDistribution?.rows}
                       totalTokens={modelUsageDistribution?.totalTokens}
@@ -335,21 +350,6 @@ export function DashboardView(props) {
                     lastUpdatedAt={lastUpdatedAt}
                   />
                 </FadeIn>
-
-                {!screenshotMode ? (
-                  <FadeIn delay={D_USAGE_OVERVIEW + STEP}>
-                    <TrendMonitor
-                      rows={trendRowsForDisplay}
-                      from={trendFromForDisplay}
-                      to={trendToForDisplay}
-                      period={period}
-                      timeZoneLabel={trendTimeZoneLabel}
-                      showTimeZoneLabel={false}
-                      chartHeightClass="h-72"
-                      zoomConfig={trendZoomConfig}
-                    />
-                  </FadeIn>
-                ) : null}
 
                 {!screenshotMode ? (
                   <FadeIn delay={D_DATA_DETAILS}>

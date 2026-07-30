@@ -9,6 +9,7 @@ import { useUsageFilterParams, useUsageFilterCacheKey, useUsageFilters } from ".
 import { resolveEffectiveUsageSources } from "../lib/spend-provider-visibility.js";
 
 interface UseUsageSummaryParams {
+  enabled?: boolean;
   baseUrl?: string;
   accessToken?: string | null;
   guestAllowed?: boolean;
@@ -40,6 +41,7 @@ function safeHost(baseUrl: unknown): string | null {
 }
 
 export function useUsageSummary({
+  enabled = true,
   baseUrl,
   accessToken,
   guestAllowed = false,
@@ -147,6 +149,11 @@ export function useUsageSummary({
   }, [scopeKey, cacheAllowed, readCache]);
 
   const refresh = useCallback(async ({ background = false } = {}) => {
+    if (!enabled) {
+      setLoading(true);
+      return;
+    }
+
     const token = await resolveAuthAccessToken(accessToken);
     if (!token && !mockEnabled && !guestAllowed && !isLocalMode) {
       setLoading(false);
@@ -224,9 +231,14 @@ export function useUsageSummary({
     filterParams.models,
     filterParams.agentIds,
     disabledByVisibility,
+    enabled,
   ]);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(true);
+      return;
+    }
     if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
       setSummary(null);
       setError(null);
@@ -245,13 +257,14 @@ export function useUsageSummary({
     }
     void refresh({ background: Boolean(readCache()) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh, cacheAllowed, tokenReady, mockEnabled, guestAllowed]);
+  }, [refresh, cacheAllowed, tokenReady, mockEnabled, guestAllowed, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (handledRefreshRevision.current === refreshRevision) return;
     handledRefreshRevision.current = refreshRevision;
     void refresh({ background: Boolean(summary) });
-  }, [refreshRevision, refresh, summary]);
+  }, [refreshRevision, refresh, summary, enabled]);
 
   return {
     summary,

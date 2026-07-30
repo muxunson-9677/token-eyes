@@ -41,7 +41,8 @@
     "validate:retros": "node scripts/validate-retros.cjs",
     "validate:ui-hardcode": "node scripts/ops/validate-ui-hardcode.cjs",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build && npm run tauri:verify-runtime && npm run tauri:verify-installer && node scripts/clean-old-tauri-installers.cjs",
+    "tauri:build": "tauri build && npm run tauri:verify-runtime && node scripts/clean-old-tauri-installers.cjs",
+    "tauri:build:ci": "npm run tauri:build && npm run tauri:verify-installer",
     "tauri:verify-runtime": "node --test test/windows-bundled-runtime-smoke.test.cjs && cargo test resolve_bundled_runtime_at --manifest-path src-tauri/Cargo.toml --lib",
     "tauri:verify-installer": "node --test test/windows-installed-runtime-smoke.test.cjs",
     "tauri:prepare-runtime": "powershell -ExecutionPolicy Bypass -File src-tauri/scripts/bundle-runtime.ps1"

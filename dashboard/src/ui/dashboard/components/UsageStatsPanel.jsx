@@ -493,7 +493,7 @@ export function UsageStatsPanel({
 
         {/* Right: 3 small cards */}
         <div
-          className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:w-52 lg:flex-col"
+          className="flex flex-row gap-2 lg:w-52 lg:flex-col"
           data-testid="usage-summary-rail"
         >
           <div
@@ -549,7 +549,7 @@ export function UsageStatsPanel({
           </div>
 
           <div
-            className="tt-surface-nested col-span-2 min-w-0 rounded-lg px-3 py-2 sm:col-span-1 lg:col-span-1 lg:flex-1"
+            className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
             data-testid="usage-cache-hit-summary"
           >
             <div className="flex items-center justify-between">

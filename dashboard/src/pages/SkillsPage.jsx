@@ -195,7 +195,7 @@ function SkillRow({ skill, targets, selected, onSelect, selectable, checked, onT
       onClick={() => onSelect?.(skill)}
       onKeyDown={handleKeyDown}
       className={cn(
-        "tt-pressable tt-product-focusable cursor-pointer rounded-[var(--tt-control-radius)] px-2 py-3",
+        "tt-pressable tt-product-focusable cursor-pointer rounded-[var(--tt-control-radius)] py-3 pr-2",
         selected
           ? "bg-oai-gray-100 ring-1 ring-oai-gray-200 dark:bg-oai-gray-800/60 dark:ring-oai-gray-800"
           : checked
@@ -263,7 +263,7 @@ function FilterToolbar({
   return (
     <div
       data-skills-filter-toolbar
-      className="tt-surface-nested mb-3 flex flex-wrap items-center gap-2 rounded-[var(--tt-card-radius)] p-2 text-xs text-oai-gray-600 dark:text-oai-gray-300"
+      className="tt-surface-nested mb-2 flex flex-wrap items-center gap-2 rounded-[var(--tt-card-radius)] pt-1 text-xs text-oai-gray-600 dark:text-oai-gray-300"
     >
       <Select.Root value={agentFilter} onValueChange={onAgentFilter}>
         <Select.Trigger
@@ -1503,7 +1503,7 @@ export function SkillsPage() {
             </Button>
           </div>
 
-          <div className="mb-5 flex gap-2 border-b border-oai-gray-200 dark:border-oai-gray-800">
+          <div className="mb-5 flex gap-6 border-b border-oai-gray-200 dark:border-oai-gray-800">
             {[
               ["my", copy("skills.tab.my")],
               ["browse", copy("skills.tab.browse")],
@@ -1514,7 +1514,7 @@ export function SkillsPage() {
                 aria-pressed={tab === value}
                 onClick={() => setTab(value)}
                 className={cn(
-                  "tt-pressable tt-product-focusable -mb-px rounded-t-[var(--tt-control-radius)] border-b-2 px-3 pb-2 pt-1 text-sm font-medium transition-colors",
+                  "tt-pressable tt-product-focusable -mb-px rounded-t-[var(--tt-control-radius)] border-b-2 pb-2 text-sm font-medium transition-colors",
                   tab === value
                     ? "border-oai-black text-oai-black dark:border-white dark:text-white"
                     : "border-transparent text-oai-gray-500 hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white",

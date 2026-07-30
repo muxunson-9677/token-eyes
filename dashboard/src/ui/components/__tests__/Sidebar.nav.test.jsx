@@ -398,6 +398,8 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
 
     const navRegions = screen.getAllByRole("navigation", { name: "copy:nav.nav_label" });
     expect(navRegions).toHaveLength(2);
+    const sidebars = screen.getAllByRole("complementary", { name: "copy:nav.aside_label" });
+    expect(sidebars[1]).toHaveClass("w-[260px]", "max-w-[80vw]");
 
     const getNavLabels = (nav) => ({
       links: within(nav).getAllByRole("link").map((link) => link.textContent),

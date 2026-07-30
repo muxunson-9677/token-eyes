@@ -172,12 +172,12 @@ export async function refreshConnectedTraePlans(plans, sessions = []) {
   }));
 }
 
-export function useTokenServicePlans(refreshRevision = 0) {
+export function useTokenServicePlans(refreshRevision = 0, { enabled = true } = {}) {
   const [state, setState] = useState(() => {
     const cached = readPlansCache();
     return {
       plans: cached?.records || [],
-      loading: !cached,
+      loading: enabled && !cached,
       error: null,
     };
   });
@@ -190,6 +190,11 @@ export function useTokenServicePlans(refreshRevision = 0) {
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      setState((current) => ({ ...current, loading: false, error: null }));
+      return undefined;
+    }
+
     let cancelled = false;
     const forceConnectedRefresh = refreshRevision > 0 || planRevision > 0;
     setState((current) => ({
@@ -237,7 +242,7 @@ export function useTokenServicePlans(refreshRevision = 0) {
       });
 
     return () => { cancelled = true; };
-  }, [refreshRevision, planRevision]);
+  }, [refreshRevision, planRevision, enabled]);
 
   return state;
 }

@@ -93,8 +93,12 @@ describe("LimitsPage", () => {
     expect(screen.getByRole("heading", { name: copy("nav.limits") })).toBeInTheDocument();
     expect(screen.getByText("Kimi connected")).toBeInTheDocument();
     const toolbar = screen.getByRole("toolbar", { name: copy("nav.limits") });
-    expect(toolbar).toHaveClass("tt-surface-nested");
+    expect(toolbar).toHaveClass("tt-surface-nested", "gap-2");
+    expect(toolbar).not.toHaveClass("gap-1", "p-1");
     expect(toolbar.querySelectorAll("button, a")).toHaveLength(2);
+    for (const control of toolbar.querySelectorAll("button, a")) {
+      expect(control).toHaveClass("h-9", "rounded-lg");
+    }
     expect(container.querySelectorAll(".tt-product-focusable")).toHaveLength(2);
   });
 

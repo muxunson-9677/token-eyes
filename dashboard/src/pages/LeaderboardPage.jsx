@@ -1077,12 +1077,12 @@ export function LeaderboardPage({
 
           <div
             data-testid="leaderboard-filter-toolbar"
-            className="tt-surface-nested mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--tt-card-radius)] p-2 sm:mb-8"
+            className="tt-surface-nested mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--tt-card-radius)] sm:mb-8"
           >
             <div className="flex flex-wrap items-center gap-2">
               <div
                 data-testid="leaderboard-period-control"
-                className="inline-flex h-9 items-center rounded-[var(--tt-control-radius)] border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
+                className="inline-flex h-9 items-center rounded-full border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
               >
                 {PERIOD_OPTIONS.map((option) => {
                   const isActive = period === option.value;
@@ -1092,7 +1092,7 @@ export function LeaderboardPage({
                       onClick={() => handleDimensionChange("period", option.value)}
                       aria-pressed={isActive}
                       className={cn(
-                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-[8px] px-3 text-sm font-medium transition-colors",
+                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-full px-3 text-sm font-medium transition-colors",
                         isActive
                           ? "text-oai-brand-700 dark:text-oai-brand-200"
                           : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
@@ -1102,7 +1102,7 @@ export function LeaderboardPage({
                       {isActive && (
                         <motion.div
                           layoutId="leaderboard-period-active-bg"
-                          className="absolute inset-0 z-0 rounded-[8px] bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
+                          className="absolute inset-0 z-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -1112,7 +1112,7 @@ export function LeaderboardPage({
               </div>
               <div
                 data-testid="leaderboard-metric-control"
-                className="inline-flex h-9 items-center rounded-[var(--tt-control-radius)] border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
+                className="inline-flex h-9 items-center rounded-full border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
               >
                 {METRIC_OPTIONS.map((option) => {
                   const isActive = metric === option.value;
@@ -1122,7 +1122,7 @@ export function LeaderboardPage({
                       onClick={() => handleDimensionChange("metric", option.value)}
                       aria-pressed={isActive}
                       className={cn(
-                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-[8px] px-3 text-sm font-medium transition-colors",
+                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-full px-3 text-sm font-medium transition-colors",
                         isActive
                           ? "text-oai-brand-700 dark:text-oai-brand-200"
                           : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
@@ -1132,7 +1132,7 @@ export function LeaderboardPage({
                       {isActive && (
                         <motion.div
                           layoutId="leaderboard-metric-active-bg"
-                          className="absolute inset-0 z-0 rounded-[8px] bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
+                          className="absolute inset-0 z-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}

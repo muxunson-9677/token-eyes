@@ -475,6 +475,7 @@ export function TrendMonitor({
   return (
     <div
       ref={containerRef}
+      data-testid="dashboard-trend"
       className={cn(
         "relative",
         !embedded &&
