@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "playwright";
+import { createScreenshotThemeSetup } from "./visual-baseline-config.js";
 
 function readArg(flag, fallback) {
   const idx = process.argv.indexOf(flag);
@@ -30,6 +31,7 @@ const height = toNumber(readArg("--height", "997"), 997);
 const dpr = toNumber(readArg("--dpr", "2"), 2);
 const waitMs = toNumber(readArg("--wait", "1200"), 1200);
 const fullPage = !hasFlag("--no-full-page");
+const themeSetup = createScreenshotThemeSetup(url);
 
 const resolvedOut = path.isAbsolute(out) ? out : path.resolve(out);
 
@@ -40,9 +42,15 @@ async function run() {
   const page = await browser.newPage({
     viewport: { width, height },
     deviceScaleFactor: dpr,
+    ...(themeSetup ? { colorScheme: themeSetup.colorScheme } : {}),
   });
 
   try {
+    if (themeSetup) {
+      await page.addInitScript((theme) => {
+        localStorage.setItem("tokentracker-theme", theme);
+      }, themeSetup.localStorageTheme);
+    }
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await page.addStyleTag({

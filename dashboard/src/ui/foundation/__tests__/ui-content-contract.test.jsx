@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createBaselineJobs } from "../../../../scripts/visual-baseline-config.js";
 import { copy, setCopyLocale } from "../../../lib/copy";
+import { getDetailsSortColumns } from "../../../lib/daily";
 import { DataDetails } from "../../dashboard/components/DataDetails.jsx";
 import { UsageStatsPanel } from "../../dashboard/components/UsageStatsPanel.jsx";
 
@@ -30,16 +31,6 @@ const costSummary = {
   lifetime_combined_cny: 0.07,
 };
 
-const dailyColumns = [
-  "day",
-  "total_tokens",
-  "input_tokens",
-  "output_tokens",
-  "cached_input_tokens",
-  "reasoning_output_tokens",
-  "conversation_count",
-].map((key) => ({ key, label: key }));
-
 const dailyRow = {
   day: "2025-12-31",
   total_tokens: 150,
@@ -60,7 +51,7 @@ function UsageContentFixture() {
         installSyncCmd=""
         dailyEmptySuffix=""
         dailyBreakdownRows={[dailyRow]}
-        dailyBreakdownColumns={dailyColumns}
+        dailyBreakdownColumns={getDetailsSortColumns("day")}
         dailyBreakdownAriaSortFor={() => "none"}
         dailyBreakdownSortIconFor={() => ""}
         dailyBreakdownDateKey="day"
@@ -92,6 +83,11 @@ function captureContentContract(theme) {
     texts: directTexts(view.container),
     buttonCount: view.container.querySelectorAll("button").length,
     tableRowCount: view.container.querySelectorAll("tr").length,
+    tableBodyRowCount: view.container.querySelectorAll("tbody tr").length,
+    tableHeaders: Array.from(view.container.querySelectorAll("th"))
+      .map((element) => element.textContent.trim()),
+    tabLabels: Array.from(view.container.querySelectorAll('[role="tab"]'))
+      .map((element) => element.textContent.trim()),
     testIds: Array.from(view.container.querySelectorAll("[data-testid]"))
       .map((element) => element.getAttribute("data-testid"))
       .sort(),
@@ -144,6 +140,19 @@ describe("theme content contract", () => {
   it("keeps usage text and controls identical across light and dark roots", () => {
     const light = captureContentContract("light");
     const dark = captureContentContract("dark");
+
+    expect(light.tableHeaders).toEqual(
+      getDetailsSortColumns("day").map((column) => column.label),
+    );
+    expect(light.tableBodyRowCount).toBe(1);
+    expect(light.texts).toContain(dailyRow.day);
+    expect(light.tabLabels).toEqual([
+      copy("dashboard.daily.title"),
+      copy("dashboard.projects.title"),
+    ]);
+    expect(light.tableRowCount).toBe(2);
+    expect(light.buttonCount).toBe(9);
+    expect(light.testIds).toContain("usage-cost-summary");
 
     expect(dark.texts).toEqual(light.texts);
     expect(dark.buttonCount).toBe(light.buttonCount);
