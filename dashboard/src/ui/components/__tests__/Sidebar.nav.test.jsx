@@ -1,16 +1,19 @@
 import React from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getNavGroups, AppLayout } from "../Sidebar.jsx";
 
-const codexResetContext = vi.hoisted(() => ({
-  value: {
-    events: [],
-    unreadCount: 0,
-    acknowledge: vi.fn(),
+const { codexResetContext, setTheme } = vi.hoisted(() => ({
+  codexResetContext: {
+    value: {
+      events: [],
+      unreadCount: 0,
+      acknowledge: vi.fn(),
+    },
   },
+  setTheme: vi.fn(),
 }));
 
 // Sidebar two-level navigation tests for the v2.0 IA refactor (work order 01).
@@ -34,7 +37,7 @@ vi.mock("../../../hooks/useTheme.js", () => ({
   useTheme: () => ({
     theme: "system",
     resolvedTheme: "light",
-    setTheme: vi.fn(),
+    setTheme,
   }),
 }));
 
@@ -129,6 +132,8 @@ function renderSidebar(path = "/dashboard") {
 describe("Sidebar two-level nav rendering (desktop)", () => {
   beforeEach(() => {
     codexResetContext.value.unreadCount = 0;
+    setTheme.mockClear();
+    window.localStorage.clear();
     // jsdom doesn't implement layout, so the desktop <aside> is always in
     // the DOM (lg:hidden only affects CSS, not presence). These tests rely
     // on that so we can assert nav structure without a real viewport.
@@ -167,32 +172,37 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(screen.getByText("copy:nav.settings.cost")).toBeInTheDocument();
   });
 
-  it("spend parent is active when on /spend/usage and child is highlighted", () => {
+  it("marks the current child page and expands its parent", () => {
     renderSidebar("/spend/usage");
     const spendParent = screen.getByRole("button", { name: /copy:nav\.group\.spend/ });
     expect(spendParent).toHaveAttribute("aria-current", "page");
+    expect(spendParent).toHaveAttribute("aria-expanded", "true");
+    expect(spendParent).toHaveClass("tt-pressable");
     const usageChild = screen.getByRole("link", { name: "copy:nav.spend.usage" });
     expect(usageChild).toHaveAttribute("aria-current", "page");
+    expect(usageChild).toHaveClass("tt-pressable");
   });
 
-  it("spend parent is active when on /spend/cost", () => {
+  it("marks /spend/cost as the current page", () => {
     renderSidebar("/spend/cost");
     const spendParent = screen.getByRole("button", { name: /copy:nav\.group\.spend/ });
-    expect(spendParent).toHaveAttribute("aria-current", "page");
+    expect(spendParent).toHaveAttribute("aria-expanded", "true");
     const costChild = screen.getByRole("link", { name: "copy:nav.spend.cost" });
     expect(costChild).toHaveAttribute("aria-current", "page");
   });
 
-  it("settings parent is active when on /settings/basic", () => {
+  it("expands settings and marks /settings/basic as the current page", () => {
     renderSidebar("/settings/basic");
     const settingsParent = screen.getByRole("button", { name: /copy:nav\.group\.settings/ });
-    expect(settingsParent).toHaveAttribute("aria-current", "page");
+    expect(settingsParent).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "copy:nav.settings.basic" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("settings parent is active when on /settings/cost", () => {
+  it("expands settings and marks /settings/cost as the current page", () => {
     renderSidebar("/settings/cost");
     const settingsParent = screen.getByRole("button", { name: /copy:nav\.group\.settings/ });
-    expect(settingsParent).toHaveAttribute("aria-current", "page");
+    expect(settingsParent).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "copy:nav.settings.cost" })).toHaveAttribute("aria-current", "page");
   });
 
   it("overview is NOT active when on a spend sub-route", () => {
@@ -262,5 +272,43 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     renderSidebar("/dashboard");
     const spendParent = screen.getByRole("button", { name: /copy:nav\.group\.spend/ });
     expect(spendParent.tagName).toBe("BUTTON");
+  });
+
+  it("keeps light, dark, and system choices wired to the existing theme setter", async () => {
+    const user = userEvent.setup();
+    renderSidebar("/dashboard");
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "copy:settings.appearance.theme.label" }));
+    });
+
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getByRole("menuitem", { name: "copy:settings.appearance.theme.light" })).toBeInTheDocument();
+    const darkItem = within(menu).getByRole("menuitem", { name: "copy:settings.appearance.theme.dark" });
+    expect(within(menu).getByRole("menuitem", { name: "copy:settings.appearance.theme.system" })).toBeInTheDocument();
+
+    await act(async () => {
+      await user.click(darkItem);
+    });
+    expect(setTheme).toHaveBeenCalledTimes(1);
+    expect(setTheme).toHaveBeenCalledWith("dark");
+  });
+
+  it("renders desktop and mobile navigation from the same hierarchy", async () => {
+    const user = userEvent.setup();
+    renderSidebar("/spend/usage");
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "copy:nav.menu" }));
+    });
+
+    const navRegions = screen.getAllByRole("navigation", { name: "copy:nav.nav_label" });
+    expect(navRegions).toHaveLength(2);
+
+    const getNavLabels = (nav) => ({
+      links: within(nav).getAllByRole("link").map((link) => link.textContent),
+      parents: within(nav).getAllByRole("button").map((button) => button.getAttribute("aria-label")),
+    });
+    expect(getNavLabels(navRegions[1])).toEqual(getNavLabels(navRegions[0]));
   });
 });

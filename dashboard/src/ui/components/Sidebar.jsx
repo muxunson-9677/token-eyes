@@ -187,11 +187,11 @@ function NavItem({ item, collapsed, active, onClick, unreadCount = 0 }) {
       title={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors",
+        "tt-sidebar-item tt-pressable flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline",
         collapsed && "justify-center px-0 py-2",
         active
-          ? "bg-oai-brand-50 text-oai-brand-700 font-semibold ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
-          : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
+          ? "text-oai-black font-medium dark:text-white"
+          : "text-oai-gray-600 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-white",
       )}
     >
       <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
@@ -262,11 +262,11 @@ function NavParent({
         aria-controls={childrenListId}
         aria-label={group.label}
         className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors",
+          "tt-sidebar-item tt-pressable flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]",
           collapsed && "justify-center px-0 py-2",
           active
-            ? "bg-oai-brand-50 text-oai-brand-700 font-semibold ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
-            : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
+            ? "text-oai-black font-medium dark:text-white"
+            : "text-oai-gray-600 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-white",
         )}
       >
         <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
@@ -305,11 +305,11 @@ function NavParent({
                   to={child.to}
                   onClick={onItemClick}
                   aria-current={childActive ? "page" : undefined}
-                    className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors",
+                  className={cn(
+                    "tt-sidebar-item tt-pressable flex items-center rounded-md px-2 py-1.5 text-[13px] no-underline",
                     childActive
-                      ? "bg-oai-brand-50 text-oai-brand-700 font-semibold ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
-                      : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
+                      ? "text-oai-black font-medium dark:text-white"
+                      : "text-oai-gray-600 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-white",
                   )}
                 >
                   <span className="truncate flex-1">{child.label}</span>
@@ -388,7 +388,7 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
         title={themeLabel}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
+          "tt-pressable inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
           glassChrome
             ? "border border-gray-500/20 dark:border-gray-500/30 bg-gray-500/[0.04] dark:bg-gray-500/[0.06] backdrop-blur-[2px] text-oai-gray-700 dark:text-oai-gray-300 hover:bg-gray-500/10 dark:hover:bg-gray-500/12 hover:border-gray-500/30 dark:hover:border-gray-500/40 hover:text-oai-black dark:hover:text-white"
             : "border border-oai-gray-200 dark:border-oai-gray-700 text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white hover:border-oai-gray-300 dark:hover:border-oai-gray-600",
@@ -399,7 +399,7 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
       {open && (
         <div
           role="menu"
-          className="absolute bottom-full left-0 mb-2 z-50 min-w-[140px] py-1 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 shadow-lg"
+          className="tt-theme-menu absolute bottom-full left-0 mb-2 z-50 min-w-[140px] py-1 rounded-lg"
         >
           {buildThemeOptions().map(({ value, label, Icon }) => {
             const active = theme === value;
@@ -616,7 +616,7 @@ function Sidebar({ collapsed, onToggleCollapsed }) {
     <aside
       aria-label={copy("nav.aside_label")}
       className={cn(
-        "hidden lg:flex flex-col shrink-0 h-full min-h-0 transition-[width] duration-200",
+        "tt-sidebar-material hidden lg:flex flex-col shrink-0 h-full min-h-0 transition-[width] duration-200",
         collapsed ? "w-[72px]" : "w-[220px]",
       )}
     >
@@ -659,7 +659,7 @@ function MobileDrawer({ open, onClose }) {
       />
       <aside
         aria-label={copy("nav.aside_label")}
-        className="relative w-[260px] max-w-[80vw] flex flex-col bg-oai-white dark:bg-oai-gray-900 border-r border-oai-gray-200 dark:border-oai-gray-800 shadow-2xl"
+        className="tt-sidebar-material tt-mobile-drawer relative w-[272px] max-w-[calc(100vw-16px)] flex flex-col"
       >
         <SidebarBody
           collapsed={false}
@@ -718,7 +718,7 @@ export function AppLayout({ children }) {
   return (
     <div
       className={cn(
-        "fixed inset-0 flex flex-col text-oai-black dark:text-oai-white font-sans overflow-hidden",
+        "tt-app-shell fixed inset-0 flex flex-col text-oai-black dark:text-oai-white font-sans overflow-hidden",
         isNativeWindowsApp() && "tt-native-glass-shell",
         isNativeWindowsApp()
           ? "bg-oai-gray-100/80 dark:bg-oai-gray-950"
@@ -742,9 +742,8 @@ export function AppLayout({ children }) {
         <div className="flex-1 min-w-0 min-h-0 p-2 lg:pl-0 lg:pr-3 lg:pb-3 flex flex-col">
           <div
             className={cn(
-              "flex-1 min-h-0 flex flex-col bg-oai-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden",
-              nativeEmbed ? "tt-native-main-card" : "rounded-2xl",
-              (!nativeEmbed || isNativeWindowsApp()) && "shadow-oai-lg",
+              "tt-main-work-surface flex-1 min-h-0 flex flex-col overflow-hidden",
+              nativeEmbed ? "tt-native-main-card" : "rounded-xl",
             )}
           >
             <MobileTopBar onOpenDrawer={openDrawer} />
