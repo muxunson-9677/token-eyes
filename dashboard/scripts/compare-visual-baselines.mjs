@@ -7,7 +7,10 @@ import { promisify } from "node:util";
 import pixelmatch from "pixelmatch";
 import * as pngjs from "pngjs";
 import { createBaselineJobs } from "./visual-baseline-config.js";
-import { createDashboardDevServerCommand } from "./visual-baseline-runtime.js";
+import {
+  createDashboardDevServerCommand,
+  stopDashboardDevServer,
+} from "./visual-baseline-runtime.js";
 
 const { PNG } = pngjs;
 const exec = promisify(execFile);
@@ -78,26 +81,6 @@ function startDashboardDevServer(repoRoot, hostname, port) {
     detached: process.platform !== "win32",
   });
   return child;
-}
-
-async function stopDashboardDevServer(child) {
-  if (!child) return;
-  if (child.exitCode !== null) return;
-
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-child.pid, "SIGTERM");
-      return;
-    } catch {
-      // fall through
-    }
-  }
-
-  try {
-    child.kill("SIGTERM");
-  } catch {
-    // ignore
-  }
 }
 
 async function waitForDashboardDevServer(baseUrl, child, { timeoutMs, intervalMs }) {
