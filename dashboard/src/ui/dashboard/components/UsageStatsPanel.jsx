@@ -147,21 +147,21 @@ const DIMENSION_CARDS = [
     key: "input",
     icon: ArrowDown,
     iconClass: "text-oai-blue-500",
-    bgClass: "bg-oai-blue-50 dark:bg-oai-blue-500/10",
+    bgClass: "!bg-emerald-50/70 dark:!bg-emerald-950/25",
     format: formatTokensCompact,
   },
   {
     key: "output",
     icon: ArrowUp,
     iconClass: "text-green-500",
-    bgClass: "bg-green-50 dark:bg-green-500/10",
+    bgClass: "!bg-green-50/70 dark:!bg-green-950/25",
     format: formatTokensCompact,
   },
   {
     key: "cache_create",
     icon: Package,
     iconClass: "text-orange-500",
-    bgClass: "bg-orange-50 dark:bg-orange-500/10",
+    bgClass: "!bg-orange-50/70 dark:!bg-orange-950/25",
     format: formatTokensCompact,
     tooltip: true,
   },
@@ -169,7 +169,7 @@ const DIMENSION_CARDS = [
     key: "cache_hit",
     icon: Target,
     iconClass: "text-purple-500",
-    bgClass: "bg-purple-50 dark:bg-purple-500/10",
+    bgClass: "!bg-purple-50/70 dark:!bg-purple-950/25",
     format: formatTokensCompact,
   },
 ];
@@ -274,7 +274,10 @@ export function UsageStatsPanel({
 
   return (
     <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
+      <div
+        className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between"
+        data-testid="usage-stats-layout"
+      >
         {/* Left: main metric + 4 dimension cards */}
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-3">
@@ -316,7 +319,7 @@ export function UsageStatsPanel({
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-4 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
             {DIMENSION_CARDS.map((card) => {
               const Icon = card.icon;
               const rawValue = totals[TOKEN_FIELDS[card.key]];
@@ -325,7 +328,8 @@ export function UsageStatsPanel({
               return (
                 <div
                   key={card.key}
-                  className={cn("rounded-lg p-2.5", card.bgClass)}
+                  className={cn("tt-surface-nested min-w-0 rounded-lg !bg-none p-2.5", card.bgClass)}
+                  data-testid="usage-dimension-card"
                 >
                   <div className="flex items-center gap-1.5 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
                     <Icon
@@ -353,7 +357,7 @@ export function UsageStatsPanel({
 
           {costSummary && (
             <div
-              className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4"
+              className="mt-2 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4"
               data-testid="usage-cost-summary"
             >
               {COST_SUMMARY_CARDS.map((card) => {
@@ -385,7 +389,7 @@ export function UsageStatsPanel({
                   <div
                     key={card.labelKey}
                     data-testid="usage-cost-card"
-                    className="min-w-0 rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
+                    className="tt-surface-nested min-w-0 rounded-lg px-2.5 py-2"
                   >
                     <div className="flex items-start gap-1 text-[10px] leading-tight text-oai-gray-500 dark:text-oai-gray-400">
                       <CostIcon className={cn("mt-px h-3 w-3 shrink-0", card.iconClass)} aria-hidden="true" />
@@ -395,23 +399,34 @@ export function UsageStatsPanel({
                       {usdText || unavailableText}
                     </div>
                     <div
-                      className="mt-0.5 flex min-w-0 flex-row items-center justify-between gap-1 text-[10px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400"
+                      className="mt-0.5 flex min-w-0 flex-row flex-wrap items-center justify-between gap-1 text-[10px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400"
                       data-testid={comparison ? "monthly-cost-cny-row" : undefined}
                     >
-                      <span className="min-w-0 shrink-0">{cnyText || unavailableText}</span>
+                      <span className="min-w-0 shrink-0" data-testid="usage-cost-cny">
+                        {cnyText || unavailableText}
+                      </span>
                       {comparison && (
                         <span
                           data-testid="monthly-cost-comparison"
+                          data-monthly-cost-status={comparison.kind}
                           data-direction={comparison.kind}
                           aria-label={copy(comparisonLabelKey, { value: comparison.percent })}
                           className={cn(
-                            "min-w-0 whitespace-nowrap text-[9px] font-medium leading-tight tabular-nums",
+                            "min-w-0 max-w-full break-words text-right text-[9px] font-medium leading-tight tabular-nums",
                             comparison.kind === "increase" && "text-green-600 dark:text-green-400",
                             comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
                             comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",
                           )}
                         >
                           {copy(comparisonLabelKey, { value: comparison.percent })}
+                        </span>
+                      )}
+                      {!comparison && card.previousUsdField && (
+                        <span
+                          data-monthly-cost-status="unavailable"
+                          className="min-w-0 max-w-full break-words text-right text-[9px] leading-tight text-oai-gray-400 dark:text-oai-gray-500"
+                        >
+                          {copy("spend.monthly_change.no_baseline")}
                         </span>
                       )}
                     </div>
@@ -462,9 +477,12 @@ export function UsageStatsPanel({
         </div>
 
         {/* Right: 3 small cards */}
-        <div className="flex flex-row gap-2 lg:w-52 lg:flex-col">
+        <div
+          className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:w-52 lg:flex-col"
+          data-testid="usage-summary-rail"
+        >
           <div
-            className="flex-1 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/50"
+            className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
             data-testid="usage-request-summary"
           >
             <div
@@ -494,7 +512,7 @@ export function UsageStatsPanel({
           </div>
 
           <div
-            className="flex-1 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/50"
+            className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
             data-testid="usage-total-cost-summary"
           >
             <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
@@ -515,7 +533,10 @@ export function UsageStatsPanel({
             )}
           </div>
 
-          <div className="flex-1 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/50">
+          <div
+            className="tt-surface-nested col-span-2 min-w-0 rounded-lg px-3 py-2 sm:col-span-1 lg:col-span-1 lg:flex-1"
+            data-testid="usage-cache-hit-summary"
+          >
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
                 <Target className="h-3.5 w-3.5 text-violet-500" aria-hidden="true" />

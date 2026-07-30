@@ -34,7 +34,11 @@ export function UsageFilterBar({
       role="toolbar"
       aria-label={copy("ticket02.agent.aria")}
       className={cn(
-        "flex flex-wrap items-center justify-end gap-2 rounded-xl border border-oai-gray-200 bg-white p-2 dark:border-oai-gray-800 dark:bg-oai-gray-900",
+        "tt-surface flex flex-wrap items-center justify-end gap-2 rounded-[var(--tt-card-radius)] p-2",
+        "[&_button]:rounded-[var(--tt-control-radius)] [&_button]:transition-[transform,box-shadow,background-color,border-color] [&_button]:duration-150",
+        "[&_button:active:not(:disabled)]:translate-y-px [&_button[aria-pressed=true]]:translate-y-px [&_button[aria-pressed=true]]:shadow-inner",
+        "[&_button:focus-visible]:outline-none [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-inset [&_button:focus-visible]:ring-oai-brand/40",
+        "motion-reduce:[&_button]:transition-none motion-reduce:[&_button]:transform-none",
         className,
       )}
     >

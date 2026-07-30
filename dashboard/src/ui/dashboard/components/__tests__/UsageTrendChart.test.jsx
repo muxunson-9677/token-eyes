@@ -241,6 +241,17 @@ describe("pure helpers", () => {
 });
 
 describe("UsageTrendChart", () => {
+  it("uses the shared glass surface for data and state views", () => {
+    const { container, rerender } = render(
+      React.createElement(UsageTrendChart, { series: makeSeries() }),
+    );
+
+    expect(container.firstChild).toHaveClass("tt-surface");
+
+    rerender(React.createElement(UsageTrendChart, { series: [], loading: true }));
+    expect(container.firstChild).toHaveClass("tt-surface");
+  });
+
   it("keeps the final two date labels far enough apart to remain readable", () => {
     resizeObservers.length = 0;
     const series = Array.from({ length: 20 }, (_, index) => ({

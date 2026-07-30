@@ -56,6 +56,21 @@ describe("UsageFilterBar", () => {
     expect(toolbar).toHaveClass("justify-end", "flex-wrap");
   });
 
+  it("uses one glass toolbar and gives every filter control restrained press and focus feedback", () => {
+    renderBar();
+
+    const toolbar = screen.getByRole("toolbar");
+    expect(toolbar).toHaveClass(
+      "tt-surface",
+      "[&_button]:rounded-[var(--tt-control-radius)]",
+      "[&_button:active:not(:disabled)]:translate-y-px",
+      "[&_button[aria-pressed=true]]:shadow-inner",
+      "[&_button:focus-visible]:ring-2",
+      "motion-reduce:[&_button]:transition-none",
+      "motion-reduce:[&_button]:transform-none",
+    );
+  });
+
   it("opens the SourceFilter popover and lists the source option", async () => {
     const user = userEvent.setup();
     renderBar();

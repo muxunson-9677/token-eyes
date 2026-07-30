@@ -1,5 +1,5 @@
 import React from "react";
-import { act, render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { RequestUsageLog } from "../RequestUsageLog.jsx";
@@ -107,6 +107,25 @@ const HOOK_DEFAULTS = {
 };
 
 describe("RequestUsageLog", () => {
+  it("uses nested glass metric summaries without changing the request data", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      totals: {
+        request_count: 7,
+        success_rate: 100,
+        avg_latency_ms: 42,
+      },
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    const metrics = screen.getByTestId("request-log-metrics");
+    for (const metric of within(metrics).getAllByTestId(/request-log-metric-/)) {
+      expect(metric).toHaveClass("tt-surface-nested");
+    }
+    expect(within(metrics).getByText("7")).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     useRequestUsageRecords.mockReturnValue(HOOK_DEFAULTS);

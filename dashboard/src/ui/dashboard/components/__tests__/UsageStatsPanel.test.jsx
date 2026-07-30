@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setCopyLocale } from "../../../../lib/copy";
 import { UsageStatsPanel } from "../UsageStatsPanel.jsx";
 
@@ -13,6 +13,93 @@ describe("UsageStatsPanel", () => {
   beforeEach(() => {
     setCopyLocale("zh-CN");
   });
+
+  afterEach(() => {
+    document.documentElement.classList.remove("dark");
+  });
+
+  it.each(["light", "dark"])(
+    "keeps the complete glass statistics hierarchy and content in %s theme",
+    (theme) => {
+      document.documentElement.classList.toggle("dark", theme === "dark");
+      const { container } = render(
+        <UsageStatsPanel
+          summary={{
+            totals: {
+              total_tokens: 643308077,
+              input_tokens: 55193000,
+              output_tokens: 2358000,
+              cache_creation_input_tokens: 1200,
+              cached_input_tokens: 586000000,
+              request_count: 5634,
+              cost_usd: 228.0715,
+              cache_hit_rate: 0.914,
+            },
+          }}
+          costSummary={{
+            api_usd: 120,
+            api_cny: 864,
+            previous_api_usd: 100,
+            subscription_usd: 80,
+            subscription_cny: 576,
+            previous_subscription_usd: null,
+            combined_usd: 200,
+            combined_cny: 1440,
+            previous_combined_usd: 200,
+            lifetime_combined_usd: 500,
+            lifetime_combined_cny: 3600,
+          }}
+        />,
+      );
+
+      const layout = screen.getByTestId("usage-stats-layout");
+      expect(layout).toHaveClass("min-w-0");
+      expect(layout).not.toHaveClass("overflow-hidden", "overflow-x-auto", "overflow-y-auto");
+
+      const dimensionCards = screen.getAllByTestId("usage-dimension-card");
+      expect(dimensionCards).toHaveLength(4);
+      for (const card of dimensionCards) {
+        expect(card).toHaveClass("tt-surface-nested", "!bg-none");
+      }
+
+      const icons = screen.getAllByTestId("usage-dimension-icon");
+      expect(icons).toHaveLength(4);
+      const iconColors = icons.map((icon) => (
+        icon.getAttribute("class").split(/\s+/).find((name) => name.startsWith("text-"))
+      ));
+      expect(new Set(iconColors)).toEqual(new Set([
+        "text-oai-blue-500",
+        "text-green-500",
+        "text-orange-500",
+        "text-purple-500",
+      ]));
+
+      expect(dimensionCards[0]).toHaveClass("!bg-emerald-50/70", "dark:!bg-emerald-950/25");
+      expect(dimensionCards[1]).toHaveClass("!bg-green-50/70", "dark:!bg-green-950/25");
+      expect(dimensionCards[2]).toHaveClass("!bg-orange-50/70", "dark:!bg-orange-950/25");
+      expect(dimensionCards[3]).toHaveClass("!bg-purple-50/70", "dark:!bg-purple-950/25");
+
+      expect(screen.getAllByTestId("usage-cost-cny")).toHaveLength(4);
+      expect(container.querySelectorAll("[data-monthly-cost-status]")).toHaveLength(3);
+      expect(screen.getAllByText("上月无基数")).toHaveLength(1);
+
+      expect(screen.getByTestId("usage-request-summary")).toHaveClass("tt-surface-nested");
+      expect(screen.getByTestId("usage-total-cost-summary")).toHaveClass("tt-surface-nested");
+      expect(screen.getByTestId("usage-summary-rail")).toHaveClass(
+        "grid-cols-2",
+        "sm:grid-cols-3",
+        "lg:flex",
+      );
+      expect(screen.getByTestId("usage-cache-hit-summary")).toHaveClass(
+        "tt-surface-nested",
+        "col-span-2",
+        "sm:col-span-1",
+      );
+      expect(screen.getByText("5,634")).toBeInTheDocument();
+      expect(screen.getByText("$228.07")).toBeInTheDocument();
+      expect(screen.getByText("91.4%")).toBeInTheDocument();
+    },
+  );
 
   it("renders Chinese token units, 4 dimension cards and 3 right cards when summary.totals present", () => {
     render(

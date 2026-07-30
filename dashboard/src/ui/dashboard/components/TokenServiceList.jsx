@@ -243,7 +243,7 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
     <aside
       data-testid="token-service-list"
       className={cn(
-        "flex h-full min-h-[220px] min-w-0 flex-col rounded-xl border border-oai-gray-200 bg-white p-2.5 shadow-sm shadow-black/[0.04] dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:shadow-black/20",
+        "tt-surface flex h-full min-h-[220px] min-w-0 flex-col rounded-[var(--tt-card-radius)] p-2.5",
         className,
       )}
     >
@@ -283,7 +283,7 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
               <li
                 key={service.id}
                 data-testid="token-service-row"
-                className="rounded-lg border border-oai-gray-200 bg-oai-gray-50/45 p-2 dark:border-oai-gray-700 dark:bg-oai-gray-800/35"
+                className="tt-surface-nested min-w-0 rounded-lg border p-2"
               >
                 <div className="flex min-w-0 items-start gap-1.5">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-oai-gray-100 text-[11px] font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400">

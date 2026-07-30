@@ -438,7 +438,7 @@ export function UsageTrendChart({
   return (
     <div
       className={cn(
-        "relative flex h-full min-w-0 flex-col rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-4",
+        "tt-surface relative flex h-full min-w-0 flex-col rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
     >
@@ -846,7 +846,7 @@ function StateCard({ className, state, onRetry }) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-4",
+        "tt-surface rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
     >

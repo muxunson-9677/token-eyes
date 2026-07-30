@@ -21,6 +21,18 @@ function plan(id, used, total = 1_000, overrides = {}) {
 }
 
 describe("TokenServiceList", () => {
+  it("uses one glass service panel with quiet nested rows", () => {
+    render(
+      <TokenServiceList
+        plans={[plan("codex", 250, 1000)]}
+        now={new Date("2026-07-13T00:00:00Z")}
+      />,
+    );
+
+    expect(screen.getByTestId("token-service-list")).toHaveClass("tt-surface");
+    expect(screen.getByTestId("token-service-row")).toHaveClass("tt-surface-nested");
+  });
+
   it("treats a date-only expiry as the end of that date in the local timezone", () => {
     expect(expiryTimestamp("2026-07-19")).toBe(new Date(2026, 6, 19, 23, 59, 59, 999).getTime());
   });

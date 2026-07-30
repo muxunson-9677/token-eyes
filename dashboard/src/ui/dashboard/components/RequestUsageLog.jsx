@@ -585,17 +585,17 @@ export function RequestUsageLog({
 
       {totals && (
         <div className="mb-4 grid grid-cols-3 gap-2" data-testid="request-log-metrics">
-          <div data-testid="request-log-metric-requests" className="rounded-xl bg-oai-gray-50 px-3 py-2.5 dark:bg-oai-gray-800/70">
+          <div data-testid="request-log-metric-requests" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
             <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.requests")}</div>
             <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatFullNum(totals.request_count)}</div>
           </div>
-          <div data-testid="request-log-metric-success-rate" className="rounded-xl bg-emerald-50/70 px-3 py-2.5 dark:bg-emerald-950/20">
+          <div data-testid="request-log-metric-success-rate" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
             <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.success_rate")}</div>
             <div className="mt-1 text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
               {totals.success_rate === null || totals.success_rate === undefined ? copy("ticket06.metric.unavailable") : `${safeNum(totals.success_rate).toFixed(1)}%`}
             </div>
           </div>
-          <div data-testid="request-log-metric-avg-latency" className="rounded-xl bg-oai-gray-50 px-3 py-2.5 dark:bg-oai-gray-800/70">
+          <div data-testid="request-log-metric-avg-latency" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
             <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.avg_latency")}</div>
             <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatAverageLatency(totals.avg_latency_ms)}</div>
           </div>
