@@ -7,11 +7,15 @@ export function Card({
   children,
   title,
   subtitle,
+  variant = "default",
   className = "",
   bodyClassName = "",
 }) {
+  const surfaceClassName =
+    variant === "nested" ? "tt-surface-nested" : "tt-surface";
+
   return (
-    <div className={`rounded-2xl border border-oai-gray-200/90 bg-white/95 shadow-oai-md transition-[background-color,border-color,box-shadow] duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900/95 dark:shadow-black/20 ${className}`}>
+    <div className={`${surfaceClassName} rounded-[var(--tt-card-radius)] transition-colors duration-200 ${className}`}>
       {(title || subtitle) && (
         <div className="px-5 py-4 border-b border-oai-gray-200 dark:border-oai-gray-800 transition-colors duration-200">
           {title && (

@@ -70,4 +70,18 @@ describe("AppearanceSection", () => {
     );
     expect(screen.getByDisplayValue("7.31")).toBeInTheDocument();
   });
+
+  it("marks only the selected theme option as pressed", async () => {
+    render(<AppearanceSection />);
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("7.2")).toBeInTheDocument(),
+    );
+    const themeButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("aria-pressed"));
+    expect(themeButtons).toHaveLength(3);
+    expect(themeButtons.filter((button) => button.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+    expect(themeButtons.filter((button) => button.getAttribute("aria-pressed") === "false")).toHaveLength(2);
+  });
 });

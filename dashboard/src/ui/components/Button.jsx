@@ -23,15 +23,15 @@ export function Button({
   ...props
 }) {
   const baseStyles =
-    "inline-flex items-center justify-center font-medium transition-all duration-200 rounded-md focus:outline-none focus:ring-2 focus:ring-oai-blue/30 active:scale-[0.98] active:duration-100";
+    "tt-pressable inline-flex items-center justify-center rounded-[var(--tt-control-radius)] font-medium focus:outline-none focus:ring-2 focus:ring-oai-blue/30";
 
   const variantStyles = {
     primary:
-      "bg-oai-black dark:bg-oai-white text-white dark:text-oai-black border border-transparent hover:bg-oai-gray-800 dark:hover:bg-oai-gray-200 active:bg-oai-gray-900 dark:active:bg-oai-gray-300 disabled:bg-oai-gray-300 dark:disabled:bg-oai-gray-700 disabled:text-oai-gray-500 dark:disabled:text-oai-gray-400 focus:ring-oai-brand/30 transition-colors duration-200",
+      "border border-transparent bg-oai-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_1px_2px_rgba(15,23,42,0.2)] hover:bg-oai-gray-800 active:bg-oai-gray-900 disabled:bg-oai-gray-300 disabled:text-oai-gray-500 focus:ring-oai-brand/30 dark:bg-oai-white dark:text-oai-black dark:hover:bg-oai-gray-200 dark:active:bg-oai-gray-300 dark:disabled:bg-oai-gray-700 dark:disabled:text-oai-gray-400",
     secondary:
-      "bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white border border-oai-gray-300 dark:border-oai-gray-700 hover:border-oai-brand hover:text-oai-brand active:bg-oai-gray-50 dark:active:bg-oai-gray-800 active:border-oai-brand-dark disabled:text-oai-gray-400 dark:disabled:text-oai-gray-500 disabled:border-oai-gray-200 dark:disabled:border-oai-gray-700 focus:ring-oai-brand/30 transition-colors duration-200",
+      "border border-white/80 bg-oai-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.1)] hover:border-oai-brand hover:text-oai-brand active:border-oai-brand-dark active:bg-oai-gray-50 disabled:border-oai-gray-200 disabled:text-oai-gray-400 focus:ring-oai-brand/30 dark:border-white/10 dark:bg-oai-gray-900 dark:text-oai-white dark:hover:border-oai-brand dark:active:bg-oai-gray-800 dark:disabled:border-oai-gray-700 dark:disabled:text-oai-gray-500",
     ghost:
-      "bg-transparent text-oai-gray-600 dark:text-oai-gray-300 border border-transparent hover:text-oai-brand hover:bg-oai-brand-50/50 dark:hover:bg-oai-brand-950/30 active:bg-oai-brand-50 dark:active:bg-oai-brand-900/50 disabled:text-oai-gray-400 dark:disabled:text-oai-gray-500 focus:ring-oai-brand/30 transition-colors duration-200",
+      "border border-transparent bg-transparent text-oai-gray-600 hover:bg-oai-brand-50/50 hover:text-oai-brand active:bg-oai-brand-50 disabled:text-oai-gray-400 focus:ring-oai-brand/30 dark:text-oai-gray-300 dark:hover:bg-oai-brand-950/30 dark:active:bg-oai-brand-900/50 dark:disabled:text-oai-gray-500",
   };
 
   const sizeStyles = {
@@ -45,13 +45,24 @@ export function Button({
     : "cursor-pointer";
 
   const mergedClassName = `${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${disabledStyles} ${className}`;
+  const isNativeButton = Component === "button";
+  const handleClick = disabled
+    ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    : onClick;
 
   return (
     <Component
-      className={mergedClassName}
-      onClick={onClick}
-      disabled={disabled}
       {...props}
+      className={mergedClassName}
+      onClick={handleClick}
+      disabled={isNativeButton ? disabled : undefined}
+      aria-disabled={
+        !isNativeButton && disabled ? true : props["aria-disabled"]
+      }
+      tabIndex={!isNativeButton && disabled ? -1 : props.tabIndex}
     >
       {children}
     </Component>

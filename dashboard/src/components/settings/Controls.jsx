@@ -132,7 +132,7 @@ export function SectionCard({
 
 export function SegmentedControl({ options, value, onChange }) {
   return (
-    <div className="inline-flex items-center rounded-lg border border-oai-gray-200 bg-oai-gray-50 p-0.5 dark:border-oai-gray-800 dark:bg-oai-gray-900">
+    <div className="inline-flex items-center rounded-[var(--tt-control-radius)] border border-oai-gray-200/80 bg-oai-gray-100/80 p-0.5 shadow-[inset_0_1px_3px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-oai-gray-950/70 dark:shadow-[inset_0_1px_4px_rgba(0,0,0,0.38)]">
       {options.map(({ value: optionValue, label, Icon }) => {
         const active = value === optionValue;
         return (
@@ -142,10 +142,10 @@ export function SegmentedControl({ options, value, onChange }) {
             onClick={() => onChange(optionValue)}
             aria-pressed={active}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "inline-flex items-center gap-1.5 rounded-[8px] border border-transparent px-3 py-1.5 text-xs font-medium transition-[color,background-color,box-shadow,transform]",
               active
-                ? "bg-oai-brand-50 text-oai-brand-700 shadow-sm ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
-                : "text-oai-gray-500 hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white",
+                ? "translate-y-px border-white/90 bg-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(15,23,42,0.1),0_1px_2px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-oai-gray-800 dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(0,0,0,0.4),0_1px_2px_rgba(0,0,0,0.35)]"
+                : "text-oai-gray-500 hover:text-oai-gray-700 dark:text-oai-gray-500 dark:hover:text-oai-gray-300",
             )}
           >
             {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden /> : null}
