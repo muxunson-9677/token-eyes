@@ -53,6 +53,20 @@ describe("Button", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  it("passes disabled through to a custom button component", () => {
+    function CustomButton(props) {
+      return <button {...props} />;
+    }
+
+    render(
+      <Button as={CustomButton} disabled>
+        Custom save
+      </Button>,
+    );
+
+    expect(screen.getByRole("button", { name: "Custom save" })).toBeDisabled();
+  });
+
   it("preserves caller-provided selected state", () => {
     render(<Button aria-pressed="true">Selected</Button>);
 

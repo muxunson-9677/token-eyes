@@ -45,7 +45,7 @@ export function Button({
     : "cursor-pointer";
 
   const mergedClassName = `${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${disabledStyles} ${className}`;
-  const isNativeButton = Component === "button";
+  const isAnchor = Component === "a";
   const handleClick = disabled
     ? (event) => {
         event.preventDefault();
@@ -58,11 +58,9 @@ export function Button({
       {...props}
       className={mergedClassName}
       onClick={handleClick}
-      disabled={isNativeButton ? disabled : undefined}
-      aria-disabled={
-        !isNativeButton && disabled ? true : props["aria-disabled"]
-      }
-      tabIndex={!isNativeButton && disabled ? -1 : props.tabIndex}
+      disabled={isAnchor ? undefined : disabled}
+      aria-disabled={isAnchor && disabled ? true : props["aria-disabled"]}
+      tabIndex={isAnchor && disabled ? -1 : props.tabIndex}
     >
       {children}
     </Component>
