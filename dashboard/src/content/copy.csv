@@ -2027,3 +2027,5 @@ limits.accounts.error,ui,LimitsPage,UsageLimitsPanel,account_error,"Refresh fail
 limits.accounts.stale,ui,LimitsPage,UsageLimitsPanel,account_stale,"Showing the last successful value",,active
 limits.accounts.refresh_all,ui,LimitsPage,LimitsHeader,refresh_all,"Refresh all accounts",,active
 limits.accounts.refreshing_short,ui,LimitsPage,LimitsHeader,refreshing_short,"Refreshing…",,active
+official_reset_celebration.title,ui,ResetCelebrationOverlay,Notice,title,"Official extra reset",,active
+official_reset_celebration.summary,ui,ResetCelebrationOverlay,Notice,summary,"Your Codex usage received an official extra reset.",,active

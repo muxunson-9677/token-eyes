@@ -13,6 +13,7 @@ import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
 import { clearDashboardMockUsageCaches } from "./lib/usage-cache";
 import { useLeaderboardParticipationSync } from "./hooks/use-leaderboard-participation-sync";
 import { CodexResetEventsProvider } from "./hooks/use-codex-reset-events";
+import { ResetCelebrationProvider } from "./ui/celebration/ResetCelebrationProvider.jsx";
 import { AppLayout } from "./ui/components/Sidebar.jsx";
 import { ToastProvider } from "./ui/components/Toast.jsx";
 import { UsageFiltersProvider } from "./hooks/use-usage-filters";
@@ -398,13 +399,15 @@ export default function App() {
           <LoginModalProvider>
             <UsageFiltersProvider>
               <CodexResetEventsProvider enabled={isLocalMode && showSidebar}>
-                <Suspense fallback={<AppBootSplash />}>{content}</Suspense>
-                <Suspense fallback={null}>
-                  {showSidebar ? <CommandPalette /> : null}
-                  <LoginModal />
-                  {!isLocalMode && <Analytics />}
-                  {!isLocalMode && <SpeedInsights />}
-                </Suspense>
+                <ResetCelebrationProvider>
+                  <Suspense fallback={<AppBootSplash />}>{content}</Suspense>
+                  <Suspense fallback={null}>
+                    {showSidebar ? <CommandPalette /> : null}
+                    <LoginModal />
+                    {!isLocalMode && <Analytics />}
+                    {!isLocalMode && <SpeedInsights />}
+                  </Suspense>
+                </ResetCelebrationProvider>
               </CodexResetEventsProvider>
             </UsageFiltersProvider>
           </LoginModalProvider>

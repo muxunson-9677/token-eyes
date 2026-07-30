@@ -583,5 +583,7 @@
     "limits.accounts.error":  "刷新失败：{{error}}",
     "limits.accounts.stale":  "正在显示上次成功数据",
     "limits.accounts.refresh_all":  "刷新全部账号",
-    "limits.accounts.refreshing_short":  "正在刷新…"
+    "limits.accounts.refreshing_short":  "正在刷新…",
+    "official_reset_celebration.title":  "官方额外重置",
+    "official_reset_celebration.summary":  "你的 Codex 用量已获得一次官方额外重置。"
 }
