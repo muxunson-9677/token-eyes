@@ -178,9 +178,19 @@ describe("LeaderboardPage window-session cache reuse", () => {
     publishLeaderboardPreloadState(preloadedData, { contextKey });
     getLeaderboard.mockReturnValue(new Promise(() => {}));
 
-    renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+    const { container } = renderLeaderboard("/leaderboard", {
+      auth: () => Promise.resolve("test-token"),
+    });
 
+    expect(screen.getByRole("heading", { name: copy("leaderboard.title") })).toBeInTheDocument();
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[data-testid="leaderboard-period-control"] button')).toHaveLength(5);
+    expect(container.querySelectorAll('[data-testid="leaderboard-metric-control"] button')).toHaveLength(3);
+    expect(screen.getByTestId("leaderboard-filter-toolbar")).toHaveClass("tt-surface-nested");
+    expect(screen.getByTestId("leaderboard-list-surface")).toHaveClass("tt-surface");
+    expect(screen.getAllByText("Preloaded User")[0].closest("li")).toHaveClass(
+      "tt-product-focusable",
+    );
     expect(screen.queryByTestId("leaderboard-skeleton")).not.toBeInTheDocument();
     expect(getLeaderboard).toHaveBeenCalledWith({
       baseUrl: "https://edge.example",

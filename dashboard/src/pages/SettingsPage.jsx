@@ -22,7 +22,7 @@ const OtherAiSpendSection = lazy(() =>
 
 function SettingsCostFallback() {
   return (
-    <div className="rounded-xl border border-oai-gray-200 bg-white px-5 py-8 text-center text-sm text-oai-gray-400 shadow-sm shadow-black/[0.04] dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-oai-gray-500 dark:shadow-black/20">
+    <div className="tt-surface rounded-[var(--tt-card-radius)] px-5 py-8 text-center text-sm text-oai-gray-400 dark:text-oai-gray-500">
       {copy("settings.cost.loading")}
     </div>
   );

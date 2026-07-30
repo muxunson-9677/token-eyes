@@ -314,6 +314,29 @@ body {
   outline-offset: -2px !important;
 }
 
+.tt-product-focusable:focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: 2px !important;
+}
+
+:root.dark .tt-product-focusable:focus-visible {
+  outline-color: var(--oai-white) !important;
+}
+
+.tt-modal-backdrop {
+  background: rgba(15, 18, 22, 0.42);
+  backdrop-filter: blur(8px) saturate(90%);
+  -webkit-backdrop-filter: blur(8px) saturate(90%);
+}
+
+:root.dark .tt-modal-backdrop {
+  background: rgba(5, 7, 10, 0.58);
+}
+
+.tt-modal-popup {
+  isolation: isolate;
+}
+
 .tt-usage-filter-toolbar button:focus-visible {
   outline: 2px solid var(--oai-black) !important;
   outline-offset: -2px !important;
@@ -324,6 +347,11 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tt-modal-motion {
+    transform: none !important;
+    transition: none !important;
+  }
+
   .tt-usage-filter-toolbar button {
     transform: none !important;
     transition: none !important;

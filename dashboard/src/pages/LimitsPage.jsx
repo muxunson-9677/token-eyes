@@ -68,14 +68,18 @@ export function LimitsPage() {
                 {copy("limits.page.subtitle")}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div
+              role="toolbar"
+              aria-label={copy("nav.limits")}
+              className="tt-surface-nested flex shrink-0 items-center gap-1 rounded-[var(--tt-control-radius)] p-1"
+            >
               <button
                 type="button"
                 onClick={() => void refreshAllAccounts()}
                 disabled={accountsRefreshing}
                 aria-label={copy("limits.accounts.refresh_all")}
                 title={copy("limits.accounts.refresh_all")}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-oai-gray-200 px-3 text-sm text-oai-gray-600 transition-colors hover:bg-oai-gray-100 hover:text-oai-black disabled:cursor-wait disabled:opacity-60 dark:border-oai-gray-800 dark:text-oai-gray-400 dark:hover:bg-oai-gray-800 dark:hover:text-white"
+                className="tt-pressable tt-product-focusable inline-flex h-8 items-center gap-2 rounded-[8px] px-3 text-sm text-oai-gray-600 hover:bg-white/70 hover:text-oai-black disabled:cursor-wait disabled:opacity-60 dark:text-oai-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
               >
                 <RefreshCw className={`h-4 w-4 ${accountsRefreshing ? "animate-spin" : ""}`} aria-hidden />
                 <span className="hidden sm:inline">
@@ -86,7 +90,7 @@ export function LimitsPage() {
                 to="/settings"
                 aria-label={copy("limits.page.openSettings")}
                 title={copy("limits.page.openSettings")}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
+                className="tt-pressable tt-product-focusable inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-oai-gray-600 hover:bg-white/70 hover:text-oai-black dark:text-oai-gray-300 dark:hover:bg-white/10 dark:hover:text-white no-underline"
               >
                 <SettingsIcon className="h-4 w-4" aria-hidden />
               </Link>

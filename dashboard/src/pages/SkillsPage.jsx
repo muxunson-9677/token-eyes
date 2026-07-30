@@ -195,7 +195,7 @@ function SkillRow({ skill, targets, selected, onSelect, selectable, checked, onT
       onClick={() => onSelect?.(skill)}
       onKeyDown={handleKeyDown}
       className={cn(
-        "cursor-pointer rounded-md py-3 pr-2 transition focus:outline-none focus:ring-2 focus:ring-oai-gray-400/30",
+        "tt-pressable tt-product-focusable cursor-pointer rounded-[var(--tt-control-radius)] px-2 py-3",
         selected
           ? "bg-oai-gray-100 ring-1 ring-oai-gray-200 dark:bg-oai-gray-800/60 dark:ring-oai-gray-800"
           : checked
@@ -261,11 +261,14 @@ function FilterToolbar({
   searchPlaceholder,
 }) {
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-2 pt-1 text-xs text-oai-gray-600 dark:text-oai-gray-300">
+    <div
+      data-skills-filter-toolbar
+      className="tt-surface-nested mb-3 flex flex-wrap items-center gap-2 rounded-[var(--tt-card-radius)] p-2 text-xs text-oai-gray-600 dark:text-oai-gray-300"
+    >
       <Select.Root value={agentFilter} onValueChange={onAgentFilter}>
         <Select.Trigger
           aria-label={copy("skills.filter.agent_label")}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 bg-oai-white px-2.5 text-xs font-medium text-oai-gray-700 transition hover:border-oai-gray-300 focus:outline-none focus:ring-2 focus:ring-oai-gray-400/30 data-[popup-open]:border-oai-gray-300 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-oai-gray-200 dark:hover:border-oai-gray-700"
+          className="tt-product-focusable inline-flex h-8 items-center gap-1.5 rounded-[var(--tt-control-radius)] border border-white/70 bg-white/55 px-2.5 text-xs font-medium text-oai-gray-700 hover:border-oai-gray-300 data-[popup-open]:border-oai-gray-300 dark:border-white/10 dark:bg-black/20 dark:text-oai-gray-200 dark:hover:border-oai-gray-700"
         >
           <span className="text-oai-gray-500 dark:text-oai-gray-400">
             {copy("skills.filter.agent_label")}:
@@ -374,7 +377,7 @@ function BatchToolbar({ count, targets, busy, onBulkSync, onBulkRemove, onClear 
     <div
       role="toolbar"
       aria-label={copy("skills.select.toolbar_aria")}
-      className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 dark:border-oai-gray-800 dark:bg-oai-gray-900/50"
+      className="tt-surface-nested mb-3 flex flex-wrap items-center gap-2 rounded-[var(--tt-card-radius)] px-3 py-2"
     >
       <span className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200" aria-live="polite">
         {copy("skills.select.count", { count })}
@@ -484,7 +487,10 @@ function MySkillsView({
           </Button>
         </div>
       ) : (
-        <div className="divide-y divide-oai-gray-200/70 dark:divide-oai-gray-800/70">
+        <div
+          data-skills-list-surface
+          className="tt-surface divide-y divide-oai-gray-200/70 overflow-hidden rounded-[var(--tt-card-radius)] px-2 dark:divide-white/10"
+        >
           {items.map((skill) => (
             <SkillRow
               key={skill.id || skill.key}
@@ -1497,7 +1503,7 @@ export function SkillsPage() {
             </Button>
           </div>
 
-          <div className="mb-5 flex gap-6 border-b border-oai-gray-200 dark:border-oai-gray-800">
+          <div className="mb-5 flex gap-2 border-b border-oai-gray-200 dark:border-oai-gray-800">
             {[
               ["my", copy("skills.tab.my")],
               ["browse", copy("skills.tab.browse")],
@@ -1508,7 +1514,7 @@ export function SkillsPage() {
                 aria-pressed={tab === value}
                 onClick={() => setTab(value)}
                 className={cn(
-                  "-mb-px border-b-2 pb-2 text-sm font-medium transition-colors",
+                  "tt-pressable tt-product-focusable -mb-px rounded-t-[var(--tt-control-radius)] border-b-2 px-3 pb-2 pt-1 text-sm font-medium transition-colors",
                   tab === value
                     ? "border-oai-black text-oai-black dark:border-white dark:text-white"
                     : "border-transparent text-oai-gray-500 hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white",
@@ -1530,7 +1536,7 @@ export function SkillsPage() {
               <div
                 role="tablist"
                 aria-label={copy("skills.source.label")}
-                className="inline-flex h-10 shrink-0 items-center rounded-md border border-oai-gray-200 bg-oai-white p-1 dark:border-oai-gray-800 dark:bg-oai-gray-900"
+                className="tt-surface-nested inline-flex h-10 shrink-0 items-center rounded-[var(--tt-control-radius)] p-1"
               >
                 {[
                   ["repo", copy("skills.mode.repo"), source !== SOURCE_SKILLSSH && source !== SOURCE_POPULAR],
@@ -1548,7 +1554,7 @@ export function SkillsPage() {
                       else if (source === SOURCE_SKILLSSH || source === SOURCE_POPULAR) setSource(SOURCE_ALL);
                     }}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors",
+                      "tt-pressable tt-product-focusable inline-flex items-center gap-1.5 rounded-[8px] px-3 py-1 text-sm font-medium transition-colors",
                       active
                         ? "bg-oai-gray-100 text-oai-black dark:bg-oai-gray-700 dark:text-white"
                         : "text-oai-gray-500 hover:text-oai-gray-800 dark:text-oai-gray-400 dark:hover:text-oai-gray-200",

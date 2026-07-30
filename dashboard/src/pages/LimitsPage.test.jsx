@@ -84,13 +84,18 @@ describe("LimitsPage", () => {
   });
 
   it("passes Kimi limits from the API response into the limits panel", () => {
-    render(
+    const { container } = render(
       <MemoryRouter>
         <LimitsPage />
       </MemoryRouter>,
     );
 
+    expect(screen.getByRole("heading", { name: copy("nav.limits") })).toBeInTheDocument();
     expect(screen.getByText("Kimi connected")).toBeInTheDocument();
+    const toolbar = screen.getByRole("toolbar", { name: copy("nav.limits") });
+    expect(toolbar).toHaveClass("tt-surface-nested");
+    expect(toolbar.querySelectorAll("button, a")).toHaveLength(2);
+    expect(container.querySelectorAll(".tt-product-focusable")).toHaveLength(2);
   });
 
   it("uses matching preloaded limits as the hook initial state and skips the full skeleton", () => {

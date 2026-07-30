@@ -133,7 +133,13 @@ describe("WidgetsPage menu bar configurator", () => {
 
 describe("WidgetsPage Windows desktop widget", () => {
   it("does not offer the removed usage overview or heatmap cards", () => {
-    render(<WidgetsPage />);
+    const { container } = render(<WidgetsPage />);
+    expect(screen.getByRole("heading", { name: copy("widgets.page.title") })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: copy("widgets.gallery.section.title") }),
+    ).toBeInTheDocument();
+    expect(container.querySelectorAll("article.tt-surface")).toHaveLength(3);
+    expect(container.querySelectorAll(".tt-surface-nested")).not.toHaveLength(0);
     expect(screen.queryByText(copy("widgets.summary.name"))).not.toBeInTheDocument();
     expect(screen.queryByText(copy("widgets.heatmap.name"))).not.toBeInTheDocument();
   });

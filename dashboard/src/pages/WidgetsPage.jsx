@@ -71,7 +71,7 @@ function PreviewShell({ size = "sm", children }) {
   return (
     <div
       className={cn(
-        "flex w-full items-center justify-center rounded-xl bg-oai-gray-100 dark:bg-oai-gray-950/60",
+        "tt-surface-nested flex w-full items-center justify-center rounded-[var(--tt-card-radius)]",
         isHero ? "py-10 sm:py-14 px-6" : "py-6 px-4",
       )}
     >
@@ -353,7 +353,7 @@ function MenuBarDisplayCard() {
   const confettiOnReset = settings?.confettiOnReset !== false;
 
   return (
-    <article className="rounded-xl border border-oai-gray-200 bg-white p-5 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-6">
+    <article className="tt-surface rounded-[var(--tt-card-radius)] p-5 sm:p-6">
       <MenuBarPreview slotConfigs={slotConfigs} showStats={showStats} />
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -472,7 +472,7 @@ function WindowsWidgetToggle() {
       type="button"
       disabled={busy}
       onClick={() => void toggle()}
-      className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white transition-colors hover:bg-oai-gray-800 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+      className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white hover:bg-oai-gray-800 disabled:cursor-wait disabled:opacity-60 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
     >
       <Monitor className="h-4 w-4" aria-hidden="true" />
       {copy(visible ? "widgets.windows.hide" : "widgets.windows.show")}
@@ -608,7 +608,7 @@ function WindowsWidgetProjectSettings() {
   };
 
   return (
-    <div className="mb-5 rounded-xl border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-5">
+    <div className="tt-surface mb-5 rounded-[var(--tt-card-radius)] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-[15px] font-semibold text-oai-black dark:text-white">
@@ -626,7 +626,7 @@ function WindowsWidgetProjectSettings() {
             aria-label={copy("widgets.windows.projects.add_folder")}
             disabled={!prefs}
             onClick={() => void addProjectFolder()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 disabled:cursor-default disabled:opacity-45 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+            className="tt-pressable tt-product-focusable inline-flex items-center gap-1.5 rounded-[var(--tt-control-radius)] border border-white/70 px-3 py-1.5 text-xs font-medium text-oai-gray-700 hover:bg-white/60 disabled:cursor-default disabled:opacity-45 dark:border-white/10 dark:text-oai-gray-200 dark:hover:bg-white/10"
           >
             <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
             {copy("widgets.windows.projects.add_folder")}
@@ -636,7 +636,7 @@ function WindowsWidgetProjectSettings() {
             aria-label={copy("widgets.windows.projects.use_recent")}
             disabled={!prefs || recentProjects.length === 0}
             onClick={useRecentProjects}
-            className="rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 disabled:cursor-default disabled:opacity-45 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+            className="tt-pressable tt-product-focusable rounded-[var(--tt-control-radius)] border border-white/70 px-3 py-1.5 text-xs font-medium text-oai-gray-700 hover:bg-white/60 disabled:cursor-default disabled:opacity-45 dark:border-white/10 dark:text-oai-gray-200 dark:hover:bg-white/10"
           >
             {copy("widgets.windows.projects.use_recent")}
           </button>
@@ -725,7 +725,7 @@ function WindowsWidgetProjectSettings() {
           type="button"
           disabled={!prefs || !dirty || saving}
           onClick={() => void save()}
-          className="inline-flex h-9 items-center rounded-lg bg-oai-black px-4 text-sm font-medium text-white transition-colors hover:bg-oai-gray-800 disabled:cursor-default disabled:opacity-40 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+          className="tt-pressable tt-product-focusable inline-flex h-9 items-center rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white hover:bg-oai-gray-800 disabled:cursor-default disabled:opacity-40 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
         >
           {saving
             ? copy("widgets.windows.projects.saving")
@@ -748,7 +748,7 @@ function HeaderCta({ platform }) {
       <button
         type="button"
         onClick={() => nativeAction("openWidgetGallery")}
-        className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white transition-colors hover:bg-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+        className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white hover:bg-oai-gray-800 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
       >
         {copy("widgets.cta.open_gallery")}
         <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
@@ -766,7 +766,7 @@ function HeaderCta({ platform }) {
         href="https://github.com/mm7894215/TokenTracker/releases/latest"
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white no-underline transition-colors hover:bg-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+        className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white no-underline hover:bg-oai-gray-800 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
       >
         <Download className="h-4 w-4" aria-hidden="true" />
         {copy("widgets.cta.download")}
@@ -792,7 +792,7 @@ const SECONDARY_WIDGETS = [
 
 function WidgetCatalogCard({ Preview, nameKey, descKey }) {
   return (
-    <article className="flex h-full flex-col rounded-xl border border-oai-gray-200 bg-white p-4 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-5">
+    <article className="tt-surface flex h-full flex-col rounded-[var(--tt-card-radius)] p-4 sm:p-5">
       <Preview />
       <div className="mt-4">
         <h3 className="text-[15px] font-semibold text-oai-black dark:text-white">

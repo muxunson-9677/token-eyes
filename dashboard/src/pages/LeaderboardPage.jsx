@@ -331,9 +331,9 @@ function LeaderboardEntryRow({
       aria-label={rowClickable ? copy("leaderboard.profile_modal.row_aria", { name }) : undefined}
       className={cn(
         "relative grid min-h-[78px] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors sm:grid-cols-[2.25rem_minmax(0,1fr)_9rem] sm:gap-4 sm:px-5",
-        isMe ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white dark:bg-oai-gray-950",
+        isMe ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white/45 dark:bg-black/10",
         isPinned && "before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r before:bg-oai-brand-500",
-        rowClickable && "cursor-pointer hover:bg-oai-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oai-brand-500/60 dark:hover:bg-oai-gray-900/60",
+        rowClickable && "tt-pressable tt-product-focusable cursor-pointer hover:bg-white/75 dark:hover:bg-white/[0.06]",
       )}
       data-entry-index={entryIdx}
     >
@@ -1044,17 +1044,17 @@ export function LeaderboardPage({
             </p>
             {listData && (
               <dl className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="leaderboard-summary">
-                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
+                <div className="tt-surface-nested rounded-[var(--tt-card-radius)] px-4 py-3">
                   <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.participant_label")}</dt>
                   <dd className="mt-1 text-lg font-semibold tabular-nums">{Number(participantCount || 0).toLocaleString()}</dd>
                 </div>
-                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
+                <div className="tt-surface-nested rounded-[var(--tt-card-radius)] px-4 py-3">
                   <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.tokens_label")}</dt>
                   <dd className="mt-1 text-lg font-semibold tabular-nums">
                     {aggregateTotalTokens == null ? "—" : formatChineseTokenCount(aggregateTotalTokens)}
                   </dd>
                 </div>
-                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
+                <div className="tt-surface-nested rounded-[var(--tt-card-radius)] px-4 py-3">
                   <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.cost_label")}</dt>
                   <dd className="mt-1 text-lg font-semibold tabular-nums">
                     {aggregateTotalCost == null ? "—" : formatCost(aggregateTotalCost, currency, rate)}
@@ -1075,9 +1075,15 @@ export function LeaderboardPage({
             </div>
           )}
 
-          <div className="mb-6 sm:mb-8 flex flex-wrap items-center justify-between gap-3">
+          <div
+            data-testid="leaderboard-filter-toolbar"
+            className="tt-surface-nested mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--tt-card-radius)] p-2 sm:mb-8"
+          >
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
+              <div
+                data-testid="leaderboard-period-control"
+                className="inline-flex h-9 items-center rounded-[var(--tt-control-radius)] border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
+              >
                 {PERIOD_OPTIONS.map((option) => {
                   const isActive = period === option.value;
                   return (
@@ -1086,7 +1092,7 @@ export function LeaderboardPage({
                       onClick={() => handleDimensionChange("period", option.value)}
                       aria-pressed={isActive}
                       className={cn(
-                        "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
+                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-[8px] px-3 text-sm font-medium transition-colors",
                         isActive
                           ? "text-oai-brand-700 dark:text-oai-brand-200"
                           : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
@@ -1096,7 +1102,7 @@ export function LeaderboardPage({
                       {isActive && (
                         <motion.div
                           layoutId="leaderboard-period-active-bg"
-                          className="absolute inset-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30 z-0"
+                          className="absolute inset-0 z-0 rounded-[8px] bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -1104,7 +1110,10 @@ export function LeaderboardPage({
                   );
                 })}
               </div>
-              <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
+              <div
+                data-testid="leaderboard-metric-control"
+                className="inline-flex h-9 items-center rounded-[var(--tt-control-radius)] border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
+              >
                 {METRIC_OPTIONS.map((option) => {
                   const isActive = metric === option.value;
                   return (
@@ -1113,7 +1122,7 @@ export function LeaderboardPage({
                       onClick={() => handleDimensionChange("metric", option.value)}
                       aria-pressed={isActive}
                       className={cn(
-                        "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
+                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-[8px] px-3 text-sm font-medium transition-colors",
                         isActive
                           ? "text-oai-brand-700 dark:text-oai-brand-200"
                           : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
@@ -1123,7 +1132,7 @@ export function LeaderboardPage({
                       {isActive && (
                         <motion.div
                           layoutId="leaderboard-metric-active-bg"
-                          className="absolute inset-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30 z-0"
+                          className="absolute inset-0 z-0 rounded-[8px] bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -1209,7 +1218,10 @@ export function LeaderboardPage({
             </div>
           )}
 
-          <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden">
+          <div
+            data-testid="leaderboard-list-surface"
+            className="tt-surface overflow-hidden rounded-[var(--tt-card-radius)]"
+          >
             {currentListState.error && hasEntries ? (
               <div className="border-b border-oai-gray-200 dark:border-oai-gray-800 px-6 py-3">
                 <p className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>

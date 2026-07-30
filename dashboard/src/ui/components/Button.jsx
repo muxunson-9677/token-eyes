@@ -23,7 +23,7 @@ export function Button({
   ...props
 }) {
   const baseStyles =
-    "tt-pressable inline-flex items-center justify-center rounded-[var(--tt-control-radius)] font-medium focus:outline-none focus:ring-2 focus:ring-oai-blue/30";
+    "tt-pressable tt-product-focusable inline-flex items-center justify-center rounded-[var(--tt-control-radius)] font-medium focus:outline-none focus:ring-2 focus:ring-oai-blue/30";
 
   const variantStyles = {
     primary:

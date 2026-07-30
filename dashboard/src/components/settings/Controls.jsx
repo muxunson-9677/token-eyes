@@ -21,7 +21,7 @@ export function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
       onClick={onChange}
       disabled={disabled}
       className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 disabled:opacity-50 disabled:cursor-not-allowed",
+        "tt-pressable tt-product-focusable relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed",
         checked ? "bg-oai-brand-500" : "bg-oai-gray-300 dark:bg-oai-gray-700",
       )}
     >
@@ -83,7 +83,7 @@ export function SectionCard({
             aria-label={title}
             aria-expanded={expanded}
             onClick={() => setOpen((current) => !current)}
-            className="group flex min-w-0 flex-1 items-start gap-2 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/50"
+            className="tt-product-focusable group flex min-w-0 flex-1 items-start gap-2 rounded-lg text-left outline-none"
           >
             <ChevronDown
               className={cn(
@@ -142,7 +142,7 @@ export function SegmentedControl({ options, value, onChange }) {
             onClick={() => onChange(optionValue)}
             aria-pressed={active}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-[8px] border border-transparent px-3 py-1.5 text-xs font-medium transition-[color,background-color,box-shadow,transform]",
+              "tt-pressable tt-product-focusable inline-flex items-center gap-1.5 rounded-[8px] border border-transparent px-3 py-1.5 text-xs font-medium transition-[color,background-color,box-shadow,transform]",
               active
                 ? "translate-y-px border-white/90 bg-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(15,23,42,0.1),0_1px_2px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-oai-gray-800 dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(0,0,0,0.4),0_1px_2px_rgba(0,0,0,0.35)]"
                 : "text-oai-gray-500 hover:text-oai-gray-700 dark:text-oai-gray-500 dark:hover:text-oai-gray-300",
