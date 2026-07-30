@@ -62,7 +62,7 @@ export function Button({
         "aria-disabled": true,
         tabIndex: -1,
         onAuxClick: suppressInteraction,
-        ...(isLiteralAnchor && props.role == null ? { role: "link" } : {}),
+        ...(props.role == null ? { role: "link" } : {}),
       }
     : { disabled };
 

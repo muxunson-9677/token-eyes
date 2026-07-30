@@ -82,9 +82,10 @@ describe("Button", () => {
       </Button>,
     );
 
-    const anchor = screen.getByText("Documentation");
+    const anchor = screen.getByRole("link", { name: "Documentation" });
     expect(anchor).not.toHaveAttribute("href");
     expect(anchor).not.toHaveAttribute("disabled");
+    expect(anchor).toHaveAttribute("role", "link");
     expect(anchor).toHaveAttribute("aria-disabled", "true");
     expect(anchor).toHaveAttribute("tabindex", "-1");
   });
