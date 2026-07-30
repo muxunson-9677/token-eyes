@@ -24,7 +24,7 @@ async function getFreePort() {
       server.close((error) => {
         if (error) reject(error);
         else if (port) resolve(port);
-        else reject(new Error("Failed to allocate a preview port"));
+        else reject(new Error("Failed to allocate a local Vite port"));
       });
     });
   });
@@ -43,13 +43,12 @@ async function fetchHealthy(url, timeoutMs = 750) {
   }
 }
 
-function startPreviewServer(port) {
+function startViteServer(port) {
   const logs = [];
   const child = spawn(
     process.execPath,
     [
       VITE_CLI,
-      "preview",
       "--host",
       "127.0.0.1",
       "--port",
@@ -64,16 +63,16 @@ function startPreviewServer(port) {
   );
   child.stdout.on("data", (chunk) => logs.push(chunk.toString()));
   child.stderr.on("data", (chunk) => logs.push(chunk.toString()));
-  console.log(`SERVER START pid=${child.pid} port=${port}`);
+  console.log(`SERVER START mode=vite-dev pid=${child.pid} port=${port}`);
   return { child, logs };
 }
 
-async function waitForPreview(baseUrl, server, timeoutMs = 30_000) {
+async function waitForViteServer(baseUrl, server, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (server.child.exitCode !== null) {
       throw new Error(
-        `Preview exited before health check (code ${server.child.exitCode}):\n` +
+        `Vite exited before health check (code ${server.child.exitCode}):\n` +
         server.logs.join(""),
       );
     }
@@ -83,7 +82,7 @@ async function waitForPreview(baseUrl, server, timeoutMs = 30_000) {
     }
     await delay(100);
   }
-  throw new Error(`Timed out waiting for preview at ${baseUrl}`);
+  throw new Error(`Timed out waiting for Vite at ${baseUrl}\n${server.logs.join("")}`);
 }
 
 async function waitForChildExit(child, timeoutMs) {
@@ -94,7 +93,7 @@ async function waitForChildExit(child, timeoutMs) {
   ]);
 }
 
-async function stopPreviewServer(baseUrl, server) {
+async function stopViteServer(baseUrl, server) {
   if (!server) return;
   const { child } = server;
   if (child.exitCode === null) {
@@ -109,7 +108,7 @@ async function stopPreviewServer(baseUrl, server) {
     await delay(100);
   }
   if (await fetchHealthy(`${baseUrl}/`, 250)) {
-    throw new Error(`Owned preview still responds after cleanup: ${baseUrl}`);
+    throw new Error(`Owned Vite server still responds after cleanup: ${baseUrl}`);
   }
   console.log(`SERVER STOPPED pid=${child.pid} url=${baseUrl}`);
 }
@@ -264,8 +263,8 @@ async function run() {
   let browser;
   const failures = [];
   try {
-    server = startPreviewServer(port);
-    await waitForPreview(baseUrl, server);
+    server = startViteServer(port);
+    await waitForViteServer(baseUrl, server);
     browser = await chromium.launch();
     for (const theme of ["light", "dark"]) {
       for (const [pageName, pathName] of [
@@ -282,7 +281,7 @@ async function run() {
     }
   } finally {
     if (browser) await browser.close();
-    await stopPreviewServer(baseUrl, server);
+    await stopViteServer(baseUrl, server);
   }
   if (failures.length > 0) {
     throw new Error(`${failures.length}/4 dashboard/cost style audits failed`);
