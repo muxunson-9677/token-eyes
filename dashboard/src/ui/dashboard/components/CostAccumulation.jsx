@@ -264,12 +264,13 @@ function CostSummaryCards({ summary, loading, selectedMonth }) {
 
 function SummaryCard({ id, label, value, highlight = false, icon: Icon, iconTone = "blue" }) {
   return (
-    <div className={cn(
-      "rounded-lg border bg-white p-3 dark:bg-oai-gray-900",
-      highlight
-        ? "border-oai-brand-200 dark:border-oai-brand-800"
-        : "border-oai-gray-200 dark:border-oai-gray-800"
-    )}>
+    <div
+      data-testid="cost-summary-card"
+      className={cn(
+        "tt-surface-nested rounded-lg p-3",
+        highlight ? "border-oai-brand-200 dark:border-oai-brand-800" : "",
+      )}
+    >
       <div className="flex items-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
         <span data-testid="cost-summary-icon">
           <span
@@ -309,14 +310,19 @@ function FoldableSection({ id, icon, iconTone = "blue", title, count, actions = 
   return (
     <section
       className={cn(
-        "rounded-xl border border-oai-gray-200 bg-oai-gray-50/50 p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900/40",
+        "tt-surface-nested rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
       data-cost-section={id}
       data-testid={testId}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
-        <button type="button" onClick={toggle} aria-expanded={open} className="flex min-w-0 items-center gap-2 text-left">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          className="tt-pressable -m-1.5 flex min-w-0 items-center gap-2 rounded-[var(--tt-control-radius)] p-1.5 text-left"
+        >
           <SectionHeader icon={icon} iconTone={iconTone} title={title} count={count} />
           {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
         </button>
@@ -1019,7 +1025,7 @@ export function CostAccumulation({
       {/* Cost Summary */}
       <div
         data-testid="cost-summary-region"
-        className="rounded-xl border border-oai-gray-200 bg-oai-gray-50/50 p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900/40"
+        className="tt-surface rounded-[var(--tt-card-radius)] p-4"
       >
         <CostMonthPicker
           selectedMonth={selectedMonth}

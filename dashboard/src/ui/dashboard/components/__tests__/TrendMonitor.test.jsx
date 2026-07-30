@@ -41,6 +41,8 @@ describe("TrendMonitor", () => {
     );
     const bars = Array.from(container.querySelectorAll('[data-trend-bar="true"]'));
 
+    expect(container.firstChild).toHaveClass("tt-surface", "tt-overview-primary");
+    expect(container.firstChild).not.toHaveClass("tt-surface-nested");
     expect(bars).toHaveLength(rows.length);
     expect(parseFloat(bars[0].parentElement?.style.height ?? "")).toBeGreaterThan(30);
     expect(parseFloat(bars.at(-1)?.parentElement?.style.height ?? "")).toBe(100);

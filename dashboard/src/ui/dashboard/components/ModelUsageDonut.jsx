@@ -23,7 +23,11 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
 
   if (safeRows.length === 0 || Number(totalTokens) <= 0) {
     return (
-      <Card className={className} bodyClassName="min-h-48 flex flex-col">
+      <Card
+        variant="nested"
+        className={`tt-overview-secondary ${className}`}
+        bodyClassName="min-h-48 flex flex-col"
+      >
         <div>
           <h3 className="text-sm font-semibold text-oai-black dark:text-oai-white">
             {copy("dashboard.model_distribution.title")}
@@ -41,7 +45,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
 
   let offset = 0;
   return (
-    <Card className={className}>
+    <Card variant="nested" className={`tt-overview-secondary ${className}`}>
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-oai-black dark:text-oai-white">
           {copy("dashboard.model_distribution.title")}

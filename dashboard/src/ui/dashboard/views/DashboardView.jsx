@@ -230,7 +230,10 @@ export function DashboardView(props) {
         )}
         {!showAuthGate && !showExpiredGate && !initialDashboardLoading && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <div className="lg:col-span-4 flex flex-col gap-4 min-w-0 order-2 lg:order-1">
+              <div
+                className="lg:col-span-4 flex flex-col gap-4 min-w-0 order-2 lg:order-1"
+                data-testid="dashboard-secondary-context"
+              >
                 {screenshotMode ? (
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex flex-col gap-1">
@@ -294,20 +297,6 @@ export function DashboardView(props) {
 
                 {!screenshotMode ? (
                   <FadeIn delay={nextLeft()}>
-                    <TrendMonitor
-                      rows={trendRowsForDisplay}
-                      from={trendFromForDisplay}
-                      to={trendToForDisplay}
-                      period={period}
-                      timeZoneLabel={trendTimeZoneLabel}
-                      showTimeZoneLabel={false}
-                      chartHeightClass="h-64"
-                      zoomConfig={trendZoomConfig}
-                    />
-                  </FadeIn>
-                ) : null}
-                {!screenshotMode ? (
-                  <FadeIn delay={nextLeft()}>
                     <ModelUsageDonut
                       rows={modelUsageDistribution?.rows}
                       totalTokens={modelUsageDistribution?.totalTokens}
@@ -316,7 +305,10 @@ export function DashboardView(props) {
                 ) : null}
               </div>
 
-              <div className="lg:col-span-8 flex flex-col gap-4 min-w-0 order-1 lg:order-2">
+              <div
+                className="lg:col-span-8 flex flex-col gap-4 min-w-0 order-1 lg:order-2"
+                data-testid="dashboard-primary-workspace"
+              >
                 <FadeIn delay={D_USAGE_OVERVIEW}>
                   <UsageOverview
                     period={period}
@@ -343,6 +335,21 @@ export function DashboardView(props) {
                     lastUpdatedAt={lastUpdatedAt}
                   />
                 </FadeIn>
+
+                {!screenshotMode ? (
+                  <FadeIn delay={D_USAGE_OVERVIEW + STEP}>
+                    <TrendMonitor
+                      rows={trendRowsForDisplay}
+                      from={trendFromForDisplay}
+                      to={trendToForDisplay}
+                      period={period}
+                      timeZoneLabel={trendTimeZoneLabel}
+                      showTimeZoneLabel={false}
+                      chartHeightClass="h-72"
+                      zoomConfig={trendZoomConfig}
+                    />
+                  </FadeIn>
+                ) : null}
 
                 {!screenshotMode ? (
                   <FadeIn delay={D_DATA_DETAILS}>

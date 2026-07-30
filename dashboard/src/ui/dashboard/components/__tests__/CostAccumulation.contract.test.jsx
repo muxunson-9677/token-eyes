@@ -79,6 +79,20 @@ it("visually separates the summary and each existing management section without 
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
+      selectedMonth="2026-07"
+      currentMonth="2026-07"
+      onSelectedMonthChange={() => {}}
+      otherAiGroupCosts={[{
+        group_id: "learning",
+        group_name: "AI learning",
+        record_count: 1,
+        month_usd: 10,
+        month_cny: 72,
+        year_usd: 30,
+        year_cny: 216,
+        lifetime_usd: 60,
+        lifetime_cny: 432,
+      }]}
       tokenPackages={[]}
       providerApiBalances={[]}
       apiBillingAccounts={[]}
@@ -86,17 +100,35 @@ it("visually separates the summary and each existing management section without 
     />,
   );
 
-  expect(screen.getByTestId("cost-summary-region")).toHaveClass("rounded-xl", "border");
+  const summary = screen.getByTestId("cost-summary-region");
+  expect(summary).toHaveClass("tt-surface", "rounded-[var(--tt-card-radius)]");
+  expect(summary).not.toHaveClass("tt-surface-nested");
+  expect(screen.getAllByTestId("cost-summary-card")).toHaveLength(4);
+  for (const card of screen.getAllByTestId("cost-summary-card")) {
+    expect(card).toHaveClass("tt-surface-nested");
+    expect(card).not.toHaveClass("tt-surface");
+  }
   expect(screen.getAllByTestId("cost-summary-icon")).toHaveLength(4);
   expect(screen.getByTestId("cost-summary-icon-api")).toHaveAttribute("data-tone", "blue");
   expect(screen.getByTestId("cost-summary-icon-subscription")).toHaveAttribute("data-tone", "violet");
   expect(screen.getByTestId("cost-summary-icon-total")).toHaveAttribute("data-tone", "green");
   expect(screen.getByTestId("cost-summary-icon-lifetime")).toHaveAttribute("data-tone", "orange");
-  for (const id of ["token-packages", "provider-api", "api-billing", "subscriptions"]) {
+  const sectionIds = ["other-ai", "token-packages", "provider-api", "api-billing", "subscriptions"];
+  expect(document.querySelectorAll("[data-cost-section]")).toHaveLength(5);
+  expect([summary, ...document.querySelectorAll("[data-cost-section]")]).toHaveLength(6);
+  for (const id of sectionIds) {
     const section = document.querySelector(`[data-cost-section="${id}"]`);
-    expect(section).toHaveClass("rounded-xl", "border");
+    expect(section).toHaveClass("tt-surface-nested", "rounded-[var(--tt-card-radius)]");
+    expect(section).not.toHaveClass("tt-surface");
     expect(within(section).getByTestId("cost-section-icon")).toBeInTheDocument();
+    const toggle = within(section).getByRole("button", { expanded: true });
+    expect(toggle).toHaveClass("tt-pressable", "rounded-[var(--tt-control-radius)]");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
   }
+  expect(screen.getByLabelText("spend.cost.month_picker.label")).toBeInTheDocument();
 });
 
 it("lets the user browse historical cost months without advancing into the future", () => {

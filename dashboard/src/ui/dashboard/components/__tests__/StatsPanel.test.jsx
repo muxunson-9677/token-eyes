@@ -58,6 +58,8 @@ it("uses the measured model collection instead of a fixed three-model summary", 
   }));
   const { container } = renderPanel({ overviewModels: models, topModels: [] });
 
+  expect(container.firstChild).toHaveClass("tt-surface-nested", "tt-overview-secondary");
+  expect(container.firstChild).not.toHaveClass("tt-surface");
   for (const model of models) {
     expect(screen.getByText(model.name)).toBeInTheDocument();
   }
