@@ -318,6 +318,48 @@ describe("ResetCelebrationProvider", () => {
     expect(ogl.Renderer).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["fractional core capacity", "hardwareConcurrency", 0.5],
+    ["fractional device memory", "deviceMemory", 0.25],
+  ])("uses the CSS fallback for %s", async (_label, property, value) => {
+    Object.defineProperty(window.navigator, property, {
+      configurable: true,
+      value,
+    });
+    renderProvider();
+    dispatchCelebration();
+    await flushLazyRender();
+
+    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
+      "data-renderer",
+      "css",
+    );
+    expect(ogl.Renderer).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["hardwareConcurrency", 0],
+    ["hardwareConcurrency", Number.NaN],
+    ["hardwareConcurrency", undefined],
+    ["deviceMemory", 0],
+    ["deviceMemory", Number.NaN],
+    ["deviceMemory", undefined],
+  ])("does not reject an unknown %s value of %s", async (property, value) => {
+    Object.defineProperty(window.navigator, property, {
+      configurable: true,
+      value,
+    });
+    renderProvider();
+    dispatchCelebration();
+    await flushLazyRender();
+
+    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
+      "data-renderer",
+      "webgl",
+    );
+    expect(ogl.Renderer).toHaveBeenCalledOnce();
+  });
+
   it("clears an active celebration on route changes", async () => {
     renderProvider();
     dispatchCelebration();
@@ -380,6 +422,34 @@ describe("LightfallCanvas", () => {
     expect(ogl.render).toHaveBeenCalledWith({ scene: meshInstance });
   });
 
+  it("diminishes phase intensity after 2.6 seconds before the final fade", () => {
+    render(
+      <LightfallCanvas theme="dark" durationMs={RESET_CELEBRATION_DURATION_MS} />,
+    );
+    const firstFrame = [...rafCallbacks.values()][0];
+    act(() => {
+      firstFrame(1_000);
+    });
+
+    const intensityAt = (elapsedMs) => {
+      const frame = [...rafCallbacks.values()].at(-1);
+      act(() => {
+        frame(1_000 + elapsedMs);
+      });
+      return programInstance.uniforms.uIntensity.value;
+    };
+    const peakEnd = intensityAt(2_600);
+    const diminishing = intensityAt(2_900);
+    const fadeStart = intensityAt(3_400);
+    const finished = intensityAt(4_200);
+
+    expect(peakEnd).toBeCloseTo(1);
+    expect(diminishing).toBeLessThan(peakEnd);
+    expect(fadeStart).toBeLessThan(diminishing);
+    expect(fadeStart).toBeLessThanOrEqual(0.3);
+    expect(finished).toBe(0);
+  });
+
   it("releases RAF, observer, canvas, OGL resources, and WebGL context", () => {
     const { container, unmount } = render(
       <LightfallCanvas theme="light" durationMs={RESET_CELEBRATION_DURATION_MS} />,
@@ -414,5 +484,73 @@ describe("LightfallCanvas", () => {
 
     expect(onFallback).toHaveBeenCalledOnce();
     expect(requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when rendering throws and does not schedule another frame", () => {
+    const onFallback = vi.fn();
+    ogl.render.mockImplementationOnce(() => {
+      throw new Error("render failed");
+    });
+    const { container } = render(
+      <LightfallCanvas
+        theme="dark"
+        durationMs={RESET_CELEBRATION_DURATION_MS}
+        onFallback={onFallback}
+      />,
+    );
+    const frame = [...rafCallbacks.values()][0];
+
+    expect(() => {
+      act(() => {
+        frame(1_000);
+      });
+    }).not.toThrow();
+
+    expect(onFallback).toHaveBeenCalledOnce();
+    expect(requestAnimationFrame).toHaveBeenCalledOnce();
+    expect(cancelAnimationFrame).toHaveBeenCalledOnce();
+    expect(resizeDisconnect).toHaveBeenCalledOnce();
+    expect(container.querySelector("canvas")).toBeNull();
+
+    act(() => {
+      frame(1_100);
+    });
+    expect(onFallback).toHaveBeenCalledOnce();
+    expect(requestAnimationFrame).toHaveBeenCalledOnce();
+  });
+
+  it("prevents WebGL context loss, fails closed once, and ignores stale RAF", () => {
+    const onFallback = vi.fn();
+    const { container } = render(
+      <LightfallCanvas
+        theme="light"
+        durationMs={RESET_CELEBRATION_DURATION_MS}
+        onFallback={onFallback}
+      />,
+    );
+    const canvas = container.querySelector("canvas");
+    const frame = [...rafCallbacks.values()][0];
+    const contextLost = new Event("webglcontextlost", { cancelable: true });
+
+    act(() => {
+      canvas.dispatchEvent(contextLost);
+    });
+
+    expect(contextLost.defaultPrevented).toBe(true);
+    expect(onFallback).toHaveBeenCalledOnce();
+    expect(cancelAnimationFrame).toHaveBeenCalledOnce();
+    expect(resizeDisconnect).toHaveBeenCalledOnce();
+    expect(ogl.meshRemove).toHaveBeenCalledOnce();
+    expect(ogl.programRemove).toHaveBeenCalledOnce();
+    expect(ogl.geometryRemove).toHaveBeenCalledOnce();
+    expect(ogl.rendererDestroy).toHaveBeenCalledOnce();
+    expect(container.querySelector("canvas")).toBeNull();
+
+    act(() => {
+      frame(1_000);
+      canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    });
+    expect(onFallback).toHaveBeenCalledOnce();
+    expect(requestAnimationFrame).toHaveBeenCalledOnce();
   });
 });

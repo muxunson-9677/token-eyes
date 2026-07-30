@@ -21,6 +21,7 @@ precision highp float;
 uniform vec3 iResolution;
 uniform float iTime;
 uniform float uProgress;
+uniform float uIntensity;
 uniform vec3 uColor0;
 uniform vec3 uColor1;
 uniform vec3 uColor2;
@@ -44,18 +45,11 @@ vec3 palette(float value) {
   return uColor3;
 }
 
-float celebrationEnvelope(float progress) {
-  float entrance = smoothstep(0.0, 0.083, progress);
-  float diminish = 1.0 - smoothstep(0.619, 0.81, progress);
-  float farewell = 1.0 - smoothstep(0.81, 1.0, progress);
-  return entrance * max(diminish * 0.52, farewell);
-}
-
 void main() {
   vec2 uv = vUv;
   float aspect = iResolution.x / max(iResolution.y, 1.0);
   vec2 centered = vec2((uv.x - 0.5) * aspect, uv.y - 0.5);
-  float envelope = celebrationEnvelope(uProgress);
+  float envelope = uIntensity;
   float edgeFlash = smoothstep(0.0, 0.025, uProgress)
     * (1.0 - smoothstep(0.083, 0.14, uProgress));
 
@@ -98,10 +92,28 @@ void main() {
   light += mix(uColor1, uColor2, uv.y) * edge * edgeFlash * 0.42;
   alpha += topGlow * uBackgroundGlow * envelope * 0.16 + edge * edgeFlash * 0.24;
 
-  light = 1.0 - exp(-light * uGlow);
+  light = 1.0 - exp(-light * uGlow * envelope);
   gl_FragColor = vec4(light, clamp(alpha * envelope + edge * edgeFlash, 0.0, 0.78));
 }
 `;
+
+function smoothstep01(value) {
+  const clamped = Math.max(0, Math.min(1, value));
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+export function getCelebrationPhaseIntensity(elapsedMs) {
+  const elapsed = Math.max(0, Number(elapsedMs) || 0);
+  if (elapsed < 350) return smoothstep01(elapsed / 350);
+  if (elapsed <= 2_600) return 1;
+  if (elapsed <= 3_400) {
+    return 1 - 0.72 * smoothstep01((elapsed - 2_600) / 800);
+  }
+  if (elapsed <= 4_200) {
+    return 0.28 * (1 - smoothstep01((elapsed - 3_400) / 800));
+  }
+  return 0;
+}
 
 function readCssColor(styles, name, fallback) {
   const channels = styles
@@ -140,13 +152,18 @@ export function LightfallCanvas({
     let rafId = null;
     let canvas = null;
     let disposed = false;
+    let fallbackNotified = false;
     let startTime = null;
+    let handleContextLost = null;
 
     const dispose = () => {
       if (disposed) return;
       disposed = true;
       if (rafId !== null) cancelAnimationFrame(rafId);
       resizeObserver?.disconnect();
+      if (canvas && handleContextLost) {
+        canvas.removeEventListener("webglcontextlost", handleContextLost);
+      }
       if (canvas?.parentElement === container) {
         container.removeChild(canvas);
       }
@@ -161,6 +178,13 @@ export function LightfallCanvas({
       callIfFunction(renderer, "destroy");
     };
 
+    const failClosed = () => {
+      if (fallbackNotified || disposed) return;
+      fallbackNotified = true;
+      dispose();
+      onFallback?.();
+    };
+
     try {
       const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
       renderer = new Renderer({ dpr, alpha: true, antialias: true });
@@ -171,6 +195,11 @@ export function LightfallCanvas({
       canvas.style.height = "100%";
       canvas.style.display = "block";
       container.appendChild(canvas);
+      handleContextLost = (event) => {
+        event.preventDefault();
+        failClosed();
+      };
+      canvas.addEventListener("webglcontextlost", handleContextLost);
 
       const styles = getComputedStyle(container);
       const fallbackColors = theme === "dark"
@@ -183,6 +212,7 @@ export function LightfallCanvas({
         iResolution: { value: [gl.drawingBufferWidth, gl.drawingBufferHeight, 1] },
         iTime: { value: 0 },
         uProgress: { value: 0 },
+        uIntensity: { value: 0 },
         uColor0: { value: rgb[0] },
         uColor1: { value: rgb[1] },
         uColor2: { value: rgb[2] },
@@ -206,6 +236,7 @@ export function LightfallCanvas({
       mesh = new Mesh(gl, { geometry, program });
 
       const resize = () => {
+        if (disposed) return;
         const rect = container.getBoundingClientRect();
         renderer.setSize(Math.max(rect.width, 1), Math.max(rect.height, 1));
         uniforms.iResolution.value = [
@@ -219,17 +250,23 @@ export function LightfallCanvas({
       resizeObserver.observe(container);
 
       const renderFrame = (timestamp) => {
+        if (disposed) return;
         if (startTime === null) startTime = timestamp;
         const elapsed = Math.max(0, timestamp - startTime);
         uniforms.iTime.value = elapsed / 1_000;
         uniforms.uProgress.value = Math.min(elapsed / durationMs, 1);
-        renderer.render({ scene: mesh });
-        rafId = requestAnimationFrame(renderFrame);
+        uniforms.uIntensity.value = getCelebrationPhaseIntensity(elapsed);
+        try {
+          renderer.render({ scene: mesh });
+        } catch {
+          failClosed();
+          return;
+        }
+        if (!disposed) rafId = requestAnimationFrame(renderFrame);
       };
       rafId = requestAnimationFrame(renderFrame);
     } catch {
-      dispose();
-      onFallback?.();
+      failClosed();
     }
 
     return dispose;

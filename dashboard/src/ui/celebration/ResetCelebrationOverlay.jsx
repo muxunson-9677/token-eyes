@@ -29,12 +29,17 @@ function useReducedMotionPreference() {
   return reducedMotion;
 }
 
+const isConstrained = (value) => (
+  Number.isFinite(value)
+  && Math.sign(value) === 1
+  && Math.min(value, 2) === value
+);
+
 function supportsLightfall() {
   if (typeof window === "undefined" || !window.WebGLRenderingContext) return false;
   const cores = Number(navigator.hardwareConcurrency);
   const memory = Number(navigator.deviceMemory);
-  if (Number.isFinite(cores) && (cores === 1 || cores === 2)) return false;
-  if (Number.isFinite(memory) && (memory === 1 || memory === 2)) return false;
+  if (isConstrained(cores) || isConstrained(memory)) return false;
   return true;
 }
 
