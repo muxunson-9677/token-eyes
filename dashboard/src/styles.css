@@ -309,6 +309,22 @@ body {
   outline-offset: -2px !important;
 }
 
+.tt-usage-filter-toolbar button:focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: -2px !important;
+}
+
+:root.dark .tt-usage-filter-toolbar button:focus-visible {
+  outline-color: var(--oai-white) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-usage-filter-toolbar button {
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
 /* TokenTrackerBar WKWebView: `native-app` on <html> (inline head script + Swift); NSVisualEffectView under transparent WKWebView. */
 html.native-app,
 html.native-app.dark {

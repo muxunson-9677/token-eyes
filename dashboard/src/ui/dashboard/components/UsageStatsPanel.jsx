@@ -242,7 +242,11 @@ export function UsageStatsPanel({
   if (loading && !totals) {
     return (
       <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
-        <div className="flex items-center gap-2 text-sm text-oai-gray-400">
+        <div
+          className="flex items-center gap-2 text-sm text-oai-gray-400"
+          data-testid="usage-stats-state"
+          data-state="loading"
+        >
           <div className="h-3 w-3 animate-pulse rounded-full bg-oai-gray-300 dark:bg-oai-gray-700" />
           {copy("ticket02.stats.loading")}
         </div>
@@ -253,7 +257,11 @@ export function UsageStatsPanel({
   if (error) {
     return (
       <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
-        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+        <div
+          className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400"
+          data-testid="usage-stats-state"
+          data-state="error"
+        >
           <AlertCircle className="h-4 w-4" aria-hidden="true" />
           <span>{copy("ticket02.stats.error")}</span>
           <span className="text-xs text-oai-gray-400">{error}</span>
@@ -265,7 +273,11 @@ export function UsageStatsPanel({
   if (!totals) {
     return (
       <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
-        <div className="py-8 text-center text-sm text-oai-gray-400">
+        <div
+          className="py-8 text-center text-sm text-oai-gray-400"
+          data-testid="usage-stats-state"
+          data-state="empty"
+        >
           {copy("spend.usage.empty")}
         </div>
       </Card>
