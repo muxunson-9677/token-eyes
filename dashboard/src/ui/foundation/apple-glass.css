@@ -1,0 +1,56 @@
+:root {
+  --tt-canvas: #f4f5f6;
+  --tt-surface: linear-gradient(145deg, rgba(255, 255, 255, 0.995), rgba(248, 249, 250, 0.975));
+  --tt-surface-nested: linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(247, 248, 250, 0.96));
+  --tt-surface-border: rgba(255, 255, 255, 0.98);
+  --tt-surface-outline: rgba(30, 43, 57, 0.085);
+  --tt-surface-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 rgba(207, 214, 222, 0.32), 0 1px 2px rgba(31, 43, 56, 0.10), 0 10px 23px rgba(35, 48, 62, 0.11), 0 28px 56px rgba(39, 54, 69, 0.07);
+  --tt-surface-blur: 18px;
+  --tt-control-radius: 10px;
+  --tt-card-radius: 12px;
+}
+
+:root.dark {
+  --tt-canvas: #14161a;
+  --tt-surface: linear-gradient(145deg, rgba(52, 56, 64, 0.78), rgba(27, 30, 36, 0.75));
+  --tt-surface-nested: linear-gradient(145deg, rgba(64, 68, 78, 0.62), rgba(35, 38, 45, 0.58));
+  --tt-surface-border: rgba(255, 255, 255, 0.095);
+  --tt-surface-outline: rgba(0, 0, 0, 0.48);
+  --tt-surface-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.13), inset -1px -1px 0 rgba(0, 0, 0, 0.38), 0 2px 3px rgba(0, 0, 0, 0.31), 0 16px 34px rgba(0, 0, 0, 0.31), 0 38px 78px rgba(0, 0, 0, 0.20);
+  --tt-surface-blur: 30px;
+}
+
+.tt-surface {
+  border: 1px solid var(--tt-surface-border);
+  outline: 1px solid var(--tt-surface-outline);
+  background: var(--tt-surface);
+  box-shadow: var(--tt-surface-shadow);
+  backdrop-filter: blur(var(--tt-surface-blur)) saturate(145%);
+  -webkit-backdrop-filter: blur(var(--tt-surface-blur)) saturate(145%);
+}
+
+.tt-surface-nested {
+  background: var(--tt-surface-nested);
+  border: 1px solid var(--tt-surface-border);
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.10), 0 7px 16px rgba(0, 0, 0, 0.10);
+}
+
+.tt-pressable {
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.tt-pressable:not(:disabled):not([aria-disabled="true"]):hover {
+  transform: translateY(-1px);
+}
+
+.tt-pressable:not(:disabled):not([aria-disabled="true"]):active,
+.tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-pressed="true"],
+.tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-current="page"] {
+  transform: translateY(1px);
+  box-shadow: inset 0 4px 9px rgba(24, 44, 62, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.tt-pressable:disabled,
+.tt-pressable[aria-disabled="true"] {
+  transform: none;
+}
