@@ -14,6 +14,7 @@ import { computeRangeFromKey, getCostMonthRanges, getMonthComparisonRanges } fro
 import { getBrowserTimeZone, getBrowserTimeZoneOffsetMinutes } from "../lib/timezone";
 import { normalizeAccessToken } from "../lib/auth-token";
 import { DASHBOARD_AGENTS } from "../lib/agent-adapters-dashboard";
+import { getMockNow } from "../lib/mock-data";
 import { RequestUsageLog } from "../ui/dashboard/components/RequestUsageLog.jsx";
 import { ProviderUsageTable } from "../ui/dashboard/components/ProviderUsageTable.jsx";
 import { ModelUsageTable } from "../ui/dashboard/components/ModelUsageTable.jsx";
@@ -211,6 +212,7 @@ function SpendUsagePageInner({
   const timeZone = useMemo(() => getBrowserTimeZone() || "UTC", []);
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
   const usageDateBounds = useUsageDateBounds({ timeZone, tzOffsetMinutes });
+  const mockNow = useMemo(() => getMockNow(), []);
   const financialScopeKey = useMemo(
     () => JSON.stringify([timeZone, tzOffsetMinutes, costSources]),
     [timeZone, tzOffsetMinutes, costSources],
@@ -230,6 +232,7 @@ function SpendUsagePageInner({
     return computeRangeFromKey(filterState.timeRange, {
       timeZone,
       offsetMinutes: tzOffsetMinutes,
+      now: mockNow || undefined,
       availableFrom: usageDateBounds.from,
     });
   }, [
@@ -238,6 +241,7 @@ function SpendUsagePageInner({
     filterState.to,
     timeZone,
     tzOffsetMinutes,
+    mockNow,
     usageDateBounds.from,
   ]);
 
@@ -309,6 +313,7 @@ function SpendUsagePageInner({
     const monthRanges = getMonthComparisonRanges({
       timeZone,
       offsetMinutes: tzOffsetMinutes,
+      now: mockNow || undefined,
     });
     const requestMonth = (monthRange) => getSpendRecords({
       from: monthRange.from,
@@ -349,7 +354,7 @@ function SpendUsagePageInner({
     if (previousResult.status === "rejected") {
       console.error("[SpendUsagePage] Failed to load previous-month totals:", previousResult.reason);
     }
-  }, [financialScopeKey, timeZone, tzOffsetMinutes, costSources]);
+  }, [financialScopeKey, timeZone, tzOffsetMinutes, mockNow, costSources]);
 
   useEffect(() => {
     fetchTotals();

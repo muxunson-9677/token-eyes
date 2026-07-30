@@ -76,6 +76,7 @@ vi.mock("../lib/api", () => ({
 
 vi.mock("../lib/mock-data", () => ({
   isMockEnabled: () => true,
+  getMockNow: () => null,
 }));
 
 vi.mock("../hooks/useCurrency.js", () => ({

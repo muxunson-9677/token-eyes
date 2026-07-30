@@ -1,5 +1,6 @@
 import {
   getMockUsageDaily,
+  getMockUsageBounds,
   getMockUsageHourly,
   getMockUsageHeatmap,
   getMockUsageMonthly,
@@ -10,6 +11,8 @@ import {
   getMockLeaderboard,
   getMockProviderStats,
   getMockModelStats,
+  getMockSpendTimeseries,
+  getMockTokenPlans,
   isMockEnabled,
 } from "./mock-data";
 import { getInsforgeFunctionsUrl, getInsforgeRemoteUrl, getInsforgeAnonKey } from "./insforge-config";
@@ -231,6 +234,9 @@ export async function getUsageBounds({
   timeZone,
   tzOffsetMinutes,
 }: AnyRecord = {}) {
+  if (isMockEnabled()) {
+    return getMockUsageBounds();
+  }
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   return fetchLocalJson(PATHS.usageBounds, tzParams);
 }
@@ -493,6 +499,9 @@ export async function getAllAgentEnvironments() {
 }
 
 export async function getTokenPlans() {
+  if (isMockEnabled()) {
+    return getMockTokenPlans();
+  }
   return fetchLocalJson(PATHS.tokenPlans);
 }
 
@@ -556,6 +565,9 @@ export async function getSpendRecords(params?: AnyRecord) {
 }
 
 export async function getSpendTimeseries(params?: AnyRecord) {
+  if (isMockEnabled()) {
+    return getMockSpendTimeseries(params);
+  }
   const tzParams = buildTimeZoneParams(params || {});
   const multiParams = buildMultiFilterParams(params || {});
   return fetchLocalJson(PATHS.spendTimeseries, { ...(params || {}), ...tzParams, ...multiParams });

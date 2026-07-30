@@ -110,6 +110,17 @@ export function getMockNow() {
   return parseMockNow(readMockNowRaw());
 }
 
+export function getMockUsageBounds() {
+  const now = getMockNow() || new Date();
+  const to = formatDateLocal(now);
+  return {
+    ok: true,
+    from: `${now.getFullYear()}-01-01`,
+    to,
+    empty: false,
+  };
+}
+
 function readMockSeed() {
   if (typeof import.meta !== "undefined" && import.meta.env) {
     const seed = String(import.meta.env.VITE_TOKENTRACKER_MOCK_SEED || "").trim();
@@ -416,6 +427,119 @@ function withCost(totals: any) {
 export function getMockUsageDaily({ from, to, seed }: AnyRecord = {}) {
   const rows = buildDailyRows({ from, to, seed });
   return { from, to, data: rows };
+}
+
+export function getMockSpendTimeseries({
+  from,
+  to,
+  timeZone = "UTC",
+  seed,
+}: AnyRecord = {}) {
+  const rows = buildDailyRows({ from, to, seed });
+  const series = rows.map((row: AnyRecord) => {
+    const costUsd = Number(formatUsdFromTokens(row.total_tokens));
+    return {
+      bucket_start: row.day,
+      bucket_end: row.day,
+      label: row.day,
+      source: "codex",
+      total_tokens: row.total_tokens,
+      input_tokens: row.input_tokens,
+      output_tokens: row.output_tokens,
+      cached_input_tokens: row.cached_input_tokens,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: row.reasoning_output_tokens,
+      cost_usd: costUsd,
+      api_cost_usd: costUsd,
+      subscription_cost_usd: 0,
+      combined_usd: costUsd,
+      models: [],
+    };
+  });
+  const summed = series.reduce(
+    (totals: AnyRecord, row: AnyRecord) => {
+      for (const key of [
+        "total_tokens",
+        "input_tokens",
+        "output_tokens",
+        "cached_input_tokens",
+        "cache_creation_input_tokens",
+        "reasoning_output_tokens",
+        "cost_usd",
+        "api_cost_usd",
+        "subscription_cost_usd",
+        "combined_usd",
+      ]) {
+        totals[key] += Number(row[key] || 0);
+      }
+      return totals;
+    },
+    {
+      total_tokens: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      cost_usd: 0,
+      api_cost_usd: 0,
+      subscription_cost_usd: 0,
+      combined_usd: 0,
+    } as AnyRecord,
+  );
+
+  return {
+    ok: true,
+    from,
+    to,
+    bucket: "day",
+    timezone: timeZone,
+    currency: "USD",
+    sources: ["codex"],
+    series,
+    by_source: [{ source: "codex", ...summed }],
+    totals: {
+      ...summed,
+      api_cost_cny: summed.api_cost_usd * 7,
+      subscription_cost_cny: 0,
+      combined_cny: summed.combined_usd * 7,
+    },
+  };
+}
+
+export function getMockTokenPlans() {
+  return {
+    ok: true,
+    records: [
+      {
+        id: "mock-codex-pro",
+        provider_id: "codex",
+        source: "codex",
+        plan_label: "Pro",
+        detection_method: "official_account",
+        sync_status: "success",
+        quota_unit: "percent",
+        quota_windows: [
+          { kind: "rolling_5_hour", unit: "percent", total: 100, used: 32, percentage: 32 },
+          { kind: "rolling_weekly", unit: "percent", total: 100, used: 48, percentage: 48 },
+        ],
+      },
+      {
+        id: "mock-cursor-pro",
+        provider_id: "cursor",
+        source: "cursor",
+        plan_label: "Pro",
+        detection_method: "official_account",
+        sync_status: "success",
+        quota_unit: "percent",
+        quota_windows: [
+          { kind: "total", unit: "percent", total: 100, used: 41, percentage: 41 },
+          { kind: "auto_composer", unit: "percent", total: 100, used: 27, percentage: 27 },
+          { kind: "api", unit: "percent", total: 100, used: 63, percentage: 63 },
+        ],
+      },
+    ],
+  };
 }
 
 export function getMockUsageHourly({ day, seed }: AnyRecord = {}) {

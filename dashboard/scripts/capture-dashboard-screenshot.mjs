@@ -29,7 +29,9 @@ const out =
 const width = toNumber(readArg("--width", "1512"), 1512);
 const height = toNumber(readArg("--height", "997"), 997);
 const dpr = toNumber(readArg("--dpr", "2"), 2);
-const waitMs = toNumber(readArg("--wait", "1200"), 1200);
+const waitMs = toNumber(readArg("--wait", "0"), 0);
+const readyTimeoutMs = toNumber(readArg("--ready-timeout", "15000"), 15000);
+const readySelector = readArg("--ready-selector", "");
 const fullPage = !hasFlag("--no-full-page");
 const themeSetup = createScreenshotThemeSetup(url);
 
@@ -62,6 +64,20 @@ async function run() {
     await page.evaluate(() => {
       document.documentElement.classList.add("screenshot-capture");
       document.body?.classList.add("screenshot-capture");
+    });
+    await page.waitForFunction(
+      () => !document.querySelector(".boot-splash"),
+      null,
+      { timeout: readyTimeoutMs },
+    );
+    if (readySelector) {
+      await page.waitForSelector(readySelector, {
+        state: "visible",
+        timeout: readyTimeoutMs,
+      });
+    }
+    await page.evaluate(async () => {
+      if (document.fonts?.ready) await document.fonts.ready;
     });
     if (waitMs > 0) {
       await page.waitForTimeout(waitMs);

@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import pixelmatch from "pixelmatch";
 import * as pngjs from "pngjs";
 import { createBaselineJobs } from "./visual-baseline-config.js";
+import { createDashboardDevServerCommand } from "./visual-baseline-runtime.js";
 
 const { PNG } = pngjs;
 const exec = promisify(execFile);
@@ -69,20 +70,13 @@ function isLocalhostHost(hostname) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
-function npmCommand() {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
-}
-
-function startDashboardDevServer(repoRoot, port) {
-  const child = spawn(
-    npmCommand(),
-    ["--prefix", "dashboard", "run", "dev", "--", "--port", String(port), "--strictPort"],
-    {
-      cwd: repoRoot,
-      stdio: "inherit",
-      detached: process.platform !== "win32",
-    },
-  );
+function startDashboardDevServer(repoRoot, hostname, port) {
+  const command = createDashboardDevServerCommand({ repoRoot, hostname, port });
+  const child = spawn(command.executable, command.args, {
+    cwd: command.cwd,
+    stdio: "inherit",
+    detached: process.platform !== "win32",
+  });
   return child;
 }
 
@@ -185,8 +179,8 @@ async function captureJob(job, outPath) {
       String(job.height),
       "--dpr",
       String(job.dpr),
-      "--wait",
-      "1200",
+      "--ready-selector",
+      job.readySelector,
       "--no-full-page",
     ],
     { cwd: repoRoot },
@@ -207,7 +201,7 @@ async function run() {
 
   if (!serverRunning && shouldStartServer) {
     console.log(`Dev server is not running at ${baseUrl}. Starting Vite on port ${port}...`);
-    devServer = startDashboardDevServer(repoRoot, port);
+    devServer = startDashboardDevServer(repoRoot, hostname, port);
     try {
       await waitForDashboardDevServer(baseUrl, devServer, {
         timeoutMs: 30_000,

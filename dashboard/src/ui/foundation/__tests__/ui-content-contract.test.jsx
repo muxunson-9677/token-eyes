@@ -97,6 +97,24 @@ function captureContentContract(theme) {
 }
 
 describe("visual baseline contract", () => {
+  it("targets distinct ready dashboard and landing content", () => {
+    const baseUrl = "http://localhost:5173";
+    const jobs = createBaselineJobs(baseUrl);
+
+    expect(jobs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "dashboard-desktop",
+        url: `${baseUrl}/?screenshot=1&mock=1&mock_seed=baseline&mock_today=2025-12-31&mock_now=2025-12-31T12:00:00Z`,
+        readySelector: '[data-testid="dashboard-primary-workspace"]',
+      }),
+      expect.objectContaining({
+        name: "landing-desktop",
+        url: `${baseUrl}/landing?screenshot=1`,
+        readySelector: '[data-testid="marketing-landing"]',
+      }),
+    ]));
+  });
+
   it("captures usage statistics in light, dark, and narrow-window modes", () => {
     const baseUrl = "http://localhost:5173";
     const jobs = createBaselineJobs(baseUrl);
@@ -108,6 +126,7 @@ describe("visual baseline contract", () => {
         width: 1180,
         height: 760,
         dpr: 1,
+        readySelector: '[data-testid="usage-chart-token-services-layout"]:has([data-testid="usage-trend-plot"]):has([data-testid="token-service-cards"])',
       },
       {
         name: "spend-usage-dark-1180",
@@ -115,6 +134,7 @@ describe("visual baseline contract", () => {
         width: 1180,
         height: 760,
         dpr: 1,
+        readySelector: '[data-testid="usage-chart-token-services-layout"]:has([data-testid="usage-trend-plot"]):has([data-testid="token-service-cards"])',
       },
       {
         name: "spend-usage-narrow-390",
@@ -122,6 +142,7 @@ describe("visual baseline contract", () => {
         width: 390,
         height: 844,
         dpr: 2,
+        readySelector: '[data-testid="usage-chart-token-services-layout"]:has([data-testid="usage-trend-plot"]):has([data-testid="token-service-cards"])',
       },
     ]));
   });
