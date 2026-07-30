@@ -79,7 +79,7 @@ export function LoginModal() {
             role="dialog"
             aria-modal="true"
             aria-label={copy("login.title")}
-            className="tt-surface tt-modal-popup tt-modal-motion relative w-full max-w-[420px] overflow-hidden rounded-[var(--tt-card-radius)]"
+            className="tt-surface tt-modal-popup tt-modal-motion tt-login-focus-scope relative w-full max-w-[420px] overflow-hidden rounded-[var(--tt-card-radius)]"
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 10 }}

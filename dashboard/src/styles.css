@@ -337,6 +337,18 @@ body {
   isolation: isolate;
 }
 
+.tt-login-focus-scope
+  :is(a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: 2px !important;
+}
+
+:root.dark
+  .tt-login-focus-scope
+  :is(a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline-color: var(--oai-black) !important;
+}
+
 .tt-usage-filter-toolbar button:focus-visible {
   outline: 2px solid var(--oai-black) !important;
   outline-offset: -2px !important;
