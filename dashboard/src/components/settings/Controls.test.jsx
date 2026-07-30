@@ -1,5 +1,8 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import postcss from "postcss";
 import { describe, expect, it } from "vitest";
 import { Palette } from "lucide-react";
 import {
@@ -55,5 +58,28 @@ describe("SectionCard visual identity", () => {
       "tt-pressable",
       "tt-product-focusable",
     );
+  });
+});
+
+describe("product focus token contract", () => {
+  it("uses the theme-aware foreground token for light and dark product focus", () => {
+    const stylesheet = postcss.parse(readFileSync(resolve("src/styles.css"), "utf8"));
+    const baseFocusRule = stylesheet.nodes.find(
+      (node) =>
+        node.type === "rule" &&
+        node.selector === ".tt-product-focusable:focus-visible",
+    );
+    const darkFocusRule = stylesheet.nodes.find(
+      (node) =>
+        node.type === "rule" &&
+        node.selector === ":root.dark .tt-product-focusable:focus-visible",
+    );
+
+    expect(
+      baseFocusRule.nodes.find((node) => node.prop === "outline")?.value,
+    ).toBe("2px solid var(--oai-black)");
+    expect(
+      darkFocusRule.nodes.find((node) => node.prop === "outline-color")?.value,
+    ).toBe("var(--oai-black)");
   });
 });

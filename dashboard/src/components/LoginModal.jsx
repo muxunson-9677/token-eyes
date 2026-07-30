@@ -35,10 +35,12 @@ export function LoginModal() {
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (e.shiftKey && (document.activeElement === first || !dialogRef.current?.contains(document.activeElement))) {
+      const active = document.activeElement;
+      const activeIsFocusable = focusable.includes(active);
+      if (e.shiftKey && (active === first || !activeIsFocusable)) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && (active === last || !activeIsFocusable)) {
         e.preventDefault();
         first.focus();
       }
@@ -71,6 +73,7 @@ export function LoginModal() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2 }}
           />
 
           {/* Card Wrapper */}

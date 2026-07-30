@@ -320,7 +320,7 @@ body {
 }
 
 :root.dark .tt-product-focusable:focus-visible {
-  outline-color: var(--oai-white) !important;
+  outline-color: var(--oai-black) !important;
 }
 
 .tt-modal-backdrop {

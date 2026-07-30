@@ -154,6 +154,41 @@ it("keeps the real email login controls inside the scoped keyboard loop and rest
   expect(opener).toHaveFocus();
 });
 
+it("recaptures focus after real login controls unmount in both tab directions", async () => {
+  const user = userEvent.setup();
+  const { dialog, opener } = await openLoginModal(user);
+  const close = within(dialog).getByRole("button", { name: copy("login.dismiss") });
+  const forgotPassword = within(dialog).getByRole("button", {
+    name: copy("login.forgot_password"),
+  });
+
+  await waitFor(() => expect(close).toHaveFocus());
+  for (let index = 0; index < 5; index += 1) {
+    await user.tab();
+  }
+  expect(forgotPassword).toHaveFocus();
+
+  await user.click(forgotPassword);
+  expect(forgotPassword).not.toBeInTheDocument();
+  await user.tab();
+  expect(close).toHaveFocus();
+  expect(opener).not.toHaveFocus();
+
+  const backToSignIn = within(dialog).getByRole("button", {
+    name: copy("reset_password.back_to_sign_in"),
+  });
+  await user.tab();
+  expect(backToSignIn).toHaveFocus();
+  await user.click(backToSignIn);
+  expect(backToSignIn).not.toBeInTheDocument();
+
+  await user.tab({ shift: true });
+  expect(
+    within(dialog).getByRole("button", { name: copy("login.submit.sign_in") }),
+  ).toHaveFocus();
+  expect(opener).not.toHaveFocus();
+});
+
 it("uses the theme-aware foreground token for dark scoped focus outlines", () => {
   const stylesheet = postcss.parse(readFileSync(resolve("src/styles.css"), "utf8"));
   const darkFocusRule = stylesheet.nodes.find(
