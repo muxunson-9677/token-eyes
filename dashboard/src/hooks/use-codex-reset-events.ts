@@ -88,21 +88,27 @@ export function CodexResetEventsProvider({
   const [response, setResponse] = useState<CodexResetEventsResponse | null>(null);
   const [available, setAvailable] = useState(false);
   const requestRef = useRef<Promise<void> | null>(null);
+  const requestGenerationRef = useRef(0);
   const claimedNotificationsRef = useRef(new Set<string>());
 
   const run = useCallback((request: () => Promise<CodexResetEventsResponse>) => {
     if (!enabled) return Promise.resolve();
     if (requestRef.current) return requestRef.current;
+    const generation = requestGenerationRef.current;
     const pending = request()
       .then((next) => {
+        if (generation !== requestGenerationRef.current) return;
         setResponse(next);
         setAvailable(true);
       })
       .catch(() => {
+        if (generation !== requestGenerationRef.current) return;
         setAvailable(false);
       })
       .finally(() => {
-        requestRef.current = null;
+        if (generation === requestGenerationRef.current) {
+          requestRef.current = null;
+        }
       });
     requestRef.current = pending;
     return pending;
@@ -115,6 +121,8 @@ export function CodexResetEventsProvider({
   );
 
   useEffect(() => {
+    requestGenerationRef.current += 1;
+    requestRef.current = null;
     if (!enabled) {
       setResponse(null);
       setAvailable(false);
@@ -139,7 +147,7 @@ export function CodexResetEventsProvider({
   }, [response]);
 
   useEffect(() => {
-    if (!response) return;
+    if (!enabled || !response) return;
     let current = true;
     const latest = latestOfficialResetAnnouncement(response.events);
     if (!latest) return;
@@ -162,7 +170,7 @@ export function CodexResetEventsProvider({
     return () => {
       current = false;
     };
-  }, [response]);
+  }, [enabled, response]);
 
   useEffect(() => {
     for (const event of response?.notification_events || []) {

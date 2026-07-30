@@ -139,6 +139,7 @@ export function LightfallCanvas({
   onFallback,
 }) {
   const containerRef = useRef(null);
+  const startTimeRef = useRef(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -153,7 +154,6 @@ export function LightfallCanvas({
     let canvas = null;
     let disposed = false;
     let fallbackNotified = false;
-    let startTime = null;
     let handleContextLost = null;
 
     const dispose = () => {
@@ -167,7 +167,6 @@ export function LightfallCanvas({
       if (canvas?.parentElement === container) {
         container.removeChild(canvas);
       }
-      callIfFunction(mesh, "remove");
       callIfFunction(program, "remove");
       callIfFunction(geometry, "remove");
       try {
@@ -175,7 +174,6 @@ export function LightfallCanvas({
       } catch {
         // Context loss is best-effort; the remaining OGL cleanup still runs.
       }
-      callIfFunction(renderer, "destroy");
     };
 
     const failClosed = () => {
@@ -251,8 +249,8 @@ export function LightfallCanvas({
 
       const renderFrame = (timestamp) => {
         if (disposed) return;
-        if (startTime === null) startTime = timestamp;
-        const elapsed = Math.max(0, timestamp - startTime);
+        if (startTimeRef.current === null) startTimeRef.current = timestamp;
+        const elapsed = Math.max(0, timestamp - startTimeRef.current);
         uniforms.iTime.value = elapsed / 1_000;
         uniforms.uProgress.value = Math.min(elapsed / durationMs, 1);
         uniforms.uIntensity.value = getCelebrationPhaseIntensity(elapsed);

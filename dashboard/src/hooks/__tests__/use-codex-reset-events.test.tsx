@@ -1,5 +1,5 @@
 import React from "react";
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -172,6 +172,14 @@ function responseWithEvents(events: any[]) {
       (event) => event.type === "official_reset_announcement",
     ),
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
 }
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -658,5 +666,47 @@ describe("Codex reset events provider", () => {
     expect(result.current.events).toEqual([]);
     expect(api.getCodexResetEvents).not.toHaveBeenCalled();
     expect(api.checkCodexResetEvents).not.toHaveBeenCalled();
+  });
+
+  it("does not claim or dispatch a request that resolves after the provider is disabled", async () => {
+    const pending = deferred<any>();
+    api.getCodexResetEvents.mockReturnValueOnce(pending.promise);
+    const onCelebration = vi.fn();
+    window.addEventListener(
+      "token-eyes:official-reset-celebration",
+      onCelebration,
+    );
+
+    try {
+      const view = render(
+        <CodexResetEventsProvider enabled>
+          <div />
+        </CodexResetEventsProvider>,
+      );
+      expect(api.getCodexResetEvents).toHaveBeenCalledOnce();
+
+      view.rerender(
+        <CodexResetEventsProvider enabled={false}>
+          <div />
+        </CodexResetEventsProvider>,
+      );
+      await act(async () => {
+        pending.resolve(responseWithEvents([officialReset()]));
+        await pending.promise;
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(lockRequest).not.toHaveBeenCalled();
+      expect(onCelebration).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem(
+        "token-eyes:official-reset-celebrated:v1",
+      )).toBeNull();
+    } finally {
+      window.removeEventListener(
+        "token-eyes:official-reset-celebration",
+        onCelebration,
+      );
+    }
   });
 });

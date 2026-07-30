@@ -33,7 +33,7 @@ function isValidDate(value: string) {
   return Number.isFinite(Date.parse(value));
 }
 
-function isOfficialSource(value: string) {
+export function isOfficialResetCelebrationSource(value: string) {
   try {
     const url = new URL(value);
     if (
@@ -55,6 +55,25 @@ function isOfficialSource(value: string) {
   } catch {
     return false;
   }
+}
+
+export function isOfficialResetCelebrationEvent(
+  value: unknown,
+): value is OfficialResetCelebrationEvent {
+  if (!value || typeof value !== "object") return false;
+  const event = value as Partial<OfficialResetCelebrationEvent>;
+  return (
+    typeof event.eventId === "string"
+    && Boolean(event.eventId.trim())
+    && typeof event.provider === "string"
+    && Boolean(event.provider.trim())
+    && typeof event.occurredAt === "string"
+    && isValidDate(event.occurredAt)
+    && typeof event.sourceUrl === "string"
+    && isOfficialResetCelebrationSource(event.sourceUrl)
+    && event.resetKind === "official-extra-reset"
+    && event.appliesToCurrentUsage === true
+  );
 }
 
 export function toOfficialResetCelebrationEvent(
@@ -113,8 +132,12 @@ export async function claimOfficialResetCelebration(
     diagnose("invalid-occurred-at");
     return false;
   }
-  if (!isOfficialSource(event.sourceUrl)) {
+  if (!isOfficialResetCelebrationSource(event.sourceUrl)) {
     diagnose("untrusted-source");
+    return false;
+  }
+  if (!isOfficialResetCelebrationEvent(event)) {
+    diagnose("invalid-event-shape");
     return false;
   }
 

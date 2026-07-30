@@ -3,7 +3,10 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThemeProvider } from "../../foundation/ThemeProvider.jsx";
-import { LightfallCanvas } from "../LightfallCanvas.jsx";
+import {
+  getCelebrationPhaseIntensity,
+  LightfallCanvas,
+} from "../LightfallCanvas.jsx";
 import {
   RESET_CELEBRATION_DURATION_MS,
   ResetCelebrationProvider,
@@ -15,10 +18,8 @@ const ogl = vi.hoisted(() => ({
   Triangle: vi.fn(),
   Mesh: vi.fn(),
   render: vi.fn(),
-  rendererDestroy: vi.fn(),
   programRemove: vi.fn(),
   geometryRemove: vi.fn(),
-  meshRemove: vi.fn(),
   loseContext: vi.fn(),
 }));
 
@@ -153,10 +154,8 @@ beforeEach(() => {
   });
 
   ogl.render.mockReset();
-  ogl.rendererDestroy.mockReset();
   ogl.programRemove.mockReset();
   ogl.geometryRemove.mockReset();
-  ogl.meshRemove.mockReset();
   ogl.loseContext.mockReset();
 
   const canvas = document.createElement("canvas");
@@ -173,11 +172,10 @@ beforeEach(() => {
     gl,
     render: ogl.render,
     setSize: vi.fn(),
-    destroy: ogl.rendererDestroy,
   };
   programInstance = { uniforms: null, remove: ogl.programRemove };
   geometryInstance = { remove: ogl.geometryRemove };
-  meshInstance = { remove: ogl.meshRemove };
+  meshInstance = {};
 
   ogl.Renderer.mockReset().mockImplementation(function Renderer() {
     return rendererInstance;
@@ -235,6 +233,18 @@ describe("ResetCelebrationProvider", () => {
     expect(document.querySelector(".tt-reset-celebration")).toBeNull();
   });
 
+  it.each([
+    "https://x.com/explore",
+    "https://x.com/OpenAI/status/1950000000000000000?ref=reset",
+    "https://x.com/OpenAI/status/1950000000000000000#reset",
+  ])("rejects an untrusted X source boundary: %s", (sourceUrl) => {
+    renderProvider();
+
+    dispatchCelebration({ ...VALID_EVENT, sourceUrl });
+
+    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
+  });
+
   it("does not replay the same event id during the provider lifetime", async () => {
     renderProvider();
     dispatchCelebration();
@@ -252,19 +262,22 @@ describe("ResetCelebrationProvider", () => {
     expect(ogl.Renderer).toHaveBeenCalledTimes(1);
   });
 
-  it("restarts the duration for a different event id", () => {
+  it("remounts the overlay and restarts the duration for a different event id", () => {
     renderProvider();
     dispatchCelebration();
+    const firstOverlay = document.querySelector(".tt-reset-celebration");
 
     act(() => {
       vi.advanceTimersByTime(3_000);
     });
     dispatchCelebration({ ...VALID_EVENT, eventId: "official-reset-follow-up" });
+    const secondOverlay = document.querySelector(".tt-reset-celebration");
     act(() => {
       vi.advanceTimersByTime(1_300);
     });
 
-    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
+    expect(secondOverlay).not.toBe(firstOverlay);
+    expect(secondOverlay).toHaveAttribute(
       "data-event-id",
       "official-reset-follow-up",
     );
@@ -450,6 +463,32 @@ describe("LightfallCanvas", () => {
     expect(finished).toBe(0);
   });
 
+  it("keeps the original phase start when the theme changes", () => {
+    const view = render(
+      <LightfallCanvas theme="light" durationMs={RESET_CELEBRATION_DURATION_MS} />,
+    );
+    const firstFrame = [...rafCallbacks.values()][0];
+    act(() => {
+      firstFrame(1_000);
+    });
+    const preThemeFrame = [...rafCallbacks.values()].at(-1);
+    act(() => {
+      preThemeFrame(3_900);
+    });
+
+    view.rerender(
+      <LightfallCanvas theme="dark" durationMs={RESET_CELEBRATION_DURATION_MS} />,
+    );
+    const postThemeFrame = [...rafCallbacks.values()].at(-1);
+    act(() => {
+      postThemeFrame(4_000);
+    });
+
+    expect(programInstance.uniforms.uIntensity.value).toBeCloseTo(
+      getCelebrationPhaseIntensity(3_000),
+    );
+  });
+
   it("releases RAF, observer, canvas, OGL resources, and WebGL context", () => {
     const { container, unmount } = render(
       <LightfallCanvas theme="light" durationMs={RESET_CELEBRATION_DURATION_MS} />,
@@ -460,10 +499,8 @@ describe("LightfallCanvas", () => {
 
     expect(cancelAnimationFrame).toHaveBeenCalled();
     expect(resizeDisconnect).toHaveBeenCalledOnce();
-    expect(ogl.meshRemove).toHaveBeenCalledOnce();
     expect(ogl.programRemove).toHaveBeenCalledOnce();
     expect(ogl.geometryRemove).toHaveBeenCalledOnce();
-    expect(ogl.rendererDestroy).toHaveBeenCalledOnce();
     expect(ogl.loseContext).toHaveBeenCalledOnce();
     expect(container.querySelector("canvas")).toBeNull();
   });
@@ -540,10 +577,8 @@ describe("LightfallCanvas", () => {
     expect(onFallback).toHaveBeenCalledOnce();
     expect(cancelAnimationFrame).toHaveBeenCalledOnce();
     expect(resizeDisconnect).toHaveBeenCalledOnce();
-    expect(ogl.meshRemove).toHaveBeenCalledOnce();
     expect(ogl.programRemove).toHaveBeenCalledOnce();
     expect(ogl.geometryRemove).toHaveBeenCalledOnce();
-    expect(ogl.rendererDestroy).toHaveBeenCalledOnce();
     expect(container.querySelector("canvas")).toBeNull();
 
     act(() => {
