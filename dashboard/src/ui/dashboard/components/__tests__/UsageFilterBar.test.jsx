@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { setCopyLocale } from "../../../../lib/copy";
+import { copy, setCopyLocale } from "../../../../lib/copy";
 import {
   UsageFiltersProvider,
 } from "../../../../hooks/use-usage-filters";
@@ -68,6 +68,50 @@ describe("UsageFilterBar", () => {
       "[&_button:focus-visible]:ring-2",
       "motion-reduce:[&_button]:transition-none",
       "motion-reduce:[&_button]:transform-none",
+    );
+  });
+
+  it("shows the same observable open feedback on every popover trigger while preserving Agent selection", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const toolbar = screen.getByRole("toolbar");
+    const allAgents = screen.getByRole("button", {
+      name: copy("ticket02.agent.aria_all"),
+    });
+    expect(allAgents).toHaveAttribute("aria-pressed", "true");
+
+    for (const labelKey of [
+      "ticket02.source.aria",
+      "ticket02.model.aria",
+      "ticket02.refresh.aria",
+      "ticket02.time.aria",
+    ]) {
+      const trigger = screen.getByRole("button", { name: copy(labelKey) });
+      expect(trigger.closest('[role="toolbar"]')).toBe(toolbar);
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger).not.toHaveAttribute("data-popup-open");
+
+      await act(async () => {
+        await user.click(trigger);
+      });
+
+      expect(trigger).toHaveAttribute("aria-expanded", "true");
+      expect(trigger).toHaveAttribute("data-popup-open");
+      expect(trigger.matches("button[data-popup-open]")).toBe(true);
+
+      await act(async () => {
+        await user.keyboard("{Escape}");
+      });
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger).not.toHaveAttribute("data-popup-open");
+    }
+
+    expect(toolbar).toHaveClass(
+      "[&_button[data-popup-open]]:translate-y-px",
+      "[&_button[data-popup-open]]:shadow-inner",
+      "[&_button[aria-pressed=true]]:translate-y-px",
+      "[&_button[aria-pressed=true]]:shadow-inner",
     );
   });
 

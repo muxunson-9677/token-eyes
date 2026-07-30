@@ -395,7 +395,10 @@ export function UsageStatsPanel({
                       <CostIcon className={cn("mt-px h-3 w-3 shrink-0", card.iconClass)} aria-hidden="true" />
                       <span>{copy(card.labelKey)}</span>
                     </div>
-                    <div className="mt-1 break-words text-sm font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100 sm:text-base">
+                    <div
+                      className="mt-1 break-words text-sm font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100 sm:text-base"
+                      data-testid="usage-cost-usd"
+                    >
                       {usdText || unavailableText}
                     </div>
                     <div
