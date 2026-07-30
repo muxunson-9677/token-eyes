@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-30T11:35:34.701Z",
+  "generatedAt": "2026-07-30T19:48:52.717Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 302,
-    "rawText": 226
+    "colors": 320,
+    "rawText": 249
   },
   "files": {
     "dashboard/src/App.routes.test.jsx": {
@@ -45,8 +45,16 @@
         "); const GITHUB_ICON = ("
       ]
     },
-    "dashboard/src/components/settings/Controls.jsx": {
+    "dashboard/src/components/LoginModal.test.jsx": {
       "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "Open login",
+        "expect(close).toHaveFocus()); for (let index = 0; index"
+      ]
+    },
+    "dashboard/src/components/settings/Controls.jsx": {
+      "colors": 8,
       "rawText": 1,
       "rawTextTokens": [
         ") : null; return ("
@@ -125,6 +133,20 @@
       "rawText": 2,
       "rawTextTokens": [
         "b.bucket_start === item.bucket_start); if (bucketIdx"
+      ]
+    },
+    "dashboard/src/hooks/__tests__/use-codex-reset-events.test.tsx": {
+      "colors": 0,
+      "rawText": 10,
+      "rawTextTokens": [
+        "( name: string, options: LockOptions, callback: LockGrantedCallback",
+        ", ): Promise",
+        ", ); expect(api.getCodexResetEvents).toHaveBeenCalledOnce(); view.rerender(",
+        "= Promise.resolve(); const releases: Array",
+        "= Promise.resolve(); const request = vi.fn(",
+        "= []; const request = vi.fn(",
+        "void; const gate = new Promise",
+        "void; const promise = new Promise"
       ]
     },
     "dashboard/src/main.jsx": {
@@ -264,8 +286,8 @@
         "whose class/id contains \"eye\" (e.g. eyes-look, * eyes-focus, eyes-read). Those groups already run their own blink/track transform * animations, which would override any transform we set directly — so after a pose * loads we wrap each (non-shut) eye group in our own"
       ]
     },
-    "dashboard/src/ui/components/ConfirmModal.jsx": {
-      "colors": 2,
+    "dashboard/src/ui/components/Button.jsx": {
+      "colors": 5,
       "rawText": 0,
       "rawTextTokens": []
     },
@@ -281,6 +303,35 @@
       "rawText": 1,
       "rawTextTokens": [
         "Star"
+      ]
+    },
+    "dashboard/src/ui/components/Input.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/components/Select.jsx": {
+      "colors": 3,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
+    "dashboard/src/ui/components/__tests__/Button.test.jsx": {
+      "colors": 0,
+      "rawText": 5,
+      "rawTextTokens": [
+        "Custom save",
+        "Documentation",
+        "Save",
+        "Selected",
+        "Settings"
+      ]
+    },
+    "dashboard/src/ui/components/__tests__/Card.test.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "42 tokens",
+        "Nested content"
       ]
     },
     "dashboard/src/ui/components/__tests__/Sidebar.nav.test.jsx": {
@@ -538,6 +589,16 @@
       "rawTextTokens": [
         "en",
         "zh"
+      ]
+    },
+    "dashboard/src/ui/foundation/__tests__/ThemeProvider.test.jsx": {
+      "colors": 2,
+      "rawText": 4,
+      "rawTextTokens": [
+        "dark",
+        "light",
+        "system",
+        "toggle"
       ]
     },
     "dashboard/src/ui/marketing/components/BorderGlow.jsx": {
