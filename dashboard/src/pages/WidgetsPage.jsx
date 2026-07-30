@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Download, Monitor } from "lucide-react";
+import { ArrowUpRight, Download, FolderPlus, Monitor } from "lucide-react";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
 import { Select } from "../ui/components";
@@ -11,7 +11,12 @@ import {
 } from "../lib/menu-bar-display.js";
 import { ToggleSwitch } from "../components/settings/Controls.jsx";
 import { FadeIn, StaggerContainer, StaggerItem } from "../ui/foundation/FadeIn.jsx";
-import { getDesktopWidgetViewModel } from "../lib/api.ts";
+import { getDesktopWidgetViewModel, selectLocalDirectory } from "../lib/api.ts";
+import { selectDirectoryViaTauri } from "../lib/tauri-directory.js";
+import {
+  mergeWidgetProjectOptions,
+  widgetProjectFromPath,
+} from "../lib/desktop-widget-projects.ts";
 
 /* ---------- SVG widget illustrations ----------
  * Hand-drawn previews of the real macOS widgets. Pure SVG so they stay
@@ -27,6 +32,7 @@ import { getDesktopWidgetViewModel } from "../lib/api.ts";
 const WIDGET_W = 264;
 const WIDGET_H = 124;
 const ROUNDED_FONT = "ui-rounded, -apple-system, system-ui";
+const ACTIVE_SESSION_WINDOWS = ["1h", "3h", "5h", "1d", "3d"];
 
 // Model accent palette — mirrors WidgetTheme.modelDot in
 // TokenTrackerBar/TokenTrackerWidget/Views/WidgetTheme.swift
@@ -476,9 +482,15 @@ function WindowsWidgetToggle() {
 
 function WindowsWidgetProjectSettings() {
   const [prefs, setPrefs] = useState(null);
-  const [projects, setProjects] = useState([]);
+  const [recentProjects, setRecentProjects] = useState([]);
+  const [draftIds, setDraftIds] = useState([]);
+  const [draftProjects, setDraftProjects] = useState([]);
+  const [draftActiveSessionWindow, setDraftActiveSessionWindow] = useState("1h");
   const [query, setQuery] = useState("");
   const [error, setError] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const invoke = getTauriInvoke();
@@ -489,10 +501,29 @@ function WindowsWidgetProjectSettings() {
       getDesktopWidgetViewModel("all"),
     ]).then(([nextPrefs, model]) => {
       if (!mounted) return;
-      setPrefs(nextPrefs || {});
-      setProjects(Array.isArray(model?.projectStatus?.projects)
-        ? model.projectStatus.projects
-        : []);
+      const restored = {
+        ...(nextPrefs || {}),
+        activeSessionWindow: ACTIVE_SESSION_WINDOWS.includes(nextPrefs?.activeSessionWindow)
+          ? nextPrefs.activeSessionWindow
+          : "1h",
+        selectedProjectIds: Array.isArray(nextPrefs?.selectedProjectIds)
+          ? nextPrefs.selectedProjectIds
+          : [],
+        selectedProjects: Array.isArray(nextPrefs?.selectedProjects)
+          ? nextPrefs.selectedProjects
+          : [],
+      };
+      setPrefs(restored);
+      setDraftIds(restored.selectedProjectIds);
+      setDraftProjects(restored.selectedProjects);
+      setDraftActiveSessionWindow(restored.activeSessionWindow);
+      setRecentProjects(
+        (Array.isArray(model?.projectStatus?.recentProjects)
+          ? model.projectStatus.recentProjects
+          : Array.isArray(model?.projectStatus?.projects)
+            ? model.projectStatus.projects
+          : []).slice(0, 10),
+      );
       setError(false);
     }).catch(() => {
       if (mounted) setError(true);
@@ -502,22 +533,78 @@ function WindowsWidgetProjectSettings() {
     };
   }, []);
 
-  const selectedIds = Array.isArray(prefs?.selectedProjectIds)
-    ? prefs.selectedProjectIds
-    : [];
+  const selectedIds = draftIds;
+  const projectOptions = mergeWidgetProjectOptions(
+    recentProjects,
+    draftProjects,
+  );
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleProjects = normalizedQuery
-    ? projects.filter((project) => (
+    ? projectOptions.filter((project) => (
       String(project?.label || "").toLocaleLowerCase().includes(normalizedQuery)
     ))
-    : projects;
+    : projectOptions;
 
-  const saveSelectedProjects = async (nextIds) => {
+  const save = async () => {
     const invoke = getTauriInvoke();
-    if (!invoke || !prefs) return;
-    const nextPrefs = { ...prefs, selectedProjectIds: nextIds };
-    setPrefs(nextPrefs);
-    await invoke("set_desktop_widget_prefs", { prefs: nextPrefs });
+    if (!invoke || !prefs || !dirty || saving) return;
+    const byId = new Map(projectOptions.map((project) => [project.id, project]));
+    const nextPrefs = {
+      ...prefs,
+      activeSessionWindow: draftActiveSessionWindow,
+      selectedProjectIds: draftIds,
+      selectedProjects: draftIds.map((id) => byId.get(id)).filter(Boolean),
+    };
+    setSaving(true);
+    setSaved(false);
+    setError(false);
+    try {
+      const persisted = await invoke("set_desktop_widget_prefs", { prefs: nextPrefs });
+      setPrefs(persisted || nextPrefs);
+      setDraftProjects(nextPrefs.selectedProjects);
+      setDirty(false);
+      setSaved(true);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleProject = (project) => {
+    setDraftProjects((current) => mergeWidgetProjectOptions([], [...current, project]));
+    setDraftIds((current) => (
+      current.includes(project.id)
+        ? current.filter((value) => value !== project.id)
+        : [...current, project.id]
+    ));
+    setDirty(true);
+    setSaved(false);
+  };
+
+  const addProjectFolder = async () => {
+    setError(false);
+    const invoke = getTauriInvoke();
+    let selectedPath = await selectDirectoryViaTauri();
+    if (!selectedPath && !invoke) {
+      const result = await selectLocalDirectory();
+      selectedPath = result?.path || null;
+    }
+    const project = await widgetProjectFromPath(selectedPath);
+    if (!project) return;
+    setDraftProjects((current) => mergeWidgetProjectOptions([], [...current, project]));
+    setDraftIds((current) => (
+      current.includes(project.id) ? current : [...current, project.id]
+    ));
+    setDirty(true);
+    setSaved(false);
+  };
+
+  const useRecentProjects = () => {
+    setDraftIds(recentProjects.map((project) => String(project.id || "")).filter(Boolean));
+    setDraftProjects((current) => mergeWidgetProjectOptions(recentProjects, current));
+    setDirty(true);
+    setSaved(false);
   };
 
   return (
@@ -533,16 +620,55 @@ function WindowsWidgetProjectSettings() {
               : copy("widgets.windows.projects.recent_hint")}
           </p>
         </div>
-        <button
-          type="button"
-          aria-label={copy("widgets.windows.projects.use_recent")}
-          disabled={!prefs || selectedIds.length === 0}
-          onClick={() => void saveSelectedProjects([])}
-          className="rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 disabled:cursor-default disabled:opacity-45 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
-        >
-          {copy("widgets.windows.projects.use_recent")}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            aria-label={copy("widgets.windows.projects.add_folder")}
+            disabled={!prefs}
+            onClick={() => void addProjectFolder()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 disabled:cursor-default disabled:opacity-45 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+          >
+            <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
+            {copy("widgets.windows.projects.add_folder")}
+          </button>
+          <button
+            type="button"
+            aria-label={copy("widgets.windows.projects.use_recent")}
+            disabled={!prefs || recentProjects.length === 0}
+            onClick={useRecentProjects}
+            className="rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 disabled:cursor-default disabled:opacity-45 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+          >
+            {copy("widgets.windows.projects.use_recent")}
+          </button>
+        </div>
       </div>
+
+      <label className="mt-4 flex items-center justify-between gap-4 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/70">
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-oai-black dark:text-white">
+            {copy("widgets.windows.projects.active_window")}
+          </span>
+          <span className="block text-xs text-oai-gray-500 dark:text-oai-gray-400">
+            {copy("widgets.windows.projects.active_window_hint")}
+          </span>
+        </span>
+        <select
+          value={draftActiveSessionWindow}
+          aria-label={copy("widgets.windows.projects.active_window")}
+          onChange={(event) => {
+            setDraftActiveSessionWindow(event.target.value);
+            setDirty(true);
+            setSaved(false);
+          }}
+          className="h-8 shrink-0 rounded-lg border border-oai-gray-200 bg-white px-2.5 text-sm text-oai-black outline-none focus:border-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-white"
+        >
+          {ACTIVE_SESSION_WINDOWS.map((window) => (
+            <option key={window} value={window}>
+              {copy(`widgets.windows.projects.active_window.${window}`)}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <input
         type="search"
@@ -554,6 +680,11 @@ function WindowsWidgetProjectSettings() {
       />
 
       <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-oai-gray-100 dark:border-oai-gray-800">
+        {!normalizedQuery && recentProjects.length > 0 ? (
+          <p className="border-b border-oai-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
+            {copy("widgets.windows.projects.recent_title")}
+          </p>
+        ) : null}
         {error ? (
           <p className="px-3 py-4 text-sm text-red-600 dark:text-red-400">
             {copy("widgets.windows.projects.load_failed")}
@@ -571,12 +702,7 @@ function WindowsWidgetProjectSettings() {
                   type="checkbox"
                   checked={checked}
                   aria-label={project.label}
-                  onChange={() => {
-                    const nextIds = checked
-                      ? selectedIds.filter((value) => value !== id)
-                      : [...selectedIds, id];
-                    void saveSelectedProjects(nextIds);
-                  }}
+                  onChange={() => toggleProject(project)}
                   className="h-4 w-4 accent-oai-brand-600"
                 />
                 <span className="min-w-0 truncate">{project.label}</span>
@@ -588,6 +714,23 @@ function WindowsWidgetProjectSettings() {
             {copy("widgets.windows.projects.empty")}
           </p>
         )}
+      </div>
+      <div className="mt-4 flex items-center justify-end gap-3">
+        {saved ? (
+          <span className="text-xs text-emerald-700 dark:text-emerald-300" role="status">
+            {copy("widgets.windows.projects.saved")}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          disabled={!prefs || !dirty || saving}
+          onClick={() => void save()}
+          className="inline-flex h-9 items-center rounded-lg bg-oai-black px-4 text-sm font-medium text-white transition-colors hover:bg-oai-gray-800 disabled:cursor-default disabled:opacity-40 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+        >
+          {saving
+            ? copy("widgets.windows.projects.saving")
+            : copy("widgets.windows.projects.save")}
+        </button>
       </div>
     </div>
   );

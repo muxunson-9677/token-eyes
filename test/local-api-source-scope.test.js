@@ -210,6 +210,51 @@ test("usage-summary defaults to all scope and includes account-level Cursor usag
   }
 });
 
+test("usage bounds and monthly trend expose the real ledger dates instead of 1970", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-localapi-usage-bounds-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await writeQueue(queuePath, [
+      {
+        source: "codex",
+        model: "gpt-5.5",
+        hour_start: "2026-03-16T10:00:00.000Z",
+        input_tokens: 100,
+        output_tokens: 20,
+        total_tokens: 120,
+      },
+      {
+        source: "claude",
+        model: "claude-sonnet-4-6",
+        hour_start: "2026-07-29T10:00:00.000Z",
+        input_tokens: 200,
+        output_tokens: 40,
+        total_tokens: 240,
+      },
+    ]);
+
+    const bounds = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-usage-bounds?tz=UTC",
+    );
+    assert.deepEqual(bounds, {
+      ok: true,
+      from: "2026-03-16",
+      to: "2026-07-29",
+      empty: false,
+    });
+
+    const monthly = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-usage-monthly?months=24&to=2026-07-29&tz=UTC",
+    );
+    assert.equal(monthly.from, "2026-03-16");
+    assert.equal(monthly.to, "2026-07-29");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("usage-summary and model breakdown keep latest Codex queue row per bucket", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-localapi-codex-dedup-"));
   try {

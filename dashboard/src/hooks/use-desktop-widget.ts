@@ -7,9 +7,10 @@ import {
 } from "../lib/api";
 
 const POLL_INTERVAL_MS = 30_000;
+const PREFS_CHANGED_EVENT = "token-eyes:desktop-widget-prefs-changed";
 
 const DEFAULT_PREFS: DesktopWidgetPrefs = {
-  version: 3,
+  version: 5,
   visible: true,
   x: null,
   y: null,
@@ -24,7 +25,9 @@ const DEFAULT_PREFS: DesktopWidgetPrefs = {
   material: "frost",
   opacity: 0.72,
   alwaysOnTop: true,
+  activeSessionWindow: "1h",
   selectedProjectIds: [],
+  selectedProjects: [],
 };
 
 function getInvoke() {
@@ -46,9 +49,12 @@ export function useDesktopWidget() {
     prefsRef.current = prefs;
   }, [prefs]);
 
-  const refresh = useCallback(async (agent = prefsRef.current.selectedAgent) => {
+  const refresh = useCallback(async (
+    agent = prefsRef.current.selectedAgent,
+    activeSessionWindow = prefsRef.current.activeSessionWindow,
+  ) => {
     try {
-      const next = await getDesktopWidgetViewModel(agent);
+      const next = await getDesktopWidgetViewModel(agent, activeSessionWindow);
       setViewModel(next);
       setError(null);
       return next;
@@ -60,35 +66,39 @@ export function useDesktopWidget() {
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const initialize = async () => {
-      const invoke = getInvoke();
-      let restored = DEFAULT_PREFS;
-      if (invoke) {
-        try {
-          restored = {
-            ...DEFAULT_PREFS,
-            ...(await invoke("get_desktop_widget_prefs")),
-          };
-        } catch {
-          // Defaults keep the widget usable if preference restoration fails.
-        }
+  const reloadPrefs = useCallback(async () => {
+    const invoke = getInvoke();
+    let restored = DEFAULT_PREFS;
+    if (invoke) {
+      try {
+        restored = {
+          ...DEFAULT_PREFS,
+          ...(await invoke("get_desktop_widget_prefs")),
+        };
+      } catch {
+        restored = prefsRef.current;
       }
-      if (cancelled) return;
-      prefsRef.current = restored;
-      setPrefs(restored);
-      await refresh(restored.selectedAgent);
+    }
+    prefsRef.current = restored;
+    setPrefs(restored);
+    await refresh(restored.selectedAgent, restored.activeSessionWindow);
+    return restored;
+  }, [refresh]);
+
+  useEffect(() => {
+    const handlePrefsChanged = () => {
+      void reloadPrefs();
     };
-    void initialize();
+    void reloadPrefs();
+    window.addEventListener(PREFS_CHANGED_EVENT, handlePrefsChanged);
     const interval = window.setInterval(() => {
       void refresh();
     }, POLL_INTERVAL_MS);
     return () => {
-      cancelled = true;
+      window.removeEventListener(PREFS_CHANGED_EVENT, handlePrefsChanged);
       window.clearInterval(interval);
     };
-  }, [refresh]);
+  }, [refresh, reloadPrefs]);
 
   const updatePrefs = useCallback(async (patch: Partial<DesktopWidgetPrefs>) => {
     const next = { ...prefsRef.current, ...patch };
@@ -96,9 +106,16 @@ export function useDesktopWidget() {
     setPrefs(next);
     const invoke = getInvoke();
     if (invoke) await invoke("set_desktop_widget_prefs", { prefs: next });
-    if (patch.selectedAgent) await refresh(next.selectedAgent);
+    if (patch.selectedAgent || patch.activeSessionWindow) {
+      await refresh(next.selectedAgent, next.activeSessionWindow);
+    }
     return next;
   }, [refresh]);
+
+  const setPopoverOpen = useCallback(async (open: boolean) => {
+    const invoke = getInvoke();
+    if (invoke) await invoke("set_desktop_widget_popover", { open });
+  }, []);
 
   const acknowledgePendingReset = useCallback(async () => {
     const eventId = viewModel?.pendingReset?.id;
@@ -114,6 +131,7 @@ export function useDesktopWidget() {
     error,
     refresh,
     updatePrefs,
+    setPopoverOpen,
     acknowledgePendingReset,
   };
 }

@@ -23,17 +23,18 @@ test("getMockUsageModelBreakdown includes model_id per model", async () => {
   }
 });
 
-test("clearDashboardUsageCachesForRealData removes only dashboard usage caches", async () => {
+test("clearDashboardMockUsageCaches removes mock payloads without erasing real usage caches", async () => {
   const mod = await loadDashboardModule("dashboard/src/lib/usage-cache.ts");
   const originalWindow = global.window;
   const store = new Map([
-    ["tokentracker.usage.local.default.2026-01-01.2026-01-01.daily.utc.all", "usage"],
-    ["tokentracker.usageSummary.local.default.2026-01-01.2026-01-01.utc.all", "summary"],
-    ["tokentracker.usageTrend.local.default.2026-01-01.2026-01-01.utc.all", "trend"],
-    ["tokentracker.requestUsageRecords.local.default.2026-01-01.2026-01-01.utc.all.100", "records"],
-    ["tokentracker.providerStats.local.default.2026-01-01.2026-01-01.utc.all", "providers"],
-    ["tokentracker.modelStats.local.default.2026-01-01.2026-01-01.utc.all", "models"],
-    ["tokentracker.projectUsage.local.default.2026-01-01.2026-01-01.utc.all", "projects"],
+    [
+      "tokentracker.usage.local.default.2026-01-01.2026-01-01.daily.utc.all",
+      JSON.stringify({ cacheSource: "edge", usage: [] }),
+    ],
+    [
+      "tokentracker.usageSummary.local.default.2026-01-01.2026-01-01.utc.all",
+      JSON.stringify({ cacheSource: "mock", summary: {} }),
+    ],
     ["tokentracker-currency", "CNY"],
     ["tokentracker:leaderboard:pageSize", "50"],
   ]);
@@ -59,15 +60,10 @@ test("clearDashboardUsageCachesForRealData removes only dashboard usage caches",
   };
 
   try {
-    const removed = mod.clearDashboardUsageCachesForRealData();
-    assert.equal(removed, 7);
-    assert.equal(store.has("tokentracker.usage.local.default.2026-01-01.2026-01-01.daily.utc.all"), false);
+    const removed = mod.clearDashboardMockUsageCaches();
+    assert.equal(removed, 1);
+    assert.equal(store.has("tokentracker.usage.local.default.2026-01-01.2026-01-01.daily.utc.all"), true);
     assert.equal(store.has("tokentracker.usageSummary.local.default.2026-01-01.2026-01-01.utc.all"), false);
-    assert.equal(store.has("tokentracker.usageTrend.local.default.2026-01-01.2026-01-01.utc.all"), false);
-    assert.equal(store.has("tokentracker.requestUsageRecords.local.default.2026-01-01.2026-01-01.utc.all.100"), false);
-    assert.equal(store.has("tokentracker.providerStats.local.default.2026-01-01.2026-01-01.utc.all"), false);
-    assert.equal(store.has("tokentracker.modelStats.local.default.2026-01-01.2026-01-01.utc.all"), false);
-    assert.equal(store.has("tokentracker.projectUsage.local.default.2026-01-01.2026-01-01.utc.all"), false);
     assert.equal(store.get("tokentracker-currency"), "CNY");
     assert.equal(store.get("tokentracker:leaderboard:pageSize"), "50");
   } finally {

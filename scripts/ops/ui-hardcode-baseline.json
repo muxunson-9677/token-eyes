@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-20T03:46:57.453Z",
+  "generatedAt": "2026-07-30T11:35:34.701Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 311,
-    "rawText": 239
+    "colors": 302,
+    "rawText": 226
   },
   "files": {
     "dashboard/src/App.routes.test.jsx": {
@@ -43,6 +43,21 @@
       "rawText": 1,
       "rawTextTokens": [
         "); const GITHUB_ICON = ("
+      ]
+    },
+    "dashboard/src/components/settings/Controls.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ") : null; return ("
+      ]
+    },
+    "dashboard/src/components/settings/Controls.test.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ", ); expect(screen.getByTestId(\"settings-section-icon\")).toHaveAttribute(\"data-tone\", \"blue\"); expect(screen.getByTestId(\"settings-section-icon\").querySelector(\"svg\")).not.toBeNull(); rerender(",
+        "内容"
       ]
     },
     "dashboard/src/components/settings/DataDirectoriesSection.jsx": {
@@ -112,13 +127,6 @@
         "b.bucket_start === item.bucket_start); if (bucketIdx"
       ]
     },
-    "dashboard/src/contexts/LoginModalContext.jsx": {
-      "colors": 0,
-      "rawText": 1,
-      "rawTextTokens": [
-        "setIsOpen(false), []); return ("
-      ]
-    },
     "dashboard/src/main.jsx": {
       "colors": 0,
       "rawText": 1,
@@ -171,10 +179,17 @@
     },
     "dashboard/src/pages/LeaderboardProfilePage.jsx": {
       "colors": 2,
-      "rawText": 2,
+      "rawText": 1,
       "rawTextTokens": [
-        ") : realSignedIn ? (",
-        "Token Tracker"
+        ") : realSignedIn ? ("
+      ]
+    },
+    "dashboard/src/pages/ResetHistoryPage.tsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        "0 ? (",
+        "Date.parse(right.occurred_at) - Date.parse(left.occurred_at)); const indexByUrl = new Map"
       ]
     },
     "dashboard/src/pages/SettingsPage.test.jsx": {
@@ -213,18 +228,10 @@
       ]
     },
     "dashboard/src/pages/WidgetsPage.jsx": {
-      "colors": 25,
-      "rawText": 9,
+      "colors": 16,
+      "rawText": 2,
       "rawTextTokens": [
-        "$129.56 ±0%",
-        "$673.61",
-        "0 ? (",
-        "10.3B",
-        "203.2M",
-        "7 DAYS",
-        "880.9M",
-        "TODAY",
-        "tokens · 202 active days"
+        "0 ? ("
       ]
     },
     "dashboard/src/pages/WrappedPage.jsx": {
@@ -274,13 +281,6 @@
       "rawText": 1,
       "rawTextTokens": [
         "Star"
-      ]
-    },
-    "dashboard/src/ui/components/Shell.jsx": {
-      "colors": 0,
-      "rawText": 1,
-      "rawTextTokens": [
-        "Token Tracker"
       ]
     },
     "dashboard/src/ui/components/__tests__/Sidebar.nav.test.jsx": {
@@ -407,7 +407,7 @@
     },
     "dashboard/src/ui/dashboard/components/StatsPanel.jsx": {
       "colors": 0,
-      "rawText": 2,
+      "rawText": 1,
       "rawTextTokens": [
         "0 && ("
       ]
@@ -445,14 +445,6 @@
         "(outside #root) mount and composite in the renderer // but are NOT presented on-screen, so the modal looked like it \"didn't open\". // The 3D heatmap modal renders inline for the same reason and works. macOS // WKWebView / browsers are unaffected either way. return ("
       ]
     },
-    "dashboard/src/ui/dashboard/components/UsageLimitsPanel.jsx": {
-      "colors": 0,
-      "rawText": 2,
-      "rawTextTokens": [
-        "(prev === id ? null : id)), ), ) .filter(Boolean); return (",
-        "0 ? groups :"
-      ]
-    },
     "dashboard/src/ui/dashboard/components/UsageLimitsPanel.test.jsx": {
       "colors": 0,
       "rawText": 1,
@@ -465,13 +457,6 @@
       "rawText": 1,
       "rawTextTokens": [
         "0 && ("
-      ]
-    },
-    "dashboard/src/ui/dashboard/components/UsageStatsPanel.jsx": {
-      "colors": 0,
-      "rawText": 1,
-      "rawTextTokens": [
-        ") : pricingCoverage === \"partial\" ? ("
       ]
     },
     "dashboard/src/ui/dashboard/components/UsageTrendChart.jsx": {
@@ -582,7 +567,7 @@
     },
     "dashboard/src/ui/marketing/MarketingLanding.jsx": {
       "colors": 22,
-      "rawText": 20,
+      "rawText": 19,
       "rawTextTokens": [
         ") : ( // 未登录：Sign In 展示为主行动实色按钮，点击唤起 Modal",
         ") : signedIn ? ( // 已登录：Open Dashboard 升级为主行动实色按钮",
@@ -602,7 +587,6 @@
         "Community Rankings (Global)",
         "Realtime",
         "SYSTEM: // LEADERBOARD_PREVIEW_FEED",
-        "Token Tracker",
         "VOLT"
       ]
     },
@@ -626,20 +610,16 @@
     },
     "dashboard/src/ui/share/variants/AnnualReportCard.jsx": {
       "colors": 24,
-      "rawText": 4,
+      "rawText": 1,
       "rawTextTokens": [
-        "!v||v",
-        "Token Tracker",
-        "tokentracker.cc"
+        "!v||v"
       ]
     },
     "dashboard/src/ui/share/variants/BroadsheetCard.jsx": {
       "colors": 0,
-      "rawText": 3,
+      "rawText": 1,
       "rawTextTokens": [
-        "0; return (",
-        "The Token Tracker",
-        "→ tokentracker.cc"
+        "0; return ("
       ]
     }
   }

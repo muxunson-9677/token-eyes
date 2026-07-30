@@ -73,6 +73,7 @@ pub fn run() {
             widget_window::get_desktop_widget_prefs,
             widget_window::set_desktop_widget_prefs,
             widget_window::set_desktop_widget_always_on_top,
+            widget_window::set_desktop_widget_popover,
             window_prefs::get_window_prefs,
             window_prefs::set_minimize_to_tray_on_close,
             window_prefs::set_launch_on_startup,

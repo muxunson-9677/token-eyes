@@ -6,6 +6,7 @@ import { useTrendData } from "../hooks/use-trend-data.js";
 import { useUsageData } from "../hooks/use-usage-data.js";
 import { useUsageLimits } from "../hooks/use-usage-limits.js";
 import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
+import { useUsageDateBounds } from "../hooks/use-usage-date-bounds";
 import {
   isAccessTokenReady,
   normalizeAccessToken,
@@ -390,6 +391,7 @@ export function DashboardPage({
 
   const timeZone = useMemo(() => getBrowserTimeZone(), []);
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
+  const usageDateBounds = useUsageDateBounds({ timeZone, tzOffsetMinutes });
   const mockNow = useMemo(() => getMockNow(), []);
   const cacheKey = publicMode ? null : auth?.userId || auth?.email || "default";
   const [selectedPeriod, setSelectedPeriod] = useState("total");
@@ -405,8 +407,9 @@ export function DashboardPage({
       timeZone,
       offsetMinutes: tzOffsetMinutes,
       now: mockNow,
+      availableFrom: usageDateBounds.from,
     });
-  }, [mockNow, period, timeZone, tzOffsetMinutes, customFrom, customTo]);
+  }, [mockNow, period, timeZone, tzOffsetMinutes, customFrom, customTo, usageDateBounds.from]);
   const from = range.from;
   const to = range.to;
   const timeZoneLabel = useMemo(
@@ -456,7 +459,7 @@ export function DashboardPage({
     guestAllowed,
     from,
     to,
-    includeDaily: period !== "total",
+    includeDaily: true,
     cacheKey,
     timeZone,
     tzOffsetMinutes,
@@ -521,8 +524,8 @@ export function DashboardPage({
     tzOffsetMinutes,
   });
 
-  const shareDailyToTrend = period === "week" || period === "month" || period === "30d";
-  const useDailyTrend = period === "week" || period === "month" || period === "30d";
+  const shareDailyToTrend = period === "week" || period === "month" || period === "30d" || period === "total";
+  const useDailyTrend = period === "week" || period === "month" || period === "30d" || period === "total";
   const visibleDaily = useMemo(() => {
     return daily.filter((row) => {
       if (row?.future) return false;
@@ -668,10 +671,23 @@ export function DashboardPage({
     return paginateRows(sortedDetails, detailsPage, DETAILS_PAGE_SIZE);
   }, [detailsPage, period, sortedDetails]);
 
-  // Daily Breakdown 濮嬬粓鏄剧ず鏈€杩?0澶╃殑鏃ユ暟鎹?
+  // Daily Breakdown 始终显示最近 30 天的日数据；仅保留至少有一项真实用量的日期。
   const dailyBreakdownRows = useMemo(() => {
     return dailyBreakdownDaily
-      .filter((row) => !row?.future && row?.day)
+      .filter((row) => {
+        if (row?.future || row?.missing || !row?.day) return false;
+        const keys = [
+          "total_tokens",
+          "billable_total_tokens",
+          "input_tokens",
+          "output_tokens",
+          "cached_input_tokens",
+          "cache_creation_input_tokens",
+          "reasoning_output_tokens",
+          "conversation_count",
+        ];
+        return keys.some((key) => Number(row[key]) > 0);
+      })
       .slice(-30);
   }, [dailyBreakdownDaily]);
   const dailyBreakdownSort = useMemo(() => {
@@ -685,18 +701,29 @@ export function DashboardPage({
     [dailyBreakdownRows, dailyBreakdownSort],
   );
   const trendRowsForDisplay = useMemo(() => {
-    if (useDailyTrend) return daily;
-    if (period === "day") {
-      return Array.isArray(trendRows) ? trendRows.filter((row) => row?.hour) : [];
-    }
-    return trendRows;
+    const source = useDailyTrend
+      ? daily
+      : period === "day"
+        ? (Array.isArray(trendRows) ? trendRows.filter((row) => row?.hour) : [])
+        : trendRows;
+    return (Array.isArray(source) ? source : []).filter((row) => {
+      if (!row || row.future || row.missing) return false;
+      return true;
+    });
   }, [daily, period, trendRows, useDailyTrend]);
-  const trendFromForDisplay = useDailyTrend ? from : trendFrom;
+  const firstTrendDate = useMemo(() => {
+    const first = Array.isArray(trendRowsForDisplay)
+      ? trendRowsForDisplay.find((row) => row && !row.future && !row.missing)
+      : null;
+    return first?.day || first?.month || first?.hour?.slice?.(0, 10) || null;
+  }, [trendRowsForDisplay]);
+  const trendFromForDisplay = useDailyTrend
+    ? from
+    : firstTrendDate || (trendFrom === "1970-01-01" ? null : trendFrom);
   const trendToForDisplay = useDailyTrend ? to : trendTo;
 
   function renderDetailCell(row, key) {
-    if (row?.future) return "-";
-    if (row?.missing) return copy("shared.status.unsynced");
+    if (row?.future || row?.missing) return null;
     if (key === "total_tokens") {
       return formatChineseTokenCount(getBillableTotal(row));
     }
@@ -1187,11 +1214,14 @@ export function DashboardPage({
   );
   const modelUsageDistribution = useMemo(
     () => buildModelUsageDistribution(modelBreakdown, {
-      limit: 5,
-      otherLabel: copy("dashboard.model_distribution.other"),
+      limit: Number.MAX_SAFE_INTEGER,
       copyFn: copy,
     }),
     [modelBreakdown],
+  );
+  const overviewModels = useMemo(
+    () => modelUsageDistribution?.rows || [],
+    [modelUsageDistribution],
   );
 
   const shareCardData = useShareCardData({
@@ -1309,6 +1339,7 @@ export function DashboardPage({
       projectUsageLimit={projectUsageLimit}
       setProjectUsageLimit={setProjectUsageLimit}
       topModels={topModels}
+      overviewModels={overviewModels}
       signedIn={signedIn}
       publicMode={publicMode}
       isLocalMode={isLocalMode}

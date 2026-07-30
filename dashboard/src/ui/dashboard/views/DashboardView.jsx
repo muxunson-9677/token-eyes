@@ -102,6 +102,7 @@ export function DashboardView(props) {
     projectUsageLimit,
     setProjectUsageLimit,
     topModels,
+    overviewModels,
     signedIn,
     publicMode,
     isLocalMode,
@@ -261,6 +262,7 @@ export function DashboardView(props) {
                     periodConversations={summaryConversationsValue}
                     rolling={rollingUsage}
                     topModels={topModels}
+                    overviewModels={overviewModels}
                   />
                 </FadeIn>
 
@@ -311,26 +313,6 @@ export function DashboardView(props) {
                       totalTokens={modelUsageDistribution?.totalTokens}
                     />
                   </FadeIn>
-                ) : null}
-                {screenshotMode ? (
-                  <div
-                    className="mt-4 flex flex-col items-center gap-2"
-                    data-screenshot-exclude="true"
-                    style={isCapturing ? { display: "none" } : undefined}
-                  >
-                    <Button
-                      type="button"
-                      onClick={handleShareToX}
-                      variant="primary"
-                      size="lg"
-                      disabled={isCapturing}
-                    >
-                      {screenshotTwitterButton}
-                    </Button>
-                    <span className="text-sm text-oai-gray-500 dark:text-oai-gray-300">
-                      {screenshotTwitterHint}
-                    </span>
-                  </div>
                 ) : null}
               </div>
 
@@ -394,6 +376,26 @@ export function DashboardView(props) {
                       setDetailsPage={setDetailsPage}
                     />
                   </FadeIn>
+                ) : null}
+                {screenshotMode ? (
+                  <div
+                    className="mt-4 flex flex-col items-center gap-2"
+                    data-screenshot-exclude="true"
+                    style={isCapturing ? { display: "none" } : undefined}
+                  >
+                    <Button
+                      type="button"
+                      onClick={handleShareToX}
+                      variant="primary"
+                      size="lg"
+                      disabled={isCapturing}
+                    >
+                      {screenshotTwitterButton}
+                    </Button>
+                    <span className="text-sm text-oai-gray-500 dark:text-oai-gray-300">
+                      {screenshotTwitterHint}
+                    </span>
+                  </div>
                 ) : null}
               </div>
           </div>

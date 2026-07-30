@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Star, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Sparkles, Star, Trash2 } from "lucide-react";
 import {
   createSpendRecord,
   deleteOtherAiSpendGroup,
@@ -451,6 +451,8 @@ export function OtherAiSpendSection() {
     <SectionCard
       title={copy("settings.cost.other_ai.title")}
       subtitle={copy("settings.cost.other_ai.subtitle")}
+      icon={Sparkles}
+      iconTone="rose"
       collapsible
       action={(
         <div className="flex items-center gap-2">

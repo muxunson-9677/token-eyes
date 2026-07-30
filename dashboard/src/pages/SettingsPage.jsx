@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
+import { Gauge } from "lucide-react";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
 import { DataDirectoriesSection } from "../components/settings/DataDirectoriesSection.jsx";
 import { AgentPricingSection } from "../components/settings/AgentPricingSection.jsx";
@@ -76,6 +77,8 @@ export function SettingsBasicPage() {
             <AgentPricingSection />
             <SectionCard
               title={copy("settings.section.limits")}
+              icon={Gauge}
+              iconTone="green"
               action={<LimitsDisplayModeControl prefs={limitsPrefs} />}
             >
               <LimitsSettingsPanel prefs={limitsPrefs} />

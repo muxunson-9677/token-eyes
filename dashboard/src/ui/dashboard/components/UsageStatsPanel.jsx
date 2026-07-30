@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { ArrowDown, ArrowUp, Package, Target, HelpCircle, AlertCircle } from "lucide-react";
+import { Activity, AlertCircle, ArrowDown, ArrowUp, DollarSign, HelpCircle, Package, Target } from "lucide-react";
 import { Card } from "../../components";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
@@ -31,6 +31,10 @@ function safeNum(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isProvidedNumber(value) {
+  return value !== null && value !== undefined && Number.isFinite(Number(value));
+}
+
 function formatTokensCompact(value) {
   const n = safeNum(value);
   return formatChineseTokenCount(n);
@@ -42,7 +46,7 @@ function formatFullNum(value) {
 
 function formatIntegrityDay(value) {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "—";
+  if (!Number.isFinite(date.getTime())) return null;
   return date.toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -52,7 +56,7 @@ function formatIntegrityDay(value) {
 
 function formatIntegrityTime(value) {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "—";
+  if (!Number.isFinite(date.getTime())) return null;
   return date.toLocaleString("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -72,9 +76,14 @@ function formatCost(value) {
 }
 
 function formatCurrencyAmount(value, currency) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return null;
   const numberValue = Number(value);
-  if (Number.isNaN(numberValue)) return "—";
+  if (!Number.isFinite(numberValue)) return null;
+  if (currency === "CNY") {
+    const compact = formatChineseTokenCount(numberValue);
+    if (compact === "-") return null;
+    return `¥${compact}`;
+  }
   return `${currency} ${numberValue.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -90,19 +99,40 @@ export function getMonthlyCostComparison(currentValue, previousValue) {
 
   const difference = current - previous;
   if (Math.abs(difference) < 1e-9) {
-    return { kind: "flat", text: copy("spend.monthly_change.flat_percent", { value: "0.0" }) };
+    return { kind: "flat", percent: "0.0" };
   }
   if (previous === 0) {
     return {
       kind: "increase",
-      text: copy("spend.monthly_change.increase", { value: "100.0" }),
+      percent: "100.0",
     };
   }
 
   const percent = Math.abs((difference / previous) * 100).toFixed(1);
   return difference > 0
-    ? { kind: "increase", text: copy("spend.monthly_change.increase", { value: percent }) }
-    : { kind: "decrease", text: copy("spend.monthly_change.decrease", { value: percent }) };
+    ? { kind: "increase", percent }
+    : { kind: "decrease", percent };
+}
+
+function resolveCurrencyAmount(summary, directField, usdField, exchangeRate) {
+  const directValue = summary?.[directField];
+  if (isProvidedNumber(directValue)) return Number(directValue);
+  const usdValue = summary?.[usdField];
+  if (!isProvidedNumber(usdValue) || !Number.isFinite(exchangeRate) || exchangeRate <= 0) return null;
+  return Number(usdValue) * exchangeRate;
+}
+
+function inferExchangeRate(summary) {
+  const configured = Number(summary?.usd_to_cny);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  for (const card of COST_SUMMARY_CARDS) {
+    const usdValue = summary?.[card.usdField];
+    const cnyValue = summary?.[card.cnyField];
+    if (!isProvidedNumber(usdValue) || Number(usdValue) === 0 || !isProvidedNumber(cnyValue)) continue;
+    const inferred = Number(cnyValue) / Number(usdValue);
+    if (Number.isFinite(inferred) && inferred > 0) return inferred;
+  }
+  return 0;
 }
 
 function normalizeHitRate(value) {
@@ -152,10 +182,10 @@ const TOKEN_FIELDS = {
 };
 
 const COST_SUMMARY_CARDS = [
-  { labelKey: "spend.monthly_api", usdField: "api_usd", cnyField: "api_cny", previousUsdField: "previous_api_usd", previousCnyField: "previous_api_cny" },
-  { labelKey: "spend.monthly_subscription", usdField: "subscription_usd", cnyField: "subscription_cny", previousUsdField: "previous_subscription_usd", previousCnyField: "previous_subscription_cny" },
-  { labelKey: "spend.monthly_combined", usdField: "combined_usd", cnyField: "combined_cny", previousUsdField: "previous_combined_usd", previousCnyField: "previous_combined_cny" },
-  { labelKey: "spend.lifetime_combined", usdField: "lifetime_combined_usd", cnyField: "lifetime_combined_cny" },
+  { labelKey: "spend.monthly_api", usdField: "api_usd", cnyField: "api_cny", previousUsdField: "previous_api_usd", previousCnyField: "previous_api_cny", icon: Activity, iconClass: "text-oai-blue-500" },
+  { labelKey: "spend.monthly_subscription", usdField: "subscription_usd", cnyField: "subscription_cny", previousUsdField: "previous_subscription_usd", previousCnyField: "previous_subscription_cny", icon: Package, iconClass: "text-violet-500" },
+  { labelKey: "spend.monthly_combined", usdField: "combined_usd", cnyField: "combined_cny", previousUsdField: "previous_combined_usd", previousCnyField: "previous_combined_cny", icon: DollarSign, iconClass: "text-green-500" },
+  { labelKey: "spend.lifetime_combined", usdField: "lifetime_combined_usd", cnyField: "lifetime_combined_cny", icon: Target, iconClass: "text-orange-500" },
 ];
 
 export function UsageStatsPanel({
@@ -171,17 +201,43 @@ export function UsageStatsPanel({
     [summary],
   );
 
-  const totalTokens = safeNum(totals?.total_tokens);
+  const totalTokensProvided = isProvidedNumber(totals?.total_tokens);
+  const totalTokens = totalTokensProvided ? Number(totals.total_tokens) : null;
   const requestCountValue = totals?.request_count ?? totals?.display_request_count ?? totals?.conversation_count;
-  const requestCount = requestCountValue == null ? null : safeNum(requestCountValue);
-  const cost = safeNum(totals?.cost_usd ?? totals?.total_cost_usd);
-  const hitRate = normalizeHitRate(totals?.cache_hit_rate);
+  const requestCount = isProvidedNumber(requestCountValue) ? Number(requestCountValue) : null;
+  const costValue = totals?.cost_usd ?? totals?.total_cost_usd;
+  const costProvided = isProvidedNumber(costValue);
+  const cost = costProvided ? Number(costValue) : null;
+  const hitRateProvided = isProvidedNumber(totals?.cache_hit_rate);
+  const hitRate = hitRateProvided ? normalizeHitRate(totals.cache_hit_rate) : null;
   const selectedAgentBrandColor = selectedAgent?.queueSource
     ? getProviderColor(selectedAgent.queueSource.toUpperCase(), 0)
     : null;
   // pricing_coverage determines cost display semantics
   const pricingCoverage = totals?.pricing_coverage ?? "complete";
   const integrity = summary?.data_integrity ?? null;
+  const integrityVisibleRecords = safeNum(
+    integrity?.visible_records ?? integrity?.valid_records,
+  );
+  const integrityFrom = formatIntegrityDay(integrity?.visible_from);
+  const integrityTo = formatIntegrityDay(integrity?.visible_to);
+  const hasIntegrityRange = integrityVisibleRecords > 0
+    && integrityFrom
+    && integrityTo;
+  const unavailableText = copy("shared.data.not_provided");
+  const percentSymbol = copy("shared.unit.percent");
+  const renderCostValue = () => {
+    if (!costProvided) {
+      return <span className="text-sm text-oai-gray-400">{unavailableText}</span>;
+    }
+    if (pricingCoverage === "unpriced") {
+      return <span className="text-oai-gray-400">{copy("ticket06.pricing.unpriced")}</span>;
+    }
+    if (pricingCoverage === "partial") {
+      return <span className="text-amber-600 dark:text-amber-400">{formatCost(cost)}</span>;
+    }
+    return <span className="text-green-600 dark:text-green-400">{formatCost(cost)}</span>;
+  };
 
   if (loading && !totals) {
     return (
@@ -210,7 +266,7 @@ export function UsageStatsPanel({
     return (
       <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
         <div className="py-8 text-center text-sm text-oai-gray-400">
-          {copy("ticket02.stats.loading")}
+          {copy("spend.usage.empty")}
         </div>
       </Card>
     );
@@ -255,7 +311,7 @@ export function UsageStatsPanel({
                 <span>{copy("ticket02.stats.real_tokens")}</span>
               </div>
               <div className="mt-1 text-3xl font-semibold tracking-tight text-oai-black tabular-nums dark:text-white">
-                {formatChineseTokenCount(totalTokens)}
+                {totalTokensProvided ? formatChineseTokenCount(totalTokens) : unavailableText}
               </div>
             </div>
           </div>
@@ -263,7 +319,9 @@ export function UsageStatsPanel({
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {DIMENSION_CARDS.map((card) => {
               const Icon = card.icon;
-              const value = safeNum(totals[TOKEN_FIELDS[card.key]]);
+              const rawValue = totals[TOKEN_FIELDS[card.key]];
+              const valueProvided = isProvidedNumber(rawValue);
+              const value = valueProvided ? Number(rawValue) : null;
               return (
                 <div
                   key={card.key}
@@ -282,7 +340,7 @@ export function UsageStatsPanel({
                     )}
                   </div>
                   <div className="mt-1.5 text-lg font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
-                    {card.format(value)}
+                    {valueProvided ? card.format(value) : unavailableText}
                   </div>
                 </div>
               );
@@ -295,44 +353,61 @@ export function UsageStatsPanel({
               data-testid="usage-cost-summary"
             >
               {COST_SUMMARY_CARDS.map((card) => {
-                const exchangeRate = Number(costSummary.usd_to_cny)
-                  || (Number(costSummary[card.usdField]) !== 0
-                    ? Number(costSummary[card.cnyField]) / Number(costSummary[card.usdField])
-                    : 0);
-                const currentComparisonValue = costSummary[card.cnyField]
-                  ?? (Number(costSummary[card.usdField]) * exchangeRate);
-                const previousComparisonValue = costSummary[card.previousCnyField]
-                  ?? (Number(costSummary[card.previousUsdField]) * exchangeRate);
+                const exchangeRate = inferExchangeRate(costSummary);
+                const currentComparisonValue = resolveCurrencyAmount(
+                  costSummary,
+                  card.cnyField,
+                  card.usdField,
+                  exchangeRate,
+                );
+                const previousComparisonValue = resolveCurrencyAmount(
+                  costSummary,
+                  card.previousCnyField,
+                  card.previousUsdField,
+                  exchangeRate,
+                );
                 const comparison = card.previousUsdField
                   ? getMonthlyCostComparison(currentComparisonValue, previousComparisonValue)
                   : null;
+                const comparisonLabelKey = comparison?.kind === "increase"
+                  ? "spend.monthly_change.increase"
+                  : comparison?.kind === "decrease"
+                    ? "spend.monthly_change.decrease"
+                    : "spend.monthly_change.flat_percent";
+                const usdText = formatCurrencyAmount(costSummary[card.usdField], "USD");
+                const cnyText = formatCurrencyAmount(costSummary[card.cnyField], "CNY");
+                const CostIcon = card.icon;
                 return (
                   <div
                     key={card.labelKey}
-                    className="min-w-0 overflow-hidden rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
+                    data-testid="usage-cost-card"
+                    className="min-w-0 rounded-lg border border-oai-gray-200 px-2.5 py-2 dark:border-oai-gray-800"
                   >
-                    <div className="text-[10px] text-oai-gray-500 dark:text-oai-gray-400">
-                      <span className="truncate">{copy(card.labelKey)}</span>
+                    <div className="flex items-start gap-1 text-[10px] leading-tight text-oai-gray-500 dark:text-oai-gray-400">
+                      <CostIcon className={cn("mt-px h-3 w-3 shrink-0", card.iconClass)} aria-hidden="true" />
+                      <span>{copy(card.labelKey)}</span>
                     </div>
-                    <div className="mt-1 truncate text-base font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
-                      {formatCurrencyAmount(costSummary[card.usdField], "USD")}
+                    <div className="mt-1 break-words text-sm font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100 sm:text-base">
+                      {usdText || unavailableText}
                     </div>
                     <div
-                      className="mt-0.5 flex min-w-0 items-center justify-between gap-1 text-[11px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400"
+                      className="mt-0.5 flex min-w-0 flex-row items-center justify-between gap-1 text-[10px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400"
                       data-testid={comparison ? "monthly-cost-cny-row" : undefined}
                     >
-                      <span className="truncate">{formatCurrencyAmount(costSummary[card.cnyField], "CNY")}</span>
+                      <span className="min-w-0 shrink-0">{cnyText || unavailableText}</span>
                       {comparison && (
                         <span
                           data-testid="monthly-cost-comparison"
+                          data-direction={comparison.kind}
+                          aria-label={copy(comparisonLabelKey, { value: comparison.percent })}
                           className={cn(
-                            "min-w-0 truncate text-[9px] font-medium leading-tight tabular-nums",
+                            "min-w-0 whitespace-nowrap text-[9px] font-medium leading-tight tabular-nums",
                             comparison.kind === "increase" && "text-green-600 dark:text-green-400",
                             comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
                             comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",
                           )}
                         >
-                          {comparison.text}
+                          {copy(comparisonLabelKey, { value: comparison.percent })}
                         </span>
                       )}
                     </div>
@@ -355,7 +430,7 @@ export function UsageStatsPanel({
                 raw: formatFullNum(integrity.raw_records),
                 duplicates: formatFullNum(integrity.duplicate_records),
                 malformed: formatFullNum(integrity.malformed_records),
-                updated: formatIntegrityTime(integrity.updated_at),
+                updated: formatIntegrityTime(integrity.updated_at) || unavailableText,
               })}
             >
               <span
@@ -367,11 +442,13 @@ export function UsageStatsPanel({
               />
               <span>
                 {integrity.status === "verified"
-                  ? copy("spend.usage.integrity.verified", {
-                    records: formatFullNum(integrity.visible_records ?? integrity.valid_records),
-                    from: formatIntegrityDay(integrity.visible_from),
-                    to: formatIntegrityDay(integrity.visible_to),
-                  })
+                  ? hasIntegrityRange
+                    ? copy("spend.usage.integrity.verified", {
+                      records: formatFullNum(integrityVisibleRecords),
+                      from: integrityFrom,
+                      to: integrityTo,
+                    })
+                    : copy("spend.usage.integrity.verified_empty")
                   : copy("spend.usage.integrity.attention", {
                     delta: formatFullNum(integrity.token_delta),
                   })}
@@ -382,15 +459,27 @@ export function UsageStatsPanel({
 
         {/* Right: 3 small cards */}
         <div className="flex flex-row gap-2 lg:w-52 lg:flex-col">
-          <div className="flex-1 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/50">
-            <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          <div
+            className="flex-1 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/50"
+            data-testid="usage-request-summary"
+          >
+            <div
+              className="text-xs text-oai-gray-500 dark:text-oai-gray-400"
+              data-testid="usage-request-label"
+            >
               {copy("ticket02.stats.requests")}
             </div>
-            <div className="mt-1 text-xl font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
+            <div
+              className="mt-1 flex items-center gap-1.5 text-xl font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100"
+              data-testid="usage-request-value"
+            >
               {requestCount === null ? (
-                <span className="text-oai-gray-400">—</span>
+                <span className="text-sm text-oai-gray-400">{unavailableText}</span>
               ) : (
-                formatFullNum(requestCount)
+                <>
+                  <Activity className="h-4 w-4 shrink-0 text-sky-500" aria-hidden="true" />
+                  <span>{formatFullNum(requestCount)}</span>
+                </>
               )}
             </div>
             {requestCount === null && (
@@ -400,18 +489,15 @@ export function UsageStatsPanel({
             )}
           </div>
 
-          <div className="flex-1 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/50">
+          <div
+            className="flex-1 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/50"
+            data-testid="usage-total-cost-summary"
+          >
             <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
               {copy("ticket02.stats.cost")}
             </div>
             <div className="mt-1 text-xl font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
-              {pricingCoverage === "unpriced" ? (
-                <span className="text-oai-gray-400">{copy("ticket06.pricing.unpriced")}</span>
-              ) : pricingCoverage === "partial" ? (
-                <span className="text-amber-600 dark:text-amber-400">{formatCost(cost)}</span>
-              ) : (
-                <span className="text-green-600 dark:text-green-400">{formatCost(cost)}</span>
-              )}
+              {renderCostValue()}
             </div>
             {pricingCoverage === "partial" && (
               <div className="mt-0.5 text-[10px] text-amber-500 dark:text-amber-400">
@@ -427,19 +513,27 @@ export function UsageStatsPanel({
 
           <div className="flex-1 rounded-lg bg-oai-gray-50 px-3 py-2 dark:bg-oai-gray-800/50">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+              <span className="flex items-center gap-1.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                <Target className="h-3.5 w-3.5 text-violet-500" aria-hidden="true" />
                 {copy("ticket02.stats.cache_hit_rate")}
               </span>
-              <span className="text-sm font-semibold text-green-600 dark:text-green-400">
-                {hitRate.toFixed(1)}%
+              <span className={cn(
+                "font-semibold",
+                hitRateProvided
+                  ? "text-sm text-green-600 dark:text-green-400"
+                  : "text-[11px] text-oai-gray-400",
+              )}>
+                {hitRateProvided ? `${hitRate.toFixed(1)}${percentSymbol}` : unavailableText}
               </span>
             </div>
-            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-oai-gray-200 dark:bg-oai-gray-700">
+            {hitRateProvided && (
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-oai-gray-200 dark:bg-oai-gray-700">
               <div
                 className="h-full rounded-full bg-green-500 transition-all"
                 style={{ width: `${Math.min(100, hitRate)}%` }}
               />
             </div>
+            )}
           </div>
         </div>
       </div>

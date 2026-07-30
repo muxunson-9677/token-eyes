@@ -346,6 +346,8 @@ export function AgentPricingSection() {
     <SectionCard
       title={copy("settings.section.agent_pricing")}
       subtitle={copy("settings.agent_pricing.subtitle")}
+      icon={DollarSign}
+      iconTone="orange"
       collapsible
       action={
         <button

@@ -1,6 +1,23 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { CalendarDays, FolderKanban } from "lucide-react";
 import { Card } from "../../components";
 import { ProjectUsagePanel } from "./ProjectUsagePanel.jsx";
+
+const DAILY_USAGE_KEYS = [
+  "total_tokens",
+  "billable_total_tokens",
+  "input_tokens",
+  "output_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "reasoning_output_tokens",
+  "conversation_count",
+];
+
+export function hasRecordedDailyUsage(row) {
+  if (!row || row.future || row.missing || !row.day) return false;
+  return DAILY_USAGE_KEYS.some((key) => Number(row[key]) > 0);
+}
 
 export function DataDetails({
   // Project props
@@ -34,6 +51,10 @@ export function DataDetails({
   setDetailsPage,
 }) {
   const [activeTab, setActiveTab] = useState("daily");
+  const visibleDailyRows = useMemo(() => {
+    if (!Array.isArray(dailyBreakdownRows)) return [];
+    return dailyBreakdownRows.filter(hasRecordedDailyUsage);
+  }, [dailyBreakdownRows]);
 
   return (
     <Card>
@@ -45,12 +66,13 @@ export function DataDetails({
             aria-selected={activeTab === "daily"}
             type="button"
             onClick={() => setActiveTab("daily")}
-            className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
+            className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded transition-colors ${
               activeTab === "daily"
                 ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                 : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
             }`}
           >
+            <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
             {copy("dashboard.daily.title")}
           </button>
           <button
@@ -58,12 +80,13 @@ export function DataDetails({
             aria-selected={activeTab === "projects"}
             type="button"
             onClick={() => setActiveTab("projects")}
-            className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
+            className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded transition-colors ${
               activeTab === "projects"
                 ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                 : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
             }`}
           >
+            <FolderKanban className="h-3.5 w-3.5" aria-hidden="true" />
             {copy("dashboard.projects.title")}
           </button>
         </div>
@@ -82,7 +105,7 @@ export function DataDetails({
       {/* Daily Tab */}
       {activeTab === "daily" && (
         <div>
-          {dailyBreakdownRows?.length === 0 ? (
+          {visibleDailyRows.length === 0 ? (
             <div className="oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300 mb-4">
               {dailyEmptyPrefix}
               <code className="mx-1 rounded border border-oai-gray-300 dark:border-oai-gray-700 oai-bg-elevated px-1.5 py-0.5 font-mono oai-text-caption">
@@ -118,14 +141,12 @@ export function DataDetails({
                 </tr>
               </thead>
               <tbody>
-                {dailyBreakdownRows.map((row) => (
+                {visibleDailyRows.map((row) => (
                   <tr
                     key={String(
                       row?.[dailyBreakdownDateKey] || row?.day || row?.hour || row?.month || "",
                     )}
-                    className={`border-b border-oai-gray-100 dark:border-oai-gray-800 last:border-b-0 hover:bg-oai-gray-50/50 dark:hover:bg-oai-gray-800/50 transition-colors ${
-                      row.missing ? "text-oai-gray-400 dark:text-oai-gray-400" : row.future ? "text-oai-gray-300 dark:text-oai-gray-600" : "text-oai-black dark:text-oai-white"
-                    }`}
+                    className="border-b border-oai-gray-100 dark:border-oai-gray-800 last:border-b-0 hover:bg-oai-gray-50/50 dark:hover:bg-oai-gray-800/50 transition-colors text-oai-black dark:text-oai-white"
                   >
                     <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300 whitespace-nowrap">
                       {renderDailyBreakdownDate ? renderDailyBreakdownDate(row) : renderDetailDate(row)}
@@ -155,7 +176,7 @@ export function DataDetails({
           </div>
           )}
 
-          {/* Pagination - 使用 design system typography，Daily Breakdown 不需要分页 */}
+          {/* Pagination uses the design-system typography; daily breakdown is not paged. */}
           {activeTab !== "daily" && DETAILS_PAGED_PERIODS.has(period) && detailsPageCount > 1 ? (
             <div className="mt-3 flex items-center justify-between oai-text-caption">
               <button

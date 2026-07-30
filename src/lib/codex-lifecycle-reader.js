@@ -8,6 +8,7 @@ const LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FILES = 200;
 const MAX_SESSIONS = 100;
 const SESSION_META_READ_BYTES = 256 * 1024;
+const SESSION_INDEX_READ_BYTES = 2 * 1024 * 1024;
 const TAIL_READ_CHUNK_BYTES = 256 * 1024;
 const MAX_PARTIAL_LINE_BYTES = 1024 * 1024;
 
@@ -23,6 +24,14 @@ function safeSessionId(value, fallback) {
   const text = String(value || "").trim();
   if (/^[a-z0-9][a-z0-9._-]{0,95}$/iu.test(text)) return text;
   return hashId("session", text || fallback);
+}
+
+function safeSessionLabel(value) {
+  const text = String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return text.slice(0, 80) || null;
 }
 
 function projectMetadata(cwd) {
@@ -156,7 +165,34 @@ async function readLatestLifecycleEvidence(handle, fileSize) {
   return null;
 }
 
-async function readLifecycleFile(filePath) {
+async function readThreadTitles(home) {
+  const titles = new Map();
+  let handle;
+  try {
+    handle = await fs.promises.open(path.join(home, "session_index.jsonl"), "r");
+    const stat = await handle.stat();
+    const bytesToRead = Math.min(stat.size, SESSION_INDEX_READ_BYTES);
+    if (bytesToRead <= 0) return titles;
+    const start = stat.size - bytesToRead;
+    const buffer = Buffer.allocUnsafe(bytesToRead);
+    const { bytesRead } = await handle.read(buffer, 0, bytesToRead, start);
+    const lines = buffer.subarray(0, bytesRead).toString("utf8").split(/\n/u);
+    if (start > 0) lines.shift();
+    for (const line of lines) {
+      const item = parseJsonLine(line);
+      const sessionId = safeSessionId(item?.id, "");
+      const title = safeSessionLabel(item?.thread_name);
+      if (item?.id && title) titles.set(sessionId, title);
+    }
+  } catch {
+    // Older Codex versions may not expose a session title index.
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+  return titles;
+}
+
+async function readLifecycleFile(filePath, threadTitles) {
   let handle;
   try {
     handle = await fs.promises.open(filePath, "r");
@@ -172,7 +208,7 @@ async function readLifecycleFile(filePath) {
       agent: "codex",
       ...project,
       sessionId,
-      sessionLabel: sessionId,
+      sessionLabel: threadTitles.get(sessionId) || null,
       status: evidence.status,
       updatedAt: evidence.updatedAt,
     };
@@ -189,14 +225,19 @@ async function collectCodexLifecycleSessions({
 } = {}) {
   const cutoffMs = nowMs - LOOKBACK_MS;
   const files = [];
-  for (const home of [...new Set(homes.map((item) => path.resolve(String(item))))]) {
+  const threadTitles = new Map();
+  const resolvedHomes = [...new Set(homes.map((item) => path.resolve(String(item))))];
+  for (const home of resolvedHomes) {
     files.push(...listRolloutFiles(home, cutoffMs));
+    for (const [sessionId, title] of await readThreadTitles(home)) {
+      threadTitles.set(sessionId, title);
+    }
   }
   files.sort((left, right) => right.mtimeMs - left.mtimeMs);
 
   const sessions = [];
   for (const item of files.slice(0, MAX_FILES)) {
-    const session = await readLifecycleFile(item.filePath);
+    const session = await readLifecycleFile(item.filePath, threadTitles);
     if (session) sessions.push(session);
     if (sessions.length >= MAX_SESSIONS) break;
   }

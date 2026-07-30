@@ -498,6 +498,12 @@ export function ProviderApiConfigSection() {
       <div className={cn("flex items-center justify-between gap-2", sectionOpen && "mb-3")}>
         <div>
           <button type="button" onClick={() => setSectionOpen((value) => !value)} aria-expanded={sectionOpen} className="flex items-center gap-2 text-left">
+            <span
+              data-testid="provider-api-section-icon"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300"
+            >
+              <PlugZap className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
             <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">
               {copy("settings.cost.provider_api.section")}
             </h3>

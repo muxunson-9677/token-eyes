@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 // The zoom modal pulls in use-trend-data (a .ts hook imported with a .js
@@ -25,6 +25,12 @@ describe("getTrendMonitorScale", () => {
 });
 
 describe("TrendMonitor", () => {
+  it("uses a semantic icon in the usage-trend heading", () => {
+    render(<TrendMonitor rows={[]} />);
+
+    expect(screen.getByTestId("trend-monitor-title").querySelector("svg")).not.toBeNull();
+  });
+
   it("keeps normal bars visible when a single day is an outlier", () => {
     const rows = [80, 90, 95, 110, 120, 140, 10000].map((value) => ({
       billable_total_tokens: value,
@@ -58,7 +64,7 @@ describe("TrendMonitor", () => {
     expect(bars[1].parentElement?.style.height).toBe("2px");
   });
 
-  it("renders future bars at faint preview opacity with interpolated heights", () => {
+  it("does not render a speculative future bar as observed usage", () => {
     const rows = [
       { billable_total_tokens: 100 },
       { billable_total_tokens: 100 },
@@ -68,10 +74,8 @@ describe("TrendMonitor", () => {
       <TrendMonitor rows={rows} showTimeZoneLabel={false} />,
     );
     const bars = Array.from(container.querySelectorAll('[data-trend-bar="true"]'));
-    const previewBar = bars.at(-1);
-    expect(previewBar?.style.opacity).toBe("0.35");
-    // Predicted heights are clipped to the y-axis max and rendered as a percentage.
-    expect(previewBar?.parentElement?.style.height).toMatch(/%$/);
+    expect(bars).toHaveLength(2);
+    expect(container.textContent).not.toContain("Predicted");
   });
 
   it("renders X-axis tick labels only in zoom mode (small card unchanged)", () => {

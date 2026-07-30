@@ -20,7 +20,7 @@ export function MenuBarSection() {
   const isSyncing = Boolean(settings?.isSyncing);
 
   return (
-    <SectionCard title={copy("settings.section.menubar")}>
+    <SectionCard title={copy("settings.section.menubar")} icon={Activity} iconTone="violet">
       {launchAtLoginSupported ? (
         <SettingsRow
           label={copy("settings.menubar.launchAtLogin")}

@@ -76,6 +76,7 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
     const handler = createLocalApiHandler({
       queuePath,
       trackerDataDir: root,
+      now: () => new Date("2026-07-29T08:30:00.000Z"),
       codexResetMonitorService: service,
       usageLimitsProvider: async () => ({
         codex: {
@@ -94,14 +95,17 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
         projectLabel: "Token Eyes",
         sessionId: "session-safe",
         status: "running",
-        updatedAt: "2026-07-29T08:20:00.000Z",
+        updatedAt: "2026-07-29T06:30:00.000Z",
       }],
     });
     const res = response();
     const handled = await handler(
       request(),
       res,
-      new URL("http://127.0.0.1/functions/tokentracker-desktop-widget?agent=codex"),
+      new URL(
+        "http://127.0.0.1/functions/tokentracker-desktop-widget"
+        + "?agent=codex&active_window=3h",
+      ),
     );
 
     assert.equal(handled, true);
@@ -114,6 +118,17 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
     assert.equal(body.projectStatus.yellow, 1);
     assert.equal(body.limits[0].usedPercent, 21);
     assert.equal(body.pendingReset.id, "reset-safe");
+
+    const invalidWindowResponse = response();
+    await handler(
+      request(),
+      invalidWindowResponse,
+      new URL(
+        "http://127.0.0.1/functions/tokentracker-desktop-widget"
+        + "?agent=codex&active_window=30m",
+      ),
+    );
+    assert.equal(invalidWindowResponse.json().projectStatus.yellow, 0);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

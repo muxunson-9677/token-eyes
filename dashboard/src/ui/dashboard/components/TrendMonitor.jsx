@@ -1,6 +1,6 @@
 import React from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Maximize2 } from "lucide-react";
+import { Maximize2, TrendingUp } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 import { useCurrency } from "../../../hooks/useCurrency.js";
@@ -383,8 +383,12 @@ export function TrendMonitor({
   // present) on the standalone card; null disables the maximize button.
   zoomConfig = null,
 }) {
+  // Overview contract: only render real observations. Future/missing rows must
+  // not appear as interpolated/extrapolated "Predicted" usage bars.
   const series = React.useMemo(
-    () => (Array.isArray(rows) && rows.length ? rows : []),
+    () => (Array.isArray(rows) && rows.length
+      ? rows.filter((row) => row && !row.future && !row.missing)
+      : []),
     [rows],
   );
 
@@ -482,7 +486,11 @@ export function TrendMonitor({
       {!embedded && (
         <div className="mb-3 flex items-start justify-between gap-2">
           <div>
-            <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
+            <h3
+              className="flex items-center gap-1.5 text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide"
+              data-testid="trend-monitor-title"
+            >
+              <TrendingUp className="h-4 w-4 text-oai-blue-500" aria-hidden="true" />
               {copy("trend.monitor.label")}
             </h3>
             {showTimeZoneLabel && timeZoneLabel && (

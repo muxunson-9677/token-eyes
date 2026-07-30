@@ -207,7 +207,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("$4.25").length).toBeGreaterThan(0);
   });
 
-  it("keeps pending local usage out of authoritative cloud summary totals", async () => {
+  it("keeps the summary consistent with the visible local user before cloud publication", async () => {
     getLeaderboard.mockResolvedValue({
       ...preloadedData,
       entries: [],
@@ -221,9 +221,30 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     const summary = await screen.findByTestId("leaderboard-summary");
     await waitFor(() => {
-      expect(within(summary).getAllByText("0")).toHaveLength(2);
-      expect(within(summary).getByText("-")).toBeInTheDocument();
+      expect(within(summary).getByText("1")).toBeInTheDocument();
+      expect(within(summary).getByText("150")).toBeInTheDocument();
+      expect(within(summary).getByText("$4.25")).toBeInTheDocument();
     });
+  });
+
+  it("does not duplicate the signed-in user when a one-person cloud list has not returned self rank", async () => {
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [{
+        rank: 1,
+        display_name: "Watermelon",
+        total_tokens: "6950299812",
+        estimated_cost_usd: 2061,
+      }],
+      participant_count: 1,
+      aggregate_total_tokens: 6950299812,
+      aggregate_total_cost_usd: 2061,
+    });
+
+    renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+
+    await waitFor(() => expect(getMyLeaderboardRank).toHaveBeenCalled());
+    expect(screen.getAllByTestId("leaderboard-score")).toHaveLength(1);
   });
 
   it("keeps account controls available before the first rank is generated", async () => {
@@ -317,8 +338,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByTestId("leaderboard-score")).toHaveLength(1);
     expect(screen.getAllByText("70.76\u4ebf").length).toBeGreaterThan(0);
     const summary = screen.getByTestId("leaderboard-summary");
-    expect(within(summary).getByText("69.5\u4ebf")).toBeInTheDocument();
-    expect(within(summary).getByText("$2,061")).toBeInTheDocument();
+    expect(within(summary).getByText("70.76\u4ebf")).toBeInTheDocument();
+    expect(within(summary).getByText("$11,156")).toBeInTheDocument();
   });
 
   it("uses the authenticated page account when the SDK user omits its id", async () => {
@@ -929,7 +950,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(scores.some((score) => score.textContent === "$7.89")).toBe(true);
   });
 
-  it("shows stable participant, Token and estimated-cost totals returned by the ranking RPC", async () => {
+  it("adds an unpublished local participant to the cloud aggregate exactly once", async () => {
     getLeaderboard.mockResolvedValue({
       ...preloadedData,
       participant_count: 55,
@@ -943,10 +964,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
     renderLeaderboard();
 
     expect(await screen.findByText("总参与人数")).toBeInTheDocument();
-    expect(screen.getByText("55")).toBeInTheDocument();
+    expect(screen.getByText("56")).toBeInTheDocument();
     expect(screen.getByText("全员 Token")).toBeInTheDocument();
     expect(screen.getByText("1.23亿")).toBeInTheDocument();
     expect(screen.getByText("全员预估花销")).toBeInTheDocument();
-    expect(screen.getByText("$4,321")).toBeInTheDocument();
+    expect(screen.getByText("$4,326")).toBeInTheDocument();
   });
 });

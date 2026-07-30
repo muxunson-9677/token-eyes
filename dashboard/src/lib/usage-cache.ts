@@ -8,7 +8,7 @@ const REAL_USAGE_CACHE_PREFIXES = [
   "tokentracker.projectUsage.",
 ];
 
-export function clearDashboardUsageCachesForRealData() {
+export function clearDashboardMockUsageCaches() {
   if (typeof window === "undefined" || !window.localStorage) return 0;
   let removed = 0;
   try {
@@ -16,6 +16,13 @@ export function clearDashboardUsageCachesForRealData() {
       const key = window.localStorage.key(i);
       if (!key) continue;
       if (!REAL_USAGE_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
+      let payload;
+      try {
+        payload = JSON.parse(window.localStorage.getItem(key) || "null");
+      } catch {
+        continue;
+      }
+      if (payload?.cacheSource !== "mock") continue;
       window.localStorage.removeItem(key);
       removed += 1;
     }
@@ -24,3 +31,5 @@ export function clearDashboardUsageCachesForRealData() {
   }
   return removed;
 }
+
+export const clearDashboardUsageCachesForRealData = clearDashboardMockUsageCaches;

@@ -64,6 +64,37 @@ describe("buildModelUsageDistribution", () => {
     expect(result.rows[5]).toMatchObject({ name: "其他", tokens: 100 });
     expect(result.rows.reduce((sum: number, row: any) => sum + row.tokens, 0)).toBe(1780);
   });
+
+  it("keeps every measured model separate when the overview asks for the full distribution", () => {
+    const breakdown = {
+      sources: [{
+        source: "codex",
+        models: [
+          { model: "gpt-5.6-sol", totals: { total_tokens: 600 } },
+          { model: "gpt-5.5", totals: { total_tokens: 300 } },
+          { model: "deepseek-v4-pro", totals: { total_tokens: 200 } },
+          { model: "model-d", totals: { total_tokens: 100 } },
+          { model: "model-e", totals: { total_tokens: 80 } },
+          { model: "model-f", totals: { total_tokens: 60 } },
+        ],
+      }],
+    };
+
+    const result = buildModelUsageDistribution(breakdown, {
+      limit: Number.MAX_SAFE_INTEGER,
+      otherLabel: "Other",
+    });
+
+    expect(result.rows.map((row) => row.name)).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.5",
+      "deepseek-v4-pro",
+      "model-d",
+      "model-e",
+      "model-f",
+    ]);
+    expect(result.rows.some((row) => row.id === "other-models")).toBe(false);
+  });
 });
 
 // Q02: filter + recompute contract for the model-breakdown helper used by

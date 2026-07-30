@@ -36,12 +36,13 @@ test("widget implementation keeps a single vertical content scroll region", () =
   assert.equal(regions.length, 1);
 });
 
-test("compact widget menus stay inside the native 72px window", () => {
+test("compact widget menus temporarily expand the native window and stay vertical", () => {
   const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
   const css = read("dashboard/src/pages/desktop-widget.css");
-  assert.match(widget, /data-menu-kind/u);
-  assert.match(css, /@media\s*\(max-height:\s*120px\)/u);
-  assert.match(css, /grid-auto-flow:\s*column/u);
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  assert.match(widget, /data-menu-layout="vertical"/u);
+  assert.match(widgetWindow, /set_desktop_widget_popover/u);
+  assert.doesNotMatch(css, /grid-auto-flow:\s*column/u);
 });
 
 test("native widget loads its application route directly instead of rewriting about:blank", () => {
@@ -101,12 +102,27 @@ test("desktop widget persists a project selection preference", () => {
   const hook = read("dashboard/src/hooks/use-desktop-widget.ts");
   const widgetWindow = read("src-tauri/src/widget_window.rs");
   assert.match(hook, /selectedProjectIds/u);
+  assert.match(hook, /selectedProjects/u);
+  assert.match(hook, /activeSessionWindow/u);
   assert.match(widgetWindow, /selected_project_ids/u);
-  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*3/u);
+  assert.match(widgetWindow, /selected_projects/u);
+  assert.match(widgetWindow, /active_session_window/u);
+  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*5/u);
 });
 
-test("compact widget keeps long project selectors scrollable instead of growing", () => {
+test("saving widget preferences notifies the already-open floating WebView", () => {
+  const hook = read("dashboard/src/hooks/use-desktop-widget.ts");
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  assert.match(hook, /token-eyes:desktop-widget-prefs-changed/u);
+  assert.match(
+    widgetWindow,
+    /window\.dispatchEvent\(new Event\('token-eyes:desktop-widget-prefs-changed'\)\)/u,
+  );
+});
+
+test("appearance controls render as a document-level popover instead of covering the capsule", () => {
+  const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
   const css = read("dashboard/src/pages/desktop-widget.css");
-  assert.match(css, /\.widget-menu\[data-menu-kind="project"\][\s\S]*overflow-x:\s*auto/u);
-  assert.match(css, /\.widget-menu\[data-menu-kind="project"\]\s+\.widget-project-option[\s\S]*flex:\s*0 0 124px/u);
+  assert.match(widget, /createPortal\([\s\S]*widget-appearance/u);
+  assert.match(css, /\.widget-appearance\s*\{[\s\S]*position:\s*fixed/u);
 });

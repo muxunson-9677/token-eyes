@@ -38,4 +38,22 @@ describe("ModelUsageDonut", () => {
     expect(screen.getByText("当前范围暂无模型消耗")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "模型消耗分布图" })).not.toBeInTheDocument();
   });
+
+  it("keeps every supplied model readable in a scrollable legend without truncating names", () => {
+    const rows = Array.from({ length: 7 }, (_, index) => ({
+      id: `model-${index}`,
+      name: `A very long measured model name ${index}`,
+      tokens: 1000 - index * 10,
+      percent: 14.2,
+    }));
+    const { container } = render(<ModelUsageDonut totalTokens={6790} rows={rows} />);
+
+    for (const row of rows) {
+      expect(screen.getByText(row.name)).toBeInTheDocument();
+    }
+    const legend = container.querySelector('[data-testid="model-usage-legend"]');
+    expect(legend).toHaveClass("overflow-y-auto");
+    expect(legend.textContent).not.toContain("Other");
+    expect(container.querySelector(".truncate")).toBeNull();
+  });
 });

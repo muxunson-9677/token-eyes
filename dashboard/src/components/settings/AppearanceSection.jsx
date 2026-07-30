@@ -227,7 +227,7 @@ export function AppearanceSection() {
   const { currency, rate, rateSource, rateFetchedAt, setCurrency, refreshRates } = useCurrency();
 
   return (
-    <SectionCard title={copy("settings.section.appearance")}>
+    <SectionCard title={copy("settings.section.appearance")} icon={Monitor} iconTone="blue">
       <SettingsRow
         label={copy("settings.appearance.theme.label")}
         hint={copy("settings.appearance.theme.hint")}

@@ -113,6 +113,30 @@ describe("UsageStatsPanel", () => {
     expect(integrity).toHaveAttribute("title", expect.stringContaining("547"));
   });
 
+  it("does not render Unix epoch dates when the visible ledger is empty", () => {
+    render(
+      <UsageStatsPanel
+        summary={{
+          totals: { total_tokens: 0 },
+          data_integrity: {
+            status: "verified",
+            visible_records: 0,
+            visible_from: null,
+            visible_to: null,
+            raw_records: 0,
+            duplicate_records: 0,
+            malformed_records: 0,
+            updated_at: null,
+          },
+        }}
+      />,
+    );
+
+    const integrity = screen.getByTestId("usage-data-integrity");
+    expect(integrity).not.toHaveTextContent("1970");
+    expect(integrity).not.toHaveTextContent("至");
+  });
+
   it("renders the selected agent identity beside the real-token label", () => {
     render(
       <UsageStatsPanel
@@ -149,9 +173,52 @@ describe("UsageStatsPanel", () => {
 
     const row = screen.getByTestId("usage-cost-summary");
     expect(row).toHaveClass("grid-cols-2", "sm:grid-cols-4");
+    expect(within(row).getAllByTestId("usage-cost-card")).toHaveLength(4);
+    for (const card of within(row).getAllByTestId("usage-cost-card")) {
+      expect(card.querySelector("svg")).not.toBeNull();
+      expect(card.querySelector(".truncate")).toBeNull();
+    }
     expect(within(row).getByText("USD 5.00")).toBeInTheDocument();
-    expect(within(row).getByText("CNY 36.00")).toBeInTheDocument();
+    expect(within(row).getByText("¥36")).toBeInTheDocument();
     expect(within(row).getByText("USD 170.00")).toBeInTheDocument();
+  });
+
+  it("keeps complete comparison copy beside compact CNY and places statistic icons with values", () => {
+    const { container } = render(
+      <UsageStatsPanel
+        summary={{ totals: { total_tokens: 1, request_count: 120, cost_usd: 12 } }}
+        costSummary={{
+          api_usd: 13548.56,
+          api_cny: 97549.63,
+          previous_api_usd: 100,
+          previous_api_cny: 720,
+          subscription_usd: 0,
+          subscription_cny: 0,
+          previous_subscription_usd: 0,
+          previous_subscription_cny: 0,
+          combined_usd: 13548.56,
+          combined_cny: 97549.63,
+          previous_combined_usd: 100,
+          previous_combined_cny: 720,
+          lifetime_combined_usd: 15000,
+          lifetime_combined_cny: 108000,
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("¥9.75万").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("CNY 97,549.63")).not.toBeInTheDocument();
+    const comparison = screen.getAllByTestId("monthly-cost-comparison")[0];
+    expect(comparison).toHaveTextContent(comparison.getAttribute("aria-label"));
+    expect(comparison.querySelector("svg")).toBeNull();
+    expect(container.querySelector('[data-testid="monthly-cost-cny-row"]')).toHaveClass(
+      "flex-row",
+      "items-center",
+      "justify-between",
+    );
+    expect(screen.getByTestId("usage-request-label").querySelector("svg")).toBeNull();
+    expect(screen.getByTestId("usage-request-value").querySelector("svg")).not.toBeNull();
+    expect(screen.getByTestId("usage-total-cost-summary").querySelector("svg")).toBeNull();
   });
 
   it("keeps missing cost values distinct from genuine zero values", () => {
@@ -172,17 +239,18 @@ describe("UsageStatsPanel", () => {
     );
 
     const row = screen.getByTestId("usage-cost-summary");
-    expect(within(row).getAllByText("—")).toHaveLength(2);
+    expect(within(row).getAllByText("未提供字段")).toHaveLength(2);
+    expect(row).not.toHaveTextContent("—");
     expect(within(row).getAllByText("USD 0.00").length).toBeGreaterThanOrEqual(1);
   });
 
   it.each([
-    { current: 120, previous: 100, expected: "较上月新增 20.0%", expectedClass: "text-green-600" },
-    { current: 80, previous: 100, expected: "较上月减少 20.0%", expectedClass: "text-green-600" },
-    { current: 100, previous: 100, expected: "较上月 0.0%", expectedClass: "text-oai-gray-400" },
-    { current: 15, previous: 0, expected: "较上月新增 100.0%", expectedClass: "text-green-600" },
-    { current: 0, previous: 0, expected: "较上月 0.0%", expectedClass: "text-oai-gray-400" },
-  ])("renders the monthly total comparison without invalid zero-base percentages", ({ current, previous, expected, expectedClass }) => {
+    { current: 120, previous: 100, expected: "20.0%", direction: "increase", expectedClass: "text-green-600" },
+    { current: 80, previous: 100, expected: "20.0%", direction: "decrease", expectedClass: "text-green-600" },
+    { current: 100, previous: 100, expected: "0.0%", direction: "flat", expectedClass: "text-oai-gray-400" },
+    { current: 15, previous: 0, expected: "100.0%", direction: "increase", expectedClass: "text-green-600" },
+    { current: 0, previous: 0, expected: "0.0%", direction: "flat", expectedClass: "text-oai-gray-400" },
+  ])("renders the complete monthly comparison copy without invalid zero-base percentages", ({ current, previous, expected, direction, expectedClass }) => {
     render(
       <UsageStatsPanel
         summary={{ totals: { total_tokens: 1 } }}
@@ -203,6 +271,12 @@ describe("UsageStatsPanel", () => {
 
     const comparison = screen.getByTestId("monthly-cost-comparison");
     expect(comparison).toHaveTextContent(expected);
+    expect(comparison).toHaveAttribute("data-direction", direction);
+    expect(comparison.textContent.length).toBeGreaterThan(expected.length);
+    expect(comparison.querySelector("svg")).toBeNull();
+    expect(comparison).not.toHaveTextContent("↑");
+    expect(comparison).not.toHaveTextContent("↓");
+    expect(comparison).not.toHaveTextContent("→");
     expect(comparison).toHaveClass(expectedClass);
     expect(comparison.parentElement).toHaveAttribute("data-testid", "monthly-cost-cny-row");
     expect(screen.queryByTestId("monthly-cost-heading-row")).not.toBeInTheDocument();
@@ -232,7 +306,7 @@ describe("UsageStatsPanel", () => {
     expect(comparisons).toHaveLength(3);
     expect(comparisons[0]).toHaveTextContent("20.0%");
     expect(comparisons[1]).toHaveTextContent("20.0%");
-    expect(comparisons[2]).toHaveTextContent("较上月 0.0%");
+    expect(comparisons[2]).toHaveTextContent("0.0%");
     expect(screen.getAllByTestId("monthly-cost-cny-row")).toHaveLength(3);
     expect(comparisons[0]).toHaveClass("text-green-600");
     expect(comparisons[1]).toHaveClass("text-green-600");
@@ -260,10 +334,27 @@ describe("UsageStatsPanel", () => {
 
     const comparisons = screen.getAllByTestId("monthly-cost-comparison");
     expect(comparisons).toHaveLength(3);
-    expect(comparisons[0]).toHaveTextContent("较上月新增 1325.0%");
-    expect(comparisons[1]).toHaveTextContent("较上月 0.0%");
-    expect(comparisons[2]).toHaveTextContent("较上月新增 1329.6%");
+    expect(comparisons[0]).toHaveTextContent("1325.0%");
+    expect(comparisons[1]).toHaveTextContent("0.0%");
+    expect(comparisons[2]).toHaveTextContent("1329.6%");
     expect(comparisons[0].textContent).not.toContain("¥");
+  });
+
+  it("shows explicit unavailable states instead of fake zeros or dash placeholders", () => {
+    const { container } = render(
+      <UsageStatsPanel
+        summary={{
+          totals: {
+            total_tokens: 10,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("未提供字段").length).toBeGreaterThanOrEqual(7);
+    expect(container).not.toHaveTextContent("—");
+    expect(screen.queryByText("0.0%")).not.toBeInTheDocument();
+    expect(screen.queryByText("$0")).not.toBeInTheDocument();
   });
 
   it("keeps existing stats visible while refreshing", () => {
@@ -288,8 +379,8 @@ describe("UsageStatsPanel", () => {
   it("renders empty state when summary is null", () => {
     render(<UsageStatsPanel summary={null} />);
 
-    // The !totals branch currently reuses the loading copy text.
-    expect(screen.getByText("加载中")).toBeInTheDocument();
+    expect(screen.getByText("暂无统计数据")).toBeInTheDocument();
+    expect(screen.queryByText("加载中")).not.toBeInTheDocument();
   });
 
   it("formats totals below 1e8 with Chinese units", () => {

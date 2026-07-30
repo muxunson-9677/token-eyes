@@ -1,18 +1,39 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 
 pub const WIDGET_LABEL: &str = "desktop-widget";
-const PREFS_VERSION: u8 = 3;
+const PREFS_VERSION: u8 = 5;
 const DEFAULT_WIDTH: u32 = 322;
 const DEFAULT_HEIGHT: u32 = 72;
 const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
 const MIN_WIDTH: u32 = 300;
 const MIN_HEIGHT: u32 = 72;
+const POPOVER_HEIGHT: u32 = 260;
+static TRANSIENT_POPOVER_OPEN: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WidgetProjectSelection {
+    pub id: String,
+    pub label: String,
+    pub path: String,
+}
+
+impl Default for WidgetProjectSelection {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            label: String::new(),
+            path: String::new(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -32,7 +53,9 @@ pub struct WidgetPrefs {
     pub material: String,
     pub opacity: f64,
     pub always_on_top: bool,
+    pub active_session_window: String,
     pub selected_project_ids: Vec<String>,
+    pub selected_projects: Vec<WidgetProjectSelection>,
 }
 
 impl Default for WidgetPrefs {
@@ -53,7 +76,9 @@ impl Default for WidgetPrefs {
             material: "frost".into(),
             opacity: 0.72,
             always_on_top: true,
+            active_session_window: "1h".into(),
             selected_project_ids: Vec::new(),
+            selected_projects: Vec::new(),
         }
     }
 }
@@ -103,6 +128,9 @@ fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
     if !["frost", "graphite", "ocean", "sand"].contains(&prefs.material.as_str()) {
         prefs.material = "frost".into();
     }
+    if !["1h", "3h", "5h", "1d", "3d"].contains(&prefs.active_session_window.as_str()) {
+        prefs.active_session_window = "1h".into();
+    }
     prefs.opacity = if prefs.opacity.is_finite() {
         prefs.opacity.clamp(0.4, 0.96)
     } else {
@@ -120,6 +148,26 @@ fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
         })
         .take(100)
         .collect();
+    prefs.selected_projects = prefs
+        .selected_projects
+        .into_iter()
+        .filter_map(|project| {
+            let id = project.id.trim().to_string();
+            let label = project.label.trim().chars().take(80).collect::<String>();
+            let path = project.path.trim().chars().take(1024).collect::<String>();
+            let valid_id = !id.is_empty()
+                && id.len() <= 96
+                && id.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || ":._-".contains(character)
+                });
+            if valid_id && !label.is_empty() {
+                Some(WidgetProjectSelection { id, label, path })
+            } else {
+                None
+            }
+        })
+        .take(100)
+        .collect();
     prefs
 }
 
@@ -130,7 +178,9 @@ fn merge_display_prefs(mut current: WidgetPrefs, requested: WidgetPrefs) -> Widg
     current.material = requested.material;
     current.opacity = requested.opacity;
     current.always_on_top = requested.always_on_top;
+    current.active_session_window = requested.active_session_window;
     current.selected_project_ids = requested.selected_project_ids;
+    current.selected_projects = requested.selected_projects;
     normalize_prefs(current)
 }
 
@@ -313,6 +363,9 @@ pub fn persist_geometry(window: &WebviewWindow) {
     if !is_widget_window(window.label()) {
         return;
     }
+    if TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed) {
+        return;
+    }
     let mut prefs = load(window.app_handle());
     if let Ok(position) = window.outer_position() {
         prefs.x = Some(position.x);
@@ -354,6 +407,7 @@ pub fn toggle_desktop_widget(app: &AppHandle) {
 
 #[tauri::command]
 pub fn show_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
+    TRANSIENT_POPOVER_OPEN.store(false, Ordering::Relaxed);
     let mut prefs = load(&app);
     let window = widget_window(&app, &prefs)?;
     let _ = window.set_always_on_top(prefs.always_on_top);
@@ -368,6 +422,9 @@ pub fn show_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
 pub fn hide_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
     let mut prefs = load(&app);
     if let Some(window) = app.get_webview_window(WIDGET_LABEL) {
+        if TRANSIENT_POPOVER_OPEN.swap(false, Ordering::Relaxed) {
+            apply_geometry(&window, &prefs);
+        }
         persist_geometry(&window);
         window.hide().map_err(|error| error.to_string())?;
         prefs = load(&app);
@@ -404,6 +461,9 @@ pub fn set_desktop_widget_prefs(
             persist_geometry(&window);
             prefs = load(&app);
         }
+        let _ = window.eval(
+            "window.dispatchEvent(new Event('token-eyes:desktop-widget-prefs-changed'));",
+        );
     }
     Ok(prefs)
 }
@@ -424,6 +484,24 @@ pub fn set_desktop_widget_always_on_top(
     Ok(prefs)
 }
 
+#[tauri::command]
+pub fn set_desktop_widget_popover(app: AppHandle, open: bool) -> Result<(), String> {
+    let prefs = load(&app);
+    let Some(window) = app.get_webview_window(WIDGET_LABEL) else {
+        return Ok(());
+    };
+    if open {
+        TRANSIENT_POPOVER_OPEN.store(true, Ordering::Relaxed);
+        let mut transient = prefs;
+        transient.height = transient.height.max(POPOVER_HEIGHT);
+        apply_geometry(&window, &transient);
+    } else {
+        apply_geometry(&window, &prefs);
+        TRANSIENT_POPOVER_OPEN.store(false, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,6 +516,7 @@ mod tests {
         assert_eq!(prefs.opacity, 0.72);
         assert_eq!(prefs.selected_agent, "all");
         assert_eq!(prefs.mode, "projects");
+        assert_eq!(prefs.active_session_window, "1h");
     }
 
     #[test]
@@ -475,14 +554,16 @@ mod tests {
             selected_agent: "invalid".into(),
             mode: "invalid".into(),
             material: "invalid".into(),
+            active_session_window: "30m".into(),
             ..WidgetPrefs::default()
         });
-        assert_eq!(prefs.version, 3);
+        assert_eq!(prefs.version, 5);
         assert_eq!((prefs.width, prefs.height), (300, 72));
         assert_eq!(prefs.opacity, 0.4);
         assert_eq!(prefs.selected_agent, "all");
         assert_eq!(prefs.mode, "projects");
         assert_eq!(prefs.material, "frost");
+        assert_eq!(prefs.active_session_window, "1h");
     }
 
     #[test]
@@ -503,6 +584,7 @@ mod tests {
             material: "ocean".into(),
             opacity: 0.84,
             always_on_top: false,
+            active_session_window: "3d".into(),
             ..WidgetPrefs::default()
         };
         let merged = merge_display_prefs(current.clone(), requested);
@@ -530,6 +612,24 @@ mod tests {
         assert_eq!(merged.material, "ocean");
         assert_eq!(merged.opacity, 0.84);
         assert!(!merged.always_on_top);
+        assert_eq!(merged.active_session_window, "3d");
+    }
+
+    #[test]
+    fn preference_updates_keep_selected_project_folder_metadata() {
+        let requested = WidgetPrefs {
+            selected_project_ids: vec!["project-75d9d2753cd4".into()],
+            selected_projects: vec![WidgetProjectSelection {
+                id: "project-75d9d2753cd4".into(),
+                label: "012-EDU-lite".into(),
+                path: r"D:\Work\012-EDU-lite".into(),
+            }],
+            ..WidgetPrefs::default()
+        };
+        let merged = merge_display_prefs(WidgetPrefs::default(), requested);
+        assert_eq!(merged.selected_project_ids, vec!["project-75d9d2753cd4"]);
+        assert_eq!(merged.selected_projects[0].label, "012-EDU-lite");
+        assert_eq!(merged.selected_projects[0].path, r"D:\Work\012-EDU-lite");
     }
 
     #[test]

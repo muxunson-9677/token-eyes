@@ -74,6 +74,19 @@ export function prependMeRowToPage({ entries, me, meLabel }) {
     ));
   }
 
+  // A one-person anonymous cloud snapshot is the previously published version
+  // of the signed-in user. Replace it with current local usage instead of
+  // showing the same person twice while self-rank propagation catches up.
+  if (isLocalPending && rows.length === 1 && !rows[0]?.user_id) {
+    return [{
+      ...rows[0],
+      ...me,
+      rank: rows[0]?.rank ?? null,
+      is_me: true,
+      is_pinned: false,
+    }];
+  }
+
   const pinnedRow = {
     ...me,
     rank: meRank,

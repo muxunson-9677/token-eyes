@@ -218,6 +218,13 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(screen.queryByRole("checkbox", { name: "Token Eyes" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Website" }));
 
+    expect(invoke).not.toHaveBeenCalledWith(
+      "set_desktop_widget_prefs",
+      expect.anything(),
+    );
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.windows.projects.save"),
+    }));
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
         prefs: expect.objectContaining({
@@ -225,14 +232,181 @@ describe("WidgetsPage Windows desktop widget", () => {
         }),
       });
     });
+  });
+
+  it("defaults legacy preferences to one hour and saves the selected active-session window", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.fn(async (command, payload) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          selectedProjectIds: [],
+          selectedProjects: [],
+        };
+      }
+      if (command === "set_desktop_widget_prefs") return payload?.prefs;
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const body = String(url).includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : { projectStatus: { projects: [], recentProjects: [] } };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+
+    const range = await screen.findByRole("combobox", {
+      name: copy("widgets.windows.projects.active_window"),
+    });
+    expect(range).toHaveValue("1h");
+    expect(screen.queryByRole("option", { name: "30m" })).not.toBeInTheDocument();
+
+    await user.selectOptions(range, "3d");
+    expect(invoke).not.toHaveBeenCalledWith(
+      "set_desktop_widget_prefs",
+      expect.anything(),
+    );
+
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.windows.projects.save"),
+    }));
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
+        prefs: expect.objectContaining({
+          activeSessionWindow: "3d",
+        }),
+      });
+    });
+  });
+
+  it("stages an arbitrary project folder until the user explicitly saves", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.fn(async (command, payload) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return { visible: true, selectedProjectIds: [], selectedProjects: [] };
+      }
+      if (command === "pick_directory") return "D:\\Work\\012-EDU-lite";
+      if (command === "set_desktop_widget_prefs") return payload?.prefs;
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const body = String(url).includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : { projectStatus: { projects: [] } };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+    await user.click(await screen.findByRole("button", {
+      name: copy("widgets.windows.projects.add_folder"),
+    }));
+
+    expect(screen.getByRole("checkbox", { name: "012-EDU-lite" })).toBeChecked();
+    expect(invoke).not.toHaveBeenCalledWith(
+      "set_desktop_widget_prefs",
+      expect.anything(),
+    );
+
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.windows.projects.save"),
+    }));
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
+        prefs: expect.objectContaining({
+          selectedProjectIds: [expect.stringMatching(/^project-[a-f0-9]{12}$/)],
+          selectedProjects: [{
+            id: expect.stringMatching(/^project-[a-f0-9]{12}$/),
+            label: "012-EDU-lite",
+            path: "D:\\Work\\012-EDU-lite",
+          }],
+        }),
+      });
+    });
+  });
+
+  it("offers at most ten recent active projects while retaining saved inactive folders", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.fn(async (command, payload) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          selectedProjectIds: ["saved-inactive"],
+          selectedProjects: [{
+            id: "saved-inactive",
+            label: "Archived workspace",
+            path: "D:\\Work\\Archived workspace",
+          }],
+        };
+      }
+      if (command === "set_desktop_widget_prefs") return payload?.prefs;
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const body = String(url).includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : {
+          projectStatus: {
+            projects: [],
+            recentProjects: Array.from({ length: 12 }, (_, index) => ({
+              id: `recent-${index + 1}`,
+              label: `Recent ${index + 1}`,
+            })),
+          },
+        };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+    expect(await screen.findByRole("checkbox", { name: "Recent 1" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Recent 10" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Recent 11" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Recent 12" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Archived workspace" })).toBeChecked();
 
     await user.click(screen.getByRole("button", {
       name: copy("widgets.windows.projects.use_recent"),
     }));
+    expect(invoke).not.toHaveBeenCalledWith(
+      "set_desktop_widget_prefs",
+      expect.anything(),
+    );
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.windows.projects.save"),
+    }));
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
-        prefs: expect.objectContaining({ selectedProjectIds: [] }),
-      });
+      const saves = invoke.mock.calls.filter(([command]) => command === "set_desktop_widget_prefs");
+      expect(saves).toHaveLength(1);
+      expect(saves[0][1].prefs.selectedProjectIds).toEqual(
+        Array.from({ length: 10 }, (_, index) => `recent-${index + 1}`),
+      );
     });
   });
 });

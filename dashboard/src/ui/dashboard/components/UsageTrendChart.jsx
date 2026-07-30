@@ -359,20 +359,26 @@ export function UsageTrendChart({
   const yTicksTokens = useMemo(() => computeYTicks(maxToken), [maxToken]);
   const yTicksCost = useMemo(() => computeYTicks(maxCost), [maxCost]);
 
-  // X 轴疏密：最多 X_TICK_MAX 条刻度，始终包含末桶
+  // X 轴疏密：按真实可用宽度均匀取样，并始终包含首末桶。
   const xTicks = useMemo(() => {
     if (numBuckets === 0) return [];
-    const step = Math.max(1, Math.ceil(numBuckets / X_TICK_MAX));
-    const ticks = [];
-    for (let i = 0; i < numBuckets; i += step) {
-      ticks.push({ index: i, x: scaleX(i), label: buckets[i].label });
+    if (numBuckets === 1) {
+      return [{ index: 0, x: scaleX(0), label: buckets[0].label }];
     }
-    const lastIdx = numBuckets - 1;
-    if (ticks[ticks.length - 1]?.index !== lastIdx) {
-      ticks.push({ index: lastIdx, x: scaleX(lastIdx), label: buckets[lastIdx].label });
+    const minimumLabelSpacing = 72;
+    const widthLimitedCount = Math.max(2, Math.floor(chartWidth / minimumLabelSpacing) + 1);
+    const tickCount = Math.min(numBuckets, X_TICK_MAX, widthLimitedCount);
+    const indexes = [];
+    for (let slot = 0; slot < tickCount; slot += 1) {
+      const index = Math.round((slot * (numBuckets - 1)) / (tickCount - 1));
+      if (indexes.at(-1) !== index) indexes.push(index);
     }
-    return ticks;
-  }, [buckets, numBuckets, scaleX]);
+    return indexes.map((index) => ({
+      index,
+      x: scaleX(index),
+      label: buckets[index].label,
+    }));
+  }, [buckets, chartWidth, numBuckets, scaleX]);
 
   // 鼠标交互
   const handleBucketEnter = useCallback((e, bucketStart) => {

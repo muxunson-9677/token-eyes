@@ -171,6 +171,47 @@ test("only signed official extra resets reach unread, history, and native notifi
   assert.deepEqual(h.service.listHistory().map((item) => item.id), [official.id]);
 });
 
+test("acknowledging the newest official reset never promotes older history into the banner", () => {
+  const previous = {
+    id: "official:x:2081955008658252238",
+    type: "official_reset_announcement",
+    window: null,
+    createdAt: new Date(BASE - 24 * 60 * 60_000).toISOString(),
+    sourceUrl: "https://x.com/thsottiaux/status/2081955008658252238",
+    officialUrl: "https://chatgpt.com/codex",
+    source: "signed_feed",
+    alertEligible: true,
+    deliveredChannels: [],
+    expiresAt: new Date(BASE + 29 * 24 * 60 * 60_000).toISOString(),
+  };
+  const latest = {
+    ...previous,
+    id: "official:x:2082317452755751098",
+    createdAt: new Date(BASE).toISOString(),
+    sourceUrl: "https://x.com/thsottiaux/status/2082317452755751098",
+    expiresAt: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
+  };
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 2,
+      events: [previous, latest],
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: [],
+    }),
+  });
+
+  assert.deepEqual(h.service.listUnread().map((item) => item.id), [latest.id]);
+  assert.deepEqual(
+    h.service.listNotificationPending().map((item) => item.id),
+    [latest.id],
+  );
+  h.service.acknowledge(latest.id);
+  assert.deepEqual(h.service.listUnread(), []);
+  assert.deepEqual(h.service.listNotificationPending(), []);
+  assert.equal(h.service.listHistory().length, 2);
+});
+
 test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", async () => {
   assert.equal(
     FEED_URL,
@@ -232,6 +273,50 @@ test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", a
     "Sun, 20 Jul 2026 08:00:00 GMT",
   );
   assert.equal(h.service.listUnread().length, 1);
+});
+
+test("startup rematerializes cached official events when a newer app adds feed metadata", () => {
+  const announcement = {
+    id: "x:2082317452755751098",
+    type: "official_reset_announcement",
+    title: "Codex official extra reset",
+    summary: "Usage limits were reset for all ChatGPT Work and Codex users.",
+    source_url: "https://x.com/thsottiaux/status/2082317452755751098",
+    source_author: "thsottiaux",
+    source_post_id: "2082317452755751098",
+    official_url: "https://chatgpt.com/codex",
+    published_at: new Date(BASE - 60_000).toISOString(),
+    expires_at: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
+    reset_kind: "hard",
+    reset_scope: "all_codex_work_users",
+  };
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 2,
+      events: [{
+        id: `official:${announcement.id}`,
+        type: "official_reset_announcement",
+        createdAt: announcement.published_at,
+        expiresAt: announcement.expires_at,
+        sourceUrl: announcement.source_url,
+        sourceAuthor: announcement.source_author,
+        source: "signed_feed",
+        alertEligible: true,
+      }],
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: [],
+      feed: {
+        fetchedAt: new Date(BASE).toISOString(),
+        announcements: [announcement],
+      },
+    }),
+  });
+
+  const [event] = h.service.listHistory();
+  assert.equal(event.resetKind, "hard");
+  assert.equal(event.resetScope, "all_codex_work_users");
+  assert.equal(event.sourcePostId, "2082317452755751098");
 });
 
 test("offline or invalid feed keeps prior unexpired events and never blocks quota checks", async () => {

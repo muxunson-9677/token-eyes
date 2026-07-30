@@ -300,6 +300,8 @@ export function DataDirectoriesSection() {
     <SectionCard
       title={copy("settings.section.data_dirs")}
       subtitle={copy("settings.data_dirs.subtitle")}
+      icon={FolderOpen}
+      iconTone="green"
       collapsible
       action={
         <div className="flex items-center gap-2">

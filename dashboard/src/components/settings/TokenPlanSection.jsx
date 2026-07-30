@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2, Package } from "lucide-react";
 import {
   getTokenPlans,
   deleteTokenPlan,
@@ -2948,6 +2948,8 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     <SectionCard
       title={copy("settings.section.token_plan")}
       subtitle={copy("settings.token_plan.subtitle")}
+      icon={Package}
+      iconTone="violet"
       collapsible={!editorPlanId}
       action={!editorPlanId ? (
         <button

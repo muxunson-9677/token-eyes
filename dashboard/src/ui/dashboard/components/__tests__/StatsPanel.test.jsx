@@ -48,3 +48,40 @@ it("localizes compact rolling stats labels", () => {
   }
   view.unmount();
 });
+
+it("uses the measured model collection instead of a fixed three-model summary", () => {
+  const models = Array.from({ length: 5 }, (_, index) => ({
+    id: `model-${index}`,
+    name: `Measured model ${index}`,
+    tokens: 500 - index,
+    percent: 20 - index,
+  }));
+  const { container } = renderPanel({ overviewModels: models, topModels: [] });
+
+  for (const model of models) {
+    expect(screen.getByText(model.name)).toBeInTheDocument();
+  }
+  expect(container.querySelector('[data-testid="overview-model-list"]')).toHaveClass("overflow-y-auto");
+  expect(container.querySelector(".truncate")).toBeNull();
+});
+
+it("hides unavailable summary metrics and shows one honest model empty state without dash placeholders", () => {
+  const { container } = render(
+    <StatsPanel
+      rolling={null}
+      periodConversations={null}
+      topModels={[]}
+      overviewModels={[]}
+      rankLabel={null}
+      streakDays={null}
+    />,
+  );
+
+  expect(screen.queryByText("7 天")).not.toBeInTheDocument();
+  expect(screen.queryByText("30 天")).not.toBeInTheDocument();
+  expect(screen.queryByText("平均")).not.toBeInTheDocument();
+  expect(screen.queryByText("对话")).not.toBeInTheDocument();
+  expect(screen.getByText("当前范围暂无模型消耗")).toBeInTheDocument();
+  expect(container).not.toHaveTextContent("—");
+  expect(container).not.toHaveTextContent("--");
+});

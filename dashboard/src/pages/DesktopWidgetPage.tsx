@@ -15,9 +15,10 @@ import {
   type DesktopWidgetAgent,
   type DesktopWidgetMaterial,
   type DesktopWidgetMode,
+  type DesktopWidgetPrefs,
   type DesktopWidgetViewModel,
 } from "../lib/api";
-import { copy } from "../lib/copy";
+import { copy, getCopyLocale } from "../lib/copy";
 // ProviderIcon is a legacy JSX module; its props are stable but it has no declaration file.
 // @ts-expect-error importing an untyped JSX component
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon";
@@ -138,35 +139,68 @@ function CompactSummary({
 function filteredProjectStatus(
   status: DesktopWidgetViewModel["projectStatus"],
   selectedProjectIds: string[],
+  selectedProjects: Array<{ id: string; label: string; path: string }> = [],
 ) {
   let projects = status.projects;
   if (selectedProjectIds.length > 0) {
     const selected = new Set(selectedProjectIds);
     projects = projects.filter((project) => selected.has(project.id));
-  } else {
-    const cutoff = Date.now() - 24 * 60 * 60_000;
-    const recent = projects.filter((project) => project.sessions.some(
-      (session) => session.updatedAt && Date.parse(session.updatedAt) >= cutoff,
-    ));
-    if (recent.length > 0) {
-      projects = recent;
-    } else if (projects.length > 0) {
-      projects = [projects[0]];
-    }
+    const liveById = new Map(projects.map((project) => [project.id, project]));
+    const selectedById = new Map(selectedProjects.map((project) => [project.id, project]));
+    projects = selectedProjectIds.map((id) => {
+      const live = liveById.get(id);
+      if (live) return live;
+      const saved = selectedById.get(id);
+      return saved ? {
+        id,
+        label: saved.label,
+        red: 0,
+        yellow: 0,
+        green: 0,
+        unknown: 0,
+        sessions: [],
+      } : null;
+    }).filter(Boolean) as DesktopWidgetViewModel["projectStatus"]["projects"];
   }
   return projects.reduce((result, project) => ({
     red: result.red + project.red,
     yellow: result.yellow + project.yellow,
     green: result.green + project.green,
     unknown: result.unknown + project.unknown,
+    recentProjects: result.recentProjects,
     projects: [...result.projects, project],
   }), {
     red: 0,
     yellow: 0,
     green: 0,
     unknown: 0,
+    recentProjects: status.recentProjects,
     projects: [] as DesktopWidgetViewModel["projectStatus"]["projects"],
   });
+}
+
+function EmptyProjectSessions() {
+  return (
+    <div className="widget-project__empty">
+      {copy("widget.projects.no_active")}
+    </div>
+  );
+}
+
+function formatSessionTime(value: string | null) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.session.time_unknown");
+  return new Intl.DateTimeFormat(getCopyLocale(), {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
+function shortSessionId(value: string) {
+  return value.length > 8 ? value.slice(-8) : value;
 }
 
 function ExpandedProjects({ status }: {
@@ -179,14 +213,17 @@ function ExpandedProjects({ status }: {
   return (
     <div className="widget-project-list">
       {status.projects.map((project) => {
+        const hasSessions = Boolean(project.sessions.length);
         const open = expandedProject === project.id;
         return (
           <div className="widget-project" key={project.id}>
             <button
               type="button"
               className="widget-project__button"
-              onClick={() => setExpandedProject(open ? null : project.id)}
-              aria-expanded={open}
+              onClick={() => {
+                if (hasSessions) setExpandedProject(open ? null : project.id);
+              }}
+              aria-expanded={hasSessions ? open : undefined}
             >
               <span className="widget-truncate">{project.label}</span>
               <span className="widget-project__counts">
@@ -194,17 +231,32 @@ function ExpandedProjects({ status }: {
                 <i className="yellow">{project.yellow}</i>
                 <i className="green">{project.green}</i>
               </span>
-              <ChevronDown size={13} aria-hidden />
+              {hasSessions ? <ChevronDown size={13} aria-hidden /> : <span />}
             </button>
+            {!hasSessions ? <EmptyProjectSessions /> : null}
             {open ? (
               <div className="widget-session-list">
-                {project.sessions.map((session) => (
-                  <div className="widget-session" key={session.id}>
-                    <span className={`widget-session__status ${session.status}`} />
-                    <span className="widget-truncate">{session.label}</span>
-                    <span>{copy(`widget.status.${session.status}`)}</span>
-                  </div>
-                ))}
+                {project.sessions.map((session) => {
+                  const time = formatSessionTime(session.updatedAt);
+                  const stateLabel = copy(`widget.session_state.${session.state}`);
+                  const sessionLabel = session.label
+                    || copy("widget.session.untitled", { time });
+                  return (
+                    <div
+                      className="widget-session"
+                      key={session.id}
+                      title={copy("widget.session.details", {
+                        status: stateLabel,
+                        time,
+                        id: shortSessionId(session.id),
+                      })}
+                    >
+                      <span className={`widget-session__status ${session.status}`} />
+                      <span className="widget-truncate">{sessionLabel}</span>
+                      <span>{stateLabel}</span>
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
           </div>
@@ -273,12 +325,78 @@ function PortalMenu({
       role="menu"
       aria-label={label}
       data-menu-kind={kind}
+      data-menu-layout="vertical"
       style={{
         top: Math.max(8, (rect?.bottom ?? 8) + 5),
         left: Math.max(8, Math.min(rect?.left ?? 8, window.innerWidth - 190)),
       }}
     >
       {children}
+    </div>,
+    document.body,
+  );
+}
+
+function PortalAppearance({
+  anchor,
+  prefs,
+  updatePrefs,
+  close,
+}: {
+  anchor: React.RefObject<HTMLElement>;
+  prefs: DesktopWidgetPrefs;
+  updatePrefs: (patch: {
+    material?: DesktopWidgetMaterial;
+    opacity?: number;
+  }) => unknown;
+  close: () => void;
+}) {
+  const rect = anchor.current?.getBoundingClientRect();
+  return createPortal(
+    <div
+      className="widget-appearance"
+      role="dialog"
+      aria-label={copy("widget.appearance")}
+      data-text-contrast="light"
+      style={{
+        top: Math.max(8, (rect?.bottom ?? 8) + 5),
+        left: Math.max(8, Math.min(rect?.left ?? 8, window.innerWidth - 292)),
+      }}
+    >
+      <button
+        type="button"
+        className="widget-appearance-close"
+        aria-label={copy("widget.appearance.close")}
+        onClick={close}
+      >
+        <X size={12} aria-hidden />
+      </button>
+      <div className="widget-material-options">
+        {(Object.keys(MATERIAL_KEYS) as DesktopWidgetMaterial[]).map((material) => (
+          <label key={material} className={`widget-material-option widget-material-option--${material}`}>
+            <input
+              type="radio"
+              name="widget-material"
+              checked={prefs.material === material}
+              onChange={() => void updatePrefs({ material })}
+            />
+            <span>{copy(MATERIAL_KEYS[material])}</span>
+          </label>
+        ))}
+      </div>
+      <label className="widget-opacity-control">
+        <span>{copy("widget.opacity")}</span>
+        <input
+          type="range"
+          min="0.4"
+          max="0.96"
+          step="0.02"
+          value={prefs.opacity}
+          aria-label={copy("widget.opacity")}
+          onChange={(event) => void updatePrefs({ opacity: Number(event.target.value) })}
+        />
+        <output>{Math.round(prefs.opacity * 100)}%</output>
+      </label>
     </div>,
     document.body,
   );
@@ -291,22 +409,58 @@ export function DesktopWidgetPage() {
     loading,
     error,
     updatePrefs,
+    setPopoverOpen,
     acknowledgePendingReset,
   } = useDesktopWidget();
   const [openMenu, setOpenMenu] = useState(null as "agent" | "mode" | null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const agentMenuAnchor = useRef(null as HTMLButtonElement | null);
   const modeMenuAnchor = useRef(null as HTMLButtonElement | null);
+  const appearanceAnchor = useRef(null as HTMLButtonElement | null);
 
   useEffect(() => {
     document.documentElement.classList.add("desktop-widget-document");
     return () => document.documentElement.classList.remove("desktop-widget-document");
   }, []);
 
+  useEffect(() => {
+    void setPopoverOpen(Boolean(openMenu || appearanceOpen));
+  }, [appearanceOpen, openMenu, setPopoverOpen]);
+
+  useEffect(() => {
+    if (!openMenu && !appearanceOpen) return undefined;
+    const closePopover = (event: KeyboardEvent | PointerEvent) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== "Escape") return;
+      } else {
+        const target = event.target as HTMLElement;
+        if (target.closest(".widget-menu, .widget-appearance, .widget-agent-control, .widget-corner-controls")) {
+          return;
+        }
+      }
+      setOpenMenu(null);
+      setAppearanceOpen(false);
+    };
+    document.addEventListener("keydown", closePopover);
+    document.addEventListener("pointerdown", closePopover);
+    return () => {
+      document.removeEventListener("keydown", closePopover);
+      document.removeEventListener("pointerdown", closePopover);
+    };
+  }, [appearanceOpen, openMenu]);
+
+  useEffect(() => () => {
+    void setPopoverOpen(false);
+  }, [setPopoverOpen]);
+
   const model = viewModel;
   const selectedProjectIds = prefs.selectedProjectIds ?? [];
   const visibleProjectStatus = model
-    ? filteredProjectStatus(model.projectStatus, selectedProjectIds)
+    ? filteredProjectStatus(
+      model.projectStatus,
+      selectedProjectIds,
+      prefs.selectedProjects ?? [],
+    )
     : null;
   const visibleModel = model && visibleProjectStatus
     ? { ...model, projectStatus: visibleProjectStatus }
@@ -363,7 +517,10 @@ export function DesktopWidgetPage() {
   }
 
   return (
-    <main className="desktop-widget-root" style={rootStyle}>
+    <main
+      className={`desktop-widget-root ${openMenu || appearanceOpen ? "has-popover" : ""}`}
+      style={rootStyle}
+    >
       <article
         className={`desktop-widget-card desktop-widget-card--${prefs.material} ${prefs.expanded ? "is-expanded" : ""}`}
         data-testid="desktop-widget-card"
@@ -385,7 +542,10 @@ export function DesktopWidgetPage() {
               className="widget-agent-arrow"
               aria-label={copy("widget.agent_menu")}
               aria-expanded={openMenu === "agent"}
-              onClick={() => setOpenMenu(openMenu === "agent" ? null : "agent")}
+              onClick={() => {
+                setAppearanceOpen(false);
+                setOpenMenu(openMenu === "agent" ? null : "agent");
+              }}
             >
               <ChevronDown size={12} aria-hidden />
             </button>
@@ -408,11 +568,15 @@ export function DesktopWidgetPage() {
               className="widget-icon-button"
               aria-label={copy("widget.mode_menu")}
               aria-expanded={openMenu === "mode"}
-              onClick={() => setOpenMenu(openMenu === "mode" ? null : "mode")}
+              onClick={() => {
+                setAppearanceOpen(false);
+                setOpenMenu(openMenu === "mode" ? null : "mode");
+              }}
             >
               <Layers3 size={11} aria-hidden />
             </button>
             <button
+              ref={appearanceAnchor}
               type="button"
               className="widget-icon-button"
               aria-label={copy("widget.appearance")}
@@ -443,44 +607,6 @@ export function DesktopWidgetPage() {
           </div>
         ) : null}
 
-        {appearanceOpen ? (
-          <div className="widget-appearance" role="dialog" aria-label={copy("widget.appearance")}>
-            <button
-              type="button"
-              className="widget-appearance-close"
-              aria-label={copy("widget.appearance.close")}
-              onClick={() => setAppearanceOpen(false)}
-            >
-              <X size={12} aria-hidden />
-            </button>
-            <div className="widget-material-options">
-              {(Object.keys(MATERIAL_KEYS) as DesktopWidgetMaterial[]).map((material) => (
-                <label key={material} className={`widget-material-option widget-material-option--${material}`}>
-                  <input
-                    type="radio"
-                    name="widget-material"
-                    checked={prefs.material === material}
-                    onChange={() => void updatePrefs({ material })}
-                  />
-                  <span>{copy(MATERIAL_KEYS[material])}</span>
-                </label>
-              ))}
-            </div>
-            <label className="widget-opacity-control">
-              <span>{copy("widget.opacity")}</span>
-              <input
-                type="range"
-                min="0.4"
-                max="0.96"
-                step="0.02"
-                value={prefs.opacity}
-                aria-label={copy("widget.opacity")}
-                onChange={(event) => void updatePrefs({ opacity: Number(event.target.value) })}
-              />
-              <output>{Math.round(prefs.opacity * 100)}%</output>
-            </label>
-          </div>
-        ) : null}
       </article>
 
       {openMenu === "agent" ? (
@@ -522,6 +648,15 @@ export function DesktopWidgetPage() {
             </button>
           ))}
         </PortalMenu>
+      ) : null}
+
+      {appearanceOpen ? (
+        <PortalAppearance
+          anchor={appearanceAnchor}
+          prefs={prefs}
+          updatePrefs={updatePrefs}
+          close={() => setAppearanceOpen(false)}
+        />
       ) : null}
 
     </main>

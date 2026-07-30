@@ -241,6 +241,31 @@ describe("pure helpers", () => {
 });
 
 describe("UsageTrendChart", () => {
+  it("keeps the final two date labels far enough apart to remain readable", () => {
+    resizeObservers.length = 0;
+    const series = Array.from({ length: 20 }, (_, index) => ({
+      bucket_start: `2026-07-${String(index + 1).padStart(2, "0")}`,
+      label: `07-${String(index + 1).padStart(2, "0")}~${String(index + 7).padStart(2, "0")}`,
+      source: "codex",
+      input_tokens: 100 + index,
+      output_tokens: 50,
+      cache_creation_input_tokens: 10,
+      cached_input_tokens: 5,
+      cost_usd: 1,
+    }));
+    const { container } = render(<UsageTrendChart series={series} />);
+
+    act(() => resizeObservers.at(-1).resize(900, 620));
+
+    const labels = Array.from(container.querySelectorAll('svg[role="img"] text'))
+      .filter((node) => /^07-\d{2}~\d{2}$/.test(node.textContent || ""));
+    const lastTwo = labels.slice(-2);
+    expect(lastTwo).toHaveLength(2);
+    expect(
+      Number(lastTwo[1].getAttribute("x")) - Number(lastTwo[0].getAttribute("x")),
+    ).toBeGreaterThanOrEqual(72);
+  });
+
   it("grows the plot SVG to the measured available height", () => {
     resizeObservers.length = 0;
     const { container } = render(<UsageTrendChart series={makeSeries()} />);

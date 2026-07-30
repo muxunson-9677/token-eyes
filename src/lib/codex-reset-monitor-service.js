@@ -36,9 +36,34 @@ function emptyState() {
   };
 }
 
+function materializeOfficialFeedEvents(events, announcements) {
+  const compactedEvents = compactCodexResetEvents(events);
+  if (!Array.isArray(announcements)) return compactedEvents;
+  const previousById = new Map(compactedEvents.map((event) => [event.id, event]));
+  const localEvents = compactedEvents.filter(
+    (event) => event.type !== "official_reset_announcement",
+  );
+  const officialEvents = announcements.map((announcement) => {
+    const nextEvent = officialEvent(announcement);
+    const previous = previousById.get(nextEvent.id);
+    if (!previous) return nextEvent;
+    return {
+      ...nextEvent,
+      deliveredChannels: Array.isArray(previous.deliveredChannels)
+        ? previous.deliveredChannels
+        : [],
+      acknowledgedChannels: Array.isArray(previous.acknowledgedChannels)
+        ? previous.acknowledgedChannels
+        : [],
+    };
+  });
+  return compactCodexResetEvents([...localEvents, ...officialEvents]);
+}
+
 function initializeState(value) {
   const base = emptyState();
   if (!value || typeof value !== "object" || Array.isArray(value)) return base;
+  const feed = value.feed && typeof value.feed === "object" ? value.feed : null;
   return {
     ...base,
     ...value,
@@ -52,14 +77,14 @@ function initializeState(value) {
       value.restoreCandidates && typeof value.restoreCandidates === "object"
         ? value.restoreCandidates
         : {},
-    events: compactCodexResetEvents(value.events),
+    events: materializeOfficialFeedEvents(value.events, feed?.announcements),
     acknowledgedEventIds: Array.isArray(value.acknowledgedEventIds)
       ? value.acknowledgedEventIds
       : [],
     rolloutCursor: value.rolloutCursor?.files
       ? value.rolloutCursor
       : { files: {} },
-    feed: value.feed && typeof value.feed === "object" ? value.feed : null,
+    feed,
   };
 }
 
@@ -82,6 +107,8 @@ function officialEvent(announcement) {
     sourceUrl: announcement.source_url,
     sourceAuthor: announcement.source_author || null,
     sourcePostId: announcement.source_post_id || null,
+    resetKind: announcement.reset_kind || "unknown",
+    resetScope: announcement.reset_scope || "unknown",
     title: announcement.title,
     summary: announcement.summary,
     expiresAt: announcement.expires_at,
@@ -141,13 +168,32 @@ function createCodexResetMonitorService({
     saveState?.(state);
   }
 
+  function latestOfficialEvent() {
+    let latest = null;
+    let latestMs = Number.NEGATIVE_INFINITY;
+    for (const event of state.events) {
+      if (event.type !== "official_reset_announcement") continue;
+      const createdMs = Date.parse(event.createdAt || "");
+      if (!Number.isFinite(createdMs) || createdMs <= latestMs) continue;
+      latest = event;
+      latestMs = createdMs;
+    }
+    return latest;
+  }
+
   function listUnread(channel = "banner") {
+    const latest = latestOfficialEvent();
+    if (!latest) return [];
     const currentMs = now();
-    return listUnreadCodexResetEvents(state, { channel }).filter((event) => (
-      event.type === "official_reset_announcement"
-      && typeof event.expiresAt === "string"
-      && Date.parse(event.expiresAt) > currentMs
-    ));
+    if (
+      typeof latest.expiresAt !== "string"
+      || Date.parse(latest.expiresAt) <= currentMs
+    ) {
+      return [];
+    }
+    const unread = listUnreadCodexResetEvents(state, { channel })
+      .find((event) => event.id === latest.id);
+    return unread ? [unread] : [];
   }
 
   function listHistory() {
@@ -156,12 +202,16 @@ function createCodexResetMonitorService({
   }
 
   function listNotificationPending() {
-    return state.events.filter((event) => (
-      event.type === "official_reset_announcement"
-      && event.alertEligible === true
-      && !event.deliveredChannels?.includes("windows_notification")
-      && !state.acknowledgedEventIds.includes(event.id)
-    ));
+    const latest = latestOfficialEvent();
+    if (
+      !latest
+      || latest.alertEligible !== true
+      || latest.deliveredChannels?.includes("windows_notification")
+      || state.acknowledgedEventIds.includes(latest.id)
+    ) {
+      return [];
+    }
+    return [latest];
   }
 
   function markDelivered(eventId, channel) {
@@ -270,6 +320,10 @@ function createCodexResetMonitorService({
         if (state.feed?.announcements) {
           persist({
             ...state,
+            events: materializeOfficialFeedEvents(
+              state.events,
+              state.feed.announcements,
+            ),
             feed: {
               ...state.feed,
               fetchedAt: new Date(now()).toISOString(),
@@ -299,15 +353,9 @@ function createCodexResetMonitorService({
       }
 
       const announcements = payload.announcements.map((item) => ({ ...item }));
-      const localEvents = state.events.filter(
-        (event) => event.type !== "official_reset_announcement",
-      );
       const nextState = {
         ...state,
-        events: compactCodexResetEvents([
-          ...localEvents,
-          ...announcements.map(officialEvent),
-        ]),
+        events: materializeOfficialFeedEvents(state.events, announcements),
         feed: {
           fetchedAt: new Date(now()).toISOString(),
           etag: safeHeader(response.headers?.get?.("etag")),

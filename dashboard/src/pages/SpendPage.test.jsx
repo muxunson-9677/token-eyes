@@ -13,6 +13,7 @@ import {
   getLocalSettings,
   setLocalSettings,
   getRequestUsageRecords,
+  getUsageBounds,
   getUsageSummary,
   getProviderStats,
   getUsageAttribution,
@@ -46,6 +47,7 @@ vi.mock("../lib/api", () => ({
   updateSpendRecord: vi.fn(),
   getSpendTimeseries: vi.fn(),
   getRequestUsageRecords: vi.fn(),
+  getUsageBounds: vi.fn(),
   getLocalSettings: vi.fn(),
   setLocalSettings: vi.fn(),
   getUsageSummary: vi.fn(),
@@ -134,6 +136,12 @@ beforeEach(() => {
   useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: VISIBLE_PROVIDERS });
   getLocalSettings.mockResolvedValue({ dashboardRefresh: { interval: "1m" } });
   setLocalSettings.mockResolvedValue({ ok: true });
+  getUsageBounds.mockResolvedValue({
+    ok: true,
+    from: "2026-06-01",
+    to: "2026-06-30",
+    empty: false,
+  });
   getSpendRecords.mockResolvedValue(EMPTY_RESULT);
   getSpendTimeseries.mockResolvedValue({
     sources: [],
@@ -292,9 +300,14 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     const comparisons = await screen.findAllByTestId("monthly-cost-comparison");
     expect(comparisons).toHaveLength(3);
-    expect(comparisons[0]).toHaveTextContent("较上月新增 100.0%");
-    expect(comparisons[1]).toHaveTextContent("较上月新增 20.0%");
-    expect(comparisons[2]).toHaveTextContent("较上月新增 20.0%");
+    expect(comparisons[0]).toHaveTextContent("100.0%");
+    expect(comparisons[1]).toHaveTextContent("20.0%");
+    expect(comparisons[2]).toHaveTextContent("20.0%");
+    for (const comparison of comparisons) {
+      expect(comparison).toHaveAttribute("data-direction", "increase");
+      expect(comparison.querySelector("svg")).toBeNull();
+      expect(comparison.textContent).toBe(comparison.getAttribute("aria-label"));
+    }
     expect(screen.getAllByTestId("monthly-cost-cny-row")).toHaveLength(3);
     expect(getSpendRecords).toHaveBeenCalledTimes(2);
     const [currentCall, previousCall] = getSpendRecords.mock.calls;
@@ -531,9 +544,9 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     // One call each is expected for the top filter dropdown metadata. Hidden
     // detail tabs must not add extra provider/model stats requests.
     expect(getProviderStats).toHaveBeenCalledTimes(1);
-    expect(getProviderStats.mock.calls[0][0]?.sources).toBeUndefined();
+    expect(getProviderStats.mock.calls[0][0]?.sources).toEqual(VISIBLE_PROVIDERS);
     expect(getModelStats).toHaveBeenCalledTimes(1);
-    expect(getModelStats.mock.calls[0][0]?.sources).toBeUndefined();
+    expect(getModelStats.mock.calls[0][0]?.sources).toEqual(VISIBLE_PROVIDERS);
   });
 
   it("renders UsageTrendChartCard", async () => {
@@ -611,7 +624,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(layout).toHaveClass("lg:grid-cols-[minmax(0,1fr)_17rem]");
     expect(within(layout).getByTestId("token-service-list")).toHaveClass("h-full");
     expect(await within(layout).findByTestId("usage-trend-plot")).toHaveClass("flex-1");
-    expect(getTokenPlans).toHaveBeenCalledTimes(2);
+    expect(getTokenPlans).toHaveBeenCalledTimes(1);
   });
 
   it("provider tab renders ProviderUsageTable with hook data", async () => {
@@ -681,15 +694,15 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(getSpendRecords.mock.calls[0][0]).not.toHaveProperty("sources");
   });
 
-  it("does not let Token-plan card visibility remove Cursor from usage totals", async () => {
+  it("scopes usage totals to providers enabled in Limits display", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["claude"] });
     render(<SpendUsagePage />);
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
     const callArgs = getUsageSummary.mock.calls[0][0];
-    expect(callArgs?.sources).toEqual([]);
+    expect(callArgs?.sources).toEqual(["claude"]);
   });
 
-  it("does not let Token-plan card visibility remove Cursor from provider statistics", async () => {
+  it("scopes provider statistics to providers enabled in Limits display", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["claude"] });
     const user = userEvent.setup();
     render(<SpendUsagePage />);
@@ -699,16 +712,17 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     });
     await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
     const callArgs = getProviderStats.mock.calls[0][0];
-    expect(callArgs?.sources).toBeUndefined();
+    expect(callArgs?.sources).toEqual(["claude"]);
   });
 
-  it("empty Token-plan card visibility does not disable local usage statistics", async () => {
+  it("shows no usage statistics when no provider is enabled in Limits display", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
     render(<SpendUsagePage />);
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     expect(getSpendRecords.mock.calls[0][0]).not.toHaveProperty("sources");
-    await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
-    await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
+    expect(getUsageSummary).not.toHaveBeenCalled();
+    expect(getProviderStats).not.toHaveBeenCalled();
+    expect(getModelStats).not.toHaveBeenCalled();
   });
 });
 
@@ -801,7 +815,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     expect(getApiBillingAccounts).toHaveBeenCalled();
   });
 
-  it("shows not-connected status with dash for cost when no billing data", async () => {
+  it("shows an explicit unavailable state for cost when no billing data is connected", async () => {
     getApiBillingAccounts.mockResolvedValue({
       accounts: [
         {
@@ -822,8 +836,8 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText("Anthropic")).toBeInTheDocument();
-    const dashElements = screen.getAllByText(/—/);
-    expect(dashElements.length).toBeGreaterThan(0);
+    expect(screen.getAllByText("未提供字段").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
   });
 
   it("initial load calls getApiBillingAccounts for cost accumulation data", async () => {
@@ -928,7 +942,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledWith("cfg-1"));
   });
 
-  it("shows — (not 0) for balance/monthSpend/lifetimeSpend when status is not-connected", async () => {
+  it("shows an explicit unavailable state for balance and spend fields when status is not-connected", async () => {
     getProviderApiConfigs.mockResolvedValue({
       ok: true,
       data: {
@@ -965,13 +979,11 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     expect(await screen.findByText("Anthropic")).toBeInTheDocument();
     // The status badge text for not-connected.
     expect(screen.getByText("未连接")).toBeInTheDocument();
-    // Multiple "—" should appear for the unknown financial values — and crucially
-    // the balance row must NOT render "0" or "USD 0.00" for unknown values.
-    const dashElements = screen.getAllByText(/—/);
-    expect(dashElements.length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("未提供字段").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
   });
 
-  it("shows — for financial values when status is error (never 0)", async () => {
+  it("shows an explicit unavailable state for financial values when status is error", async () => {
     getProviderApiConfigs.mockResolvedValue({
       ok: true,
       data: {
@@ -1010,9 +1022,8 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     expect(screen.getByText("同步错误")).toBeInTheDocument();
     // The actionable error message renders.
     expect(screen.getByText("请求超时")).toBeInTheDocument();
-    // "—" for all financial values — never 0.
-    const dashElements = screen.getAllByText(/—/);
-    expect(dashElements.length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("未提供字段").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
   });
 
   it("does NOT render any API Key input on /spend/cost (keys only in settings)", async () => {

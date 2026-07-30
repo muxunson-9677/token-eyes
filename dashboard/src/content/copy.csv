@@ -1,5 +1,6 @@
 key,module,page,component,slot,text,notes,status
 spend.usage.integrity.verified,dashboard,SpendPage,UsageStatsPanel,integrity_verified,"本地账本已核对 · {{records}} 条有效汇总 · {{from}} 至 {{to}}",,active
+spend.usage.integrity.verified_empty,dashboard,SpendPage,UsageStatsPanel,integrity_verified_empty,"本地账本已核对 · 0 条有效汇总",,active
 spend.usage.integrity.attention,dashboard,SpendPage,UsageStatsPanel,integrity_attention,"本地账本需要检查 · Token 差值 {{delta}}",,active
 spend.usage.integrity.details,dashboard,SpendPage,UsageStatsPanel,integrity_details,"原始 {{raw}} 行；合并 {{duplicates}} 条重复累计记录；跳过 {{malformed}} 条损坏记录；最后更新 {{updated}}",,active
 leaderboard.sync.syncing,leaderboard,LeaderboardPage,ParticipationSync,status,"正在同步本地用量并生成你的排行……",,active
@@ -97,6 +98,8 @@ login_modal.subtitle,shared,*,LoginModal,subtitle,"Sign in to join the leaderboa
 login_modal.continue_email,shared,*,LoginModal,continue_email,"Continue with Email",,active
 login_modal.divider_email,shared,*,LoginModal,divider_email,"email",,active
 shared.placeholder.short,shared,*,*,placeholder_short,"--",,active
+shared.data.not_provided,shared,*,*,data_not_provided,"Field not provided",,active
+spend.usage.empty,dashboard,SpendPage,UsageStatsPanel,empty,"No usage statistics yet",,active
 shared.unit.percent,shared,*,*,unit_percent,"%",,active
 shared.unit.thousand_abbrev,shared,*,*,unit_thousand_abbrev,"K",,active
 shared.unit.million_abbrev,shared,*,*,unit_million_abbrev,"M",,active
@@ -1904,6 +1907,28 @@ reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
 reset_history.completed,ui,ResetHistoryPage,ResetRecord,completed,"Quota reset completed",,active
 reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored early",,active
 reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active
+reset_history.source.tibo,ui,ResetHistoryPage,ResetRecord,source_tibo,"Tibo @thsottiaux · X",,active
+reset_history.source.openai,ui,ResetHistoryPage,ResetRecord,source_openai,"OpenAI official source",,active
+reset_history.kind.hard,ui,ResetHistoryPage,ResetRecord,kind_hard,"Usage-limit reset",,active
+reset_history.kind.banked,ui,ResetHistoryPage,ResetRecord,kind_banked,"Banked reset added",,active
+reset_history.kind.mixed,ui,ResetHistoryPage,ResetRecord,kind_mixed,"Reset + banked reset",,active
+reset_history.kind.unknown,ui,ResetHistoryPage,ResetRecord,kind_unknown,"Official extra quota update",,active
+reset_history.scope.all_paid_users,ui,ResetHistoryPage,ResetRecord,scope_paid,"All paid users",,active
+reset_history.scope.all_codex_work_users,ui,ResetHistoryPage,ResetRecord,scope_codex_work,"Codex and ChatGPT Work users",,active
+reset_history.scope.unknown,ui,ResetHistoryPage,ResetRecord,scope_unknown,"See official announcement for scope",,active
+reset_history.sources_title,ui,ResetHistoryPage,ResetHistoryPage,sources_title,"Source index",,active
+reset_history.stats.period,ui,ResetHistoryPage,ResetStatisticsSummary,period,"Period",,active
+reset_history.stats.period_value,ui,ResetHistoryPage,ResetStatisticsSummary,period_value,"Last {{days}} days",,active
+reset_history.stats.count,ui,ResetHistoryPage,ResetStatisticsSummary,count,"Resets",,active
+reset_history.stats.count_value,ui,ResetHistoryPage,ResetStatisticsSummary,count_value,"{{count}} times",,active
+reset_history.stats.average,ui,ResetHistoryPage,ResetStatisticsSummary,average,"Average interval",,active
+reset_history.stats.shortest,ui,ResetHistoryPage,ResetStatisticsSummary,shortest,"Shortest interval",,active
+reset_history.stats.longest,ui,ResetHistoryPage,ResetStatisticsSummary,longest,"Longest interval",,active
+reset_history.stats.insufficient,ui,ResetHistoryPage,ResetStatisticsSummary,insufficient,"Not enough data",,active
+reset_history.stats.duration_minutes,ui,ResetHistoryPage,ResetStatisticsSummary,duration_minutes,"{{minutes}} minutes",,active
+reset_history.stats.duration_hours,ui,ResetHistoryPage,ResetStatisticsSummary,duration_hours,"{{hours}} hours",,active
+reset_history.stats.duration_days,ui,ResetHistoryPage,ResetStatisticsSummary,duration_days,"{{days}} days",,active
+reset_history.stats.duration_days_hours,ui,ResetHistoryPage,ResetStatisticsSummary,duration_days_hours,"{{days}} days {{hours}} hours",,active
 usage.attribution.title,ui,SpendPage,UsageAttributionPanel,title,"Usage attribution",,active
 usage.attribution.subtitle,ui,SpendPage,UsageAttributionPanel,subtitle,"Break down verified local collection environments without cloud legacy records.",,active
 usage.attribution.group_label,ui,SpendPage,UsageAttributionPanel,group_label,"Group by",,active
@@ -1948,6 +1973,7 @@ widget.mode.limits,ui,DesktopWidgetPage,WidgetModeMenu,limits,"Usage limits",,ac
 widget.mode.models,ui,DesktopWidgetPage,WidgetModeMenu,models,"Model usage",,active
 widget.projects.summary,ui,DesktopWidgetPage,ProjectSummary,summary,"Conversation status",,active
 widget.projects.filter,ui,DesktopWidgetPage,ProjectFilter,button,"选择显示的项目",,active
+widget.projects.no_active,ui,DesktopWidgetPage,ExpandedProjects,no_active,"No active conversations",,active
 widget.models.tokens,ui,DesktopWidgetPage,ModelSummary,tokens,"Tokens",,active
 widget.models.cost,ui,DesktopWidgetPage,ModelSummary,cost,"Cost",,active
 widget.empty,ui,DesktopWidgetPage,WidgetContent,empty,"No data",,active
@@ -1958,6 +1984,15 @@ widget.status.red,ui,DesktopWidgetPage,ProjectDetails,status_red,"Needs attentio
 widget.status.yellow,ui,DesktopWidgetPage,ProjectDetails,status_yellow,"Running",,active
 widget.status.green,ui,DesktopWidgetPage,ProjectDetails,status_green,"Completed",,active
 widget.status.unknown,ui,DesktopWidgetPage,ProjectDetails,status_unknown,"Unknown",,active
+widget.session_state.waiting_approval,ui,DesktopWidgetPage,ProjectDetails,state_waiting_approval,"Waiting for approval",,active
+widget.session_state.error,ui,DesktopWidgetPage,ProjectDetails,state_error,"Run error",,active
+widget.session_state.running,ui,DesktopWidgetPage,ProjectDetails,state_running,"Running",,active
+widget.session_state.completed,ui,DesktopWidgetPage,ProjectDetails,state_completed,"Completed",,active
+widget.session_state.stopped,ui,DesktopWidgetPage,ProjectDetails,state_stopped,"Stopped",,active
+widget.session_state.unknown,ui,DesktopWidgetPage,ProjectDetails,state_unknown,"Unknown",,active
+widget.session.untitled,ui,DesktopWidgetPage,ProjectDetails,untitled,"Session at {{time}}",,active
+widget.session.time_unknown,ui,DesktopWidgetPage,ProjectDetails,time_unknown,"unknown time",,active
+widget.session.details,ui,DesktopWidgetPage,ProjectDetails,details,"{{status}} · {{time}} · Session {{id}}",,active
 widget.material.frost,ui,DesktopWidgetPage,AppearancePanel,frost,"Frost",,active
 widget.material.graphite,ui,DesktopWidgetPage,AppearancePanel,graphite,"Graphite",,active
 widget.material.ocean,ui,DesktopWidgetPage,AppearancePanel,ocean,"Ocean",,active
@@ -1968,12 +2003,24 @@ widget.reset.acknowledge,ui,DesktopWidgetPage,ResetAlert,acknowledge,"Acknowledg
 widgets.windows.show,ui,WidgetsPage,WindowsWidgetToggle,show,"Show desktop widget",,active
 widgets.windows.hide,ui,WidgetsPage,WindowsWidgetToggle,hide,"Hide desktop widget",,active
 widgets.windows.projects.title,ui,WidgetsPage,WindowsWidgetProjectSettings,title,"桌面小组件项目",,active
-widgets.windows.projects.recent_hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"默认显示最近 24 小时活跃的项目",,active
-widgets.windows.projects.selected_count,ui,WidgetsPage,WindowsWidgetProjectSettings,count,"已选择 {count} 个项目",,active
+widgets.windows.projects.recent_hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"选择要在桌面小组件中显示的项目",,active
+widgets.windows.projects.selected_count,ui,WidgetsPage,WindowsWidgetProjectSettings,count,"已选择 {{count}} 个项目",,active
+widgets.windows.projects.active_window,ui,WidgetsPage,WindowsWidgetProjectSettings,active_window,"活跃会话范围",,active
+widgets.windows.projects.active_window_hint,ui,WidgetsPage,WindowsWidgetProjectSettings,active_window_hint,"超过该时间未更新的会话显示为不活跃",,active
+widgets.windows.projects.active_window.1h,ui,WidgetsPage,WindowsWidgetProjectSettings,active_window_1h,"1 小时",,active
+widgets.windows.projects.active_window.3h,ui,WidgetsPage,WindowsWidgetProjectSettings,active_window_3h,"3 小时",,active
+widgets.windows.projects.active_window.5h,ui,WidgetsPage,WindowsWidgetProjectSettings,active_window_5h,"5 小时",,active
+widgets.windows.projects.active_window.1d,ui,WidgetsPage,WindowsWidgetProjectSettings,active_window_1d,"1 天",,active
+widgets.windows.projects.active_window.3d,ui,WidgetsPage,WindowsWidgetProjectSettings,active_window_3d,"3 天",,active
+widgets.windows.projects.add_folder,ui,WidgetsPage,WindowsWidgetProjectSettings,add_folder,"选择项目文件夹",,active
 widgets.windows.projects.use_recent,ui,WidgetsPage,WindowsWidgetProjectSettings,reset,"恢复最近活跃项目",,active
 widgets.windows.projects.search,ui,WidgetsPage,WindowsWidgetProjectSettings,search,"搜索项目",,active
 widgets.windows.projects.load_failed,ui,WidgetsPage,WindowsWidgetProjectSettings,error,"项目列表加载失败，请确认 Token Eyes 正在运行。",,active
 widgets.windows.projects.empty,ui,WidgetsPage,WindowsWidgetProjectSettings,empty,"没有匹配的项目",,active
+widgets.windows.projects.recent_title,ui,WidgetsPage,WindowsWidgetProjectSettings,recent_title,"最近活跃",,active
+widgets.windows.projects.save,ui,WidgetsPage,WindowsWidgetProjectSettings,save,"保存并同步",,active
+widgets.windows.projects.saving,ui,WidgetsPage,WindowsWidgetProjectSettings,saving,"正在保存…",,active
+widgets.windows.projects.saved,ui,WidgetsPage,WindowsWidgetProjectSettings,saved,"已同步到桌面小组件",,active
 limits.accounts.refreshing,ui,LimitsPage,UsageLimitsPanel,refreshing,"Refreshing {{count}} accounts…",,active
 limits.accounts.row_refreshing,ui,LimitsPage,UsageLimitsPanel,row_refreshing,"Refreshing…",,active
 limits.accounts.error,ui,LimitsPage,UsageLimitsPanel,account_error,"Refresh failed: {{error}}",,active

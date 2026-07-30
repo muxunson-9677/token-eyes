@@ -4,6 +4,7 @@ type DateRangeOptions = {
   timeZone?: string;
   offsetMinutes?: number;
   now?: Date;
+  availableFrom?: string | null;
 };
 
 export function formatDateUTC(d: Date) {
@@ -48,7 +49,7 @@ function formatDateParts(parts: any) {
 
 export function getRangeForPeriod(
   period: any,
-  { timeZone, offsetMinutes, now }: DateRangeOptions = {},
+  { timeZone, offsetMinutes, now, availableFrom }: DateRangeOptions = {},
 ) {
   const baseDate = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
   const parts = getLocalDateParts({ timeZone, offsetMinutes, date: baseDate });
@@ -88,7 +89,11 @@ export function getRangeForPeriod(
 
   // "total": the complete local ledger.
   if (period === "total") {
-    return { from: "1970-01-01", to };
+    const availableStart = parseDateString(availableFrom);
+    return {
+      from: availableStart && String(availableFrom) <= to ? String(availableFrom) : "1970-01-01",
+      to,
+    };
   }
 
   // Default to week (safe fallback)
@@ -204,7 +209,7 @@ export function getCostMonthRanges(options: CostMonthRangeOptions = {}) {
  */
 export function computeRangeFromKey(
   key: string,
-  { timeZone, offsetMinutes, now }: DateRangeOptions = {},
+  { timeZone, offsetMinutes, now, availableFrom }: DateRangeOptions = {},
 ): { from: string; to: string } {
   const baseDate = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
   const parts = getLocalDateParts({ timeZone, offsetMinutes, date: baseDate });
@@ -217,7 +222,11 @@ export function computeRangeFromKey(
   if (!today) return { from: to, to };
 
   if (key === "total") {
-    return { from: "1970-01-01", to };
+    const availableStart = parseDateString(availableFrom);
+    return {
+      from: availableStart && String(availableFrom) <= to ? String(availableFrom) : "1970-01-01",
+      to,
+    };
   }
 
   if (key === "today") {

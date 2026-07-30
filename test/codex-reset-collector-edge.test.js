@@ -41,4 +41,8 @@ test("collector backfills and retains exact Tibo reset announcements for 30 days
   assert.match(source, /\.slice\(0,\s*100\)/u);
   assert.match(source, /RESET_CONCEPT/u);
   assert.match(source, /CODEX_CONCEPT/u);
+  assert.match(source, /reset_kind/u);
+  assert.match(source, /reset_scope/u);
+  assert.match(source, /classifyResetKind/u);
+  assert.match(source, /classifyResetScope/u);
 });

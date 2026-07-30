@@ -37,6 +37,7 @@ describe("useDesktopWidget", () => {
           material: "frost",
           opacity: 0.72,
           alwaysOnTop: true,
+          activeSessionWindow: "3h",
         };
       }
       return undefined;
@@ -59,7 +60,7 @@ describe("useDesktopWidget", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(api.getDesktopWidgetViewModel).toHaveBeenCalledWith("codex");
+    expect(api.getDesktopWidgetViewModel).toHaveBeenCalledWith("codex", "3h");
     expect(result.current.viewModel).toEqual(viewModel);
 
     await act(async () => {
@@ -74,6 +75,33 @@ describe("useDesktopWidget", () => {
     expect(invoke.mock.calls.some(([command]) => command.includes("size"))).toBe(false);
   });
 
+  it("reloads the view model with a newly saved active-session window", async () => {
+    const { result } = renderHook(() => useDesktopWidget());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          ...result.current.prefs,
+          activeSessionWindow: "3d",
+        };
+      }
+      return undefined;
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("token-eyes:desktop-widget-prefs-changed"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.prefs.activeSessionWindow).toBe("3d");
+    expect(api.getDesktopWidgetViewModel).toHaveBeenLastCalledWith("codex", "3d");
+  });
+
   it("acknowledges the alert globally, then refreshes the same card", async () => {
     const { result } = renderHook(() => useDesktopWidget());
     await act(async () => {
@@ -85,5 +113,39 @@ describe("useDesktopWidget", () => {
     });
     expect(api.acknowledgeCodexResetEvent).toHaveBeenCalledWith("reset-1");
     expect(api.getDesktopWidgetViewModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads saved project preferences immediately when the settings page synchronizes them", async () => {
+    const { result } = renderHook(() => useDesktopWidget());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          ...result.current.prefs,
+          selectedProjectIds: ["project-b"],
+          selectedProjects: [{
+            id: "project-b",
+            label: "Website",
+            path: "D:\\Work\\Website",
+          }],
+        };
+      }
+      return undefined;
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("token-eyes:desktop-widget-prefs-changed"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.prefs.selectedProjectIds).toEqual(["project-b"]);
+    expect(result.current.prefs.selectedProjects).toEqual([
+      expect.objectContaining({ id: "project-b", label: "Website" }),
+    ]);
   });
 });

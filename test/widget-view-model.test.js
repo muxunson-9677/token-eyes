@@ -8,8 +8,11 @@ const {
   flattenUsageLimitsPayload,
 } = require("../src/lib/widget-view-model");
 
+const NOW_MS = Date.parse("2026-07-29T08:30:00.000Z");
+
 test("builds filtered status, limits, model totals, and one pending reset", () => {
   const result = buildWidgetViewModel({
+    nowMs: NOW_MS,
     agent: "codex",
     usage: [
       { agent: "codex", model: "gpt-5", tokens: 80, costUsd: 1.2 },
@@ -107,6 +110,7 @@ test("builds filtered status, limits, model totals, and one pending reset", () =
 
 test("deduplicates archived and active copies of one session and keeps the newest status", () => {
   const result = buildWidgetViewModel({
+    nowMs: NOW_MS,
     sessions: [
       {
         agent: "codex",
@@ -139,9 +143,69 @@ test("deduplicates archived and active copies of one session and keeps the newes
   );
 });
 
+test("keeps ordinary interruptions neutral and preserves exact alert states and task titles", () => {
+  const result = buildWidgetViewModel({
+    nowMs: NOW_MS,
+    sessions: [
+      {
+        agent: "codex",
+        projectId: "project-a",
+        projectLabel: "Token Eyes",
+        sessionId: "019-interrupted",
+        sessionLabel: "执行代码修复",
+        status: "interrupted",
+        updatedAt: "2026-07-29T08:20:00.000Z",
+      },
+      {
+        agent: "codex",
+        projectId: "project-a",
+        projectLabel: "Token Eyes",
+        sessionId: "019-approval",
+        sessionLabel: "检查发布方案",
+        status: "waiting_approval",
+        updatedAt: "2026-07-29T08:19:00.000Z",
+      },
+      {
+        agent: "codex",
+        projectId: "project-a",
+        projectLabel: "Token Eyes",
+        sessionId: "019-error",
+        sessionLabel: "生成安装包",
+        status: "error",
+        updatedAt: "2026-07-29T08:18:00.000Z",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    {
+      red: result.projectStatus.red,
+      yellow: result.projectStatus.yellow,
+      green: result.projectStatus.green,
+      unknown: result.projectStatus.unknown,
+    },
+    { red: 2, yellow: 0, green: 0, unknown: 1 },
+  );
+  const sessions = new Map(
+    result.projectStatus.projects[0].sessions.map((session) => [session.id, session]),
+  );
+  assert.deepEqual(sessions.get("019-interrupted"), {
+    id: "019-interrupted",
+    label: "执行代码修复",
+    status: "stopped",
+    state: "stopped",
+    updatedAt: "2026-07-29T08:20:00.000Z",
+  });
+  assert.equal(sessions.get("019-approval").status, "red");
+  assert.equal(sessions.get("019-approval").state, "waiting_approval");
+  assert.equal(sessions.get("019-error").status, "red");
+  assert.equal(sessions.get("019-error").state, "error");
+});
+
 test("returns compact empty states and does not expose raw paths or unknown fields", () => {
   const secretPath = "C:\\Users\\alice\\secret-project";
   const result = buildWidgetViewModel({
+    nowMs: NOW_MS,
     agent: "cursor",
     usage: [],
     sessions: [{
@@ -162,6 +226,11 @@ test("returns compact empty states and does not expose raw paths or unknown fiel
     yellow: 0,
     green: 0,
     unknown: 1,
+    recentProjects: [{
+      id: result.projectStatus.projects[0].id,
+      label: "secret-project",
+      updatedAt: "2026-07-29T08:00:00.000Z",
+    }],
     projects: [{
       id: result.projectStatus.projects[0].id,
       label: "secret-project",
@@ -171,8 +240,9 @@ test("returns compact empty states and does not expose raw paths or unknown fiel
       unknown: 1,
       sessions: [{
         id: "session-safe",
-        label: "session-safe",
+        label: null,
         status: "unknown",
+        state: "unknown",
         updatedAt: "2026-07-29T08:00:00.000Z",
       }],
     }],
@@ -182,6 +252,144 @@ test("returns compact empty states and does not expose raw paths or unknown fiel
   assert.deepEqual(result.limits, []);
   assert.deepEqual(result.totals, { tokens: 0, costUsd: 0, models: [] });
   assert.equal(result.pendingReset, null);
+});
+
+test("offers stale sessions as recent project choices without marking them active", () => {
+  const sessions = [
+    {
+      agent: "codex",
+      projectId: "project-old",
+      projectLabel: "Old Project",
+      sessionId: "old-newer",
+      status: "completed",
+      updatedAt: new Date(NOW_MS - 61 * 60_000).toISOString(),
+    },
+    {
+      agent: "codex",
+      projectId: "project-old",
+      projectLabel: "Old Project",
+      sessionId: "old-older",
+      status: "completed",
+      updatedAt: new Date(NOW_MS - 2 * 60 * 60_000).toISOString(),
+    },
+    ...Array.from({ length: 11 }, (_, index) => ({
+      agent: "codex",
+      projectId: `recent-${index + 1}`,
+      projectLabel: `Recent ${index + 1}`,
+      sessionId: `recent-session-${index + 1}`,
+      status: "completed",
+      updatedAt: new Date(NOW_MS - (index + 2) * 60 * 60_000).toISOString(),
+    })),
+  ];
+
+  const result = buildWidgetViewModel({ nowMs: NOW_MS, sessions });
+
+  assert.deepEqual(result.projectStatus.projects, []);
+  assert.equal(result.projectStatus.recentProjects.length, 10);
+  assert.deepEqual(result.projectStatus.recentProjects[0], {
+    id: "project-old",
+    label: "Old Project",
+    updatedAt: new Date(NOW_MS - 61 * 60_000).toISOString(),
+  });
+  assert.equal(
+    result.projectStatus.recentProjects.filter((project) => project.id === "project-old").length,
+    1,
+  );
+  assert.equal(
+    result.projectStatus.recentProjects.some((project) => project.id === "recent-10"),
+    false,
+  );
+});
+
+test("defaults active status to one hour and supports the five approved windows", () => {
+  const sessions = [
+    {
+      agent: "codex",
+      projectId: "project-45m",
+      projectLabel: "45 minutes",
+      sessionId: "session-45m",
+      status: "running",
+      updatedAt: new Date(NOW_MS - 45 * 60_000).toISOString(),
+    },
+    {
+      agent: "codex",
+      projectId: "project-2h",
+      projectLabel: "2 hours",
+      sessionId: "session-2h",
+      status: "running",
+      updatedAt: new Date(NOW_MS - 2 * 60 * 60_000).toISOString(),
+    },
+    {
+      agent: "codex",
+      projectId: "project-2d",
+      projectLabel: "2 days",
+      sessionId: "session-2d",
+      status: "running",
+      updatedAt: new Date(NOW_MS - 2 * 24 * 60 * 60_000).toISOString(),
+    },
+  ];
+
+  const visibleIds = (activeSessionWindow) => buildWidgetViewModel({
+    nowMs: NOW_MS,
+    sessions,
+    activeSessionWindow,
+  }).projectStatus.projects.map((project) => project.id).sort();
+
+  assert.deepEqual(visibleIds(undefined), ["project-45m"]);
+  assert.deepEqual(visibleIds("30m"), ["project-45m"]);
+  assert.deepEqual(visibleIds("1h"), ["project-45m"]);
+  assert.deepEqual(visibleIds("3h"), ["project-2h", "project-45m"]);
+  assert.deepEqual(visibleIds("5h"), ["project-2h", "project-45m"]);
+  assert.deepEqual(visibleIds("1d"), ["project-2h", "project-45m"]);
+  assert.deepEqual(visibleIds("3d"), ["project-2d", "project-2h", "project-45m"]);
+});
+
+test("keeps only the newest ten sessions active within the selected window", () => {
+  const sessions = Array.from({ length: 12 }, (_, index) => ({
+    agent: "codex",
+    projectId: index % 2 === 0 ? "project-a" : "project-b",
+    projectLabel: index % 2 === 0 ? "Project A" : "Project B",
+    sessionId: `fresh-${index}`,
+    status: index % 3 === 0 ? "error" : index % 3 === 1 ? "running" : "completed",
+    updatedAt: new Date(NOW_MS - index * 60_000).toISOString(),
+  }));
+  sessions.push(
+    {
+      agent: "codex",
+      projectId: "project-stale",
+      projectLabel: "Stale",
+      sessionId: "stale-red",
+      status: "error",
+      updatedAt: new Date(NOW_MS - 60 * 60_000 - 1).toISOString(),
+    },
+    {
+      agent: "codex",
+      projectId: "project-stale",
+      projectLabel: "Stale",
+      sessionId: "stale-yellow",
+      status: "running",
+      updatedAt: new Date(NOW_MS - 24 * 60 * 60_000).toISOString(),
+    },
+    {
+      agent: "codex",
+      projectId: "project-stale",
+      projectLabel: "Stale",
+      sessionId: "stale-green",
+      status: "completed",
+      updatedAt: new Date(NOW_MS - 7 * 24 * 60 * 60_000).toISOString(),
+    },
+  );
+
+  const result = buildWidgetViewModel({ nowMs: NOW_MS, sessions });
+  const visibleSessions = result.projectStatus.projects
+    .flatMap((project) => project.sessions);
+
+  assert.equal(visibleSessions.length, 10);
+  assert.equal(result.projectStatus.projects.some((project) => project.id === "project-stale"), false);
+  assert.deepEqual(
+    visibleSessions.map((session) => session.id).sort(),
+    Array.from({ length: 10 }, (_, index) => `fresh-${index}`),
+  );
 });
 
 test("an official extra reset alert overrides the capsule regardless of the selected agent", () => {

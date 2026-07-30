@@ -790,14 +790,14 @@ export function LeaderboardPage({
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
-  const participantCount = Math.max(
+  const cloudParticipantCount = Math.max(
     0,
     Number(listData?.participant_count ?? totalEntries) || 0,
   );
-  const aggregateTotalTokens = Number.isFinite(Number(listData?.aggregate_total_tokens))
+  const cloudAggregateTotalTokens = Number.isFinite(Number(listData?.aggregate_total_tokens))
     ? Math.max(0, Number(listData.aggregate_total_tokens))
     : null;
-  const aggregateTotalCost = Number.isFinite(Number(listData?.aggregate_total_cost_usd))
+  const cloudAggregateTotalCost = Number.isFinite(Number(listData?.aggregate_total_cost_usd))
     ? Math.max(0, Number(listData.aggregate_total_cost_usd))
     : null;
   const currentPage = listData?.page ?? listPage;
@@ -824,6 +824,80 @@ export function LeaderboardPage({
       : null;
     return prependMeRowToPage({ entries: rows, me: displayedMe, meLabel });
   }, [listData?.entries, localMe, me, meLabel]);
+  const reconciledSummary = useMemo(() => {
+    const rows = Array.isArray(listData?.entries) ? listData.entries : [];
+    if (!localMe) {
+      return {
+        participantCount: cloudParticipantCount,
+        aggregateTotalTokens: cloudAggregateTotalTokens,
+        aggregateTotalCost: cloudAggregateTotalCost,
+      };
+    }
+
+    const matchingIndex = me?.user_id
+      ? rows.findIndex((entry) => entry?.user_id === me.user_id)
+      : -1;
+    const rankMatchIndex = matchingIndex !== -1 || me?.rank == null
+      ? matchingIndex
+      : rows.findIndex(function matchesRank(entry) {
+        return Number(entry?.rank) === Number(me.rank);
+      });
+    const inferredPendingMatch = (
+      rankMatchIndex < 0
+      && me?.rank == null
+      && rows.length === 1
+      && !rows[0]?.user_id
+    ) ? rows[0] : null;
+    const matchedCloudRow = rankMatchIndex !== -1 ? rows[rankMatchIndex] : inferredPendingMatch;
+    const localTokens = Math.max(0, Number(localMe.total_tokens) || 0);
+    const localCost = Number.isFinite(Number(localMe.estimated_cost_usd))
+      ? Math.max(0, Number(localMe.estimated_cost_usd))
+      : null;
+
+    if (matchedCloudRow) {
+      const oldTokens = Math.max(0, Number(matchedCloudRow.total_tokens) || 0);
+      const oldCost = Math.max(0, Number(matchedCloudRow.estimated_cost_usd) || 0);
+      return {
+        participantCount: Math.max(1, cloudParticipantCount),
+        aggregateTotalTokens: Math.max(
+          0,
+          Number(cloudAggregateTotalTokens || 0) - oldTokens + localTokens,
+        ),
+        aggregateTotalCost: localCost == null
+          ? cloudAggregateTotalCost
+          : Math.max(0, Number(cloudAggregateTotalCost || 0) - oldCost + localCost),
+      };
+    }
+
+    if (rows.length === 0) {
+      return {
+        participantCount: 1,
+        aggregateTotalTokens: localTokens,
+        aggregateTotalCost: localCost,
+      };
+    }
+
+    return {
+      participantCount: cloudParticipantCount + 1,
+      aggregateTotalTokens: Math.max(0, Number(cloudAggregateTotalTokens || 0) + localTokens),
+      aggregateTotalCost: localCost == null
+        ? cloudAggregateTotalCost
+        : Math.max(0, Number(cloudAggregateTotalCost || 0) + localCost),
+    };
+  }, [
+    cloudAggregateTotalCost,
+    cloudAggregateTotalTokens,
+    cloudParticipantCount,
+    listData?.entries,
+    localMe,
+    me?.rank,
+    me?.user_id,
+  ]);
+  const {
+    participantCount,
+    aggregateTotalTokens,
+    aggregateTotalCost,
+  } = reconciledSummary;
 
   const myPage = useMemo(
     () => pageContainingRank(me?.rank, pageSize),

@@ -6,7 +6,7 @@ import { CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
 // 02 work order contract tests for CostAccumulation.
 //
 // Covers:
-//  - F6/Task-10 (未知成本不得显示 0): missing totals → "—", real 0 → "0.00".
+//  - F6/Task-10 (未知成本不得显示 0): missing totals → explicit unavailable state, real 0 → "0.00".
 //    Both summary cards and API billing cards must distinguish "field absent"
 //    from "genuinely zero cost".
 //  - F5 (one_time contract): the subscription form's cycle select offers the
@@ -21,6 +21,7 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("../../../../lib/copy", () => ({
   copy: (key, params) => {
+    if (key === "shared.unit.percent") return "%";
     if (!params) return key;
     if (key === "spend.cost.month_picker.value") return `${params.year}年${params.month}月`;
     if (key === "spend.cost.month_picker.year_to_month") return `${params.year}年截至${params.month}月`;
@@ -64,9 +65,38 @@ it("renders API, subscription, and total month comparisons beside the CNY line",
   for (const testId of ["api", "subscription", "total"]) {
     const comparison = screen.getByTestId(`monthly-cost-comparison-${testId}`);
     expect(comparison.parentElement).toHaveTextContent("CNY");
+    expect(comparison.parentElement).toHaveClass("justify-between");
+    expect(comparison.querySelector("svg")).toBeNull();
   }
+  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveTextContent(
+    "spend.monthly_change.increase:20.0%",
+  );
   expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-emerald-600");
   expect(screen.getByTestId("monthly-cost-comparison-subscription")).toHaveClass("text-emerald-600");
+});
+
+it("visually separates the summary and each existing management section without changing their controls", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      tokenPackages={[]}
+      providerApiBalances={[]}
+      apiBillingAccounts={[]}
+      subscriptionRecords={[]}
+    />,
+  );
+
+  expect(screen.getByTestId("cost-summary-region")).toHaveClass("rounded-xl", "border");
+  expect(screen.getAllByTestId("cost-summary-icon")).toHaveLength(4);
+  expect(screen.getByTestId("cost-summary-icon-api")).toHaveAttribute("data-tone", "blue");
+  expect(screen.getByTestId("cost-summary-icon-subscription")).toHaveAttribute("data-tone", "violet");
+  expect(screen.getByTestId("cost-summary-icon-total")).toHaveAttribute("data-tone", "green");
+  expect(screen.getByTestId("cost-summary-icon-lifetime")).toHaveAttribute("data-tone", "orange");
+  for (const id of ["token-packages", "provider-api", "api-billing", "subscriptions"]) {
+    const section = document.querySelector(`[data-cost-section="${id}"]`);
+    expect(section).toHaveClass("rounded-xl", "border");
+    expect(within(section).getByTestId("cost-section-icon")).toBeInTheDocument();
+  }
 });
 
 it("lets the user browse historical cost months without advancing into the future", () => {
@@ -164,7 +194,7 @@ describe("getMonthComparison MoM copy boundary", () => {
 // Task-10 / F6: unknown cost must render "—", never fake 0.
 // --------------------------------------------------------------------------
 
-it("Task-10: summary cards render '—' when costSummary totals are null (missing)", () => {
+it("Task-10: summary cards render an explicit unavailable state when totals are null", () => {
   render(
     <CostAccumulation
       costSummary={{
@@ -176,14 +206,8 @@ it("Task-10: summary cards render '—' when costSummary totals are null (missin
       }}
     />
   );
-  // The summary section renders four cards. Each card's value is a dual
-  // USD/CNY block; when the USD total is null, both lines must be "—".
-  // Assert that "—" appears (and never "USD 0.00" for the missing fields).
-  const dashes = screen.getAllByText("—");
-  // 4 cards × 2 lines (USD + CNY) = 8 "—" at minimum (provider/api sections
-  // may contribute more). The key assertion: there ARE dashes, and NO
-  // "USD 0.00" text node for the summary totals.
-  expect(dashes.length).toBeGreaterThanOrEqual(8);
+  expect(screen.getAllByText("shared.data.not_provided").length).toBeGreaterThanOrEqual(4);
+  expect(document.body).not.toHaveTextContent("—");
   expect(screen.queryByText("USD 0.00")).not.toBeInTheDocument();
 });
 
@@ -214,7 +238,7 @@ it("Task-10: a real non-zero total renders the formatted amount, not '—'", () 
   expect(screen.getAllByText("USD 0.00").length).toBeGreaterThanOrEqual(1);
 });
 
-it("Task-10: API billing card shows '—' for a synced account with null monthCostUsd", () => {
+it("Task-10: API billing card shows an explicit unavailable state for null costs", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
@@ -232,15 +256,13 @@ it("Task-10: API billing card shows '—' for a synced account with null monthCo
       ]}
     />
   );
-  // The API billing card renders the cost inline: "spend.cost.api_billing.month_cost: —".
-  // Use a regex to match the "—" within the billing section. The key assertion:
-  // a synced account with null cost shows "—", never "USD 0.00".
   const section = screen.getByText("spend.cost.api_billing.section").closest("section");
   expect(section).not.toBeNull();
   const monthCostLine = within(section).getByText(/spend\.cost\.api_billing\.month_cost:/);
   const lifetimeCostLine = within(section).getByText(/spend\.cost\.api_billing\.lifetime_cost:/);
-  expect(monthCostLine.textContent).toContain("—");
-  expect(lifetimeCostLine.textContent).toContain("—");
+  expect(monthCostLine.textContent).toContain("shared.data.not_provided");
+  expect(lifetimeCostLine.textContent).toContain("shared.data.not_provided");
+  expect(section.textContent).not.toContain("—");
   expect(section.textContent).not.toContain("USD 0.00");
 });
 
@@ -271,7 +293,7 @@ it("Task-10: API billing card shows 'USD 0.00' for a synced account with real 0 
   expect(lifetimeCostLine.textContent).toContain("USD 0.00");
 });
 
-it("Task-10: API billing card shows '—' for a not-connected account regardless of cost fields", () => {
+it("Task-10: API billing card shows an explicit unavailable state when not connected", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
@@ -281,7 +303,7 @@ it("Task-10: API billing card shows '—' for a not-connected account regardless
           provider: "openai",
           accountName: "OpenAI Usage",
           billingSource: "api",
-          monthCostUsd: 50, // even if a value is present, not-connected → "—"
+          monthCostUsd: 50,
           lifetimeCostUsd: 500,
           status: "not-connected",
           lastSyncedAt: null,
@@ -293,9 +315,33 @@ it("Task-10: API billing card shows '—' for a not-connected account regardless
   expect(section).not.toBeNull();
   const monthCostLine = within(section).getByText(/spend\.cost\.api_billing\.month_cost:/);
   const lifetimeCostLine = within(section).getByText(/spend\.cost\.api_billing\.lifetime_cost:/);
-  expect(monthCostLine.textContent).toContain("—");
-  expect(lifetimeCostLine.textContent).toContain("—");
+  expect(monthCostLine.textContent).toContain("shared.data.not_provided");
+  expect(lifetimeCostLine.textContent).toContain("shared.data.not_provided");
+  expect(section.textContent).not.toContain("—");
   expect(section.textContent).not.toContain("USD 50.00");
+});
+
+it("uses compact CNY and full-copy comparisons in the monthly summary", () => {
+  render(
+    <CostAccumulation
+      costSummary={{
+        ...BASE_SUMMARY,
+        monthApiCostUsd: 13548.56,
+        previousMonthApiCostUsd: 100,
+        monthSubscriptionCostUsd: 0,
+        previousMonthSubscriptionCostUsd: 0,
+        monthTotalCostUsd: 13548.56,
+        previousMonthTotalCostUsd: 100,
+        lifetimeTotalCostUsd: 15000,
+        usdToCny: 7.2,
+      }}
+    />,
+  );
+
+  expect(screen.getAllByText("CNY 9.75万").length).toBeGreaterThanOrEqual(1);
+  const comparison = screen.getByTestId("monthly-cost-comparison-api");
+  expect(comparison.querySelector("svg")).toBeNull();
+  expect(comparison).toHaveTextContent("spend.monthly_change.increase:13448.6%");
 });
 
 // --------------------------------------------------------------------------

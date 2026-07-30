@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const widget = vi.hoisted(() => ({
   updatePrefs: vi.fn(),
+  setPopoverOpen: vi.fn(),
   acknowledgePendingReset: vi.fn(),
   value: {} as any,
 }));
@@ -14,7 +15,16 @@ vi.mock("../hooks/use-desktop-widget", () => ({
   useDesktopWidget: () => widget.value,
 }));
 vi.mock("../lib/copy", () => ({
-  copy: (key: string) => `copy:${key}`,
+  getCopyLocale: () => {
+    return Intl.DateTimeFormat().resolvedOptions().locale;
+  },
+  copy: (key: string, params?: Record<string, string>) => {
+    if (key === "widget.session.untitled") return `${params?.time} \u7684\u4f1a\u8bdd`;
+    if (key === "widget.session.details") {
+      return `${params?.status} · ${params?.time} · ${params?.id}`;
+    }
+    return `copy:${key}`;
+  },
 }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ startDragging }),
@@ -82,6 +92,7 @@ const viewModel = {
 describe("DesktopWidgetPage", () => {
   beforeEach(() => {
     widget.updatePrefs.mockReset().mockResolvedValue(undefined);
+    widget.setPopoverOpen.mockReset().mockResolvedValue(undefined);
     widget.acknowledgePendingReset.mockReset().mockResolvedValue(undefined);
     startDragging.mockReset().mockResolvedValue(undefined);
     widget.value = {
@@ -90,6 +101,7 @@ describe("DesktopWidgetPage", () => {
       loading: false,
       error: null,
       updatePrefs: widget.updatePrefs,
+      setPopoverOpen: widget.setPopoverOpen,
       acknowledgePendingReset: widget.acknowledgePendingReset,
     };
   });
@@ -107,7 +119,9 @@ describe("DesktopWidgetPage", () => {
     expect(widget.updatePrefs).not.toHaveBeenCalled();
     const agentMenu = screen.getByRole("menu", { name: "copy:widget.agent_menu" });
     expect(agentMenu.parentElement).toBe(document.body);
+    expect(agentMenu).toHaveAttribute("data-menu-layout", "vertical");
     expect(within(agentMenu).getAllByRole("menuitemradio")).toHaveLength(5);
+    expect(widget.setPopoverOpen).toHaveBeenCalledWith(true);
 
     await user.click(screen.getByRole("button", { name: "copy:widget.mode_menu" }));
     const modeMenu = screen.getByRole("menu", { name: "copy:widget.mode_menu" });
@@ -145,6 +159,89 @@ describe("DesktopWidgetPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps selected project folders visible with an empty state when no session is active", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: {
+        ...prefs,
+        expanded: true,
+        selectedProjectIds: ["project-folder"],
+        selectedProjects: [{
+          id: "project-folder",
+          label: "012-EDU-lite",
+          path: "D:\\Work\\012-EDU-lite",
+        }],
+      },
+      viewModel: {
+        ...viewModel,
+        projectStatus: {
+          red: 0,
+          yellow: 0,
+          green: 0,
+          unknown: 0,
+          projects: [],
+        },
+      },
+    };
+
+    render(<DesktopWidgetPage />);
+    expect(screen.getByText("012-EDU-lite")).toBeInTheDocument();
+    expect(screen.getByText("copy:widget.projects.no_active")).toBeInTheDocument();
+  });
+
+  it("shows the official task title, exact stopped state, and a readable fallback instead of UUIDs", async () => {
+    const user = userEvent.setup();
+    const officialTitle = "\u6267\u884c\u4ee3\u7801\u4fee\u590d";
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, expanded: true },
+      viewModel: {
+        ...viewModel,
+        projectStatus: {
+          red: 0,
+          yellow: 0,
+          green: 0,
+          unknown: 2,
+          projects: [{
+            id: "project-a",
+            label: "010-Token eye",
+            red: 0,
+            yellow: 0,
+            green: 0,
+            unknown: 2,
+            sessions: [
+              {
+                id: "019f9c26-1e55-7100-bc08-5a8f6b4a6892",
+                label: officialTitle,
+                status: "stopped",
+                state: "stopped",
+                updatedAt: "2026-07-27T08:57:29.273Z",
+              },
+              {
+                id: "019-untitled-session",
+                label: null,
+                status: "stopped",
+                state: "stopped",
+                updatedAt: "2026-07-27T09:00:00.000Z",
+              },
+            ],
+          }],
+        },
+      },
+    };
+
+    render(<DesktopWidgetPage />);
+    await user.click(screen.getByRole("button", { name: /010-Token eye/u }));
+
+    const taskTitle = screen.getByText(officialTitle);
+    const taskRow = taskTitle.closest(".widget-session");
+    expect(taskRow).toHaveTextContent("copy:widget.session_state.stopped");
+    expect(taskRow).toHaveAttribute("title", expect.stringContaining("5a8f6b4a6892".slice(-8)));
+    expect(screen.queryByText("019f9c26-1e55-7100-bc08-5a8f6b4a6892")).not.toBeInTheDocument();
+    expect(screen.queryByText("019-untitled-session")).not.toBeInTheDocument();
+    expect(screen.getByText(new RegExp("\u7684\u4f1a\u8bdd$", "u"))).toBeInTheDocument();
+  });
+
   it("uses one scroll region for expanded limit and model details", () => {
     widget.value = {
       ...widget.value,
@@ -166,17 +263,23 @@ describe("DesktopWidgetPage", () => {
     expect(capsule).not.toHaveTextContent("gpt-5-codex");
   });
 
-  it("keeps appearance controls inside the same card", async () => {
+  it("portals appearance controls outside the capsule and temporarily expands the native window", async () => {
     const user = userEvent.setup();
     render(<DesktopWidgetPage />);
     await user.click(screen.getByRole("button", { name: "copy:widget.appearance" }));
     const card = screen.getByTestId("desktop-widget-card");
-    expect(within(card).getAllByRole("radio")).toHaveLength(4);
-    expect(within(card).getByRole("slider", { name: "copy:widget.opacity" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "copy:widget.appearance" });
+    expect(dialog.parentElement).toBe(document.body);
+    expect(dialog).toHaveAttribute("data-text-contrast", "light");
+    expect(within(card).queryByRole("dialog")).not.toBeInTheDocument();
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(4);
+    expect(within(dialog).getByRole("slider", { name: "copy:widget.opacity" })).toBeInTheDocument();
     expect(screen.getAllByTestId("desktop-widget-card")).toHaveLength(1);
+    expect(widget.setPopoverOpen).toHaveBeenCalledWith(true);
 
     await user.click(screen.getByRole("button", { name: "copy:widget.appearance.close" }));
     expect(screen.queryByRole("dialog", { name: "copy:widget.appearance" })).not.toBeInTheDocument();
+    expect(widget.setPopoverOpen).toHaveBeenCalledWith(false);
   });
 
   it("keeps a reset alert until the user acknowledges it without navigation", async () => {

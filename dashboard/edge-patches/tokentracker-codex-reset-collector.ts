@@ -10,6 +10,8 @@ const X_EPOCH_MS = 1_288_834_974_657n;
 const CODEX_CONCEPT = /\bcodex\b/iu;
 const RESET_CONCEPT = /\b(reset|rate\s+limits?|usage\s+limits?|quota|credits?|extra\s+usage|additional\s+usage)\b|重置|额度|使用限制|额外用量|赠送额度/iu;
 const GLOBAL_RESET_CONCEPT = /\b(?:i(?:'ve| have)\s+reset|we(?:'ve| have|\s+are)\b[\s\S]{0,50}\breset(?:ting)?|usage\s+limits?\b[\s\S]{0,35}\breset|(?:added|granted|have\s+added)\s+(?:a\s+)?banked\s+reset|(?:full|another|new)\b[\s\S]{0,50}\breset|enjoy\b[\s\S]{0,50}\breset|reset(?:ting)?\b[\s\S]{0,50}\b(?:for\s+all|everyone))\b/iu;
+type ResetKind = "hard" | "banked" | "mixed" | "unknown";
+type ResetScope = "all_paid_users" | "all_codex_work_users" | "unknown";
 
 type Announcement = {
   id: string;
@@ -22,7 +24,41 @@ type Announcement = {
   expires_at: string;
   source_author?: "thsottiaux";
   source_post_id?: string;
+  reset_kind: ResetKind;
+  reset_scope: ResetScope;
 };
+
+function classifyResetKind(text: string): ResetKind {
+  const normalized = String(text || "").replace(/&#39;/gu, "'").toLowerCase();
+  const banked = /\bbanked\s+reset\b/u.test(normalized);
+  const hard = (
+    /\b(?:reset|resetting|reset of)\s+(?:your\s+|the\s+)?usage\s+limits?\b/u.test(normalized)
+    || /\busage\s+limits?\s+(?:have\s+been\s+|are\s+|were\s+)?reset\b/u.test(normalized)
+    || /\b(?:full|another|new)\s+reset\b/u.test(normalized)
+  );
+  if (hard && banked) return "mixed";
+  if (hard) return "hard";
+  if (banked) return "banked";
+  return "unknown";
+}
+
+function classifyResetScope(text: string): ResetScope {
+  const normalized = String(text || "").replace(/&#39;/gu, "'").toLowerCase();
+  if (/\ball\s+paid\s+(?:codex\s+)?users\b/u.test(normalized)) return "all_paid_users";
+  if (
+    /\ball\s+(?:chatgpt\s+work\s+and\s+codex|codex\s+and\s+chatgpt\s+work)\s+users\b/u.test(normalized)
+    || /\bfor\s+(?:chatgpt\s+work\s+and\s+codex|codex\s+and\s+chatgpt\s+work)\b/u.test(normalized)
+  ) return "all_codex_work_users";
+  return "unknown";
+}
+
+function enrichAnnouncement(item: Announcement): Announcement {
+  return {
+    ...item,
+    reset_kind: classifyResetKind(item.summary),
+    reset_scope: classifyResetScope(item.summary),
+  };
+}
 
 function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -130,6 +166,8 @@ async function verifyTiboAnnouncement(
     expires_at: new Date(candidate.publishedMs + ANNOUNCEMENT_RETENTION_MS).toISOString(),
     source_author: "thsottiaux",
     source_post_id: candidate.postId,
+    reset_kind: classifyResetKind(candidate.text),
+    reset_scope: classifyResetScope(candidate.text),
   };
 }
 
@@ -187,6 +225,8 @@ function statusAnnouncement(incident: Record<string, unknown>, nowMs: number): A
     official_url: "https://status.openai.com/",
     published_at: new Date(publishedMs).toISOString(),
     expires_at: new Date(publishedMs + ANNOUNCEMENT_RETENTION_MS).toISOString(),
+    reset_kind: classifyResetKind(text),
+    reset_scope: classifyResetScope(text),
   };
 }
 
@@ -226,7 +266,8 @@ export default async function (request: Request): Promise<Response> {
 
   const nowMs = Date.now();
   const announcements = decodeBase64UrlJson(current?.envelope?.payload_b64)
-    .filter((item) => Date.parse(item.expires_at) > nowMs);
+    .filter((item) => Date.parse(item.expires_at) > nowMs)
+    .map(enrichAnnouncement);
   let openaiStatus = "ok";
   try {
     const response = await fetch(OPENAI_STATUS_URL, { headers: { Accept: "application/json" } });

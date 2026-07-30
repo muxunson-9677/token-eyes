@@ -70,6 +70,8 @@ export interface CodexResetEvent {
   source_url?: string;
   source_author?: "OpenAI" | "thsottiaux" | null;
   source_post_id?: string | null;
+  reset_kind?: "hard" | "banked" | "mixed" | "unknown";
+  reset_scope?: "all_paid_users" | "all_codex_work_users" | "unknown";
   title?: string;
   summary?: string;
   expires_at?: string;
@@ -93,6 +95,7 @@ export interface CodexResetEventsResponse {
 export type DesktopWidgetAgent = "all" | "claude" | "codex" | "cursor" | "hermes";
 export type DesktopWidgetMode = "projects" | "limits" | "models";
 export type DesktopWidgetMaterial = "frost" | "graphite" | "ocean" | "sand";
+export type DesktopWidgetActiveSessionWindow = "1h" | "3h" | "5h" | "1d" | "3d";
 
 export interface DesktopWidgetPrefs {
   version: number;
@@ -110,7 +113,13 @@ export interface DesktopWidgetPrefs {
   material: DesktopWidgetMaterial;
   opacity: number;
   alwaysOnTop: boolean;
+  activeSessionWindow: DesktopWidgetActiveSessionWindow;
   selectedProjectIds: string[];
+  selectedProjects: Array<{
+    id: string;
+    label: string;
+    path: string;
+  }>;
 }
 
 export interface DesktopWidgetViewModel {
@@ -121,6 +130,11 @@ export interface DesktopWidgetViewModel {
     yellow: number;
     green: number;
     unknown: number;
+    recentProjects: Array<{
+      id: string;
+      label: string;
+      updatedAt: string | null;
+    }>;
     projects: Array<{
       id: string;
       label: string;
@@ -130,8 +144,9 @@ export interface DesktopWidgetViewModel {
       unknown: number;
       sessions: Array<{
         id: string;
-        label: string;
-        status: "red" | "yellow" | "green" | "unknown";
+        label: string | null;
+        status: "red" | "yellow" | "green" | "stopped" | "unknown";
+        state: "waiting_approval" | "error" | "running" | "completed" | "stopped" | "unknown";
         updatedAt: string | null;
       }>;
     }>;
@@ -167,6 +182,7 @@ export interface DesktopWidgetViewModel {
 }
 
 const PATHS = {
+  usageBounds: "tokentracker-usage-bounds",
   usageSummary: "tokentracker-usage-summary",
   usageDaily: "tokentracker-usage-daily",
   usageHourly: "tokentracker-usage-hourly",
@@ -210,6 +226,14 @@ const PATHS = {
   providerApiBalances: "tokentracker-provider-api-balances",
   officialModelPricing: "tokentracker-official-model-pricing",
 };
+
+export async function getUsageBounds({
+  timeZone,
+  tzOffsetMinutes,
+}: AnyRecord = {}) {
+  const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
+  return fetchLocalJson(PATHS.usageBounds, tzParams);
+}
 
 /**
  * usage-* (local CLI) 鈫?account-* (cloud) slug map. The cloud `account-*`
@@ -1661,8 +1685,12 @@ export async function getCodexResetEvents(): Promise<CodexResetEventsResponse> {
 
 export async function getDesktopWidgetViewModel(
   agent: DesktopWidgetAgent = "all",
+  activeSessionWindow: DesktopWidgetActiveSessionWindow = "1h",
 ): Promise<DesktopWidgetViewModel> {
-  return fetchLocalJson(PATHS.desktopWidget, { agent }) as Promise<DesktopWidgetViewModel>;
+  return fetchLocalJson(PATHS.desktopWidget, {
+    agent,
+    active_window: activeSessionWindow,
+  }) as Promise<DesktopWidgetViewModel>;
 }
 
 export async function acknowledgeCodexResetEvent(

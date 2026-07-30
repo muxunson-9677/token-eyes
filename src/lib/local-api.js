@@ -109,6 +109,7 @@ const zonedPartsCache = new Map();
 const USAGE_AGGREGATE_RESPONSE_CACHE_TTL_MS = 30_000;
 const USAGE_AGGREGATE_RESPONSE_CACHE_MAX_ENTRIES = 64;
 const USAGE_AGGREGATE_RESPONSE_PATHS = new Set([
+  "/functions/tokentracker-usage-bounds",
   "/functions/tokentracker-usage-summary",
   "/functions/tokentracker-provider-stats",
   "/functions/tokentracker-model-stats",
@@ -1878,6 +1879,8 @@ const CODEX_RESET_EVENT_TYPES = new Set([
   "official_reset_announcement",
 ]);
 const CODEX_RESET_WINDOWS = new Set(["rolling_5_hour", "rolling_weekly"]);
+const CODEX_RESET_KINDS = new Set(["hard", "banked", "mixed", "unknown"]);
+const CODEX_RESET_SCOPES = new Set(["all_paid_users", "all_codex_work_users", "unknown"]);
 const CODEX_RESET_SOURCES = new Set([
   "local_quota",
   "live_usage",
@@ -2014,6 +2017,8 @@ function sanitizeCodexResetEvent(event) {
     dto.source_url = sourceUrl;
     dto.source_author = boundedString(event.sourceAuthor, 32);
     dto.source_post_id = boundedString(event.sourcePostId, 32);
+    dto.reset_kind = CODEX_RESET_KINDS.has(event.resetKind) ? event.resetKind : "unknown";
+    dto.reset_scope = CODEX_RESET_SCOPES.has(event.resetScope) ? event.resetScope : "unknown";
     dto.title = title;
     dto.summary = summary;
     dto.expires_at = expiresAt;
@@ -5065,6 +5070,7 @@ function createLocalApiHandler({
             .filter(Boolean)
             .map((value) => path.resolve(value)),
         )];
+        const widgetNow = nowProvider();
         const [usageLimits, sessions] = await Promise.all([
           loadUsageLimits({
             home: os.homedir(),
@@ -5072,10 +5078,10 @@ function createLocalApiHandler({
             platform: process.platform,
           }),
           typeof codexLifecycleProvider === "function"
-            ? codexLifecycleProvider({ homes: codexHomes, nowMs: nowProvider().getTime() })
+            ? codexLifecycleProvider({ homes: codexHomes, nowMs: widgetNow.getTime() })
             : collectCodexLifecycleSessions({
               homes: codexHomes,
-              nowMs: nowProvider().getTime(),
+              nowMs: widgetNow.getTime(),
             }),
         ]);
         const usage = aggregateByModel(readQueueData(qp), {
@@ -5088,10 +5094,12 @@ function createLocalApiHandler({
         }));
         const viewModel = buildWidgetViewModel({
           agent: url.searchParams.get("agent") || "all",
+          activeSessionWindow: url.searchParams.get("active_window") || "1h",
           usage,
           sessions,
           limits: flattenUsageLimitsPayload(usageLimits),
           pendingResets: codexResetMonitorService.listUnread("widget"),
+          nowMs: widgetNow.getTime(),
         });
         writeCodexResetResponse(res, viewModel);
       } catch (error) {
@@ -5921,6 +5929,23 @@ function createLocalApiHandler({
         if (result === "served") return true;
         res.setHeader("X-TokenTracker-Account-View", "0");
       }
+    }
+
+    // --- usage-bounds ---
+    if (p === "/functions/tokentracker-usage-bounds") {
+      const timeZoneContext = getTimeZoneContext(url);
+      const { rows } = scopedQueueRows(qp, url);
+      const days = rows
+        .map((row) => rowDayKey(row, timeZoneContext))
+        .filter((day) => /^\d{4}-\d{2}-\d{2}$/u.test(String(day || "")))
+        .sort();
+      json(res, {
+        ok: true,
+        from: days[0] || null,
+        to: days.at(-1) || null,
+        empty: days.length === 0,
+      });
+      return true;
     }
 
     // --- usage-summary ---
@@ -7840,10 +7865,20 @@ function createLocalApiHandler({
 
     // --- usage-monthly (stub for trend view) ---
     if (p === "/functions/tokentracker-usage-monthly") {
-      const from = url.searchParams.get("from") || "";
-      const to = url.searchParams.get("to") || "";
+      const requestedFrom = url.searchParams.get("from") || "";
+      const requestedTo = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
       const { rows, scope, excludedSources } = scopedQueueRows(qp, url);
+      const availableDays = rows
+        .map((row) => rowDayKey(row, timeZoneContext))
+        .filter((day) => /^\d{4}-\d{2}-\d{2}$/u.test(String(day || "")))
+        .sort();
+      const availableFrom = availableDays[0] || requestedTo || "";
+      const availableTo = availableDays.at(-1) || requestedTo || availableFrom;
+      const from = requestedFrom && requestedFrom > availableFrom
+        ? requestedFrom
+        : availableFrom;
+      const to = requestedTo || availableTo;
       const byMonth = new Map();
       for (const row of rows) {
         if (!row.hour_start) continue;

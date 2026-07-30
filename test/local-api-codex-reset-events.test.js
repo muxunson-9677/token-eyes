@@ -71,6 +71,8 @@ function harness() {
     sourceUrl: "https://x.com/thsottiaux/status/2078990367241046272",
     sourceAuthor: "thsottiaux",
     sourcePostId: "2078990367241046272",
+    resetKind: "hard",
+    resetScope: "all_codex_work_users",
     title: "Codex 官方额外重置",
     summary: "OpenAI 已为 Codex 用户额外重置使用额度。",
     expiresAt: "2026-08-20T08:00:00.000Z",
@@ -130,6 +132,9 @@ test("GET returns no-store sanitized official reset events without auth", async 
     assert.equal(body.history.length, 1);
     assert.equal(body.history[0].type, "official_reset_announcement");
     assert.equal(body.history[0].source_url, "https://x.com/thsottiaux/status/2078990367241046272");
+    assert.equal(body.history[0].source_author, "thsottiaux");
+    assert.equal(body.history[0].reset_kind, "hard");
+    assert.equal(body.history[0].reset_scope, "all_codex_work_users");
     assert.equal(body.history[0].occurred_at, "2026-07-20T08:00:00.000Z");
     assert.equal(body.history[0].confidence, "confirmed");
     assert.equal(body.history[0].alert_eligible, true);

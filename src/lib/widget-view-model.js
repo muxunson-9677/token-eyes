@@ -3,8 +3,23 @@
 const crypto = require("node:crypto");
 
 const WIDGET_AGENTS = Object.freeze(["all", "claude", "codex", "cursor", "hermes"]);
-const STATUS_ORDER = Object.freeze({ red: 0, yellow: 1, green: 2, unknown: 3 });
+const STATUS_ORDER = Object.freeze({
+  red: 0,
+  yellow: 1,
+  green: 2,
+  stopped: 3,
+  unknown: 4,
+});
 const WINDOW_ORDER = Object.freeze({ "5h": 0, "7d": 1, monthly: 2 });
+const ACTIVE_SESSION_WINDOWS_MS = Object.freeze({
+  "1h": 60 * 60 * 1000,
+  "3h": 3 * 60 * 60 * 1000,
+  "5h": 5 * 60 * 60 * 1000,
+  "1d": 24 * 60 * 60 * 1000,
+  "3d": 3 * 24 * 60 * 60 * 1000,
+});
+const MAX_ACTIVE_SESSIONS = 10;
+const MAX_RECENT_PROJECTS = 10;
 
 function agentKey(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -27,6 +42,14 @@ function safeLabel(value, fallback) {
   return label.slice(0, 80) || String(fallback || "").slice(0, 80);
 }
 
+function optionalLabel(value) {
+  const label = String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return label.slice(0, 80) || null;
+}
+
 function finiteNonNegative(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
@@ -43,17 +66,28 @@ function safeIso(value) {
   return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
-function statusKey(value) {
+function sessionState(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (["approval", "waiting_approval", "error", "interrupted", "aborted"].includes(normalized)) {
-    return "red";
-  }
-  if (["running", "task_started"].includes(normalized)) return "yellow";
-  if (["completed", "task_complete"].includes(normalized)) return "green";
+  if (["approval", "waiting_approval"].includes(normalized)) return "waiting_approval";
+  if (normalized === "error") return "error";
+  if (["interrupted", "aborted"].includes(normalized)) return "stopped";
+  if (["running", "task_started"].includes(normalized)) return "running";
+  if (["completed", "task_complete"].includes(normalized)) return "completed";
   return "unknown";
 }
 
-function buildProjectStatus(sessions, selectedAgent) {
+function statusKey(value) {
+  const state = sessionState(value);
+  if (state === "waiting_approval" || state === "error") return "red";
+  if (state === "running") return "yellow";
+  if (state === "completed") return "green";
+  if (state === "stopped") return "stopped";
+  return "unknown";
+}
+
+function buildProjectStatus(sessions, selectedAgent, nowMs, activeSessionWindow) {
+  const activeWindowMs = ACTIVE_SESSION_WINDOWS_MS[activeSessionWindow]
+    || ACTIVE_SESSION_WINDOWS_MS["1h"];
   const projects = new Map();
   const newestSessions = new Map();
   for (const item of Array.isArray(sessions) ? sessions : []) {
@@ -66,9 +100,35 @@ function buildProjectStatus(sessions, selectedAgent) {
       newestSessions.set(key, item);
     }
   }
-  for (const item of newestSessions.values()) {
-    const itemAgent = agentKey(item?.agent);
-    if (selectedAgent !== "all" && itemAgent !== selectedAgent) continue;
+  const eligibleSessions = Array.from(newestSessions.values())
+    .filter((item) => {
+      const itemAgent = agentKey(item?.agent);
+      const updatedAt = Date.parse(item?.updatedAt || "");
+      return (selectedAgent === "all" || itemAgent === selectedAgent)
+        && Number.isFinite(updatedAt)
+        && updatedAt <= nowMs;
+    })
+    .sort((left, right) => (
+      Date.parse(right?.updatedAt || 0) - Date.parse(left?.updatedAt || 0)
+    ));
+  const recentProjectIds = new Set();
+  const recentProjects = [];
+  for (const item of eligibleSessions) {
+    const projectId = safeId(item?.projectId, "project");
+    if (recentProjectIds.has(projectId)) continue;
+    recentProjectIds.add(projectId);
+    recentProjects.push({
+      id: projectId,
+      label: safeLabel(item?.projectLabel, projectId),
+      updatedAt: safeIso(item?.updatedAt),
+    });
+    if (recentProjects.length >= MAX_RECENT_PROJECTS) break;
+  }
+  const activeSessions = eligibleSessions
+    .filter((item) => Date.parse(item?.updatedAt || 0) >= nowMs - activeWindowMs)
+    .slice(0, MAX_ACTIVE_SESSIONS);
+
+  for (const item of activeSessions) {
     const projectId = safeId(item?.projectId, "project");
     if (!projects.has(projectId)) {
       projects.set(projectId, {
@@ -83,12 +143,15 @@ function buildProjectStatus(sessions, selectedAgent) {
     }
     const project = projects.get(projectId);
     const status = statusKey(item?.status);
-    project[status] += 1;
+    const state = sessionState(item?.status);
+    if (status === "stopped") project.unknown += 1;
+    else project[status] += 1;
     const sessionId = safeId(item?.sessionId, "session");
     project.sessions.push({
       id: sessionId,
-      label: safeLabel(item?.sessionLabel, sessionId),
+      label: optionalLabel(item?.sessionLabel),
       status,
+      state,
       updatedAt: safeIso(item?.updatedAt),
     });
   }
@@ -98,6 +161,7 @@ function buildProjectStatus(sessions, selectedAgent) {
     yellow: 0,
     green: 0,
     unknown: 0,
+    recentProjects,
     projects: Array.from(projects.values()),
   };
   for (const project of output.projects) {
@@ -253,12 +317,19 @@ function buildWidgetViewModel({
   sessions = [],
   limits = [],
   pendingResets = [],
+  nowMs = Date.now(),
+  activeSessionWindow = "1h",
 } = {}) {
   const selectedAgent = WIDGET_AGENTS.includes(agentKey(agent)) ? agentKey(agent) : "all";
   return {
     agents: [...WIDGET_AGENTS],
     selectedAgent,
-    projectStatus: buildProjectStatus(sessions, selectedAgent),
+    projectStatus: buildProjectStatus(
+      sessions,
+      selectedAgent,
+      nowMs,
+      activeSessionWindow,
+    ),
     limits: buildLimits(limits, selectedAgent),
     totals: buildTotals(usage, selectedAgent),
     pendingReset: buildPendingReset(pendingResets),

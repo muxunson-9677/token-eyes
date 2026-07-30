@@ -13,6 +13,11 @@ const {
 test("reads only Codex lifecycle metadata and returns privacy-safe project sessions", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-lifecycle-"));
   try {
+    fs.writeFileSync(path.join(root, "session_index.jsonl"), JSON.stringify({
+      id: "019-safe-session",
+      thread_name: "执行代码修复",
+      first_user_message: "private first message that must never be returned",
+    }), "utf8");
     const sessions = path.join(root, "sessions", "2026", "07", "29");
     fs.mkdirSync(sessions, { recursive: true });
     fs.writeFileSync(path.join(sessions, "rollout-safe.jsonl"), [
@@ -50,13 +55,13 @@ test("reads only Codex lifecycle metadata and returns privacy-safe project sessi
       projectId: result[0].projectId,
       projectLabel: "Secret Project",
       sessionId: "019-safe-session",
-      sessionLabel: "019-safe-session",
+      sessionLabel: "执行代码修复",
       status: "running",
       updatedAt: "2026-07-29T08:02:00.000Z",
     });
     assert.match(result[0].projectId, /^project-[a-f0-9]{12}$/u);
     const serialized = JSON.stringify(result);
-    assert.doesNotMatch(serialized, /Users|private prompt|message|cwd/iu);
+    assert.doesNotMatch(serialized, /Users|private prompt|private first message|message|cwd/iu);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

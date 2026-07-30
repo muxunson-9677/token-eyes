@@ -51,7 +51,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
         </p>
       </div>
 
-      <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
         <div className="relative h-32 w-32 justify-self-center">
           <svg
             viewBox="0 0 120 120"
@@ -91,17 +91,24 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
           </div>
         </div>
 
-        <ol className="min-w-0 space-y-2.5">
+        <ol
+          data-testid="model-usage-legend"
+          className="max-h-56 min-w-0 space-y-2.5 overflow-y-auto pr-1 oai-scrollbar"
+        >
           {safeRows.map(function renderLegendItem(row, index) {
             return (
-              <li key={row.id || row.name} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 text-xs">
-                <span className={`h-2 w-2 rounded-full ${SERIES_STYLES[index % SERIES_STYLES.length].dot}`} aria-hidden />
-                <span className="truncate font-medium text-oai-gray-700 dark:text-oai-gray-200" title={row.name}>
+              <li key={row.id || row.name} className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-start gap-x-2 text-xs">
+                <span className="mt-0.5 w-4 text-[10px] font-semibold tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
+                  {index + 1}
+                </span>
+                <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${SERIES_STYLES[index % SERIES_STYLES.length].dot}`} aria-hidden />
+                <span className="min-w-0 break-words font-medium text-oai-gray-700 dark:text-oai-gray-200">
                   {row.name}
                 </span>
-                <span className="font-semibold tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
+                <span className="shrink-0 font-semibold tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
                   {Number(row.percent).toLocaleString("zh-CN", { maximumFractionDigits: 1 })}%
                 </span>
+                <span aria-hidden />
                 <span aria-hidden />
                 <span className="col-span-2 text-[11px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
                   {formatChineseTokenCount(row.tokens)}

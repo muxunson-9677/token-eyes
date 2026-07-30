@@ -35,6 +35,7 @@ import {
 } from "../hooks/use-usage-filters";
 import { useUsageSummary } from "../hooks/use-usage-summary";
 import { useUsageFilterOptions } from "../hooks/use-usage-filter-options";
+import { useUsageDateBounds } from "../hooks/use-usage-date-bounds";
 import { useCostAccumulation } from "../hooks/use-cost-accumulation.js";
 import { useProviderApiBalances } from "../hooks/use-provider-api-balances.js";
 import { useTokenServicePlans } from "../hooks/use-token-service-plans.js";
@@ -147,11 +148,10 @@ function SpendUsagePageInner({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const initialIntervalLoaded = useRef(false);
 
-  // Usage statistics must reflect every locally collected provider. Token-plan
-  // card visibility is a layout preference and must never alter token totals.
+  const { visibleOrdered } = useLimitsDisplayPrefs();
   const visibleProviderIds = useMemo(
-    () => normalizeVisibleProviderIds(DASHBOARD_AGENTS.map((agent) => agent.queueSource)),
-    [],
+    () => normalizeVisibleProviderIds(visibleOrdered),
+    [visibleOrdered],
   );
   const heavyUsagePanelsReady = useDeferredHeavyUsagePanels(visibleProviderIds.length > 0);
 
@@ -210,6 +210,7 @@ function SpendUsagePageInner({
   // Timezone context
   const timeZone = useMemo(() => getBrowserTimeZone() || "UTC", []);
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
+  const usageDateBounds = useUsageDateBounds({ timeZone, tzOffsetMinutes });
   const financialScopeKey = useMemo(
     () => JSON.stringify([timeZone, tzOffsetMinutes, costSources]),
     [timeZone, tzOffsetMinutes, costSources],
@@ -229,8 +230,16 @@ function SpendUsagePageInner({
     return computeRangeFromKey(filterState.timeRange, {
       timeZone,
       offsetMinutes: tzOffsetMinutes,
+      availableFrom: usageDateBounds.from,
     });
-  }, [filterState.timeRange, filterState.from, filterState.to, timeZone, tzOffsetMinutes]);
+  }, [
+    filterState.timeRange,
+    filterState.from,
+    filterState.to,
+    timeZone,
+    tzOffsetMinutes,
+    usageDateBounds.from,
+  ]);
 
   const { from, to } = range;
 
@@ -273,6 +282,7 @@ function SpendUsagePageInner({
     cacheKey,
     timeZone,
     tzOffsetMinutes,
+    allowedSources: visibleProviderIds,
   });
   const { sources: sourceOptions, modelsBySource } = useUsageFilterOptions({
     baseUrl,
@@ -281,6 +291,7 @@ function SpendUsagePageInner({
     cacheKey,
     timeZone,
     tzOffsetMinutes,
+    allowedSources: visibleProviderIds,
   });
 
   // The financial cards use adjacent natural months in the browser timezone.

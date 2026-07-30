@@ -43,7 +43,7 @@ function readFile(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-test("DashboardPage places TrendMonitor in left column (heatmap removed)", () => {
+test("DashboardPage keeps trend and model usage in the left column (heatmap removed)", () => {
   const src = readFile(viewPath);
   const leftStart = src.indexOf("lg:col-span-4");
   const rightStart = src.indexOf("lg:col-span-8", leftStart + 1);
@@ -52,7 +52,11 @@ test("DashboardPage places TrendMonitor in left column (heatmap removed)", () =>
 
   const leftColumn = src.slice(leftStart, rightStart);
   const trendIndex = leftColumn.indexOf("<TrendMonitor");
-  assert.ok(trendIndex !== -1, "expected TrendMonitor in left column");
+  const donutIndex = leftColumn.indexOf("<ModelUsageDonut");
+  assert.ok(leftColumn.includes("<StatsPanel"), "expected StatsPanel in the left column");
+  assert.ok(trendIndex !== -1, "expected TrendMonitor in the left column");
+  assert.ok(donutIndex !== -1, "expected ModelUsageDonut in the left column");
+  assert.ok(trendIndex < donutIndex, "expected ModelUsageDonut directly after TrendMonitor");
   // Heatmap block was removed in v2.0 — assert it no longer exists
   assert.ok(
     !src.includes("activityHeatmapBlock"),
@@ -221,15 +225,19 @@ test("usage trend expands beside the readable 17rem Token service column", () =>
   assert.ok(!src.includes("lg:grid-cols-[minmax(0,1fr)_13rem]"), "expected the cramped 13rem Token service column removed");
 });
 
-test("overview places a model usage donut directly below the trend card", () => {
+test("overview places a model usage donut directly below the trend card in the left column", () => {
   const src = readFile(viewPath);
+  const leftColumnIndex = src.indexOf("lg:col-span-4");
+  const rightColumnIndex = src.indexOf("lg:col-span-8");
   const trendIndex = src.indexOf("<TrendMonitor");
   const donutIndex = src.indexOf("<ModelUsageDonut", trendIndex);
-  const rightColumnIndex = src.indexOf("lg:col-span-8", trendIndex);
 
+  assert.ok(leftColumnIndex !== -1, "expected left overview column");
+  assert.ok(rightColumnIndex !== -1, "expected wider primary column");
   assert.ok(trendIndex !== -1, "expected usage trend");
+  assert.ok(trendIndex > leftColumnIndex, "expected usage trend after the left column starts");
   assert.ok(donutIndex > trendIndex, "expected model donut after usage trend");
-  assert.ok(donutIndex < rightColumnIndex, "expected model donut to remain in the left column");
+  assert.ok(donutIndex < rightColumnIndex, "expected model donut before the right column starts");
 });
 
 test("workspace and cards expose the approved layered surface hierarchy", () => {

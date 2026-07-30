@@ -3,6 +3,14 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Card } from "../../ui/components";
 
+const SECTION_ICON_TONES = {
+  blue: "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300",
+  violet: "bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
+  green: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
+  orange: "bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-300",
+  rose: "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
+};
+
 export function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
   return (
     <button
@@ -41,9 +49,30 @@ export function SettingsRow({ label, hint, control }) {
   );
 }
 
-export function SectionCard({ title, subtitle, action, children, collapsible = false, defaultOpen = true }) {
+export function SectionCard({
+  title,
+  subtitle,
+  action,
+  children,
+  collapsible = false,
+  defaultOpen = true,
+  icon: Icon,
+  iconTone = "blue",
+}) {
   const [open, setOpen] = useState(defaultOpen);
   const expanded = collapsible ? open : true;
+  const sectionIcon = Icon ? (
+    <span
+      data-testid="settings-section-icon"
+      data-tone={iconTone}
+      className={cn(
+        "grid h-7 w-7 shrink-0 place-items-center rounded-lg",
+        SECTION_ICON_TONES[iconTone] || SECTION_ICON_TONES.blue,
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+    </span>
+  ) : null;
 
   return (
     <Card>
@@ -63,6 +92,7 @@ export function SectionCard({ title, subtitle, action, children, collapsible = f
               )}
               aria-hidden="true"
             />
+            {sectionIcon}
             <span className="min-w-0 flex-1">
               <span role="heading" aria-level={2} className="block text-sm font-medium tracking-wide text-oai-gray-500 dark:text-oai-gray-300">
                 {title}
@@ -75,15 +105,18 @@ export function SectionCard({ title, subtitle, action, children, collapsible = f
             </span>
           </button>
         ) : (
-          <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 tracking-wide">
-              {title}
-            </h2>
-            {subtitle ? (
-              <p className="mt-1 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
-                {subtitle}
-              </p>
-            ) : null}
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            {sectionIcon}
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 tracking-wide">
+                {title}
+              </h2>
+              {subtitle ? (
+                <p className="mt-1 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                  {subtitle}
+                </p>
+              ) : null}
+            </div>
           </div>
         )}
         {action && expanded ? <div className="shrink-0">{action}</div> : null}

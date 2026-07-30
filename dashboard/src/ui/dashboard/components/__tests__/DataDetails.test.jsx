@@ -266,3 +266,31 @@ describe("DataDetails projects tab (production component tree)", () => {
     expect(screen.getByText(/\/Users\/dev\/unpriced/)).toBeInTheDocument();
   });
 });
+
+describe("DataDetails daily rows", () => {
+  it("uses semantic icons for both daily and project view tabs", async () => {
+    render(<DataDetails {...dailyProps} />);
+
+    const dailyTab = screen.getByRole("tab", { name: copy("dashboard.daily.title") });
+    const projectsTab = screen.getByRole("tab", { name: copy("dashboard.projects.title") });
+    expect(dailyTab.querySelector("svg")).not.toBeNull();
+    expect(projectsTab.querySelector("svg")).not.toBeNull();
+  });
+
+  it("omits days with no recorded usage instead of rendering an all-placeholder row", () => {
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownColumns={[{ key: "day", label: "Date" }]}
+        dailyBreakdownRows={[
+          { day: "2026-07-24", total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 },
+          { day: "2026-07-25", total_tokens: 120, input_tokens: 100, output_tokens: 20, cached_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 1 },
+        ]}
+        renderDetailCell={(row, key) => String(row[key] ?? "")}
+      />,
+    );
+
+    expect(screen.queryByText("2026-07-24")).not.toBeInTheDocument();
+    expect(screen.getByText("2026-07-25")).toBeInTheDocument();
+  });
+});

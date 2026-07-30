@@ -10,7 +10,7 @@ import { LoginModalProvider } from "./contexts/LoginModalContext.jsx";
 import { getBackendBaseUrl, getLeaderboardBaseUrl } from "./lib/config";
 import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
-import { clearDashboardUsageCachesForRealData } from "./lib/usage-cache";
+import { clearDashboardMockUsageCaches } from "./lib/usage-cache";
 import { useLeaderboardParticipationSync } from "./hooks/use-leaderboard-participation-sync";
 import { CodexResetEventsProvider } from "./hooks/use-codex-reset-events";
 import { AppLayout } from "./ui/components/Sidebar.jsx";
@@ -207,7 +207,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isLocalMode || mockEnabled) return;
-    clearDashboardUsageCachesForRealData();
+    clearDashboardMockUsageCaches();
   }, [isLocalMode, mockEnabled]);
 
   const authObject = useMemo(() => {
