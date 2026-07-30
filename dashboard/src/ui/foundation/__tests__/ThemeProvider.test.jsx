@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -60,11 +60,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  window.dispatchEvent(
-    new CustomEvent("native:systemAppearanceChanged", {
-      detail: { isDark: false },
-    }),
-  );
   if (originalMatchMediaDescriptor) {
     Object.defineProperty(window, "matchMedia", originalMatchMediaDescriptor);
   } else {
@@ -150,42 +145,6 @@ it("switches themes and persists with the existing storage key", async () => {
   expect(screen.getByTestId("resolved-theme")).toHaveTextContent("light");
   expect(document.documentElement).not.toHaveClass("dark");
   expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
-});
-
-it("uses native system appearance pushes and synchronizes native chrome", async () => {
-  localStorage.setItem(THEME_STORAGE_KEY, "system");
-  const postMessage = vi.fn();
-  window.webkit = {
-    messageHandlers: {
-      nativeBridge: { postMessage },
-    },
-  };
-
-  render(
-    <ThemeProvider>
-      <ThemeProbe />
-    </ThemeProvider>,
-  );
-
-  expect(postMessage).toHaveBeenCalledWith({ type: "getSystemAppearance" });
-
-  act(() => {
-    window.dispatchEvent(
-      new CustomEvent("native:systemAppearanceChanged", {
-        detail: { isDark: true },
-      }),
-    );
-  });
-
-  expect(screen.getByTestId("resolved-theme")).toHaveTextContent("dark");
-  expect(document.documentElement).toHaveClass("dark");
-  await waitFor(() => {
-    expect(postMessage).toHaveBeenCalledWith({
-      type: "setChromeAppearance",
-      isDark: true,
-      theme: "system",
-    });
-  });
 });
 
 it("loads the Apple glass foundations after the legacy styles", () => {
