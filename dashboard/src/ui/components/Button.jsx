@@ -45,22 +45,33 @@ export function Button({
     : "cursor-pointer";
 
   const mergedClassName = `${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${disabledStyles} ${className}`;
-  const isAnchor = Component === "a";
+  const isLiteralAnchor = Component === "a";
+  const isCustomLink = typeof Component !== "string" && props.href != null;
+  const isDisabledLink = disabled && (isLiteralAnchor || isCustomLink);
+  const suppressInteraction = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
   const handleClick = disabled
-    ? (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+    ? suppressInteraction
     : onClick;
+  const disabledProps = isDisabledLink
+    ? {
+        href: undefined,
+        disabled: undefined,
+        "aria-disabled": true,
+        tabIndex: -1,
+        onAuxClick: suppressInteraction,
+        ...(isLiteralAnchor && props.role == null ? { role: "link" } : {}),
+      }
+    : { disabled };
 
   return (
     <Component
       {...props}
+      {...disabledProps}
       className={mergedClassName}
       onClick={handleClick}
-      disabled={isAnchor ? undefined : disabled}
-      aria-disabled={isAnchor && disabled ? true : props["aria-disabled"]}
-      tabIndex={isAnchor && disabled ? -1 : props.tabIndex}
     >
       {children}
     </Component>

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { Button } from "../Button";
@@ -38,19 +38,55 @@ describe("Button", () => {
   it("makes a disabled polymorphic link inert", async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();
+    const onAuxClick = vi.fn();
     render(
-      <Button as="a" href="/settings" disabled onClick={onClick}>
+      <Button
+        as="a"
+        href="/settings"
+        disabled
+        onClick={onClick}
+        onAuxClick={onAuxClick}
+      >
         Settings
       </Button>,
     );
 
     const link = screen.getByRole("link", { name: "Settings" });
+    expect(link).not.toHaveAttribute("href");
+    expect(link).toHaveAttribute("role", "link");
     expect(link).toHaveAttribute("aria-disabled", "true");
     expect(link).toHaveAttribute("tabindex", "-1");
     expect(link).not.toHaveAttribute("disabled");
 
     await user.click(link);
+    fireEvent(
+      link,
+      new MouseEvent("auxclick", {
+        bubbles: true,
+        cancelable: true,
+        button: 1,
+      }),
+    );
     expect(onClick).not.toHaveBeenCalled();
+    expect(onAuxClick).not.toHaveBeenCalled();
+  });
+
+  it("removes navigation from a disabled custom component with href", () => {
+    function CustomAnchor(props) {
+      return <a {...props} />;
+    }
+
+    render(
+      <Button as={CustomAnchor} href="/docs" disabled>
+        Documentation
+      </Button>,
+    );
+
+    const anchor = screen.getByText("Documentation");
+    expect(anchor).not.toHaveAttribute("href");
+    expect(anchor).not.toHaveAttribute("disabled");
+    expect(anchor).toHaveAttribute("aria-disabled", "true");
+    expect(anchor).toHaveAttribute("tabindex", "-1");
   });
 
   it("passes disabled through to a custom button component", () => {
