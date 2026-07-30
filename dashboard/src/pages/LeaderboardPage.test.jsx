@@ -872,7 +872,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
     const actualCostButton = screen.getByRole("button", { name: copy("leaderboard.metric.actual_cost") });
     expect(actualCostButton).not.toBeDisabled();
     await user.click(actualCostButton);
-    expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("metric=actual_cost");
+    await waitFor(() => {
+      expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("metric=actual_cost");
+    });
   });
 
   it("keeps my local actual cost private until I choose to publish it", async () => {
