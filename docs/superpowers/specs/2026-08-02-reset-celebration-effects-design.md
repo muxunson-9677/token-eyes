@@ -1,7 +1,7 @@
 # Reset Celebration Effects Design
 
 Date: 2026-08-02
-Status: Approved visual direction, pending written-spec confirmation
+Status: Approved for implementation
 
 ## Goal
 
