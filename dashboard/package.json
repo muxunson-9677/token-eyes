@@ -16,6 +16,7 @@
     "verify:spend-local": "node scripts/verify-spend-local.mjs",
     "verify:usage-layout": "node scripts/verify-usage-layout.mjs",
     "verify:dashboard-cost-styles": "node scripts/verify-dashboard-cost-styles.mjs",
+    "verify:data-display-policy": "node scripts/verify-data-display-policy.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -988,5 +988,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getByText("1.23亿")).toBeInTheDocument();
     expect(screen.getByText("全员预估花销")).toBeInTheDocument();
     expect(screen.getByText("$4,326")).toBeInTheDocument();
+    expect(screen.getAllByTestId("leaderboard-summary-icon")).toHaveLength(3);
+    expect(screen.getByTestId("leaderboard-rank-1")).toHaveAttribute("data-rank-tier", "medal");
   });
 });

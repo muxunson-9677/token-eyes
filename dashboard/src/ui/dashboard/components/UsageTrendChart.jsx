@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCurrency } from "../../../hooks/useCurrency.js";
 import { useUsageTrend } from "../../../hooks/use-usage-trend";
-import { copy } from "../../../lib/copy";
+import { copy, getCopyLocale } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
-import { formatChineseTokenCount, formatUsdCurrency } from "../../../lib/format";
+import { formatTokenCount, formatUsdCurrency } from "../../../lib/format";
 import { getCurrencySymbol, CURRENCY_USD } from "../../../lib/currency";
 
 // ---------------------------------------------------------------------------
@@ -18,14 +18,14 @@ const SERIES_DIMENSIONS = [
   {
     key: "input_tokens",
     labelKey: "usage.trend.chart.legend.input",
-    color: "#3b82f6",
+    color: "#10b981",
     kind: "solid",
     axis: "tokens",
   },
   {
     key: "output_tokens",
     labelKey: "usage.trend.chart.legend.output",
-    color: "#10b981",
+    color: "#3b82f6",
     kind: "solid",
     axis: "tokens",
   },
@@ -46,7 +46,7 @@ const SERIES_DIMENSIONS = [
   {
     key: "cost_usd",
     labelKey: "usage.trend.chart.legend.cost",
-    color: "#ef4444",
+    color: "#9ca3af",
     kind: "dashed",
     axis: "cost",
   },
@@ -68,7 +68,7 @@ const DIMENSION_BY_KEY = Object.fromEntries(
 // ---------------------------------------------------------------------------
 // 图表布局常量
 // ---------------------------------------------------------------------------
-const MIN_CHART_HEIGHT = 440;
+const MIN_CHART_HEIGHT = 320;
 const PADDING = { top: 16, right: 56, bottom: 36, left: 56 };
 const MAX_RENDER_POINTS = 400;
 const Y_TICK_COUNT = 4; // 4 段 → 5 条刻度线
@@ -79,10 +79,10 @@ const X_TICK_MAX = 7;
 // ---------------------------------------------------------------------------
 
 /** Tokens 类轴标签：统一使用中文数量单位。 */
-export function formatTokenAxis(value) {
+export function formatTokenAxis(value, locale = "zh-CN") {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0";
-  return formatChineseTokenCount(n);
+  return formatTokenCount(n, { locale });
 }
 
 /** 成本类轴标签：跟随用户货币偏好。 */
@@ -95,10 +95,10 @@ export function formatCostAxis(value, { currency = CURRENCY_USD, rate = 1 } = {}
 }
 
 /** Tooltip 内 Tokens 数值：统一使用中文数量单位。 */
-export function formatTooltipToken(value) {
+export function formatTooltipToken(value, locale = "zh-CN") {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0";
-  return formatChineseTokenCount(n);
+  return formatTokenCount(n, { locale });
 }
 
 /** Tooltip 内成本数值：保留 6 位小数（与 CC Switch 口径一致）。 */
@@ -240,6 +240,7 @@ export function UsageTrendChart({
   rate: rateProp,
   onRetry,
 }) {
+  const locale = getCopyLocale();
   const containerRef = useRef(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [hiddenKeys, setHiddenKeys] = useState(() => new Set());
@@ -444,7 +445,10 @@ export function UsageTrendChart({
     >
       {/* 标题栏 */}
       <div className="mb-3 flex items-start justify-between gap-2">
-        <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300 uppercase tracking-wide">
+        <h3
+          className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300 uppercase tracking-wide"
+          data-testid="usage-trend-title"
+        >
           {copy("usage.trend.chart.title")}
         </h3>
         {rangeLabel && (
@@ -455,7 +459,7 @@ export function UsageTrendChart({
       </div>
 
       {/* 图表 */}
-      <div ref={setContainerRef} data-testid="usage-trend-plot" className="relative min-h-[440px] min-w-0 flex-1">
+      <div ref={setContainerRef} data-testid="usage-trend-plot" className="relative min-h-[320px] min-w-0 flex-1">
         <svg
           width={width}
           height={height}
@@ -537,7 +541,7 @@ export function UsageTrendChart({
                 dominantBaseline="middle"
                 className="fill-oai-gray-400 dark:fill-oai-gray-500 text-[10px] font-medium tabular-nums"
               >
-                {formatTokenAxis(tick.value)}
+                {formatTokenAxis(tick.value, locale)}
               </text>
             );
           })}
@@ -720,6 +724,7 @@ export function UsageTrendChart({
             chartWidth={width}
             currency={currency}
             rate={rate}
+            locale={locale}
             hiddenKeys={hiddenKeys}
           />
         )}
@@ -743,7 +748,7 @@ export function UsageTrendChart({
                 name: copy(d.labelKey),
               })}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-opacity",
+                "inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-xs transition-opacity",
                 isHidden
                   ? "opacity-40"
                   : "opacity-100 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800",
@@ -783,7 +788,7 @@ export function UsageTrendChart({
 // ---------------------------------------------------------------------------
 // Tooltip
 // ---------------------------------------------------------------------------
-function Tooltip({ bucket, x, chartWidth, currency, rate, hiddenKeys }) {
+function Tooltip({ bucket, x, chartWidth, currency, rate, locale, hiddenKeys }) {
   // 横向防溢出：靠近边缘时反向偏移
   const TOOLTIP_W = 200;
   const half = TOOLTIP_W / 2;
@@ -823,7 +828,7 @@ function Tooltip({ bucket, x, chartWidth, currency, rate, hiddenKeys }) {
               <span className="font-medium text-oai-gray-900 dark:text-oai-gray-100 tabular-nums shrink-0">
                 {isCostRow(d)
                   ? formatTooltipCost(val, { currency, rate })
-                  : formatTooltipToken(val)}
+                  : formatTooltipToken(val, locale)}
               </span>
             </div>
           );
@@ -851,7 +856,10 @@ function StateCard({ className, state, onRetry }) {
       )}
     >
       <div className="mb-3">
-        <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300 uppercase tracking-wide">
+        <h3
+          className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300 uppercase tracking-wide"
+          data-testid="usage-trend-title"
+        >
           {copy("usage.trend.chart.title")}
         </h3>
       </div>
@@ -871,7 +879,7 @@ function StateCard({ className, state, onRetry }) {
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex h-8 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
+            className="inline-flex h-10 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
           >
             {copy("usage.trend.chart.retry")}
           </button>

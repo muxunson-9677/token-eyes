@@ -138,25 +138,35 @@ async function waitForAuditTargets(page, pageName, theme) {
         ].find(isVisible);
 
         if (name === "dashboard") {
-          const title = document.querySelector('[data-testid="trend-monitor-title"]');
-          const trendRoot = title?.parentElement?.parentElement?.parentElement;
-          const trendZoom = trendRoot?.querySelector("button");
-          const dataTabList = document.querySelector('[role="tablist"][aria-label="Data view"]');
-          const dataTabs = [
-            ...(dataTabList?.querySelectorAll('button[role="tab"]') ?? []),
+          const workspace = document.querySelector('[data-testid="dashboard-primary-workspace"]');
+          const secondary = document.querySelector('[data-testid="dashboard-secondary-context"]');
+          const dataDetails = document.querySelector('[data-testid="dashboard-data-details"]');
+          const summaryCard = document.querySelector('[data-testid="usage-overview-summary-card"]');
+          const toolbar = summaryCard?.previousElementSibling;
+          const coreActions = [
+            ...(toolbar?.querySelectorAll('button:not([role="tab"]), select') || []),
           ];
           if (
             blockingState
-            || !isVisible(trendZoom)
-            || dataTabs.length !== 2
-            || !dataTabs.every(isVisible)
+            || !isVisible(workspace)
+            || !isVisible(secondary)
+            || !isVisible(dataDetails)
+            || coreActions.length !== 3
+            || !coreActions.every(isVisible)
           ) {
             return false;
           }
-          return { trendZoom: 1, dataTabs: dataTabs.length };
+          return {
+            primaryWorkspace: 1,
+            secondaryContext: 1,
+            dataDetails: 1,
+            coreActions: coreActions.length,
+          };
         }
 
-        const total = document.querySelector('[data-cost-summary-card="total"]');
+        const api = document.querySelector('[data-cost-summary-card="api"]');
+        const subscription = document.querySelector('[data-cost-summary-card="subscription"]');
+        const combinedTotal = document.querySelector('[data-cost-summary-card="total"]');
         const sections = [...document.querySelectorAll("[data-cost-section]")];
         const toggles = sections.map(
           (section) => section.querySelector("button[aria-expanded]"),
@@ -168,14 +178,16 @@ async function waitForAuditTargets(page, pageName, theme) {
         if (
           blockingState
           || isVisible(costError)
-          || !isVisible(total)
+          || !isVisible(api)
+          || !isVisible(subscription)
+          || combinedTotal
           || sections.length < 4
           || toggles.length !== sections.length
           || !toggles.every(isVisible)
         ) {
           return false;
         }
-        return { costTotal: 1, foldableToggles: toggles.length };
+        return { separatedCostCards: 2, foldableToggles: toggles.length };
       },
       pageName,
       { timeout: AUDIT_TARGET_TIMEOUT_MS },
@@ -201,16 +213,15 @@ async function tagAuditTargets(page, pageName) {
     };
 
     if (name === "dashboard") {
-      const title = document.querySelector('[data-testid="trend-monitor-title"]');
-      const trendRoot = title?.parentElement?.parentElement?.parentElement;
-      add(trendRoot?.querySelector("button"), "trend-zoom");
-      const dataTabList = document.querySelector('[role="tablist"][aria-label="Data view"]');
-      const tabs = [...(dataTabList?.querySelectorAll('button[role="tab"]') ?? [])];
-      if (tabs.length !== 2) {
-        throw new Error(`Expected two data tabs, received ${tabs.length}`);
+      const summaryCard = document.querySelector('[data-testid="usage-overview-summary-card"]');
+      const toolbar = summaryCard?.previousElementSibling;
+      const actions = [
+        ...(toolbar?.querySelectorAll('button:not([role="tab"]), select') || []),
+      ];
+      if (actions.length !== 3) {
+        throw new Error(`Expected three dashboard core actions, received ${actions.length}`);
       }
-      add(tabs[0], "data-tab-daily");
-      add(tabs[1], "data-tab-projects");
+      actions.forEach((action, index) => add(action, `dashboard-core-action-${index}`));
     } else {
       const toggles = [
         ...document.querySelectorAll("[data-cost-section] button[aria-expanded]"),
@@ -236,7 +247,9 @@ async function readKeyboardFocusStyles(page, targetNames) {
       const computed = getComputedStyle(active);
       return {
         name,
-        hasHook: active.classList.contains("tt-analytics-focusable"),
+        hasHook:
+          active.classList.contains("tt-analytics-focusable")
+          || active.classList.contains("tt-product-focusable"),
         focusVisible: active.matches(":focus-visible"),
         outlineColor: computed.outlineColor,
         outlineStyle: computed.outlineStyle,
@@ -253,29 +266,24 @@ async function readKeyboardFocusStyles(page, targetNames) {
   });
 }
 
-async function readCostBorderStyles(page, theme) {
-  return page.evaluate((activeTheme) => {
-    const totalIcon = document.querySelector('[data-testid="cost-summary-icon-total"]');
-    const total = totalIcon?.closest('[data-testid="cost-summary-card"]');
+async function readCostCardStyles(page) {
+  return page.evaluate(() => {
     const apiIcon = document.querySelector('[data-testid="cost-summary-icon-api"]');
     const api = apiIcon?.closest('[data-testid="cost-summary-card"]');
-    if (!total || !api) throw new Error("Missing cost summary cards");
-
-    const probe = document.createElement("span");
-    probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(
-      activeTheme === "dark" ? "--brand-800" : "--brand-200",
-    );
-    document.body.appendChild(probe);
-    const expectedBrandColor = getComputedStyle(probe).color;
-    probe.remove();
+    const subscriptionIcon = document.querySelector('[data-testid="cost-summary-icon-subscription"]');
+    const subscription = subscriptionIcon?.closest('[data-testid="cost-summary-card"]');
+    const combinedTotal = document.querySelector('[data-cost-summary-card="total"]');
+    if (!api || !subscription) throw new Error("Missing separated cost summary cards");
 
     return {
-      totalBorderColor: getComputedStyle(total).borderColor,
-      apiBorderColor: getComputedStyle(api).borderColor,
-      expectedBrandColor,
-      totalKeepsNestedSurface: total.classList.contains("tt-surface-nested"),
+      cardCount: document.querySelectorAll('[data-testid="cost-summary-card"]').length,
+      hasCombinedTotal: Boolean(combinedTotal),
+      apiKeepsNestedSurface: api.classList.contains("tt-surface-nested"),
+      subscriptionKeepsNestedSurface: subscription.classList.contains("tt-surface-nested"),
+      apiTone: apiIcon?.dataset.tone ?? null,
+      subscriptionTone: subscriptionIcon?.dataset.tone ?? null,
     };
-  }, theme);
+  });
 }
 
 async function auditPage(browser, baseUrl, pageName, pathName, theme) {
@@ -286,6 +294,7 @@ async function auditPage(browser, baseUrl, pageName, pathName, theme) {
   });
   await context.addInitScript((value) => {
     localStorage.setItem("tokentracker-theme", value);
+    localStorage.setItem("tokentracker.firstRun.completed.v1", "1");
   }, theme);
   const page = await context.newPage();
   try {
@@ -303,18 +312,16 @@ async function auditPage(browser, baseUrl, pageName, pathName, theme) {
       if (!hasVisibleFocus(style)) failures.push(`${style.name} has no visible focus cue`);
     }
     if (pageName === "cost") {
-      const borders = await readCostBorderStyles(page, theme);
-      console.log(`BORDER cost ${theme} ${JSON.stringify(borders)}`);
-      if (!borders.totalKeepsNestedSurface) {
-        failures.push("total card lost tt-surface-nested");
+      const cards = await readCostCardStyles(page);
+      console.log(`CARDS cost ${theme} ${JSON.stringify(cards)}`);
+      if (cards.cardCount !== 2 || cards.hasCombinedTotal) {
+        failures.push("cost cards no longer keep estimated usage and subscription spend separate");
       }
-      if (borders.totalBorderColor !== borders.expectedBrandColor) {
-        failures.push(
-          `total border ${borders.totalBorderColor} != brand ${borders.expectedBrandColor}`,
-        );
+      if (!cards.apiKeepsNestedSurface || !cards.subscriptionKeepsNestedSurface) {
+        failures.push("a separated cost card lost tt-surface-nested");
       }
-      if (borders.totalBorderColor === borders.apiBorderColor) {
-        failures.push("total border is indistinguishable from a standard summary card");
+      if (!cards.apiTone || !cards.subscriptionTone || cards.apiTone === cards.subscriptionTone) {
+        failures.push("estimated usage and subscription cards lost distinct visual tones");
       }
     }
     if (failures.length > 0) {
@@ -337,7 +344,7 @@ async function run() {
     browser = await chromium.launch();
     for (const theme of ["light", "dark"]) {
       for (const [pageName, pathName] of [
-        ["dashboard", "/"],
+        ["dashboard", "/dashboard"],
         ["cost", "/spend/cost"],
       ]) {
         try {

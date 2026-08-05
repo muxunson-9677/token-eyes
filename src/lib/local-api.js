@@ -996,6 +996,27 @@ function getSourceDisplayName(source) {
 // this function with the same rows + filters + time range.
 // ---------------------------------------------------------------------------
 
+function tokenComponentDelta(row) {
+  const source = normalizeSource(row?.source);
+  const rawInput = Number(row?.input_tokens || 0);
+  const output = Number(row?.output_tokens || 0);
+  const cacheRead = Number(row?.cached_input_tokens || 0);
+  const cacheWrite = Number(row?.cache_creation_input_tokens || 0);
+  const reasoning = Number(row?.reasoning_output_tokens || 0);
+  const total = Number(row?.total_tokens || 0);
+  const isCodex = source === "codex" || source === "every-code";
+  const isLegacyInclusive = isCodex
+    && cacheRead > 0
+    && rawInput >= cacheRead
+    && total === rawInput + output;
+  const input = isLegacyInclusive ? rawInput - cacheRead : rawInput;
+  const baseParts = input + output + cacheRead + cacheWrite;
+  const componentTotal = isCodex
+    ? (reasoning > 0 && total === baseParts + reasoning ? baseParts + reasoning : baseParts)
+    : baseParts + reasoning;
+  return total - componentTotal;
+}
+
 function computeQueueTotals(rows, options = {}) {
   const {
     fromKey = null,
@@ -1017,6 +1038,8 @@ function computeQueueTotals(rows, options = {}) {
     priced_tokens: 0,
     unpriced_tokens: 0,
     pricing_coverage: "complete",
+    component_token_delta: 0,
+    component_mismatch_records: 0,
   };
   for (const row of rows) {
     if (!row || !row.hour_start) continue;
@@ -1033,6 +1056,9 @@ function computeQueueTotals(rows, options = {}) {
     acc.cached_input_tokens += Number(row.cached_input_tokens || 0);
     acc.cache_creation_input_tokens += Number(row.cache_creation_input_tokens || 0);
     acc.reasoning_output_tokens += Number(row.reasoning_output_tokens || 0);
+    const componentDelta = tokenComponentDelta(row);
+    acc.component_token_delta += componentDelta;
+    if (componentDelta !== 0) acc.component_mismatch_records += 1;
     const rowCost = computeRowCostDetailed(row, pricingOptions);
     acc.cost_usd += Number(rowCost.cost_usd || 0);
     acc.conversation_count += Number(row.conversation_count || 0);
@@ -5097,7 +5123,7 @@ function createLocalApiHandler({
           activeSessionWindow: url.searchParams.get("active_window") || "1h",
           usage,
           sessions,
-          limits: flattenUsageLimitsPayload(usageLimits),
+          limits: flattenUsageLimitsPayload(usageLimits, readTokenPlanRecords()),
           pendingResets: codexResetMonitorService.listUnread("widget"),
           nowMs: widgetNow.getTime(),
         });
@@ -6090,9 +6116,12 @@ function createLocalApiHandler({
           displayed_total_tokens: Number(totals.total_tokens || 0),
           reconciled_total_tokens: Number(queueTotals.total_tokens || 0),
           token_delta: tokenDelta,
+          component_token_delta: Number(queueTotals.component_token_delta || 0),
+          component_mismatch_records: Number(queueTotals.component_mismatch_records || 0),
           status: tokenDelta === 0 && queueDiagnostics.malformed_records === 0
             ? "verified"
             : "attention",
+          user_action_required: tokenDelta !== 0 || queueDiagnostics.malformed_records > 0,
         },
         rolling: {
           last_7d: { from: l7fromStr, to: todayStr, active_days: l7.length, totals: l7t },
@@ -7751,6 +7780,48 @@ function createLocalApiHandler({
         return true;
       }
       json(res, { ok: false, error: "Method Not Allowed" }, 405);
+      return true;
+    }
+    // --- clear derived local usage data; preserves settings, secrets, and source logs ---
+    if (p === "/functions/tokentracker-clear-local-data") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method !== "POST") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        const body = await readJsonBody(req);
+        if (body?.confirm !== true) {
+          json(res, { ok: false, error: "Explicit confirmation is required" }, 400);
+          return true;
+        }
+        const resolvedTrackerDir = path.resolve(trackerDataDir);
+        const derivedTargets = new Set([
+          path.resolve(qp),
+          path.join(resolvedTrackerDir, "project.queue.jsonl"),
+          path.join(resolvedTrackerDir, "queue.state.json"),
+          path.join(resolvedTrackerDir, "cursors.json"),
+        ]);
+        const removed = [];
+        for (const target of derivedTargets) {
+          const resolvedTarget = path.resolve(target);
+          if (!resolvedTarget.startsWith(`${resolvedTrackerDir}${path.sep}`)) {
+            throw new Error("Refusing to clear data outside the tracker directory");
+          }
+          if (fs.existsSync(resolvedTarget)) {
+            fs.rmSync(resolvedTarget, { force: true });
+            removed.push(path.basename(resolvedTarget));
+          }
+        }
+        usageAggregateResponseCache.clear();
+        json(res, { ok: true, removed });
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || "Unable to clear local data" }, 500);
+      }
       return true;
     }
     // --- discover known local/WSL agent data roots without reading their contents ---

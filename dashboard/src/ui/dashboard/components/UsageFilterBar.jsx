@@ -43,15 +43,20 @@ export function UsageFilterBar({
         className,
       )}
     >
-      <AgentSwitcher visibleProviderIds={visibleProviderIds} />
-      <SourceFilter options={sourceOptions} />
-      <ModelFilter options={modelsBySource} />
-      <RefreshIntervalPicker
-        onManualRefresh={onManualRefresh}
-        isRefreshing={isRefreshing}
-        lastUpdatedAt={lastUpdatedAt}
-      />
-      <TimeRangePicker timeZone={timeZone} offsetMinutes={offsetMinutes} />
+      <div className="tt-usage-source-switcher">
+        <span className="tt-usage-filter-label">{copy("spend.source")}</span>
+        <AgentSwitcher visibleProviderIds={visibleProviderIds} />
+      </div>
+      <div className="tt-usage-filter-controls">
+        <SourceFilter options={sourceOptions} />
+        <ModelFilter options={modelsBySource} />
+        <RefreshIntervalPicker
+          onManualRefresh={onManualRefresh}
+          isRefreshing={isRefreshing}
+          lastUpdatedAt={lastUpdatedAt}
+        />
+        <TimeRangePicker timeZone={timeZone} offsetMinutes={offsetMinutes} />
+      </div>
     </div>
   );
 }

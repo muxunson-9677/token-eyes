@@ -70,14 +70,19 @@ function safeNum(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isProvidedNumber(value) {
+  return value !== null
+    && value !== undefined
+    && value !== ""
+    && Number.isFinite(Number(value));
+}
+
 function formatFullNum(value) {
   return safeNum(value).toLocaleString();
 }
 
 function formatAverageLatency(value) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
-    return copy("ticket06.metric.unavailable");
-  }
+  if (!isProvidedNumber(value)) return null;
   const milliseconds = Math.max(0, Number(value));
   return milliseconds < 1_000
     ? `${Math.round(milliseconds)}ms`
@@ -85,10 +90,11 @@ function formatAverageLatency(value) {
 }
 
 function formatCost(value, currency, rate, pricingCoverage) {
-  const n = Number(value);
   if (pricingCoverage === "unpriced") {
     return copy("ticket06.pricing.unpriced");
   }
+  if (!isProvidedNumber(value)) return null;
+  const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return `${getCurrencySymbol(currency)}0`;
   return formatUsdCurrency(n, { decimals: n < 1 ? 4 : 2, currency, rate });
 }
@@ -107,17 +113,19 @@ function formatTime(timestamp) {
 
 /** `0.0s / 830ms` — total latency + first-token latency. */
 function formatLatencyFirst(latencyMs, firstTokenMs) {
-  if (latencyMs === null || latencyMs === undefined) {
-    return copy("ticket06.metric.unavailable");
+  const hasLatency = isProvidedNumber(latencyMs);
+  const hasFirstToken = isProvidedNumber(firstTokenMs);
+  if (!hasLatency && !hasFirstToken) return null;
+
+  const values = [];
+  if (hasLatency) {
+    const latency = Math.max(0, Number(latencyMs));
+    values.push(latency === 0 ? "0ms" : `${(latency / 1000).toFixed(1)}s`);
   }
-  const lat = safeNum(latencyMs);
-  const ft = firstTokenMs == null ? null : safeNum(firstTokenMs);
-  const hasLat = lat > 0;
-  const hasFt = ft != null && ft > 0;
-  if (!hasLat && !hasFt) return copy("ticket04.request.latency_none");
-  const latStr = hasLat ? `${(lat / 1000).toFixed(1)}s` : "-";
-  const ftStr = hasFt ? `${Math.round(ft)}ms` : "-";
-  return `${latStr} / ${ftStr}`;
+  if (hasFirstToken) {
+    values.push(`${Math.round(Math.max(0, Number(firstTokenMs)))}ms`);
+  }
+  return values.join(" / ");
 }
 
 function statusIsError(status) {
@@ -247,7 +255,7 @@ export function RequestUsageLog({
         <button
           type="button"
           onClick={refresh}
-          className="inline-flex h-8 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
+          className="inline-flex h-10 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
         >
           {copy("ticket04.request.retry")}
         </button>
@@ -320,7 +328,7 @@ export function RequestUsageLog({
                     </td>
                     <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
                       <div className="flex flex-col items-end leading-tight">
-                        <span>{formatFullNum(record.input_tokens)}</span>
+                        {isProvidedNumber(record.input_tokens) && <span>{formatFullNum(record.input_tokens)}</span>}
                         {safeNum(record.cached_input_tokens) > 0 && (
                           <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
                             {copy("ticket04.request.cache_read_prefix")}{formatFullNum(record.cached_input_tokens)}
@@ -329,7 +337,7 @@ export function RequestUsageLog({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
-                      {formatFullNum(record.output_tokens)}
+                      {isProvidedNumber(record.output_tokens) ? formatFullNum(record.output_tokens) : null}
                     </td>
                     <td className="px-3 py-2 text-sm text-oai-brand whitespace-nowrap text-right tabular-nums">
                       {formatCost(record.cost_usd, currency, rate, record.pricing_coverage)}
@@ -338,9 +346,7 @@ export function RequestUsageLog({
                       {formatLatencyFirst(record.latency_ms, record.first_token_ms)}
                     </td>
                     <td className="px-3 py-2 text-sm whitespace-nowrap text-right tabular-nums">
-                      {record.status === null || record.status === undefined ? (
-                        <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("ticket06.metric.unavailable")}</span>
-                      ) : (
+                      {record.status !== null && record.status !== undefined ? (
                         <span
                           className={
                             isStatusError
@@ -351,7 +357,7 @@ export function RequestUsageLog({
                         >
                           {record.status}
                         </span>
-                      )}
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-xs text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap">
                       <div>{getCacheDiagnostic(record)}</div>
@@ -360,7 +366,7 @@ export function RequestUsageLog({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap">
-                      {record.request_source || record.origin || "-"}
+                      {record.request_source || record.origin || null}
                     </td>
                   </tr>
                 );
@@ -371,7 +377,7 @@ export function RequestUsageLog({
                     {copy("usage.request_log.totals")}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold text-oai-black dark:text-oai-white whitespace-nowrap text-right tabular-nums">
-                    {formatFullNum(totals.input_tokens)}
+                    {isProvidedNumber(totals.input_tokens) ? formatFullNum(totals.input_tokens) : null}
                     {safeNum(totals.cached_input_tokens) > 0 && (
                       <div className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
                         {copy("ticket04.request.cache_read_prefix")}{formatFullNum(totals.cached_input_tokens)}
@@ -379,28 +385,16 @@ export function RequestUsageLog({
                     )}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold text-oai-black dark:text-oai-white whitespace-nowrap text-right tabular-nums">
-                    {formatFullNum(totals.output_tokens)}
+                    {isProvidedNumber(totals.output_tokens) ? formatFullNum(totals.output_tokens) : null}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold text-oai-brand whitespace-nowrap text-right tabular-nums">
                     {formatCost(totals.cost_usd, currency, rate, totals.pricing_coverage)}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold whitespace-nowrap text-right tabular-nums">
-                    {totals.avg_latency_ms === null || totals.avg_latency_ms === undefined ? (
-                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("ticket06.metric.unavailable")}</span>
-                    ) : safeNum(totals.avg_latency_ms) > 0 ? (
-                      `${(safeNum(totals.avg_latency_ms) / 1000).toFixed(1)}s`
-                    ) : (
-                      "-"
-                    )}
+                    {formatAverageLatency(totals.avg_latency_ms)}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold whitespace-nowrap text-right tabular-nums">
-                    {totals.success_rate === null || totals.success_rate === undefined ? (
-                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("ticket06.metric.unavailable")}</span>
-                    ) : safeNum(totals.success_rate) > 0 ? (
-                      `${safeNum(totals.success_rate).toFixed(1)}%`
-                    ) : (
-                      "-"
-                    )}
+                    {isProvidedNumber(totals.success_rate) ? `${Number(totals.success_rate).toFixed(1)}%` : null}
                   </td>
                   <td className="px-3 py-2" />
                   <td className="px-3 py-2" />
@@ -570,7 +564,7 @@ export function RequestUsageLog({
               setSourceFilter(e.target.value);
               handlePageChange(1);
             }}
-            className="h-8 px-2.5 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand/50 focus:border-oai-brand"
+            className="h-10 px-2.5 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand/50 focus:border-oai-brand"
             aria-label={copy("usage.request_log.source_filter_aria")}
           >
             <option value="">{copy("ticket04.request.all_sources")}</option>
@@ -583,22 +577,28 @@ export function RequestUsageLog({
         </div>
       </div>
 
-      {totals && (
+      {totals && [totals.request_count, totals.success_rate, totals.avg_latency_ms].some(isProvidedNumber) && (
         <div className="mb-4 grid grid-cols-3 gap-2" data-testid="request-log-metrics">
-          <div data-testid="request-log-metric-requests" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
-            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.requests")}</div>
-            <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatFullNum(totals.request_count)}</div>
-          </div>
-          <div data-testid="request-log-metric-success-rate" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
-            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.success_rate")}</div>
-            <div className="mt-1 text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
-              {totals.success_rate === null || totals.success_rate === undefined ? copy("ticket06.metric.unavailable") : `${safeNum(totals.success_rate).toFixed(1)}%`}
+          {isProvidedNumber(totals.request_count) && (
+            <div data-testid="request-log-metric-requests" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
+              <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.requests")}</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatFullNum(totals.request_count)}</div>
             </div>
-          </div>
-          <div data-testid="request-log-metric-avg-latency" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
-            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.avg_latency")}</div>
-            <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatAverageLatency(totals.avg_latency_ms)}</div>
-          </div>
+          )}
+          {isProvidedNumber(totals.success_rate) && (
+            <div data-testid="request-log-metric-success-rate" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
+              <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.success_rate")}</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                {`${Number(totals.success_rate).toFixed(1)}%`}
+              </div>
+            </div>
+          )}
+          {isProvidedNumber(totals.avg_latency_ms) && (
+            <div data-testid="request-log-metric-avg-latency" className="tt-surface-nested min-w-0 rounded-xl px-3 py-2.5">
+              <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.avg_latency")}</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatAverageLatency(totals.avg_latency_ms)}</div>
+            </div>
+          )}
         </div>
       )}
 

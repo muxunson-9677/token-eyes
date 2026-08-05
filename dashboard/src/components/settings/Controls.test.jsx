@@ -1,9 +1,10 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import postcss from "postcss";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Palette } from "lucide-react";
 import {
   SectionCard,
@@ -11,7 +12,53 @@ import {
   ToggleSwitch,
 } from "./Controls.jsx";
 
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 describe("SectionCard visual identity", () => {
+  it("defaults closed and restores each persisted disclosure independently", async () => {
+    const user = userEvent.setup();
+    const sectionContent = "content";
+    const { unmount } = render(
+      <SectionCard
+        title="Provider API"
+        collapsible
+        defaultOpen={false}
+        storageKey="cost.provider-api"
+      >
+        <div>{sectionContent}</div>
+      </SectionCard>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Provider API" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("content")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await user.click(trigger);
+    });
+    expect(window.localStorage.getItem("token-eyes.settings.disclosure.cost.provider-api.v1"))
+      .toBe("1");
+    expect(screen.getByText("content")).toBeInTheDocument();
+
+    unmount();
+    render(
+      <SectionCard
+        title="Provider API"
+        collapsible
+        defaultOpen={false}
+        storageKey="cost.provider-api"
+      >
+        <div>{sectionContent}</div>
+      </SectionCard>,
+    );
+    expect(screen.getByRole("button", { name: "Provider API" }))
+      .toHaveAttribute("aria-expanded", "true");
+    expect(window.localStorage.getItem("token-eyes.settings.disclosure.cost.other-ai.v1"))
+      .toBeNull();
+  });
+
   it("renders an optional semantic icon without changing iconless cards", () => {
     const { rerender } = render(
       <SectionCard title="外观" icon={Palette} iconTone="blue">
@@ -53,17 +100,33 @@ describe("SectionCard visual identity", () => {
     expect(screen.getByRole("switch", { name: "Usage limits" })).toHaveClass(
       "tt-pressable",
       "tt-product-focusable",
+      "h-10",
+      "w-10",
     );
     expect(screen.getAllByRole("button", { pressed: true })[0]).toHaveClass(
       "tt-pressable",
       "tt-product-focusable",
+      "min-h-10",
     );
   });
 });
 
 describe("product focus token contract", () => {
-  it("uses the theme-aware foreground token for light and dark product focus", () => {
+  it("keeps every interactive element visibly focused without a blanket suppression rule", () => {
     const stylesheet = postcss.parse(readFileSync(resolve("src/styles.css"), "utf8"));
+    const rules = stylesheet.nodes.filter((node) => node.type === "rule");
+    const blanketSuppression = rules.find((rule) =>
+      rule.selector
+        .split(",")
+        .map((selector) => selector.trim())
+        .includes("*:focus-visible") &&
+      rule.nodes.some((node) => node.prop === "outline" && node.value === "none"),
+    );
+    const interactiveFocusRule = rules.find(
+      (node) =>
+        node.selector ===
+        ':is(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible',
+    );
     const baseFocusRule = stylesheet.nodes.find(
       (node) =>
         node.type === "rule" &&
@@ -75,6 +138,10 @@ describe("product focus token contract", () => {
         node.selector === ":root.dark .tt-product-focusable:focus-visible",
     );
 
+    expect(blanketSuppression).toBeUndefined();
+    expect(
+      interactiveFocusRule.nodes.find((node) => node.prop === "outline")?.value,
+    ).toBe("2px solid var(--oai-black)");
     expect(
       baseFocusRule.nodes.find((node) => node.prop === "outline")?.value,
     ).toBe("2px solid var(--oai-black)");

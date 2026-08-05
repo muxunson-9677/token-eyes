@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { copy, setCopyLocale } from "../lib/copy";
@@ -24,6 +24,17 @@ function installNativeBridge(settings) {
       window.dispatchEvent(new CustomEvent("native:settings", { detail: settings }));
     },
   };
+}
+
+async function expandWindowsWidgetSection(user, titleKey) {
+  const title = copy(titleKey);
+  const trigger = await screen.findByRole("button", {
+    name: (accessibleName) => accessibleName.includes(title),
+  });
+  if (trigger.getAttribute("aria-expanded") === "false") {
+    await user.click(trigger);
+  }
+  return trigger;
 }
 
 afterEach(() => {
@@ -171,6 +182,71 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(invoke).toHaveBeenCalledWith("hide_desktop_widget");
   });
 
+  it("keeps project and usage-plan settings collapsed by default and expands them independently", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.fn(async (command) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          selectedProjectIds: [],
+          selectedProjects: [],
+          selectedLimitIds: [],
+        };
+      }
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const body = String(url).includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : {
+          projectStatus: { projects: [{ id: "project-a", label: "Token Eyes" }] },
+          limits: [{
+            id: "codex:plus:5h",
+            provider: "Codex",
+            accountLabel: "Plus",
+            window: "5h",
+            usedPercent: 42,
+          }],
+        };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+
+    const projects = await screen.findByRole("button", {
+      name: (accessibleName) => accessibleName.includes(copy("widgets.windows.projects.title")),
+    });
+    const limits = screen.getByRole("button", {
+      name: (accessibleName) => accessibleName.includes(copy("widgets.windows.limits.title")),
+    });
+    expect(projects).toHaveAttribute("aria-expanded", "false");
+    expect(limits).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("searchbox", {
+      name: copy("widgets.windows.projects.search"),
+    })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Codex - Plus - 5h" })).not.toBeInTheDocument();
+
+    await user.click(projects);
+    expect(projects).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByRole("searchbox", {
+      name: copy("widgets.windows.projects.search"),
+    })).toBeInTheDocument();
+    expect(limits).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(limits);
+    expect(limits).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByRole("checkbox", { name: "Codex - Plus - 5h" })).toBeInTheDocument();
+  });
+
   it("configures visible projects on the Widgets page instead of inside the capsule", async () => {
     const user = userEvent.setup();
     const invoke = vi.fn(async (command, payload) => {
@@ -213,6 +289,8 @@ describe("WidgetsPage Windows desktop widget", () => {
     });
 
     render(<WidgetsPage />);
+
+    await expandWindowsWidgetSection(user, "widgets.windows.projects.title");
 
     const search = await screen.findByRole("searchbox", {
       name: copy("widgets.windows.projects.search"),
@@ -271,6 +349,8 @@ describe("WidgetsPage Windows desktop widget", () => {
 
     render(<WidgetsPage />);
 
+    await expandWindowsWidgetSection(user, "widgets.windows.projects.title");
+
     const range = await screen.findByRole("combobox", {
       name: copy("widgets.windows.projects.active_window"),
     });
@@ -322,6 +402,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     });
 
     render(<WidgetsPage />);
+    await expandWindowsWidgetSection(user, "widgets.windows.projects.title");
     await user.click(await screen.findByRole("button", {
       name: copy("widgets.windows.projects.add_folder"),
     }));
@@ -391,6 +472,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     });
 
     render(<WidgetsPage />);
+    await expandWindowsWidgetSection(user, "widgets.windows.projects.title");
     expect(await screen.findByRole("checkbox", { name: "Recent 1" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Recent 10" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "Recent 11" })).not.toBeInTheDocument();
@@ -413,6 +495,83 @@ describe("WidgetsPage Windows desktop widget", () => {
       expect(saves[0][1].prefs.selectedProjectIds).toEqual(
         Array.from({ length: 10 }, (_, index) => `recent-${index + 1}`),
       );
+    });
+  });
+  it("selects and drag-orders usage plans before saving the widget preferences", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.fn(async (command, payload) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          selectedProjectIds: [],
+          selectedProjects: [],
+          selectedLimitIds: ["codex:plus:weekly"],
+        };
+      }
+      if (command === "set_desktop_widget_prefs") return payload?.prefs;
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const body = String(url).includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : {
+          projectStatus: { projects: [] },
+          limits: [
+            {
+              id: "codex:plus:5h",
+              provider: "Codex",
+              accountLabel: "Plus",
+              window: "5h",
+              usedPercent: 42,
+              notes: "主力开发账号",
+            },
+            {
+              id: "codex:plus:weekly",
+              provider: "Codex",
+              accountLabel: "Plus",
+              window: "weekly",
+              usedPercent: 68,
+            },
+          ],
+        };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+    await expandWindowsWidgetSection(user, "widgets.windows.limits.title");
+    const weekly = await screen.findByRole("checkbox", { name: "Codex - Plus - weekly" });
+    const fiveHour = screen.getByRole("checkbox", { name: "Codex - Plus - 5h" });
+    expect(screen.getByText("主力开发账号")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("主力开发账号")).not.toBeInTheDocument();
+    expect(weekly).toBeChecked();
+    expect(fiveHour).not.toBeChecked();
+    expect(weekly.closest("[draggable='true']")).toBeInTheDocument();
+
+    await user.click(fiveHour);
+    const weeklyRow = weekly.closest("[draggable='true']");
+    const fiveHourRow = fiveHour.closest("[draggable='true']");
+    fireEvent.dragStart(weeklyRow);
+    fireEvent.dragOver(fiveHourRow);
+    fireEvent.drop(fiveHourRow);
+
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.windows.projects.save"),
+    }));
+    await waitFor(() => {
+      const saves = invoke.mock.calls.filter(([command]) => command === "set_desktop_widget_prefs");
+      expect(saves.at(-1)[1].prefs.selectedLimitIds).toEqual([
+        "codex:plus:5h",
+        "codex:plus:weekly",
+      ]);
     });
   });
 });

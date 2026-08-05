@@ -20,17 +20,6 @@ const usageSummary = {
   },
 };
 
-const costSummary = {
-  api_usd: 0.01,
-  api_cny: 0.07,
-  subscription_usd: 0,
-  subscription_cny: 0,
-  combined_usd: 0.01,
-  combined_cny: 0.07,
-  lifetime_combined_usd: 0.01,
-  lifetime_combined_cny: 0.07,
-};
-
 const dailyRow = {
   day: "2025-12-31",
   total_tokens: 150,
@@ -44,7 +33,7 @@ const dailyRow = {
 function UsageContentFixture() {
   return (
     <>
-      <UsageStatsPanel summary={usageSummary} costSummary={costSummary} />
+      <UsageStatsPanel summary={usageSummary} />
       <DataDetails
         copy={copy}
         dailyEmptyPrefix=""
@@ -173,7 +162,7 @@ describe("theme content contract", () => {
     ]);
     expect(light.tableRowCount).toBe(2);
     expect(light.buttonCount).toBe(9);
-    expect(light.testIds).toContain("usage-cost-summary");
+    expect(light.testIds).not.toContain("usage-cost-summary");
 
     expect(dark.texts).toEqual(light.texts);
     expect(dark.buttonCount).toBe(light.buttonCount);
@@ -188,13 +177,37 @@ describe("usage statistics content contract", () => {
   });
 
   it("preserves dimension labels and semantic hooks", () => {
-    render(<UsageStatsPanel summary={usageSummary} costSummary={costSummary} />);
+    render(<UsageStatsPanel summary={usageSummary} />);
 
     expect(screen.getByText(copy("ticket02.stats.input"))).toBeInTheDocument();
     expect(screen.getByText(copy("ticket02.stats.output"))).toBeInTheDocument();
     expect(screen.getByText(copy("ticket02.stats.cache_create"))).toBeInTheDocument();
     expect(screen.getByText(copy("ticket02.stats.cache_hit"))).toBeInTheDocument();
-    expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
+    expect(screen.queryByTestId("usage-cost-summary")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("usage-dimension-icon")).toHaveLength(4);
+  });
+});
+
+describe("restoration copy contract", () => {
+  afterEach(() => {
+    setCopyLocale("zh-CN");
+  });
+
+  it("keeps new navigation, reset preview, and attribution copy bilingual", () => {
+    setCopyLocale("en");
+    expect(copy("nav.settings.data")).toBe("Data & diagnostics");
+    expect(copy("reset_history.effect.label")).toBe("Surprise effect");
+    expect(copy("reset_history.effect.meteors")).toBe("Meteor shower (default)");
+    expect(copy("reset_history.effect.fireworks")).toBe("Fireworks");
+    expect(copy("reset_history.preview_celebration_aria")).toBe("Preview surprise effect");
+    expect(copy("shared.data.unattributed")).toBe("Unattributed");
+
+    setCopyLocale("zh-CN");
+    expect(copy("nav.settings.data")).toBe("数据与诊断");
+    expect(copy("reset_history.effect.label")).toBe("选择惊喜效果");
+    expect(copy("reset_history.effect.meteors")).toBe("流星雨（默认）");
+    expect(copy("reset_history.effect.fireworks")).toBe("烟花");
+    expect(copy("reset_history.preview_celebration_aria")).toBe("预览惊喜效果");
+    expect(copy("shared.data.unattributed")).toBe("未归因");
   });
 });

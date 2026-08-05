@@ -500,6 +500,9 @@ export function getMockSpendTimeseries({
     by_source: [{ source: "codex", ...summed }],
     totals: {
       ...summed,
+      api_usd: summed.api_cost_usd,
+      subscription_usd: summed.subscription_cost_usd,
+      other_ai_usd: 0,
       api_cost_cny: summed.api_cost_usd * 7,
       subscription_cost_cny: 0,
       combined_cny: summed.combined_usd * 7,

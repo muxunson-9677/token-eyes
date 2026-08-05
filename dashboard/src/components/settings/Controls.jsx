@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Card } from "../../ui/components";
@@ -11,6 +11,13 @@ const SECTION_ICON_TONES = {
   rose: "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
 };
 
+const COST_REFERENCE_SCENARIOS = {
+  "cost.other-ai": "10-settings-cost-1",
+  "cost.agent-pricing": "11-settings-cost-2",
+  "cost.token-plans": "12-settings-cost-3",
+  "cost.provider-api": "13-settings-cost-4",
+};
+
 export function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
   return (
     <button
@@ -20,17 +27,21 @@ export function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
       aria-label={ariaLabel}
       onClick={onChange}
       disabled={disabled}
-      className={cn(
-        "tt-pressable tt-product-focusable relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed",
-        checked ? "bg-oai-brand-500" : "bg-oai-gray-300 dark:bg-oai-gray-700",
-      )}
+      className="tt-pressable tt-product-focusable inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
     >
       <span
         className={cn(
-          "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
-          checked ? "translate-x-[18px]" : "translate-x-[3px]",
+          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+          checked ? "bg-oai-brand-500" : "bg-oai-gray-300 dark:bg-oai-gray-700",
         )}
-      />
+      >
+        <span
+          className={cn(
+            "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
+            checked ? "translate-x-[18px]" : "translate-x-[3px]",
+          )}
+        />
+      </span>
     </button>
   );
 }
@@ -56,11 +67,56 @@ export function SectionCard({
   children,
   collapsible = false,
   defaultOpen = true,
+  storageKey = null,
   icon: Icon,
   iconTone = "blue",
+  iconTestId = null,
+  collapsedSummary = "",
+  className = "",
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const persistedKey = storageKey
+    ? `token-eyes.settings.disclosure.${storageKey}.v1`
+    : null;
+  const [open, setOpen] = useState(() => {
+    if (!persistedKey || typeof window === "undefined") return defaultOpen;
+    try {
+      const stored = window.localStorage.getItem(persistedKey);
+      if (stored === "1") return true;
+      if (stored === "0") return false;
+    } catch {
+      // Storage availability must not block the current-session interaction.
+    }
+    return defaultOpen;
+  });
   const expanded = collapsible ? open : true;
+  useEffect(() => {
+    const scenario = COST_REFERENCE_SCENARIOS[storageKey];
+    if (!scenario || typeof document === "undefined") return undefined;
+    const root = document.documentElement;
+    if (expanded) {
+      root.dataset.referenceScenario = scenario;
+    } else if (root.dataset.referenceScenario === scenario) {
+      delete root.dataset.referenceScenario;
+    }
+    return () => {
+      if (root.dataset.referenceScenario === scenario) {
+        delete root.dataset.referenceScenario;
+      }
+    };
+  }, [expanded, storageKey]);
+  const toggleOpen = () => {
+    setOpen((current) => {
+      const next = !current;
+      if (persistedKey && typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(persistedKey, next ? "1" : "0");
+        } catch {
+          // Storage availability must not block the current-session interaction.
+        }
+      }
+      return next;
+    });
+  };
   const sectionIcon = Icon ? (
     <span
       data-testid="settings-section-icon"
@@ -70,19 +126,19 @@ export function SectionCard({
         SECTION_ICON_TONES[iconTone] || SECTION_ICON_TONES.blue,
       )}
     >
-      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      <Icon data-testid={iconTestId || undefined} className="h-3.5 w-3.5" aria-hidden="true" />
     </span>
   ) : null;
 
   return (
-    <Card>
+    <Card className={className}>
       <div className={cn("flex items-start justify-between gap-4", expanded && "mb-3")}>
         {collapsible ? (
           <button
             type="button"
             aria-label={title}
             aria-expanded={expanded}
-            onClick={() => setOpen((current) => !current)}
+            onClick={toggleOpen}
             className="tt-product-focusable group flex min-w-0 flex-1 items-start gap-2 rounded-lg text-left outline-none"
           >
             <ChevronDown
@@ -119,7 +175,15 @@ export function SectionCard({
             </div>
           </div>
         )}
-        {action && expanded ? <div className="shrink-0">{action}</div> : null}
+        {action && expanded ? (
+          <div className="shrink-0">{action}</div>
+        ) : action ? (
+          <div
+            className="tt-collapsed-action-placeholder shrink-0"
+            data-summary={collapsedSummary}
+            aria-hidden="true"
+          />
+        ) : null}
       </div>
       {expanded ? (
         <div className="-mb-3 divide-y divide-oai-gray-200/60 dark:divide-oai-gray-800/60">
@@ -142,7 +206,7 @@ export function SegmentedControl({ options, value, onChange }) {
             onClick={() => onChange(optionValue)}
             aria-pressed={active}
             className={cn(
-              "tt-pressable tt-product-focusable inline-flex items-center gap-1.5 rounded-[8px] border border-transparent px-3 py-1.5 text-xs font-medium transition-[color,background-color,box-shadow,transform]",
+              "tt-pressable tt-product-focusable inline-flex min-h-10 items-center gap-1.5 rounded-[8px] border border-transparent px-3 py-1.5 text-xs font-medium transition-[color,background-color,box-shadow,transform]",
               active
                 ? "translate-y-px border-white/90 bg-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(15,23,42,0.1),0_1px_2px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-oai-gray-800 dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(0,0,0,0.4),0_1px_2px_rgba(0,0,0,0.35)]"
                 : "text-oai-gray-500 hover:text-oai-gray-700 dark:text-oai-gray-500 dark:hover:text-oai-gray-300",

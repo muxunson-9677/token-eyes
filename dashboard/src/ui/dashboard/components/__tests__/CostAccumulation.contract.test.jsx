@@ -20,9 +20,11 @@ vi.mock("react-router-dom", () => ({
 }));
 
 vi.mock("../../../../lib/copy", () => ({
+  getCopyLocale: () => "en-US",
   copy: (key, params) => {
     if (key === "shared.unit.percent") return "%";
     if (!params) return key;
+    if (key === "spend.monthly_change.with_amount") return `${params.change} · ${params.amount}`;
     if (key === "spend.cost.month_picker.value") return `${params.year}年${params.month}月`;
     if (key === "spend.cost.month_picker.year_to_month") return `${params.year}年截至${params.month}月`;
     return Object.entries(params).reduce(
@@ -44,7 +46,7 @@ const BASE_SUMMARY = {
   usdToCny: 7.2,
 };
 
-it("renders API, subscription, and total month comparisons beside the CNY line", () => {
+it("keeps estimated usage cost and actual subscription spend separate without a combined total", () => {
   render(
     <CostAccumulation
       costSummary={{
@@ -61,8 +63,8 @@ it("renders API, subscription, and total month comparisons beside the CNY line",
 
   expect(screen.getByTestId("monthly-cost-comparison-api")).toBeInTheDocument();
   expect(screen.getByTestId("monthly-cost-comparison-subscription")).toBeInTheDocument();
-  expect(screen.getByTestId("monthly-cost-comparison-total")).toBeInTheDocument();
-  for (const testId of ["api", "subscription", "total"]) {
+  expect(screen.queryByTestId("monthly-cost-comparison-total")).not.toBeInTheDocument();
+  for (const testId of ["api", "subscription"]) {
     const comparison = screen.getByTestId(`monthly-cost-comparison-${testId}`);
     expect(comparison.parentElement).toHaveTextContent("CNY");
     expect(comparison.parentElement).toHaveClass("justify-between");
@@ -71,8 +73,52 @@ it("renders API, subscription, and total month comparisons beside the CNY line",
   expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveTextContent(
     "spend.monthly_change.increase:20.0%",
   );
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-emerald-600");
+  expect(screen.getByTestId("monthly-cost-comparison-api")).not.toHaveTextContent("USD 20.00");
+  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-emerald-700");
   expect(screen.getByTestId("monthly-cost-comparison-subscription")).toHaveClass("text-emerald-600");
+  expect(screen.getByText("spend.cost.summary.scope_note")).toBeInTheDocument();
+  expect(screen.getByTestId("cost-confidence-estimated")).toHaveAttribute(
+    "data-confidence-state",
+    "estimated",
+  );
+  expect(screen.getByTestId("cost-confidence-subscription")).toHaveAttribute(
+    "data-confidence-state",
+    "exact",
+  );
+});
+
+it("marks retained cost totals stale after a financial refresh failure", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, monthApiCostUsd: 12, monthSubscriptionCostUsd: 8 }}
+      costSummaryStale
+      costLastSuccessfulAt="2026-08-01T08:00:00.000Z"
+      error="selected-month cost totals: offline"
+    />,
+  );
+
+  expect(screen.getByTestId("cost-confidence-estimated")).toHaveAttribute(
+    "data-confidence-state",
+    "stale",
+  );
+  expect(screen.getByTestId("cost-confidence-subscription")).toHaveAttribute(
+    "data-confidence-state",
+    "stale",
+  );
+});
+
+it("replaces an internal local-service error with an actionable product message", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, monthApiCostUsd: null, monthSubscriptionCostUsd: null }}
+      error="selected-month totals: Local CLI not reachable on :7680 — start it with node bin/tracker.js serve"
+    />,
+  );
+
+  const alert = screen.getByRole("alert");
+  expect(alert).toHaveTextContent("spend.cost.error.local_service_unreachable");
+  expect(alert).not.toHaveTextContent("Local CLI not reachable");
+  expect(alert).not.toHaveTextContent("bin/tracker.js");
 });
 
 it("visually separates the summary and each existing management section without changing their controls", () => {
@@ -103,18 +149,18 @@ it("visually separates the summary and each existing management section without 
   const summary = screen.getByTestId("cost-summary-region");
   expect(summary).toHaveClass("tt-surface", "rounded-[var(--tt-card-radius)]");
   expect(summary).not.toHaveClass("tt-surface-nested");
-  expect(screen.getAllByTestId("cost-summary-card")).toHaveLength(4);
+  expect(screen.getAllByTestId("cost-summary-card")).toHaveLength(2);
   for (const card of screen.getAllByTestId("cost-summary-card")) {
     expect(card).toHaveClass("tt-surface-nested");
+    expect(card).toHaveClass("flex", "h-full", "items-start", "text-left");
     expect(card).not.toHaveClass("tt-surface");
   }
-  expect(screen.getByTestId("cost-summary-icon-total").closest("[data-testid='cost-summary-card']"))
-    .toHaveAttribute("data-cost-summary-card", "total");
-  expect(screen.getAllByTestId("cost-summary-icon")).toHaveLength(4);
+  expect(screen.getByTestId("cost-confidence-estimated")).toHaveClass("justify-start", "text-left");
+  expect(screen.getByTestId("cost-confidence-subscription")).toHaveClass("justify-start", "text-left");
+  expect(screen.queryByTestId("cost-summary-icon-total")).not.toBeInTheDocument();
+  expect(screen.getAllByTestId("cost-summary-icon")).toHaveLength(2);
   expect(screen.getByTestId("cost-summary-icon-api")).toHaveAttribute("data-tone", "blue");
   expect(screen.getByTestId("cost-summary-icon-subscription")).toHaveAttribute("data-tone", "violet");
-  expect(screen.getByTestId("cost-summary-icon-total")).toHaveAttribute("data-tone", "green");
-  expect(screen.getByTestId("cost-summary-icon-lifetime")).toHaveAttribute("data-tone", "orange");
   const sectionIds = ["other-ai", "token-packages", "provider-api", "api-billing", "subscriptions"];
   expect(document.querySelectorAll("[data-cost-section]")).toHaveLength(5);
   expect([summary, ...document.querySelectorAll("[data-cost-section]")]).toHaveLength(6);
@@ -160,12 +206,16 @@ it("lets the user browse historical cost months without advancing into the futur
   );
 
   const picker = screen.getByLabelText("spend.cost.month_picker.label");
+  expect(picker).toHaveClass("h-10");
+  expect(screen.getByRole("button", { name: "spend.cost.month_picker.previous" })).toHaveClass("h-10", "w-10");
+  expect(screen.getByRole("button", { name: "spend.cost.month_picker.next" })).toHaveClass("h-10", "w-10");
   expect(picker).toHaveValue("2025-06");
   expect(picker).toHaveAttribute("max", "2026-07");
-  expect(screen.getByText("2025年6月 spend.cost.summary.api_suffix")).toBeInTheDocument();
-  expect(screen.getByText("2025年6月 spend.cost.summary.subscription_suffix")).toBeInTheDocument();
-  expect(screen.getByText("2025年6月 spend.cost.summary.total_suffix")).toBeInTheDocument();
-  expect(screen.getByText("2025年6月")).toBeInTheDocument();
+  expect(screen.getByTestId("cost-month-display")).toHaveTextContent("2025年6月");
+  expect(screen.getByText("2025年6月 spend.cost.summary.estimated_usage_suffix")).toBeInTheDocument();
+  expect(screen.getByText("2025年6月 spend.cost.summary.actual_subscription_suffix")).toBeInTheDocument();
+  expect(screen.queryByText("2025年6月 spend.cost.summary.total_suffix")).not.toBeInTheDocument();
+  expect(screen.getAllByText("2025年6月").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("2025年截至6月")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "spend.cost.month_picker.previous" }));
@@ -190,11 +240,12 @@ it("lets the user browse historical cost months without advancing into the futur
 describe("getMonthComparison MoM copy boundary", () => {
   const usdToCny = 7.2;
 
-  it("labels an increase with the increase copy key and emerald class", () => {
+  it("labels an increase with the confirmed increase copy key and green class", () => {
     const result = getMonthComparison(150, 100, usdToCny);
     expect(result.label).toContain("spend.monthly_change.increase");
     expect(result.label).toContain("50.0%");
-    expect(result.className).toContain("text-emerald-600");
+    expect(result.className).toContain("text-emerald-700");
+    expect(result.absoluteUsd).toBe(50);
   });
 
   it("labels a decrease with the decrease copy key and emerald class", () => {
@@ -210,12 +261,13 @@ describe("getMonthComparison MoM copy boundary", () => {
     expect(result.className).toContain("text-oai-gray-400");
   });
 
-  it("uses a finite percentage when the previous month is zero", () => {
+  it("uses newly-added wording without inventing a percentage when the previous month is zero", () => {
     const result = getMonthComparison(50, 0, usdToCny);
-    expect(result.label).toContain("spend.monthly_change.increase");
-    expect(result.label).toContain("100.0%");
+    expect(result.label).toContain("spend.monthly_change.new_amount");
+    expect(result.label).not.toContain("100.0%");
     expect(result.label).not.toMatch(/Infinity|∞|NaN/);
-    expect(result.className).toContain("text-emerald-600");
+    expect(result.className).toContain("text-emerald-700");
+    expect(result.kind).toBe("new");
   });
 
   it("uses delta growth for the installed-ledger API and total values", () => {
@@ -229,10 +281,10 @@ describe("getMonthComparison MoM copy boundary", () => {
 });
 
 // --------------------------------------------------------------------------
-// Task-10 / F6: unknown cost must render "—", never fake 0.
+// Task-10 / F6: unknown cost must be omitted, never replaced with a placeholder or fake 0.
 // --------------------------------------------------------------------------
 
-it("Task-10: summary cards render an explicit unavailable state when totals are null", () => {
+it("Task-10: summary cards hide totals that were not provided", () => {
   render(
     <CostAccumulation
       costSummary={{
@@ -244,7 +296,8 @@ it("Task-10: summary cards render an explicit unavailable state when totals are 
       }}
     />
   );
-  expect(screen.getAllByText("shared.data.not_provided").length).toBeGreaterThanOrEqual(4);
+  expect(screen.queryByTestId("cost-summary-card")).not.toBeInTheDocument();
+  expect(document.body).not.toHaveTextContent("shared.data.not_provided");
   expect(document.body).not.toHaveTextContent("—");
   expect(screen.queryByText("USD 0.00")).not.toBeInTheDocument();
 });
@@ -252,9 +305,9 @@ it("Task-10: summary cards render an explicit unavailable state when totals are 
 it("Task-10: summary cards render 'USD 0.00' when costSummary totals are real 0", () => {
   render(<CostAccumulation costSummary={{ ...BASE_SUMMARY }} />);
   // Real zeros must render as "USD 0.00", NOT "—". There should be at least
-  // 4 "USD 0.00" nodes (one per summary card's USD line).
+  // 2 "USD 0.00" nodes (one per separate summary card's USD line).
   const zeroNodes = screen.getAllByText("USD 0.00");
-  expect(zeroNodes.length).toBeGreaterThanOrEqual(4);
+  expect(zeroNodes.length).toBeGreaterThanOrEqual(2);
 });
 
 it("Task-10: a real non-zero total renders the formatted amount, not '—'", () => {
@@ -269,14 +322,14 @@ it("Task-10: a real non-zero total renders the formatted amount, not '—'", () 
       }}
     />
   );
-  // monthApiCostUsd and monthTotalCostUsd are both 12.5 → two "USD 12.50" nodes.
+  // Estimated API usage remains visible without a mixed combined total.
   expect(screen.getAllByText("USD 12.50").length).toBeGreaterThanOrEqual(1);
-  expect(screen.getByText("USD 100.00")).toBeInTheDocument();
+  expect(screen.queryByText("USD 100.00")).not.toBeInTheDocument();
   // Real 0 subscription still renders "0.00", not "—".
   expect(screen.getAllByText("USD 0.00").length).toBeGreaterThanOrEqual(1);
 });
 
-it("Task-10: API billing card shows an explicit unavailable state for null costs", () => {
+it("Task-10: API billing card hides null costs", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
@@ -296,12 +349,32 @@ it("Task-10: API billing card shows an explicit unavailable state for null costs
   );
   const section = screen.getByText("spend.cost.api_billing.section").closest("section");
   expect(section).not.toBeNull();
-  const monthCostLine = within(section).getByText(/spend\.cost\.api_billing\.month_cost:/);
-  const lifetimeCostLine = within(section).getByText(/spend\.cost\.api_billing\.lifetime_cost:/);
-  expect(monthCostLine.textContent).toContain("shared.data.not_provided");
-  expect(lifetimeCostLine.textContent).toContain("shared.data.not_provided");
+  expect(within(section).queryByText(/spend\.cost\.api_billing\.month_cost:/)).not.toBeInTheDocument();
+  expect(within(section).queryByText(/spend\.cost\.api_billing\.lifetime_cost:/)).not.toBeInTheDocument();
+  expect(section.textContent).not.toContain("shared.data.not_provided");
   expect(section.textContent).not.toContain("—");
   expect(section.textContent).not.toContain("USD 0.00");
+});
+
+it("does not call a connected token package synchronized when quota fields are absent", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      tokenPackages={[{
+        id: "plan-1",
+        name: "Pro",
+        provider: "Codex",
+        quota: "—",
+        used: "—",
+        remaining: "—",
+        syncStatus: "success",
+        syncStatusLabel: "settings.token_plan.sync_status.success",
+      }]}
+    />,
+  );
+
+  expect(screen.getByText("spend.cost.token_package.connected_no_quota")).toBeInTheDocument();
+  expect(screen.queryByText("settings.token_plan.sync_status.success")).not.toBeInTheDocument();
 });
 
 it("Task-10: API billing card shows 'USD 0.00' for a synced account with real 0 monthCostUsd", () => {
@@ -331,7 +404,7 @@ it("Task-10: API billing card shows 'USD 0.00' for a synced account with real 0 
   expect(lifetimeCostLine.textContent).toContain("USD 0.00");
 });
 
-it("Task-10: API billing card shows an explicit unavailable state when not connected", () => {
+it("Task-10: API billing card hides costs when not connected", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
@@ -351,15 +424,14 @@ it("Task-10: API billing card shows an explicit unavailable state when not conne
   );
   const section = screen.getByText("spend.cost.api_billing.section").closest("section");
   expect(section).not.toBeNull();
-  const monthCostLine = within(section).getByText(/spend\.cost\.api_billing\.month_cost:/);
-  const lifetimeCostLine = within(section).getByText(/spend\.cost\.api_billing\.lifetime_cost:/);
-  expect(monthCostLine.textContent).toContain("shared.data.not_provided");
-  expect(lifetimeCostLine.textContent).toContain("shared.data.not_provided");
+  expect(within(section).queryByText(/spend\.cost\.api_billing\.month_cost:/)).not.toBeInTheDocument();
+  expect(within(section).queryByText(/spend\.cost\.api_billing\.lifetime_cost:/)).not.toBeInTheDocument();
+  expect(section.textContent).not.toContain("shared.data.not_provided");
   expect(section.textContent).not.toContain("—");
   expect(section.textContent).not.toContain("USD 50.00");
 });
 
-it("uses compact CNY and full-copy comparisons in the monthly summary", () => {
+it("uses compact CNY and the confirmed percentage-only comparison in the monthly summary", () => {
   render(
     <CostAccumulation
       costSummary={{
@@ -380,6 +452,7 @@ it("uses compact CNY and full-copy comparisons in the monthly summary", () => {
   const comparison = screen.getByTestId("monthly-cost-comparison-api");
   expect(comparison.querySelector("svg")).toBeNull();
   expect(comparison).toHaveTextContent("spend.monthly_change.increase:13448.6%");
+  expect(comparison).not.toHaveTextContent("USD 13,448.56");
 });
 
 // --------------------------------------------------------------------------

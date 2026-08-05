@@ -51,12 +51,92 @@ const mixedFleet = [
 ];
 
 describe("UsageOverview", () => {
+  it("hides the primary total when it was not provided", () => {
+    render(
+      <UsageOverview
+        summaryLabel="Total"
+        summaryValue={null}
+        fleetData={[]}
+      />,
+    );
+
+    expect(screen.queryByTestId("usage-primary-total")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("—");
+  });
+  it("keeps overview toolbar controls at least 40px high", () => {
+    render(
+      <UsageOverview
+        period="today"
+        periods={[{ key: "today", label: "Today" }]}
+        summaryLabel="Total"
+        summaryValue="1,000"
+        fleetData={[]}
+        refreshInterval="1m"
+        onRefreshIntervalChange={() => {}}
+        onOpenShare={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "Today" })).toHaveClass("min-h-10");
+    expect(screen.getByRole("combobox")).toHaveClass("h-10");
+    expect(screen.getByRole("button", { name: /share|分享/i })).toHaveClass("h-10");
+  });
+
+  it("wraps the overview toolbar before narrow desktop widths clip period tabs", () => {
+    render(
+      <UsageOverview
+        period="total"
+        periods={[
+          { key: "day", label: "Day" },
+          { key: "week", label: "Week" },
+          { key: "30d", label: "30d" },
+          { key: "month", label: "Month" },
+          { key: "total", label: "Total" },
+          { key: "custom", label: "Custom" },
+        ]}
+        summaryLabel="Total"
+        summaryValue="1,000"
+        fleetData={[]}
+        onOpenShare={() => {}}
+      />,
+    );
+
+    const tablist = screen.getByRole("tablist");
+    expect(tablist.parentElement).toHaveClass("flex-wrap", "lg:flex-nowrap");
+    expect(tablist).toHaveClass("order-2", "w-full", "lg:order-none", "lg:flex-1");
+  });
+
+  it("places token and cost confidence evidence next to their authoritative totals", () => {
+    render(
+      <UsageOverview
+        period="day"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="1,000"
+        summaryCostValue="$2.50"
+        fleetData={[]}
+        tokenConfidence={{ state: "exact", states: ["exact"], sourceLabel: "Local logs" }}
+        costConfidence={{
+          state: "partial",
+          states: ["partial", "estimated"],
+          coveragePercent: 75,
+          unpricedTokens: 250,
+          unpricedPercent: 25,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("usage-token-confidence")).toHaveAttribute("data-confidence-state", "exact");
+    expect(screen.getByTestId("usage-cost-confidence")).toHaveAttribute("data-confidence-state", "partial");
+  });
+
   it("passes the overview usage range to Codex context breakdown", async () => {
     breakdownProps.length = 0;
     const user = userEvent.setup();
 
     render(
       <UsageOverview
+        className="h-full"
         period="month"
         periods={[]}
         summaryLabel="Total"
@@ -272,5 +352,86 @@ describe("UsageOverview", () => {
     // expect at least 2 of each.
     expect(apiKeyBadges.length).toBeGreaterThanOrEqual(2);
     expect(tokenPlanBadges.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps Token and cost evidence inside one centered summary card", () => {
+    render(
+      <UsageOverview
+        period="month"
+        periods={[]}
+        summaryLabel="TOKEN 总数"
+        summaryValue="100.3亿"
+        summaryCostValue="USD 24,345.45 / CNY 175,287.25"
+        fleetData={[]}
+        tokenConfidence={{ state: "exact", states: ["exact"], sourceLabel: "本地用量日志" }}
+        costConfidence={{
+          state: "partial",
+          states: ["partial", "estimated"],
+          coveragePercent: 97.9,
+          unpricedTokens: 215000000,
+          unpricedPercent: 2.1,
+        }}
+      />,
+    );
+
+    const summary = screen.getByTestId("usage-overview-summary-card");
+    const details = screen.getByTestId("usage-summary-details");
+
+    expect(summary).toContainElement(screen.getByTestId("usage-primary-total"));
+    expect(screen.getByTestId("usage-primary-total")).toContainElement(screen.getByTestId("usage-token-wave"));
+    expect(summary).toHaveClass("flex", "flex-1", "flex-col");
+    expect(screen.getByTestId("usage-primary-total")).toHaveClass("flex-1");
+    expect(summary.closest(".tt-surface").firstElementChild).toHaveClass(
+      "flex",
+      "h-full",
+      "flex-col",
+    );
+    expect(summary).toContainElement(details);
+    expect(details).toHaveClass(
+      "border-t",
+      "grid",
+      "sm:grid-cols-2",
+    );
+    expect(details).not.toHaveClass("divide-y");
+    expect(screen.getByTestId("usage-primary-total")).toHaveClass("text-center");
+    expect(screen.getByTestId("usage-primary-total").querySelector(".text-7xl")).not.toBeNull();
+    expect(screen.getByTestId("usage-token-summary")).toHaveClass(
+      "grid-rows-[1.25rem_1.5rem]",
+    );
+    expect(screen.getByTestId("usage-cost-summary")).toHaveClass(
+      "grid-rows-[1.25rem_1.5rem]",
+      "sm:border-l",
+    );
+    expect(screen.getByTestId("usage-token-summary")).not.toHaveClass("flex-wrap");
+    expect(screen.getByTestId("usage-cost-summary")).not.toHaveClass("flex-wrap");
+    expect(screen.getByTestId("usage-token-summary-heading")).toBeVisible();
+    expect(screen.getByTestId("usage-cost-summary-heading")).toHaveTextContent(
+      "USD 24,345.45 / CNY 175,287.25",
+    );
+    expect(screen.getByTestId("usage-cost-summary")).toHaveTextContent(
+      "USD 24,345.45 / CNY 175,287.25",
+    );
+    expect(screen.getByTestId("usage-token-confidence")).toHaveAttribute("data-confidence-state", "exact");
+    expect(screen.getByTestId("usage-cost-confidence")).toHaveAttribute("data-confidence-state", "partial");
+  });
+
+  it("matches the reference overview by separating the hero and provider surfaces", () => {
+    const { container } = render(
+      <UsageOverview
+        period="total"
+        periods={[{ key: "total", label: "Total" }]}
+        summaryLabel="TOKEN total"
+        summaryValue="1,000"
+        fleetData={mixedFleet}
+      />,
+    );
+
+    expect(container.firstChild).toHaveClass("tt-overview-usage");
+    expect(screen.getByTestId("usage-overview-hero")).toHaveClass("tt-surface");
+    expect(screen.getByTestId("usage-overview-providers")).toHaveClass("tt-surface");
+    expect(screen.getByTestId("usage-overview-hero")).not.toBe(
+      screen.getByTestId("usage-overview-providers"),
+    );
+    expect(screen.getByTestId("usage-hero-footer-well")).toBeInTheDocument();
   });
 });

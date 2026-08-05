@@ -52,7 +52,7 @@ function SortableDirectoryRow({ fieldKey, children }) {
       data-directory-key={fieldKey}
       className={cn("flex items-start gap-1", isDragging && "relative z-10 bg-white shadow-lg dark:bg-oai-gray-900")}
     >
-      <button type="button" {...attributes} {...listeners} aria-label={copy("settings.data_dirs.drag", { agent: fieldKey })} className="mt-4 cursor-grab rounded p-1 text-oai-gray-400 hover:bg-oai-gray-100 active:cursor-grabbing dark:hover:bg-oai-gray-800">
+      <button type="button" {...attributes} {...listeners} aria-label={copy("settings.data_dirs.drag", { agent: fieldKey })} className="mt-3 inline-flex h-10 w-10 cursor-grab items-center justify-center rounded text-oai-gray-400 hover:bg-oai-gray-100 active:cursor-grabbing dark:hover:bg-oai-gray-800">
         <GripVertical className="h-4 w-4" aria-hidden />
       </button>
       <div className="min-w-0 flex-1">{children}</div>
@@ -298,6 +298,7 @@ export function DataDirectoriesSection() {
 
   return (
     <SectionCard
+      className="tt-settings-data-directory-card"
       title={copy("settings.section.data_dirs")}
       subtitle={copy("settings.data_dirs.subtitle")}
       icon={FolderOpen}
@@ -310,7 +311,7 @@ export function DataDirectoriesSection() {
             onClick={detectPaths}
             disabled={loading || saving || detectingPaths}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+              "inline-flex h-10 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
               "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
               "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
             )}
@@ -329,7 +330,7 @@ export function DataDirectoriesSection() {
             onClick={save}
             disabled={loading || saving || detectingPaths}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+              "inline-flex h-10 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
               "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
               "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
             )}
@@ -348,6 +349,13 @@ export function DataDirectoriesSection() {
         </div>
       }
     >
+      <div className="tt-data-directory-compact">
+        <output>{draft.codex || draft.claude || copy("settings.data_dirs.placeholder")}</output>
+        <button type="button" onClick={() => chooseDirectory("codex")} disabled={loading || saving || selectingField === "codex"}>
+          <FolderOpen aria-hidden />
+          {copy("settings.data_dirs.change_directory")}
+        </button>
+      </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDirectoryDragEnd}>
         <SortableContext items={fieldOrder} strategy={verticalListSortingStrategy}>
           {orderedFields.map((field) => (
@@ -476,7 +484,7 @@ function DirectoryInput({
           onClick={onDetect}
           disabled={disabled || detecting}
           className={cn(
-            "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors",
+            "inline-flex h-10 items-center gap-1 rounded-md border px-2.5 text-[11px] font-medium transition-colors",
             "border-oai-gray-200 text-oai-gray-600 hover:bg-oai-gray-50 disabled:cursor-not-allowed disabled:opacity-50",
             "dark:border-oai-gray-800 dark:text-oai-gray-400 dark:hover:bg-oai-gray-800",
           )}
@@ -514,7 +522,7 @@ function DirectoryInput({
           disabled={disabled}
           placeholder={copy("settings.data_dirs.placeholder")}
           className={cn(
-            "h-9 min-w-0 flex-1 rounded-md border border-oai-gray-200 bg-white px-3 font-mono text-xs text-oai-gray-900 outline-none transition-colors",
+            "h-10 min-w-0 flex-1 rounded-md border border-oai-gray-200 bg-white px-3 font-mono text-xs text-oai-gray-900 outline-none transition-colors",
             "placeholder:text-oai-gray-400 focus:border-oai-brand-500 focus:ring-2 focus:ring-oai-brand-500/20 disabled:opacity-60",
             "dark:border-oai-gray-800 dark:bg-oai-gray-950 dark:text-oai-gray-100 dark:placeholder:text-oai-gray-600",
           )}
@@ -524,7 +532,7 @@ function DirectoryInput({
           onClick={onSelect}
           disabled={disabled || selecting}
           className={cn(
-            "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+            "inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
             "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
             "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
           )}

@@ -280,6 +280,57 @@ describe("RequestUsageLog", () => {
     expect(screen.getByTestId("request-log-metric-avg-latency")).toHaveTextContent("830ms");
   });
 
+  it("hides unavailable summary metrics instead of rendering placeholder dashes", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord()],
+      totals: {
+        request_count: 0,
+        success_rate: null,
+        avg_latency_ms: undefined,
+      },
+    });
+
+    const { container } = render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByTestId("request-log-metric-requests")).toHaveTextContent("0");
+    expect(screen.queryByTestId("request-log-metric-success-rate")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("request-log-metric-avg-latency")).not.toBeInTheDocument();
+    expect(screen.queryByText("-")).not.toBeInTheDocument();
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain("ticket06.metric.unavailable");
+  });
+
+  it("shows exact zero values and leaves missing row fields empty", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({
+        status: null,
+        request_source: null,
+        origin: null,
+        latency_ms: 0,
+        first_token_ms: 0,
+      })],
+      totals: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0,
+        request_count: 0,
+        success_rate: 0,
+        avg_latency_ms: 0,
+      },
+    });
+
+    const { container } = render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByTestId("request-log-metric-success-rate")).toHaveTextContent("0.0%");
+    expect(screen.getByTestId("request-log-metric-avg-latency")).toHaveTextContent("0ms");
+    expect(container.textContent).toContain("0ms / 0ms");
+    expect(screen.queryByText("-")).not.toBeInTheDocument();
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain("ticket06.metric.unavailable");
+  });
+
   // Note: Frontend sort is removed because backend doesn't support sort/order parameters.
   // Records are sorted server-side by timestamp desc. Tests for server-side sorting
   // should be in backend integration tests.

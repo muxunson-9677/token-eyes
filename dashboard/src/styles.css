@@ -223,6 +223,18 @@ body {
     inset 1px 0 0 rgba(255, 255, 255, 0.025);
 }
 
+/* The native window can be exactly 900px wide. Keep its desktop navigation
+   deterministic instead of depending on the framework's 1024px `lg` tier. */
+@media (min-width: 900px) {
+  .tt-desktop-sidebar {
+    display: flex !important;
+  }
+
+  .tt-mobile-navigation {
+    display: none !important;
+  }
+}
+
 .tt-sidebar-item {
   transition:
     color 120ms ease,
@@ -295,13 +307,11 @@ body {
   box-shadow: 18px 0 42px rgba(25, 34, 43, 0.22);
 }
 
-/* Global: suppress focus outlines and Tailwind ring on Tab/click focus.
-   Inputs/textareas keep their own border-color :focus styling defined per-component. */
-*:focus,
-*:focus-visible {
-  outline: none !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
+/* Every native interactive control keeps a visible keyboard focus indicator.
+   Component focus tokens below may tune the offset for their surface. */
+:is(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: 2px !important;
 }
 
 .tt-sidebar-focusable:focus-visible {
@@ -403,22 +413,11 @@ html.native-app .tt-native-main-card {
    OS backdrop has little content behind it to blur. */
 html.native-windows-app .tt-native-glass-shell {
   isolation: isolate;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.018) 36%, rgba(0, 0, 0, 0.14)),
-    rgba(32, 32, 32, 0.72) !important;
+  background: #f5f7f8 !important;
 }
 
 html.native-windows-app .tt-native-glass-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.018) 28%, transparent 58%),
-    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px);
-  backdrop-filter: blur(28px) saturate(150%);
-  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  content: none;
 }
 
 html.native-windows-app .tt-native-glass-shell > * {
@@ -427,21 +426,24 @@ html.native-windows-app .tt-native-glass-shell > * {
 }
 
 html.native-windows-app.dark .tt-native-glass-shell::before {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 28%, transparent 58%),
-    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 5px);
+  content: none;
 }
 
 html.native-windows-app .tt-native-glass-shell aside[aria-label] {
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.018) 42%, rgba(0, 0, 0, 0.1)),
-    rgba(28, 28, 28, 0.58);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset -1px 0 0 rgba(0, 0, 0, 0.22),
-    inset 1px 0 0 rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(30px) saturate(155%);
-  -webkit-backdrop-filter: blur(30px) saturate(155%);
+  background: rgba(250, 251, 252, 0.96);
+  border-right: 1px solid var(--tt-page-border);
+  box-shadow: none;
+  backdrop-filter: blur(18px) saturate(110%);
+  -webkit-backdrop-filter: blur(18px) saturate(110%);
+}
+
+html.native-windows-app.dark .tt-native-glass-shell {
+  background: #111318 !important;
+}
+
+html.native-windows-app.dark .tt-native-glass-shell aside[aria-label] {
+  background: rgba(27, 30, 36, 0.96);
+  border-right-color: rgba(255, 255, 255, 0.08);
 }
 
 @layer components {

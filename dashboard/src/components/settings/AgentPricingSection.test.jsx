@@ -14,6 +14,10 @@ vi.mock("../../lib/api", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.setItem(
+    "token-eyes.settings.disclosure.cost.agent-pricing.v1",
+    "1",
+  );
   getUsageModelBreakdown.mockResolvedValue({ sources: [] });
   getLocalSettings.mockResolvedValue({
     agentDefaultPricing: {

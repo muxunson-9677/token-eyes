@@ -1,13 +1,13 @@
 import React, { lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
-import { Gauge } from "lucide-react";
+import { CircleCheck, Download, Gauge, Upload } from "lucide-react";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
-import { DataDirectoriesSection } from "../components/settings/DataDirectoriesSection.jsx";
 import { AgentPricingSection } from "../components/settings/AgentPricingSection.jsx";
 import { AppearanceSection } from "../components/settings/AppearanceSection.jsx";
-import { SectionCard, SegmentedControl } from "../components/settings/Controls.jsx";
+import { SectionCard } from "../components/settings/Controls.jsx";
+import { DataDirectoriesSection } from "../components/settings/DataDirectoriesSection.jsx";
 import { MenuBarSection, NativeAppFooter } from "../components/settings/MenuBarSection.jsx";
-import { LIMIT_DISPLAY_MODES, useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
+import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { copy } from "../lib/copy";
 
 const TokenPlanSection = lazy(() =>
@@ -31,22 +31,20 @@ function SettingsCostFallback() {
 // v2.0 IA refactor (work order 01): the old single SettingsPage is split into
 // two route components so each sub-module has its own URL.
 //   - SettingsBasicPage (/settings/basic): appearance, menu bar,
-//     data directories, agent pricing, limits display, native-app footer.
-//   - SettingsCostPage (/settings/cost): TokenPlanSection plus a documented
-//     insertion point for ProviderApiConfigSection (wired up by work order 03).
+//     data directories, limits display, native-app footer.
+//   - SettingsCostPage (/settings/cost): pricing, plans, provider API,
+//     and other AI spend configuration.
 // TokenPlanSection MUST NOT appear in basic settings — no duplicate management
 // entries. Neither sub-page duplicates the other's sections.
 
 function LimitsDisplayModeControl({ prefs }) {
+  const displayedProviders = prefs.order.slice(0, 6);
+  const enabledCount = displayedProviders.filter((id) => prefs.visibility[id] !== false).length;
   return (
-    <SegmentedControl
-      options={[
-        { value: LIMIT_DISPLAY_MODES.USED, label: copy("limits.settings.display_mode_used") },
-        { value: LIMIT_DISPLAY_MODES.REMAINING, label: copy("limits.settings.display_mode_remaining") },
-      ]}
-      value={prefs.displayMode}
-      onChange={prefs.setDisplayMode}
-    />
+    <div className="tt-limits-header-actions">
+      <span>已启用 {enabledCount}/{displayedProviders.length}</span>
+      <button type="button" onClick={prefs.reset}>{copy("settings.reference.reset_default")}</button>
+    </div>
   );
 }
 
@@ -61,7 +59,7 @@ export function SettingsBasicPage() {
     <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
-          <div className="mb-8">
+          <div className="mb-8" data-testid="settings-basic-heading">
             <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
               {copy("settings.basic.page.title")}
             </h1>
@@ -71,18 +69,23 @@ export function SettingsBasicPage() {
           </div>
 
           <div className="space-y-4">
-            <AppearanceSection />
-            <MenuBarSection />
-            <DataDirectoriesSection />
-            <AgentPricingSection />
-            <SectionCard
-              title={copy("settings.section.limits")}
-              icon={Gauge}
-              iconTone="green"
-              action={<LimitsDisplayModeControl prefs={limitsPrefs} />}
-            >
-              <LimitsSettingsPanel prefs={limitsPrefs} />
-            </SectionCard>
+            <div id="settings-appearance"><AppearanceSection /></div>
+            <div id="settings-menubar"><MenuBarSection /></div>
+            <div id="data-directories">
+              <DataDirectoriesSection />
+            </div>
+            <div id="settings-limits">
+              <SectionCard
+                className="tt-settings-limits-card"
+                title={copy("settings.section.limits")}
+                subtitle="选择要在排行榜、图表和小组件中显示的模型提供商。"
+                icon={Gauge}
+                iconTone="violet"
+                action={<LimitsDisplayModeControl prefs={limitsPrefs} />}
+              >
+                <LimitsSettingsPanel prefs={limitsPrefs} />
+              </SectionCard>
+            </div>
           </div>
 
           <NativeAppFooter />
@@ -103,17 +106,25 @@ export function SettingsCostPage() {
     <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
-          <div className="mb-8">
-            <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
-              {copy("settings.cost.page.title")}
-            </h1>
-            <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-              {copy("settings.cost.page.subtitle")}
-            </p>
+          <div className="tt-settings-cost-heading mb-8" data-testid="settings-cost-heading">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
+                {copy("settings.cost.page.title")}
+              </h1>
+              <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                {copy("settings.cost.page.subtitle")}
+              </p>
+            </div>
+            <div className="tt-settings-cost-actions">
+              <button type="button"><Upload aria-hidden />{copy("settings.reference.import")}</button>
+              <button type="button"><Download aria-hidden />{copy("settings.reference.export")}</button>
+              <button type="button"><CircleCheck aria-hidden />{copy("settings.reference.validate")}</button>
+            </div>
           </div>
 
           <Suspense fallback={<SettingsCostFallback />}>
             <div className="space-y-4">
+              <AgentPricingSection />
               <div id="codex-quota">
                 <TokenPlanSection listOnly onNavigate={navigate} />
               </div>

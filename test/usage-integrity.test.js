@@ -82,9 +82,45 @@ test("usage summary reports ledger provenance, deduplication and reconciliation"
       displayed_total_tokens: 180,
       reconciled_total_tokens: 180,
       token_delta: 0,
+      component_token_delta: 0,
+      component_mismatch_records: 0,
       status: "attention",
+      user_action_required: true,
     });
     assert.match(payload.data_integrity.updated_at, /^\d{4}-\d{2}-\d{2}T/u);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("usage summary flags totals whose token components do not reconcile", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "token-eyes-components-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await fs.promises.writeFile(queuePath, `${JSON.stringify({
+      source: "codex",
+      model: "gpt-5.5",
+      hour_start: "2026-06-02T02:00:00.000Z",
+      input_tokens: 43745,
+      cached_input_tokens: 158848,
+      cache_creation_input_tokens: 0,
+      output_tokens: 1784,
+      reasoning_output_tokens: 455,
+      total_tokens: 214151,
+      billable_total_tokens: 214151,
+      conversation_count: 8,
+    })}\n`, "utf8");
+
+    const payload = await call(
+      createLocalApiHandler({ queuePath }),
+      "/functions/tokentracker-usage-summary?from=2026-06-02&to=2026-06-02&tz=UTC&sources=codex",
+    );
+
+    assert.equal(payload.data_integrity.token_delta, 0);
+    assert.equal(payload.data_integrity.component_token_delta, 9774);
+    assert.equal(payload.data_integrity.component_mismatch_records, 1);
+    assert.equal(payload.data_integrity.status, "verified");
+    assert.equal(payload.data_integrity.user_action_required, false);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

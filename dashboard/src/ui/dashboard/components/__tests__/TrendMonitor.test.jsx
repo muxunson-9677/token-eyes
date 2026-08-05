@@ -10,6 +10,7 @@ vi.mock("../TrendMonitorZoomModal", () => ({ TrendMonitorZoomModal: () => null }
 import {
   TrendMonitor,
   computeInterpolatedSeries,
+  computeMovingAverageSeries,
   getTrendMonitorScale,
 } from "../TrendMonitor.jsx";
 
@@ -24,11 +25,29 @@ describe("getTrendMonitorScale", () => {
   });
 });
 
+describe("computeMovingAverageSeries", () => {
+  it("computes a trailing moving average without inventing future observations", () => {
+    expect(computeMovingAverageSeries([10, 20, 30, 40], 3)).toEqual([10, 15, 20, 30]);
+  });
+});
+
 describe("TrendMonitor", () => {
   it("uses a semantic icon in the usage-trend heading", () => {
     render(<TrendMonitor rows={[]} />);
 
     expect(screen.getByTestId("trend-monitor-title").querySelector("svg")).not.toBeNull();
+  });
+
+  it("renders the reference daily-granularity control", () => {
+    render(<TrendMonitor rows={[]} />);
+
+    expect(screen.getByTestId("trend-granularity")).toHaveTextContent("天");
+  });
+
+  it("renders the reference chart y-axis from the real scale", () => {
+    render(<TrendMonitor rows={[{ billable_total_tokens: 100 }, { billable_total_tokens: 200 }]} />);
+    expect(screen.getByTestId("trend-y-axis").children).toHaveLength(6);
+    expect(screen.getByTestId("trend-y-axis")).toHaveTextContent("200");
   });
 
   it("keeps normal bars visible when a single day is an outlier", () => {
@@ -43,11 +62,26 @@ describe("TrendMonitor", () => {
 
     expect(container.firstChild).toHaveClass("tt-surface");
     expect(container.firstChild).not.toHaveClass("tt-surface-nested");
+    expect(screen.getByTestId("trend-moving-average-line")).toBeInTheDocument();
     expect(bars).toHaveLength(rows.length);
     expect(parseFloat(bars[0].parentElement?.style.height ?? "")).toBeGreaterThan(30);
     expect(parseFloat(bars.at(-1)?.parentElement?.style.height ?? "")).toBe(100);
     expect(bars[0].parentElement?.className).toContain("absolute");
     expect(bars[0].parentElement?.parentElement?.className).toContain("self-stretch");
+  });
+
+  it("keeps dense daily bars alongside the moving-average line in the narrow overview column", () => {
+    const rows = Array.from({ length: 214 }, (_, index) => ({
+      billable_total_tokens: 100 + (index % 17) * 10,
+    }));
+
+    const { container } = render(
+      <TrendMonitor rows={rows} showTimeZoneLabel={false} />,
+    );
+
+    expect(screen.getByTestId("trend-bar-row")).toHaveClass("gap-0");
+    expect(container.querySelectorAll('[data-trend-bar="true"]')).toHaveLength(rows.length);
+    expect(screen.getByTestId("trend-moving-average-line")).toBeInTheDocument();
   });
 
   it("renders real-zero observations as flat baseline bars, not interpolated", () => {

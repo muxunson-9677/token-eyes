@@ -19,6 +19,67 @@ import { AGENT_LOGOS } from "../../marketing/agent-logos.js";
 // Curated subset of the canonical agent list for the gate carousel.
 const GATE_LOGOS = AGENT_LOGOS.slice(0, 10);
 
+function UsageFailureSurface({ copy, error, onRetry, onOpenDataSources, onCopyDiagnostics, diagnosticsCopied }) {
+  return (
+    <div
+      role="alert"
+      className="tt-surface mx-auto flex w-full max-w-2xl flex-col items-start gap-4 rounded-[var(--tt-card-radius)] p-6"
+    >
+      <div>
+        <h1 className="text-xl font-semibold text-oai-black dark:text-white">
+          {copy("dashboard.usage_error.title")}
+        </h1>
+        <p className="mt-1 text-sm text-oai-gray-600 dark:text-oai-gray-300">
+          {copy("dashboard.usage_error.no_data")}
+        </p>
+        <p className="mt-2 text-sm text-red-700 dark:text-red-300">{error}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="primary" onClick={onRetry}>
+          {copy("dashboard.usage_error.retry")}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onOpenDataSources}>
+          {copy("dashboard.usage_error.open_data_sources")}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCopyDiagnostics}>
+          {diagnosticsCopied
+            ? copy("dashboard.usage_error.diagnostics_copied")
+            : copy("dashboard.usage_error.copy_diagnostics")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function StaleUsageNotice({ copy, error, lastSuccessAt, onRetry, onOpenDataSources }) {
+  const dateTime = lastSuccessAt ? new Date(lastSuccessAt).toISOString() : null;
+  const displayTime = dateTime ? new Date(dateTime).toLocaleString() : copy("dashboard.usage_error.never_updated");
+
+  return (
+    <div
+      role="status"
+      className="flex flex-col gap-3 rounded-[var(--tt-card-radius)] border border-amber-300/70 bg-amber-50/80 px-4 py-3 text-sm text-amber-950 dark:border-amber-700/70 dark:bg-amber-950/35 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div>
+        <p className="font-semibold">{copy("dashboard.usage_error.stale_title")}</p>
+        <p className="mt-0.5 text-xs opacity-90">{error}</p>
+        <p className="mt-0.5 text-xs opacity-90">
+          {copy("dashboard.usage_error.last_success", { time: displayTime })}
+          {dateTime ? <time className="sr-only" dateTime={dateTime}>{displayTime}</time> : null}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        <Button type="button" variant="secondary" onClick={onRetry}>
+          {copy("dashboard.usage_error.retry")}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onOpenDataSources}>
+          {copy("dashboard.usage_error.open_data_sources")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function FullPageGateLayout({ title, subtitle, desc, loginCard, copy }) {
   return (
     <div className="min-h-[85vh] w-full flex items-center justify-center text-oai-black dark:text-white relative overflow-hidden px-4 md:px-8 py-8 md:py-16 transition-colors duration-200 bg-[linear-gradient(to_right,#80808007_1px,transparent_1px),linear-gradient(to_bottom,#80808007_1px,transparent_1px)] bg-[size:40px_40px]">
@@ -106,11 +167,6 @@ export function DashboardView(props) {
     signedIn,
     publicMode,
     isLocalMode,
-    shouldShowInstall,
-    installPrompt,
-    handleCopyInstall,
-    installCopied,
-    installInitCmdDisplay,
     trendRowsForDisplay,
     trendFromForDisplay,
     trendToForDisplay,
@@ -134,6 +190,8 @@ export function DashboardView(props) {
     summaryValue,
     summaryTotalTokensRaw,
     summaryCostValue,
+    tokenConfidence,
+    costConfidence,
     cacheHitSummary,
     summaryConversationsValue,
     rollingUsage,
@@ -148,9 +206,7 @@ export function DashboardView(props) {
     fleetData,
     modelUsageDistribution,
     hasDetailsActual,
-    dailyEmptyPrefix,
-    installSyncCmd,
-    dailyEmptySuffix,
+    dailyEmptyMessage,
     detailsColumns,
     ariaSortFor,
     toggleSort,
@@ -172,6 +228,14 @@ export function DashboardView(props) {
     refreshInterval,
     onRefreshIntervalChange,
     lastUpdatedAt,
+    usageError,
+    usageHasData,
+    usageLastSuccessAt,
+    onOpenDataSources,
+    onOpenUsageDetails,
+    onOpenCost,
+    onCopyUsageDiagnostics,
+    usageDiagnosticsCopied,
   } = props;
 
   // Header 鍜?Footer 宸茬畝鍖?
@@ -228,10 +292,33 @@ export function DashboardView(props) {
         {!showAuthGate && !showExpiredGate && initialDashboardLoading && (
           <DashboardSkeleton />
         )}
-        {!showAuthGate && !showExpiredGate && !initialDashboardLoading && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {!showAuthGate && !showExpiredGate && !initialDashboardLoading && usageError && !usageHasData && (
+          <UsageFailureSurface
+            copy={copy}
+            error={usageError}
+            onRetry={refreshAll}
+            onOpenDataSources={onOpenDataSources}
+            onCopyDiagnostics={onCopyUsageDiagnostics}
+            diagnosticsCopied={usageDiagnosticsCopied}
+          />
+        )}
+        {!showAuthGate && !showExpiredGate && !initialDashboardLoading && (!usageError || usageHasData) && (
+          <div className="space-y-4">
+            {usageError && usageHasData ? (
+              <StaleUsageNotice
+                copy={copy}
+                error={usageError}
+                lastSuccessAt={usageLastSuccessAt}
+                onRetry={refreshAll}
+                onOpenDataSources={onOpenDataSources}
+              />
+            ) : null}
+            <div
+              className="tt-reference-overview-grid grid grid-cols-1 gap-4"
+              data-testid="dashboard-overview-grid"
+            >
               <div
-                className="lg:col-span-4 flex flex-col gap-4 min-w-0 order-2 lg:order-1"
+                className="order-2 flex min-w-0 flex-col gap-4 lg:order-1"
                 data-testid="dashboard-secondary-context"
               >
                 {screenshotMode ? (
@@ -266,34 +353,9 @@ export function DashboardView(props) {
                     rolling={rollingUsage}
                     topModels={topModels}
                     overviewModels={overviewModels}
+                    trendRows={trendRowsForDisplay}
                   />
                 </FadeIn>
-
-                {isLocalMode ? <WidgetOnboardingCard enterDelay={nextLeft()} /> : null}
-
-                {shouldShowInstall ? (
-                  <FadeIn delay={nextLeft()}>
-                    <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-3">
-                      <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 mb-1.5">{installPrompt}</div>
-                      <motion.button
-                        onClick={handleCopyInstall}
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.99 }}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-700 rounded-lg transition-colors"
-                      >
-                        <code className="text-xs font-mono text-oai-gray-700 dark:text-oai-gray-300">{installInitCmdDisplay}</code>
-                        <motion.span
-                          key={installCopied ? "copied" : "copy"}
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-xs text-oai-brand"
-                        >
-                          {installCopied ? "Copied" : "Copy"}
-                        </motion.span>
-                      </motion.button>
-                    </div>
-                  </FadeIn>
-                ) : null}
 
                 {!screenshotMode ? (
                   <FadeIn delay={nextLeft()}>
@@ -304,34 +366,37 @@ export function DashboardView(props) {
                       period={period}
                       timeZoneLabel={trendTimeZoneLabel}
                       showTimeZoneLabel={false}
-                      chartHeightClass="h-64"
+                      chartHeightClass="h-36"
+                      className="tt-overview-trend"
                       zoomConfig={trendZoomConfig}
                     />
                   </FadeIn>
                 ) : null}
 
-                {!screenshotMode ? (
-                  <FadeIn delay={nextLeft()}>
-                    <ModelUsageDonut
-                      rows={modelUsageDistribution?.rows}
-                      totalTokens={modelUsageDistribution?.totalTokens}
-                    />
-                  </FadeIn>
-                ) : null}
+                {isLocalMode ? <WidgetOnboardingCard enterDelay={nextLeft()} /> : null}
+
               </div>
 
               <div
-                className="lg:col-span-8 flex flex-col gap-4 min-w-0 order-1 lg:order-2"
+                className="order-1 flex min-w-0 flex-col gap-4 lg:order-2"
                 data-testid="dashboard-primary-workspace"
               >
-                <FadeIn delay={D_USAGE_OVERVIEW}>
+                <FadeIn delay={D_USAGE_OVERVIEW} className="h-full">
                   <UsageOverview
+                    className="h-full"
                     period={period}
                     periods={periodsForDisplay}
                     onPeriodChange={setSelectedPeriod}
                     summaryLabel={summaryLabel}
                     summaryValue={summaryValue}
                     summaryCostValue={summaryCostValue}
+                    summaryConversationsValue={summaryConversationsValue}
+                    averageUsageValue={rollingUsage?.last_30d?.avg_per_active_day}
+                    trendRows={trendRowsForDisplay}
+                    dayOverDayPercent={rollingUsage?.day_over_day_percent}
+                    tokenConfidence={tokenConfidence}
+                    costConfidence={costConfidence}
+                    onOpenDiagnostics={onOpenDataSources}
                     cacheHitSummary={cacheHitSummary}
                     onCostInfo={costInfoEnabled ? openCostModal : null}
                     fleetData={fleetData}
@@ -351,39 +416,7 @@ export function DashboardView(props) {
                   />
                 </FadeIn>
 
-                {!screenshotMode ? (
-                  <FadeIn delay={D_DATA_DETAILS}>
-                    <DataDetails
-                      projectEntries={projectUsageEntries}
-                      projectLimit={projectUsageLimit}
-                      onProjectLimitChange={setProjectUsageLimit}
-                      copy={copy}
-                      hasDetailsActual={hasDetailsActual}
-                      dailyEmptyPrefix={dailyEmptyPrefix}
-                      installSyncCmd={installSyncCmd}
-                      dailyEmptySuffix={dailyEmptySuffix}
-                      detailsColumns={detailsColumns}
-                      ariaSortFor={ariaSortFor}
-                      toggleSort={toggleSort}
-                      sortIconFor={sortIconFor}
-                      pagedDetails={pagedDetails}
-                      dailyBreakdownRows={dailyBreakdownRows}
-                      dailyBreakdownColumns={dailyBreakdownColumns}
-                      dailyBreakdownAriaSortFor={dailyBreakdownAriaSortFor}
-                      dailyBreakdownSortIconFor={dailyBreakdownSortIconFor}
-                      dailyBreakdownDateKey={dailyBreakdownDateKey}
-                      detailsDateKey={detailsDateKey}
-                      renderDetailDate={renderDetailDate}
-                      renderDailyBreakdownDate={renderDailyBreakdownDate}
-                      renderDetailCell={renderDetailCell}
-                      DETAILS_PAGED_PERIODS={DETAILS_PAGED_PERIODS}
-                      period={period}
-                      detailsPageCount={detailsPageCount}
-                      detailsPage={detailsPage}
-                      setDetailsPage={setDetailsPage}
-                    />
-                  </FadeIn>
-                ) : null}
+
                 {screenshotMode ? (
                   <div
                     className="mt-4 flex flex-col items-center gap-2"
@@ -405,6 +438,79 @@ export function DashboardView(props) {
                   </div>
                 ) : null}
               </div>
+            </div>
+
+            {!screenshotMode ? (
+              <div
+                data-testid="dashboard-system-strip"
+                data-status={usageError ? "stale" : "healthy"}
+                className="tt-overview-system-strip"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="tt-overview-system-shield" aria-hidden>✓</span>
+                  <span className="font-medium text-oai-black dark:text-white">
+                    {usageError ? "数据更新异常" : "所有系统运行正常"}
+                  </span>
+                  <span className="truncate text-oai-gray-400">
+                    {usageError ? "当前显示最近一次成功同步的数据" : "背部所有实例、分析结果准确可靠"}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-6 text-oai-gray-500 dark:text-oai-gray-300">
+                  <span>{copy("dashboard.system.data_source_local")}</span>
+                  <span className="tt-overview-system-live-dot">时区：{trendTimeZoneLabel?.includes("Shanghai") ? "UTC+8" : trendTimeZoneLabel || "UTC+8"}</span>
+                </div>
+              </div>
+            ) : null}
+
+            {!screenshotMode ? (
+              <div
+                className="grid grid-cols-1 items-stretch gap-4 lg:h-[32rem] lg:grid-cols-12"
+                data-testid="dashboard-detail-grid"
+              >
+                <div className="h-full min-h-0 min-w-0 lg:col-span-4">
+                  <FadeIn delay={nextLeft()} className="h-full">
+                    <ModelUsageDonut
+                      rows={modelUsageDistribution?.rows}
+                      totalTokens={modelUsageDistribution?.totalTokens}
+                      className="h-full"
+                    />
+                  </FadeIn>
+                </div>
+                <div className="h-full min-h-0 min-w-0 lg:col-span-8">
+                  <FadeIn delay={D_DATA_DETAILS} className="h-full">
+                    <div className="h-full" data-testid="dashboard-data-details">
+                      <DataDetails
+                        projectEntries={projectUsageEntries}
+                        projectLimit={projectUsageLimit}
+                        onProjectLimitChange={setProjectUsageLimit}
+                        copy={copy}
+                        hasDetailsActual={hasDetailsActual}
+                        dailyEmptyMessage={dailyEmptyMessage}
+                        detailsColumns={detailsColumns}
+                        ariaSortFor={ariaSortFor}
+                        toggleSort={toggleSort}
+                        sortIconFor={sortIconFor}
+                        pagedDetails={pagedDetails}
+                        dailyBreakdownRows={dailyBreakdownRows}
+                        dailyBreakdownColumns={dailyBreakdownColumns}
+                        dailyBreakdownAriaSortFor={dailyBreakdownAriaSortFor}
+                        dailyBreakdownSortIconFor={dailyBreakdownSortIconFor}
+                        dailyBreakdownDateKey={dailyBreakdownDateKey}
+                        detailsDateKey={detailsDateKey}
+                        renderDetailDate={renderDetailDate}
+                        renderDailyBreakdownDate={renderDailyBreakdownDate}
+                        renderDetailCell={renderDetailCell}
+                        DETAILS_PAGED_PERIODS={DETAILS_PAGED_PERIODS}
+                        period={period}
+                        detailsPageCount={detailsPageCount}
+                        detailsPage={detailsPage}
+                        setDetailsPage={setDetailsPage}
+                      />
+                    </div>
+                  </FadeIn>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </Shell>

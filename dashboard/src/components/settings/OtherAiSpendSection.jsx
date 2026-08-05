@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Sparkles, Star, Trash2 } from "lucide-react";
+import { Atom, ChevronDown, ChevronUp, GripVertical, MoreVertical, Pencil, Plus, Star, Trash2, WalletCards } from "lucide-react";
 import {
   createSpendRecord,
   deleteOtherAiSpendGroup,
@@ -89,7 +89,7 @@ function SortableSpendRow({ record, number, expanded, onToggle, onEdit, onDelete
         isDragging && "z-10 shadow-lg ring-2 ring-oai-brand-400/40",
       )}
     >
-      <div className="flex items-center gap-2 px-3 py-2.5">
+      <div className="tt-other-ai-row flex items-center gap-2 px-3 py-2.5">
         <button
           type="button"
           {...attributes}
@@ -102,15 +102,16 @@ function SortableSpendRow({ record, number, expanded, onToggle, onEdit, onDelete
         <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-oai-gray-100 px-1.5 text-xs font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-300">
           {number}
         </span>
-        <button type="button" onClick={onToggle} className="min-w-0 flex-1 text-left">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">{record.plan_label}</span>
-            <span className="shrink-0 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
+        <button type="button" onClick={onToggle} className="tt-other-ai-row-main min-w-0 flex-1 text-left">
+          <div className="tt-other-ai-row-primary flex items-center gap-2">
+            <span className="tt-other-ai-row-title truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">{record.plan_label}</span>
+            <span className="tt-other-ai-row-cost shrink-0 text-sm font-semibold tabular-nums text-emerald-600">
               {formatMoney(record.amount, record.currency)}
             </span>
           </div>
-          <div className="mt-0.5 truncate text-xs text-oai-gray-400">{record.note || record.start_date || "—"}</div>
+          <div className="tt-other-ai-row-note mt-0.5 truncate text-xs text-oai-gray-400">{record.note || "—"}</div>
         </button>
+        <time className="tt-other-ai-row-date shrink-0 text-xs tabular-nums text-oai-gray-500" dateTime={record.start_date}>{record.start_date || "—"}</time>
         <button
           type="button"
           onClick={onFavorite}
@@ -155,6 +156,7 @@ export function OtherAiSpendSection() {
   const [groupFormInline, setGroupFormInline] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [collapsedGroupIds, setCollapsedGroupIds] = useState(() => new Set());
+  const [openGroupMenuId, setOpenGroupMenuId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const sensors = useSensors(
@@ -346,6 +348,12 @@ export function OtherAiSpendSection() {
     }
     return [...byCurrency.entries()].filter(([, amount]) => amount > 0).map(([currency, amount]) => formatMoney(amount, currency)).join(" + ");
   }, [records]);
+  const currentMonthTotal = useMemo(() => {
+    const month = todayString().slice(0, 7);
+    return records.reduce((total, record) => (
+      String(record.start_date || "").startsWith(month) ? total + Number(record.amount || 0) : total
+    ), 0);
+  }, [records]);
 
   const rootGroups = useMemo(() => [
     ...groups.filter((group) => !group.parent_id),
@@ -395,6 +403,7 @@ export function OtherAiSpendSection() {
 
   const renderGroup = (group, depth = 0) => {
     const groupRecords = records.filter((record) => (record.group_id || "") === group.id);
+    const groupSubtotal = groupRecords.reduce((total, record) => total + Number(record.amount || 0), 0);
     const children = group.id ? groups.filter((candidate) => candidate.parent_id === group.id) : [];
     if (!groupRecords.length && !children.length && group.id === UNGROUPED_ID) return null;
     const collapsed = collapsedGroupIds.has(group.id || "ungrouped");
@@ -418,9 +427,10 @@ export function OtherAiSpendSection() {
             {collapsed ? <ChevronDown className="h-4 w-4 text-oai-gray-400" /> : <ChevronUp className="h-4 w-4 text-oai-gray-400" />}
             <h3 className="truncate text-sm font-semibold text-oai-gray-800 dark:text-oai-gray-100">{group.name}</h3>
             <span className="rounded-full bg-white px-2 py-0.5 text-xs tabular-nums text-oai-gray-400 shadow-sm dark:bg-oai-gray-900">{groupRecords.length}</span>
+            <span className="tt-other-ai-group-subtotal text-xs text-oai-gray-500">小计 {formatMoney(groupSubtotal, "CNY")}</span>
           </button>
           {group.id ? (
-            <div className="flex items-center gap-1">
+            <div className="relative flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => openGroupForm(group.id)}
@@ -430,9 +440,19 @@ export function OtherAiSpendSection() {
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 {copy("settings.cost.other_ai.add_subgroup")}
               </button>
-              <button type="button" onClick={() => toggleGroupFavorite(group)} aria-label={`${copy(group.favorite ? "settings.cost.other_ai.unfavorite_group" : "settings.cost.other_ai.favorite_group")} ${group.name}`} className={cn("rounded-md p-1", group.favorite ? "text-amber-500" : "text-oai-gray-400 hover:text-amber-500")}><Star className={cn("h-4 w-4", group.favorite && "fill-current")} /></button>
-              <button type="button" onClick={() => openGroupForm(group.parent_id || "", group)} aria-label={`${copy("settings.cost.other_ai.edit_group")} ${group.name}`} className="rounded-md p-1 text-oai-gray-400 hover:bg-white hover:text-oai-brand-600 dark:hover:bg-oai-gray-900"><Pencil className="h-4 w-4" /></button>
-              <button type="button" onClick={() => removeGroup(group)} aria-label={copy("settings.cost.other_ai.delete_group")} className="rounded-md p-1 text-oai-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+              <span className="tt-other-ai-direct-group-actions contents">
+                <button type="button" onClick={() => toggleGroupFavorite(group)} aria-label={`${copy(group.favorite ? "settings.cost.other_ai.unfavorite_group" : "settings.cost.other_ai.favorite_group")} ${group.name}`} className={cn("rounded-md p-1", group.favorite ? "text-amber-500" : "text-oai-gray-400 hover:text-amber-500")}><Star className={cn("h-4 w-4", group.favorite && "fill-current")} /></button>
+                <button type="button" onClick={() => openGroupForm(group.parent_id || "", group)} aria-label={`${copy("settings.cost.other_ai.edit_group")} ${group.name}`} className="rounded-md p-1 text-oai-gray-400 hover:bg-white hover:text-oai-brand-600 dark:hover:bg-oai-gray-900"><Pencil className="h-4 w-4" /></button>
+                <button type="button" onClick={() => removeGroup(group)} aria-label={copy("settings.cost.other_ai.delete_group")} className="rounded-md p-1 text-oai-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+              </span>
+              <button type="button" onClick={() => setOpenGroupMenuId((current) => current === group.id ? null : group.id)} aria-label={`${group.name} 分组操作`} className="tt-other-ai-group-menu-trigger hidden rounded-md p-1 text-oai-gray-500 hover:bg-white"><MoreVertical className="h-4 w-4" /></button>
+              {openGroupMenuId === group.id ? (
+                <div className="tt-other-ai-group-menu absolute right-0 top-7 z-20 grid min-w-28 gap-1 rounded-lg border border-oai-gray-200 bg-white p-1 text-xs shadow-lg">
+                  <button type="button" onClick={() => { toggleGroupFavorite(group); setOpenGroupMenuId(null); }} className="rounded px-2 py-1.5 text-left hover:bg-oai-gray-50">{copy(group.favorite ? "settings.cost.other_ai.unfavorite_group" : "settings.cost.other_ai.favorite_group")}</button>
+                  <button type="button" onClick={() => { openGroupForm(group.parent_id || "", group); setOpenGroupMenuId(null); }} className="rounded px-2 py-1.5 text-left hover:bg-oai-gray-50">{copy("settings.cost.other_ai.edit_group")}</button>
+                  <button type="button" onClick={() => { removeGroup(group); setOpenGroupMenuId(null); }} className="rounded px-2 py-1.5 text-left text-red-600 hover:bg-red-50">{copy("settings.cost.other_ai.delete_group")}</button>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -451,9 +471,12 @@ export function OtherAiSpendSection() {
     <SectionCard
       title={copy("settings.cost.other_ai.title")}
       subtitle={copy("settings.cost.other_ai.subtitle")}
-      icon={Sparkles}
+      icon={Atom}
       iconTone="rose"
       collapsible
+      defaultOpen={false}
+      storageKey="cost.other-ai"
+      collapsedSummary={`${groups.length} 个分组`}
       action={(
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => openGroupForm()} className="rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-600 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800">
@@ -474,13 +497,23 @@ export function OtherAiSpendSection() {
       {loading ? <div className="py-4 text-center text-sm text-oai-gray-400">{copy("settings.cost.other_ai.loading")}</div> : null}
       {!loading && records.length === 0 && groups.length === 0 && !formOpen && !error ? <div className="py-4 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("settings.cost.other_ai.empty")}</div> : null}
       {!loading && (records.length || groups.length) ? (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={records.map((record) => record.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-4">
-              {rootGroups.map((group) => renderGroup(group))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <>
+          <div className="tt-other-ai-summary flex items-center gap-5 rounded-xl border border-oai-gray-200 bg-white px-4 py-3 text-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
+            <WalletCards className="h-5 w-5" aria-hidden="true" />
+            <span>共 {groups.length} 个分组 · {records.length} 笔花销</span>
+            <span className="h-5 w-px bg-oai-gray-200 dark:bg-oai-gray-700" aria-hidden="true" />
+            <span>{copy("settings.cost.other_ai.month_spend")} <strong className="ml-1 text-emerald-600">{formatMoney(currentMonthTotal, "CNY")}</strong></span>
+            <span className="h-5 w-px bg-oai-gray-200 dark:bg-oai-gray-700" aria-hidden="true" />
+            <span>{copy("settings.cost.other_ai.lifetime_spend")} <strong className="ml-1 text-emerald-600">{subtotals || formatMoney(0, "CNY")}</strong></span>
+          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={records.map((record) => record.id)} strategy={verticalListSortingStrategy}>
+              <div className="tt-other-ai-groups space-y-4">
+                {rootGroups.map((group) => renderGroup(group))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </>
       ) : null}
       {subtotals ? <div className="mt-3 flex justify-end gap-2 border-t border-oai-gray-100 pt-2 text-sm dark:border-oai-gray-800"><span className="text-oai-gray-500">{copy("settings.cost.other_ai.subtotal")}</span><span className="font-semibold tabular-nums">{subtotals}</span></div> : null}
     </SectionCard>

@@ -35,7 +35,7 @@ test("route chunks keep a visible Token Eyes shell instead of clearing to a blan
   assert.match(app, /^import\s+\{\s*AppBootSplash\s*\}\s+from\s+["']\.\/components\/AppBootSplash\.jsx["'];/m);
   assert.match(app, /<Suspense\s+fallback=\{<AppBootSplash\s*\/>\}>\{content\}<\/Suspense>/);
   assert.doesNotMatch(app, /<Suspense\s+fallback=\{null\}>\{content\}<\/Suspense>/);
-  assert.match(app, /isTauriMode[\s\S]*?<AppBootSplash\s*\/>[\s\S]*?<Navigate\s+to="\/settings\/basic"\s+replace\s*\/>/);
+  assert.match(app, /isTauriMode[\s\S]*?<AppBootSplash\s*\/>[\s\S]*?<Navigate\s+to=\{firstRunCompleted\s*\?\s*"\/dashboard"\s*:\s*"\/first-run"\}\s+replace\s*\/>/);
   assert.match(splash, /boot-splash/);
   assert.match(splash, /copy\("shared\.app_name"\)/);
 });

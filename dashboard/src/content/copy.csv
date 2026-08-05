@@ -1,8 +1,132 @@
 key,module,page,component,slot,text,notes,status
-spend.usage.integrity.verified,dashboard,SpendPage,UsageStatsPanel,integrity_verified,"本地账本已核对 · {{records}} 条有效汇总 · {{from}} 至 {{to}}",,active
-spend.usage.integrity.verified_empty,dashboard,SpendPage,UsageStatsPanel,integrity_verified_empty,"本地账本已核对 · 0 条有效汇总",,active
-spend.usage.integrity.attention,dashboard,SpendPage,UsageStatsPanel,integrity_attention,"本地账本需要检查 · Token 差值 {{delta}}",,active
-spend.usage.integrity.details,dashboard,SpendPage,UsageStatsPanel,integrity_details,"原始 {{raw}} 行；合并 {{duplicates}} 条重复累计记录；跳过 {{malformed}} 条损坏记录；最后更新 {{updated}}",,active
+first_run.title,onboarding,FirstRunPage,Header,title,"Let’s find your Token usage",,active
+first_run.subtitle,onboarding,FirstRunPage,Header,subtitle,"Token Eyes automatically checks AI coding tools on Windows and WSL before showing real usage.",,active
+first_run.phase.detecting,onboarding,FirstRunPage,Detection,status_detecting,"Detecting AI tools on Windows and WSL",,active
+first_run.phase.syncing,onboarding,FirstRunPage,Detection,status_syncing,"Scanning discovered usage logs",,active
+first_run.phase.ready,onboarding,FirstRunPage,Detection,status_ready,"Detection complete",,active
+first_run.phase.error,onboarding,FirstRunPage,Detection,status_error,"Automatic detection could not finish",,active
+first_run.phase.sync_error,onboarding,FirstRunPage,Detection,status_sync_error,"Sources were found but the first scan did not finish",,active
+first_run.detecting_detail,onboarding,FirstRunPage,Detection,detecting_detail,"Checking known local paths. This step finishes with a result instead of loading indefinitely.",,active
+first_run.syncing_detail,onboarding,FirstRunPage,Detection,syncing_detail,"Found {{count}} usable sources. Importing their Token metadata now.",,active
+first_run.result_detail,onboarding,FirstRunPage,Detection,result_detail,"{{count}} sources can provide usage data. Sources without logs stay visible with a recovery action.",,active
+first_run.detect_error,onboarding,FirstRunPage,Detection,detect_error,"The local detector did not respond.",,active
+first_run.sync_error,onboarding,FirstRunPage,Detection,sync_error,"The first local scan failed. Your detected paths were kept.",,active
+first_run.source.ready,onboarding,FirstRunPage,SourceResult,state_ready,"Logs found",,active
+first_run.source.no_logs,onboarding,FirstRunPage,SourceResult,state_no_logs,"Installed · no logs",,active
+first_run.source.not_detected,onboarding,FirstRunPage,SourceResult,state_not_detected,"Not installed",,active
+first_run.source.permission,onboarding,FirstRunPage,SourceResult,state_permission,"Permission required",,active
+first_run.source.unsupported,onboarding,FirstRunPage,SourceResult,state_unsupported,"Not supported",,active
+first_run.source.path_error,onboarding,FirstRunPage,SourceResult,state_path_error,"Path problem",,active
+first_run.source_environment,onboarding,FirstRunPage,SourceResult,environment,"Environment: {{environment}}",,active
+first_run.source_no_path,onboarding,FirstRunPage,SourceResult,no_path,"No readable log path was found",,active
+first_run.fix_path,onboarding,FirstRunPage,SourceResult,fix_path,"Set path manually",,active
+first_run.privacy_title,onboarding,FirstRunPage,Privacy,title,"Local-first by default",,active
+first_run.privacy_detail,onboarding,FirstRunPage,Privacy,detail,"Token Eyes reads Token counts, model/source identifiers, timestamps, and pricing metadata. It does not read prompt or conversation bodies. Local detection and scanning do not upload this data; optional cloud features are separate.",,active
+first_run.privacy_manage,onboarding,FirstRunPage,Privacy,manage,"Review storage and deletion controls",,active
+first_run.manual_setup,onboarding,FirstRunPage,Actions,manual_setup,"Configure data sources manually",,active
+first_run.retry,onboarding,FirstRunPage,Actions,retry,"Detect again",,active
+first_run.view_usage,onboarding,FirstRunPage,Actions,view_usage,"View my usage",,active
+data_sources.title,data_sources,DataSourcesPage,Header,title,"Data sources",,active
+data_sources.subtitle,data_sources,DataSourcesPage,Header,subtitle,"See which AI tools provide valid Token data, when they last produced evidence, and how to recover failures.",,active
+data_sources.copy_diagnostics,data_sources,DataSourcesPage,Actions,copy_diagnostics,"Copy redacted diagnostics",,active
+data_sources.diagnostics_copied,data_sources,DataSourcesPage,Actions,diagnostics_copied,"Diagnostics copied",,active
+data_sources.scan_all,data_sources,DataSourcesPage,Actions,scan_all,"Rescan all sources",,active
+data_sources.scanning,data_sources,DataSourcesPage,Actions,scanning,"Scanning sources",,active
+data_sources.loading,data_sources,DataSourcesPage,Health,loading,"Checking data source health…",,active
+data_sources.load_error,data_sources,DataSourcesPage,Health,load_error,"Data source health could not be loaded.",,active
+data_sources.error.local_service_unreachable,data_sources,DataSourcesPage,Health,local_service_unreachable,"Token Eyes cannot reach the local data service, so source health is unavailable. Restart Token Eyes, then rescan all sources.",,active
+data_sources.sync_error,data_sources,DataSourcesPage,Health,sync_error,"The source scan failed. The previous health results remain visible.",,active
+data_sources.summary.ready,data_sources,DataSourcesPage,Health,summary_ready,"{{count}} with valid logs",,active
+data_sources.summary.no_logs,data_sources,DataSourcesPage,Health,summary_no_logs,"{{count}} installed without logs",,active
+data_sources.summary.unavailable,data_sources,DataSourcesPage,Health,summary_unavailable,"{{count}} unavailable",,active
+data_sources.health.ready,data_sources,DataSourcesPage,Health,state_ready,"Valid data",,active
+data_sources.health.no_logs,data_sources,DataSourcesPage,Health,state_no_logs,"Installed · no logs",,active
+data_sources.health.unavailable,data_sources,DataSourcesPage,Health,state_unavailable,"Unavailable",,active
+data_sources.health.protected,data_sources,DataSourcesPage,Health,state_protected,"Installed · data currently unreadable",,active
+data_sources.health.limited,data_sources,DataSourcesPage,Health,state_limited,"Installed · no precise Token logs",,active
+data_sources.status_detail,data_sources,DataSourcesPage,Health,status_detail,"Status details",,active
+data_sources.notice.encrypted_database,data_sources,DataSourcesPage,Health,encrypted_database,"The vendor stores this data in an encrypted database, so Token Eyes cannot currently read precise Token fields.",,active
+data_sources.notice.session_database,data_sources,DataSourcesPage,Health,session_database,"App data was detected, but this version does not expose readable precise Token logs.",,active
+data_sources.evidence,data_sources,DataSourcesPage,Health,evidence,"Evidence files",,active
+data_sources.last_activity,data_sources,DataSourcesPage,Health,last_activity,"Last activity",,active
+data_sources.environment,data_sources,DataSourcesPage,Health,environment,"Environment",,active
+data_sources.never,data_sources,DataSourcesPage,Health,never,"No successful evidence yet",,active
+data_sources.unknown,data_sources,DataSourcesPage,Health,unknown,"Unknown",,active
+data_sources.privacy_title,data_sources,DataSourcesPage,Privacy,title,"What Token Eyes reads",,active
+data_sources.privacy_detail,data_sources,DataSourcesPage,Privacy,detail,"Local scanning reads Token counts, model/source identifiers, timestamps, and pricing metadata. It does not read prompt text, message content, conversation bodies, or API keys. Local data stays on this machine unless you separately enable an optional cloud feature.",,active
+data_sources.storage_label,data_sources,DataSourcesPage,Privacy,storage_label,"Local data location",,active
+data_sources.storage_path,data_sources,DataSourcesPage,Privacy,storage_path,"Stored by Token Eyes on this device",,active
+data_sources.delete_instructions,data_sources,DataSourcesPage,Privacy,delete_instructions,"Use Clear locally imported data below to remove Token Eyes' imported ledger and scan cursors. This does not delete the original logs owned by Codex, Claude, Cursor, or other tools. Disable optional cloud features separately before deleting any uploaded copy.",,active
+nav.data_sources,navigation,Sidebar,NavItem,data_sources,"Data sources",,active
+nav.group.more,navigation,Sidebar,NavGroup,more,"More",,active
+spend.cost.summary.estimated_usage,spend,SpendCostPage,CostSummaryCards,estimated_usage,"Estimated usage cost",,active
+spend.cost.summary.estimated_usage_suffix,spend,SpendCostPage,CostSummaryCards,estimated_usage_suffix,"estimated usage cost",,active
+spend.cost.summary.actual_subscription,spend,SpendCostPage,CostSummaryCards,actual_subscription,"Recorded subscription fees",,active
+spend.cost.summary.actual_subscription_suffix,spend,SpendCostPage,CostSummaryCards,actual_subscription_suffix,"recorded subscription fees",,active
+spend.cost.summary.scope_note,spend,SpendCostPage,CostSummaryCards,scope_note,"Estimated usage cost values recorded Tokens at catalog API prices. Subscription fees are recorded actual payments. They are shown side by side and are not combined because coverage may overlap.",,active
+spend.cost.error.title,spend,SpendCostPage,CostAccumulation,error_title,"Cost data could not be refreshed",,active
+spend.cost.error.stale,spend,SpendCostPage,CostAccumulation,error_stale,"Showing the last successful cost totals. Some sections may be incomplete.",,active
+spend.cost.error.unavailable,spend,SpendCostPage,CostAccumulation,error_unavailable,"No cost totals are available yet.",,active
+spend.cost.error.retry,spend,SpendCostPage,CostAccumulation,retry,"Retry cost data",,active
+spend.cost.error.open_settings,spend,SpendCostPage,CostAccumulation,open_settings,"Open cost settings",,active
+spend.cost.error.local_service_unreachable,spend,SpendCostPage,CostAccumulation,local_service_unreachable,"Token Eyes cannot reach the local data service, so current cost evidence is unavailable. Restart Token Eyes, then retry cost data.",,active
+dashboard.actions.usage_details,dashboard,DashboardPage,DashboardView,usage_details,"View usage details",,active
+dashboard.actions.cost_and_quota,dashboard,DashboardPage,DashboardView,cost_and_quota,"View cost and quota",,active
+dashboard.actions.data_sources,dashboard,DashboardPage,DashboardView,data_sources,"View data sources",,active
+data_sources.ledger.title,data_sources,DataSourcesPage,DataSourcesPage,ledger_title,"Ledger integrity",,active
+data_sources.ledger.subtitle,data_sources,DataSourcesPage,DataSourcesPage,ledger_subtitle,"Inspect imported, visible, duplicate, malformed, unpriced, and unattributed data.",,active
+data_sources.ledger.raw,data_sources,DataSourcesPage,DataSourcesPage,ledger_raw,"Imported records",,active
+data_sources.ledger.visible,data_sources,DataSourcesPage,DataSourcesPage,ledger_visible,"Visible records",,active
+data_sources.ledger.duplicates,data_sources,DataSourcesPage,DataSourcesPage,ledger_duplicates,"Duplicates removed",,active
+data_sources.ledger.malformed,data_sources,DataSourcesPage,DataSourcesPage,ledger_malformed,"Malformed records",,active
+data_sources.ledger.component_mismatches,data_sources,DataSourcesPage,DataSourcesPage,ledger_component_mismatches,"Component mismatches",,active
+data_sources.ledger.component_delta,data_sources,DataSourcesPage,DataSourcesPage,ledger_component_delta,"Unreconciled tokens",,active
+data_sources.ledger.unpriced,data_sources,DataSourcesPage,DataSourcesPage,ledger_unpriced,"Unpriced tokens: {{count}} ({{percent}}). Estimated cost excludes these tokens.",,active
+data_sources.ledger.unattributed,data_sources,DataSourcesPage,DataSourcesPage,ledger_unattributed,"Unattributed tokens: {{count}} ({{percent}}). Source or project breakdowns may be incomplete.",,active
+data_sources.ledger.load_error,data_sources,DataSourcesPage,DataSourcesPage,ledger_load_error,"Ledger diagnostics are unavailable.",,active
+data_sources.clear.action,data_sources,DataSourcesPage,DataSourcesPage,clear_action,"Clear locally imported data",,active
+data_sources.clear.clearing,data_sources,DataSourcesPage,DataSourcesPage,clear_clearing,"Clearing local data…",,active
+data_sources.clear.confirm,data_sources,DataSourcesPage,DataSourcesPage,clear_confirm,"Clear Token Eyes' imported usage ledger and sync cursors? Settings, credentials, and source-tool logs will not be deleted. The next scan can import the logs again.",,active
+data_sources.clear.success,data_sources,DataSourcesPage,DataSourcesPage,clear_success,"Local imported data was cleared. Source-tool logs were not changed.",,active
+data_sources.clear.error,data_sources,DataSourcesPage,DataSourcesPage,clear_error,"Local imported data could not be cleared.",,active
+spend.monthly_change.with_amount,spend,*,CostComparison,with_amount,"{{change}} · {{amount}} difference",,active
+spend.cost.token_package.connected_no_quota,spend,SpendCostPage,TokenPackageCard,connected_no_quota,"Connected · provider did not supply quota fields",,active
+dashboard.usage_error.title,dashboard,DashboardPage,DashboardView,usage_error_title,"Usage data is unavailable",,active
+dashboard.usage_error.no_data,dashboard,DashboardPage,DashboardView,usage_error_no_data,"Token Eyes could not load current usage. No value is shown until a real response succeeds.",,active
+dashboard.usage_error.stale_title,dashboard,DashboardPage,DashboardView,usage_error_stale_title,"Showing the last successful value",,active
+dashboard.usage_error.last_success,dashboard,DashboardPage,DashboardView,usage_error_last_success,"Last successful update: {{time}}",,active
+dashboard.usage_error.never_updated,dashboard,DashboardPage,DashboardView,usage_error_never_updated,"No successful update yet",,active
+dashboard.usage_error.retry,dashboard,DashboardPage,DashboardView,usage_error_retry,"Retry",,active
+dashboard.usage_error.open_data_sources,dashboard,DashboardPage,DashboardView,usage_error_open_data_sources,"Open data source diagnostics",,active
+dashboard.usage_error.copy_diagnostics,dashboard,DashboardPage,DashboardView,usage_error_copy_diagnostics,"Copy error details",,active
+dashboard.usage_error.diagnostics_copied,dashboard,DashboardPage,DashboardView,usage_error_diagnostics_copied,"Error details copied",,active
+data.confidence.exact,dashboard,*,DataConfidenceBadge,state_exact,"Exact",,active
+data.confidence.estimated,dashboard,*,DataConfidenceBadge,state_estimated,"Estimated",,active
+data.confidence.partial,dashboard,*,DataConfidenceBadge,state_partial,"Partial",,active
+data.confidence.stale,dashboard,*,DataConfidenceBadge,state_stale,"Stale",,active
+data.confidence.unavailable,dashboard,*,DataConfidenceBadge,state_unavailable,"Unavailable",,active
+data.confidence.unattributed,dashboard,*,DataConfidenceBadge,state_unattributed,"Unattributed",,active
+data.confidence.source_updated,dashboard,*,DataConfidenceBadge,source_updated,"{{source}} · updated {{time}}",,active
+data.confidence.source_unknown,dashboard,*,DataConfidenceBadge,source_unknown,"Unknown source",,active
+data.confidence.time_unknown,dashboard,*,DataConfidenceBadge,time_unknown,"unknown time",,active
+data.confidence.estimated_detail,dashboard,*,DataConfidenceBadge,estimated_detail,"Method: {{method}}",,active
+data.confidence.partial_detail,dashboard,*,DataConfidenceBadge,partial_detail,"Coverage {{coverage}}%",,active
+data.confidence.unpriced_detail,dashboard,*,DataConfidenceBadge,unpriced_detail,"{{tokens}} unpriced tokens ({{percent}}%)",,active
+data.confidence.stale_detail,dashboard,*,DataConfidenceBadge,stale_detail,"Last successful value: {{time}}",,active
+data.confidence.unavailable_detail,dashboard,*,DataConfidenceBadge,unavailable_detail,"Reason: {{reason}}",,active
+data.confidence.reason_unknown,dashboard,*,DataConfidenceBadge,reason_unknown,"No source response",,active
+data.confidence.unattributed_detail,dashboard,*,DataConfidenceBadge,unattributed_detail,"{{tokens}} tokens are unattributed ({{percent}}%); totals may be incomplete by source or model",,active
+data.confidence.open_diagnostics,dashboard,*,DataConfidenceBadge,open_diagnostics,"Open diagnostics",,active
+data.confidence.source.local_logs,dashboard,DashboardPage,DataConfidenceBadge,source_local_logs,"Local usage logs",,active
+data.confidence.source.cached_logs,dashboard,DashboardPage,DataConfidenceBadge,source_cached_logs,"Cached local logs",,active
+data.confidence.source.usage_service,dashboard,DashboardPage,DataConfidenceBadge,source_usage_service,"Usage service",,active
+data.confidence.source.pricing,dashboard,DashboardPage,DataConfidenceBadge,source_pricing,"Pricing catalog estimate",,active
+data.confidence.method.api_pricing,dashboard,DashboardPage,DataConfidenceBadge,method_api_pricing,"recorded tokens × pricing catalog",,active
+data.confidence.reason.unpriced,dashboard,DashboardPage,DataConfidenceBadge,reason_unpriced,"No supported price was found for the recorded model",,active
+spend.usage.integrity.verified,dashboard,SpendPage,UsageStatsPanel,integrity_verified,"Local ledger verified · {{records}} valid aggregates · {{from}} to {{to}}",,active
+spend.usage.integrity.verified_empty,dashboard,SpendPage,UsageStatsPanel,integrity_verified_empty,"Local ledger verified · 0 valid aggregates",,active
+spend.usage.integrity.attention,dashboard,SpendPage,UsageStatsPanel,integrity_attention,"Local ledger needs attention · Token delta {{delta}}",,active
+spend.usage.integrity.details,dashboard,SpendPage,UsageStatsPanel,integrity_details,"Raw {{raw}} rows; merged {{duplicates}} duplicate cumulative records; skipped {{malformed}} malformed records; last updated {{updated}}",,active
 leaderboard.sync.syncing,leaderboard,LeaderboardPage,ParticipationSync,status,"正在同步本地用量并生成你的排行……",,active
 leaderboard.sync.failed,leaderboard,LeaderboardPage,ParticipationSync,error,"本地用量尚未同步，请保持 Token Eyes 运行并重新打开排行榜重试。",,active
 settings.token_plan.subscription_cost,ui,SettingsPage,TokenPlanSection,subscription_cost,"套餐成本",,active
@@ -15,7 +139,6 @@ settings.token_plan.subscription_cycle.one_time,ui,SettingsPage,TokenPlanSection
 settings.token_plan.subscription_start,ui,SettingsPage,TokenPlanSection,subscription_start,"订阅开始",,active
 settings.token_plan.subscription_end,ui,SettingsPage,TokenPlanSection,subscription_end,"订阅结束",,active
 settings.token_plan.recorded_at,ui,SettingsPage,TokenPlanSection,recorded_at,"记录时间",,active
-spend.monthly_change.low_baseline,dashboard,SpendPage,UsageStatsPanel,monthly_change_low_baseline,"上月同期基数较低，增加约 ¥{{value}}",,active
 login_modal.leaderboard_participation,ui,*,LoginModal,leaderboard_participation,"Signing in automatically joins the leaderboard and uploads aggregated Token statistics.",,active
 login_modal.upload_boundary,ui,*,LoginModal,upload_boundary,"Code, conversations, projects, paths, Skills, MCP data and files are never uploaded.",,active
 login_modal.delete_participation,ui,*,LoginModal,delete_participation,"You can delete leaderboard participation data at any time in account settings.",,active
@@ -119,7 +242,7 @@ runtime.error.code_label,shared,*,RuntimeErrorBanner,code_label,"Code",,active
 runtime.error.retry_action,shared,*,RuntimeErrorBanner,retry_action,"Retry",,active
 landing.handle.default,landing,LandingPage,LandingPage,handle_default,"VIBE_USER",,active
 landing.handle.special,landing,LandingPage,LandingPage,handle_special,"VOLT",,active
-landing.screenshot.alt,landing,LandingPage,LandingPage,screenshot_alt,"TokenTracker dashboard screenshot",,active
+landing.screenshot.alt,landing,LandingPage,LandingPage,screenshot_alt,"Token Eyes dashboard screenshot",,active
 landing.nav.login,landing,LandingPage,LandingPage,nav_login,"LOGIN",,active
 landing.nav.signup,landing,LandingPage,LandingPage,nav_signup,"SIGN UP",,active
 landing.install.command,landing,LandingPage,LandingPage,install_command,"npx --yes tokentracker-cli",,active
@@ -156,7 +279,7 @@ landing.v2.install.availability,landing,LandingPage,MarketingLanding,availabilit
 landing.v2.models.title,landing,LandingPage,MarketingLanding,models_title,"SUPPORTED AI CLI TOOLS",,active
 landing.v2.compare.kicker,landing,LandingPage,MarketingLanding,compare_kicker,"SEAMLESS TRACKING",,active
 landing.v2.compare.title,landing,LandingPage,MarketingLanding,compare_title,"Stop guessing your AI usage.",,active
-landing.v2.compare.subtitle,landing,LandingPage,MarketingLanding,compare_subtitle,"AI CLI tools hide raw usage data in obscure local files. TokenTracker consolidates them into a local-first dashboard in real-time.",,active
+landing.v2.compare.subtitle,landing,LandingPage,MarketingLanding,compare_subtitle,"AI CLI tools hide raw usage data in obscure local files. Token Eyes consolidates them into a local-first dashboard in real-time.",,active
 landing.v2.distill.body,landing,LandingPage,MarketingLanding,distill_body,"100% local processing. No prompts or code are ever collected.",,active
 landing.v2.compare.with.title,landing,LandingPage,MarketingLanding,with_title,"WITH TOKEN EYES",,active
 landing.v2.compare.with.p1,landing,LandingPage,MarketingLanding,with_p1,"Centralized usage dashboard",,active
@@ -217,7 +340,7 @@ dashboard.projects.pricing_complete,ui,ProjectUsagePanel,ProjectUsagePanel,prici
 dashboard.projects.pricing_partial,ui,ProjectUsagePanel,ProjectUsagePanel,pricing_partial,"Partially priced",,active
 dashboard.projects.pricing_unpriced,ui,ProjectUsagePanel,ProjectUsagePanel,pricing_unpriced,"Unpriced",,active
 dashboard.widgets.title,dashboard,DashboardPage,WidgetOnboardingCard,title,"Desktop Widgets",,active
-dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""TokenTracker""",,active
+dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""Token Eyes""",,active
 dashboard.widgets.dismiss_aria,dashboard,DashboardPage,WidgetOnboardingCard,dismiss_aria,"Dismiss widget intro",,active
 widgets.page.title,dashboard,WidgetsPage,WidgetsPage,title,"Widgets",,active
 widgets.cta.open_gallery,dashboard,WidgetsPage,WidgetsPage,cta_open_gallery,"Open Widget Gallery",,active
@@ -237,6 +360,8 @@ dashboard.cost_breakdown.title,ui,CostAnalysisModal,CostAnalysisModal,title,"Cos
 dashboard.cost_breakdown.total_label,ui,CostAnalysisModal,CostAnalysisModal,total_label,"Estimated Total Cost",,active
 dashboard.cost_breakdown.close,ui,CostAnalysisModal,CostAnalysisModal,close_label,"Close",,active
 trend.monitor.label,ui,TrendMonitor,TrendMonitor,label,"Usage Trend",,active
+trend.monitor.legend.bars,ui,TrendMonitor,TrendMonitor,legend_bars,"Daily usage",,active
+trend.monitor.legend.average,ui,TrendMonitor,TrendMonitor,legend_average,"5-point average",,active
 trend.zoom.open_aria,ui,TrendMonitor,TrendMonitor,zoom_open_aria,"Expand to full screen",,active
 trend.zoom.close_aria,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_close_aria,"Close",,active
 trend.zoom.badge,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_badge,"Trend Insight",,active
@@ -380,17 +505,17 @@ leaderboard.pagination.ellipsis,dashboard,LeaderboardPage,LeaderboardPage,pagina
 leaderboard.pagination.page_unknown,dashboard,LeaderboardPage,LeaderboardPage,pagination_unknown,"Page {{page}}",,active
 dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,"run npx --yes tokentracker-cli init",,active
 dashboard.session_expired.copied,dashboard,DashboardPage,AsciiBox,body,"copied",,active
-dashboard.install.prompt,dashboard,DashboardPage,AsciiBox,install_prompt,"本地服务已连接。若当前暂无数据，请运行：",,active
+dashboard.install.prompt,dashboard,DashboardPage,AsciiBox,install_prompt,"Local service connected. If no data appears yet, initialize Token Eyes:",,active
 dashboard.install.cmd.init,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli init",,active
 dashboard.install.cmd.init_link_code,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli init --link-code {{link_code}}",,active
-dashboard.install.copy,dashboard,DashboardPage,AsciiBox,install_copy,"Copy install command",,active
-dashboard.install.copy_base,dashboard,DashboardPage,AsciiBox,install_copy,"Copy init command",,active
+dashboard.install.copy,dashboard,DashboardPage,AsciiBox,install_copy,"Copy Token Eyes install command",,active
+dashboard.install.copy_base,dashboard,DashboardPage,AsciiBox,install_copy,"Copy Token Eyes init command",,active
 dashboard.install.copied,dashboard,DashboardPage,AsciiBox,install_copy,"Copied to clipboard",,active
 dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_status,"Generating private code...",,active
 dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,"Private code unavailable",,active
 dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli sync",,active
 dashboard.daily.title,dashboard,DashboardPage,AsciiBox,title,"Daily Breakdown",,active
-dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,"当前范围暂无活动数据。请先使用 AI CLI，再点击刷新或运行 {{cmd}} 同步。",,active
+dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,"当前范围暂无活动数据。请先使用 AI CLI，然后点击刷新。",,active
 dashboard.identity.title,dashboard,DashboardPage,IdentityCard,title,"Your Profile",,active
 dashboard.identity.subtitle,dashboard,DashboardPage,IdentityCard,subtitle,"Track your coding journey",,active
 dashboard.identity.fallback,dashboard,DashboardPage,IdentityCard,handle_fallback,"Anonymous",,active
@@ -400,7 +525,7 @@ dashboard.screenshot.twitter_button,dashboard,DashboardPage,ScreenshotShare,butt
 dashboard.screenshot.twitter_label,dashboard,DashboardPage,ScreenshotShare,aria_label,"Share on X",,active
 dashboard.screenshot.twitter_hint,dashboard,DashboardPage,ScreenshotShare,helper_text,"Auto-copies image to clipboard",,active
 dashboard.screenshot.twitter_text,dashboard,DashboardPage,ScreenshotShare,share_text,"{{total_tokens}} tokens on the record.\n{{model_name}} led with {{model_percent}}%.\n\nMy AI usage, unaudited →",,active
-nav.usage,shared,*,Sidebar,nav_usage,"概览",,active
+nav.usage,shared,*,Sidebar,nav_usage,"Overview",,active
 nav.limits,shared,*,Sidebar,nav_limits,"Limits",,active
 nav.widgets,shared,*,Sidebar,nav_widgets,"macOS Widgets",,active
 nav.leaderboard,shared,*,Sidebar,nav_leaderboard,"Leaderboard",,active
@@ -419,7 +544,8 @@ limits.page.openSettings,ui,LimitsPage,LimitsPage,open_settings,"Display setting
 nav.group.general,shared,*,Sidebar,group_general,"General",,active
 nav.group.tools,shared,*,Sidebar,group_tools,"Tools",,active
 nav.group.account,shared,*,Sidebar,group_account,"Account",,active
-nav.settings,shared,*,Sidebar,nav_settings,"设置",,active
+nav.settings,shared,*,Sidebar,nav_settings,"Settings",,active
+shared.data.unattributed,shared,*,*,data_unattributed,"Unattributed",,active
 header.auth.open_settings,shared,*,InsforgeUserHeaderControls,open_settings,"Open settings",,active
 settings.page.title,ui,SettingsPage,SettingsPage,title,"Settings",,active
 settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage your account, appearance, and display preferences.",,active
@@ -479,7 +605,7 @@ settings.account.githubUrlInvalid,ui,SettingsPage,SettingsPage,github_url_invali
 leaderboard.github.aria,ui,LeaderboardPage,LeaderboardPage,github_aria,"Open GitHub profile",,active
 auth.callback.processing,ui,*,NativeAuthCallbackPage,processing,"Processing…",,active
 auth.callback.success,ui,*,NativeAuthCallbackPage,success,"Signed in successfully",,active
-auth.callback.redirecting,ui,*,NativeAuthCallbackPage,redirecting,"Returning to TokenTracker…",,active
+auth.callback.redirecting,ui,*,NativeAuthCallbackPage,redirecting,"Returning to Token Eyes…",,active
 auth.callback.failed,ui,*,NativeAuthCallbackPage,failed,"Sign-in incomplete. Please try again.",,active
 auth.callback.close,ui,*,NativeAuthCallbackPage,close,"Close this page",,active
 stats.period.last_7d,ui,DashboardPage,StatsPanel,period_last_7d,"7d",,active
@@ -538,7 +664,7 @@ settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,"Bli
 settings.menubar.confettiOnReset,ui,SettingsPage,SettingsPage,mb_confetti,"Confetti on reset",,active
 settings.menubar.confettiOnResetHint,ui,SettingsPage,SettingsPage,mb_confetti_hint,"Set off a fireworks celebration when a usage limit resets after you were near it.",,active
 settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,"Launch at login",,active
-settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,"Start TokenTrackerBar automatically when you sign in to macOS.",,active
+settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,"Start Token Eyes automatically when you sign in to macOS.",,active
 settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,"Sync now",,active
 settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,"Trigger an immediate parse and upload of local AI tool logs.",,active
 settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,"Syncing…",,active
@@ -547,7 +673,7 @@ settings.menubar.checkUpdates,ui,SettingsPage,SettingsPage,mb_check_updates,"Che
 settings.footer.statusPage,ui,SettingsPage,NativeAppFooter,status_page,"System status",,active
 menubar.slot.primary,ui,WidgetsPage,MenuBarDisplayCard,slot_primary,"Primary slot",,active
 menubar.slot.secondary,ui,WidgetsPage,MenuBarDisplayCard,slot_secondary,"Secondary slot",,active
-menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,"Open TokenTrackerBar for macOS to edit the live menu bar display.",,active
+menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,"Open Token Eyes for macOS to edit the live menu bar display.",,active
 menubar.metric.today_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_today_tokens,"Today Tokens",,active
 menubar.metric.today_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_today_cost,"Today Cost",,active
 menubar.metric.last_7d_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_last_7d,"Last 7 Days",,active
@@ -631,6 +757,7 @@ usage.period.total,ui,DashboardPage,UsageOverview,period_total,"Total",,active
 usage.period.custom,ui,DashboardPage,UsageOverview,period_custom,"Custom",,active
 usage.overview.tablist_aria,ui,DashboardPage,UsageOverview,tablist_aria,"Time period",,active
 usage.overview.cost_breakdown_aria,ui,DashboardPage,UsageOverview,cost_breakdown_aria,"View cost breakdown",,active
+usage.overview.usage_evidence_label,ui,DashboardPage,UsageOverview,usage_evidence_label,"Usage evidence",,active
 usage.overview.distribution_aria,ui,DashboardPage,UsageOverview,distribution_aria,"Provider distribution: {{items}}",,active
 usage.overview.distribution_item,ui,DashboardPage,UsageOverview,distribution_item,"{{label}} {{percent}}%",,active
 usage.overview.provider_card_aria,ui,DashboardPage,UsageOverview,provider_card_aria,"{{provider}}: {{percent}}%, {{tokens}} tokens, {{cost}}. Click to {{action}} details",,active
@@ -1113,8 +1240,8 @@ settings.data_dirs.auto_detecting,ui,SettingsPage,DataDirectoriesSection,auto_de
 settings.data_dirs.auto_detect_success,ui,SettingsPage,DataDirectoriesSection,auto_detect_success,"已识别 {{count}} 个可采集 Agent 路径，请确认后保存。",,active
 settings.data_dirs.auto_detect_none,ui,SettingsPage,DataDirectoriesSection,auto_detect_none,"未发现可采集的 Agent 数据目录，请手动选择目录后再检测。",,active
 settings.data_dirs.auto_detect_error,ui,SettingsPage,DataDirectoriesSection,auto_detect_error,"自动检测路径失败，请手动选择目录。",,active
-settings.section.agent_pricing,ui,SettingsPage,AgentPricingSection,sec_agent_pricing,"模型定价表",,active
-settings.agent_pricing.subtitle,ui,SettingsPage,AgentPricingSection,subtitle,"查看常用模型公开价格，并可为本地 Agent + Model 配置精确单价。单位为每 100 万 Token。",,active
+settings.section.agent_pricing,ui,SettingsPage,AgentPricingSection,sec_agent_pricing,"Model pricing",,active
+settings.agent_pricing.subtitle,ui,SettingsPage,AgentPricingSection,subtitle,"Review public prices for common models and set precise prices for local Agent + Model pairs. Prices are per 1M tokens.",,active
 settings.agent_pricing.catalog.title,ui,SettingsPage,AgentPricingSection,catalog_title,"公开价目",,active
 settings.agent_pricing.catalog.subtitle,ui,SettingsPage,AgentPricingSection,catalog_subtitle,"官网公开价格快照；实际账单以供应商结算为准。",,active
 settings.agent_pricing.catalog.model,ui,SettingsPage,AgentPricingSection,catalog_model,"模型",,active
@@ -1165,8 +1292,8 @@ settings.agent_pricing.default.title,ui,SettingsPage,AgentPricingSection,default
 settings.agent_pricing.default.subtitle,ui,SettingsPage,AgentPricingSection,default_subtitle,"当没有精确匹配的 Agent + Model 规则时使用此默认单价。",,active
 usage.cache_hit.tokens,dashboard,DashboardPage,UsageOverview,cache_tokens,"Cache hit tokens",,active
 usage.cache_hit.rate,dashboard,DashboardPage,UsageOverview,cache_rate,"Cache hit rate",,active
-settings.section.token_plan,ui,SettingsPage,TokenPlanSection,sec_token_plan,"Token 套餐",,active
-settings.token_plan.subtitle,ui,SettingsPage,TokenPlanSection,subtitle,"记录套餐额度，并可在本地进程存活时按配置刷新；官方接口不可用时会显示失败原因。",,active
+settings.section.token_plan,ui,SettingsPage,TokenPlanSection,sec_token_plan,"Token plans",,active
+settings.token_plan.subtitle,ui,SettingsPage,TokenPlanSection,subtitle,"Record plan quota and refresh it while the local service is running. If the official API is unavailable, Token Eyes shows the reason.",,active
 settings.token_plan.source,ui,SettingsPage,TokenPlanSection,source,"来源",,active
 settings.token_plan.plan_label,ui,SettingsPage,TokenPlanSection,plan_label,"套餐名称",,active
 settings.token_plan.total_quota,ui,SettingsPage,TokenPlanSection,total_quota,"总额度",,active
@@ -1196,16 +1323,17 @@ spend.page.title,dashboard,SpendPage,SpendPage,title,"支出",,active
 spend.page.subtitle,dashboard,SpendPage,SpendPage,subtitle,"查看真实 Token 消耗、API 成本、订阅记录与累计花销。",,active
 spend.tab.usage,dashboard,SpendPage,SpendPage,tab_usage,"使用统计",,active
 spend.tab.cost,dashboard,SpendPage,SpendPage,tab_cost,"成本累积",,active
-spend.monthly_api,dashboard,SpendPage,SpendPage,monthly_api,"本月 API 成本",,active
-spend.monthly_subscription,dashboard,SpendPage,SpendPage,monthly_subscription,"本月订阅成本",,active
-spend.monthly_combined,dashboard,SpendPage,SpendPage,monthly_combined,"本月总成本",,active
-spend.lifetime_combined,dashboard,SpendPage,SpendPage,lifetime_combined,"累计总成本",,active
-spend.monthly_change.increase,dashboard,SpendPage,UsageStatsPanel,monthly_change_increase,"较上月新增 {{value}}%",,active
-spend.monthly_change.decrease,dashboard,SpendPage,UsageStatsPanel,monthly_change_decrease,"较上月减少 {{value}}%",,active
-spend.monthly_change.new_amount,dashboard,SpendPage,UsageStatsPanel,monthly_change_new_amount,"较上月新增 {{amount}}",,active
-spend.monthly_change.no_baseline,dashboard,SpendPage,UsageStatsPanel,monthly_change_no_baseline,"上月无基数",,active
-spend.monthly_change.flat,dashboard,SpendPage,UsageStatsPanel,monthly_change_flat,"与上月持平",,active
-spend.monthly_change.flat_percent,dashboard,SpendPage,UsageStatsPanel,monthly_change_flat_percent,"较上月 {{value}}%",,active
+spend.monthly_api,dashboard,SpendPage,SpendPage,monthly_api,"Monthly estimated API cost",,active
+spend.monthly_subscription,dashboard,SpendPage,SpendPage,monthly_subscription,"Monthly subscription cost",,active
+spend.monthly_combined,dashboard,SpendPage,SpendPage,monthly_combined,"Monthly total cost",,active
+spend.lifetime_combined,dashboard,SpendPage,SpendPage,lifetime_combined,"Lifetime total cost",,active
+spend.monthly_change.increase,dashboard,SpendPage,UsageStatsPanel,monthly_change_increase,"Up {{value}}% from last month",,active
+spend.monthly_change.decrease,dashboard,SpendPage,UsageStatsPanel,monthly_change_decrease,"Down {{value}}% from last month",,active
+spend.monthly_change.new_amount,dashboard,SpendPage,UsageStatsPanel,monthly_change_new_amount,"Up from last month",,active
+spend.monthly_change.explanation,dashboard,SpendPage,UsageStatsPanel,monthly_change_explanation,"Month to date compared with the same elapsed days last month: (current - previous) ÷ previous",,active
+spend.monthly_change.no_baseline,dashboard,SpendPage,UsageStatsPanel,monthly_change_no_baseline,"No prior-month baseline",,active
+spend.monthly_change.flat,dashboard,SpendPage,UsageStatsPanel,monthly_change_flat,"Unchanged from last month",,active
+spend.monthly_change.flat_percent,dashboard,SpendPage,UsageStatsPanel,monthly_change_flat_percent,"{{value}}% from last month",,active
 spend.total_usd,dashboard,SpendPage,SpendPage,total_usd,"USD 合计",,active
 spend.total_cny,dashboard,SpendPage,SpendPage,total_cny,"CNY 合计",,active
 spend.by_source_title,dashboard,SpendPage,SpendPage,by_source_title,"按来源拆分",,active
@@ -1219,12 +1347,12 @@ spend.plan_label_placeholder,dashboard,SpendPage,SpendPage,plan_label_placeholde
 spend.amount,dashboard,SpendPage,SpendPage,amount,"金额",,active
 spend.currency,dashboard,SpendPage,SpendPage,currency,"币种",,active
 spend.billing_cycle,dashboard,SpendPage,SpendPage,billing_cycle,"计费周期",,active
-spend.cycle_monthly,dashboard,SpendPage,SpendPage,cycle_monthly,"月付",,active
-spend.cycle_yearly,dashboard,SpendPage,SpendPage,cycle_yearly,"年付",,active
-spend.cycle_one_time,dashboard,SpendPage,SpendPage,cycle_one_time,"一次性",,active
-spend.cycle_monthly_short,dashboard,SpendPage,SpendPage,cycle_monthly_short,"月付",,active
-spend.cycle_yearly_short,dashboard,SpendPage,SpendPage,cycle_yearly_short,"年付",,active
-spend.cycle_one_time_short,dashboard,SpendPage,SpendPage,cycle_one_time_short,"一次性",,active
+spend.cycle_monthly,dashboard,SpendPage,SpendPage,cycle_monthly,"Monthly",,active
+spend.cycle_yearly,dashboard,SpendPage,SpendPage,cycle_yearly,"Yearly",,active
+spend.cycle_one_time,dashboard,SpendPage,SpendPage,cycle_one_time,"One-time",,active
+spend.cycle_monthly_short,dashboard,SpendPage,SpendPage,cycle_monthly_short,"Monthly",,active
+spend.cycle_yearly_short,dashboard,SpendPage,SpendPage,cycle_yearly_short,"Yearly",,active
+spend.cycle_one_time_short,dashboard,SpendPage,SpendPage,cycle_one_time_short,"One-time",,active
 spend.start_date,dashboard,SpendPage,SpendPage,start_date,"开始日期",,active
 spend.end_date,dashboard,SpendPage,SpendPage,end_date,"结束日期",,active
 spend.end_date_placeholder,dashboard,SpendPage,SpendPage,end_date_placeholder,"留空表示仍有效",,active
@@ -1243,7 +1371,7 @@ spend.empty,dashboard,SpendPage,SpendPage,empty,"暂无支出记录。",,active
 spend.load_error,dashboard,SpendPage,SpendPage,load_error,"无法加载支出记录。",,active
 spend.save_error,dashboard,SpendPage,SpendPage,save_error,"无法保存支出记录。",,active
 spend.delete_error,dashboard,SpendPage,SpendPage,delete_error,"无法删除支出记录。",,active
-nav.spend,ui,Sidebar,Sidebar,spend,"支出",,active
+nav.spend,ui,Sidebar,Sidebar,spend,"Spend",,active
 settings.data_dirs.cursor,ui,SettingsPage,DataDirectoriesSection,cursor_label,"Cursor 数据目录",,active
 settings.data_dirs.cursor_hint,ui,SettingsPage,DataDirectoriesSection,cursor_hint,"留空则使用默认 Cursor 配置目录；如有独立数据目录，请在这里覆盖。",,active
 settings.data_dirs.opencode,ui,SettingsPage,DataDirectoriesSection,opencode_label,"OpenCode 数据目录",,active
@@ -1269,7 +1397,7 @@ settings.data_dirs.ready,ui,SettingsPage,DataDirectoriesSection,ready,"已就绪
 settings.data_dirs.saved_button,ui,SettingsPage,DataDirectoriesSection,saved_button,"已保存",,active
 settings.data_dirs.syncing,ui,SettingsPage,DataDirectoriesSection,syncing,"路径已保存，正在同步 Token 数据。",,active
 settings.data_dirs.sync_error,ui,SettingsPage,DataDirectoriesSection,sync_error,"路径已保存，但 Token 同步失败，请稍后重试。",,active
-settings.data_dirs.installed_no_data,ui,SettingsPage,DataDirectoriesSection,installed_no_data,"已连接，当前日志未提供精确 Token 字段",,active
+settings.data_dirs.installed_no_data,ui,SettingsPage,DataDirectoriesSection,installed_no_data,"已连接，当前日志未查到明确 Token 字段",,active
 settings.data_dirs.not_detected,ui,SettingsPage,DataDirectoriesSection,not_detected,"未检测到",,active
 settings.data_dirs.not_detected_reason,ui,SettingsPage,DataDirectoriesSection,not_detected_reason,"路径不存在或未配置",,active
 settings.data_dirs.env.win,ui,SettingsPage,DataDirectoriesSection,env_win,"Win",,active
@@ -1291,14 +1419,14 @@ settings.token_plan.form_title_new,ui,SettingsPage,TokenPlanSection,form_title_n
 settings.token_plan.form_title_edit,ui,SettingsPage,TokenPlanSection,form_title_edit,"编辑 Token 套餐",,active
 settings.token_plan.editor_missing,ui,SettingsPage,TokenPlanSection,editor_missing,"未找到该 Token 套餐",,active
 settings.token_plan.back_to_cost,ui,SettingsPage,TokenPlanSection,back_to_cost,"返回成本设置",,active
-dashboard.refresh.interval.label,dashboard,DashboardPage,DashboardPage,refresh_interval_label,"刷新间隔",,active
-dashboard.refresh.interval.manual,dashboard,DashboardPage,DashboardPage,refresh_interval_manual,"手动",,active
-dashboard.refresh.interval.30s,dashboard,DashboardPage,DashboardPage,refresh_interval_30s,"30秒",,active
-dashboard.refresh.interval.1m,dashboard,DashboardPage,DashboardPage,refresh_interval_1m,"1分钟",,active
-dashboard.refresh.interval.5m,dashboard,DashboardPage,DashboardPage,refresh_interval_5m,"5分钟",,active
+dashboard.refresh.interval.label,dashboard,DashboardPage,DashboardPage,refresh_interval_label,"Refresh interval",,active
+dashboard.refresh.interval.manual,dashboard,DashboardPage,DashboardPage,refresh_interval_manual,"Manual",,active
+dashboard.refresh.interval.30s,dashboard,DashboardPage,DashboardPage,refresh_interval_30s,"30 seconds",,active
+dashboard.refresh.interval.1m,dashboard,DashboardPage,DashboardPage,refresh_interval_1m,"1 minute",,active
+dashboard.refresh.interval.5m,dashboard,DashboardPage,DashboardPage,refresh_interval_5m,"5 minutes",,active
 dashboard.refresh.manual,dashboard,DashboardPage,DashboardPage,refresh_manual,"刷新",,active
 dashboard.refresh.refreshing,dashboard,DashboardPage,DashboardPage,refresh_refreshing,"刷新中",,active
-dashboard.refresh.last_updated,dashboard,DashboardPage,DashboardPage,refresh_last_updated,"上次更新 {{time}}",,active
+dashboard.refresh.last_updated,dashboard,DashboardPage,DashboardPage,refresh_last_updated,"Last updated {{time}}",,active
 dashboard.refresh.never,dashboard,DashboardPage,DashboardPage,refresh_never,"尚未更新",,active
 settings.token_plan.codex_quota.title,ui,SettingsPage,TokenPlanSection,codex_quota_title,"Codex 实时额度",,active
 settings.token_plan.codex_quota.5h,ui,SettingsPage,TokenPlanSection,codex_quota_5h,"5 小时",,active
@@ -1342,14 +1470,14 @@ spend.trend.tooltip.subscription,dashboard,SpendPage,SpendTrendChart,tooltip_sub
 spend.trend.tooltip.combined,dashboard,SpendPage,SpendTrendChart,tooltip_combined,"合计",,active
 spend.trend.legend_label,dashboard,SpendPage,SpendTrendChart,legend_label,"来源",,active
 usage.billing_filter.label,ui,DashboardPage,UsageOverview,billing_filter_label,"计费方式",,active
-usage.billing_filter.all,ui,DashboardPage,UsageOverview,billing_filter_all,"全部",,active
+usage.billing_filter.all,ui,DashboardPage,UsageOverview,billing_filter_all,"All",,active
 usage.billing_filter.api_key,ui,DashboardPage,UsageOverview,billing_filter_api_key,"API Key",,active
-usage.billing_filter.token_plan,ui,DashboardPage,UsageOverview,billing_filter_token_plan,"套餐",,active
-usage.billing_filter.unknown,ui,DashboardPage,UsageOverview,billing_filter_unknown,"未配置计费",,active
+usage.billing_filter.token_plan,ui,DashboardPage,UsageOverview,billing_filter_token_plan,"Plan",,active
+usage.billing_filter.unknown,ui,DashboardPage,UsageOverview,billing_filter_unknown,"Unconfigured billing",,active
 usage.billing_filter.empty,ui,DashboardPage,UsageOverview,billing_filter_empty,"当前计费方式下暂无数据",,active
 usage.billing_mode.api_key,ui,DashboardPage,UsageOverview,billing_mode_api_key,"API Key",,active
-usage.billing_mode.token_plan,ui,DashboardPage,UsageOverview,billing_mode_token_plan,"套餐",,active
-usage.billing_mode.unknown,ui,DashboardPage,UsageOverview,billing_mode_unknown,"未配置计费",,active
+usage.billing_mode.token_plan,ui,DashboardPage,UsageOverview,billing_mode_token_plan,"Plan",,active
+usage.billing_mode.unknown,ui,DashboardPage,UsageOverview,billing_mode_unknown,"Unconfigured billing",,active
 usage.billing_mode.mixed,ui,DashboardPage,UsageOverview,billing_mode_mixed,"混合",,active
 usage.request_log.tab,ui,DashboardPage,RequestUsageLog,tab_label,"请求日志",,active
 usage.request_log.title,ui,DashboardPage,RequestUsageLog,title,"请求级 Token 明细",,active
@@ -1359,9 +1487,9 @@ usage.request_log.error,ui,DashboardPage,RequestUsageLog,error,"无法读取请�
 usage.request_log.loading_aria,ui,DashboardPage,RequestUsageLog,loading_aria,"加载请求级 Token 记录",,active
 usage.request_log.source_filter_aria,ui,DashboardPage,RequestUsageLog,source_filter_aria,"选择数据源",,active
 usage.request_log.totals,ui,DashboardPage,RequestUsageLog,totals,"合计",,active
-usage.request_log.metric.requests,ui,DashboardPage,RequestUsageLog,metric_requests,"请求数",,active
-usage.request_log.metric.success_rate,ui,DashboardPage,RequestUsageLog,metric_success_rate,"成功率",,active
-usage.request_log.metric.avg_latency,ui,DashboardPage,RequestUsageLog,metric_avg_latency,"平均延迟",,active
+usage.request_log.metric.requests,ui,DashboardPage,RequestUsageLog,metric_requests,"Requests",,active
+usage.request_log.metric.success_rate,ui,DashboardPage,RequestUsageLog,metric_success_rate,"Success rate",,active
+usage.request_log.metric.avg_latency,ui,DashboardPage,RequestUsageLog,metric_avg_latency,"Average latency",,active
 usage.request_log.showing,ui,DashboardPage,RequestUsageLog,showing,"显示 {{count}} 条记录",,active
 usage.request_log.column.time,ui,DashboardPage,RequestUsageLog,column_time,"时间",,active
 usage.request_log.column.agent,ui,DashboardPage,RequestUsageLog,column_agent,"Agent",,active
@@ -1372,86 +1500,86 @@ usage.request_log.column.cache_write,ui,DashboardPage,RequestUsageLog,column_cac
 usage.request_log.column.output,ui,DashboardPage,RequestUsageLog,column_output,"输出",,active
 usage.request_log.column.reasoning,ui,DashboardPage,RequestUsageLog,column_reasoning,"推理",,active
 usage.request_log.column.total,ui,DashboardPage,RequestUsageLog,column_total,"合计",,active
-usage.request_log.column.cost,ui,DashboardPage,RequestUsageLog,column_cost,"成本",,active
+usage.request_log.column.cost,ui,DashboardPage,RequestUsageLog,column_cost,"Cost",,active
 usage.request_log.column.origin,ui,DashboardPage,RequestUsageLog,column_origin,"来源",,active
 limits.provider.hermes,ui,LimitsPage,UsageLimitsPanel,provider_hermes,"Hermes",,active
 limits.provider.openclaw,ui,LimitsPage,UsageLimitsPanel,provider_openclaw,"OpenClaw",,active
 limits.provider.opencode,ui,LimitsPage,UsageLimitsPanel,provider_opencode,"OpenCode",,active
-spend.usage.title,dashboard,SpendPage,UsageStatsPanel,title,"使用统计",,active
-spend.usage.subtitle,dashboard,SpendPage,UsageStatsPanel,subtitle,"查看 AI 模型的使用情况和成本统计。",,active
-spend.usage.real_tokens,dashboard,SpendPage,UsageStatsPanel,real_tokens,"真实消耗 Tokens",,active
-spend.usage.input,dashboard,SpendPage,UsageStatsPanel,input,"新增输入",,active
+spend.usage.title,dashboard,SpendPage,UsageStatsPanel,title,"Usage statistics",,active
+spend.usage.subtitle,dashboard,SpendPage,UsageStatsPanel,subtitle,"Review AI model usage and estimated cost.",,active
+spend.usage.real_tokens,dashboard,SpendPage,UsageStatsPanel,real_tokens,"Recorded Tokens",,active
+spend.usage.input,dashboard,SpendPage,UsageStatsPanel,input,"Input",,active
 spend.usage.output,dashboard,SpendPage,UsageStatsPanel,output,"Output",,active
-spend.usage.cache_create,dashboard,SpendPage,UsageStatsPanel,cache_create,"创建",,active
-spend.usage.cache_hit,dashboard,SpendPage,UsageStatsPanel,cache_hit,"命中",,active
-spend.usage.cache_hit_rate,dashboard,SpendPage,UsageStatsPanel,cache_hit_rate,"缓存命中率",,active
-spend.usage.requests,dashboard,SpendPage,UsageStatsPanel,requests,"总请求数",,active
-spend.usage.cost,dashboard,SpendPage,UsageStatsPanel,cost,"总成本",,active
-spend.usage.load_error,dashboard,SpendPage,UsageStatsPanel,load_error,"无法读取请求级 Token 记录。",,active
-spend.usage.tabs.requests,dashboard,SpendPage,UsageDetailTabs,tab_requests,"请求日志",,active
-spend.usage.tabs.provider,dashboard,SpendPage,UsageDetailTabs,tab_provider,"Provider 统计",,active
-spend.usage.tabs.model,dashboard,SpendPage,UsageDetailTabs,tab_model,"模型统计",,active
-spend.usage.provider_empty,dashboard,SpendPage,UsageDetailTabs,provider_empty,"暂无 Provider 统计。",,active
-spend.usage.model_empty,dashboard,SpendPage,UsageDetailTabs,model_empty,"暂无模型统计。",,active
-spend.usage.column.model,dashboard,SpendPage,UsageDetailTabs,column_model,"模型",,active
-spend.usage.column.requests,dashboard,SpendPage,UsageDetailTabs,column_requests,"请求",,active
+spend.usage.cache_create,dashboard,SpendPage,UsageStatsPanel,cache_create,"Cache write",,active
+spend.usage.cache_hit,dashboard,SpendPage,UsageStatsPanel,cache_hit,"Cache read",,active
+spend.usage.cache_hit_rate,dashboard,SpendPage,UsageStatsPanel,cache_hit_rate,"Cache hit rate",,active
+spend.usage.requests,dashboard,SpendPage,UsageStatsPanel,requests,"Requests",,active
+spend.usage.cost,dashboard,SpendPage,UsageStatsPanel,cost,"Estimated cost",,active
+spend.usage.load_error,dashboard,SpendPage,UsageStatsPanel,load_error,"Request-level Token records could not be read.",,active
+spend.usage.tabs.requests,dashboard,SpendPage,UsageDetailTabs,tab_requests,"Request log",,active
+spend.usage.tabs.provider,dashboard,SpendPage,UsageDetailTabs,tab_provider,"Provider statistics",,active
+spend.usage.tabs.model,dashboard,SpendPage,UsageDetailTabs,tab_model,"Model statistics",,active
+spend.usage.provider_empty,dashboard,SpendPage,UsageDetailTabs,provider_empty,"No provider statistics yet.",,active
+spend.usage.model_empty,dashboard,SpendPage,UsageDetailTabs,model_empty,"No model statistics yet.",,active
+spend.usage.column.model,dashboard,SpendPage,UsageDetailTabs,column_model,"Model",,active
+spend.usage.column.requests,dashboard,SpendPage,UsageDetailTabs,column_requests,"Requests",,active
 spend.usage.column.tokens,dashboard,SpendPage,UsageDetailTabs,column_tokens,"Tokens",,active
-spend.usage.column.cost,dashboard,SpendPage,UsageDetailTabs,column_cost,"成本",,active
-spend.usage.unknown,dashboard,SpendPage,UsageDetailTabs,unknown,"未知",,active
-ticket02.agent.all,dashboard,SpendPage,AgentSwitcher,all,"全部",,active
-ticket02.agent.aria,dashboard,SpendPage,AgentSwitcher,aria,"切换 Agent 数据范围",,active
-ticket02.agent.aria_all,dashboard,SpendPage,AgentSwitcher,aria_all,"显示全部 Agent 的数据",,active
-ticket02.agent.aria_one,dashboard,SpendPage,AgentSwitcher,aria_one,"仅显示 {{name}} 的数据",,active
+spend.usage.column.cost,dashboard,SpendPage,UsageDetailTabs,column_cost,"Estimated cost",,active
+spend.usage.unknown,dashboard,SpendPage,UsageDetailTabs,unknown,"Unknown",,active
+ticket02.agent.all,dashboard,SpendPage,AgentSwitcher,all,"All",,active
+ticket02.agent.aria,dashboard,SpendPage,AgentSwitcher,aria,"Change agent data scope",,active
+ticket02.agent.aria_all,dashboard,SpendPage,AgentSwitcher,aria_all,"Show data for all agents",,active
+ticket02.agent.aria_one,dashboard,SpendPage,AgentSwitcher,aria_one,"Show data for {{name}} only",,active
 ticket02.agent.collapse,dashboard,SpendPage,AgentSwitcher,collapse,"Collapse agent list",,active
 ticket02.agent.expand,dashboard,SpendPage,AgentSwitcher,expand,"Expand agent list",,active
 ticket02.agent.show_all_collapse,dashboard,SpendPage,AgentSwitcher,show_all_collapse,"Show all agents and collapse the list",,active
 spend.visibility.empty,dashboard,SpendPage,SpendPage,empty,"Enable at least one provider in Display settings.",,active
-ticket02.source.label,dashboard,SpendPage,SourceFilter,label,"全部来源",,active
-ticket02.source.selected,dashboard,SpendPage,SourceFilter,selected,"已选 {{count}} 项",,active
-ticket02.source.aria,dashboard,SpendPage,SourceFilter,aria,"筛选数据来源",,active
-ticket02.source.search_placeholder,dashboard,SpendPage,SourceFilter,search_placeholder,"搜索来源",,active
-ticket02.source.select_all,dashboard,SpendPage,SourceFilter,select_all,"全选",,active
-ticket02.source.clear_all,dashboard,SpendPage,SourceFilter,clear_all,"取消全选",,active
-ticket02.source.empty,dashboard,SpendPage,SourceFilter,empty,"暂无可用来源",,active
-ticket02.model.label,dashboard,SpendPage,ModelFilter,label,"全部模型",,active
-ticket02.model.selected,dashboard,SpendPage,ModelFilter,selected,"已选 {{count}} 项",,active
-ticket02.model.aria,dashboard,SpendPage,ModelFilter,aria,"筛选模型",,active
-ticket02.model.search_placeholder,dashboard,SpendPage,ModelFilter,search_placeholder,"搜索模型",,active
-ticket02.model.select_all,dashboard,SpendPage,ModelFilter,select_all,"全选",,active
-ticket02.model.empty,dashboard,SpendPage,ModelFilter,empty,"暂无可用模型",,active
-ticket02.refresh.aria,dashboard,SpendPage,RefreshIntervalPicker,aria,"刷新间隔",,active
-ticket02.refresh.manual_aria,dashboard,SpendPage,RefreshIntervalPicker,manual_aria,"立即刷新",,active
-ticket02.refresh.last_updated,dashboard,SpendPage,RefreshIntervalPicker,last_updated,"最后更新：{{time}}",,active
-ticket02.refresh.just_now,dashboard,SpendPage,RefreshIntervalPicker,just_now,"刚刚",,active
-ticket02.refresh.seconds_ago,dashboard,SpendPage,RefreshIntervalPicker,seconds_ago,"{{count}} 秒前",,active
-ticket02.refresh.minutes_ago,dashboard,SpendPage,RefreshIntervalPicker,minutes_ago,"{{count}} 分钟前",,active
-ticket02.refresh.hours_ago,dashboard,SpendPage,RefreshIntervalPicker,hours_ago,"{{count}} 小时前",,active
-ticket02.time.aria,dashboard,SpendPage,TimeRangePicker,aria,"时间范围",,active
-ticket02.time.total,dashboard,SpendPage,TimeRangePicker,total,"累计",,active
-ticket02.time.today,dashboard,SpendPage,TimeRangePicker,today,"当天",,active
+ticket02.source.label,dashboard,SpendPage,SourceFilter,label,"All sources",,active
+ticket02.source.selected,dashboard,SpendPage,SourceFilter,selected,"{{count}} selected",,active
+ticket02.source.aria,dashboard,SpendPage,SourceFilter,aria,"Filter data sources",,active
+ticket02.source.search_placeholder,dashboard,SpendPage,SourceFilter,search_placeholder,"Search sources",,active
+ticket02.source.select_all,dashboard,SpendPage,SourceFilter,select_all,"Select all",,active
+ticket02.source.clear_all,dashboard,SpendPage,SourceFilter,clear_all,"Clear all",,active
+ticket02.source.empty,dashboard,SpendPage,SourceFilter,empty,"No sources available",,active
+ticket02.model.label,dashboard,SpendPage,ModelFilter,label,"All models",,active
+ticket02.model.selected,dashboard,SpendPage,ModelFilter,selected,"{{count}} selected",,active
+ticket02.model.aria,dashboard,SpendPage,ModelFilter,aria,"Filter models",,active
+ticket02.model.search_placeholder,dashboard,SpendPage,ModelFilter,search_placeholder,"Search models",,active
+ticket02.model.select_all,dashboard,SpendPage,ModelFilter,select_all,"Select all",,active
+ticket02.model.empty,dashboard,SpendPage,ModelFilter,empty,"No models available",,active
+ticket02.refresh.aria,dashboard,SpendPage,RefreshIntervalPicker,aria,"Refresh interval",,active
+ticket02.refresh.manual_aria,dashboard,SpendPage,RefreshIntervalPicker,manual_aria,"Refresh now",,active
+ticket02.refresh.last_updated,dashboard,SpendPage,RefreshIntervalPicker,last_updated,"Last updated: {{time}}",,active
+ticket02.refresh.just_now,dashboard,SpendPage,RefreshIntervalPicker,just_now,"Just now",,active
+ticket02.refresh.seconds_ago,dashboard,SpendPage,RefreshIntervalPicker,seconds_ago,"{{count}} seconds ago",,active
+ticket02.refresh.minutes_ago,dashboard,SpendPage,RefreshIntervalPicker,minutes_ago,"{{count}} minutes ago",,active
+ticket02.refresh.hours_ago,dashboard,SpendPage,RefreshIntervalPicker,hours_ago,"{{count}} hours ago",,active
+ticket02.time.aria,dashboard,SpendPage,TimeRangePicker,aria,"Time range",,active
+ticket02.time.total,dashboard,SpendPage,TimeRangePicker,total,"All time",,active
+ticket02.time.today,dashboard,SpendPage,TimeRangePicker,today,"Today",,active
 ticket02.time.1d,dashboard,SpendPage,TimeRangePicker,1d,"1d",,active
 ticket02.time.7d,dashboard,SpendPage,TimeRangePicker,7d,"7d",,active
 ticket02.time.14d,dashboard,SpendPage,TimeRangePicker,14d,"14d",,active
 ticket02.time.30d,dashboard,SpendPage,TimeRangePicker,30d,"30d",,active
-ticket02.time.custom,dashboard,SpendPage,TimeRangePicker,custom,"自定义",,active
-ticket02.time.start,dashboard,SpendPage,TimeRangePicker,start,"开始时间",,active
-ticket02.time.end,dashboard,SpendPage,TimeRangePicker,end,"结束时间",,active
-ticket02.time.date_label,dashboard,SpendPage,TimeRangePicker,date_label,"日期",,active
-ticket02.time.time_label,dashboard,SpendPage,TimeRangePicker,time_label,"时间",,active
+ticket02.time.custom,dashboard,SpendPage,TimeRangePicker,custom,"Custom",,active
+ticket02.time.start,dashboard,SpendPage,TimeRangePicker,start,"Start time",,active
+ticket02.time.end,dashboard,SpendPage,TimeRangePicker,end,"End time",,active
+ticket02.time.date_label,dashboard,SpendPage,TimeRangePicker,date_label,"Date",,active
+ticket02.time.time_label,dashboard,SpendPage,TimeRangePicker,time_label,"Time",,active
 ticket02.time.date_placeholder,dashboard,SpendPage,TimeRangePicker,date_placeholder,"YYYY/MM/DD",,active
 ticket02.time.time_placeholder,dashboard,SpendPage,TimeRangePicker,time_placeholder,"HH:mm",,active
-ticket02.stats.real_tokens,dashboard,SpendPage,UsageStatsPanel,real_tokens,"真实消耗 Tokens",,active
+ticket02.stats.real_tokens,dashboard,SpendPage,UsageStatsPanel,real_tokens,"Recorded Tokens",,active
 ticket02.stats.approx,dashboard,SpendPage,UsageStatsPanel,approx,"≈ {{value}}",,active
-ticket02.stats.input,dashboard,SpendPage,UsageStatsPanel,input,"新增输入",,active
+ticket02.stats.input,dashboard,SpendPage,UsageStatsPanel,input,"Input",,active
 ticket02.stats.output,dashboard,SpendPage,UsageStatsPanel,output,"Output",,active
-ticket02.stats.cache_create,dashboard,SpendPage,UsageStatsPanel,cache_create,"创建",,active
-ticket02.stats.cache_hit,dashboard,SpendPage,UsageStatsPanel,cache_hit,"命中",,active
-ticket02.stats.cache_create_tooltip,dashboard,SpendPage,UsageStatsPanel,cache_create_tooltip,"缓存写入 Token 数（创建新缓存条目时计入）",,active
-ticket02.stats.requests,dashboard,SpendPage,UsageStatsPanel,requests,"总请求数",,active
-ticket02.stats.cost,dashboard,SpendPage,UsageStatsPanel,cost,"总成本",,active
-ticket02.stats.cache_hit_rate,dashboard,SpendPage,UsageStatsPanel,cache_hit_rate,"缓存命中率",,active
-ticket02.stats.loading,dashboard,SpendPage,UsageStatsPanel,loading,"加载中",,active
-ticket02.stats.error,dashboard,SpendPage,UsageStatsPanel,error,"统计数据加载失败",,active
+ticket02.stats.cache_create,dashboard,SpendPage,UsageStatsPanel,cache_create,"Cache write",,active
+ticket02.stats.cache_hit,dashboard,SpendPage,UsageStatsPanel,cache_hit,"Cache read",,active
+ticket02.stats.cache_create_tooltip,dashboard,SpendPage,UsageStatsPanel,cache_create_tooltip,"Cache-write Tokens recorded when a new cache entry is created",,active
+ticket02.stats.requests,dashboard,SpendPage,UsageStatsPanel,requests,"Requests",,active
+ticket02.stats.cost,dashboard,SpendPage,UsageStatsPanel,cost,"Estimated cost",,active
+ticket02.stats.cache_hit_rate,dashboard,SpendPage,UsageStatsPanel,cache_hit_rate,"Cache hit rate",,active
+ticket02.stats.loading,dashboard,SpendPage,UsageStatsPanel,loading,"Loading",,active
+ticket02.stats.error,dashboard,SpendPage,UsageStatsPanel,error,"Usage statistics could not be loaded",,active
 ticket04.request.column.time,dashboard,SpendPage,RequestUsageLog,column_time,"Time",,active
 ticket04.request.column.provider,dashboard,SpendPage,RequestUsageLog,column_provider,"Provider",,active
 ticket04.request.column.model,dashboard,SpendPage,RequestUsageLog,column_model,"Model",,active
@@ -1641,45 +1769,45 @@ ticket06.availability.aggregate_only,dashboard,common,AvailabilityIndicator,aggr
 ticket06.availability.unavailable,dashboard,common,AvailabilityIndicator,unavailable,"Unavailable",,active
 ticket06.request.log.unpriced_hint,dashboard,DashboardPage,RequestUsageLog,unpriced_hint,"({{unpricedTokens}} tokens unpriced)",,active
 ticket06.request.log.partial_hint,dashboard,DashboardPage,RequestUsageLog,partial_hint,"({{unpricedTokens}} tokens not priced)",,active
-spend.cost.token_package.section,dashboard,SpendPage,CostAccumulation,token_package_section,"Token 套餐",,active
-spend.cost.token_package.empty,dashboard,SpendPage,CostAccumulation,token_package_empty,"暂无 Token 套餐记录",,active
-spend.cost.token_package.name,dashboard,SpendPage,CostAccumulation,token_package_name,"套餐名称",,active
-spend.cost.token_package.provider,dashboard,SpendPage,CostAccumulation,token_package_provider,"服务商",,active
-spend.cost.token_package.cycle,dashboard,SpendPage,CostAccumulation,token_package_cycle,"计费周期",,active
-spend.cost.token_package.quota,dashboard,SpendPage,CostAccumulation,token_package_quota,"额度",,active
-spend.cost.token_package.used,dashboard,SpendPage,CostAccumulation,token_package_used,"已用",,active
-spend.cost.token_package.remaining,dashboard,SpendPage,CostAccumulation,token_package_remaining,"剩余",,active
-spend.cost.token_package.cost,dashboard,SpendPage,CostAccumulation,token_package_cost,"成本",,active
-spend.cost.token_package.expires_at,dashboard,SpendPage,CostAccumulation,token_package_expires_at,"到期时间",,active
-spend.cost.token_package.sync_status,dashboard,SpendPage,CostAccumulation,token_package_sync_status,"同步状态",,active
-spend.cost.api_billing.section,dashboard,SpendPage,CostAccumulation,api_billing_section,"API 计费",,active
-spend.cost.api_billing.empty,dashboard,SpendPage,CostAccumulation,api_billing_empty,"暂无 API 计费账户",,active
-spend.cost.api_billing.provider,dashboard,SpendPage,CostAccumulation,api_billing_provider,"平台",,active
-spend.cost.api_billing.account,dashboard,SpendPage,CostAccumulation,api_billing_account,"账户",,active
-spend.cost.api_billing.billing_source,dashboard,SpendPage,CostAccumulation,api_billing_source,"计费来源",,active
-spend.cost.api_billing.month_cost,dashboard,SpendPage,CostAccumulation,api_billing_month_cost,"本月成本",,active
-spend.cost.api_billing.lifetime_cost,dashboard,SpendPage,CostAccumulation,api_billing_lifetime_cost,"累计成本",,active
-spend.cost.api_billing.status,dashboard,SpendPage,CostAccumulation,api_billing_status,"状态",,active
-spend.cost.api_billing.last_synced,dashboard,SpendPage,CostAccumulation,api_billing_last_synced,"最后同步",,active
+spend.cost.token_package.section,dashboard,SpendPage,CostAccumulation,token_package_section,"Token plans",,active
+spend.cost.token_package.empty,dashboard,SpendPage,CostAccumulation,token_package_empty,"No Token plan records",,active
+spend.cost.token_package.name,dashboard,SpendPage,CostAccumulation,token_package_name,"Plan name",,active
+spend.cost.token_package.provider,dashboard,SpendPage,CostAccumulation,token_package_provider,"Provider",,active
+spend.cost.token_package.cycle,dashboard,SpendPage,CostAccumulation,token_package_cycle,"Billing cycle",,active
+spend.cost.token_package.quota,dashboard,SpendPage,CostAccumulation,token_package_quota,"Quota",,active
+spend.cost.token_package.used,dashboard,SpendPage,CostAccumulation,token_package_used,"Used",,active
+spend.cost.token_package.remaining,dashboard,SpendPage,CostAccumulation,token_package_remaining,"Remaining",,active
+spend.cost.token_package.cost,dashboard,SpendPage,CostAccumulation,token_package_cost,"Recorded fee",,active
+spend.cost.token_package.expires_at,dashboard,SpendPage,CostAccumulation,token_package_expires_at,"Expires",,active
+spend.cost.token_package.sync_status,dashboard,SpendPage,CostAccumulation,token_package_sync_status,"Sync status",,active
+spend.cost.api_billing.section,dashboard,SpendPage,CostAccumulation,api_billing_section,"API billing",,active
+spend.cost.api_billing.empty,dashboard,SpendPage,CostAccumulation,api_billing_empty,"No API billing accounts",,active
+spend.cost.api_billing.provider,dashboard,SpendPage,CostAccumulation,api_billing_provider,"Provider",,active
+spend.cost.api_billing.account,dashboard,SpendPage,CostAccumulation,api_billing_account,"Account",,active
+spend.cost.api_billing.billing_source,dashboard,SpendPage,CostAccumulation,api_billing_source,"Billing source",,active
+spend.cost.api_billing.month_cost,dashboard,SpendPage,CostAccumulation,api_billing_month_cost,"This month",,active
+spend.cost.api_billing.lifetime_cost,dashboard,SpendPage,CostAccumulation,api_billing_lifetime_cost,"Lifetime spend",,active
+spend.cost.api_billing.status,dashboard,SpendPage,CostAccumulation,api_billing_status,"Status",,active
+spend.cost.api_billing.last_synced,dashboard,SpendPage,CostAccumulation,api_billing_last_synced,"Last synced",,active
 spend.cost.api_billing.source.api,dashboard,SpendPage,CostAccumulation,api_billing_source_api,"API",,active
-spend.cost.api_billing.source.console,dashboard,SpendPage,CostAccumulation,api_billing_source_console,"控制台",,active
-spend.cost.api_billing.source.manual,dashboard,SpendPage,CostAccumulation,api_billing_source_manual,"手动",,active
-spend.cost.api_billing.source.unknown,dashboard,SpendPage,CostAccumulation,api_billing_source_unknown,"未知",,active
-spend.cost.api_billing.status.synced,dashboard,SpendPage,CostAccumulation,api_billing_status_synced,"已同步",,active
-spend.cost.api_billing.status.not_connected,dashboard,SpendPage,CostAccumulation,api_billing_status_not_connected,"未连接",,active
-spend.cost.api_billing.status.error,dashboard,SpendPage,CostAccumulation,api_billing_status_error,"同步错误",,active
-spend.cost.subscription.section,dashboard,SpendPage,CostAccumulation,subscription_section,"订阅记录",,active
-spend.cost.subscription.empty,dashboard,SpendPage,CostAccumulation,subscription_empty,"暂无订阅记录",,active
-spend.cost.subscription.name,dashboard,SpendPage,CostAccumulation,subscription_name,"订阅名称",,active
-spend.cost.subscription.provider,dashboard,SpendPage,CostAccumulation,subscription_provider,"服务商",,active
-spend.cost.subscription.cycle,dashboard,SpendPage,CostAccumulation,subscription_cycle,"计费周期",,active
-spend.cost.subscription.amount,dashboard,SpendPage,CostAccumulation,subscription_amount,"金额",,active
-spend.cost.subscription.started_at,dashboard,SpendPage,CostAccumulation,subscription_started_at,"开始时间",,active
-spend.cost.subscription.renews_at,dashboard,SpendPage,CostAccumulation,subscription_renews_at,"续费时间",,active
-spend.cost.subscription.status,dashboard,SpendPage,CostAccumulation,subscription_status,"状态",,active
-spend.cost.subscription.status.active,dashboard,SpendPage,CostAccumulation,subscription_status_active,"生效中",,active
-spend.cost.subscription.status.expired,dashboard,SpendPage,CostAccumulation,subscription_status_expired,"已过期",,active
-spend.cost.subscription.status.cancelled,dashboard,SpendPage,CostAccumulation,subscription_status_cancelled,"已取消",,active
+spend.cost.api_billing.source.console,dashboard,SpendPage,CostAccumulation,api_billing_source_console,"Console",,active
+spend.cost.api_billing.source.manual,dashboard,SpendPage,CostAccumulation,api_billing_source_manual,"Manual",,active
+spend.cost.api_billing.source.unknown,dashboard,SpendPage,CostAccumulation,api_billing_source_unknown,"Unknown",,active
+spend.cost.api_billing.status.synced,dashboard,SpendPage,CostAccumulation,api_billing_status_synced,"Synced",,active
+spend.cost.api_billing.status.not_connected,dashboard,SpendPage,CostAccumulation,api_billing_status_not_connected,"Not connected",,active
+spend.cost.api_billing.status.error,dashboard,SpendPage,CostAccumulation,api_billing_status_error,"Sync error",,active
+spend.cost.subscription.section,dashboard,SpendPage,CostAccumulation,subscription_section,"Recorded subscriptions",,active
+spend.cost.subscription.empty,dashboard,SpendPage,CostAccumulation,subscription_empty,"No subscription records",,active
+spend.cost.subscription.name,dashboard,SpendPage,CostAccumulation,subscription_name,"Subscription",,active
+spend.cost.subscription.provider,dashboard,SpendPage,CostAccumulation,subscription_provider,"Provider",,active
+spend.cost.subscription.cycle,dashboard,SpendPage,CostAccumulation,subscription_cycle,"Billing cycle",,active
+spend.cost.subscription.amount,dashboard,SpendPage,CostAccumulation,subscription_amount,"Amount",,active
+spend.cost.subscription.started_at,dashboard,SpendPage,CostAccumulation,subscription_started_at,"Started",,active
+spend.cost.subscription.renews_at,dashboard,SpendPage,CostAccumulation,subscription_renews_at,"Renews",,active
+spend.cost.subscription.status,dashboard,SpendPage,CostAccumulation,subscription_status,"Status",,active
+spend.cost.subscription.status.active,dashboard,SpendPage,CostAccumulation,subscription_status_active,"Active",,active
+spend.cost.subscription.status.expired,dashboard,SpendPage,CostAccumulation,subscription_status_expired,"Expired",,active
+spend.cost.subscription.status.cancelled,dashboard,SpendPage,CostAccumulation,subscription_status_cancelled,"Cancelled",,active
 spend.cost.summary.month_api,dashboard,SpendPage,CostAccumulation,summary_month_api,"本月 API 成本",,active
 spend.cost.summary.month_subscription,dashboard,SpendPage,CostAccumulation,summary_month_subscription,"本月订阅成本",,active
 spend.cost.summary.month_total,dashboard,SpendPage,CostAccumulation,summary_month_total,"本月总成本",,active
@@ -1687,55 +1815,70 @@ spend.cost.summary.lifetime_total,dashboard,SpendPage,CostAccumulation,summary_l
 spend.cost.summary.api_suffix,dashboard,SpendPage,CostAccumulation,summary_api_suffix,"API 成本",,active
 spend.cost.summary.subscription_suffix,dashboard,SpendPage,CostAccumulation,summary_subscription_suffix,"套餐成本",,active
 spend.cost.summary.total_suffix,dashboard,SpendPage,CostAccumulation,summary_total_suffix,"总成本",,active
-spend.cost.month_picker.label,dashboard,SpendPage,CostAccumulation,month_picker_label,"选择成本月份",,active
-spend.cost.month_picker.previous,dashboard,SpendPage,CostAccumulation,month_picker_previous,"上一个月",,active
-spend.cost.month_picker.next,dashboard,SpendPage,CostAccumulation,month_picker_next,"下一个月",,active
-spend.cost.month_picker.value,dashboard,SpendPage,CostAccumulation,month_picker_value,"{{year}}年{{month}}月",,active
-spend.cost.month_picker.year_to_month,dashboard,SpendPage,CostAccumulation,month_picker_year_to_month,"{{year}}年截至{{month}}月",,active
-spend.cost.other_ai_groups.section,dashboard,SpendPage,CostAccumulation,other_ai_groups_section,"自定义花销分组",,active
-spend.cost.other_ai_groups.month,dashboard,SpendPage,CostAccumulation,other_ai_groups_month,"本月",,active
-spend.cost.other_ai_groups.year,dashboard,SpendPage,CostAccumulation,other_ai_groups_year,"本年",,active
-spend.cost.other_ai_groups.lifetime,dashboard,SpendPage,CostAccumulation,other_ai_groups_lifetime,"总累积",,active
-nav.group.overview,ui,Sidebar,Sidebar,group_overview,"概览",,active
-nav.group.spend,ui,Sidebar,Sidebar,group_spend,"支出",,active
-nav.group.settings,ui,Sidebar,Sidebar,group_settings,"设置",,active
-nav.spend.usage,ui,Sidebar,Sidebar,nav_spend_usage,"使用统计",,active
-nav.spend.cost,ui,Sidebar,Sidebar,nav_spend_cost,"成本累积",,active
-nav.settings.basic,ui,Sidebar,Sidebar,nav_settings_basic,"基础设置",,active
-nav.settings.cost,ui,Sidebar,Sidebar,nav_settings_cost,"成本设置",,active
-spend.usage.page.title,dashboard,SpendPage,SpendPage,usage_page_title,"使用统计",,active
-spend.usage.page.subtitle,dashboard,SpendPage,SpendPage,usage_page_subtitle,"查看真实 Token 消耗、API 成本与请求日志。",,active
-spend.usage.token_services.title,dashboard,SpendPage,TokenServiceList,token_services_title,"Token 服务列表",,active
-spend.usage.token_services.loading,dashboard,SpendPage,TokenServiceList,token_services_loading,"正在加载套餐用量…",,active
-spend.usage.token_services.error,dashboard,SpendPage,TokenServiceList,token_services_error,"Token 服务加载失败，请刷新重试。",,active
-spend.usage.token_services.empty,dashboard,SpendPage,TokenServiceList,token_services_empty,"暂无未过期的 Token 服务",,active
-spend.usage.token_services.unknown,dashboard,SpendPage,TokenServiceList,token_services_unknown,"未命名服务",,active
-spend.usage.token_services.used,dashboard,SpendPage,TokenServiceList,token_services_used,"已用",,active
-spend.usage.token_services.total,dashboard,SpendPage,TokenServiceList,token_services_total,"总量",,active
-spend.usage.token_services.progress,dashboard,SpendPage,TokenServiceList,token_services_progress,"{{name}} 用量",,active
-spend.usage.token_services.previous,dashboard,SpendPage,TokenServiceList,token_services_previous,"上一页",,active
-spend.usage.token_services.next,dashboard,SpendPage,TokenServiceList,token_services_next,"下一页",,active
-spend.usage.token_services.window.total,dashboard,SpendPage,TokenServiceList,token_services_window_total,"总额度",,active
+spend.cost.month_picker.label,dashboard,SpendPage,CostAccumulation,month_picker_label,"Select cost month",,active
+spend.cost.month_picker.previous,dashboard,SpendPage,CostAccumulation,month_picker_previous,"Previous month",,active
+spend.cost.month_picker.next,dashboard,SpendPage,CostAccumulation,month_picker_next,"Next month",,active
+spend.cost.month_picker.value,dashboard,SpendPage,CostAccumulation,month_picker_value,"{{month}}/{{year}}",,active
+spend.cost.month_picker.year_to_month,dashboard,SpendPage,CostAccumulation,month_picker_year_to_month,"Year to {{month}}/{{year}}",,active
+spend.cost.other_ai_groups.section,dashboard,SpendPage,CostAccumulation,other_ai_groups_section,"Custom spend groups",,active
+spend.cost.other_ai_groups.month,dashboard,SpendPage,CostAccumulation,other_ai_groups_month,"This month",,active
+spend.cost.other_ai_groups.year,dashboard,SpendPage,CostAccumulation,other_ai_groups_year,"This year",,active
+spend.cost.other_ai_groups.lifetime,dashboard,SpendPage,CostAccumulation,other_ai_groups_lifetime,"Lifetime",,active
+nav.group.overview,ui,Sidebar,Sidebar,group_overview,"Overview",,active
+nav.group.spend,ui,Sidebar,Sidebar,group_spend,"Usage & cost",,active
+nav.group.settings,ui,Sidebar,Sidebar,group_settings,"Settings",,active
+nav.section.spend,ui,Sidebar,Sidebar,section_spend,"Cost analysis",,active
+nav.section.settings,ui,Sidebar,Sidebar,section_settings,"System management",,active
+nav.spend.usage,ui,Sidebar,Sidebar,nav_spend_usage,"Usage details",,active
+nav.spend.cost,ui,Sidebar,Sidebar,nav_spend_cost,"Cost & quota",,active
+nav.settings.basic,ui,Sidebar,Sidebar,nav_settings_basic,"General",,active
+nav.settings.cost,ui,Sidebar,Sidebar,nav_settings_cost,"Cost settings",,active
+nav.settings.data,ui,Sidebar,Sidebar,nav_settings_data,"Data & diagnostics",,active
+spend.usage.page.title,dashboard,SpendPage,SpendPage,usage_page_title,"Usage details",,active
+spend.usage.page.subtitle,dashboard,SpendPage,SpendPage,usage_page_subtitle,"Inspect token usage trends, sources, models, and request-level details.",,active
+spend.usage.token_services.title,dashboard,SpendPage,TokenServiceList,token_services_title,"Token services",,active
+spend.usage.token_services.loading,dashboard,SpendPage,TokenServiceList,token_services_loading,"Loading plan usage…",,active
+spend.usage.token_services.error,dashboard,SpendPage,TokenServiceList,token_services_error,"Token services could not be loaded. Refresh to retry.",,active
+spend.usage.token_services.empty,dashboard,SpendPage,TokenServiceList,token_services_empty,"No active Token services",,active
+spend.usage.token_services.unknown,dashboard,SpendPage,TokenServiceList,token_services_unknown,"Unnamed service",,active
+spend.usage.token_services.used,dashboard,SpendPage,TokenServiceList,token_services_used,"Used",,active
+spend.usage.token_services.total,dashboard,SpendPage,TokenServiceList,token_services_total,"Total",,active
+spend.usage.token_services.progress,dashboard,SpendPage,TokenServiceList,token_services_progress,"{{name}} usage",,active
+spend.usage.token_services.previous,dashboard,SpendPage,TokenServiceList,token_services_previous,"Previous",,active
+spend.usage.token_services.next,dashboard,SpendPage,TokenServiceList,token_services_next,"Next",,active
+spend.usage.token_services.window.total,dashboard,SpendPage,TokenServiceList,token_services_window_total,"Total quota",,active
 spend.usage.token_services.window.total_usage,dashboard,SpendPage,TokenServiceList,token_services_window_total_usage,"Total Usage",,active
-spend.usage.token_services.window.rolling_5_hour,dashboard,SpendPage,TokenServiceList,token_services_window_rolling_5_hour,"5 小时",,active
-spend.usage.token_services.window.rolling_weekly,dashboard,SpendPage,TokenServiceList,token_services_window_rolling_weekly,"每周",,active
+spend.usage.token_services.window.rolling_5_hour,dashboard,SpendPage,TokenServiceList,token_services_window_rolling_5_hour,"5 hours",,active
+spend.usage.token_services.window.rolling_weekly,dashboard,SpendPage,TokenServiceList,token_services_window_rolling_weekly,"Weekly",,active
 spend.usage.token_services.window.auto_composer,dashboard,SpendPage,TokenServiceList,token_services_window_auto_composer,"Auto + Composer",,active
 spend.usage.token_services.window.api,dashboard,SpendPage,TokenServiceList,token_services_window_api,"API Usage",,active
-spend.usage.token_services.reset_at,dashboard,SpendPage,TokenServiceList,token_services_reset_at,"{{value}} 重置",,active
-spend.usage.token_services.expires_at,dashboard,SpendPage,TokenServiceList,token_services_expires_at,"有效期至 {{value}}",,active
+spend.usage.token_services.reset_at,dashboard,SpendPage,TokenServiceList,token_services_reset_at,"Resets {{value}}",,active
+spend.usage.token_services.expires_at,dashboard,SpendPage,TokenServiceList,token_services_expires_at,"Expires {{value}}",,active
 app.boot.loading,ui,App,AppBootSplash,app_boot_loading,"正在启动本地仪表盘…",,active
 app.boot.loading_aria,ui,App,AppBootSplash,app_boot_loading_aria,"Token Eyes 正在启动",,active
 settings.cost.loading,ui,SettingsPage,SettingsCostFallback,settings_cost_loading,"正在加载成本设置…",,active
-spend.cost.page.title,dashboard,SpendPage,SpendPage,cost_page_title,"成本累积",,active
-spend.cost.page.subtitle,dashboard,SpendPage,SpendPage,cost_page_subtitle,"查看 Token 套餐状态、供应商账户花销与余额及订阅记录。",,active
+spend.cost.page.title,dashboard,SpendPage,SpendPage,cost_page_title,"Cost & quota",,active
+spend.cost.page.subtitle,dashboard,SpendPage,SpendPage,cost_page_subtitle,"Review estimated usage cost, recorded subscription fees, provider balances, and plan quota without combining them.",,active
+spend.cost.row.month_estimate,dashboard,SpendPage,CostAccumulation,row_month_estimate,"Monthly estimate (USD)",,active
+spend.cost.row.estimate_share,dashboard,SpendPage,CostAccumulation,row_estimate_share,"Share of estimated total",,active
+spend.cost.row.subscription_usd,dashboard,SpendPage,CostAccumulation,row_subscription_usd,"Subscription fees (USD)",,active
+spend.cost.row.available_quota,dashboard,SpendPage,CostAccumulation,row_available_quota,"Available quota",,active
+spend.cost.row.available_balance,dashboard,SpendPage,CostAccumulation,row_available_balance,"Available balance (USD)",,active
+spend.cost.row.unbilled_usd,dashboard,SpendPage,CostAccumulation,row_unbilled_usd,"Unbilled (USD)",,active
+spend.cost.row.month_subscription,dashboard,SpendPage,CostAccumulation,row_month_subscription,"Subscriptions this month (USD)",,active
+spend.cost.row.lifetime_subscription,dashboard,SpendPage,CostAccumulation,row_lifetime_subscription,"Lifetime subscriptions (USD)",,active
+spend.cost.row.unavailable,dashboard,SpendPage,CostAccumulation,row_unavailable,"Unavailable",,active
+leaderboard.table.rank,dashboard,LeaderboardPage,LeaderboardPage,table_rank,"Rank",,active
+leaderboard.table.user_share,dashboard,LeaderboardPage,LeaderboardPage,table_user_share,"User / model usage share",,active
+leaderboard.table.token_cost,dashboard,LeaderboardPage,LeaderboardPage,table_token_cost,"Token total / estimated spend",,active
 settings.basic.page.title,ui,SettingsPage,SettingsPage,basic_page_title,"基础设置",,active
-settings.basic.page.subtitle,ui,SettingsPage,SettingsPage,basic_page_subtitle,"外观、菜单栏、账户、数据目录、Agent 计费规则与限制显示。",,active
-settings.cost.page.title,ui,SettingsPage,SettingsPage,cost_page_title,"成本设置",,active
-settings.cost.page.subtitle,ui,SettingsPage,SettingsPage,cost_page_subtitle,"管理 Token 套餐、供应商 API 配置和其他 AI 花销。",,active
+settings.basic.page.subtitle,ui,SettingsPage,SettingsPage,basic_page_subtitle,"Manage appearance, menu bar, account, and display preferences.",,active
+settings.cost.page.title,ui,SettingsPage,SettingsPage,cost_page_title,"Cost settings",,active
+settings.cost.page.subtitle,ui,SettingsPage,SettingsPage,cost_page_subtitle,"Manage pricing rules, token plans, and financial data connections.",,active
 settings.cost.provider_api.placeholder,ui,SettingsPage,SettingsPage,provider_api_placeholder,"供应商 API 配置将在 03 工单接入。",,active
-settings.cost.provider_api.section,ui,SettingsPage,ProviderApiConfigSection,provider_api_section,"供应商 API 配置",,active
+settings.cost.provider_api.section,ui,SettingsPage,ProviderApiConfigSection,provider_api_section,"Provider API connections",,active
 settings.cost.provider_api.details,ui,SettingsPage,ProviderApiConfigSection,provider_api_details,"展开或收起详细内容",,active
-settings.cost.provider_api.subtitle,ui,SettingsPage,ProviderApiConfigSection,provider_api_subtitle,"配置供应商账户余额与花销查询（仅查询财务接口，不调用模型）。",,active
+settings.cost.provider_api.subtitle,ui,SettingsPage,ProviderApiConfigSection,provider_api_subtitle,"Configure provider balance and spend queries. Token Eyes only calls financial endpoints and never invokes models.",,active
 settings.cost.provider_api.empty,ui,SettingsPage,ProviderApiConfigSection,provider_api_empty,"暂无供应商 API 配置，点击新增开始接入。",,active
 settings.cost.provider_api.add,ui,SettingsPage,ProviderApiConfigSection,provider_api_add,"新增配置",,active
 settings.cost.provider_api.edit,ui,SettingsPage,ProviderApiConfigSection,provider_api_edit,"编辑",,active
@@ -1815,41 +1958,41 @@ settings.cost.provider_api.stale,ui,SettingsPage,ProviderApiConfigSection,stale,
 settings.cost.provider_api.refresh_all,ui,SettingsPage,ProviderApiConfigSection,refresh_all,"刷新全部",,active
 settings.cost.provider_api.refreshing,ui,SettingsPage,ProviderApiConfigSection,refreshing,"刷新中…",,active
 settings.cost.provider_api.data_unknown,ui,SettingsPage,ProviderApiConfigSection,data_unknown,"—",,active
-spend.cost.provider_account.section,dashboard,SpendPage,CostAccumulation,provider_account_section,"供应商账户",,active
-spend.cost.provider_account.empty,dashboard,SpendPage,CostAccumulation,provider_account_empty,"暂无供应商账户配置",,active
-spend.cost.provider_account.balance,dashboard,SpendPage,CostAccumulation,provider_account_balance,"余额",,active
-spend.cost.provider_account.month_spend,dashboard,SpendPage,CostAccumulation,provider_account_month_spend,"当月花销",,active
-spend.cost.provider_account.lifetime_spend,dashboard,SpendPage,CostAccumulation,provider_account_lifetime_spend,"累计花销",,active
-spend.cost.provider_account.currency,dashboard,SpendPage,CostAccumulation,provider_account_currency,"币种",,active
-spend.cost.provider_account.status,dashboard,SpendPage,CostAccumulation,provider_account_status,"状态",,active
-spend.cost.provider_account.last_synced,dashboard,SpendPage,CostAccumulation,provider_account_last_synced,"上次同步",,active
-spend.cost.provider_account.refresh_all,dashboard,SpendPage,CostAccumulation,provider_account_refresh_all,"刷新全部",,active
-spend.cost.provider_account.refreshing,dashboard,SpendPage,CostAccumulation,provider_account_refreshing,"刷新中…",,active
-spend.cost.provider_account.config_link,dashboard,SpendPage,CostAccumulation,provider_account_config_link,"前往成本设置配置",,active
-spend.cost.provider_account.stale,dashboard,SpendPage,CostAccumulation,provider_account_stale,"数据可能已过期",,active
-spend.cost.provider_account.status.synced,dashboard,SpendPage,CostAccumulation,provider_account_status_synced,"已同步",,active
-spend.cost.provider_account.status.not_connected,dashboard,SpendPage,CostAccumulation,provider_account_status_not_connected,"未连接",,active
-spend.cost.provider_account.status.unsupported,dashboard,SpendPage,CostAccumulation,provider_account_status_unsupported,"不支持自动查询",,active
-spend.cost.provider_account.status.error,dashboard,SpendPage,CostAccumulation,provider_account_status_error,"同步错误",,active
-spend.cost.subscription.add,dashboard,SpendPage,CostAccumulation,subscription_add,"添加记录",,active
-spend.cost.subscription.edit,dashboard,SpendPage,CostAccumulation,subscription_edit,"编辑",,active
-spend.cost.subscription.delete,dashboard,SpendPage,CostAccumulation,subscription_delete,"删除",,active
-spend.cost.subscription.confirm_delete,dashboard,SpendPage,CostAccumulation,subscription_confirm_delete,"确认删除该订阅记录？",,active
-spend.cost.subscription.form.title_add,dashboard,SpendPage,CostAccumulation,subscription_form_title_add,"添加订阅记录",,active
-spend.cost.subscription.form.title_edit,dashboard,SpendPage,CostAccumulation,subscription_form_title_edit,"编辑订阅记录",,active
-spend.cost.subscription.form.name,dashboard,SpendPage,CostAccumulation,subscription_form_name,"名称",,active
-spend.cost.subscription.form.provider,dashboard,SpendPage,CostAccumulation,subscription_form_provider,"服务商",,active
-spend.cost.subscription.form.amount,dashboard,SpendPage,CostAccumulation,subscription_form_amount,"金额",,active
-spend.cost.subscription.form.currency,dashboard,SpendPage,CostAccumulation,subscription_form_currency,"币种",,active
-spend.cost.subscription.form.cycle,dashboard,SpendPage,CostAccumulation,subscription_form_cycle,"计费周期",,active
-spend.cost.subscription.form.start_date,dashboard,SpendPage,CostAccumulation,subscription_form_start_date,"开始日期",,active
-spend.cost.subscription.form.end_date,dashboard,SpendPage,CostAccumulation,subscription_form_end_date,"结束日期",,active
-spend.cost.subscription.form.save,dashboard,SpendPage,CostAccumulation,subscription_form_save,"保存",,active
-spend.cost.subscription.form.cancel,dashboard,SpendPage,CostAccumulation,subscription_form_cancel,"取消",,active
-spend.cost.subscription.note_separate,dashboard,SpendPage,CostAccumulation,subscription_note_separate,"订阅费用与供应商 API 账户花销分栏展示，不重复计算。",,active
-spend.cost.subscription.error_save,dashboard,SpendPage,CostAccumulation,subscription_error_save,"保存订阅记录失败，请重试。",,active
-settings.cost.other_ai.title,ui,SettingsPage,OtherAiSpendSection,title,"其他 AI 花销",,active
-settings.cost.other_ai.subtitle,ui,SettingsPage,OtherAiSpendSection,subtitle,"记录历史充值等手工花销；自动计入对应月份和累计总成本，不计入 Token 用量。",,active
+spend.cost.provider_account.section,dashboard,SpendPage,CostAccumulation,provider_account_section,"Provider accounts",,active
+spend.cost.provider_account.empty,dashboard,SpendPage,CostAccumulation,provider_account_empty,"No provider accounts configured",,active
+spend.cost.provider_account.balance,dashboard,SpendPage,CostAccumulation,provider_account_balance,"Balance",,active
+spend.cost.provider_account.month_spend,dashboard,SpendPage,CostAccumulation,provider_account_month_spend,"This month",,active
+spend.cost.provider_account.lifetime_spend,dashboard,SpendPage,CostAccumulation,provider_account_lifetime_spend,"Lifetime spend",,active
+spend.cost.provider_account.currency,dashboard,SpendPage,CostAccumulation,provider_account_currency,"Currency",,active
+spend.cost.provider_account.status,dashboard,SpendPage,CostAccumulation,provider_account_status,"Status",,active
+spend.cost.provider_account.last_synced,dashboard,SpendPage,CostAccumulation,provider_account_last_synced,"Last synced",,active
+spend.cost.provider_account.refresh_all,dashboard,SpendPage,CostAccumulation,provider_account_refresh_all,"Refresh all",,active
+spend.cost.provider_account.refreshing,dashboard,SpendPage,CostAccumulation,provider_account_refreshing,"Refreshing…",,active
+spend.cost.provider_account.config_link,dashboard,SpendPage,CostAccumulation,provider_account_config_link,"Configure in cost settings",,active
+spend.cost.provider_account.stale,dashboard,SpendPage,CostAccumulation,provider_account_stale,"Data may be stale",,active
+spend.cost.provider_account.status.synced,dashboard,SpendPage,CostAccumulation,provider_account_status_synced,"Synced",,active
+spend.cost.provider_account.status.not_connected,dashboard,SpendPage,CostAccumulation,provider_account_status_not_connected,"Not connected",,active
+spend.cost.provider_account.status.unsupported,dashboard,SpendPage,CostAccumulation,provider_account_status_unsupported,"Automatic query not supported",,active
+spend.cost.provider_account.status.error,dashboard,SpendPage,CostAccumulation,provider_account_status_error,"Sync error",,active
+spend.cost.subscription.add,dashboard,SpendPage,CostAccumulation,subscription_add,"Add record",,active
+spend.cost.subscription.edit,dashboard,SpendPage,CostAccumulation,subscription_edit,"Edit",,active
+spend.cost.subscription.delete,dashboard,SpendPage,CostAccumulation,subscription_delete,"Delete",,active
+spend.cost.subscription.confirm_delete,dashboard,SpendPage,CostAccumulation,subscription_confirm_delete,"Delete this subscription record?",,active
+spend.cost.subscription.form.title_add,dashboard,SpendPage,CostAccumulation,subscription_form_title_add,"Add subscription record",,active
+spend.cost.subscription.form.title_edit,dashboard,SpendPage,CostAccumulation,subscription_form_title_edit,"Edit subscription record",,active
+spend.cost.subscription.form.name,dashboard,SpendPage,CostAccumulation,subscription_form_name,"Name",,active
+spend.cost.subscription.form.provider,dashboard,SpendPage,CostAccumulation,subscription_form_provider,"Provider",,active
+spend.cost.subscription.form.amount,dashboard,SpendPage,CostAccumulation,subscription_form_amount,"Amount",,active
+spend.cost.subscription.form.currency,dashboard,SpendPage,CostAccumulation,subscription_form_currency,"Currency",,active
+spend.cost.subscription.form.cycle,dashboard,SpendPage,CostAccumulation,subscription_form_cycle,"Billing cycle",,active
+spend.cost.subscription.form.start_date,dashboard,SpendPage,CostAccumulation,subscription_form_start_date,"Start date",,active
+spend.cost.subscription.form.end_date,dashboard,SpendPage,CostAccumulation,subscription_form_end_date,"End date",,active
+spend.cost.subscription.form.save,dashboard,SpendPage,CostAccumulation,subscription_form_save,"Save",,active
+spend.cost.subscription.form.cancel,dashboard,SpendPage,CostAccumulation,subscription_form_cancel,"Cancel",,active
+spend.cost.subscription.note_separate,dashboard,SpendPage,CostAccumulation,subscription_note_separate,"Subscription fees and provider API spend are shown separately and are not double-counted.",,active
+spend.cost.subscription.error_save,dashboard,SpendPage,CostAccumulation,subscription_error_save,"Subscription record could not be saved. Please retry.",,active
+settings.cost.other_ai.title,ui,SettingsPage,OtherAiSpendSection,title,"Other AI spending",,active
+settings.cost.other_ai.subtitle,ui,SettingsPage,OtherAiSpendSection,subtitle,"Record manual spending such as historical top-ups. It is included in the matching month and lifetime cost, but never in Token usage.",,active
 settings.cost.other_ai.add,ui,SettingsPage,OtherAiSpendSection,add,"新增花销",,active
 settings.cost.other_ai.empty,ui,SettingsPage,OtherAiSpendSection,empty,"还没有记录，点击“新增花销”添加。",,active
 settings.cost.other_ai.loading,ui,SettingsPage,OtherAiSpendSection,loading,"加载中…",,active
@@ -1892,15 +2035,23 @@ settings.cost.other_ai.drag,ui,SettingsPage,OtherAiSpendSection,drag,"拖动排�
 settings.cost.other_ai.details,ui,SettingsPage,OtherAiSpendSection,details,"展开或收起详细内容",,active
 settings.cost.other_ai.no_note,ui,SettingsPage,OtherAiSpendSection,no_note,"无备注",,active
 settings.cost.other_ai.error_reorder,ui,SettingsPage,OtherAiSpendSection,error_reorder,"排序保存失败，已恢复原顺序。",,active
-dashboard.model_distribution.title,dashboard,DashboardView,ModelUsageDonut,title,"模型消耗分布",,active
-dashboard.model_distribution.subtitle,dashboard,DashboardView,ModelUsageDonut,subtitle,"当前时间范围内各模型 Token 占比",,active
-dashboard.model_distribution.total,dashboard,DashboardView,ModelUsageDonut,total,"模型总消耗",,active
-dashboard.model_distribution.empty,dashboard,DashboardView,ModelUsageDonut,empty,"当前范围暂无模型消耗",,active
-dashboard.model_distribution.chart_aria,dashboard,DashboardView,ModelUsageDonut,chart_aria,"模型消耗分布图",,active
-dashboard.model_distribution.other,dashboard,DashboardPage,model_usage_distribution,other,"其他",,active
+dashboard.model_distribution.title,dashboard,DashboardView,ModelUsageDonut,title,"Model usage distribution",,active
+dashboard.model_distribution.subtitle,dashboard,DashboardView,ModelUsageDonut,subtitle,"Token share by model in the current time range",,active
+dashboard.model_distribution.total,dashboard,DashboardView,ModelUsageDonut,total,"Total model usage",,active
+dashboard.model_distribution.empty,dashboard,DashboardView,ModelUsageDonut,empty,"No model usage in this range",,active
+dashboard.model_distribution.chart_aria,dashboard,DashboardView,ModelUsageDonut,chart_aria,"Model usage distribution chart",,active
+dashboard.model_distribution.radar_title,dashboard,DashboardView,ModelUsageDonut,radar_title,"Model activity radar",,active
+dashboard.model_distribution.radar_subtitle,dashboard,DashboardView,ModelUsageDonut,radar_subtitle,"Numbers map to the model ranking · share 0–100%",,active
+dashboard.model_distribution.radar_summary,dashboard,DashboardView,ModelUsageDonut,radar_summary,"{{count}} models · Leading share {{percent}}%",,active
+dashboard.model_distribution.radar_aria,dashboard,DashboardView,ModelUsageDonut,radar_aria,"Model activity radar chart",,active
+dashboard.model_distribution.other,dashboard,DashboardPage,model_usage_distribution,other,"Other",,active
 nav.reset_history,ui,Sidebar,Sidebar,reset_history,"Reset history",,active
 reset_history.title,ui,ResetHistoryPage,ResetHistoryPage,title,"Reset history",,active
 reset_history.subtitle,ui,ResetHistoryPage,ResetHistoryPage,subtitle,"Official Codex extra reset announcements from the last 30 days",,active
+reset_history.effect.label,ui,ResetHistoryPage,ResetHistoryPage,effect_label,"Surprise effect",,active
+reset_history.effect.meteors,ui,ResetHistoryPage,ResetHistoryPage,effect_meteors,"Meteor shower (default)",,active
+reset_history.effect.fireworks,ui,ResetHistoryPage,ResetHistoryPage,effect_fireworks,"Fireworks",,active
+reset_history.preview_celebration_aria,ui,ResetHistoryPage,ResetHistoryPage,preview_celebration_aria,"Preview surprise effect",,active
 reset_history.today_title,ui,ResetHistoryPage,ResetHistoryPage,today_title,"Today's reminder",,active
 reset_history.history_title,ui,ResetHistoryPage,ResetHistoryPage,history_title,"History",,active
 reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
@@ -1949,9 +2100,9 @@ limits.matrix.window_unavailable,ui,LimitsPage,LimitAccountMatrix,window_unavail
 limits.matrix.forecast_insufficient,ui,LimitsPage,LimitAccountMatrix,forecast_insufficient,"样本不足，暂不预测",,active
 limits.matrix.forecast_exhaust,ui,LimitsPage,LimitAccountMatrix,forecast_exhaust,"预计将在重置前耗尽：{{time}}",,active
 limits.matrix.forecast_safe,ui,LimitsPage,LimitAccountMatrix,forecast_safe,"预计不会在重置前耗尽",,active
-observability.export.json,ui,SpendPage,ObservabilityExportActions,json,"导出 JSON",,active
-observability.export.csv,ui,SpendPage,ObservabilityExportActions,csv,"导出 CSV",,active
-observability.export.error,ui,SpendPage,ObservabilityExportActions,error,"导出失败，请重试。",,active
+observability.export.json,ui,SpendPage,ObservabilityExportActions,json,"Export JSON",,active
+observability.export.csv,ui,SpendPage,ObservabilityExportActions,csv,"Export CSV",,active
+observability.export.error,ui,SpendPage,ObservabilityExportActions,error,"Export failed. Please retry.",,active
 observability.request.column.cache_pricing,ui,SpendPage,RequestUsageLog,cache_pricing,"缓存 / 计价",,active
 observability.request.cache.hit,ui,SpendPage,RequestUsageLog,cache_hit,"命中",,active
 observability.request.cache.miss,ui,SpendPage,RequestUsageLog,cache_miss,"未命中",,active
@@ -2029,3 +2180,93 @@ limits.accounts.refresh_all,ui,LimitsPage,LimitsHeader,refresh_all,"Refresh all 
 limits.accounts.refreshing_short,ui,LimitsPage,LimitsHeader,refreshing_short,"Refreshing…",,active
 official_reset_celebration.title,ui,ResetCelebrationOverlay,Notice,title,"Official extra reset",,active
 official_reset_celebration.summary,ui,ResetCelebrationOverlay,Notice,summary,"Your Codex usage received an official extra reset.",,active
+widgets.windows.limits.title,ui,WidgetsPage,WindowsWidgetProjectSettings,title,"Widget usage plans",,active
+widgets.windows.limits.hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"Choose plans to show and drag to reorder them. Collapsed mode shows only the first plan.",,active
+widgets.windows.limits.empty,ui,WidgetsPage,WindowsWidgetProjectSettings,empty,"No usage plans detected",,active
+widgets.windows.limits.unavailable,ui,WidgetsPage,WindowsWidgetProjectSettings,value,"--",,active
+native.window.status.label,ui,AppLayout,NativeWindowBar,status_label,"System status",,active
+native.window.status.normal,ui,AppLayout,NativeWindowBar,status_normal,"Normal",,active
+native.window.sync.local,ui,AppLayout,NativeWindowBar,sync_local,"Local data",,active
+native.window.sync.recent,ui,AppLayout,NativeWindowBar,sync_recent,"Synced a moment ago",,active
+native.window.sync.earlier,ui,AppLayout,NativeWindowBar,sync_earlier,"Previously synced",,active
+native.window.notifications,ui,AppLayout,NativeWindowBar,notifications,"Notifications",,active
+native.window.minimize,ui,AppLayout,NativeWindowBar,minimize,"Minimize",,active
+native.window.maximize,ui,AppLayout,NativeWindowBar,maximize,"Maximize or restore",,active
+native.window.close,ui,AppLayout,NativeWindowBar,close,"Close",,active
+shared.app_initial,ui,AppLayout,NativeWindowBar,brand_initial,"T",,active
+settings.agent_pricing.reference_subtitle,ui,SettingsPage,AgentPricingSection,expanded_subtitle,"Review provider pricing details and set precise prices for local Agent + Model pairs.",,active
+settings.agent_pricing.how_pricing,ui,SettingsPage,AgentPricingSection,help,"How is pricing calculated?",,active
+settings.agent_pricing.source_directory,ui,SettingsPage,AgentPricingSection,source_directory,"Pricing sources",,active
+settings.agent_pricing.auto_compare,ui,SettingsPage,AgentPricingSection,auto_compare,"Auto compare",,active
+settings.data_dirs.change_directory,ui,SettingsPage,DataDirectoriesSection,change_directory,"Change directory",,active
+settings.cost.other_ai.month_spend,ui,SettingsPage,OtherAiSpendSection,month_spend,"This month",,active
+settings.cost.other_ai.lifetime_spend,ui,SettingsPage,OtherAiSpendSection,lifetime_spend,"Lifetime spend",,active
+settings.cost.provider_api.summary.total,ui,SettingsPage,ProviderApiConfigSection,summary_total,"Providers",,active
+settings.cost.provider_api.summary.connected,ui,SettingsPage,ProviderApiConfigSection,summary_connected,"Connected",,active
+settings.cost.provider_api.summary.disconnected,ui,SettingsPage,ProviderApiConfigSection,summary_disconnected,"Disconnected",,active
+settings.cost.provider_api.summary.balance_cny,ui,SettingsPage,ProviderApiConfigSection,summary_balance,"Total balance (CNY)",,active
+settings.token_plan.batch_refresh,ui,SettingsPage,TokenPlanSection,batch_refresh,"Refresh all",,active
+data_sources.reference.local_only,data_sources,DataSourcesPage,Privacy,local_only,"Local-only access",,active
+data_sources.reference.local_only_detail,data_sources,DataSourcesPage,Privacy,local_only_detail,"All scanning and parsing happens locally",,active
+data_sources.reference.privacy_first,data_sources,DataSourcesPage,Privacy,privacy_first,"Privacy first",,active
+data_sources.reference.privacy_first_detail,data_sources,DataSourcesPage,Privacy,privacy_first_detail,"Sensitive requests are never uploaded or stored",,active
+data_sources.reference.optional_cloud,data_sources,DataSourcesPage,Privacy,optional_cloud,"Optional cloud features",,active
+data_sources.reference.optional_cloud_detail,data_sources,DataSourcesPage,Privacy,optional_cloud_detail,"Used only when you explicitly enable them",,active
+shared.footer.version,ui,Shared,Footer,version,"Version 2.1.0",,active
+shared.footer.privacy,ui,Shared,Footer,privacy,"Privacy Policy",,active
+shared.footer.terms,ui,Shared,Footer,terms,"Terms of Use",,active
+shared.footer.local_data,ui,Shared,Footer,local_data,"All data is stored only on this device",,active
+reset_history.latest,ui,ResetHistoryPage,ResetEventCard,latest,"Latest",,active
+settings.reference.reset_default,ui,SettingsPage,SettingsToolbar,reset_default,"Reset to defaults",,active
+settings.reference.import,ui,SettingsPage,SettingsToolbar,import,"Import configuration",,active
+settings.reference.export,ui,SettingsPage,SettingsToolbar,export,"Export configuration",,active
+settings.reference.validate,ui,SettingsPage,SettingsToolbar,validate,"Validate data",,active
+stats.model_ranking,ui,DashboardPage,StatsPanel,title,"Model ranking",,active
+stats.view_all,ui,DashboardPage,StatsPanel,view_all,"View all",,active
+shared.unit.day,ui,Shared,Units,day,"Day",,active
+usage.overview.configure_management,ui,DashboardPage,UsageOverview,configure_management,"Manage configuration",,active
+dashboard.system.data_source_local,ui,DashboardPage,SystemStrip,data_source,"Data source: local logs",,active
+widgets.reference.subtitle,ui,WidgetsPage,WindowsProjectManager,subtitle,"Manage desktop widget projects and plans",,active
+widgets.reference.new_project,ui,WidgetsPage,WindowsProjectManager,new_project,"New project",,active
+widgets.reference.sync,ui,WidgetsPage,WindowsProjectManager,sync,"Sync",,active
+widgets.reference.batch_manage,ui,WidgetsPage,WindowsProjectManager,batch_manage,"Batch manage",,active
+widgets.reference.all_projects,ui,WidgetsPage,WindowsProjectManager,all_projects,"All projects",,active
+widgets.reference.selected_projects,ui,WidgetsPage,WindowsProjectManager,selected_projects,"Selected projects",,active
+widgets.reference.selected_projects_detail,ui,WidgetsPage,WindowsProjectManager,selected_projects_detail,"Selected desktop widget projects",,active
+widgets.reference.active_projects,ui,WidgetsPage,WindowsProjectManager,active_projects,"Active projects",,active
+widgets.reference.active_projects_detail,ui,WidgetsPage,WindowsProjectManager,active_projects_detail,"Projects active in the last 3 days",,active
+widgets.reference.plan_usage,ui,WidgetsPage,WindowsProjectManager,plan_usage,"Plan usage",,active
+widgets.reference.plan_usage_detail,ui,WidgetsPage,WindowsProjectManager,plan_usage_detail,"Active plans / total plans",,active
+widgets.reference.desktop_projects,ui,WidgetsPage,WindowsProjectManager,desktop_projects,"Desktop widget projects",,active
+widgets.reference.selected_prefix,ui,WidgetsPage,WindowsProjectManager,selected_prefix,"Selected",,active
+widgets.reference.project_count_suffix,ui,WidgetsPage,WindowsProjectManager,project_count_suffix,"projects",,active
+widgets.reference.active_range,ui,WidgetsPage,WindowsProjectManager,active_range,"Active session range",,active
+widgets.reference.project_list_active_range,ui,WidgetsPage,WindowsProjectManager,project_list_active_range,"Project list active range",,active
+widgets.reference.one_day,ui,WidgetsPage,WindowsProjectManager,one_day,"1 day",,active
+widgets.reference.three_days,ui,WidgetsPage,WindowsProjectManager,three_days,"3 days",,active
+widgets.reference.five_days,ui,WidgetsPage,WindowsProjectManager,five_days,"5 days",,active
+widgets.reference.add_project_folder,ui,WidgetsPage,WindowsProjectManager,add_project_folder,"Add project folder",,active
+widgets.reference.choose_project_folder,ui,WidgetsPage,WindowsProjectManager,choose_project_folder,"Choose project folder",,active
+widgets.reference.import_recent_projects,ui,WidgetsPage,WindowsProjectManager,import_recent_projects,"Import recent active projects",,active
+widgets.reference.restore_recent_projects,ui,WidgetsPage,WindowsProjectManager,restore_recent_projects,"Restore recent active projects",,active
+widgets.reference.search_projects,ui,WidgetsPage,WindowsProjectManager,search_projects,"Search projects…",,active
+widgets.reference.project_name,ui,WidgetsPage,WindowsProjectManager,project_name,"Project name",,active
+widgets.reference.status_info,ui,WidgetsPage,WindowsProjectManager,status_info,"Status ⓘ",,active
+widgets.reference.last_active,ui,WidgetsPage,WindowsProjectManager,last_active,"Last active",,active
+widgets.reference.total_projects,ui,WidgetsPage,WindowsProjectManager,total_projects,"{{count}} projects",,active
+widgets.reference.pagination,ui,WidgetsPage,WindowsProjectManager,pagination,"10 / page    |‹    1 / 1    ›|",,active
+widgets.reference.usage_plans,ui,WidgetsPage,WindowsProjectManager,usage_plans,"Widget usage plans",,active
+widgets.reference.activated,ui,WidgetsPage,WindowsProjectManager,activated,"active",,active
+widgets.reference.upgrade_plan,ui,WidgetsPage,WindowsProjectManager,upgrade_plan,"♛ Upgrade plan",,active
+widgets.reference.plan_name,ui,WidgetsPage,WindowsProjectManager,plan_name,"Plan name",,active
+widgets.reference.provider,ui,WidgetsPage,WindowsProjectManager,provider,"Provider",,active
+widgets.reference.usage_rate,ui,WidgetsPage,WindowsProjectManager,usage_rate,"Usage",,active
+widgets.reference.status,ui,WidgetsPage,WindowsProjectManager,status,"Status",,active
+widgets.reference.quick_settings,ui,WidgetsPage,WindowsProjectManager,quick_settings,"Quick settings",,active
+widgets.reference.active_range_detail,ui,WidgetsPage,WindowsProjectManager,active_range_detail,"Show only recently active projects",,active
+widgets.reference.auto_refresh,ui,WidgetsPage,WindowsProjectManager,auto_refresh,"Auto refresh",,active
+widgets.reference.auto_refresh_detail,ui,WidgetsPage,WindowsProjectManager,auto_refresh_detail,"Automatically update project status and usage",,active
+widgets.reference.desktop_display,ui,WidgetsPage,WindowsProjectManager,desktop_display,"Desktop display",,active
+widgets.reference.desktop_display_detail,ui,WidgetsPage,WindowsProjectManager,desktop_display_detail,"Show in the floating desktop widget",,active
+widgets.reference.compact_mode,ui,WidgetsPage,WindowsProjectManager,compact_mode,"Compact mode",,active
+widgets.reference.compact_mode_detail,ui,WidgetsPage,WindowsProjectManager,compact_mode_detail,"Use a compact layout in the desktop widget",,active

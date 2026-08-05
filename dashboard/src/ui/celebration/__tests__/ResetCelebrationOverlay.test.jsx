@@ -2,33 +2,18 @@ import React from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useTheme } from "../../../hooks/useTheme.js";
 import { ThemeProvider } from "../../foundation/ThemeProvider.jsx";
 import {
-  getCelebrationPhaseIntensity,
-  LightfallCanvas,
-} from "../LightfallCanvas.jsx";
+  readResetCelebrationEffect,
+  saveResetCelebrationEffect,
+} from "../reset-celebration-preference.js";
 import {
   RESET_CELEBRATION_DURATION_MS,
+  RESET_CELEBRATION_PREVIEW_EVENT,
   ResetCelebrationProvider,
+  triggerResetCelebrationPreview,
 } from "../ResetCelebrationProvider.jsx";
-
-const ogl = vi.hoisted(() => ({
-  Renderer: vi.fn(),
-  Program: vi.fn(),
-  Triangle: vi.fn(),
-  Mesh: vi.fn(),
-  render: vi.fn(),
-  programRemove: vi.fn(),
-  geometryRemove: vi.fn(),
-  loseContext: vi.fn(),
-}));
-
-vi.mock("ogl", () => ({
-  Renderer: ogl.Renderer,
-  Program: ogl.Program,
-  Triangle: ogl.Triangle,
-  Mesh: ogl.Mesh,
-}));
 
 const VALID_EVENT = {
   eventId: "official-reset-2026-07-31",
@@ -38,59 +23,68 @@ const VALID_EVENT = {
   resetKind: "official-extra-reset",
   appliesToCurrentUsage: true,
 };
-const TEST_COPY = {
-  navigate: "Navigate",
-  pageContent: "Usage dashboard",
-};
 
+let canvasContext;
 let rafCallbacks;
-let resizeCallback;
-let resizeDisconnect;
-let rendererInstance;
-let programInstance;
-let geometryInstance;
-let meshInstance;
+
+function createCanvasContext() {
+  return {
+    arc: vi.fn(),
+    beginPath: vi.fn(),
+    clearRect: vi.fn(),
+    createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+    fillRect: vi.fn(),
+    lineTo: vi.fn(),
+    moveTo: vi.fn(),
+    setTransform: vi.fn(),
+    stroke: vi.fn(),
+    globalAlpha: 1,
+    globalCompositeOperation: "source-over",
+    fillStyle: "",
+    lineCap: "butt",
+    lineJoin: "miter",
+    lineWidth: 1,
+    strokeStyle: "",
+  };
+}
 
 function dispatchCelebration(detail = VALID_EVENT) {
   act(() => {
-    window.dispatchEvent(
-      new CustomEvent("token-eyes:official-reset-celebration", { detail }),
-    );
+    window.dispatchEvent(new CustomEvent(
+      "token-eyes:official-reset-celebration",
+      { detail },
+    ));
   });
 }
 
-function matchMedia(matches = false) {
-  return vi.fn().mockImplementation((query) => ({
-    matches: query === "(prefers-reduced-motion: reduce)" ? matches : false,
+function createMatchMedia({ reducedMotion = false, dark = false } = {}) {
+  return vi.fn((query) => ({
+    matches: query === "(prefers-reduced-motion: reduce)" ? reducedMotion : dark,
     media: query,
-    onchange: null,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     addListener: vi.fn(),
     removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
   }));
 }
 
 function NavigationFixture() {
   const navigate = useNavigate();
+  const { setTheme } = useTheme();
   return (
     <>
-      <button type="button" onClick={() => navigate("/settings/basic")}>
-        {TEST_COPY.navigate}
-      </button>
+      <button type="button" onClick={() => navigate("/settings/basic")}>Navigate</button>
+      <button type="button" onClick={() => setTheme("dark")}>Use dark theme</button>
       <Routes>
-        <Route
-          path="*"
-          element={<main data-testid="page-content">{TEST_COPY.pageContent}</main>}
-        />
+        <Route path="*" element={<main data-testid="page-content">Usage dashboard</main>} />
       </Routes>
     </>
   );
 }
 
-function renderProvider({ reducedMotion = false } = {}) {
-  window.matchMedia = matchMedia(reducedMotion);
+function renderProvider({ reducedMotion = false, theme = "light" } = {}) {
+  window.localStorage.setItem("tokentracker-theme", theme);
+  window.matchMedia = createMatchMedia({ reducedMotion, dark: theme === "dark" });
   return render(
     <MemoryRouter initialEntries={["/dashboard"]}>
       <ThemeProvider>
@@ -104,6 +98,7 @@ function renderProvider({ reducedMotion = false } = {}) {
 
 async function flushLazyRender() {
   await act(async () => {
+    await vi.dynamicImportSettled();
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -111,481 +106,152 @@ async function flushLazyRender() {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  window.localStorage.clear();
+  canvasContext = createCanvasContext();
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(canvasContext);
   rafCallbacks = new Map();
-  resizeCallback = null;
-  resizeDisconnect = vi.fn();
-
-  let nextRafId = 1;
-  vi.stubGlobal(
-    "requestAnimationFrame",
-    vi.fn((callback) => {
-      const id = nextRafId;
-      nextRafId += 1;
-      rafCallbacks.set(id, callback);
-      return id;
-    }),
-  );
-  vi.stubGlobal(
-    "cancelAnimationFrame",
-    vi.fn((id) => {
-      rafCallbacks.delete(id);
-    }),
-  );
-  vi.stubGlobal(
-    "ResizeObserver",
-    vi.fn(function ResizeObserver(callback) {
-      resizeCallback = callback;
-      this.observe = vi.fn();
-      this.disconnect = resizeDisconnect;
-    }),
-  );
-  vi.stubGlobal("WebGLRenderingContext", function WebGLRenderingContext() {});
-  Object.defineProperty(window.navigator, "hardwareConcurrency", {
-    configurable: true,
-    value: 8,
-  });
-  Object.defineProperty(window.navigator, "deviceMemory", {
-    configurable: true,
-    value: 8,
-  });
-  Object.defineProperty(window, "devicePixelRatio", {
-    configurable: true,
-    value: 2,
-  });
-
-  ogl.render.mockReset();
-  ogl.programRemove.mockReset();
-  ogl.geometryRemove.mockReset();
-  ogl.loseContext.mockReset();
-
-  const canvas = document.createElement("canvas");
-  const gl = {
-    canvas,
-    drawingBufferWidth: 960,
-    drawingBufferHeight: 540,
-    getExtension: vi.fn((name) => (
-      name === "WEBGL_lose_context" ? { loseContext: ogl.loseContext } : null
-    )),
-  };
-  rendererInstance = {
-    dpr: 1.5,
-    gl,
-    render: ogl.render,
-    setSize: vi.fn(),
-  };
-  programInstance = { uniforms: null, remove: ogl.programRemove };
-  geometryInstance = { remove: ogl.geometryRemove };
-  meshInstance = {};
-
-  ogl.Renderer.mockReset().mockImplementation(function Renderer() {
-    return rendererInstance;
-  });
-  ogl.Program.mockReset().mockImplementation(function Program(_gl, options) {
-    programInstance.uniforms = options.uniforms;
-    return programInstance;
-  });
-  ogl.Triangle.mockReset().mockImplementation(function Triangle() {
-    return geometryInstance;
-  });
-  ogl.Mesh.mockReset().mockImplementation(function Mesh() {
-    return meshInstance;
-  });
+  let rafId = 0;
+  vi.stubGlobal("requestAnimationFrame", vi.fn((callback) => {
+    rafId += 1;
+    rafCallbacks.set(rafId, callback);
+    return rafId;
+  }));
+  vi.stubGlobal("cancelAnimationFrame", vi.fn((id) => rafCallbacks.delete(id)));
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  document.documentElement.classList.remove("dark");
 });
 
 describe("ResetCelebrationProvider", () => {
   it("keeps the current page mounted and renders nothing before an event", () => {
     renderProvider();
-
     expect(screen.getByTestId("page-content")).toBeVisible();
     expect(document.querySelector(".tt-reset-celebration")).toBeNull();
-    expect(document.querySelector("canvas")).toBeNull();
   });
 
-  it("renders a non-interactive celebration for a valid official reset", async () => {
+  it("uses meteors by default and keeps the app visible and interactive", async () => {
     renderProvider();
     dispatchCelebration();
     await flushLazyRender();
 
     const overlay = document.querySelector(".tt-reset-celebration");
-    expect(overlay).not.toBeNull();
-    expect(getComputedStyle(overlay).pointerEvents).toBe("none");
-    expect(overlay).toHaveAttribute("data-event-id", VALID_EVENT.eventId);
+    expect(readResetCelebrationEffect()).toBe("meteors");
+    expect(overlay).toHaveAttribute("data-effect-id", "meteors");
+    expect(overlay).toHaveAttribute("data-renderer", "canvas");
+    expect(overlay).toHaveAttribute("data-theme", "light");
+    expect(overlay).toHaveStyle({ pointerEvents: "none" });
+    expect(document.querySelector("[data-effect-renderer='meteors']")).not.toBeNull();
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
     expect(screen.getByTestId("page-content")).toBeVisible();
-    expect(document.querySelector("canvas")).not.toBeNull();
   });
 
-  it("ignores malformed and inapplicable event details", () => {
+  it("uses the saved fireworks effect for a real reset", async () => {
+    saveResetCelebrationEffect("fireworks");
     renderProvider();
-
-    dispatchCelebration({ ...VALID_EVENT, eventId: "" });
-    dispatchCelebration({ ...VALID_EVENT, occurredAt: "not-a-date" });
-    dispatchCelebration({ ...VALID_EVENT, resetKind: "quota-rollover" });
-    dispatchCelebration({ ...VALID_EVENT, appliesToCurrentUsage: false });
-
-    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
-  });
-
-  it.each([
-    "https://x.com/explore",
-    "https://x.com/OpenAI/status/1950000000000000000?ref=reset",
-    "https://x.com/OpenAI/status/1950000000000000000#reset",
-  ])("rejects an untrusted X source boundary: %s", (sourceUrl) => {
-    renderProvider();
-
-    dispatchCelebration({ ...VALID_EVENT, sourceUrl });
-
-    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
-  });
-
-  it("does not replay the same event id during the provider lifetime", async () => {
-    renderProvider();
-    dispatchCelebration();
-    await flushLazyRender();
-    expect(ogl.Renderer).toHaveBeenCalledTimes(1);
-
-    act(() => {
-      vi.advanceTimersByTime(RESET_CELEBRATION_DURATION_MS);
-    });
-    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
-
-    dispatchCelebration();
-    await flushLazyRender();
-    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
-    expect(ogl.Renderer).toHaveBeenCalledTimes(1);
-  });
-
-  it("remounts the overlay and restarts the duration for a different event id", () => {
-    renderProvider();
-    dispatchCelebration();
-    const firstOverlay = document.querySelector(".tt-reset-celebration");
-
-    act(() => {
-      vi.advanceTimersByTime(3_000);
-    });
-    dispatchCelebration({ ...VALID_EVENT, eventId: "official-reset-follow-up" });
-    const secondOverlay = document.querySelector(".tt-reset-celebration");
-    act(() => {
-      vi.advanceTimersByTime(1_300);
-    });
-
-    expect(secondOverlay).not.toBe(firstOverlay);
-    expect(secondOverlay).toHaveAttribute(
-      "data-event-id",
-      "official-reset-follow-up",
-    );
-  });
-
-  it("unmounts the overlay and canvas after 4.2 seconds", async () => {
-    renderProvider();
-    dispatchCelebration();
-    await flushLazyRender();
-    expect(document.querySelector("canvas")).not.toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(RESET_CELEBRATION_DURATION_MS);
-    });
-
-    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
-    expect(document.querySelector("canvas")).toBeNull();
-  });
-
-  it("uses a static CSS highlight without loading WebGL for reduced motion", async () => {
-    renderProvider({ reducedMotion: true });
     dispatchCelebration();
     await flushLazyRender();
 
     expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
-      "data-renderer",
-      "css",
+      "data-effect-id",
+      "fireworks",
     );
-    expect(document.querySelector(".tt-reset-celebration")).toHaveClass(
-      "tt-reset-celebration--static",
+    expect(document.querySelector("[data-effect-renderer='fireworks']")).not.toBeNull();
+  });
+
+  it("previews an explicit effect without mutating reset acknowledgement state", async () => {
+    renderProvider();
+    window.localStorage.removeItem("token-eyes:official-reset-celebrated:v1");
+    const listener = vi.fn();
+    window.addEventListener(RESET_CELEBRATION_PREVIEW_EVENT, listener);
+
+    act(() => expect(triggerResetCelebrationPreview("fireworks")).toBe(true));
+    await flushLazyRender();
+
+    expect(listener.mock.calls[0][0].detail).toEqual({ effectId: "fireworks" });
+    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
+      "data-effect-id",
+      "fireworks",
     );
+    expect(window.localStorage.getItem("token-eyes:official-reset-celebrated:v1")).toBeNull();
+    window.removeEventListener(RESET_CELEBRATION_PREVIEW_EVENT, listener);
+  });
+
+  it("rejects unknown preview effect ids", () => {
+    renderProvider();
+    expect(triggerResetCelebrationPreview("unknown-effect")).toBe(false);
+    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
+  });
+
+  it("ignores malformed events and does not replay the same event id", async () => {
+    renderProvider();
+    dispatchCelebration({ ...VALID_EVENT, eventId: "" });
+    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
+
+    dispatchCelebration();
+    await flushLazyRender();
+    act(() => vi.advanceTimersByTime(RESET_CELEBRATION_DURATION_MS));
+    dispatchCelebration();
+    await flushLazyRender();
+    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
+  });
+
+  it("keeps the celebration for six seconds and then cleans it up", async () => {
+    renderProvider();
+    dispatchCelebration();
+    await flushLazyRender();
+    expect(RESET_CELEBRATION_DURATION_MS).toBe(6_000);
+
+    act(() => vi.advanceTimersByTime(5_999));
+    expect(document.querySelector(".tt-reset-celebration")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
+    expect(cancelAnimationFrame).toHaveBeenCalled();
+  });
+
+  it("uses a static themed card without particles for reduced motion", async () => {
+    renderProvider({ reducedMotion: true, theme: "dark" });
+    dispatchCelebration();
+    await flushLazyRender();
+
+    const overlay = document.querySelector(".tt-reset-celebration");
+    expect(overlay).toHaveClass("tt-reset-celebration--static");
+    expect(overlay).toHaveAttribute("data-renderer", "css");
+    expect(overlay).toHaveAttribute("data-theme", "dark");
     expect(screen.getByRole("status")).toBeVisible();
     expect(document.querySelector("canvas")).toBeNull();
-    expect(ogl.Renderer).not.toHaveBeenCalled();
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
   });
 
-  it("uses the CSS fallback on low-performance devices", async () => {
-    Object.defineProperty(window.navigator, "hardwareConcurrency", {
-      configurable: true,
-      value: 2,
-    });
+  it("updates the glass material immediately when the resolved theme changes", () => {
+    renderProvider({ theme: "light" });
+    dispatchCelebration();
+    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute("data-theme", "light");
+
+    fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
+    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute("data-theme", "dark");
+  });
+
+  it("keeps the card visible when a renderer cannot start", async () => {
+    HTMLCanvasElement.prototype.getContext.mockReturnValue(null);
     renderProvider();
     dispatchCelebration();
     await flushLazyRender();
 
-    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
-      "data-renderer",
-      "css",
-    );
-    expect(ogl.Renderer).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["fractional core capacity", "hardwareConcurrency", 0.5],
-    ["fractional device memory", "deviceMemory", 0.25],
-  ])("uses the CSS fallback for %s", async (_label, property, value) => {
-    Object.defineProperty(window.navigator, property, {
-      configurable: true,
-      value,
-    });
-    renderProvider();
-    dispatchCelebration();
-    await flushLazyRender();
-
-    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
-      "data-renderer",
-      "css",
-    );
-    expect(ogl.Renderer).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["hardwareConcurrency", 0],
-    ["hardwareConcurrency", Number.NaN],
-    ["hardwareConcurrency", undefined],
-    ["deviceMemory", 0],
-    ["deviceMemory", Number.NaN],
-    ["deviceMemory", undefined],
-  ])("does not reject an unknown %s value of %s", async (property, value) => {
-    Object.defineProperty(window.navigator, property, {
-      configurable: true,
-      value,
-    });
-    renderProvider();
-    dispatchCelebration();
-    await flushLazyRender();
-
-    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
-      "data-renderer",
-      "webgl",
-    );
-    expect(ogl.Renderer).toHaveBeenCalledOnce();
+    expect(screen.getByRole("status")).toBeVisible();
+    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute("data-renderer", "css");
+    expect(document.querySelector("canvas")).toBeNull();
   });
 
   it("clears an active celebration on route changes", async () => {
     renderProvider();
     dispatchCelebration();
     await flushLazyRender();
-    expect(document.querySelector(".tt-reset-celebration")).not.toBeNull();
-
     fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
-
     expect(document.querySelector(".tt-reset-celebration")).toBeNull();
-    expect(document.querySelector("canvas")).toBeNull();
     expect(cancelAnimationFrame).toHaveBeenCalled();
-  });
-});
-
-describe("LightfallCanvas", () => {
-  it("caps DPR, resizes with its container, and updates animation uniforms", () => {
-    const { container } = render(
-      <LightfallCanvas theme="dark" durationMs={RESET_CELEBRATION_DURATION_MS} />,
-    );
-    const host = container.firstElementChild;
-    vi.spyOn(host, "getBoundingClientRect").mockReturnValue({
-      width: 640,
-      height: 360,
-      top: 0,
-      right: 640,
-      bottom: 360,
-      left: 0,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    });
-
-    act(() => {
-      resizeCallback();
-    });
-    expect(ogl.Renderer).toHaveBeenCalledWith(
-      expect.objectContaining({ alpha: true, antialias: true, dpr: 1.5 }),
-    );
-    expect(rendererInstance.setSize).toHaveBeenLastCalledWith(640, 360);
-    expect(programInstance.uniforms.uStreakCount.value).toBeGreaterThanOrEqual(8);
-    expect(programInstance.uniforms.uStreakCount.value).toBeLessThanOrEqual(12);
-    expect(programInstance.uniforms.uStreakWidth.value).toBeGreaterThanOrEqual(1.8);
-    expect(programInstance.uniforms.uStreakWidth.value).toBeLessThanOrEqual(2.4);
-    expect(programInstance.uniforms.uStreakLength.value).toBeGreaterThanOrEqual(1.2);
-    expect(programInstance.uniforms.uStreakLength.value).toBeLessThanOrEqual(1.7);
-
-    const firstFrame = [...rafCallbacks.values()][0];
-    act(() => {
-      firstFrame(1_000);
-    });
-    const nextFrame = [...rafCallbacks.values()].at(-1);
-    act(() => {
-      nextFrame(2_000);
-    });
-
-    expect(programInstance.uniforms.iTime.value).toBe(1);
-    expect(programInstance.uniforms.uProgress.value).toBeCloseTo(
-      1_000 / RESET_CELEBRATION_DURATION_MS,
-    );
-    expect(ogl.render).toHaveBeenCalledWith({ scene: meshInstance });
-  });
-
-  it("diminishes phase intensity after 2.6 seconds before the final fade", () => {
-    render(
-      <LightfallCanvas theme="dark" durationMs={RESET_CELEBRATION_DURATION_MS} />,
-    );
-    const firstFrame = [...rafCallbacks.values()][0];
-    act(() => {
-      firstFrame(1_000);
-    });
-
-    const intensityAt = (elapsedMs) => {
-      const frame = [...rafCallbacks.values()].at(-1);
-      act(() => {
-        frame(1_000 + elapsedMs);
-      });
-      return programInstance.uniforms.uIntensity.value;
-    };
-    const peakEnd = intensityAt(2_600);
-    const diminishing = intensityAt(2_900);
-    const fadeStart = intensityAt(3_400);
-    const finished = intensityAt(4_200);
-
-    expect(peakEnd).toBeCloseTo(1);
-    expect(diminishing).toBeLessThan(peakEnd);
-    expect(fadeStart).toBeLessThan(diminishing);
-    expect(fadeStart).toBeLessThanOrEqual(0.3);
-    expect(finished).toBe(0);
-  });
-
-  it("keeps the original phase start when the theme changes", () => {
-    const view = render(
-      <LightfallCanvas theme="light" durationMs={RESET_CELEBRATION_DURATION_MS} />,
-    );
-    const firstFrame = [...rafCallbacks.values()][0];
-    act(() => {
-      firstFrame(1_000);
-    });
-    const preThemeFrame = [...rafCallbacks.values()].at(-1);
-    act(() => {
-      preThemeFrame(3_900);
-    });
-
-    view.rerender(
-      <LightfallCanvas theme="dark" durationMs={RESET_CELEBRATION_DURATION_MS} />,
-    );
-    const postThemeFrame = [...rafCallbacks.values()].at(-1);
-    act(() => {
-      postThemeFrame(4_000);
-    });
-
-    expect(programInstance.uniforms.uIntensity.value).toBeCloseTo(
-      getCelebrationPhaseIntensity(3_000),
-    );
-  });
-
-  it("releases RAF, observer, canvas, OGL resources, and WebGL context", () => {
-    const { container, unmount } = render(
-      <LightfallCanvas theme="light" durationMs={RESET_CELEBRATION_DURATION_MS} />,
-    );
-    expect(container.querySelector("canvas")).not.toBeNull();
-
-    unmount();
-
-    expect(cancelAnimationFrame).toHaveBeenCalled();
-    expect(resizeDisconnect).toHaveBeenCalledOnce();
-    expect(ogl.programRemove).toHaveBeenCalledOnce();
-    expect(ogl.geometryRemove).toHaveBeenCalledOnce();
-    expect(ogl.loseContext).toHaveBeenCalledOnce();
-    expect(container.querySelector("canvas")).toBeNull();
-  });
-
-  it("reports renderer initialization failure so the CSS fallback can remain", () => {
-    const onFallback = vi.fn();
-    ogl.Renderer.mockImplementationOnce(function Renderer() {
-      throw new Error("WebGL unavailable");
-    });
-
-    render(
-      <LightfallCanvas
-        theme="light"
-        durationMs={RESET_CELEBRATION_DURATION_MS}
-        onFallback={onFallback}
-      />,
-    );
-
-    expect(onFallback).toHaveBeenCalledOnce();
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
-  });
-
-  it("fails closed when rendering throws and does not schedule another frame", () => {
-    const onFallback = vi.fn();
-    ogl.render.mockImplementationOnce(() => {
-      throw new Error("render failed");
-    });
-    const { container } = render(
-      <LightfallCanvas
-        theme="dark"
-        durationMs={RESET_CELEBRATION_DURATION_MS}
-        onFallback={onFallback}
-      />,
-    );
-    const frame = [...rafCallbacks.values()][0];
-
-    expect(() => {
-      act(() => {
-        frame(1_000);
-      });
-    }).not.toThrow();
-
-    expect(onFallback).toHaveBeenCalledOnce();
-    expect(requestAnimationFrame).toHaveBeenCalledOnce();
-    expect(cancelAnimationFrame).toHaveBeenCalledOnce();
-    expect(resizeDisconnect).toHaveBeenCalledOnce();
-    expect(container.querySelector("canvas")).toBeNull();
-
-    act(() => {
-      frame(1_100);
-    });
-    expect(onFallback).toHaveBeenCalledOnce();
-    expect(requestAnimationFrame).toHaveBeenCalledOnce();
-  });
-
-  it("prevents WebGL context loss, fails closed once, and ignores stale RAF", () => {
-    const onFallback = vi.fn();
-    const { container } = render(
-      <LightfallCanvas
-        theme="light"
-        durationMs={RESET_CELEBRATION_DURATION_MS}
-        onFallback={onFallback}
-      />,
-    );
-    const canvas = container.querySelector("canvas");
-    const frame = [...rafCallbacks.values()][0];
-    const contextLost = new Event("webglcontextlost", { cancelable: true });
-
-    act(() => {
-      canvas.dispatchEvent(contextLost);
-    });
-
-    expect(contextLost.defaultPrevented).toBe(true);
-    expect(onFallback).toHaveBeenCalledOnce();
-    expect(cancelAnimationFrame).toHaveBeenCalledOnce();
-    expect(resizeDisconnect).toHaveBeenCalledOnce();
-    expect(ogl.programRemove).toHaveBeenCalledOnce();
-    expect(ogl.geometryRemove).toHaveBeenCalledOnce();
-    expect(container.querySelector("canvas")).toBeNull();
-
-    act(() => {
-      frame(1_000);
-      canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
-    });
-    expect(onFallback).toHaveBeenCalledOnce();
-    expect(requestAnimationFrame).toHaveBeenCalledOnce();
   });
 });

@@ -100,9 +100,11 @@ test("formatCost formats usd correctly", () => {
   assert.equal(mod.formatCost(1234.5), "$1,235");
 });
 
-test("formatShortDate returns month + year", () => {
-  // Locale system resolves to zh-CN by design (see dashboard/src/lib/locale.ts);
-  // setCopyLocale("en") normalizes back to zh-CN, so output follows the zh registry.
+test("formatShortDate returns a localized month + year", () => {
+  mod.setCopyLocale("en");
+  assert.equal(mod.formatShortDate("2026-04-11"), "APR 2026");
+
+  mod.setCopyLocale("zh-CN");
   assert.equal(mod.formatShortDate("2026-04-11"), "2026 年 4 月");
   assert.equal(mod.formatShortDate(null), "—");
 });
@@ -118,6 +120,17 @@ test("formatIssueLabel responds to period", () => {
     rank: null,
     capturedAt: new Date().toISOString(),
   };
+  mod.setCopyLocale("en");
+  assert.equal(
+    mod.formatIssueLabel({ ...base, period: "total", periodFrom: null, periodTo: null }),
+    "ALL TIME",
+  );
+  assert.match(
+    mod.formatIssueLabel({ ...base, period: "month", periodFrom: "2026-04-01", periodTo: "2026-04-30" }),
+    /APR 2026/,
+  );
+
+  mod.setCopyLocale("zh-CN");
   assert.equal(
     mod.formatIssueLabel({ ...base, period: "total", periodFrom: null, periodTo: null }),
     "总计",

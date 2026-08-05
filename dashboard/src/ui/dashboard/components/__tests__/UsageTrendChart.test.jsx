@@ -70,7 +70,7 @@ import {
 
 // 3-bucket single-source fixture. input_tokens dominates so we can verify the
 // left Y-axis rescales when Input is hidden. Values are chosen so the tooltip
-// output and axis labels both use the shared Chinese token formatter.
+// output and axis labels both use the active English token formatter.
 function makeSeries() {
   return [
     {
@@ -91,7 +91,7 @@ function makeSeries() {
   ];
 }
 
-const SERIES_COLORS = ["#3b82f6", "#10b981", "#f97316", "#8b5cf6", "#ef4444"];
+const SERIES_COLORS = ["#10b981", "#3b82f6", "#f97316", "#8b5cf6", "#9ca3af"];
 const LEGEND_NAMES = ["Input", "Output", "Cache Creation", "Cache Hit", "Cost"];
 
 describe("pure helpers", () => {
@@ -105,6 +105,9 @@ describe("pure helpers", () => {
       expect(formatTokenAxis(1500)).toBe("1,500");
       expect(formatTokenAxis(2_500_000)).toBe("250万");
       expect(formatTokenAxis(3_000_000_000)).toBe("30亿");
+    });
+    it("uses Western compact units in English", () => {
+      expect(formatTokenAxis(2_500_000, "en")).toBe("2.5M");
     });
   });
 
@@ -124,6 +127,9 @@ describe("pure helpers", () => {
     });
     it("uses the Chinese token formatter", () => {
       expect(formatTooltipToken(12_345_000)).toBe("1.23千万");
+    });
+    it("uses Western compact units in English", () => {
+      expect(formatTooltipToken(12_345_000, "en")).toBe("12.35M");
     });
   });
 
@@ -290,6 +296,12 @@ describe("UsageTrendChart", () => {
     expect(svg).toHaveAttribute("height", "620");
   });
 
+  it("uses the compact shared-card plot height and exposes the aligned title", () => {
+    render(<UsageTrendChart series={makeSeries()} />);
+    expect(screen.getByTestId("usage-trend-plot")).toHaveClass("min-h-[320px]");
+    expect(screen.getByTestId("usage-trend-title")).toBeInTheDocument();
+  });
+
   it("renders the title and 5 legend buttons with aria-pressed=true", () => {
     render(<UsageTrendChart series={makeSeries()} />);
     expect(screen.getByText("Usage Trend")).toBeInTheDocument();
@@ -314,9 +326,9 @@ describe("UsageTrendChart", () => {
     fireEvent.click(inputBtn);
     expect(inputBtn).toHaveAttribute("aria-pressed", "false");
     const svg = container.querySelector('svg[role="img"]');
-    expect(svg.querySelector('path[stroke="#3b82f6"]')).toBeNull();
+    expect(svg.querySelector('path[stroke="#10b981"]')).toBeNull();
     // The other 4 lines remain.
-    for (const color of ["#10b981", "#f97316", "#8b5cf6", "#ef4444"]) {
+    for (const color of ["#3b82f6", "#f97316", "#8b5cf6", "#9ca3af"]) {
       expect(svg.querySelector(`path[stroke="${color}"]`)).not.toBeNull();
     }
   });
@@ -330,11 +342,11 @@ describe("UsageTrendChart", () => {
     const yTexts = () =>
       Array.from(svg.querySelectorAll("text")).map((t) => t.textContent);
 
-    expect(yTexts()).toContain("2,000");
+    expect(yTexts()).toContain("2K");
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Input visibility" }));
-    expect(yTexts()).toContain("1,000");
-    expect(yTexts()).not.toContain("2,000");
+    expect(yTexts()).toContain("1K");
+    expect(yTexts()).not.toContain("2K");
   });
 
   it("shows a tooltip with all visible dimensions on bucket hover", () => {
@@ -345,7 +357,7 @@ describe("UsageTrendChart", () => {
 
     // Bucket 0 values: input=1000, cacheCreation=200, cached=100, cost=1.5.
     const tooltip = screen.getByTestId("usage-trend-tooltip");
-    expect(within(tooltip).getByText("1,000")).toBeInTheDocument();
+    expect(within(tooltip).getByText("1K")).toBeInTheDocument();
     expect(within(tooltip).getByText("200")).toBeInTheDocument();
     expect(within(tooltip).getByText("100")).toBeInTheDocument();
     // Cost row uses 6 decimals — always unique to the tooltip.

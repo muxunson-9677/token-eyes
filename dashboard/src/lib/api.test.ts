@@ -73,6 +73,9 @@ it("uses deterministic spend trend and Token service fixtures in screenshot mock
 
     expect(trend.ok).toBe(true);
     expect(trend.series.length).toBeGreaterThan(1);
+    expect(trend.totals.api_usd).toBe(trend.totals.api_cost_usd);
+    expect(trend.totals.subscription_usd).toBe(trend.totals.subscription_cost_usd);
+    expect(trend.totals.other_ai_usd).toBe(0);
     expect(plans.records.length).toBeGreaterThan(0);
     expect(bounds).toEqual({
       ok: true,

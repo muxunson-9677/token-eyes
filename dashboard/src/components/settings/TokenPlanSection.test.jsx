@@ -95,6 +95,10 @@ async function expandAllPlans() {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  window.localStorage.setItem(
+    "token-eyes.settings.disclosure.cost.token-plans.v1",
+    "1",
+  );
   codexResetMonitor.status = null;
   codexResetMonitor.checkNow.mockReset().mockResolvedValue(undefined);
   getTokenPlans.mockResolvedValue({ records: [{ ...BASE_RECORD }] });

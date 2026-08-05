@@ -111,7 +111,7 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
     .map((entry: any) => {
       const label = entry.source
         ? String(entry.source).toUpperCase()
-        : safeCopy("shared.placeholder.short");
+        : safeCopy("data.confidence.unattributed");
       const totalPercentRaw = grandTotal > 0 ? (entry.totalTokens / grandTotal) * 100 : 0;
       const totalPercent = Number.isFinite(totalPercentRaw) ? totalPercentRaw.toFixed(1) : "0.0";
       const models = entry.models
@@ -120,7 +120,7 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
           if (!Number.isFinite(modelTokens) || modelTokens <= 0) return null;
           const share =
             entry.totalTokens > 0 ? Math.round((modelTokens / entry.totalTokens) * 1000) / 10 : 0;
-          const name = resolveModelName(model, safeCopy("shared.placeholder.short"));
+          const name = resolveModelName(model, safeCopy("data.confidence.unattributed"));
           const id = resolveModelId(model);
           const explicitModelCost = toFiniteNumber(model?.totals?.total_cost_usd);
           const modelCost =
@@ -262,7 +262,7 @@ export function buildTopModels(modelBreakdown: any, { limit = 3, copyFn }: AnyRe
       const tokens = resolveDisplayTokens(model?.totals);
       if (!Number.isFinite(tokens) || tokens <= 0) continue;
       totalTokensAll += tokens;
-      const name = resolveModelName(model, safeCopy("shared.placeholder.short"));
+      const name = resolveModelName(model, safeCopy("data.confidence.unattributed"));
       const key = normalizeModelId(name);
       if (!key) continue;
       totalsByKey.set(key, (totalsByKey.get(key) || 0) + tokens);
@@ -285,7 +285,7 @@ export function buildTopModels(modelBreakdown: any, { limit = 3, copyFn }: AnyRe
       const percent = totalTokens > 0 ? ((tokens / totalTokens) * 100).toFixed(1) : "0.0";
       return {
         id: key,
-        name: nameByKey.get(key) || safeCopy("shared.placeholder.short"),
+        name: nameByKey.get(key) || safeCopy("data.confidence.unattributed"),
         tokens,
         percent: String(percent),
       };

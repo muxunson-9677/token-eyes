@@ -60,25 +60,27 @@ describe("ProjectUsagePanel", () => {
     expect(copyButton).toBeInTheDocument();
   });
 
-  it("shows 'no path' fallback when project_path is empty", () => {
+  it("hides the path row when project_path is empty", () => {
     const entryWithoutPath = {
       ...baseEntry,
       project_path: "",
     };
     render(<ProjectUsagePanel entries={[entryWithoutPath]} />);
 
-    expect(screen.getByText(copy("dashboard.projects.no_path"))).toBeInTheDocument();
+    expect(screen.queryByText(copy("dashboard.projects.no_path"))).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="project-path"]')).toBeNull();
     expect(screen.queryByTitle(copy("dashboard.projects.copy_path"))).not.toBeInTheDocument();
   });
 
-  it("shows 'no path' fallback when project_path is null", () => {
+  it("hides the path row when project_path is null", () => {
     const entryWithoutPath = {
       ...baseEntry,
       project_path: null,
     };
     render(<ProjectUsagePanel entries={[entryWithoutPath]} />);
 
-    expect(screen.getByText(copy("dashboard.projects.no_path"))).toBeInTheDocument();
+    expect(screen.queryByText(copy("dashboard.projects.no_path"))).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="project-path"]')).toBeNull();
   });
 
   it("prefers total tokens when billable tokens are zero", () => {
@@ -175,5 +177,18 @@ describe("ProjectUsagePanel", () => {
     expect(screen.getByText("Test Project")).toBeInTheDocument();
     // Should not crash and should show no_path fallback-free since path exists
     expect(screen.getByText("/test")).toBeInTheDocument();
+  });
+
+  it("hides missing token, cost, request, and time values without placeholders", () => {
+    const { container } = render(<ProjectUsagePanel entries={[{
+      project_key: "test",
+      project_name: "Test Project",
+      pricing_coverage: "unpriced",
+    }]} />);
+
+    expect(screen.getByText("Test Project")).toBeInTheDocument();
+    expect(container).not.toHaveTextContent("—");
+    expect(container).not.toHaveTextContent(" - ");
+    expect(screen.queryByText(copy("dashboard.projects.tokens_label"))).not.toBeInTheDocument();
   });
 });

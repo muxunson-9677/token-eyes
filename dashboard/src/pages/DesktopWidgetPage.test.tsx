@@ -59,6 +59,7 @@ const prefs = {
   scaleFactor: 1,
   selectedAgent: "codex",
   mode: "projects",
+  selectedLimitIds: null,
   expanded: false,
   material: "frost",
   opacity: 0.72,
@@ -98,12 +99,27 @@ const viewModel = {
       usedPercent: 42,
       resetAt: null,
       error: null,
+      notes: "主力开发账号",
+    },
+    {
+      id: "codex:default:weekly",
+      agent: "codex",
+      provider: "Codex",
+      accountLabel: "Plus",
+      window: "1w",
+      usedPercent: 68,
+      resetAt: null,
+      error: null,
+      notes: "备用周额度",
     },
   ],
   totals: {
     tokens: 12_345,
     costUsd: 1.25,
-    models: [{ name: "gpt-5-codex", tokens: 12_345, share: 100, costUsd: 1.25 }],
+    models: [
+      { name: "gpt-5-codex", tokens: 12_345, share: 100, costUsd: 1.25 },
+      { name: "inactive-model", tokens: 0, share: 0, costUsd: 0 },
+    ],
   },
   pendingReset: null,
 };
@@ -180,13 +196,29 @@ describe("DesktopWidgetPage", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("renders all three traffic lights and grays zero counts", () => {
+  it("keeps the external mode rail beside the card in both widget states", () => {
+    const { rerender } = render(<DesktopWidgetPage />);
+    const card = screen.getByTestId("desktop-widget-card");
+    const rail = screen.getByTestId("widget-mode-rail");
+    expect(card.contains(rail)).toBe(false);
+    expect(rail.parentElement).toBe(card.parentElement);
+    expect(within(rail).getAllByRole("button")).toHaveLength(3);
+
+    widget.value = { ...widget.value, prefs: { ...prefs, expanded: true } };
+    rerender(<DesktopWidgetPage />);
+    expect(screen.getByTestId("widget-mode-rail").parentElement)
+      .toBe(screen.getByTestId("desktop-widget-card").parentElement);
+  });
+
+  it("renders all three traffic lights and preserves zero-count semantics without losing their tones", () => {
     render(<DesktopWidgetPage />);
     const lights = screen.getAllByTestId("widget-traffic-light");
     expect(lights).toHaveLength(3);
     expect(lights[0]).toHaveAttribute("data-active", "false");
     expect(lights[1]).toHaveAttribute("data-active", "true");
     expect(lights[2]).toHaveAttribute("data-active", "false");
+    expect(widgetStyles).toContain(".widget-traffic-light--red { color:");
+    expect(widgetStyles).toContain(".widget-traffic-light--yellow { color:");
   });
 
   it("drags from the data surface but not from controls", async () => {
@@ -287,6 +319,7 @@ describe("DesktopWidgetPage", () => {
     render(<DesktopWidgetPage />);
     await user.click(screen.getByRole("button", { name: /010-Token eye/u }));
 
+    expect(screen.getAllByTestId("widget-project-icon")).toHaveLength(1);
     const taskTitle = screen.getByText(officialTitle);
     const taskRow = taskTitle.closest(".widget-session");
     expect(taskRow).toHaveTextContent("copy:widget.session_state.stopped");
@@ -294,6 +327,63 @@ describe("DesktopWidgetPage", () => {
     expect(screen.queryByText("019f9c26-1e55-7100-bc08-5a8f6b4a6892")).not.toBeInTheDocument();
     expect(screen.queryByText("019-untitled-session")).not.toBeInTheDocument();
     expect(screen.getByText(new RegExp("\u7684\u4f1a\u8bdd$", "u"))).toBeInTheDocument();
+  });
+
+  it("shows only the first selected limit while collapsed and all selected limits when expanded", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: {
+        ...prefs,
+        mode: "limits",
+        selectedLimitIds: ["codex:default:weekly", "codex:default:5h"],
+      },
+    };
+    const { rerender } = render(<DesktopWidgetPage />);
+    expect(screen.getByText("1w")).toBeInTheDocument();
+    expect(screen.getByText("备用周额度")).toBeInTheDocument();
+    expect(screen.queryByText("主力开发账号")).not.toBeInTheDocument();
+    expect(screen.queryByText("5h")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(1);
+    expect(screen.getByTestId("widget-limit-progress")).toHaveClass("widget-limit-progress-bar");
+
+    widget.value = {
+      ...widget.value,
+      prefs: { ...widget.value.prefs, expanded: true },
+    };
+    rerender(<DesktopWidgetPage />);
+    expect(screen.getAllByText("1w")).not.toHaveLength(0);
+    expect(screen.getAllByText("5h")).not.toHaveLength(0);
+    expect(screen.getAllByText("备用周额度")).not.toHaveLength(0);
+    expect(screen.getAllByText("主力开发账号")).not.toHaveLength(0);
+    expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(3);
+  });
+
+  it("treats a missing limit selection as all plans and an empty selection as none", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, mode: "limits", selectedLimitIds: null },
+    };
+    const { rerender } = render(<DesktopWidgetPage />);
+    expect(screen.getByText("5h")).toBeInTheDocument();
+
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, mode: "limits", selectedLimitIds: [] },
+    };
+    rerender(<DesktopWidgetPage />);
+    expect(screen.getByText("copy:widget.empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("widget-limit-progress")).not.toBeInTheDocument();
+  });
+
+  it("hides inactive models from expanded model consumption", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, expanded: true, mode: "models" },
+    };
+    render(<DesktopWidgetPage />);
+    expect(screen.getByText("gpt-5-codex")).toBeInTheDocument();
+    expect(screen.getByTestId("widget-model-tone")).toHaveAttribute("data-tone", "0");
+    expect(screen.queryByText("inactive-model")).not.toBeInTheDocument();
   });
 
   it("uses one scroll region for expanded limit and model details", () => {

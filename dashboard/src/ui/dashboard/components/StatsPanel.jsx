@@ -1,16 +1,22 @@
 import React from "react";
-import { Activity, CalendarDays, CalendarRange, MessageSquare } from "lucide-react";
-import { copy } from "../../../lib/copy";
-import { formatChineseTokenCount, formatCompactNumber } from "../../../lib/format";
-import { Card, Badge } from "../../components";
+import { Activity, CalendarDays, Database, MessageSquare } from "lucide-react";
+import { copy, getCopyLocale } from "../../../lib/copy";
+import { formatCompactNumber, formatTokenCount } from "../../../lib/format";
+import { Badge } from "../../components";
 
-const MODEL_DOTS = [
-  "bg-oai-brand-500",
-  "bg-blue-500",
-  "bg-amber-500",
-  "bg-violet-500",
-  "bg-rose-500",
-  "bg-oai-gray-400",
+const MODEL_DOT_COLORS = [
+  "#10b981",
+  "#3b82f6",
+  "#f59e0b",
+  "#8b5cf6",
+  "#0ea5a8",
+  "#9ca3af",
+];
+
+const RANK_TONES = [
+  "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30",
+  "bg-slate-200 text-slate-700 ring-1 ring-inset ring-slate-300 dark:bg-slate-500/25 dark:text-slate-200 dark:ring-slate-500/30",
+  "bg-orange-100 text-orange-800 ring-1 ring-inset ring-orange-200 dark:bg-orange-500/20 dark:text-orange-200 dark:ring-orange-500/30",
 ];
 
 function normalizeBadgePart(value) {
@@ -51,6 +57,26 @@ function hasRealMetaValue(value) {
   return true;
 }
 
+function buildSparklinePoints(values) {
+  const safeValues = values.filter((value) => Number.isFinite(Number(value))).map(Number);
+  if (safeValues.length === 0) return "0,14 100,14";
+  const points = safeValues.length === 1 ? [safeValues[0], safeValues[0]] : safeValues;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  return points.map((value, index) => {
+    const x = (index / (points.length - 1)) * 100;
+    const y = 24 - ((value - min) / range) * 12;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+}
+
+function readTrendValue(row, kind) {
+  if (kind === "convs") return Number(row?.conversation_count ?? row?.request_count ?? 0);
+  if (kind === "avg" && Number.isFinite(Number(row?.average_usage))) return Number(row.average_usage);
+  return Number(row?.billable_total_tokens ?? row?.total_tokens ?? 0);
+}
+
 export function StatsPanel({
   rankLabel,
   streakDays,
@@ -59,6 +85,7 @@ export function StatsPanel({
   rolling,
   topModels = [],
   overviewModels,
+  trendRows = [],
   className = "",
 }) {
   const percentSymbol = copy("shared.unit.percent");
@@ -102,14 +129,14 @@ export function StatsPanel({
   const rollingCards = [
     {
       key: "last7d",
-      icon: CalendarDays,
+      icon: Database,
       value: formatValue(rolling?.last_7d?.totals?.billable_total_tokens),
       label: rollingLabels.last7d,
-      tone: "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300",
+      tone: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300",
     },
     {
       key: "last30d",
-      icon: CalendarRange,
+      icon: CalendarDays,
       value: formatValue(rolling?.last_30d?.totals?.billable_total_tokens),
       label: rollingLabels.last30d,
       tone: "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300",
@@ -126,7 +153,7 @@ export function StatsPanel({
       icon: MessageSquare,
       value: formatValue(periodConversations),
       label: rollingLabels.convs,
-      tone: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300",
+      tone: "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300",
     },
   ].filter((card) => {
     return card.value !== null;
@@ -134,24 +161,99 @@ export function StatsPanel({
   const hasRollingCards = Boolean(rollingCards.length);
   const hasMeasuredModels = Boolean(measuredModels.length);
 
+  const metricTitles = {
+    last7d: "总用量",
+    last30d: "总用量",
+    avg: "平均用量",
+    convs: "对话数",
+  };
+
+  const rollingCardsWithTrend = rollingCards.map((card) => {
+    const rows = Array.isArray(trendRows)
+      ? trendRows.slice(card.key === "last7d" ? -7 : -30)
+      : [];
+    const values = rows.map((row) => readTrendValue(row, card.key));
+    const fallback = Number(
+      card.key === "last7d"
+        ? rolling?.last_7d?.totals?.billable_total_tokens
+        : card.key === "last30d"
+          ? rolling?.last_30d?.totals?.billable_total_tokens
+          : card.key === "avg"
+            ? rolling?.last_30d?.avg_per_active_day
+            : periodConversations,
+    );
+    const sparkValues = values.length > 0 ? values : [fallback, fallback];
+    const first = sparkValues[0];
+    const last = sparkValues[sparkValues.length - 1];
+    const change = Number.isFinite(first) && first !== 0 && Number.isFinite(last)
+      ? ((last - first) / Math.abs(first)) * 100
+      : null;
+    const explicitChange = {
+      last7d: rolling?.last_7d_change_percent,
+      last30d: rolling?.last_30d_change_percent,
+      avg: rolling?.avg_change_percent,
+      convs: rolling?.conversation_change_percent,
+    }[card.key];
+    return {
+      ...card,
+      sparkValues,
+      change: Number.isFinite(Number(explicitChange)) ? Number(explicitChange) : change,
+    };
+  });
+
   return (
-    <Card variant="nested" className={`h-full ${className}`}>
+    <div className={`tt-overview-stats tt-surface-nested h-full ${className}`}>
         {hasRollingCards && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {rollingCards.map((card) => {
+        <div className="tt-overview-stat-grid grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {rollingCardsWithTrend.map((card) => {
             const Icon = card.icon;
+            const sparklinePoints = buildSparklinePoints(card.sparkValues);
+            const sparklineTone = card.tone.includes("sky") ? "text-sky-500" : card.tone.includes("violet") ? "text-violet-500" : card.tone.includes("amber") ? "text-amber-500" : "text-emerald-500";
             return (
               <div
                 key={card.key}
-                className="flex flex-col items-center justify-center gap-1 rounded-lg bg-oai-gray-50 px-2 py-2 dark:bg-oai-gray-800"
+                data-testid="overview-stat-card"
+                className="tt-overview-stat-card tt-surface-nested flex min-w-0 flex-col rounded-[var(--tt-card-radius)] px-4 py-4"
               >
-                <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${card.tone}`}>
-                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                </span>
-                <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
+                <div className="flex items-center gap-3 text-sm text-oai-gray-500 dark:text-oai-gray-300">
+                  <span data-testid="overview-stat-icon" className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${card.tone}`}>
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <span className="whitespace-nowrap">{metricTitles[card.key]}</span>
+                </div>
+                <span className="mt-3 text-[28px] font-semibold leading-none text-oai-black dark:text-oai-white tabular-nums">
                   {card.value}
                 </span>
-                <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 whitespace-nowrap">{card.label}</span>
+                  <span className="mt-2 text-xs text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap">
+                    {card.key === "last7d" ? "7天" : card.key === "last30d" ? "30天" : card.key === "avg" ? "平均 / 日" : "对话"}
+                  </span>
+                <svg
+                  data-testid="overview-stat-sparkline"
+                  aria-hidden="true"
+                  className="mt-2 h-7 w-full overflow-visible"
+                  preserveAspectRatio="none"
+                  viewBox="0 0 100 30"
+                >
+                  <polyline
+                    fill="none"
+                    points={sparklinePoints}
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.5"
+                    className={sparklineTone}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {sparklinePoints.split(" ").map((point, index) => {
+                    const [cx, cy] = point.split(",");
+                    return <circle key={`${card.key}-${index}`} cx={cx} cy={cy} r="1.15" fill="currentColor" className={sparklineTone} />;
+                  })}
+                </svg>
+                {card.change != null ? (
+                  <span className={`mt-0.5 text-xs font-medium tabular-nums ${card.change >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                    {card.change >= 0 ? "↑" : "↓"} {Math.abs(card.change).toFixed(1)}%
+                  </span>
+                ) : null}
               </div>
             );
           })}
@@ -159,47 +261,72 @@ export function StatsPanel({
         )}
 
         {hasMeasuredModels ? (
-          <div className={`${hasRollingCards ? "mt-4 border-t pt-3" : ""} border-oai-gray-100 dark:border-oai-gray-800`}>
+          <section
+            data-testid="overview-model-ranking"
+            className={`tt-overview-model-ranking tt-surface-nested ${hasRollingCards ? "mt-3" : ""}`}
+          >
+            <header className="flex items-center justify-between px-5 pb-2 pt-4">
+              <h2 className="text-base font-semibold text-oai-black dark:text-white">{copy("stats.model_ranking")}</h2>
+              <a href="/leaderboard" className="rounded-md border border-oai-gray-200 px-3 py-1.5 text-xs text-oai-gray-500 hover:text-oai-black dark:border-oai-gray-700 dark:text-oai-gray-300">
+                {copy("stats.view_all")}
+              </a>
+            </header>
             <div
               data-testid="overview-model-list"
-              className="max-h-48 space-y-0 overflow-y-auto oai-scrollbar"
+              className="max-h-[300px] space-y-1 overflow-y-auto px-5 pb-4 oai-scrollbar"
             >
               {measuredModels.map((row, index) => {
                 const name = String(row.name);
                 const percent = row?.percent != null && row?.percent !== "" ? String(row.percent) : "";
                 const tokens = row?.tokens;
-                const isLast = index === measuredModels.length - 1;
                 const rankNum = index + 1;
 
                 return (
                   <div
                     key={row.id || name}
-                    className={`flex items-start gap-2 py-2 ${!isLast ? "border-b border-oai-gray-50 dark:border-oai-gray-800" : ""}`}
+                    data-testid="overview-model-row"
+                    className="flex items-center gap-2 rounded-lg border border-oai-gray-200/80 bg-white/70 px-2.5 py-2 shadow-sm dark:border-oai-gray-700 dark:bg-oai-gray-900/55"
                   >
-                    <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-oai-gray-100 text-[10px] font-semibold text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-300">
+                    <span
+                      data-testid="overview-model-rank"
+                      className={`mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-[10px] font-bold ${RANK_TONES[index] || "bg-oai-gray-100 text-oai-gray-500 ring-1 ring-inset ring-oai-gray-200 dark:bg-oai-gray-800 dark:text-oai-gray-300 dark:ring-oai-gray-700"}`}
+                    >
                       {rankNum}
                     </span>
-                    <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${MODEL_DOTS[index % MODEL_DOTS.length]}`} aria-hidden />
+                    <span
+                      data-testid="overview-model-marker"
+                      className="mt-2 h-2.5 w-2.5 flex-shrink-0 rounded-full ring-2 ring-white dark:ring-oai-gray-900"
+                      style={{ backgroundColor: MODEL_DOT_COLORS[index % MODEL_DOT_COLORS.length] }}
+                      aria-hidden
+                    />
                     <div className="min-w-0 flex-1 px-0.5">
-                      <div className="break-words text-sm text-oai-gray-700 dark:text-oai-gray-300">
+                      <div className="break-words text-sm font-medium text-oai-gray-800 dark:text-oai-gray-200">
                         {name}
                       </div>
                       {tokens != null && (
                         <div className="mt-0.5 text-[11px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
-                          {formatChineseTokenCount(tokens)}
+                            {formatTokenCount(tokens, { locale: getCopyLocale() })} Tokens
                         </div>
                       )}
                     </div>
-                    {percent !== "" && (
-                      <span className="flex-shrink-0 text-sm font-semibold tabular-nums text-oai-black dark:text-oai-white">
-                        {percent}{percentSymbol}
-                      </span>
-                    )}
+                    {percent !== "" ? (
+                      <div className="flex w-44 shrink-0 items-center gap-3">
+                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
+                          <span
+                            className="block h-full rounded-full"
+                            style={{ width: `${Math.min(Math.max(Number(percent) || 0, 0), 100)}%`, backgroundColor: MODEL_DOT_COLORS[index % MODEL_DOT_COLORS.length] }}
+                          />
+                        </span>
+                        <span className="w-12 flex-shrink-0 text-right text-sm font-semibold tabular-nums text-oai-black dark:text-oai-white">
+                          {percent}{percentSymbol}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
             </div>
-          </div>
+          </section>
         ) : (
           <div className={`${hasRollingCards ? "mt-4 border-t pt-4" : "py-4"} border-oai-gray-100 text-center text-sm text-oai-gray-400 dark:border-oai-gray-800 dark:text-oai-gray-500`}>
             {copy("dashboard.model_distribution.empty")}
@@ -236,6 +363,6 @@ export function StatsPanel({
             ) : null}
           </div>
         )}
-      </Card>
+      </div>
   );
 }

@@ -50,7 +50,7 @@ beforeEach(() => {
   setCopyLocale(EN_LOCALE);
 });
 
-it("keeps localized copy in Simplified Chinese for legacy language choices", async () => {
+it("switches localized copy and document language between English and Chinese", async () => {
   const user = userEvent.setup();
 
   render(
@@ -59,14 +59,21 @@ it("keeps localized copy in Simplified Chinese for legacy language choices", asy
     </LocaleProvider>,
   );
 
-  expect(screen.getByTestId("active-locale")).toHaveTextContent(ZH_CN_LOCALE);
-  expect(screen.getByTestId("language-label")).toHaveTextContent("语言");
-  expect(document.documentElement.lang).toBe(ZH_CN_LOCALE);
+  expect(screen.getByTestId("active-locale")).toHaveTextContent(EN_LOCALE);
+  expect(screen.getByTestId("language-label")).toHaveTextContent("Language");
+  expect(document.documentElement.lang).toBe(EN_LOCALE);
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "system" }));
   });
 
+  expect(screen.getByTestId("language-label")).toHaveTextContent("Language");
+  expect(document.documentElement.lang).toBe(EN_LOCALE);
+
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: "zh" }));
+  });
+  expect(screen.getByTestId("active-locale")).toHaveTextContent(ZH_CN_LOCALE);
   expect(screen.getByTestId("language-label")).toHaveTextContent("语言");
   expect(document.documentElement.lang).toBe(ZH_CN_LOCALE);
 
@@ -74,7 +81,7 @@ it("keeps localized copy in Simplified Chinese for legacy language choices", asy
     await user.click(screen.getByRole("button", { name: "en" }));
   });
 
-  expect(screen.getByTestId("active-locale")).toHaveTextContent(ZH_CN_LOCALE);
-  expect(screen.getByTestId("language-label")).toHaveTextContent("语言");
-  expect(document.documentElement.lang).toBe(ZH_CN_LOCALE);
+  expect(screen.getByTestId("active-locale")).toHaveTextContent(EN_LOCALE);
+  expect(screen.getByTestId("language-label")).toHaveTextContent("Language");
+  expect(document.documentElement.lang).toBe(EN_LOCALE);
 });

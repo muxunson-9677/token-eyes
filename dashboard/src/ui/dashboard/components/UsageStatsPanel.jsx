@@ -1,11 +1,13 @@
 import React, { useMemo } from "react";
 import { Activity, AlertCircle, ArrowDown, ArrowUp, DollarSign, HelpCircle, Package, Target } from "lucide-react";
 import { Card } from "../../components";
-import { copy } from "../../../lib/copy";
+import { copy, getCopyLocale } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
-import { formatChineseTokenCount } from "../../../lib/format";
+import { formatTokenCount } from "../../../lib/format";
 import { ProviderIcon } from "./ProviderIcon";
 import { getProviderColor } from "./UsageOverview.jsx";
+import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
+import { deriveDataConfidence } from "../../../lib/data-confidence";
 
 /**
  * Ticket-02 F: 统计面板。
@@ -32,108 +34,77 @@ function safeNum(value) {
 }
 
 function isProvidedNumber(value) {
-  return value !== null && value !== undefined && Number.isFinite(Number(value));
+  return value !== null
+    && value !== undefined
+    && value !== ""
+    && Number.isFinite(Number(value));
 }
 
-function formatTokensCompact(value) {
+function formatTokensCompact(value, locale) {
   const n = safeNum(value);
-  return formatChineseTokenCount(n);
+  return formatTokenCount(n, { locale });
 }
 
 function formatFullNum(value) {
   return safeNum(value).toLocaleString();
 }
 
-function formatIntegrityDay(value) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  return date.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-function formatIntegrityTime(value) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  return date.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function formatCost(value) {
-  const n = safeNum(value);
-  if (n <= 0) return "$0";
-  return `$${n.toLocaleString(undefined, {
-    minimumFractionDigits: n < 1 ? 4 : 2,
-    maximumFractionDigits: n < 1 ? 4 : 2,
+  if (!isProvidedNumber(value)) return null;
+  const numberValue = Number(value);
+  if (numberValue === 0) return "$0";
+  return `$${numberValue.toLocaleString(undefined, {
+    minimumFractionDigits: numberValue < 1 ? 4 : 2,
+    maximumFractionDigits: numberValue < 1 ? 4 : 2,
   })}`;
 }
 
-function formatCurrencyAmount(value, currency) {
-  if (value === null || value === undefined) return null;
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue)) return null;
-  if (currency === "CNY") {
-    const compact = formatChineseTokenCount(numberValue);
-    if (compact === "-") return null;
-    return `¥${compact}`;
-  }
-  return `${currency} ${numberValue.toLocaleString(undefined, {
+function formatCurrencyAmount(value, currency, locale) {
+  if (!isProvidedNumber(value)) return null;
+  return `${currency} ${Number(value).toLocaleString(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
 export function getMonthlyCostComparison(currentValue, previousValue) {
-  if (currentValue === null || currentValue === undefined
-    || previousValue === null || previousValue === undefined) return null;
+  if (!isProvidedNumber(currentValue) || !isProvidedNumber(previousValue)) return null;
   const current = Number(currentValue);
   const previous = Number(previousValue);
-  if (!Number.isFinite(current) || !Number.isFinite(previous) || current < 0 || previous < 0) return null;
+  if (current < 0 || previous < 0) return null;
+  const delta = Number((current - previous).toFixed(2));
+  if (previous === 0 && current === 0) return { kind: "flat", percent: 0, delta };
+  if (previous === 0 && current > 0) return { kind: "new", percent: null, delta };
+  const percent = Math.abs(((current - previous) / previous) * 100);
+  return current > previous
+    ? { kind: "increase", percent, delta }
+    : current < previous
+      ? { kind: "decrease", percent, delta }
+      : { kind: "flat", percent: 0, delta };
+}
 
-  const difference = current - previous;
-  if (Math.abs(difference) < 1e-9) {
-    return { kind: "flat", percent: "0.0" };
-  }
-  if (previous === 0) {
+function resolveComparisonValues(summary, card) {
+  if (
+    isProvidedNumber(summary?.[card.usdField])
+    && isProvidedNumber(summary?.[card.previousUsdField])
+  ) {
     return {
-      kind: "increase",
-      percent: "100.0",
+      current: Number(summary[card.usdField]),
+      previous: Number(summary[card.previousUsdField]),
     };
   }
-
-  const percent = Math.abs((difference / previous) * 100).toFixed(1);
-  return difference > 0
-    ? { kind: "increase", percent }
-    : { kind: "decrease", percent };
-}
-
-function resolveCurrencyAmount(summary, directField, usdField, exchangeRate) {
-  const directValue = summary?.[directField];
-  if (isProvidedNumber(directValue)) return Number(directValue);
-  const usdValue = summary?.[usdField];
-  if (!isProvidedNumber(usdValue) || !Number.isFinite(exchangeRate) || exchangeRate <= 0) return null;
-  return Number(usdValue) * exchangeRate;
-}
-
-function inferExchangeRate(summary) {
-  const configured = Number(summary?.usd_to_cny);
-  if (Number.isFinite(configured) && configured > 0) return configured;
-  for (const card of COST_SUMMARY_CARDS) {
-    const usdValue = summary?.[card.usdField];
-    const cnyValue = summary?.[card.cnyField];
-    if (!isProvidedNumber(usdValue) || Number(usdValue) === 0 || !isProvidedNumber(cnyValue)) continue;
-    const inferred = Number(cnyValue) / Number(usdValue);
-    if (Number.isFinite(inferred) && inferred > 0) return inferred;
+  if (
+    isProvidedNumber(summary?.[card.cnyField])
+    && isProvidedNumber(summary?.[card.previousCnyField])
+  ) {
+    return {
+      current: Number(summary[card.cnyField]),
+      previous: Number(summary[card.previousCnyField]),
+    };
   }
-  return 0;
+  return null;
 }
+
 
 function normalizeHitRate(value) {
   const n = safeNum(value);
@@ -147,21 +118,18 @@ const DIMENSION_CARDS = [
     key: "input",
     icon: ArrowDown,
     iconClass: "text-oai-blue-500",
-    bgClass: "!bg-emerald-50/70 dark:!bg-emerald-950/25",
     format: formatTokensCompact,
   },
   {
     key: "output",
     icon: ArrowUp,
     iconClass: "text-green-500",
-    bgClass: "!bg-green-50/70 dark:!bg-green-950/25",
     format: formatTokensCompact,
   },
   {
     key: "cache_create",
     icon: Package,
     iconClass: "text-orange-500",
-    bgClass: "!bg-orange-50/70 dark:!bg-orange-950/25",
     format: formatTokensCompact,
     tooltip: true,
   },
@@ -169,7 +137,6 @@ const DIMENSION_CARDS = [
     key: "cache_hit",
     icon: Target,
     iconClass: "text-purple-500",
-    bgClass: "!bg-purple-50/70 dark:!bg-purple-950/25",
     format: formatTokensCompact,
   },
 ];
@@ -182,20 +149,61 @@ const TOKEN_FIELDS = {
 };
 
 const COST_SUMMARY_CARDS = [
-  { labelKey: "spend.monthly_api", usdField: "api_usd", cnyField: "api_cny", previousUsdField: "previous_api_usd", previousCnyField: "previous_api_cny", icon: Activity, iconClass: "text-oai-blue-500" },
-  { labelKey: "spend.monthly_subscription", usdField: "subscription_usd", cnyField: "subscription_cny", previousUsdField: "previous_subscription_usd", previousCnyField: "previous_subscription_cny", icon: Package, iconClass: "text-violet-500" },
-  { labelKey: "spend.monthly_combined", usdField: "combined_usd", cnyField: "combined_cny", previousUsdField: "previous_combined_usd", previousCnyField: "previous_combined_cny", icon: DollarSign, iconClass: "text-green-500" },
-  { labelKey: "spend.lifetime_combined", usdField: "lifetime_combined_usd", cnyField: "lifetime_combined_cny", icon: Target, iconClass: "text-orange-500" },
+  {
+    labelKey: "spend.monthly_api",
+    usdField: "api_usd",
+    cnyField: "api_cny",
+    previousUsdField: "previous_api_usd",
+    previousCnyField: "previous_api_cny",
+    icon: Activity,
+    iconClass: "text-sky-500",
+  },
+  {
+    labelKey: "spend.monthly_subscription",
+    usdField: "subscription_usd",
+    cnyField: "subscription_cny",
+    previousUsdField: "previous_subscription_usd",
+    previousCnyField: "previous_subscription_cny",
+    icon: Package,
+    iconClass: "text-violet-500",
+  },
+  {
+    labelKey: "spend.monthly_combined",
+    usdField: "combined_usd",
+    cnyField: "combined_cny",
+    previousUsdField: "previous_combined_usd",
+    previousCnyField: "previous_combined_cny",
+    icon: DollarSign,
+    iconClass: "text-emerald-500",
+  },
+  {
+    labelKey: "spend.lifetime_combined",
+    usdField: "lifetime_combined_usd",
+    cnyField: "lifetime_combined_cny",
+    previousUsdField: null,
+    previousCnyField: null,
+    icon: Target,
+    iconClass: "text-amber-500",
+  },
 ];
 
 export function UsageStatsPanel({
   summary,
   costSummary = null,
+  costSummaryError = null,
+  costSummaryStale = false,
+  costSummaryBaselineUnavailable = false,
+  costLastSuccessfulAt = null,
+  onRetryCostSummary = null,
   selectedAgent = null,
   loading = false,
   error = null,
+  source = "edge",
+  fetchedAt = null,
+  onOpenDiagnostics = null,
   className,
 }) {
+  const locale = getCopyLocale();
   const totals = useMemo(
     () => summary?.totals ?? summary?.summary ?? null,
     [summary],
@@ -213,32 +221,42 @@ export function UsageStatsPanel({
   const selectedAgentBrandColor = selectedAgent?.queueSource
     ? getProviderColor(selectedAgent.queueSource.toUpperCase(), 0)
     : null;
-  // pricing_coverage determines cost display semantics
-  const pricingCoverage = totals?.pricing_coverage ?? "complete";
-  const integrity = summary?.data_integrity ?? null;
-  const integrityVisibleRecords = safeNum(
-    integrity?.visible_records ?? integrity?.valid_records,
+  const confidenceSourceLabel = copy(
+    source === "cache"
+      ? "data.confidence.source.cached_logs"
+      : "data.confidence.source.local_logs",
   );
-  const integrityFrom = formatIntegrityDay(integrity?.visible_from);
-  const integrityTo = formatIntegrityDay(integrity?.visible_to);
-  const hasIntegrityRange = integrityVisibleRecords > 0
-    && integrityFrom
-    && integrityTo;
-  const unavailableText = copy("shared.data.not_provided");
+  const integrity = summary?.data_integrity ?? null;
+  const integrityNeedsAttention = Boolean(
+    Number(integrity?.token_delta || 0) !== 0
+    || Number(integrity?.malformed_records || 0) > 0,
+  );
+  const tokenConfidence = deriveDataConfidence({
+    metric: "tokens",
+    hasValue: Boolean(totals),
+    availability: totals ? "available" : "unavailable",
+    accuracy: "exact",
+    coverage: totals ? (integrityNeedsAttention ? "partial" : "complete") : "unavailable",
+    sourceKind: source,
+    sourceLabel: confidenceSourceLabel,
+    observedAt: fetchedAt,
+    lastSuccessAt: fetchedAt,
+    isStale: Boolean(error && totals),
+    totalTokens,
+    reason: error || null,
+  });
+  const pricingCoverage = totals?.pricing_coverage ?? "complete";
+  const visibleCostCards = COST_SUMMARY_CARDS.filter((card) => (
+    isProvidedNumber(costSummary?.[card.usdField])
+    || isProvidedNumber(costSummary?.[card.cnyField])
+  ));
+  const visibleDimensionCards = DIMENSION_CARDS.filter((card) => (
+    isProvidedNumber(totals?.[TOKEN_FIELDS[card.key]])
+  ));
+  const costLastSuccessLabel = costLastSuccessfulAt
+    ? new Date(costLastSuccessfulAt).toLocaleString(locale)
+    : null;
   const percentSymbol = copy("shared.unit.percent");
-  const renderCostValue = () => {
-    if (!costProvided) {
-      return <span className="text-sm text-oai-gray-400">{unavailableText}</span>;
-    }
-    if (pricingCoverage === "unpriced") {
-      return <span className="text-oai-gray-400">{copy("ticket06.pricing.unpriced")}</span>;
-    }
-    if (pricingCoverage === "partial") {
-      return <span className="text-amber-600 dark:text-amber-400">{formatCost(cost)}</span>;
-    }
-    return <span className="text-green-600 dark:text-green-400">{formatCost(cost)}</span>;
-  };
-
   if (loading && !totals) {
     return (
       <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
@@ -254,7 +272,7 @@ export function UsageStatsPanel({
     );
   }
 
-  if (error) {
+  if (error && !totals) {
     return (
       <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
         <div
@@ -286,13 +304,65 @@ export function UsageStatsPanel({
 
   return (
     <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
+      {error ? (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          <span className="font-semibold">{copy("dashboard.usage_error.stale_title")}</span>
+          <span className="ml-2 text-xs">{error}</span>
+        </div>
+      ) : null}
+      {costSummaryError ? (
+        <div
+          role={costSummaryStale || costSummaryBaselineUnavailable ? "status" : "alert"}
+          data-testid="usage-financial-status"
+          data-state={costSummaryStale
+            ? "stale"
+            : costSummaryBaselineUnavailable
+              ? "partial"
+              : "unavailable"}
+          className={cn(
+            "mb-4 flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between",
+            costSummaryStale || costSummaryBaselineUnavailable
+              ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+              : "border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/30 dark:text-red-100",
+          )}
+        >
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 font-semibold">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {costSummaryStale
+                ? copy("spend.cost.error.stale")
+                : costSummaryBaselineUnavailable
+                  ? copy("spend.monthly_change.no_baseline")
+                  : copy("spend.cost.error.title")}
+            </p>
+            <p className="mt-0.5 break-words text-xs opacity-90">{costSummaryError}</p>
+            {costLastSuccessLabel ? (
+              <p className="mt-0.5 text-xs opacity-80">
+                {copy("dashboard.usage_error.last_success", { time: costLastSuccessLabel })}
+              </p>
+            ) : null}
+          </div>
+          {onRetryCostSummary ? (
+            <button
+              type="button"
+              onClick={onRetryCostSummary}
+              className="min-h-10 shrink-0 rounded-lg border border-current/30 px-3 text-xs font-semibold hover:bg-black/5 dark:hover:bg-white/5"
+            >
+              {copy("spend.cost.error.retry")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div
-        className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between"
+        className="tt-usage-stats-layout flex min-w-0 flex-col gap-4 lg:items-stretch"
         data-testid="usage-stats-layout"
       >
         {/* Left: main metric + 4 dimension cards */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-3">
+        <div className="tt-usage-stats-main min-w-0 flex-1">
+          <div className="flex items-start gap-3" data-layout-row="headline">
             {selectedAgent?.queueSource && (
               <div
                 className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
@@ -325,22 +395,34 @@ export function UsageStatsPanel({
                 )}
                 <span>{copy("ticket02.stats.real_tokens")}</span>
               </div>
-              <div className="mt-1 text-3xl font-semibold tracking-tight text-oai-black tabular-nums dark:text-white">
-                {totalTokensProvided ? formatChineseTokenCount(totalTokens) : unavailableText}
-              </div>
+              {totalTokensProvided ? (
+                <div className="mt-1 text-3xl font-semibold tracking-tight text-oai-black tabular-nums dark:text-white">
+                  {formatTokenCount(totalTokens, { locale })}
+                </div>
+              ) : null}
+              <DataConfidenceBadge
+                confidence={tokenConfidence}
+                onOpenDiagnostics={onOpenDiagnostics}
+                className="mt-2 justify-start"
+                data-testid="usage-token-confidence"
+              />
             </div>
           </div>
 
-          <div className="mt-4 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
-            {DIMENSION_CARDS.map((card) => {
+          {visibleDimensionCards.length ? (
+            <div
+              className="mt-4 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4"
+              data-layout-row="tokens"
+            >
+            {visibleDimensionCards.map((card) => {
               const Icon = card.icon;
               const rawValue = totals[TOKEN_FIELDS[card.key]];
-              const valueProvided = isProvidedNumber(rawValue);
-              const value = valueProvided ? Number(rawValue) : null;
+              const value = Number(rawValue);
               return (
                 <div
                   key={card.key}
-                  className={cn("tt-surface-nested min-w-0 rounded-lg !bg-none p-2.5", card.bgClass)}
+                  className="tt-surface-nested tt-usage-dimension min-w-0 rounded-lg p-2.5"
+                  data-dimension={card.key}
                   data-testid="usage-dimension-card"
                 >
                   <div className="flex items-center gap-1.5 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
@@ -360,144 +442,95 @@ export function UsageStatsPanel({
                     )}
                   </div>
                   <div className="mt-1.5 text-lg font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
-                    {valueProvided ? card.format(value) : unavailableText}
+                    {card.format(value, locale)}
                   </div>
                 </div>
               );
             })}
-          </div>
+            </div>
+          ) : null}
 
-          {costSummary && (
+          {visibleCostCards.length ? (
             <div
               className="mt-2 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4"
+              data-layout-row="costs"
               data-testid="usage-cost-summary"
             >
-              {COST_SUMMARY_CARDS.map((card) => {
-                const exchangeRate = inferExchangeRate(costSummary);
-                const currentComparisonValue = resolveCurrencyAmount(
-                  costSummary,
-                  card.cnyField,
-                  card.usdField,
-                  exchangeRate,
-                );
-                const previousComparisonValue = resolveCurrencyAmount(
-                  costSummary,
-                  card.previousCnyField,
-                  card.previousUsdField,
-                  exchangeRate,
-                );
-                const comparison = card.previousUsdField
-                  ? getMonthlyCostComparison(currentComparisonValue, previousComparisonValue)
-                  : null;
-                const comparisonLabelKey = comparison?.kind === "increase"
-                  ? "spend.monthly_change.increase"
-                  : comparison?.kind === "decrease"
-                    ? "spend.monthly_change.decrease"
-                    : "spend.monthly_change.flat_percent";
-                const usdText = formatCurrencyAmount(costSummary[card.usdField], "USD");
-                const cnyText = formatCurrencyAmount(costSummary[card.cnyField], "CNY");
+              {visibleCostCards.map((card) => {
                 const CostIcon = card.icon;
+                const usdText = formatCurrencyAmount(costSummary[card.usdField], "USD", locale);
+                const cnyText = formatCurrencyAmount(costSummary[card.cnyField], "CNY", locale);
+                const comparisonValues = card.previousUsdField
+                  ? resolveComparisonValues(costSummary, card)
+                  : null;
+                const comparison = comparisonValues
+                  ? getMonthlyCostComparison(comparisonValues.current, comparisonValues.previous)
+                  : null;
+                const comparisonText = comparison?.kind === "increase"
+                  ? copy("spend.monthly_change.increase", { value: comparison.percent.toFixed(1) })
+                  : comparison?.kind === "decrease"
+                    ? copy("spend.monthly_change.decrease", { value: comparison.percent.toFixed(1) })
+                    : comparison?.kind === "new"
+                      ? copy("spend.monthly_change.new_amount")
+                        : comparison?.kind === "flat"
+                          ? copy("spend.monthly_change.flat")
+                          : null;
                 return (
                   <div
                     key={card.labelKey}
                     data-testid="usage-cost-card"
                     className="tt-surface-nested min-w-0 rounded-lg px-2.5 py-2"
                   >
-                    <div className="flex items-start gap-1 text-[10px] leading-tight text-oai-gray-500 dark:text-oai-gray-400">
+                    <div className="flex items-start gap-1.5 text-[10px] leading-tight text-oai-gray-500 dark:text-oai-gray-400">
                       <CostIcon className={cn("mt-px h-3 w-3 shrink-0", card.iconClass)} aria-hidden="true" />
                       <span>{copy(card.labelKey)}</span>
                     </div>
-                    <div
-                      className="mt-1 break-words text-sm font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100 sm:text-base"
-                      data-testid="usage-cost-usd"
-                    >
-                      {usdText || unavailableText}
-                    </div>
-                    <div
-                      className="mt-0.5 flex min-w-0 flex-row flex-wrap items-center justify-between gap-1 text-[10px] leading-tight tabular-nums text-oai-gray-500 dark:text-oai-gray-400"
-                      data-testid={comparison ? "monthly-cost-cny-row" : undefined}
-                    >
-                      <span className="min-w-0 shrink-0" data-testid="usage-cost-cny">
-                        {cnyText || unavailableText}
-                      </span>
-                      {comparison && (
-                        <span
-                          data-testid="monthly-cost-comparison"
-                          data-monthly-cost-status={comparison.kind}
-                          data-direction={comparison.kind}
-                          aria-label={copy(comparisonLabelKey, { value: comparison.percent })}
-                          className={cn(
-                            "min-w-0 max-w-full break-words text-right text-[9px] font-medium leading-tight tabular-nums",
-                            comparison.kind === "increase" && "text-green-600 dark:text-green-400",
-                            comparison.kind === "decrease" && "text-green-600 dark:text-green-400",
-                            comparison.kind === "flat" && "text-oai-gray-400 dark:text-oai-gray-500",
-                          )}
-                        >
-                          {copy(comparisonLabelKey, { value: comparison.percent })}
-                        </span>
-                      )}
-                      {!comparison && card.previousUsdField && (
-                        <span
-                          data-monthly-cost-status="unavailable"
-                          className="min-w-0 max-w-full break-words text-right text-[9px] leading-tight text-oai-gray-400 dark:text-oai-gray-500"
-                        >
-                          {copy("spend.monthly_change.no_baseline")}
-                        </span>
-                      )}
+                    <div className="mt-1 break-words text-sm font-semibold leading-tight tabular-nums text-oai-gray-900 dark:text-oai-gray-100 sm:text-base">
+                      {usdText ? <div data-testid="usage-cost-usd">{usdText}</div> : null}
+                      <div
+                        className="mt-0.5 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5"
+                        data-testid="usage-cost-secondary-row"
+                      >
+                        {cnyText ? (
+                          <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400" data-testid="usage-cost-cny">
+                            {cnyText}
+                          </div>
+                        ) : null}
+                        {comparisonText ? (
+                          <div
+                            data-testid="monthly-cost-comparison"
+                            data-direction={comparison.kind}
+                            title={copy("spend.monthly_change.explanation")}
+                            className={cn(
+                              "break-words text-[10px] font-medium leading-tight tabular-nums",
+                              comparison.kind === "increase" && "text-emerald-700 dark:text-emerald-300",
+                              comparison.kind === "decrease" && "text-emerald-700 dark:text-emerald-300",
+                              comparison.kind === "new" && "text-emerald-700 dark:text-emerald-300",
+                              comparison.kind === "flat" && "text-oai-gray-500 dark:text-oai-gray-400",
+                            )}
+                          >
+                            {comparisonText}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          )}
+          ) : null}
 
-          {integrity && (
-            <div
-              className={cn(
-                "mt-3 flex items-center gap-2 text-[11px]",
-                integrity.status === "verified"
-                  ? "text-green-700 dark:text-green-400"
-                  : "text-amber-700 dark:text-amber-400",
-              )}
-              data-testid="usage-data-integrity"
-              title={copy("spend.usage.integrity.details", {
-                raw: formatFullNum(integrity.raw_records),
-                duplicates: formatFullNum(integrity.duplicate_records),
-                malformed: formatFullNum(integrity.malformed_records),
-                updated: formatIntegrityTime(integrity.updated_at) || unavailableText,
-              })}
-            >
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 shrink-0 rounded-full",
-                  integrity.status === "verified" ? "bg-green-500" : "bg-amber-500",
-                )}
-                aria-hidden="true"
-              />
-              <span>
-                {integrity.status === "verified"
-                  ? hasIntegrityRange
-                    ? copy("spend.usage.integrity.verified", {
-                      records: formatFullNum(integrityVisibleRecords),
-                      from: integrityFrom,
-                      to: integrityTo,
-                    })
-                    : copy("spend.usage.integrity.verified_empty")
-                  : copy("spend.usage.integrity.attention", {
-                    delta: formatFullNum(integrity.token_delta),
-                  })}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Right: 3 small cards */}
         <div
-          className="flex flex-row gap-2 lg:w-52 lg:flex-col"
+          className="tt-usage-summary-rail flex flex-row gap-2 lg:w-52 lg:flex-col"
           data-testid="usage-summary-rail"
         >
+          {requestCount !== null ? (
           <div
             className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
+            data-layout-row="headline"
             data-testid="usage-request-summary"
           >
             <div
@@ -510,46 +543,43 @@ export function UsageStatsPanel({
               className="mt-1 flex items-center gap-1.5 text-xl font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100"
               data-testid="usage-request-value"
             >
-              {requestCount === null ? (
-                <span className="text-sm text-oai-gray-400">{unavailableText}</span>
-              ) : (
-                <>
-                  <Activity className="h-4 w-4 shrink-0 text-sky-500" aria-hidden="true" />
-                  <span>{formatFullNum(requestCount)}</span>
-                </>
-              )}
+              <Activity className="h-4 w-4 shrink-0 text-sky-500" aria-hidden="true" />
+              <span>{formatFullNum(requestCount)}</span>
             </div>
-            {requestCount === null && (
-              <div className="mt-0.5 text-[10px] text-oai-gray-400">
-                {copy("ticket06.availability.aggregate_only")}
-              </div>
-            )}
           </div>
+          ) : null}
 
+          {costProvided ? (
+            <div
+              className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
+              data-layout-row="tokens"
+              data-testid="usage-total-cost-summary"
+            >
+              <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                {copy("spend.cost.summary.estimated_usage")}
+              </div>
+              <div
+                className={cn(
+                  "mt-1 text-xl font-semibold tabular-nums",
+                  pricingCoverage === "partial"
+                    ? "text-amber-700 dark:text-amber-300"
+                    : "text-oai-gray-900 dark:text-oai-gray-100",
+                )}
+              >
+                {formatCost(cost)}
+              </div>
+              {pricingCoverage === "partial" ? (
+                <div className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                  {copy("ticket06.pricing.partial_hint")}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {hitRateProvided ? (
           <div
             className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
-            data-testid="usage-total-cost-summary"
-          >
-            <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
-              {copy("ticket02.stats.cost")}
-            </div>
-            <div className="mt-1 text-xl font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">
-              {renderCostValue()}
-            </div>
-            {pricingCoverage === "partial" && (
-              <div className="mt-0.5 text-[10px] text-amber-500 dark:text-amber-400">
-                {copy("ticket06.pricing.partial_hint")}
-              </div>
-            )}
-            {pricingCoverage === "unpriced" && (
-              <div className="mt-0.5 text-[10px] text-oai-gray-400">
-                {copy("ticket06.pricing.unpriced_hint")}
-              </div>
-            )}
-          </div>
-
-          <div
-            className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
+            data-layout-row="costs"
             data-testid="usage-cache-hit-summary"
           >
             <div className="flex items-center justify-between">
@@ -557,24 +587,18 @@ export function UsageStatsPanel({
                 <Target className="h-3.5 w-3.5 text-violet-500" aria-hidden="true" />
                 {copy("ticket02.stats.cache_hit_rate")}
               </span>
-              <span className={cn(
-                "font-semibold",
-                hitRateProvided
-                  ? "text-sm text-green-600 dark:text-green-400"
-                  : "text-[11px] text-oai-gray-400",
-              )}>
-                {hitRateProvided ? `${hitRate.toFixed(1)}${percentSymbol}` : unavailableText}
+              <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                {`${hitRate.toFixed(1)}${percentSymbol}`}
               </span>
             </div>
-            {hitRateProvided && (
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-oai-gray-200 dark:bg-oai-gray-700">
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-oai-gray-200 dark:bg-oai-gray-700">
               <div
                 className="h-full rounded-full bg-green-500 transition-all"
                 style={{ width: `${Math.min(100, hitRate)}%` }}
               />
             </div>
-            )}
           </div>
+          ) : null}
         </div>
       </div>
     </Card>

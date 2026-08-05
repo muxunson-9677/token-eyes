@@ -22,14 +22,15 @@ import { InsforgeUserHeaderControls } from "../../components/InsforgeUserHeaderC
 import { CodexResetBanner } from "../../components/CodexResetBanner";
 import { useCodexResetEvents } from "../../hooks/use-codex-reset-events";
 import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native-bridge.js";
+import { NativeWindowBar } from "./NativeWindowBar.jsx";
 
 const STORAGE_KEY = "tt.sidebarCollapsed";
 // v2.0 IA: remembers which parent groups the user has expanded so the
 // choice persists across navigations within a session.
 const EXPANDED_KEY = "tt.sidebarExpanded";
 
-// v2.0 IA: two-level navigation. Top-level "概览" is a single item; "支出"
-// and "设置" are parents that expand to show their child routes. A click on
+// v2.0 IA: overview destinations are direct items; usage/cost and settings
+// are parents that expand to show their child routes. A click on
 // an active parent toggles its children; a click on an inactive parent opens
 // its default child.
 export function getNavGroups() {
@@ -55,6 +56,7 @@ export function getNavGroups() {
     {
       id: "spend",
       label: copy("nav.group.spend"),
+      sectionLabel: copy("nav.section.spend"),
       icon: DollarSign,
       defaultChildTo: "/spend/usage",
       children: [
@@ -65,11 +67,13 @@ export function getNavGroups() {
     {
       id: "settings",
       label: copy("nav.group.settings"),
+      sectionLabel: copy("nav.section.settings"),
       icon: SettingsIcon,
       defaultChildTo: "/settings/basic",
       children: [
         { id: "settings-basic", to: "/settings/basic", label: copy("nav.settings.basic") },
         { id: "settings-cost", to: "/settings/cost", label: copy("nav.settings.cost") },
+        { id: "settings-data", to: "/settings/data", label: copy("nav.settings.data") },
       ],
     },
   ];
@@ -187,7 +191,7 @@ function NavItem({ item, collapsed, active, onClick, unreadCount = 0 }) {
       title={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "tt-sidebar-item tt-sidebar-focusable tt-pressable flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline",
+        "tt-sidebar-item tt-sidebar-focusable tt-pressable flex min-h-10 items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline",
         collapsed && "justify-center px-0 py-2",
         active
           ? "text-oai-black font-medium dark:text-white"
@@ -262,7 +266,7 @@ function NavParent({
         aria-controls={childrenListId}
         aria-label={group.label}
         className={cn(
-          "tt-sidebar-item tt-sidebar-focusable tt-pressable flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]",
+          "tt-sidebar-item tt-sidebar-focusable tt-pressable flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]",
           collapsed && "justify-center px-0 py-2",
           active
             ? "text-oai-black font-medium dark:text-white"
@@ -306,7 +310,7 @@ function NavParent({
                   onClick={onItemClick}
                   aria-current={childActive ? "page" : undefined}
                   className={cn(
-                    "tt-sidebar-item tt-sidebar-focusable tt-pressable flex items-center rounded-md px-2 py-1.5 text-[13px] no-underline",
+                    "tt-sidebar-item tt-sidebar-focusable tt-pressable flex min-h-10 items-center rounded-md px-2 py-1.5 text-[13px] no-underline",
                     childActive
                       ? "text-oai-black font-medium dark:text-white"
                       : "text-oai-gray-600 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-white",
@@ -358,11 +362,12 @@ function buildThemeOptions() {
   ];
 }
 
-function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
+function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false, collapsed = false }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   const ActiveIcon = resolvedTheme === "dark" ? Moon : Sun;
   const themeLabel = copy("settings.appearance.theme.label");
+  const resolvedThemeLabel = copy(`settings.appearance.theme.${resolvedTheme}`);
 
   useEffect(() => {
     if (!open) return;
@@ -388,13 +393,15 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
         title={themeLabel}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "tt-sidebar-focusable tt-pressable inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
+          "tt-theme-trigger tt-sidebar-focusable tt-pressable inline-flex h-10 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
+          collapsed ? "w-10" : "gap-2 px-3",
           glassChrome
-            ? "border border-gray-500/20 dark:border-gray-500/30 bg-gray-500/[0.04] dark:bg-gray-500/[0.06] backdrop-blur-[2px] text-oai-gray-700 dark:text-oai-gray-300 hover:bg-gray-500/10 dark:hover:bg-gray-500/12 hover:border-gray-500/30 dark:hover:border-gray-500/40 hover:text-oai-black dark:hover:text-white"
-            : "border border-oai-gray-200 dark:border-oai-gray-700 text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white hover:border-oai-gray-300 dark:hover:border-oai-gray-600",
+            ? "border backdrop-blur-[2px] text-oai-gray-700 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-white"
+            : "border text-oai-gray-600 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-white",
         )}
       >
         <ActiveIcon className="h-3.5 w-3.5" aria-hidden />
+        {!collapsed && <span className="text-xs font-medium">{resolvedThemeLabel}</span>}
       </button>
       {open && (
         <div
@@ -410,7 +417,7 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
                 role="menuitem"
                 onClick={() => { onSetTheme(value); setOpen(false); }}
                 className={cn(
-                  "tt-sidebar-focusable flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] transition-colors",
+                  "tt-sidebar-focusable flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-[13px] transition-colors",
                   active
                     ? "text-oai-black dark:text-white bg-oai-gray-100 dark:bg-oai-gray-800"
                     : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/60 hover:text-oai-black dark:hover:text-white",
@@ -451,7 +458,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
   // always visible) or if the user previously expanded it this session.
   const [expandedSet, setExpandedSet] = useState(() => {
     const stored = readExpanded();
-    const initial = stored ?? new Set();
+    const initial = stored ?? new Set(["spend", "settings"]);
     navGroups.forEach((group) => {
       if (group.children && isParentActive(pathname, group)) {
         initial.add(group.id);
@@ -513,7 +520,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
               onClick={onClose}
               aria-label={copy("nav.close_menu")}
               title={copy("nav.close_menu")}
-              className="tt-sidebar-focusable flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
+              className="tt-sidebar-focusable flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
             >
               <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
             </button>
@@ -540,9 +547,11 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
               NavGroupLabel for single-item groups (overview) to avoid a
               duplicate visible label on parent rows.
             */}
-            {!group.children && (
-              <NavGroupLabel label={group.label} collapsed={collapsed} first={groupIdx === 0} />
-            )}
+            <NavGroupLabel
+              label={group.children ? group.sectionLabel : group.label}
+              collapsed={collapsed}
+              first={groupIdx === 0}
+            />
             <div className="flex flex-col gap-0.5">
               {group.children ? (
                 <NavParent
@@ -577,7 +586,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
           collapsed ? "flex-col justify-center gap-2" : "justify-between gap-2",
         )}
       >
-        <ThemePill theme={theme} resolvedTheme={resolvedTheme} onSetTheme={setTheme} glassChrome={glassChrome} />
+        <ThemePill theme={theme} resolvedTheme={resolvedTheme} onSetTheme={setTheme} glassChrome={glassChrome} collapsed={collapsed} />
         <div className="flex items-center gap-1.5">
           {/* TEMP: collapse button hidden 鈥?restore when ready
           {!showCloseButton && (
@@ -616,7 +625,7 @@ function Sidebar({ collapsed, onToggleCollapsed }) {
     <aside
       aria-label={copy("nav.aside_label")}
       className={cn(
-        "tt-sidebar-material hidden lg:flex flex-col shrink-0 h-full min-h-0 transition-[width] duration-200",
+        "tt-sidebar-material tt-desktop-sidebar hidden min-[900px]:flex flex-col shrink-0 h-full min-h-0 transition-[width] duration-200",
         collapsed ? "w-[72px]" : "w-[220px]",
       )}
     >
@@ -651,7 +660,7 @@ function MobileDrawer({ open, onClose }) {
 
   if (!open) return null;
   return (
-    <div className="lg:hidden fixed inset-0 z-[80] flex">
+    <div className="tt-mobile-navigation min-[900px]:hidden fixed inset-0 z-[80] flex">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
@@ -677,7 +686,7 @@ function MobileDrawer({ open, onClose }) {
  */
 function MobileTopBar({ onOpenDrawer }) {
   return (
-    <div className="lg:hidden flex items-center justify-between gap-2 px-3 h-14 border-b border-oai-gray-200 dark:border-oai-gray-800">
+    <div className="tt-mobile-navigation min-[900px]:hidden flex items-center justify-between gap-2 px-3 h-14 border-b border-oai-gray-200 dark:border-oai-gray-800">
       <IconButton title={copy("nav.menu")} onClick={onOpenDrawer}>
         <Menu className="h-5 w-5" aria-hidden />
       </IconButton>
@@ -704,6 +713,7 @@ function MobileTopBar({ onOpenDrawer }) {
  *                tapping hamburger opens a slide-in drawer with the same nav.
  */
 export function AppLayout({ children }) {
+  const location = useLocation();
   const { collapsed, toggle } = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
@@ -714,32 +724,64 @@ export function AppLayout({ children }) {
     if (typeof window === "undefined") return false;
     return isNativeEmbed() || isNativeApp();
   }, []);
+  const nativeWindows = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return isNativeWindowsApp();
+  }, []);
+  const referenceRoute = useMemo(() => {
+    const pathname = location?.pathname || "/dashboard";
+    if (pathname === "/dashboard") return "dashboard";
+    if (pathname === "/leaderboard") return "leaderboard";
+    if (pathname === "/reset-history") return "reset-history";
+    if (pathname === "/widgets") return "widgets";
+    if (pathname === "/spend/usage") return "spend-usage";
+    if (pathname === "/spend/cost") return "spend-cost";
+    if (pathname === "/settings/basic") return "settings-basic";
+    if (pathname === "/settings/cost") return "settings-cost";
+    if (pathname === "/settings/data") return "settings-data";
+    return "default";
+  }, [location?.pathname]);
+
+  useEffect(() => {
+    if (!nativeWindows || typeof document === "undefined") return undefined;
+    document.documentElement.classList.add("native-windows-app");
+    return () => document.documentElement.classList.remove("native-windows-app");
+  }, [nativeWindows]);
+
+  let nativeHeader = null;
+  if (nativeWindows) {
+    nativeHeader = <NativeWindowBar />;
+  } else if (nativeEmbed) {
+    nativeHeader = (
+      <div
+        className="h-7 shrink-0"
+        style={{ WebkitAppRegion: "drag" }}
+        aria-hidden
+      />
+    );
+  }
 
   return (
     <div
       className={cn(
         "tt-app-shell fixed inset-0 flex flex-col text-oai-black dark:text-oai-white font-sans overflow-hidden",
-        isNativeWindowsApp() && "tt-native-glass-shell",
-        isNativeWindowsApp()
+        nativeWindows && "tt-native-glass-shell",
+        nativeWindows && `tt-reference-route-${referenceRoute}`,
+        nativeWindows
           ? "bg-oai-gray-100/80 dark:bg-oai-gray-950"
           : nativeEmbed
             ? "bg-transparent"
             : "bg-oai-gray-100/80 dark:bg-oai-gray-950",
       )}
+      data-reference-route={nativeWindows ? referenceRoute : undefined}
     >
-      {nativeEmbed && (
-        <div
-          className="h-7 shrink-0"
-          style={{ WebkitAppRegion: "drag" }}
-          aria-hidden
-        />
-      )}
+      {nativeHeader}
       <div className="flex-1 min-h-0 flex">
         <Sidebar collapsed={collapsed} onToggleCollapsed={toggle} />
         <MobileDrawer open={drawerOpen} onClose={closeDrawer} />
         {/* lg锛氫笌渚ф爮鍐呭鍖哄榻?鈥?渚ф爮搴曢儴鎸夐挳鍖轰负 px-2 py-3锛涗富鍗″彸渚?搴曚晶鐢?pr-3 pb-3 涓?py-3 瑙嗚涓€鑷达紝閬垮厤浠呴潬 p-2 鏄惧緱璐磋竟 */}
         {/* Mac App锛歚lg:pr-3 lg:pb-3` (12pt) 椤讳笌 Swift `DashboardChromeMetrics.mainGutterPoints` 涓€鑷达紝涓诲崱鍦嗚鐢?`--tt-main-card-radius` 娉ㄥ叆 */}
-        <div className="flex-1 min-w-0 min-h-0 p-2 lg:pl-0 lg:pr-3 lg:pb-3 flex flex-col">
+        <div className="tt-native-main-frame flex-1 min-w-0 min-h-0 p-2 min-[900px]:pl-0 min-[900px]:pr-3 min-[900px]:pb-3 flex flex-col">
           <div
             className={cn(
               "tt-main-work-surface flex-1 min-h-0 flex flex-col overflow-hidden",

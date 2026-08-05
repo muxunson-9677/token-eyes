@@ -16,17 +16,21 @@ function ToggleSwitch({ checked, onChange, ariaLabel }) {
       aria-checked={checked}
       aria-label={ariaLabel}
       onClick={onChange}
-      className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
-        checked ? "bg-oai-brand-500" : "bg-oai-gray-300 dark:bg-oai-gray-700",
-      )}
+      className="tt-product-focusable inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
     >
       <span
         className={cn(
-          "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
-          checked ? "translate-x-[18px]" : "translate-x-[3px]",
+          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+          checked ? "bg-oai-brand-500" : "bg-oai-gray-300 dark:bg-oai-gray-700",
         )}
-      />
+      >
+        <span
+          className={cn(
+            "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
+            checked ? "translate-x-[18px]" : "translate-x-[3px]",
+          )}
+        />
+      </span>
     </button>
   );
 }

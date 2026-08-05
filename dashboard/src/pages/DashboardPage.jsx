@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { useAccountView } from "../contexts/AccountViewContext.jsx";
 import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
@@ -21,16 +22,16 @@ import { getDetailsSortColumns, sortDailyRows } from "../lib/daily";
 import { formatDateUTC, getRangeForPeriod } from "../lib/date-range";
 import { DETAILS_PAGE_SIZE, paginateRows, trimLeadingZeroMonths } from "../lib/details";
 import {
-  formatChineseTokenCount,
+  formatTokenCount,
   toDisplayNumber,
   toFiniteNumber,
 } from "../lib/format";
-import { shouldShowInstallCard } from "../lib/install-status";
 import { isNativeApp } from "../lib/native-bridge.js";
 import { getMockNow, isMockEnabled } from "../lib/mock-data";
 import { isLocalDashboardRuntime } from "../lib/local-api-url";
 import { publishUsageLimitsPreloadState } from "../lib/dashboard-preload.js";
 import { resolveSummaryCostUsd } from "../lib/usage-summary-cost";
+import { deriveDataConfidence } from "../lib/data-confidence";
 import {
   appendConnectedTokenOnlySources,
   buildFleetData,
@@ -116,19 +117,6 @@ function addUtcDays(date, days) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
-function isProductionHost(hostname) {
-  if (!hostname) return false;
-  return hostname === "www.tokentracker.cc" || hostname === "tokentracker.cc";
-}
-
-function isForceInstallEnabled() {
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  const raw = String(params.get("force_install") || "").toLowerCase();
-  if (raw !== "1" && raw !== "true") return false;
-  return !isProductionHost(window.location.hostname);
-}
-
 export function DashboardPage({
   baseUrl,
   auth,
@@ -141,6 +129,7 @@ export function DashboardPage({
   signUpUrl = "/sign-up",
   onMainContentVisible,
 }) {
+  const navigate = useNavigate();
   const { resolvedLocale } = useLocale();
   const { currency, rate } = useCurrency();
   const [usdToCny, setUsdToCny] = useState(7.2);
@@ -156,16 +145,13 @@ export function DashboardPage({
     if (typeof window === "undefined") return false;
     return isScreenshotModeEnabled(window.location.search);
   }, []);
-  const forceInstall = useMemo(() => isForceInstallEnabled(), []);
   const [isCapturing, setIsCapturing] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const identityScrambleDurationMs = 2200;
   const [coreIndexCollapsed, setCoreIndexCollapsed] = useState(true);
-  const [installCopied, setInstallCopied] = useState(false);
-  const [sessionExpiredCopied, setSessionExpiredCopied] = useState(false);
+  const [usageDiagnosticsCopied, setUsageDiagnosticsCopied] = useState(false);
   const [manualSyncLoading, setManualSyncLoading] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState("1m");
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [intervalSettingsLoading, setIntervalSettingsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshInProgressRef = useRef(false);
@@ -450,6 +436,7 @@ export function DashboardPage({
     summary,
     rolling,
     source: usageSource,
+    fetchedAt: usageFetchedAt,
     loading: usageLoading,
     error: usageError,
     refresh: refreshUsage,
@@ -471,7 +458,6 @@ export function DashboardPage({
   });
   const {
     daily: dailyBreakdownDaily,
-    loading: dailyBreakdownLoading,
     refresh: refreshDailyBreakdown,
   } = useUsageData({
     baseUrl,
@@ -492,7 +478,6 @@ export function DashboardPage({
 
   const {
     breakdown: modelBreakdown,
-    loading: modelBreakdownLoading,
     refresh: refreshModelBreakdown,
   } = useUsageModelBreakdown({
     baseUrl,
@@ -512,7 +497,6 @@ export function DashboardPage({
   const [projectUsageLimit, setProjectUsageLimit] = useState(3);
   const {
     entries: projectUsageEntries,
-    loading: projectUsageLoading,
     refresh: refreshProjectUsage,
   } = useProjectUsageSummary({
     baseUrl,
@@ -537,7 +521,6 @@ export function DashboardPage({
     rows: trendRows,
     from: trendFrom,
     to: trendTo,
-    loading: trendLoading,
     refresh: refreshTrend,
   } = useTrendData({
     baseUrl,
@@ -725,9 +708,9 @@ export function DashboardPage({
   function renderDetailCell(row, key) {
     if (row?.future || row?.missing) return null;
     if (key === "total_tokens") {
-      return formatChineseTokenCount(getBillableTotal(row));
+      return formatTokenCount(getBillableTotal(row), { locale: resolvedLocale });
     }
-    if (key.endsWith("_tokens")) return formatChineseTokenCount(row?.[key]);
+    if (key.endsWith("_tokens")) return formatTokenCount(row?.[key], { locale: resolvedLocale });
     return toDisplayNumber(row?.[key]);
   }
 
@@ -813,15 +796,13 @@ export function DashboardPage({
     }
   }, [selectedPeriod, customFrom, prevPeriod]);
 
-  const refreshAll = useCallback(async () => {
-    await Promise.all([
-      refreshUsage(),
-      // 热力图已移除 refreshHeatmap(),
+  const refreshAll = useCallback(async ({ background = false } = {}) => {
+    await Promise.all([refreshUsage({ background }), refreshUsageLimits()]);
+    await Promise.allSettled([
       refreshTrend(),
       refreshModelBreakdown(),
       refreshProjectUsage(),
-      refreshDailyBreakdown(),
-      refreshUsageLimits(),
+      refreshDailyBreakdown({ background }),
     ]);
   }, [
     refreshDailyBreakdown,
@@ -842,7 +823,6 @@ export function DashboardPage({
         await triggerLocalSync();
       }
       await refreshAll();
-      setLastUpdatedAt(new Date());
     } catch (error) {
       console.error("[DashboardPage] Refresh failed:", error);
     } finally {
@@ -859,8 +839,7 @@ export function DashboardPage({
       if (isLocalMode) {
         await triggerLocalSync();
       }
-      await refreshAll();
-      setLastUpdatedAt(new Date());
+      await refreshAll({ background: true });
     } catch (error) {
       console.error("[DashboardPage] Auto refresh failed:", error);
     } finally {
@@ -904,20 +883,16 @@ export function DashboardPage({
     }
   }, []);
 
-  const usageLoadingState =
-    manualSyncLoading ||
-    usageLoading ||
-    dailyBreakdownLoading ||
-    trendLoading ||
-    modelBreakdownLoading ||
-    projectUsageLoading;
+  const usageHasData = summary !== null;
+  const usageLoadingState = manualSyncLoading
+    || (usageLoading && !usageHasData);
   // Show the dashboard skeleton only on the *initial* cloud (account-view)
   // load 鈥?while auth/cloud is resolving, or while the first account fetch is
   // in flight and no detail rows exist yet. A later refresh keeps the rendered
   // data (no skeleton, no flash); local mode loads fast and is left untouched.
   const initialDashboardLoading =
     accountViewResolving ||
-    (accountView && usageLoadingState && !hasDetailsActual);
+    (accountView && usageLoadingState && !usageHasData);
   const usageSourceLabel = useMemo(
     () =>
       copy("shared.data_source", {
@@ -992,8 +967,10 @@ export function DashboardPage({
   const summaryLabel = copy("usage.summary.total");
   const summaryTotalTokens = getBillableTotal(summary);
   const summaryValue = useMemo(
-    () => toFiniteNumber(summaryTotalTokens) == null ? "-" : formatChineseTokenCount(summaryTotalTokens),
-    [summaryTotalTokens],
+    () => toFiniteNumber(summaryTotalTokens) == null
+      ? null
+      : formatTokenCount(summaryTotalTokens, { locale: resolvedLocale }),
+    [resolvedLocale, summaryTotalTokens],
   );
 
   const coreIndexCollapseLabel = copy("dashboard.core_index.collapse_label");
@@ -1006,7 +983,7 @@ export function DashboardPage({
   const screenshotTwitterLabel = copy("dashboard.screenshot.twitter_label");
   const screenshotTwitterButton = copy("dashboard.screenshot.twitter_button");
   const screenshotTwitterHint = copy("dashboard.screenshot.twitter_hint");
-  const placeholderShort = copy("shared.placeholder.short");
+  const unattributedLabel = copy("data.confidence.unattributed");
   const agentSummary = useMemo(() => {
     const sources = Array.isArray(modelBreakdown?.sources) ? modelBreakdown.sources : [];
     let topSource = null;
@@ -1021,12 +998,12 @@ export function DashboardPage({
       }
     }
 
-    let agentName = placeholderShort;
-    let modelName = placeholderShort;
-    let modelPercent = "0.0";
+    let agentName = null;
+    let modelName = null;
+    let modelPercent = null;
 
     if (topSource && topSourceTokens > 0) {
-      agentName = topSource?.source ? String(topSource.source).toUpperCase() : placeholderShort;
+      agentName = topSource?.source ? String(topSource.source).toUpperCase() : unattributedLabel;
       const models = Array.isArray(topSource?.models) ? topSource.models : [];
       let topModelTokens = 0;
       for (const model of models) {
@@ -1034,25 +1011,27 @@ export function DashboardPage({
         if (!Number.isFinite(tokens) || tokens <= 0) continue;
         if (tokens > topModelTokens) {
           topModelTokens = tokens;
-          modelName = model?.model ? String(model.model) : placeholderShort;
+          modelName = model?.model ? String(model.model) : unattributedLabel;
         }
       }
       if (topModelTokens > 0) {
         modelPercent = ((topModelTokens / topSourceTokens) * 100).toFixed(1);
+      } else {
+        modelName = unattributedLabel;
+        modelPercent = "100.0";
       }
     }
 
     return { agentName, modelName, modelPercent };
-  }, [modelBreakdown, placeholderShort]);
+  }, [modelBreakdown, unattributedLabel]);
   const displayTotalTokens = toFiniteNumber(summaryTotalTokens) == null
-    ? "-"
-    : formatChineseTokenCount(summaryTotalTokens);
-  const twitterTotalTokens = displayTotalTokens === "-" ? placeholderShort : displayTotalTokens;
+    ? null
+    : formatTokenCount(summaryTotalTokens, { locale: resolvedLocale });
   const screenshotTwitterText = copy("dashboard.screenshot.twitter_text", {
-    total_tokens: twitterTotalTokens,
-    agent_name: agentSummary.agentName,
-    model_name: agentSummary.modelName,
-    model_percent: agentSummary.modelPercent,
+    total_tokens: displayTotalTokens || "",
+    agent_name: agentSummary.agentName || "",
+    model_name: agentSummary.modelName || "",
+    model_percent: agentSummary.modelPercent || "",
   });
   const screenshotTwitterUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -1151,39 +1130,48 @@ export function DashboardPage({
   const metricsRows = useMemo(
     () => [
       {
+        rawValue: summaryTotalTokens,
         label: copy("usage.metric.total"),
-        value: formatChineseTokenCount(summaryTotalTokens),
+        value: formatTokenCount(summaryTotalTokens, { locale: resolvedLocale }),
         valueClassName: "text-white",
       },
       {
+        rawValue: summary?.input_tokens,
         label: copy("usage.metric.input"),
-        value: formatChineseTokenCount(summary?.input_tokens),
+        value: formatTokenCount(summary?.input_tokens, { locale: resolvedLocale }),
       },
       {
+        rawValue: summary?.output_tokens,
         label: copy("usage.metric.output"),
-        value: formatChineseTokenCount(summary?.output_tokens),
+        value: formatTokenCount(summary?.output_tokens, { locale: resolvedLocale }),
       },
       {
+        rawValue: summary?.cached_input_tokens,
         label: copy("usage.metric.cached_input"),
-        value: formatChineseTokenCount(summary?.cached_input_tokens),
+        value: formatTokenCount(summary?.cached_input_tokens, { locale: resolvedLocale }),
       },
       {
+        rawValue: summary?.reasoning_output_tokens,
         label: copy("usage.metric.reasoning_output"),
-        value: formatChineseTokenCount(summary?.reasoning_output_tokens),
+        value: formatTokenCount(summary?.reasoning_output_tokens, { locale: resolvedLocale }),
       },
-    ],
+    ].filter((row) => toFiniteNumber(row.rawValue) != null),
     [
       summary?.cached_input_tokens,
       summary?.input_tokens,
       summary?.output_tokens,
       summary?.reasoning_output_tokens,
       summaryTotalTokens,
+      resolvedLocale,
     ],
   );
 
+  const summaryCostUsd = resolveSummaryCostUsd(summary);
   const summaryCostValue = useMemo(
-    () => formatMvpUsdCny(resolveSummaryCostUsd(summary), usdToCny),
-    [summary?.cost_usd, summary?.total_cost_usd, usdToCny],
+    () => toFiniteNumber(summaryCostUsd) == null
+      ? null
+      : formatMvpUsdCny(summaryCostUsd, usdToCny),
+    [summaryCostUsd, usdToCny],
   );
   const cacheHitSummary = useMemo(() => {
     const result = calculateCacheHitSummary(summary);
@@ -1223,6 +1211,68 @@ export function DashboardPage({
     () => modelUsageDistribution?.rows || [],
     [modelUsageDistribution],
   );
+  const confidenceSourceLabel = usageSource === "cache"
+    ? copy("data.confidence.source.cached_logs")
+    : copy(isLocalMode ? "data.confidence.source.local_logs" : "data.confidence.source.usage_service");
+  const summaryIntegrity = summary?.data_integrity || null;
+  const summaryIntegrityNeedsAttention = Boolean(
+    summaryIntegrity && summaryIntegrity.status !== "verified",
+  );
+  const summaryIntegrityTokenDelta = Number(summaryIntegrity?.component_mismatch_records || 0) > 0
+    ? summaryIntegrity?.component_token_delta
+    : summaryIntegrity?.token_delta;
+  const tokenConfidence = useMemo(
+    () => deriveDataConfidence({
+      metric: "tokens",
+      hasValue: summary !== null,
+      availability: summary !== null ? "available" : "unavailable",
+      accuracy: "exact",
+      coverage: summary !== null
+        ? summaryIntegrityNeedsAttention ? "partial" : "complete"
+        : "unavailable",
+      sourceKind: usageSource,
+      sourceLabel: confidenceSourceLabel,
+      observedAt: usageFetchedAt,
+      lastSuccessAt: usageFetchedAt,
+      isStale: Boolean(usageError && summary !== null),
+      totalTokens: toFiniteNumber(summaryTotalTokens) || 0,
+      reason: usageError || (summaryIntegrityNeedsAttention
+        ? copy("spend.usage.integrity.attention", {
+            delta: Number(summaryIntegrityTokenDelta || 0).toLocaleString(),
+          })
+        : null),
+    }),
+    [
+      confidenceSourceLabel,
+      summary,
+      summaryIntegrity,
+      summaryIntegrityNeedsAttention,
+      summaryIntegrityTokenDelta,
+      summaryTotalTokens,
+      usageError,
+      usageFetchedAt,
+      usageSource,
+    ],
+  );
+  const costConfidence = useMemo(
+    () => deriveDataConfidence({
+      metric: "cost",
+      hasValue: summaryCostUsd != null,
+      availability: summaryCostUsd != null ? "available" : "unavailable",
+      accuracy: "estimated",
+      coverage: summary?.pricing_coverage || (summaryCostUsd == null ? "unavailable" : "complete"),
+      sourceKind: usageSource,
+      sourceLabel: copy("data.confidence.source.pricing"),
+      observedAt: usageFetchedAt,
+      lastSuccessAt: usageFetchedAt,
+      isStale: Boolean(usageError && summary !== null),
+      totalTokens: toFiniteNumber(summaryTotalTokens) || 0,
+      unpricedTokens: toFiniteNumber(summary?.unpriced_tokens) || 0,
+      estimationMethod: copy("data.confidence.method.api_pricing"),
+      reason: usageError || (summaryCostUsd == null ? copy("data.confidence.reason.unpriced") : null),
+    }),
+    [summary, summaryCostUsd, summaryTotalTokens, usageError, usageFetchedAt, usageSource],
+  );
 
   const shareCardData = useShareCardData({
     enabled: shareModalOpen,
@@ -1245,62 +1295,24 @@ export function DashboardPage({
 
   const openCostModal = useCallback(() => setCostModalOpen(true), []);
   const closeCostModal = useCallback(() => setCostModalOpen(false), []);
-  const costInfoEnabled = summaryCostValue && summaryCostValue !== "-" && fleetData.length > 0;
+  const costInfoEnabled = Boolean(summaryCostValue && fleetData.length > 0);
 
-  const installInitCmdBase = copy("dashboard.install.cmd.init");
-  const resolvedLinkCode = !linkCodeExpired ? linkCode : null;
-  const installInitCmdCopy = resolvedLinkCode
-    ? copy("dashboard.install.cmd.init_link_code", {
-        link_code: resolvedLinkCode,
-      })
-    : installInitCmdBase;
-  const installInitCmdDisplay = installInitCmdBase;
-  const installSyncCmd = copy("dashboard.install.cmd.sync");
-  const installCopyLabel = resolvedLinkCode
-    ? copy("dashboard.install.copy")
-    : copy("dashboard.install.copy_base");
-  const installCopiedLabel = copy("dashboard.install.copied");
-  const sessionExpiredCopyLabel = copy("dashboard.session_expired.copy_label");
-  const sessionExpiredCopiedLabel = copy("dashboard.session_expired.copied");
-  const hasActiveDeviceToken = Boolean(
-    userStatus?.install?.has_active_device_token ?? userStatus?.install?.hasActiveDeviceToken,
-  );
-  const shouldShowInstall = !isNativeApp() && shouldShowInstallCard({
-    publicMode,
-    screenshotMode,
-    forceInstall,
-    accessEnabled,
-    heatmapLoading: false, // 热力图已移除
-    activeDays,
-    hasActiveDeviceToken,
-  });
-  const installPrompt = copy("dashboard.install.prompt");
-
-  const handleCopyInstall = useCallback(async () => {
-    if (!installInitCmdCopy) return;
-    const didCopy = await safeWriteClipboard(installInitCmdCopy);
+  const handleCopyUsageDiagnostics = useCallback(async () => {
+    const payload = {
+      product: "Token Eyes",
+      surface: "dashboard",
+      state: summary === null ? "unavailable" : "stale",
+      source: usageSource || "edge",
+      last_success_at: usageFetchedAt,
+      error: usageError,
+    };
+    const didCopy = await safeWriteClipboard(JSON.stringify(payload, null, 2));
     if (!didCopy) return;
-    setInstallCopied(true);
-    window.setTimeout(() => setInstallCopied(false), 2000);
-  }, [installInitCmdCopy]);
+    setUsageDiagnosticsCopied(true);
+    window.setTimeout(() => setUsageDiagnosticsCopied(false), 2000);
+  }, [summary, usageError, usageFetchedAt, usageSource]);
 
-  const handleCopySessionExpired = useCallback(async () => {
-    if (!installInitCmdBase) return;
-    const didCopy = await safeWriteClipboard(installInitCmdBase);
-    if (!didCopy) return;
-    setSessionExpiredCopied(true);
-    window.setTimeout(() => setSessionExpiredCopied(false), 2000);
-  }, [installInitCmdBase]);
-
-  const dailyEmptyTemplate = useMemo(
-    () => copy("dashboard.daily.empty", { cmd: "{{cmd}}" }),
-    [resolvedLocale],
-  );
-  const [dailyEmptyPrefix, dailyEmptySuffix] = useMemo(() => {
-    const parts = dailyEmptyTemplate.split("{{cmd}}");
-    if (parts.length === 1) return [dailyEmptyTemplate, ""];
-    return [parts[0], parts.slice(1).join("{{cmd}}")];
-  }, [dailyEmptyTemplate]);
+  const dailyEmptyMessage = copy("dashboard.daily.empty");
 
   // Header 鍜?Footer 宸茬畝鍖栵紝涓嶆樉绀虹櫥褰?GitHub绛?
   const headerStatus = null;
@@ -1343,13 +1355,6 @@ export function DashboardPage({
       signedIn={signedIn}
       publicMode={publicMode}
       isLocalMode={isLocalMode}
-      shouldShowInstall={shouldShowInstall}
-      installPrompt={installPrompt}
-      handleCopyInstall={handleCopyInstall}
-      installCopied={installCopied}
-      installCopiedLabel={installCopiedLabel}
-      installCopyLabel={installCopyLabel}
-      installInitCmdDisplay={installInitCmdDisplay}
       linkCodeLoading={linkCodeLoading}
       linkCodeError={linkCodeError}
       trendRowsForDisplay={trendRowsForDisplay}
@@ -1375,8 +1380,10 @@ export function DashboardPage({
       metricsRows={metricsRows}
       summaryLabel={summaryLabel}
       summaryValue={summaryValue}
-      summaryTotalTokensRaw={toFiniteNumber(summaryTotalTokens) || 0}
+      summaryTotalTokensRaw={toFiniteNumber(summaryTotalTokens)}
       summaryCostValue={summaryCostValue}
+      tokenConfidence={tokenConfidence}
+      costConfidence={costConfidence}
       cacheHitSummary={cacheHitSummary}
       summaryConversationsValue={summaryConversationsValue}
       rollingUsage={rolling}
@@ -1393,19 +1400,25 @@ export function DashboardPage({
       usageLoadingState={usageLoadingState}
       initialDashboardLoading={initialDashboardLoading}
       usageError={usageError}
+      usageHasData={summary !== null}
+      usageSource={usageSource}
+      usageLastSuccessAt={usageFetchedAt}
+      onOpenDataSources={() => navigate("/settings/data")}
+      onOpenUsageDetails={() => navigate("/spend/usage")}
+      onOpenCost={() => navigate("/spend/cost")}
+      onCopyUsageDiagnostics={handleCopyUsageDiagnostics}
+      usageDiagnosticsCopied={usageDiagnosticsCopied}
       rangeLabel={rangeLabel}
       refreshInterval={refreshInterval}
       onRefreshIntervalChange={handleRefreshIntervalChange}
-      lastUpdatedAt={lastUpdatedAt}
+      lastUpdatedAt={usageFetchedAt}
       isRefreshing={isRefreshing}
       timeZoneRangeLabel={timeZoneRangeLabel}
       usageSourceLabel={usageSourceLabel}
       fleetData={fleetData}
       modelUsageDistribution={modelUsageDistribution}
       hasDetailsActual={hasDetailsActual}
-      dailyEmptyPrefix={dailyEmptyPrefix}
-      installSyncCmd={installSyncCmd}
-      dailyEmptySuffix={dailyEmptySuffix}
+      dailyEmptyMessage={dailyEmptyMessage}
       detailsColumns={detailsColumns}
       ariaSortFor={ariaSortFor}
       toggleSort={toggleSort}

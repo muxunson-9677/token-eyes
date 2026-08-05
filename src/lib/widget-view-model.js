@@ -10,7 +10,26 @@ const STATUS_ORDER = Object.freeze({
   stopped: 3,
   unknown: 4,
 });
-const WINDOW_ORDER = Object.freeze({ "5h": 0, "7d": 1, monthly: 2 });
+const WINDOW_ORDER = Object.freeze({
+  "5h": 0,
+  "7d": 1,
+  monthly: 2,
+  "自动与 Composer": 3,
+  API: 4,
+  "快速请求": 5,
+});
+const PROVIDER_NAMES = Object.freeze({
+  aliyun_bailian: "阿里云百炼",
+  claude: "Claude",
+  codex: "Codex",
+  cursor: "Cursor",
+  glm: "GLM",
+  hermes: "Hermes",
+  kimi: "Kimi",
+  minimax: "MiniMax",
+  trae: "TRAE",
+  xiaomi_mimo: "小米 MiMo",
+});
 const ACTIVE_SESSION_WINDOWS_MS = Object.freeze({
   "1h": 60 * 60 * 1000,
   "3h": 3 * 60 * 60 * 1000,
@@ -48,6 +67,14 @@ function optionalLabel(value) {
     .replace(/\s+/gu, " ")
     .trim();
   return label.slice(0, 80) || null;
+}
+
+function safeNote(value) {
+  const note = String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return note.slice(0, 200) || null;
 }
 
 function finiteNonNegative(value) {
@@ -197,6 +224,7 @@ function buildLimits(limits, selectedAgent) {
       window: Object.hasOwn(WINDOW_ORDER, item?.window) ? item.window : "other",
       usedPercent: usedPercent(item?.usedPercent),
       resetAt: safeIso(item?.resetAt),
+      notes: safeNote(item?.notes),
       error: typeof item?.error === "string" ? safeLabel(item.error, "").slice(0, 120) : null,
     }))
     .sort((left, right) => (
@@ -263,15 +291,89 @@ function limitResetIso(value) {
   return new Date(milliseconds).toISOString();
 }
 
-function flattenUsageLimitsPayload(payload) {
-  const providerNames = {
-    claude: "Claude",
-    codex: "Codex",
-    cursor: "Cursor",
-    hermes: "Hermes",
-  };
+function providerName(value, fallback = "Unknown") {
+  const key = agentKey(value);
+  if (PROVIDER_NAMES[key]) return PROVIDER_NAMES[key];
+  return safeLabel(value, fallback);
+}
+
+function planWindowName(kind) {
+  const normalized = String(kind || "").trim().toLowerCase();
+  if (["rolling_5_hour", "session", "5h"].includes(normalized)) return "5h";
+  if (["rolling_weekly", "weekly", "7d"].includes(normalized)) return "7d";
+  if (["total", "monthly"].includes(normalized)) return "monthly";
+  if (normalized === "auto_composer") return "自动与 Composer";
+  if (normalized === "api") return "API";
+  if (normalized === "fast_request") return "快速请求";
+  return "other";
+}
+
+function quotaWindowPercent(window) {
+  const directPercent = usedPercent(window?.percentage);
+  if (directPercent != null) return directPercent;
+  const used = Number(window?.used);
+  const total = Number(window?.total);
+  if (!Number.isFinite(used) || !Number.isFinite(total) || used < 0 || total <= 0) return null;
+  return usedPercent((used / total) * 100);
+}
+
+function flattenTokenPlanRecords(records) {
   const output = [];
-  for (const [agent, provider] of Object.entries(providerNames)) {
+  for (const record of Array.isArray(records) ? records : []) {
+    if (!record || typeof record !== "object") continue;
+    const agent = agentKey(record.source || record.provider_id) || "unknown";
+    const provider = providerName(record.provider_id || agent);
+    const accountLabel = safeLabel(record.plan_label, provider);
+    const notes = safeNote(record.notes);
+    const planId = safeId(record.id, "plan");
+    const windows = Array.isArray(record.quota_windows) ? record.quota_windows : [];
+    for (const window of windows) {
+      const windowName = planWindowName(window?.kind);
+      const windowId = windowName === "other"
+        ? safeId(window?.kind, "window")
+        : ["5h", "7d", "monthly"].includes(windowName)
+          ? windowName
+          : String(window?.kind || "other").trim().toLowerCase();
+      output.push({
+        id: safeId(`${agent}:${planId}:${windowId}`, "limit"),
+        agent,
+        provider,
+        accountLabel,
+        window: windowName,
+        usedPercent: quotaWindowPercent(window),
+        resetAt: safeIso(window?.resets_at || window?.reset_at),
+        notes,
+        error: null,
+      });
+    }
+    if (windows.length === 0) {
+      const total = Number(record.total_quota);
+      const used = Number(record.used_quota);
+      if (Number.isFinite(total) && total > 0 && Number.isFinite(used) && used >= 0) {
+        output.push({
+          id: safeId(`${agent}:${planId}:monthly`, "limit"),
+          agent,
+          provider,
+          accountLabel,
+          window: "monthly",
+          usedPercent: usedPercent((used / total) * 100),
+          resetAt: safeIso(record.expires_at),
+          notes,
+          error: null,
+        });
+      }
+    }
+  }
+  return output;
+}
+
+function flattenUsageLimitsPayload(payload, tokenPlans = []) {
+  const planLimits = flattenTokenPlanRecords(tokenPlans);
+  const planAgents = new Set(planLimits.map((item) => item.agent));
+  const output = [];
+  for (const agent of ["claude", "codex", "cursor", "hermes"]) {
+    if (planAgents.has(agent)) continue;
+    const provider = providerName(agent);
     const data = payload?.[agent];
     if (!data || data.configured !== true) continue;
     const windows = [
@@ -292,6 +394,7 @@ function flattenUsageLimitsPayload(payload) {
         window: windowName,
         usedPercent: usedPercent(window.used_percent),
         resetAt: limitResetIso(window.reset_at),
+        notes: null,
         error: null,
       });
     }
@@ -304,11 +407,12 @@ function flattenUsageLimitsPayload(payload) {
         window: "other",
         usedPercent: null,
         resetAt: null,
+        notes: null,
         error: safeLabel(data.error, "Refresh failed").slice(0, 120),
       });
     }
   }
-  return output;
+  return [...planLimits, ...output];
 }
 
 function buildWidgetViewModel({

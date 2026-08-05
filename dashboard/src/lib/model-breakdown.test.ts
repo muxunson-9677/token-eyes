@@ -65,6 +65,24 @@ describe("buildModelUsageDistribution", () => {
     expect(result.rows.reduce((sum: number, row: any) => sum + row.tokens, 0)).toBe(1780);
   });
 
+  it("groups measured tokens with missing source or model names as unattributed", () => {
+    const copyFn = (key: string) => key === "data.confidence.unattributed" ? "Unattributed" : key;
+    const breakdown = {
+      sources: [{
+        source: null,
+        totals: { total_tokens: 100 },
+        models: [{ model: null, totals: { total_tokens: 100 } }],
+      }],
+    };
+
+    const fleet = buildFleetData(breakdown, { copyFn });
+    const distribution = buildModelUsageDistribution(breakdown, { copyFn });
+
+    expect(fleet[0]).toMatchObject({ label: "Unattributed", usage: 100 });
+    expect(fleet[0].models[0]).toMatchObject({ name: "Unattributed", usage: 100 });
+    expect(distribution.rows[0]).toMatchObject({ name: "Unattributed", tokens: 100 });
+  });
+
   it("keeps every measured model separate when the overview asks for the full distribution", () => {
     const breakdown = {
       sources: [{

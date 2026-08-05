@@ -34,48 +34,6 @@ const USAGE_TOTALS = {
   pricing_coverage: "complete",
 };
 
-const LONG_CURRENT_TOTALS = {
-  api_usd: 999_999_999.99,
-  api_cny: 7_199_999_999.93,
-  subscription_usd: 888_888_888.88,
-  subscription_cny: 6_399_999_999.94,
-  other_ai_usd: 0,
-  other_ai_cny: 0,
-  combined_usd: 1_888_888_888.87,
-  combined_cny: 13_599_999_999.87,
-  lifetime_combined_usd: 9_999_999_999.99,
-  lifetime_combined_cny: 71_999_999_999.93,
-  usd_to_cny: 7.2,
-};
-
-const LONG_PREVIOUS_TOTALS = {
-  api_usd: 0.01,
-  api_cny: 0.07,
-  subscription_usd: 0.02,
-  subscription_cny: 0.14,
-  other_ai_usd: 0,
-  other_ai_cny: 0,
-  combined_usd: 0.03,
-  combined_cny: 0.21,
-  lifetime_combined_usd: 0.03,
-  lifetime_combined_cny: 0.21,
-  usd_to_cny: 7.2,
-};
-
-const ZERO_TOTALS = {
-  api_usd: 0,
-  api_cny: 0,
-  subscription_usd: 0,
-  subscription_cny: 0,
-  other_ai_usd: 0,
-  other_ai_cny: 0,
-  combined_usd: 0,
-  combined_cny: 0,
-  lifetime_combined_usd: 0,
-  lifetime_combined_cny: 0,
-  usd_to_cny: 7.2,
-};
-
 function readArg(flag, fallback) {
   const index = process.argv.indexOf(flag);
   if (index === -1) return fallback;
@@ -210,11 +168,6 @@ function usageUrl(baseUrl, theme) {
   return url.toString();
 }
 
-function currentMonthKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function jsonResponse(body, status = 200) {
   return {
     status,
@@ -284,15 +237,30 @@ async function installApiScenario(page, scenario) {
     }
 
     if (slug === "tokentracker-spend-records") {
-      const isCurrent = (requestUrl.searchParams.get("from") || "").startsWith(
-        currentMonthKey(),
-      );
-      const totals = scenario === "zero"
-        ? ZERO_TOTALS
-        : isCurrent
-          ? LONG_CURRENT_TOTALS
-          : LONG_PREVIOUS_TOTALS;
-      await route.fulfill(jsonResponse({ records: [], totals }));
+      const requestNumber = requests.get(slug) || 0;
+      const isPreviousMonth = requestNumber % 2 === 0;
+      const currentTotals = scenario === "zero"
+        ? {
+          api_usd: 0,
+          subscription_usd: 0,
+          combined_usd: 0,
+          lifetime_combined_usd: 0,
+        }
+        : {
+          api_usd: 8.25,
+          subscription_usd: 20,
+          combined_usd: 28.25,
+          lifetime_combined_usd: 138.4,
+        };
+      const previousTotals = scenario === "zero"
+        ? { api_usd: 0, subscription_usd: 0, combined_usd: 0 }
+        : { api_usd: 7.36, subscription_usd: 20, combined_usd: 29.43 };
+      await route.fulfill(jsonResponse({
+        records: [],
+        totals: isPreviousMonth ? previousTotals : currentTotals,
+        by_source: [],
+      }));
+      countFulfilled(slug);
       return;
     }
 
@@ -345,19 +313,27 @@ async function installApiScenario(page, scenario) {
 async function waitForScenario(page, scenario, api, runtimeErrors) {
   const target = scenario === "long" || scenario === "zero"
     ? page.getByTestId("usage-stats-layout")
-    : page.locator(`[data-testid="usage-stats-state"][data-state="${scenario}"]`);
+    : scenario === "error"
+      ? page.getByRole("status")
+      : page.locator(`[data-testid="usage-stats-state"][data-state="${scenario}"]`);
   const deadline = Date.now() + 8_000;
   let visibleSince = null;
   while (Date.now() < deadline) {
     const summaryRequested = (api.requests.get("tokentracker-usage-summary") || 0) >= 1;
+    const fulfilledCount = api.fulfilled.get("tokentracker-usage-summary") || 0;
     const summarySettled = scenario === "loading"
       ? summaryRequested
-      : (api.fulfilled.get("tokentracker-usage-summary") || 0) >= 1;
-    if (summarySettled && await target.isVisible().catch(() => false)) {
+      : scenario === "error"
+        ? fulfilledCount >= 2
+        : fulfilledCount >= 1;
+    const financialSettled = scenario === "long" || scenario === "zero"
+      ? (api.fulfilled.get("tokentracker-spend-records") || 0) >= 2
+      : true;
+    if (summarySettled && financialSettled && await target.isVisible().catch(() => false)) {
       visibleSince ??= Date.now();
       if (Date.now() - visibleSince >= 250) {
         if (scenario === "long" || scenario === "zero") {
-          await page.getByTestId("usage-cost-summary").waitFor({
+          await page.getByTestId("usage-summary-rail").waitFor({
             state: "visible",
             timeout: 8_000,
           });
@@ -393,35 +369,58 @@ async function assertScenarioRendered(page, scenario, requests) {
   }
 
   if (scenario === "long") {
-    const usd = await page.getByTestId("usage-cost-usd").allTextContents();
-    const cny = await page.getByTestId("usage-cost-cny").allTextContents();
+    const dimensions = await page.getByTestId("usage-dimension-card").allTextContents();
+    const requests = await page.getByTestId("usage-request-value").textContent();
+    const cacheHit = await page.getByTestId("usage-cache-hit-summary").textContent();
+    if (dimensions.length !== 4 || !dimensions.every((value) => /\d/u.test(value))) {
+      throw new Error(`Token dimensions did not render: ${JSON.stringify(dimensions)}`);
+    }
+    if (!requests?.includes("5,634")) {
+      throw new Error(`Request total did not render: ${JSON.stringify(requests)}`);
+    }
+    if (!cacheHit?.includes("91.4%")) {
+      throw new Error(`Cache hit rate did not render: ${JSON.stringify(cacheHit)}`);
+    }
+    const costCards = await page.getByTestId("usage-cost-card").allTextContents();
     const comparisons = await page.getByTestId("monthly-cost-comparison").allTextContents();
-    if (!usd.includes("USD 999,999,999.99")) {
-      throw new Error(`Long USD values did not render: ${JSON.stringify(usd)}`);
+    if (costCards.length !== 4 || comparisons.length !== 3) {
+      throw new Error(`Restored financial summary is incomplete: ${JSON.stringify({ costCards, comparisons })}`);
     }
-    if (cny.length !== 4 || !cny.every((value) => value.length >= 3 && /\d/.test(value))) {
-      throw new Error(`Long CNY values did not render: ${JSON.stringify(cny)}`);
-    }
-    if (
-      comparisons.length !== 3
-      || !comparisons.every((value) => value.length >= 12 && /\d/.test(value))
-    ) {
-      throw new Error(`Long comparisons did not render: ${JSON.stringify(comparisons)}`);
-    }
-    if ((requests.get("tokentracker-spend-records") || 0) < 2) {
-      throw new Error("Long scenario did not exercise current and previous spend API mocks");
+    if (!costCards.some((value) => value.includes("USD 138.40"))) {
+      throw new Error(`Lifetime financial total did not render: ${JSON.stringify(costCards)}`);
     }
     return;
   }
 
   if (scenario === "zero") {
-    const usd = await page.getByTestId("usage-cost-usd").allTextContents();
-    const cny = await page.getByTestId("usage-cost-cny").allTextContents();
-    if (usd.length !== 4 || !usd.every((value) => value === "USD 0.00")) {
-      throw new Error(`Real-zero USD values are incorrect: ${JSON.stringify(usd)}`);
+    const dimensions = await page.getByTestId("usage-dimension-card").allTextContents();
+    const requests = await page.getByTestId("usage-request-value").textContent();
+    const cacheHit = await page.getByTestId("usage-cache-hit-summary").textContent();
+    if (dimensions.length !== 4 || !dimensions.every((value) => value.includes("0"))) {
+      throw new Error(`Real-zero Token dimensions are incorrect: ${JSON.stringify(dimensions)}`);
     }
-    if (cny.length !== 4 || !cny.every((value) => value === "\u00a50")) {
-      throw new Error(`Real-zero CNY values are incorrect: ${JSON.stringify(cny)}`);
+    if (!requests?.includes("0") || !cacheHit?.includes("0.0%")) {
+      throw new Error(`Real-zero usage summaries are incorrect: ${JSON.stringify({ requests, cacheHit })}`);
+    }
+    const costCards = await page.getByTestId("usage-cost-card").allTextContents();
+    const comparisons = await page.getByTestId("monthly-cost-comparison").allTextContents();
+    if (costCards.length !== 4 || !costCards.every((value) => value.includes("USD 0.00"))) {
+      throw new Error(`Real-zero financial cards are incorrect: ${JSON.stringify(costCards)}`);
+    }
+    if (comparisons.length !== 3 || !comparisons.every((value) => value.includes("持平"))) {
+      throw new Error(`Real-zero month comparisons are incorrect: ${JSON.stringify(comparisons)}`);
+    }
+    return;
+  }
+
+  if (scenario === "error") {
+    const staleData = page.getByTestId("usage-stats-layout");
+    const status = page.getByRole("status");
+    if (!await staleData.isVisible() || !await status.isVisible()) {
+      throw new Error("Refresh error did not preserve the last successful usage data");
+    }
+    if (!(await status.textContent()).includes("Synthetic refresh failure")) {
+      throw new Error("Refresh error did not explain the failed API request");
     }
     return;
   }
@@ -431,9 +430,6 @@ async function assertScenarioRendered(page, scenario, requests) {
   );
   if (!await state.isVisible()) {
     throw new Error(`Expected a visible ${scenario} state`);
-  }
-  if (scenario === "error" && !(await state.textContent()).includes("Synthetic refresh failure")) {
-    throw new Error("Error scenario did not render the API refresh failure");
   }
 }
 
@@ -458,9 +454,7 @@ async function inspectGeometry(page) {
       document.querySelector('[role="toolbar"]'),
       stateAnchor?.closest(".tt-surface"),
       stateAnchor,
-      document.querySelector('[data-testid="usage-cost-summary"]'),
       document.querySelector('[data-testid="usage-summary-rail"]'),
-      ...document.querySelectorAll('[data-testid="usage-cost-card"]'),
     ].filter(Boolean);
     const targets = Array.from(new Set(candidates));
     return {

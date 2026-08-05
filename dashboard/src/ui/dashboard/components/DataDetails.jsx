@@ -27,9 +27,7 @@ export function DataDetails({
   // Daily breakdown props
   copy,
   hasDetailsActual,
-  dailyEmptyPrefix,
-  installSyncCmd,
-  dailyEmptySuffix,
+  dailyEmptyMessage,
   detailsColumns,
   ariaSortFor,
   toggleSort,
@@ -57,7 +55,11 @@ export function DataDetails({
   }, [dailyBreakdownRows]);
 
   return (
-    <Card variant="nested">
+    <Card
+      variant="nested"
+      className="h-full min-h-0"
+      bodyClassName="flex h-full min-h-0 flex-col overflow-hidden"
+    >
       {/* Tab Switcher + Controls */}
       <div className="flex items-center justify-between gap-3 mb-4">
         <div role="tablist" aria-label="Data view" className="flex gap-1">
@@ -66,7 +68,7 @@ export function DataDetails({
             aria-selected={activeTab === "daily"}
             type="button"
             onClick={() => setActiveTab("daily")}
-            className={`tt-analytics-focusable tt-pressable inline-flex items-center gap-1.5 rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`tt-analytics-focusable tt-pressable inline-flex min-h-10 items-center gap-1.5 rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
               activeTab === "daily"
                 ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                 : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
@@ -80,7 +82,7 @@ export function DataDetails({
             aria-selected={activeTab === "projects"}
             type="button"
             onClick={() => setActiveTab("projects")}
-            className={`tt-analytics-focusable tt-pressable inline-flex items-center gap-1.5 rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`tt-analytics-focusable tt-pressable inline-flex min-h-10 items-center gap-1.5 rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
               activeTab === "projects"
                 ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                 : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
@@ -94,27 +96,25 @@ export function DataDetails({
 
       {/* Projects Tab */}
       {activeTab === "projects" && (
-        <ProjectUsagePanel
-          embedded
-          entries={projectEntries}
-          limit={projectLimit}
-          onLimitChange={onProjectLimitChange}
-        />
+        <div className="min-h-0 flex-1 overflow-auto oai-scrollbar">
+          <ProjectUsagePanel
+            embedded
+            entries={projectEntries}
+            limit={projectLimit}
+            onLimitChange={onProjectLimitChange}
+          />
+        </div>
       )}
 
       {/* Daily Tab */}
       {activeTab === "daily" && (
-        <div>
+        <div className="flex min-h-0 flex-1 flex-col">
           {visibleDailyRows.length === 0 ? (
             <div className="oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300 mb-4">
-              {dailyEmptyPrefix}
-              <code className="mx-1 rounded border border-oai-gray-300 dark:border-oai-gray-700 oai-bg-elevated px-1.5 py-0.5 font-mono oai-text-caption">
-                {installSyncCmd}
-              </code>
-              {dailyEmptySuffix}
+              {dailyEmptyMessage}
             </div>
           ) : (
-          <div className="overflow-auto max-h-[384px] -mx-4 oai-scrollbar">
+          <div className="-mx-4 min-h-0 flex-1 overflow-auto oai-scrollbar">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-oai-gray-200 dark:border-oai-gray-700">
@@ -127,7 +127,7 @@ export function DataDetails({
                       <button
                         type="button"
                         onClick={() => toggleSort(column.key)}
-                        className="flex w-full items-center justify-start px-2.5 sm:px-4 py-2 text-left oai-text-caption font-semibold text-oai-gray-600 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white transition-colors"
+                        className="flex min-h-10 w-full items-center justify-start px-2.5 py-2 text-left oai-text-caption font-semibold text-oai-gray-600 transition-colors hover:text-oai-black dark:text-oai-gray-300 dark:hover:text-oai-white sm:px-4"
                       >
                         <span className="inline-flex items-center gap-1">
                           <span>{column.label}</span>

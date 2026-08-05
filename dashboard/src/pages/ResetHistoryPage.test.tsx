@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexResetHistoryEvent } from "../lib/api";
 
 const resetContext = vi.hoisted(() => ({
@@ -50,6 +51,7 @@ function officialReset(
   id: string,
   occurredAt: Date,
   sourceUrl = "https://x.com/thsottiaux/status/2082317452755751098",
+  resetKind: "hard" | "banked" | "mixed" | "unknown" = "hard",
 ): CodexResetHistoryEvent {
   return {
     id,
@@ -69,7 +71,7 @@ function officialReset(
     source_url: sourceUrl,
     source_author: "thsottiaux",
     source: "signed_feed",
-    reset_kind: "hard",
+    reset_kind: resetKind,
     reset_scope: "all_codex_work_users",
     title: "Codex official extra reset",
     summary: "FULL_SUMMARY_MUST_NOT_RENDER",
@@ -77,6 +79,10 @@ function officialReset(
 }
 
 describe("ResetHistoryPage", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("shows only official extra resets with a concise source, reset type, scope, and exact time", () => {
     const official = officialReset("today", new Date(2026, 6, 26, 14, 32));
     resetContext.value.history = [
@@ -157,6 +163,9 @@ describe("ResetHistoryPage", () => {
 
       const stats = screen.getByTestId("reset-history-statistics");
       expect(within(stats).getAllByTestId("reset-history-stat")).toHaveLength(5);
+      expect(within(stats).getAllByTestId("reset-history-stat-icon")).toHaveLength(5);
+      expect(within(stats).getAllByTestId("reset-history-stat").map((node) => node.dataset.tone))
+        .toEqual(["blue", "emerald", "violet", "amber", "rose"]);
       expect(stats).toHaveTextContent("copy:reset_history.stats.period");
       expect(stats).toHaveTextContent("copy:reset_history.stats.count");
       expect(stats).toHaveTextContent("copy:reset_history.stats.average");
@@ -165,6 +174,64 @@ describe("ResetHistoryPage", () => {
       expect(screen.getAllByTestId("reset-history-item")).toHaveLength(4);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("hides interval statistics when there is not enough real data", () => {
+    resetContext.value.history = [
+      officialReset("one", new Date()),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getAllByTestId("reset-history-stat")).toHaveLength(2);
+    expect(document.body).not.toHaveTextContent("copy:reset_history.stats.insufficient");
+  });
+
+  it("uses a different semantic icon and tone for each reset kind", () => {
+    resetContext.value.history = [
+      officialReset("hard", new Date("2026-07-29T00:00:00.000Z"), "https://x.com/source/hard", "hard"),
+      officialReset("banked", new Date("2026-07-28T00:00:00.000Z"), "https://x.com/source/banked", "banked"),
+      officialReset("mixed", new Date("2026-07-27T00:00:00.000Z"), "https://x.com/source/mixed", "mixed"),
+      officialReset("unknown", new Date("2026-07-26T00:00:00.000Z"), "https://x.com/source/unknown", "unknown"),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    const nodes = screen.getAllByTestId("reset-history-node");
+    expect(nodes.map((node) => node.dataset.kind)).toEqual(["hard", "banked", "mixed", "unknown"]);
+    expect(nodes.map((node) => node.dataset.tone)).toEqual(["emerald", "blue", "violet", "amber"]);
+    expect(nodes.map((node) => node.querySelector("svg")?.getAttribute("data-kind")))
+      .toEqual(["hard", "banked", "mixed", "unknown"]);
+  });
+
+  it("saves the selected surprise effect and previews it without reset side effects", async () => {
+    const user = userEvent.setup();
+    const previews: unknown[] = [];
+    const listener = (event: Event) => previews.push((event as CustomEvent).detail);
+    window.addEventListener("token-eyes:reset-celebration-preview", listener);
+    window.localStorage.removeItem("token-eyes:official-reset-celebrated:v1");
+    resetContext.value.history = [];
+
+    try {
+      render(<ResetHistoryPage />);
+      const selector = screen.getByLabelText("copy:reset_history.effect.label");
+      const button = screen.getByRole("button", {
+        name: "copy:reset_history.preview_celebration_aria",
+      });
+
+      expect(selector).toHaveValue("meteors");
+      fireEvent.change(selector, { target: { value: "fireworks" } });
+      expect(selector).toHaveValue("fireworks");
+      expect(window.localStorage.getItem("token-eyes:reset-celebration-effect:v1"))
+        .toBe("fireworks");
+      expect(within(button).getByTestId("reset-history-preview-icon")).toBeInTheDocument();
+      await user.click(button);
+
+      expect(previews).toEqual([{ effectId: "fireworks" }]);
+      expect(window.localStorage.getItem("token-eyes:official-reset-celebrated:v1")).toBeNull();
+    } finally {
+      window.removeEventListener("token-eyes:reset-celebration-preview", listener);
     }
   });
 });

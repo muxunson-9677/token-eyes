@@ -100,16 +100,18 @@ test("desktop widget grants native dragging and starts it only from non-interact
   assert.match(widget, /button|input|menu|slider/u);
 });
 
-test("desktop widget persists a project selection preference", () => {
+test("desktop widget persists project, active-session, and usage-plan preferences", () => {
   const hook = read("dashboard/src/hooks/use-desktop-widget.ts");
   const widgetWindow = read("src-tauri/src/widget_window.rs");
   assert.match(hook, /selectedProjectIds/u);
   assert.match(hook, /selectedProjects/u);
   assert.match(hook, /activeSessionWindow/u);
+  assert.match(hook, /selectedLimitIds/u);
   assert.match(widgetWindow, /selected_project_ids/u);
   assert.match(widgetWindow, /selected_projects/u);
   assert.match(widgetWindow, /active_session_window/u);
-  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*5/u);
+  assert.match(widgetWindow, /selected_limit_ids/u);
+  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*6/u);
 });
 
 test("saving widget preferences notifies the already-open floating WebView", () => {

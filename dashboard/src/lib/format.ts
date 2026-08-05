@@ -91,6 +91,28 @@ export function formatChineseTokenCount(
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: safeDecimals }).format(number);
 }
 
+/**
+ * Format Token counts using the active product locale. Chinese keeps the
+ * established 万/千万/亿 vocabulary; English uses K/M/B compact suffixes.
+ */
+export function formatTokenCount(
+  value: any,
+  { locale = "zh-CN", decimals = 2 }: { locale?: string; decimals?: number } = {},
+) {
+  if (!String(locale).toLowerCase().startsWith("en")) {
+    return formatChineseTokenCount(value, { decimals });
+  }
+  if (value == null || (typeof value === "string" && value.trim() === "")) return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  if (Math.abs(number) < 1000) {
+    return new Intl.NumberFormat("en", {
+      maximumFractionDigits: Math.max(0, Math.min(4, Math.floor(decimals))),
+    }).format(number);
+  }
+  return formatCompactNumber(number, { decimals });
+}
+
 export function toFiniteNumber(value: any) {
   const n = Number(String(value));
   return Number.isFinite(n) ? n : null;

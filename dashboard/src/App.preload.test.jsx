@@ -13,6 +13,7 @@ import {
 const TEXT = {
   dashboard: "Dashboard page",
   device: "Device page",
+  firstRun: "First run page",
   ipCheck: "IP check",
   landing: "Landing page",
   leaderboard: "Leaderboard page",
@@ -128,6 +129,10 @@ vi.mock("./pages/DashboardPage.jsx", () => ({
       </button>
     </main>
   ),
+}));
+
+vi.mock("./pages/FirstRunPage.jsx", () => ({
+  FirstRunPage: () => <main><h1>{TEXT.firstRun}</h1></main>,
 }));
 
 vi.mock("./pages/LimitsPage.jsx", () => ({
@@ -250,12 +255,13 @@ describe("App deferred dashboard preload", () => {
     });
   });
 
-  it("opens the settings page by default inside the Tauri desktop shell", async () => {
+  it("opens automatic detection first inside a new Tauri desktop shell", async () => {
     window.__TAURI_INTERNALS__ = { invoke: vi.fn() };
 
     renderApp("/");
 
-    expect(await screen.findByText(TEXT.settings)).toBeInTheDocument();
+    expect(await screen.findByText(TEXT.firstRun)).toBeInTheDocument();
+    expect(screen.queryByText(TEXT.settings)).not.toBeInTheDocument();
     expect(screen.queryByText(TEXT.dashboard)).not.toBeInTheDocument();
     expect(screen.queryByText(TEXT.landing)).not.toBeInTheDocument();
   });

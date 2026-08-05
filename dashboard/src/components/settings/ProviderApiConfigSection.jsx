@@ -8,10 +8,9 @@ import {
   CheckCircle,
   AlertCircle,
   XCircle,
-  ChevronDown,
-  ChevronUp,
   BookOpen,
   Copy,
+  Orbit,
 } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
@@ -42,6 +41,7 @@ import {
   deleteMiniMaxConsoleSession,
 } from "../../lib/api";
 import { useProviderApiBalances } from "../../hooks/use-provider-api-balances.js";
+import { SectionCard } from "./Controls.jsx";
 
 // 03-ia-api-balance: Provider API configuration section (settings > cost).
 //
@@ -201,21 +201,36 @@ function serializeAccessKeyCredential(accessKeyId, accessKeySecret) {
   });
 }
 
-// F4 / F6: render a financial value or "—" when unknown/missing.
-// - null/undefined/NaN → "—" (NEVER fake 0 for unknown — that was the F4/F6 bug)
+// F4 / F6: render a financial value only when the provider supplied one.
+// - null/undefined/NaN → omitted by the caller
 // - real 0 → "0.00" (a true zero balance from the provider is meaningful)
 // - number → formatted with 2 fraction digits, prefixed by currency
-// `currency` is only shown when a value exists; an unknown value's "—" must
-// not be prefixed with a possibly-wrong currency.
+// `currency` is only shown when a value exists, so a missing amount cannot be
+// paired with a possibly-wrong currency.
 function formatFinancialValue(value, currency) {
-  if (value === null || value === undefined) return copy("settings.cost.provider_api.data_unknown");
+  if (value === null || value === undefined) return null;
   const num = Number(value);
-  if (Number.isNaN(num)) return copy("settings.cost.provider_api.data_unknown");
+  if (!Number.isFinite(num)) return null;
   const prefix = currency ? `${currency} ` : "";
   return `${prefix}${num.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function ProviderApiBrandMark({ providerId, label }) {
+  const id = String(providerId || "").toLowerCase();
+  let mark = String(label || providerId || "P").slice(0, 1);
+  if (id === "deepseek") {
+    mark = <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 18c3-1 5-3 7-6 3 3 7 4 13 3-1 6-5 10-11 10-5 0-8-2-9-7Z" fill="currentColor"/><path d="M20 11c2-3 5-4 8-2-1 3-3 5-7 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="10" cy="18" r="1" fill="white"/></svg>;
+  } else if (id === "glm") {
+    mark = <svg viewBox="0 0 32 32" aria-hidden="true">{[[16,5],[10,8],[22,8],[7,14],[16,14],[25,14],[10,21],[22,21],[16,27]].map(([cx, cy]) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="2.3" fill="currentColor"/>)}</svg>;
+  } else if (id.includes("volcengine")) {
+    mark = <svg viewBox="0 0 32 32" aria-hidden="true"><path className="tt-provider-api-volc-blue" d="M4 27 12 7l5 20H4Z"/><path className="tt-provider-api-volc-teal" d="m14 27 6-16 8 16H14Z"/><path className="tt-provider-api-volc-violet" d="m11 27 5-13 4 13h-9Z"/></svg>;
+  } else if (id.includes("aliyun")) {
+    mark = <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 20c4-8 12-12 24-9-7 1-12 4-15 8 5-2 9-2 13-1-6 5-14 6-22 2Z" fill="currentColor"/><path d="M21 19c3 0 5 1 7 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
+  }
+  return <span className={cn("tt-provider-api-mark", `tt-provider-api-mark--${providerId}`)} aria-hidden="true">{mark}</span>;
 }
 
 export function ProviderApiConfigSection() {
@@ -248,6 +263,14 @@ export function ProviderApiConfigSection() {
     }
     return m;
   }, [balances]);
+  const providerSummary = useMemo(() => {
+    const connected = (configs || []).filter((config) => balancesByConfigId.get(config.id)?.status === "synced").length;
+    const totalBalance = (configs || []).reduce((total, config) => {
+      const value = Number(balancesByConfigId.get(config.id)?.balance);
+      return Number.isFinite(value) ? total + value : total;
+    }, 0);
+    return { connected, disconnected: Math.max(0, (configs || []).length - connected), totalBalance };
+  }, [balancesByConfigId, configs]);
 
   const [editing, setEditing] = useState(null); // null | "new" | config
   const [form, setForm] = useState(DEFAULT_FORM);
@@ -261,8 +284,6 @@ export function ProviderApiConfigSection() {
   // Per-config transient action state: { [id]: { testing?, testResult? } }
   // (refreshing is now sourced from the hook's refreshingIds, not cardState.)
   const [cardState, setCardState] = useState({});
-  const [sectionOpen, setSectionOpen] = useState(true);
-
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const clearCredentialInputs = () => {
@@ -494,26 +515,19 @@ export function ProviderApiConfigSection() {
   };
 
   return (
-    <section data-testid="provider-api-config-section" className="rounded-2xl border border-oai-gray-200/90 bg-white/95 p-5 shadow-oai-md transition-[background-color,border-color,box-shadow] duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900/95 dark:shadow-black/20">
-      <div className={cn("flex items-center justify-between gap-2", sectionOpen && "mb-3")}>
-        <div>
-          <button type="button" onClick={() => setSectionOpen((value) => !value)} aria-expanded={sectionOpen} className="flex items-center gap-2 text-left">
-            <span
-              data-testid="provider-api-section-icon"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300"
-            >
-              <PlugZap className="h-3.5 w-3.5" aria-hidden="true" />
-            </span>
-            <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">
-              {copy("settings.cost.provider_api.section")}
-            </h3>
-            {sectionOpen ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
-          </button>
-          {sectionOpen ? <p className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            {copy("settings.cost.provider_api.subtitle")}
-          </p> : null}
-        </div>
-        <div className={cn("flex items-center gap-2", !sectionOpen && "hidden")}>
+    <div data-testid="provider-api-config-section">
+      <SectionCard
+        title={copy("settings.cost.provider_api.section")}
+        subtitle={copy("settings.cost.provider_api.subtitle")}
+        icon={Orbit}
+        iconTone="blue"
+        iconTestId="provider-api-section-icon"
+        collapsible
+        defaultOpen={false}
+        storageKey="cost.provider-api"
+        collapsedSummary={`${configs.length} 个供应商`}
+        action={(
+          <div className="flex items-center gap-2">
           {/* F4: stale badge surfaces network failures without losing the last
               successful balance (the hook keeps it and marks `stale`). */}
           {stale && (
@@ -543,10 +557,9 @@ export function ProviderApiConfigSection() {
               {copy("settings.cost.provider_api.add")}
             </button>
           )}
-        </div>
-      </div>
-
-      <div className={cn(!sectionOpen && "hidden")}>
+          </div>
+        )}
+      >
       {editing !== null ? (
         <ProviderApiConfigForm
           form={form}
@@ -576,7 +589,13 @@ export function ProviderApiConfigSection() {
           {copy("settings.cost.provider_api.empty")}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="tt-provider-api-list space-y-2">
+          <div className="tt-provider-api-summary" aria-label="供应商连接概览">
+            <span>{copy("settings.cost.provider_api.summary.total")}<strong>{configs.length}</strong></span>
+            <span>{copy("settings.cost.provider_api.summary.connected")}<strong className="text-emerald-600">● {providerSummary.connected}</strong></span>
+            <span>{copy("settings.cost.provider_api.summary.disconnected")}<strong className="text-rose-500">● {providerSummary.disconnected}</strong></span>
+            <span>{copy("settings.cost.provider_api.summary.balance_cny")}<strong>{providerSummary.totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+          </div>
           {configs.map((config) => (
             <ProviderApiConfigCard
               key={config.id}
@@ -593,8 +612,8 @@ export function ProviderApiConfigSection() {
           ))}
         </div>
       )}
-      </div>
-    </section>
+      </SectionCard>
+    </div>
   );
 }
 
@@ -610,14 +629,14 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
   const balanceValue = capabilities.balance === "unsupported"
     ? copy("settings.cost.provider_api.capability.unsupported")
     : isSynced
-    ? formatFinancialValue(balance?.balance, balance?.currency)
-    : copy("settings.cost.provider_api.data_unknown");
-  const monthSpendValue = capabilities.monthSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : isSynced ? formatFinancialValue(balance?.monthSpend, balance?.currency) : copy("settings.cost.provider_api.data_unknown");
-  const lifetimeSpendValue = capabilities.lifetimeSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : isSynced ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : copy("settings.cost.provider_api.data_unknown");
+      ? formatFinancialValue(balance?.balance, balance?.currency)
+      : null;
+  const monthSpendValue = capabilities.monthSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : isSynced ? formatFinancialValue(balance?.monthSpend, balance?.currency) : null;
+  const lifetimeSpendValue = capabilities.lifetimeSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : isSynced ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : null;
   const tokenQuotaValue = capabilities.tokenQuota === "token_plan" ? copy("settings.cost.provider_api.capability.token_plan_settings") : copy("settings.cost.provider_api.capability.unsupported");
   const currencyValue = isSynced && balance?.currency
     ? balance.currency
-    : copy("settings.cost.provider_api.data_unknown");
+    : null;
   const visibleTestResult = isSynced ? null : testResult;
   const guide = getProviderConfigurationGuide(config);
   const guideText = [
@@ -636,10 +655,11 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
   };
 
   return (
-    <div data-testid={`provider-api-row-${config.id}`} data-layout="compact-two-line" className="rounded-xl border border-oai-gray-200 bg-white px-3 py-2.5 shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
+    <div data-testid={`provider-api-row-${config.id}`} data-layout="compact-two-line" className="tt-provider-api-card rounded-xl border border-oai-gray-200 bg-white px-3 py-2.5 shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
+            <ProviderApiBrandMark providerId={config.providerId} label={config.label} />
             <span className="truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">
               {config.label}
             </span>
@@ -698,12 +718,12 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
         </div>
         <div data-testid={`provider-api-card-financial-${config.id}`} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
           <span className={cn("rounded px-1.5 py-0.5", isSynced ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : balance?.status === "unsupported" ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400" : "bg-oai-gray-50 text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400")}>{copy(statusKey)}</span>
-          <span className="tabular-nums text-oai-gray-700 dark:text-oai-gray-200">{copy("settings.cost.provider_api.balance")}: <span data-testid={`provider-api-card-balance-${config.id}`}>{balanceValue}</span></span>
+          {balanceValue ? <span className="tabular-nums text-oai-gray-700 dark:text-oai-gray-200">{copy("settings.cost.provider_api.balance")}: <span data-testid={`provider-api-card-balance-${config.id}`}>{balanceValue}</span></span> : null}
           {balance?.lastSyncedAt ? <span className="truncate">{copy("settings.cost.provider_api.last_synced")}: {balance.lastSyncedAt}</span> : null}
           {visibleTestResult ? <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5", visibleTestResult.tone === "success" ? "bg-green-50 text-green-700" : visibleTestResult.tone === "warn" ? "bg-yellow-50 text-yellow-700" : "bg-red-50 text-red-700")}>{visibleTestResult.tone === "success" ? <CheckCircle className="h-3 w-3" aria-hidden="true" /> : <AlertCircle className="h-3 w-3" aria-hidden="true" />}{copy(visibleTestResult.key)}</span> : null}
-          <span className="sr-only" data-testid={`provider-api-card-month-spend-${config.id}`}>{monthSpendValue}</span>
-          <span className="sr-only" data-testid={`provider-api-card-lifetime-spend-${config.id}`}>{lifetimeSpendValue}</span>
-          <span className="sr-only" data-testid={`provider-api-card-currency-${config.id}`}>{currencyValue}</span>
+          {monthSpendValue ? <span className="sr-only" data-testid={`provider-api-card-month-spend-${config.id}`}>{monthSpendValue}</span> : null}
+          {lifetimeSpendValue ? <span className="sr-only" data-testid={`provider-api-card-lifetime-spend-${config.id}`}>{lifetimeSpendValue}</span> : null}
+          {currencyValue ? <span className="sr-only" data-testid={`provider-api-card-currency-${config.id}`}>{currencyValue}</span> : null}
           <span className="sr-only" data-testid={`provider-api-card-token-quota-${config.id}`}>{tokenQuotaValue}</span>
         </div>
         <div className="flex justify-end">

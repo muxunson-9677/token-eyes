@@ -147,15 +147,16 @@ describe("DataDetails projects tab (production component tree)", () => {
 
     await clickProjectsTab();
 
-    // "No real project path" hint must appear
-    expect(screen.getByText(copy("dashboard.projects.no_path"))).toBeInTheDocument();
+    // Missing local path is omitted; the remote repository remains visible.
+    expect(screen.queryByText(copy("dashboard.projects.no_path"))).not.toBeInTheDocument();
 
     // Remote repo URL must appear somewhere as remote repo info
     expect(screen.getByText(/github\.com\/owner\/repo-only/)).toBeInTheDocument();
 
     // CRITICAL: the remote https:// URL must NOT appear in the local-path
-    // position. The path slot must show the "no path" hint, never the URL.
+    // position. No local-path slot is rendered for the missing value.
     const pathHolders = container.querySelectorAll('[data-slot="project-path"]');
+    expect(pathHolders).toHaveLength(0);
     pathHolders.forEach((el) => {
       expect(el.textContent).not.toContain("https://");
       expect(el.textContent).not.toContain("github.com");
@@ -254,8 +255,8 @@ describe("DataDetails projects tab (production component tree)", () => {
     expect(screen.getByText(/D:\\code\\priced/)).toBeInTheDocument();
     expect(screen.getByText(/\$5\.6700/)).toBeInTheDocument();
 
-    // Category 2: no path + remote repo
-    expect(screen.getByText(copy("dashboard.projects.no_path"))).toBeInTheDocument();
+    // Category 2: missing local path is hidden; remote repo remains visible.
+    expect(screen.queryByText(copy("dashboard.projects.no_path"))).not.toBeInTheDocument();
     expect(screen.getByText(/github\.com\/owner\/repo-no-path/)).toBeInTheDocument();
 
     // Category 3: unpriced (label visible, no real $0.0000)
@@ -268,6 +269,22 @@ describe("DataDetails projects tab (production component tree)", () => {
 });
 
 describe("DataDetails daily rows", () => {
+  it("shows a plain empty state without an initialization or sync command card", () => {
+    const { container } = render(
+      <DataDetails
+        {...dailyProps}
+        dailyEmptyMessage="当前范围暂无活动数据，请先使用 AI CLI，然后点击刷新。"
+        dailyEmptyPrefix="本地服务已连接，请运行："
+        installSyncCmd="npx --yes tokentracker-cli init"
+        dailyEmptySuffix=""
+      />,
+    );
+
+    expect(screen.getByText("当前范围暂无活动数据，请先使用 AI CLI，然后点击刷新。")).toBeInTheDocument();
+    expect(container.querySelector("code")).toBeNull();
+    expect(container).not.toHaveTextContent("tokentracker-cli");
+  });
+
   it("uses semantic icons for both daily and project view tabs", async () => {
     render(<DataDetails {...dailyProps} />);
 
@@ -301,6 +318,8 @@ describe("DataDetails daily rows", () => {
     );
 
     expect(container.firstChild).toHaveClass("tt-surface-nested");
+    expect(container.firstChild).toHaveClass("h-full", "min-h-0");
+    expect(container.firstChild.firstElementChild).toHaveClass("flex", "h-full", "min-h-0", "flex-col");
     expect(container.firstChild).not.toHaveClass("tt-surface");
     expect(screen.queryByText("2026-07-24")).not.toBeInTheDocument();
     expect(screen.getByText("2026-07-25")).toBeInTheDocument();

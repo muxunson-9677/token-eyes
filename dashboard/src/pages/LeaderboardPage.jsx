@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
 import { motion } from "motion/react";
+import { CircleDollarSign, Coins, Info, MoreVertical, ShieldCheck, Users } from "lucide-react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { useLoginModal } from "../contexts/LoginModalContext.jsx";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
@@ -98,8 +99,9 @@ function readStoredPageSize() {
 }
 
 function formatCost(value, currency, rate) {
+  if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return "-";
+  if (!Number.isFinite(n) || n < 0) return null;
   const symbol = getCurrencySymbol(currency);
   const converted = currency === CURRENCY_USD ? n : n * rate;
   if (converted >= 1000) return `${symbol}${Math.round(converted).toLocaleString()}`;
@@ -111,6 +113,13 @@ function TotalTokens({ value }) {
   return <span>{formatChineseTokenCount(value)}</span>;
 }
 
+function isProvidedNumber(value) {
+  return value !== null
+    && value !== undefined
+    && value !== ""
+    && Number.isFinite(Number(value));
+}
+
 function getUnpricedTokens(entry) {
   const rows = Array.isArray(entry?.source_breakdown) ? entry.source_breakdown : [];
   return rows.reduce((sum, row) => {
@@ -120,7 +129,9 @@ function getUnpricedTokens(entry) {
 }
 
 function RankingScore({ entry, metric, currency, rate }) {
-  let value = <TotalTokens value={entry?.total_tokens} />;
+  let value = isProvidedNumber(entry?.total_tokens)
+    ? <TotalTokens value={entry.total_tokens} />
+    : null;
   if (metric === "estimated_spend") {
     value = formatCost(entry?.estimated_cost_usd, currency, rate);
     const unpricedTokens = getUnpricedTokens(entry);
@@ -145,51 +156,73 @@ function RankingScore({ entry, metric, currency, rate }) {
       ? copy("leaderboard.actual_cost.private")
       : formatCost(entry.actual_cost_usd, currency, rate);
   }
-  return <span data-testid="leaderboard-score">{value}</span>;
+  return value == null ? null : <span data-testid="leaderboard-score">{value}</span>;
 }
 
 function AgentDistribution({ entry, metric, currency, rate }) {
   const items = normalizeAgentMetrics(entry, metric);
   const usesCost = metric !== "tokens" && Object.prototype.hasOwnProperty.call(entry || {}, "agent_metrics");
-  if (items.length === 0) return <span className="text-oai-gray-400 dark:text-oai-gray-600">—</span>;
+  const tokenTotal = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  if (items.length === 0) return null;
   return (
-    <div
-      className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-oai-gray-400 dark:text-oai-gray-500"
-      data-testid="leaderboard-user-meta"
-    >
-      {items.map((item) => (
-        <span key={item.id} className="inline-flex items-baseline gap-1 whitespace-nowrap">
-          <span className="font-medium text-oai-gray-500 dark:text-oai-gray-400">{item.label}</span>
-          <span className="tabular-nums">
-            {usesCost ? formatCost(item.value, currency, rate) : formatChineseTokenCount(item.value)}
+    <div className="tt-leaderboard-agent-distribution">
+      <div
+        className="tt-leaderboard-agent-chips flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-oai-gray-400 dark:text-oai-gray-500"
+        data-testid="leaderboard-user-meta"
+      >
+        {items.map((item) => (
+          <span key={item.id} className="inline-flex items-baseline gap-1 whitespace-nowrap" data-agent={item.id}>
+            <span className="font-medium text-oai-gray-500 dark:text-oai-gray-400">{item.label}</span>
+            <span className="tabular-nums">
+              {usesCost
+                ? formatCost(item.value, currency, rate)
+                : tokenTotal > 0
+                  ? <>{`${((Number(item.value || 0) / tokenTotal) * 100).toFixed(2)}%`}<span className="sr-only">{formatChineseTokenCount(item.value)}</span></>
+                  : formatChineseTokenCount(item.value)}
+            </span>
           </span>
-        </span>
-      ))}
+        ))}
+      </div>
+      {tokenTotal > 0 ? (
+        <div className="tt-leaderboard-agent-bar" aria-hidden="true">
+          {items.map((item) => (
+            <span
+              key={item.id}
+              data-agent={item.id}
+              style={{ width: `${(Number(item.value || 0) / tokenTotal) * 100}%` }}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 const RANK_MEDAL = {
-  1: { text: "text-amber-600 dark:text-amber-400", badge: "bg-amber-50 dark:bg-amber-900/20" },
-  2: { text: "text-gray-500 dark:text-gray-300", badge: "bg-gray-50 dark:bg-gray-800/40" },
-  3: { text: "text-orange-700 dark:text-orange-400", badge: "bg-orange-50 dark:bg-orange-900/20" },
+  1: { text: "text-amber-700 dark:text-amber-300", badge: "border-amber-200 bg-amber-50 shadow-sm ring-1 ring-amber-100 dark:border-amber-500/35 dark:bg-amber-500/15 dark:ring-amber-500/15" },
+  2: { text: "text-slate-600 dark:text-slate-200", badge: "border-slate-200 bg-slate-50 shadow-sm ring-1 ring-slate-100 dark:border-slate-500/35 dark:bg-slate-500/15 dark:ring-slate-500/15" },
+  3: { text: "text-orange-800 dark:text-orange-300", badge: "border-orange-200 bg-orange-50 shadow-sm ring-1 ring-orange-100 dark:border-orange-500/35 dark:bg-orange-500/15 dark:ring-orange-500/15" },
 };
 
-function RankCell({ rank, placeholder }) {
+function RankCell({ rank, pendingLabel }) {
   const medal = RANK_MEDAL[rank];
   if (medal) {
     return (
-      <span className={cn("inline-flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold", medal.text, medal.badge)}>
+      <span
+        className={cn("tt-leaderboard-rank-medal inline-flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold", medal.text, medal.badge)}
+        data-testid={`leaderboard-rank-${rank}`}
+        data-rank-tier="medal"
+      >
         {rank}
       </span>
     );
   }
   return (
     <span className={cn(
-      "inline-flex h-7 items-center justify-center text-sm",
-      rank == null ? "min-w-7 whitespace-nowrap text-[10px]" : "w-7",
+      "inline-flex h-8 items-center justify-center rounded-full border border-oai-gray-200 bg-white/70 font-semibold shadow-sm dark:border-white/10 dark:bg-white/[0.06]",
+      rank == null ? "min-w-8 whitespace-nowrap px-2 text-[10px]" : "w-8 text-sm",
     )}>
-      {rank ?? placeholder}
+      {rank ?? pendingLabel ?? null}
     </span>
   );
 }
@@ -288,7 +321,6 @@ function LeaderboardEntryRow({
   metric,
   currency,
   rate,
-  placeholder,
   openProfileModal,
 }) {
   if (entry?.is_ellipsis) {
@@ -320,7 +352,9 @@ function LeaderboardEntryRow({
     : undefined;
   const secondaryValue = metric === "tokens"
     ? formatCost(entry?.estimated_cost_usd, currency, rate)
-    : formatChineseTokenCount(entry?.total_tokens);
+    : isProvidedNumber(entry?.total_tokens)
+      ? formatChineseTokenCount(entry.total_tokens)
+      : null;
 
   return (
     <li
@@ -340,14 +374,14 @@ function LeaderboardEntryRow({
       <div className={cn("text-oai-gray-500 dark:text-oai-gray-400", isMe && "text-oai-brand-600 dark:text-oai-brand-400")}>
         <RankCell
           rank={entry?.rank}
-          placeholder={entry?.is_local_pending ? copy("leaderboard.rank_pending") : placeholder}
+          pendingLabel={entry?.is_local_pending ? copy("leaderboard.rank_pending") : null}
         />
       </div>
 
       <div className="flex min-w-0 items-center gap-3">
         <LeaderboardAvatar
           avatarUrl={entry?.avatar_url}
-          displayName={name}
+          displayName={entry?.avatar_display_name || name}
           seed={leaderboardAvatarSeed(entry, name)}
         />
         <div className="min-w-0 flex-1">
@@ -358,6 +392,9 @@ function LeaderboardEntryRow({
             )}>
               {name}
             </span>
+            {isMe && entry?.current_user_label ? (
+              <span className="tt-leaderboard-current-user">{entry.current_user_label}</span>
+            ) : null}
             {entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
           </div>
           <div className="mt-1 min-w-0">
@@ -370,10 +407,15 @@ function LeaderboardEntryRow({
         <div className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100 sm:text-base">
           <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
         </div>
-        <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
-          {secondaryValue}
-        </div>
+        {secondaryValue != null ? (
+          <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
+            {secondaryValue}
+          </div>
+        ) : null}
       </div>
+      {entry?.show_actions ? (
+        <MoreVertical className="tt-leaderboard-row-actions" aria-hidden="true" />
+      ) : null}
     </li>
   );
 }
@@ -413,8 +455,6 @@ export function LeaderboardPage({
     return null;
   }, [auth, authTokenAllowed]);
   const effectiveAuthToken = authTokenAllowed ? authAccessToken : null;
-
-  const placeholder = copy("shared.placeholder.short");
 
   const [listPage, setListPage] = useState(1);
   const [syncRevision, setSyncRevision] = useState(0);
@@ -790,14 +830,16 @@ export function LeaderboardPage({
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
-  const cloudParticipantCount = Math.max(
-    0,
-    Number(listData?.participant_count ?? totalEntries) || 0,
-  );
-  const cloudAggregateTotalTokens = Number.isFinite(Number(listData?.aggregate_total_tokens))
+  const rawParticipantCount = listData?.participant_count
+    ?? listData?.ranked_entry_count
+    ?? listData?.total_entries;
+  const cloudParticipantCount = isProvidedNumber(rawParticipantCount)
+    ? Math.max(0, Number(rawParticipantCount))
+    : null;
+  const cloudAggregateTotalTokens = isProvidedNumber(listData?.aggregate_total_tokens)
     ? Math.max(0, Number(listData.aggregate_total_tokens))
     : null;
-  const cloudAggregateTotalCost = Number.isFinite(Number(listData?.aggregate_total_cost_usd))
+  const cloudAggregateTotalCost = isProvidedNumber(listData?.aggregate_total_cost_usd)
     ? Math.max(0, Number(listData.aggregate_total_cost_usd))
     : null;
   const currentPage = listData?.page ?? listPage;
@@ -858,14 +900,15 @@ export function LeaderboardPage({
       const oldTokens = Math.max(0, Number(matchedCloudRow.total_tokens) || 0);
       const oldCost = Math.max(0, Number(matchedCloudRow.estimated_cost_usd) || 0);
       return {
-        participantCount: Math.max(1, cloudParticipantCount),
-        aggregateTotalTokens: Math.max(
-          0,
-          Number(cloudAggregateTotalTokens || 0) - oldTokens + localTokens,
-        ),
+        participantCount: cloudParticipantCount,
+        aggregateTotalTokens: cloudAggregateTotalTokens == null
+          ? null
+          : Math.max(0, cloudAggregateTotalTokens - oldTokens + localTokens),
         aggregateTotalCost: localCost == null
           ? cloudAggregateTotalCost
-          : Math.max(0, Number(cloudAggregateTotalCost || 0) - oldCost + localCost),
+          : cloudAggregateTotalCost == null
+            ? null
+            : Math.max(0, cloudAggregateTotalCost - oldCost + localCost),
       };
     }
 
@@ -878,11 +921,15 @@ export function LeaderboardPage({
     }
 
     return {
-      participantCount: cloudParticipantCount + 1,
-      aggregateTotalTokens: Math.max(0, Number(cloudAggregateTotalTokens || 0) + localTokens),
+      participantCount: cloudParticipantCount == null ? null : cloudParticipantCount + 1,
+      aggregateTotalTokens: cloudAggregateTotalTokens == null
+        ? null
+        : Math.max(0, cloudAggregateTotalTokens + localTokens),
       aggregateTotalCost: localCost == null
         ? cloudAggregateTotalCost
-        : Math.max(0, Number(cloudAggregateTotalCost || 0) + localCost),
+        : cloudAggregateTotalCost == null
+          ? null
+          : Math.max(0, cloudAggregateTotalCost + localCost),
     };
   }, [
     cloudAggregateTotalCost,
@@ -942,7 +989,6 @@ export function LeaderboardPage({
             metric={metric}
             currency={currency}
             rate={rate}
-            placeholder={placeholder}
             openProfileModal={openProfileModal}
           />
         ))}
@@ -1004,7 +1050,7 @@ export function LeaderboardPage({
                 {copy("leaderboard.title")}
               </h1>
               <div className="flex shrink-0 items-center gap-3">
-                {cloudSignedIn && (
+                {(cloudSignedIn || listData?.show_account_actions) && (
                   <button
                     type="button"
                     onClick={() => navigate("/settings/basic")}
@@ -1013,7 +1059,7 @@ export function LeaderboardPage({
                     {copy("settings.section.account")}
                   </button>
                 )}
-                {cloudSignedIn && (
+                {(cloudSignedIn || listData?.show_account_actions) && (
                   <button
                     type="button"
                     onClick={handleAccountSignOut}
@@ -1031,35 +1077,61 @@ export function LeaderboardPage({
               </div>
             </div>
             <p className="text-oai-gray-500 dark:text-oai-gray-400 text-sm sm:text-base">
-              {period === "total"
-                ? copy("leaderboard.range.total")
-                : from && to
-                  ? copy("leaderboard.range", { period: periodLabel, from, to })
-                  : copy("leaderboard.range_loading", { period: periodLabel })}
+              <span data-testid="leaderboard-range-label">
+                {period === "total"
+                  ? copy("leaderboard.range.total")
+                  : from && to
+                    ? copy("leaderboard.range", { period: periodLabel, from, to })
+                    : copy("leaderboard.range_loading", { period: periodLabel })}
+              </span>
               {generatedAt && (
                 <span className="ml-2 pl-2 border-l border-oai-gray-200 dark:border-oai-gray-800 hidden sm:inline-block text-oai-gray-400 dark:text-oai-gray-500 text-xs">
                   {copy("leaderboard.generated_at", { ts: generatedAt })}
                 </span>
               )}
             </p>
-            {listData && (
+            {listData && [participantCount, aggregateTotalTokens, aggregateTotalCost].some(isProvidedNumber) && (
               <dl className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="leaderboard-summary">
-                <div className="tt-surface-nested rounded-[var(--tt-card-radius)] px-4 py-3">
-                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.participant_label")}</dt>
-                  <dd className="mt-1 text-lg font-semibold tabular-nums">{Number(participantCount || 0).toLocaleString()}</dd>
-                </div>
-                <div className="tt-surface-nested rounded-[var(--tt-card-radius)] px-4 py-3">
-                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.tokens_label")}</dt>
-                  <dd className="mt-1 text-lg font-semibold tabular-nums">
-                    {aggregateTotalTokens == null ? "—" : formatChineseTokenCount(aggregateTotalTokens)}
-                  </dd>
-                </div>
-                <div className="tt-surface-nested rounded-[var(--tt-card-radius)] px-4 py-3">
-                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.cost_label")}</dt>
-                  <dd className="mt-1 text-lg font-semibold tabular-nums">
-                    {aggregateTotalCost == null ? "—" : formatCost(aggregateTotalCost, currency, rate)}
-                  </dd>
-                </div>
+                {isProvidedNumber(participantCount) ? <div className="tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-400/10 dark:text-sky-300 dark:ring-sky-400/20" data-testid="leaderboard-summary-icon">
+                    <Users className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.participant_label")}</dt>
+                    <dd className="mt-1 text-lg font-semibold tabular-nums">{Number(participantCount).toLocaleString()}</dd>
+                    {listData?.summary_details?.participants ? (
+                      <p className="tt-leaderboard-summary-detail">{listData.summary_details.participants}</p>
+                    ) : null}
+                  </div>
+                </div> : null}
+                {isProvidedNumber(aggregateTotalTokens) ? <div className="tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 ring-1 ring-violet-100 dark:bg-violet-400/10 dark:text-violet-300 dark:ring-violet-400/20" data-testid="leaderboard-summary-icon">
+                    <Coins className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.tokens_label")}</dt>
+                    <dd className="mt-1 text-lg font-semibold tabular-nums">
+                      {formatChineseTokenCount(aggregateTotalTokens)}
+                    </dd>
+                    {listData?.summary_details?.tokens ? (
+                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-violet">{listData.summary_details.tokens}</p>
+                    ) : null}
+                  </div>
+                </div> : null}
+                {isProvidedNumber(aggregateTotalCost) ? <div className="tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20" data-testid="leaderboard-summary-icon">
+                    <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.cost_label")}</dt>
+                    <dd className="mt-1 text-lg font-semibold tabular-nums">
+                      {formatCost(aggregateTotalCost, currency, rate)}
+                    </dd>
+                    {listData?.summary_details?.cost ? (
+                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-amber">{listData.summary_details.cost}</p>
+                    ) : null}
+                  </div>
+                </div> : null}
               </dl>
             )}
           </div>
@@ -1074,6 +1146,13 @@ export function LeaderboardPage({
               {copy("leaderboard.sync.failed")}
             </div>
           )}
+
+          {listData?.sync_message ? (
+            <div className="tt-leaderboard-sync-banner mb-4 rounded-[var(--tt-card-radius)] border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-oai-gray-600">
+              <Info aria-hidden="true" />
+              {listData.sync_message}
+            </div>
+          ) : null}
 
           <div
             data-testid="leaderboard-filter-toolbar"
@@ -1200,7 +1279,7 @@ export function LeaderboardPage({
           )}
 
           {!developerLoginEnabled && !cloudSignedIn && !authLoading && !leaderboardMockEnabled && (
-            <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
+            <div className="tt-leaderboard-signin-prompt mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
               <div>
                 <p className="text-oai-gray-500 dark:text-oai-gray-400">
                   {copy("leaderboard.signin_prompt")}
@@ -1227,6 +1306,11 @@ export function LeaderboardPage({
                 <p className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>
               </div>
             ) : null}
+            <div className="tt-leaderboard-table-head" data-testid="leaderboard-table-head">
+              <span>{copy("leaderboard.table.rank")}</span>
+              <span>{copy("leaderboard.table.user_share")}</span>
+              <span>{copy("leaderboard.table.token_cost")}</span>
+            </div>
             {listBody}
 
             <div className="px-6 py-3 border-t border-oai-gray-200 dark:border-oai-gray-800 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
@@ -1277,16 +1361,23 @@ export function LeaderboardPage({
       </main>
 
       <footer className="border-t border-oai-gray-200 dark:border-oai-gray-900 py-8 transition-colors duration-200">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 text-sm text-oai-gray-400 dark:text-oai-gray-500">
-          <p>{copy("landing.v2.footer.line")}</p>
-          <a
-            href="https://github.com/mm7894215/TokenTracker"
-            className="text-oai-gray-400 dark:text-oai-gray-500 hover:text-oai-black dark:hover:text-white transition-colors"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {copy("landing.v2.nav.github")}
-          </a>
+        <div className="tt-leaderboard-footer mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 text-sm text-oai-gray-400 dark:text-oai-gray-500">
+          <div className="tt-leaderboard-footer-brand flex items-center gap-4">
+            <img src="/app-icon.png" alt="" className="h-9 w-9 rounded-lg" />
+            <div>
+              <p>{copy("landing.v2.footer.line")}</p>
+              <div className="mt-2 flex items-center gap-4 text-xs">
+                <span>{copy("shared.footer.version")}</span>
+                <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
+                <a href="#privacy-data">{copy("shared.footer.privacy")}</a>
+                <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
+                <a href="#terms">{copy("shared.footer.terms")}</a>
+                <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
+                <a href="https://github.com/mm7894215/TokenTracker" target="_blank" rel="noopener noreferrer">{copy("landing.v2.nav.github")}</a>
+              </div>
+            </div>
+          </div>
+          <p className="tt-leaderboard-footer-privacy flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-500" aria-hidden="true" />{copy("shared.footer.local_data")}</p>
         </div>
       </footer>
 

@@ -79,7 +79,15 @@ export function isNativeEmbed() {
  */
 export function isNativeWindowsApp() {
   if (typeof window === "undefined") return false;
-  return Boolean(window.chrome?.webview) && isNativeApp();
+  if (Boolean(window.chrome?.webview) && isNativeApp()) return true;
+  if (!isTauriApp()) return false;
+  const platform = String(
+    window.navigator?.userAgentData?.platform ||
+    window.navigator?.platform ||
+    window.navigator?.userAgent ||
+    "",
+  );
+  return /win/i.test(platform);
 }
 
 function getHandler() {

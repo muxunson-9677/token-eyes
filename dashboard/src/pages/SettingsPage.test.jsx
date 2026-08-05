@@ -88,9 +88,9 @@ describe("SettingsBasicPage (v2.0 IA split)", () => {
     );
     expect(screen.getByTestId("appearance-section")).toBeInTheDocument();
     expect(screen.getByTestId("menubar-section")).toBeInTheDocument();
-    expect(screen.queryByTestId("account-section")).not.toBeInTheDocument();
     expect(screen.getByTestId("data-dirs-section")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-pricing-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("account-section")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agent-pricing-section")).not.toBeInTheDocument();
     expect(screen.getByTestId("limits-panel")).toBeInTheDocument();
     expect(screen.getByTestId("native-app-footer")).toBeInTheDocument();
   });
@@ -157,7 +157,7 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
     expect(await screen.findByTestId("other-ai-spend-section")).toBeInTheDocument();
   });
 
-  it("does NOT render Appearance / Account / DataDirs / AgentPricing / MenuBar", () => {
+  it("keeps cost configuration together and excludes general preferences", () => {
     render(
       <MemoryRouter>
         <SettingsCostPage />
@@ -166,7 +166,7 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
     expect(screen.queryByTestId("appearance-section")).not.toBeInTheDocument();
     expect(screen.queryByTestId("account-section")).not.toBeInTheDocument();
     expect(screen.queryByTestId("data-dirs-section")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("agent-pricing-section")).not.toBeInTheDocument();
+    expect(screen.getByTestId("agent-pricing-section")).toBeInTheDocument();
     expect(screen.queryByTestId("menubar-section")).not.toBeInTheDocument();
   });
 

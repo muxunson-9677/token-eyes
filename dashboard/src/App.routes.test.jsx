@@ -4,14 +4,14 @@
  */
 import React from "react";
 import { act, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.jsx";
 
 // Route-resolution tests for the v2.0 IA refactor (work order 01).
 // Verifies the four sub-routes render the right page component, the
 // legacy /spend and /settings paths redirect to their default children,
-// and the Tauri root entry redirects to /settings/basic.
+// and the Tauri root entry starts the automatic discovery flow.
 
 const TEXT = {
   dashboard: "Dashboard page",
@@ -27,6 +27,8 @@ const TEXT = {
   widgets: "Widgets page",
   login: "Login page",
   sidebarShell: "Sidebar shell",
+  firstRun: "First run discovery page",
+  dataSources: "Data sources page",
 };
 
 const insforgeMock = vi.hoisted(() => ({
@@ -155,14 +157,25 @@ vi.mock("./pages/SettingsPage.jsx", () => ({
 vi.mock("./pages/TokenPlanEditorPage.jsx", () => ({
   TokenPlanEditorPage: () => <main>{TEXT.tokenPlanEditor}</main>,
 }));
+vi.mock("./pages/FirstRunPage.jsx", () => ({
+  FirstRunPage: () => <main>{TEXT.firstRun}</main>,
+}));
+vi.mock("./pages/DataSourcesPage.jsx", () => ({
+  DataSourcesPage: () => <main>{TEXT.dataSources}</main>,
+}));
 
 function renderApp(initialPath = "/dashboard") {
   window.history.pushState({}, "", initialPath);
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <App />
+      <LocationProbe />
     </MemoryRouter>,
   );
+}
+
+function LocationProbe() {
+  return <output data-testid="route-location">{useLocation().pathname}</output>;
 }
 
 describe("App routes (v2.0 IA refactor)", () => {
@@ -173,6 +186,7 @@ describe("App routes (v2.0 IA refactor)", () => {
     insforgeMock.loading = false;
     insforgeMock.user = { id: "user-1" };
     window.history.pushState({}, "", "/");
+    window.localStorage.clear();
   });
 
   it("/spend/usage renders SpendUsagePage with sidebar", async () => {
@@ -193,6 +207,20 @@ describe("App routes (v2.0 IA refactor)", () => {
     renderApp("/settings/basic");
     expect(await screen.findByText(TEXT.settingsBasic)).toBeInTheDocument();
     expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+  });
+
+  it("/settings/data renders source diagnostics with sidebar", async () => {
+    renderApp("/settings/data");
+    expect(await screen.findByText(TEXT.dataSources)).toBeInTheDocument();
+    expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+    expect(screen.getByTestId("route-location")).toHaveTextContent("/settings/data");
+  });
+
+  it("/data-sources redirects to the canonical settings data route", async () => {
+    renderApp("/data-sources");
+    expect(await screen.findByText(TEXT.dataSources)).toBeInTheDocument();
+    expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+    expect(screen.getByTestId("route-location")).toHaveTextContent("/settings/data");
   });
 
   it("/settings/cost renders SettingsCostPage with sidebar", async () => {
@@ -279,7 +307,7 @@ describe("App Tauri root entry", () => {
     window.history.pushState({}, "", "/");
   });
 
-  it("Tauri root '/' redirects to /settings/basic", async () => {
+  it("Tauri root '/' opens automatic discovery before settings", async () => {
     vi.doMock("./lib/native-bridge.js", () => ({
       isTauriApp: () => true,
       isNativeApp: () => false,
@@ -299,7 +327,30 @@ describe("App Tauri root entry", () => {
     // After vi.resetModules(), React.lazy() re-suspends on first render
     // (the mocked module re-resolves asynchronously). Use findByText to
     // wait for the redirected page content to appear.
-    expect(await screen.findByText(TEXT.settingsBasic)).toBeInTheDocument();
+    expect(await screen.findByText(TEXT.firstRun)).toBeInTheDocument();
+    expect(screen.queryByText(TEXT.settingsBasic)).not.toBeInTheDocument();
+    vi.doUnmock("./lib/native-bridge.js");
+    vi.resetModules();
+  });
+
+  it("Tauri root opens the dashboard after first-run discovery was completed", async () => {
+    window.localStorage.setItem("tokentracker.firstRun.completed.v1", "1");
+    vi.doMock("./lib/native-bridge.js", () => ({
+      isTauriApp: () => true,
+      isNativeApp: () => false,
+      isNativeEmbed: () => false,
+      isNativeWindowsApp: () => false,
+    }));
+    vi.resetModules();
+    const { default: AppFresh } = await import("./App.jsx");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppFresh />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(TEXT.dashboard)).toBeInTheDocument();
+    expect(screen.queryByText(TEXT.firstRun)).not.toBeInTheDocument();
     vi.doUnmock("./lib/native-bridge.js");
     vi.resetModules();
   });

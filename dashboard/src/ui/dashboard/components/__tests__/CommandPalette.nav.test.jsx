@@ -115,6 +115,7 @@ describe("CommandPalette real render (F3 reproduction)", () => {
       "nav.spend.usage",
       "nav.spend.cost",
       "nav.settings.basic",
+      "nav.settings.data",
       "nav.settings.cost",
     ];
     for (const label of expectedLabels) {
@@ -122,7 +123,7 @@ describe("CommandPalette real render (F3 reproduction)", () => {
     }
     // No React error boundary swallowed the list — there are 6 page options.
     const options = within(dialog).getAllByRole("option");
-    expect(options.length).toBe(8);
+    expect(options.length).toBe(9);
   });
 
   it("clicking a secondary-nav child navigates to the correct URL", async () => {

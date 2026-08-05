@@ -8,7 +8,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getNavGroups, AppLayout } from "../Sidebar.jsx";
 
-const { authContext, codexResetContext, setTheme } = vi.hoisted(() => ({
+const { authContext, codexResetContext, nativeBridgeContext, setTheme } = vi.hoisted(() => ({
   authContext: {
     value: {
       enabled: true,
@@ -25,6 +25,7 @@ const { authContext, codexResetContext, setTheme } = vi.hoisted(() => ({
       acknowledge: vi.fn(),
     },
   },
+  nativeBridgeContext: { windows: false },
   setTheme: vi.fn(),
 }));
 
@@ -66,10 +67,14 @@ vi.mock("../../../contexts/LoginModalContext.jsx", () => ({
 }));
 
 vi.mock("../../../lib/native-bridge.js", () => ({
-  isNativeApp: () => false,
+  isNativeApp: () => nativeBridgeContext.windows,
   isNativeEmbed: () => false,
-  isTauriApp: () => false,
-  isNativeWindowsApp: () => false,
+  isTauriApp: () => nativeBridgeContext.windows,
+  isNativeWindowsApp: () => nativeBridgeContext.windows,
+}));
+
+vi.mock("../NativeWindowBar.jsx", () => ({
+  NativeWindowBar: () => <header data-testid="native-window-bar" />,
 }));
 
 vi.mock("../../../hooks/use-codex-reset-events", () => ({
@@ -77,20 +82,19 @@ vi.mock("../../../hooks/use-codex-reset-events", () => ({
 }));
 
 describe("getNavGroups structure (v2.0 IA)", () => {
-  it("returns overview, leaderboard and pending-widget items + spend and settings parents with children", () => {
+  it("keeps core routes primary and moves optional features into More", () => {
     const groups = getNavGroups();
-    // Three top-level groups: overview, spend, settings
     expect(groups).toHaveLength(3);
 
     const overview = groups.find((g) => g.id === "overview");
     expect(overview).toBeDefined();
-    expect(overview.items).toHaveLength(4);
-    expect(overview.items[0].to).toBe("/dashboard");
-    expect(overview.items[1]).toMatchObject({
-      id: "leaderboard",
-      to: "/leaderboard",
-      label: "copy:nav.leaderboard",
-    });
+    expect(overview.items.map((item) => item.id)).toEqual([
+      "usage",
+      "leaderboard",
+      "reset-history",
+      "widgets",
+    ]);
+    expect(overview.items[1]).toMatchObject({ id: "leaderboard", to: "/leaderboard" });
     expect(overview.items[2]).toMatchObject({
       id: "reset-history",
       to: "/reset-history",
@@ -102,12 +106,8 @@ describe("getNavGroups structure (v2.0 IA)", () => {
       to: "/widgets",
       label: "copy:nav.widgets",
     });
-    expect(overview.items.map((item) => item.to)).toEqual([
-      "/dashboard",
-      "/leaderboard",
-      "/reset-history",
-      "/widgets",
-    ]);
+    expect(groups.flatMap((group) => group.items ?? []).some((item) => item.to === "/data-sources"))
+      .toBe(false);
 
     const spend = groups.find((g) => g.id === "spend");
     expect(spend).toBeDefined();
@@ -120,7 +120,7 @@ describe("getNavGroups structure (v2.0 IA)", () => {
     expect(settings).toBeDefined();
     expect(settings.children).toBeDefined();
     const settingsChildTos = settings.children.map((c) => c.to);
-    expect(settingsChildTos).toEqual(["/settings/basic", "/settings/cost"]);
+    expect(settingsChildTos).toEqual(["/settings/basic", "/settings/cost", "/settings/data"]);
     expect(settings.defaultChildTo).toBe("/settings/basic");
   });
 
@@ -156,8 +156,10 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
       displayName: "",
     };
     codexResetContext.value.unreadCount = 0;
+    nativeBridgeContext.windows = false;
     setTheme.mockClear();
     window.localStorage.clear();
+    document.documentElement.classList.remove("native-windows-app");
     // jsdom doesn't implement layout, so the desktop <aside> is always in
     // the DOM (lg:hidden only affects CSS, not presence). These tests rely
     // on that so we can assert nav structure without a real viewport.
@@ -184,16 +186,25 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(screen.getByText("copy:nav.group.settings")).toBeInTheDocument();
   });
 
+  it("keeps both reference sidebar groups expanded on the overview by default", () => {
+    renderSidebar("/dashboard");
+    expect(screen.getByRole("button", { name: "copy:nav.group.spend" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "copy:nav.group.settings" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "copy:nav.spend.usage" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "copy:nav.settings.data" })).toBeVisible();
+  });
+
   it("renders spend children labels (使用统计 / 成本累积)", () => {
     renderSidebar("/spend/usage");
     expect(screen.getByText("copy:nav.spend.usage")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.spend.cost")).toBeInTheDocument();
   });
 
-  it("renders settings children labels (基础设置 / 成本设置)", () => {
+  it("renders settings children labels (基础设置 / 成本设置 / 数据与诊断)", () => {
     renderSidebar("/settings/basic");
     expect(screen.getByText("copy:nav.settings.basic")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.settings.cost")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.settings.data")).toBeInTheDocument();
   });
 
   it("marks the current child page and expands its parent", () => {
@@ -335,6 +346,16 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     }
   });
 
+  it("shows the resolved light or dark theme as visible text in the expanded sidebar", () => {
+    renderSidebar("/dashboard");
+    const themeTrigger = screen.getByRole("button", {
+      name: "copy:settings.appearance.theme.label",
+    });
+
+    expect(themeTrigger).toHaveClass("tt-theme-trigger");
+    expect(themeTrigger).toHaveTextContent("copy:settings.appearance.theme.light");
+  });
+
   it("applies the shared focus hook to every mobile and identity control", async () => {
     const user = userEvent.setup();
     renderSidebar("/dashboard");
@@ -407,10 +428,46 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     });
     expect(getNavLabels(navRegions[1])).toEqual(getNavLabels(navRegions[0]));
   });
+
+  it("switches to the desktop shell at the native 900px minimum width", async () => {
+    const user = userEvent.setup();
+    renderSidebar("/dashboard");
+
+    const desktopSidebar = screen.getByRole("complementary", { name: "copy:nav.aside_label" });
+    expect(desktopSidebar).toHaveClass("hidden", "min-[900px]:flex");
+
+    const menuButton = screen.getByRole("button", { name: "copy:nav.menu" });
+    expect(menuButton.parentElement).toHaveClass("min-[900px]:hidden");
+
+    await act(async () => {
+      await user.click(menuButton);
+    });
+    const sidebars = screen.getAllByRole("complementary", { name: "copy:nav.aside_label" });
+    expect(sidebars[1].parentElement).toHaveClass("min-[900px]:hidden");
+  });
+
+  it("marks the document root while the Tauri Windows shell is mounted", () => {
+    nativeBridgeContext.windows = true;
+
+    const view = renderSidebar("/dashboard");
+
+    expect(screen.getByTestId("native-window-bar")).toBeInTheDocument();
+    expect(document.documentElement).toHaveClass("native-windows-app");
+    expect(document.querySelector(".tt-app-shell")).toHaveAttribute(
+      "data-reference-route",
+      "dashboard",
+    );
+    expect(document.querySelector(".tt-app-shell")).toHaveClass(
+      "tt-reference-route-dashboard",
+    );
+
+    view.unmount();
+    expect(document.documentElement).not.toHaveClass("native-windows-app");
+  });
 });
 
 describe("Sidebar keyboard focus styles", () => {
-  it("overrides the global important focus suppression with an inset visible outline", () => {
+  it("uses an inset visible outline without relying on global focus suppression", () => {
     const stylesheet = postcss.parse(readFileSync(resolve("src/styles.css"), "utf8"));
     const rules = stylesheet.nodes.filter((node) => node.type === "rule");
     const suppressionIndex = rules.findIndex((rule) =>
@@ -420,8 +477,8 @@ describe("Sidebar keyboard focus styles", () => {
       (rule) => rule.selector === ".tt-sidebar-focusable:focus-visible",
     );
 
-    expect(suppressionIndex).toBeGreaterThanOrEqual(0);
-    expect(focusIndex).toBeGreaterThan(suppressionIndex);
+    expect(suppressionIndex).toBe(-1);
+    expect(focusIndex).toBeGreaterThanOrEqual(0);
 
     const focusRule = rules[focusIndex];
     const outline = focusRule.nodes.find((node) => node.prop === "outline");

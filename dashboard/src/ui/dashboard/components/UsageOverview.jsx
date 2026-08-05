@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Info, RefreshCw, SquareArrowOutUpRight, Loader2 } from "lucide-react";
+import { ChevronRight, Info, RefreshCw, SquareArrowOutUpRight, Loader2 } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
-import { Card, Button, Counter } from "../../components";
-import { useTheme } from "../../../hooks/useTheme.js";
+import { Button } from "../../components";
 import { useCurrency } from "../../../hooks/useCurrency.js";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { CURRENCY_USD, getCurrencySymbol } from "../../../lib/currency";
 import { DateRangePopover, formatDateShort, getDateFnsLocale } from "./DateRangePopover.jsx";
 import { ProviderIcon } from "./ProviderIcon.jsx";
-import { formatChineseTokenCount, formatUsdCurrency } from "../../../lib/format";
+import { formatChineseTokenCount, formatCompactNumber, formatUsdCurrency } from "../../../lib/format";
 import { ContextBreakdownPanel } from "./ContextBreakdownPanel.jsx";
 import {
   BILLING_FILTERS,
@@ -18,19 +17,19 @@ import {
 } from "../../../lib/model-breakdown";
 
 const BILLING_BADGE_STYLES = {
-  api_key: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  api_key: "bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300",
   token_plan: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   unknown: "bg-oai-gray-100 text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400",
   mixed: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
 };
 
-function BillingBadge({ mode, copyKey, className = "" }) {
+function BillingBadge({ mode, copyKey, label, className = "" }) {
   const style = BILLING_BADGE_STYLES[mode] || BILLING_BADGE_STYLES.unknown;
   return (
     <span
       className={`inline-flex items-center shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${style} ${className}`}
     >
-      {copy(copyKey)}
+      {label || copy(copyKey)}
     </span>
   );
 }
@@ -61,21 +60,13 @@ function normalizePeriods(periods) {
   });
 }
 
-function parseAnimatedCounterValue(displayValue) {
-  if (typeof displayValue !== "string") return null;
-  const match = displayValue.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
-  if (!match) return null;
-  const parsed = Number(match[0]);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 // Provider color mapping for visual distinction.
 // TICKET-04: exported for reuse by RequestUsageLog / ProviderUsageTable /
 // ModelUsageTable so the colored provider dot stays consistent across views.
 export const PROVIDER_COLORS = {
   CODEX: "#3b82f6",     // blue-500
-  CLAUDE: "#d97757",    // Anthropic Japonica orange-red
-  CURSOR: "#6b7280",    // gray-500
+  CLAUDE: "#f97316",    // orange-500
+  CURSOR: "#8b5cf6",    // violet-500
   TRAE: "#2563eb",      // blue-600
   HERMES: "#10b981",    // emerald-500
   OPENCODE: "#f59e0b",  // amber-500
@@ -124,11 +115,11 @@ function RefreshButton({ loading, onClick }) {
   return (
     <Button
       variant="secondary"
-      size="sm"
+      size="md"
       disabled={loading}
       onClick={onClick}
       aria-label={copy("usage.button.refresh")}
-      className="w-8 p-0"
+      className="w-10 p-0"
     >
       <motion.span
         aria-hidden="true"
@@ -159,6 +150,108 @@ function formatLastUpdated(date) {
   return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+const CONFIDENCE_BADGE_STYLES = {
+  exact: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200",
+  estimated: "bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200",
+  partial: "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+  stale: "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+  unavailable: "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-200",
+  unattributed: "bg-orange-100 text-orange-900 dark:bg-orange-950/50 dark:text-orange-200",
+};
+
+function buildCompactEvidenceDetail(confidence, fallbackUpdatedAt) {
+  if (!confidence) return "";
+  const updatedAt = confidence.observedAt || confidence.lastSuccessAt || fallbackUpdatedAt;
+  const parts = [confidence.sourceLabel];
+  const updatedTime = formatLastUpdated(updatedAt);
+  if (updatedTime) {
+    parts.push(copy("dashboard.refresh.last_updated", { time: updatedTime }));
+  }
+  if (confidence.estimationMethod) parts.push(confidence.estimationMethod);
+  if (confidence.states?.includes("partial") && confidence.coveragePercent != null) {
+    parts.push(copy("data.confidence.partial_detail", {
+      coverage: confidence.coveragePercent,
+    }));
+  }
+  return parts.filter(Boolean).join(" · ");
+}
+
+function CompactEvidenceCell({
+  label,
+  value,
+  confidence,
+  fallbackUpdatedAt,
+  onInfo,
+  onOpenDiagnostics,
+  testId,
+  className = "",
+}) {
+  const states = Array.isArray(confidence?.states) && confidence.states.length
+    ? confidence.states
+    : confidence?.state
+      ? [confidence.state]
+      : [];
+  const detail = buildCompactEvidenceDetail(confidence, fallbackUpdatedAt);
+
+  return (
+    <div
+      className={`grid min-w-0 grid-rows-[1.25rem_1.5rem] gap-0.5 py-1.5 ${className}`}
+      data-testid={testId}
+    >
+      <div
+        className="flex min-w-0 items-center gap-1.5 overflow-hidden text-[10px] leading-5"
+        data-testid={`${testId}-heading`}
+      >
+        <span className="shrink-0 text-oai-gray-500 dark:text-oai-gray-400">{label}</span>
+        {value ? (
+          onInfo ? (
+            <button
+              type="button"
+              onClick={onInfo}
+              className="inline-flex min-w-0 items-center gap-1 rounded font-semibold text-oai-gray-800 transition-colors hover:text-oai-brand dark:text-oai-gray-100 dark:hover:text-oai-brand-light"
+              aria-label={copy("usage.overview.cost_breakdown_aria")}
+              title={value}
+            >
+              <span className="truncate">{value}</span>
+              <Info size={12} strokeWidth={2} className="shrink-0 text-oai-brand" />
+            </button>
+          ) : (
+            <span className="min-w-0 truncate font-semibold text-oai-gray-800 dark:text-oai-gray-100" title={value}>
+              {value}
+            </span>
+          )
+        ) : null}
+      </div>
+      <div
+        className="flex min-w-0 items-center gap-1 overflow-hidden text-[10px] leading-4 text-oai-gray-500 dark:text-oai-gray-400"
+        data-confidence-state={confidence?.state}
+        data-testid={`${testId === "usage-token-summary" ? "usage-token" : "usage-cost"}-confidence`}
+      >
+        {states.map((state) => (
+          <span
+            key={state}
+            className={`inline-flex shrink-0 rounded-full px-1.5 py-0.5 font-semibold ${CONFIDENCE_BADGE_STYLES[state] || CONFIDENCE_BADGE_STYLES.exact}`}
+          >
+            {copy(`data.confidence.${state}`)}
+          </span>
+        ))}
+        {detail ? (
+          <span className="min-w-0 flex-1 truncate" title={detail}>{detail}</span>
+        ) : null}
+        {onOpenDiagnostics ? (
+          <button
+            type="button"
+            onClick={onOpenDiagnostics}
+            className="inline-flex min-h-6 shrink-0 items-center rounded px-1 font-semibold text-oai-brand hover:bg-oai-brand-50 dark:hover:bg-oai-brand-500/10"
+          >
+            {copy("data.confidence.open_diagnostics")}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function UsageOverview({
   period,
   periods,
@@ -166,6 +259,10 @@ export function UsageOverview({
   summaryValue,
   summaryLabel,
   summaryCostValue,
+  summaryConversationsValue,
+  averageUsageValue,
+  trendRows = [],
+  dayOverDayPercent: dayOverDayPercentOverride,
   cacheHitSummary,
   onCostInfo,
   fleetData = [],
@@ -183,27 +280,12 @@ export function UsageOverview({
   refreshInterval,
   onRefreshIntervalChange,
   lastUpdatedAt,
+  tokenConfidence,
+  costConfidence,
+  onOpenDiagnostics,
 }) {
   const tabs = normalizePeriods(periods);
   const dateLocale = getDateFnsLocale(getCopyLocale());
-  const summaryCounterValue = parseAnimatedCounterValue(String(summaryValue ?? ""));
-  // The digit-by-digit Counter renders at a fixed 72px and would clip on
-  // phones. Below sm we drop it and render the plain value, which scales
-  // with the responsive font class below. 639px == one below Tailwind's
-  // sm (640px), so this flips in lockstep with the sm: classes.
-  const matchesCompact = () =>
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(max-width: 639px)").matches;
-  const [isCompactSummary, setIsCompactSummary] = useState(matchesCompact);
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
-    const mq = window.matchMedia("(max-width: 639px)");
-    const onChange = (e) => setIsCompactSummary(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  const showAnimatedSummary = summaryCounterValue != null && !isCompactSummary;
   // Keep the selected period chip in view when the tab strip scrolls
   // horizontally on narrow screens.
   const tablistRef = useRef(null);
@@ -217,11 +299,7 @@ export function UsageOverview({
   // Q02: 计费方式筛选器状态。Q02 不会改变父组件 prop 协议；只看 fleetData
   // 自带的 billingMode 元数据并基于本组件 state 重新计算。
   const [billingFilter, setBillingFilter] = useState("all");
-  const { resolvedTheme } = useTheme();
   const { currency, rate } = useCurrency();
-  const isDark = resolvedTheme === "dark";
-  const gradientFrom = isDark ? "rgba(10,10,10,0.98)" : "rgba(255,255,255,0.96)";
-  const gradientTo = isDark ? "rgba(10,10,10,0)" : "rgba(255,255,255,0)";
 
   // FleetData is already grouped by provider. The filter recomputes per-source
   // usage/cost/share against the filtered grand total so the rendered numbers
@@ -238,6 +316,45 @@ export function UsageOverview({
     [fleetData],
   );
   const safeBillingFilter = normalizeBillingFilterValue(billingFilter);
+  const dailyTrendValues = useMemo(
+    () => (Array.isArray(trendRows) ? trendRows : [])
+      .map((row) => Number(row?.billable_total_tokens ?? row?.total_tokens))
+      .filter((value) => Number.isFinite(value)),
+    [trendRows],
+  );
+  const previousDailyValue = dailyTrendValues.at(-2);
+  const latestDailyValue = dailyTrendValues.at(-1);
+  const dayOverDayPercent = Number.isFinite(Number(dayOverDayPercentOverride))
+    ? Number(dayOverDayPercentOverride)
+    : Number.isFinite(previousDailyValue) && previousDailyValue !== 0 && Number.isFinite(latestDailyValue)
+      ? ((latestDailyValue - previousDailyValue) / Math.abs(previousDailyValue)) * 100
+      : null;
+  const overviewMetrics = [
+    dayOverDayPercent == null ? null : {
+      key: "day-over-day",
+      label: "环比昨日",
+      value: `${dayOverDayPercent >= 0 ? "↑" : "↓"} ${Math.abs(dayOverDayPercent).toFixed(1)}%`,
+      positive: dayOverDayPercent >= 0,
+    },
+    Number.isFinite(Number(averageUsageValue)) ? {
+      key: "daily-average",
+      label: "日均用量",
+      value: formatCompactNumber(averageUsageValue, {
+        thousandSuffix: "K",
+        millionSuffix: "M",
+        billionSuffix: "B",
+      }),
+    } : null,
+    summaryConversationsValue != null ? {
+      key: "conversations",
+      label: "总对话数",
+      value: formatCompactNumber(summaryConversationsValue, {
+        thousandSuffix: "K",
+        millionSuffix: "M",
+        billionSuffix: "B",
+      }),
+    } : null,
+  ].filter(Boolean);
 
   const billingFilterCopyKeys = {
     all: "usage.billing_filter.all",
@@ -253,14 +370,19 @@ export function UsageOverview({
   };
 
   return (
-    <Card className={className}>
+    <div className={`tt-overview-usage flex h-full flex-col gap-4 ${className}`}>
+      <section
+        data-testid="usage-overview-hero"
+        className="tt-overview-usage-hero tt-surface rounded-[var(--tt-card-radius)]"
+      >
+        <div className="flex h-full flex-col p-5">
         {/* Header: Period Tabs + Refresh. Tabs are a single horizontal-scroll
             strip (never wrap into stacked rows); actions stay pinned right. */}
-        <div className="flex items-center gap-2 mb-6">
-          <div ref={tablistRef} role="tablist" aria-label={copy("usage.overview.tablist_aria")} className="flex flex-1 min-w-0 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mb-6 flex flex-wrap items-center gap-2 lg:flex-nowrap">
+          <div ref={tablistRef} role="tablist" aria-label={copy("usage.overview.tablist_aria")} className="order-2 flex w-full min-w-0 flex-none gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:order-none lg:w-auto lg:flex-1">
             {tabs.map((p) => {
               const isActive = period === p.key;
-              const tabClass = `shrink-0 whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
+              const tabClass = `min-h-10 shrink-0 whitespace-nowrap text-xs font-medium px-3 py-2 rounded-md transition-colors ${
                 isActive
                   ? "bg-oai-brand-50 text-oai-brand-700 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
                   : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
@@ -322,13 +444,13 @@ export function UsageOverview({
               );
             })}
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:ml-0">
             {onOpenShare ? (
               <button
                 type="button"
                 onClick={onOpenShare}
                 aria-label={copy("share.button.aria")}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-brand hover:text-oai-brand transition-colors duration-200"
+                className="tt-product-focusable inline-flex h-10 items-center justify-center gap-1.5 px-3 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-brand hover:text-oai-brand transition-colors duration-200"
               >
                 <SquareArrowOutUpRight className="h-3.5 w-3.5" strokeWidth={2} />
                 {copy("share.button.label")}
@@ -338,7 +460,7 @@ export function UsageOverview({
               <select
                 value={refreshInterval || "1m"}
                 onChange={(e) => onRefreshIntervalChange(e.target.value)}
-                className="h-8 px-2.5 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand/50 focus:border-oai-brand"
+                className="tt-product-focusable h-10 px-2.5 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand/50 focus:border-oai-brand"
                 aria-label={copy("dashboard.refresh.interval.label")}
               >
                 {REFRESH_INTERVALS.map((interval) => (
@@ -359,51 +481,111 @@ export function UsageOverview({
           </div>
         </div>
 
-        {/* Main Stats */}
-        <div className="text-center mb-8">
-          <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wider mb-3">{summaryLabel}</div>
-          <div className="text-5xl sm:text-6xl md:text-7xl font-bold text-oai-black dark:text-oai-white tracking-tight tabular-nums">
-            {showAnimatedSummary ? (
-              <Counter
-                value={summaryCounterValue}
-                displayValue={summaryValue}
-                fontSize={72}
-                padding={6}
-                gap={1}
-                textColor="var(--oai-black, #111827)"
-                fontWeight={700}
-                gradientHeight={isDark ? 0 : 8}
-                gradientFrom={gradientFrom}
-                gradientTo={gradientTo}
-                counterStyle={{ paddingLeft: 2, paddingRight: 2, gap: 0, overflow: "visible" }}
-                digitStyle={{ width: "0.88ch" }}
-              />
-            ) : (
-              summaryValue
-            )}
-          </div>
-          {summaryCostValue && (
-            <div className="flex items-center justify-center gap-2 mt-4">
-              {onCostInfo ? (
-                <button
-                  type="button"
-                  onClick={onCostInfo}
-                  className="inline-flex items-center gap-1.5 text-xl font-bold text-oai-brand hover:text-oai-brand-dark dark:hover:text-oai-brand-light transition-colors cursor-pointer"
-                  aria-label={copy("usage.overview.cost_breakdown_aria")}
+        {/* One summary surface: the Token total is the only visual anchor.
+            Confidence and cost evidence share the compact footer below it. */}
+        {(summaryValue != null || summaryCostValue || tokenConfidence || costConfidence) ? (
+          <section
+            className="tt-surface-nested mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl"
+            data-testid="usage-overview-summary-card"
+          >
+            {summaryValue != null ? (
+              <div
+                className="tt-overview-primary-total relative flex min-h-64 flex-1 flex-col items-center justify-start overflow-hidden px-4 py-2 text-center sm:min-h-72"
+                data-testid="usage-primary-total"
+              >
+                <svg
+                  data-testid="usage-token-wave"
+                  className="tt-overview-token-wave"
+                  aria-hidden="true"
+                  viewBox="0 0 728 317"
+                  preserveAspectRatio="none"
                 >
-                  {summaryCostValue}
-                  <Info size={16} strokeWidth={2} className="opacity-80" />
-                </button>
-              ) : (
-                <span className="text-xl font-bold text-oai-brand">{summaryCostValue}</span>
-              )}
+                  <defs>
+                    <linearGradient id="token-wave-mint" x1="0" x2="1">
+                      <stop offset="0" stopColor="var(--tt-token-wave-mint)" stopOpacity="0" />
+                      <stop offset="0.48" stopColor="var(--tt-token-wave-mint)" stopOpacity="0.13" />
+                      <stop offset="1" stopColor="var(--tt-token-wave-mint)" stopOpacity="0" />
+                    </linearGradient>
+                    <linearGradient id="token-wave-blue" x1="0" x2="1">
+                      <stop offset="0" stopColor="var(--tt-token-wave-blue)" stopOpacity="0" />
+                      <stop offset="0.58" stopColor="var(--tt-token-wave-blue)" stopOpacity="0.1" />
+                      <stop offset="1" stopColor="var(--tt-token-wave-blue)" stopOpacity="0" />
+                    </linearGradient>
+                    <filter id="token-wave-blur"><feGaussianBlur stdDeviation="4" /></filter>
+                  </defs>
+                  <g fill="none" filter="url(#token-wave-blur)" transform="translate(0 -27)">
+                    <path d="M-35 104 C118 86 190 196 348 202 C514 208 600 84 770 94" stroke="url(#token-wave-mint)" strokeWidth="12" />
+                    <path d="M-35 126 C126 106 194 224 356 225 C526 226 612 104 770 112" stroke="url(#token-wave-mint)" strokeWidth="6" />
+                    <path d="M-40 82 C126 72 202 177 362 187 C528 197 612 73 768 69" stroke="url(#token-wave-blue)" strokeWidth="12" />
+                    <path d="M-40 147 C132 130 214 246 372 238 C538 230 618 121 770 132" stroke="url(#token-wave-blue)" strokeWidth="6" />
+                  </g>
+                  <g fill="none" filter="url(#token-wave-blur)" transform="translate(0 -44)">
+                    <ellipse cx="364" cy="214" rx="139" ry="28" stroke="url(#token-wave-blue)" strokeWidth="6" />
+                    <ellipse cx="364" cy="215" rx="91" ry="17" stroke="url(#token-wave-mint)" strokeWidth="6" />
+                  </g>
+                  <ellipse cx="364" cy="171" rx="56" ry="9" fill="var(--tt-token-wave-highlight)" fillOpacity="0.72" />
+                </svg>
+                <div className="relative z-10 mb-4 text-[11px] font-medium uppercase tracking-[0.16em] text-oai-gray-500 dark:text-oai-gray-300">
+                  {summaryLabel}
+                </div>
+                <div className="relative z-10 max-sm:text-6xl text-7xl font-bold leading-none tracking-[-0.06em] tabular-nums text-oai-black dark:text-oai-white xl:text-[100px]">
+                  {summaryValue}
+                </div>
+                {overviewMetrics.length > 0 ? (
+                  <div className="relative z-10 mt-[66px] grid grid-cols-3 gap-8" data-testid="usage-overview-metrics">
+                    {overviewMetrics.map((metric) => (
+                      <div key={metric.key} className="tt-overview-mini-metric min-w-[106px] rounded-xl px-4 py-2.5">
+                        <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{metric.label}</div>
+                        <div className={`mt-1 text-base font-semibold tabular-nums ${metric.positive === true ? "text-emerald-500" : metric.positive === false ? "text-red-500" : "text-oai-black dark:text-white"}`}>
+                          {metric.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div
+              className={`grid min-w-0 grid-cols-1 border-oai-gray-200 px-3 dark:border-oai-gray-700 sm:grid-cols-2 ${summaryValue != null ? "border-t" : ""}`}
+              data-testid="usage-summary-details"
+            >
+              <CompactEvidenceCell
+                label={copy("usage.overview.usage_evidence_label")}
+                confidence={tokenConfidence}
+                fallbackUpdatedAt={lastUpdatedAt}
+                onOpenDiagnostics={onOpenDiagnostics}
+                testId="usage-token-summary"
+              />
+              <CompactEvidenceCell
+                label={copy("dashboard.cost_breakdown.total_label")}
+                value={summaryCostValue}
+                confidence={costConfidence}
+                fallbackUpdatedAt={lastUpdatedAt}
+                onInfo={onCostInfo}
+                onOpenDiagnostics={onOpenDiagnostics}
+                testId="usage-cost-summary"
+                className="sm:border-l sm:border-oai-gray-200 sm:pl-3 dark:sm:border-oai-gray-700"
+              />
             </div>
-          )}
+          </section>
+        ) : null}
+
+        <div className="tt-overview-hero-footer-well" data-testid="usage-hero-footer-well" aria-hidden />
+
         </div>
+      </section>
+
+      {hasAnyFleetModel ? (
+      <section
+        data-testid="usage-overview-providers"
+        className="tt-overview-provider-panel tt-surface rounded-[var(--tt-card-radius)]"
+      >
+        <div className="flex h-full flex-col p-5">
 
         {/* Provider Distribution */}
         {hasAnyFleetModel && (
-          <div className="mb-4">
+          <div className="mb-2 flex items-center justify-between gap-4">
             {/* Q02: 计费方式 segmented control. Compact single-row strip with
                 copy-registry labels. We only render this when there's at
                 least one model to filter; the strip stays out of the way
@@ -422,7 +604,7 @@ export function UsageOverview({
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setBillingFilter(value)}
-                    className={`shrink-0 whitespace-nowrap text-[11px] font-medium px-2.5 py-1 rounded transition-colors ${
+                    className={`min-h-10 shrink-0 whitespace-nowrap rounded px-2.5 py-2 text-[11px] font-medium transition-colors ${
                       isActive
                         ? "bg-oai-brand-50 text-oai-brand-700 shadow-sm ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
                         : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white"
@@ -433,6 +615,9 @@ export function UsageOverview({
                 );
               })}
             </div>
+            <a href="/settings/cost" className="mr-2 inline-flex shrink-0 items-center gap-1 text-xs font-medium text-oai-gray-500 hover:text-oai-brand dark:text-oai-gray-300">
+              {copy("usage.overview.configure_management")} <ChevronRight size={14} aria-hidden="true" />
+            </a>
           </div>
         )}
         {providers.length > 0 && (
@@ -490,21 +675,28 @@ export function UsageOverview({
                       action: copy(isExpanded ? "usage.overview.collapse" : "usage.overview.expand"),
                     })}
                     onClick={() => setExpandedProvider(isExpanded ? null : provider.label)}
-                    className={`min-w-0 text-left p-3 rounded-xl border transition-[background-color,border-color,box-shadow,transform] duration-200 ${
+                    className={`tt-provider-card tt-pressable min-w-0 text-left p-3 rounded-xl border transition-[background-color,border-color,box-shadow,transform] duration-200 ${
                       isExpanded
-                        ? "border-oai-brand-200 bg-oai-brand-50/60 shadow-oai-md ring-2 ring-oai-brand-200 dark:border-oai-brand-700 dark:bg-oai-brand-900/20 dark:ring-oai-brand-700/50"
-                        : "border-oai-gray-200 bg-white/80 shadow-oai-sm hover:-translate-y-px hover:border-oai-gray-300 hover:shadow-oai-md dark:border-oai-gray-700 dark:bg-oai-gray-900/80 dark:hover:border-oai-gray-600"
+                        ? "ring-2 ring-oai-brand-200 dark:ring-oai-brand-700/50"
+                        : ""
                     }`}
                   >
                     <div className="flex items-center gap-1.5 mb-1 min-w-0">
-                      <ProviderIcon provider={provider.label} size={15} color={color} className="text-oai-gray-700 dark:text-oai-gray-300 shrink-0" />
+                      <ProviderIcon provider={provider.label} size={32} color={color} className="text-oai-gray-700 dark:text-oai-gray-300 shrink-0" />
                       <span className="text-sm font-medium text-oai-black dark:text-oai-white truncate min-w-0 flex-1">{provider.label}</span>
-                      <BillingBadge mode={sourceBillingMode} copyKey={sourceBillingKey} />
+                      <BillingBadge
+                        mode={sourceBillingMode}
+                        copyKey={sourceBillingKey}
+                        label={sourceBillingMode === "api_key" ? "直连" : sourceBillingMode === "token_plan" ? "套餐" : undefined}
+                      />
                     </div>
                     {provider.collectionStatus === "connected_no_precise_tokens" ? (
-                      <div className="mt-1 text-[11px] leading-4 text-emerald-600 dark:text-emerald-400">
-                        {copy("settings.data_dirs.installed_no_data")}
-                      </div>
+                      <>
+                        <div className="mt-1 text-[11px] leading-4 text-emerald-600 dark:text-emerald-400">
+                          {copy("settings.data_dirs.installed_no_data")}
+                        </div>
+                        <div className="tt-provider-no-data-dash text-sm font-semibold text-oai-gray-500" aria-hidden="true">–</div>
+                      </>
                     ) : (
                       <>
                         <div className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">
@@ -569,7 +761,10 @@ export function UsageOverview({
             {copy("usage.billing_filter.empty")}
           </div>
         )}
-      </Card>
+        </div>
+      </section>
+      ) : null}
+    </div>
   );
 }
 

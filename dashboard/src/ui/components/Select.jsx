@@ -10,7 +10,7 @@ import { cn } from "../../lib/cn";
 // which renders it above the page so it escapes ancestor `overflow` clipping.
 
 const TRIGGER_BASE =
-  "relative inline-flex items-center justify-between gap-2 rounded-[var(--tt-control-radius)] border " +
+  "relative inline-flex min-h-10 items-center justify-between gap-2 rounded-[var(--tt-control-radius)] border " +
   "border-white/80 bg-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.08)] " +
   "transition-[border-color,box-shadow,background-color] hover:border-oai-gray-300 focus:outline-none " +
   "focus-visible:border-oai-brand-500 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oai-brand-500/20 " +

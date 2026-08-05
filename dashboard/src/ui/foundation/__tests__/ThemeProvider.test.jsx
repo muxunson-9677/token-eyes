@@ -164,17 +164,57 @@ it("loads the Apple glass foundations after the legacy styles", () => {
     "--tt-canvas",
     "--tt-card-radius",
     "--tt-control-radius",
+    "--tt-control-selected",
+    "--tt-control-surface",
+    "--tt-control-well",
+    "--tt-metric-create-surface",
+    "--tt-metric-hit-surface",
+    "--tt-metric-input-surface",
+    "--tt-metric-output-surface",
+    "--tt-metric-surface",
+    "--tt-nested-outline",
+    "--tt-nested-shadow",
+    "--tt-page-border",
+    "--tt-page-border-strong",
+    "--tt-page-canvas",
+    "--tt-page-ink",
+    "--tt-page-muted",
+    "--tt-page-shadow",
+    "--tt-page-success",
+    "--tt-page-success-soft",
+    "--tt-page-surface",
+    "--tt-service-hover-surface",
+    "--tt-service-surface",
+    "--tt-shell-environment",
+    "--tt-sidebar-surface",
+    "--tt-sidebar-width",
     "--tt-surface",
     "--tt-surface-blur",
     "--tt-surface-border",
     "--tt-surface-nested",
     "--tt-surface-outline",
     "--tt-surface-shadow",
+    "--tt-window-bar-height",
   ]);
 
   const rootRule = stylesheet.nodes.find((node) => node.type === "rule" && node.selector === ":root");
   const darkRule = stylesheet.nodes.find((node) => node.type === "rule" && node.selector === ":root.dark");
-  expect(rootRule.nodes.find((node) => node.prop === "--tt-canvas")?.value).toBe("#f4f5f6");
+  const rootValues = Object.fromEntries(
+    rootRule.nodes.filter((node) => node.type === "decl").map((node) => [node.prop, node.value]),
+  );
+  expect(rootValues["--tt-window-bar-height"]).toBe("80px");
+  expect(rootValues["--tt-sidebar-width"]).toBe("220px");
+  const dashboardRouteRule = stylesheet.nodes.find(
+    (node) => node.type === "rule" && node.selector === ".tt-reference-route-dashboard",
+  );
+  const dashboardRouteValues = Object.fromEntries(
+    dashboardRouteRule.nodes
+      .filter((node) => node.type === "decl")
+      .map((node) => [node.prop, node.value]),
+  );
+  expect(dashboardRouteValues["--tt-window-bar-height"]).toBe("62px");
+  expect(dashboardRouteValues["--tt-sidebar-width"]).toBe("252px");
+  expect(rootRule.nodes.find((node) => node.prop === "--tt-canvas")?.value).toBe("#f7f8f9");
   expect(darkRule.nodes.find((node) => node.prop === "--tt-canvas")?.value).toBe("#14161a");
 
   for (const selector of [".tt-surface", ".tt-surface-nested", ".tt-pressable"]) {

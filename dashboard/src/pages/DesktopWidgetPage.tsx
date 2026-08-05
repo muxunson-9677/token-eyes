@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   Check,
   ChevronDown,
+  FileText,
   Palette,
   Pin,
   PinOff,
@@ -79,22 +80,38 @@ function TrafficLights({
   );
 }
 
-function ProgressRing({ value }: { value: number | null }) {
-  const percent = value ?? 0;
+type DesktopWidgetLimit = DesktopWidgetViewModel["limits"][number];
+type DesktopWidgetModelUsage = DesktopWidgetViewModel["totals"]["models"][number];
+
+export function orderedWidgetLimits(
+  limits: DesktopWidgetLimit[],
+  selectedIds: string[] | null | undefined,
+) {
+  if (selectedIds == null) return limits;
+  const byId = new Map(limits.map((limit) => [limit.id, limit]));
+  return selectedIds
+    .map((id) => byId.get(id))
+    .filter((limit): limit is DesktopWidgetLimit => Boolean(limit));
+}
+
+export function activeWidgetModels(models: DesktopWidgetModelUsage[]) {
+  return models.filter((model) => model.tokens > 0);
+}
+function LimitProgress({ value }: { value: number | null }) {
+  const percent = Math.max(0, Math.min(100, value ?? 0));
   return (
     <span
-      className="widget-progress-ring"
+      className="widget-limit-progress-bar"
       data-testid="widget-limit-progress"
-      style={{ "--widget-progress": `${percent * 3.6}deg` } as React.CSSProperties}
       aria-hidden
     >
-      <span />
+      <span style={{ width: `${percent}%` }} />
     </span>
   );
 }
 
 function LimitsSummary({ model }: { model: DesktopWidgetViewModel }) {
-  const limits = model.limits.slice(0, 2);
+  const limits = model.limits.slice(0, 1);
   if (!limits.length) {
     return React.createElement("span", { className: "widget-empty" }, copy("widget.empty"));
   }
@@ -102,9 +119,14 @@ function LimitsSummary({ model }: { model: DesktopWidgetViewModel }) {
     <div className="widget-limit-summary">
       {limits.map((limit) => (
         <span className="widget-limit-summary__item" key={limit.id}>
-          <ProgressRing value={limit.usedPercent} />
+          <LimitProgress value={limit.usedPercent} />
           <span className="widget-limit-summary__window">{limit.window}</span>
           <strong>{limit.usedPercent == null ? "—" : `${limit.usedPercent}%`}</strong>
+          {limit.notes ? (
+            <small className="widget-limit-summary__note widget-truncate" title={limit.notes}>
+              {limit.notes}
+            </small>
+          ) : null}
         </span>
       ))}
     </div>
@@ -227,6 +249,9 @@ function ExpandedProjects({ status }: {
               }}
               aria-expanded={hasSessions ? open : undefined}
             >
+              <span className="widget-project__icon" data-testid="widget-project-icon">
+                <FileText size={15} aria-hidden />
+              </span>
               <span className="widget-truncate">{project.label}</span>
               <span className="widget-project__counts">
                 <i className="red">{project.red}</i>
@@ -276,10 +301,15 @@ function ExpandedLimits({ model }: { model: DesktopWidgetViewModel }) {
     <div className="widget-limit-list">
       {model.limits.map((limit) => (
         <div className="widget-limit-row" key={limit.id}>
-          <ProgressRing value={limit.usedPercent} />
+          <LimitProgress value={limit.usedPercent} />
           <span className="widget-limit-row__identity">
             <strong className="widget-truncate">{limit.provider} · {limit.accountLabel}</strong>
             <small>{limit.window}{limit.error ? ` · ${copy("widget.refresh_failed")}` : ""}</small>
+            {limit.notes ? (
+              <small className="widget-limit-row__note widget-truncate" title={limit.notes}>
+                {limit.notes}
+              </small>
+            ) : null}
           </span>
           <strong>{limit.usedPercent == null ? "—" : `${limit.usedPercent}%`}</strong>
         </div>
@@ -289,19 +319,23 @@ function ExpandedLimits({ model }: { model: DesktopWidgetViewModel }) {
 }
 
 function ExpandedModels({ model }: { model: DesktopWidgetViewModel }) {
-  if (!model.totals.models.length) {
+  const models = activeWidgetModels(model.totals.models);
+  if (!models.length) {
     return <div className="widget-detail-empty">{copy("widget.empty")}</div>;
   }
   return (
     <div className="widget-model-list">
-      {model.totals.models.map((item) => (
+      {models.map((item, index) => (
         <div className="widget-model-row" key={item.name}>
           <div className="widget-model-row__labels">
-            <strong className="widget-truncate">{item.name}</strong>
+            <strong className="widget-truncate">
+              <i className="widget-model-row__tone" data-testid="widget-model-tone" data-tone={String(index % 7)} />
+              {item.name}
+            </strong>
             <span>{new Intl.NumberFormat().format(item.tokens)} · {item.share}%</span>
           </div>
           <div className="widget-model-row__bar">
-            <span style={{ width: `${Math.max(0, Math.min(100, item.share))}%` }} />
+            <span data-tone={String(index % 7)} style={{ width: `${Math.max(0, Math.min(100, item.share))}%` }} />
           </div>
         </div>
       ))}
@@ -456,6 +490,9 @@ export function DesktopWidgetPage() {
 
   const model = viewModel;
   const selectedProjectIds = prefs.selectedProjectIds ?? [];
+  const visibleLimits = model
+    ? orderedWidgetLimits(model.limits, prefs.selectedLimitIds)
+    : null;
   const visibleProjectStatus = model
     ? filteredProjectStatus(
       model.projectStatus,
@@ -464,7 +501,11 @@ export function DesktopWidgetPage() {
     )
     : null;
   const visibleModel = model && visibleProjectStatus
-    ? { ...model, projectStatus: visibleProjectStatus }
+    ? {
+      ...model,
+      projectStatus: visibleProjectStatus,
+      limits: visibleLimits ?? [],
+    }
     : model;
   const pendingReset = model?.pendingReset;
   const rootStyle = {
@@ -565,15 +606,6 @@ export function DesktopWidgetPage() {
             )}
           </div>
 
-          <PillNav
-            value={prefs.mode}
-            options={(Object.keys(MODE_KEYS) as DesktopWidgetMode[]).map((mode) => ({
-              value: mode,
-              label: copy(MODE_KEYS[mode]),
-            }))}
-            onValueChange={setMode}
-            ariaLabel={copy("widget.mode_menu")}
-          />
 
           <div className="widget-corner-controls">
             <button
@@ -609,6 +641,18 @@ export function DesktopWidgetPage() {
         ) : null}
 
       </article>
+
+      <nav className="widget-mode-rail" data-testid="widget-mode-rail">
+        <PillNav
+          value={prefs.mode}
+          options={(Object.keys(MODE_KEYS) as DesktopWidgetMode[]).map((mode) => ({
+            value: mode,
+            label: copy(MODE_KEYS[mode]),
+          }))}
+          onValueChange={setMode}
+          ariaLabel={copy("widget.mode_menu")}
+        />
+      </nav>
 
       {openMenu === "agent" ? (
         <PortalMenu anchor={agentMenuAnchor} label={copy("widget.agent_menu")} kind="agent">

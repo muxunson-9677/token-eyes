@@ -10,11 +10,11 @@ const POLL_INTERVAL_MS = 30_000;
 const PREFS_CHANGED_EVENT = "token-eyes:desktop-widget-prefs-changed";
 
 const DEFAULT_PREFS: DesktopWidgetPrefs = {
-  version: 5,
+  version: 6,
   visible: true,
   x: null,
   y: null,
-  width: 322,
+  width: 352,
   height: 72,
   collapsedHeight: 72,
   expandedHeight: 360,
@@ -27,6 +27,7 @@ const DEFAULT_PREFS: DesktopWidgetPrefs = {
   alwaysOnTop: true,
   activeSessionWindow: "1h",
   selectedProjectIds: [],
+  selectedLimitIds: null,
   selectedProjects: [],
 };
 

@@ -28,6 +28,8 @@ export function useCostAccumulation({
   const [otherAiGroupCosts, setOtherAiGroupCosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [costSummaryStale, setCostSummaryStale] = useState(false);
+  const [costLastSuccessfulAt, setCostLastSuccessfulAt] = useState(null);
   const requestIdRef = useRef(0);
 
   // Fetch all data
@@ -46,40 +48,37 @@ export function useCostAccumulation({
       });
       const rangeParams = { timeZone, tzOffsetMinutes };
 
-      // Fetch token plans and api billing always
-      const plansPromise = getTokenPlans().catch((e) => {
-        console.warn("[useCostAccumulation] failed to fetch token plans:", e);
-        return { records: [] };
-      });
-      const billingPromise = getApiBillingAccounts().catch((e) => {
-        console.warn("[useCostAccumulation] failed to fetch api billing accounts:", e);
-        return { accounts: [] };
-      });
+      const settle = (promise, label) => promise.then(
+        (value) => ({ value, error: null, label }),
+        (fetchError) => ({ value: null, error: fetchError, label }),
+      );
+
+      // Fetch token plans and API billing always. Each request is settled
+      // independently so one unavailable source cannot erase still-valid data.
+      const plansPromise = settle(getTokenPlans(), "token plans");
+      const billingPromise = settle(getApiBillingAccounts(), "API billing accounts");
 
       // Fetch spend records and timeseries only when there are visible sources
       const recordsPromise = hasSources
-        ? getSpendRecords({
+        ? settle(getSpendRecords({
             ...monthRanges.selected,
             ...rangeParams,
             sources,
             summary_month: monthRanges.selectedMonth,
-          }).catch((e) => {
-            console.warn("[useCostAccumulation] failed to fetch spend records:", e);
-            return { records: [] };
-          })
-        : Promise.resolve({ records: [] });
+          }), "spend records")
+        : Promise.resolve({ value: { records: [] }, error: null, label: "spend records" });
       const timeseriesPromise = hasSources
-        ? getSpendTimeseries({ ...monthRanges.selected, ...rangeParams, sources }).catch((e) => {
-            console.warn("[useCostAccumulation] failed to fetch spend timeseries:", e);
-            return null;
-          })
-        : Promise.resolve(null);
+        ? settle(
+            getSpendTimeseries({ ...monthRanges.selected, ...rangeParams, sources }),
+            "selected-month cost totals",
+          )
+        : Promise.resolve({ value: null, error: null, label: "selected-month cost totals" });
       const previousTimeseriesPromise = hasSources
-        ? getSpendTimeseries({ ...monthRanges.comparison, ...rangeParams, sources }).catch((e) => {
-            console.warn("[useCostAccumulation] failed to fetch previous-month spend timeseries:", e);
-            return null;
-          })
-        : Promise.resolve(null);
+        ? settle(
+            getSpendTimeseries({ ...monthRanges.comparison, ...rangeParams, sources }),
+            "comparison-month cost totals",
+          )
+        : Promise.resolve({ value: null, error: null, label: "comparison-month cost totals" });
 
       const [plansResult, recordsResult, timeseriesResult, previousTimeseriesResult, billingResult] = await Promise.all([
         plansPromise,
@@ -91,14 +90,37 @@ export function useCostAccumulation({
 
       if (requestId !== requestIdRef.current) return;
 
-      setTokenPlans(Array.isArray(plansResult?.records) ? plansResult.records : []);
-      setSpendRecords(Array.isArray(recordsResult?.records) ? recordsResult.records : []);
-      setOtherAiGroupCosts(Array.isArray(recordsResult?.other_ai_group_totals)
-        ? recordsResult.other_ai_group_totals.filter((group) => Number(group?.record_count || 0) > 0)
-        : []);
-      setSpendTimeseries(timeseriesResult || null);
-      setPreviousMonthTimeseries(previousTimeseriesResult || null);
-      setApiBillingAccounts(Array.isArray(billingResult?.accounts) ? billingResult.accounts : []);
+      if (!plansResult.error) {
+        setTokenPlans(Array.isArray(plansResult.value?.records) ? plansResult.value.records : []);
+      }
+      if (!recordsResult.error) {
+        setSpendRecords(Array.isArray(recordsResult.value?.records) ? recordsResult.value.records : []);
+        setOtherAiGroupCosts(Array.isArray(recordsResult.value?.other_ai_group_totals)
+          ? recordsResult.value.other_ai_group_totals.filter((group) => Number(group?.record_count || 0) > 0)
+          : []);
+      }
+      if (!timeseriesResult.error) {
+        setSpendTimeseries(timeseriesResult.value || null);
+        setCostSummaryStale(false);
+        if (hasSources) setCostLastSuccessfulAt(new Date().toISOString());
+      } else {
+        setCostSummaryStale(true);
+      }
+      if (!previousTimeseriesResult.error) setPreviousMonthTimeseries(previousTimeseriesResult.value || null);
+      if (!billingResult.error) {
+        setApiBillingAccounts(Array.isArray(billingResult.value?.accounts) ? billingResult.value.accounts : []);
+      }
+
+      const failures = [
+        plansResult,
+        recordsResult,
+        timeseriesResult,
+        previousTimeseriesResult,
+        billingResult,
+      ].filter((result) => result.error);
+      setError(failures.length > 0
+        ? failures.map((result) => `${result.label}: ${result.error?.message || String(result.error)}`).join("; ")
+        : null);
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
       setError(err?.message || "Failed to load cost accumulation data");
@@ -198,6 +220,7 @@ export function useCostAccumulation({
         startedAt: record.start_date || null,
         renewsAt: record.end_date || null,
         status: getSubscriptionStatus(record),
+        lifetimeAmount: record.lifetime_amount ?? record.amount ?? 0,
       }));
   }, [filteredSpendRecords]);
 
@@ -214,6 +237,8 @@ export function useCostAccumulation({
       expiresAt: plan.expires_at || null,
       syncStatus: plan.sync_status || plan.last_refresh_status || "not_configured",
       syncStatusLabel: getSyncStatusLabel(plan.sync_status || plan.last_refresh_status),
+      monthCostUsd: plan.month_cost_usd ?? 0,
+      availableQuotaDisplay: plan.available_quota_display || null,
     }));
   }, [tokenPlans]);
 
@@ -227,6 +252,8 @@ export function useCostAccumulation({
     // State
     loading,
     error,
+    costSummaryStale,
+    costLastSuccessfulAt,
     // Actions
     refresh: fetchData,
   };

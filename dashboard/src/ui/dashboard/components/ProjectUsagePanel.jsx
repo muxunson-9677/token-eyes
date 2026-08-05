@@ -54,7 +54,6 @@ export function ProjectUsagePanel({
   className = "",
   embedded = false,
 }) {
-  const placeholder = copy("shared.placeholder.short");
   const tokensLabel = copy("dashboard.projects.tokens_label");
   const emptyLabel = copy("dashboard.projects.empty");
   const limitLabel = copy("dashboard.projects.limit_label");
@@ -120,7 +119,6 @@ export function ProjectUsagePanel({
             <ProjectUsageCard
               key={`${entry?.project_key || "project"}-${entry?.project_ref || ""}`}
               entry={entry}
-              placeholder={placeholder}
               tokensLabel={tokensLabel}
               tokenFormatOptions={tokenFormatOptions}
             />
@@ -133,14 +131,13 @@ export function ProjectUsagePanel({
 
 function ProjectUsageCard({
   entry,
-  placeholder,
   tokensLabel,
   tokenFormatOptions,
 }) {
   const [copyStatus, setCopyStatus] = useState(null);
 
   const projectKey = entry?.project_key || "";
-  const projectName = entry?.project_name || projectKey || placeholder;
+  const projectName = entry?.project_name || projectKey || copy("data.confidence.unattributed");
   const projectPath = entry?.project_path || "";
   const hasRealPath = Boolean(projectPath && projectPath.length > 0);
   const costUsd = entry?.cost_usd ?? null;
@@ -154,7 +151,7 @@ function ProjectUsageCard({
   const tokensRaw = resolveTokens(entry);
   const tokensCompact =
     tokensRaw == null
-      ? placeholder
+      ? null
       : formatCompactNumber(tokensRaw, tokenFormatOptions);
 
   const isUnpriced = pricingCoverage === "unpriced";
@@ -210,11 +207,7 @@ function ProjectUsageCard({
                 {copyStatus === "copied" ? "✓" : "⎘"}
               </button>
             </div>
-          ) : (
-            <div data-slot="project-path" className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">
-              {copy("dashboard.projects.no_path")}
-            </div>
-          )}
+          ) : null}
           {projectRef && /^https?:\/\//.test(projectRef) && (
             <div data-slot="project-remote" className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5 truncate max-w-[180px]">
               <span className="text-oai-gray-400">{copy("dashboard.projects.remote_repo")} </span>
@@ -225,9 +218,9 @@ function ProjectUsageCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-        <span title={tokensLabel}>
+        {tokensCompact != null ? <span title={tokensLabel}>
           {tokensCompact} <span className="text-oai-gray-400">{tokensLabel}</span>
-        </span>
+        </span> : null}
         {costDisplay != null && (
           <span>
             ${costDisplay} <span className="text-oai-gray-400">{copy("dashboard.projects.cost_label")}</span>

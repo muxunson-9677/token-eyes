@@ -1,15 +1,20 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ModelUsageDonut } from "../ModelUsageDonut.jsx";
 
 vi.mock("../../../../lib/copy", () => ({
-  copy: (key) => ({
+  getCopyLocale: () => "zh-CN",
+  copy: (key, params = {}) => ({
     "dashboard.model_distribution.title": "模型消耗分布",
     "dashboard.model_distribution.subtitle": "当前时间范围内各模型 Token 占比",
     "dashboard.model_distribution.total": "模型总消耗",
     "dashboard.model_distribution.empty": "当前范围暂无模型消耗",
     "dashboard.model_distribution.chart_aria": "模型消耗分布图",
+    "dashboard.model_distribution.radar_title": "模型活跃雷达",
+    "dashboard.model_distribution.radar_subtitle": "序号对应右侧模型排名 · 占比 0–100%",
+    "dashboard.model_distribution.radar_summary": `${params.count} 个模型 · 首位 ${params.percent}%`,
+    "dashboard.model_distribution.radar_aria": "模型活跃度雷达图",
   }[key] || key),
 }));
 
@@ -27,9 +32,37 @@ describe("ModelUsageDonut", () => {
 
     expect(screen.getByRole("img", { name: "模型消耗分布图" })).toBeInTheDocument();
     expect(screen.getByText("1.2万")).toBeInTheDocument();
-    expect(screen.getByText("GPT-5.5")).toBeInTheDocument();
-    expect(screen.getByText("75%")).toBeInTheDocument();
-    expect(screen.getByText("9,000")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "模型活跃度雷达图" })).toBeInTheDocument();
+    const visuals = screen.getByTestId("model-usage-visuals");
+    const legend = screen.getByTestId("model-usage-legend");
+    expect(within(legend).getByText("GPT-5.5")).toBeInTheDocument();
+    expect(within(legend).getByText("75%")).toBeInTheDocument();
+    expect(within(legend).getByText("9,000")).toBeInTheDocument();
+    expect(visuals).toContainElement(screen.getByRole("img", { name: "模型消耗分布图" }));
+    expect(visuals).toContainElement(screen.getByRole("img", { name: "模型活跃度雷达图" }));
+    expect(screen.getByTestId("model-usage-layout")).toContainElement(legend);
+    expect(screen.getByTestId("model-usage-layout")).toHaveClass("sm:grid-cols-2");
+    expect(legend).toHaveClass("h-full", "overflow-y-auto", "divide-y");
+    expect(legend).not.toHaveClass("sm:max-h-none", "overflow-hidden");
+    const legendItems = Array.from(legend.querySelectorAll("li"));
+    expect(legendItems).toHaveLength(2);
+    legendItems.forEach((item) => {
+      expect(item).not.toHaveClass("flex-1", "rounded-lg");
+      expect(item).toHaveAttribute("data-model-rank-row", "true");
+    });
+    expect(screen.getByText("2 个模型 · 首位 75%")).toBeVisible();
+    expect(screen.getByTestId("model-radar-label-0")).toHaveAttribute(
+      "aria-label",
+      "GPT-5.5 75%",
+    );
+    expect(screen.getByTestId("model-radar-label-0")).toHaveTextContent("1");
+    expect(screen.getByTestId("model-radar-label-0")).toHaveTextContent("75%");
+    expect(screen.getByTestId("model-radar-label-0")).not.toHaveTextContent("GPT-5.5");
+    expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
+    expect(screen.getAllByTestId("model-radar-grid-ring")).toHaveLength(4);
+    expect(screen.getByTestId("model-radar-frame")).toBeInTheDocument();
+    expect(screen.getByTestId("model-radar-value")).toHaveAttribute("fill", "url(#model-radar-fill)");
+    expect(screen.getAllByTestId("model-radar-vertex")).toHaveLength(2);
   });
 
   it("renders an empty state without a misleading chart", () => {
@@ -54,7 +87,8 @@ describe("ModelUsageDonut", () => {
       expect(screen.getByText(row.name)).toBeInTheDocument();
     }
     const legend = container.querySelector('[data-testid="model-usage-legend"]');
-    expect(legend).toHaveClass("overflow-y-auto");
+    expect(legend).toHaveClass("h-full", "min-h-0", "overflow-y-auto");
+    expect(legend).not.toHaveClass("sm:max-h-none");
     expect(legend.textContent).not.toContain("Other");
     expect(container.querySelector(".truncate")).toBeNull();
   });

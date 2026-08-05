@@ -118,6 +118,7 @@ export interface DesktopWidgetPrefs {
   alwaysOnTop: boolean;
   activeSessionWindow: DesktopWidgetActiveSessionWindow;
   selectedProjectIds: string[];
+  selectedLimitIds: string[] | null;
   selectedProjects: Array<{
     id: string;
     label: string;
@@ -162,6 +163,7 @@ export interface DesktopWidgetViewModel {
     window: string;
     usedPercent: number | null;
     resetAt: string | null;
+    notes: string | null;
     error: string | null;
   }>;
   totals: {
@@ -201,6 +203,7 @@ const PATHS = {
   codexResetEvents: "tokentracker-codex-reset-events",
   desktopWidget: "tokentracker-desktop-widget",
   localSettings: "tokentracker-local-settings",
+  clearLocalData: "tokentracker-clear-local-data",
   detectDataDirectories: "tokentracker-detect-data-directories",
   selectDirectory: "tokentracker-select-directory",
   tokenPlans: "tokentracker-token-plans",
@@ -283,7 +286,7 @@ async function readJsonResponse(response: Response) {
     const contentType = response.headers.get("content-type") || "";
     const startsLikeHtml = /^\s*<!doctype\s+html|^\s*<html[\s>]/i.test(text);
     if (startsLikeHtml || contentType.toLowerCase().includes("text/html")) {
-      throw new Error("本地 API 未连接：桌面应用收到的是前端 HTML，不是 JSON。请重新打开 Token Eyes，或先运行本地 Token Tracker 服务后再刷新。");
+      throw new Error("本地 API 未连接：桌面应用收到的是前端 HTML，不是 JSON。请重新打开 Token Eyes，或确认 Token Eyes 本地服务已启动后再刷新。");
     }
     throw err;
   }
@@ -444,6 +447,19 @@ export async function getProjectUsageSummary({
 
 export async function getLocalSettings() {
   return fetchLocalJson(PATHS.localSettings);
+}
+
+export async function clearLocalData() {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.clearLocalData, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ confirm: true }),
+  });
 }
 
 export async function detectLocalDataDirectories() {

@@ -24,7 +24,7 @@ export async function widgetProjectFromPath(
   const label = path.split(/[\\/]/u).filter(Boolean).at(-1) || path;
   return {
     id: `project-${hash}`,
-    label: label.replace(/[\u0000-\u001f\u007f]/gu, "").slice(0, 80),
+    label: label.replace(/\p{Cc}/gu, "").slice(0, 80),
     path,
   };
 }

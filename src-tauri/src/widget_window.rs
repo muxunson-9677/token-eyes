@@ -8,11 +8,11 @@ use tauri::{
 };
 
 pub const WIDGET_LABEL: &str = "desktop-widget";
-const PREFS_VERSION: u8 = 5;
-const DEFAULT_WIDTH: u32 = 322;
+const PREFS_VERSION: u8 = 6;
+const DEFAULT_WIDTH: u32 = 352;
 const DEFAULT_HEIGHT: u32 = 72;
 const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
-const MIN_WIDTH: u32 = 300;
+const MIN_WIDTH: u32 = 352;
 const MIN_HEIGHT: u32 = 72;
 const POPOVER_HEIGHT: u32 = 260;
 static TRANSIENT_POPOVER_OPEN: AtomicBool = AtomicBool::new(false);
@@ -55,6 +55,7 @@ pub struct WidgetPrefs {
     pub always_on_top: bool,
     pub active_session_window: String,
     pub selected_project_ids: Vec<String>,
+    pub selected_limit_ids: Option<Vec<String>>,
     pub selected_projects: Vec<WidgetProjectSelection>,
 }
 
@@ -78,6 +79,7 @@ impl Default for WidgetPrefs {
             always_on_top: true,
             active_session_window: "1h".into(),
             selected_project_ids: Vec::new(),
+            selected_limit_ids: None,
             selected_projects: Vec::new(),
         }
     }
@@ -148,6 +150,24 @@ fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
         })
         .take(100)
         .collect();
+    prefs.selected_limit_ids = prefs.selected_limit_ids.map(|ids| {
+        ids.into_iter()
+            .filter_map(|id| {
+                let id = id.trim().to_string();
+                let valid = !id.is_empty()
+                    && id.len() <= 128
+                    && id.chars().all(|character| {
+                        character.is_ascii_alphanumeric() || ":._-".contains(character)
+                    });
+                valid.then_some(id)
+            })
+            .fold(Vec::new(), |mut unique, id| {
+                if unique.len() < 100 && !unique.contains(&id) {
+                    unique.push(id);
+                }
+                unique
+            })
+    });
     prefs.selected_projects = prefs
         .selected_projects
         .into_iter()
@@ -179,6 +199,7 @@ fn merge_display_prefs(mut current: WidgetPrefs, requested: WidgetPrefs) -> Widg
     current.opacity = requested.opacity;
     current.always_on_top = requested.always_on_top;
     current.active_session_window = requested.active_session_window;
+    current.selected_limit_ids = requested.selected_limit_ids;
     current.selected_project_ids = requested.selected_project_ids;
     current.selected_projects = requested.selected_projects;
     normalize_prefs(current)
@@ -509,7 +530,7 @@ mod tests {
     #[test]
     fn defaults_to_the_compact_resizable_glass_capsule() {
         let prefs = WidgetPrefs::default();
-        assert_eq!((prefs.width, prefs.height), (322, 72));
+        assert_eq!((prefs.width, prefs.height), (352, 72));
         assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
         assert!(prefs.always_on_top);
         assert_eq!(prefs.material, "frost");
@@ -517,6 +538,7 @@ mod tests {
         assert_eq!(prefs.selected_agent, "all");
         assert_eq!(prefs.mode, "projects");
         assert_eq!(prefs.active_session_window, "1h");
+        assert_eq!(prefs.selected_limit_ids, None);
     }
 
     #[test]
@@ -557,8 +579,8 @@ mod tests {
             active_session_window: "30m".into(),
             ..WidgetPrefs::default()
         });
-        assert_eq!(prefs.version, 5);
-        assert_eq!((prefs.width, prefs.height), (300, 72));
+        assert_eq!(prefs.version, 6);
+        assert_eq!((prefs.width, prefs.height), (352, 72));
         assert_eq!(prefs.opacity, 0.4);
         assert_eq!(prefs.selected_agent, "all");
         assert_eq!(prefs.mode, "projects");
@@ -633,8 +655,32 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_and_persists_selected_limit_order() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            selected_limit_ids: Some(vec![
+                "codex:default:weekly".into(),
+                String::new(),
+                "codex:default:weekly".into(),
+                "invalid limit".into(),
+                "codex:default:5h".into(),
+            ]),
+            ..WidgetPrefs::default()
+        });
+        assert_eq!(
+            prefs.selected_limit_ids,
+            Some(vec![
+                "codex:default:weekly".into(),
+                "codex:default:5h".into(),
+            ])
+        );
+
+        let merged = merge_display_prefs(WidgetPrefs::default(), prefs);
+        assert_eq!(merged.selected_limit_ids.as_ref().unwrap()[0], "codex:default:weekly");
+    }
+
+    #[test]
     fn logical_size_round_trips_across_dpi_changes() {
-        assert_eq!(logical_size(PhysicalSize::new(483, 216), 1.5), (322, 144));
+        assert_eq!(logical_size(PhysicalSize::new(483, 216), 1.5), (352, 144));
         assert_eq!(physical_size(322, 144, 2.0), PhysicalSize::new(644, 288));
     }
 

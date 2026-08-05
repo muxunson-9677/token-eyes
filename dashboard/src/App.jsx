@@ -76,6 +76,12 @@ const SettingsCostPage = lazy(() =>
 const TokenPlanEditorPage = lazy(() =>
   import("./pages/TokenPlanEditorPage.jsx").then((m) => ({ default: m.TokenPlanEditorPage })),
 );
+const FirstRunPage = lazy(() =>
+  import("./pages/FirstRunPage.jsx").then((m) => ({ default: m.FirstRunPage })),
+);
+const DataSourcesPage = lazy(() =>
+  import("./pages/DataSourcesPage.jsx").then((m) => ({ default: m.DataSourcesPage })),
+);
 const SpendUsagePage = lazy(() =>
   import("./pages/SpendPage.jsx").then((m) => ({ default: m.SpendUsagePage })),
 );
@@ -129,6 +135,8 @@ export default function App() {
     sharePathname === "/share.html" ||
     sharePathname.startsWith("/share/");
   const isTauriMode = isTauriApp();
+  const firstRunCompleted = typeof window !== "undefined"
+    && window.localStorage.getItem("tokentracker.firstRun.completed.v1") === "1";
 
   const isLocalMode =
     typeof window !== "undefined" &&
@@ -233,12 +241,15 @@ export default function App() {
   // /spend and /settings paths redirect to their default children below.
   const isSettingsBasicPath = normalizedPath === "/settings/basic";
   const isSettingsCostPath = normalizedPath === "/settings/cost";
+  const isSettingsDataPath = normalizedPath === "/settings/data";
   const isTokenPlanNewPath = normalizedPath === "/settings/cost/token-plans/new";
   const isTokenPlanEditPath = /^\/settings\/cost\/token-plans\/[^/]+\/edit$/.test(normalizedPath);
   const isTokenPlanEditorPath = isTokenPlanNewPath || isTokenPlanEditPath;
   const isSettingsRootPath = normalizedPath === "/settings";
+  const isFirstRunPath = normalizedPath === "/first-run";
+  const isLegacyDataSourcesPath = normalizedPath === "/data-sources";
   const isSettingsSubPath =
-    isSettingsBasicPath || isSettingsCostPath || isTokenPlanEditorPath || isSettingsRootPath;
+    isSettingsBasicPath || isSettingsCostPath || isSettingsDataPath || isTokenPlanEditorPath || isSettingsRootPath;
   const isSpendUsagePath = normalizedPath === "/spend/usage";
   const isSpendCostPath = normalizedPath === "/spend/cost";
   const isSpendRootPath = normalizedPath === "/spend";
@@ -253,9 +264,12 @@ export default function App() {
     isSpendSubPath ||
     isSkillsPath ||
     isWidgetsPath ||
-    isIpCheckPath
+    isIpCheckPath ||
+    isSettingsDataPath ||
+    isLegacyDataSourcesPath
   )
     gate = "dashboard";
+  if (isFirstRunPath) gate = "dashboard";
   const isMvpHiddenProductPath =
     isLimitsPath ||
     isSkillsPath ||
@@ -273,11 +287,14 @@ export default function App() {
   if (isSettingsRootPath) {
     return <Navigate to="/settings/basic" replace />;
   }
+  if (isLegacyDataSourcesPath) {
+    return <Navigate to="/settings/data" replace />;
+  }
   if (isTauriMode && (normalizedPath === "/" || normalizedPath === "/index.html")) {
     return (
       <>
         <AppBootSplash />
-        <Navigate to="/settings/basic" replace />
+        <Navigate to={firstRunCompleted ? "/dashboard" : "/first-run"} replace />
       </>
     );
   }
@@ -295,6 +312,10 @@ export default function App() {
     PageComponent = LimitsPage;
   } else if (isSettingsBasicPath) {
     PageComponent = SettingsBasicPage;
+  } else if (isFirstRunPath) {
+    PageComponent = FirstRunPage;
+  } else if (isSettingsDataPath) {
+    PageComponent = DataSourcesPage;
   } else if (isTokenPlanEditorPath) {
     PageComponent = TokenPlanEditorPage;
   } else if (isSettingsCostPath) {
@@ -319,6 +340,7 @@ export default function App() {
       isResetHistoryPath ||
       isSettingsSubPath ||
       isSpendSubPath ||
+      isSettingsDataPath ||
       isWidgetsPath ||
       (isLocalMode && isPublicLeaderboardPath));
 

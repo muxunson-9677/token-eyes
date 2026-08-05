@@ -38,6 +38,7 @@ test("cost settings sections use the approved semantic icon tones", () => {
   }
 
   const providerApi = read("components/settings/ProviderApiConfigSection.jsx");
-  assert.ok(providerApi.includes('data-testid="provider-api-section-icon"'));
-  assert.ok(providerApi.includes("bg-blue-50"));
+  assert.ok(providerApi.includes('icon={PlugZap}'));
+  assert.ok(providerApi.includes('iconTone="blue"'));
+  assert.ok(providerApi.includes('iconTestId="provider-api-section-icon"'));
 });

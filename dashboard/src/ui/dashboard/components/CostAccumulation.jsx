@@ -4,6 +4,8 @@ import { BarChart3, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CreditCar
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 import { formatChineseTokenCount } from "../../../lib/format";
+import { deriveDataConfidence } from "../../../lib/data-confidence";
+import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
 
 const COST_ICON_TONES = {
   blue: "bg-blue-50 text-blue-600 dark:bg-blue-950/45 dark:text-blue-300",
@@ -29,7 +31,7 @@ const COST_ICON_TONES = {
  *   balances, and the two are NEVER summed (different semantics).
  * - This component NEVER renders an API Key input — keys live only in
  *   /settings/cost. The "前往成本设置配置" link navigates there.
- * - Unknown / failed / not-connected values render an explicit unavailable state, never 0.
+ * - Unknown / failed / not-connected values are omitted; only real values, including 0, render.
  */
 
 // ---------------------------------------------------------------------------
@@ -37,9 +39,9 @@ const COST_ICON_TONES = {
 // ---------------------------------------------------------------------------
 
 function formatAmount(value, currency = "USD") {
-  if (value === null || value === undefined) return copy("shared.data.not_provided");
+  if (value === null || value === undefined) return null;
   const numberValue = Number(value);
-  if (!Number.isFinite(numberValue)) return copy("shared.data.not_provided");
+  if (!Number.isFinite(numberValue)) return null;
   return `${currency} ${numberValue.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -61,65 +63,69 @@ export function getMonthComparison(currentUsd, previousUsd, usdToCny) {
       };
     }
     return {
-      label: copy("spend.monthly_change.increase", { value: "100.0" }),
-      className: "text-emerald-600 dark:text-emerald-400",
-      kind: "increase",
-      percent: "100.0",
+      label: copy("spend.monthly_change.new_amount"),
+      className: "text-emerald-700 dark:text-emerald-300",
+      kind: "new",
+      percent: null,
+      absoluteUsd: current,
     };
   }
   const percentage = Math.abs(((current - previous) / previous) * 100).toFixed(1);
   if (current > previous) {
-    return { label: copy("spend.monthly_change.increase", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400", kind: "increase", percent: percentage };
+    return { label: copy("spend.monthly_change.increase", { value: percentage }), className: "text-emerald-700 dark:text-emerald-300", kind: "increase", percent: percentage, absoluteUsd: Math.abs(current - previous) };
   }
   if (current < previous) {
-    return { label: copy("spend.monthly_change.decrease", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400", kind: "decrease", percent: percentage };
+    return { label: copy("spend.monthly_change.decrease", { value: percentage }), className: "text-emerald-600 dark:text-emerald-400", kind: "decrease", percent: percentage, absoluteUsd: Math.abs(current - previous) };
   }
   return { label: copy("spend.monthly_change.flat_percent", { value: "0.0" }), className: "text-oai-gray-400 dark:text-oai-gray-500", kind: "flat", percent: "0.0" };
 }
 
 function formatDualAmount(usd, cny, comparison = null, { compactCny = false } = {}) {
-  if (usd === null || usd === undefined) {
-    return (
-      <div className="flex flex-col">
-        <span className="text-sm text-oai-gray-400 dark:text-oai-gray-500">
-          {copy("shared.data.not_provided")}
-        </span>
-      </div>
-    );
-  }
-  const cnyValue = compactCny && Number.isFinite(Number(cny))
+  const usdValue = formatAmount(usd, "USD");
+  if (!usdValue) return null;
+  const cnyValue = compactCny && Number.isFinite(Number(cny)) && cny !== null && cny !== undefined
     ? `CNY ${formatChineseTokenCount(Number(cny))}`
     : formatAmount(cny, "CNY");
   return (
     <div className="flex flex-col">
-      <span className="tabular-nums">{formatAmount(usd, "USD")}</span>
+      <span className="tabular-nums">{usdValue}</span>
+      {cnyValue || comparison ? (
       <span className="flex min-w-0 items-center justify-between gap-1 text-[10px] text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">
-        <span className="shrink-0">{cnyValue}</span>
+        {cnyValue ? <span className="shrink-0">{cnyValue}</span> : null}
         {comparison ? (
           <span
             data-testid={`monthly-cost-comparison-${comparison.id}`}
             data-direction={comparison.kind}
             aria-label={comparison.label}
+            title={copy("spend.monthly_change.explanation")}
             className={cn("whitespace-nowrap text-[9px] font-medium", comparison.className)}
           >
             {comparison.label}
           </span>
         ) : null}
       </span>
+      ) : null}
     </div>
   );
 }
 
 function formatQuotaDisplay(quota) {
-  if (!quota && quota !== 0) return copy("shared.data.not_provided");
+  if (!hasDisplayValue(quota)) return null;
   return quota;
 }
 
-// Render a clear unavailable state for missing values; only real zeros render as zero.
 function formatFinancialValue(value, currency, formatter = formatAmount) {
-  if (value === null || value === undefined) return copy("shared.data.not_provided");
-  if (!Number.isFinite(Number(value))) return copy("shared.data.not_provided");
+  if (value === null || value === undefined) return null;
+  if (!Number.isFinite(Number(value))) return null;
   return formatter(value, currency);
+}
+
+function hasDisplayValue(value) {
+  return value !== null
+    && value !== undefined
+    && value !== ""
+    && value !== "-"
+    && value !== "—";
 }
 
 function formatSelectedMonth(monthKey) {
@@ -141,6 +147,14 @@ function shiftMonth(monthKey, delta) {
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function formatCostError(error) {
+  const message = typeof error === "string" ? error : "";
+  if (/local cli not reachable|failed to fetch|networkerror/i.test(message)) {
+    return copy("spend.cost.error.local_service_unreachable");
+  }
+  return message;
+}
+
 function CostMonthPicker({ selectedMonth, currentMonth, onChange }) {
   if (!selectedMonth || !currentMonth || typeof onChange !== "function") return null;
   const nextDisabled = selectedMonth >= currentMonth;
@@ -153,26 +167,29 @@ function CostMonthPicker({ selectedMonth, currentMonth, onChange }) {
         type="button"
         aria-label={copy("spend.cost.month_picker.previous")}
         onClick={() => changeMonth(shiftMonth(selectedMonth, -1))}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-oai-gray-200 text-oai-gray-600 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-oai-gray-200 text-oai-gray-600 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
       >
         <ChevronLeft className="h-4 w-4" aria-hidden="true" />
       </button>
       <label className="sr-only" htmlFor="cost-month-input">{copy("spend.cost.month_picker.label")}</label>
-      <input
-        id="cost-month-input"
-        type="month"
-        value={selectedMonth}
-        max={currentMonth}
-        aria-label={copy("spend.cost.month_picker.label")}
-        onChange={(event) => changeMonth(event.target.value)}
-        className="h-8 rounded-md border border-oai-gray-200 bg-white px-2 text-sm font-medium tabular-nums text-oai-gray-800 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-200"
-      />
+      <div className="relative flex h-10 min-w-28 items-center justify-center rounded-md border border-oai-gray-200 bg-white px-2 text-sm font-medium tabular-nums text-oai-gray-800 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-oai-brand dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-200">
+        <span data-testid="cost-month-display" aria-hidden="true">{formatSelectedMonth(selectedMonth)}</span>
+        <input
+          id="cost-month-input"
+          type="month"
+          value={selectedMonth}
+          max={currentMonth}
+          aria-label={copy("spend.cost.month_picker.label")}
+          onChange={(event) => changeMonth(event.target.value)}
+          className="absolute inset-0 h-10 w-full cursor-pointer opacity-0"
+        />
+      </div>
       <button
         type="button"
         aria-label={copy("spend.cost.month_picker.next")}
         disabled={nextDisabled}
         onClick={() => changeMonth(shiftMonth(selectedMonth, 1))}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-oai-gray-200 text-oai-gray-600 hover:bg-oai-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-oai-gray-200 text-oai-gray-600 hover:bg-oai-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
       >
         <ChevronRight className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -184,11 +201,17 @@ function CostMonthPicker({ selectedMonth, currentMonth, onChange }) {
 // Cost Summary Cards
 // ---------------------------------------------------------------------------
 
-function CostSummaryCards({ summary, loading, selectedMonth }) {
+function CostSummaryCards({
+  summary,
+  loading,
+  selectedMonth,
+  stale = false,
+  lastSuccessfulAt = null,
+}) {
   if (loading) {
     return (
-      <div className="mb-6 grid gap-2 grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
+      <div className="mb-6 grid gap-2 sm:grid-cols-2">
+        {[1, 2].map((i) => (
           <div key={i} className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800 animate-pulse">
             <div className="h-3 w-20 bg-oai-gray-200 dark:bg-oai-gray-700 rounded" />
             <div className="mt-2 h-5 w-16 bg-oai-gray-200 dark:bg-oai-gray-700 rounded" />
@@ -206,69 +229,93 @@ function CostSummaryCards({ summary, loading, selectedMonth }) {
   const label = (suffixKey, fallbackKey) => monthLabel
     ? `${monthLabel} ${copy(suffixKey)}`
     : copy(fallbackKey);
+  const confidence = (metric, value, accuracy, sourceLabel, method = null) => deriveDataConfidence({
+    metric,
+    hasValue: value !== null && value !== undefined,
+    availability: value !== null && value !== undefined ? "available" : "unavailable",
+    accuracy,
+    coverage: value !== null && value !== undefined ? "complete" : "unavailable",
+    sourceKind: "local",
+    sourceLabel,
+    observedAt: lastSuccessfulAt,
+    lastSuccessAt: lastSuccessfulAt,
+    isStale: stale,
+    estimationMethod: method,
+    reason: null,
+  });
+  const hasApiCost = Number.isFinite(Number(summary.monthApiCostUsd))
+    && summary.monthApiCostUsd !== null
+    && summary.monthApiCostUsd !== undefined;
+  const hasSubscriptionCost = Number.isFinite(Number(summary.monthSubscriptionCostUsd))
+    && summary.monthSubscriptionCostUsd !== null
+    && summary.monthSubscriptionCostUsd !== undefined;
 
   return (
-    <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
-      <SummaryCard
+    <div>
+      <p className="mb-3 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">
+        {copy("spend.cost.summary.scope_note")}
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+      {hasApiCost ? <SummaryCard
         id="api"
         icon={BarChart3}
         iconTone="blue"
-        label={label("spend.cost.summary.api_suffix", "spend.cost.summary.month_api")}
+        label={label("spend.cost.summary.estimated_usage_suffix", "spend.cost.summary.estimated_usage")}
         value={formatDualAmount(
           summary.monthApiCostUsd,
-          summary.monthApiCostUsd * summary.usdToCny,
+          Number.isFinite(Number(summary.usdToCny)) ? summary.monthApiCostUsd * summary.usdToCny : null,
           comparison("api", summary.monthApiCostUsd, summary.previousMonthApiCostUsd),
           { compactCny: true },
         )}
-      />
-      <SummaryCard
+        confidence={confidence(
+          "cost",
+          summary.monthApiCostUsd,
+          "estimated",
+          copy("data.confidence.source.pricing"),
+          copy("data.confidence.method.api_pricing"),
+        )}
+        confidenceTestId="cost-confidence-estimated"
+      /> : null}
+      {hasSubscriptionCost ? <SummaryCard
         id="subscription"
         icon={Package}
         iconTone="violet"
-        label={label("spend.cost.summary.subscription_suffix", "spend.cost.summary.month_subscription")}
+        label={label("spend.cost.summary.actual_subscription_suffix", "spend.cost.summary.actual_subscription")}
         value={formatDualAmount(
           summary.monthSubscriptionCostUsd,
-          summary.monthSubscriptionCostUsd * summary.usdToCny,
+          Number.isFinite(Number(summary.usdToCny)) ? summary.monthSubscriptionCostUsd * summary.usdToCny : null,
           comparison("subscription", summary.monthSubscriptionCostUsd, summary.previousMonthSubscriptionCostUsd),
           { compactCny: true },
         )}
-      />
-      <SummaryCard
-        id="total"
-        icon={CreditCard}
-        iconTone="green"
-        label={label("spend.cost.summary.total_suffix", "spend.cost.summary.month_total")}
-        value={formatDualAmount(
-          summary.monthTotalCostUsd,
-          summary.monthTotalCostUsd * summary.usdToCny,
-          comparison("total", summary.monthTotalCostUsd, summary.previousMonthTotalCostUsd),
-          { compactCny: true },
+        confidence={confidence(
+          "actual-spend",
+          summary.monthSubscriptionCostUsd,
+          "exact",
+          copy("spend.cost.subscription.section"),
         )}
-        highlight
-      />
-      <SummaryCard
-        id="lifetime"
-        icon={Globe}
-        iconTone="orange"
-        label={copy("spend.cost.summary.lifetime_total")}
-        value={formatDualAmount(
-          summary.lifetimeTotalCostUsd,
-          summary.lifetimeTotalCostUsd * summary.usdToCny,
-          null,
-          { compactCny: true },
-        )}
-      />
+        confidenceTestId="cost-confidence-subscription"
+      /> : null}
+      </div>
     </div>
   );
 }
 
-function SummaryCard({ id, label, value, highlight = false, icon: Icon, iconTone = "blue" }) {
+function SummaryCard({
+  id,
+  label,
+  value,
+  confidence = null,
+  confidenceTestId = null,
+  highlight = false,
+  icon: Icon,
+  iconTone = "blue",
+}) {
   return (
     <div
       data-testid="cost-summary-card"
       data-cost-summary-card={id}
       className={cn(
-        "tt-surface-nested rounded-lg p-3",
+        "tt-surface-nested flex h-full flex-col items-start rounded-lg p-3 text-left",
         highlight ? "tt-cost-summary-total" : "",
       )}
     >
@@ -285,16 +332,23 @@ function SummaryCard({ id, label, value, highlight = false, icon: Icon, iconTone
         <span>{label}</span>
       </div>
       <div className={cn(
-        "mt-1 text-lg font-semibold",
+        "mt-1 w-full text-left text-lg font-semibold",
         highlight ? "text-oai-brand-600 dark:text-oai-brand-400" : "text-oai-gray-900 dark:text-oai-gray-100"
       )}>
         {value}
       </div>
+      {confidence ? (
+        <DataConfidenceBadge
+          confidence={confidence}
+          className="mt-2 w-full justify-start text-left"
+          data-testid={confidenceTestId}
+        />
+      ) : null}
     </div>
   );
 }
 
-function FoldableSection({ id, icon, iconTone = "blue", title, count, actions = null, children, className = "mb-6", testId }) {
+function FoldableSection({ id, icon, iconTone = "blue", title, count, actions = null, summaryMetrics = [], children, className = "mb-6", testId }) {
   const storageKey = `token-eyes:cost-section:${id}`;
   const [open, setOpen] = useState(() => {
     try {
@@ -327,6 +381,16 @@ function FoldableSection({ id, icon, iconTone = "blue", title, count, actions = 
           <SectionHeader icon={icon} iconTone={iconTone} title={title} count={count} />
           {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
         </button>
+        {!open && summaryMetrics.length > 0 ? (
+          <div className="tt-cost-row-metrics" data-testid="cost-row-metrics">
+            {summaryMetrics.map((metric) => (
+              <div key={metric.label} className="tt-cost-row-metric">
+                <span>{metric.label}</span>
+                <strong>{metric.value}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {actions}
       </div>
       {open ? children : null}
@@ -334,10 +398,24 @@ function FoldableSection({ id, icon, iconTone = "blue", title, count, actions = 
   );
 }
 
-function OtherAiGroupCostSection({ groups = [], selectedMonth }) {
+function OtherAiGroupCostSection({ groups = [], selectedMonth, estimatedTotalUsd = 0, subscriptionUsd = 0 }) {
   if (!groups.length) return null;
+  const monthUsd = groups.reduce((sum, group) => sum + Number(group.month_usd || 0), 0);
+  const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
   return (
-    <FoldableSection id="other-ai" icon={BarChart3} iconTone="rose" title={copy("spend.cost.other_ai_groups.section")} count={groups.length} className="mb-4">
+    <FoldableSection
+      id="other-ai"
+      icon={BarChart3}
+      iconTone="rose"
+      title={copy("spend.cost.other_ai_groups.section")}
+      count={groups.length}
+      className="mb-4"
+      summaryMetrics={[
+        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
+        { label: copy("spend.cost.row.subscription_usd"), value: Number(subscriptionUsd || 0).toFixed(2) },
+      ]}
+    >
       <div data-testid="compact-cost-group-grid" className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
         {groups.map((group) => (
           <article key={group.group_id || "ungrouped"} data-testid={`compact-cost-group-${group.group_id || "ungrouped"}`} data-layout="compact-cost-group" data-density="compact" className="rounded-md border border-oai-gray-200 bg-white px-2.5 py-2 shadow-oai-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
@@ -350,7 +428,7 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth }) {
                 ["month", group.month_usd, group.month_cny, formatSelectedMonth(selectedMonth) || copy("spend.cost.other_ai_groups.month")],
                 ["year", group.year_usd, group.year_cny, formatSelectedYearToMonth(selectedMonth) || copy("spend.cost.other_ai_groups.year")],
                 ["lifetime", group.lifetime_usd, group.lifetime_cny, copy("spend.cost.other_ai_groups.lifetime")],
-              ].map(([period, usd, cny, periodLabel]) => (
+              ].filter(([, usd]) => formatAmount(usd) !== null).map(([period, usd, cny, periodLabel]) => (
                 <div key={period} className="min-w-0 rounded bg-oai-gray-50 px-1.5 py-1 dark:bg-oai-gray-800/60">
                   <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{periodLabel}</div>
                   <div data-testid="compact-cost-group-amount" className="break-words text-xs font-semibold leading-snug">{formatDualAmount(usd, cny)}</div>
@@ -368,9 +446,23 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth }) {
 // Token Package Section
 // ---------------------------------------------------------------------------
 
-function TokenPackageSection({ packages, loading }) {
+function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0 }) {
+  const monthUsd = packages.reduce((sum, item) => sum + Number(item.monthCostUsd || 0), 0);
+  const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
+  const quota = packages.find((item) => item.availableQuotaDisplay)?.availableQuotaDisplay || copy("spend.cost.row.unavailable");
   return (
-    <FoldableSection id="token-packages" icon={Package} iconTone="violet" title={copy("spend.cost.token_package.section")} count={packages.length}>
+    <FoldableSection
+      id="token-packages"
+      icon={Package}
+      iconTone="violet"
+      title={copy("spend.cost.token_package.section")}
+      count={packages.length}
+      summaryMetrics={[
+        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
+        { label: copy("spend.cost.row.available_quota"), value: quota },
+      ]}
+    >
       {loading ? (
         <LoadingSkeleton />
       ) : packages.length === 0 ? (
@@ -398,6 +490,8 @@ function TokenPackageCard({ package: pkg }) {
     reauth_required: "text-orange-600 dark:text-orange-400",
     unsupported: "text-oai-gray-400",
   };
+  const hasQuotaValue = [pkg.quota, pkg.used, pkg.remaining].some(hasDisplayValue);
+  const connectedWithoutQuota = ["synced", "success"].includes(pkg.syncStatus) && !hasQuotaValue;
 
   return (
     <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
@@ -412,17 +506,17 @@ function TokenPackageCard({ package: pkg }) {
             </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            <span>{copy("spend.cost.token_package.quota")}: {formatQuotaDisplay(pkg.quota)}</span>
-            <span>{copy("spend.cost.token_package.used")}: {formatQuotaDisplay(pkg.used)}</span>
-            <span>{copy("spend.cost.token_package.remaining")}: {formatQuotaDisplay(pkg.remaining)}</span>
+            {hasDisplayValue(pkg.quota) ? <span>{copy("spend.cost.token_package.quota")}: {formatQuotaDisplay(pkg.quota)}</span> : null}
+            {hasDisplayValue(pkg.used) ? <span>{copy("spend.cost.token_package.used")}: {formatQuotaDisplay(pkg.used)}</span> : null}
+            {hasDisplayValue(pkg.remaining) ? <span>{copy("spend.cost.token_package.remaining")}: {formatQuotaDisplay(pkg.remaining)}</span> : null}
             {pkg.expiresAt && (
               <span>{copy("spend.cost.token_package.expires_at")}: {pkg.expiresAt}</span>
             )}
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <div className={cn("text-xs", syncStatusColor[pkg.syncStatus] || "text-oai-gray-400")}>
-            {pkg.syncStatusLabel}
+          <div className={cn("text-xs", connectedWithoutQuota ? "text-amber-700 dark:text-amber-300" : syncStatusColor[pkg.syncStatus] || "text-oai-gray-400")}>
+            {connectedWithoutQuota ? copy("spend.cost.token_package.connected_no_quota") : pkg.syncStatusLabel}
           </div>
         </div>
       </div>
@@ -462,9 +556,13 @@ function ProviderApiAccountSection({
   lastUpdatedAt,
   onRefreshAll,
   onRefreshOne,
+  estimatedTotalUsd = 0,
 }) {
   const navigate = useNavigate();
   const hasBalances = Array.isArray(balances) && balances.length > 0;
+  const monthSpend = (balances || []).reduce((sum, item) => sum + Number(item.monthSpend || 0), 0);
+  const available = (balances || []).reduce((sum, item) => sum + Number(item.balance || 0), 0);
+  const share = estimatedTotalUsd > 0 ? (monthSpend / estimatedTotalUsd) * 100 : 0;
 
   return (
     <FoldableSection
@@ -474,6 +572,11 @@ function ProviderApiAccountSection({
       title={copy("spend.cost.provider_account.section")}
       count={hasBalances ? balances.length : 0}
       testId="provider-api-account-section"
+      summaryMetrics={hasBalances ? [
+        { label: copy("spend.cost.row.month_estimate"), value: monthSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
+        { label: copy("spend.cost.row.available_balance"), value: available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+      ] : []}
       actions={<div className="flex items-center gap-2">
           {stale && (
             <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
@@ -486,7 +589,7 @@ function ProviderApiAccountSection({
               type="button"
               onClick={onRefreshAll}
               disabled={refreshing}
-              className="inline-flex items-center gap-1 rounded-md border border-oai-gray-200 px-2 py-1 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+              className="inline-flex min-h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
             >
               <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} aria-hidden="true" />
               {refreshing ? copy("spend.cost.provider_account.refreshing") : copy("spend.cost.provider_account.refresh_all")}
@@ -515,7 +618,7 @@ function ProviderApiAccountSection({
         <button
           type="button"
           onClick={() => navigate("/settings/cost")}
-          className="inline-flex items-center gap-1 text-xs text-oai-brand-600 hover:underline dark:text-oai-brand-400"
+          className="inline-flex min-h-10 items-center gap-1 rounded-md px-2 text-xs text-oai-brand-600 hover:underline dark:text-oai-brand-400"
         >
           <Settings className="h-3 w-3" aria-hidden="true" />
           {copy("spend.cost.provider_account.config_link")}
@@ -528,11 +631,10 @@ function ProviderApiAccountSection({
 function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
   const status = balance?.status || "not-connected";
   const isSynced = status === "synced";
-  const unavailableText = copy("shared.data.not_provided");
-  const balanceValue = isSynced ? formatFinancialValue(balance?.balance, balance?.currency) : unavailableText;
-  const monthSpendValue = isSynced ? formatFinancialValue(balance?.monthSpend, balance?.currency) : unavailableText;
-  const lifetimeSpendValue = isSynced ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : unavailableText;
-  const currencyValue = isSynced ? (balance?.currency || unavailableText) : unavailableText;
+  const balanceValue = isSynced ? formatFinancialValue(balance?.balance, balance?.currency) : null;
+  const monthSpendValue = isSynced ? formatFinancialValue(balance?.monthSpend, balance?.currency) : null;
+  const lifetimeSpendValue = isSynced ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : null;
+  const currencyValue = isSynced && balance?.currency ? balance.currency : null;
 
   return (
     <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
@@ -540,7 +642,7 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">
-              {balance?.accountLabel || balance?.providerId || unavailableText}
+              {balance?.accountLabel || balance?.providerId}
             </span>
             {balance?.providerId && (
               <span className="shrink-0 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-400">
@@ -552,18 +654,18 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
             </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            <span>
+            {balanceValue ? <span>
               {copy("spend.cost.provider_account.balance")}: {balanceValue}
-            </span>
-            <span>
+            </span> : null}
+            {monthSpendValue ? <span>
               {copy("spend.cost.provider_account.month_spend")}: {monthSpendValue}
-            </span>
-            <span>
+            </span> : null}
+            {lifetimeSpendValue ? <span>
               {copy("spend.cost.provider_account.lifetime_spend")}: {lifetimeSpendValue}
-            </span>
-            <span>
+            </span> : null}
+            {currencyValue ? <span>
               {copy("spend.cost.provider_account.currency")}: {currencyValue}
-            </span>
+            </span> : null}
             {balance?.lastSyncedAt && (
               <span>
                 {copy("spend.cost.provider_account.last_synced")}: {balance.lastSyncedAt}
@@ -581,7 +683,7 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
           type="button"
           onClick={onRefresh}
           disabled={refreshing || !balance?.configId}
-          className="shrink-0 inline-flex items-center gap-1 rounded-md border border-oai-gray-200 px-2 py-1 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-oai-gray-200 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
           aria-label={copy("spend.cost.provider_account.refresh_all")}
         >
           <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} aria-hidden="true" />
@@ -595,9 +697,23 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
 // API Billing Section (existing — local usage cost aggregation)
 // ---------------------------------------------------------------------------
 
-function ApiBillingSection({ accounts, loading }) {
+function ApiBillingSection({ accounts, loading, estimatedTotalUsd = 0 }) {
+  const monthUsd = accounts.reduce((sum, account) => sum + Number(account.monthCostUsd || 0), 0);
+  const lifetimeUsd = accounts.reduce((sum, account) => sum + Number(account.lifetimeCostUsd || 0), 0);
+  const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
   return (
-    <FoldableSection id="api-billing" icon={Globe} iconTone="green" title={copy("spend.cost.api_billing.section")} count={accounts.length}>
+    <FoldableSection
+      id="api-billing"
+      icon={Globe}
+      iconTone="green"
+      title={copy("spend.cost.api_billing.section")}
+      count={accounts.length}
+      summaryMetrics={[
+        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
+        { label: copy("spend.cost.row.unbilled_usd"), value: lifetimeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+      ]}
+    >
       {loading ? (
         <LoadingSkeleton />
       ) : accounts.length === 0 ? (
@@ -623,7 +739,8 @@ function ApiBillingCard({ account }) {
   const status = statusConfig[account.status] || statusConfig["not-connected"];
   const StatusIcon = status.icon;
   const hasCostData = account.status === "synced";
-  const unavailableText = copy("shared.data.not_provided");
+  const monthCost = hasCostData ? formatAmount(account.monthCostUsd) : null;
+  const lifetimeCost = hasCostData ? formatAmount(account.lifetimeCostUsd) : null;
 
   return (
     <div className="rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-800">
@@ -641,8 +758,8 @@ function ApiBillingCard({ account }) {
             </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            <span>{copy("spend.cost.api_billing.month_cost")}: {hasCostData ? formatAmount(account.monthCostUsd) : unavailableText}</span>
-            <span>{copy("spend.cost.api_billing.lifetime_cost")}: {hasCostData ? formatAmount(account.lifetimeCostUsd) : unavailableText}</span>
+            {monthCost ? <span>{copy("spend.cost.api_billing.month_cost")}: {monthCost}</span> : null}
+            {lifetimeCost ? <span>{copy("spend.cost.api_billing.lifetime_cost")}: {lifetimeCost}</span> : null}
             {account.lastSyncedAt && (
               <span>{copy("spend.cost.api_billing.last_synced")}: {account.lastSyncedAt}</span>
             )}
@@ -681,6 +798,8 @@ const SUBSCRIPTION_DEFAULT_FORM = {
 };
 
 function SubscriptionSection({ records, loading, onAdd, onEdit, onDelete }) {
+  const monthUsd = records.reduce((sum, record) => sum + Number(record.amount || 0), 0);
+  const lifetimeUsd = records.reduce((sum, record) => sum + Number(record.lifetimeAmount || record.amount || 0), 0);
   return (
     <FoldableSection
       id="subscriptions"
@@ -688,10 +807,14 @@ function SubscriptionSection({ records, loading, onAdd, onEdit, onDelete }) {
       iconTone="orange"
       title={copy("spend.cost.subscription.section")}
       count={records.length}
+      summaryMetrics={[
+        { label: copy("spend.cost.row.month_subscription"), value: monthUsd.toFixed(2) },
+        { label: copy("spend.cost.row.lifetime_subscription"), value: lifetimeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+      ]}
       actions={<button
           type="button"
           onClick={onAdd}
-          className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
+          className="inline-flex min-h-10 items-center gap-1 rounded-md bg-oai-brand-600 px-3 text-xs font-medium text-white hover:bg-oai-brand-700"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           {copy("spend.cost.subscription.add")}
@@ -766,7 +889,7 @@ function SubscriptionCard({ record, onEdit, onDelete }) {
           <button
             type="button"
             onClick={onEdit}
-            className="inline-flex items-center gap-1 rounded-md border border-oai-gray-200 px-2 py-1 text-xs text-oai-gray-700 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+            className="inline-flex min-h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
             aria-label={copy("spend.cost.subscription.edit")}
           >
             <Pencil className="h-3 w-3" aria-hidden="true" />
@@ -775,7 +898,7 @@ function SubscriptionCard({ record, onEdit, onDelete }) {
           <button
             type="button"
             onClick={onDelete}
-            className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20"
+            className="inline-flex min-h-10 items-center gap-1 rounded-md border border-red-200 px-2.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20"
             aria-label={copy("spend.cost.subscription.delete")}
           >
             <Trash2 className="h-3 w-3" aria-hidden="true" />
@@ -909,7 +1032,7 @@ function SubscriptionForm({ initial, onSave, onCancel, saving, formError }) {
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="rounded-md border border-oai-gray-200 px-3 py-1.5 text-sm text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+          className="min-h-10 rounded-md border border-oai-gray-200 px-3 text-sm text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
         >
           {copy("spend.cost.subscription.form.cancel")}
         </button>
@@ -917,7 +1040,7 @@ function SubscriptionForm({ initial, onSave, onCancel, saving, formError }) {
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-oai-brand-700 disabled:opacity-50"
+          className="inline-flex min-h-10 items-center gap-1 rounded-md bg-oai-brand-600 px-3 text-sm font-medium text-white hover:bg-oai-brand-700 disabled:opacity-50"
         >
           {copy("spend.cost.subscription.form.save")}
         </button>
@@ -1003,6 +1126,9 @@ export function CostAccumulation({
   onSelectedMonthChange,
   loading = false,
   error = null,
+  costSummaryStale = false,
+  costLastSuccessfulAt = null,
+  onRetry = null,
   // 03 work order: provider API account balances from 02 endpoints.
   providerApiBalances = [],
   providerApiRefreshing = false,
@@ -1021,6 +1147,7 @@ export function CostAccumulation({
   onDeleteSubscription,
   onCancelSubscriptionForm,
 }) {
+  const navigate = useNavigate();
   return (
     <div className="space-y-6">
       {/* Cost Summary */}
@@ -1033,20 +1160,60 @@ export function CostAccumulation({
           currentMonth={currentMonth}
           onChange={onSelectedMonthChange}
         />
-        <CostSummaryCards summary={costSummary} loading={loading} selectedMonth={selectedMonth} />
+        <CostSummaryCards
+          summary={costSummary}
+          loading={loading}
+          selectedMonth={selectedMonth}
+          stale={costSummaryStale}
+          lastSuccessfulAt={costLastSuccessfulAt}
+        />
       </div>
-      <OtherAiGroupCostSection groups={otherAiGroupCosts} selectedMonth={selectedMonth} />
+      <OtherAiGroupCostSection
+        groups={otherAiGroupCosts}
+        selectedMonth={selectedMonth}
+        estimatedTotalUsd={costSummary.monthApiCostUsd}
+        subscriptionUsd={costSummary.monthSubscriptionCostUsd}
+      />
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-          <AlertCircle className="mr-2 inline h-4 w-4" />
-          {error}
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+        >
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertCircle className="h-4 w-4" aria-hidden="true" />
+            {copy("spend.cost.error.title")}
+          </div>
+          <p className="mt-1 text-xs">
+            {copy(costSummaryStale
+              ? "spend.cost.error.stale"
+              : "spend.cost.error.unavailable")}
+          </p>
+          <p className="mt-1 break-words text-xs text-red-600 dark:text-red-400">{formatCostError(error)}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {onRetry ? (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="tt-analytics-focusable min-h-10 rounded-md border border-red-300 px-3 text-xs font-semibold dark:border-red-700"
+              >
+                {copy("spend.cost.error.retry")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => navigate("/settings/cost")}
+              className="tt-analytics-focusable min-h-10 rounded-md border border-red-300 px-3 text-xs font-semibold dark:border-red-700"
+            >
+              {copy("spend.cost.error.open_settings")}
+            </button>
+          </div>
         </div>
       )}
 
       {/* Token Packages */}
-      <TokenPackageSection packages={tokenPackages} loading={loading} />
+      <TokenPackageSection packages={tokenPackages} loading={loading} estimatedTotalUsd={costSummary.monthApiCostUsd} />
 
       {/* Provider API Accounts (NEW — 03 work order, data from 02 endpoints) */}
       <ProviderApiAccountSection
@@ -1057,10 +1224,11 @@ export function CostAccumulation({
         lastUpdatedAt={providerApiLastUpdatedAt}
         onRefreshAll={onRefreshAllProviderApis}
         onRefreshOne={onRefreshOneProviderApi}
+        estimatedTotalUsd={costSummary.monthApiCostUsd}
       />
 
       {/* API Billing (existing — local usage cost aggregation) */}
-      <ApiBillingSection accounts={apiBillingAccounts} loading={loading} />
+      <ApiBillingSection accounts={apiBillingAccounts} loading={loading} estimatedTotalUsd={costSummary.monthApiCostUsd} />
 
       {/* Subscription Records (with CRUD) */}
       {subscriptionFormState !== null && (

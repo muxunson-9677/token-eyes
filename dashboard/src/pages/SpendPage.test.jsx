@@ -30,6 +30,13 @@ import {
 import { useCurrency } from "../hooks/useCurrency.js";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 
+const navigateMock = vi.fn();
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+  return { ...actual, useNavigate: () => navigateMock };
+});
+
 // SpendPage split tests for the v2.0 IA refactor (work order 01) +
 // 03-ia-api-balance provider-balance + subscription-CRUD coverage.
 // - SpendUsagePage covers stats panel, summary cards, trend chart, and the
@@ -220,17 +227,81 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("SpendUsagePage (v2.0 IA split)", () => {
-  it("loads usage content with stats panel and summary cards", async () => {
-    getSpendRecords.mockResolvedValue({
-      records: [SAMPLE_RECORD],
-      totals: { ...EMPTY_RESULT.totals, subscription_usd: 10, subscription_cny: 72, combined_usd: 10, combined_cny: 72, total_usd: 10, total_cny: 72 },
-      by_source: [{ source: "claude", subscription_usd: 10, subscription_cny: 72, api_usd: 0, api_cny: 0, combined_usd: 10, combined_cny: 72 }],
-    });
+  it("loads current and prior-month financial summaries beside usage data", async () => {
+    getSpendRecords
+      .mockResolvedValueOnce({
+        ...EMPTY_RESULT,
+        totals: {
+          ...EMPTY_RESULT.totals,
+          api_usd: 8.25,
+          subscription_usd: 20,
+          combined_usd: 28.25,
+          lifetime_combined_usd: 138.4,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...EMPTY_RESULT,
+        totals: {
+          ...EMPTY_RESULT.totals,
+          api_usd: 7.36,
+          subscription_usd: 20,
+          combined_usd: 29.43,
+        },
+      });
 
     render(<SpendUsagePage />);
 
     expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
-    expect(await screen.findByText("本月订阅成本")).toBeInTheDocument();
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
+    expect(screen.getAllByTestId("usage-cost-card")).toHaveLength(4);
+    expect(screen.getByText("USD 8.25")).toBeInTheDocument();
+    expect(screen.getByText("USD 138.40")).toBeInTheDocument();
+  });
+
+  it("keeps Token usage usable and exposes recovery when the financial ledger fails", async () => {
+    getSpendRecords.mockRejectedValue(new Error("financial ledger offline"));
+
+    render(<SpendUsagePage />);
+
+    expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
+    const financialStatus = await screen.findByTestId("usage-financial-status");
+    expect(financialStatus).toHaveAttribute("data-state", "unavailable");
+    expect(financialStatus).toHaveTextContent("financial ledger offline");
+    expect(screen.queryByTestId("usage-cost-summary")).not.toBeInTheDocument();
+  });
+
+  it("does not expose an internal startup command when the local financial service is unavailable", async () => {
+    getSpendRecords.mockRejectedValue(new Error(
+      "Local CLI not reachable on :7680 — start it with: node bin/tracker.js serve --no-sync --no-open",
+    ));
+
+    render(<SpendUsagePage />);
+
+    const financialStatus = await screen.findByTestId("usage-financial-status");
+    expect(financialStatus).toHaveTextContent("Token Eyes");
+    expect(financialStatus).not.toHaveTextContent("node bin/tracker.js");
+    expect(financialStatus).not.toHaveTextContent("Local CLI");
+  });
+
+  it("keeps the last successful financial summary visible and marks it stale after refresh failure", async () => {
+    const user = userEvent.setup();
+    render(<SpendUsagePage />);
+
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
+
+    getSpendRecords.mockRejectedValue(new Error("financial refresh timed out"));
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "立即刷新" }));
+    });
+
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(4));
+    const financialStatus = await screen.findByTestId("usage-financial-status");
+    expect(financialStatus).toHaveAttribute("data-state", "stale");
+    expect(financialStatus).toHaveTextContent("financial refresh timed out");
+    expect(financialStatus).toHaveTextContent("最后成功时间");
+    expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
   });
 
   it("does not fetch or display unrequested account quota and usage attribution panels", async () => {
@@ -241,160 +312,6 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(getUsageAttribution).not.toHaveBeenCalled();
     expect(screen.queryByText("账户配额")).not.toBeInTheDocument();
     expect(screen.queryByText("使用归因")).not.toBeInTheDocument();
-  });
-
-  it("displays monthly API, subscription, combined, and lifetime costs", async () => {
-    getSpendRecords.mockResolvedValue({
-      records: [SAMPLE_RECORD],
-      totals: {
-        subscription_usd: 10, subscription_cny: 72,
-        api_usd: 5, api_cny: 36,
-        combined_usd: 15, combined_cny: 108,
-        lifetime_subscription_usd: 120, lifetime_subscription_cny: 864,
-        lifetime_api_usd: 50, lifetime_api_cny: 360,
-        lifetime_combined_usd: 170, lifetime_combined_cny: 1224,
-        total_usd: 15, total_cny: 108,
-      },
-      by_source: [],
-    });
-
-    render(<SpendUsagePage />);
-
-    expect(await screen.findByText("本月 API 成本")).toBeInTheDocument();
-    expect(screen.getByText("本月订阅成本")).toBeInTheDocument();
-    expect(screen.getByText("本月总成本")).toBeInTheDocument();
-    expect(screen.getByText("累计总成本")).toBeInTheDocument();
-  });
-
-  it("loads adjacent natural months and renders the combined-cost comparison", async () => {
-    getSpendRecords
-      .mockResolvedValueOnce({
-        ...EMPTY_RESULT,
-        totals: {
-          ...EMPTY_RESULT.totals,
-          api_usd: 40,
-          api_cny: 288,
-          subscription_usd: 60,
-          subscription_cny: 432,
-          other_ai_usd: 20,
-          other_ai_cny: 144,
-          combined_usd: 120,
-          combined_cny: 864,
-          lifetime_combined_usd: 300,
-          lifetime_combined_cny: 2160,
-        },
-      })
-      .mockResolvedValueOnce({
-        ...EMPTY_RESULT,
-        totals: {
-          ...EMPTY_RESULT.totals,
-          api_usd: 20,
-          api_cny: 144,
-          subscription_usd: 50,
-          subscription_cny: 360,
-          combined_usd: 100,
-          combined_cny: 720,
-        },
-      });
-
-    render(<SpendUsagePage />);
-
-    const comparisons = await screen.findAllByTestId("monthly-cost-comparison");
-    expect(comparisons).toHaveLength(3);
-    expect(comparisons[0]).toHaveTextContent("100.0%");
-    expect(comparisons[1]).toHaveTextContent("20.0%");
-    expect(comparisons[2]).toHaveTextContent("20.0%");
-    for (const comparison of comparisons) {
-      expect(comparison).toHaveAttribute("data-direction", "increase");
-      expect(comparison.querySelector("svg")).toBeNull();
-      expect(comparison.textContent).toBe(comparison.getAttribute("aria-label"));
-    }
-    expect(screen.getAllByTestId("monthly-cost-cny-row")).toHaveLength(3);
-    expect(getSpendRecords).toHaveBeenCalledTimes(2);
-    const [currentCall, previousCall] = getSpendRecords.mock.calls;
-    expect(currentCall[0].from > previousCall[0].from).toBe(true);
-    expect(currentCall[0].sources).toEqual(previousCall[0].sources);
-    expect(currentCall[0]).not.toHaveProperty("timeZone");
-    expect(currentCall[0]).not.toHaveProperty("tzOffsetMinutes");
-  });
-
-  it("hides totals from the previous financial scope while the new scope is pending or fails", async () => {
-    const nextCurrent = deferred();
-    const nextPrevious = deferred();
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    getSpendRecords
-      .mockResolvedValueOnce({
-        ...EMPTY_RESULT,
-        totals: { ...EMPTY_RESULT.totals, combined_usd: 50, combined_cny: 360 },
-      })
-      .mockResolvedValueOnce({
-        ...EMPTY_RESULT,
-        totals: { ...EMPTY_RESULT.totals, combined_usd: 40, combined_cny: 288 },
-      })
-      .mockReturnValueOnce(nextCurrent.promise)
-      .mockReturnValueOnce(nextPrevious.promise);
-
-    const user = userEvent.setup();
-    render(<SpendUsagePage />);
-    expect(await screen.findByText("USD 50.00")).toBeInTheDocument();
-
-    await act(async () => {
-      await user.click(await screen.findByTitle("Claude Code"));
-    });
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(4));
-    expect(screen.queryByText("USD 50.00")).not.toBeInTheDocument();
-
-    await act(async () => {
-      nextCurrent.reject(new Error("codex totals unavailable"));
-      nextPrevious.resolve(EMPTY_RESULT);
-      await Promise.allSettled([nextCurrent.promise, nextPrevious.promise]);
-    });
-
-    expect(screen.queryByText("USD 50.00")).not.toBeInTheDocument();
-    consoleError.mockRestore();
-  });
-
-  it("ignores a previous financial scope that resolves after the active scope", async () => {
-    const oldCurrent = deferred();
-    const oldPrevious = deferred();
-    const nextCurrent = deferred();
-    const nextPrevious = deferred();
-    getSpendRecords
-      .mockReturnValueOnce(oldCurrent.promise)
-      .mockReturnValueOnce(oldPrevious.promise)
-      .mockReturnValueOnce(nextCurrent.promise)
-      .mockReturnValueOnce(nextPrevious.promise);
-
-    const user = userEvent.setup();
-    render(<SpendUsagePage />);
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
-
-    await act(async () => {
-      await user.click(await screen.findByTitle("Codex"));
-    });
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(4));
-
-    await act(async () => {
-      nextCurrent.resolve({
-        ...EMPTY_RESULT,
-        totals: { ...EMPTY_RESULT.totals, combined_usd: 20, combined_cny: 144 },
-      });
-      nextPrevious.resolve(EMPTY_RESULT);
-      await Promise.all([nextCurrent.promise, nextPrevious.promise]);
-    });
-    expect(await screen.findByText("USD 20.00")).toBeInTheDocument();
-
-    await act(async () => {
-      oldCurrent.resolve({
-        ...EMPTY_RESULT,
-        totals: { ...EMPTY_RESULT.totals, combined_usd: 80, combined_cny: 576 },
-      });
-      oldPrevious.resolve(EMPTY_RESULT);
-      await Promise.all([oldCurrent.promise, oldPrevious.promise]);
-    });
-
-    expect(screen.getByText("USD 20.00")).toBeInTheDocument();
-    expect(screen.queryByText("USD 80.00")).not.toBeInTheDocument();
   });
 
   it("does NOT render the independent '按来源拆分' table", async () => {
@@ -418,27 +335,13 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(screen.queryByRole("button", { name: "成本累积" })).not.toBeInTheDocument();
   });
 
-  it("renders the cost summary inside the usage statistics panel", async () => {
-    getSpendRecords.mockResolvedValue({
-      records: [SAMPLE_RECORD],
-      totals: {
-        ...EMPTY_RESULT.totals,
-        api_usd: 5,
-        api_cny: 36,
-        combined_usd: 15,
-        combined_cny: 108,
-        lifetime_combined_usd: 170,
-        lifetime_combined_cny: 1224,
-      },
-      by_source: [],
-    });
-
+  it("keeps estimated usage cost distinct from the restored monthly ledger", async () => {
     render(<SpendUsagePage />);
 
-    const costRow = await screen.findByTestId("usage-cost-summary");
-    expect(within(costRow).getByText("USD 5.00")).toBeInTheDocument();
-    expect(within(costRow).getByText("USD 170.00")).toBeInTheDocument();
-    expect(screen.getAllByTestId("usage-cost-summary")).toHaveLength(1);
+    await screen.findByText("真实消耗 Tokens");
+    expect(screen.getByTestId("usage-total-cost-summary")).toHaveTextContent("估算用量成本");
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
   });
 
   it("mirrors the selected AgentSwitcher agent in the real-token headline", async () => {
@@ -453,29 +356,23 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     const selectedAgent = await screen.findByTestId("usage-selected-agent");
     expect(selectedAgent).toHaveTextContent("Claude Code");
-    await waitFor(() => {
-      const latestFinancialCall = getSpendRecords.mock.calls.at(-1)?.[0];
-      expect(latestFinancialCall?.sources).toEqual(["claude"]);
-    });
+    expect(getSpendRecords).not.toHaveBeenCalled();
   });
 
-  it("does not mix other_ai into a selected service when it is the only visible provider", async () => {
+  it("scopes the restored financial ledger when selecting a usage service", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["claude"] });
     const user = userEvent.setup();
     render(<SpendUsagePage />);
 
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
-    for (const [params] of getSpendRecords.mock.calls) {
-      expect(params).not.toHaveProperty("sources");
-    }
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
     await act(async () => {
       await user.click(await screen.findByTitle("Claude Code"));
     });
 
-    await waitFor(() => {
-      const latestFinancialCall = getSpendRecords.mock.calls.at(-1)?.[0];
-      expect(latestFinancialCall?.sources).toEqual(["claude"]);
-    });
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
+    for (const [params] of getSpendRecords.mock.calls) {
+      expect(params.sources).toEqual(["claude"]);
+    }
   });
 
   it("initial load defers trend chart and request log until after first paint", async () => {
@@ -486,7 +383,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(screen.queryByText(/正在加载趋势数据/)).not.toBeInTheDocument();
     expect(screen.queryByText(/正在加载请求记录/)).not.toBeInTheDocument();
 
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
     await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalled());
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
   });
@@ -562,7 +459,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
     await waitFor(() => expect(getModelStats).toHaveBeenCalled());
     await waitFor(() => expect(getTokenPlans).toHaveBeenCalled());
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
   });
 
   it("waits for the usage date bounds before requesting the cumulative summary", async () => {
@@ -590,9 +487,10 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalledTimes(1));
   });
 
-  it("range switching leaves natural-month finance totals unchanged", async () => {
+  it("range switching does not fetch the financial ledger", async () => {
     render(<SpendUsagePage />);
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
     vi.clearAllMocks();
 
     const user = userEvent.setup();
@@ -776,24 +674,6 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(screen.getByText("claude-3-opus")).toBeInTheDocument());
   });
 
-  it("omits the financial source filter for the default all-ledger view", async () => {
-    render(<SpendUsagePage />);
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
-    expect(getSpendRecords.mock.calls).toHaveLength(2);
-    for (const [params] of getSpendRecords.mock.calls) {
-      expect(params).not.toHaveProperty("sources");
-    }
-  });
-
-  it("still loads all-ledger financial totals when no Token provider is visible", async () => {
-    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
-
-    render(<SpendUsagePage />);
-
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
-    expect(getSpendRecords.mock.calls[0][0]).not.toHaveProperty("sources");
-  });
-
   it("scopes usage totals to providers enabled in Limits display", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["claude"] });
     render(<SpendUsagePage />);
@@ -818,8 +698,8 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   it("shows no usage statistics when no provider is enabled in Limits display", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
     render(<SpendUsagePage />);
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
-    expect(getSpendRecords.mock.calls[0][0]).not.toHaveProperty("sources");
+    await screen.findByText("请在显示设置中启用至少一个数据源。");
+    expect(getSpendRecords).not.toHaveBeenCalled();
     expect(getUsageSummary).not.toHaveBeenCalled();
     expect(getProviderStats).not.toHaveBeenCalled();
     expect(getModelStats).not.toHaveBeenCalled();
@@ -915,7 +795,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     expect(getApiBillingAccounts).toHaveBeenCalled();
   });
 
-  it("shows an explicit unavailable state for cost when no billing data is connected", async () => {
+  it("hides cost values when no billing data is connected", async () => {
     getApiBillingAccounts.mockResolvedValue({
       accounts: [
         {
@@ -936,7 +816,8 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText("Anthropic")).toBeInTheDocument();
-    expect(screen.getAllByText("未提供字段").length).toBeGreaterThan(0);
+    expect(screen.queryByText("未提供字段")).not.toBeInTheDocument();
+    expect(screen.queryByText("USD 0.00")).not.toBeInTheDocument();
     expect(screen.queryByText(/—/)).not.toBeInTheDocument();
   });
 
@@ -1079,11 +960,11 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     expect(await screen.findByText("Anthropic")).toBeInTheDocument();
     // The status badge text for not-connected.
     expect(screen.getByText("未连接")).toBeInTheDocument();
-    expect(screen.getAllByText("未提供字段").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText("未提供字段")).not.toBeInTheDocument();
     expect(screen.queryByText(/—/)).not.toBeInTheDocument();
   });
 
-  it("shows an explicit unavailable state for financial values when status is error", async () => {
+  it("hides financial values while retaining the actionable error when status is error", async () => {
     getProviderApiConfigs.mockResolvedValue({
       ok: true,
       data: {
@@ -1122,7 +1003,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     expect(screen.getByText("同步错误")).toBeInTheDocument();
     // The actionable error message renders.
     expect(screen.getByText("请求超时")).toBeInTheDocument();
-    expect(screen.getAllByText("未提供字段").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText("未提供字段")).not.toBeInTheDocument();
     expect(screen.queryByText(/—/)).not.toBeInTheDocument();
   });
 
@@ -1149,8 +1030,6 @@ describe("SpendCostPage (v2.0 IA split)", () => {
 describe("SpendUsagePage does not call provider balance endpoints (03 work order)", () => {
   it("/spend/usage does NOT call getProviderApiConfigs / getProviderApiBalances / refreshProviderApiBalance", async () => {
     render(<SpendUsagePage />);
-    await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
-    // Allow the page to settle all mount effects.
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
     expect(getProviderApiConfigs).not.toHaveBeenCalled();
     expect(getProviderApiBalances).not.toHaveBeenCalled();

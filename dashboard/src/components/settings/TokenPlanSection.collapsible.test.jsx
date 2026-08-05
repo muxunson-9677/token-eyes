@@ -35,6 +35,10 @@ const RECORD = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.setItem(
+    "token-eyes.settings.disclosure.cost.token-plans.v1",
+    "1",
+  );
   getTokenPlans.mockResolvedValue({ records: [{ ...RECORD }] });
   saveTokenPlan.mockResolvedValue({ ok: true, records: [{ ...RECORD }] });
   refreshTokenPlan.mockResolvedValue({ ok: true, records: [{ ...RECORD }] });
@@ -46,13 +50,19 @@ beforeEach(() => {
   deleteTokenPlan.mockResolvedValue({ ok: true, records: [] });
 });
 
-it("collapses the whole Token plan section from its first-level heading", async () => {
+it("defaults the whole Token plan section closed and persists expansion", async () => {
   const user = userEvent.setup();
+  window.localStorage.removeItem("token-eyes.settings.disclosure.cost.token-plans.v1");
   render(<TokenPlanSection />);
 
-  expect(await screen.findByText(/claude \/ Max/i)).toBeInTheDocument();
   const sectionToggle = screen.getByRole("button", { name: "Token 套餐" });
+  expect(sectionToggle).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByText(/claude \/ Max/i)).not.toBeInTheDocument();
+  await user.click(sectionToggle);
   expect(sectionToggle).toHaveAttribute("aria-expanded", "true");
+  expect(await screen.findByText(/claude \/ Max/i)).toBeInTheDocument();
+  expect(window.localStorage.getItem("token-eyes.settings.disclosure.cost.token-plans.v1"))
+    .toBe("1");
   await user.click(sectionToggle);
   expect(sectionToggle).toHaveAttribute("aria-expanded", "false");
   expect(screen.queryByText(/claude \/ Max/i)).not.toBeInTheDocument();

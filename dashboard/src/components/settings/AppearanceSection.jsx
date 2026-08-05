@@ -3,7 +3,7 @@ import { Check, Info, Languages, Monitor, Moon, RefreshCw, Sun } from "lucide-re
 import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
 import { useCurrency } from "../../hooks/useCurrency.js";
-import { SYSTEM_LOCALE, ZH_CN_LOCALE } from "../../lib/locale";
+import { EN_LOCALE, SYSTEM_LOCALE, ZH_CN_LOCALE } from "../../lib/locale";
 import { CURRENCY_USD, getSupportedCurrencies } from "../../lib/currency";
 import { copy } from "../../lib/copy";
 import { Select } from "../../ui/components";
@@ -23,6 +23,7 @@ function buildLanguageOptions() {
   return [
     { value: SYSTEM_LOCALE, label: copy("settings.appearance.language.system") },
     { value: ZH_CN_LOCALE, label: copy("settings.appearance.language.chinese") },
+    { value: EN_LOCALE, label: copy("settings.appearance.language.english") },
   ];
 }
 
@@ -183,16 +184,17 @@ function UsdCnyRateInput({ onRefreshRates }) {
             onChange={(e) => setValue(e.target.value)}
             disabled={saving || refreshing}
             className={cn(
-              "h-9 w-28 rounded-md border border-oai-gray-200 bg-white px-3 text-xs text-oai-gray-900 outline-none transition-colors",
+              "h-10 w-28 rounded-md border border-oai-gray-200 bg-white px-3 text-xs text-oai-gray-900 outline-none transition-colors",
               "placeholder:text-oai-gray-400 focus:border-oai-brand-500 focus:ring-2 focus:ring-oai-brand-500/20 disabled:opacity-60",
               "dark:border-oai-gray-800 dark:bg-oai-gray-950 dark:text-oai-gray-100 dark:placeholder:text-oai-gray-600",
             )}
           />
+          <span className="tt-exchange-rate-preview whitespace-nowrap text-xs text-oai-gray-500">1 USD = {value || "—"} CNY</span>
           <button
             type="button"
             onClick={refresh}
             disabled={saving || refreshing}
-            className="inline-flex h-9 items-center gap-1 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-800 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+            className="inline-flex h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-800 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
             {copy("usage.button.refresh")}
@@ -201,7 +203,7 @@ function UsdCnyRateInput({ onRefreshRates }) {
             type="button"
             onClick={save}
             disabled={saving || refreshing}
-            className="inline-flex h-9 items-center gap-1 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-800 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+            className="tt-exchange-rate-save inline-flex h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-800 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
           >
             {savedNotice ? (
               <>
@@ -227,7 +229,7 @@ export function AppearanceSection() {
   const { currency, rate, rateSource, rateFetchedAt, setCurrency, refreshRates } = useCurrency();
 
   return (
-    <SectionCard title={copy("settings.section.appearance")} icon={Monitor} iconTone="blue">
+    <SectionCard className="tt-settings-appearance-card" title={copy("settings.section.appearance")} icon={Monitor} iconTone="blue">
       <SettingsRow
         label={copy("settings.appearance.theme.label")}
         hint={copy("settings.appearance.theme.hint")}

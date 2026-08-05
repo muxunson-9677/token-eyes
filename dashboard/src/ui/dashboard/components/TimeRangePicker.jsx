@@ -78,7 +78,7 @@ export function TimeRangePicker({ timeZone, offsetMinutes }) {
           <button
             type="button"
             aria-label={copy("ticket02.time.aria")}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-oai-brand-500 bg-white px-3 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 dark:border-oai-brand-400 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-oai-brand-500 bg-white px-3 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 dark:border-oai-brand-400 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
           />
         }
       >

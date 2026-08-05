@@ -1,5 +1,5 @@
 import React from "react";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UsageFiltersProvider } from "../use-usage-filters";
 import { useUsageSummary } from "../use-usage-summary";
@@ -55,6 +55,29 @@ describe("local usage hooks", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(getUsageSummary).toHaveBeenCalledTimes(1);
+    expect(result.current.summary?.totals?.total_tokens).toBe(10);
+  });
+
+  it("keeps cached usage summary visibly stale when a refresh fails", async () => {
+    vi.mocked(getUsageSummary)
+      .mockResolvedValueOnce({ ok: true, totals: { total_tokens: 10 } } as any)
+      .mockRejectedValueOnce(new Error("usage summary unavailable"));
+
+    const { result } = renderHook(
+      () => useUsageSummary({ from: "2026-06-01", to: "2026-06-01", cacheKey: "stale-test" }),
+      { wrapper: UsageFiltersProvider },
+    );
+
+    await waitFor(() => expect(result.current.summary?.totals?.total_tokens).toBe(10));
+    const lastSuccessAt = result.current.fetchedAt;
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.source).toBe("cache");
+    expect(result.current.error).toBe("usage summary unavailable");
+    expect(result.current.fetchedAt).toBe(lastSuccessAt);
     expect(result.current.summary?.totals?.total_tokens).toBe(10);
   });
 
