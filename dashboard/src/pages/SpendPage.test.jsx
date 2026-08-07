@@ -711,6 +711,20 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 // ---------------------------------------------------------------------------
 
 describe("SpendCostPage (v2.0 IA split)", () => {
+  async function expandCostSection(id) {
+    const section = await waitFor(() => {
+      const node = document.querySelector(`[data-cost-section="${id}"]`);
+      expect(node).not.toBeNull();
+      return node;
+    });
+    const controls = within(section).getAllByRole("button").filter((button) => button.hasAttribute("aria-expanded"));
+    expect(controls).toHaveLength(1);
+    if (controls[0].getAttribute("aria-expanded") === "false") {
+      fireEvent.click(controls[0]);
+    }
+    return section;
+  }
+
   it("uses local month boundaries across the complete financial ledger", async () => {
     render(
       <MemoryRouter>
@@ -787,10 +801,14 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
 
+    expect(document.querySelector(".tt-reference-route-spend-cost")).toBeInTheDocument();
     expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
     expect(screen.getByText("API 计费")).toBeInTheDocument();
-    expect(screen.getByText("Pro 套餐")).toBeInTheDocument();
-    expect(screen.getByText("OpenAI API")).toBeInTheDocument();
+    const tokenSection = await expandCostSection("token-packages");
+    expect(tokenSection).toHaveAttribute("data-open", "true");
+    expect(await within(tokenSection).findByText("Pro 套餐")).toBeInTheDocument();
+    const apiSection = await expandCostSection("api-billing");
+    expect(await within(apiSection).findByText("OpenAI API")).toBeInTheDocument();
     expect(getTokenPlans).toHaveBeenCalled();
     expect(getApiBillingAccounts).toHaveBeenCalled();
   });
@@ -815,7 +833,8 @@ describe("SpendCostPage (v2.0 IA split)", () => {
         <SpendCostPage />
       </MemoryRouter>,
     );
-    expect(await screen.findByText("Anthropic")).toBeInTheDocument();
+    const apiSection = await expandCostSection("api-billing");
+    expect(await within(apiSection).findByText("Anthropic")).toBeInTheDocument();
     expect(screen.queryByText("未提供字段")).not.toBeInTheDocument();
     expect(screen.queryByText("USD 0.00")).not.toBeInTheDocument();
     expect(screen.queryByText(/—/)).not.toBeInTheDocument();
@@ -916,9 +935,10 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     );
 
     expect(await screen.findByText("供应商账户")).toBeInTheDocument();
+    const providerSection = await expandCostSection("provider-api");
     // Balance card shows provider + financial data from 02 endpoints.
-    expect(screen.getByText("OpenAI 主账户")).toBeInTheDocument();
-    expect(screen.getByText(/125\.50/)).toBeInTheDocument();
+    expect(await within(providerSection).findByText("OpenAI 主账户")).toBeInTheDocument();
+    expect(within(providerSection).getByText(/125\.50/)).toBeInTheDocument();
     // mount triggers an immediate refresh of enabled+keyed configs.
     await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledWith("cfg-1"));
   });
@@ -957,7 +977,8 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Anthropic")).toBeInTheDocument();
+    const providerSection = await expandCostSection("provider-api");
+    expect(await within(providerSection).findByText("Anthropic")).toBeInTheDocument();
     // The status badge text for not-connected.
     expect(screen.getByText("未连接")).toBeInTheDocument();
     expect(screen.queryByText("未提供字段")).not.toBeInTheDocument();
@@ -999,7 +1020,8 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Kimi 账户")).toBeInTheDocument();
+    const providerSection = await expandCostSection("provider-api");
+    expect(await within(providerSection).findByText("Kimi 账户")).toBeInTheDocument();
     expect(screen.getByText("同步错误")).toBeInTheDocument();
     // The actionable error message renders.
     expect(screen.getByText("请求超时")).toBeInTheDocument();
