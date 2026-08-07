@@ -323,9 +323,6 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     const overviewLink = screen.getByRole("link", { name: "copy:nav.usage" });
 
     await user.tab();
-    expect(screen.getByRole("button", { name: "copy:header.auth.sign_in_aria" })).toHaveFocus();
-    await user.tab();
-
     expect(overviewLink).toHaveFocus();
     expect(overviewLink).toHaveClass("tt-sidebar-focusable");
   });
@@ -356,25 +353,23 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(themeTrigger).toHaveTextContent("copy:settings.appearance.theme.light");
   });
 
-  it("applies the shared focus hook to every mobile and identity control", async () => {
+  it("keeps account and login controls out of both desktop and mobile sidebars", async () => {
     const user = userEvent.setup();
     renderSidebar("/dashboard");
 
     expect(screen.getByRole("button", { name: "copy:nav.menu" })).toHaveClass("tt-sidebar-focusable");
     expect(screen.getByRole("link", { name: "copy:shared.app_name" })).toHaveClass("tt-sidebar-focusable");
-    expect(screen.getByRole("button", { name: "copy:header.auth.sign_in_aria" })).toHaveClass("tt-sidebar-focusable");
+    expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
 
     await act(async () => {
       await user.click(screen.getByRole("button", { name: "copy:nav.menu" }));
     });
 
     expect(screen.getByRole("button", { name: "copy:nav.close_menu" })).toHaveClass("tt-sidebar-focusable");
-    for (const identityControl of screen.getAllByRole("button", { name: "copy:header.auth.sign_in_aria" })) {
-      expect(identityControl).toHaveClass("tt-sidebar-focusable");
-    }
+    expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
   });
 
-  it("applies the shared focus hook to the signed-in identity control", () => {
+  it("does not duplicate the signed-in account control in the left sidebar", () => {
     authContext.value = {
       enabled: true,
       loading: false,
@@ -385,8 +380,8 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
 
     renderSidebar("/dashboard");
 
-    expect(screen.getByRole("button", { name: "copy:header.auth.open_settings" }))
-      .toHaveClass("tt-sidebar-focusable");
+    expect(screen.queryByRole("button", { name: "copy:header.auth.open_settings" }))
+      .not.toBeInTheDocument();
   });
 
   it("keeps light, dark, and system choices wired to the existing theme setter", async () => {
@@ -446,23 +441,55 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(sidebars[1].parentElement).toHaveClass("min-[900px]:hidden");
   });
 
-  it("marks the document root while the Tauri Windows shell is mounted", () => {
+  it("uses the same locked overview route identity for / and /dashboard", () => {
     nativeBridgeContext.windows = true;
 
-    const view = renderSidebar("/dashboard");
+    const rootView = renderSidebar("/");
 
     expect(screen.getByTestId("native-window-bar")).toBeInTheDocument();
     expect(document.documentElement).toHaveClass("native-windows-app");
     expect(document.querySelector(".tt-app-shell")).toHaveAttribute(
       "data-reference-route",
-      "dashboard",
+      "default",
     );
     expect(document.querySelector(".tt-app-shell")).toHaveClass(
+      "tt-reference-route-default",
+    );
+
+    rootView.unmount();
+    const dashboardView = renderSidebar("/dashboard");
+    expect(document.querySelector(".tt-app-shell")).toHaveAttribute(
+      "data-reference-route",
+      "default",
+    );
+    expect(document.querySelector(".tt-app-shell")).toHaveClass(
+      "tt-reference-route-default",
+    );
+    expect(document.querySelector(".tt-app-shell")).not.toHaveClass(
       "tt-reference-route-dashboard",
     );
 
-    view.unmount();
+    dashboardView.unmount();
     expect(document.documentElement).not.toHaveClass("native-windows-app");
+  });
+
+});
+
+describe("Sidebar visual identity hooks", () => {
+  it("exposes stable function identifiers for global navigation colors", () => {
+    renderSidebar("/leaderboard");
+
+    expect(screen.getByRole("link", { name: "copy:nav.usage" })).toHaveAttribute("data-nav-id", "usage");
+    expect(screen.getByRole("link", { name: "copy:nav.leaderboard" })).toHaveAttribute("data-nav-id", "leaderboard");
+    expect(screen.getByRole("button", { name: "copy:nav.group.spend" })).toHaveAttribute("data-nav-id", "spend");
+    expect(screen.getByRole("link", { name: "copy:nav.spend.usage" })).toHaveAttribute("data-nav-id", "spend-usage");
+  });
+
+  it("limits module color styling to the currently selected destination", () => {
+    const css = readFileSync(resolve("src/ui/foundation/apple-glass.css"), "utf8");
+
+    expect(css).toContain('.tt-sidebar-item[data-nav-id="leaderboard"][aria-current="page"]');
+    expect(css).not.toContain('.tt-sidebar-item[data-nav-id="leaderboard"] { color:');
   });
 });
 

@@ -305,6 +305,57 @@ function readRowValue(row) {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+function formatBucketDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function trendBucketKey(row, granularity) {
+  const raw = row?.day || row?.hour || row?.month;
+  const date = raw ? new Date(raw) : null;
+  if (!date || Number.isNaN(date.getTime())) return String(raw || "");
+  if (granularity === "week") {
+    const monday = new Date(date);
+    monday.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+    return formatBucketDate(monday);
+  }
+  if (granularity === "month") {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return formatBucketDate(date);
+}
+
+export function bucketTrendRows(rows, granularity) {
+  if (!Array.isArray(rows) || granularity === "day") return Array.isArray(rows) ? rows : [];
+  const buckets = new Map();
+  for (const row of rows) {
+    const key = trendBucketKey(row, granularity);
+    if (!key) continue;
+    const current = buckets.get(key) || {
+      day: key,
+      axis_label: key,
+      total_tokens: 0,
+      billable_total_tokens: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cached_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      conversation_count: 0,
+      models: {},
+    };
+    for (const field of [
+      "total_tokens", "billable_total_tokens", "input_tokens", "output_tokens",
+      "cached_input_tokens", "reasoning_output_tokens", "conversation_count",
+    ]) {
+      current[field] += Number(row?.[field]) || 0;
+    }
+    for (const [model, value] of Object.entries(row?.models || {})) {
+      current.models[model] = (current.models[model] || 0) + (Number(value) || 0);
+    }
+    buckets.set(key, current);
+  }
+  return Array.from(buckets.values()).sort((a, b) => a.day.localeCompare(b.day));
+}
+
 // Predicted-bar curve tuning. We extrapolate at the mean of observed values
 // and apply a mild decay across distance to suggest uncertainty without
 // burying the bars. The nearest neighbour is intentionally NOT mixed in:
@@ -405,13 +456,14 @@ export function TrendMonitor({
   // present) on the standalone card; null disables the maximize button.
   zoomConfig = null,
 }) {
+  const [trendGranularity, setTrendGranularity] = React.useState("day");
   // Overview contract: only render real observations. Future/missing rows must
   // not appear as interpolated/extrapolated "Predicted" usage bars.
   const series = React.useMemo(
     () => (Array.isArray(rows) && rows.length
-      ? rows.filter((row) => row && !row.future && !row.missing)
+      ? bucketTrendRows(rows.filter((row) => row && !row.future && !row.missing), trendGranularity)
       : []),
-    [rows],
+    [rows, trendGranularity],
   );
 
   // rawValues: real observations (incl. 0) pass through; missing/future are null.
@@ -443,7 +495,7 @@ export function TrendMonitor({
 
 
   const { currency, rate } = useCurrency();
-  const granularity = granularityFromPeriod(period);
+  const granularity = isZoom ? granularityFromPeriod(period) : trendGranularity;
 
   const [hoveredBar, setHoveredBar] = React.useState(null);
   const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0, shiftX: 0, flipDown: false });
@@ -535,7 +587,17 @@ export function TrendMonitor({
             )}
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <span data-testid="trend-granularity" className="tt-trend-granularity">{copy("shared.unit.day")}</span>
+            <select
+              data-testid="trend-granularity"
+              className="tt-trend-granularity"
+              value={trendGranularity}
+              onChange={(event) => setTrendGranularity(event.target.value)}
+              aria-label={copy("trend.zoom.gran.aria")}
+            >
+              <option value="day">{copy("shared.unit.day")}</option>
+              <option value="week">{copy("usage.period.week")}</option>
+              <option value="month">{copy("usage.period.month")}</option>
+            </select>
           {zoomConfig && (
             <button
               type="button"

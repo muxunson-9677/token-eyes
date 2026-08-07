@@ -43,6 +43,20 @@ describe("normalizeAgentMetrics", () => {
     }, "with_cache")).toEqual([]);
   });
 
+  it("renders the current leaderboard API source breakdown when legacy columns are absent", () => {
+    expect(normalizeAgentMetrics({
+      source_breakdown: [
+        { source: "codex", total_tokens: 75, estimated_cost_usd: 19 },
+        { source: "hermes", total_tokens: 15, estimated_cost_usd: 1 },
+        { source: "cursor", total_tokens: 10, estimated_cost_usd: 0.5 },
+      ],
+    }, "tokens")).toEqual([
+      { id: "codex", label: "Codex", value: 75 },
+      { id: "hermes", label: "Hermes Agent", value: 15 },
+      { id: "cursor", label: "Cursor", value: 10 },
+    ]);
+  });
+
   it("uses per-agent estimated cost for the estimated-cost view", () => {
     expect(normalizeAgentMetrics({
       agent_metrics: {

@@ -18,7 +18,6 @@ import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
-import { InsforgeUserHeaderControls } from "../../components/InsforgeUserHeaderControls.jsx";
 import { CodexResetBanner } from "../../components/CodexResetBanner";
 import { useCodexResetEvents } from "../../hooks/use-codex-reset-events";
 import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native-bridge.js";
@@ -190,6 +189,7 @@ function NavItem({ item, collapsed, active, onClick, unreadCount = 0 }) {
       onClick={onClick}
       title={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}
+      data-nav-id={item.id}
       className={cn(
         "tt-sidebar-item tt-sidebar-focusable tt-pressable flex min-h-10 items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline",
         collapsed && "justify-center px-0 py-2",
@@ -265,6 +265,7 @@ function NavParent({
         aria-expanded={expanded}
         aria-controls={childrenListId}
         aria-label={group.label}
+        data-nav-id={group.id}
         className={cn(
           "tt-sidebar-item tt-sidebar-focusable tt-pressable flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px]",
           collapsed && "justify-center px-0 py-2",
@@ -309,6 +310,7 @@ function NavParent({
                   to={child.to}
                   onClick={onItemClick}
                   aria-current={childActive ? "page" : undefined}
+                  data-nav-id={child.id}
                   className={cn(
                     "tt-sidebar-item tt-sidebar-focusable tt-pressable flex min-h-10 items-center rounded-md px-2 py-1.5 text-[13px] no-underline",
                     childActive
@@ -504,35 +506,19 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
 
   return (
     <>
-      {/* Top: identity only 鈥?full-width, aligned with nav items (px-2) */}
-      <div className={cn("px-2 pt-2 pb-2", collapsed && "flex justify-center")}>
-        {showCloseButton ? (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <InsforgeUserHeaderControls
-                variant="sidebar"
-                collapsed={collapsed}
-                onAfterAction={onItemClick}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={copy("nav.close_menu")}
-              title={copy("nav.close_menu")}
-              className="tt-sidebar-focusable flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
-            >
-              <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-            </button>
-          </div>
-        ) : (
-          <InsforgeUserHeaderControls
-            variant="sidebar"
-            collapsed={collapsed}
-            onAfterAction={onItemClick}
-          />
-        )}
-      </div>
+      {showCloseButton && (
+        <div className="flex justify-end px-2 pb-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={copy("nav.close_menu")}
+            title={copy("nav.close_menu")}
+            className="tt-sidebar-focusable flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-oai-gray-500 transition-colors hover:bg-oai-gray-200/60 hover:text-oai-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 dark:text-oai-gray-500 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200"
+          >
+            <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+          </button>
+        </div>
+      )}
 
       {/* Nav */}
       <nav
@@ -730,7 +716,7 @@ export function AppLayout({ children }) {
   }, []);
   const referenceRoute = useMemo(() => {
     const pathname = location?.pathname || "/dashboard";
-    if (pathname === "/dashboard") return "dashboard";
+    if (pathname === "/" || pathname === "/dashboard") return "default";
     if (pathname === "/leaderboard") return "leaderboard";
     if (pathname === "/reset-history") return "reset-history";
     if (pathname === "/widgets") return "widgets";

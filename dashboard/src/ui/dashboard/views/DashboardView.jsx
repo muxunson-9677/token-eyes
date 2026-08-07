@@ -146,6 +146,14 @@ function FullPageGateLayout({ title, subtitle, desc, loginCard, copy }) {
 
 export function DashboardView(props) {
 
+  React.useLayoutEffect(() => {
+    const overviewGrid = document.querySelector('[data-testid="dashboard-overview-grid"]');
+    const scrollRegion = overviewGrid?.closest('.overflow-y-auto');
+    if (scrollRegion) {
+      scrollRegion.scrollTop = 0;
+    }
+  }, []);
+
   const {
     copy,
     onOpenShare,
@@ -303,7 +311,7 @@ export function DashboardView(props) {
           />
         )}
         {!showAuthGate && !showExpiredGate && !initialDashboardLoading && (!usageError || usageHasData) && (
-          <div className="space-y-4">
+          <div className="tt-overview-locked space-y-4">
             {usageError && usageHasData ? (
               <StaleUsageNotice
                 copy={copy}
@@ -373,6 +381,16 @@ export function DashboardView(props) {
                   </FadeIn>
                 ) : null}
 
+                {!screenshotMode ? (
+                  <FadeIn delay={nextLeft()} className="h-[32rem]">
+                    <ModelUsageDonut
+                      rows={modelUsageDistribution?.rows}
+                      totalTokens={modelUsageDistribution?.totalTokens}
+                      className="h-full"
+                    />
+                  </FadeIn>
+                ) : null}
+
                 {isLocalMode ? <WidgetOnboardingCard enterDelay={nextLeft()} /> : null}
 
               </div>
@@ -416,68 +434,8 @@ export function DashboardView(props) {
                   />
                 </FadeIn>
 
-
-                {screenshotMode ? (
-                  <div
-                    className="mt-4 flex flex-col items-center gap-2"
-                    data-screenshot-exclude="true"
-                    style={isCapturing ? { display: "none" } : undefined}
-                  >
-                    <Button
-                      type="button"
-                      onClick={handleShareToX}
-                      variant="primary"
-                      size="lg"
-                      disabled={isCapturing}
-                    >
-                      {screenshotTwitterButton}
-                    </Button>
-                    <span className="text-sm text-oai-gray-500 dark:text-oai-gray-300">
-                      {screenshotTwitterHint}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            {!screenshotMode ? (
-              <div
-                data-testid="dashboard-system-strip"
-                data-status={usageError ? "stale" : "healthy"}
-                className="tt-overview-system-strip"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="tt-overview-system-shield" aria-hidden>✓</span>
-                  <span className="font-medium text-oai-black dark:text-white">
-                    {usageError ? "数据更新异常" : "所有系统运行正常"}
-                  </span>
-                  <span className="truncate text-oai-gray-400">
-                    {usageError ? "当前显示最近一次成功同步的数据" : "背部所有实例、分析结果准确可靠"}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-6 text-oai-gray-500 dark:text-oai-gray-300">
-                  <span>{copy("dashboard.system.data_source_local")}</span>
-                  <span className="tt-overview-system-live-dot">时区：{trendTimeZoneLabel?.includes("Shanghai") ? "UTC+8" : trendTimeZoneLabel || "UTC+8"}</span>
-                </div>
-              </div>
-            ) : null}
-
-            {!screenshotMode ? (
-              <div
-                className="grid grid-cols-1 items-stretch gap-4 lg:h-[32rem] lg:grid-cols-12"
-                data-testid="dashboard-detail-grid"
-              >
-                <div className="h-full min-h-0 min-w-0 lg:col-span-4">
-                  <FadeIn delay={nextLeft()} className="h-full">
-                    <ModelUsageDonut
-                      rows={modelUsageDistribution?.rows}
-                      totalTokens={modelUsageDistribution?.totalTokens}
-                      className="h-full"
-                    />
-                  </FadeIn>
-                </div>
-                <div className="h-full min-h-0 min-w-0 lg:col-span-8">
-                  <FadeIn delay={D_DATA_DETAILS} className="h-full">
+                {!screenshotMode ? (
+                  <FadeIn delay={D_DATA_DETAILS} className="h-[32rem]">
                     <div className="h-full" data-testid="dashboard-data-details">
                       <DataDetails
                         projectEntries={projectUsageEntries}
@@ -508,9 +466,31 @@ export function DashboardView(props) {
                       />
                     </div>
                   </FadeIn>
-                </div>
+                ) : null}
+
+                {screenshotMode ? (
+                  <div
+                    className="mt-4 flex flex-col items-center gap-2"
+                    data-screenshot-exclude="true"
+                    style={isCapturing ? { display: "none" } : undefined}
+                  >
+                    <Button
+                      type="button"
+                      onClick={handleShareToX}
+                      variant="primary"
+                      size="lg"
+                      disabled={isCapturing}
+                    >
+                      {screenshotTwitterButton}
+                    </Button>
+                    <span className="text-sm text-oai-gray-500 dark:text-oai-gray-300">
+                      {screenshotTwitterHint}
+                    </span>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
+
           </div>
         )}
       </Shell>

@@ -9,7 +9,6 @@ import {
   CircleHelp,
   History,
   RotateCcw,
-  ShieldCheck,
   Sparkles,
   Timer,
   Zap,
@@ -106,43 +105,90 @@ const RESET_KIND_VISUALS = {
   },
 } as const;
 
-function hasStatisticValue(item: { value: string | null }) {
-  return item.value !== null;
+function formatResetStatDate(iso: string) {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat(getCopyLocale(), {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
-function ResetStatisticsSummary({ statistics }: { statistics: ResetStatistics }) {
+function ResetStatisticsSummary({
+  statistics,
+  events,
+  isLoading,
+}: {
+  statistics: ResetStatistics;
+  events: TimelineEvent[];
+  isLoading: boolean;
+}) {
+  const unavailableValue = copy("reset_history.stats.insufficient");
+  const chronological = [...events].sort(
+    (left, right) => Date.parse(left.occurred_at) - Date.parse(right.occurred_at),
+  );
+  const intervals = chronological.slice(1).map((event, index) => ({
+    start: chronological[index],
+    end: event,
+    duration: Date.parse(event.occurred_at) - Date.parse(chronological[index].occurred_at),
+  })).filter((interval) => Number.isFinite(interval.duration));
+  const shortest = intervals.reduce<typeof intervals[number] | null>(
+    (current, interval) => !current || interval.duration < current.duration ? interval : current,
+    null,
+  );
+  const longest = intervals.reduce<typeof intervals[number] | null>(
+    (current, interval) => !current || interval.duration > current.duration ? interval : current,
+    null,
+  );
   const items = [
     {
       label: copy("reset_history.stats.period"),
       value: copy("reset_history.stats.period_value", { days: statistics.periodDays }),
+      detail: copy("reset_history.stats.period_detail", { count: statistics.count }),
       Icon: CalendarDays,
       tone: "blue" as const,
     },
     {
       label: copy("reset_history.stats.count"),
       value: copy("reset_history.stats.count_value", { count: statistics.count }),
+      detail: copy("reset_history.stats.count_detail"),
       Icon: RotateCcw,
       tone: "emerald" as const,
     },
     {
       label: copy("reset_history.stats.average"),
       value: formatResetInterval(statistics.averageIntervalMs),
+      detail: intervals.length > 0
+        ? copy("reset_history.stats.average_detail", { count: intervals.length })
+        : unavailableValue,
       Icon: Timer,
       tone: "violet" as const,
     },
     {
       label: copy("reset_history.stats.shortest"),
       value: formatResetInterval(statistics.shortestIntervalMs),
+      detail: shortest
+        ? copy("reset_history.stats.occurred_detail", { date: formatResetStatDate(shortest.end.occurred_at) })
+        : unavailableValue,
       Icon: ArrowDownToLine,
       tone: "amber" as const,
     },
     {
       label: copy("reset_history.stats.longest"),
       value: formatResetInterval(statistics.longestIntervalMs),
+      detail: longest
+        ? copy("reset_history.stats.range_detail", {
+          start: formatResetStatDate(longest.start.occurred_at),
+          end: formatResetStatDate(longest.end.occurred_at),
+        })
+        : unavailableValue,
       Icon: ArrowUpToLine,
       tone: "rose" as const,
     },
-  ].filter(hasStatisticValue);
+  ];
 
   return (
     <dl
@@ -154,6 +200,7 @@ function ResetStatisticsSummary({ statistics }: { statistics: ResetStatistics })
           key={item.label}
           data-testid="reset-history-stat"
           data-tone={item.tone}
+          data-empty={item.value === null || isLoading ? "true" : undefined}
           className="tt-surface-nested min-w-0 rounded-2xl border border-oai-gray-200/80 px-4 py-4 dark:border-oai-gray-800"
         >
           <span
@@ -166,7 +213,12 @@ function ResetStatisticsSummary({ statistics }: { statistics: ResetStatistics })
           <dt className="mt-4 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
             {item.label}
           </dt>
-          <dd className="mt-1 truncate text-lg font-semibold tabular-nums">{item.value}</dd>
+          <dd className="mt-1 truncate text-lg font-semibold tabular-nums">
+            {isLoading ? copy("reset_history.loading") : item.value ?? unavailableValue}
+          </dd>
+          <p className="tt-reset-stat-detail">
+            {isLoading ? copy("reset_history.loading_detail") : item.detail}
+          </p>
         </div>
       ))}
     </dl>
@@ -195,28 +247,30 @@ function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[];
           <strong>{zh ? `昨日达到高峰（${Math.max(2, peak.count)} 次）` : `Peak day (${Math.max(2, peak.count)} times)`}</strong>
         </div>
       </div>
-      <div className="tt-reset-heatmap" aria-label={zh ? "最近七天重置热力图" : "Seven-day reset heatmap"}>
-        {days.map((day, dayIndex) => (
-          <div className="tt-reset-heatmap-day" key={day.key}>
-            <div className="tt-reset-heatmap-cells">
-              {Array.from({ length: 9 }, (_, cellIndex) => (
-                <span
-                  key={cellIndex}
-                  data-level={cellIndex < day.count * 2 || (dayIndex === 6 && cellIndex < 5) ? Math.min(3, day.count + 1) : 0}
-                />
-              ))}
+      <div className="tt-reset-activity-data">
+        <div className="tt-reset-heatmap" aria-label={zh ? "最近七天重置热力图" : "Seven-day reset heatmap"}>
+          {days.map((day, dayIndex) => (
+            <div className="tt-reset-heatmap-day" key={day.key}>
+              <div className="tt-reset-heatmap-cells">
+                {Array.from({ length: 9 }, (_, cellIndex) => (
+                  <span
+                    key={cellIndex}
+                    data-level={cellIndex < day.count * 2 || (dayIndex === 6 && cellIndex < 5) ? Math.min(3, day.count + 1) : 0}
+                  />
+                ))}
+              </div>
+              <span className="tt-reset-heatmap-label">{day.label}</span>
             </div>
-            <span className="tt-reset-heatmap-label">{day.label}</span>
-          </div>
-        ))}
-      </div>
-      <div className="tt-reset-activity-stat">
-        <span>{zh ? "本月累计（截至今日）" : "This month"}</span>
-        <strong>{statistics.count} 次</strong>
-      </div>
-      <div className="tt-reset-activity-stat tt-reset-activity-peak">
-        <span>{zh ? "高峰日" : "Peak day"}</span>
-        <strong>{peak.label}（{Math.max(2, peak.count)} 次）</strong>
+          ))}
+        </div>
+        <div className="tt-reset-activity-stat">
+          <span>{zh ? "本月累计（截至今日）" : "This month"}</span>
+          <strong>{statistics.count} 次</strong>
+        </div>
+        <div className="tt-reset-activity-stat tt-reset-activity-peak">
+          <span>{zh ? "高峰日" : "Peak day"}</span>
+          <strong>{peak.label}（{Math.max(2, peak.count)} 次）</strong>
+        </div>
       </div>
     </section>
   );
@@ -281,8 +335,9 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
 }
 
 export function ResetHistoryPage() {
-  const { history } = useCodexResetEvents();
+  const { history, available } = useCodexResetEvents();
   const [celebrationEffect, setCelebrationEffect] = useState(readResetCelebrationEffect);
+  const [visibleRecordCount, setVisibleRecordCount] = useState(11);
   const { events, sources, statistics } = useMemo(() => {
     const official = filterRecentOfficialResets(history)
       .sort((left, right) => Date.parse(right.occurred_at) - Date.parse(left.occurred_at));
@@ -306,10 +361,12 @@ export function ResetHistoryPage() {
     });
     return { events: indexedEvents, sources: indexedSources, statistics: resetStatistics };
   }, [history]);
+  const visibleEvents = events.slice(0, visibleRecordCount);
+  const hasMoreRecords = visibleEvents.length < events.length;
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
-      <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
+    <div className="tt-reset-history-page flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
+      <main className="tt-reset-history-main flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row" data-testid="reset-history-heading">
             <div className="tt-reset-heading-copy">
@@ -347,7 +404,7 @@ export function ResetHistoryPage() {
             </div>
           </div>
 
-          <ResetStatisticsSummary statistics={statistics} />
+          <ResetStatisticsSummary statistics={statistics} events={events} isLoading={!available} />
 
           <ResetActivitySummary events={events} statistics={statistics} />
 
@@ -358,7 +415,7 @@ export function ResetHistoryPage() {
                 {copy("reset_history.history_title")}
               </h2>
             </div>
-            <div data-testid="reset-history-list">
+            <div className="tt-reset-history-list" data-testid="reset-history-list">
               {events.length > 0 ? (
                 <>
                   <div className="tt-reset-history-table-head" aria-hidden="true">
@@ -370,13 +427,17 @@ export function ResetHistoryPage() {
                     data-testid="reset-history-timeline"
                     className="relative divide-y divide-oai-gray-200 before:absolute before:bottom-4 before:left-[0.875rem] before:top-4 before:w-px before:bg-oai-gray-200 dark:divide-oai-gray-800 dark:before:bg-oai-gray-700"
                   >
-                    {events.map((event, index) => (
+                    {visibleEvents.map((event, index) => (
                       <ResetRecord key={event.id} event={event} isLatest={index === 0} />
                     ))}
                   </ol>
                   <div className="tt-reset-history-list-footer">
-                    <button type="button">{getCopyLocale().toLowerCase().startsWith("zh") ? "加载更多⌄" : "Load more⌄"}</button>
-                    <span>{getCopyLocale().toLowerCase().startsWith("zh") ? `共 ${events.length} 条记录` : `${events.length} records`}</span>
+                    {hasMoreRecords ? (
+                      <button type="button" onClick={() => setVisibleRecordCount(events.length)}>
+                        {copy("reset_history.load_more")}
+                      </button>
+                    ) : null}
+                    <span>{copy("reset_history.records_total", { count: events.length })}</span>
                   </div>
                   {sources.length > 0 ? (
                     <footer
@@ -404,32 +465,14 @@ export function ResetHistoryPage() {
                   ) : null}
                 </>
               ) : (
-                <p className="py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
-                  {copy("reset_history.empty")}
+                <p className="tt-reset-history-empty py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                  {available ? copy("reset_history.empty") : copy("reset_history.loading_detail")}
                 </p>
               )}
             </div>
           </section>
         </div>
       </main>
-      <footer className="tt-reset-page-footer" aria-label="Token Eyes">
-        <div className="tt-reset-page-footer-brand">
-          <img src="/app-icon.png" alt="" />
-          <div>
-            <p>{copy("landing.v2.footer.line")}</p>
-            <div>
-              <span>{copy("shared.footer.version")}</span>
-              <i aria-hidden="true" />
-              <span>{copy("shared.footer.privacy")}</span>
-              <i aria-hidden="true" />
-              <span>{copy("shared.footer.terms")}</span>
-              <i aria-hidden="true" />
-              <span>GitHub</span>
-            </div>
-          </div>
-        </div>
-        <p><ShieldCheck aria-hidden="true" />{copy("shared.footer.local_data")}</p>
-      </footer>
     </div>
   );
 }

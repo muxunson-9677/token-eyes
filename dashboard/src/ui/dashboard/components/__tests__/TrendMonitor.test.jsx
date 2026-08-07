@@ -1,5 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 // The zoom modal pulls in use-trend-data (a .ts hook imported with a .js
@@ -38,10 +39,10 @@ describe("TrendMonitor", () => {
     expect(screen.getByTestId("trend-monitor-title").querySelector("svg")).not.toBeNull();
   });
 
-  it("renders the reference daily-granularity control", () => {
+  it("renders the daily trend period selector", () => {
     render(<TrendMonitor rows={[]} />);
 
-    expect(screen.getByTestId("trend-granularity")).toHaveTextContent("天");
+    expect(screen.getByTestId("trend-granularity")).toHaveValue("day");
   });
 
   it("renders the reference chart y-axis from the real scale", () => {
@@ -140,6 +141,34 @@ describe("TrendMonitor", () => {
       <TrendMonitor rows={rows} zoomConfig={{ baseUrl: "http://localhost" }} showTimeZoneLabel={false} />,
     );
     expect(withCfg.getByRole("button")).toHaveClass("tt-analytics-focusable");
+  });
+
+  it("keeps chart date granularity separate from the overview range and uses real axis ticks", async () => {
+    const onPeriodChange = vi.fn();
+    const { getByTestId } = render(
+      <TrendMonitor
+        rows={[
+          { day: "2026-08-04", billable_total_tokens: 100 },
+          { day: "2026-08-05", billable_total_tokens: 200 },
+        ]}
+        period="total"
+        onPeriodChange={onPeriodChange}
+        showTimeZoneLabel={false}
+      />,
+    );
+
+    const selector = getByTestId("trend-granularity");
+    expect(selector).toHaveValue("day");
+    expect(document.querySelector('[data-testid="trend-axis-labels"]')).toBeNull();
+    expect(getByTestId("trend-y-axis").children).toHaveLength(6);
+    expect(getByTestId("trend-range")).toHaveTextContent("2026-08-04");
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.selectOptions(selector, "week");
+    });
+    expect(selector).toHaveValue("week");
+    expect(getByTestId("trend-bar-row").children).toHaveLength(1);
+    expect(onPeriodChange).not.toHaveBeenCalled();
   });
 });
 

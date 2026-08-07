@@ -199,10 +199,10 @@ describe("Codex reset events provider", () => {
       value: locks.manager,
     });
     api.getCodexResetEvents.mockReset().mockResolvedValue(response);
-    api.checkCodexResetEvents.mockReset().mockResolvedValue(response);
-    api.acknowledgeCodexResetEvent.mockReset().mockResolvedValue(undefined);
     api.markCodexResetEventDelivered.mockReset().mockResolvedValue(undefined);
     notification.showCodexResetNotification.mockReset().mockResolvedValue(undefined);
+    api.checkCodexResetEvents.mockReset().mockResolvedValue(response);
+    api.acknowledgeCodexResetEvent.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -254,31 +254,25 @@ describe("Codex reset events provider", () => {
     expect(result.current.events).toEqual([]);
   });
 
-  it("claims each native notification before showing it and does not repeat it", async () => {
-    renderHook(() => useCodexResetEvents(), { wrapper });
+  it("keeps reset notifications inside the app without triggering Windows notifications", async () => {
+    const { result } = renderHook(() => useCodexResetEvents(), { wrapper });
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(api.markCodexResetEventDelivered).toHaveBeenCalledWith(
-      "reset-1",
-      "windows_notification",
-    );
-    expect(notification.showCodexResetNotification).toHaveBeenCalledWith(
-      response.notification_events[0],
-    );
-    expect(api.markCodexResetEventDelivered.mock.invocationCallOrder[0]).toBeLessThan(
-      notification.showCodexResetNotification.mock.invocationCallOrder[0],
-    );
+    expect(result.current.events).toEqual(response.events);
+    expect(api.markCodexResetEventDelivered).not.toHaveBeenCalled();
+    expect(notification.showCodexResetNotification).not.toHaveBeenCalled();
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(notification.showCodexResetNotification).toHaveBeenCalledTimes(1);
+    expect(result.current.events).toEqual(response.events);
+    expect(notification.showCodexResetNotification).not.toHaveBeenCalled();
   });
 
   it("dispatches the exact latest applicable official reset celebration once", async () => {
@@ -457,7 +451,7 @@ describe("Codex reset events provider", () => {
     }
   });
 
-  it("keeps notification delivery independent from celebration delivery", async () => {
+  it("keeps in-app reset entries independent from celebration delivery", async () => {
     const official = officialReset();
     const nextResponse = {
       ...responseWithEvents([official]),
@@ -465,20 +459,14 @@ describe("Codex reset events provider", () => {
     };
     api.getCodexResetEvents.mockResolvedValue(nextResponse);
 
-    renderHook(() => useCodexResetEvents(), { wrapper });
+    const { result } = renderHook(() => useCodexResetEvents(), { wrapper });
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(api.markCodexResetEventDelivered).toHaveBeenCalledWith(
-      "official-reset-42",
-      "windows_notification",
-    );
-    expect(notification.showCodexResetNotification).toHaveBeenCalledWith(
-      official,
-    );
+    expect(result.current.events).toEqual([official]);
   });
 
   it("uses one shared exclusive lock across concurrent provider instances", async () => {

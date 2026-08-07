@@ -71,7 +71,6 @@ describe("DashboardView overview hierarchy", () => {
     const overviewGrid = screen.getByTestId("dashboard-overview-grid");
     const primary = screen.getByTestId("dashboard-primary-workspace");
     const secondary = screen.getByTestId("dashboard-secondary-context");
-    const details = screen.getByTestId("dashboard-detail-grid");
     expect(overviewGrid).toHaveClass("tt-reference-overview-grid");
     expect(primary).toBeVisible();
     expect(primary).not.toHaveClass("lg:col-span-7");
@@ -80,7 +79,7 @@ describe("DashboardView overview hierarchy", () => {
     expect(within(primary).getByTestId("dashboard-usage-overview")).toBeVisible();
     expect(within(primary).getByTestId("dashboard-usage-overview")).toHaveClass("h-full");
     expect(within(primary).getByTestId("dashboard-usage-overview").parentElement).toHaveClass("h-full");
-    expect(within(primary).queryByTestId("dashboard-data-details")).not.toBeInTheDocument();
+    expect(within(primary).getByTestId("dashboard-data-details")).toBeVisible();
     expect(within(secondary).getByText("dashboard.identity.title")).toBeVisible();
     expect(within(secondary).getByTestId("dashboard-trend")).toBeVisible();
     expect(within(secondary).getByTestId("dashboard-trend")).toHaveAttribute(
@@ -88,13 +87,8 @@ describe("DashboardView overview hierarchy", () => {
       "h-36",
     );
     expect(screen.queryByTestId("dashboard-trend-row")).not.toBeInTheDocument();
-    expect(within(secondary).queryByTestId("dashboard-models")).not.toBeInTheDocument();
-    expect(within(details).getByTestId("dashboard-models")).toBeVisible();
-    expect(within(details).getByTestId("dashboard-data-details")).toBeVisible();
-    expect(details).toHaveClass("lg:grid-cols-12", "lg:h-[32rem]");
-    for (const column of Array.from(details.children)) {
-      expect(column).toHaveClass("h-full", "min-h-0");
-    }
+    expect(within(secondary).getByTestId("dashboard-models")).toBeVisible();
+    expect(screen.queryByTestId("dashboard-detail-grid")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-core-actions")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "dashboard.actions.usage_details" })).not.toBeInTheDocument();
     expect(openUsageDetails).not.toHaveBeenCalled();
@@ -189,6 +183,6 @@ describe("DashboardView overview hierarchy", () => {
     expect(screen.getByTestId("dashboard-usage-overview")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-secondary-context")).toBeVisible();
     expect(screen.getByTestId("dashboard-data-details")).toBeVisible();
-    expect(screen.getByTestId("dashboard-system-strip")).toHaveAttribute("data-status", "stale");
+    expect(screen.queryByTestId("dashboard-system-strip")).not.toBeInTheDocument();
   });
 });

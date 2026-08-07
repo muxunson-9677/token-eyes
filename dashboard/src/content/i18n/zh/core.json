@@ -392,10 +392,11 @@
   "shared.data.unattributed": "未归因",
   "native.window.status.label": "系统状态",
   "native.window.status.normal": "正常",
-  "native.window.sync.local": "本地数据",
+  "native.window.sync.local": "已同步",
   "native.window.sync.recent": "已同步 1 分钟前",
   "native.window.sync.earlier": "早前已同步",
   "native.window.notifications": "通知",
+  "native.window.notifications.empty": "暂无 Codex 额度重置通知",
   "native.window.minimize": "最小化",
   "native.window.maximize": "最大化或还原",
   "native.window.close": "关闭"
