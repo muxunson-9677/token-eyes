@@ -26,9 +26,28 @@ function installNativeBridge(settings) {
   };
 }
 
+async function openWindowsWidgetSettings(user) {
+  let dialog = screen.queryByRole("dialog", {
+    name: copy("widgets.windows.projects.title"),
+  });
+  if (!dialog) {
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.reference.batch_actions"),
+    }));
+    await user.click(screen.getByRole("menuitem", {
+      name: copy("widgets.reference.batch_manage"),
+    }));
+    dialog = await screen.findByRole("dialog", {
+      name: copy("widgets.windows.projects.title"),
+    });
+  }
+  return dialog;
+}
+
 async function expandWindowsWidgetSection(user, titleKey) {
   const title = copy(titleKey);
-  const trigger = await screen.findByRole("button", {
+  const dialog = await openWindowsWidgetSettings(user);
+  const trigger = await within(dialog).findByRole("button", {
     name: (accessibleName) => accessibleName.includes(title),
   });
   if (trigger.getAttribute("aria-expanded") === "false") {
@@ -143,6 +162,101 @@ describe("WidgetsPage menu bar configurator", () => {
 });
 
 describe("WidgetsPage Windows desktop widget", () => {
+  it("uses the desktop project-manager layout in a Windows browser preview", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+
+    render(<WidgetsPage />);
+
+    expect(await screen.findByTestId("widget-manager")).toBeInTheDocument();
+    expect(screen.getByTestId("widgets-heading")).toHaveTextContent(
+      copy("widgets.reference.subtitle"),
+    );
+  });
+
+  it("places the desktop-widget visibility action in the page header", async () => {
+    const invoke = vi.fn(async (command) => {
+      if (command === "get_desktop_widget_prefs") return { visible: false };
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+
+    render(<WidgetsPage />);
+
+    const heading = screen.getByTestId("widgets-heading");
+    const toggle = await within(heading).findByRole("button", {
+      name: copy("widgets.windows.show"),
+    });
+    expect(toggle).toBeEnabled();
+  });
+
+  it("keeps real project and plan settings available in the final manager", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    const invoke = vi.fn(async (command) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          selectedProjectIds: ["project-a"],
+          selectedProjects: [],
+          selectedLimitIds: ["codex:plus:5h"],
+        };
+      }
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const body = String(url).includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : {
+          projectStatus: {
+            projects: [{ id: "project-a", label: "Token Eyes" }],
+            recentProjects: [{ id: "project-a", label: "Token Eyes" }],
+          },
+          limits: [{
+            id: "codex:plus:5h",
+            agent: "codex",
+            provider: "Codex",
+            accountLabel: "Plus",
+            window: "5h",
+            usedPercent: 42,
+          }],
+        };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+
+    await expandWindowsWidgetSection(user, "widgets.windows.projects.title");
+
+    expect(await screen.findByRole("searchbox", {
+      name: copy("widgets.windows.projects.search"),
+    })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", {
+      name: copy("widgets.windows.projects.active_window"),
+    })).toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: copy("widgets.windows.projects.add_folder"),
+    })).toBeInTheDocument();
+    await expandWindowsWidgetSection(user, "widgets.windows.limits.title");
+    expect(await screen.findByRole("checkbox", {
+      name: "Codex - Plus - 5h",
+    })).toBeChecked();
+    expect(document.querySelector(".tt-widget-agent-logo.is-codex")).toBeInTheDocument();
+    expect(document.querySelector(".tt-widget-advanced-settings")).not.toBeInTheDocument();
+  });
+
   it("does not offer the removed usage overview or heatmap cards", () => {
     const { container } = render(<WidgetsPage />);
     expect(screen.getByRole("heading", { name: copy("widgets.page.title") })).toBeInTheDocument();
@@ -222,10 +336,12 @@ describe("WidgetsPage Windows desktop widget", () => {
 
     render(<WidgetsPage />);
 
-    const projects = await screen.findByRole("button", {
+    const dialog = await openWindowsWidgetSettings(user);
+
+    const projects = await within(dialog).findByRole("button", {
       name: (accessibleName) => accessibleName.includes(copy("widgets.windows.projects.title")),
     });
-    const limits = screen.getByRole("button", {
+    const limits = within(dialog).getByRole("button", {
       name: (accessibleName) => accessibleName.includes(copy("widgets.windows.limits.title")),
     });
     expect(projects).toHaveAttribute("aria-expanded", "false");
@@ -550,7 +666,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     await expandWindowsWidgetSection(user, "widgets.windows.limits.title");
     const weekly = await screen.findByRole("checkbox", { name: "Codex - Plus - weekly" });
     const fiveHour = screen.getByRole("checkbox", { name: "Codex - Plus - 5h" });
-    expect(screen.getByText("主力开发账号")).toBeInTheDocument();
+    expect(screen.getAllByText("主力开发账号")).not.toHaveLength(0);
     expect(screen.queryByDisplayValue("主力开发账号")).not.toBeInTheDocument();
     expect(weekly).toBeChecked();
     expect(fiveHour).not.toBeChecked();
