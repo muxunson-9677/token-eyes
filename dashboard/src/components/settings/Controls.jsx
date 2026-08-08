@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Card } from "../../ui/components";
@@ -9,13 +9,6 @@ const SECTION_ICON_TONES = {
   green: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
   orange: "bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-300",
   rose: "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
-};
-
-const COST_REFERENCE_SCENARIOS = {
-  "cost.other-ai": "10-settings-cost-1",
-  "cost.agent-pricing": "11-settings-cost-2",
-  "cost.token-plans": "12-settings-cost-3",
-  "cost.provider-api": "13-settings-cost-4",
 };
 
 export function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
@@ -72,6 +65,7 @@ export function SectionCard({
   iconTone = "blue",
   iconTestId = null,
   collapsedSummary = "",
+  collapsedSummaryTone = "",
   className = "",
 }) {
   const persistedKey = storageKey
@@ -89,21 +83,6 @@ export function SectionCard({
     return defaultOpen;
   });
   const expanded = collapsible ? open : true;
-  useEffect(() => {
-    const scenario = COST_REFERENCE_SCENARIOS[storageKey];
-    if (!scenario || typeof document === "undefined") return undefined;
-    const root = document.documentElement;
-    if (expanded) {
-      root.dataset.referenceScenario = scenario;
-    } else if (root.dataset.referenceScenario === scenario) {
-      delete root.dataset.referenceScenario;
-    }
-    return () => {
-      if (root.dataset.referenceScenario === scenario) {
-        delete root.dataset.referenceScenario;
-      }
-    };
-  }, [expanded, storageKey]);
   const toggleOpen = () => {
     setOpen((current) => {
       const next = !current;
@@ -117,6 +96,7 @@ export function SectionCard({
       return next;
     });
   };
+  const summaryTone = collapsedSummaryTone || iconTone;
   const sectionIcon = Icon ? (
     <span
       data-testid="settings-section-icon"
@@ -129,7 +109,6 @@ export function SectionCard({
       <Icon data-testid={iconTestId || undefined} className="h-3.5 w-3.5" aria-hidden="true" />
     </span>
   ) : null;
-
   return (
     <Card className={className}>
       <div className={cn("flex items-start justify-between gap-4", expanded && "mb-3")}>
@@ -175,14 +154,19 @@ export function SectionCard({
             </div>
           </div>
         )}
-        {action && expanded ? (
-          <div className="shrink-0">{action}</div>
-        ) : action ? (
-          <div
-            className="tt-collapsed-action-placeholder shrink-0"
-            data-summary={collapsedSummary}
-            aria-hidden="true"
-          />
+        {action || collapsedSummary ? (
+          <div className="tt-section-header-aside shrink-0">
+            {expanded ? (action || null) : collapsedSummary ? (
+              <span
+                className="tt-collapsed-summary"
+                data-testid="settings-section-collapsed-summary"
+                data-tone={summaryTone}
+                data-summary={collapsedSummary}
+              >
+                {collapsedSummary}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
       {expanded ? (

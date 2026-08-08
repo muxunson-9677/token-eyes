@@ -752,7 +752,7 @@ function SpendCostPageInner({
   }, [requestRefresh, refreshCostAccumulation]);
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
+    <div className="tt-reference-route-spend-cost flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
         <div className="mx-auto w-full max-w-none px-4 sm:px-6">
           <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -787,6 +787,7 @@ function SpendCostPageInner({
             providerApiLastUpdatedAt={providerApiLastUpdatedAt}
             onRefreshAllProviderApis={refreshAllProviderApis}
             onRefreshOneProviderApi={refreshOneProviderApi}
+            onRefreshTokenPackages={refreshCostAccumulation}
             subscriptionFormState={subscriptionFormState}
             subscriptionFormSaving={subscriptionFormSaving}
             subscriptionFormError={subscriptionFormError}
@@ -795,6 +796,7 @@ function SpendCostPageInner({
             onSaveSubscription={handleSaveSubscription}
             onDeleteSubscription={handleDeleteSubscription}
             onCancelSubscriptionForm={handleCancelSubscriptionForm}
+            sectionsInitiallyOpen={false}
           />
         </div>
       </main>

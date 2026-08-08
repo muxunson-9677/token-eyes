@@ -346,21 +346,26 @@ export function AgentPricingSection() {
   return (
     <SectionCard
       title={copy("settings.section.agent_pricing")}
-      subtitle={(
-        <>
-          <span className="tt-agent-pricing-subtitle-collapsed">{copy("settings.agent_pricing.subtitle")}</span>
-          <span className="tt-agent-pricing-subtitle-expanded hidden">{copy("settings.agent_pricing.reference_subtitle")}</span>
-          <span className="tt-agent-pricing-help hidden text-blue-600">{copy("settings.agent_pricing.how_pricing")}</span>
-        </>
-      )}
+      subtitle={copy("settings.agent_pricing.reference_subtitle")}
       icon={DollarSign}
       iconTone="green"
       collapsible
       defaultOpen={false}
       storageKey="cost.agent-pricing"
-      collapsedSummary={`已配置 ${VERIFIED_MODEL_PRICES.length} 项`}
+      collapsedSummary={copy("settings.agent_pricing.collapsed_summary", { count: VERIFIED_MODEL_PRICES.length })}
+      collapsedSummaryTone="green"
       action={
         <div className="tt-pricing-header-actions flex items-center gap-2">
+          <a
+            className="tt-agent-pricing-help"
+            href="#model-pricing-catalog"
+            onClick={(event) => {
+              event.preventDefault();
+              document.getElementById("model-pricing-catalog")?.scrollIntoView({ block: "nearest" });
+            }}
+          >
+            {copy("settings.agent_pricing.how_pricing")}
+          </a>
           <button
             type="button"
             onClick={() => document.getElementById("model-pricing-catalog")?.scrollIntoView({ block: "nearest" })}
@@ -378,13 +383,9 @@ export function AgentPricingSection() {
             type="button"
             onClick={save}
             disabled={loading || saving || !dirty}
-            className={cn(
-              "tt-pricing-save inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-            )}
+            className="tt-pricing-save inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed"
           >
-            {saving ? copy("settings.agent_pricing.saving") : copy("settings.agent_pricing.save")}
+            {saving ? copy("settings.agent_pricing.saving") : copy("settings.agent_pricing.save_changes")}
           </button>
         </div>
       }

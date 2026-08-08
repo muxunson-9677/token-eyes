@@ -241,10 +241,10 @@ html.native-windows-app .tt-reference-route-spend-usage .tt-main-work-surface ma
 .tt-reference-route-spend-cost {
   --tt-window-bar-height: 62px;
   --tt-sidebar-width: 246px;
-  --tt-surface-outline: rgba(31, 43, 56, 0.04);
-  --tt-surface-shadow: 0 1px 2px rgba(31, 43, 56, 0.025), 0 8px 24px rgba(31, 43, 56, 0.045);
-  --tt-nested-outline: rgba(31, 43, 56, 0.03);
-  --tt-nested-shadow: 0 1px 2px rgba(31, 43, 56, 0.025), 0 7px 18px rgba(31, 43, 56, 0.04);
+  --tt-surface-outline: rgba(31, 43, 56, 0.07);
+  --tt-surface-shadow: inset 0 1px rgba(255, 255, 255, 0.96), 0 1px 2px rgba(31, 43, 56, 0.055), 0 10px 28px rgba(31, 43, 56, 0.075);
+  --tt-nested-outline: rgba(31, 43, 56, 0.065);
+  --tt-nested-shadow: inset 0 1px rgba(255, 255, 255, 0.94), 0 1px 2px rgba(31, 43, 56, 0.055), 0 8px 20px rgba(31, 43, 56, 0.07);
 }
 
 html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface main {
@@ -262,7 +262,7 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 }
 
 .tt-reference-route-spend-cost .tt-main-work-surface h1 {
-  font-size: 34px;
+  font-size: 30px;
   line-height: 1.15;
 }
 
@@ -276,10 +276,11 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
   position: relative;
-  height: 275px;
+  height: auto;
+  min-height: 0;
   margin-bottom: 14px;
   padding: 18px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-month-picker"] {
@@ -308,13 +309,18 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   background: #f7f9fc;
 }
 
+.tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p svg {
+  flex: 0 0 auto;
+}
+
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
   grid-template-columns: 1fr 1.055fr;
   gap: 18px;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2) {
-  font-size: 24px;
+  font-size: 22px;
+  margin-bottom: 14px;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
@@ -322,67 +328,185 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   padding: 14px 16px;
 }
 
-.tt-reference-route-spend-cost [data-cost-section] {
-  height: 70px;
-  margin-bottom: 12px !important;
-  padding: 12px 18px;
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] {
+  min-height: 42px;
+  margin-top: auto;
+  flex-wrap: nowrap;
+  gap: 10px;
   overflow: hidden;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #f3f7ff;
+  color: #667085;
+  font-size: 12px;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-subscription"] {
+  background: #f1faf6;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] > span:first-child {
+  flex: 0 0 auto;
+  min-width: 56px;
+  justify-content: center;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-estimated"] > span:first-child {
+  background: #dceeff;
+  color: #1877d1;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-subscription"] > span:first-child {
+  background: #d9f6e7;
+  color: #07945a;
+}
+
+.tt-reference-route-spend-cost .tt-summary-comparison {
+  display: flex;
+  min-width: 132px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.tt-reference-route-spend-cost .tt-summary-comparison-label {
+  border-radius: 5px;
+  padding: 3px 7px;
+  background: #f1f3f5;
+  color: #56606e;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost .tt-summary-comparison-detail {
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost [data-cost-summary-card="subscription"] .tt-summary-comparison {
+  min-width: 122px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #eaf8f1;
+  color: #149467;
+}
+
+.tt-reference-route-spend-cost [data-cost-summary-card="subscription"] .tt-summary-comparison-label {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+  height: 72px;
+  margin-bottom: 0 !important;
+  padding: 11px 16px;
+  overflow: visible;
+  border-color: rgba(31, 43, 56, 0.12);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 1), rgba(246, 248, 251, 0.98));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.98), inset 0 -1px rgba(31, 43, 56, 0.035), 0 1px 2px rgba(31, 43, 56, 0.09), 0 9px 22px rgba(31, 43, 56, 0.085);
+}
+
+.tt-reference-route-spend-cost [data-cost-section][data-open="true"] {
+  height: auto;
+  margin-bottom: 0 !important;
+  padding: 16px;
+  overflow: visible;
+  border-color: rgba(31, 43, 56, 0.11);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.96), 0 1px 2px rgba(31, 43, 56, 0.075), 0 10px 24px rgba(31, 43, 56, 0.075);
 }
 
 .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
-  height: 46px;
+  display: grid;
+  height: 48px;
   margin: 0;
+  grid-template-columns: minmax(210px, 1fr) minmax(480px, 830px) 160px;
+  column-gap: 0;
+  align-items: center;
+}
+
+.tt-reference-route-spend-cost [data-cost-section] + [data-cost-section] {
+  margin-top: 10px !important;
 }
 
 .tt-reference-route-spend-cost [data-cost-section] > div:first-child > button {
-  height: 46px;
+  height: 48px;
   padding: 0;
 }
 
 .tt-reference-route-spend-cost .tt-cost-row-metrics {
   display: grid;
-  min-width: 560px;
-  grid-template-columns: 154px 154px 252px;
+  width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  grid-template-columns: minmax(0, 225px) minmax(0, 225px) minmax(0, 380px);
   align-items: center;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-actions {
+  display: flex;
+  width: 160px;
+  min-width: 0;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.tt-reference-route-spend-cost [data-cost-section][data-open="true"] .tt-cost-row-actions {
+  grid-column: 3;
 }
 
 .tt-reference-route-spend-cost .tt-cost-row-metric {
   display: flex;
   min-width: 0;
-  height: 42px;
+  height: 44px;
   flex-direction: column;
   justify-content: center;
+  align-items: flex-start;
   border-left: 1px solid #e8ebef;
-  padding: 0 18px;
+  padding: 0 24px;
   color: #697386;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.25;
+  text-align: left;
 }
 
 .tt-reference-route-spend-cost .tt-cost-row-metric strong {
-  margin-top: 4px;
+  margin-top: 3px;
   color: #20242a;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.tt-reference-route-spend-cost [data-cost-section="provider-api"] > div:first-child > div:last-child {
-  display: none;
+.tt-reference-route-spend-cost .tt-cost-row-actions button {
+  height: 40px;
+  min-height: 40px;
+  min-width: 160px;
+  justify-content: center;
 }
 
-.tt-reference-route-spend-cost [data-cost-section="subscriptions"] .tt-cost-row-metrics {
-  min-width: 440px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.tt-reference-route-spend-cost [data-cost-section="provider-api"] .tt-cost-row-actions button {
+  min-width: 96px;
 }
 
 .tt-reference-route-spend-cost [data-cost-section] [data-testid="cost-section-icon"] {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
 }
 
 .tt-reference-route-spend-cost [data-cost-section] h3 {
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
   color: #20242a;
 }
 
@@ -390,8 +514,360 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   margin: 0;
 }
 
-.tt-reference-route-spend-cost [data-cost-section="subscriptions"] > div:first-child > button:last-child {
-  height: 38px;
+.tt-reference-route-spend-cost .tt-cost-section-action {
+  height: 40px;
+  min-height: 40px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-card {
+  min-height: 140px;
+  border: 1px solid #e8ebef;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(31, 43, 56, 0.04), 0 5px 12px rgba(31, 43, 56, 0.04);
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-icon {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-open {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e8ebef;
+  border-radius: 8px;
+  color: #5d6673;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-history {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  color: #7a8492;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-history span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-cell {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-mark {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  color: #20242a;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-mark--xiaomi_mimo {
+  color: #ff6900;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-mark--trae {
+  color: #111827;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-table {
+  overflow: hidden;
+  border: 1px solid #e8ebef;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-table-head,
+.tt-reference-route-spend-cost .tt-token-package-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.15fr 2.2fr 1.15fr .8fr .8fr .9fr;
+  align-items: center;
+  column-gap: 12px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-table-head {
+  min-height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid #e8ebef;
+  color: #697386;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row {
+  min-height: 54px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #eef0f3;
+  color: #475467;
+  font-size: 11px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row:last-child {
+  border-bottom: 0;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row strong,
+.tt-reference-route-spend-cost .tt-token-package-row small {
+  display: block;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row strong {
+  color: #20242a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row small {
+  margin-top: 3px;
+  color: #7a8492;
+  font-size: 10px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9edf3;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2388ff;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-usage {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-usage > small {
+  width: 28px;
+  flex: 0 0 28px;
+  margin-top: 0;
+}
+
+.tt-reference-route-spend-cost .tt-provider-account-mark {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #2f6fed;
+}
+
+.tt-reference-route-spend-cost .tt-provider-account-mark svg {
+  width: 24px;
+  height: 24px;
+}
+
+.tt-reference-route-spend-cost .tt-provider-account-mark--deepseek { color: #4f5ee8; }
+.tt-reference-route-spend-cost .tt-provider-account-mark--glm { background: #f2efff; color: #7047eb; }
+.tt-reference-route-spend-cost .tt-provider-account-mark--volcengine_billing { background: #eef5ff; }
+.tt-reference-route-spend-cost .tt-provider-account-mark--aliyun_bss { background: #fff5ed; color: #f26722; }
+
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] .tt-cost-row-metrics,
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] .tt-cost-row-actions {
+  display: none;
+}
+
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child > button {
+  width: 100%;
+}
+
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child > button > svg:last-child {
+  margin-left: auto;
+}
+
+.tt-reference-route-spend-cost .tt-provider-api-expanded-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tt-reference-route-spend-cost .tt-provider-api-expanded-card {
+  min-height: 64px;
+  padding: 10px 12px;
+  border-color: #e8ebef;
+  box-shadow: 0 1px 2px rgba(31, 43, 56, 0.035);
+}
+
+@media (max-width: 1440px) and (min-width: 721px) {
+  .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+    grid-template-columns: minmax(210px, 1fr) minmax(230px, 496px) 96px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metrics {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 135px) minmax(0, 135px) minmax(0, 226px);
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-actions {
+    width: 96px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metric {
+    padding: 0 12px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-actions button {
+    min-width: 96px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+}
+
+@media (max-width: 1200px) and (min-width: 721px) {
+  .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+    grid-template-columns: minmax(210px, 1fr) minmax(230px, 496px) 220px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-actions {
+    width: 220px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metric {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-group-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
+    height: auto;
+    min-height: 0;
+    padding: 14px;
+    overflow: visible;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-month-picker"] {
+    position: static;
+    height: auto;
+    margin: 0 0 12px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-month-picker"] > div {
+    min-width: 142px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child {
+    margin-top: 0;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p {
+    height: auto;
+    min-height: 50px;
+    align-items: flex-start;
+    padding: 12px;
+    line-height: 1.5;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
+    min-height: 182px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2) {
+    margin-bottom: 16px;
+  }
+
+  .tt-reference-route-spend-cost .tt-summary-comparison {
+    min-width: 138px;
+  }
+
+  .tt-reference-route-spend-cost .tt-summary-comparison-detail {
+    font-size: 11px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+    height: auto;
+    min-height: 72px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+    display: flex;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 46px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metrics {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+    margin-top: 6px;
+    grid-template-columns: repeat(3, minmax(80px, 1fr));
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-actions {
+    width: auto;
+    margin-left: auto;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-group-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tt-reference-route-spend-cost .tt-token-package-table {
+    overflow-x: auto;
+  }
+
+  .tt-reference-route-spend-cost .tt-token-package-table-head,
+  .tt-reference-route-spend-cost .tt-token-package-row {
+    min-width: 760px;
+  }
 }
 
 .tt-reference-route-leaderboard {
@@ -1944,6 +2420,7 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
   color: #fff;
 }
 
+/* Cost settings content page — fluid layout (no screenshot pixel locks) */
 .tt-reference-route-settings-cost {
   --tt-window-bar-height: 71px;
   --tt-sidebar-width: 299px;
@@ -1960,457 +2437,785 @@ html.native-windows-app .tt-reference-route-settings-cost .tt-main-work-surface 
   padding-left: 56px !important;
 }
 
-.tt-settings-cost-heading {
-  display: flex;
-  height: 116px;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 24px !important;
-}
-
-.tt-settings-cost-heading h1 { font-size: 42px; line-height: 50px; }
-.tt-settings-cost-heading p { margin-top: 8px; font-size: 17px; }
-.tt-settings-cost-actions { display: flex; gap: 16px; padding-top: 2px; }
-.tt-settings-cost-actions button { display: inline-flex; height: 50px; align-items: center; gap: 10px; border: 1px solid #dfe5ec; border-radius: 9px; padding: 0 20px; background: #fff; font-size: 16px; }
-.tt-settings-cost-actions svg { width: 20px; height: 20px; }
-.tt-settings-cost-actions button:last-child svg { color: #0aaa77; }
-
-.tt-reference-route-settings-cost .space-y-4 { display: grid; gap: 13px; }
-.tt-reference-route-settings-cost .space-y-4 > * { margin-top: 0 !important; }
-.tt-reference-route-settings-cost .tt-surface:has(button[aria-expanded]) { position: relative; }
-.tt-reference-route-settings-cost .tt-surface button[aria-expanded] { position: static; }
-.tt-reference-route-settings-cost .tt-surface button[aria-expanded] > svg:first-child {
-  position: absolute;
-  top: 57px;
-  right: 25px;
-  z-index: 1;
-}
-
-.tt-reference-route-settings-cost .space-y-4 > .tt-surface:has([aria-expanded="false"]),
-.tt-reference-route-settings-cost .space-y-4 > div .tt-surface:has([aria-expanded="false"]) {
-  height: 130px;
-  border-radius: 17px;
-}
-
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) > div {
-  height: 100%;
-  padding: 25px 26px;
-}
-
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) > div > div:first-child {
-  height: 80px;
-  align-items: center;
-  margin: 0;
-}
-
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) button[aria-expanded="false"] {
-  align-items: center;
-  gap: 22px;
-}
-
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) button[aria-expanded="false"] > svg:first-child {
-  order: 10;
-}
-
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) [data-testid="settings-section-icon"] {
-  width: 74px;
-  height: 74px;
-  border-radius: 999px;
-}
-
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) [data-testid="settings-section-icon"] svg { width: 34px; height: 34px; }
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) [role="heading"] { color: #111827; font-size: 27px; font-weight: 700; }
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) [role="heading"] + span { margin-top: 5px; font-size: 16px; }
-
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) > div > div:first-child > .shrink-0 > * {
-  display: none;
-}
-
-.tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) > div > div:first-child > .shrink-0::before {
-  display: inline-flex;
-  height: 42px;
-  align-items: center;
-  border-radius: 10px;
-  padding: 0 18px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.tt-reference-route-settings-cost .space-y-4 > :nth-child(1) .tt-surface:has([aria-expanded="false"]) > div > div:first-child > .shrink-0::before { background: #e8f8f0; color: #079f6d; content: "已配置 28 项"; }
-.tt-reference-route-settings-cost .space-y-4 > :nth-child(2) .tt-surface:has([aria-expanded="false"]) > div > div:first-child > .shrink-0::before { background: #f3edff; color: #7d43db; content: "6 个套餐"; }
-.tt-reference-route-settings-cost .space-y-4 > :nth-child(3) .tt-surface:has([aria-expanded="false"]) > div > div:first-child > .shrink-0::before { background: #e8f3ff; color: #1769d9; content: "4 个供应商"; }
-.tt-reference-route-settings-cost .space-y-4 > :nth-child(4) .tt-surface:has([aria-expanded="false"]) > div > div:first-child > .shrink-0::before { background: #fff0f3; color: #ee4266; content: "2 个分组"; }
-.tt-reference-route-settings-cost .space-y-4 > .tt-surface:nth-child(1):has([aria-expanded="false"]) > div > div:first-child > .shrink-0::before { background: #e8f8f0; color: #079f6d; content: "已配置 28 项"; }
-.tt-reference-route-settings-cost .space-y-4 > .tt-surface:nth-child(4):has([aria-expanded="false"]) > div > div:first-child > .shrink-0::before { background: #fff0f3; color: #ee4266; content: "2 个分组"; }
-
 html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost { --tt-window-bar-height: 61px; --tt-sidebar-width: 280px; }
 html.native-windows-app[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-main-work-surface main { padding-top: 24px !important; }
 html.native-windows-app[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-main-work-surface main > .mx-auto { padding-right: 77px !important; padding-left: 47px !important; }
-
 html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost { --tt-window-bar-height: 49px; --tt-sidebar-width: 221px; }
 html.native-windows-app[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-main-work-surface main { padding-top: 24px !important; }
 html.native-windows-app[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-main-work-surface main > .mx-auto { padding-right: 76px !important; padding-left: 41px !important; }
-
 html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost { --tt-window-bar-height: 57px; --tt-sidebar-width: 249px; }
 html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-main-work-surface main { padding-top: 27px !important; }
 html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-main-work-surface main > .mx-auto { padding-right: 57px !important; padding-left: 43px !important; }
-
 html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost { --tt-window-bar-height: 51px; --tt-sidebar-width: 241px; }
 html.native-windows-app[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-main-work-surface main { padding-top: 30px !important; }
 html.native-windows-app[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-main-work-surface main > .mx-auto { padding-right: 66px !important; padding-left: 47px !important; }
-
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-settings-cost-heading {
-  height: 69px;
-  margin-bottom: 20px !important;
-}
-
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-settings-cost-heading h1 { font-size: 34px; line-height: 41px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-settings-cost-heading p { margin-top: 4px; font-size: 14px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-settings-cost-actions button { height: 40px; padding: 0 17px; font-size: 13px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-settings-cost-actions svg { width: 16px; height: 16px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface button[aria-expanded] > svg:first-child { top: 35px; right: 23px; }
-
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) > div {
-  padding: 12px 18px;
-}
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) > div > div:first-child {
-  height: 62px;
-  align-items: center;
-  margin-bottom: 0;
-}
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) button[aria-expanded="true"] {
-  align-items: center;
-  gap: 12px;
-}
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) [data-testid="settings-section-icon"] {
-  width: 48px;
-  height: 48px;
-  border-radius: 999px;
-}
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) [data-testid="settings-section-icon"] svg { width: 25px; height: 25px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) [role="heading"] { color: #111827; font-size: 20px; font-weight: 700; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) [role="heading"] + span { margin-top: 3px; font-size: 12px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has(> div > div:first-child button[aria-expanded="true"]) {
-  height: auto !important;
-}
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has(> div > div:first-child button[aria-expanded="true"]) > div > div:first-child > .shrink-0 > * {
-  display: flex;
-}
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has(> div > div:first-child button[aria-expanded="true"]) > div > div:first-child > .shrink-0::before {
-  display: none;
-  content: none;
-}
-
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-summary {
-  height: 54px;
-  margin: 0 2px 8px;
-  border-radius: 10px;
-  padding: 0 18px;
-}
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-groups { display: grid; gap: 8px; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-groups > section {
-  margin: 0;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  padding: 7px 9px;
-}
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-groups > section > div:first-child { margin-bottom: 5px; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-groups li { border-radius: 9px; box-shadow: none; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-groups li > div { min-height: 44px; padding-top: 5px; padding-bottom: 5px; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) > div > .-mb-3 { margin-bottom: 0; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="true"]) > div > .-mb-3 > .mt-3:last-child { display: none; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .space-y-4 { position: relative; top: 4px; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4) {
-  box-sizing: border-box;
-  height: 455px !important;
-  min-height: 455px;
-  max-height: 455px;
-  overflow: hidden;
-}
-
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-settings-cost-heading { margin-bottom: 15px !important; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 { gap: 6px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > :first-child.tt-surface {
-  box-sizing: border-box;
-  height: 553px !important;
-  max-height: 553px;
-  overflow: hidden;
-}
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > :not(:first-child) .tt-surface:has([aria-expanded="false"]),
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > .tt-surface:not(:first-child):has([aria-expanded="false"]) { height: 64px !important; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > :not(:first-child) .tt-surface:has([aria-expanded="false"]) > div,
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > .tt-surface:not(:first-child):has([aria-expanded="false"]) > div { padding: 5px 16px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > :not(:first-child) .tt-surface:has([aria-expanded="false"]) > div > div:first-child,
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > .tt-surface:not(:first-child):has([aria-expanded="false"]) > div > div:first-child { height: 52px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > :not(:first-child) .tt-surface:has([aria-expanded="false"]) [data-testid="settings-section-icon"],
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > .tt-surface:not(:first-child):has([aria-expanded="false"]) [data-testid="settings-section-icon"] { width: 44px; height: 44px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > :not(:first-child) .tt-surface:has([aria-expanded="false"]) [role="heading"],
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > .tt-surface:not(:first-child):has([aria-expanded="false"]) [role="heading"] { font-size: 18px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > :not(:first-child) .tt-surface button[aria-expanded] > svg:first-child,
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .space-y-4 > .tt-surface:not(:first-child) button[aria-expanded] > svg:first-child { top: 24px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost [data-testid="model-pricing-table"] { font-size: 12px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost [data-testid="model-pricing-table"] th { height: 33px; padding-top: 0; padding-bottom: 0; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost [data-testid="model-pricing-table"] td { height: 30px; padding-top: 0; padding-bottom: 0; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-surface:has([data-testid="model-pricing-table"]) > div > .-mb-3 > .space-y-3.py-3 { padding-top: 12px; padding-bottom: 0; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-surface:has([data-testid="model-pricing-table"]) > div > .-mb-3 > .space-y-3.py-3 > div:first-child { display: none; }
-
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-header-actions { gap: 13px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-header-actions { transform: translateX(-104px); }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-header-actions > button {
-  height: 34px;
-  border-radius: 7px;
-  padding: 0 15px;
-  font-size: 12px;
-}
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-auto-compare { gap: 7px; font-size: 12px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-auto-compare > button { width: 38px; height: 30px; padding: 0; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-save { border-color: #08a66f; background: #08a66f; color: #fff; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-save { font-size: 0 !important; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-save::before { content: "保存更改"; font-size: 12px !important; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-source-directory { width: 136px; justify-content: center; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-auto-compare { width: 140px; justify-content: center; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-save { width: 94px; justify-content: center; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-save { white-space: nowrap; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-surface:has([data-testid="model-pricing-table"]) > div > .-mb-3 > .space-y-3.py-3 { position: relative; top: -14px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost #model-pricing-catalog + div { display: none; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-row-auto { display: none; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-agent-pricing-subtitle-collapsed { display: none; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-agent-pricing-subtitle-expanded,
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-agent-pricing-help { display: inline; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-agent-pricing-help { margin-left: 8px; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost [data-testid="model-pricing-table"] tbody tr:nth-child(n+15) { display: none; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-source-badge {
-  display: inline-flex;
-  min-width: 48px;
-  height: 23px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  padding: 0 9px;
-  font-family: inherit;
-  font-weight: 600;
-}
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-source-badge[data-tone="official"] { background: #e7f8ef; color: #079f6d; }
-html[data-reference-scenario="11-settings-cost-2"] .tt-reference-route-settings-cost .tt-pricing-source-badge[data-tone="pending"] { background: #fff1e6; color: #f97316; }
-
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-row {
-  display: grid;
-  grid-template-columns: 26px 28px 570px 155px minmax(0, 1fr) repeat(4, 48px);
-  gap: 10px;
-}
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-row-main {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  align-items: center;
-  gap: 18px;
-}
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-row-primary { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-row-note {
-  width: max-content;
-  max-width: 250px;
-  margin-top: 0;
-  border-radius: 6px;
-  padding: 3px 10px;
-  background: #eef7ff;
-  color: #2388ff;
-}
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-row-date { justify-self: end; font-size: 12px; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-row > button:nth-of-type(3) { grid-column: 6; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-direct-group-actions { display: none !important; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-group-menu-trigger { display: inline-flex; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-group-subtotal { display: inline; margin-left: 8px; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-groups > :first-child li:nth-child(1) .tt-other-ai-row-note { background: #e9f9ef; color: #08a66f; }
-html[data-reference-scenario="10-settings-cost-1"] .tt-reference-route-settings-cost .tt-other-ai-groups > :first-child li:nth-child(3) .tt-other-ai-row-note { background: #f2edff; color: #7548ed; }
-
 html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-main-work-surface main { padding-top: 25px !important; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-settings-cost-heading { margin-bottom: 18px !important; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 { gap: 8px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :first-child.tt-surface { height: 85px !important; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost #codex-quota,
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost #codex-quota > .tt-surface { height: 489px !important; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(3) .tt-surface,
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4).tt-surface { height: 76px !important; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(3) .tt-surface > div,
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4).tt-surface > div { padding-top: 7px; padding-bottom: 7px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(3) .tt-surface > div > div:first-child,
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4).tt-surface > div > div:first-child { height: 60px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(3) .tt-surface button[aria-expanded] > svg:first-child,
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4).tt-surface button[aria-expanded] > svg:first-child { top: 29px; }
 
-.tt-token-provider-mark,
-.tt-token-plan-live,
-.tt-token-plan-count { display: none; }
+.tt-settings-cost-page,
+.tt-reference-route-settings-cost .tt-settings-cost-page {
+  --tt-cost-accent: #08a66f;
+  --tt-cost-accent-soft: #e8f8f0;
+  --tt-cost-violet: #7d43db;
+  --tt-cost-violet-soft: #f3edff;
+  --tt-cost-blue: #1769d9;
+  --tt-cost-blue-soft: #e8f3ff;
+  --tt-cost-rose: #ee4266;
+  --tt-cost-rose-soft: #fff0f3;
+  --tt-cost-warn: #f97316;
+  --tt-cost-warn-soft: #fff1e6;
+  --tt-cost-card-radius: clamp(10px, 0.9vw, 14px);
+  --tt-cost-icon: clamp(2rem, 2.4vw, 2.5rem);
+  --tt-cost-icon-sm: clamp(1.75rem, 2.1vw, 2.125rem);
+  --tt-cost-title: clamp(0.9375rem, 1.05vw, 1.0625rem);
+  --tt-cost-page-title: clamp(1.375rem, 1.8vw, 1.75rem);
+}
 
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost #codex-quota .tt-surface > div > div:first-child { height: 66px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost #codex-quota .tt-surface > div > .-mb-3 > .border-b { padding-bottom: 0; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost #codex-quota .tt-surface > div > .-mb-3 > .border-b > div > div { display: grid; gap: 0; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-card {
-  position: relative;
-  height: 64px;
-  border-radius: 9px;
-  padding: 5px 10px;
+.tt-settings-cost-page main > .tt-settings-cost-shell {
+  width: min(100%, 68rem);
+  max-width: none;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 2vw, 2rem);
 }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-card > div:first-child { height: 52px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-card > div:first-child > button:first-child { display: none; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-card + .tt-token-plan-card { margin-top: 2px !important; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-card:first-child { margin-top: 7px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-edit { margin-right: 90px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-card button[aria-expanded] {
-  position: absolute;
-  top: 50%;
-  right: 19px;
-  transform: translateY(-50%);
+
+.tt-settings-cost-page .tt-settings-cost-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: clamp(1rem, 1.5vw, 1.35rem) !important;
 }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-provider-mark {
-  display: inline-grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  place-items: center;
-  border-radius: 8px;
-  background: #111827;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 800;
-  margin-left: 7px;
-  margin-right: 11px;
+
+.tt-settings-cost-page .tt-settings-cost-heading h1 {
+  font-size: var(--tt-cost-page-title);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-provider-mark img { width: 24px; height: 24px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-provider-mark svg { width: 24px; height: 24px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-provider-mark--codex { border: 1px solid #e5e7eb; background: #fff; color: #111827; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-provider-mark--trae { background: #6547f5; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-provider-mark--xiaomi_mimo { background: #fff7ed; color: #ff7a00; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-copy { flex: 0 0 210px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-copy > div:first-child { white-space: normal; line-height: 18px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-copy > div:nth-child(n+2) { display: none; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-full {
-  overflow: visible;
-  color: transparent;
-  font-size: 0;
-  white-space: normal;
+
+.tt-settings-cost-page .tt-settings-cost-heading p {
+  margin-top: 0.3rem;
+  font-size: clamp(0.8125rem, 0.95vw, 0.875rem);
+  color: #6b7280;
+  max-width: 40rem;
 }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-full::before,
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-full::after {
-  display: block;
-  overflow: hidden;
+
+.tt-settings-cost-page .tt-settings-cost-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.125rem;
+}
+
+.tt-settings-cost-page .tt-settings-cost-actions button {
+  display: inline-flex;
+  min-height: clamp(2rem, 2.4vw, 2.25rem);
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #dfe5ec;
+  border-radius: 0.5rem;
+  padding: 0 clamp(0.7rem, 0.95vw, 0.9rem);
+  background: #fff;
   color: #111827;
-  font-size: 12px;
-  line-height: 18px;
-  text-overflow: ellipsis;
+  font-size: clamp(0.75rem, 0.9vw, 0.8125rem);
+  font-weight: 500;
   white-space: nowrap;
 }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-full::before { content: attr(data-provider-label); }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-full::after { content: attr(data-plan-label); }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-live {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  grid-template-columns: 70px 400px 143px 135px;
-  gap: 15px;
-  font-size: 12px;
-  margin-left: 13px;
-}
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-quota { display: grid; grid-template-columns: 127px 245px; align-items: center; gap: 15px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-account:empty { display: none; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-account:empty + .tt-token-plan-quota { grid-column: 1 / span 2; grid-template-columns: 214px 245px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-quota > span:first-child::before { content: attr(data-quota-label); }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-quota > span:first-child::after { content: attr(data-quota-subline); display: block; margin-top: 3px; color: #6b7280; font-size: 11px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-progress { display: block; height: 5px; overflow: hidden; border-radius: 99px; background: #e5e7eb; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-progress i { display: block; height: 100%; border-radius: inherit; background: #08a66c; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-progress[data-tone="warning"] i { background: #ff8a00; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-progress[data-tone="danger"] i { background: #f43f5e; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-progress[data-tone="muted"] i { background: #cbd1d8; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-remaining,
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-updated { display: grid; gap: 3px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-live small { color: #6b7280; font-size: 11px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-updated small { width: max-content; border-radius: 4px; padding: 1px 5px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-updated small[data-tone="success"] { background: #e7f8ef; color: #079f6d; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-updated small[data-tone="warning"] { background: #fff2df; color: #f97316; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-updated small[data-tone="danger"] { background: #ffe7ec; color: #ef3357; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-updated small[data-tone="muted"] { background: #f3f4f6; color: #6b7280; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-count { display: inline-flex; border-radius: 7px; padding: 5px 10px; font-size: 12px; font-weight: 600; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-count--active { background: #e7f8ef; color: #079f6d; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-count--watch { background: #fff2df; color: #f97316; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-actions > button { height: 34px; }
-html[data-reference-scenario="12-settings-cost-3"] .tt-reference-route-settings-cost .tt-token-plan-actions > button:last-child { border-color: #6d37e8; background: #6d37e8; color: #fff; }
 
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-settings-cost-heading { margin-bottom: 24px !important; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 { gap: 8px; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :first-child.tt-surface { height: 75px !important; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost #codex-quota,
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost #codex-quota > .tt-surface { height: 74px !important; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(3),
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(3) .tt-surface { height: 457px !important; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(3) { margin-top: 6px !important; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(3) .tt-surface {
-  box-sizing: border-box;
-  height: 457px !important;
-  min-height: 457px;
-  max-height: 457px;
-  overflow: hidden;
+.tt-settings-cost-page .tt-settings-cost-actions button:hover {
+  background: #f8fafc;
 }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4).tt-surface { height: 75px !important; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(1) > div,
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(2) .tt-surface > div,
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4) > div { padding-top: 7px; padding-bottom: 7px; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(1) > div > div:first-child,
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(2) .tt-surface > div > div:first-child,
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4) > div > div:first-child { height: 59px; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(1) button[aria-expanded] > svg:first-child,
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(2) button[aria-expanded] > svg:first-child,
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .space-y-4 > :nth-child(4) button[aria-expanded] > svg:first-child { top: 28px; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost [data-testid="provider-api-config-section"] .tt-surface > div > div:first-child { height: 62px; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-list { display: grid; gap: 8px; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-list > * { margin-top: 0 !important; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-summary + .tt-provider-api-card { margin-top: 5px !important; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-summary {
+
+.tt-settings-cost-page .tt-settings-cost-actions svg {
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+}
+
+.tt-settings-cost-page .tt-settings-cost-actions button:last-child svg {
+  color: var(--tt-cost-accent);
+}
+
+.tt-settings-cost-page .tt-settings-cost-sections {
   display: grid;
-  width: 546px;
-  height: 57px;
-  grid-template-columns: repeat(4, 1fr);
-  align-items: center;
+  gap: clamp(0.5rem, 0.75vw, 0.65rem);
+}
+
+.tt-settings-cost-page .tt-settings-cost-sections > * {
+  margin-top: 0 !important;
+}
+
+.tt-settings-cost-page .tt-surface:has(button[aria-expanded]) {
+  border-radius: var(--tt-cost-card-radius);
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* Keep section header chrome identical when collapsing/expanding to avoid
+   icon/title/action size jumps. */
+.tt-settings-cost-page .tt-surface:has(button[aria-expanded]) > div {
+  padding: clamp(0.75rem, 1vw, 0.9rem) clamp(0.9rem, 1.2vw, 1.1rem);
+}
+
+.tt-settings-cost-page .tt-surface:has(button[aria-expanded]) > div > div:first-child {
+  align-items: center;
+  min-height: 3rem;
+  margin-bottom: 0;
+  gap: 0.75rem;
+}
+
+.tt-settings-cost-page .tt-surface:has([aria-expanded="true"]) > div > div:first-child {
+  margin-bottom: 0.75rem;
+}
+
+.tt-settings-cost-page .tt-surface button[aria-expanded] {
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tt-settings-cost-page .tt-surface button[aria-expanded] > svg:first-child {
+  order: 10;
+  margin-left: 0.15rem;
+  margin-top: 0;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 1rem;
+  color: #9ca3af;
+}
+
+.tt-settings-cost-page [data-testid="settings-section-icon"] {
+  width: var(--tt-cost-icon);
+  height: var(--tt-cost-icon);
+  flex: 0 0 var(--tt-cost-icon);
+  border-radius: 999px;
+}
+
+.tt-settings-cost-page [data-testid="settings-section-icon"] svg {
+  width: 48%;
+  height: 48%;
+}
+
+.tt-settings-cost-page [role="heading"] {
+  color: #111827;
+  font-size: var(--tt-cost-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.tt-settings-cost-page [role="heading"] + span,
+.tt-settings-cost-page [role="heading"] + p {
+  margin-top: 0.15rem;
+  font-size: clamp(0.6875rem, 0.85vw, 0.75rem);
+  line-height: 1.4;
+  color: #6b7280;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.tt-settings-cost-page .tt-section-header-aside {
+  display: flex;
+  min-width: 7.5rem;
+  min-height: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.tt-settings-cost-page .tt-collapsed-summary {
+  display: inline-flex;
+  min-height: 1.5rem;
+  align-items: center;
+  border-radius: 0.45rem;
+  padding: 0 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-collapsed-summary[data-tone="green"] {
+  background: var(--tt-cost-accent-soft);
+  color: #079f6d;
+}
+
+.tt-settings-cost-page .tt-collapsed-summary[data-tone="violet"] {
+  background: var(--tt-cost-violet-soft);
+  color: var(--tt-cost-violet);
+}
+
+.tt-settings-cost-page .tt-collapsed-summary[data-tone="blue"] {
+  background: var(--tt-cost-blue-soft);
+  color: var(--tt-cost-blue);
+}
+
+.tt-settings-cost-page .tt-collapsed-summary[data-tone="rose"] {
+  background: var(--tt-cost-rose-soft);
+  color: var(--tt-cost-rose);
+}
+
+/* Model pricing */
+.tt-settings-cost-page .tt-pricing-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.tt-settings-cost-page .tt-pricing-source-directory,
+.tt-settings-cost-page .tt-pricing-auto-compare,
+.tt-settings-cost-page .tt-pricing-save {
+  min-height: 2.125rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.tt-settings-cost-page .tt-pricing-save {
+  border-color: var(--tt-cost-accent) !important;
+  background: var(--tt-cost-accent) !important;
+  color: #fff !important;
+}
+
+.tt-settings-cost-page .tt-pricing-save:disabled {
+  opacity: 0.55;
+}
+
+.tt-settings-cost-page .tt-agent-pricing-help {
+  margin-left: 0.5rem;
+  color: #2563eb;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.tt-settings-cost-page .tt-agent-pricing-help:hover {
+  text-decoration: underline;
+}
+
+.tt-settings-cost-page [data-testid="model-pricing-table"] {
+  font-size: clamp(0.7rem, 0.9vw, 0.8125rem);
+}
+
+.tt-settings-cost-page [data-testid="model-pricing-table"] thead {
+  background: #f8fafc;
+}
+
+.tt-settings-cost-page [data-testid="model-pricing-table"] tbody tr:nth-child(even) {
+  background: #fafbfc;
+}
+
+.tt-settings-cost-page .tt-pricing-source-badge {
+  display: inline-flex;
+  min-width: 3rem;
+  min-height: 1.4rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.45rem;
+  padding: 0 0.55rem;
+  font-weight: 600;
+}
+
+.tt-settings-cost-page .tt-pricing-source-badge[data-tone="official"] {
+  background: var(--tt-cost-accent-soft);
+  color: #079f6d;
+}
+
+.tt-settings-cost-page .tt-pricing-source-badge[data-tone="pending"] {
+  background: var(--tt-cost-warn-soft);
+  color: var(--tt-cost-warn);
+}
+
+/* Token plans */
+.tt-settings-cost-page .tt-token-plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-count {
+  display: inline-flex;
+  border-radius: 0.45rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tt-settings-cost-page .tt-token-plan-count--active {
+  background: var(--tt-cost-accent-soft);
+  color: #079f6d;
+}
+
+.tt-settings-cost-page .tt-token-plan-count--watch {
+  background: var(--tt-cost-warn-soft);
+  color: var(--tt-cost-warn);
+}
+
+.tt-settings-cost-page .tt-token-plan-actions > button:last-child {
+  border-color: var(--tt-cost-violet);
+  background: var(--tt-cost-violet);
+  color: #fff;
+}
+
+.tt-settings-cost-page .tt-token-provider-mark {
+  display: inline-grid;
+  width: 1.9rem;
+  height: 1.9rem;
+  flex: 0 0 1.9rem;
+  place-items: center;
+  border-radius: 0.5rem;
+  background: #111827;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.tt-settings-cost-page .tt-token-provider-mark img,
+.tt-settings-cost-page .tt-token-provider-mark svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.tt-settings-cost-page .tt-token-provider-mark--codex {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #111827;
+}
+
+.tt-settings-cost-page .tt-token-provider-mark--trae {
+  background: #6547f5;
+}
+
+.tt-settings-cost-page .tt-token-provider-mark--xiaomi_mimo {
+  background: #fff7ed;
+  color: #ff7a00;
+}
+
+.tt-settings-cost-page .tt-token-plan-card {
+  border: 1px solid #e8ecf1;
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.7rem;
   background: #fff;
 }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-summary > span { display: grid; gap: 2px; text-align: center; font-size: 11px; color: #6b7280; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-summary > span + span { border-left: 1px solid #e5e7eb; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-summary strong { color: #111827; font-size: 14px; font-weight: 500; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-card {
-  height: 68px;
-  border-radius: 10px;
-  padding: 8px 12px;
+
+.tt-settings-cost-page .tt-token-plan-card > div:first-child {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.55rem 0.65rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-card .tt-token-plan-drag {
+  opacity: 0.45;
+}
+
+.tt-settings-cost-page .tt-token-plan-copy {
+  min-width: 9.5rem;
+  flex: 0 1 12rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-full {
+  display: grid;
+  gap: 0.12rem;
+  white-space: normal;
+  line-height: 1.3;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.tt-settings-cost-page .tt-token-plan-full-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-break: break-word;
+}
+
+.tt-settings-cost-page .tt-token-plan-full small {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.tt-settings-cost-page .tt-token-plan-live {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  grid-template-columns: minmax(3.5rem, 0.65fr) minmax(9rem, 2.2fr) minmax(5rem, 0.85fr) minmax(5.5rem, 0.95fr);
+  font-size: 0.75rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-account {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-account:empty {
+  display: none;
+}
+
+.tt-settings-cost-page .tt-token-plan-account:empty + .tt-token-plan-quota {
+  grid-column: 1 / span 2;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-label {
+  color: #111827;
+  font-weight: 500;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-sub {
+  color: #6b7280;
+  font-size: 0.6875rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-progress {
+  display: block;
+  height: 0.28rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.tt-settings-cost-page .tt-token-plan-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tt-cost-accent);
+}
+
+.tt-settings-cost-page .tt-token-plan-progress[data-tone="warning"] i {
+  background: #ff8a00;
+}
+
+.tt-settings-cost-page .tt-token-plan-progress[data-tone="danger"] i {
+  background: #f43f5e;
+}
+
+.tt-settings-cost-page .tt-token-plan-progress[data-tone="muted"] i {
+  background: #cbd1d8;
+}
+
+.tt-settings-cost-page .tt-token-plan-remaining,
+.tt-settings-cost-page .tt-token-plan-updated {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  justify-items: start;
+}
+
+.tt-settings-cost-page .tt-token-plan-remaining-label,
+.tt-settings-cost-page .tt-token-plan-updated-time {
+  color: #6b7280;
+  font-size: 0.6875rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-remaining-value {
+  color: #111827;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tt-settings-cost-page .tt-token-plan-updated small {
+  width: max-content;
+  border-radius: 0.3rem;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.tt-settings-cost-page .tt-token-plan-updated small[data-tone="success"] {
+  background: var(--tt-cost-accent-soft);
+  color: #079f6d;
+}
+
+.tt-settings-cost-page .tt-token-plan-updated small[data-tone="warning"] {
+  background: var(--tt-cost-warn-soft);
+  color: var(--tt-cost-warn);
+}
+
+.tt-settings-cost-page .tt-token-plan-updated small[data-tone="danger"] {
+  background: #ffe7ec;
+  color: #ef3357;
+}
+
+.tt-settings-cost-page .tt-token-plan-updated small[data-tone="muted"] {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+@media (max-width: 960px) {
+  .tt-settings-cost-page .tt-token-plan-card > div:first-child {
+    flex-wrap: wrap;
+  }
+
+  .tt-settings-cost-page .tt-token-plan-live {
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+}
+
+/* Provider API */
+.tt-settings-cost-page .tt-provider-api-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.tt-settings-cost-page .tt-provider-api-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: min(100%, 34rem);
+  min-height: 3.4rem;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.65rem;
+  background: #fff;
+}
+
+.tt-settings-cost-page .tt-provider-api-summary > span {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.45rem 0.4rem;
+  text-align: center;
+  font-size: 0.6875rem;
+  color: #6b7280;
+}
+
+.tt-settings-cost-page .tt-provider-api-summary > span + span {
+  border-left: 1px solid #e5e7eb;
+}
+
+.tt-settings-cost-page .tt-provider-api-summary strong {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.tt-settings-cost-page .tt-provider-api-summary strong:not([data-tone]) {
+  color: #111827;
+}
+
+.tt-settings-cost-page .tt-provider-api-summary strong[data-tone="connected"] {
+  color: #079f6d;
+}
+
+.tt-settings-cost-page .tt-provider-api-summary strong[data-tone="disconnected"] {
+  color: #ef3357;
+}
+
+.tt-settings-cost-page .tt-provider-api-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  margin-bottom: 0.15rem;
+}
+
+.tt-settings-cost-page .tt-provider-api-card {
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.85rem;
   box-shadow: none;
 }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-card > div { height: 50px; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-mark {
+
+.tt-settings-cost-page .tt-provider-api-mark {
   display: inline-grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: 0 0 2.1rem;
   place-items: center;
   border: 1px solid #dbeafe;
   border-radius: 999px;
   color: #2563eb;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 700;
 }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-mark svg { width: 28px; height: 28px; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-mark--deepseek { color: #4f5ee8; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-mark--glm { color: #3366e8; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-mark--aliyun_bss { color: #f26722; }
-html[data-reference-scenario="13-settings-cost-4"] .tt-reference-route-settings-cost .tt-provider-api-card [data-testid^="provider-api-card-financial"] { padding-left: 42px; }
 
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .space-y-4 > .tt-surface:has([aria-expanded="false"]),
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .space-y-4 > div .tt-surface:has([aria-expanded="false"]) { height: 86px; border-radius: 13px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) > div { padding: 12px 18px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) > div > div:first-child { height: 62px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) [data-testid="settings-section-icon"] { width: 48px; height: 48px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) [data-testid="settings-section-icon"] svg { width: 25px; height: 25px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) [role="heading"] { font-size: 20px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) [role="heading"] + span { font-size: 12px; }
-html[data-reference-scenario]:not([data-reference-scenario="09-settings-cost-0"]) .tt-reference-route-settings-cost .tt-surface:has([aria-expanded="false"]) > div > div:first-child > .shrink-0::before { height: 30px; padding: 0 14px; font-size: 12px; }
+.tt-settings-cost-page .tt-provider-api-mark svg {
+  width: 1.55rem;
+  height: 1.55rem;
+}
+
+@media (max-width: 700px) {
+  .tt-settings-cost-page .tt-provider-api-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .tt-settings-cost-page .tt-provider-api-summary > span:nth-child(3) {
+    border-left: 0;
+  }
+}
+
+/* Other AI spend */
+.tt-settings-cost-page .tt-other-ai-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.1rem;
+  min-height: 3.25rem;
+  margin-bottom: 0.65rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.65rem;
+  padding: 0.65rem 1rem;
+  background: #fff;
+  font-size: 0.875rem;
+}
+
+.tt-settings-cost-page .tt-other-ai-groups {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.tt-settings-cost-page .tt-other-ai-groups > section {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.55rem 0.7rem;
+}
+
+.tt-settings-cost-page .tt-other-ai-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+  min-height: 2.75rem;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-main {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.2rem;
+  align-content: center;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-primary {
+  min-width: 0;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-title {
+  min-width: 0;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-cost {
+  flex: 0 0 auto;
+  color: #079f6d;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note {
+  display: inline-flex;
+  width: max-content;
+  max-width: min(100%, 16rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="emerald"] {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="sky"] {
+  background: #eef7ff;
+  color: #2388ff;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="violet"] {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="amber"] {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="rose"] {
+  background: #fff1f2;
+  color: #e11d48;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="cyan"] {
+  background: #ecfeff;
+  color: #0891b2;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="indigo"] {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="teal"] {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-note[data-tone="muted"] {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-date {
+  flex: 0 0 auto;
+  margin-left: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.tt-settings-cost-page .tt-other-ai-row-actions {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 860px) {
+  .tt-settings-cost-page .tt-other-ai-row {
+    flex-wrap: wrap;
+  }
+
+  .tt-settings-cost-page .tt-other-ai-row-main {
+    flex: 1 1 12rem;
+  }
+
+  .tt-settings-cost-page .tt-other-ai-row-actions {
+    margin-left: auto;
+  }
+}
+
+.dark .tt-settings-cost-page .tt-surface:has(button[aria-expanded]),
+.dark .tt-settings-cost-page .tt-settings-cost-actions button,
+.dark .tt-settings-cost-page .tt-provider-api-summary,
+.dark .tt-settings-cost-page .tt-other-ai-summary,
+.dark .tt-settings-cost-page .tt-other-ai-groups > section {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(17, 24, 39, 0.72);
+}
+
+.dark .tt-settings-cost-page .tt-settings-cost-heading p,
+.dark .tt-settings-cost-page [role="heading"] + span,
+.dark .tt-settings-cost-page [role="heading"] + p {
+  color: #9ca3af;
+}
+
+.dark .tt-settings-cost-page [role="heading"],
+.dark .tt-settings-cost-page .tt-settings-cost-actions button {
+  color: #f9fafb;
+}
 
 html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   padding: 19px 14px 0 39px;

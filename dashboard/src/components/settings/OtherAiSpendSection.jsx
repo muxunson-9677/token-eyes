@@ -72,6 +72,20 @@ function formatMoney(amount, currency) {
   return `${symbol}${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const NOTE_TAG_TONES = ["emerald", "sky", "violet", "amber", "rose", "cyan", "indigo", "teal"];
+
+/** Stable soft-color tone for note pills so different remarks stay visually distinct. */
+export function resolveNoteTagTone(note) {
+  const text = String(note || "").trim();
+  if (!text) return "muted";
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return NOTE_TAG_TONES[Math.abs(hash) % NOTE_TAG_TONES.length];
+}
+
 const inputClass =
   "w-full rounded-lg border border-oai-gray-200 bg-white px-3 py-2 text-sm text-oai-gray-900 " +
   "placeholder:text-oai-gray-400 focus:border-oai-brand-500 focus:outline-none focus-visible:ring-2 " +
@@ -80,6 +94,8 @@ const inputClass =
 
 function SortableSpendRow({ record, number, expanded, onToggle, onEdit, onDelete, onFavorite, editor }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
+  const noteText = String(record.note || "").trim();
+  const noteTone = resolveNoteTagTone(noteText);
   return (
     <li
       ref={setNodeRef}
@@ -95,46 +111,50 @@ function SortableSpendRow({ record, number, expanded, onToggle, onEdit, onDelete
           {...attributes}
           {...listeners}
           aria-label={copy("settings.cost.other_ai.drag")}
-          className="cursor-grab rounded-md p-1 text-oai-gray-400 hover:bg-oai-gray-100 active:cursor-grabbing dark:hover:bg-oai-gray-800"
+          className="tt-other-ai-row-drag cursor-grab rounded-md p-1 text-oai-gray-400 hover:bg-oai-gray-100 active:cursor-grabbing dark:hover:bg-oai-gray-800"
         >
           <GripVertical className="h-4 w-4" aria-hidden="true" />
         </button>
-        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-oai-gray-100 px-1.5 text-xs font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-300">
+        <span className="tt-other-ai-row-index inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-oai-gray-100 px-1.5 text-xs font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-300">
           {number}
         </span>
         <button type="button" onClick={onToggle} className="tt-other-ai-row-main min-w-0 flex-1 text-left">
-          <div className="tt-other-ai-row-primary flex items-center gap-2">
-            <span className="tt-other-ai-row-title truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">{record.plan_label}</span>
+          <div className="tt-other-ai-row-primary flex min-w-0 items-center gap-2">
+            <span className="tt-other-ai-row-title truncate text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100">{record.plan_label}</span>
             <span className="tt-other-ai-row-cost shrink-0 text-sm font-semibold tabular-nums text-emerald-600">
               {formatMoney(record.amount, record.currency)}
             </span>
           </div>
-          <div className="tt-other-ai-row-note mt-0.5 truncate text-xs text-oai-gray-400">{record.note || "—"}</div>
+          <span className="tt-other-ai-row-note" data-tone={noteTone} title={noteText || undefined}>
+            {noteText || "—"}
+          </span>
         </button>
         <time className="tt-other-ai-row-date shrink-0 text-xs tabular-nums text-oai-gray-500" dateTime={record.start_date}>{record.start_date || "—"}</time>
-        <button
-          type="button"
-          onClick={onFavorite}
-          aria-label={copy(record.favorite ? "settings.cost.other_ai.unfavorite" : "settings.cost.other_ai.favorite")}
-          className={cn("rounded-md p-1.5", record.favorite ? "text-amber-500" : "text-oai-gray-300 hover:text-amber-500")}
-        >
-          <Star className={cn("h-4 w-4", record.favorite && "fill-current")} aria-hidden="true" />
-        </button>
-        <button type="button" onClick={onEdit} aria-label={copy("settings.cost.other_ai.edit")} className="rounded-md p-1.5 text-oai-gray-400 hover:bg-oai-gray-100 hover:text-oai-gray-700 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200">
-          <Pencil className="h-4 w-4" aria-hidden="true" />
-        </button>
-        <button type="button" onClick={onDelete} aria-label={copy("settings.cost.other_ai.delete")} className="rounded-md p-1.5 text-oai-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400">
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-        </button>
-        <button type="button" onClick={onToggle} aria-label={copy("settings.cost.other_ai.details")} className="rounded-md p-1.5 text-oai-gray-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800">
-          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
+        <div className="tt-other-ai-row-actions flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={onFavorite}
+            aria-label={copy(record.favorite ? "settings.cost.other_ai.unfavorite" : "settings.cost.other_ai.favorite")}
+            className={cn("rounded-md p-1.5", record.favorite ? "text-amber-500" : "text-oai-gray-300 hover:text-amber-500")}
+          >
+            <Star className={cn("h-4 w-4", record.favorite && "fill-current")} aria-hidden="true" />
+          </button>
+          <button type="button" onClick={onEdit} aria-label={copy("settings.cost.other_ai.edit")} className="rounded-md p-1.5 text-oai-gray-400 hover:bg-oai-gray-100 hover:text-oai-gray-700 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200">
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button type="button" onClick={onDelete} aria-label={copy("settings.cost.other_ai.delete")} className="rounded-md p-1.5 text-oai-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400">
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button type="button" onClick={onToggle} aria-label={copy("settings.cost.other_ai.details")} className="rounded-md p-1.5 text-oai-gray-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800">
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
       {expanded ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-oai-gray-100 px-3 py-2 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             <span className="tabular-nums">{record.start_date || "—"}</span>
-            <span>{record.note || copy("settings.cost.other_ai.no_note")}</span>
+            <span>{noteText || copy("settings.cost.other_ai.no_note")}</span>
           </div>
         </div>
       ) : null}
@@ -476,7 +496,8 @@ export function OtherAiSpendSection() {
       collapsible
       defaultOpen={false}
       storageKey="cost.other-ai"
-      collapsedSummary={`${groups.length} 个分组`}
+      collapsedSummary={copy("settings.cost.other_ai.collapsed_summary", { count: groups.length })}
+      collapsedSummaryTone="rose"
       action={(
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => openGroupForm()} className="rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-600 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800">
@@ -500,7 +521,7 @@ export function OtherAiSpendSection() {
         <>
           <div className="tt-other-ai-summary flex items-center gap-5 rounded-xl border border-oai-gray-200 bg-white px-4 py-3 text-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
             <WalletCards className="h-5 w-5" aria-hidden="true" />
-            <span>共 {groups.length} 个分组 · {records.length} 笔花销</span>
+            <span>{copy("settings.cost.other_ai.summary_counts", { groups: groups.length, records: records.length })}</span>
             <span className="h-5 w-px bg-oai-gray-200 dark:bg-oai-gray-700" aria-hidden="true" />
             <span>{copy("settings.cost.other_ai.month_spend")} <strong className="ml-1 text-emerald-600">{formatMoney(currentMonthTotal, "CNY")}</strong></span>
             <span className="h-5 w-px bg-oai-gray-200 dark:bg-oai-gray-700" aria-hidden="true" />

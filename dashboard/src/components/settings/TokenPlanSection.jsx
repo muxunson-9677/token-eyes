@@ -546,28 +546,6 @@ function WebviewConsoleConnectPanel({
   );
 }
 
-function formatRecordTotalQuota(record, catalog) {
-  if (record?.total_quota_display) return record.total_quota_display;
-  const plan = catalog ? findCatalogPlan(catalog, record.provider_id, record.plan_id) : null;
-  if (plan?.total_quota_display) return plan.total_quota_display;
-  if (plan?.total_quota) return formatQuota(plan.total_quota);
-  return formatQuota(record?.total_quota);
-}
-
-function formatRecordQuotaLine(record, catalog) {
-  const totalLabel = formatRecordTotalQuota(record, catalog);
-  const used = formatQuota(record.used_quota);
-  const remaining = formatQuota(record.remaining_quota);
-  const hasLiveQuota = Array.isArray(record?.quota_windows) && record.quota_windows.length > 0
-    || record?.sync_status === "success";
-  if (!hasLiveQuota && Number(record?.remaining_quota || 0) > 0
-    && !record?.total_quota_display
-    && Number(record?.total_quota || 0) === 0) {
-    return `${used} / ${totalLabel}`;
-  }
-  return `${used} / ${totalLabel} - ${remaining}`;
-}
-
 function normalizeCatalog(value) {
   const providers = Array.isArray(value?.providers) ? value.providers : [];
   return providers.map((p) => ({
@@ -670,34 +648,41 @@ function SortableTokenPlanCard({
             ? <ProviderIcon provider={record.provider_id || record.source} size={24} />
             : String(record.provider_id || record.source || "T").slice(0, 1).toUpperCase()}
         </span>
-        <div className="tt-token-plan-copy min-w-0 flex-1">
+        <div className="tt-token-plan-copy min-w-0">
           <div
-            className="tt-token-plan-full truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100"
+            className="tt-token-plan-full"
             data-provider-label={record.provider_id && record.provider_id !== "custom" ? `${record.source} / ${record.provider_id}` : record.source}
             data-plan-label={record.plan_label}
           >
-            {record.provider_id && record.provider_id !== "custom"
-              ? `${record.source} / ${record.provider_id} / ${record.plan_label}`
-              : `${record.source} / ${record.plan_label}`}
+            <span className="tt-token-plan-full-text">
+              {record.provider_id && record.provider_id !== "custom"
+                ? `${record.source} / ${record.provider_id} / ${record.plan_label}`
+                : `${record.source} / ${record.plan_label}`}
+            </span>
           </div>
-          <div className="tt-token-plan-meta truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            {formatRecordQuotaLine(record, catalog)}
-            {record.quota_unit && record.quota_unit !== "tokens" ? ` ${record.quota_unit}` : ""}
-          </div>
-          {record.notes && (
-            <div className="truncate text-[11px] text-oai-gray-400 dark:text-oai-gray-500" title={record.notes}>
-              {record.notes}
-            </div>
-          )}
         </div>
-        <div className="tt-token-plan-live" aria-label="套餐实时额度">
+        <div className="tt-token-plan-live" aria-label={copy("settings.token_plan.live_quota_aria")}>
           <div className="tt-token-plan-account">{record.account_label || record.account_name || ""}</div>
           <div className="tt-token-plan-quota">
-            <span data-quota-label={liveQuotaLabel} data-quota-subline={liveQuotaSubline} />
+            <span>
+              <span className="tt-token-plan-quota-label">{liveQuotaLabel}</span>
+              {liveQuotaSubline ? <span className="tt-token-plan-quota-sub">{liveQuotaSubline}</span> : null}
+            </span>
             <span className="tt-token-plan-progress" data-tone={quotaStatus.tone}><i style={{ width: `${progressPercent}%` }} /></span>
           </div>
-          <div className="tt-token-plan-remaining">{formatQuota(remainingQuota)}<small>({remainingPercent.toFixed(Math.abs(remainingPercent) < 1 ? 2 : 1)}%)</small></div>
-          <div className="tt-token-plan-updated">{record.last_refreshed_at || record.updated_at || "—"}<small data-tone={quotaStatus.tone}>{quotaStatus.label}</small></div>
+          <div className="tt-token-plan-remaining">
+            <span className="tt-token-plan-remaining-label">{copy("settings.token_plan.remaining")}</span>
+            <span className="tt-token-plan-remaining-value">
+              {formatQuota(remainingQuota)}
+              <small>({remainingPercent.toFixed(Math.abs(remainingPercent) < 1 ? 2 : 1)}%)</small>
+            </span>
+          </div>
+          <div className="tt-token-plan-updated">
+            <span className="tt-token-plan-updated-time" title={record.last_refreshed_at || record.updated_at || undefined}>
+              {String(record.last_refreshed_at || record.updated_at || "—").replace("T", " ").slice(0, 16)}
+            </span>
+            <small data-tone={quotaStatus.tone}>{quotaStatus.label}</small>
+          </div>
         </div>
         <button
           type="button"
@@ -2998,11 +2983,18 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       collapsible={!editorPlanId}
       defaultOpen={false}
       storageKey={!editorPlanId ? "cost.token-plans" : null}
-      collapsedSummary={`${records.length} 个套餐`}
+      collapsedSummary={copy("settings.token_plan.collapsed_summary", { count: records.length })}
+      collapsedSummaryTone="violet"
       action={!editorPlanId ? (
         <div className="tt-token-plan-actions flex items-center gap-2">
-          <span className="tt-token-plan-count tt-token-plan-count--active">已激活 {records.length} 个</span>
-          <span className="tt-token-plan-count tt-token-plan-count--watch">需关注 {records.filter((record) => Number(record.remaining_quota || 0) <= 0).length} 个</span>
+          <span className="tt-token-plan-count tt-token-plan-count--active">
+            {copy("settings.token_plan.count_active", { count: records.length })}
+          </span>
+          <span className="tt-token-plan-count tt-token-plan-count--watch">
+            {copy("settings.token_plan.count_watch", {
+              count: records.filter((record) => Number(record.remaining_quota || 0) <= 0 || Number(record.used_quota || 0) / Math.max(1, Number(record.total_quota || 0)) >= 0.8).length,
+            })}
+          </span>
           <button type="button" onClick={() => records.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-300">
             <RefreshCw className={cn("h-3.5 w-3.5", refreshingId && "animate-spin")} aria-hidden />
             {copy("settings.token_plan.batch_refresh")}

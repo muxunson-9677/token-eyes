@@ -2319,3 +2319,12 @@ widgets.reference.desktop_display,ui,WidgetsPage,WindowsProjectManager,desktop_d
 widgets.reference.desktop_display_detail,ui,WidgetsPage,WindowsProjectManager,desktop_display_detail,"Show in the floating desktop widget",,active
 widgets.reference.compact_mode,ui,WidgetsPage,WindowsProjectManager,compact_mode,"Compact mode",,active
 widgets.reference.compact_mode_detail,ui,WidgetsPage,WindowsProjectManager,compact_mode_detail,"Use a compact layout in the desktop widget",,active
+settings.agent_pricing.collapsed_summary,ui,SettingsPage,AgentPricingSection,collapsed_summary,"已配置 {{count}} 项",,active
+settings.agent_pricing.save_changes,ui,SettingsPage,AgentPricingSection,save_changes,"保存更改",,active
+settings.token_plan.collapsed_summary,ui,SettingsPage,TokenPlanSection,collapsed_summary,"{{count}} 个套餐",,active
+settings.token_plan.count_active,ui,SettingsPage,TokenPlanSection,count_active,"已激活 {{count}} 个",,active
+settings.token_plan.count_watch,ui,SettingsPage,TokenPlanSection,count_watch,"需关注 {{count}} 个",,active
+settings.token_plan.live_quota_aria,ui,SettingsPage,TokenPlanSection,live_quota_aria,"套餐实时额度",,active
+settings.cost.provider_api.collapsed_summary,ui,SettingsPage,ProviderApiConfigSection,collapsed_summary,"{{count}} 个供应商",,active
+settings.cost.other_ai.collapsed_summary,ui,SettingsPage,OtherAiSpendSection,collapsed_summary,"{{count}} 个分组",,active
+settings.cost.other_ai.summary_counts,ui,SettingsPage,OtherAiSpendSection,summary_counts,"共 {{groups}} 个分组 · {{records}} 笔花销",,active
