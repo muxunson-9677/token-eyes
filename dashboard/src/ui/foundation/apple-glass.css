@@ -4296,3 +4296,883 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
 .tt-provider-api-volc-blue { fill: #2563eb; }
 .tt-provider-api-volc-teal { fill: #12c7b2; }
 .tt-provider-api-volc-violet { fill: #7047eb; }
+
+/* Basic settings: fluid reference proportions inside the native workspace. */
+.tt-reference-route-settings-basic {
+  --tt-basic-pad: clamp(12px, 0.9cqw, 20px);
+  --tt-basic-gap: clamp(8px, 0.6cqw, 12px);
+  --tt-basic-header-height: clamp(50px, 3.8cqw, 64px);
+  --tt-basic-row-height: clamp(44px, 3.35cqw, 54px);
+  --tt-basic-control-height: clamp(36px, 2.7cqw, 44px);
+  --tt-basic-limit-row-height: clamp(34px, 2.55cqw, 42px);
+  --tt-surface-outline: rgba(31, 43, 56, 0.11);
+  --tt-surface-shadow: 0 2px 5px rgba(31, 43, 56, 0.045), 0 15px 34px rgba(31, 43, 56, 0.085);
+}
+
+html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface main > .mx-auto {
+  container-type: inline-size;
+  padding-right: clamp(35px, 2.3vw, 90px) !important;
+  padding-left: clamp(35px, 2.3vw, 90px) !important;
+}
+
+.tt-reference-route-settings-basic > main > .mx-auto {
+  max-width: none !important;
+  container-type: inline-size;
+  padding-right: clamp(35px, 2.3vw, 90px) !important;
+  padding-left: clamp(35px, 2.3vw, 90px) !important;
+}
+
+html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface main {
+  padding-top: clamp(20px, 1.25vw, 32px) !important;
+}
+
+.tt-reference-route-settings-basic > main {
+  padding-top: clamp(20px, 1.25vw, 32px) !important;
+  padding-bottom: 14px !important;
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-basic-heading"] {
+  height: clamp(66px, 4.7cqw, 78px);
+  margin-bottom: var(--tt-basic-gap);
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-basic-heading"] h1 {
+  font-size: clamp(26px, 1.8cqw, 34px);
+  line-height: 1.16;
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-basic-heading"] p {
+  font-size: clamp(12px, 0.82cqw, 14px);
+  line-height: 1.45;
+}
+
+.tt-reference-route-settings-basic .space-y-4 {
+  gap: var(--tt-basic-gap);
+}
+
+.tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) {
+  height: auto !important;
+  padding: 0 !important;
+  border-color: rgba(31, 43, 56, 0.11) !important;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.99), rgba(249, 251, 253, 0.94)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 2px 5px rgba(31, 43, 56, 0.045), 0 15px 34px rgba(31, 43, 56, 0.085) !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) > div {
+  height: auto !important;
+  padding: var(--tt-basic-pad) !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-limits-card
+) > div > div:first-child {
+  height: var(--tt-basic-header-height) !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-limits-card
+) > div > div:last-child {
+  height: auto !important;
+  border: 1px solid rgba(31, 43, 56, 0.095) !important;
+  border-radius: clamp(9px, 0.72cqw, 16px) !important;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94), 0 7px 18px rgba(31, 43, 56, 0.055);
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-section-icon"] {
+  width: clamp(46px, 3.4cqw, 90px) !important;
+  height: clamp(46px, 3.4cqw, 90px) !important;
+  border-radius: clamp(9px, 0.72cqw, 16px) !important;
+  margin-right: clamp(8px, 0.42cqw, 10px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 7px 17px rgba(31, 43, 56, 0.065);
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-section-icon"] svg {
+  width: 52% !important;
+  height: 52% !important;
+  stroke-width: 2.15;
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-section-icon"][data-tone="blue"] {
+  color: #1668e8 !important;
+  background: #e8f1ff !important;
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-section-icon"][data-tone="green"] {
+  color: #00a776 !important;
+  background: #e0f8ef !important;
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-section-icon"][data-tone="violet"] {
+  color: #7440d8 !important;
+  background: #f0e8ff !important;
+}
+
+.tt-reference-route-settings-basic :is(.tt-settings-appearance-card, .tt-settings-data-directory-card, .tt-settings-limits-card) :is(h2, [role="heading"]) {
+  color: #1f2937 !important;
+  font-size: clamp(15px, 1.08cqw, 24px) !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.tt-reference-route-settings-basic :is(.tt-settings-data-directory-card, .tt-settings-limits-card) p {
+  color: #6b7686 !important;
+  font-size: clamp(11px, 0.78cqw, 17px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-data-directory-card [role="heading"] + span {
+  color: #6b7686 !important;
+  font-size: clamp(11px, 0.78cqw, 17px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-appearance-card > div > div:last-child > div,
+.tt-reference-route-settings-basic .tt-settings-appearance-card > div > div:last-child > div:first-child,
+.tt-reference-route-settings-basic .tt-settings-appearance-card > div > div:last-child > div:last-child {
+  display: grid !important;
+  grid-template-columns: minmax(0, 47%) minmax(0, 53%);
+  column-gap: 0 !important;
+  height: var(--tt-basic-row-height) !important;
+  padding: clamp(9px, 0.75cqw, 18px) clamp(10px, 1cqw, 24px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-appearance-card > div > div:last-child > div > div:last-child {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  justify-content: flex-end;
+  transform: none;
+}
+
+.tt-reference-route-settings-basic .tt-settings-appearance-card .text-sm {
+  color: #202a38 !important;
+  font-size: clamp(12px, 0.86cqw, 14px) !important;
+  font-weight: 600;
+}
+
+.tt-reference-route-settings-basic .tt-settings-appearance-card .text-xs {
+  font-size: clamp(10px, 0.72cqw, 12px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-appearance-card > div > div:last-child > div > div:first-child > div:last-child,
+.tt-reference-route-settings-basic .tt-settings-appearance-card .tt-exchange-rate-preview {
+  color: #727d8d;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-theme-control {
+  width: 100% !important;
+  height: var(--tt-basic-control-height) !important;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-theme-control > button {
+  min-height: calc(var(--tt-basic-control-height) - 4px) !important;
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-language-select,
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-currency-select {
+  width: clamp(145px, 11.3cqw, 280px) !important;
+  min-width: 0;
+  height: var(--tt-basic-control-height) !important;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls {
+  width: clamp(350px, 39cqw, 1000px);
+  justify-content: space-between;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls input,
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls button {
+  height: var(--tt-basic-control-height) !important;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls input {
+  width: clamp(90px, 11cqw, 280px);
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls button {
+  min-width: clamp(68px, 5.2cqw, 128px);
+  justify-content: center;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls .tt-exchange-rate-save {
+  min-width: clamp(72px, 6.4cqw, 160px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-data-directory-card > div > div:first-child {
+  height: clamp(52px, 2.9cqw, 72px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-data-directory-compact {
+  top: 50% !important;
+  right: var(--tt-basic-pad) !important;
+  height: var(--tt-basic-control-height) !important;
+  align-items: center !important;
+  transform: translateY(-50%);
+}
+
+.tt-reference-route-settings-basic .tt-data-directory-compact output {
+  display: block !important;
+  width: clamp(300px, 31.2cqw, 760px) !important;
+  height: var(--tt-basic-control-height) !important;
+  border: 1px solid rgba(31, 43, 56, 0.1) !important;
+  border-radius: clamp(8px, 0.58cqw, 14px) !important;
+  padding: 0 clamp(12px, 0.9cqw, 22px) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #707b8b !important;
+  font-size: clamp(11px, 0.78cqw, 17px) !important;
+  line-height: calc(var(--tt-basic-control-height) - 2px) !important;
+  box-shadow: inset 0 1px 2px rgba(31, 43, 56, 0.035);
+}
+
+.tt-reference-route-settings-basic .tt-data-directory-compact button {
+  min-width: clamp(96px, 8.6cqw, 210px) !important;
+  height: var(--tt-basic-control-height) !important;
+  justify-content: center;
+  border-color: rgba(31, 43, 56, 0.13) !important;
+  font-size: clamp(11px, 0.78cqw, 17px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-limits-card > div > div:last-child {
+  overflow: hidden !important;
+}
+
+.tt-reference-route-settings-basic #settings-limits .flex.flex-col > div {
+  height: var(--tt-basic-limit-row-height) !important;
+  padding: 0 clamp(9px, 0.85cqw, 20px) !important;
+}
+
+.tt-reference-route-settings-basic #settings-limits .flex.flex-col > div > span {
+  color: #27313f !important;
+  font-size: clamp(12px, 0.9cqw, 14px) !important;
+  font-weight: 500;
+}
+
+.tt-reference-route-settings-basic #settings-limits .flex.flex-col > div > :is(svg, img) {
+  width: clamp(16px, 1.35cqw, 20px) !important;
+  height: clamp(16px, 1.35cqw, 20px) !important;
+}
+
+.tt-reference-route-settings-basic #settings-limits [role="switch"] {
+  width: clamp(36px, 2.5cqw, 42px) !important;
+  height: clamp(28px, 1.75cqw, 32px) !important;
+}
+
+.tt-reference-route-settings-basic #settings-limits [role="switch"] > span {
+  width: clamp(34px, 2.35cqw, 40px) !important;
+  height: clamp(18px, 1.35cqw, 22px) !important;
+}
+
+.tt-reference-route-settings-basic #settings-limits [role="switch"] > span > span {
+  width: clamp(14px, 1cqw, 18px) !important;
+  height: clamp(14px, 1cqw, 18px) !important;
+}
+
+.tt-reference-route-settings-basic #settings-limits [role="switch"][aria-checked="true"] > span > span {
+  transform: translateX(clamp(16px, 1.2cqw, 20px)) !important;
+}
+
+.tt-reference-route-settings-basic .tt-limits-header-actions {
+  height: var(--tt-basic-control-height);
+  gap: clamp(8px, 0.65cqw, 16px);
+}
+
+.tt-reference-route-settings-basic .tt-limits-header-actions span {
+  padding: clamp(5px, 0.4cqw, 9px) clamp(12px, 0.8cqw, 20px);
+  background: #e1f8ef;
+  color: #009e70;
+  font-size: clamp(11px, 0.78cqw, 17px);
+}
+
+.tt-reference-route-settings-basic .tt-limits-header-actions button {
+  height: var(--tt-basic-control-height);
+  padding: 0 clamp(14px, 1cqw, 24px);
+  border-color: rgba(31, 43, 56, 0.13);
+  font-size: clamp(11px, 0.78cqw, 17px);
+}
+
+:root.dark .tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: linear-gradient(155deg, rgba(31, 35, 42, 0.98), rgba(24, 28, 34, 0.95)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 16px 34px rgba(0, 0, 0, 0.24) !important;
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-main-work-surface {
+  background: #15181d !important;
+}
+
+:root.dark .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] h1,
+:root.dark .tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) :is(h2, [role="heading"]) {
+  color: #f3f5f8 !important;
+}
+
+:root.dark .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] p,
+:root.dark .tt-reference-route-settings-basic :is(.tt-settings-data-directory-card, .tt-settings-limits-card) p,
+:root.dark .tt-reference-route-settings-basic .tt-settings-data-directory-card [role="heading"] + span {
+  color: #929dab !important;
+}
+
+:root.dark .tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-limits-card
+) > div > div:last-child {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(17, 20, 25, 0.72) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 8px 20px rgba(0, 0, 0, 0.16);
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-appearance-card .text-sm,
+:root.dark .tt-reference-route-settings-basic #settings-limits .flex.flex-col > div > span {
+  color: #e4e8ee !important;
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-appearance-card > div > div:last-child > div > div:first-child > div:last-child,
+:root.dark .tt-reference-route-settings-basic .tt-settings-appearance-card .tt-exchange-rate-preview {
+  color: #929dab !important;
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-data-directory-compact output {
+  border-color: rgba(255, 255, 255, 0.11) !important;
+  background: rgba(14, 17, 22, 0.92) !important;
+  color: #a7b0bd !important;
+}
+
+:root.dark .tt-reference-route-settings-basic :is(
+  .tt-data-directory-compact button,
+  .tt-limits-header-actions button
+) {
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  background: rgba(16, 19, 24, 0.9) !important;
+  color: #e5e9ef !important;
+}
+
+:root.dark .tt-reference-route-settings-basic #settings-limits img[src$="/cursor.svg"] {
+  border-radius: 5px;
+  background: #f5f7fa;
+  padding: 2px;
+}
+
+/* Basic settings final alignment pass: two-level hierarchy and compact controls. */
+.tt-reference-route-settings-basic {
+  --tt-basic-control-width: clamp(200px, 10.5cqw, 250px);
+  --tt-basic-control-height: clamp(36px, 2.7cqw, 44px);
+  --tt-basic-section-icon: clamp(40px, 3.1cqw, 46px);
+  --tt-basic-row-icon: clamp(26px, 1.95cqw, 32px);
+  --tt-basic-inline-gap: clamp(8px, 0.55cqw, 14px);
+}
+
+.tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) .tt-section-card-header {
+  align-items: center !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) .tt-section-card-heading {
+  align-items: center !important;
+  gap: clamp(11px, 0.85cqw, 20px) !important;
+}
+
+.tt-reference-route-settings-basic [data-testid="settings-section-icon"] {
+  width: var(--tt-basic-section-icon) !important;
+  height: var(--tt-basic-section-icon) !important;
+  margin-right: 0 !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) .tt-section-card-title-block :is(h2, [role="heading"]) {
+  font-size: clamp(15px, 1.2cqw, 16px) !important;
+  line-height: 1.18 !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) .tt-section-card-title-block :is(p, span:not([role="heading"])) {
+  margin-top: clamp(3px, 0.22cqw, 6px) !important;
+  color: #6f7a89 !important;
+  font-size: clamp(10px, 0.78cqw, 11px) !important;
+  line-height: 1.35 !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-appearance-card .tt-section-card-header,
+.tt-reference-route-settings-basic .tt-settings-limits-card .tt-section-card-header {
+  height: var(--tt-basic-header-height) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 46%) minmax(0, 54%) !important;
+  align-items: center !important;
+  gap: 0 !important;
+  height: var(--tt-basic-row-height) !important;
+  padding: clamp(8px, 0.65cqw, 16px) clamp(12px, 1cqw, 24px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-copy {
+  gap: clamp(10px, 0.72cqw, 18px);
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-icon {
+  width: var(--tt-basic-row-icon);
+  height: var(--tt-basic-row-icon);
+  border-radius: clamp(8px, 0.56cqw, 13px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 5px 12px rgba(31, 43, 56, 0.055);
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-icon svg {
+  width: 48%;
+  height: 48%;
+  stroke-width: 2.1;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-icon[data-tone="theme"] {
+  color: #ef5b4d;
+  background: #fff0ed;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-icon[data-tone="language"] {
+  color: #2f6fe4;
+  background: #edf3ff;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-icon[data-tone="currency"] {
+  color: #d89124;
+  background: #fff5df;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-icon[data-tone="exchange"] {
+  color: #6b66d9;
+  background: #f0efff;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-label {
+  color: #27313f !important;
+  font-size: clamp(12px, 0.96cqw, 13px) !important;
+  font-weight: 650 !important;
+  line-height: 1.2;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-hint {
+  margin-top: clamp(2px, 0.18cqw, 5px) !important;
+  color: #778292 !important;
+  font-size: clamp(9px, 0.75cqw, 11px) !important;
+  line-height: 1.35;
+}
+
+.tt-reference-route-settings-basic .tt-settings-row-control {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0;
+  justify-content: flex-end !important;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-theme-control,
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-language-select,
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-currency-select {
+  width: var(--tt-basic-control-width) !important;
+  min-width: 0 !important;
+  height: var(--tt-basic-control-height) !important;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-theme-control > button {
+  min-width: 0 !important;
+  min-height: calc(var(--tt-basic-control-height) - 4px) !important;
+  flex-direction: row !important;
+  padding-inline: clamp(7px, 0.55cqw, 13px) !important;
+  white-space: nowrap;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-theme-control > button > :is(svg, span) {
+  flex-shrink: 0;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-theme-control > button > span {
+  white-space: nowrap;
+}
+
+.tt-reference-route-settings-basic #settings-appearance :is(.tt-settings-language-select, .tt-settings-currency-select) {
+  justify-content: center !important;
+  padding-inline: clamp(28px, 2.1cqw, 50px) !important;
+}
+
+.tt-reference-route-settings-basic #settings-appearance :is(.tt-settings-language-select, .tt-settings-currency-select) > span {
+  justify-content: center;
+}
+
+.tt-reference-route-settings-basic #settings-appearance :is(.tt-settings-language-select, .tt-settings-currency-select) > svg:last-child {
+  position: absolute;
+  right: clamp(10px, 0.72cqw, 17px);
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) var(--tt-basic-control-width);
+  align-items: center;
+  gap: var(--tt-basic-inline-gap);
+  width: calc((var(--tt-basic-control-width) * 2) + var(--tt-basic-inline-gap)) !important;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-rate {
+  display: grid;
+  grid-template-columns: minmax(82px, 0.8fr) minmax(max-content, 1fr);
+  align-items: center;
+  justify-content: end;
+  gap: var(--tt-basic-inline-gap);
+  min-width: 0;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-rate input {
+  width: 100% !important;
+  min-width: 0;
+  height: var(--tt-basic-control-height) !important;
+  text-align: center;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-rate-preview {
+  justify-self: end;
+  font-size: clamp(10px, 0.68cqw, 15px) !important;
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--tt-basic-inline-gap);
+  width: var(--tt-basic-control-width);
+}
+
+.tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-actions button {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: var(--tt-basic-control-height) !important;
+  justify-content: center;
+  padding-inline: clamp(8px, 0.7cqw, 16px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-data-directory-card > div {
+  position: relative;
+}
+
+.tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-section-card-header {
+  height: clamp(58px, 4.35cqw, 68px) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-data-directory-card .tt-section-card-header > .shrink-0 {
+  display: none !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-data-directory-card > div > div:last-child > :not(.tt-data-directory-compact) {
+  display: none !important;
+}
+
+.tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-data-directory-compact {
+  position: absolute !important;
+  top: 50% !important;
+  right: var(--tt-basic-pad) !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--tt-basic-inline-gap);
+  width: clamp(420px, 40cqw, 760px) !important;
+  height: var(--tt-basic-control-height) !important;
+  transform: translateY(-50%) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-data-directory-card .tt-data-directory-compact output,
+.tt-reference-route-settings-basic .tt-settings-data-directory-card .tt-data-directory-compact button {
+  height: var(--tt-basic-control-height) !important;
+}
+
+.tt-reference-route-settings-basic .tt-settings-data-directory-card .tt-data-directory-compact output {
+  width: 100% !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  #settings-appearance .tt-settings-language-select,
+  #settings-appearance .tt-settings-currency-select,
+  #settings-appearance .tt-exchange-rate-refresh,
+  .tt-settings-data-directory-card .tt-data-directory-compact button,
+  .tt-settings-limits-card .tt-limits-header-actions button
+) {
+  border: 1px solid rgba(31, 43, 56, 0.22) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f7f9 100%) !important;
+  color: #26313f !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 1px 2px rgba(31, 43, 56, 0.1), 0 4px 10px rgba(31, 43, 56, 0.07) !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  #settings-appearance .tt-settings-language-select,
+  #settings-appearance .tt-settings-currency-select,
+  #settings-appearance .tt-exchange-rate-refresh,
+  .tt-settings-data-directory-card .tt-data-directory-compact button,
+  .tt-settings-limits-card .tt-limits-header-actions button
+):hover {
+  border-color: rgba(31, 43, 56, 0.32) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #edf1f5 100%) !important;
+}
+
+.tt-reference-route-settings-basic :is(
+  #settings-appearance .tt-settings-language-select,
+  #settings-appearance .tt-settings-currency-select,
+  #settings-appearance .tt-exchange-rate-refresh,
+  .tt-settings-data-directory-card .tt-data-directory-compact button,
+  .tt-settings-limits-card .tt-limits-header-actions button
+):active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(31, 43, 56, 0.12), 0 1px 2px rgba(31, 43, 56, 0.08) !important;
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-row-label {
+  color: #e7ebf1 !important;
+}
+
+:root.dark .tt-reference-route-settings-basic :is(
+  #settings-appearance .tt-settings-language-select,
+  #settings-appearance .tt-settings-currency-select,
+  #settings-appearance .tt-exchange-rate-refresh,
+  .tt-settings-data-directory-card .tt-data-directory-compact button,
+  .tt-settings-limits-card .tt-limits-header-actions button
+) {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: linear-gradient(180deg, rgba(43, 48, 56, 0.98), rgba(27, 31, 37, 0.98)) !important;
+  color: #edf1f6 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.35), 0 5px 12px rgba(0, 0, 0, 0.22) !important;
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-row-hint,
+:root.dark .tt-reference-route-settings-basic :is(
+  .tt-settings-appearance-card,
+  .tt-settings-data-directory-card,
+  .tt-settings-limits-card
+) .tt-section-card-title-block :is(p, span:not([role="heading"])) {
+  color: #98a2af !important;
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-row-icon {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 5px 12px rgba(0, 0, 0, 0.18);
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-row-icon[data-tone="theme"] {
+  color: #ff8176;
+  background: rgba(239, 91, 77, 0.16);
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-row-icon[data-tone="language"] {
+  color: #78a6ff;
+  background: rgba(47, 111, 228, 0.16);
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-row-icon[data-tone="currency"] {
+  color: #f3b95b;
+  background: rgba(216, 145, 36, 0.16);
+}
+
+:root.dark .tt-reference-route-settings-basic .tt-settings-row-icon[data-tone="exchange"] {
+  color: #aaa6ff;
+  background: rgba(107, 102, 217, 0.17);
+}
+
+@container (max-width: 920px) {
+  .tt-reference-route-settings-basic .tt-settings-row {
+    grid-template-columns: minmax(0, 38%) minmax(0, 62%) !important;
+  }
+
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls {
+    grid-template-columns: minmax(0, 1fr) var(--tt-basic-control-width);
+    width: 100% !important;
+  }
+
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-data-directory-compact {
+    grid-template-columns: minmax(170px, 1fr) max-content;
+    left: 42%;
+    width: calc(58% - var(--tt-basic-pad)) !important;
+  }
+}
+
+@container (max-width: 620px) {
+  .tt-reference-route-settings-basic .tt-settings-row {
+    grid-template-columns: 1fr !important;
+    gap: clamp(8px, 1.4cqw, 12px) !important;
+    height: auto !important;
+    min-height: var(--tt-basic-row-height);
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-row-control {
+    justify-content: stretch !important;
+  }
+
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-theme-control,
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-language-select,
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-currency-select {
+    width: 100% !important;
+  }
+
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-actions {
+    width: 100%;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-data-directory-card .tt-section-card-header {
+    height: auto !important;
+    min-height: clamp(112px, 19cqw, 148px);
+    align-items: flex-start !important;
+  }
+
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-data-directory-compact {
+    top: auto !important;
+    right: var(--tt-basic-pad) !important;
+    bottom: var(--tt-basic-pad);
+    left: var(--tt-basic-pad);
+    width: auto !important;
+    transform: none !important;
+  }
+}
+
+@container (max-width: 760px) {
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-section-card-header {
+    height: auto !important;
+    min-height: clamp(112px, 19cqw, 148px);
+    align-items: flex-start !important;
+  }
+
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-data-directory-compact {
+    top: auto !important;
+    right: var(--tt-basic-pad) !important;
+    bottom: var(--tt-basic-pad);
+    left: var(--tt-basic-pad);
+    width: auto !important;
+    transform: none !important;
+  }
+}
+
+@media (max-height: 950px) {
+  .tt-reference-route-settings-basic {
+    --tt-basic-pad: 12px;
+    --tt-basic-gap: 8px;
+    --tt-basic-header-height: 52px;
+    --tt-basic-row-height: 46px;
+    --tt-basic-control-height: 36px;
+    --tt-basic-limit-row-height: 34px;
+    --tt-basic-section-icon: 42px;
+    --tt-basic-row-icon: 26px;
+  }
+
+  html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface main {
+    padding-top: 20px !important;
+  }
+
+  .tt-reference-route-settings-basic > main {
+    padding-top: 20px !important;
+  }
+
+  .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] {
+    height: 66px;
+  }
+
+  .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] h1 {
+    font-size: 28px;
+  }
+
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-section-card-header {
+    height: 60px !important;
+  }
+}
+
+@media (max-height: 820px) {
+  .tt-reference-route-settings-basic {
+    --tt-basic-pad: 10px;
+    --tt-basic-gap: 7px;
+    --tt-basic-header-height: 46px;
+    --tt-basic-row-height: 40px;
+    --tt-basic-control-height: 34px;
+    --tt-basic-limit-row-height: 32px;
+    --tt-basic-section-icon: 38px;
+    --tt-basic-row-icon: 24px;
+  }
+
+  html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface main {
+    padding-top: 14px !important;
+  }
+
+  .tt-reference-route-settings-basic > main {
+    padding-top: 14px !important;
+  }
+
+  .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] {
+    height: 56px;
+  }
+
+  .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] h1 {
+    font-size: 26px;
+  }
+
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-section-card-header {
+    height: 52px !important;
+  }
+}
+
+@media (max-height: 740px) {
+  .tt-reference-route-settings-basic {
+    --tt-basic-pad: 8px;
+    --tt-basic-gap: 6px;
+    --tt-basic-header-height: 42px;
+    --tt-basic-row-height: 36px;
+    --tt-basic-control-height: 32px;
+    --tt-basic-limit-row-height: 30px;
+    --tt-basic-section-icon: 36px;
+    --tt-basic-row-icon: 22px;
+  }
+
+  html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface main {
+    padding-top: 10px !important;
+  }
+
+  .tt-reference-route-settings-basic > main {
+    padding-top: 10px !important;
+  }
+
+  .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] {
+    height: 50px;
+  }
+
+  .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] h1 {
+    font-size: 24px;
+  }
+
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-section-card-header {
+    height: 46px !important;
+  }
+}

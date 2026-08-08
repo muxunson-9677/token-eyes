@@ -303,7 +303,6 @@ export function DataDirectoriesSection() {
       subtitle={copy("settings.data_dirs.subtitle")}
       icon={FolderOpen}
       iconTone="green"
-      collapsible
       action={
         <div className="flex items-center gap-2">
           <button

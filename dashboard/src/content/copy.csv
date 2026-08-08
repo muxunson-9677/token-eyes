@@ -566,6 +566,7 @@ header.auth.open_settings,shared,*,InsforgeUserHeaderControls,open_settings,"Ope
 settings.page.title,ui,SettingsPage,SettingsPage,title,"Settings",,active
 settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage your account, appearance, and display preferences.",,active
 settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,"Appearance",,active
+settings.appearance.subtitle,ui,SettingsPage,AppearanceSection,appearance_subtitle,"Customize the app appearance and regional preferences.",,active
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,"Account",,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,"Limits Display",,active
 settings.appearance.theme.label,ui,SettingsPage,SettingsPage,theme_label,"Theme",,active

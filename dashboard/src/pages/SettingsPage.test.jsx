@@ -48,9 +48,10 @@ vi.mock("../components/settings/AppearanceSection.jsx", () => ({
 }));
 
 vi.mock("../components/settings/Controls.jsx", () => ({
-  SectionCard: ({ title, children }) => (
+  SectionCard: ({ title, children, icon: Icon, iconTestId }) => (
     <section data-testid="section-card">
       <h2>{title}</h2>
+      {Icon ? <Icon data-testid={iconTestId} /> : null}
       {children}
     </section>
   ),
@@ -121,6 +122,27 @@ describe("SettingsBasicPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("copy:settings.basic.page.title")).toBeInTheDocument();
+  });
+
+  it("keeps the accepted basic-settings visual identity without preview query parameters", () => {
+    render(
+      <MemoryRouter initialEntries={["/settings/basic"]}>
+        <SettingsBasicPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("settings-basic-page")).toHaveClass(
+      "tt-reference-route-settings-basic",
+    );
+  });
+
+  it("uses the reference shield icon for limits display", () => {
+    render(
+      <MemoryRouter>
+        <SettingsBasicPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("settings-limits-icon")).toHaveClass("lucide-shield");
   });
 });
 
