@@ -29,9 +29,9 @@ beforeEach(() => {
   getAllAgentEnvironments.mockResolvedValue({
     ok: true,
     results: [
-      { agent: "codex", agent_name: "Codex", status: "ready", trackingReady: true, evidenceCount: 4, latestActivityAt: "2026-08-01T01:00:00.000Z", configuredPath: "C:\\secret\\.codex" },
-      { agent: "claude", agent_name: "Claude Code", status: "detected", trackingReady: false, evidenceCount: 0 },
-      { agent: "cursor", agent_name: "Cursor", status: "not-detected", trackingReady: false, evidenceCount: 0 },
+      { agent: "codex", agent_name: "Codex", status: "ready", trackingReady: true, evidenceCount: 4, latestActivityAt: "2026-08-01T01:00:00.000Z", environment: "win", configuredPath: "C:\\secret\\.codex" },
+      { agent: "claude", agent_name: "Claude Code", status: "detected", trackingReady: false, evidenceCount: 0, environment: "wsl" },
+      { agent: "cursor", agent_name: "Cursor", status: "not-detected", trackingReady: false, evidenceCount: 0, environment: "win" },
     ],
   });
   triggerLocalSync.mockResolvedValue({ ok: true });
@@ -68,6 +68,68 @@ it("shows source health without treating installation as valid synchronized data
   expect(screen.queryByTestId("manual-path-settings")).not.toBeInTheDocument();
 });
 
+it("shows a health summary and a compact source workspace", async () => {
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+
+  expect(await screen.findByTestId("data-health-summary")).toBeInTheDocument();
+  expect(screen.getByTestId("data-health-summary")).toHaveClass("col-span-full");
+  expect(screen.getByTestId("data-health-summary-ready")).toHaveTextContent("1");
+  expect(screen.getByTestId("data-health-summary-ready")).toHaveTextContent("33%");
+  expect(screen.getByTestId("data-health-summary-no-logs")).toHaveTextContent("1");
+  expect(screen.getByTestId("data-health-summary-unavailable")).toHaveTextContent("1");
+  expect(screen.getByTestId("data-health-grid")).toHaveAttribute("data-layout", "grid");
+  expect(screen.getByTestId("data-health-toolbar")).toBeInTheDocument();
+  expect(screen.getByTestId("data-source-summary").parentElement).toHaveClass("max-w-[1600px]");
+  expect(screen.getByTestId("data-source-codex")).toHaveClass("min-h-[88px]", "border");
+  expect(screen.getByTestId("data-source-cursor")).toHaveTextContent("未检测到");
+  expect(screen.getByTestId("data-source-codex").querySelector("h3")).toHaveClass("flex", "leading-5");
+  expect(screen.getByTestId("data-ledger-diagnostics").parentElement).toHaveClass("col-span-full", "items-stretch", "lg:grid-cols-[430px_minmax(0,1fr)]", "xl:grid-cols-[500px_minmax(0,1fr)]");
+  expect(screen.getByTestId("data-privacy-boundary").querySelector("p")).toHaveClass("leading-5");
+  expect(screen.queryByTestId("data-danger-zone")).not.toBeInTheDocument();
+  expect(screen.getByTestId("data-privacy-boundary")).toContainElement(
+    screen.getByRole("button", { name: "清除本地导入数据" }),
+  );
+
+  const nativeSelectorMatches = [...document.querySelectorAll('[data-testid^="data-source-"]')];
+  expect(nativeSelectorMatches.every((element) => (
+    element.dataset.testid === "data-source-summary" || element.tagName === "ARTICLE"
+  ))).toBe(true);
+});
+
+it("filters, searches, sorts, and switches the source workspace view", async () => {
+  const user = userEvent.setup();
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+  await screen.findByTestId("data-health-grid");
+
+  await act(async () => user.click(screen.getByTestId("data-health-filter-no-logs")));
+  expect(screen.getByTestId("data-source-claude")).toBeInTheDocument();
+  expect(screen.queryByTestId("data-source-codex")).not.toBeInTheDocument();
+
+  await act(async () => user.click(screen.getByTestId("data-health-filter-all")));
+  await act(async () => user.type(screen.getByTestId("data-health-search"), "codex"));
+  expect(screen.getByTestId("data-source-codex")).toBeInTheDocument();
+  expect(screen.queryByTestId("data-source-claude")).not.toBeInTheDocument();
+
+  await act(async () => user.clear(screen.getByTestId("data-health-search")));
+  await act(async () => user.selectOptions(screen.getByTestId("data-health-environment"), "wsl"));
+  expect(screen.getByTestId("data-source-claude")).toBeInTheDocument();
+  expect(screen.queryByTestId("data-source-codex")).not.toBeInTheDocument();
+
+  await act(async () => user.selectOptions(screen.getByTestId("data-health-environment"), "all"));
+  await act(async () => user.selectOptions(screen.getByTestId("data-health-sort"), "name"));
+  expect([...screen.getByTestId("data-health-grid").querySelectorAll("article")].map((article) => article.dataset.testid)).toEqual([
+    "data-source-claude",
+    "data-source-codex",
+    "data-source-cursor",
+  ]);
+
+  await act(async () => user.click(screen.getByTestId("data-health-view-list")));
+  expect(screen.getByTestId("data-health-grid")).toHaveAttribute("data-layout", "list");
+  expect(screen.getByTestId("data-health-grid")).toHaveStyle({ gridTemplateColumns: "minmax(0, 1fr)" });
+  expect(screen.getByTestId("data-source-summary")).toHaveStyle({ height: "auto" });
+  expect(screen.getByTestId("data-source-codex")).toHaveStyle({ height: "auto", padding: "8px 12px" });
+});
+
 it("explains protected Trae and CodeBuddy stores without calling them empty logs", async () => {
   getAllAgentEnvironments.mockResolvedValue({
     ok: true,
@@ -80,10 +142,14 @@ it("explains protected Trae and CodeBuddy stores without calling them empty logs
   render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
 
   expect(await screen.findByTestId("data-source-trae")).toHaveTextContent("已安装 · 数据暂不可读取");
-  expect(screen.getByTestId("data-source-trae")).toHaveTextContent("供应商加密存储，Token Eyes 暂无法读取精确 Token 字段");
+  expect(screen.getByTestId("data-source-trae")).toHaveAttribute("data-health", "no-logs");
+  expect(screen.getByText("已安装 · 数据暂不可读取")).toHaveAttribute("title", "供应商加密存储，Token Eyes 暂无法读取精确 Token 字段");
+  expect(screen.getByText("已安装 · 数据暂不可读取")).toHaveAttribute("tabindex", "0");
+  expect(screen.getByText("已安装 · 数据暂不可读取")).toHaveAccessibleDescription("供应商加密存储，Token Eyes 暂无法读取精确 Token 字段");
   expect(screen.getByTestId("data-source-codebuddy")).toHaveTextContent("已安装 · 暂无精确 Token 日志");
-  expect(screen.getByTestId("data-source-codebuddy")).toHaveTextContent("检测到应用数据，但当前版本未提供可读取的精确 Token 日志");
-  expect(screen.getByTestId("data-source-trae")).not.toHaveTextContent("证据文件 0");
+  expect(screen.getByText("已安装 · 暂无精确 Token 日志")).toHaveAttribute("title", "检测到应用数据，但当前版本未提供可读取的精确 Token 日志");
+  expect(screen.getByText("已安装 · 暂无精确 Token 日志")).toHaveAccessibleDescription("检测到应用数据，但当前版本未提供可读取的精确 Token 日志");
+  expect(screen.getByTestId("data-source-trae")).toHaveTextContent("证据文件0");
 });
 
   it("shows the local Token Eyes ledger path from the reference UI", async () => {
@@ -162,6 +228,15 @@ it("hides missing ledger metrics instead of rendering placeholder cards or inven
   expect(diagnostics).not.toHaveTextContent("未归因 Token");
   expect(diagnostics).not.toHaveTextContent("未提供字段");
   expect(diagnostics.querySelectorAll('[data-testid^="data-ledger-metric-"]')).toHaveLength(0);
+  expect(screen.queryByTestId("data-ledger-integrity-rate")).not.toBeInTheDocument();
+});
+
+it("does not show an integrity result when ledger diagnostics fail", async () => {
+  getUsageSummary.mockRejectedValue(new Error("ledger unavailable"));
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+
+  expect(await screen.findByText("ledger unavailable")).toBeInTheDocument();
+  expect(screen.queryByTestId("data-ledger-integrity-rate")).not.toBeInTheDocument();
 });
 
 it("turns a local service connection failure into a localized recovery path", async () => {
