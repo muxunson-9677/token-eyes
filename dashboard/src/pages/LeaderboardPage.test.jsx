@@ -79,7 +79,7 @@ vi.mock("../components/LeaderboardSkeleton.jsx", () => ({
 }));
 
 vi.mock("../components/LeaderboardAvatar.jsx", () => ({
-  LeaderboardAvatar: ({ displayName }) => <span data-testid="avatar">{displayName}</span>,
+  LeaderboardAvatar: ({ displayName, className }) => <span data-testid="avatar" className={className}>{displayName}</span>,
 }));
 
 const preloadedData = {
@@ -278,6 +278,33 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     await user.click(screen.getByRole("button", { name: copy("settings.account.signOut") }));
     expect(signOutMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders account actions as explicit compact buttons", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
+
+    expect(await screen.findByRole("button", { name: copy("settings.section.account") }))
+      .toHaveClass("tt-leaderboard-action-button");
+    expect(screen.getByRole("button", { name: copy("settings.account.signOut") }))
+      .toHaveClass("tt-leaderboard-action-button");
+    expect(screen.getByRole("link", { name: copy("leaderboard.rules_link") }))
+      .toHaveClass("tt-leaderboard-action-button");
+  });
+
+  it("keeps all three header actions visible when the viewer is signed out", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+    insforgeAuthMock.signedIn = false;
+
+    renderLeaderboard("/leaderboard", {
+      auth: null,
+      signedIn: false,
+    });
+
+    expect(await screen.findByRole("button", { name: copy("settings.section.account") })).toBeVisible();
+    expect(screen.getByRole("button", { name: copy("settings.account.signOut") })).toBeVisible();
+    expect(screen.getByRole("link", { name: copy("leaderboard.rules_link") })).toBeVisible();
   });
 
   it("keeps my displayed usage local while reusing only the cloud rank", async () => {
@@ -948,6 +975,102 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.queryByRole("columnheader", { name: "Agent 使用分布" })).not.toBeInTheDocument();
   });
 
+  it("gives the first-ranked row the dedicated medal, highlight and avatar treatment", async () => {
+    insforgeAuthMock.signedIn = false;
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [{
+        ...preloadedData.entries[0],
+        display_name: "Top User",
+        source_breakdown: [
+          { source: "codex", total_tokens: 70 },
+          { source: "cursor", total_tokens: 30 },
+        ],
+      }],
+    });
+
+    renderLeaderboard();
+
+    const row = await screen.findByRole("button", { name: /Top User/ });
+    expect(row).toHaveClass("tt-leaderboard-top-entry");
+    expect(within(row).getByTestId("leaderboard-rank-1")).toHaveClass("tt-leaderboard-rank-medal");
+    expect(within(row).getByTestId("avatar")).toHaveClass("tt-leaderboard-top-avatar");
+  });
+
+  it("anchors the first-ranked user's model distribution below the identity instead of centering it", async () => {
+    insforgeAuthMock.signedIn = false;
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [{
+        ...preloadedData.entries[0],
+        display_name: "Bottom-aligned User",
+        source_breakdown: [{ source: "codex", total_tokens: 100 }],
+      }],
+    });
+
+    renderLeaderboard();
+
+    const row = await screen.findByRole("button", { name: /Bottom-aligned User/ });
+    expect(within(row).getByTestId("leaderboard-user-meta").closest(".tt-leaderboard-entry-copy"))
+      .toHaveClass("tt-leaderboard-entry-copy");
+    expect(row).toHaveClass("tt-leaderboard-top-entry--compact");
+    expect(within(row).getByTestId("leaderboard-user-meta").closest(".tt-leaderboard-entry-distribution"))
+      .toHaveClass("tt-leaderboard-entry-distribution--nearby");
+  });
+
+  it("marks the summary metrics and score header for the expanded visual treatment", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard();
+
+    const summary = await screen.findByTestId("leaderboard-summary");
+    expect(summary.firstElementChild).toHaveClass("tt-leaderboard-summary-card");
+    expect(screen.getByTestId("leaderboard-table-head")).toHaveClass("tt-leaderboard-table-head--expanded");
+  });
+
+  it("keeps the right-side #1 status chip for the sole signed-in participant", async () => {
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      participant_count: 1,
+      ranked_entry_count: 1,
+      total_entries: 1,
+      entries: [{ ...preloadedData.entries[0], user_id: "user-1" }],
+    });
+
+    renderLeaderboard();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("leaderboard-me-status")).toBeVisible();
+    });
+  });
+
+  it("keeps the right-side status chip when the visible current-user row already has a rank", async () => {
+    getProviderStats.mockRejectedValue(new Error("local provider stats unavailable"));
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      participant_count: 1,
+      ranked_entry_count: 1,
+      total_entries: 1,
+      entries: [{ ...preloadedData.entries[0], is_me: true, rank: 1 }],
+    });
+
+    renderLeaderboard();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("leaderboard-me-status")).toBeVisible();
+    });
+  });
+
+  it("does not fabricate a #1 status when no reliable current-user rank exists", async () => {
+    getProviderStats.mockRejectedValue(new Error("local provider stats unavailable"));
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard();
+
+    expect((await screen.findAllByText("Preloaded User")).length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("leaderboard-me-status")).not.toBeInTheDocument();
+  });
+
   it("uses the desktop sidebar as the exit and does not duplicate a return-overview link", async () => {
     getLeaderboard.mockResolvedValue(preloadedData);
 
@@ -978,6 +1101,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
       total_score: 987654,
       aggregate_total_tokens: 123456789,
       aggregate_total_cost_usd: 4321.25,
+      summary_details: {
+        tokens: "较昨日  +123.4万（+1.01%）",
+        cost: "较昨日  +$4（+0.10%）",
+      },
     });
 
     renderLeaderboard();
@@ -988,6 +1115,11 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getByText("1.23亿")).toBeInTheDocument();
     expect(screen.getByText("全员预估花销")).toBeInTheDocument();
     expect(screen.getByText("$4,326")).toBeInTheDocument();
+    expect(screen.getByText(copy("leaderboard.summary.active_today", { count: "56" }))).toBeInTheDocument();
+    const summaryDetails = Array.from(document.querySelectorAll(".tt-leaderboard-summary-detail"))
+      .map((element) => element.textContent);
+    expect(summaryDetails).toContain("较昨日  +123.4万（+1.01%）");
+    expect(summaryDetails).toContain("较昨日  +$4（+0.10%）");
     expect(screen.getAllByTestId("leaderboard-summary-icon")).toHaveLength(3);
     expect(screen.getByTestId("leaderboard-rank-1")).toHaveAttribute("data-rank-tier", "medal");
   });

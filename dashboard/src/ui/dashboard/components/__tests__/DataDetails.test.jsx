@@ -324,4 +324,60 @@ describe("DataDetails daily rows", () => {
     expect(screen.queryByText("2026-07-24")).not.toBeInTheDocument();
     expect(screen.getByText("2026-07-25")).toBeInTheDocument();
   });
+
+  it("keeps the daily pagination bar visible and switches table pages", async () => {
+    const user = userEvent.setup();
+    const rows = Array.from({ length: 11 }, (_, index) => ({
+      day: `2026-08-${String(11 - index).padStart(2, "0")}`,
+      total_tokens: index + 1,
+    }));
+
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownColumns={[{ key: "day", label: "Date" }]}
+        dailyBreakdownRows={rows}
+        renderDetailCell={(row, key) => String(row[key] ?? "")}
+      />,
+    );
+
+    expect(screen.getByTestId("daily-pagination-total")).toHaveTextContent("11");
+    expect(screen.getByTestId("daily-pagination")).toHaveClass("tt-overview-pagination");
+    expect(screen.getByText("2026-08-11")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "2" }));
+
+    expect(screen.getByText("2026-08-01")).toBeInTheDocument();
+    expect(screen.queryByText("2026-08-11")).not.toBeInTheDocument();
+  });
+
+  it("restores the accepted daily summary, date range and yesterday comparison column", () => {
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownColumns={[
+          { key: "day", label: "日期" },
+          { key: "total_tokens", label: "总计" },
+          { key: "input_tokens", label: "输入" },
+          { key: "output_tokens", label: "输出" },
+          { key: "cached_input_tokens", label: "缓存" },
+          { key: "reasoning_output_tokens", label: "推理" },
+          { key: "conversation_count", label: "对话数" },
+        ]}
+        dailyBreakdownRows={[
+          { day: "2026-08-07", total_tokens: 200, input_tokens: 10, output_tokens: 20, cached_input_tokens: 150, reasoning_output_tokens: 20, conversation_count: 2 },
+          { day: "2026-08-06", total_tokens: 100, input_tokens: 10, output_tokens: 10, cached_input_tokens: 70, reasoning_output_tokens: 10, conversation_count: 1 },
+        ]}
+        renderDetailCell={(row, key) => String(row[key] ?? "")}
+      />,
+    );
+
+    expect(screen.getByTestId("daily-summary-peak")).toHaveTextContent("200");
+    expect(screen.getByTestId("daily-summary-average")).toHaveTextContent("150");
+    expect(screen.getByTestId("daily-summary-active-days")).toHaveTextContent("2");
+    expect(screen.getByTestId("daily-date-range")).toHaveTextContent("2026-08-06");
+    expect(screen.getByTestId("daily-date-range")).toHaveTextContent("2026-08-07");
+    expect(screen.getByRole("columnheader", { name: "较昨日" })).toBeInTheDocument();
+    expect(screen.getByTestId("daily-change-2026-08-07")).toHaveTextContent("100.0%");
+  });
 });

@@ -370,7 +370,7 @@ export function UsageOverview({
   };
 
   return (
-    <div className={`tt-overview-usage flex h-full flex-col gap-4 ${className}`}>
+    <div className={`tt-overview-usage tt-overview-aligned-stack flex h-full flex-col gap-4 ${className}`}>
       <section
         data-testid="usage-overview-hero"
         className="tt-overview-usage-hero tt-surface rounded-[var(--tt-card-radius)]"
@@ -493,46 +493,47 @@ export function UsageOverview({
                 className="tt-overview-primary-total relative flex min-h-64 flex-1 flex-col items-center justify-start overflow-hidden px-4 py-2 text-center sm:min-h-72"
                 data-testid="usage-primary-total"
               >
-                <svg
-                  data-testid="usage-token-wave"
-                  className="tt-overview-token-wave"
-                  aria-hidden="true"
-                  viewBox="0 0 728 317"
-                  preserveAspectRatio="none"
-                >
-                  <defs>
-                    <linearGradient id="token-wave-mint" x1="0" x2="1">
-                      <stop offset="0" stopColor="var(--tt-token-wave-mint)" stopOpacity="0" />
-                      <stop offset="0.48" stopColor="var(--tt-token-wave-mint)" stopOpacity="0.13" />
-                      <stop offset="1" stopColor="var(--tt-token-wave-mint)" stopOpacity="0" />
-                    </linearGradient>
-                    <linearGradient id="token-wave-blue" x1="0" x2="1">
-                      <stop offset="0" stopColor="var(--tt-token-wave-blue)" stopOpacity="0" />
-                      <stop offset="0.58" stopColor="var(--tt-token-wave-blue)" stopOpacity="0.1" />
-                      <stop offset="1" stopColor="var(--tt-token-wave-blue)" stopOpacity="0" />
-                    </linearGradient>
-                    <filter id="token-wave-blur"><feGaussianBlur stdDeviation="4" /></filter>
-                  </defs>
-                  <g fill="none" filter="url(#token-wave-blur)" transform="translate(0 -27)">
-                    <path d="M-35 104 C118 86 190 196 348 202 C514 208 600 84 770 94" stroke="url(#token-wave-mint)" strokeWidth="12" />
-                    <path d="M-35 126 C126 106 194 224 356 225 C526 226 612 104 770 112" stroke="url(#token-wave-mint)" strokeWidth="6" />
-                    <path d="M-40 82 C126 72 202 177 362 187 C528 197 612 73 768 69" stroke="url(#token-wave-blue)" strokeWidth="12" />
-                    <path d="M-40 147 C132 130 214 246 372 238 C538 230 618 121 770 132" stroke="url(#token-wave-blue)" strokeWidth="6" />
-                  </g>
-                  <g fill="none" filter="url(#token-wave-blur)" transform="translate(0 -44)">
-                    <ellipse cx="364" cy="214" rx="139" ry="28" stroke="url(#token-wave-blue)" strokeWidth="6" />
-                    <ellipse cx="364" cy="215" rx="91" ry="17" stroke="url(#token-wave-mint)" strokeWidth="6" />
-                  </g>
-                  <ellipse cx="364" cy="171" rx="56" ry="9" fill="var(--tt-token-wave-highlight)" fillOpacity="0.72" />
-                </svg>
                 <div className="relative z-10 mb-4 text-[11px] font-medium uppercase tracking-[0.16em] text-oai-gray-500 dark:text-oai-gray-300">
                   {summaryLabel}
                 </div>
-                <div className="relative z-10 max-sm:text-6xl text-7xl font-bold leading-none tracking-[-0.06em] tabular-nums text-oai-black dark:text-oai-white xl:text-[100px]">
+                <div data-testid="usage-summary-value" className="relative z-10 max-sm:text-6xl text-7xl font-bold leading-none tracking-[-0.06em] tabular-nums text-oai-black dark:text-oai-white xl:text-[100px]">
                   {summaryValue}
                 </div>
+                <div className="tt-overview-token-wave-stage" data-testid="usage-token-wave-stage" aria-hidden="true">
+                  <svg
+                    data-testid="usage-token-wave"
+                    className="tt-overview-token-wave"
+                    viewBox="0 0 728 317"
+                    preserveAspectRatio="none"
+                  >
+                    <defs>
+                      <linearGradient id="token-wave-mint" x1="0" x2="1">
+                        <stop offset="0" stopColor="var(--tt-token-wave-mint)" stopOpacity="0" />
+                        <stop offset="0.48" stopColor="var(--tt-token-wave-mint)" stopOpacity="0.13" />
+                        <stop offset="1" stopColor="var(--tt-token-wave-mint)" stopOpacity="0" />
+                      </linearGradient>
+                      <linearGradient id="token-wave-blue" x1="0" x2="1">
+                        <stop offset="0" stopColor="var(--tt-token-wave-blue)" stopOpacity="0" />
+                        <stop offset="0.58" stopColor="var(--tt-token-wave-blue)" stopOpacity="0.1" />
+                        <stop offset="1" stopColor="var(--tt-token-wave-blue)" stopOpacity="0" />
+                      </linearGradient>
+                      <filter id="token-wave-blur"><feGaussianBlur stdDeviation="4" /></filter>
+                    </defs>
+                    <g fill="none" filter="url(#token-wave-blur)" transform="translate(0 -27)">
+                      <path d="M-35 104 C118 86 190 196 348 202 C514 208 600 84 770 94" stroke="url(#token-wave-mint)" strokeWidth="12" />
+                      <path d="M-35 126 C126 106 194 224 356 225 C526 226 612 104 770 112" stroke="url(#token-wave-mint)" strokeWidth="6" />
+                      <path d="M-40 82 C126 72 202 177 362 187 C528 197 612 73 768 69" stroke="url(#token-wave-blue)" strokeWidth="12" />
+                      <path d="M-40 147 C132 130 214 246 372 238 C538 230 618 121 770 132" stroke="url(#token-wave-blue)" strokeWidth="6" />
+                    </g>
+                    <g fill="none" filter="url(#token-wave-blur)" transform="translate(0 -44)">
+                      <ellipse cx="364" cy="214" rx="139" ry="28" stroke="url(#token-wave-blue)" strokeWidth="6" />
+                      <ellipse cx="364" cy="215" rx="91" ry="17" stroke="url(#token-wave-mint)" strokeWidth="6" />
+                    </g>
+                    <ellipse cx="364" cy="171" rx="56" ry="9" fill="var(--tt-token-wave-highlight)" fillOpacity="0.72" />
+                  </svg>
+                </div>
                 {overviewMetrics.length > 0 ? (
-                  <div className="relative z-10 mt-[66px] grid grid-cols-3 gap-8" data-testid="usage-overview-metrics">
+                  <div className="relative z-10 grid grid-cols-3 gap-8" data-testid="usage-overview-metrics">
                     {overviewMetrics.map((metric) => (
                       <div key={metric.key} className="tt-overview-mini-metric min-w-[106px] rounded-xl px-4 py-2.5">
                         <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{metric.label}</div>

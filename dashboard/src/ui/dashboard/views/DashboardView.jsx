@@ -303,7 +303,7 @@ export function DashboardView(props) {
           />
         )}
         {!showAuthGate && !showExpiredGate && !initialDashboardLoading && (!usageError || usageHasData) && (
-          <div className="space-y-4">
+          <div className="tt-overview-locked space-y-4">
             {usageError && usageHasData ? (
               <StaleUsageNotice
                 copy={copy}
@@ -416,7 +416,6 @@ export function DashboardView(props) {
                   />
                 </FadeIn>
 
-
                 {screenshotMode ? (
                   <div
                     className="mt-4 flex flex-col items-center gap-2"
@@ -439,28 +438,6 @@ export function DashboardView(props) {
                 ) : null}
               </div>
             </div>
-
-            {!screenshotMode ? (
-              <div
-                data-testid="dashboard-system-strip"
-                data-status={usageError ? "stale" : "healthy"}
-                className="tt-overview-system-strip"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="tt-overview-system-shield" aria-hidden>✓</span>
-                  <span className="font-medium text-oai-black dark:text-white">
-                    {usageError ? "数据更新异常" : "所有系统运行正常"}
-                  </span>
-                  <span className="truncate text-oai-gray-400">
-                    {usageError ? "当前显示最近一次成功同步的数据" : "背部所有实例、分析结果准确可靠"}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-6 text-oai-gray-500 dark:text-oai-gray-300">
-                  <span>{copy("dashboard.system.data_source_local")}</span>
-                  <span className="tt-overview-system-live-dot">时区：{trendTimeZoneLabel?.includes("Shanghai") ? "UTC+8" : trendTimeZoneLabel || "UTC+8"}</span>
-                </div>
-              </div>
-            ) : null}
 
             {!screenshotMode ? (
               <div

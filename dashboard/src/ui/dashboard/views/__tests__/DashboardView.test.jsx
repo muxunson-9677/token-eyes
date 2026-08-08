@@ -73,9 +73,11 @@ describe("DashboardView overview hierarchy", () => {
     const secondary = screen.getByTestId("dashboard-secondary-context");
     const details = screen.getByTestId("dashboard-detail-grid");
     expect(overviewGrid).toHaveClass("tt-reference-overview-grid");
+    expect(overviewGrid.parentElement).toHaveClass("tt-overview-locked");
     expect(primary).toBeVisible();
     expect(primary).not.toHaveClass("lg:col-span-7");
     expect(secondary).toBeVisible();
+    expect(secondary).not.toHaveClass("tt-overview-aligned-stack");
     expect(secondary).not.toHaveClass("lg:col-span-5");
     expect(within(primary).getByTestId("dashboard-usage-overview")).toBeVisible();
     expect(within(primary).getByTestId("dashboard-usage-overview")).toHaveClass("h-full");
@@ -189,6 +191,6 @@ describe("DashboardView overview hierarchy", () => {
     expect(screen.getByTestId("dashboard-usage-overview")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-secondary-context")).toBeVisible();
     expect(screen.getByTestId("dashboard-data-details")).toBeVisible();
-    expect(screen.getByTestId("dashboard-system-strip")).toHaveAttribute("data-status", "stale");
+    expect(screen.queryByTestId("dashboard-system-strip")).not.toBeInTheDocument();
   });
 });
