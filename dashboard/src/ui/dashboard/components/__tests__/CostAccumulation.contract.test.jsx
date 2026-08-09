@@ -13,7 +13,7 @@ import { CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
 //    wire-contract value `one_time` (underscore), not `one-time` (hyphen).
 //  - F6 (currency contract): the subscription form's currency select offers
 //    ONLY USD and CNY — EUR/GBP are removed.
-//  - MoM copy direction: increase/decrease both emerald; copy keys accurate.
+//  - MoM copy direction: cost increase orange, decrease emerald; copy keys accurate.
 
 vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
@@ -73,8 +73,8 @@ it("keeps estimated usage cost and actual subscription spend separate without a 
   expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveTextContent(
     "spend.monthly_change.increase:20.0%",
   );
-  expect(screen.getByTestId("monthly-cost-comparison-api")).not.toHaveTextContent("USD 20.00");
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-emerald-700");
+  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveTextContent("USD 20.00");
+  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-orange-600");
   expect(screen.getByTestId("monthly-cost-comparison-subscription")).toHaveClass("text-emerald-600");
   expect(screen.getByText("spend.cost.summary.scope_note")).toBeInTheDocument();
   expect(screen.getByTestId("cost-confidence-estimated")).toHaveAttribute(
@@ -85,6 +85,87 @@ it("keeps estimated usage cost and actual subscription spend separate without a 
     "data-confidence-state",
     "exact",
   );
+});
+
+it("starts the cost-page groups collapsed when requested and expands their full content without clipping", () => {
+  render(
+    <CostAccumulation
+      sectionsInitiallyOpen={false}
+      costSummary={{ ...BASE_SUMMARY }}
+      tokenPackages={[{
+        id: "plan-1",
+        name: "Codex Pro",
+        provider: "OpenAI",
+        quota: "5.00M",
+        used: "1.79M",
+        remaining: "3.21M",
+        syncStatus: "synced",
+        syncStatusLabel: "Synced",
+      }]}
+    />,
+  );
+
+  const section = document.querySelector('[data-cost-section="token-packages"]');
+  const toggle = within(section).getByRole("button");
+
+  expect(section).toHaveAttribute("data-open", "false");
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(section).getByTestId("cost-row-metrics")).toHaveAttribute("data-align", "right");
+  expect(within(section).queryByText("Codex Pro")).not.toBeInTheDocument();
+
+  fireEvent.click(toggle);
+
+  expect(section).toHaveAttribute("data-open", "true");
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(within(section).getByText("Codex Pro")).toBeVisible();
+});
+
+it("uses the reference-style expanded layouts for custom groups, token packages, and provider accounts", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      otherAiGroupCosts={[{
+        group_id: "api",
+        group_name: "API",
+        record_count: 4,
+        month_usd: 119.44,
+        month_cny: 860,
+        year_usd: 300,
+        year_cny: 2160,
+        lifetime_usd: 600,
+        lifetime_cny: 4320,
+      }]}
+      tokenPackages={[{
+        id: "plan-1",
+        name: "Codex Pro",
+        provider: "Codex",
+        quota: "5.00M",
+        used: "1.79M",
+        remaining: "3.21M",
+        syncStatus: "synced",
+        syncStatusLabel: "Synced",
+      }]}
+      providerApiBalances={[{
+        configId: "provider-1",
+        providerId: "deepseek",
+        accountLabel: "DeepSeek",
+        status: "synced",
+        balance: 91.57,
+        monthSpend: 0,
+        lifetimeSpend: 0,
+        currency: "CNY",
+        lastSyncedAt: "2026-08-05T09:06:45.000Z",
+      }]}
+      onRefreshAllProviderApis={() => {}}
+      onRefreshOneProviderApi={() => {}}
+      onRefreshTokenPackages={() => {}}
+    />,
+  );
+
+  expect(screen.getByTestId("compact-cost-group-grid")).toHaveAttribute("data-layout", "reference-cost-group-grid");
+  expect(screen.getByTestId("compact-cost-group-api")).toHaveAttribute("data-layout", "reference-cost-group");
+  expect(screen.getByTestId("token-package-table")).toBeInTheDocument();
+  expect(screen.getByTestId("provider-api-expanded-list")).toBeInTheDocument();
 });
 
 it("marks retained cost totals stale after a financial refresh failure", () => {
@@ -240,11 +321,11 @@ it("lets the user browse historical cost months without advancing into the futur
 describe("getMonthComparison MoM copy boundary", () => {
   const usdToCny = 7.2;
 
-  it("labels an increase with the confirmed increase copy key and green class", () => {
+  it("labels an increase with the confirmed increase copy key and orange class", () => {
     const result = getMonthComparison(150, 100, usdToCny);
     expect(result.label).toContain("spend.monthly_change.increase");
     expect(result.label).toContain("50.0%");
-    expect(result.className).toContain("text-emerald-700");
+    expect(result.className).toContain("text-orange-600");
     expect(result.absoluteUsd).toBe(50);
   });
 
@@ -266,7 +347,7 @@ describe("getMonthComparison MoM copy boundary", () => {
     expect(result.label).toContain("spend.monthly_change.new_amount");
     expect(result.label).not.toContain("100.0%");
     expect(result.label).not.toMatch(/Infinity|∞|NaN/);
-    expect(result.className).toContain("text-emerald-700");
+    expect(result.className).toContain("text-orange-600");
     expect(result.kind).toBe("new");
   });
 
@@ -452,7 +533,7 @@ it("uses compact CNY and the confirmed percentage-only comparison in the monthly
   const comparison = screen.getByTestId("monthly-cost-comparison-api");
   expect(comparison.querySelector("svg")).toBeNull();
   expect(comparison).toHaveTextContent("spend.monthly_change.increase:13448.6%");
-  expect(comparison).not.toHaveTextContent("USD 13,448.56");
+  expect(comparison).toHaveTextContent("USD 13,448.56");
 });
 
 // --------------------------------------------------------------------------
@@ -528,8 +609,9 @@ it("OTHER-AI: renders each custom group's month, year, and lifetime costs", () =
   expect(within(section).getByText("USD 60.00")).toBeInTheDocument();
   const grid = within(section).getByTestId("compact-cost-group-grid");
   expect(grid).toBeInTheDocument();
-  expect(grid.className).toMatch(/minmax\(300px/);
-  expect(within(section).getByTestId("compact-cost-group-learning")).toHaveAttribute("data-density", "compact");
+  expect(grid).toHaveAttribute("data-layout", "reference-cost-group-grid");
+  expect(grid).toHaveClass("tt-cost-group-grid");
+  expect(within(section).getByTestId("compact-cost-group-learning")).toHaveAttribute("data-density", "reference");
 });
 
 it("OTHER-AI: long group name and six distinct month/year/lifetime amounts remain readable", () => {
@@ -580,7 +662,7 @@ it("OTHER-AI: long group name and six distinct month/year/lifetime amounts remai
   expect(title).not.toHaveClass("overflow-hidden");
   expect(title).toHaveClass("text-sm");
   for (const amountContainerNode of within(section).getAllByTestId("compact-cost-group-amount")) {
-    expect(amountContainerNode).toHaveClass("text-xs");
+    expect(amountContainerNode).toHaveClass("text-base");
     expect(amountContainerNode).not.toHaveClass("truncate");
   }
 });
