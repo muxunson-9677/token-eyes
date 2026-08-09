@@ -141,6 +141,21 @@ describe("DesktopWidgetPage", () => {
     };
   });
 
+  it("constrains the browser-only preview to the native widget frame", () => {
+    window.history.pushState({}, "", "/desktop-widget?preview=1");
+    const { unmount } = render(<DesktopWidgetPage />);
+
+    try {
+      expect(document.querySelector(".desktop-widget-root"))
+        .toHaveClass("desktop-widget-root--browser-preview");
+      expect(widgetStyles).toContain(".desktop-widget-browser-preview #root");
+      expect(widgetStyles).toContain(".desktop-widget-root.desktop-widget-root--browser-preview");
+    } finally {
+      unmount();
+      window.history.pushState({}, "", "/desktop-widget");
+    }
+  });
+
   it("keeps one card, separates expand and agent controls, and portals the agent menu", async () => {
     const user = userEvent.setup();
     render(<DesktopWidgetPage />);
@@ -219,6 +234,41 @@ describe("DesktopWidgetPage", () => {
     expect(lights[2]).toHaveAttribute("data-active", "false");
     expect(widgetStyles).toContain(".widget-traffic-light--red { color:");
     expect(widgetStyles).toContain(".widget-traffic-light--yellow { color:");
+  });
+
+  it("uses Chinese compact units and separates the expanded content layer", async () => {
+    const user = userEvent.setup();
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, mode: "models" },
+      viewModel: {
+        ...viewModel,
+        totals: { ...viewModel.totals, costUsd: 12_345.6 },
+      },
+    };
+    render(<DesktopWidgetPage />);
+
+    expect(screen.getByTestId("widget-model-summary")).toHaveTextContent("1.2万");
+    expect(screen.getByTestId("widget-model-summary")).toHaveTextContent("$1.2万");
+    await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
+    expect(within(screen.getByRole("menu")).getByRole("menuitemradio", { name: "Codex" }))
+      .toHaveAttribute("aria-checked", "true");
+    expect(widgetStyles).toContain('.widget-menu button[aria-checked="true"]');
+    expect(widgetStyles).toContain("inset: 66px 5px 5px;");
+  });
+
+  it("uses a scoped layered-glass treatment for the floating widget without changing its structure", () => {
+    expect(widgetStyles).toContain(".desktop-widget-card::before");
+    expect(widgetStyles).toContain(".desktop-widget-card::after");
+    expect(widgetStyles).toContain("radial-gradient(circle at 12% 0%");
+    expect(widgetStyles).toContain("inset 0 0 0 1px rgba(130, 195, 255, 0.18)");
+    expect(widgetStyles).toContain(".widget-agent-control::before");
+    expect(widgetStyles).toContain(".widget-mode-rail .pill-nav__item::before");
+  });
+
+  it("keeps model usage as a divided list inside the expanded content layer", () => {
+    expect(widgetStyles).toContain(".widget-model-row {\n  padding: 7px 0;");
+    expect(widgetStyles).toContain(".widget-model-row + .widget-model-row {");
   });
 
   it("drags from the data surface but not from controls", async () => {
@@ -402,7 +452,7 @@ describe("DesktopWidgetPage", () => {
     };
     rerender(<DesktopWidgetPage />);
     const capsule = screen.getByTestId("widget-model-summary");
-    expect(capsule).toHaveTextContent("12,345");
+    expect(capsule).toHaveTextContent("1.2万");
     expect(capsule).toHaveTextContent("$1.25");
     expect(capsule).not.toHaveTextContent("gpt-5-codex");
   });
@@ -416,7 +466,7 @@ describe("DesktopWidgetPage", () => {
 
     const capsule = screen.getByTestId("widget-model-summary");
     expect(capsule).toHaveTextContent("copy:widget.models.tokens");
-    expect(capsule).toHaveTextContent("12,345");
+    expect(capsule).toHaveTextContent("1.2万");
     expect(capsule).toHaveTextContent("copy:widget.models.cost");
     expect(capsule).toHaveTextContent("$1.25");
 
