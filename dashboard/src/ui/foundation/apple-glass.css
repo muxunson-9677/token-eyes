@@ -41,10 +41,11 @@
 .tt-reference-route-dashboard {
   --tt-window-bar-height: 62px;
   --tt-sidebar-width: 252px;
+  --tt-card-radius: 18px;
   --tt-surface-outline: rgba(31, 43, 56, 0.1);
-  --tt-surface-shadow: inset 1px 1px 0 rgba(255,255,255,.98), 0 2px 4px rgba(31, 43, 56, 0.06), 0 16px 32px rgba(31, 43, 56, 0.12);
+  --tt-surface-shadow: inset 1px 1px 0 rgba(255,255,255,.99), inset -1px -1px 0 rgba(205,213,221,.22), 0 3px 7px rgba(31, 43, 56, 0.09), 0 18px 38px rgba(31, 43, 56, 0.14);
   --tt-nested-outline: rgba(31, 43, 56, 0.09);
-  --tt-nested-shadow: inset 1px 1px 0 rgba(255,255,255,.98), 0 2px 4px rgba(31, 43, 56, 0.05), 0 10px 22px rgba(31, 43, 56, 0.1);
+  --tt-nested-shadow: inset 1px 1px 0 rgba(255,255,255,.99), inset -1px -1px 0 rgba(205,213,221,.2), 0 3px 6px rgba(31, 43, 56, 0.08), 0 12px 26px rgba(31, 43, 56, 0.11);
 }
 
 .tt-agent-switcher-text,
@@ -3386,7 +3387,7 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -3436,22 +3437,12 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   border-radius: var(--tt-card-radius);
 }
 
-.tt-reference-route-dashboard .tt-overview-model-ranking::after {
-  position: absolute;
-  top: 70px;
-  right: 13px;
-  width: 8px;
-  height: 62px;
-  border-radius: 999px;
-  background: #cbd1d8;
-  content: "";
-  pointer-events: none;
-}
-
 .tt-reference-route-dashboard .tt-overview-model-ranking [data-testid="overview-model-list"] {
-  max-height: 296px;
-  padding-bottom: 0;
-  overflow-y: scroll;
+  max-height: none;
+  padding-right: 5px;
+  padding-bottom: 12px;
+  padding-left: 5px;
+  overflow-y: auto;
   scrollbar-color: #cbd1d8 transparent;
   scrollbar-width: thin;
 }
@@ -3478,14 +3469,16 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
 }
 
 .tt-reference-route-dashboard .tt-overview-model-ranking > header {
-  padding-right: 28px;
+  padding-right: 16px;
   padding-top: 11px;
   padding-bottom: 7px;
+  padding-left: 16px;
 }
 
 .tt-reference-route-dashboard [data-testid="overview-model-row"] {
   width: 100%;
   min-height: 56px;
+  border-radius: 14px;
   transform: none;
   gap: clamp(7px, 1vw, 14px);
   padding: 7px 8px;
@@ -3649,28 +3642,32 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
 
 .tt-reference-route-dashboard [data-testid="usage-summary-details"] {
   min-height: 70px;
-  margin-right: 8px;
-  margin-left: 8px;
-  border: 1px solid rgba(31, 43, 56, 0.07);
-  border-radius: 10px;
-  grid-template-columns: 261px minmax(0, 1fr);
-  transform: translateY(2px);
+  flex: 1 1 auto;
+  align-items: center;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid rgba(31, 43, 56, 0.07);
+  border-radius: 0 0 var(--tt-card-radius) var(--tt-card-radius);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  transform: none;
 }
 
 .tt-reference-route-dashboard [data-testid="usage-cost-summary-heading"] > button {
-  margin-left: 90px;
+  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
-.tt-reference-route-dashboard .tt-overview-hero-footer-well {
-  position: absolute;
-  right: 8px;
-  bottom: 10px;
-  left: 8px;
-  height: 28px;
-  border: 1px solid rgba(31, 43, 56, 0.06);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.34);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+.tt-reference-route-dashboard [data-testid="usage-cost-summary-heading"] {
+  gap: 4px;
+  font-size: 11px;
+}
+
+.tt-reference-route-dashboard [data-testid="usage-summary-details"] > div > div:first-child {
+  font-size: 11px;
+}
+
+.tt-reference-route-dashboard [data-testid="usage-summary-details"] > div > div:last-child {
+  font-size: 11px;
 }
 
 .tt-reference-route-dashboard .tt-overview-mini-metric {
@@ -3736,8 +3733,9 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
-  height: 169px;
-  padding: 18px 8px 12px;
+  height: 151px;
+  border-radius: 16px;
+  padding: 15px 8px 12px;
 }
 
 .tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card > .text-lg {
@@ -5434,10 +5432,41 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 
 /* Approved overview composition: keep the narrow context rail, wide working
    canvas, and the accepted Token hero proportions isolated to this route. */
-@media (min-width: 900px) {
+@media (min-width: 1500px) {
   .tt-reference-route-dashboard .tt-overview-locked .tt-reference-overview-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
     align-items: start;
+  }
+}
+
+@media (min-width: 1081px) and (max-width: 1499px) {
+  .tt-reference-route-dashboard .tt-overview-locked .tt-reference-overview-grid {
+    grid-template-columns: minmax(400px, .95fr) minmax(0, 1.2fr);
+    align-items: start;
+  }
+
+  .tt-reference-route-dashboard [data-testid="dashboard-detail-grid"] {
+    grid-template-columns: minmax(400px, .95fr) minmax(0, 1.2fr);
+  }
+
+  .tt-reference-route-dashboard [data-testid="dashboard-detail-grid"] > div {
+    grid-column: auto;
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1080px) {
+  .tt-reference-route-dashboard .tt-overview-locked .tt-reference-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tt-reference-route-dashboard [data-testid="dashboard-detail-grid"] {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tt-reference-route-dashboard [data-testid="dashboard-detail-grid"] > div {
+    grid-column: auto;
+    min-height: 32rem;
   }
 }
 
@@ -5501,19 +5530,97 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero {
   height: 620px;
   flex: none;
+  background: linear-gradient(180deg, #fff 0%, #fff 58%, #fbfdff 100%);
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div {
+  padding-bottom: 0;
 }
 
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero [data-testid="usage-overview-summary-card"] {
-  height: 520px;
-  flex: none;
+  height: auto;
+  flex: 1 1 0;
   margin-bottom: 0;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child {
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero [role="tablist"] {
+  gap: 2px;
+  padding: 0;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero [role="tab"] {
+  min-height: 32px;
+  padding: 0 5px;
+  font-size: 11px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child {
+  gap: 4px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child button,
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child select {
+  height: 32px;
+  min-height: 32px;
+  padding-right: 6px;
+  padding-left: 6px;
+  font-size: 11px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child > button:last-of-type {
+  width: 32px;
+  padding: 0;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child > span {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+@media (min-width: 1500px) {
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero [role="tab"] {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child button,
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child select {
+    height: 40px;
+    min-height: 40px;
+    padding-right: 10px;
+    padding-left: 10px;
+    font-size: 12px;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child > button:last-of-type {
+    width: 40px;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child > span {
+    font-size: 12px;
+  }
+
+  .tt-reference-route-dashboard [data-testid="usage-summary-details"] > div > div:first-child {
+    font-size: 13px;
+  }
+
+  .tt-reference-route-dashboard [data-testid="usage-summary-details"] > div > div:last-child {
+    font-size: 12px;
+  }
 }
 
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-primary-total {
   height: 448px;
   min-height: 448px;
   flex: none;
-  padding-top: 120px;
+  padding-top: 60px;
 }
 
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-primary-total > div:nth-of-type(1),
@@ -5522,40 +5629,65 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 }
 
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-primary-total > div:nth-of-type(2) {
-  font-size: 104px;
+  font-size: clamp(76px, 7vw, 92px);
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-primary-total > div:nth-of-type(1) {
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-primary-total > [data-testid="usage-summary-value"] {
+  letter-spacing: 0;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-primary-total > [data-testid="usage-summary-value"] .tt-overview-total-number {
+  letter-spacing: -0.055em;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-primary-total > [data-testid="usage-summary-value"] .tt-overview-total-unit {
+  margin-left: 0.035em;
+  font-size: 0.92em;
+  letter-spacing: -0.01em;
 }
 
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-token-wave-stage {
   position: absolute;
   z-index: 0;
-  top: 238px;
+  top: 75px;
   right: 0;
   left: 0;
   width: 100%;
-  height: 150px;
+  height: 230px;
   margin: 0;
+  opacity: 0.94;
+  filter: saturate(1.15);
 }
 
 .tt-reference-route-dashboard .tt-overview-locked [data-testid="usage-overview-metrics"] {
-  margin-top: 80px;
-  column-gap: 52px;
+  margin-top: 115px;
+  column-gap: 35px;
   transform: none;
 }
 
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-mini-metric {
-  width: 142px;
+  width: min(94px, 100%);
   min-width: 0;
   justify-self: center;
   border-color: rgba(31, 43, 56, 0.09);
   border-radius: 14px;
-  padding: 9px 12px;
+  padding: 7px 10px;
   background: rgba(255, 255, 255, 0.84);
   box-shadow: 0 8px 22px rgba(31, 43, 56, 0.075), inset 0 1px 0 rgba(255,255,255,.98);
 }
 
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-mini-metric > div:last-child {
   margin-top: 2px;
-  font-size: 20px;
+  font-size: 18px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel {
+  height: 257px;
 }
 
 /* Model distribution and daily detail cards share one baseline and one depth
@@ -5665,19 +5797,16 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 }
 
 .tt-reference-route-dashboard [data-testid="overview-model-row"] .break-words {
-  overflow: hidden;
   font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .tt-reference-route-dashboard [data-model-rank-row="true"] .break-words {
   display: block;
-  overflow: hidden;
   min-width: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  word-break: normal;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* Keep the approved two-column dashboard composition usable at desktop
@@ -5709,34 +5838,47 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   }
 
   .tt-reference-route-dashboard [data-testid="model-usage-layout"] {
-    grid-template-columns: 94px minmax(0, 1fr);
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 174px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .tt-reference-route-dashboard [data-testid="model-usage-visuals"] {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
   }
 
   .tt-reference-route-dashboard [data-testid="model-usage-visuals"] > div:first-child {
-    width: 94px;
-    height: 94px;
+    width: 104px;
+    height: 104px;
+  }
+
+  .tt-reference-route-dashboard [data-testid="model-usage-visuals"] > div:nth-child(2) {
+    margin-top: 0;
+    border-top: 0;
+    border-left: 1px solid var(--tt-nested-outline);
+    padding-top: 0;
+    padding-left: 12px;
   }
 
   .tt-reference-route-dashboard [data-testid="model-radar-panel"] {
-    min-height: 128px;
+    min-height: 104px;
+    max-height: 112px;
+    margin-top: 4px;
   }
 
   .tt-reference-route-dashboard [data-testid="model-radar-panel"] > svg {
-    min-height: 128px;
+    width: auto;
+    height: 104px;
+    min-height: 104px;
   }
 
   .tt-reference-route-dashboard [data-testid="model-usage-table-head"],
   .tt-reference-route-dashboard [data-model-rank-row="true"] {
-    grid-template-columns: 22px minmax(0, 1fr) 44px 30px;
-    column-gap: 3px;
-  }
-
-  .tt-reference-route-dashboard [data-testid="model-usage-table-head"] > span,
-  .tt-reference-route-dashboard [data-model-rank-row="true"] > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    grid-template-columns: 26px minmax(0, 1fr) 82px 42px;
+    column-gap: 6px;
   }
 
   .tt-reference-route-dashboard [data-model-rank-row="true"] > span:nth-child(3) {
@@ -5744,9 +5886,9 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   }
 
   .tt-reference-route-dashboard [data-model-rank-row="true"] > span:first-child {
-    width: 22px;
-    min-width: 22px;
-    height: 22px;
+    width: 26px;
+    min-width: 26px;
+    height: 24px;
   }
 
   .tt-reference-route-dashboard [data-model-rank-row="true"] > span:nth-child(2) {
@@ -5758,7 +5900,4 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
     height: 6px;
   }
 
-  .tt-reference-route-dashboard [data-model-rank-row="true"] > span:nth-child(3) > span:last-child {
-    display: none;
-  }
 }

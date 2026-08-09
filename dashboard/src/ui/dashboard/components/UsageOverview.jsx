@@ -252,6 +252,13 @@ function CompactEvidenceCell({
   );
 }
 
+function splitSummaryValue(value) {
+  const text = String(value ?? "");
+  const match = text.match(/^(.+?)([^\d\s.,+-]+)$/u);
+  if (!match) return { number: text, unit: "" };
+  return { number: match[1].trimEnd(), unit: match[2] };
+}
+
 export function UsageOverview({
   period,
   periods,
@@ -300,6 +307,7 @@ export function UsageOverview({
   // 自带的 billingMode 元数据并基于本组件 state 重新计算。
   const [billingFilter, setBillingFilter] = useState("all");
   const { currency, rate } = useCurrency();
+  const summaryValueParts = splitSummaryValue(summaryValue);
 
   // FleetData is already grouped by provider. The filter recomputes per-source
   // usage/cost/share against the filtered grand total so the rendered numbers
@@ -496,25 +504,32 @@ export function UsageOverview({
                 <div className="relative z-10 mb-4 text-[11px] font-medium uppercase tracking-[0.16em] text-oai-gray-500 dark:text-oai-gray-300">
                   {summaryLabel}
                 </div>
-                <div data-testid="usage-summary-value" className="relative z-10 max-sm:text-6xl text-7xl font-bold leading-none tracking-[-0.06em] tabular-nums text-oai-black dark:text-oai-white xl:text-[100px]">
-                  {summaryValue}
+                <div
+                  aria-label={String(summaryValue)}
+                  data-testid="usage-summary-value"
+                  className="relative z-10 inline-flex items-baseline justify-center max-sm:text-6xl text-7xl font-bold leading-none tabular-nums text-oai-black dark:text-oai-white xl:text-[100px]"
+                >
+                  <span className="tt-overview-total-number" data-testid="usage-summary-number">{summaryValueParts.number}</span>
+                  {summaryValueParts.unit ? (
+                    <span className="tt-overview-total-unit" data-testid="usage-summary-unit">{summaryValueParts.unit}</span>
+                  ) : null}
                 </div>
                 <div className="tt-overview-token-wave-stage" data-testid="usage-token-wave-stage" aria-hidden="true">
                   <svg
                     data-testid="usage-token-wave"
                     className="tt-overview-token-wave"
-                    viewBox="0 0 728 317"
+                    viewBox="0 0 728 260"
                     preserveAspectRatio="none"
                   >
                     <defs>
                       <linearGradient id="token-wave-mint" x1="0" x2="1">
                         <stop offset="0" stopColor="var(--tt-token-wave-mint)" stopOpacity="0" />
-                        <stop offset="0.48" stopColor="var(--tt-token-wave-mint)" stopOpacity="0.13" />
+                        <stop offset="0.48" stopColor="var(--tt-token-wave-mint)" stopOpacity="0.22" />
                         <stop offset="1" stopColor="var(--tt-token-wave-mint)" stopOpacity="0" />
                       </linearGradient>
                       <linearGradient id="token-wave-blue" x1="0" x2="1">
                         <stop offset="0" stopColor="var(--tt-token-wave-blue)" stopOpacity="0" />
-                        <stop offset="0.58" stopColor="var(--tt-token-wave-blue)" stopOpacity="0.1" />
+                        <stop offset="0.58" stopColor="var(--tt-token-wave-blue)" stopOpacity="0.18" />
                         <stop offset="1" stopColor="var(--tt-token-wave-blue)" stopOpacity="0" />
                       </linearGradient>
                       <filter id="token-wave-blur"><feGaussianBlur stdDeviation="4" /></filter>
@@ -571,8 +586,6 @@ export function UsageOverview({
             </div>
           </section>
         ) : null}
-
-        <div className="tt-overview-hero-footer-well" data-testid="usage-hero-footer-well" aria-hidden />
 
         </div>
       </section>

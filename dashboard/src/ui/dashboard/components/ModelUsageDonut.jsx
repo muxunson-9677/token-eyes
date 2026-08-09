@@ -33,7 +33,6 @@ function hasPositiveUsage(row) {
 
 export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) {
   const locale = getCopyLocale();
-  const [showAllModels, setShowAllModels] = React.useState(false);
   const safeRows = Array.isArray(rows)
     ? rows.filter(hasPositiveUsage)
     : [];
@@ -321,13 +320,13 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
           </div>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-col" data-testid="model-usage-table">
           <div data-testid="model-usage-table-head" className="grid grid-cols-[30px_minmax(0,1fr)_minmax(72px,.8fr)_42px] gap-2 border-b border-oai-gray-100 px-1 pb-2 text-[9px] text-oai-gray-400 dark:border-oai-gray-800">
-            <span>{copy("dashboard.model_distribution.table_rank")}</span><span>{copy("dashboard.model_distribution.table_model")}</span><span>{copy("dashboard.model_distribution.table_tokens")}</span><span className="text-right">{copy("dashboard.model_distribution.table_share")}</span>
+            <span>{copy("dashboard.model_distribution.table_rank")}</span><span>{copy("dashboard.model_distribution.table_model")}</span><span className="text-right">{copy("dashboard.model_distribution.table_tokens")}</span><span className="text-right">{copy("dashboard.model_distribution.table_share")}</span>
           </div>
           <ol
             data-testid="model-usage-legend"
-            className={`m-0 grid min-h-0 min-w-0 auto-rows-min list-none divide-y divide-oai-gray-100 p-0 pr-1 oai-scrollbar dark:divide-oai-gray-800 ${showAllModels ? "h-auto flex-none overflow-visible" : "h-full flex-1 overflow-y-auto"}`}
+            className="m-0 grid h-full min-h-0 min-w-0 flex-1 auto-rows-min list-none divide-y divide-oai-gray-100 overflow-y-auto p-0 pr-1 oai-scrollbar dark:divide-oai-gray-800"
           >
             {safeRows.map(function renderLegendItem(row, index) {
               const percent = clampPercent(row.percent);
@@ -344,20 +343,14 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
                     <span className={`h-2 w-2 shrink-0 rounded-full ${SERIES_STYLES[index % SERIES_STYLES.length].dot}`} aria-hidden />
                     <span className="min-w-0 break-words font-medium leading-4 text-oai-gray-700 dark:text-oai-gray-200">{row.name}</span>
                   </span>
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="shrink-0 tabular-nums text-oai-gray-400 dark:text-oai-gray-500">{formatTokenCount(row.tokens, { locale })}</span>
-                    <span className="h-1.5 min-w-5 flex-1 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
-                      <span role="progressbar" aria-label={`${row.name} ${percent}%`} aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100" className={`block h-full rounded-full ${SERIES_STYLES[index % SERIES_STYLES.length].dot}`} style={{ width: `${percent}%` }} />
-                    </span>
+                  <span className="min-w-0 whitespace-nowrap text-right tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
+                    {formatTokenCount(row.tokens, { locale })}
                   </span>
                   <span className="shrink-0 text-right font-semibold tabular-nums text-oai-gray-700 dark:text-oai-gray-200">{percent.toLocaleString(locale, { maximumFractionDigits: 1 })}%</span>
                 </li>
               );
             })}
           </ol>
-          <button type="button" aria-expanded={showAllModels} onClick={() => setShowAllModels((value) => !value)} className="mt-2 min-h-8 rounded-lg border border-oai-gray-100 bg-white/75 text-[10px] text-oai-gray-500 shadow-sm transition-colors hover:text-oai-black dark:border-oai-gray-800 dark:bg-oai-gray-900/70 dark:text-oai-gray-400">
-            {showAllModels ? copy("dashboard.model_distribution.collapse") : copy("dashboard.model_distribution.view_all", { count: safeRows.length })} <span aria-hidden>{showAllModels ? "⌃" : "›"}</span>
-          </button>
         </div>
       </div>
     </Card>

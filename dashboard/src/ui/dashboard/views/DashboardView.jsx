@@ -257,7 +257,7 @@ export function DashboardView(props) {
         hideHeader={screenshotMode}
         header={header}
         footer={!screenshotMode ? footer : null}
-        className={screenshotMode ? "screenshot-mode" : ""}
+        className={cn("tt-reference-route-dashboard", screenshotMode && "screenshot-mode")}
       >
         {showAuthGate && (
           <FullPageGateLayout

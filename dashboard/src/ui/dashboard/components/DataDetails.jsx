@@ -159,7 +159,7 @@ export function DataDetails({
           </button>
         </div>
         {activeTab === "daily" && Math.sign(visibleDailyRows.length) === 1 ? (
-          <div className="tt-overview-daily-summary flex min-w-0 items-stretch">
+          <div className="tt-overview-daily-summary ml-auto flex min-w-0 items-stretch">
             <div data-testid="daily-summary-peak"><span>{copy("dashboard.daily.summary_peak")}</span><strong>{formatTokenCount(dailyPeak, { locale })}</strong></div>
             <div data-testid="daily-summary-average"><span>{copy("dashboard.daily.summary_average")}</span><strong>{formatTokenCount(dailyAverage, { locale })}</strong></div>
             <div data-testid="daily-summary-active-days"><span>{copy("dashboard.daily.summary_active_days")}</span><strong>{copy("dashboard.daily.active_days_value", { count: visibleDailyRows.length })}</strong></div>

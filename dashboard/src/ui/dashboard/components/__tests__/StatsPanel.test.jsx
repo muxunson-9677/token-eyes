@@ -58,8 +58,10 @@ it("uses the measured model collection instead of a fixed three-model summary", 
   }));
   const { container } = renderPanel({ overviewModels: models, topModels: [] });
 
-  expect(container.firstChild).toHaveClass("tt-surface-nested");
+  expect(container.firstChild).not.toHaveClass("tt-surface-nested");
   expect(container.firstChild).not.toHaveClass("tt-surface");
+  expect(screen.getAllByTestId("overview-stat-card")[0]).toHaveClass("tt-surface-nested");
+  expect(screen.getByTestId("overview-model-ranking")).toHaveClass("tt-surface-nested");
   for (const model of models) {
     expect(screen.getByText(model.name)).toBeInTheDocument();
   }
@@ -135,5 +137,26 @@ it("uses the reference overview composition: four standalone metrics above a tit
   expect(screen.getAllByTestId("overview-stat-icon")[0].querySelector(".lucide-database")).not.toBeNull();
   expect(screen.getByTestId("overview-model-ranking")).toContainElement(
     screen.getByTestId("overview-model-list"),
+  );
+});
+
+it("uses one real scrolling model list that can consume the ranking card height", () => {
+  renderPanel({
+    overviewModels: Array.from({ length: 12 }, (_, index) => ({
+      id: `model-${index}`,
+      name: `Measured model ${index}`,
+      tokens: 1000 - index,
+      percent: 20 - index,
+    })),
+  });
+
+  expect(screen.getByTestId("overview-model-ranking")).toHaveClass(
+    "flex",
+    "flex-col",
+  );
+  expect(screen.getByTestId("overview-model-list")).toHaveClass(
+    "min-h-0",
+    "flex-1",
+    "overflow-y-auto",
   );
 });

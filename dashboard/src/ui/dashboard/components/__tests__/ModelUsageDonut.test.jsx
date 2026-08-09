@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ModelUsageDonut } from "../ModelUsageDonut.jsx";
@@ -71,13 +71,10 @@ describe("ModelUsageDonut", () => {
     expect(screen.getByTestId("model-usage-summary-top1")).toHaveTextContent("75%");
     expect(screen.getByTestId("model-usage-summary-top3")).toHaveTextContent("100%");
     expect(screen.getByTestId("model-usage-table-head")).toHaveTextContent("Token");
-    expect(screen.getAllByRole("progressbar")).toHaveLength(2);
-    const viewAllButton = screen.getByRole("button", { name: /2.*模型/ });
-    expect(viewAllButton).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(viewAllButton);
-    expect(viewAllButton).toHaveAttribute("aria-expanded", "true");
-    expect(legend).toHaveClass("h-auto", "overflow-visible");
-    expect(screen.getByRole("button", { name: "收起模型列表" })).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /2.*模型/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "收起模型列表" })).not.toBeInTheDocument();
+    expect(legend).toHaveClass("h-full", "overflow-y-auto");
     expect(screen.getAllByTestId("model-radar-grid-ring")).toHaveLength(4);
     expect(screen.getByTestId("model-radar-frame")).toBeInTheDocument();
     expect(screen.getByTestId("model-radar-value")).toHaveAttribute("fill", "url(#model-radar-fill)");
@@ -106,6 +103,7 @@ describe("ModelUsageDonut", () => {
       expect(screen.getByText(row.name)).toBeInTheDocument();
     }
     const legend = container.querySelector('[data-testid="model-usage-legend"]');
+    expect(screen.getByTestId("model-usage-table")).toContainElement(legend);
     expect(legend).toHaveClass("h-full", "min-h-0", "overflow-y-auto");
     expect(legend).not.toHaveClass("sm:max-h-none");
     expect(legend.textContent).not.toContain("Other");

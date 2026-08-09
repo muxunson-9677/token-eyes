@@ -379,6 +379,7 @@ describe("UsageOverview", () => {
 
     expect(summary).toContainElement(screen.getByTestId("usage-primary-total"));
     expect(screen.getByTestId("usage-primary-total")).toContainElement(screen.getByTestId("usage-token-wave"));
+    expect(screen.getByTestId("usage-token-wave")).toHaveAttribute("viewBox", "0 0 728 260");
     expect(summary).toHaveClass("flex", "flex-1", "flex-col");
     expect(screen.getByTestId("usage-primary-total")).toHaveClass("flex-1");
     expect(summary.closest(".tt-surface").firstElementChild).toHaveClass(
@@ -432,6 +433,25 @@ describe("UsageOverview", () => {
     expect(screen.getByTestId("usage-overview-hero")).not.toBe(
       screen.getByTestId("usage-overview-providers"),
     );
-    expect(screen.getByTestId("usage-hero-footer-well")).toBeInTheDocument();
+    expect(screen.queryByTestId("usage-hero-footer-well")).not.toBeInTheDocument();
+  });
+
+  it("separates the Token total number and unit for reference typography", () => {
+    render(
+      <UsageOverview
+        period="total"
+        periods={[{ key: "total", label: "总计" }]}
+        summaryLabel="TOKEN 总数"
+        summaryValue="124亿"
+        summaryCostValue="USD 3,867.29 / CNY 27,844.47"
+        fleetData={[]}
+        tokenConfidence={{ state: "exact", states: ["exact"], sourceLabel: "本地用量日志" }}
+        costConfidence={{ state: "estimated", states: ["estimated"] }}
+      />,
+    );
+
+    expect(screen.getByTestId("usage-summary-value")).toHaveAttribute("aria-label", "124亿");
+    expect(screen.getByTestId("usage-summary-number")).toHaveTextContent("124");
+    expect(screen.getByTestId("usage-summary-unit")).toHaveTextContent("亿");
   });
 });

@@ -202,7 +202,7 @@ export function StatsPanel({
   });
 
   return (
-    <div className={`tt-overview-stats tt-surface-nested h-full ${className}`}>
+    <div className={`tt-overview-stats h-full ${className}`}>
         {hasRollingCards && (
         <div className="tt-overview-stat-grid grid grid-cols-2 sm:grid-cols-4 gap-2">
           {rollingCardsWithTrend.map((card) => {
@@ -263,9 +263,9 @@ export function StatsPanel({
         {hasMeasuredModels ? (
           <section
             data-testid="overview-model-ranking"
-            className={`tt-overview-model-ranking tt-surface-nested ${hasRollingCards ? "mt-3" : ""}`}
+            className={`tt-overview-model-ranking tt-surface-nested flex min-h-0 flex-col ${hasRollingCards ? "mt-3" : ""}`}
           >
-            <header className="flex items-center justify-between px-5 pb-2 pt-4">
+            <header className="flex items-center justify-between px-4 pb-2 pt-4">
               <h2 className="text-base font-semibold text-oai-black dark:text-white">{copy("stats.model_ranking")}</h2>
               <a href="/leaderboard" className="rounded-md border border-oai-gray-200 px-3 py-1.5 text-xs text-oai-gray-500 hover:text-oai-black dark:border-oai-gray-700 dark:text-oai-gray-300">
                 {copy("stats.view_all")}
@@ -273,7 +273,7 @@ export function StatsPanel({
             </header>
             <div
               data-testid="overview-model-list"
-              className="max-h-[300px] space-y-1 overflow-y-auto px-5 pb-4 oai-scrollbar"
+              className="min-h-0 flex-1 space-y-1 overflow-y-auto px-4 pb-3 oai-scrollbar"
             >
               {measuredModels.map((row, index) => {
                 const name = String(row.name);

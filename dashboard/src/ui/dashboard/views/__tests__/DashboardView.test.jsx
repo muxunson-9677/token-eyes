@@ -12,7 +12,7 @@ vi.mock("motion/react", () => ({
 }));
 
 vi.mock("../../../components", () => ({
-  Shell: ({ children }) => <main>{children}</main>,
+  Shell: ({ children, className }) => <main className={className}>{children}</main>,
   Card: ({ children }) => <div>{children}</div>,
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
 }));
@@ -73,6 +73,7 @@ describe("DashboardView overview hierarchy", () => {
     const secondary = screen.getByTestId("dashboard-secondary-context");
     const details = screen.getByTestId("dashboard-detail-grid");
     expect(overviewGrid).toHaveClass("tt-reference-overview-grid");
+    expect(overviewGrid.closest(".tt-reference-route-dashboard")).not.toBeNull();
     expect(overviewGrid.parentElement).toHaveClass("tt-overview-locked");
     expect(primary).toBeVisible();
     expect(primary).not.toHaveClass("lg:col-span-7");

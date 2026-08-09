@@ -375,6 +375,7 @@ describe("DataDetails daily rows", () => {
     expect(screen.getByTestId("daily-summary-peak")).toHaveTextContent("200");
     expect(screen.getByTestId("daily-summary-average")).toHaveTextContent("150");
     expect(screen.getByTestId("daily-summary-active-days")).toHaveTextContent("2");
+    expect(screen.getByTestId("daily-summary-peak").parentElement).toHaveClass("ml-auto");
     expect(screen.getByTestId("daily-date-range")).toHaveTextContent("2026-08-06");
     expect(screen.getByTestId("daily-date-range")).toHaveTextContent("2026-08-07");
     expect(screen.getByRole("columnheader", { name: "较昨日" })).toBeInTheDocument();
