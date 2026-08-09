@@ -18,7 +18,6 @@ import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
-import { InsforgeUserHeaderControls } from "../../components/InsforgeUserHeaderControls.jsx";
 import { CodexResetBanner } from "../../components/CodexResetBanner";
 import { useCodexResetEvents } from "../../hooks/use-codex-reset-events";
 import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native-bridge.js";
@@ -504,35 +503,19 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
 
   return (
     <>
-      {/* Top: identity only 鈥?full-width, aligned with nav items (px-2) */}
-      <div className={cn("px-2 pt-2 pb-2", collapsed && "flex justify-center")}>
-        {showCloseButton ? (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <InsforgeUserHeaderControls
-                variant="sidebar"
-                collapsed={collapsed}
-                onAfterAction={onItemClick}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={copy("nav.close_menu")}
-              title={copy("nav.close_menu")}
-              className="tt-sidebar-focusable flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
-            >
-              <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-            </button>
-          </div>
-        ) : (
-          <InsforgeUserHeaderControls
-            variant="sidebar"
-            collapsed={collapsed}
-            onAfterAction={onItemClick}
-          />
-        )}
-      </div>
+      {showCloseButton ? (
+        <div className="flex justify-end px-2 pb-1 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={copy("nav.close_menu")}
+            title={copy("nav.close_menu")}
+            className="tt-sidebar-focusable flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
+          >
+            <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+          </button>
+        </div>
+      ) : null}
 
       {/* Nav */}
       <nav
