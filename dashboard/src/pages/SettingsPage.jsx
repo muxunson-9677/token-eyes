@@ -1,6 +1,6 @@
 import React, { lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
-import { CircleCheck, Download, Gauge, Upload } from "lucide-react";
+import { CircleCheck, Download, Shield, Upload } from "lucide-react";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
 import { AgentPricingSection } from "../components/settings/AgentPricingSection.jsx";
 import { AppearanceSection } from "../components/settings/AppearanceSection.jsx";
@@ -56,7 +56,10 @@ export function SettingsBasicPage() {
   const limitsPrefs = useLimitsDisplayPrefs();
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
+    <div
+      className="tt-reference-route-settings-basic flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white"
+      data-testid="settings-basic-page"
+    >
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <div className="mb-8" data-testid="settings-basic-heading">
@@ -79,7 +82,8 @@ export function SettingsBasicPage() {
                 className="tt-settings-limits-card"
                 title={copy("settings.section.limits")}
                 subtitle="选择要在排行榜、图表和小组件中显示的模型提供商。"
-                icon={Gauge}
+                icon={Shield}
+                iconTestId="settings-limits-icon"
                 iconTone="violet"
                 action={<LimitsDisplayModeControl prefs={limitsPrefs} />}
               >

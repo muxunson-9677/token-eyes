@@ -46,16 +46,23 @@ export function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
   );
 }
 
-export function SettingsRow({ label, hint, control }) {
+export function SettingsRow({ label, hint, control, icon: Icon, iconTone = "blue", iconTestId = null }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="text-sm text-oai-gray-900 dark:text-oai-gray-200">{label}</div>
-        {hint ? (
-          <div className="mt-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">{hint}</div>
+    <div className="tt-settings-row flex items-center justify-between gap-4 py-3">
+      <div className="tt-settings-row-copy flex min-w-0 flex-1 items-center">
+        {Icon ? (
+          <span data-testid={iconTestId || undefined} data-tone={iconTone} className="tt-settings-row-icon grid shrink-0 place-items-center">
+            <Icon aria-hidden="true" />
+          </span>
         ) : null}
+        <div className="min-w-0 flex-1">
+          <div className="tt-settings-row-label text-sm text-oai-gray-900 dark:text-oai-gray-200">{label}</div>
+          {hint ? (
+            <div className="tt-settings-row-hint mt-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">{hint}</div>
+          ) : null}
+        </div>
       </div>
-      <div className="shrink-0">{control}</div>
+      <div className="tt-settings-row-control shrink-0">{control}</div>
     </div>
   );
 }
@@ -132,7 +139,7 @@ export function SectionCard({
 
   return (
     <Card className={className}>
-      <div className={cn("flex items-start justify-between gap-4", expanded && "mb-3")}>
+      <div className={cn("tt-section-card-header flex items-start justify-between gap-4", expanded && "mb-3")}>
         {collapsible ? (
           <button
             type="button"
@@ -161,9 +168,9 @@ export function SectionCard({
             </span>
           </button>
         ) : (
-          <div className="flex min-w-0 flex-1 items-start gap-2">
+          <div className="tt-section-card-heading flex min-w-0 flex-1 items-start gap-2">
             {sectionIcon}
-            <div className="min-w-0 flex-1">
+            <div className="tt-section-card-title-block min-w-0 flex-1">
               <h2 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 tracking-wide">
                 {title}
               </h2>
@@ -194,9 +201,9 @@ export function SectionCard({
   );
 }
 
-export function SegmentedControl({ options, value, onChange }) {
+export function SegmentedControl({ options, value, onChange, className = "" }) {
   return (
-    <div className="inline-flex items-center rounded-[var(--tt-control-radius)] border border-oai-gray-200/80 bg-oai-gray-100/80 p-0.5 shadow-[inset_0_1px_3px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-oai-gray-950/70 dark:shadow-[inset_0_1px_4px_rgba(0,0,0,0.38)]">
+    <div className={cn("inline-flex items-center rounded-[var(--tt-control-radius)] border border-oai-gray-200/80 bg-oai-gray-100/80 p-0.5 shadow-[inset_0_1px_3px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-oai-gray-950/70 dark:shadow-[inset_0_1px_4px_rgba(0,0,0,0.38)]", className)}>
       {options.map(({ value: optionValue, label, Icon }) => {
         const active = value === optionValue;
         return (

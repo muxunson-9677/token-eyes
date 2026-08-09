@@ -61,6 +61,14 @@ beforeEach(() => {
   triggerLocalSync.mockResolvedValue({ ok: true });
 });
 
+it("keeps the data-directory summary permanently visible without a disclosure control", async () => {
+  const { container } = render(<DataDirectoriesSection />);
+
+  await screen.findByDisplayValue("\\\\wsl.localhost\\Ubuntu\\home\\agent\\.claude");
+  expect(container.querySelector("[aria-expanded]")).not.toBeInTheDocument();
+  expect(container.querySelector(".tt-data-directory-compact output")).toBeVisible();
+});
+
 it("re-detects the current unsaved path and clears the stale result after editing", async () => {
   const user = userEvent.setup();
   render(<DataDirectoriesSection />);

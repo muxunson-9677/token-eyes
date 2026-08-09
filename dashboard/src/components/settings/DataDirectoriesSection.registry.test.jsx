@@ -1,6 +1,5 @@
 ﻿import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { DataDirectoriesSection, resolveDataDirectoryOrder } from "./DataDirectoriesSection.jsx";
 import { getLocalSettings, selectLocalDirectory, setLocalSettings } from "../../lib/api";
@@ -37,8 +36,7 @@ it("renders the saved custom directory order", async () => {
   expect(screen.getAllByTestId("data-directory-row")[1]).toHaveAttribute("data-directory-key", "codebuddy");
 });
 
-it("renders every limits agent directory and folds all secondary fields from the section header", async () => {
-  const user = userEvent.setup();
+it("renders every limits agent directory without a disclosure control", async () => {
   render(<DataDirectoriesSection />);
 
   expect(await screen.findByLabelText("Claude Code 数据目录")).toBeInTheDocument();
@@ -53,11 +51,6 @@ it("renders every limits agent directory and folds all secondary fields from the
   expect(screen.getByLabelText("Antigravity 数据目录")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: "选择文件夹" })).toHaveLength(10);
 
-  const sectionToggle = screen.getByRole("button", { name: "数据目录" });
-  expect(sectionToggle).toHaveAttribute("aria-expanded", "true");
-  await user.click(sectionToggle);
-  expect(sectionToggle).toHaveAttribute("aria-expanded", "false");
-  expect(screen.queryByLabelText("Claude Code 数据目录")).not.toBeInTheDocument();
-  await user.click(sectionToggle);
-  expect(await screen.findByLabelText("Claude Code 数据目录")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "数据目录" })).toBeInTheDocument();
+  expect(document.querySelector("[aria-expanded]")).not.toBeInTheDocument();
 });

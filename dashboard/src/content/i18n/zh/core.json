@@ -244,6 +244,7 @@
   "settings.page.title": "设置",
   "settings.page.subtitle": "管理你的账户、外观和显示偏好。",
   "settings.section.appearance": "外观",
+  "settings.appearance.subtitle": "自定义应用的外观与区域偏好。",
   "settings.section.account": "账户",
   "settings.section.limits": "限制显示",
   "settings.appearance.theme.label": "主题",

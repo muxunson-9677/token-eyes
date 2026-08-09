@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Check, Info, Languages, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
+import { Check, Globe2, Info, Languages, Monitor, Moon, RefreshCw, Sun, TrendingUp, WalletCards } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
 import { useCurrency } from "../../hooks/useCurrency.js";
@@ -55,7 +55,7 @@ function LanguageDropdown({ locale, setLocale }) {
       onValueChange={setLocale}
       options={options}
       ariaLabel={copy("settings.appearance.language.label")}
-      className="px-2.5 py-1.5 text-xs font-medium"
+      className="tt-settings-language-select px-2.5 py-1.5 text-xs font-medium"
       leadingIcon={
         <Languages
           className="h-3.5 w-3.5 text-oai-gray-500 dark:text-oai-gray-400"
@@ -77,7 +77,8 @@ function CurrencyDropdown({ currency, setCurrency }) {
       onValueChange={setCurrency}
       options={options}
       ariaLabel={copy("settings.appearance.currency.label")}
-      className="px-3 py-1.5 text-xs font-medium"
+      className="tt-settings-currency-select px-3 py-1.5 text-xs font-medium"
+      leadingIcon={<WalletCards className="h-3.5 w-3.5 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />}
     />
   );
 }
@@ -174,9 +175,13 @@ function UsdCnyRateInput({ onRefreshRates }) {
     <SettingsRow
       label={copy("settings.appearance.usd_cny.label")}
       hint={copy("settings.appearance.usd_cny.hint")}
+      icon={TrendingUp}
+      iconTone="exchange"
+      iconTestId="settings-row-icon-exchange"
       control={
-        <div className="flex items-center gap-2">
-          <input
+        <div className="tt-settings-exchange-controls">
+          <div className="tt-settings-exchange-rate">
+            <input
             type="number"
             min="0.01"
             step="0.01"
@@ -190,11 +195,13 @@ function UsdCnyRateInput({ onRefreshRates }) {
             )}
           />
           <span className="tt-exchange-rate-preview whitespace-nowrap text-xs text-oai-gray-500">1 USD = {value || "—"} CNY</span>
+          </div>
+          <div className="tt-settings-exchange-actions">
           <button
             type="button"
             onClick={refresh}
             disabled={saving || refreshing}
-            className="inline-flex h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-800 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+            className="tt-exchange-rate-refresh inline-flex h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-800 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
             {copy("usage.button.refresh")}
@@ -214,6 +221,7 @@ function UsdCnyRateInput({ onRefreshRates }) {
               copy("settings.account.save")
             )}
           </button>
+          </div>
           {error ? (
             <span className="text-xs text-red-600 dark:text-red-400">{error}</span>
           ) : null}
@@ -229,19 +237,28 @@ export function AppearanceSection() {
   const { currency, rate, rateSource, rateFetchedAt, setCurrency, refreshRates } = useCurrency();
 
   return (
-    <SectionCard className="tt-settings-appearance-card" title={copy("settings.section.appearance")} icon={Monitor} iconTone="blue">
+    <SectionCard className="tt-settings-appearance-card" title={copy("settings.section.appearance")} subtitle={copy("settings.appearance.subtitle")} icon={Monitor} iconTone="blue">
       <SettingsRow
         label={copy("settings.appearance.theme.label")}
         hint={copy("settings.appearance.theme.hint")}
-        control={<SegmentedControl options={buildThemeOptions()} value={theme} onChange={setTheme} />}
+        icon={Sun}
+        iconTone="theme"
+        iconTestId="settings-row-icon-theme"
+        control={<SegmentedControl className="tt-settings-theme-control" options={buildThemeOptions()} value={theme} onChange={setTheme} />}
       />
       <SettingsRow
         label={copy("settings.appearance.language.label")}
         hint={copy("settings.appearance.language.hint")}
+        icon={Globe2}
+        iconTone="language"
+        iconTestId="settings-row-icon-language"
         control={<LanguageDropdown locale={locale} setLocale={setLocale} />}
       />
       <SettingsRow
         label={copy("settings.appearance.currency.label")}
+        icon={WalletCards}
+        iconTone="currency"
+        iconTestId="settings-row-icon-currency"
         hint={
           <CurrencyHint
             currency={currency}
