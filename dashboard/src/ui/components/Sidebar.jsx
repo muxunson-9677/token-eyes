@@ -154,15 +154,15 @@ function writeExpanded(set) {
 }
 
 function NavGroupLabel({ label, collapsed, first }) {
+  if (first) return null;
   if (collapsed) {
-    if (first) return null;
     return <div className="mx-2 my-2 h-px bg-oai-gray-200/70 dark:bg-oai-gray-800/70" aria-hidden />;
   }
   return (
     <div
       className={cn(
         "px-3 pb-1 text-[10px] uppercase tracking-wider text-oai-gray-500 dark:text-oai-gray-500",
-        first ? "pt-2" : "pt-4",
+        "pt-4",
       )}
     >
       {label}

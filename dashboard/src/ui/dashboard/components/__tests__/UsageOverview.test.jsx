@@ -434,4 +434,26 @@ describe("UsageOverview", () => {
     );
     expect(screen.getByTestId("usage-hero-footer-well")).toBeInTheDocument();
   });
+
+  it("keeps the Token effect below the total and above the three metrics", () => {
+    render(
+      <UsageOverview
+        period="total"
+        periods={[{ key: "total", label: "Total" }]}
+        summaryLabel="TOKEN total"
+        summaryValue="1,000"
+        fleetData={[]}
+        dayOverDayPercent={12}
+        averageUsageValue={1000}
+        summaryConversationsValue={10}
+      />,
+    );
+
+    const total = screen.getByTestId("usage-summary-value");
+    const effect = screen.getByTestId("usage-token-wave-stage");
+    const metrics = screen.getByTestId("usage-overview-metrics");
+
+    expect(total.compareDocumentPosition(effect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(effect.compareDocumentPosition(metrics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

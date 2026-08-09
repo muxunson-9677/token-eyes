@@ -191,4 +191,43 @@ describe("ProjectUsagePanel", () => {
     expect(container).not.toHaveTextContent(" - ");
     expect(screen.queryByText(copy("dashboard.projects.tokens_label"))).not.toBeInTheDocument();
   });
+
+  it("keeps project disclosures independent and uses official provider icons", async () => {
+    const user = userEvent.setup();
+    const entries = [
+      { ...baseEntry, project_key: "first", project_name: "First project", top_agents: ["codex"], top_models: ["gpt-5.6-sol"], model_providers: { "gpt-5.6-sol": "codex" } },
+      { ...baseEntry, project_key: "second", project_name: "Second project", top_agents: ["claude"], top_models: ["claude-3.5"], model_providers: { "claude-3.5": "claude" } },
+      { ...baseEntry, project_key: "third", project_name: "Third project", top_agents: ["cursor"] },
+    ];
+
+    render(<ProjectUsagePanel embedded entries={entries} />);
+    const cards = screen.getAllByTestId("project-usage-card");
+
+    await user.click(screen.getByRole("button", { name: /Second project/ }));
+    expect(cards[0]).toHaveAttribute("data-expanded", "false");
+    expect(cards[1]).toHaveAttribute("data-expanded", "true");
+    expect(cards[2]).toHaveAttribute("data-expanded", "false");
+    expect(cards[1].querySelector('[data-slot="project-agent-icon"]')).toBeInTheDocument();
+    expect(cards[1].querySelector('[data-slot="project-model-icon"]')).toBeInTheDocument();
+  });
+
+  it("shows total records and lets users jump to a project page", async () => {
+    const user = userEvent.setup();
+    const entries = Array.from({ length: 4 }, (_, index) => ({
+      ...baseEntry,
+      project_key: `project-${index + 1}`,
+      project_name: `Project ${index + 1}`,
+      total_tokens: 10000 - index,
+    }));
+
+    render(<ProjectUsagePanel embedded entries={entries} limit={3} />);
+
+    expect(screen.getByTestId("project-pagination-total")).toHaveTextContent("4");
+    expect(screen.getByTestId("project-pagination")).toHaveClass("tt-overview-pagination");
+    const pageInput = screen.getByLabelText(copy("dashboard.projects.page_number"));
+    await user.clear(pageInput);
+    await user.type(pageInput, "2");
+    await user.click(screen.getByRole("button", { name: copy("dashboard.projects.page_jump") }));
+    expect(screen.getByText("Project 4")).toBeInTheDocument();
+  });
 });

@@ -97,6 +97,21 @@ export function orderedWidgetLimits(
 export function activeWidgetModels(models: DesktopWidgetModelUsage[]) {
   return models.filter((model) => model.tokens > 0);
 }
+
+export function formatCompactTokenCount(tokens: number) {
+  const absolute = Math.abs(tokens);
+  const unit = absolute >= 100_000_000 ? "亿" : absolute >= 10_000 ? "万" : "";
+  const divisor = unit === "亿" ? 100_000_000 : unit === "万" ? 10_000 : 1;
+  const value = tokens / divisor;
+  const maximumFractionDigits = Math.abs(value) >= 100 ? 0 : unit ? 1 : 0;
+  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits }).format(value)}${unit}`;
+}
+
+export function formatCompactCost(costUsd: number) {
+  if (Math.abs(costUsd) >= 10_000) return `$${formatCompactTokenCount(costUsd)}`;
+  return `$${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(costUsd)}`;
+}
+
 function LimitProgress({ value }: { value: number | null }) {
   const percent = Math.max(0, Math.min(100, value ?? 0));
   return (
@@ -138,11 +153,11 @@ function ModelsSummary({ model }: { model: DesktopWidgetViewModel }) {
     <div className="widget-model-summary" data-testid="widget-model-summary">
       <span>
         <small>{copy("widget.models.tokens")}</small>
-        <strong>{new Intl.NumberFormat().format(model.totals.tokens)}</strong>
+        <strong>{formatCompactTokenCount(model.totals.tokens)}</strong>
       </span>
       <span>
         <small>{copy("widget.models.cost")}</small>
-        <strong>${model.totals.costUsd.toFixed(2)}</strong>
+        <strong>{formatCompactCost(model.totals.costUsd)}</strong>
       </span>
     </div>
   );
@@ -332,7 +347,7 @@ function ExpandedModels({ model }: { model: DesktopWidgetViewModel }) {
               <i className="widget-model-row__tone" data-testid="widget-model-tone" data-tone={String(index % 7)} />
               {item.name}
             </strong>
-            <span>{new Intl.NumberFormat().format(item.tokens)} · {item.share}%</span>
+            <span>{formatCompactTokenCount(item.tokens)} · {item.share}%</span>
           </div>
           <div className="widget-model-row__bar">
             <span data-tone={String(index % 7)} style={{ width: `${Math.max(0, Math.min(100, item.share))}%` }} />
@@ -452,11 +467,20 @@ export function DesktopWidgetPage() {
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const agentMenuAnchor = useRef(null as HTMLButtonElement | null);
   const appearanceAnchor = useRef(null as HTMLButtonElement | null);
+  const isBrowserPreview = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).has("preview");
+  const browserPreviewClassName = isBrowserPreview ? " desktop-widget-root--browser-preview" : "";
 
   useEffect(() => {
     document.documentElement.classList.add("desktop-widget-document");
-    return () => document.documentElement.classList.remove("desktop-widget-document");
-  }, []);
+    if (isBrowserPreview) {
+      document.documentElement.classList.add("desktop-widget-browser-preview");
+    }
+    return () => {
+      document.documentElement.classList.remove("desktop-widget-document");
+      document.documentElement.classList.remove("desktop-widget-browser-preview");
+    };
+  }, [isBrowserPreview]);
 
   useEffect(() => {
     void setPopoverOpen(Boolean(openMenu || appearanceOpen));
@@ -510,6 +534,8 @@ export function DesktopWidgetPage() {
   const pendingReset = model?.pendingReset;
   const rootStyle = {
     "--widget-opacity": prefs.opacity,
+    "--widget-preview-width": `${prefs.width}px`,
+    "--widget-preview-height": `${prefs.expanded ? prefs.expandedHeight : prefs.collapsedHeight}px`,
   } as React.CSSProperties;
   const setMode = (mode: string) => {
     void updatePrefs({ mode: mode as DesktopWidgetMode });
@@ -529,7 +555,7 @@ export function DesktopWidgetPage() {
       ? null
       : `${pendingReset.previousUsedPercent}% → ${pendingReset.currentUsedPercent}%`;
     return (
-      <main className="desktop-widget-root" style={rootStyle}>
+      <main className={`desktop-widget-root${browserPreviewClassName}`} style={rootStyle}>
         <article
           className={`desktop-widget-card desktop-widget-card--${prefs.material} desktop-widget-card--reset`}
           data-testid="desktop-widget-card"
@@ -563,7 +589,7 @@ export function DesktopWidgetPage() {
 
   return (
     <main
-      className={`desktop-widget-root ${openMenu || appearanceOpen ? "has-popover" : ""}`}
+      className={`desktop-widget-root${browserPreviewClassName} ${openMenu || appearanceOpen ? "has-popover" : ""}`}
       style={rootStyle}
     >
       <article

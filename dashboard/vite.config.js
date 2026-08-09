@@ -31,6 +31,29 @@ const PACKAGE_JSON_PATH = path.resolve(ROOT_DIR, "..", "package.json");
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
 const LOCAL_SYNC_TIMEOUT_MS = 120_000;
 
+async function pickDirectoryForDevPreview() {
+  if (process.platform !== "win32") return { ok: false, error: "Folder selection is only supported on Windows." };
+  const script = [
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+    "$dialog.Description = 'Select project folder'",
+    "$result = $dialog.ShowDialog()",
+    "if ($result -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath }",
+  ].join("; ");
+  return new Promise((resolve) => {
+    const child = spawn("powershell.exe", ["-NoProfile", "-STA", "-Command", script], { windowsHide: false });
+    let output = "";
+    let error = "";
+    child.stdout.on("data", (chunk) => { output += chunk.toString("utf8"); });
+    child.stderr.on("data", (chunk) => { error += chunk.toString("utf8"); });
+    child.on("error", (reason) => resolve({ ok: false, error: reason?.message || "Unable to open folder picker." }));
+    child.on("close", (code) => {
+      const selectedPath = output.trim();
+      resolve(code === 0 ? (selectedPath ? { ok: true, path: selectedPath } : { ok: true, cancelled: true }) : { ok: false, error: error.trim() || "Unable to open folder picker." });
+    });
+  });
+}
+
 function loadAppVersion() {
   try {
     const raw = fs.readFileSync(PACKAGE_JSON_PATH, "utf8");
@@ -432,6 +455,18 @@ async function handleLocalApi(req, res, url) {
   }
 
   const pathname = url.pathname;
+
+  if (pathname === "/functions/tokentracker-select-directory") {
+    if (String(req.method || "GET").toUpperCase() !== "POST") {
+      res.statusCode = 405;
+      res.setHeader("Allow", "POST");
+      res.end(JSON.stringify({ ok: false, error: "Method Not Allowed" }));
+      return true;
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(await pickDirectoryForDevPreview()));
+    return true;
+  }
 
   if (pathname === "/functions/tokentracker-local-sync") {
     if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -841,6 +876,9 @@ async function handleLocalApi(req, res, url) {
 
   // 处理 project-usage-summary
   if (pathname === "/functions/tokentracker-project-usage-summary") {
+    const from = url.searchParams.get("from") || "";
+    const to = url.searchParams.get("to") || "";
+    const limit = Math.min(Math.max(1, Number(url.searchParams.get("limit")) || 3), 50);
     // 优先读 ~/.tokentracker/tracker/project.queue.jsonl（与 7680 真实归因一致）
     const projectQueuePath = path.join(os.homedir(), ".tokentracker", "tracker", "project.queue.jsonl");
     try {
@@ -851,12 +889,15 @@ async function handleLocalApi(req, res, url) {
         if (!trimmed) continue;
         try {
           const row = JSON.parse(trimmed);
-          const k = `${row.project_key || ""}|${row.source || ""}|${row.hour_start || ""}`;
+          const k = `${row.project_key || ""}|${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
           dedup.set(k, row);
         } catch { /* skip malformed */ }
       }
       const byProject = new Map();
       for (const row of dedup.values()) {
+        const day = getZonedParts(row.hour_start)?.day;
+        if (from && day && day < from) continue;
+        if (to && day && day > to) continue;
         const key = row.project_key || "unknown";
         if (!byProject.has(key)) {
           byProject.set(key, {
@@ -864,20 +905,39 @@ async function handleLocalApi(req, res, url) {
             project_ref: row.project_ref || key,
             total_tokens: 0,
             billable_total_tokens: 0,
+            cost_usd: 0,
+            request_count: 0,
+            last_active_at: null,
+            top_agents: [],
+            top_models: [],
+            model_providers: {},
+            usage_trend: {},
           });
         }
         const agg = byProject.get(key);
         agg.total_tokens += Number(row.total_tokens || 0);
         agg.billable_total_tokens += Number(row.total_tokens || 0);
+        agg.cost_usd += Number(computeRowCost(row) || 0);
+        agg.request_count += Number(row.conversation_count || 0) || 1;
+        if (row.source && !agg.top_agents.includes(row.source)) agg.top_agents.push(row.source);
+        if (row.model && !agg.top_models.includes(row.model)) agg.top_models.push(row.model);
+        if (row.model && row.source && !agg.model_providers[row.model]) agg.model_providers[row.model] = row.source;
+        if (day) agg.usage_trend[day] = Number(agg.usage_trend[day] || 0) + Number(row.total_tokens || 0);
+        if (row.hour_start && (!agg.last_active_at || row.hour_start > agg.last_active_at)) agg.last_active_at = row.hour_start;
         if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
       }
       if (byProject.size > 0) {
         const entries = Array.from(byProject.values())
           .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
+          .slice(0, limit)
           .map((e) => ({
             ...e,
             total_tokens: String(e.total_tokens),
             billable_total_tokens: String(e.billable_total_tokens),
+            cost_usd: String(e.cost_usd),
+            request_count: String(e.request_count),
+            pricing_coverage: e.cost_usd > 0 ? "complete" : "unpriced",
+            usage_trend: Object.entries(e.usage_trend).sort(([a], [b]) => a.localeCompare(b)).slice(-14).map(([day, tokens]) => ({ day, tokens })),
           }));
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify({ generated_at: new Date().toISOString(), entries }));

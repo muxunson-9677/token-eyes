@@ -78,6 +78,26 @@ describe("SectionCard visual identity", () => {
     expect(screen.queryByTestId("settings-section-icon")).toBeNull();
   });
 
+  it("renders a real collapsed summary badge from live data (not CSS content hacks)", () => {
+    render(
+      <SectionCard
+        title="Token plans"
+        collapsible
+        defaultOpen={false}
+        storageKey="cost.token-plans"
+        collapsedSummary="6 plans"
+        collapsedSummaryTone="violet"
+      >
+        <div>hidden body</div>
+      </SectionCard>,
+    );
+
+    const badge = screen.getByTestId("settings-section-collapsed-summary");
+    expect(badge).toHaveTextContent("6 plans");
+    expect(badge).toHaveAttribute("data-tone", "violet");
+    expect(screen.queryByText("hidden body")).not.toBeInTheDocument();
+  });
+
   it("uses the shared glass hierarchy and visible keyboard focus for settings controls", () => {
     render(
       <SectionCard title="Limits" collapsible>

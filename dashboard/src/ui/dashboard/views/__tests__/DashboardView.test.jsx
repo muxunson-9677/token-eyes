@@ -72,9 +72,11 @@ describe("DashboardView overview hierarchy", () => {
     const primary = screen.getByTestId("dashboard-primary-workspace");
     const secondary = screen.getByTestId("dashboard-secondary-context");
     expect(overviewGrid).toHaveClass("tt-reference-overview-grid");
+    expect(overviewGrid.parentElement).toHaveClass("tt-overview-locked");
     expect(primary).toBeVisible();
     expect(primary).not.toHaveClass("lg:col-span-7");
     expect(secondary).toBeVisible();
+    expect(secondary).not.toHaveClass("tt-overview-aligned-stack");
     expect(secondary).not.toHaveClass("lg:col-span-5");
     expect(within(primary).getByTestId("dashboard-usage-overview")).toBeVisible();
     expect(within(primary).getByTestId("dashboard-usage-overview")).toHaveClass("h-full");

@@ -535,6 +535,14 @@ dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_sta
 dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,"Private code unavailable",,active
 dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli sync",,active
 dashboard.daily.title,dashboard,DashboardPage,AsciiBox,title,"Daily Breakdown",,active
+dashboard.projects.count,dashboard,DashboardPage,ProjectUsagePanel,count,"Projects",,active
+dashboard.projects.total_tokens,dashboard,DashboardPage,ProjectUsagePanel,total_tokens,"Total Tokens",,active
+dashboard.projects.total_cost,dashboard,DashboardPage,ProjectUsagePanel,total_cost,"Total cost",,active
+dashboard.projects.records,dashboard,DashboardPage,ProjectUsagePanel,records,"{{count}} records",,active
+dashboard.projects.selected_folder,dashboard,DashboardPage,ProjectUsagePanel,selected_folder,"Selected folder",,active
+dashboard.projects.page_size,dashboard,DashboardPage,ProjectUsagePanel,page_size,"{{count}} per page",,active
+dashboard.projects.page_number,dashboard,DashboardPage,ProjectUsagePanel,page_number,"Page number",,active
+dashboard.projects.page_jump,dashboard,DashboardPage,ProjectUsagePanel,page_jump,"Jump",,active
 dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,"当前范围暂无活动数据。请先使用 AI CLI，然后点击刷新。",,active
 dashboard.identity.title,dashboard,DashboardPage,IdentityCard,title,"Your Profile",,active
 dashboard.identity.subtitle,dashboard,DashboardPage,IdentityCard,subtitle,"Track your coding journey",,active
@@ -2270,7 +2278,15 @@ widgets.reference.plan_usage,ui,WidgetsPage,WindowsProjectManager,plan_usage,"Pl
 widgets.reference.plan_usage_detail,ui,WidgetsPage,WindowsProjectManager,plan_usage_detail,"Active plans / total plans",,active
 widgets.reference.desktop_projects,ui,WidgetsPage,WindowsProjectManager,desktop_projects,"Desktop widget projects",,active
 widgets.reference.selected_prefix,ui,WidgetsPage,WindowsProjectManager,selected_prefix,"Selected",,active
-widgets.reference.project_count_suffix,ui,WidgetsPage,WindowsProjectManager,project_count_suffix,"projects",,active
+widgets.reference.project_count_suffix,ui,WidgetsPage,WindowsProjectManager,project_count_suffix,"items",,active
+widgets.reference.tag_core,ui,WidgetsPage,WindowsProjectManager,tag_core,"Core",,active
+widgets.reference.tag_tool,ui,WidgetsPage,WindowsProjectManager,tag_tool,"Tool",,active
+widgets.reference.tag_card,ui,WidgetsPage,WindowsProjectManager,tag_card,"Cards",,active
+widgets.reference.tag_design,ui,WidgetsPage,WindowsProjectManager,tag_design,"Design",,active
+widgets.reference.tag_personal,ui,WidgetsPage,WindowsProjectManager,tag_personal,"Personal",,active
+widgets.reference.tag_theme,ui,WidgetsPage,WindowsProjectManager,tag_theme,"Theme",,active
+widgets.reference.tag_experiment,ui,WidgetsPage,WindowsProjectManager,tag_experiment,"Experiment",,active
+widgets.reference.tag_project,ui,WidgetsPage,WindowsProjectManager,tag_project,"Project",,active
 widgets.reference.active_range,ui,WidgetsPage,WindowsProjectManager,active_range,"Active session range",,active
 widgets.reference.project_list_active_range,ui,WidgetsPage,WindowsProjectManager,project_list_active_range,"Project list active range",,active
 widgets.reference.one_day,ui,WidgetsPage,WindowsProjectManager,one_day,"1 day",,active
@@ -2286,6 +2302,31 @@ widgets.reference.status_info,ui,WidgetsPage,WindowsProjectManager,status_info,"
 widgets.reference.last_active,ui,WidgetsPage,WindowsProjectManager,last_active,"Last active",,active
 widgets.reference.total_projects,ui,WidgetsPage,WindowsProjectManager,total_projects,"{{count}} projects",,active
 widgets.reference.pagination,ui,WidgetsPage,WindowsProjectManager,pagination,"10 / page    |‹    1 / 1    ›|",,active
+widgets.reference.yesterday_delta,ui,WidgetsPage,WindowsProjectManager,yesterday_delta,"vs yesterday ↑ {{count}}",,active
+widgets.reference.week_added,ui,WidgetsPage,WindowsProjectManager,week_added,"7-day added {{count}}",,active
+widgets.reference.active_rate,ui,WidgetsPage,WindowsProjectManager,active_rate,"Active rate {{rate}}%",,active
+widgets.reference.all_plans_enabled,ui,WidgetsPage,WindowsProjectManager,all_plans_enabled,"All plans enabled",,active
+widgets.reference.batch_actions,ui,WidgetsPage,WindowsProjectManager,batch_actions,"Batch actions",,active
+widgets.reference.clear_selection,ui,WidgetsPage,WindowsProjectManager,clear_selection,"Clear selection",,active
+widgets.reference.status_all,ui,WidgetsPage,WindowsProjectManager,status_all,"Status: all",,active
+widgets.reference.sort_recent_active,ui,WidgetsPage,WindowsProjectManager,sort_recent_active,"Sort: recent activity",,active
+widgets.reference.recent_seven_days,ui,WidgetsPage,WindowsProjectManager,recent_seven_days,"Last 7 days",,active
+widgets.reference.project_tag,ui,WidgetsPage,WindowsProjectManager,project_tag,"Tag",,active
+widgets.reference.created_at,ui,WidgetsPage,WindowsProjectManager,created_at,"Created at",,active
+widgets.reference.action,ui,WidgetsPage,WindowsProjectManager,action,"Action",,active
+widgets.reference.never_active,ui,WidgetsPage,WindowsProjectManager,never_active,"Never active",,active
+widgets.reference.reset_cycle_quota,ui,WidgetsPage,WindowsProjectManager,reset_cycle_quota,"Reset cycle / quota",,active
+widgets.reference.next_reset,ui,WidgetsPage,WindowsProjectManager,next_reset,"Next reset",,active
+widgets.reference.used_of_quota,ui,WidgetsPage,WindowsProjectManager,used_of_quota,"{{used}} / {{quota}} h",,active
+widgets.reference.reset_every_hours,ui,WidgetsPage,WindowsProjectManager,reset_every_hours,"Every {{hours}} hours / {{quota}} h",,active
+widgets.reference.resets_at_limit,ui,WidgetsPage,WindowsProjectManager,resets_at_limit,"Limit reached",,active
+widgets.reference.reset_after,ui,WidgetsPage,WindowsProjectManager,reset_after,"{{hours}} hours {{minutes}} minutes remaining",,active
+widgets.reference.total_plans,ui,WidgetsPage,WindowsProjectManager,total_plans,"{{selected}} / {{total}} plans",,active
+widgets.reference.refresh_data,ui,WidgetsPage,WindowsProjectManager,refresh_data,"Refresh data",,active
+widgets.reference.primary_plan,ui,WidgetsPage,WindowsProjectManager,primary_plan,"Primary",,active
+widgets.reference.backup_plan,ui,WidgetsPage,WindowsProjectManager,backup_plan,"Backup",,active
+widgets.reference.plan_count,ui,WidgetsPage,WindowsProjectManager,plan_count,"{{count}} items",,active
+widgets.reference.page_size,ui,WidgetsPage,WindowsProjectManager,page_size,"10 / page",,active
 widgets.reference.usage_plans,ui,WidgetsPage,WindowsProjectManager,usage_plans,"Widget usage plans",,active
 widgets.reference.activated,ui,WidgetsPage,WindowsProjectManager,activated,"active",,active
 widgets.reference.upgrade_plan,ui,WidgetsPage,WindowsProjectManager,upgrade_plan,"♛ Upgrade plan",,active
@@ -2301,3 +2342,12 @@ widgets.reference.desktop_display,ui,WidgetsPage,WindowsProjectManager,desktop_d
 widgets.reference.desktop_display_detail,ui,WidgetsPage,WindowsProjectManager,desktop_display_detail,"Show in the floating desktop widget",,active
 widgets.reference.compact_mode,ui,WidgetsPage,WindowsProjectManager,compact_mode,"Compact mode",,active
 widgets.reference.compact_mode_detail,ui,WidgetsPage,WindowsProjectManager,compact_mode_detail,"Use a compact layout in the desktop widget",,active
+settings.agent_pricing.collapsed_summary,ui,SettingsPage,AgentPricingSection,collapsed_summary,"{{count}} configured",,active
+settings.token_plan.collapsed_summary,ui,SettingsPage,TokenPlanSection,collapsed_summary,"{{count}} plans",,active
+settings.token_plan.count_active,ui,SettingsPage,TokenPlanSection,count_active,"{{count}} active",,active
+settings.token_plan.count_watch,ui,SettingsPage,TokenPlanSection,count_watch,"{{count}} need attention",,active
+settings.token_plan.live_quota_aria,ui,SettingsPage,TokenPlanSection,live_quota_aria,"Live plan quota",,active
+settings.cost.provider_api.collapsed_summary,ui,SettingsPage,ProviderApiConfigSection,collapsed_summary,"{{count}} providers",,active
+settings.cost.other_ai.collapsed_summary,ui,SettingsPage,OtherAiSpendSection,collapsed_summary,"{{count}} groups",,active
+settings.cost.other_ai.summary_counts,ui,SettingsPage,OtherAiSpendSection,summary_counts,"{{groups}} groups · {{records}} expenses",,active
+settings.agent_pricing.save_changes,ui,SettingsPage,AgentPricingSection,save_changes,"Save changes",,active

@@ -100,29 +100,31 @@ export function useProviderApiBalances() {
     }
   }, []);
 
-  const refreshOne = useCallback(async (configId) => {
-    if (!configId) return;
-    if (inFlightRef.current.has(configId)) return; // dedup
+  const refreshOne = useCallback(async (configId, { updateStale = true } = {}) => {
+    if (!configId) return false;
+    if (inFlightRef.current.has(configId)) return false; // dedup
     inFlightRef.current.add(configId);
     setRefreshing(configId, true);
     try {
       const result = await refreshProviderApiBalance(configId);
-      if (cancelledRef.current) return;
+      if (cancelledRef.current) return false;
       const balance = result?.data?.balance;
       if (balance) {
         setBalances((prev) => prev.some((b) => b.configId === configId)
           ? prev.map((b) => (b.configId === configId ? balance : b))
           : [...prev, balance]);
-        setStale(false);
         setLastUpdatedAt(new Date().toISOString());
-      } else if (!result?.ok) {
-        // HTTP-level failure: keep last balance, mark stale.
-        setStale(true);
+        if (updateStale) setStale(false);
+        return true;
       }
+      // Missing balance (or HTTP-level failure): keep last balance.
+      if (updateStale) setStale(true);
+      return false;
     } catch {
-      if (cancelledRef.current) return;
+      if (cancelledRef.current) return false;
       // Network error — keep last successful balance, mark stale (never 0).
-      setStale(true);
+      if (updateStale) setStale(true);
+      return false;
     } finally {
       inFlightRef.current.delete(configId);
       if (!cancelledRef.current) setRefreshing(configId, false);
@@ -131,8 +133,20 @@ export function useProviderApiBalances() {
 
   const refreshAll = useCallback(async () => {
     const enabled = configsRef.current.filter(isRefreshableConfig);
-    if (enabled.length === 0) return;
-    await Promise.all(enabled.map((c) => refreshOne(c.id)));
+    if (enabled.length === 0) {
+      // Nothing to refresh — clear a leftover stale banner from a previous set.
+      if (!cancelledRef.current) setStale(false);
+      return;
+    }
+    // Batch refreshes must not race on the shared `stale` flag. Each child
+    // updates balances only; the aggregate result decides stale once at the end.
+    const results = await Promise.all(
+      enabled.map((config) => refreshOne(config.id, { updateStale: false })),
+    );
+    if (cancelledRef.current) return;
+    const anyFailed = results.some((ok) => !ok);
+    setStale(anyFailed);
+    if (!anyFailed) setLastUpdatedAt(new Date().toISOString());
   }, [refreshOne]);
 
   // F4: reload() re-reads cached configs + balances then refreshes all
@@ -150,14 +164,14 @@ export function useProviderApiBalances() {
     (async () => {
       await loadCached();
       if (cancelledRef.current) return;
-      const enabled = configsRef.current.filter(isRefreshableConfig);
-      await Promise.all(enabled.map((c) => refreshOne(c.id)));
+      // Use refreshAll so parallel per-config results cannot race the shared stale flag.
+      await refreshAll();
     })();
     return () => {
       cancelledRef.current = true;
       inFlightRef.current.clear();
     };
-  }, [loadCached, refreshOne]);
+  }, [loadCached, refreshAll]);
 
   // Polling timer at the clamped min interval. Re-arms when configs change.
   useEffect(() => {

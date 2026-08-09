@@ -186,6 +186,13 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(screen.getByText("copy:nav.group.settings")).toBeInTheDocument();
   });
 
+  it("keeps the overview navigation free of the removed group heading and sidebar login", () => {
+    renderSidebar("/dashboard");
+
+    expect(screen.queryByText("copy:nav.group.overview")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
+  });
+
   it("keeps both reference sidebar groups expanded on the overview by default", () => {
     renderSidebar("/dashboard");
     expect(screen.getByRole("button", { name: "copy:nav.group.spend" })).toHaveAttribute("aria-expanded", "true");
@@ -384,6 +391,20 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
 
     expect(screen.queryByRole("button", { name: "copy:header.auth.open_settings" }))
       .not.toBeInTheDocument();
+  });
+
+  it("does not put an account control in the sidebar for signed-in users", () => {
+    authContext.value = {
+      enabled: true,
+      loading: false,
+      signedIn: true,
+      user: null,
+      displayName: "Ada",
+    };
+
+    renderSidebar("/dashboard");
+
+    expect(screen.queryByRole("button", { name: "copy:header.auth.open_settings" })).not.toBeInTheDocument();
   });
 
   it("keeps light, dark, and system choices wired to the existing theme setter", async () => {

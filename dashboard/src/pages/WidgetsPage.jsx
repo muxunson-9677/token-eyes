@@ -1,11 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Clock3,
   Download,
+  Ellipsis,
   Filter,
   FolderKanban,
   FolderPlus,
@@ -14,11 +20,10 @@ import {
   History,
   ListChecks,
   Monitor,
-  MoreVertical,
   Package,
-  Plus,
   RefreshCw,
   Search,
+  Trash2,
 } from "lucide-react";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
@@ -31,6 +36,7 @@ import {
 } from "../lib/menu-bar-display.js";
 import { ToggleSwitch } from "../components/settings/Controls.jsx";
 import { FadeIn, StaggerContainer, StaggerItem } from "../ui/foundation/FadeIn.jsx";
+import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
 import { getDesktopWidgetViewModel, selectLocalDirectory } from "../lib/api.ts";
 import { selectDirectoryViaTauri } from "../lib/tauri-directory.js";
 import {
@@ -441,6 +447,10 @@ function useClientPlatform() {
       return;
     }
     const ua = (navigator.userAgent || "").toLowerCase();
+    if (/windows/.test(ua)) {
+      setPlatform("windows");
+      return;
+    }
     const isMac = /mac/.test(ua) && !/iphone|ipad/.test(ua);
     setPlatform(isMac ? "mac-web" : "other");
   }, []);
@@ -932,13 +942,116 @@ function WindowsWidgetProjectSettings() {
   );
 }
 
+function formatProjectLastActive(project, index) {
+  if (project?.lastActiveLabel) return project.lastActiveLabel;
+  const updatedAt = Date.parse(project?.updatedAt || "");
+  const fallbackDays = [0, 1, 2, 3, 5, 6, 30, 60][index] ?? 30;
+  const elapsedHours = Number.isFinite(updatedAt)
+    ? Math.max(0, Math.floor((Date.now() - updatedAt) / 3_600_000))
+    : fallbackDays * 24;
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  const formatter = new Intl.RelativeTimeFormat("zh-CN", { numeric: "always" });
+  if (elapsedHours < 24) return formatter.format(-elapsedHours, "hour");
+  if (elapsedDays < 7) return formatter.format(-elapsedDays, "day");
+  if (elapsedDays < 30) return formatter.format(-Math.floor(elapsedDays / 7), "week");
+  return formatter.format(-Math.floor(elapsedDays / 30), "month");
+}
+
+function formatProjectCreatedAt(project) {
+  const timestamp = Date.parse(project?.createdAt || project?.updatedAt || "");
+  if (!Number.isFinite(timestamp)) return copy("widgets.reference.never_active");
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(timestamp).replaceAll("/", "-");
+}
+
+function formatLimitWindow(limit) {
+  const windowHours = Number.parseInt(String(limit?.window || ""), 10);
+  if (Number.isFinite(windowHours) && windowHours > 0) {
+    return copy("widgets.reference.reset_every_hours", { hours: windowHours, quota: 100 });
+  }
+  return String(limit?.window || "");
+}
+
+function formatLimitResetAt(limit) {
+  if (Number(limit?.usedPercent || 0) >= 100) return copy("widgets.reference.resets_at_limit");
+  const resetAt = Date.parse(limit?.resetAt || "");
+  if (!Number.isFinite(resetAt)) return copy("widgets.reference.never_active");
+  const minutes = Math.max(0, Math.round((resetAt - Date.now()) / 60_000));
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return copy("widgets.reference.reset_after", { hours, minutes: remainder });
+}
+
+function widgetProjectStatus(project, index) {
+  return project.status || (index < 2 ? "active" : index < 4 ? "recovering" : "inactive");
+}
+
+function widgetProjectTags(project) {
+  const savedTags = Array.isArray(project?.tags)
+    ? project.tags.filter(Boolean)
+    : project?.tag
+      ? [project.tag]
+      : [];
+  if (savedTags.length) return savedTags;
+
+  const name = String(project?.label || project?.path || project?.id || "").toLowerCase();
+  if (name.includes("skin") || name.includes("theme")) return [copy("widgets.reference.tag_theme")];
+  if (name.includes("token") || name.includes("eye")) return [copy("widgets.reference.tag_core")];
+  if (name.includes("text") || name.includes("clash")) return [copy("widgets.reference.tag_tool")];
+  if (name.includes("card") || name.includes("mind") || name.includes("思维")) return [copy("widgets.reference.tag_card"), copy("widgets.reference.tag_design")];
+  if (name.includes("xls") || name.includes("excel") || name.includes("sheet")) return [copy("widgets.reference.tag_experiment")];
+  if (name.includes("pet") || name.includes("qiuzhi") || name.includes("生存")) return [copy("widgets.reference.tag_personal")];
+  return [copy("widgets.reference.tag_project")];
+}
+
+function widgetProjectTagTone(tag) {
+  const tones = {
+    [copy("widgets.reference.tag_core")]: "core",
+    [copy("widgets.reference.tag_tool")]: "tool",
+    [copy("widgets.reference.tag_card")]: "card",
+    [copy("widgets.reference.tag_design")]: "design",
+    [copy("widgets.reference.tag_personal")]: "personal",
+    [copy("widgets.reference.tag_theme")]: "theme",
+    [copy("widgets.reference.tag_experiment")]: "experiment",
+  };
+  return tones[tag] || "project";
+}
+
+function widgetPlanBadge(limit, index, total) {
+  if (limit?.notes) return limit.notes;
+  if (index === 0) return copy("widgets.reference.primary_plan");
+  if (index === total - 1) return copy("widgets.reference.backup_plan");
+  return "";
+}
+
+function WidgetTablePagination() {
+  return (
+    <div className="tt-widget-table-pagination" aria-label={copy("widgets.reference.pagination")}>
+      <button type="button" disabled aria-hidden><ChevronsLeft /></button>
+      <button type="button" disabled aria-hidden><ChevronLeft /></button>
+      <b>{1}</b>
+      <button type="button" disabled aria-hidden><ChevronRight /></button>
+      <button type="button" disabled aria-hidden><ChevronsRight /></button>
+      <label><select aria-label={copy("widgets.reference.page_size")} value="10" onChange={() => {}}><option value="10">{copy("widgets.reference.page_size")}</option></select><ChevronDown aria-hidden /></label>
+    </div>
+  );
+}
+
 function WindowsProjectManager() {
   const [model, setModel] = useState(null);
   const [prefs, setPrefs] = useState(null);
   const [query, setQuery] = useState("");
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [desktopVisible, setDesktopVisible] = useState(true);
-  const [compactMode, setCompactMode] = useState(false);
+  const [refreshingPlans, setRefreshingPlans] = useState(false);
+  const [openMenu, setOpenMenu] = useState(null);
+  const [dismissedProjectIds, setDismissedProjectIds] = useState([]);
+  const [dismissedLimitIds, setDismissedLimitIds] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState("recent");
+  const [recentRange, setRecentRange] = useState("7d");
+  const [batchOpen, setBatchOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -976,9 +1089,18 @@ function WindowsProjectManager() {
   const selectedProjectIds = Array.isArray(prefs?.selectedProjectIds) ? prefs.selectedProjectIds : [];
   const selectedLimitIds = Array.isArray(prefs?.selectedLimitIds) ? prefs.selectedLimitIds : [];
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleProjects = normalizedQuery
-    ? projects.filter((project) => String(project.label || "").toLocaleLowerCase().includes(normalizedQuery))
-    : projects;
+  const displayedProjects = projects
+    .map((project, index) => ({ project, index, status: widgetProjectStatus(project, index) }))
+    .filter(({ project, status }) => (
+      (!normalizedQuery || String(project.label || "").toLocaleLowerCase().includes(normalizedQuery))
+      && (statusFilter === "all" || status === statusFilter)
+      && !dismissedProjectIds.includes(String(project.id))
+    ))
+    .sort((left, right) => {
+      if (sortOrder !== "recent") return 0;
+      return Date.parse(right.project.updatedAt || "") - Date.parse(left.project.updatedAt || "");
+    });
+  const displayedLimits = limits.slice(0, 3).filter((limit) => !dismissedLimitIds.includes(String(limit.id)));
 
   const persist = async (next) => {
     setPrefs(next);
@@ -1009,8 +1131,48 @@ function WindowsProjectManager() {
     void persist({ ...prefs, selectedLimitIds: nextIds });
   };
 
+  const removeProjectFromWidget = (project) => {
+    if (!prefs) return;
+    const id = String(project.id);
+    setDismissedProjectIds((current) => [...current, id]);
+    setOpenMenu(null);
+    const nextIds = selectedProjectIds.filter((value) => value !== id);
+    void persist({
+      ...prefs,
+      selectedProjectIds: nextIds,
+      selectedProjects: projects.filter((item) => nextIds.includes(String(item.id))),
+    });
+  };
+
+  const removeLimitFromWidget = (limit) => {
+    if (!prefs) return;
+    const id = String(limit.id);
+    setDismissedLimitIds((current) => [...current, id]);
+    setOpenMenu(null);
+    void persist({ ...prefs, selectedLimitIds: selectedLimitIds.filter((value) => value !== id) });
+  };
+
   const activeProjects = Number(model?.projectStatus?.green || 0) + Number(model?.projectStatus?.yellow || 0)
     || projects.filter((project) => project.updatedAt).length;
+  const activeToday = projects.filter((project) => {
+    const updatedAt = Date.parse(project.updatedAt || "");
+    return Number.isFinite(updatedAt) && Date.now() - updatedAt < 24 * 60 * 60 * 1000;
+  }).length;
+  const activeThisWeek = projects.filter((project) => {
+    const updatedAt = Date.parse(project.updatedAt || "");
+    return Number.isFinite(updatedAt) && Date.now() - updatedAt < 7 * 24 * 60 * 60 * 1000;
+  }).length;
+
+  const refreshPlans = async () => {
+    if (refreshingPlans) return;
+    setRefreshingPlans(true);
+    try {
+      const nextModel = await getDesktopWidgetViewModel("all");
+      setModel(nextModel || { projectStatus: { recentProjects: [] }, limits: [] });
+    } finally {
+      setRefreshingPlans(false);
+    }
+  };
 
   return (
     <div className="tt-widget-manager" data-testid="widget-manager">
@@ -1018,15 +1180,17 @@ function WindowsProjectManager() {
         <article data-tone="blue">
           <span className="tt-widget-summary-icon"><FolderKanban aria-hidden /></span>
           <div><span>{copy("widgets.reference.selected_projects")}</span><strong>{selectedProjectIds.length}</strong><small>{copy("widgets.reference.selected_projects_detail")}</small></div>
+          <aside><b>{copy("widgets.reference.yesterday_delta", { count: activeToday })}</b><small>{copy("widgets.reference.week_added", { count: activeThisWeek })}</small></aside>
         </article>
         <article data-tone="green">
           <span className="tt-widget-summary-icon"><CheckCircle2 aria-hidden /></span>
           <div><span>{copy("widgets.reference.active_projects")}</span><strong>{activeProjects}</strong><small>{copy("widgets.reference.active_projects_detail")}</small></div>
+          <aside><b>{copy("widgets.reference.yesterday_delta", { count: activeToday })}</b><small>{copy("widgets.reference.active_rate", { rate: projects.length ? Math.round((activeProjects / projects.length) * 100) : 0 })}</small></aside>
         </article>
         <article data-tone="violet">
           <span className="tt-widget-summary-icon"><Package aria-hidden /></span>
           <div><span>{copy("widgets.reference.plan_usage")}</span><strong>{selectedLimitIds.length} / {limits.length}</strong><small>{copy("widgets.reference.plan_usage_detail")}</small></div>
-          <ChevronDown aria-hidden />
+          <aside className="tt-widget-summary-ring-wrap"><span className="tt-widget-summary-ring" style={{ "--widget-progress": `${limits.length ? Math.round((selectedLimitIds.length / limits.length) * 100) : 0}%` }}><b>{limits.length ? Math.round((selectedLimitIds.length / limits.length) * 100) : 0}%</b></span><small>{copy("widgets.reference.all_plans_enabled")}</small></aside>
         </article>
       </section>
 
@@ -1035,72 +1199,75 @@ function WindowsProjectManager() {
           <div className="tt-widget-section-title">
             <span><FolderKanban aria-hidden /></span>
             <h2>{copy("widgets.reference.desktop_projects")}</h2>
-            <small>{copy("widgets.reference.selected_prefix")} <b>{selectedProjectIds.length}</b> {copy("widgets.reference.project_count_suffix")}</small>
+            <small>{copy("widgets.reference.total_projects", { count: projects.length })}</small>
           </div>
-          <label className="tt-widget-window-select">
-            <span>{copy("widgets.reference.active_range")}</span>
-            <select
-              aria-label={copy("widgets.reference.project_list_active_range")}
-              value={prefs?.activeSessionWindow || "3d"}
-              onChange={(event) => prefs && void persist({ ...prefs, activeSessionWindow: event.target.value })}
-            >
-              <option value="1d">{copy("widgets.reference.one_day")}</option>
-              <option value="3d">{copy("widgets.reference.three_days")}</option>
-              <option value="5d">{copy("widgets.reference.five_days")}</option>
-            </select>
-          </label>
         </header>
         <div className="tt-widget-project-toolbar">
-          <button type="button" aria-label={copy("widgets.reference.add_project_folder")} onClick={() => void selectDirectoryViaTauri()}><FolderPlus aria-hidden />{copy("widgets.reference.choose_project_folder")}</button>
-          <button type="button" aria-label={copy("widgets.reference.import_recent_projects")} onClick={() => prefs && void persist({ ...prefs, selectedProjectIds: projects.map((project) => String(project.id)), selectedProjects: projects })}><History aria-hidden />{copy("widgets.reference.restore_recent_projects")}</button>
+          <button type="button" className="tt-widget-project-add" aria-label={copy("widgets.reference.add_project_folder")} onClick={() => void selectDirectoryViaTauri()}><FolderPlus aria-hidden />{copy("widgets.reference.choose_project_folder")}</button>
+          <div className="tt-widget-batch-actions"><button type="button" aria-expanded={batchOpen} onClick={() => setBatchOpen((open) => !open)}><ListChecks aria-hidden />{copy("widgets.reference.batch_actions")}<ChevronDown aria-hidden /></button>{batchOpen ? <div role="menu"><button type="button" role="menuitem" onClick={() => { setBatchOpen(false); prefs && void persist({ ...prefs, selectedProjectIds: [], selectedProjects: [] }); }}>{copy("widgets.reference.clear_selection")}</button></div> : null}</div>
+          <button type="button" aria-label={copy("widgets.reference.import_recent_projects")} onClick={() => {
+            if (!prefs) return;
+            setDismissedProjectIds([]);
+            void persist({ ...prefs, selectedProjectIds: projects.map((project) => String(project.id)), selectedProjects: projects });
+          }}><History aria-hidden />{copy("widgets.reference.restore_recent_projects")}</button>
           <label><Search aria-hidden /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={copy("widgets.reference.search_projects")} /></label>
+          <span className="tt-widget-toolbar-spacer" />
+          <label className="tt-widget-toolbar-select"><Filter aria-hidden /><select aria-label={copy("widgets.reference.status_all")} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">{copy("widgets.reference.status_all")}</option><option value="active">{copy("widgets.reference.active_projects")}</option><option value="recovering">{copy("widgets.reference.active_range")}</option><option value="inactive">{copy("widgets.reference.never_active")}</option></select></label>
+          <label className="tt-widget-toolbar-select"><select aria-label={copy("widgets.reference.sort_recent_active")} value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}><option value="recent">{copy("widgets.reference.sort_recent_active")}</option></select><ChevronDown aria-hidden /></label>
+          <label className="tt-widget-toolbar-select"><CalendarDays aria-hidden /><select aria-label={copy("widgets.reference.recent_seven_days")} value={recentRange} onChange={(event) => setRecentRange(event.target.value)}><option value="7d">{copy("widgets.reference.recent_seven_days")}</option><option value="3d">{copy("widgets.reference.three_days")}</option><option value="1d">{copy("widgets.reference.one_day")}</option></select></label>
         </div>
         <div className="tt-widget-project-table">
-          <div className="tt-widget-project-head"><span /><span>{copy("widgets.reference.project_name")}</span><span>{copy("widgets.reference.status_info")}</span><span>{copy("widgets.reference.last_active")}</span><span /></div>
-          {visibleProjects.map((project, index) => {
+          <div className="tt-widget-project-head"><span /><span>{copy("widgets.reference.project_name")}</span><span>{copy("widgets.reference.project_tag")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.last_active")}</span><span>{copy("widgets.reference.created_at")}</span><span>{copy("widgets.reference.action")}</span></div>
+          {displayedProjects.map(({ project, index, status }) => {
             const checked = selectedProjectIds.includes(String(project.id));
-            const status = project.status || (index < 2 ? "active" : index < 4 ? "recovering" : "inactive");
+            const tags = widgetProjectTags(project);
             return (
               <div className="tt-widget-project-row" key={project.id}>
                 <button type="button" className={cn("tt-widget-check", checked && "is-checked")} onClick={() => toggleProject(project)} aria-label={project.label}>{checked ? <Check aria-hidden /> : null}</button>
                 <span className="tt-widget-project-name"><i data-tone={index % 6}>{String(project.label || "PR").slice(0, 3).toUpperCase()}</i>{project.label}</span>
+                <span className="tt-widget-project-tag">{tags.map((tag) => <i key={tag} data-tone={widgetProjectTagTone(tag)}>{tag}</i>)}</span>
                 <span className={cn("tt-widget-project-status", `is-${status}`)}><i />{status === "active" ? "活跃" : status === "recovering" ? "较活跃" : "未激活"}</span>
-                <time>{project.lastActiveLabel || ["2 小时前", "1 天前", "2 天前", "3 天前", "5 天前", "6 天前"][index] || "—"}</time>
-                <MoreVertical aria-hidden />
+                <time>{formatProjectLastActive(project, index)}</time>
+                <time className="tt-widget-project-created">{formatProjectCreatedAt(project)}</time>
+                <div className="tt-widget-row-actions">
+                  <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `project:${project.id}`} onClick={() => setOpenMenu((current) => current === `project:${project.id}` ? null : `project:${project.id}`)}><Ellipsis aria-hidden /></button>
+                  {openMenu === `project:${project.id}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeProjectFromWidget(project)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
+                </div>
               </div>
             );
           })}
-          <footer><span>{copy("widgets.reference.total_projects", { count: projects.length })}</span><span>{copy("widgets.reference.pagination")}</span></footer>
+          <footer><span className="tt-widget-table-selection">{copy("widgets.reference.selected_prefix")} <b>{selectedProjectIds.length}</b> {copy("widgets.reference.project_count_suffix")}<button type="button" onClick={() => prefs && void persist({ ...prefs, selectedProjectIds: [], selectedProjects: [] })}>{copy("widgets.reference.clear_selection")}</button></span><WidgetTablePagination /></footer>
         </div>
       </section>
 
       <div className="tt-widget-bottom-grid">
         <section className="tt-widget-limits" data-testid="widget-limits">
-          <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{selectedLimitIds.length} / {limits.length} {copy("widgets.reference.activated")}</small></div></div><button type="button">{copy("widgets.reference.upgrade_plan")}</button></header>
+          <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitIds.length, total: limits.length })}</small></div></div><button type="button" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button></header>
           <div className="tt-widget-limit-table">
-            <div className="tt-widget-limit-head"><span>{copy("widgets.reference.plan_name")}</span><span>{copy("widgets.reference.provider")}</span><span>{copy("widgets.reference.usage_rate")}</span><span>{copy("widgets.reference.status")}</span></div>
-            {limits.slice(0, 3).map((limit, index) => {
+            <div className="tt-widget-limit-head"><span>{copy("widgets.reference.plan_name")}</span><span>{copy("widgets.reference.provider")}</span><span>{copy("widgets.reference.usage_rate")}</span><span>{copy("widgets.reference.reset_cycle_quota")}</span><span>{copy("widgets.reference.next_reset")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.action")}</span></div>
+            {displayedLimits.map((limit, index) => {
               const selected = selectedLimitIds.includes(String(limit.id));
               const used = Number(limit.usedPercent || 0);
+              const agent = String(limit.agent || limit.provider || "").toLowerCase();
+              const planName = [limit.accountLabel, limit.window].filter(Boolean).join(" · ") || limit.provider;
+              const planBadge = widgetPlanBadge(limit, index, displayedLimits.length);
               return <div className="tt-widget-limit-row" key={limit.id}>
                 <GripVertical aria-hidden />
                 <button type="button" className={cn("tt-widget-check", selected && "is-checked")} onClick={() => toggleLimit(limit)}>{selected ? <Check aria-hidden /> : null}</button>
-                <span className="tt-widget-limit-name"><i>{["◉", "✳", "∞"][index]}</i>{limit.label || `${limit.provider || "Codex"} · Plus · 5h`}</span>
-                <span>{limit.provider || ["OpenAI", "Anthropic", "Meta"][index]}</span>
-                <span className="tt-widget-limit-usage"><i><b style={{ width: `${used}%` }} /></i>{used}%</span>
+                <span className="tt-widget-limit-name"><ProviderIcon provider={agent} size={22} className={`tt-widget-agent-logo is-${agent}`} />{planName}{planBadge ? <i>{planBadge}</i> : null}</span>
+                <span>{limit.provider || agent}</span>
+                <span className="tt-widget-limit-usage"><i><b style={{ width: `${used}%` }} /></i>{copy("widgets.reference.used_of_quota", { used, quota: 100 })}</span>
+                <span className="tt-widget-limit-cycle">{formatLimitWindow(limit)}</span>
+                <span className="tt-widget-limit-reset">{formatLimitResetAt(limit)}</span>
                 <span className={cn("tt-widget-limit-status", used >= 100 ? "is-max" : used >= 90 ? "is-warning" : "is-normal")}>{used >= 100 ? "已达上限" : used >= 90 ? "接近上限" : "正常"}</span>
-                <ChevronDown aria-hidden />
+                <div className="tt-widget-row-actions">
+                  <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `limit:${limit.id}`} onClick={() => setOpenMenu((current) => current === `limit:${limit.id}` ? null : `limit:${limit.id}`)}><Ellipsis aria-hidden /></button>
+                  {openMenu === `limit:${limit.id}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeLimitFromWidget(limit)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
+                </div>
               </div>;
             })}
+            <footer><span className="tt-widget-table-count">{copy("widgets.reference.plan_count", { count: displayedLimits.length })}</span><WidgetTablePagination /></footer>
           </div>
-        </section>
-
-        <section className="tt-widget-quick" data-testid="widget-quick-settings">
-          <h2>{copy("widgets.reference.quick_settings")}</h2>
-          <label><Clock3 aria-hidden /><span><b>{copy("widgets.reference.active_range")}</b><small>{copy("widgets.reference.active_range_detail")}</small></span><select value={prefs?.activeSessionWindow || "3d"} onChange={(event) => prefs && void persist({ ...prefs, activeSessionWindow: event.target.value })}><option value="3d">{copy("widgets.reference.three_days")}</option><option value="1d">{copy("widgets.reference.one_day")}</option></select></label>
-          <label><RefreshCw aria-hidden /><span><b>{copy("widgets.reference.auto_refresh")}</b><small>{copy("widgets.reference.auto_refresh_detail")}</small></span><ToggleSwitch checked={autoRefresh} onChange={() => setAutoRefresh(!autoRefresh)} ariaLabel={copy("widgets.reference.auto_refresh")} /></label>
-          <label><Monitor aria-hidden /><span><b>{copy("widgets.reference.desktop_display")}</b><small>{copy("widgets.reference.desktop_display_detail")}</small></span><ToggleSwitch checked={desktopVisible} onChange={() => setDesktopVisible(!desktopVisible)} ariaLabel={copy("widgets.reference.desktop_display")} /></label>
-          <label><ListChecks aria-hidden /><span><b>{copy("widgets.reference.compact_mode")}</b><small>{copy("widgets.reference.compact_mode_detail")}</small></span><ToggleSwitch checked={compactMode} onChange={() => setCompactMode(!compactMode)} ariaLabel={copy("widgets.reference.compact_mode")} /></label>
         </section>
       </div>
     </div>
@@ -1204,11 +1371,10 @@ export function WidgetsPage() {
                 {platform === "windows" ? <p>{copy("widgets.reference.subtitle")}</p> : null}
               </div>
               {platform === "windows" ? (
-                <div className="tt-widget-page-actions">
-                  <button type="button"><Plus aria-hidden />{copy("widgets.reference.new_project")}</button>
-                  <button type="button"><RefreshCw aria-hidden />{copy("widgets.reference.sync")}</button>
-                  <button type="button"><ListChecks aria-hidden />{copy("widgets.reference.batch_manage")}</button>
-                  <button type="button"><Filter aria-hidden />{copy("widgets.reference.all_projects")}<ChevronDown aria-hidden /></button>
+                <div className="tt-widget-top-controls">
+                  <div className="tt-widget-primary-action">
+                    <WindowsWidgetToggle />
+                  </div>
                 </div>
               ) : (
                 <div className="shrink-0"><HeaderCta platform={platform} /></div>
@@ -1231,10 +1397,6 @@ export function WidgetsPage() {
             {platform === "windows" ? (
               <>
                 <WindowsProjectManager />
-                <section className="tt-widget-advanced-settings mt-6" aria-label={copy("widgets.windows.projects.title")}>
-                  <WindowsWidgetToggle />
-                  <WindowsWidgetProjectSettings />
-                </section>
               </>
             ) : (
               <>

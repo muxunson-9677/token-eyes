@@ -58,7 +58,12 @@ describe("ModelUsageDonut", () => {
     expect(screen.getByTestId("model-radar-label-0")).toHaveTextContent("1");
     expect(screen.getByTestId("model-radar-label-0")).toHaveTextContent("75%");
     expect(screen.getByTestId("model-radar-label-0")).not.toHaveTextContent("GPT-5.5");
-    expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
+    expect(screen.getByTestId("model-usage-summary-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("model-usage-summary-top1")).toHaveTextContent("75%");
+    expect(screen.getByTestId("model-usage-summary-top3")).toHaveTextContent("100%");
+    expect(screen.getByTestId("model-usage-table-head")).toHaveTextContent("Token");
+    expect(screen.getAllByRole("progressbar")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /2.*模型/ })).toBeInTheDocument();
     expect(screen.getAllByTestId("model-radar-grid-ring")).toHaveLength(4);
     expect(screen.getByTestId("model-radar-frame")).toBeInTheDocument();
     expect(screen.getByTestId("model-radar-value")).toHaveAttribute("fill", "url(#model-radar-fill)");
