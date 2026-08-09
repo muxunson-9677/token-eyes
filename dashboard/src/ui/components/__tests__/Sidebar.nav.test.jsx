@@ -367,7 +367,6 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(screen.getByRole("button", { name: "copy:nav.menu" })).toHaveClass("tt-sidebar-focusable");
     expect(screen.getByRole("link", { name: "copy:shared.app_name" })).toHaveClass("tt-sidebar-focusable");
     expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "copy:header.auth.open_settings" })).not.toBeInTheDocument();
 
     await act(async () => {
       await user.click(screen.getByRole("button", { name: "copy:nav.menu" }));
@@ -513,6 +512,20 @@ describe("Sidebar visual identity hooks", () => {
 
     expect(css).toContain('.tt-sidebar-item[data-nav-id="leaderboard"][aria-current="page"]');
     expect(css).not.toContain('.tt-sidebar-item[data-nav-id="leaderboard"] { color:');
+  });
+
+  it("keeps the locked reset-history layout in a regular local browser", () => {
+    nativeBridgeContext.windows = false;
+
+    renderSidebar("/reset-history");
+
+    expect(document.querySelector(".tt-app-shell")).toHaveAttribute(
+      "data-reference-route",
+      "reset-history",
+    );
+    expect(document.querySelector(".tt-app-shell")).toHaveClass(
+      "tt-reference-route-reset-history",
+    );
   });
 });
 

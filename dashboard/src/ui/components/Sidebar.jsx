@@ -752,14 +752,14 @@ export function AppLayout({ children }) {
       className={cn(
         "tt-app-shell fixed inset-0 flex flex-col text-oai-black dark:text-oai-white font-sans overflow-hidden",
         nativeWindows && "tt-native-glass-shell",
-        nativeWindows && `tt-reference-route-${referenceRoute}`,
+        `tt-reference-route-${referenceRoute}`,
         nativeWindows
           ? "bg-oai-gray-100/80 dark:bg-oai-gray-950"
           : nativeEmbed
             ? "bg-transparent"
             : "bg-oai-gray-100/80 dark:bg-oai-gray-950",
       )}
-      data-reference-route={nativeWindows ? referenceRoute : undefined}
+      data-reference-route={referenceRoute}
     >
       {nativeHeader}
       <div className="flex-1 min-h-0 flex">

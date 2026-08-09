@@ -1358,6 +1358,28 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   white-space: nowrap;
 }
 
+@media (max-width: 1500px) {
+  .tt-reference-route-reset-history [data-testid="reset-history-stat"] {
+    padding: 18px 14px 16px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat-icon"] {
+    width: 40px;
+    height: 40px;
+    margin-right: 10px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat-icon"] svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat"] dd {
+    font-size: 18px;
+    line-height: 24px;
+  }
+}
+
 .tt-reference-route-reset-history [data-testid="reset-history-stat"][data-empty="true"] {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.7));
 }

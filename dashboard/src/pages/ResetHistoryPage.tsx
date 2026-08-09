@@ -38,6 +38,54 @@ type TimelineSource = {
   url: string;
 };
 
+const PREVIEW_RESET_DATES = [
+  "2026-08-01T11:32:00.000Z",
+  "2026-07-29T12:09:00.000Z",
+  "2026-07-28T11:09:00.000Z",
+  "2026-07-26T03:17:00.000Z",
+  "2026-07-22T00:47:00.000Z",
+  "2026-07-18T11:28:00.000Z",
+  "2026-07-16T12:14:00.000Z",
+  "2026-07-15T03:34:00.000Z",
+  "2026-07-14T02:29:00.000Z",
+  "2026-07-13T05:28:00.000Z",
+  "2026-07-12T18:20:00.000Z",
+  "2026-07-11T13:54:00.000Z",
+  "2026-07-10T22:18:00.000Z",
+] as const;
+
+const PREVIEW_RESET_HISTORY: CodexResetHistoryEvent[] = PREVIEW_RESET_DATES.map(
+  (occurredAt, index) => ({
+    id: `preview-official-reset-${index + 1}`,
+    type: "official_reset_announcement",
+    agent: "codex",
+    account_key: "preview",
+    window: null,
+    created_at: occurredAt,
+    reset_at: null,
+    occurred_at: occurredAt,
+    observed_at: occurredAt,
+    previous_used_percent: null,
+    current_used_percent: null,
+    confidence: "confirmed",
+    alert_eligible: false,
+    official_url: "https://chatgpt.com/codex",
+    source_url: "https://x.com/thsottiaux/status/2082317452755751098",
+    source_author: "thsottiaux",
+    source: "signed_feed",
+    reset_kind: index === 4 ? "unknown" : index >= 8 ? "banked" : "hard",
+    reset_scope: index % 3 === 0 ? "all_codex_work_users" : "all_paid_users",
+    title: "Codex official extra reset",
+  }),
+);
+
+function shouldUseLocalPreviewHistory(available: boolean, history: CodexResetHistoryEvent[]) {
+  if (!import.meta.env.DEV || available || history.length > 0 || typeof window === "undefined") {
+    return false;
+  }
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+}
+
 export function formatResetDateTime(iso: string) {
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "";
@@ -336,10 +384,12 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
 
 export function ResetHistoryPage() {
   const { history, available } = useCodexResetEvents();
+  const usePreviewHistory = shouldUseLocalPreviewHistory(available, history);
+  const displayedHistory = usePreviewHistory ? PREVIEW_RESET_HISTORY : history;
   const [celebrationEffect, setCelebrationEffect] = useState(readResetCelebrationEffect);
   const [visibleRecordCount, setVisibleRecordCount] = useState(11);
   const { events, sources, statistics } = useMemo(() => {
-    const official = filterRecentOfficialResets(history)
+    const official = filterRecentOfficialResets(displayedHistory)
       .sort((left, right) => Date.parse(right.occurred_at) - Date.parse(left.occurred_at));
     const indexByUrl = new Map<string, number>();
     const indexedSources: TimelineSource[] = [];
@@ -360,7 +410,7 @@ export function ResetHistoryPage() {
       return { ...event, sourceIndex };
     });
     return { events: indexedEvents, sources: indexedSources, statistics: resetStatistics };
-  }, [history]);
+  }, [displayedHistory]);
   const visibleEvents = events.slice(0, visibleRecordCount);
   const hasMoreRecords = visibleEvents.length < events.length;
 
@@ -404,7 +454,11 @@ export function ResetHistoryPage() {
             </div>
           </div>
 
-          <ResetStatisticsSummary statistics={statistics} events={events} isLoading={!available} />
+          <ResetStatisticsSummary
+            statistics={statistics}
+            events={events}
+            isLoading={!available && !usePreviewHistory}
+          />
 
           <ResetActivitySummary events={events} statistics={statistics} />
 
@@ -466,7 +520,9 @@ export function ResetHistoryPage() {
                 </>
               ) : (
                 <p className="tt-reset-history-empty py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
-                  {available ? copy("reset_history.empty") : copy("reset_history.loading_detail")}
+                  {available || usePreviewHistory
+                    ? copy("reset_history.empty")
+                    : copy("reset_history.loading_detail")}
                 </p>
               )}
             </div>

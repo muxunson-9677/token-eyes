@@ -81,6 +81,34 @@ function officialReset(
 describe("ResetHistoryPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    resetContext.value.available = true;
+    resetContext.value.history = [];
+  });
+
+  it("shows deterministic preview records when the local desktop API is unavailable", () => {
+    window.history.replaceState({}, "", "/reset-history");
+    resetContext.value.available = false;
+    resetContext.value.history = [];
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(11);
+    expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
+    expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
+  });
+
+  it("keeps the heatmap and summary figures in one right-side divided group", () => {
+    resetContext.value.history = [
+      officialReset("activity", new Date("2026-08-01T11:32:00.000Z")),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    const activity = screen.getByTestId("reset-history-activity");
+    const dataGroup = activity.querySelector(".tt-reset-activity-data");
+    expect(dataGroup).not.toBeNull();
+    expect(dataGroup?.querySelector(".tt-reset-heatmap")).not.toBeNull();
+    expect(dataGroup?.querySelectorAll(".tt-reset-activity-stat")).toHaveLength(2);
   });
 
   it("keeps the heatmap and summary figures in one right-side divided group", () => {
