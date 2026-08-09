@@ -262,7 +262,7 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 }
 
 .tt-reference-route-spend-cost .tt-main-work-surface h1 {
-  font-size: 34px;
+  font-size: 30px;
   line-height: 1.15;
 }
 
@@ -276,10 +276,11 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
   position: relative;
-  height: 275px;
+  height: auto;
+  min-height: 0;
   margin-bottom: 14px;
   padding: 18px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-month-picker"] {
@@ -308,13 +309,18 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   background: #f7f9fc;
 }
 
+.tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p svg {
+  flex: 0 0 auto;
+}
+
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
   grid-template-columns: 1fr 1.055fr;
   gap: 18px;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2) {
-  font-size: 24px;
+  font-size: 22px;
+  margin-bottom: 14px;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
@@ -322,16 +328,116 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   padding: 14px 16px;
 }
 
-.tt-reference-route-spend-cost [data-cost-section] {
-  height: 70px;
-  margin-bottom: 12px !important;
-  padding: 12px 18px;
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] {
+  min-height: 42px;
+  margin-top: auto;
+  flex-wrap: nowrap;
+  gap: 10px;
   overflow: hidden;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #f3f7ff;
+  color: #667085;
+  font-size: 12px;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-subscription"] {
+  background: #f1faf6;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] > span:first-child {
+  flex: 0 0 auto;
+  min-width: 56px;
+  justify-content: center;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-estimated"] > span:first-child {
+  background: #dceeff;
+  color: #1877d1;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-subscription"] > span:first-child {
+  background: #d9f6e7;
+  color: #07945a;
+}
+
+.tt-reference-route-spend-cost .tt-summary-comparison {
+  display: flex;
+  min-width: 132px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.tt-reference-route-spend-cost .tt-summary-comparison-label {
+  border-radius: 5px;
+  padding: 3px 7px;
+  background: #f1f3f5;
+  color: #56606e;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost .tt-summary-comparison-detail {
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost [data-cost-summary-card="subscription"] .tt-summary-comparison {
+  min-width: 122px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #eaf8f1;
+  color: #149467;
+}
+
+.tt-reference-route-spend-cost [data-cost-summary-card="subscription"] .tt-summary-comparison-label {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+  height: 66px;
+  margin-bottom: 0 !important;
+  padding: 10px 16px;
+  overflow: visible;
+  border-color: rgba(31, 43, 56, 0.09);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(246, 248, 251, 0.96));
+  box-shadow: 0 1px 2px rgba(31, 43, 56, 0.07), 0 10px 22px rgba(31, 43, 56, 0.075), inset 0 1px rgba(255, 255, 255, 0.92);
+}
+
+.tt-reference-route-spend-cost [data-cost-section][data-open="true"] {
+  height: auto;
+  margin-bottom: 0 !important;
+  padding: 16px;
+  overflow: visible;
+  border-color: rgba(31, 43, 56, 0.09);
+  box-shadow: 0 1px 2px rgba(31, 43, 56, 0.06), 0 9px 20px rgba(31, 43, 56, 0.06), inset 0 1px rgba(255, 255, 255, 0.9);
 }
 
 .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+  display: grid;
   height: 46px;
   margin: 0;
+  grid-template-columns: minmax(150px, 1fr) 830px 160px;
+  column-gap: 0;
+  align-items: center;
+}
+
+.tt-reference-route-spend-cost [data-cost-section] + [data-cost-section] {
+  margin-top: 8px !important;
 }
 
 .tt-reference-route-spend-cost [data-cost-section] > div:first-child > button {
@@ -341,9 +447,23 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 
 .tt-reference-route-spend-cost .tt-cost-row-metrics {
   display: grid;
-  min-width: 560px;
-  grid-template-columns: 154px 154px 252px;
+  width: 830px;
+  min-width: 0;
+  margin-left: 0;
+  grid-template-columns: 225px 225px 380px;
   align-items: center;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-actions {
+  display: flex;
+  width: 160px;
+  min-width: 0;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.tt-reference-route-spend-cost [data-cost-section][data-open="true"] .tt-cost-row-actions {
+  grid-column: 3;
 }
 
 .tt-reference-route-spend-cost .tt-cost-row-metric {
@@ -352,37 +472,36 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   height: 42px;
   flex-direction: column;
   justify-content: center;
+  align-items: flex-start;
   border-left: 1px solid #e8ebef;
-  padding: 0 18px;
+  padding: 0 24px;
   color: #697386;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.25;
+  text-align: left;
 }
 
 .tt-reference-route-spend-cost .tt-cost-row-metric strong {
-  margin-top: 4px;
+  margin-top: 3px;
   color: #20242a;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.tt-reference-route-spend-cost [data-cost-section="provider-api"] > div:first-child > div:last-child {
-  display: none;
-}
-
-.tt-reference-route-spend-cost [data-cost-section="subscriptions"] .tt-cost-row-metrics {
-  min-width: 440px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.tt-reference-route-spend-cost .tt-cost-row-actions button {
+  height: 38px;
+  min-width: 160px;
+  justify-content: center;
 }
 
 .tt-reference-route-spend-cost [data-cost-section] [data-testid="cost-section-icon"] {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
 }
 
 .tt-reference-route-spend-cost [data-cost-section] h3 {
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
   color: #20242a;
 }
 
@@ -390,8 +509,355 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   margin: 0;
 }
 
-.tt-reference-route-spend-cost [data-cost-section="subscriptions"] > div:first-child > button:last-child {
+body:has(.tt-reference-route-spend-cost) button[aria-label="登录"] {
+  display: none;
+}
+
+body:has(.tt-reference-route-spend-cost) .tt-sidebar-material nav > div:first-child > div:first-child {
+  display: none;
+}
+
+.tt-reference-route-spend-cost .tt-cost-section-action {
   height: 38px;
+  min-height: 38px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-card {
+  min-height: 140px;
+  border: 1px solid #e8ebef;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(31, 43, 56, 0.04), 0 5px 12px rgba(31, 43, 56, 0.04);
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-icon {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-open {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e8ebef;
+  border-radius: 8px;
+  color: #5d6673;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-history {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  color: #7a8492;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.tt-reference-route-spend-cost .tt-cost-group-history span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-cell {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-mark {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  color: #20242a;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-mark--xiaomi_mimo {
+  color: #ff6900;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-mark--trae {
+  color: #111827;
+}
+
+.tt-reference-route-spend-cost .tt-token-provider-mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-table {
+  overflow: hidden;
+  border: 1px solid #e8ebef;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-table-head,
+.tt-reference-route-spend-cost .tt-token-package-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.15fr 2.2fr 1.15fr .8fr .8fr .9fr;
+  align-items: center;
+  column-gap: 12px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-table-head {
+  min-height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid #e8ebef;
+  color: #697386;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row {
+  min-height: 54px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #eef0f3;
+  color: #475467;
+  font-size: 11px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row:last-child {
+  border-bottom: 0;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row strong,
+.tt-reference-route-spend-cost .tt-token-package-row small {
+  display: block;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row strong {
+  color: #20242a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-row small {
+  margin-top: 3px;
+  color: #7a8492;
+  font-size: 10px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9edf3;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2388ff;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-usage {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-usage > small {
+  width: 28px;
+  flex: 0 0 28px;
+  margin-top: 0;
+}
+
+.tt-reference-route-spend-cost .tt-provider-account-mark {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #2f6fed;
+}
+
+.tt-reference-route-spend-cost .tt-provider-account-mark svg {
+  width: 24px;
+  height: 24px;
+}
+
+.tt-reference-route-spend-cost .tt-provider-account-mark--deepseek { color: #4f5ee8; }
+.tt-reference-route-spend-cost .tt-provider-account-mark--glm { background: #f2efff; color: #7047eb; }
+.tt-reference-route-spend-cost .tt-provider-account-mark--volcengine_billing { background: #eef5ff; }
+.tt-reference-route-spend-cost .tt-provider-account-mark--aliyun_bss { background: #fff5ed; color: #f26722; }
+
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] .tt-cost-row-metrics,
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] .tt-cost-row-actions {
+  display: none;
+}
+
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child > button {
+  width: 100%;
+}
+
+body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child > button > svg:last-child {
+  margin-left: auto;
+}
+
+.tt-reference-route-spend-cost .tt-provider-api-expanded-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tt-reference-route-spend-cost .tt-provider-api-expanded-card {
+  min-height: 64px;
+  padding: 10px 12px;
+  border-color: #e8ebef;
+  box-shadow: 0 1px 2px rgba(31, 43, 56, 0.035);
+}
+
+@media (max-width: 1440px) and (min-width: 721px) {
+  .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+    grid-template-columns: minmax(120px, 1fr) 496px 96px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metrics {
+    width: 496px;
+    min-width: 0;
+    grid-template-columns: 135px 135px 226px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-actions {
+    width: 96px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metric {
+    padding: 0 12px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-actions button {
+    min-width: 96px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+}
+
+@media (max-width: 1200px) and (min-width: 721px) {
+  .tt-reference-route-spend-cost .tt-cost-group-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
+    height: auto;
+    min-height: 0;
+    padding: 14px;
+    overflow: visible;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-month-picker"] {
+    position: static;
+    height: auto;
+    margin: 0 0 12px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-month-picker"] > div {
+    min-width: 142px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child {
+    margin-top: 0;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p {
+    height: auto;
+    min-height: 50px;
+    align-items: flex-start;
+    padding: 12px;
+    line-height: 1.5;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
+    min-height: 182px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2) {
+    margin-bottom: 16px;
+  }
+
+  .tt-reference-route-spend-cost .tt-summary-comparison {
+    min-width: 138px;
+  }
+
+  .tt-reference-route-spend-cost .tt-summary-comparison-detail {
+    font-size: 11px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+    height: auto;
+    min-height: 66px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+    display: flex;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 46px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metrics {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+    margin-top: 6px;
+    grid-template-columns: repeat(3, minmax(80px, 1fr));
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-actions {
+    width: auto;
+    margin-left: auto;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-group-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tt-reference-route-spend-cost .tt-token-package-table {
+    overflow-x: auto;
+  }
+
+  .tt-reference-route-spend-cost .tt-token-package-table-head,
+  .tt-reference-route-spend-cost .tt-token-package-row {
+    min-width: 760px;
+  }
 }
 
 .tt-reference-route-leaderboard {
