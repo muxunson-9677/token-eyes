@@ -33,12 +33,25 @@ data_sources.diagnostics_copied,data_sources,DataSourcesPage,Actions,diagnostics
 data_sources.scan_all,data_sources,DataSourcesPage,Actions,scan_all,"Rescan all sources",,active
 data_sources.scanning,data_sources,DataSourcesPage,Actions,scanning,"Scanning sources",,active
 data_sources.loading,data_sources,DataSourcesPage,Health,loading,"Checking data source health…",,active
+data_sources.last_checked,data_sources,DataSourcesPage,Health,last_checked,"Checked {{time}}",,active
 data_sources.load_error,data_sources,DataSourcesPage,Health,load_error,"Data source health could not be loaded.",,active
 data_sources.error.local_service_unreachable,data_sources,DataSourcesPage,Health,local_service_unreachable,"Token Eyes cannot reach the local data service, so source health is unavailable. Restart Token Eyes, then rescan all sources.",,active
 data_sources.sync_error,data_sources,DataSourcesPage,Health,sync_error,"The source scan failed. The previous health results remain visible.",,active
 data_sources.summary.ready,data_sources,DataSourcesPage,Health,summary_ready,"{{count}} with valid logs",,active
 data_sources.summary.no_logs,data_sources,DataSourcesPage,Health,summary_no_logs,"{{count}} installed without logs",,active
 data_sources.summary.unavailable,data_sources,DataSourcesPage,Health,summary_unavailable,"{{count}} unavailable",,active
+data_sources.summary.recent_scan,data_sources,DataSourcesPage,Health,summary_recent_scan,"Recent scan",,active
+data_sources.summary.percentage,data_sources,DataSourcesPage,Health,summary_percentage,"{{percent}}% of sources",,active
+data_sources.summary.ready_label,data_sources,DataSourcesPage,Health,summary_ready_label,"Valid data sources",,active
+data_sources.summary.no_logs_label,data_sources,DataSourcesPage,Health,summary_no_logs_label,"Installed without logs",,active
+data_sources.summary.unavailable_label,data_sources,DataSourcesPage,Health,summary_unavailable_label,"Unavailable",,active
+data_sources.filters.all,data_sources,DataSourcesPage,Health,filters_all,"All",,active
+data_sources.filters.search_placeholder,data_sources,DataSourcesPage,Health,filters_search_placeholder,"Search tools or environments",,active
+data_sources.filters.all_environments,data_sources,DataSourcesPage,Health,filters_all_environments,"All environments",,active
+data_sources.filters.latest_activity,data_sources,DataSourcesPage,Health,filters_latest_activity,"Latest activity",,active
+data_sources.filters.name,data_sources,DataSourcesPage,Health,filters_name,"Name",,active
+data_sources.filters.grid_view,data_sources,DataSourcesPage,Health,filters_grid_view,"Grid view",,active
+data_sources.filters.list_view,data_sources,DataSourcesPage,Health,filters_list_view,"List view",,active
 data_sources.health.ready,data_sources,DataSourcesPage,Health,state_ready,"Valid data",,active
 data_sources.health.no_logs,data_sources,DataSourcesPage,Health,state_no_logs,"Installed · no logs",,active
 data_sources.health.unavailable,data_sources,DataSourcesPage,Health,state_unavailable,"Unavailable",,active
@@ -51,6 +64,7 @@ data_sources.evidence,data_sources,DataSourcesPage,Health,evidence,"Evidence fil
 data_sources.last_activity,data_sources,DataSourcesPage,Health,last_activity,"Last activity",,active
 data_sources.environment,data_sources,DataSourcesPage,Health,environment,"Environment",,active
 data_sources.never,data_sources,DataSourcesPage,Health,never,"No successful evidence yet",,active
+data_sources.not_detected,data_sources,DataSourcesPage,Health,not_detected,"Not detected",,active
 data_sources.unknown,data_sources,DataSourcesPage,Health,unknown,"Unknown",,active
 data_sources.privacy_title,data_sources,DataSourcesPage,Privacy,title,"What Token Eyes reads",,active
 data_sources.privacy_detail,data_sources,DataSourcesPage,Privacy,detail,"Local scanning reads Token counts, model/source identifiers, timestamps, and pricing metadata. It does not read prompt text, message content, conversation bodies, or API keys. Local data stays on this machine unless you separately enable an optional cloud feature.",,active
@@ -84,6 +98,8 @@ data_sources.ledger.component_delta,data_sources,DataSourcesPage,DataSourcesPage
 data_sources.ledger.unpriced,data_sources,DataSourcesPage,DataSourcesPage,ledger_unpriced,"Unpriced tokens: {{count}} ({{percent}}). Estimated cost excludes these tokens.",,active
 data_sources.ledger.unattributed,data_sources,DataSourcesPage,DataSourcesPage,ledger_unattributed,"Unattributed tokens: {{count}} ({{percent}}). Source or project breakdowns may be incomplete.",,active
 data_sources.ledger.load_error,data_sources,DataSourcesPage,DataSourcesPage,ledger_load_error,"Ledger diagnostics are unavailable.",,active
+data_sources.ledger.integrity_rate,data_sources,DataSourcesPage,DataSourcesPage,ledger_integrity_rate,"Ledger integrity",,active
+data_sources.ledger.visible_rate,data_sources,DataSourcesPage,DataSourcesPage,ledger_visible_rate,"Visible",,active
 data_sources.clear.action,data_sources,DataSourcesPage,DataSourcesPage,clear_action,"Clear locally imported data",,active
 data_sources.clear.clearing,data_sources,DataSourcesPage,DataSourcesPage,clear_clearing,"Clearing local data…",,active
 data_sources.clear.confirm,data_sources,DataSourcesPage,DataSourcesPage,clear_confirm,"Clear Token Eyes' imported usage ledger and sync cursors? Settings, credentials, and source-tool logs will not be deleted. The next scan can import the logs again.",,active

@@ -68,6 +68,47 @@ it("shows source health without treating installation as valid synchronized data
   expect(screen.queryByTestId("manual-path-settings")).not.toBeInTheDocument();
 });
 
+it("shows a health summary and a compact source workspace", async () => {
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+
+  expect(await screen.findByTestId("data-source-health-summary")).toBeInTheDocument();
+  expect(screen.getByTestId("data-source-summary-ready")).toHaveTextContent("1");
+  expect(screen.getByTestId("data-source-summary-ready")).toHaveTextContent("33%");
+  expect(screen.getByTestId("data-source-summary-no-logs")).toHaveTextContent("1");
+  expect(screen.getByTestId("data-source-summary-unavailable")).toHaveTextContent("1");
+  expect(screen.getByTestId("data-source-grid")).toHaveAttribute("data-layout", "grid");
+  expect(screen.getByTestId("data-source-toolbar")).toBeInTheDocument();
+  expect(screen.getByTestId("data-source-summary").parentElement).toHaveClass("max-w-[1600px]");
+  expect(screen.getByTestId("data-source-codex")).toHaveClass("min-h-[88px]", "border");
+  expect(screen.getByTestId("data-source-cursor")).toHaveTextContent("未检测到");
+  expect(screen.getByTestId("data-source-codex").querySelector("h3")).toHaveClass("flex", "leading-5");
+  expect(screen.getByTestId("data-ledger-diagnostics").parentElement).toHaveClass("items-stretch", "lg:grid-cols-[430px_minmax(0,1fr)]", "xl:grid-cols-[500px_minmax(0,1fr)]");
+  expect(screen.getByTestId("data-privacy-boundary").querySelector("p")).toHaveClass("leading-5");
+  expect(screen.queryByTestId("data-danger-zone")).not.toBeInTheDocument();
+  expect(screen.getByTestId("data-privacy-boundary")).toContainElement(
+    screen.getByRole("button", { name: "清除本地导入数据" }),
+  );
+});
+
+it("filters, searches, and switches the source workspace view", async () => {
+  const user = userEvent.setup();
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+  await screen.findByTestId("data-source-grid");
+
+  await user.click(screen.getByTestId("data-source-filter-no-logs"));
+  expect(screen.getByTestId("data-source-claude")).toBeInTheDocument();
+  expect(screen.queryByTestId("data-source-codex")).not.toBeInTheDocument();
+
+  await user.click(screen.getByTestId("data-source-filter-all"));
+  await user.type(screen.getByTestId("data-source-search"), "codex");
+  expect(screen.getByTestId("data-source-codex")).toBeInTheDocument();
+  expect(screen.queryByTestId("data-source-claude")).not.toBeInTheDocument();
+
+  await user.clear(screen.getByTestId("data-source-search"));
+  await user.click(screen.getByTestId("data-source-view-list"));
+  expect(screen.getByTestId("data-source-grid")).toHaveAttribute("data-layout", "list");
+});
+
 it("explains protected Trae and CodeBuddy stores without calling them empty logs", async () => {
   getAllAgentEnvironments.mockResolvedValue({
     ok: true,
@@ -80,10 +121,12 @@ it("explains protected Trae and CodeBuddy stores without calling them empty logs
   render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
 
   expect(await screen.findByTestId("data-source-trae")).toHaveTextContent("已安装 · 数据暂不可读取");
-  expect(screen.getByTestId("data-source-trae")).toHaveTextContent("供应商加密存储，Token Eyes 暂无法读取精确 Token 字段");
+  expect(screen.getByTestId("data-source-trae")).toHaveAttribute("data-health", "no-logs");
+  expect(screen.getByText("已安装 · 数据暂不可读取")).toHaveAttribute("title", "供应商加密存储，Token Eyes 暂无法读取精确 Token 字段");
   expect(screen.getByTestId("data-source-codebuddy")).toHaveTextContent("已安装 · 暂无精确 Token 日志");
-  expect(screen.getByTestId("data-source-codebuddy")).toHaveTextContent("检测到应用数据，但当前版本未提供可读取的精确 Token 日志");
-  expect(screen.getByTestId("data-source-trae")).not.toHaveTextContent("证据文件 0");
+  expect(screen.getByText("已安装 · 暂无精确 Token 日志")).toHaveAttribute("title", "检测到应用数据，但当前版本未提供可读取的精确 Token 日志");
+  expect(screen.getByTestId("data-source-trae")).not.toHaveTextContent("供应商加密存储，Token Eyes 暂无法读取精确 Token 字段");
+  expect(screen.getByTestId("data-source-trae")).toHaveTextContent("证据文件0");
 });
 
   it("shows the local Token Eyes ledger path from the reference UI", async () => {
