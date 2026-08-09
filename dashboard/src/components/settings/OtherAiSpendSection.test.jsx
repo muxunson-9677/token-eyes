@@ -11,7 +11,7 @@ import {
   saveOtherAiSpendGroup,
   updateSpendRecord,
 } from "../../lib/api";
-import { OtherAiSpendSection, resolveSpendRecordDrop } from "./OtherAiSpendSection.jsx";
+import { OtherAiSpendSection, resolveNoteTagTone, resolveSpendRecordDrop } from "./OtherAiSpendSection.jsx";
 
 vi.mock("../../lib/api", () => ({
   createSpendRecord: vi.fn(),
@@ -88,6 +88,39 @@ describe("OtherAiSpendSection", () => {
     expect(await screen.findByText("被封账号历史充值")).toBeInTheDocument();
     expect(screen.getByText("账号被封，余额无法退回")).toBeInTheDocument();
     expect(screen.queryByText("wrong")).not.toBeInTheDocument();
+  });
+
+  it("places colored note tags under the spend name", async () => {
+    getSpendRecords.mockResolvedValue({
+      records: [
+        { ...OTHER_AI_RECORD, id: "n1", plan_label: "EqualVPN", note: "静态 US-账号 IP", group_id: "vpn" },
+        { ...OTHER_AI_RECORD, id: "n2", plan_label: "DeepSeek", note: "动态不固定 - 广州 IP", group_id: "vpn" },
+        { ...OTHER_AI_RECORD, id: "n3", plan_label: "API", note: "API 调用", group_id: "vpn" },
+      ],
+      other_ai_groups: [{ id: "vpn", name: "VPN", parent_id: "" }],
+    });
+
+    render(<OtherAiSpendSection />);
+
+    const noteA = await screen.findByText("静态 US-账号 IP");
+    const noteB = screen.getByText("动态不固定 - 广州 IP");
+    const noteC = screen.getByText("API 调用");
+    expect(noteA).toHaveClass("tt-other-ai-row-note");
+    expect(noteA).toHaveAttribute("data-tone", resolveNoteTagTone("静态 US-账号 IP"));
+    expect(noteB).toHaveAttribute("data-tone", resolveNoteTagTone("动态不固定 - 广州 IP"));
+    expect(noteC).toHaveAttribute("data-tone", resolveNoteTagTone("API 调用"));
+    expect(new Set([noteA, noteB, noteC].map((node) => node.getAttribute("data-tone"))).size).toBeGreaterThan(1);
+    const main = noteA.closest(".tt-other-ai-row-main");
+    expect(main).toBeTruthy();
+    expect(main.querySelector(".tt-other-ai-row-title")).toHaveTextContent("EqualVPN");
+    expect(main.querySelector(".tt-other-ai-row-primary")).toBeTruthy();
+    expect(noteA.compareDocumentPosition(main.querySelector(".tt-other-ai-row-title")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  });
+
+  it("maps empty notes to muted tone and distinct remarks to stable tones", () => {
+    expect(resolveNoteTagTone("")).toBe("muted");
+    expect(resolveNoteTagTone("静态 US-账号 IP")).toBe(resolveNoteTagTone("静态 US-账号 IP"));
+    expect(resolveNoteTagTone("静态 US-账号 IP")).not.toBe(resolveNoteTagTone("动态不固定 - 广州 IP"));
   });
 
   it("creates a one-time other_ai charge with amount, currency, date, and note", async () => {

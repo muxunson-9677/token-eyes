@@ -129,6 +129,7 @@ spend.usage.integrity.attention,dashboard,SpendPage,UsageStatsPanel,integrity_at
 spend.usage.integrity.details,dashboard,SpendPage,UsageStatsPanel,integrity_details,"Raw {{raw}} rows; merged {{duplicates}} duplicate cumulative records; skipped {{malformed}} malformed records; last updated {{updated}}",,active
 leaderboard.sync.syncing,leaderboard,LeaderboardPage,ParticipationSync,status,"正在同步本地用量并生成你的排行……",,active
 leaderboard.sync.failed,leaderboard,LeaderboardPage,ParticipationSync,error,"本地用量尚未同步，请保持 Token Eyes 运行并重新打开排行榜重试。",,active
+leaderboard.sync.ready,leaderboard,LeaderboardPage,ParticipationSync,status_ready,"排行榜已根据当前本地统计生成。",,active
 settings.token_plan.subscription_cost,ui,SettingsPage,TokenPlanSection,subscription_cost,"套餐成本",,active
 settings.token_plan.cost_not_set,ui,SettingsPage,TokenPlanSection,cost_not_set,"未设置",,active
 settings.token_plan.subscription_currency,ui,SettingsPage,TokenPlanSection,subscription_currency,"成本币种",,active
@@ -470,7 +471,10 @@ leaderboard.summary.participants,dashboard,LeaderboardPage,LeaderboardPage,summa
 leaderboard.summary.participant_label,dashboard,LeaderboardPage,LeaderboardPage,summary_participant_label,"Total participants",,active
 leaderboard.summary.tokens_label,dashboard,LeaderboardPage,LeaderboardPage,summary_tokens_label,"All-user Token",,active
 leaderboard.summary.cost_label,dashboard,LeaderboardPage,LeaderboardPage,summary_cost_label,"All-user estimated spend",,active
+leaderboard.summary.active_today,dashboard,LeaderboardPage,LeaderboardPage,summary_active_today,"Active today {{count}}",,active
+leaderboard.summary.yesterday_change,dashboard,LeaderboardPage,LeaderboardPage,summary_yesterday_change,"Compared with yesterday {{amount}} ({{percent}})",,active
 leaderboard.me_label,dashboard,LeaderboardPage,LeaderboardPage,me_label,"You",,active
+leaderboard.current_user_label,dashboard,LeaderboardPage,LeaderboardPage,current_user_label,"Current user",,active
 leaderboard.rank_pending,dashboard,LeaderboardPage,LeaderboardPage,rank_pending,"Pending",,active
 leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"Anonymous",,active
 leaderboard.error.unknown,dashboard,LeaderboardPage,LeaderboardPage,error_unknown,"Unknown error",,active
@@ -515,6 +519,14 @@ dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_sta
 dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,"Private code unavailable",,active
 dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli sync",,active
 dashboard.daily.title,dashboard,DashboardPage,AsciiBox,title,"Daily Breakdown",,active
+dashboard.projects.count,dashboard,DashboardPage,ProjectUsagePanel,count,"Projects",,active
+dashboard.projects.total_tokens,dashboard,DashboardPage,ProjectUsagePanel,total_tokens,"Total Tokens",,active
+dashboard.projects.total_cost,dashboard,DashboardPage,ProjectUsagePanel,total_cost,"Total cost",,active
+dashboard.projects.records,dashboard,DashboardPage,ProjectUsagePanel,records,"{{count}} records",,active
+dashboard.projects.selected_folder,dashboard,DashboardPage,ProjectUsagePanel,selected_folder,"Selected folder",,active
+dashboard.projects.page_size,dashboard,DashboardPage,ProjectUsagePanel,page_size,"{{count}} per page",,active
+dashboard.projects.page_number,dashboard,DashboardPage,ProjectUsagePanel,page_number,"Page number",,active
+dashboard.projects.page_jump,dashboard,DashboardPage,ProjectUsagePanel,page_jump,"Jump",,active
 dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,"当前范围暂无活动数据。请先使用 AI CLI，然后点击刷新。",,active
 dashboard.identity.title,dashboard,DashboardPage,IdentityCard,title,"Your Profile",,active
 dashboard.identity.subtitle,dashboard,DashboardPage,IdentityCard,subtitle,"Track your coding journey",,active
@@ -2070,12 +2082,21 @@ reset_history.scope.unknown,ui,ResetHistoryPage,ResetRecord,scope_unknown,"See o
 reset_history.sources_title,ui,ResetHistoryPage,ResetHistoryPage,sources_title,"Source index",,active
 reset_history.stats.period,ui,ResetHistoryPage,ResetStatisticsSummary,period,"Period",,active
 reset_history.stats.period_value,ui,ResetHistoryPage,ResetStatisticsSummary,period_value,"Last {{days}} days",,active
+reset_history.stats.period_detail,ui,ResetHistoryPage,ResetStatisticsSummary,period_detail,"{{count}} official announcements collected",,active
 reset_history.stats.count,ui,ResetHistoryPage,ResetStatisticsSummary,count,"Resets",,active
 reset_history.stats.count_value,ui,ResetHistoryPage,ResetStatisticsSummary,count_value,"{{count}} times",,active
+reset_history.stats.count_detail,ui,ResetHistoryPage,ResetStatisticsSummary,count_detail,"Official announcements in the last 30 days",,active
 reset_history.stats.average,ui,ResetHistoryPage,ResetStatisticsSummary,average,"Average interval",,active
+reset_history.stats.average_detail,ui,ResetHistoryPage,ResetStatisticsSummary,average_detail,"Calculated from {{count}} adjacent intervals",,active
 reset_history.stats.shortest,ui,ResetHistoryPage,ResetStatisticsSummary,shortest,"Shortest interval",,active
 reset_history.stats.longest,ui,ResetHistoryPage,ResetStatisticsSummary,longest,"Longest interval",,active
+reset_history.stats.occurred_detail,ui,ResetHistoryPage,ResetStatisticsSummary,occurred_detail,"Occurred {{date}}",,active
+reset_history.stats.range_detail,ui,ResetHistoryPage,ResetStatisticsSummary,range_detail,"{{start}} to {{end}}",,active
 reset_history.stats.insufficient,ui,ResetHistoryPage,ResetStatisticsSummary,insufficient,"Not enough data",,active
+reset_history.loading,ui,ResetHistoryPage,ResetHistoryPage,loading,"Loading",,active
+reset_history.loading_detail,ui,ResetHistoryPage,ResetHistoryPage,loading_detail,"Reading official announcements…",,active
+reset_history.load_more,ui,ResetHistoryPage,ResetHistoryPage,load_more,"Load more",,active
+reset_history.records_total,ui,ResetHistoryPage,ResetHistoryPage,records_total,"{{count}} records",,active
 reset_history.stats.duration_minutes,ui,ResetHistoryPage,ResetStatisticsSummary,duration_minutes,"{{minutes}} minutes",,active
 reset_history.stats.duration_hours,ui,ResetHistoryPage,ResetStatisticsSummary,duration_hours,"{{hours}} hours",,active
 reset_history.stats.duration_days,ui,ResetHistoryPage,ResetStatisticsSummary,duration_days,"{{days}} days",,active
@@ -2186,10 +2207,11 @@ widgets.windows.limits.empty,ui,WidgetsPage,WindowsWidgetProjectSettings,empty,"
 widgets.windows.limits.unavailable,ui,WidgetsPage,WindowsWidgetProjectSettings,value,"--",,active
 native.window.status.label,ui,AppLayout,NativeWindowBar,status_label,"System status",,active
 native.window.status.normal,ui,AppLayout,NativeWindowBar,status_normal,"Normal",,active
-native.window.sync.local,ui,AppLayout,NativeWindowBar,sync_local,"Local data",,active
+native.window.sync.local,ui,AppLayout,NativeWindowBar,sync_local,"Synced",,active
 native.window.sync.recent,ui,AppLayout,NativeWindowBar,sync_recent,"Synced a moment ago",,active
 native.window.sync.earlier,ui,AppLayout,NativeWindowBar,sync_earlier,"Previously synced",,active
 native.window.notifications,ui,AppLayout,NativeWindowBar,notifications,"Notifications",,active
+native.window.notifications.empty,ui,AppLayout,NativeWindowBar,notifications_empty,"No Codex reset notifications",,active
 native.window.minimize,ui,AppLayout,NativeWindowBar,minimize,"Minimize",,active
 native.window.maximize,ui,AppLayout,NativeWindowBar,maximize,"Maximize or restore",,active
 native.window.close,ui,AppLayout,NativeWindowBar,close,"Close",,active
@@ -2270,3 +2292,12 @@ widgets.reference.desktop_display,ui,WidgetsPage,WindowsProjectManager,desktop_d
 widgets.reference.desktop_display_detail,ui,WidgetsPage,WindowsProjectManager,desktop_display_detail,"Show in the floating desktop widget",,active
 widgets.reference.compact_mode,ui,WidgetsPage,WindowsProjectManager,compact_mode,"Compact mode",,active
 widgets.reference.compact_mode_detail,ui,WidgetsPage,WindowsProjectManager,compact_mode_detail,"Use a compact layout in the desktop widget",,active
+settings.agent_pricing.collapsed_summary,ui,SettingsPage,AgentPricingSection,collapsed_summary,"{{count}} configured",,active
+settings.token_plan.collapsed_summary,ui,SettingsPage,TokenPlanSection,collapsed_summary,"{{count}} plans",,active
+settings.token_plan.count_active,ui,SettingsPage,TokenPlanSection,count_active,"{{count}} active",,active
+settings.token_plan.count_watch,ui,SettingsPage,TokenPlanSection,count_watch,"{{count}} need attention",,active
+settings.token_plan.live_quota_aria,ui,SettingsPage,TokenPlanSection,live_quota_aria,"Live plan quota",,active
+settings.cost.provider_api.collapsed_summary,ui,SettingsPage,ProviderApiConfigSection,collapsed_summary,"{{count}} providers",,active
+settings.cost.other_ai.collapsed_summary,ui,SettingsPage,OtherAiSpendSection,collapsed_summary,"{{count}} groups",,active
+settings.cost.other_ai.summary_counts,ui,SettingsPage,OtherAiSpendSection,summary_counts,"{{groups}} groups · {{records}} expenses",,active
+settings.agent_pricing.save_changes,ui,SettingsPage,AgentPricingSection,save_changes,"Save changes",,active

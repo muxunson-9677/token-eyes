@@ -501,9 +501,9 @@ export function DashboardPage({
   } = useProjectUsageSummary({
     baseUrl,
     accessToken,
-    limit: projectUsageLimit,
-    from,
-    to,
+    limit: 50,
+    from: dailyBreakdownRange.from,
+    to: dailyBreakdownRange.to,
     timeZone,
     tzOffsetMinutes,
   });

@@ -189,7 +189,7 @@ it("adds a new pricing rule via the form and saves it", async () => {
 
   // Save all changes.
   await act(async () => {
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存更改" }));
   });
 
   await waitFor(() => {

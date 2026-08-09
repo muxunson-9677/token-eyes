@@ -525,40 +525,18 @@ export function ProviderApiConfigSection() {
         collapsible
         defaultOpen={false}
         storageKey="cost.provider-api"
-        collapsedSummary={`${configs.length} 个供应商`}
-        action={(
-          <div className="flex items-center gap-2">
-          {/* F4: stale badge surfaces network failures without losing the last
-              successful balance (the hook keeps it and marks `stale`). */}
-          {stale && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
-              <AlertCircle className="h-3 w-3" aria-hidden="true" />
-              {copy("settings.cost.provider_api.stale")}
-            </span>
-          )}
-          {editing === null && configs.length > 0 && (
-            <button
-              type="button"
-              onClick={refreshAll}
-              disabled={refreshing}
-              className="inline-flex items-center gap-1 rounded-md border border-oai-gray-200 px-2 py-1.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden="true" />
-              {refreshing ? copy("settings.cost.provider_api.refreshing") : copy("settings.cost.provider_api.refresh_all")}
-            </button>
-          )}
-          {editing === null && (
-            <button
-              type="button"
-              onClick={startAdd}
-              className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-              {copy("settings.cost.provider_api.add")}
-            </button>
-          )}
-          </div>
-        )}
+        collapsedSummary={copy("settings.cost.provider_api.collapsed_summary", { count: configs.length })}
+        collapsedSummaryTone="blue"
+        action={editing === null ? (
+          <button
+            type="button"
+            onClick={startAdd}
+            className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            {copy("settings.cost.provider_api.add")}
+          </button>
+        ) : null}
       >
       {editing !== null ? (
         <ProviderApiConfigForm
@@ -590,11 +568,50 @@ export function ProviderApiConfigSection() {
         </div>
       ) : (
         <div className="tt-provider-api-list space-y-2">
-          <div className="tt-provider-api-summary" aria-label="供应商连接概览">
-            <span>{copy("settings.cost.provider_api.summary.total")}<strong>{configs.length}</strong></span>
-            <span>{copy("settings.cost.provider_api.summary.connected")}<strong className="text-emerald-600">● {providerSummary.connected}</strong></span>
-            <span>{copy("settings.cost.provider_api.summary.disconnected")}<strong className="text-rose-500">● {providerSummary.disconnected}</strong></span>
-            <span>{copy("settings.cost.provider_api.summary.balance_cny")}<strong>{providerSummary.totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+          <div className="tt-provider-api-toolbar">
+            <div className="tt-provider-api-summary" aria-label="供应商连接概览">
+              <span>
+                {copy("settings.cost.provider_api.summary.total")}
+                <strong>{configs.length}</strong>
+              </span>
+              <span>
+                {copy("settings.cost.provider_api.summary.connected")}
+                <strong data-tone="connected">● {providerSummary.connected}</strong>
+              </span>
+              <span>
+                {copy("settings.cost.provider_api.summary.disconnected")}
+                <strong data-tone="disconnected">● {providerSummary.disconnected}</strong>
+              </span>
+              <span>
+                {copy("settings.cost.provider_api.summary.balance_cny")}
+                <strong>
+                  {providerSummary.totalBalance.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </strong>
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {stale ? (
+                <span
+                  data-testid="provider-api-stale-badge"
+                  className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
+                >
+                  <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                  {copy("settings.cost.provider_api.stale")}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => { void refreshAll(); }}
+                disabled={refreshing}
+                className="inline-flex items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 py-1.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden="true" />
+                {refreshing ? copy("settings.cost.provider_api.refreshing") : copy("settings.cost.provider_api.refresh_all")}
+              </button>
+            </div>
           </div>
           {configs.map((config) => (
             <ProviderApiConfigCard

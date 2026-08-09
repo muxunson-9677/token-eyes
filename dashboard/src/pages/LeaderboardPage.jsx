@@ -28,6 +28,7 @@ import {
   normalizeLeaderboardPeriod,
 } from "../lib/leaderboard-query.js";
 import { normalizeAgentMetrics } from "../lib/leaderboard-agent-metrics.js";
+import { getCumulativeYesterdayComparison } from "../lib/leaderboard-summary-details.js";
 import {
   buildLocalLeaderboardRowFromProviderStats,
   getLeaderboardPeriodDateRange,
@@ -107,6 +108,42 @@ function formatCost(value, currency, rate) {
   if (converted >= 1000) return `${symbol}${Math.round(converted).toLocaleString()}`;
   if (converted >= 10) return `${symbol}${Math.round(converted)}`;
   return `${symbol}${converted.toFixed(2)}`;
+}
+
+function formatSummaryCostChange(value, currency, rate) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  const converted = currency === CURRENCY_USD ? numeric : numeric * rate;
+  if (converted > 0 && converted < 0.01) return `${getCurrencySymbol(currency)}${converted.toFixed(4)}`;
+  return formatCost(numeric, currency, rate);
+}
+
+function formatYesterdayDetail(comparison, formatter) {
+  if (!comparison) return null;
+  const amount = formatter(comparison.change);
+  if (!amount) return null;
+  const percentDigits = comparison.percent > 0 && comparison.percent < 0.01
+    ? Math.min(8, Math.max(4, Math.ceil(-Math.log10(comparison.percent)) + 1))
+    : 2;
+  return copy("leaderboard.summary.yesterday_change", {
+    amount: `+${amount}`,
+    percent: `+${comparison.percent.toFixed(percentDigits)}%`,
+  });
+}
+
+function formatLeaderboardGeneratedAt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 function TotalTokens({ value }) {
@@ -335,6 +372,7 @@ function LeaderboardEntryRow({
   }
 
   const isMe = Boolean(entry?.is_me);
+  const isTopRank = Number(entry?.rank) === 1;
   const isPinned = Boolean(entry?.is_pinned);
   const profileUserId = typeof entry?.user_id === "string" ? entry.user_id : null;
   const rawName = normalizeName(entry?.display_name);
@@ -366,10 +404,12 @@ function LeaderboardEntryRow({
       className={cn(
         "relative grid min-h-[78px] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors sm:grid-cols-[2.25rem_minmax(0,1fr)_9rem] sm:gap-4 sm:px-5",
         isMe ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white/45 dark:bg-black/10",
+        isTopRank && "tt-leaderboard-top-entry tt-leaderboard-top-entry--compact",
         isPinned && "before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r before:bg-oai-brand-500",
         rowClickable && "tt-pressable tt-product-focusable cursor-pointer hover:bg-white/75 dark:hover:bg-white/[0.06]",
       )}
       data-entry-index={entryIdx}
+      data-rank={entry?.rank ?? ""}
     >
       <div className={cn("text-oai-gray-500 dark:text-oai-gray-400", isMe && "text-oai-brand-600 dark:text-oai-brand-400")}>
         <RankCell
@@ -378,32 +418,35 @@ function LeaderboardEntryRow({
         />
       </div>
 
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="tt-leaderboard-entry-user tt-leaderboard-entry-user--stacked flex min-w-0 items-center gap-3">
         <LeaderboardAvatar
           avatarUrl={entry?.avatar_url}
           displayName={entry?.avatar_display_name || name}
           seed={leaderboardAvatarSeed(entry, name)}
+          className={isTopRank ? "tt-leaderboard-top-avatar" : undefined}
         />
-        <div className="min-w-0 flex-1">
+        <div className="tt-leaderboard-entry-copy min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <span className={cn(
               "truncate text-sm font-semibold sm:text-base",
-              isMe ? "text-oai-brand-700 dark:text-oai-brand-300" : "text-oai-gray-900 dark:text-oai-gray-100",
+              isMe || isTopRank ? "text-oai-brand-700 dark:text-oai-brand-300" : "text-oai-gray-900 dark:text-oai-gray-100",
             )}>
               {name}
             </span>
-            {isMe && entry?.current_user_label ? (
-              <span className="tt-leaderboard-current-user">{entry.current_user_label}</span>
+            {isMe ? (
+              <span className="tt-leaderboard-current-user">
+                {entry?.current_user_label || copy("leaderboard.current_user_label")}
+              </span>
             ) : null}
             {entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
           </div>
-          <div className="mt-1 min-w-0">
+          <div className="tt-leaderboard-entry-distribution tt-leaderboard-entry-distribution--nearby mt-1 min-w-0">
             <AgentDistribution entry={entry} metric={metric} currency={currency} rate={rate} />
           </div>
         </div>
       </div>
 
-      <div className="min-w-[5.5rem] text-right tabular-nums sm:min-w-0">
+      <div className="tt-leaderboard-score-column min-w-[5.5rem] text-right tabular-nums sm:min-w-0">
         <div className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100 sm:text-base">
           <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
         </div>
@@ -457,6 +500,7 @@ export function LeaderboardPage({
   const effectiveAuthToken = authTokenAllowed ? authAccessToken : null;
 
   const [listPage, setListPage] = useState(1);
+  const [todaySummary, setTodaySummary] = useState(null);
   const [syncRevision, setSyncRevision] = useState(0);
   const [participationSync, setParticipationSync] = useState("idle");
   const [pageSize, setPageSizeState] = useState(readStoredPageSize);
@@ -850,6 +894,7 @@ export function LeaderboardPage({
   const from = listData?.from || null;
   const to = listData?.to || null;
   const generatedAt = listData?.generated_at || null;
+  const generatedAtLabel = generatedAt ? formatLeaderboardGeneratedAt(generatedAt) : null;
   const meLabel = copy("leaderboard.me_label");
   const anonLabel = copy("leaderboard.anon_label");
   const periodLabel = copy(
@@ -945,6 +990,103 @@ export function LeaderboardPage({
     aggregateTotalTokens,
     aggregateTotalCost,
   } = reconciledSummary;
+  const statusMe = useMemo(() => {
+    const rankedMe = Number(me?.rank);
+    if (Number.isFinite(rankedMe) && rankedMe >= 1) {
+      return me;
+    }
+
+    const visibleCurrentEntry = displayEntries.find((entry) => {
+      const entryRank = Number(entry?.rank);
+      return entry?.is_me === true && Number.isFinite(entryRank) && entryRank >= 1;
+    });
+    if (visibleCurrentEntry) {
+      return { ...visibleCurrentEntry, rank: Number(visibleCurrentEntry.rank) };
+    }
+
+    if (!localMe) {
+      return null;
+    }
+
+    const localUserId = typeof localMe.user_id === "string" ? localMe.user_id : "";
+    const matchedEntry = displayEntries.find((entry) => {
+      const entryRank = Number(entry?.rank);
+      return entry?.user_id === localUserId
+        && Number.isFinite(entryRank)
+        && entryRank >= 1;
+    });
+    const matchedRank = Number(matchedEntry?.rank);
+    if (Number.isFinite(matchedRank) && matchedRank >= 1) {
+      return { ...localMe, rank: matchedRank };
+    }
+
+    if (Number(participantCount) === 1) {
+      return { ...localMe, rank: 1 };
+    }
+
+    return null;
+  }, [displayEntries, localMe, me, participantCount]);
+
+  useEffect(() => {
+    const hasServerSummaryDetails = Boolean(
+      listData?.summary_details?.tokens || listData?.summary_details?.cost,
+    );
+    if (
+      period !== "total"
+      || hasServerSummaryDetails
+      || !isProvidedNumber(aggregateTotalTokens)
+      || !isProvidedNumber(aggregateTotalCost)
+    ) {
+      setTodaySummary(null);
+      return undefined;
+    }
+
+    let active = true;
+    getLeaderboard({
+      baseUrl: leaderboardBaseUrl,
+      metric: "tokens",
+      period: "today",
+      source: effectiveSource,
+      limit: 1,
+      offset: 0,
+      ...(developerPreviewActive ? { mock: true } : {}),
+    }).then((data) => {
+      if (!active) return;
+      setTodaySummary({
+        tokens: isProvidedNumber(data?.aggregate_total_tokens) ? Number(data.aggregate_total_tokens) : null,
+        cost: isProvidedNumber(data?.aggregate_total_cost_usd) ? Number(data.aggregate_total_cost_usd) : null,
+      });
+    }).catch(() => {
+      if (active) setTodaySummary(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    aggregateTotalCost,
+    aggregateTotalTokens,
+    developerPreviewActive,
+    effectiveSource,
+    leaderboardBaseUrl,
+    listData?.summary_details?.cost,
+    listData?.summary_details?.tokens,
+    period,
+  ]);
+
+  const participantSummaryDetail = listData?.summary_details?.participants
+    || (isProvidedNumber(participantCount)
+      ? copy("leaderboard.summary.active_today", { count: Number(participantCount).toLocaleString() })
+      : null);
+  const tokenSummaryDetail = listData?.summary_details?.tokens
+    || formatYesterdayDetail(
+      getCumulativeYesterdayComparison(aggregateTotalTokens, todaySummary?.tokens),
+      formatChineseTokenCount,
+    );
+  const costSummaryDetail = listData?.summary_details?.cost
+    || formatYesterdayDetail(
+      getCumulativeYesterdayComparison(aggregateTotalCost, todaySummary?.cost),
+      (value) => formatSummaryCostChange(value, currency, rate),
+    );
 
   const myPage = useMemo(
     () => pageContainingRank(me?.rank, pageSize),
@@ -1040,7 +1182,7 @@ export function LeaderboardPage({
   }
 
   return (
-    <div className="flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
+    <div className="tt-leaderboard-page flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           {/* Title gets its own row. */}
@@ -1049,28 +1191,24 @@ export function LeaderboardPage({
               <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-oai-black dark:text-white">
                 {copy("leaderboard.title")}
               </h1>
-              <div className="flex shrink-0 items-center gap-3">
-                {(cloudSignedIn || listData?.show_account_actions) && (
-                  <button
-                    type="button"
-                    onClick={() => navigate("/settings/basic")}
-                    className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
-                  >
-                    {copy("settings.section.account")}
-                  </button>
-                )}
-                {(cloudSignedIn || listData?.show_account_actions) && (
-                  <button
-                    type="button"
-                    onClick={handleAccountSignOut}
-                    className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
-                  >
-                    {copy("settings.account.signOut")}
-                  </button>
-                )}
+              <div className="tt-leaderboard-action-group flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate("/settings/basic")}
+                  className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors"
+                >
+                  {copy("settings.section.account")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAccountSignOut}
+                  className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors"
+                >
+                  {copy("settings.account.signOut")}
+                </button>
                 <Link
                   to="/leaderboard/rules"
-                  className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
+                  className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium no-underline transition-colors"
                 >
                   {copy("leaderboard.rules_link")}
                 </Link>
@@ -1084,27 +1222,27 @@ export function LeaderboardPage({
                     ? copy("leaderboard.range", { period: periodLabel, from, to })
                     : copy("leaderboard.range_loading", { period: periodLabel })}
               </span>
-              {generatedAt && (
+              {generatedAtLabel && (
                 <span className="ml-2 pl-2 border-l border-oai-gray-200 dark:border-oai-gray-800 hidden sm:inline-block text-oai-gray-400 dark:text-oai-gray-500 text-xs">
-                  {copy("leaderboard.generated_at", { ts: generatedAt })}
+                  {copy("leaderboard.generated_at", { ts: generatedAtLabel })}
                 </span>
               )}
             </p>
             {listData && [participantCount, aggregateTotalTokens, aggregateTotalCost].some(isProvidedNumber) && (
               <dl className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="leaderboard-summary">
-                {isProvidedNumber(participantCount) ? <div className="tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                {isProvidedNumber(participantCount) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-400/10 dark:text-sky-300 dark:ring-sky-400/20" data-testid="leaderboard-summary-icon">
                     <Users className="h-4 w-4" aria-hidden="true" />
                   </span>
                   <div>
                     <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.participant_label")}</dt>
                     <dd className="mt-1 text-lg font-semibold tabular-nums">{Number(participantCount).toLocaleString()}</dd>
-                    {listData?.summary_details?.participants ? (
-                      <p className="tt-leaderboard-summary-detail">{listData.summary_details.participants}</p>
+                    {participantSummaryDetail ? (
+                      <p className="tt-leaderboard-summary-detail">{participantSummaryDetail}</p>
                     ) : null}
                   </div>
                 </div> : null}
-                {isProvidedNumber(aggregateTotalTokens) ? <div className="tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                {isProvidedNumber(aggregateTotalTokens) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 ring-1 ring-violet-100 dark:bg-violet-400/10 dark:text-violet-300 dark:ring-violet-400/20" data-testid="leaderboard-summary-icon">
                     <Coins className="h-4 w-4" aria-hidden="true" />
                   </span>
@@ -1113,12 +1251,14 @@ export function LeaderboardPage({
                     <dd className="mt-1 text-lg font-semibold tabular-nums">
                       {formatChineseTokenCount(aggregateTotalTokens)}
                     </dd>
-                    {listData?.summary_details?.tokens ? (
-                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-violet">{listData.summary_details.tokens}</p>
+                    {tokenSummaryDetail ? (
+                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-violet">
+                        {tokenSummaryDetail}
+                      </p>
                     ) : null}
                   </div>
                 </div> : null}
-                {isProvidedNumber(aggregateTotalCost) ? <div className="tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                {isProvidedNumber(aggregateTotalCost) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20" data-testid="leaderboard-summary-icon">
                     <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
                   </span>
@@ -1127,8 +1267,10 @@ export function LeaderboardPage({
                     <dd className="mt-1 text-lg font-semibold tabular-nums">
                       {formatCost(aggregateTotalCost, currency, rate)}
                     </dd>
-                    {listData?.summary_details?.cost ? (
-                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-amber">{listData.summary_details.cost}</p>
+                    {costSummaryDetail ? (
+                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-amber">
+                        {costSummaryDetail}
+                      </p>
                     ) : null}
                   </div>
                 </div> : null}
@@ -1147,10 +1289,10 @@ export function LeaderboardPage({
             </div>
           )}
 
-          {listData?.sync_message ? (
+          {listData?.sync_message || generatedAt ? (
             <div className="tt-leaderboard-sync-banner mb-4 rounded-[var(--tt-card-radius)] border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-oai-gray-600">
               <Info aria-hidden="true" />
-              {listData.sync_message}
+              {listData?.sync_message || copy("leaderboard.sync.ready")}
             </div>
           ) : null}
 
@@ -1232,10 +1374,14 @@ export function LeaderboardPage({
             </div>
 
             <LeaderboardMeChip
-              me={me}
-              totalEntries={totalEntries}
+              me={statusMe || {
+                rank: 1,
+                display_name: meLabel,
+                user_id: "leaderboard-current-user",
+              }}
+              totalEntries={Math.max(1, Number(totalEntries) || 0)}
               meLabel={meLabel}
-              onOpenProfile={me?.user_id ? () => openProfileModal(me.user_id) : undefined}
+              onOpenProfile={statusMe?.user_id ? () => openProfileModal(statusMe.user_id) : undefined}
               onJumpToMe={handleJumpToMe}
               canJump={myPage != null && !onMyPage && !currentListState.loading}
               className="shrink-0"
@@ -1306,7 +1452,7 @@ export function LeaderboardPage({
                 <p className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>
               </div>
             ) : null}
-            <div className="tt-leaderboard-table-head" data-testid="leaderboard-table-head">
+            <div className="tt-leaderboard-table-head tt-leaderboard-table-head--expanded" data-testid="leaderboard-table-head">
               <span>{copy("leaderboard.table.rank")}</span>
               <span>{copy("leaderboard.table.user_share")}</span>
               <span>{copy("leaderboard.table.token_cost")}</span>

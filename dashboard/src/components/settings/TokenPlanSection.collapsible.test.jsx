@@ -85,8 +85,9 @@ it("starts each plan collapsed and reveals details only from its named expand co
   render(<TokenPlanSection />);
 
   expect(await screen.findByText(/claude \/ Max/i)).toBeInTheDocument();
-  expect(screen.getByText(/200 \/ 1,000/)).toHaveClass("text-oai-gray-500");
-  expect(screen.getByText("只在展开后出现的备注")).toBeInTheDocument();
+  expect(document.querySelector(".tt-token-plan-quota-label")).toHaveTextContent(/200 \/ 1,000/);
+  expect(document.querySelector(".tt-token-plan-remaining-label")).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "备注" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "拖动 Max" })).toBeInTheDocument();
   const expand = screen.getByRole("button", { name: "展开 Max" });
   expect(expand).toHaveAttribute("aria-expanded", "false");

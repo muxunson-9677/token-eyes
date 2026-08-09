@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Bell,
@@ -38,7 +38,8 @@ function WindowButton({ label, onClick, children, danger = false }) {
 
 export function NativeWindowBar() {
   const { resolvedTheme, setTheme } = useTheme();
-  const { unreadCount } = useCodexResetEvents();
+  const { unreadCount, events = [], acknowledge } = useCodexResetEvents();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const currentSyncLabel = useMemo(syncLabel, []);
   const ThemeIcon = resolvedTheme === "dark" ? Moon : Sun;
 
@@ -55,7 +56,7 @@ export function NativeWindowBar() {
   return (
     <header className="tt-native-window-bar" data-tauri-drag-region>
       <div className="tt-native-window-brand" data-tauri-drag-region>
-        <span className="tt-native-brand-mark" aria-hidden>{copy("shared.app_initial")}</span>
+        <img src="/app-icon.png" alt="" aria-hidden />
         <span>{copy("shared.app_name")}</span>
       </div>
 
@@ -69,15 +70,41 @@ export function NativeWindowBar() {
           <RotateCw aria-hidden />
           <span>{currentSyncLabel}</span>
         </div>
-        <span
+        <button
+          type="button"
           className="tt-native-notification-status"
-          role="status"
           aria-label={copy("native.window.notifications")}
+          aria-expanded={notificationsOpen}
+          aria-controls="native-reset-notifications"
           data-unread-count={String(unreadCount || 0)}
+          onClick={() => setNotificationsOpen((open) => !open)}
         >
           <Bell aria-hidden />
-          {Boolean(unreadCount) ? <span className="tt-native-notification-dot" aria-hidden /> : null}
-        </span>
+          {unreadCount ? <span className="tt-native-notification-dot" aria-hidden /> : null}
+        </button>
+        {notificationsOpen ? (
+          <section id="native-reset-notifications" className="tt-native-notification-panel" aria-label={copy("native.window.notifications")}>
+            {events.length > 0 ? events.slice(0, 3).map((event) => (
+              <article key={event.id} className="tt-native-notification-item">
+                <div className="min-w-0">
+                  <strong>{event.title}</strong>
+                  {event.summary ? <p>{event.summary}</p> : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void acknowledge?.(event.id);
+                    setNotificationsOpen(false);
+                  }}
+                >
+                  {copy("codex_reset.action.acknowledge")}
+                </button>
+              </article>
+            )) : (
+              <p className="tt-native-notification-empty">{copy("native.window.notifications.empty")}</p>
+            )}
+          </section>
+        ) : null}
         <button
           type="button"
           aria-label={copy("settings.appearance.theme.label")}

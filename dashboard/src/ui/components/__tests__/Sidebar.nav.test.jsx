@@ -186,6 +186,13 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(screen.getByText("copy:nav.group.settings")).toBeInTheDocument();
   });
 
+  it("keeps the overview navigation free of the removed group heading and sidebar login", () => {
+    renderSidebar("/dashboard");
+
+    expect(screen.queryByText("copy:nav.group.overview")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
+  });
+
   it("keeps both reference sidebar groups expanded on the overview by default", () => {
     renderSidebar("/dashboard");
     expect(screen.getByRole("button", { name: "copy:nav.group.spend" })).toHaveAttribute("aria-expanded", "true");
@@ -323,9 +330,6 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     const overviewLink = screen.getByRole("link", { name: "copy:nav.usage" });
 
     await user.tab();
-    expect(screen.getByRole("button", { name: "copy:header.auth.sign_in_aria" })).toHaveFocus();
-    await user.tab();
-
     expect(overviewLink).toHaveFocus();
     expect(overviewLink).toHaveClass("tt-sidebar-focusable");
   });
@@ -356,25 +360,23 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(themeTrigger).toHaveTextContent("copy:settings.appearance.theme.light");
   });
 
-  it("applies the shared focus hook to every mobile and identity control", async () => {
+  it("keeps mobile navigation controls accessible without rendering a sidebar login", async () => {
     const user = userEvent.setup();
     renderSidebar("/dashboard");
 
     expect(screen.getByRole("button", { name: "copy:nav.menu" })).toHaveClass("tt-sidebar-focusable");
     expect(screen.getByRole("link", { name: "copy:shared.app_name" })).toHaveClass("tt-sidebar-focusable");
-    expect(screen.getByRole("button", { name: "copy:header.auth.sign_in_aria" })).toHaveClass("tt-sidebar-focusable");
+    expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
 
     await act(async () => {
       await user.click(screen.getByRole("button", { name: "copy:nav.menu" }));
     });
 
     expect(screen.getByRole("button", { name: "copy:nav.close_menu" })).toHaveClass("tt-sidebar-focusable");
-    for (const identityControl of screen.getAllByRole("button", { name: "copy:header.auth.sign_in_aria" })) {
-      expect(identityControl).toHaveClass("tt-sidebar-focusable");
-    }
+    expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
   });
 
-  it("applies the shared focus hook to the signed-in identity control", () => {
+  it("does not put an account control in the sidebar for signed-in users", () => {
     authContext.value = {
       enabled: true,
       loading: false,
@@ -385,8 +387,7 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
 
     renderSidebar("/dashboard");
 
-    expect(screen.getByRole("button", { name: "copy:header.auth.open_settings" }))
-      .toHaveClass("tt-sidebar-focusable");
+    expect(screen.queryByRole("button", { name: "copy:header.auth.open_settings" })).not.toBeInTheDocument();
   });
 
   it("keeps light, dark, and system choices wired to the existing theme setter", async () => {
@@ -463,6 +464,20 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
 
     view.unmount();
     expect(document.documentElement).not.toHaveClass("native-windows-app");
+  });
+
+  it("uses the locked dashboard route styling for the root overview URL", () => {
+    nativeBridgeContext.windows = true;
+
+    renderSidebar("/");
+
+    expect(document.querySelector(".tt-app-shell")).toHaveAttribute(
+      "data-reference-route",
+      "dashboard",
+    );
+    expect(document.querySelector(".tt-app-shell")).toHaveClass(
+      "tt-reference-route-dashboard",
+    );
   });
 });
 

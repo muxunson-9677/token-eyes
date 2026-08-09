@@ -30,6 +30,7 @@ describe("isNativeWindowsApp", () => {
       configurable: true,
       value: originalPlatform,
     });
+    window.history.replaceState({}, "", "/");
   });
 
   it("detects the current Tauri desktop runtime on Windows", () => {
@@ -50,5 +51,11 @@ describe("isNativeWindowsApp", () => {
     window.__TAURI_INTERNALS__ = { invoke: () => {} };
 
     expect(isNativeWindowsApp()).toBe(false);
+  });
+
+  it("shows the Windows title bar in an explicit development preview", () => {
+    window.history.replaceState({}, "", "/?native_preview=1");
+
+    expect(isNativeWindowsApp()).toBe(true);
   });
 });

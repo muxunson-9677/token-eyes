@@ -79,6 +79,10 @@ export function isNativeEmbed() {
  */
 export function isNativeWindowsApp() {
   if (typeof window === "undefined") return false;
+  if (import.meta.env.DEV) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("native_preview") === "1") return true;
+  }
   if (Boolean(window.chrome?.webview) && isNativeApp()) return true;
   if (!isTauriApp()) return false;
   const platform = String(

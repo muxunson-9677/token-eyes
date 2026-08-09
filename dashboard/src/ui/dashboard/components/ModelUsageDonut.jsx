@@ -36,6 +36,10 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
   const safeRows = Array.isArray(rows)
     ? rows.filter(hasPositiveUsage)
     : [];
+  const topOnePercent = clampPercent(safeRows[0]?.percent);
+  const topThreePercent = clampPercent(
+    safeRows.slice(0, 3).reduce((sum, row) => sum + clampPercent(row.percent), 0),
+  );
 
   if (safeRows.length === 0 || Number(totalTokens) <= 0) {
     return (
@@ -86,13 +90,20 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
       className={`h-full ${className}`}
       bodyClassName="flex h-full flex-col"
     >
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-oai-black dark:text-oai-white">
-          {copy("dashboard.model_distribution.title")}
-        </h3>
-        <p className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-          {copy("dashboard.model_distribution.subtitle")}
-        </p>
+      <div className="tt-overview-model-usage-header mb-3 grid items-end gap-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-oai-black dark:text-oai-white">
+            {copy("dashboard.model_distribution.title")}
+          </h3>
+          <p className="mt-1 text-[10px] text-oai-gray-500 dark:text-oai-gray-400">
+            {copy("dashboard.model_distribution.subtitle")}
+          </p>
+        </div>
+        <div className="tt-overview-model-summary grid grid-cols-3 overflow-hidden rounded-xl border border-oai-gray-100 bg-white/80 shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900/70">
+          <div data-testid="model-usage-summary-count"><strong>{safeRows.length}</strong><span>个模型</span></div>
+          <div data-testid="model-usage-summary-top1"><strong>{topOnePercent.toLocaleString(locale, { maximumFractionDigits: 1 })}%</strong><span>Top 1 占比</span></div>
+          <div data-testid="model-usage-summary-top3"><strong>{topThreePercent.toLocaleString(locale, { maximumFractionDigits: 1 })}%</strong><span>Top 3 占比</span></div>
+        </div>
       </div>
 
       <div
@@ -103,7 +114,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
           className="flex min-h-0 flex-col"
           data-testid="model-usage-visuals"
         >
-          <div className="relative h-28 w-28 shrink-0 self-center">
+          <div className="relative h-32 w-32 shrink-0 self-center">
             <svg
               viewBox="0 0 120 120"
               className="h-full w-full -rotate-90"
@@ -307,37 +318,44 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
           </div>
         </div>
 
-        <ol
-          data-testid="model-usage-legend"
-          className="m-0 grid h-full min-h-0 min-w-0 auto-rows-min list-none divide-y divide-oai-gray-100 overflow-y-auto p-0 pr-1 oai-scrollbar dark:divide-oai-gray-800"
-        >
-          {safeRows.map(function renderLegendItem(row, index) {
-            const percent = clampPercent(row.percent);
-            return (
-              <li
-                key={row.id || row.name}
-                data-model-rank-row="true"
-                className="grid min-h-16 min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] content-center items-center gap-x-1.5 py-2.5 text-[11px]"
-              >
-                <span className={`flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-[10px] font-bold tabular-nums ${RANK_STYLES[index] || "bg-oai-gray-100 text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400"}`}>
-                  {index + 1}
-                </span>
-                <span className={`h-2 w-2 shrink-0 rounded-full ${SERIES_STYLES[index % SERIES_STYLES.length].dot}`} aria-hidden />
-                <span className="min-w-0 break-words font-medium leading-4 text-oai-gray-700 dark:text-oai-gray-200">
-                  {row.name}
-                </span>
-                <span className="shrink-0 font-semibold tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
-                  {percent.toLocaleString(locale, { maximumFractionDigits: 1 })}%
-                </span>
-                <span aria-hidden />
-                <span aria-hidden />
-                <span className="col-span-2 mt-1 text-[10px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
-                  {formatTokenCount(row.tokens, { locale })}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <div data-testid="model-usage-table-head" className="grid grid-cols-[30px_minmax(0,1fr)_minmax(72px,.8fr)_42px] gap-2 border-b border-oai-gray-100 px-1 pb-2 text-[9px] text-oai-gray-400 dark:border-oai-gray-800">
+            <span>排名</span><span>模型</span><span>消耗 (Token)</span><span className="text-right">占比</span>
+          </div>
+          <ol
+            data-testid="model-usage-legend"
+            className="m-0 grid h-full min-h-0 min-w-0 flex-1 auto-rows-min list-none divide-y divide-oai-gray-100 overflow-y-auto p-0 pr-1 oai-scrollbar dark:divide-oai-gray-800"
+          >
+            {safeRows.map(function renderLegendItem(row, index) {
+              const percent = clampPercent(row.percent);
+              return (
+                <li
+                  key={row.id || row.name}
+                  data-model-rank-row="true"
+                  className="grid min-h-11 min-w-0 grid-cols-[30px_minmax(0,1fr)_minmax(72px,.8fr)_42px] content-center items-center gap-x-2 py-1.5 text-[10px]"
+                >
+                  <span className={`flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-[10px] font-bold tabular-nums ${RANK_STYLES[index] || "bg-oai-gray-100 text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400"}`}>
+                    {index + 1}
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${SERIES_STYLES[index % SERIES_STYLES.length].dot}`} aria-hidden />
+                    <span className="min-w-0 break-words font-medium leading-4 text-oai-gray-700 dark:text-oai-gray-200">{row.name}</span>
+                  </span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="shrink-0 tabular-nums text-oai-gray-400 dark:text-oai-gray-500">{formatTokenCount(row.tokens, { locale })}</span>
+                    <span className="h-1.5 min-w-5 flex-1 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
+                      <span role="progressbar" aria-label={`${row.name} ${percent}%`} aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100" className={`block h-full rounded-full ${SERIES_STYLES[index % SERIES_STYLES.length].dot}`} style={{ width: `${percent}%` }} />
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right font-semibold tabular-nums text-oai-gray-700 dark:text-oai-gray-200">{percent.toLocaleString(locale, { maximumFractionDigits: 1 })}%</span>
+                </li>
+              );
+            })}
+          </ol>
+          <button type="button" className="mt-2 min-h-8 rounded-lg border border-oai-gray-100 bg-white/75 text-[10px] text-oai-gray-500 shadow-sm transition-colors hover:text-oai-black dark:border-oai-gray-800 dark:bg-oai-gray-900/70 dark:text-oai-gray-400">
+            查看全部 {safeRows.length} 个模型 <span aria-hidden>›</span>
+          </button>
+        </div>
       </div>
     </Card>
   );

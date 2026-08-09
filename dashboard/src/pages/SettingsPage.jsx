@@ -103,27 +103,39 @@ export function SettingsCostPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
+    <div
+      data-testid="settings-cost-page"
+      className="tt-settings-cost-page flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white"
+    >
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6">
-          <div className="tt-settings-cost-heading mb-8" data-testid="settings-cost-heading">
+        <div className="tt-settings-cost-shell">
+          <div className="tt-settings-cost-heading" data-testid="settings-cost-heading">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
+              <h1 className="tracking-tight text-oai-black dark:text-white">
                 {copy("settings.cost.page.title")}
               </h1>
-              <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+              <p>
                 {copy("settings.cost.page.subtitle")}
               </p>
             </div>
             <div className="tt-settings-cost-actions">
-              <button type="button"><Upload aria-hidden />{copy("settings.reference.import")}</button>
-              <button type="button"><Download aria-hidden />{copy("settings.reference.export")}</button>
-              <button type="button"><CircleCheck aria-hidden />{copy("settings.reference.validate")}</button>
+              <button type="button">
+                <Upload aria-hidden="true" />
+                {copy("settings.reference.import")}
+              </button>
+              <button type="button">
+                <Download aria-hidden="true" />
+                {copy("settings.reference.export")}
+              </button>
+              <button type="button">
+                <CircleCheck aria-hidden="true" />
+                {copy("settings.reference.validate")}
+              </button>
             </div>
           </div>
 
           <Suspense fallback={<SettingsCostFallback />}>
-            <div className="space-y-4">
+            <div className="tt-settings-cost-sections space-y-4">
               <AgentPricingSection />
               <div id="codex-quota">
                 <TokenPlanSection listOnly onNavigate={navigate} />

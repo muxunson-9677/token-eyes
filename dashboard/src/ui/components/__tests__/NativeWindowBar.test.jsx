@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NativeWindowBar } from "../NativeWindowBar.jsx";
@@ -8,12 +8,14 @@ const {
   close,
   getCurrentWindow,
   minimize,
+  acknowledge,
   setTheme,
   toggleMaximize,
 } = vi.hoisted(() => ({
   close: vi.fn(),
   getCurrentWindow: vi.fn(),
   minimize: vi.fn(),
+  acknowledge: vi.fn(),
   setTheme: vi.fn(),
   toggleMaximize: vi.fn(),
 }));
@@ -29,7 +31,16 @@ vi.mock("../../../hooks/useTheme.js", () => ({
 }));
 
 vi.mock("../../../hooks/use-codex-reset-events", () => ({
-  useCodexResetEvents: () => ({ unreadCount: 2 }),
+  useCodexResetEvents: () => ({
+    unreadCount: 2,
+    events: [{
+      id: "reset-1",
+      title: "Codex quota reset",
+      summary: "Your 5-hour quota window appears to have reset.",
+      occurred_at: "2026-08-05T03:00:00.000Z",
+    }],
+    acknowledge,
+  }),
 }));
 
 vi.mock("../../../lib/cloud-sync-prefs.ts", () => ({
@@ -49,10 +60,23 @@ describe("NativeWindowBar", () => {
     expect(screen.getByText("copy:native.window.status.label")).toBeInTheDocument();
     expect(screen.getByText("copy:native.window.status.normal")).toBeInTheDocument();
     expect(screen.getByText("copy:native.window.sync.recent")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "copy:native.window.notifications" }))
+    expect(screen.getByRole("button", { name: "copy:native.window.notifications" }))
       .toHaveAttribute("data-unread-count", "2");
-    expect(screen.queryByRole("button", { name: "copy:native.window.notifications" }))
-      .not.toBeInTheDocument();
+  });
+
+  it("opens the in-app reset notification panel and acknowledges an event", async () => {
+    const user = userEvent.setup();
+    render(<NativeWindowBar />);
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "copy:native.window.notifications" }));
+    });
+
+    expect(screen.getByText("Codex quota reset")).toBeInTheDocument();
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "copy:codex_reset.action.acknowledge" }));
+    });
+    expect(acknowledge).toHaveBeenCalledWith("reset-1");
   });
 
   it("uses existing theme and Tauri window actions", async () => {

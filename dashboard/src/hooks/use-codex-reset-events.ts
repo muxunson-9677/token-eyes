@@ -12,13 +12,11 @@ import {
   acknowledgeCodexResetEvent,
   checkCodexResetEvents,
   getCodexResetEvents,
-  markCodexResetEventDelivered,
   type CodexResetEvent,
   type CodexResetEventsResponse,
   type CodexResetHistoryEvent,
   type CodexResetMonitorStatus,
 } from "../lib/api";
-import { showCodexResetNotification } from "../lib/codex-reset-notification";
 import { syncCodexResetTrayStatus } from "../lib/codex-reset-tray";
 import {
   claimOfficialResetCelebration,
@@ -89,7 +87,6 @@ export function CodexResetEventsProvider({
   const [available, setAvailable] = useState(false);
   const requestRef = useRef<Promise<void> | null>(null);
   const requestGenerationRef = useRef(0);
-  const claimedNotificationsRef = useRef(new Set<string>());
 
   const run = useCallback((request: () => Promise<CodexResetEventsResponse>) => {
     if (!enabled) return Promise.resolve();
@@ -171,18 +168,6 @@ export function CodexResetEventsProvider({
       current = false;
     };
   }, [enabled, response]);
-
-  useEffect(() => {
-    for (const event of response?.notification_events || []) {
-      if (claimedNotificationsRef.current.has(event.id)) continue;
-      claimedNotificationsRef.current.add(event.id);
-      void markCodexResetEventDelivered(event.id, "windows_notification")
-        .then(() => showCodexResetNotification(event))
-        .catch(() => {
-          claimedNotificationsRef.current.delete(event.id);
-        });
-    }
-  }, [response]);
 
   const acknowledge = useCallback(async (eventId: string) => {
     if (!enabled) return;

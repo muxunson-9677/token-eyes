@@ -83,6 +83,20 @@ describe("ResetHistoryPage", () => {
     window.localStorage.clear();
   });
 
+  it("keeps the heatmap and summary figures in one right-side divided group", () => {
+    resetContext.value.history = [
+      officialReset("activity", new Date("2026-08-01T11:32:00.000Z")),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    const activity = screen.getByTestId("reset-history-activity");
+    const dataGroup = activity.querySelector(".tt-reset-activity-data");
+    expect(dataGroup).not.toBeNull();
+    expect(dataGroup?.querySelector(".tt-reset-heatmap")).not.toBeNull();
+    expect(dataGroup?.querySelectorAll(".tt-reset-activity-stat")).toHaveLength(2);
+  });
+
   it("shows only official extra resets with a concise source, reset type, scope, and exact time", () => {
     const official = officialReset("today", new Date(2026, 6, 26, 14, 32));
     resetContext.value.history = [
@@ -127,6 +141,18 @@ describe("ResetHistoryPage", () => {
     );
   });
 
+  it("reveals the remaining official announcements from the history control", async () => {
+    const user = userEvent.setup();
+    resetContext.value.history = Array.from({ length: 13 }, (_, index) =>
+      officialReset(`record-${index}`, new Date(2026, 6, 29 - index, 8, index)));
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(11);
+    await user.click(screen.getByRole("button", { name: "copy:reset_history.load_more" }));
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(13);
+  });
+
   it("renders compact timeline nodes and indexes each unique official source once", () => {
     resetContext.value.history = [
       officialReset("newest", new Date(2026, 6, 29, 12, 9), "https://x.com/source/one"),
@@ -145,6 +171,7 @@ describe("ResetHistoryPage", () => {
     expect(sourceIndex).toHaveTextContent("copy:reset_history.sources_title");
     expect(sourceIndex).toHaveTextContent("[1]");
     expect(sourceIndex).toHaveTextContent("[2]");
+    expect(screen.queryByRole("contentinfo", { name: "Token Eyes" })).not.toBeInTheDocument();
   });
 
   it("shows a compact thirty-day reset count and adjacent interval statistics", () => {
@@ -177,15 +204,17 @@ describe("ResetHistoryPage", () => {
     }
   });
 
-  it("hides interval statistics when there is not enough real data", () => {
+  it("keeps the complete statistics layout and labels unavailable interval data honestly", () => {
     resetContext.value.history = [
       officialReset("one", new Date()),
     ];
 
     render(<ResetHistoryPage />);
 
-    expect(screen.getAllByTestId("reset-history-stat")).toHaveLength(2);
-    expect(document.body).not.toHaveTextContent("copy:reset_history.stats.insufficient");
+    expect(screen.getAllByTestId("reset-history-stat")).toHaveLength(5);
+    expect(screen.getAllByTestId("reset-history-stat").filter((node) => node.dataset.empty === "true"))
+      .toHaveLength(3);
+    expect(document.body).toHaveTextContent("copy:reset_history.stats.insufficient");
   });
 
   it("uses a different semantic icon and tone for each reset kind", () => {
