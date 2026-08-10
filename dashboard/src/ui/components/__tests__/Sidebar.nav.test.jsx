@@ -175,6 +175,7 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
 
   it("keeps only the user-approved pending widgets route in the overview navigation", () => {
     renderSidebar("/dashboard");
+    expect(screen.queryByText("copy:nav.group.overview")).not.toBeInTheDocument();
     expect(screen.getByText("copy:nav.usage")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.leaderboard")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.reset_history")).toBeInTheDocument();
@@ -323,9 +324,6 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     const overviewLink = screen.getByRole("link", { name: "copy:nav.usage" });
 
     await user.tab();
-    expect(screen.getByRole("button", { name: "copy:header.auth.sign_in_aria" })).toHaveFocus();
-    await user.tab();
-
     expect(overviewLink).toHaveFocus();
     expect(overviewLink).toHaveClass("tt-sidebar-focusable");
   });
@@ -362,16 +360,14 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
 
     expect(screen.getByRole("button", { name: "copy:nav.menu" })).toHaveClass("tt-sidebar-focusable");
     expect(screen.getByRole("link", { name: "copy:shared.app_name" })).toHaveClass("tt-sidebar-focusable");
-    expect(screen.getByRole("button", { name: "copy:header.auth.sign_in_aria" })).toHaveClass("tt-sidebar-focusable");
+    expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
 
     await act(async () => {
       await user.click(screen.getByRole("button", { name: "copy:nav.menu" }));
     });
 
     expect(screen.getByRole("button", { name: "copy:nav.close_menu" })).toHaveClass("tt-sidebar-focusable");
-    for (const identityControl of screen.getAllByRole("button", { name: "copy:header.auth.sign_in_aria" })) {
-      expect(identityControl).toHaveClass("tt-sidebar-focusable");
-    }
+    expect(screen.queryByRole("button", { name: "copy:header.auth.sign_in_aria" })).not.toBeInTheDocument();
   });
 
   it("applies the shared focus hook to the signed-in identity control", () => {

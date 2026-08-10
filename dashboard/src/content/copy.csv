@@ -552,6 +552,9 @@ dashboard.projects.page_size,dashboard,DashboardPage,ProjectUsagePanel,page_size
 dashboard.projects.page_number,dashboard,DashboardPage,ProjectUsagePanel,page_number,"Page number",,active
 dashboard.projects.page_jump,dashboard,DashboardPage,ProjectUsagePanel,page_jump,"Jump",,active
 dashboard.projects.usage_trend,dashboard,DashboardPage,ProjectUsagePanel,chart_aria,"Project usage trend",,active
+dashboard.projects.agents_label,dashboard,DashboardPage,ProjectUsagePanel,agents_label,"Agents",,active
+dashboard.projects.models_label,dashboard,DashboardPage,ProjectUsagePanel,models_label,"Models",,active
+dashboard.projects.period_label,dashboard,DashboardPage,ProjectUsagePanel,period_label,"Period",,active
 dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,"当前范围暂无活动数据。请先使用 AI CLI，然后点击刷新。",,active
 dashboard.identity.title,dashboard,DashboardPage,IdentityCard,title,"Your Profile",,active
 dashboard.identity.subtitle,dashboard,DashboardPage,IdentityCard,subtitle,"Track your coding journey",,active

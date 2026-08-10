@@ -1009,6 +1009,44 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(within(row).getByTestId("avatar")).toHaveClass("tt-leaderboard-top-avatar");
   });
 
+  it("lays out the first-ranked result as the compact two-tier reference row", async () => {
+    insforgeAuthMock.signedIn = false;
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      entries: [{
+        ...preloadedData.entries[0],
+        display_name: "Reference User",
+        is_me: true,
+        show_actions: true,
+        estimated_cost_usd: 2062,
+        source_breakdown: [
+          { source: "codex", total_tokens: 75 },
+          { source: "hermes", total_tokens: 12 },
+          { source: "cursor", total_tokens: 9 },
+          { source: "claude", total_tokens: 3 },
+          { source: "gemini", total_tokens: 1 },
+        ],
+      }],
+    });
+
+    renderLeaderboard();
+
+    const rank = await screen.findByTestId("leaderboard-rank-1");
+    const row = rank.closest("li");
+    expect(row).not.toBeNull();
+    expect(row).toHaveAttribute("data-layout", "reference-two-tier");
+    expect(row).toHaveClass("tt-leaderboard-top-entry--reference");
+    expect(row.innerHTML).toContain("tt-leaderboard-top-entry-content");
+    expect(row.textContent).toContain("你");
+    expect(row.innerHTML).toContain("tt-leaderboard-current-user");
+    expect(row.querySelector(".tt-leaderboard-entry-distribution")).toBeInTheDocument();
+    expect(row.querySelector(".tt-leaderboard-agent-bar")).toBeInTheDocument();
+    expect(row.querySelectorAll('[data-testid="leaderboard-user-meta"] > [data-agent]')).toHaveLength(4);
+    expect(row.querySelectorAll(".tt-leaderboard-agent-bar > span")).toHaveLength(5);
+    expect(row.querySelector(".tt-leaderboard-score-column")).toBeInTheDocument();
+    expect(row.querySelector(".tt-leaderboard-row-actions")).toBeInTheDocument();
+  });
+
   it("anchors the first-ranked user's model distribution below the identity instead of centering it", async () => {
     insforgeAuthMock.signedIn = false;
     getLeaderboard.mockResolvedValue({

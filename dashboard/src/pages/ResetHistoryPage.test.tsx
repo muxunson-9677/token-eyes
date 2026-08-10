@@ -81,6 +81,31 @@ function officialReset(
 describe("ResetHistoryPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    resetContext.value.available = true;
+    resetContext.value.history = [];
+    document.documentElement.classList.remove("tt-reference-route-reset-history");
+  });
+
+  it("activates reset-history-only route styles while the page is mounted", () => {
+    const routeClass = "tt-reference-route-reset-history";
+    const { unmount } = render(<ResetHistoryPage />);
+
+    expect(document.documentElement).toHaveClass(routeClass);
+
+    unmount();
+    expect(document.documentElement).not.toHaveClass(routeClass);
+  });
+
+  it("shows deterministic preview records when the local desktop API is unavailable", () => {
+    window.history.replaceState({}, "", "/reset-history");
+    resetContext.value.available = false;
+    resetContext.value.history = [];
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(11);
+    expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
+    expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
   });
 
   it("keeps the heatmap and summary figures in one right-side divided group", () => {
@@ -93,8 +118,10 @@ describe("ResetHistoryPage", () => {
     const activity = screen.getByTestId("reset-history-activity");
     const dataGroup = activity.querySelector(".tt-reset-activity-data");
     expect(dataGroup).not.toBeNull();
+    expect(dataGroup).toHaveClass("tt-reset-activity-data--right-aligned");
     expect(dataGroup?.querySelector(".tt-reset-heatmap")).not.toBeNull();
     expect(dataGroup?.querySelectorAll(".tt-reset-activity-stat")).toHaveLength(2);
+    expect(dataGroup?.querySelector(".tt-reset-activity-peak")).toHaveClass("tt-reset-activity-stat--divided");
   });
 
   it("shows only official extra resets with a concise source, reset type, scope, and exact time", () => {
@@ -189,10 +216,14 @@ describe("ResetHistoryPage", () => {
       render(<ResetHistoryPage />);
 
       const stats = screen.getByTestId("reset-history-statistics");
+      expect(stats).toHaveClass("tt-reset-statistics--compact");
       expect(within(stats).getAllByTestId("reset-history-stat")).toHaveLength(5);
       expect(within(stats).getAllByTestId("reset-history-stat-icon")).toHaveLength(5);
       expect(within(stats).getAllByTestId("reset-history-stat").map((node) => node.dataset.tone))
         .toEqual(["blue", "emerald", "violet", "amber", "rose"]);
+      expect(within(stats).getAllByTestId("reset-history-stat").map((node) =>
+        node.querySelector("dd")?.classList.contains("truncate")))
+        .toEqual([false, false, false, false, false]);
       expect(stats).toHaveTextContent("copy:reset_history.stats.period");
       expect(stats).toHaveTextContent("copy:reset_history.stats.count");
       expect(stats).toHaveTextContent("copy:reset_history.stats.average");

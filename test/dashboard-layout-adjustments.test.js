@@ -129,7 +129,7 @@ test("ProjectUsagePanel does not render star values (stars removed)", () => {
 
 test("ProjectUsagePanel renders token and cost info", () => {
   const src = readFile(projectUsagePath);
-  assert.ok(src.includes("tokensCompact"), "expected project usage card to show tokens");
+  assert.ok(src.includes("formatCompactNumber(tokens"), "expected project usage card to show tokens");
   assert.ok(src.includes("costDisplay") || src.includes("cost_usd"), "expected project usage card to show cost");
   assert.ok(src.includes("pricing_coverage") || src.includes("pricingCoverage"), "expected project usage card to show pricing coverage");
   assert.ok(src.includes("project_path") || src.includes("projectPath"), "expected project usage card to show project path");

@@ -70,6 +70,11 @@ describe("ModelUsageDonut", () => {
     expect(screen.getByTestId("model-usage-summary-count")).toHaveTextContent("2");
     expect(screen.getByTestId("model-usage-summary-top1")).toHaveTextContent("75%");
     expect(screen.getByTestId("model-usage-summary-top3")).toHaveTextContent("100%");
+    expect(screen.getAllByTestId("model-usage-summary-icon")).toHaveLength(3);
+    expect(screen.getByTestId("model-usage-summary-count")).toHaveAttribute("data-tone", "green");
+    expect(screen.getByTestId("model-usage-summary-top1")).toHaveAttribute("data-tone", "blue");
+    expect(screen.getByTestId("model-usage-summary-top3")).toHaveAttribute("data-tone", "amber");
+    expect(screen.getByTestId("model-usage-table")).toHaveClass("tt-overview-model-table-card");
     expect(screen.getByTestId("model-usage-table-head")).toHaveTextContent("Token");
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /2.*模型/ })).not.toBeInTheDocument();

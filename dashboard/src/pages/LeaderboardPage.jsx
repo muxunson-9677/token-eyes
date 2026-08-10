@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
 import { motion } from "motion/react";
-import { CircleDollarSign, Coins, Info, MoreVertical, ShieldCheck, Users } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, Coins, Info, MoreVertical, ShieldCheck, Users } from "lucide-react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { useLoginModal } from "../contexts/LoginModalContext.jsx";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
@@ -198,6 +198,7 @@ function RankingScore({ entry, metric, currency, rate }) {
 
 function AgentDistribution({ entry, metric, currency, rate }) {
   const items = normalizeAgentMetrics(entry, metric);
+  const chipItems = items.slice(0, 4);
   const usesCost = metric !== "tokens" && Object.prototype.hasOwnProperty.call(entry || {}, "agent_metrics");
   const tokenTotal = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
   if (items.length === 0) return null;
@@ -207,7 +208,7 @@ function AgentDistribution({ entry, metric, currency, rate }) {
         className="tt-leaderboard-agent-chips flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-oai-gray-400 dark:text-oai-gray-500"
         data-testid="leaderboard-user-meta"
       >
-        {items.map((item) => (
+        {chipItems.map((item) => (
           <span key={item.id} className="inline-flex items-baseline gap-1 whitespace-nowrap" data-agent={item.id}>
             <span className="font-medium text-oai-gray-500 dark:text-oai-gray-400">{item.label}</span>
             <span className="tabular-nums">
@@ -358,6 +359,7 @@ function LeaderboardEntryRow({
   metric,
   currency,
   rate,
+  isSoleParticipant,
   openProfileModal,
 }) {
   if (entry?.is_ellipsis) {
@@ -375,9 +377,11 @@ function LeaderboardEntryRow({
   const isTopRank = Number(entry?.rank) === 1;
   const isPinned = Boolean(entry?.is_pinned);
   const profileUserId = typeof entry?.user_id === "string" ? entry.user_id : null;
+  const isCurrentUser = isMe || (isTopRank && isSoleParticipant && !profileUserId);
+  const isReferenceTopEntry = isTopRank && isCurrentUser;
   const rawName = normalizeName(entry?.display_name);
   const entryName = isAnonymousName(rawName) ? anonLabel : rawName;
-  const name = isMe ? meLabel : entryName;
+  const name = isCurrentUser ? meLabel : entryName;
   const rowClickable = Boolean(profileUserId);
   const openRow = rowClickable ? () => openProfileModal(profileUserId) : undefined;
   const onRowKeyDown = rowClickable
@@ -403,42 +407,47 @@ function LeaderboardEntryRow({
       aria-label={rowClickable ? copy("leaderboard.profile_modal.row_aria", { name }) : undefined}
       className={cn(
         "relative grid min-h-[78px] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors sm:grid-cols-[2.25rem_minmax(0,1fr)_9rem] sm:gap-4 sm:px-5",
-        isMe ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white/45 dark:bg-black/10",
-        isTopRank && "tt-leaderboard-top-entry tt-leaderboard-top-entry--compact",
+        isCurrentUser ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white/45 dark:bg-black/10",
+        isTopRank && "tt-leaderboard-top-entry tt-leaderboard-top-entry--compact tt-leaderboard-top-entry--reference",
         isPinned && "before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r before:bg-oai-brand-500",
         rowClickable && "tt-pressable tt-product-focusable cursor-pointer hover:bg-white/75 dark:hover:bg-white/[0.06]",
       )}
       data-entry-index={entryIdx}
       data-rank={entry?.rank ?? ""}
+      data-layout={isTopRank ? "reference-two-tier" : "standard"}
     >
-      <div className={cn("text-oai-gray-500 dark:text-oai-gray-400", isMe && "text-oai-brand-600 dark:text-oai-brand-400")}>
+      <div className={cn("text-oai-gray-500 dark:text-oai-gray-400", isCurrentUser && "text-oai-brand-600 dark:text-oai-brand-400")}>
         <RankCell
           rank={entry?.rank}
           pendingLabel={entry?.is_local_pending ? copy("leaderboard.rank_pending") : null}
         />
       </div>
 
-      <div className="tt-leaderboard-entry-user tt-leaderboard-entry-user--stacked flex min-w-0 items-center gap-3">
+      <div className={cn(
+        "tt-leaderboard-entry-user tt-leaderboard-entry-user--stacked flex min-w-0 items-center gap-3",
+        isTopRank && "tt-leaderboard-top-entry-content",
+      )}>
         <LeaderboardAvatar
-          avatarUrl={entry?.avatar_url}
-          displayName={entry?.avatar_display_name || name}
+          avatarUrl={isReferenceTopEntry ? null : entry?.avatar_url}
+          displayName={isReferenceTopEntry ? "T" : (entry?.avatar_display_name || name)}
           seed={leaderboardAvatarSeed(entry, name)}
           className={isTopRank ? "tt-leaderboard-top-avatar" : undefined}
         />
         <div className="tt-leaderboard-entry-copy min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="tt-leaderboard-entry-identity flex min-w-0 items-center gap-2">
             <span className={cn(
               "truncate text-sm font-semibold sm:text-base",
-              isMe || isTopRank ? "text-oai-brand-700 dark:text-oai-brand-300" : "text-oai-gray-900 dark:text-oai-gray-100",
+              isCurrentUser || isTopRank ? "text-oai-brand-700 dark:text-oai-brand-300" : "text-oai-gray-900 dark:text-oai-gray-100",
             )}>
               {name}
             </span>
-            {isMe ? (
+            {isCurrentUser ? (
               <span className="tt-leaderboard-current-user">
+                <BadgeCheck className="tt-leaderboard-current-user-icon" aria-hidden="true" />
                 {entry?.current_user_label || copy("leaderboard.current_user_label")}
               </span>
             ) : null}
-            {entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
+            {!isReferenceTopEntry && entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
           </div>
           <div className="tt-leaderboard-entry-distribution tt-leaderboard-entry-distribution--nearby mt-1 min-w-0">
             <AgentDistribution entry={entry} metric={metric} currency={currency} rate={rate} />
@@ -1142,6 +1151,7 @@ export function LeaderboardPage({
             metric={metric}
             currency={currency}
             rate={rate}
+            isSoleParticipant={Number(reconciledSummary.participantCount) === 1}
             openProfileModal={openProfileModal}
           />
         ))}
@@ -1195,7 +1205,7 @@ export function LeaderboardPage({
   return (
     <div className="tt-leaderboard-page flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-none px-4 sm:px-6 lg:px-8">
           {/* Title gets its own row. */}
           <div className="mb-5 sm:mb-6">
             <div className="mb-2 flex items-center justify-between gap-4 sm:mb-3">

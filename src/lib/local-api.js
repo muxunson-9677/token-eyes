@@ -350,7 +350,7 @@ function resolveQueuePath() {
   return path.join(home, ".tokentracker", "tracker", "queue.jsonl");
 }
 
-function readProjectQueueData(projectQueuePath) {
+function readProjectQueueData(projectQueuePath, mainQueuePath = resolveQueuePath()) {
   let raw;
   try {
     raw = fs.readFileSync(projectQueuePath, "utf8");
@@ -374,19 +374,24 @@ function readProjectQueueData(projectQueuePath) {
   const projectRows = Array.from(seen.values());
   const missingModelRows = projectRows.filter((row) => !row.model);
   if (missingModelRows.length > 0) {
-    const mainQueueRows = readQueueData(resolveQueuePath());
+    const mainQueueRows = readQueueData(mainQueuePath);
     const sourceHourModelMap = new Map();
     for (const r of mainQueueRows) {
       const mainKey = `${r.source || ""}|${r.hour_start || ""}`;
-      if (!sourceHourModelMap.has(mainKey) && r.model) {
-        sourceHourModelMap.set(mainKey, r.model);
-      }
+      if (!r.model) continue;
+      if (!sourceHourModelMap.has(mainKey)) sourceHourModelMap.set(mainKey, new Map());
+      const models = sourceHourModelMap.get(mainKey);
+      models.set(r.model, (models.get(r.model) || 0) + Number(r.total_tokens || 0));
     }
     for (const row of missingModelRows) {
       const mainKey = `${row.source || ""}|${row.hour_start || ""}`;
-      if (sourceHourModelMap.has(mainKey)) {
-        row.model = sourceHourModelMap.get(mainKey);
+      const models = sourceHourModelMap.get(mainKey);
+      if (!models || models.size === 0) continue;
+      if (models.size === 1) {
+        row.model = models.keys().next().value;
+        continue;
       }
+      row.model_breakdown = Array.from(models.entries()).map(([model, tokens]) => ({ model, tokens }));
     }
   }
   return projectRows;
@@ -6514,7 +6519,7 @@ function createLocalApiHandler({
         path.dirname(qp),
         "project.queue.jsonl",
       );
-      const projectRows = readProjectQueueData(projectQueuePath);
+      const projectRows = readProjectQueueData(projectQueuePath, qp);
       const pricingOptions = getPricingOptions();
 
       const byProject = new Map();
@@ -6548,12 +6553,43 @@ function createLocalApiHandler({
             pricing_coverage: "complete",
             request_count: 0,
             last_active_at: null,
+            agent_usage: new Map(),
+            model_usage: new Map(),
+            usage_trend: new Map(),
           });
         }
         const agg = byProject.get(normalizedKey);
         const tokens = Number(row.total_tokens || 0);
         agg.total_tokens += tokens;
         agg.billable_total_tokens += tokens;
+
+        const source = String(row.source || "unknown").trim().toLowerCase() || "unknown";
+        agg.agent_usage.set(source, (agg.agent_usage.get(source) || 0) + tokens);
+        const modelBreakdown = Array.isArray(row.model_breakdown)
+          ? row.model_breakdown.filter((item) => item?.model && Number(item.tokens) > 0)
+          : [];
+        const modelAllocations = [];
+        if (modelBreakdown.length > 0 && tokens > 0) {
+          const breakdownTotal = modelBreakdown.reduce((sum, item) => sum + Number(item.tokens), 0);
+          let allocated = 0;
+          modelBreakdown.forEach((item, index) => {
+            const modelTokens = index === modelBreakdown.length - 1
+              ? tokens - allocated
+              : Math.round(tokens * (Number(item.tokens) / breakdownTotal));
+            allocated += modelTokens;
+            modelAllocations.push({ model: String(item.model), tokens: modelTokens });
+          });
+        } else {
+          modelAllocations.push({
+            model: String(row.model || "unknown").trim() || "unknown",
+            tokens,
+          });
+        }
+        for (const allocation of modelAllocations) {
+          const modelKey = `${source}\u0000${allocation.model}`;
+          agg.model_usage.set(modelKey, (agg.model_usage.get(modelKey) || 0) + allocation.tokens);
+        }
+        agg.usage_trend.set(dayKey, (agg.usage_trend.get(dayKey) || 0) + tokens);
 
         if (rawRepoRoot && !agg.project_path) {
           agg.project_path = resolveProjectPathDisplay(rawKey, rawRef, rawRepoRoot);
@@ -6589,6 +6625,52 @@ function createLocalApiHandler({
         }
       }
 
+      const serializeProjectUsageEntry = (entry) => {
+        const pricingTotal = Number(entry.priced_tokens || 0) + Number(entry.unpriced_tokens || 0);
+        let pricingCoverage = "complete";
+        if (pricingTotal > 0) {
+          if (Number(entry.unpriced_tokens || 0) === 0) pricingCoverage = "complete";
+          else if (Number(entry.priced_tokens || 0) === 0) pricingCoverage = "unpriced";
+          else pricingCoverage = "partial";
+        }
+        const usageTotal = Math.max(0, Number(entry.total_tokens || 0));
+        const percentOfProject = (value) => usageTotal > 0
+          ? Math.round((Number(value || 0) / usageTotal) * 1000) / 10
+          : 0;
+        const agentUsage = Array.from(entry.agent_usage.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([id, value]) => ({ id, tokens: String(value), percent: percentOfProject(value) }));
+        const modelUsage = Array.from(entry.model_usage.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([key, value]) => {
+            const [provider, id] = key.split("\u0000");
+            return { id, provider, tokens: String(value), percent: percentOfProject(value) };
+          });
+        const usageTrend = Array.from(entry.usage_trend.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([day, value]) => ({ day, tokens: String(value) }));
+        const { agent_usage: _agentUsage, model_usage: _modelUsage, usage_trend: _usageTrend, ...publicEntry } = entry;
+        return {
+          ...publicEntry,
+          total_tokens: String(entry.total_tokens),
+          billable_total_tokens: String(entry.billable_total_tokens),
+          cost_usd: String(entry.cost_usd),
+          priced_tokens: String(entry.priced_tokens || 0),
+          unpriced_tokens: String(entry.unpriced_tokens || 0),
+          pricing_coverage: pricingCoverage,
+          request_count: String(entry.request_count),
+          last_active_at: entry.last_active_at || null,
+          agent_usage: agentUsage,
+          model_usage: modelUsage,
+          top_agents: agentUsage.map((item) => item.id),
+          top_models: modelUsage.map((item) => item.id),
+          model_providers: Object.fromEntries(modelUsage.map((item) => [item.id, item.provider])),
+          usage_trend: usageTrend,
+          period_from: from || usageTrend[0]?.day || null,
+          period_to: to || usageTrend[usageTrend.length - 1]?.day || null,
+        };
+      };
+
       // If no project-attributed rows exist yet (user hasn't synced project
       // attribution, or never used a project-capable CLI), fall back to
       // per-source aggregation over the main queue so the panel isn't
@@ -6618,11 +6700,19 @@ function createLocalApiHandler({
               unpriced_tokens: 0,
               request_count: 0,
               last_active_at: null,
+              agent_usage: new Map(),
+              model_usage: new Map(),
+              usage_trend: new Map(),
             });
           }
           const agg = bySrc.get(src);
           agg.total_tokens += row.total_tokens || 0;
           agg.billable_total_tokens += row.total_tokens || 0;
+          const tokens = Number(row.total_tokens || 0);
+          const model = String(row.model || "unknown").trim() || "unknown";
+          agg.agent_usage.set(src, (agg.agent_usage.get(src) || 0) + tokens);
+          agg.model_usage.set(`${src}\u0000${model}`, (agg.model_usage.get(`${src}\u0000${model}`) || 0) + tokens);
+          agg.usage_trend.set(dayKey, (agg.usage_trend.get(dayKey) || 0) + tokens);
 
           const rowCost = computeRowCostDetailed(row, pricingOptions);
           agg.cost_usd += Number(rowCost.cost_usd || 0);
@@ -6646,50 +6736,12 @@ function createLocalApiHandler({
         entries = Array.from(bySrc.values())
           .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
           .slice(0, limit)
-          .map((e) => {
-            const total = Number(e.priced_tokens || 0) + Number(e.unpriced_tokens || 0);
-            let pricingCoverage = "complete";
-            if (total > 0) {
-              if (Number(e.unpriced_tokens || 0) === 0) pricingCoverage = "complete";
-              else if (Number(e.priced_tokens || 0) === 0) pricingCoverage = "unpriced";
-              else pricingCoverage = "partial";
-            }
-            return {
-              ...e,
-              total_tokens: String(e.total_tokens),
-              billable_total_tokens: String(e.billable_total_tokens),
-              cost_usd: String(e.cost_usd),
-              priced_tokens: String(e.priced_tokens || 0),
-              unpriced_tokens: String(e.unpriced_tokens || 0),
-              pricing_coverage: pricingCoverage,
-              request_count: String(e.request_count),
-              last_active_at: e.last_active_at || null,
-            };
-          });
+          .map(serializeProjectUsageEntry);
       } else {
         entries = Array.from(byProject.values())
           .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
           .slice(0, limit)
-          .map((e) => {
-            const total = Number(e.priced_tokens || 0) + Number(e.unpriced_tokens || 0);
-            let pricingCoverage = "complete";
-            if (total > 0) {
-              if (Number(e.unpriced_tokens || 0) === 0) pricingCoverage = "complete";
-              else if (Number(e.priced_tokens || 0) === 0) pricingCoverage = "unpriced";
-              else pricingCoverage = "partial";
-            }
-            return {
-              ...e,
-              total_tokens: String(e.total_tokens),
-              billable_total_tokens: String(e.billable_total_tokens),
-              cost_usd: String(e.cost_usd),
-              priced_tokens: String(e.priced_tokens || 0),
-              unpriced_tokens: String(e.unpriced_tokens || 0),
-              pricing_coverage: pricingCoverage,
-              request_count: String(e.request_count),
-              last_active_at: e.last_active_at || null,
-            };
-          });
+          .map(serializeProjectUsageEntry);
       }
 
       json(res, { generated_at: new Date().toISOString(), from: from || null, to: to || null, entries });

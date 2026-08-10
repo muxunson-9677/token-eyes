@@ -37,14 +37,39 @@ vi.mock("../../components/ModelUsageDonut.jsx", () => ({
 vi.mock("../../../foundation/FadeIn.jsx", () => ({
   FadeIn: ({ children, className }) => <div className={className}>{children}</div>,
 }));
-vi.mock("../../components/MacAppBanner.jsx", () => ({ MacAppBanner: () => null }));
-vi.mock("../../components/WidgetOnboardingCard.jsx", () => ({ WidgetOnboardingCard: () => null }));
+vi.mock("../../components/MacAppBanner.jsx", () => ({
+  MacAppBanner: () => <div data-testid="dashboard-login-promotion" />,
+}));
+vi.mock("../../components/WidgetOnboardingCard.jsx", () => ({
+  WidgetOnboardingCard: () => <div data-testid="dashboard-widget-promotion" />,
+}));
 vi.mock("../../../../components/LoginCard.jsx", () => ({ LoginCard: () => null }));
 vi.mock("../../../../components/DashboardSkeleton.jsx", () => ({ DashboardSkeleton: () => null }));
 vi.mock("../../../marketing/LogoCarousel.jsx", () => ({ LogoCarousel: () => null }));
 vi.mock("../../../marketing/agent-logos.js", () => ({ AGENT_LOGOS: [] }));
 
 describe("DashboardView overview hierarchy", () => {
+  it("does not render the login or desktop-widget promotions in the locked overview", () => {
+    render(
+      <DashboardView
+        copy={(key) => key}
+        showAuthGate={false}
+        showExpiredGate={false}
+        initialDashboardLoading={false}
+        screenshotMode={false}
+        isLocalMode
+        shouldShowInstall={false}
+        periodsForDisplay={[]}
+        projectUsageEntries={[]}
+        trendRowsForDisplay={[]}
+        modelUsageDistribution={{ rows: [], totalTokens: 0 }}
+      />,
+    );
+
+    expect(screen.queryByTestId("dashboard-login-promotion")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-widget-promotion")).not.toBeInTheDocument();
+  });
+
   it("keeps the top overview intact and aligns model distribution with daily details below", () => {
     const openUsageDetails = vi.fn();
     const openCost = vi.fn();

@@ -32,6 +32,18 @@ function formatRelativeTime(value) {
   return `${Math.floor(hours / 24)}d`;
 }
 
+function normalizeUsageItems(items, fallbackIds = [], providerMap = {}) {
+  if (Array.isArray(items) && items.length > 0) {
+    return items.filter((item) => item?.id).map((item) => ({
+      id: item.id,
+      provider: item.provider || providerMap[item.id] || item.id,
+      tokens: toFiniteNumber(item.tokens),
+      percent: toFiniteNumber(item.percent),
+    }));
+  }
+  return fallbackIds.map((id) => ({ id, provider: providerMap[id] || id, tokens: null, percent: null }));
+}
+
 function ProjectSparkline({ points, color }) {
   const values = (Array.isArray(points) ? points : [])
     .map(function mapPoint(point) { return toFiniteNumber(point?.tokens); })
@@ -173,6 +185,8 @@ function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, pr
   const agents = Array.isArray(entry?.top_agents) ? entry.top_agents : [];
   const models = Array.isArray(entry?.top_models) ? entry.top_models : [];
   const providers = entry?.model_providers || {};
+  const agentUsage = normalizeUsageItems(entry?.agent_usage, agents);
+  const modelUsage = normalizeUsageItems(entry?.model_usage, models, providers);
   const accent = PROJECT_CARD_COLORS[projectIndex % PROJECT_CARD_COLORS.length];
   const percentage = aggregateTokens > 0 ? Math.round((tokens / aggregateTokens) * 1000) / 10 : 0;
   const detailsId = `project-details-${String(entry?.project_key || projectName).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -192,7 +206,7 @@ function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, pr
     );
   }
   return (
-    <article data-testid="project-usage-card" data-expanded={expanded} className="tt-overview-project-card tt-overview-project-card--embedded flex flex-col" style={{ "--tt-project-accent": accent }}>
+    <article data-testid="project-usage-card" data-expanded={expanded} className="tt-overview-project-card tt-overview-project-card--embedded tt-overview-project-card--compact flex flex-col" style={{ "--tt-project-accent": accent }}>
       <button type="button" className="tt-overview-project-toggle" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-controls={detailsId}>
         <span className="tt-overview-project-icon" aria-hidden="true"><FolderOpen size={18} /></span>
         <span className="min-w-0 flex-1 text-left">
@@ -205,6 +219,9 @@ function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, pr
       <div className="tt-overview-project-location">
         {!entry?.selected_folder && projectPath ? <span data-slot="project-path" className="block truncate text-[10px] text-oai-gray-400">{projectPath}</span> : null}
       </div>
+      {agentUsage.length ? <div className="tt-overview-project-tags tt-overview-project-tags--summary" data-slot="project-agent-summary">
+        {agentUsage.slice(0, 3).map((agent) => <span key={`summary-agent-${agent.id}`}><i><ProviderIcon provider={agent.provider} size={12} /></i>{agent.id}</span>)}
+      </div> : null}
       <div className="tt-overview-project-default-metrics">
         <div><span>{copy("dashboard.projects.tokens_label")}</span><strong>{formatCompactNumber(tokens, compactOptions)}</strong></div>
         <div><span>{copy("dashboard.projects.cost_label")}</span><strong>{costDisplay == null ? "—" : `$${costDisplay}`}</strong></div>
@@ -214,12 +231,11 @@ function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, pr
       <div id={detailsId} hidden={!expanded} className="tt-overview-project-details">
         <div className="tt-overview-project-detail-grid">
           {entry?.request_count != null ? <div><MessageSquareText aria-hidden="true" /><span><small>{copy("dashboard.projects.requests_label")}</small>{entry.request_count}</span></div> : null}
-          {entry?.last_active_at ? <div><Clock3 aria-hidden="true" /><span><small>{copy("dashboard.projects.last_active_label")}</small>{formatRelativeTime(entry.last_active_at)}</span></div> : null}
+          {entry?.last_active_at ? <div data-slot="project-last-active"><Clock3 aria-hidden="true" /><span><small>{copy("dashboard.projects.last_active_label")}</small>{formatRelativeTime(entry.last_active_at)}</span></div> : null}
+          {(entry?.period_from || entry?.period_to) ? <div data-slot="project-period"><Clock3 aria-hidden="true" /><span><small>{copy("dashboard.projects.period_label")}</small>{entry?.period_from || entry?.period_to} — {entry?.period_to || entry?.period_from}</span></div> : null}
         </div>
-        {(agents.length || models.length) ? <div className="tt-overview-project-tags">
-          {agents.slice(0, 3).map((agent) => <span key={`agent-${agent}`}><i data-slot="project-agent-icon"><ProviderIcon provider={agent} size={12} /></i>{agent}</span>)}
-          {models.slice(0, 3).map((model) => <span key={`model-${model}`}><i data-slot="project-model-icon"><ProviderIcon provider={providers[model] || agents[0]} size={12} /></i>{model}</span>)}
-        </div> : null}
+        {agentUsage.length ? <div className="tt-overview-project-breakdown" data-slot="project-agent-usage"><small>{copy("dashboard.projects.agents_label")}</small>{agentUsage.slice(0, 4).map((agent) => <span key={`agent-${agent.id}`}><i data-slot="project-agent-icon"><ProviderIcon provider={agent.provider} size={12} /></i><b>{agent.id}</b>{agent.tokens != null ? <em>{formatCompactNumber(agent.tokens, compactOptions)}</em> : null}{agent.percent != null ? <strong>{agent.percent}%</strong> : null}</span>)}</div> : null}
+        {modelUsage.length ? <div className="tt-overview-project-breakdown" data-slot="project-model-usage"><small>{copy("dashboard.projects.models_label")}</small>{modelUsage.slice(0, 4).map((model) => <span key={`model-${model.id}`}><i data-slot="project-model-icon"><ProviderIcon provider={model.provider} size={12} /></i><b>{model.id}</b>{model.tokens != null ? <em>{formatCompactNumber(model.tokens, compactOptions)}</em> : null}{model.percent != null ? <strong>{model.percent}%</strong> : null}</span>)}</div> : null}
         <ProjectSparkline points={entry?.usage_trend} color={accent} />
       </div>
     </article>

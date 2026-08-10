@@ -8,8 +8,6 @@ import { UsageOverview } from "../components/UsageOverview.jsx";
 import { TrendMonitor } from "../components/TrendMonitor.jsx";
 import { ModelUsageDonut } from "../components/ModelUsageDonut.jsx";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
-import { MacAppBanner } from "../components/MacAppBanner.jsx";
-import { WidgetOnboardingCard } from "../components/WidgetOnboardingCard.jsx";
 import { LoginCard } from "../../../components/LoginCard.jsx";
 import { DashboardSkeleton } from "../../../components/DashboardSkeleton.jsx";
 import { cn } from "../../../lib/cn";
@@ -333,14 +331,6 @@ export function DashboardView(props) {
                     </div>
                   </div>
                 ) : null}
-                {isLocalMode ? (
-                  <MacAppBanner
-                    todayTokens={summaryTotalTokensRaw}
-                    isSyncing={usageLoadingState}
-                    enterDelay={nextLeft()}
-                  />
-                ) : null}
-
                 <FadeIn delay={nextLeft()}>
                   <StatsPanel
                     title={copy("dashboard.identity.title")}
@@ -372,8 +362,6 @@ export function DashboardView(props) {
                     />
                   </FadeIn>
                 ) : null}
-
-                {isLocalMode ? <WidgetOnboardingCard enterDelay={nextLeft()} /> : null}
 
               </div>
 

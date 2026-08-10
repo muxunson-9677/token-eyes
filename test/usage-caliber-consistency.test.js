@@ -604,6 +604,15 @@ test("project-usage-summary respects date range and limit", async () => {
         total_tokens: 123,
         conversation_count: 2,
       },
+      {
+        project_key: "today-project",
+        project_ref: "today-project",
+        hour_start: "2026-07-06T12:00:00.000Z",
+        source: "codex",
+        model: "gpt-5.6-sol",
+        total_tokens: 77,
+        conversation_count: 1,
+      },
     ]);
 
     const body = await callEndpoint(
@@ -613,8 +622,53 @@ test("project-usage-summary respects date range and limit", async () => {
 
     assert.equal(body.entries.length, 1);
     assert.equal(body.entries[0].project_key, "today-project");
-    assert.equal(body.entries[0].total_tokens, "123");
-    assert.equal(body.entries[0].request_count, "2");
+    assert.equal(body.entries[0].total_tokens, "200");
+    assert.equal(body.entries[0].request_count, "3");
+    assert.deepEqual(body.entries[0].agent_usage, [
+      { id: "hermes", tokens: "123", percent: 61.5 },
+      { id: "codex", tokens: "77", percent: 38.5 },
+    ]);
+    assert.deepEqual(body.entries[0].model_usage, [
+      { id: "deepseek-v4-pro", provider: "hermes", tokens: "123", percent: 61.5 },
+      { id: "gpt-5.6-sol", provider: "codex", tokens: "77", percent: 38.5 },
+    ]);
+    assert.deepEqual(body.entries[0].usage_trend, [{ day: "2026-07-06", tokens: "200" }]);
+    assert.equal(body.entries[0].period_from, "2026-07-06");
+    assert.equal(body.entries[0].period_to, "2026-07-06");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project-usage-summary apportions legacy project rows across real models from the same source hour", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-project-summary-models-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const projectQueuePath = path.join(tmp, "project.queue.jsonl");
+    await writeQueue(queuePath, [
+      { hour_start: "2026-07-06T00:00:00.000Z", source: "codex", model: "gpt-a", total_tokens: 70 },
+      { hour_start: "2026-07-06T00:00:00.000Z", source: "codex", model: "gpt-b", total_tokens: 30 },
+    ]);
+    await writeQueue(projectQueuePath, [
+      {
+        project_key: "legacy-project",
+        project_ref: "legacy-project",
+        hour_start: "2026-07-06T00:00:00.000Z",
+        source: "codex",
+        total_tokens: 100,
+        conversation_count: 1,
+      },
+    ]);
+
+    const body = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-project-usage-summary?from=2026-07-06&to=2026-07-06&tz=UTC&limit=1",
+    );
+
+    assert.deepEqual(body.entries[0].model_usage, [
+      { id: "gpt-a", provider: "codex", tokens: "70", percent: 70 },
+      { id: "gpt-b", provider: "codex", tokens: "30", percent: 30 },
+    ]);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

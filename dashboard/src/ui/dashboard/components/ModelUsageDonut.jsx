@@ -1,4 +1,5 @@
 import React from "react";
+import { Boxes, Gauge, Sparkles } from "lucide-react";
 import { Card } from "../../components";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { formatTokenCount } from "../../../lib/format";
@@ -92,7 +93,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
       className={`h-full ${className}`}
       bodyClassName="flex h-full flex-col"
     >
-      <div className="tt-overview-model-usage-header mb-3 grid items-end gap-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
+      <div className="tt-overview-model-usage-header mb-3 grid items-end gap-3 sm:grid-cols-[minmax(0,.8fr)_minmax(0,1.8fr)]">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-oai-black dark:text-oai-white">
             {copy("dashboard.model_distribution.title")}
@@ -102,9 +103,9 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
           </p>
         </div>
         <div className="tt-overview-model-summary grid grid-cols-3 overflow-hidden rounded-xl border border-oai-gray-100 bg-white/80 shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900/70">
-          <div data-testid="model-usage-summary-count"><strong>{safeRows.length}</strong><span>{copy("dashboard.model_distribution.model_count")}</span></div>
-          <div data-testid="model-usage-summary-top1"><strong>{topOnePercent.toLocaleString(locale, { maximumFractionDigits: 1 })}%</strong><span>{copy("dashboard.model_distribution.top_one_share")}</span></div>
-          <div data-testid="model-usage-summary-top3"><strong>{topThreePercent.toLocaleString(locale, { maximumFractionDigits: 1 })}%</strong><span>{copy("dashboard.model_distribution.top_three_share")}</span></div>
+          <div data-testid="model-usage-summary-count" data-tone="green"><span data-testid="model-usage-summary-icon" aria-hidden="true"><Boxes /></span><span><strong>{safeRows.length}</strong><small>{copy("dashboard.model_distribution.model_count")}</small></span></div>
+          <div data-testid="model-usage-summary-top1" data-tone="blue"><span data-testid="model-usage-summary-icon" aria-hidden="true"><Gauge /></span><span><strong>{topOnePercent.toLocaleString(locale, { maximumFractionDigits: 1 })}%</strong><small>{copy("dashboard.model_distribution.top_one_share")}</small></span></div>
+          <div data-testid="model-usage-summary-top3" data-tone="amber"><span data-testid="model-usage-summary-icon" aria-hidden="true"><Sparkles /></span><span><strong>{topThreePercent.toLocaleString(locale, { maximumFractionDigits: 1 })}%</strong><small>{copy("dashboard.model_distribution.top_three_share")}</small></span></div>
         </div>
       </div>
 
@@ -320,7 +321,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
           </div>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-col" data-testid="model-usage-table">
+        <div className="tt-overview-model-table-card flex min-h-0 min-w-0 flex-col" data-testid="model-usage-table">
           <div data-testid="model-usage-table-head" className="grid grid-cols-[30px_minmax(0,1fr)_minmax(72px,.8fr)_42px] gap-2 border-b border-oai-gray-100 px-1 pb-2 text-[9px] text-oai-gray-400 dark:border-oai-gray-800">
             <span>{copy("dashboard.model_distribution.table_rank")}</span><span>{copy("dashboard.model_distribution.table_model")}</span><span className="text-right">{copy("dashboard.model_distribution.table_tokens")}</span><span className="text-right">{copy("dashboard.model_distribution.table_share")}</span>
           </div>

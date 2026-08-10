@@ -38,6 +38,157 @@
   --tt-card-radius: 12px;
 }
 
+/* Latest page-scoped acceptance adjustments: keep the locked overview untouched. */
+@container tt-leaderboard-page (min-width: 1181px) {
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference {
+    min-height: 118px;
+    grid-template-columns: 58px minmax(0, 1fr) 118px;
+    gap: 16px;
+    padding: 14px 28px 14px 20px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-user {
+    gap: 14px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-copy {
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 22px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-copy {
+    grid-template-columns: minmax(118px, max-content) minmax(0, 1fr);
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-agent-distribution {
+    min-width: 0;
+    gap: 18px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-agent-chips {
+    min-width: 0;
+    max-width: 48%;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-agent-bar {
+    min-width: 180px;
+    max-width: none;
+    flex: 1 1 auto;
+  }
+}
+
+.tt-reference-route-reset-history [data-testid="reset-history-statistics"].tt-reset-statistics--compact {
+  min-height: 116px;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.tt-reference-route-reset-history .tt-reset-statistics--compact [data-testid="reset-history-stat"] {
+  min-height: 116px;
+  padding: 14px 16px 12px;
+}
+
+.tt-reference-route-reset-history .tt-reset-statistics--compact [data-testid="reset-history-stat-icon"] {
+  width: 38px;
+  height: 38px;
+  margin-right: 11px;
+}
+
+.tt-reference-route-reset-history .tt-reset-statistics--compact [data-testid="reset-history-stat"] dt {
+  margin-top: 1px;
+}
+
+.tt-reference-route-reset-history .tt-reset-statistics--compact [data-testid="reset-history-stat"] dd {
+  margin-top: 3px;
+  font-size: 18px;
+  line-height: 23px;
+}
+
+.tt-reference-route-reset-history .tt-reset-statistics--compact .tt-reset-stat-detail {
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.tt-reference-route-reset-history .tt-reset-history-page .tt-reset-activity {
+  min-height: 128px;
+  grid-template-columns: 210px minmax(0, 1fr);
+  padding: 0 22px;
+}
+
+.tt-reference-route-reset-history .tt-reset-activity-data--right-aligned {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) minmax(122px, 142px) minmax(122px, 142px);
+  justify-self: stretch;
+}
+
+.tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap {
+  gap: 7px;
+  padding-right: 20px;
+}
+
+.tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-cells {
+  grid-template-columns: repeat(3, 14px);
+}
+
+.tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-cells span {
+  width: 14px;
+  height: 14px;
+}
+
+.tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-activity-stat {
+  min-height: 52px;
+  gap: 4px;
+  padding-left: 18px;
+}
+
+.tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-activity-stat--divided {
+  border-left: 1px solid #d5dfe8;
+}
+
+@container tt-reset-page (max-width: 1180px) {
+  .tt-reference-route-reset-history [data-testid="reset-history-statistics"].tt-reset-statistics--compact {
+    min-height: 108px;
+    gap: 8px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-statistics--compact [data-testid="reset-history-stat"] {
+    min-height: 108px;
+    padding: 10px 10px 9px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-history-page .tt-reset-activity {
+    min-height: 124px;
+    grid-template-columns: 150px minmax(0, 1fr);
+    padding: 0 14px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned {
+    grid-template-columns: minmax(0, 1fr) 92px 92px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap {
+    gap: 4px;
+    padding-right: 8px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-cells {
+    grid-template-columns: repeat(3, 10px);
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-cells span {
+    width: 10px;
+    height: 10px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-activity-stat {
+    padding-left: 10px;
+  }
+}
+
 .tt-reference-route-dashboard {
   --tt-window-bar-height: 62px;
   --tt-sidebar-width: 252px;
@@ -890,6 +1041,11 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
   padding-left: 37px !important;
 }
 
+.tt-reference-route-leaderboard .tt-main-work-surface main > .mx-auto {
+  container-name: tt-leaderboard-page;
+  container-type: inline-size;
+}
+
 .tt-reference-route-leaderboard .tt-main-work-surface h1 {
   font-size: 42px;
   line-height: 1.1;
@@ -1080,6 +1236,34 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
   padding-bottom: 0;
 }
 
+@container tt-leaderboard-page (min-width: 1181px) {
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--compact .tt-leaderboard-entry-copy {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 18px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--compact .tt-leaderboard-entry-identity {
+    min-width: max-content;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--compact .tt-leaderboard-entry-distribution--nearby {
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--compact .tt-leaderboard-agent-distribution {
+    gap: 18px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-entry--compact .tt-leaderboard-agent-bar {
+    min-width: 190px;
+    margin-left: 0;
+  }
+}
+
 .tt-reference-route-leaderboard .tt-leaderboard-top-avatar {
   width: 52px !important;
   height: 52px !important;
@@ -1266,6 +1450,223 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
   height: 15px;
 }
 
+@container tt-leaderboard-page (max-width: 1180px) {
+  .tt-reference-route-leaderboard .tt-leaderboard-table-head {
+    grid-template-columns: 52px minmax(0, 1fr) 112px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] {
+    height: 316px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] ol > li {
+    grid-template-columns: 44px minmax(0, 1fr) 112px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] ol > li.tt-leaderboard-top-entry--compact {
+    min-height: 158px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-entry-user--stacked {
+    gap: 8px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-top-avatar {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-agent-distribution {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-agent-chips {
+    width: 100%;
+    flex: 1 1 auto;
+    gap: 4px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-user-meta"] span {
+    padding: 3px 7px;
+    font-size: 11px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-agent-bar {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    flex: none;
+    margin-left: 0;
+  }
+}
+
+/* First-ranked row: the reference is a compact two-tier data row, not a stacked card. */
+.tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"]:has(ol > li.tt-leaderboard-top-entry--reference:only-child) {
+  height: 204px;
+}
+
+.tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"]:has(ol > li.tt-leaderboard-top-entry--reference:only-child) .tt-leaderboard-table-head {
+  height: 60px;
+  grid-template-columns: 52px minmax(0, 1fr) 116px;
+  padding: 0 14px;
+}
+
+.tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] ol > li.tt-leaderboard-top-entry--reference {
+  min-height: 86px;
+  grid-template-columns: 46px minmax(0, 1fr) 108px;
+  gap: 10px;
+  padding: 10px 22px 10px 14px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-top-entry-content {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-top-avatar {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  min-height: 42px !important;
+  margin-top: 0;
+  font-size: 16px !important;
+}
+
+.tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-copy {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 28px 24px;
+  gap: 2px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-identity {
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  gap: 9px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-identity > span:first-child {
+  color: #12a77a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-current-user {
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #dbf7ed;
+  color: #07966b;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-current-user-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-distribution--nearby {
+  min-width: 0;
+  margin-top: 0;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-agent-distribution {
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-agent-chips {
+  width: auto;
+  max-width: none;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow: visible;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference [data-testid="leaderboard-user-meta"] > span {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] .tt-leaderboard-top-entry--reference [data-testid="leaderboard-user-meta"] > span > span {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-agent-bar {
+  width: auto;
+  min-width: 8px;
+  max-width: none;
+  height: 8px;
+  flex: 1 1 auto;
+  margin-left: 0;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-rank-medal {
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-rank-medal::before,
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-rank-medal::after {
+  top: 29px;
+  width: 11px;
+  height: 20px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-rank-medal::before {
+  left: 6px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-rank-medal::after {
+  right: 6px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-score-column {
+  min-width: 0;
+  padding-right: 18px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-score-column > div:first-child {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-score-column > div:last-child {
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"]:has(ol > li.tt-leaderboard-top-entry--reference:only-child) > div:last-child {
+  height: 58px;
+  padding: 0 20px;
+}
+
 .tt-reference-route-reset-history {
   --tt-window-bar-height: 80px;
   --tt-sidebar-width: 223px;
@@ -1280,6 +1681,11 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   max-width: none !important;
   padding-right: 68px !important;
   padding-left: 54px !important;
+}
+
+.tt-reference-route-reset-history .tt-main-work-surface main > .mx-auto {
+  container-name: tt-reset-page;
+  container-type: inline-size;
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-heading"] {
@@ -1367,6 +1773,28 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 1500px) {
+  .tt-reference-route-reset-history [data-testid="reset-history-stat"] {
+    padding: 18px 14px 16px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat-icon"] {
+    width: 40px;
+    height: 40px;
+    margin-right: 10px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat-icon"] svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat"] dd {
+    font-size: 18px;
+    line-height: 24px;
+  }
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-stat"][data-empty="true"] {
@@ -1486,6 +1914,164 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 
   .tt-reference-route-reset-history .tt-reset-activity-stat {
     padding-left: 20px;
+  }
+}
+
+@container tt-reset-page (max-width: 1180px) {
+  .tt-reference-route-reset-history [data-testid="reset-history-statistics"] {
+    gap: 8px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat"] {
+    display: grid;
+    min-height: 140px;
+    grid-template-columns: 32px minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    align-content: start;
+    column-gap: 8px;
+    padding: 14px 10px 12px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat-icon"] {
+    grid-row: 1 / 3;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    float: none;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat-icon"] svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat"] dt {
+    grid-column: 2;
+    margin-top: 0;
+    font-size: 10px;
+    line-height: 14px;
+  }
+
+  .tt-reference-route-reset-history [data-testid="reset-history-stat"] dd {
+    grid-column: 2;
+    margin-top: 2px;
+    overflow: visible;
+    font-size: 16px;
+    line-height: 20px;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-stat-detail {
+    grid-column: 1 / -1;
+    margin-top: 9px;
+    overflow: visible;
+    font-size: 10px;
+    line-height: 14px;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity {
+    min-height: 156px;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 12px;
+    padding: 0 14px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data {
+    grid-template-columns: minmax(0, 1fr) minmax(88px, 100px) minmax(88px, 100px);
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-copy {
+    gap: 8px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-icon {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-icon svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-copy h2 {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-copy p {
+    margin-top: 2px;
+    font-size: 10px;
+    line-height: 14px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-copy strong {
+    margin-top: 5px;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-heatmap {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 4px;
+    width: 100%;
+    padding-right: 8px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-heatmap-day {
+    min-width: 0;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-heatmap-cells {
+    grid-template-columns: repeat(3, 10px);
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-heatmap-cells span {
+    width: 10px;
+    height: 10px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-heatmap-label {
+    font-size: 9px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-stat {
+    min-width: 0;
+    min-height: 54px;
+    grid-template-rows: auto auto;
+    gap: 4px;
+    padding-left: 10px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-stat span {
+    font-size: 9px;
+    line-height: 12px;
+    white-space: normal;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-stat strong {
+    font-size: 16px;
+    line-height: 20px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-heatmap + .tt-reset-activity-stat {
+    border-left: 1px solid #d5dfe8;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-peak strong {
+    font-size: 10px;
+    line-height: 14px;
+    white-space: normal;
   }
 }
 
@@ -5426,7 +6012,25 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-overview-project-summary strong { margin-top: 2px; color: #17212b; font-size: 12px; }
 .tt-overview-project-panel { --tt-project-accent-blue: #4d9cff; --tt-project-accent-green: #45c873; --tt-project-accent-purple: #9a6bff; --tt-project-accent-orange: #ff9f43; --tt-project-accent-pink: #ec6aa7; }
 .tt-overview-project-card--embedded { min-height: 150px; gap: 10px; overflow: hidden; border: 1px solid rgba(31,43,56,.12); border-radius: 14px; padding: 13px; background: linear-gradient(145deg,#fff 0%,#f6faf9 100%); box-shadow: 0 8px 18px rgba(31,43,56,.09),inset 0 1px 0 rgba(255,255,255,.98); }
-.tt-overview-project-card--embedded[data-expanded="true"] { min-height: 250px; }
+.tt-overview-project-card--embedded[data-expanded="true"] { min-height: 340px; }
+.tt-overview-project-card--embedded.tt-overview-project-card--compact { min-height: 108px; gap: 4px; padding: 8px; }
+.tt-overview-project-card--compact .tt-overview-project-toggle { gap: 6px; }
+.tt-overview-project-card--compact .tt-overview-project-icon { width: 28px; height: 28px; flex-basis: 28px; border-radius: 8px; }
+.tt-overview-project-card--compact .tt-overview-project-icon svg { width: 15px; height: 15px; }
+.tt-overview-project-card--compact .tt-overview-project-toggle .text-sm { font-size: 12px; line-height: 16px; }
+.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-location,
+.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-tags--summary,
+.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-pricing { display: none; }
+.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-tags { gap: 3px; }
+.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-tags--summary { min-height: 16px; }
+.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-tags > span { padding: 1px 5px; font-size: 8px; }
+.tt-overview-project-card--compact .tt-overview-project-default-metrics { gap: 4px; }
+.tt-overview-project-card--compact .tt-overview-project-default-metrics > div { border-radius: 7px; padding: 4px 6px; }
+.tt-overview-project-card--compact .tt-overview-project-default-metrics span { font-size: 8px; }
+.tt-overview-project-card--compact .tt-overview-project-default-metrics strong { margin-top: 1px; font-size: 10px; line-height: 13px; }
+.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-pricing { font-size: 10px; line-height: 12px; }
+.tt-overview-project-card--compact .tt-overview-project-progress-row { gap: 5px; font-size: 9px; }
+.tt-overview-project-card--compact .tt-overview-project-progress { height: 4px; }
 .tt-overview-project-toggle { display: flex; width: 100%; align-items: center; gap: 10px; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; }
 .tt-overview-project-icon { display: inline-flex; width: 34px; height: 34px; flex: 0 0 34px; align-items: center; justify-content: center; border-radius: 10px; background: color-mix(in srgb,var(--tt-project-accent,#438df0) 11%,white); color: var(--tt-project-accent,#438df0); }
 .tt-overview-project-default-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
@@ -5447,6 +6051,15 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-overview-project-tags > span { display: inline-flex; max-width: 100%; align-items: center; gap: 3px; overflow: hidden; border-radius: 999px; padding: 3px 7px; background: #edf8f3; color: #168b62; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .tt-overview-project-tags i { display: inline-flex; flex: 0 0 auto; }
 .tt-overview-project-tags svg { width: 11px; height: 11px; }
+.tt-overview-project-tags--summary { min-height: 22px; flex-wrap: nowrap; overflow: hidden; }
+.tt-overview-project-tags--summary > span { flex: 0 1 auto; background: color-mix(in srgb,var(--tt-project-accent,#438df0) 9%,white); color: #536171; }
+.tt-overview-project-breakdown { display: grid; min-width: 0; gap: 4px; }
+.tt-overview-project-breakdown > small { color: #8d99a7; font-size: 9px; font-weight: 700; }
+.tt-overview-project-breakdown > span { display: grid; min-width: 0; grid-template-columns: 14px minmax(0,1fr) auto auto; align-items: center; gap: 5px; border-radius: 8px; padding: 4px 6px; background: rgba(246,249,251,.9); color: #536171; font-size: 9px; }
+.tt-overview-project-breakdown i { display: inline-flex; }
+.tt-overview-project-breakdown b { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.tt-overview-project-breakdown em { color: #6d7986; font-style: normal; font-variant-numeric: tabular-nums; }
+.tt-overview-project-breakdown strong { color: var(--tt-project-accent,#438df0); font-variant-numeric: tabular-nums; }
 .tt-overview-project-sparkline { display: block; width: 100%; height: 32px; }
 .tt-overview-project-sparkline-base { stroke: rgba(31,43,56,.08); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .tt-overview-project-tab > .tt-overview-project-panel { height: 100%; min-height: 0; }
@@ -5773,6 +6386,60 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   line-height: 10px;
 }
 
+.tt-overview-model-summary > div {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+}
+
+.tt-overview-model-summary > div > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.tt-overview-model-summary [data-testid="model-usage-summary-icon"] {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  margin: 0;
+}
+
+.tt-overview-model-summary [data-testid="model-usage-summary-icon"] svg {
+  width: 11px;
+  height: 11px;
+}
+
+.tt-overview-model-summary [data-tone="green"] [data-testid="model-usage-summary-icon"] { background: #e7faf2; color: #0ba878; }
+.tt-overview-model-summary [data-tone="blue"] [data-testid="model-usage-summary-icon"] { background: #e8f1ff; color: #3d7de8; }
+.tt-overview-model-summary [data-tone="amber"] [data-testid="model-usage-summary-icon"] { background: #fff3df; color: #ef9812; }
+
+.tt-overview-model-summary small {
+  display: block;
+  overflow: hidden;
+  margin-top: 1px;
+  color: #8a96a3;
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-overview-model-table-card {
+  overflow: hidden;
+  border: 1px solid rgba(31,43,56,.09);
+  border-radius: 13px;
+  padding: 9px 8px 7px;
+  background: rgba(255,255,255,.76);
+  box-shadow: 0 5px 14px rgba(31,43,56,.055), inset 0 1px 0 rgba(255,255,255,.98);
+}
+
 .tt-reference-route-dashboard [data-testid="model-usage-layout"] {
   grid-template-columns: minmax(0, .9fr) minmax(0, 1.35fr);
 }
@@ -5839,8 +6506,23 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-reference-route-dashboard [data-model-rank-row="true"] .break-words {
   display: block;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
   white-space: normal;
+}
+
+.tt-reference-route-dashboard .tt-overview-model-summary > div {
+  gap: 4px;
+  padding: 5px 6px;
+}
+
+.tt-reference-route-dashboard .tt-overview-model-summary strong {
+  font-size: 10px;
+}
+
+.tt-reference-route-dashboard [data-testid="model-usage-table-head"],
+.tt-reference-route-dashboard [data-model-rank-row="true"] {
+  grid-template-columns: 26px minmax(0, 1fr) 52px 36px;
+  gap: 4px;
 }
 
 /* Keep the approved two-column dashboard composition usable at desktop

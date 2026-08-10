@@ -19,6 +19,7 @@ import { cn } from "../../lib/cn";
 import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
 import { InsforgeUserHeaderControls } from "../../components/InsforgeUserHeaderControls.jsx";
+import { useInsforgeAuth } from "../../contexts/InsforgeAuthContext.jsx";
 import { CodexResetBanner } from "../../components/CodexResetBanner";
 import { useCodexResetEvents } from "../../hooks/use-codex-reset-events";
 import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native-bridge.js";
@@ -450,6 +451,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
   // Re-compute copy() via getNavGroups when locale changes, otherwise the
   // labels stay stale after a language switch.
   const { resolvedLocale } = useLocale();
+  const { signedIn } = useInsforgeAuth();
   const { unreadCount } = useCodexResetEvents();
   const navGroups = useMemo(() => getNavGroups(), [resolvedLocale]);
 
@@ -505,34 +507,38 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
   return (
     <>
       {/* Top: identity only 鈥?full-width, aligned with nav items (px-2) */}
-      <div className={cn("px-2 pt-2 pb-2", collapsed && "flex justify-center")}>
-        {showCloseButton ? (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <InsforgeUserHeaderControls
-                variant="sidebar"
-                collapsed={collapsed}
-                onAfterAction={onItemClick}
-              />
+      {signedIn || showCloseButton ? (
+        <div className={cn("px-2 pt-2 pb-2", collapsed && "flex justify-center")}>
+          {showCloseButton ? (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                {signedIn ? (
+                  <InsforgeUserHeaderControls
+                    variant="sidebar"
+                    collapsed={collapsed}
+                    onAfterAction={onItemClick}
+                  />
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={copy("nav.close_menu")}
+                title={copy("nav.close_menu")}
+                className="tt-sidebar-focusable flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
+              >
+                <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={copy("nav.close_menu")}
-              title={copy("nav.close_menu")}
-              className="tt-sidebar-focusable flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
-            >
-              <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-            </button>
-          </div>
-        ) : (
-          <InsforgeUserHeaderControls
-            variant="sidebar"
-            collapsed={collapsed}
-            onAfterAction={onItemClick}
-          />
-        )}
-      </div>
+          ) : (
+            <InsforgeUserHeaderControls
+              variant="sidebar"
+              collapsed={collapsed}
+              onAfterAction={onItemClick}
+            />
+          )}
+        </div>
+      ) : null}
 
       {/* Nav */}
       <nav
@@ -541,17 +547,14 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
       >
         {navGroups.map((group, groupIdx) => (
           <div key={group.id} className="flex flex-col">
-            {/*
-              v2.0 IA: parent groups (spend, settings) render their label
-              inside the NavParent button itself, so we only emit a separate
-              NavGroupLabel for single-item groups (overview) to avoid a
-              duplicate visible label on parent rows.
-            */}
-            <NavGroupLabel
-              label={group.children ? group.sectionLabel : group.label}
-              collapsed={collapsed}
-              first={groupIdx === 0}
-            />
+            {/* The overview links start immediately; only grouped sections keep a heading. */}
+            {group.id === "overview" ? null : (
+              <NavGroupLabel
+                label={group.children ? group.sectionLabel : group.label}
+                collapsed={collapsed}
+                first={groupIdx === 0}
+              />
+            )}
             <div className="flex flex-col gap-0.5">
               {group.children ? (
                 <NavParent

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useLayoutEffect, useMemo, useState } from "react";
 import {
   ArchiveRestore,
   ArrowDownToLine,
@@ -37,6 +37,54 @@ type TimelineSource = {
   label: string;
   url: string;
 };
+
+const PREVIEW_RESET_DATES = [
+  "2026-08-01T11:32:00.000Z",
+  "2026-07-29T12:09:00.000Z",
+  "2026-07-28T11:09:00.000Z",
+  "2026-07-26T03:17:00.000Z",
+  "2026-07-22T00:47:00.000Z",
+  "2026-07-18T11:28:00.000Z",
+  "2026-07-16T12:14:00.000Z",
+  "2026-07-15T03:34:00.000Z",
+  "2026-07-14T02:29:00.000Z",
+  "2026-07-13T05:28:00.000Z",
+  "2026-07-12T18:20:00.000Z",
+  "2026-07-11T13:54:00.000Z",
+  "2026-07-10T22:18:00.000Z",
+] as const;
+
+const PREVIEW_RESET_HISTORY: CodexResetHistoryEvent[] = PREVIEW_RESET_DATES.map(
+  (occurredAt, index) => ({
+    id: `preview-official-reset-${index + 1}`,
+    type: "official_reset_announcement",
+    agent: "codex",
+    account_key: "preview",
+    window: null,
+    created_at: occurredAt,
+    reset_at: null,
+    occurred_at: occurredAt,
+    observed_at: occurredAt,
+    previous_used_percent: null,
+    current_used_percent: null,
+    confidence: "confirmed",
+    alert_eligible: false,
+    official_url: "https://chatgpt.com/codex",
+    source_url: "https://x.com/thsottiaux/status/2082317452755751098",
+    source_author: "thsottiaux",
+    source: "signed_feed",
+    reset_kind: index === 4 ? "unknown" : index >= 8 ? "banked" : "hard",
+    reset_scope: index % 3 === 0 ? "all_codex_work_users" : "all_paid_users",
+    title: "Codex official extra reset",
+  }),
+);
+
+function shouldUseLocalPreviewHistory(available: boolean, history: CodexResetHistoryEvent[]) {
+  if (!import.meta.env.DEV || available || history.length > 0 || typeof window === "undefined") {
+    return false;
+  }
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+}
 
 export function formatResetDateTime(iso: string) {
   const date = new Date(iso);
@@ -193,7 +241,7 @@ function ResetStatisticsSummary({
   return (
     <dl
       data-testid="reset-history-statistics"
-      className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-5"
+      className="tt-reset-statistics--compact mb-8 grid grid-cols-2 gap-3 lg:grid-cols-5"
     >
       {items.map(({ Icon, ...item }) => (
         <div
@@ -213,7 +261,7 @@ function ResetStatisticsSummary({
           <dt className="mt-4 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
             {item.label}
           </dt>
-          <dd className="mt-1 truncate text-lg font-semibold tabular-nums">
+          <dd className="mt-1 text-lg font-semibold tabular-nums">
             {isLoading ? copy("reset_history.loading") : item.value ?? unavailableValue}
           </dd>
           <p className="tt-reset-stat-detail">
@@ -247,7 +295,7 @@ function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[];
           <strong>{zh ? `昨日达到高峰（${Math.max(2, peak.count)} 次）` : `Peak day (${Math.max(2, peak.count)} times)`}</strong>
         </div>
       </div>
-      <div className="tt-reset-activity-data">
+      <div className="tt-reset-activity-data tt-reset-activity-data--right-aligned">
         <div className="tt-reset-heatmap" aria-label={zh ? "最近七天重置热力图" : "Seven-day reset heatmap"}>
           {days.map((day, dayIndex) => (
             <div className="tt-reset-heatmap-day" key={day.key}>
@@ -267,7 +315,7 @@ function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[];
           <span>{zh ? "本月累计（截至今日）" : "This month"}</span>
           <strong>{statistics.count} 次</strong>
         </div>
-        <div className="tt-reset-activity-stat tt-reset-activity-peak">
+        <div className="tt-reset-activity-stat tt-reset-activity-stat--divided tt-reset-activity-peak">
           <span>{zh ? "高峰日" : "Peak day"}</span>
           <strong>{peak.label}（{Math.max(2, peak.count)} 次）</strong>
         </div>
@@ -335,11 +383,24 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
 }
 
 export function ResetHistoryPage() {
+  useLayoutEffect(() => {
+    const routeClass = "tt-reference-route-reset-history";
+    const root = document.documentElement;
+    const alreadyActive = root.classList.contains(routeClass);
+    root.classList.add(routeClass);
+
+    return () => {
+      if (!alreadyActive) root.classList.remove(routeClass);
+    };
+  }, []);
+
   const { history, available } = useCodexResetEvents();
+  const usePreviewHistory = shouldUseLocalPreviewHistory(available, history);
+  const displayedHistory = usePreviewHistory ? PREVIEW_RESET_HISTORY : history;
   const [celebrationEffect, setCelebrationEffect] = useState(readResetCelebrationEffect);
   const [visibleRecordCount, setVisibleRecordCount] = useState(11);
   const { events, sources, statistics } = useMemo(() => {
-    const official = filterRecentOfficialResets(history)
+    const official = filterRecentOfficialResets(displayedHistory)
       .sort((left, right) => Date.parse(right.occurred_at) - Date.parse(left.occurred_at));
     const indexByUrl = new Map<string, number>();
     const indexedSources: TimelineSource[] = [];
@@ -360,14 +421,14 @@ export function ResetHistoryPage() {
       return { ...event, sourceIndex };
     });
     return { events: indexedEvents, sources: indexedSources, statistics: resetStatistics };
-  }, [history]);
+  }, [displayedHistory]);
   const visibleEvents = events.slice(0, visibleRecordCount);
   const hasMoreRecords = visibleEvents.length < events.length;
 
   return (
     <div className="tt-reset-history-page flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="tt-reset-history-main flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-none px-4 sm:px-6 lg:px-8">
           <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row" data-testid="reset-history-heading">
             <div className="tt-reset-heading-copy">
               <History className="tt-reset-heading-icon" aria-hidden />
@@ -404,7 +465,11 @@ export function ResetHistoryPage() {
             </div>
           </div>
 
-          <ResetStatisticsSummary statistics={statistics} events={events} isLoading={!available} />
+          <ResetStatisticsSummary
+            statistics={statistics}
+            events={events}
+            isLoading={!available && !usePreviewHistory}
+          />
 
           <ResetActivitySummary events={events} statistics={statistics} />
 
@@ -466,7 +531,9 @@ export function ResetHistoryPage() {
                 </>
               ) : (
                 <p className="tt-reset-history-empty py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
-                  {available ? copy("reset_history.empty") : copy("reset_history.loading_detail")}
+                  {available || usePreviewHistory
+                    ? copy("reset_history.empty")
+                    : copy("reset_history.loading_detail")}
                 </p>
               )}
             </div>

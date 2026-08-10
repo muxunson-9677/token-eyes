@@ -203,12 +203,49 @@ describe("ProjectUsagePanel", () => {
     render(<ProjectUsagePanel embedded entries={entries} />);
     const cards = screen.getAllByTestId("project-usage-card");
 
+    expect(cards[0]).toHaveClass("tt-overview-project-card--compact");
     await user.click(screen.getByRole("button", { name: /Second project/ }));
     expect(cards[0]).toHaveAttribute("data-expanded", "false");
     expect(cards[1]).toHaveAttribute("data-expanded", "true");
     expect(cards[2]).toHaveAttribute("data-expanded", "false");
     expect(cards[1].querySelector('[data-slot="project-agent-icon"]')).toBeInTheDocument();
     expect(cards[1].querySelector('[data-slot="project-model-icon"]')).toBeInTheDocument();
+  });
+
+  it("reveals real agent, model, period, activity and trend details for only the selected project", async () => {
+    const user = userEvent.setup();
+    const entries = [
+      {
+        ...baseEntry,
+        project_key: "detailed",
+        project_name: "Detailed project",
+        agent_usage: [{ id: "codex", tokens: 9000, percent: 75 }],
+        model_usage: [{ id: "gpt-5.6-sol", provider: "codex", tokens: 7200, percent: 60 }],
+        usage_trend: [
+          { day: "2026-06-28", tokens: 1000 },
+          { day: "2026-06-29", tokens: 11000 },
+        ],
+        period_from: "2026-06-28",
+        period_to: "2026-06-29",
+      },
+      { ...baseEntry, project_key: "other", project_name: "Other project" },
+    ];
+
+    render(<ProjectUsagePanel embedded entries={entries} />);
+    const cards = screen.getAllByTestId("project-usage-card");
+
+    expect(cards[0]).toHaveAttribute("data-expanded", "false");
+    expect(cards[1]).toHaveAttribute("data-expanded", "false");
+    await user.click(screen.getByRole("button", { name: /Detailed project/ }));
+
+    expect(cards[0]).toHaveAttribute("data-expanded", "true");
+    expect(cards[1]).toHaveAttribute("data-expanded", "false");
+    expect(cards[0].querySelector('[data-slot="project-agent-usage"]')).toHaveTextContent("9");
+    expect(cards[0].querySelector('[data-slot="project-model-usage"]')).toHaveTextContent("7.2");
+    expect(cards[0].querySelector('[data-slot="project-period"]')).toHaveTextContent("2026-06-28");
+    expect(cards[0].querySelector('[data-slot="project-period"]')).toHaveTextContent("2026-06-29");
+    expect(cards[0].querySelector('[data-slot="project-last-active"]')).toBeInTheDocument();
+    expect(cards[0].querySelector('[data-testid="project-usage-sparkline"]')).toBeInTheDocument();
   });
 
   it("shows total records and lets users jump to a project page", async () => {
