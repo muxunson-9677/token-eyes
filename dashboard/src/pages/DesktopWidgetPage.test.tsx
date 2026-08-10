@@ -47,7 +47,11 @@ vi.mock("motion/react", () => ({
   useReducedMotion: () => false,
 }));
 
-import { DesktopWidgetPage } from "./DesktopWidgetPage";
+import {
+  DesktopWidgetPage,
+  formatWidgetCompactCost,
+  formatWidgetCompactTokenCount,
+} from "./DesktopWidgetPage";
 
 const widgetStyles = readFileSync("src/pages/desktop-widget.css", "utf8");
 
@@ -126,6 +130,7 @@ const viewModel = {
 
 describe("DesktopWidgetPage", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     widget.updatePrefs.mockReset().mockResolvedValue(undefined);
     widget.setPopoverOpen.mockReset().mockResolvedValue(undefined);
     widget.acknowledgePendingReset.mockReset().mockResolvedValue(undefined);
@@ -139,6 +144,11 @@ describe("DesktopWidgetPage", () => {
       setPopoverOpen: widget.setPopoverOpen,
       acknowledgePendingReset: widget.acknowledgePendingReset,
     };
+  });
+
+  it("formats widget totals with Chinese compact units", () => {
+    expect(formatWidgetCompactTokenCount(13_857_521_151)).toBe("138.6亿");
+    expect(formatWidgetCompactCost(35_508.35)).toBe("$3.6万");
   });
 
   it("constrains the browser-only preview to the native widget frame", () => {
@@ -223,6 +233,26 @@ describe("DesktopWidgetPage", () => {
     rerender(<DesktopWidgetPage />);
     expect(screen.getByTestId("widget-mode-rail").parentElement)
       .toBe(screen.getByTestId("desktop-widget-card").parentElement);
+    expect(widgetStyles).toContain(".widget-mode-rail--reference-dock {\n  align-self: start;\n  margin-top: 4px;");
+  });
+
+  it("uses the reference dock chrome while keeping the real model totals available", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, expanded: true, mode: "models" },
+    };
+    render(<DesktopWidgetPage />);
+
+    expect(screen.getByTestId("desktop-widget-card"))
+      .toHaveClass("desktop-widget-card--reference-dock");
+    expect(screen.getByTestId("widget-mode-rail"))
+      .toHaveClass("widget-mode-rail--reference-dock");
+    expect(screen.getByTestId("widget-model-summary"))
+      .toHaveTextContent("copy:widget.models.tokens");
+    expect(screen.getByTestId("widget-model-summary")).toHaveTextContent("$1.25");
+    expect(document.querySelector(".widget-toolbar"))
+      .not.toHaveClass("widget-toolbar--models");
+    expect(widgetStyles).not.toContain(".widget-toolbar--models");
   });
 
   it("renders all three traffic lights and preserves zero-count semantics without losing their tones", () => {
@@ -236,7 +266,7 @@ describe("DesktopWidgetPage", () => {
     expect(widgetStyles).toContain(".widget-traffic-light--yellow { color:");
   });
 
-  it("uses Chinese compact units and separates the expanded content layer", async () => {
+  it("uses compact Chinese units in the reference dock without widening the widget chrome", async () => {
     const user = userEvent.setup();
     widget.value = {
       ...widget.value,
@@ -379,7 +409,7 @@ describe("DesktopWidgetPage", () => {
     expect(screen.getByText(new RegExp("\u7684\u4f1a\u8bdd$", "u"))).toBeInTheDocument();
   });
 
-  it("shows only the first selected limit while collapsed and all selected limits when expanded", () => {
+  it("shows only the first selected limit while collapsed and keeps the reference status lights above all expanded limits", () => {
     widget.value = {
       ...widget.value,
       prefs: {
@@ -405,7 +435,8 @@ describe("DesktopWidgetPage", () => {
     expect(screen.getAllByText("5h")).not.toHaveLength(0);
     expect(screen.getAllByText("备用周额度")).not.toHaveLength(0);
     expect(screen.getAllByText("主力开发账号")).not.toHaveLength(0);
-    expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(3);
+    expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(2);
+    expect(screen.getAllByTestId("widget-traffic-light")).toHaveLength(3);
   });
 
   it("treats a missing limit selection as all plans and an empty selection as none", () => {
@@ -478,9 +509,15 @@ describe("DesktopWidgetPage", () => {
       return matches.at(-1)?.[1] ?? "";
     };
     expect(rule(".widget-summary")).toContain("align-self: stretch");
-    expect(rule(".widget-model-summary")).toContain("max-height: 23px");
-    expect(rule(".widget-model-summary small")).toContain("line-height: 9px");
-    expect(rule(".widget-model-summary strong")).toContain("line-height: 14px");
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-card--reference-dock \.widget-model-summary\s*\{[^}]*max-height: 23px/u,
+    );
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-card--reference-dock \.widget-model-summary small\s*\{[^}]*line-height: 9px/u,
+    );
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-card--reference-dock \.widget-model-summary strong\s*\{[^}]*line-height: 14px/u,
+    );
   });
 
   it("portals appearance controls outside the capsule and temporarily expands the native window", async () => {
@@ -502,8 +539,9 @@ describe("DesktopWidgetPage", () => {
     expect(widget.setPopoverOpen).toHaveBeenCalledWith(false);
   });
 
-  it("keeps a reset alert until the user acknowledges it without navigation", async () => {
-    const user = userEvent.setup();
+  it("shows the reset-history selected effect over the stable widget instead of an acknowledgement button", async () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem("token-eyes:reset-celebration-effect:v1", "fireworks");
     widget.value = {
       ...widget.value,
       viewModel: {
@@ -518,13 +556,32 @@ describe("DesktopWidgetPage", () => {
         },
       },
     };
-    render(<DesktopWidgetPage />);
+    try {
+      render(<DesktopWidgetPage />);
 
-    const alert = screen.getByRole("button", { name: "copy:widget.reset.acknowledge" });
-    expect(alert).toHaveTextContent("copy:widget.reset.title");
-    expect(alert).toHaveTextContent("21% → 0%");
-    expect(document.querySelector("a")).toBeNull();
-    await user.click(alert);
-    expect(widget.acknowledgePendingReset).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("desktop-widget-card"))
+        .toHaveClass("desktop-widget-card--reference-dock");
+      expect(screen.getByTestId("widget-reset-celebration"))
+        .toHaveAttribute("data-effect-id", "fireworks");
+      act(() => {
+        window.localStorage.setItem("token-eyes:reset-celebration-effect:v1", "meteors");
+        window.dispatchEvent(new CustomEvent(
+          "token-eyes:reset-celebration-effect-change",
+          { detail: { effectId: "meteors" } },
+        ));
+      });
+      expect(screen.getByTestId("widget-reset-celebration"))
+        .toHaveAttribute("data-effect-id", "meteors");
+      expect(screen.queryByRole("button", { name: "copy:widget.reset.acknowledge" }))
+        .not.toBeInTheDocument();
+      expect(widget.acknowledgePendingReset).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(6_000);
+      });
+      expect(widget.acknowledgePendingReset).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -103,6 +103,7 @@ function parseSessionMeta(line) {
   return {
     id: item.payload.id,
     cwd: item.payload.cwd,
+    threadSource: item.payload.thread_source,
   };
 }
 
@@ -201,7 +202,7 @@ async function readLifecycleFile(filePath, threadTitles) {
       readSessionMeta(handle, stat.size),
       readLatestLifecycleEvidence(handle, stat.size),
     ]);
-    if (!meta || !evidence) return null;
+    if (!meta || meta.threadSource !== "user" || !evidence) return null;
     const project = projectMetadata(meta.cwd);
     const sessionId = safeSessionId(meta.id, filePath);
     return {

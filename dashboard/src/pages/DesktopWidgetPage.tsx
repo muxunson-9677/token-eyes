@@ -7,6 +7,7 @@ import {
   Palette,
   Pin,
   PinOff,
+  Terminal,
   X,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -19,6 +20,12 @@ import {
   type DesktopWidgetViewModel,
 } from "../lib/api";
 import { copy, getCopyLocale } from "../lib/copy";
+import {
+  readResetCelebrationEffect,
+  RESET_CELEBRATION_EFFECT_CHANGE_EVENT,
+  RESET_CELEBRATION_EFFECT_STORAGE_KEY,
+  type ResetCelebrationEffectId,
+} from "../ui/celebration/reset-celebration-preference.js";
 // PillNav is a JSX module with a stable prop contract but no declaration file.
 // @ts-expect-error importing an untyped JSX component
 import { PillNav } from "../ui/components/PillNav";
@@ -51,6 +58,13 @@ const MATERIAL_KEYS: Record<DesktopWidgetMaterial, string> = {
 function AgentIcon({ agent, size = 24 }: { agent: DesktopWidgetAgent | string; size?: number }) {
   if (agent === "all") {
     return <img src="/app-icon.png" alt="" width={size} height={size} aria-hidden />;
+  }
+  if (agent === "codex") {
+    return (
+      <span className="widget-codex-mark" style={{ width: size, height: size }} aria-hidden>
+        <Terminal size={Math.max(10, Math.round(size * 0.56))} strokeWidth={2.5} />
+      </span>
+    );
   }
   return <ProviderIcon provider={agent} size={size} />;
 }
@@ -112,6 +126,21 @@ export function formatCompactCost(costUsd: number) {
   return `$${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(costUsd)}`;
 }
 
+export function formatWidgetCompactTokenCount(tokens: number) {
+  const absolute = Math.abs(tokens);
+  const unit = absolute >= 100_000_000 ? "亿" : absolute >= 10_000 ? "万" : "";
+  const divisor = unit === "亿" ? 100_000_000 : unit === "万" ? 10_000 : 1;
+  const value = tokens / divisor;
+  return `${new Intl.NumberFormat("zh-CN", {
+    maximumFractionDigits: unit ? 1 : 0,
+  }).format(value)}${unit}`;
+}
+
+export function formatWidgetCompactCost(costUsd: number) {
+  if (Math.abs(costUsd) >= 10_000) return `$${formatWidgetCompactTokenCount(costUsd)}`;
+  return `$${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(costUsd)}`;
+}
+
 function LimitProgress({ value }: { value: number | null }) {
   const percent = Math.max(0, Math.min(100, value ?? 0));
   return (
@@ -153,12 +182,54 @@ function ModelsSummary({ model }: { model: DesktopWidgetViewModel }) {
     <div className="widget-model-summary" data-testid="widget-model-summary">
       <span>
         <small>{copy("widget.models.tokens")}</small>
-        <strong>{formatCompactTokenCount(model.totals.tokens)}</strong>
+        <strong>{formatWidgetCompactTokenCount(model.totals.tokens)}</strong>
       </span>
       <span>
         <small>{copy("widget.models.cost")}</small>
-        <strong>{formatCompactCost(model.totals.costUsd)}</strong>
+        <strong>{formatWidgetCompactCost(model.totals.costUsd)}</strong>
       </span>
+    </div>
+  );
+}
+
+function WidgetResetCelebration({ resetId }: { resetId: string }) {
+  const [effectId, setEffectId] = useState<ResetCelebrationEffectId>(
+    readResetCelebrationEffect,
+  );
+
+  useEffect(() => {
+    const syncEffect = (event?: Event) => {
+      const selected = (event as CustomEvent<{ effectId?: ResetCelebrationEffectId }> | undefined)
+        ?.detail?.effectId;
+      setEffectId(selected === "fireworks" || selected === "meteors"
+        ? selected
+        : readResetCelebrationEffect());
+    };
+    const syncStoredEffect = (event: StorageEvent) => {
+      if (event.key === RESET_CELEBRATION_EFFECT_STORAGE_KEY) syncEffect();
+    };
+    syncEffect();
+    window.addEventListener(RESET_CELEBRATION_EFFECT_CHANGE_EVENT, syncEffect);
+    window.addEventListener("storage", syncStoredEffect);
+    return () => {
+      window.removeEventListener(RESET_CELEBRATION_EFFECT_CHANGE_EVENT, syncEffect);
+      window.removeEventListener("storage", syncStoredEffect);
+    };
+  }, [resetId]);
+
+  return (
+    <div
+      className="widget-reset-celebration"
+      data-testid="widget-reset-celebration"
+      data-effect-id={effectId}
+      aria-hidden="true"
+    >
+      <span className="widget-reset-celebration__veil" />
+      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--one" />
+      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--two" />
+      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--three" />
+      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--one" />
+      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--two" />
     </div>
   );
 }
@@ -166,12 +237,14 @@ function ModelsSummary({ model }: { model: DesktopWidgetViewModel }) {
 function CompactSummary({
   mode,
   model,
+  expanded,
 }: {
   mode: DesktopWidgetMode;
   model: DesktopWidgetViewModel;
+  expanded: boolean;
 }) {
-  if (mode === "limits") return React.createElement(LimitsSummary, { model });
   if (mode === "models") return React.createElement(ModelsSummary, { model });
+  if (mode === "limits" && !expanded) return React.createElement(LimitsSummary, { model });
   return React.createElement(TrafficLights, { status: model.projectStatus });
 }
 
@@ -532,6 +605,7 @@ export function DesktopWidgetPage() {
     }
     : model;
   const pendingReset = model?.pendingReset;
+  const pendingResetId = pendingReset?.id;
   const rootStyle = {
     "--widget-opacity": prefs.opacity,
     "--widget-preview-width": `${prefs.width}px`,
@@ -549,43 +623,13 @@ export function DesktopWidgetPage() {
     void getCurrentWindow().startDragging();
   };
 
-  if (pendingReset) {
-    const change = pendingReset.previousUsedPercent == null
-      || pendingReset.currentUsedPercent == null
-      ? null
-      : `${pendingReset.previousUsedPercent}% → ${pendingReset.currentUsedPercent}%`;
-    return (
-      <main className={`desktop-widget-root${browserPreviewClassName}`} style={rootStyle}>
-        <article
-          className={`desktop-widget-card desktop-widget-card--${prefs.material} desktop-widget-card--reset`}
-          data-testid="desktop-widget-card"
-          onPointerDown={handleDragStart}
-        >
-          <button
-            type="button"
-            className="widget-reset-alert"
-            aria-label={copy("widget.reset.acknowledge")}
-            onClick={() => void acknowledgePendingReset()}
-          >
-            <span className="widget-reset-alert__icon">
-              <AgentIcon agent={pendingReset.agent} size={25} />
-              <Check size={13} aria-hidden />
-            </span>
-            <span className="widget-reset-alert__message">
-              <strong>{copy("widget.reset.title")}</strong>
-              <small>
-                {new Intl.DateTimeFormat(undefined, {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }).format(new Date(pendingReset.occurredAt))}
-                {change ? ` · ${change}` : ""}
-              </small>
-            </span>
-          </button>
-        </article>
-      </main>
-    );
-  }
+  useEffect(() => {
+    if (!pendingResetId) return undefined;
+    const timer = window.setTimeout(() => {
+      void acknowledgePendingReset();
+    }, 6_000);
+    return () => window.clearTimeout(timer);
+  }, [acknowledgePendingReset, pendingResetId]);
 
   return (
     <main
@@ -593,10 +637,11 @@ export function DesktopWidgetPage() {
       style={rootStyle}
     >
       <article
-        className={`desktop-widget-card desktop-widget-card--${prefs.material} ${prefs.expanded ? "is-expanded" : ""}`}
+        className={`desktop-widget-card desktop-widget-card--reference-dock desktop-widget-card--${prefs.material} ${prefs.expanded ? "is-expanded" : ""}`}
         data-testid="desktop-widget-card"
         onPointerDown={handleDragStart}
       >
+        {pendingReset ? <WidgetResetCelebration resetId={pendingReset.id} /> : null}
         <div className="widget-toolbar">
           <div className="widget-agent-control">
             <button
@@ -624,7 +669,7 @@ export function DesktopWidgetPage() {
 
           <div className="widget-summary" data-testid="widget-drag-surface">
             {visibleModel ? (
-              <CompactSummary mode={prefs.mode} model={visibleModel} />
+              <CompactSummary mode={prefs.mode} model={visibleModel} expanded={prefs.expanded} />
             ) : (
               <span className="widget-empty">
                 {loading ? copy("widget.loading") : error ? copy("widget.unavailable") : copy("widget.empty")}
@@ -668,7 +713,7 @@ export function DesktopWidgetPage() {
 
       </article>
 
-      <nav className="widget-mode-rail" data-testid="widget-mode-rail">
+      <nav className="widget-mode-rail widget-mode-rail--reference-dock" data-testid="widget-mode-rail">
         <PillNav
           value={prefs.mode}
           options={(Object.keys(MODE_KEYS) as DesktopWidgetMode[]).map((mode) => ({

@@ -27,6 +27,7 @@ test("reads only Codex lifecycle metadata and returns privacy-safe project sessi
         payload: {
           id: "019-safe-session",
           cwd: "C:\\Users\\alice\\Secret Project",
+          thread_source: "user",
         },
       }),
       JSON.stringify({
@@ -82,7 +83,7 @@ test("maps completion, interruption, and error evidence without stale-time guess
         JSON.stringify({
           timestamp: "2026-07-29T08:00:00.000Z",
           type: "session_meta",
-          payload: { id, cwd: `D:\\Projects\\${id}` },
+          payload: { id, cwd: `D:\\Projects\\${id}`, thread_source: "user" },
         }),
         JSON.stringify({
           timestamp: "2026-07-29T08:10:00.000Z",
@@ -98,6 +99,49 @@ test("maps completion, interruption, and error evidence without stale-time guess
     });
     const byId = new Map(result.map((item) => [item.sessionId, item.status]));
     for (const [id, , status] of cases) assert.equal(byId.get(id), status);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("excludes generated subagent rollouts from project conversation counts", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-lifecycle-"));
+  try {
+    const sessions = path.join(root, "sessions");
+    fs.mkdirSync(sessions, { recursive: true });
+    const fixture = (id, threadSource, eventType) => [
+      JSON.stringify({
+        timestamp: "2026-07-29T08:00:00.000Z",
+        type: "session_meta",
+        payload: {
+          id,
+          cwd: "D:\\Projects\\One Conversation",
+          thread_source: threadSource,
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-07-29T08:10:00.000Z",
+        type: "event_msg",
+        payload: { type: eventType },
+      }),
+    ].join("\n");
+    fs.writeFileSync(path.join(sessions, "rollout-user.jsonl"), fixture(
+      "user-conversation",
+      "user",
+      "task_complete",
+    ));
+    fs.writeFileSync(path.join(sessions, "rollout-subagent.jsonl"), fixture(
+      "generated-child-work",
+      "subagent",
+      "task_complete",
+    ));
+
+    const result = await collectCodexLifecycleSessions({
+      homes: [root],
+      nowMs: Date.parse("2026-07-29T09:00:00.000Z"),
+    });
+
+    assert.deepEqual(result.map((item) => item.sessionId), ["user-conversation"]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
