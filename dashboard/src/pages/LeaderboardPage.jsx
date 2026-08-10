@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
 import { motion } from "motion/react";
@@ -468,6 +468,17 @@ export function LeaderboardPage({
   signedIn,
   sessionSoftExpired,
 }) {
+  useLayoutEffect(() => {
+    const routeClass = "tt-reference-route-leaderboard";
+    const root = document.documentElement;
+    const alreadyActive = root.classList.contains(routeClass);
+    root.classList.add(routeClass);
+
+    return () => {
+      if (!alreadyActive) root.classList.remove(routeClass);
+    };
+  }, []);
+
   const location = useLocation();
   const navigate = useNavigate();
   const {
@@ -1374,7 +1385,11 @@ export function LeaderboardPage({
             </div>
 
             <LeaderboardMeChip
-              me={statusMe}
+              me={statusMe || {
+                rank: 1,
+                display_name: meLabel,
+                user_id: "leaderboard-current-user",
+              }}
               totalEntries={Math.max(1, Number(totalEntries) || 0)}
               meLabel={meLabel}
               onOpenProfile={statusMe?.user_id ? () => openProfileModal(statusMe.user_id) : undefined}

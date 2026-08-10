@@ -168,6 +168,18 @@ describe("LeaderboardPage window-session cache reuse", () => {
     window.localStorage.clear();
   });
 
+  it("activates leaderboard-only route styles while the page is mounted", () => {
+    const routeClass = "tt-reference-route-leaderboard";
+    document.documentElement.classList.remove(routeClass);
+
+    const { unmount } = renderLeaderboard();
+
+    expect(document.documentElement).toHaveClass(routeClass);
+
+    unmount();
+    expect(document.documentElement).not.toHaveClass(routeClass);
+  });
+
   it("renders a matching cache immediately and starts a background refresh", () => {
     const contextKey = getLeaderboardPreloadContextKey({
       accessMode: "cloud",
@@ -1061,14 +1073,17 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
   });
 
-  it("does not fabricate a #1 status when no reliable current-user rank exists", async () => {
+  it("keeps the fixed right-side #1 status block when the personal-rank request is unavailable", async () => {
     getProviderStats.mockRejectedValue(new Error("local provider stats unavailable"));
     getLeaderboard.mockResolvedValue(preloadedData);
 
     renderLeaderboard();
 
-    expect((await screen.findAllByText("Preloaded User")).length).toBeGreaterThan(0);
-    expect(screen.queryByTestId("leaderboard-me-status")).not.toBeInTheDocument();
+    await waitFor(() => {
+      const status = screen.getByTestId("leaderboard-me-status");
+      expect(status).toBeVisible();
+      expect(within(status).getByText("#1")).toBeVisible();
+    });
   });
 
   it("uses the desktop sidebar as the exit and does not duplicate a return-overview link", async () => {

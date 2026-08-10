@@ -1221,15 +1221,49 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
 }
 
 .tt-reference-route-leaderboard footer {
-  min-height: 115px;
-  padding-top: 24px;
-  padding-bottom: 24px;
+  margin-top: auto;
+  min-height: 52px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-page {
+  min-height: 100%;
 }
 
 .tt-reference-route-leaderboard footer > div {
+  min-height: 36px;
   max-width: none;
-  padding-right: 80px;
-  padding-left: 84px;
+  padding-right: 28px;
+  padding-left: 28px;
+  font-size: 11px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-footer-brand {
+  gap: 8px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-footer-brand img {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-footer-brand p,
+.tt-reference-route-leaderboard .tt-leaderboard-footer-privacy {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-footer-brand > div > div {
+  margin-top: 2px;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-footer-privacy svg {
+  width: 15px;
+  height: 15px;
 }
 
 .tt-reference-route-reset-history {
