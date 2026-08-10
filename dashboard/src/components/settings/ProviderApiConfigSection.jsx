@@ -528,14 +528,19 @@ export function ProviderApiConfigSection() {
         collapsedSummary={copy("settings.cost.provider_api.collapsed_summary", { count: configs.length })}
         collapsedSummaryTone="blue"
         action={editing === null ? (
-          <button
-            type="button"
-            onClick={startAdd}
-            className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            {copy("settings.cost.provider_api.add")}
-          </button>
+          <div className="tt-provider-api-header-actions">
+            <span className="tt-provider-api-expanded-count">
+              {copy("settings.cost.provider_api.collapsed_summary", { count: configs.length })}
+            </span>
+            <button
+              type="button"
+              onClick={startAdd}
+              className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              {copy("settings.cost.provider_api.add")}
+            </button>
+          </div>
         ) : null}
       >
       {editing !== null ? (

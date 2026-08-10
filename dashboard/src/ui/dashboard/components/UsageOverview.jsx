@@ -636,7 +636,7 @@ export function UsageOverview({
                   )
                   .join(", "),
               })}
-              className="h-1.5 w-full bg-oai-gray-100 dark:bg-oai-gray-800 rounded-full overflow-hidden flex"
+              className="tt-provider-distribution-bar h-1.5 w-full bg-oai-gray-100 dark:bg-oai-gray-800 rounded-full overflow-hidden flex"
             >
               {providers.map((provider, idx) => {
                 const color = getProviderColor(provider.label, idx);

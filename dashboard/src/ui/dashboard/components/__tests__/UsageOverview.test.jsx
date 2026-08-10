@@ -224,12 +224,12 @@ describe("UsageOverview", () => {
     // "计费方式" in the default zh-CN locale.
     const tablist = screen.getByRole("tablist", { name: "计费方式" });
     expect(tablist).toBeInTheDocument();
-    // Four tabs: 全部 / API Key / 套餐 / 未配置计费.
+    // Four tabs: 全部 / API Key / 直连 / 未配置计费.
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.textContent)).toEqual([
       "全部",
       "API Key",
-      "套餐",
+      "直连",
       "未配置计费",
     ]);
     // 'all' is the default.
@@ -341,17 +341,16 @@ describe("UsageOverview", () => {
     await act(async () => {
       await user.click(screen.getByRole("button", { name: /CODEX/i }));
     });
-    // gpt-4o → api_key badge, gpt-5-pro → 套餐 badge.
+    // gpt-4o → API Key badge, gpt-5-pro → 套餐 badge.
     // Both text labels already exist on the page from the filter control,
     // so we assert they're present rather than unique. The expanded view
     // adds more instances.
     const apiKeyBadges = screen.getAllByText("API Key");
     const tokenPlanBadges = screen.getAllByText("套餐");
-    // The filter has 1 "API Key" tab and 1 "套餐" tab; the expanded view
-    // adds 1 "API Key" badge (gpt-4o) and 1 "套餐" badge (gpt-5-pro). So we
-    // expect at least 2 of each.
+    // The filter contributes one "API Key" tab, while the expanded view adds
+    // an "API Key" badge (gpt-4o) and a copy-registry "套餐" badge (gpt-5-pro).
     expect(apiKeyBadges.length).toBeGreaterThanOrEqual(2);
-    expect(tokenPlanBadges.length).toBeGreaterThanOrEqual(2);
+    expect(tokenPlanBadges.length).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps Token and cost evidence inside one centered summary card", () => {

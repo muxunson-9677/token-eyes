@@ -206,13 +206,18 @@ describe("WidgetsPage Windows desktop widget", () => {
     await screen.findByTestId("widget-manager");
 
     expect(screen.getByRole("button", { name: copy("widgets.windows.show") })).toBeInTheDocument();
-    expect(document.querySelector(".tt-widget-page-actions")).not.toBeInTheDocument();
+    const pageActions = document.querySelector(".tt-widget-page-actions");
+    expect(pageActions).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: copy("widgets.reference.new_project") })).toBeInTheDocument();
+    const pageSync = screen.getByRole("button", { name: copy("widgets.reference.sync") });
+    expect(pageSync).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: copy("widgets.reference.batch_manage") })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: copy("widgets.reference.all_projects") })).toBeInTheDocument();
     expect(document.querySelector(".tt-widget-quick")).not.toBeInTheDocument();
     expect(document.querySelector(".tt-widget-advanced-settings")).not.toBeInTheDocument();
     expect(document.querySelectorAll(".tt-widget-project-row [data-lucide='more-vertical']")).toHaveLength(0);
 
-    const refresh = await screen.findByRole("button", { name: copy("widgets.reference.refresh_data") });
-    await userEvent.setup().click(refresh);
+    await userEvent.setup().click(pageSync);
     await waitFor(() => expect(widgetModelRequests).toBeGreaterThan(1));
     expect(screen.getByText("Anthropic")).toBeInTheDocument();
     expect(document.querySelector(".tt-widget-agent-logo.is-claude")).toBeInTheDocument();

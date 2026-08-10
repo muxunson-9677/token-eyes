@@ -46,10 +46,18 @@ export function NativeWindowBar() {
   const runWindowAction = useCallback((action) => {
     try {
       const appWindow = getCurrentWindow();
-      void appWindow?.[action]?.();
-    } catch {
+      const actionMethod = appWindow?.[action];
+      if (typeof actionMethod !== "function") return;
+      const result = actionMethod.call(appWindow);
+      if (result && typeof result.catch === "function") {
+        void result.catch((error) => {
+          console.error(`[Token Eyes] native window action failed: ${action}`, error);
+        });
+      }
+    } catch (error) {
       // Window actions are unavailable only outside the Tauri host. The bar is
       // mounted exclusively in the native Windows shell.
+      console.error(`[Token Eyes] native window action failed: ${action}`, error);
     }
   }, []);
 

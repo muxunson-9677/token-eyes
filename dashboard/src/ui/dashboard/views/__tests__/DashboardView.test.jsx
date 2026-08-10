@@ -185,6 +185,6 @@ describe("DashboardView overview hierarchy", () => {
     expect(screen.getByTestId("dashboard-usage-overview")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-secondary-context")).toBeVisible();
     expect(screen.getByTestId("dashboard-data-details")).toBeVisible();
-    expect(screen.queryByTestId("dashboard-system-strip")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-system-strip")).toBeVisible();
   });
 });

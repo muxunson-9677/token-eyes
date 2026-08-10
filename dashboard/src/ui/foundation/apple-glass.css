@@ -38,6 +38,7 @@
   --tt-card-radius: 12px;
 }
 
+
 .tt-reference-route-dashboard {
   --tt-window-bar-height: 62px;
   --tt-sidebar-width: 252px;
@@ -807,6 +808,14 @@ body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .
 
   .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
     min-height: 182px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p {
+    margin-bottom: 10px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
+    grid-template-columns: 633px minmax(0, 1fr);
   }
 
   .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2) {
@@ -2420,10 +2429,14 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-reference-route-settings-data {
   --tt-window-bar-height: 60px;
   --tt-sidebar-width: 265px;
+  --tt-surface-outline: rgba(31, 43, 56, 0.04);
+  --tt-surface-shadow: 0 1px 2px rgba(31, 43, 56, 0.025), 0 8px 24px rgba(31, 43, 56, 0.045);
+  --tt-nested-outline: rgba(31, 43, 56, 0.03);
+  --tt-nested-shadow: 0 1px 2px rgba(31, 43, 56, 0.025), 0 7px 18px rgba(31, 43, 56, 0.04);
 }
 
 html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface main {
-  padding-top: 35px !important;
+  padding-top: 22px !important;
   padding-bottom: 20px !important;
 }
 
@@ -2432,14 +2445,30 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
   max-width: none !important;
   grid-template-columns: 395px minmax(0, 1fr);
   gap: 18px;
-  padding-right: 122px !important;
-  padding-left: 86px !important;
+  padding-right: 112px !important;
+  padding-left: 76px !important;
 }
 
 .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header {
   height: 64px;
+  align-items: flex-start;
   grid-column: 1 / -1;
   margin-bottom: -2px;
+}
+
+.tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header > div:last-child {
+  gap: 12px;
+  margin-top: 5px;
+}
+
+.tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header button:first-child {
+  width: 152px;
+  justify-content: center;
+}
+
+.tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header button:last-child {
+  width: 186px;
+  justify-content: center;
 }
 
 .tt-reference-route-settings-data .tt-main-work-surface h1 {
@@ -2467,13 +2496,28 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
   grid-column: 1 / -1;
   margin-bottom: 0;
   border-radius: 12px;
-  padding: 20px 16px;
+  padding: 20px 18px 20px 16px;
+}
+
+.tt-reference-route-settings-data [data-testid="data-source-health-summary"],
+.tt-reference-route-settings-data [data-testid="data-source-toolbar"] {
+  display: none !important;
+}
+
+.tt-reference-route-settings-data .tt-data-source-reference-summary {
+  display: flex;
+  align-items: center;
+  gap: 31px;
+  color: #344054;
+  font-size: 14px;
+  line-height: 31px;
 }
 
 .tt-reference-route-settings-data [data-testid="data-source-summary"] > div:first-child {
   height: 31px;
   margin-bottom: 9px;
   padding-left: 6px;
+  transform: translateY(-5px);
 }
 
 .tt-reference-route-settings-data [data-testid="data-source-summary"] > div:last-child {
@@ -2482,7 +2526,7 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
   gap: 10px 18px;
 }
 
-.tt-reference-route-settings-data [data-testid^="data-source-"]:not([data-testid="data-source-summary"]) {
+.tt-reference-route-settings-data [data-testid^="data-source-"][data-health] {
   height: 114px;
   border: 1px solid #e3e8ee;
   border-radius: 10px;
@@ -2496,16 +2540,27 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
   font-size: 14px;
 }
 
-.tt-reference-route-settings-data [data-testid^="data-source-"] dl {
+.tt-reference-route-settings-data .tt-data-source-name > :first-child {
+  width: 28px !important;
+  height: 28px !important;
+  flex: 0 0 28px;
+}
+
+.tt-reference-route-settings-data [data-testid^="data-source-"][data-health] dl {
   margin-top: 6px;
   margin-left: 42px;
   font-size: 11px;
 }
 
-.tt-reference-route-settings-data [data-testid^="data-source-"] > div > span {
+.tt-reference-route-settings-data [data-testid^="data-source-"][data-health] > div > span {
   border-radius: 999px;
   padding: 4px 10px;
   background: #eef1f4;
+}
+
+.tt-reference-route-settings-data .tt-data-source-reference-summary > span {
+  padding: 0;
+  background: transparent;
 }
 
 .tt-reference-route-settings-data [data-health="ready"] > div > span { background: #e4f7ef; color: #08a675; }
@@ -2536,6 +2591,11 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
   padding: 10px 14px;
 }
 
+.tt-reference-route-settings-data [data-testid="data-ledger-integrity-rate"],
+.tt-reference-route-settings-data .tt-data-ledger-progress {
+  display: none !important;
+}
+
 .tt-reference-route-settings-data [data-testid="data-privacy-boundary"] > div > div {
   width: 100%;
 }
@@ -2549,6 +2609,15 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
   min-height: 44px;
 }
 
+.tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > .mb-5 {
+  display: grid;
+  height: 288px;
+  grid-column: 1 / -1;
+  grid-template-columns: 395px minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 0 !important;
+}
+
 .tt-reference-route-settings-data .tt-desktop-sidebar button[aria-current="page"] { color: #2563eb; }
 .tt-reference-route-settings-data .tt-desktop-sidebar a[aria-current="page"] {
   background: linear-gradient(90deg, #edf3ff, #f2f6ff);
@@ -2556,7 +2625,7 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
 }
 .tt-reference-route-settings-data .tt-desktop-sidebar ul a[aria-current="page"]::before { background: #3b82f6; }
 
-.tt-reference-route-settings-data .tt-data-privacy-badges span {
+.tt-reference-route-settings-data .tt-data-privacy-badges > span {
   display: grid;
   grid-template-columns: 20px auto;
   column-gap: 7px;
@@ -2564,9 +2633,9 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
   min-width: 145px;
   color: #4b5563;
 }
-.tt-reference-route-settings-data .tt-data-privacy-badges svg { width: 18px; height: 18px; grid-row: 1 / span 2; color: #0aae78; }
-.tt-reference-route-settings-data .tt-data-privacy-badges strong { color: #087e5a; font-size: 11px; }
-.tt-reference-route-settings-data .tt-data-privacy-badges small { font-size: 8px; color: #7c8796; }
+.tt-reference-route-settings-data .tt-data-privacy-badges > span > svg { width: 18px; height: 18px; grid-row: 1 / span 2; color: #0aae78; }
+.tt-reference-route-settings-data .tt-data-privacy-badges > span strong { color: #087e5a; font-size: 11px; }
+.tt-reference-route-settings-data .tt-data-privacy-badges > span small { font-size: 8px; color: #7c8796; }
 
 .tt-reference-route-settings-basic .tt-settings-appearance-card [aria-pressed="true"] {
   border-color: #14b98a;
@@ -3564,7 +3633,7 @@ html.native-windows-app .tt-native-glass-shell > .tt-native-window-bar {
 }
 
 .tt-reference-route-dashboard .tt-overview-trend .space-y-3 > div:first-child {
-  margin-top: 3px;
+  margin-top: -1px;
 }
 
 .tt-reference-route-dashboard .tt-overview-trend [data-testid="trend-range"] span {
@@ -3836,6 +3905,11 @@ html.native-windows-app .tt-native-glass-shell > .tt-native-window-bar {
   margin-bottom: 0;
 }
 
+.tt-reference-route-dashboard .tt-overview-trend [data-testid="trend-chart-legend"] {
+  margin-bottom: 5px;
+  transform: translateY(-5px);
+}
+
 .tt-reference-route-dashboard .tt-overview-trend > div:first-child button {
   width: 24px;
   min-width: 24px;
@@ -3917,37 +3991,42 @@ html.native-windows-app .tt-native-glass-shell > .tt-native-window-bar {
   gap: 62px;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar > div:first-child {
+/*
+ * The supplied desktop screenshots are content references only. Keep the former
+ * reference-shell sidebar treatment behind an explicit preview flag so the
+ * product navigation remains identical while the right pane is aligned.
+ */
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar > div:first-child {
   display: none;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar nav {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar nav {
   padding-top: 28px;
   padding-right: 19px;
   padding-left: 9px;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar nav > div:first-child > div:last-child {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar nav > div:first-child > div:last-child {
   gap: 6px;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar .tt-sidebar-item {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar .tt-sidebar-item {
   min-height: 44px;
   gap: 17px;
   padding-left: 14px;
   font-size: 14px;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar .tt-sidebar-item svg {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar .tt-sidebar-item svg {
   width: 18px;
   height: 18px;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar ul {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar ul {
   margin-left: 40px;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar .tt-sidebar-item[aria-current="page"] {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar .tt-sidebar-item[aria-current="page"] {
   transform: none;
   background: #eaf7f3;
   box-shadow: none;
@@ -3956,30 +4035,30 @@ html.native-windows-app .tt-native-glass-shell > .tt-native-window-bar {
   font-weight: 600;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar nav > div > div:first-child {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar nav > div > div:first-child {
   padding-left: 12px;
   font-size: 11px;
   letter-spacing: 0;
   text-transform: none;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar nav > div:not(:first-child) > div:first-child {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar nav > div:not(:first-child) > div:first-child {
   padding-bottom: 14px;
 }
 
-.tt-reference-route-dashboard .tt-native-window-brand {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-native-window-brand {
   gap: 12px;
   padding-left: 19px;
   transform: translateY(15px);
   font-size: 20px;
 }
 
-.tt-reference-route-dashboard .tt-native-window-brand img {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-native-window-brand img {
   width: 32px;
   height: 32px;
 }
 
-.tt-reference-route-dashboard .tt-native-brand-mark {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-native-brand-mark {
   display: inline-flex;
   width: 32px;
   height: 32px;
@@ -3998,7 +4077,7 @@ html.native-windows-app .tt-native-glass-shell > .tt-native-window-bar {
   transform: translateY(0);
 }
 
-.tt-reference-route-dashboard .tt-native-window-brand > span:last-child {
+body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-native-window-brand > span:last-child {
   transform: translateY(5px);
 }
 
@@ -4788,23 +4867,23 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
 
 /* Keep the approved overview card hierarchy isolated from leaderboard styling. */
 .tt-reference-route-dashboard {
-  --tt-surface-outline: rgba(31, 43, 56, 0.1);
-  --tt-surface-shadow: 0 2px 4px rgba(31, 43, 56, 0.06), 0 16px 32px rgba(31, 43, 56, 0.12);
-  --tt-nested-outline: rgba(31, 43, 56, 0.09);
-  --tt-nested-shadow: 0 2px 4px rgba(31, 43, 56, 0.05), 0 10px 22px rgba(31, 43, 56, 0.1);
+  --tt-surface-outline: rgba(31, 43, 56, 0.04);
+  --tt-surface-shadow: 0 1px 2px rgba(31, 43, 56, 0.025), 0 8px 24px rgba(31, 43, 56, 0.045);
+  --tt-nested-outline: rgba(31, 43, 56, 0.03);
+  --tt-nested-shadow: 0 1px 2px rgba(31, 43, 56, 0.025), 0 7px 18px rgba(31, 43, 56, 0.04);
 }
 
 .tt-reference-route-dashboard .tt-overview-stats {
-  border: 1px solid rgba(31, 43, 56, 0.1);
+  border: 1px solid rgba(31, 43, 56, 0.04);
   background: linear-gradient(145deg, #ffffff 0%, #f8fbfd 100%);
-  box-shadow: 0 16px 32px rgba(31, 43, 56, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 24px rgba(31, 43, 56, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.98);
 }
 
 .tt-reference-route-dashboard .tt-overview-stat-card,
 .tt-reference-route-dashboard .tt-overview-model-ranking,
 .tt-reference-route-dashboard .tt-overview-trend {
-  border-color: rgba(31, 43, 56, 0.1) !important;
-  box-shadow: 0 10px 22px rgba(31, 43, 56, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(31, 43, 56, 0.04) !important;
+  box-shadow: 0 1px 2px rgba(31, 43, 56, 0.025), 0 7px 18px rgba(31, 43, 56, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.98) !important;
 }
 
 @media (min-width: 900px) {
@@ -5779,5 +5858,1655 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 
   .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-section-card-header {
     height: 46px !important;
+  }
+}
+
+/* Desktop design reference: /settings/cost content geometry at 1672x941. */
+@media (min-width: 1650px) and (max-width: 1750px) and (min-height: 880px) {
+  html.native-windows-app .tt-reference-route-settings-cost .tt-settings-cost-page > main {
+    padding-top: 9px !important;
+    padding-bottom: 20px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page main > .tt-settings-cost-shell {
+    width: auto;
+    margin: 0;
+    padding-right: 46px;
+    padding-left: 17px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-heading {
+    height: 69px;
+    margin-bottom: 18px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-heading h1 {
+    font-size: 32px;
+    line-height: 40px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-heading p {
+    margin-top: 0;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-actions button {
+    min-height: 40px;
+    padding-right: 16px;
+    padding-left: 16px;
+    font-size: 13px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections {
+    gap: 8px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page .tt-surface:has(button[aria-expanded]) {
+    border-radius: 12px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page .tt-surface:has(button[aria-expanded]) > div {
+    padding: 16px 17px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page .tt-surface:has(button[aria-expanded]) > div > div:first-child {
+    position: relative;
+    min-height: 52px;
+    gap: 14px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page .tt-section-card-header > button[aria-expanded] {
+    gap: 16px;
+    padding-right: 28px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page .tt-section-card-header > button[aria-expanded] > svg:first-child {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    z-index: 2;
+    margin: 0;
+    transform: translateY(-50%);
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page .tt-section-card-header > button[aria-expanded="true"] > svg:first-child {
+    transform: translateY(-50%) rotate(180deg);
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page .tt-section-header-aside {
+    margin-right: 60px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page [data-testid="settings-section-icon"] {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page [role="heading"] {
+    font-size: 20px;
+    line-height: 26px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page [role="heading"] + span,
+  .tt-reference-route-settings-cost .tt-settings-cost-page [role="heading"] + p {
+    margin-top: 0;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :first-child .tt-section-card-header {
+    margin-bottom: 0 !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :first-child.tt-surface:has(button[aria-expanded]) {
+    height: 85px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(2):has(button[aria-expanded="true"]) > .tt-surface {
+    height: 489px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(2) button[aria-expanded="true"]) > :nth-child(2) {
+    margin-top: 2px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(2) .tt-section-card-header:has(button[aria-expanded="true"]) {
+    margin-bottom: 17px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(2) .tt-token-plan-actions {
+    width: 510px;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    padding-left: 7px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(2) .tt-section-header-aside {
+    margin-right: 47px;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-count--active {
+    width: 104px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-count--watch {
+    width: 100px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-actions > button:nth-of-type(1) {
+    width: 120px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-actions > button:nth-of-type(2) {
+    width: 110px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :first-child .tt-collapsed-summary {
+    min-width: 104px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3) .tt-collapsed-summary {
+    min-width: 110px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(4) .tt-collapsed-summary {
+    min-width: 104px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-expanded-count {
+    display: inline-flex;
+    min-width: 110px;
+    min-height: 24px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    background: var(--tt-cost-blue-soft);
+    color: var(--tt-cost-blue);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-header-actions > button {
+    position: absolute;
+    z-index: 3;
+    top: 83px;
+    right: 92px;
+    width: 145px;
+    height: 38px;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page:has(.tt-settings-cost-sections > :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > main {
+    padding-top: 8px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page:has(.tt-settings-cost-sections > :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) .tt-settings-cost-shell {
+    padding-right: 56px;
+    padding-left: 13px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page:has(.tt-settings-cost-sections > :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) .tt-settings-cost-heading {
+    margin-bottom: 24px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > :first-child.tt-surface,
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > :nth-child(2) .tt-surface {
+    height: 75px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > :nth-child(2) .tt-surface {
+    height: 74px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > :first-child.tt-surface > div,
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > :nth-child(2) .tt-surface > div {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > :first-child.tt-surface [data-testid="settings-section-icon"],
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > :nth-child(2) [data-testid="settings-section-icon"] {
+    width: 48px;
+    height: 48px;
+    flex-basis: 48px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3):has(.tt-section-card-header > button[aria-expanded="true"]) [data-testid="provider-api-config-section"] > .tt-surface {
+    height: 457px;
+    overflow: hidden;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3):has(.tt-section-card-header > button[aria-expanded="true"]) {
+    margin-top: 2px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3):has(.tt-section-card-header > button[aria-expanded="true"]) [data-testid="provider-api-config-section"] > .tt-surface > div {
+    padding-top: 11px;
+    padding-right: 15px;
+    padding-left: 15px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections:has(> :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) > :nth-child(4).tt-surface {
+    height: 75px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3):has(.tt-section-card-header > button[aria-expanded="true"]) .tt-section-card-header {
+    margin-bottom: 12px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3):has(.tt-section-card-header > button[aria-expanded="true"]) .tt-section-card-header > button > svg:first-child {
+    right: 14px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3):has(.tt-section-card-header > button[aria-expanded="true"]) .tt-provider-api-expanded-count {
+    transform: translateY(-2px);
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-summary {
+    width: 546px;
+    min-height: 57px;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-toolbar {
+    position: relative;
+    margin-bottom: 0;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-toolbar > div:last-child {
+    position: absolute;
+    top: 8px;
+    right: 238px;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-toolbar > div:last-child button {
+    width: 128px;
+    height: 38px;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-list {
+    gap: 0;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-toolbar + .tt-provider-api-card {
+    margin-top: 4px !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-card {
+    width: calc(100% - 90px);
+    height: 67px;
+    padding: 9px 16px;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-card > div > div:first-child > div {
+    gap: 16px;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-card > div > div:nth-child(2) {
+    gap: 10px;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-card > div > div:nth-child(2) > button {
+    height: 36px;
+    justify-content: center;
+    font-size: 13px;
+  }
+
+  .tt-reference-route-settings-cost .tt-provider-api-card > div > div:nth-child(2) > button:nth-child(1) { width: 104px; }
+  .tt-reference-route-settings-cost .tt-provider-api-card > div > div:nth-child(2) > button:nth-child(2) { width: 106px; }
+  .tt-reference-route-settings-cost .tt-provider-api-card > div > div:nth-child(2) > button:nth-child(3) { width: 85px; }
+  .tt-reference-route-settings-cost .tt-provider-api-card > div > div:nth-child(2) > button:nth-child(4) { width: 84px; }
+  .tt-reference-route-settings-cost .tt-provider-api-card > div > div:nth-child(2) > button:nth-child(5) { width: 80px; }
+
+  .tt-reference-route-settings-cost .tt-provider-api-mark {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-card {
+    height: 65px;
+    border-radius: 10px;
+    padding: 9px 14px;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-card + .tt-token-plan-card {
+    margin-top: 0 !important;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-provider-mark {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-copy {
+    min-width: 190px;
+    flex-basis: 235px;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-full {
+    font-size: 14px;
+  }
+
+  .tt-reference-route-settings-cost .tt-token-plan-live {
+    font-size: 12px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3) .tt-surface:has(button[aria-expanded="false"]),
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(4).tt-surface:has(button[aria-expanded="false"]) {
+    height: 76px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3) .tt-surface:has(button[aria-expanded="false"]) > div,
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(4).tt-surface:has(button[aria-expanded="false"]) > div {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(3) .tt-surface:has(button[aria-expanded="false"]) [data-testid="settings-section-icon"],
+  .tt-reference-route-settings-cost .tt-settings-cost-sections > :nth-child(4).tt-surface:has(button[aria-expanded="false"]) [data-testid="settings-section-icon"] {
+    width: 48px;
+    height: 48px;
+    flex-basis: 48px;
+  }
+}
+
+/*
+ * Resizable desktop window: the sidebar is intentionally invariant. Only the
+ * right workspace reflows while the viewport is between the 900px app minimum
+ * and the full two-column desktop composition.
+ */
+@media (min-width: 900px) and (max-width: 1199px) {
+  .tt-reference-route-dashboard .tt-reference-overview-grid,
+  .tt-reference-route-dashboard .tt-overview-locked .tt-reference-overview-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-system-strip > div:last-child {
+    gap: 16px;
+  }
+
+  html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    padding-right: 16px !important;
+    padding-left: 16px !important;
+  }
+
+  .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header {
+    height: auto;
+    min-height: 96px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header > div:last-child {
+    width: 100%;
+    gap: 8px;
+    margin-top: 0;
+  }
+
+  .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header button:first-child,
+  .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header button:last-child {
+    width: auto;
+    flex: 1 1 0;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-source-summary"] {
+    height: auto;
+    min-height: 423px;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-source-summary"] > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .tt-reference-route-settings-data [data-testid^="data-source-"][data-health] {
+    height: auto;
+    min-height: 114px;
+  }
+
+  .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > .mb-5 {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-ledger-diagnostics"],
+  .tt-reference-route-settings-data [data-testid="data-privacy-boundary"] {
+    height: auto;
+    min-height: 288px;
+    grid-column: 1;
+  }
+
+  html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main > .mx-auto {
+    padding-right: 16px !important;
+    padding-left: 16px !important;
+  }
+
+  .tt-reference-route-widgets .tt-widgets-heading {
+    gap: 12px;
+    margin-bottom: 16px !important;
+  }
+
+  .tt-reference-route-widgets .tt-widget-top-controls,
+  .tt-reference-route-widgets .tt-widget-page-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-page-actions button,
+  .tt-reference-route-widgets .tt-widget-page-actions button:last-child {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 120px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-widgets .tt-widget-summary {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-summary article {
+    min-height: 92px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-projects,
+  .tt-reference-route-widgets .tt-widget-bottom-grid {
+    width: 100%;
+    height: auto;
+    margin-left: 0;
+  }
+
+  .tt-reference-route-widgets .tt-widget-projects > header,
+  .tt-reference-route-widgets .tt-widget-limits > header {
+    height: auto;
+    min-height: 58px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-table,
+  .tt-reference-route-widgets .tt-widget-limit-table {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-head,
+  .tt-reference-route-widgets .tt-widget-project-row,
+  .tt-reference-route-widgets .tt-widget-project-table footer,
+  .tt-reference-route-widgets .tt-widget-limit-head,
+  .tt-reference-route-widgets .tt-widget-limit-row,
+  .tt-reference-route-widgets .tt-widget-limit-table footer {
+    min-width: 760px;
+  }
+}
+
+/* Desktop design reference: overview composition at 1672x941. */
+@media (min-width: 1650px) and (max-width: 1750px) and (min-height: 880px) {
+  html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
+    padding: 8px 3px 0 17px !important;
+  }
+
+  .tt-reference-route-dashboard .tt-reference-overview-grid,
+  .tt-reference-route-dashboard .tt-overview-locked .tt-reference-overview-grid {
+    grid-template-columns: 620px 728px !important;
+    gap: 18px !important;
+  }
+
+  .tt-reference-route-dashboard [data-testid="dashboard-secondary-context"] {
+    gap: 13px !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-stats {
+    height: 536px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-stat-grid {
+    height: 177px !important;
+    grid-template-columns: 172px repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-stat-card {
+    height: 177px !important;
+    padding: 20px 22px 14px !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-stat-card [data-testid="overview-stat-icon"] {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-stat-card > span:nth-of-type(1) {
+    margin-top: 17px !important;
+    font-size: 26px !important;
+    line-height: 30px !important;
+    transform: translateX(1px) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-model-ranking {
+    height: 347px !important;
+  }
+
+  .tt-reference-route-dashboard [data-testid="overview-model-row"] {
+    width: calc(100% + 8px) !important;
+    transform: translateX(-9px) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-trend,
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-trend {
+    height: 255px !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-trend [data-testid="trend-bar-row"] {
+    height: 157px !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-trend [data-testid="trend-range"] {
+    right: -2px !important;
+    min-height: 22px !important;
+    line-height: 22px !important;
+    transform: translateY(6px) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-usage-hero,
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero {
+    height: 532px !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-usage-hero > div {
+    padding-top: 12px;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-usage-hero [data-testid="usage-overview-summary-card"],
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero [data-testid="usage-overview-summary-card"] {
+    height: 437px !important;
+    flex: none !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-primary-total,
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-primary-total {
+    height: 317px !important;
+    min-height: 317px !important;
+    padding-top: 0 !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-primary-total::after {
+    display: none;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-primary-total .tt-overview-token-wave-stage {
+    margin-top: 8px;
+    overflow: visible;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-primary-total .tt-overview-token-wave-stage .tt-overview-token-wave {
+    position: absolute !important;
+    top: -289px !important;
+    right: 0 !important;
+    bottom: auto !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 600px !important;
+    transform: none !important;
+  }
+
+  .tt-reference-route-dashboard [data-testid="usage-overview-metrics"],
+  .tt-reference-route-dashboard .tt-overview-locked [data-testid="usage-overview-metrics"] {
+    width: 388px !important;
+    grid-template-columns: repeat(3, 106px) !important;
+    margin-top: 0 !important;
+    margin-right: auto;
+    margin-left: auto;
+    column-gap: 35px !important;
+    transform: translate(-23px, -10px) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-mini-metric {
+    width: 106px !important;
+    min-width: 106px !important;
+    height: 64px;
+    padding: 9px 10px !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-primary-total > div:nth-of-type(1),
+  .tt-reference-route-dashboard .tt-overview-primary-total > div:nth-of-type(2) {
+    transform: translateY(10px) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-primary-total > div[data-testid="usage-summary-value"] {
+    letter-spacing: -0.035em !important;
+    transform: translate(-14px, 9px) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-provider-distribution-bar > :nth-child(1) {
+    width: 42% !important;
+  }
+
+  .tt-reference-route-dashboard .tt-provider-distribution-bar > :nth-child(2) {
+    width: 21% !important;
+  }
+
+  .tt-reference-route-dashboard .tt-provider-distribution-bar > :nth-child(3) {
+    width: 11.2% !important;
+  }
+
+  .tt-reference-route-dashboard .tt-provider-distribution-bar > :nth-child(4) {
+    width: 7.6% !important;
+  }
+
+  .tt-reference-route-dashboard .tt-provider-distribution-bar > :nth-child(n + 5) {
+    width: 0 !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-provider-panel {
+    height: 257px !important;
+  }
+}
+
+/* Desktop design reference: widgets composition at 1672x941. */
+@media (min-width: 1650px) and (max-width: 1750px) and (min-height: 880px) {
+  html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main {
+    padding-top: 16px !important;
+    padding-bottom: 26px !important;
+  }
+
+  html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main > .mx-auto {
+    max-width: none !important;
+    padding-right: 22px !important;
+    padding-left: 21px !important;
+  }
+
+  .tt-reference-route-widgets .tt-widgets-heading {
+    height: 76px;
+    margin-bottom: 20px !important;
+  }
+
+  .tt-reference-route-widgets .tt-widget-top-controls {
+    display: none;
+  }
+
+  .tt-reference-route-widgets .tt-widget-manager {
+    position: relative;
+  }
+
+  .tt-reference-route-widgets .tt-widget-page-actions {
+    position: absolute;
+    z-index: 4;
+    top: -70px;
+    right: 0;
+    padding-top: 0;
+  }
+
+  .tt-reference-route-widgets .tt-widget-page-actions button:last-child {
+    width: 171px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-page-actions button:hover,
+  .tt-reference-route-widgets .tt-widget-page-actions button[aria-pressed="true"] {
+    border-color: #c7d1dc;
+    background: #f7fafc;
+    color: #0f766e;
+  }
+
+  .tt-reference-route-widgets .tt-widget-page-actions button:focus-visible,
+  .tt-reference-route-widgets .tt-widget-project-toolbar button:focus-visible,
+  .tt-reference-route-widgets .tt-widget-project-toolbar input:focus-visible,
+  .tt-reference-route-widgets .tt-widget-window-select select:focus-visible,
+  .tt-reference-route-widgets .tt-widget-quick-list :is(button, select):focus-visible {
+    outline: 2px solid #10a87b;
+    outline-offset: 2px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-projects {
+    width: calc(100% + 16px);
+    height: 394px;
+    min-height: 394px;
+    max-height: 394px;
+    margin-bottom: 12px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-projects > header {
+    height: 48px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-window-select {
+    position: relative;
+    padding-right: 7px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-window-select select {
+    min-width: 78px;
+    padding-right: 24px;
+    appearance: none;
+  }
+
+  .tt-reference-route-widgets .tt-widget-window-select > svg {
+    position: absolute;
+    right: 10px;
+    width: 13px;
+    height: 13px;
+    pointer-events: none;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-toolbar {
+    height: 41px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-toolbar label:not(.tt-widget-toolbar-select) {
+    width: 187px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-table {
+    width: calc(100% + 2px);
+    margin-top: 8px;
+    margin-left: -1px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-head,
+  .tt-reference-route-widgets .tt-widget-project-row {
+    grid-template-columns: 43px minmax(0, 1fr) 280px 280px 44px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-head {
+    height: 31px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-row {
+    height: 33px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-table footer {
+    height: 39px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-bottom-grid {
+    width: calc(100% + 16px);
+    height: 260px;
+    grid-template-columns: minmax(0, 851px) minmax(0, 481px);
+    gap: 20px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-limits > header button {
+    border-color: #d9c7ff;
+    color: #8254e9;
+  }
+
+  .tt-reference-route-widgets .tt-widget-limit-head {
+    grid-template-columns: minmax(190px, 1.25fr) minmax(95px, .58fr) minmax(230px, 1.38fr) 92px 44px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-limit-row {
+    grid-template-columns: 24px 28px minmax(190px, 1.25fr) minmax(95px, .58fr) minmax(230px, 1.38fr) 92px 44px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-limit-table footer {
+    display: none;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-settings {
+    overflow: hidden;
+    border: 1px solid #e2e8ef;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 7px 22px rgba(31, 43, 56, 0.04);
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-settings > header {
+    display: flex;
+    height: 52px;
+    align-items: center;
+    padding: 0 20px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-settings h2 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list {
+    margin: 0 14px 14px;
+    overflow: hidden;
+    border: 1px solid #e3e8ee;
+    border-radius: 8px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list > label {
+    display: grid;
+    height: 49px;
+    grid-template-columns: 27px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    padding: 0 11px;
+    cursor: pointer;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list > label + label {
+    border-top: 1px solid #e8ecf1;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-icon {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    color: #1687f8;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-icon svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list label > span:nth-child(2) {
+    display: grid;
+    min-width: 0;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list b {
+    color: #1f2937;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list small {
+    color: #7b8794;
+    font-size: 10px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list select {
+    width: 84px;
+    height: 29px;
+    border: 1px solid #dce3eb;
+    border-radius: 7px;
+    padding: 0 10px;
+    background: #fff;
+    color: #334155;
+    font-size: 12px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list button[role="switch"] {
+    position: relative;
+    width: 33px;
+    height: 19px;
+    border: 0;
+    border-radius: 999px;
+    background: #d4dae2;
+    transition: background 120ms ease;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list button[role="switch"] i {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+    transition: transform 120ms ease;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list button[role="switch"][aria-checked="true"] {
+    background: #0aa67a;
+  }
+
+  .tt-reference-route-widgets .tt-widget-quick-list button[role="switch"][aria-checked="true"] i {
+    transform: translateX(14px);
+  }
+}
+
+/* Desktop design reference: /spend/cost geometry at 1672x941. */
+@media (min-width: 1650px) and (max-width: 1750px) and (min-height: 880px) {
+  html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface main {
+    padding-top: 18px !important;
+    padding-bottom: 20px !important;
+  }
+
+  html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface main > .mx-auto {
+    padding-right: 21px !important;
+    padding-left: 7px !important;
+  }
+
+  .tt-reference-route-spend-cost .tt-main-work-surface main > .mx-auto > div:first-child {
+    margin-bottom: 20px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
+    height: 275px;
+    min-height: 275px;
+    margin-bottom: 14px;
+    padding: 18px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
+    position: relative;
+    height: 177px;
+    min-height: 177px;
+    max-height: 177px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2) {
+    margin-bottom: 0;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] .tt-summary-comparison {
+    position: absolute;
+    top: 43px;
+    right: 16px;
+  }
+
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] {
+    position: absolute;
+    right: 16px;
+    bottom: 10px;
+    left: 16px;
+    width: auto;
+    height: 38px;
+    min-height: 38px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+    height: 70px;
+    min-height: 70px;
+    max-height: 70px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child {
+    position: relative;
+    grid-template-columns: 760px 500px 0;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] .tt-cost-row-metrics {
+    width: 500px;
+    grid-template-columns: 155px 155px 190px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child > button > svg:last-child {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+  }
+
+  .tt-reference-route-spend-cost :is(
+    [data-cost-section="other-ai"],
+    [data-cost-section="token-packages"],
+    [data-cost-section="provider-api"]
+  )[data-open="false"] .tt-cost-row-actions {
+    display: none;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section="subscriptions"][data-open="false"] > div:first-child {
+    grid-template-columns: 720px 440px 160px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section="subscriptions"][data-open="false"] .tt-cost-row-metrics {
+    width: 440px;
+    grid-template-columns: repeat(2, 220px);
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"] .tt-cost-row-actions button {
+    width: 84px;
+    min-width: 84px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"] .tt-provider-api-month-spend,
+  .tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"] .tt-provider-api-lifetime-spend,
+  .tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"] > div:last-child {
+    display: none;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])
+  .tt-reference-route-spend-cost .tt-summary-comparison {
+    top: 60px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])
+  .tt-reference-route-spend-cost .tt-summary-comparison-label {
+    display: none;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost .tt-summary-comparison {
+    top: 82px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost .tt-cost-group-grid {
+    width: 1296px;
+    grid-template-columns: repeat(4, 306px);
+    gap: 24px;
+    margin-left: 1px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="other-ai"] .tt-cost-row-actions {
+    transform: translateX(-47px);
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="other-ai"] .tt-cost-row-actions button {
+    width: 100px;
+    min-width: 100px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section] + [data-cost-section] {
+    margin-top: 12px !important;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section="provider-api"] {
+    margin-top: 16px !important;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
+    min-height: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child {
+    margin-top: 0;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p {
+    display: none;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-month-picker"] {
+    top: -73px;
+    right: 0;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section] {
+    margin-right: 0;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost main > .mx-auto {
+    transform: translateY(-7px);
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
+    width: calc(100% - 16px);
+    height: 224px;
+    margin-left: 11px;
+    padding: 18px 0 0;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
+    grid-template-columns: 655px minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
+    height: 197px;
+    min-height: 197px;
+    max-height: 197px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section] {
+    width: calc(100% - 16px);
+    margin-left: 11px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="other-ai"] {
+    height: 241px;
+    min-height: 241px;
+    max-height: 241px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost .tt-cost-group-grid {
+    margin-top: 15px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost .tt-cost-group-card {
+    height: 143px;
+    min-height: 143px;
+    max-height: 143px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+    height: 50px;
+    min-height: 50px;
+    max-height: 50px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="other-ai"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section] + [data-cost-section] {
+    margin-top: 15px !important;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost main > .mx-auto {
+    transform: translateY(-28px);
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
+    width: calc(100% + 10px);
+    height: 147px;
+    margin-left: -10px;
+    padding: 1px 0 0;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
+    grid-template-columns: 663px minmax(0, 1fr);
+    gap: 15px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
+    height: 144px;
+    min-height: 144px;
+    max-height: 144px;
+    padding: 10px 16px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2),
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2) {
+    margin-bottom: 0;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"],
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] {
+    position: absolute;
+    right: 16px;
+    bottom: 9px;
+    left: 16px;
+    height: 32px;
+    min-height: 32px;
+    width: auto;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"],
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
+    position: relative;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section] {
+    width: calc(100% + 10px);
+    margin-left: -10px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="other-ai"] {
+    height: 53px;
+    min-height: 53px;
+    max-height: 53px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="token-packages"] {
+    height: 386px;
+    min-height: 386px;
+    max-height: 386px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost .tt-token-package-table-head {
+    min-height: 32px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost .tt-token-package-row {
+    min-height: 47px;
+    height: 47px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="provider-api"],
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="api-billing"] {
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="subscriptions"] {
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="token-packages"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section] + [data-cost-section] {
+    margin-top: 14px !important;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost main > .mx-auto {
+    transform: translateY(-16px);
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
+    width: calc(100% + 18px);
+    height: 159px;
+    margin-left: -18px;
+    padding: 0;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
+    grid-template-columns: 684px minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
+    height: 162px;
+    min-height: 162px;
+    max-height: 162px;
+    padding: 12px 16px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section] {
+    width: calc(100% + 18px);
+    margin-left: -18px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="other-ai"],
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="token-packages"] {
+    height: 51px;
+    min-height: 51px;
+    max-height: 51px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="provider-api"] {
+    height: 323px;
+    min-height: 323px;
+    max-height: 323px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="api-billing"],
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section="subscriptions"] {
+    height: 50px;
+    min-height: 50px;
+    max-height: 50px;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost [data-cost-section] + [data-cost-section] {
+    margin-top: 8px !important;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost .tt-provider-api-expanded-list {
+    gap: 0;
+  }
+
+  body:has(.tt-reference-route-spend-cost [data-cost-section="provider-api"][data-open="true"])
+  .tt-reference-route-spend-cost .tt-provider-api-expanded-card {
+    height: 64px;
+    min-height: 64px;
+  }
+}
+
+/* Desktop design reference: final fixed-viewport geometry corrections. */
+@media (min-width: 1650px) and (max-width: 1750px) and (min-height: 880px) {
+  .tt-reference-route-settings-basic .tt-main-work-surface main > .mx-auto {
+    transform: translate(-10px, -9px);
+  }
+
+  .tt-reference-route-settings-basic [data-testid="settings-basic-heading"],
+  .tt-reference-route-settings-basic .space-y-4 {
+    width: 1327px;
+  }
+
+  .tt-reference-route-settings-basic [data-testid="settings-basic-heading"] {
+    height: 57px;
+    margin-bottom: 20px;
+  }
+
+  .tt-reference-route-settings-basic .space-y-4 {
+    gap: 17px;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-appearance-card {
+    width: 1327px;
+    height: 353px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-appearance-card > div {
+    height: 100% !important;
+    padding: 16px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-appearance-card > div > div:first-child {
+    height: 58px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-appearance-card > div > div:last-child {
+    height: 260px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-appearance-card .tt-settings-row {
+    height: 65px !important;
+    padding-right: 10px !important;
+    padding-left: 10px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-data-directory-card {
+    width: 1327px;
+    height: 74px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-data-directory-card > div {
+    height: 100% !important;
+    padding: 16px !important;
+  }
+
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-section-card-header {
+    height: 42px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-limits-card {
+    width: 1327px;
+    height: 291px !important;
+    transform: translateY(-1px);
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-limits-card > div {
+    height: 100% !important;
+    padding: 14px 16px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-limits-card > div > div:first-child {
+    height: 45px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-limits-card > div > div:last-child {
+    height: 216px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-row-label,
+  .tt-reference-route-settings-basic #settings-limits .flex.flex-col > div > span {
+    font-size: 14px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-row-hint {
+    font-size: 12px !important;
+  }
+
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-theme-control {
+    width: 632px !important;
+  }
+
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-language-select,
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-currency-select {
+    width: 146px !important;
+  }
+
+  .tt-reference-route-settings-basic #settings-appearance .tt-settings-exchange-controls {
+    width: 610px !important;
+  }
+
+  .tt-reference-route-settings-basic #data-directories .tt-settings-data-directory-card .tt-data-directory-compact {
+    right: 42px !important;
+    width: 600px !important;
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-appearance-card .tt-section-card-header,
+  .tt-reference-route-settings-basic .tt-settings-limits-card .tt-section-card-header {
+    transform: translateY(-4px);
+  }
+
+  .tt-reference-route-settings-basic .tt-settings-limits-card .tt-limits-header-actions {
+    transform: translateX(-24px);
+  }
+
+  .tt-reference-route-leaderboard .tt-main-work-surface main > .mx-auto {
+    transform: translate(-6px, 32px);
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-summary"],
+  .tt-reference-route-leaderboard .tt-leaderboard-sync-banner,
+  .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] {
+    width: 1286px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-summary"],
+  .tt-reference-route-leaderboard .tt-leaderboard-summary-card {
+    height: 136px;
+  }
+
+  .tt-reference-route-leaderboard .tt-leaderboard-sync-banner {
+    height: 53px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-filter-toolbar"] {
+    width: 820px;
+    min-height: 42px;
+    height: 42px;
+    margin-bottom: 21px;
+    padding: 4px 8px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-filter-toolbar"] > :last-child {
+    display: none;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-period-control"],
+  .tt-reference-route-leaderboard [data-testid="leaderboard-metric-control"] {
+    height: 34px;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] {
+    height: 257px;
+    border: 0;
+  }
+
+  .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] ol > li.tt-leaderboard-top-entry--compact {
+    min-height: 109px;
+    height: 109px;
+  }
+
+  html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto {
+    padding-right: 111px !important;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-source-summary"] > div:last-child {
+    grid-template-columns: 380px 374px 375px;
+  }
+
+  .tt-reference-route-settings-data [data-testid^="data-source-"][data-health] dl {
+    display: block;
+    margin-top: 4px;
+    margin-left: 42px;
+    border: 0;
+    padding: 0;
+  }
+
+  .tt-reference-route-settings-data [data-testid^="data-source-"][data-health] dl > div {
+    display: flex;
+    height: 20px;
+    align-items: center;
+  }
+
+  .tt-reference-route-settings-data [data-testid^="data-source-"][data-health] dl dt {
+    width: 68px;
+    flex: 0 0 68px;
+  }
+
+  .tt-reference-route-settings-data [data-testid^="data-source-"][data-health] dl dd {
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-ledger-diagnostics"] {
+    padding: 20px 24px 20px 40px;
+  }
+
+  .tt-reference-route-settings-data .tt-data-ledger-description {
+    margin-top: 3px;
+    margin-left: 38px;
+    color: #667085;
+    font-size: 11px;
+    line-height: 16px;
+    white-space: nowrap;
+  }
+
+  .tt-reference-route-settings-data .tt-data-ledger-title-row {
+    gap: 18px;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-ledger-diagnostics"] dl {
+    margin-top: 15px;
+    margin-left: 1px;
+    gap: 8px 10px;
+  }
+
+  .tt-reference-route-settings-data .tt-data-ledger-unpriced {
+    margin-left: 1px;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-ledger-diagnostics"] > div + div {
+    margin-top: 15px;
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .tt-reference-route-settings-data .tt-data-ledger-unattributed {
+    display: none;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-privacy-boundary"] > div {
+    gap: 24px;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-privacy-boundary"] > div > div {
+    width: 680px;
+    flex: 0 0 680px;
+  }
+
+  .tt-reference-route-settings-data .tt-data-privacy-actions {
+    display: grid;
+    grid-template-columns: 179px minmax(0, 1fr);
+    gap: 45px;
+    margin-top: 27px;
+  }
+
+  .tt-reference-route-settings-data .tt-data-privacy-actions > button {
+    width: 179px;
+    justify-content: center;
+  }
+
+  .tt-reference-route-settings-data .tt-data-privacy-badges {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-summary article {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-summary-icon {
+    width: 56px;
+    height: 56px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-summary-open {
+    display: grid;
+    width: 31px;
+    height: 31px;
+    margin-left: auto;
+    place-items: center;
+    border: 1px solid #e3e8ee;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.84);
+    color: #667085;
+  }
+
+  .tt-reference-route-widgets .tt-widget-summary-open:hover {
+    border-color: #cab9f4;
+    background: #f8f5ff;
+    color: #7c4ce0;
+  }
+
+  .tt-reference-route-widgets .tt-widget-summary-open:focus-visible {
+    outline: 2px solid #8b5cf6;
+    outline-offset: 2px;
+  }
+
+  .tt-reference-route-widgets .tt-widget-summary-open svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .tt-reference-route-settings-cost .tt-settings-cost-page:has(.tt-settings-cost-sections > :nth-child(3) .tt-section-card-header > button[aria-expanded="true"]) .tt-settings-cost-shell {
+    padding-right: 55px;
+  }
+
+  .tt-reference-route-dashboard [data-testid="overview-model-row"] {
+    transform: translate(-10px, 1px) !important;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-trend [data-testid="trend-range"] {
+    height: 22px !important;
+    min-height: 22px !important;
+    padding-top: 0 !important;
+    transform: translate(-1px, 7px) !important;
+  }
+
+  .tt-reference-route-dashboard [data-testid="usage-overview-metrics"],
+  .tt-reference-route-dashboard .tt-overview-locked [data-testid="usage-overview-metrics"] {
+    transform: translate(-24px, -10px) !important;
   }
 }

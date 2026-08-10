@@ -969,7 +969,7 @@ export function DashboardPage({
   const summaryValue = useMemo(
     () => toFiniteNumber(summaryTotalTokens) == null
       ? null
-      : formatTokenCount(summaryTotalTokens, { locale: resolvedLocale }),
+      : formatTokenCount(summaryTotalTokens, { locale: resolvedLocale, decimals: 1 }),
     [resolvedLocale, summaryTotalTokens],
   );
 

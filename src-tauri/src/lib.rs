@@ -117,6 +117,10 @@ pub fn run() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                 }
+            } else {
+                // Development launches and regular shortcuts must always open
+                // the native window, even when the previous run ended in the tray.
+                window_control::restore_main_window(app.handle());
             }
 
             widget_window::restore_if_visible(app.handle());

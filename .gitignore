@@ -42,8 +42,8 @@ TokenTrackerBar/*.xcarchive
 src-tauri/EmbeddedServer/*
 !src-tauri/EmbeddedServer/.gitkeep
 src-tauri/EmbeddedServer-*/*
-!src-tauri/EmbeddedServer-0.54.21/
-!src-tauri/EmbeddedServer-0.54.21/.gitkeep
+!src-tauri/EmbeddedServer-0.54.38/
+!src-tauri/EmbeddedServer-0.54.38/.gitkeep
 
 # AI / IDE tooling (created locally by assistants)
 .agent/

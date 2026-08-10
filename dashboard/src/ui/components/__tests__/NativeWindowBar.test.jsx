@@ -1,4 +1,6 @@
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -93,5 +95,17 @@ describe("NativeWindowBar", () => {
     expect(minimize).toHaveBeenCalledTimes(1);
     expect(toggleMaximize).toHaveBeenCalledTimes(1);
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("grants the Tauri capability permissions required by all three window buttons", () => {
+    const capability = JSON.parse(
+      readFileSync(resolve("../src-tauri/capabilities/default.json"), "utf8"),
+    );
+
+    expect(capability.permissions).toEqual(expect.arrayContaining([
+      "core:window:allow-minimize",
+      "core:window:allow-toggle-maximize",
+      "core:window:allow-close",
+    ]));
   });
 });

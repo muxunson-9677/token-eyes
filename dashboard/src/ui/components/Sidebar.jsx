@@ -716,7 +716,7 @@ export function AppLayout({ children }) {
   }, []);
   const referenceRoute = useMemo(() => {
     const pathname = location?.pathname || "/dashboard";
-    if (pathname === "/" || pathname === "/dashboard") return "default";
+    if (pathname === "/" || pathname === "/dashboard") return "dashboard";
     if (pathname === "/leaderboard") return "leaderboard";
     if (pathname === "/reset-history") return "reset-history";
     if (pathname === "/widgets") return "widgets";

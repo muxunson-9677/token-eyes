@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { CircleAlert, Clock3, CloudOff, Grid2X2, HardDrive, List, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { CircleAlert, ClipboardCopy, Clock3, CloudOff, Grid2X2, HardDrive, List, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { clearLocalData, getAllAgentEnvironments, getUsageSummary, triggerLocalSync } from "../lib/api";
 import { copy, getCopyLocale } from "../lib/copy";
 import { safeWriteClipboard } from "../lib/safe-browser";
@@ -60,6 +60,7 @@ function formatDataSourceError(error, fallbackKey) {
 }
 
 const DATA_SOURCE_CACHE_KEY = "token-eyes:data-source-health:v1";
+const DATA_SOURCE_REFERENCE_ORDER = ["claude", "codex", "cursor", "trae", "gemini", "opencode", "openclaw", "hermes", "codebuddy"];
 
 function readDataSourceCache() {
   if (typeof window === "undefined") return null;
@@ -96,7 +97,7 @@ export function DataSourcesPage() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [sourceQuery, setSourceQuery] = useState("");
   const [sourceEnvironment, setSourceEnvironment] = useState("all");
-  const [sourceSort, setSourceSort] = useState("activity");
+  const [sourceSort, setSourceSort] = useState("reference");
   const [sourceView, setSourceView] = useState("grid");
 
   const loadHealth = useCallback(async ({ showLoading = false } = {}) => {
@@ -151,6 +152,13 @@ export function DataSourcesPage() {
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase(getCopyLocale()).includes(query)))
       .sort((left, right) => {
+        if (sourceSort === "reference") {
+          const leftIndex = DATA_SOURCE_REFERENCE_ORDER.indexOf(left.agent);
+          const rightIndex = DATA_SOURCE_REFERENCE_ORDER.indexOf(right.agent);
+          const normalizedLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+          const normalizedRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+          if (normalizedLeft !== normalizedRight) return normalizedLeft - normalizedRight;
+        }
         if (sourceSort === "name") {
           return String(left.agent_name || left.agent).localeCompare(String(right.agent_name || right.agent), getCopyLocale());
         }
@@ -244,7 +252,8 @@ export function DataSourcesPage() {
               <p className="mt-1 max-w-2xl text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.subtitle")}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={copyDiagnostics} className="inline-flex min-h-10 items-center rounded-lg border border-oai-gray-300 px-3 text-sm font-semibold hover:bg-oai-gray-100 dark:border-oai-gray-700 dark:hover:bg-oai-gray-800">
+              <button type="button" onClick={copyDiagnostics} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-oai-gray-300 px-3 text-sm font-semibold hover:bg-oai-gray-100 dark:border-oai-gray-700 dark:hover:bg-oai-gray-800">
+                <ClipboardCopy className="h-4 w-4" aria-hidden="true" />
                 {diagnosticsCopied ? copy("data_sources.diagnostics_copied") : copy("data_sources.copy_diagnostics")}
               </button>
               <button type="button" onClick={syncAll} disabled={syncing} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-oai-brand px-4 text-sm font-semibold text-white hover:bg-oai-brand-dark disabled:opacity-50">
@@ -261,7 +270,7 @@ export function DataSourcesPage() {
             </div>
           ) : null}
 
-          <section data-testid="data-source-health-summary" className="mb-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section data-testid="data-source-health-summary" className="mb-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-hidden="true">
             {[
               { key: "ready", icon: ShieldCheck, label: copy("data_sources.summary.ready_label"), count: counts.ready, share: sourceTotal ? Math.round((counts.ready / sourceTotal) * 100) : 0, tone: "text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300" },
               { key: "no-logs", icon: HardDrive, label: copy("data_sources.summary.no_logs_label"), count: counts["no-logs"], share: sourceTotal ? Math.round((counts["no-logs"] / sourceTotal) * 100) : 0, tone: "text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300" },
@@ -280,6 +289,11 @@ export function DataSourcesPage() {
           </section>
 
           <section data-testid="data-source-summary" className="tt-surface mb-4 rounded-[var(--tt-card-radius)] p-2">
+            <div className="tt-data-source-reference-summary" aria-label={copy("data_sources.title")}>
+              <span>{counts.ready} 个有效日志</span>
+              <span>{counts["no-logs"]} 个已安装但无日志</span>
+              <span>{counts.unavailable} 个不可用</span>
+            </div>
             <div data-testid="data-source-toolbar" className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-oai-gray-100 pb-2 dark:border-oai-gray-800">
               <div className="flex flex-wrap gap-1.5" role="group" aria-label={copy("data_sources.title")}>
                 {[
@@ -310,6 +324,7 @@ export function DataSourcesPage() {
                   {sourceEnvironments.map((environment) => <option key={environment} value={environment}>{environment}</option>)}
                 </select>
                 <select data-testid="data-source-sort" value={sourceSort} onChange={(event) => setSourceSort(event.target.value)} className="h-9 rounded-lg border border-oai-gray-200 bg-white px-2 text-xs text-oai-gray-700 outline-none dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-200">
+                  <option value="reference">{copy("data_sources.title")}</option>
                   <option value="activity">{copy("data_sources.filters.latest_activity")}</option>
                   <option value="name">{copy("data_sources.filters.name")}</option>
                 </select>
@@ -362,10 +377,11 @@ export function DataSourcesPage() {
           <section data-testid="data-ledger-diagnostics" className="tt-surface h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="tt-data-ledger-title-row flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
                   <h2 className="font-semibold">{copy("data_sources.ledger.title")}</h2>
                 </div>
+                <p className="tt-data-ledger-description">{copy("data_sources.ledger.subtitle")}</p>
                 {ledgerError ? (
                   <p role="status" className="mt-3 text-sm text-red-700 dark:text-red-300">{ledgerError}</p>
                 ) : null}
@@ -390,7 +406,7 @@ export function DataSourcesPage() {
               </div>
             </div>
             {!ledgerError && hasImportedRecords ? (
-              <div className="mt-4 border-t border-oai-gray-100 pt-3 dark:border-oai-gray-800">
+              <div className="tt-data-ledger-progress mt-4 border-t border-oai-gray-100 pt-3 dark:border-oai-gray-800">
                 <div className="flex h-1.5 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
                   <span className="bg-emerald-500" style={{ width: `${Math.min(100, (visibleRecords / importedRecords) * 100)}%` }} />
                   <span className="bg-amber-400" style={{ width: `${Math.min(100, (duplicateRecords / importedRecords) * 100)}%` }} />
@@ -405,11 +421,11 @@ export function DataSourcesPage() {
             ) : null}
             {unpricedPercent || unattributedPercent ? (
               <div className="mt-3 border-t border-oai-gray-100 pt-3 text-xs leading-5 text-oai-gray-600 dark:border-oai-gray-800 dark:text-oai-gray-300">
-                {unpricedPercent ? <p>{copy("data_sources.ledger.unpriced", {
+                {unpricedPercent ? <p className="tt-data-ledger-unpriced">{copy("data_sources.ledger.unpriced", {
                   count: Number(unpricedTokens).toLocaleString(getCopyLocale()),
                   percent: unpricedPercent,
                 })}</p> : null}
-                {unattributedPercent ? <p className="mt-1">{copy("data_sources.ledger.unattributed", {
+                {unattributedPercent ? <p className="tt-data-ledger-unattributed mt-1">{copy("data_sources.ledger.unattributed", {
                   count: Number(unattributedTokens).toLocaleString(getCopyLocale()),
                   percent: unattributedPercent,
                 })}</p> : null}
@@ -428,7 +444,7 @@ export function DataSourcesPage() {
                   <span className="ml-2">{copy("data_sources.storage_path")}</span>
                 </div>
                 <p className="mt-1.5 text-[11px] leading-4 text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.delete_instructions")}</p>
-                <div className="mt-2 flex flex-col items-start gap-3 min-[1440px]:flex-row min-[1440px]:items-center">
+                <div className="tt-data-privacy-actions mt-2 flex flex-col items-start gap-3 min-[1440px]:flex-row min-[1440px]:items-center">
                   <button
                     type="button"
                     onClick={clearImportedData}

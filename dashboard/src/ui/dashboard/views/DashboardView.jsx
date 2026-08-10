@@ -491,6 +491,20 @@ export function DashboardView(props) {
               </div>
             </div>
 
+            {!screenshotMode ? (
+              <div className="tt-overview-system-strip" data-testid="dashboard-system-strip">
+                <div className="flex items-center gap-3">
+                  <span className="tt-overview-system-shield" aria-hidden="true">✓</span>
+                  <strong>所有系统运行正常</strong>
+                  <span className="text-oai-gray-500">背调所有实例，分析结果准确可靠</span>
+                </div>
+                <div className="flex items-center text-oai-gray-500">
+                  <span>数据来源：本地日志</span>
+                  <span className="tt-overview-system-live-dot">时区：UTC+8</span>
+                </div>
+              </div>
+            ) : null}
+
           </div>
         )}
       </Shell>

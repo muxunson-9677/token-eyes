@@ -158,8 +158,10 @@ it("loads the Apple glass foundations after the legacy styles", () => {
   );
 
   const stylesheet = postcss.parse(readFileSync(stylesheetPath, "utf8"));
+  const rootRule = stylesheet.nodes.find((node) => node.type === "rule" && node.selector === ":root");
+  expect(rootRule).toBeDefined();
   const customProperties = new Set();
-  stylesheet.walkDecls(/^--tt-/, (declaration) => customProperties.add(declaration.prop));
+  rootRule.walkDecls(/^--tt-/, (declaration) => customProperties.add(declaration.prop));
   expect([...customProperties].sort()).toEqual([
     "--tt-canvas",
     "--tt-card-radius",
@@ -194,10 +196,12 @@ it("loads the Apple glass foundations after the legacy styles", () => {
     "--tt-surface-nested",
     "--tt-surface-outline",
     "--tt-surface-shadow",
+    "--tt-token-wave-blue",
+    "--tt-token-wave-highlight",
+    "--tt-token-wave-mint",
     "--tt-window-bar-height",
   ]);
 
-  const rootRule = stylesheet.nodes.find((node) => node.type === "rule" && node.selector === ":root");
   const darkRule = stylesheet.nodes.find((node) => node.type === "rule" && node.selector === ":root.dark");
   const rootValues = Object.fromEntries(
     rootRule.nodes.filter((node) => node.type === "decl").map((node) => [node.prop, node.value]),

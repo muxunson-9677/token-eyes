@@ -472,24 +472,22 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(document.documentElement).toHaveClass("native-windows-app");
     expect(document.querySelector(".tt-app-shell")).toHaveAttribute(
       "data-reference-route",
-      "default",
+      "dashboard",
     );
     expect(document.querySelector(".tt-app-shell")).toHaveClass(
-      "tt-reference-route-default",
+      "tt-reference-route-dashboard",
     );
 
     rootView.unmount();
     const dashboardView = renderSidebar("/dashboard");
     expect(document.querySelector(".tt-app-shell")).toHaveAttribute(
       "data-reference-route",
-      "default",
+      "dashboard",
     );
     expect(document.querySelector(".tt-app-shell")).toHaveClass(
-      "tt-reference-route-default",
-    );
-    expect(document.querySelector(".tt-app-shell")).not.toHaveClass(
       "tt-reference-route-dashboard",
     );
+    expect(document.querySelector(".tt-app-shell")).not.toHaveClass("tt-reference-route-default");
 
     dashboardView.unmount();
     expect(document.documentElement).not.toHaveClass("native-windows-app");
@@ -512,6 +510,20 @@ describe("Sidebar visual identity hooks", () => {
 
     expect(css).toContain('.tt-sidebar-item[data-nav-id="leaderboard"][aria-current="page"]');
     expect(css).not.toContain('.tt-sidebar-item[data-nav-id="leaderboard"] { color:');
+  });
+
+  it("keeps the supplied design reference limited to the right content pane", () => {
+    const css = readFileSync(resolve("src/ui/foundation/apple-glass.css"), "utf8");
+
+    expect(css).toContain(
+      'body[data-reference-sidebar-preview="true"] .tt-reference-route-dashboard .tt-desktop-sidebar nav',
+    );
+    expect(css).not.toContain(
+      "html.native-windows-app .tt-reference-route-widgets .tt-desktop-sidebar {\n    width: 259px;",
+    );
+    expect(css).not.toContain(
+      "html.native-windows-app .tt-reference-route-widgets > .tt-native-window-bar {\n    display: none !important;",
+    );
   });
 
   it("keeps the locked reset-history layout in a regular local browser", () => {

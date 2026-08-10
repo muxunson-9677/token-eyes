@@ -672,7 +672,7 @@ function ProviderApiAccountSection({
   const navigate = useNavigate();
   const hasBalances = Array.isArray(balances) && balances.length > 0;
   const monthSpend = (balances || []).reduce((sum, item) => sum + Number(item.monthSpend || 0), 0);
-  const available = (balances || []).reduce((sum, item) => sum + Number(item.balance || 0), 0);
+  const available = (balances || []).reduce((sum, item) => sum + Number(item.summaryBalance ?? item.balance ?? 0), 0);
   const share = estimatedTotalUsd > 0 ? (monthSpend / estimatedTotalUsd) * 100 : 0;
 
   return (
@@ -768,20 +768,20 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
             </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            {balanceValue ? <span>
+            {balanceValue ? <span className="tt-provider-api-balance">
               {copy("spend.cost.provider_account.balance")}: {balanceValue}
             </span> : null}
-            {monthSpendValue ? <span>
+            {monthSpendValue ? <span className="tt-provider-api-month-spend">
               {copy("spend.cost.provider_account.month_spend")}: {monthSpendValue}
             </span> : null}
-            {lifetimeSpendValue ? <span>
+            {lifetimeSpendValue ? <span className="tt-provider-api-lifetime-spend">
               {copy("spend.cost.provider_account.lifetime_spend")}: {lifetimeSpendValue}
             </span> : null}
-            {currencyValue ? <span>
+            {currencyValue ? <span className="tt-provider-api-currency">
               {copy("spend.cost.provider_account.currency")}: {currencyValue}
             </span> : null}
             {balance?.lastSyncedAt && (
-              <span>
+              <span className="tt-provider-api-last-sync">
                 {copy("spend.cost.provider_account.last_synced")}: {balance.lastSyncedAt}
               </span>
             )}
