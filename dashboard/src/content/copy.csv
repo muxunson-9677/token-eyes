@@ -2321,6 +2321,8 @@ widgets.reference.project_name,ui,WidgetsPage,WindowsProjectManager,project_name
 widgets.reference.status_info,ui,WidgetsPage,WindowsProjectManager,status_info,"Status ⓘ",,active
 widgets.reference.last_active,ui,WidgetsPage,WindowsProjectManager,last_active,"Last active",,active
 widgets.reference.total_projects,ui,WidgetsPage,WindowsProjectManager,total_projects,"{{count}} projects",,active
+widgets.reference.project_sessions,ui,WidgetsPage,WindowsProjectManager,project_sessions,"{{count}} sessions",,active
+widgets.reference.session_name,ui,WidgetsPage,WindowsProjectManager,session_name,"Session {{index}}",,active
 widgets.reference.pagination,ui,WidgetsPage,WindowsProjectManager,pagination,"10 / page    |‹    1 / 1    ›|",,active
 widgets.reference.yesterday_delta,ui,WidgetsPage,WindowsProjectManager,yesterday_delta,"vs yesterday ↑ {{count}}",,active
 widgets.reference.week_added,ui,WidgetsPage,WindowsProjectManager,week_added,"7-day added {{count}}",,active

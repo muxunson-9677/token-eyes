@@ -1041,6 +1041,8 @@
     "widgets.reference.status_info": "状态 ⓘ",
     "widgets.reference.last_active": "最后活跃时间",
     "widgets.reference.total_projects": "共 {{count}} 个项目",
+    "widgets.reference.project_sessions": "{{count}} 个会话",
+    "widgets.reference.session_name": "会话 {{index}}",
     "widgets.reference.pagination": "10 条/页　　|‹　　1　/ 1　　›|",
     "widgets.reference.yesterday_delta": "较昨日 ↑ {{count}}",
     "widgets.reference.week_added": "7 天新增 {{count}} 个",

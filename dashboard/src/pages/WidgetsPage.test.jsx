@@ -162,7 +162,7 @@ describe("WidgetsPage menu bar configurator", () => {
 });
 
 describe("WidgetsPage Windows desktop widget", () => {
-  it("uses the desktop project-manager layout in a Windows browser preview", async () => {
+  it("keeps aligned work-surface gutters in a Windows browser preview", async () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     );
@@ -173,6 +173,75 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(screen.getByTestId("widgets-heading")).toHaveTextContent(
       copy("widgets.reference.subtitle"),
     );
+    expect(screen.getByTestId("widget-manager").closest(".mx-auto"))
+      .toHaveClass("max-w-none");
+    expect(screen.getByTestId("widget-manager").closest(".mx-auto"))
+      .toHaveClass("px-4", "sm:px-6", "lg:px-8");
+  });
+
+  it("groups multiple sessions from the same project folder in the widget summary", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        projectStatus: {
+          green: 8,
+          yellow: 2,
+          recentProjects: [
+            { id: "project-a", label: "Token Eyes", updatedAt: "2026-08-10T12:00:00.000Z" },
+            { id: "project-b", label: "Website", updatedAt: "2026-08-10T11:00:00.000Z" },
+            { id: "project-c", label: "Token Eyes", updatedAt: "2026-08-10T10:00:00.000Z" },
+            { id: "project-d", label: "Token Eyes", updatedAt: "2026-08-10T09:00:00.000Z" },
+          ],
+        },
+        limits: [],
+      }),
+      headers: new Headers({ "content-type": "application/json" }),
+    });
+
+    render(<WidgetsPage />);
+
+    await screen.findByTestId("widget-summary");
+    const activeSummary = document.querySelector(".tt-widget-summary article[data-tone='green']");
+    await waitFor(() => {
+      expect(activeSummary).toHaveTextContent("2");
+      expect(activeSummary).toHaveTextContent(copy("widgets.reference.active_rate", { rate: 100 }));
+      expect(document.querySelectorAll(".tt-widget-project-row")).toHaveLength(2);
+    });
+  });
+
+  it("expands only the selected project folder's child sessions", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        projectStatus: {
+          recentProjects: [
+            { id: "project-a", label: "Token Eyes", updatedAt: "2026-08-10T12:00:00.000Z" },
+            { id: "project-b", label: "Website", updatedAt: "2026-08-10T11:00:00.000Z" },
+            { id: "project-c", label: "Token Eyes", updatedAt: "2026-08-10T10:00:00.000Z" },
+            { id: "project-d", label: "Token Eyes", updatedAt: "2026-08-10T09:00:00.000Z" },
+          ],
+        },
+        limits: [],
+      }),
+      headers: new Headers({ "content-type": "application/json" }),
+    });
+
+    render(<WidgetsPage />);
+
+    const expand = await screen.findByTestId("widget-project-expand");
+    await user.click(expand);
+
+    expect(screen.getAllByTestId("widget-project-session")).toHaveLength(3);
+    expect(expand).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("会话 1");
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("活跃");
   });
 
   it("places the desktop-widget visibility action in the page header", async () => {

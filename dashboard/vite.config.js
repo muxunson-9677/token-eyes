@@ -1194,7 +1194,26 @@ async function proxyToLocalCli(req, res) {
   }
 }
 
+// These routes supply the Widgets and Usage Detail pages. In normal local
+// development they are proxied to the CLI on :7680; when that port is owned by
+// another Windows service, use the same read-only source handler in-process.
+const DEV_LOCAL_DATA_FALLBACK_PATHS = new Set([
+  "/functions/tokentracker-desktop-widget",
+  "/functions/tokentracker-usage-bounds",
+  "/functions/tokentracker-local-settings",
+  "/functions/tokentracker-spend-timeseries",
+  "/functions/tokentracker-spend-records",
+  "/functions/tokentracker-token-plans",
+  "/functions/tokentracker-provider-stats",
+  "/functions/tokentracker-model-stats",
+  "/functions/tokentracker-request-usage-records",
+]);
+
 function localDataApiPlugin() {
+  const { createLocalApiHandler, resolveQueuePath } = __viteRequire(
+    path.resolve(REPO_ROOT, "src", "lib", "local-api.js"),
+  );
+  const localDataHandler = createLocalApiHandler({ queuePath: resolveQueuePath() });
   return {
     name: "tokentracker-local-data-api",
     configureServer(server) {
@@ -1205,6 +1224,12 @@ function localDataApiPlugin() {
           Promise.resolve(handleLocalApi(req, res, url))
             .then((handled) => {
               if (handled) return;
+              if (DEV_LOCAL_DATA_FALLBACK_PATHS.has(url.pathname)) {
+                return localDataHandler(req, res, url).then((sourceHandled) => {
+                  if (sourceHandled) return;
+                  return proxyToLocalCli(req, res);
+                });
+              }
               // Mock 没识别的 endpoint → 转发到仓库 CLI（7680）
               return proxyToLocalCli(req, res);
             })

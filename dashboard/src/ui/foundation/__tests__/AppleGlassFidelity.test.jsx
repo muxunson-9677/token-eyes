@@ -37,6 +37,22 @@ function mediaDeclarations(params, selector) {
 }
 
 describe("approved M/N material fidelity", () => {
+  it("keeps widget summary cards readable in a narrow desktop window", () => {
+    const summary = ".tt-widget-summary";
+    const card = ".tt-widget-summary article";
+    const content = ".tt-widget-summary article > div";
+
+    expect(mediaDeclarations("(max-width: 1150px)", summary)["grid-template-columns"])
+      .toBe("repeat(2, minmax(0, 1fr))");
+    expect(mediaDeclarations("(max-width: 1150px)", summary).height).toBe("auto");
+    expect(mediaDeclarations("(max-width: 1150px)", card)["min-width"]).toBe("0");
+    expect(mediaDeclarations("(max-width: 1150px)", content)["min-width"]).toBe("0");
+    expect(mediaDeclarations("(max-width: 820px)", summary)["grid-template-columns"])
+      .toBe("minmax(0, 1fr)");
+    expect(declarations(card)["box-shadow"]).toContain("0 18px 36px");
+    expect(declarations(".tt-widget-projects")["box-shadow"]).toContain("0 18px 36px");
+  });
+
   it("keeps the reference overview readable across desktop window widths", () => {
     const selector = ".tt-reference-route-dashboard .tt-overview-locked .tt-reference-overview-grid";
     const detailSelector = '.tt-reference-route-dashboard [data-testid="dashboard-detail-grid"]';

@@ -989,6 +989,50 @@ function widgetProjectStatus(project, index) {
   return project.status || (index < 2 ? "active" : index < 4 ? "recovering" : "inactive");
 }
 
+function widgetProjectGroupKey(project) {
+  return String(project?.path || project?.label || project?.id || "")
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function groupWidgetProjectSessions(sessions) {
+  const grouped = new Map();
+
+  sessions.forEach((session) => {
+    const groupId = widgetProjectGroupKey(session);
+    const sessionId = String(session?.id || "");
+    const existing = grouped.get(groupId);
+
+    if (!existing) {
+      grouped.set(groupId, {
+        ...session,
+        groupId,
+        sessionIds: sessionId ? [sessionId] : [],
+        sessions: [session],
+      });
+      return;
+    }
+
+    if (sessionId && !existing.sessionIds.includes(sessionId)) {
+      existing.sessionIds.push(sessionId);
+    }
+    existing.sessions.push(session);
+
+    const currentUpdatedAt = Date.parse(existing.updatedAt || "");
+    const nextUpdatedAt = Date.parse(session?.updatedAt || "");
+    if (Number.isFinite(nextUpdatedAt) && (!Number.isFinite(currentUpdatedAt) || nextUpdatedAt > currentUpdatedAt)) {
+      const { groupId: preservedGroupId, sessionIds, sessions: preservedSessions } = existing;
+      Object.assign(existing, session, {
+        groupId: preservedGroupId,
+        sessionIds,
+        sessions: preservedSessions,
+      });
+    }
+  });
+
+  return [...grouped.values()];
+}
+
 function widgetProjectTags(project) {
   const savedTags = Array.isArray(project?.tags)
     ? project.tags.filter(Boolean)
@@ -1052,6 +1096,7 @@ function WindowsProjectManager({ onOpenSettings }) {
   const [sortOrder, setSortOrder] = useState("recent");
   const [recentRange, setRecentRange] = useState("7d");
   const [batchOpen, setBatchOpen] = useState(false);
+  const [expandedProjectIds, setExpandedProjectIds] = useState([]);
 
   useEffect(() => {
     let mounted = true;
@@ -1062,15 +1107,16 @@ function WindowsProjectManager({ onOpenSettings }) {
     void Promise.all([prefsPromise, getDesktopWidgetViewModel("all")])
       .then(([savedPrefs, nextModel]) => {
         if (!mounted) return;
-        const projects = Array.isArray(nextModel?.projectStatus?.recentProjects)
+        const sessions = Array.isArray(nextModel?.projectStatus?.recentProjects)
           ? nextModel.projectStatus.recentProjects
           : [];
+        const projects = groupWidgetProjectSessions(sessions);
         const limits = Array.isArray(nextModel?.limits) ? nextModel.limits : [];
         setModel(nextModel || { projectStatus: { recentProjects: [] }, limits: [] });
         setPrefs(savedPrefs || {
           activeSessionWindow: "3d",
-          selectedProjectIds: projects.slice(0, 2).map((project) => String(project.id)),
-          selectedProjects: projects.slice(0, 2),
+          selectedProjectIds: projects.slice(0, 2).flatMap((project) => project.sessionIds),
+          selectedProjects: projects.slice(0, 2).flatMap((project) => project.sessions),
           selectedLimitIds: limits.map((limit) => String(limit.id)),
         });
       })
@@ -1082,9 +1128,10 @@ function WindowsProjectManager({ onOpenSettings }) {
     };
   }, []);
 
-  const projects = Array.isArray(model?.projectStatus?.recentProjects)
+  const sessions = Array.isArray(model?.projectStatus?.recentProjects)
     ? model.projectStatus.recentProjects
     : [];
+  const projects = groupWidgetProjectSessions(sessions);
   const limits = Array.isArray(model?.limits) ? model.limits : [];
   const selectedProjectIds = Array.isArray(prefs?.selectedProjectIds) ? prefs.selectedProjectIds : [];
   const selectedLimitIds = Array.isArray(prefs?.selectedLimitIds) ? prefs.selectedLimitIds : [];
@@ -1094,7 +1141,7 @@ function WindowsProjectManager({ onOpenSettings }) {
     .filter(({ project, status }) => (
       (!normalizedQuery || String(project.label || "").toLocaleLowerCase().includes(normalizedQuery))
       && (statusFilter === "all" || status === statusFilter)
-      && !dismissedProjectIds.includes(String(project.id))
+      && !dismissedProjectIds.includes(project.groupId)
     ))
     .sort((left, right) => {
       if (sortOrder !== "recent") return 0;
@@ -1110,15 +1157,17 @@ function WindowsProjectManager({ onOpenSettings }) {
 
   const toggleProject = (project) => {
     if (!prefs) return;
-    const id = String(project.id);
-    const selected = selectedProjectIds.includes(id);
+    const projectSessionIds = project.sessionIds.length
+      ? project.sessionIds
+      : [String(project.id)];
+    const selected = projectSessionIds.every((id) => selectedProjectIds.includes(id));
     const nextIds = selected
-      ? selectedProjectIds.filter((value) => value !== id)
-      : [...selectedProjectIds, id];
+      ? selectedProjectIds.filter((value) => !projectSessionIds.includes(value))
+      : [...new Set([...selectedProjectIds, ...projectSessionIds])];
     void persist({
       ...prefs,
       selectedProjectIds: nextIds,
-      selectedProjects: projects.filter((item) => nextIds.includes(String(item.id))),
+      selectedProjects: sessions.filter((item) => nextIds.includes(String(item.id))),
     });
   };
 
@@ -1133,15 +1182,25 @@ function WindowsProjectManager({ onOpenSettings }) {
 
   const removeProjectFromWidget = (project) => {
     if (!prefs) return;
-    const id = String(project.id);
-    setDismissedProjectIds((current) => [...current, id]);
+    const projectSessionIds = project.sessionIds.length
+      ? project.sessionIds
+      : [String(project.id)];
+    setDismissedProjectIds((current) => [...current, project.groupId]);
     setOpenMenu(null);
-    const nextIds = selectedProjectIds.filter((value) => value !== id);
+    const nextIds = selectedProjectIds.filter((value) => !projectSessionIds.includes(value));
     void persist({
       ...prefs,
       selectedProjectIds: nextIds,
-      selectedProjects: projects.filter((item) => nextIds.includes(String(item.id))),
+      selectedProjects: sessions.filter((item) => nextIds.includes(String(item.id))),
     });
+  };
+
+  const toggleProjectSessions = (project) => {
+    setExpandedProjectIds((current) => (
+      current.includes(project.groupId)
+        ? current.filter((id) => id !== project.groupId)
+        : [...current, project.groupId]
+    ));
   };
 
   const removeLimitFromWidget = (limit) => {
@@ -1152,8 +1211,10 @@ function WindowsProjectManager({ onOpenSettings }) {
     void persist({ ...prefs, selectedLimitIds: selectedLimitIds.filter((value) => value !== id) });
   };
 
-  const activeProjects = Number(model?.projectStatus?.green || 0) + Number(model?.projectStatus?.yellow || 0)
-    || projects.filter((project) => project.updatedAt).length;
+  const activeProjects = projects.filter((project) => {
+    const updatedAt = Date.parse(project.updatedAt || "");
+    return Number.isFinite(updatedAt) && Date.now() - updatedAt < 3 * 24 * 60 * 60 * 1000;
+  }).length;
   const activeToday = projects.filter((project) => {
     const updatedAt = Date.parse(project.updatedAt || "");
     return Number.isFinite(updatedAt) && Date.now() - updatedAt < 24 * 60 * 60 * 1000;
@@ -1162,6 +1223,9 @@ function WindowsProjectManager({ onOpenSettings }) {
     const updatedAt = Date.parse(project.updatedAt || "");
     return Number.isFinite(updatedAt) && Date.now() - updatedAt < 7 * 24 * 60 * 60 * 1000;
   }).length;
+  const selectedProjectCount = projects.filter((project) => (
+    project.sessionIds.some((id) => selectedProjectIds.includes(id))
+  )).length;
 
   const refreshPlans = async () => {
     if (refreshingPlans) return;
@@ -1179,7 +1243,7 @@ function WindowsProjectManager({ onOpenSettings }) {
       <section className="tt-widget-summary" data-testid="widget-summary">
         <article data-tone="blue">
           <span className="tt-widget-summary-icon"><FolderKanban aria-hidden /></span>
-          <div><span>{copy("widgets.reference.selected_projects")}</span><strong>{selectedProjectIds.length}</strong><small>{copy("widgets.reference.selected_projects_detail")}</small></div>
+          <div><span>{copy("widgets.reference.selected_projects")}</span><strong>{selectedProjectCount}</strong><small>{copy("widgets.reference.selected_projects_detail")}</small></div>
           <aside><b>{copy("widgets.reference.yesterday_delta", { count: activeToday })}</b><small>{copy("widgets.reference.week_added", { count: activeThisWeek })}</small></aside>
         </article>
         <article data-tone="green">
@@ -1208,7 +1272,7 @@ function WindowsProjectManager({ onOpenSettings }) {
           <button type="button" aria-label={copy("widgets.reference.import_recent_projects")} onClick={() => {
             if (!prefs) return;
             setDismissedProjectIds([]);
-            void persist({ ...prefs, selectedProjectIds: projects.map((project) => String(project.id)), selectedProjects: projects });
+            void persist({ ...prefs, selectedProjectIds: projects.flatMap((project) => project.sessionIds), selectedProjects: sessions });
           }}><History aria-hidden />{copy("widgets.reference.restore_recent_projects")}</button>
           <label><Search aria-hidden /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={copy("widgets.reference.search_projects")} /></label>
           <span className="tt-widget-toolbar-spacer" />
@@ -1219,24 +1283,45 @@ function WindowsProjectManager({ onOpenSettings }) {
         <div className="tt-widget-project-table">
           <div className="tt-widget-project-head"><span /><span>{copy("widgets.reference.project_name")}</span><span>{copy("widgets.reference.project_tag")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.last_active")}</span><span>{copy("widgets.reference.created_at")}</span><span>{copy("widgets.reference.action")}</span></div>
           {displayedProjects.map(({ project, index, status }) => {
-            const checked = selectedProjectIds.includes(String(project.id));
+            const checked = project.sessionIds.some((id) => selectedProjectIds.includes(id));
             const tags = widgetProjectTags(project);
+            const canExpand = project.sessions.length > 1;
+            const expanded = canExpand && expandedProjectIds.includes(project.groupId);
             return (
-              <div className="tt-widget-project-row" key={project.id}>
-                <button type="button" className={cn("tt-widget-check", checked && "is-checked")} onClick={() => toggleProject(project)} aria-label={project.label}>{checked ? <Check aria-hidden /> : null}</button>
-                <span className="tt-widget-project-name"><i data-tone={index % 6}>{String(project.label || "PR").slice(0, 3).toUpperCase()}</i>{project.label}</span>
-                <span className="tt-widget-project-tag">{tags.map((tag) => <i key={tag} data-tone={widgetProjectTagTone(tag)}>{tag}</i>)}</span>
-                <span className={cn("tt-widget-project-status", `is-${status}`)}><i />{status === "active" ? "活跃" : status === "recovering" ? "较活跃" : "未激活"}</span>
-                <time>{formatProjectLastActive(project, index)}</time>
-                <time className="tt-widget-project-created">{formatProjectCreatedAt(project)}</time>
-                <div className="tt-widget-row-actions">
-                  <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `project:${project.id}`} onClick={() => setOpenMenu((current) => current === `project:${project.id}` ? null : `project:${project.id}`)}><Ellipsis aria-hidden /></button>
-                  {openMenu === `project:${project.id}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeProjectFromWidget(project)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
+              <React.Fragment key={project.groupId}>
+                <div className="tt-widget-project-row">
+                  <button type="button" className={cn("tt-widget-check", checked && "is-checked")} onClick={() => toggleProject(project)} aria-label={project.label}>{checked ? <Check aria-hidden /> : null}</button>
+                  <span className={cn("tt-widget-project-name", canExpand && "is-expandable")}>
+                    {canExpand ? (
+                      <button type="button" data-testid="widget-project-expand" aria-expanded={expanded} onClick={() => toggleProjectSessions(project)}>
+                        <i data-tone={index % 6}>{String(project.label || "PR").slice(0, 3).toUpperCase()}</i><span>{project.label}</span><ChevronDown aria-hidden />
+                      </button>
+                    ) : <span className="tt-widget-project-name-static"><i data-tone={index % 6}>{String(project.label || "PR").slice(0, 3).toUpperCase()}</i><span>{project.label}</span></span>}
+                  </span>
+                  <span className="tt-widget-project-tag">{tags.map((tag) => <i key={tag} data-tone={widgetProjectTagTone(tag)}>{tag}</i>)}</span>
+                  <span className={cn("tt-widget-project-status", `is-${status}`)}><i />{status === "active" ? "活跃" : status === "recovering" ? "较活跃" : "未激活"}</span>
+                  <time>{formatProjectLastActive(project, index)}</time>
+                  <time className="tt-widget-project-created">{formatProjectCreatedAt(project)}</time>
+                  <div className="tt-widget-row-actions">
+                    <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `project:${project.groupId}`} onClick={() => setOpenMenu((current) => current === `project:${project.groupId}` ? null : `project:${project.groupId}`)}><Ellipsis aria-hidden /></button>
+                    {openMenu === `project:${project.groupId}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeProjectFromWidget(project)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
+                  </div>
                 </div>
-              </div>
+                {expanded ? <div className="tt-widget-project-sessions" data-testid="widget-project-sessions">
+                  <div className="tt-widget-project-sessions-title">{copy("widgets.reference.project_sessions", { count: project.sessions.length })}</div>
+                  {project.sessions.map((session, sessionIndex) => {
+                    const sessionStatus = widgetProjectStatus(session, sessionIndex);
+                    return <div className="tt-widget-project-session" data-testid="widget-project-session" key={session.id || `${project.groupId}:${sessionIndex}`}>
+                      <span>{copy("widgets.reference.session_name", { index: sessionIndex + 1 })}</span>
+                      <span className={cn("tt-widget-project-status", `is-${sessionStatus}`)}><i />{sessionStatus === "active" ? "活跃" : sessionStatus === "recovering" ? "较活跃" : "未激活"}</span>
+                      <time>{formatProjectLastActive(session, sessionIndex)}</time>
+                    </div>;
+                  })}
+                </div> : null}
+              </React.Fragment>
             );
           })}
-          <footer><span className="tt-widget-table-selection">{copy("widgets.reference.selected_prefix")} <b>{selectedProjectIds.length}</b> {copy("widgets.reference.project_count_suffix")}<button type="button" onClick={() => prefs && void persist({ ...prefs, selectedProjectIds: [], selectedProjects: [] })}>{copy("widgets.reference.clear_selection")}</button></span><WidgetTablePagination /></footer>
+          <footer><span className="tt-widget-table-selection">{copy("widgets.reference.selected_prefix")} <b>{selectedProjectCount}</b> {copy("widgets.reference.project_count_suffix")}<button type="button" onClick={() => prefs && void persist({ ...prefs, selectedProjectIds: [], selectedProjects: [] })}>{copy("widgets.reference.clear_selection")}</button></span><WidgetTablePagination /></footer>
         </div>
       </section>
 
@@ -1388,7 +1473,7 @@ export function WidgetsPage() {
   return (
     <div className="flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-none px-4 sm:px-6 lg:px-8">
           {/* Page header — H1 + adaptive CTA. No page subtitle (the two H2
               sections speak for themselves; subtitles only added title noise). */}
           <FadeIn y={12}>
