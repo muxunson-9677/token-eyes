@@ -169,17 +169,52 @@ describe("approved M/N material fidelity", () => {
     expect(declarations(metrics)["margin-top"]).toBe("115px");
     expect(declarations(metrics)["column-gap"]).toBe("35px");
     expect(declarations(metric).width).toBe("min(94px, 100%)");
-    expect(declarations(provider).height).toBe("257px");
-    expect(declarations(providerGrid)["grid-template-columns"]).toBe("134px 140px 140px 136px 137px");
-    expect(declarations(providerCard).height).toBe("151px");
-    expect(declarations(providerCard)["border-radius"]).toBe("16px");
+    expect(declarations(provider).height).toBe("auto");
+    expect(declarations(providerGrid)["grid-template-columns"])
+      .toBe("repeat(auto-fit, minmax(122px, 1fr))");
     expect(mediaDeclarations("(min-width: 1200px)", alignedStack)["grid-template-rows"])
-      .toBe("minmax(0, 620px) minmax(0, 257px)");
+      .toBe("minmax(0, 620px) minmax(257px, auto)");
     expect(Object.keys(mediaDeclarations("(min-width: 1081px) and (max-width: 1199px)", providerGrid)))
       .toHaveLength(0);
     expect(Object.keys(mediaDeclarations("(min-width: 1081px) and (max-width: 1199px)", providerCard)))
       .toHaveLength(0);
     expect(declarations(costHeading)["font-size"]).toBe("11px");
+  });
+
+  it("keeps the reset heatmap right-aligned and makes widget presses unmistakable", () => {
+    const resetData = ".tt-reference-route-reset-history .tt-reset-activity-data--right-aligned";
+    const widgetPress = ".tt-reference-route-widgets button:not(:disabled):active,\n.tt-reference-route-widgets select:not(:disabled):active,\n.tt-reference-route-widgets [role=\"button\"]:not([aria-disabled=\"true\"]):active";
+    const widgetRebound = ".tt-reference-route-widgets .tt-widget-click-bounce";
+
+    expect(declarations(resetData)["justify-self"]).toBe("end");
+    expect(declarations(resetData).width).toBe("fit-content");
+    expect(declarations(widgetPress).transform).toBe("translateY(2px) scale(0.94)");
+    expect(declarations(widgetRebound).animation).toContain("tt-widget-press-rebound");
+    expect(declarations(widgetRebound).animation).toContain("300ms");
+    expect(declarations(".tt-raised-control")["box-shadow"]).toContain("inset 0 1px 0");
+    expect(declarations(".tt-raised-control").background).toContain("linear-gradient");
+  });
+
+  it("gives the reset celebration controls the same visible depth and rebound", () => {
+    const resetControl = ".tt-reference-route-reset-history .tt-reset-effect-control";
+    const resetRebound = ".tt-reference-route-reset-history .tt-reset-control-click-bounce";
+
+    expect(declarations(resetControl)["box-shadow"]).toContain("inset 0 1px 0");
+    expect(declarations(resetRebound).animation).toContain("tt-widget-press-rebound");
+  });
+
+  it("renders provider details as a floating overlay without growing the stack", () => {
+    const providerPanel = ".tt-reference-route-dashboard .tt-overview-provider-panel--expanded";
+    const providerStage = ".tt-reference-route-dashboard .tt-provider-card-stage";
+    const providerOverlay = ".tt-reference-route-dashboard .tt-provider-expanded-region";
+
+    expect(declarations(providerPanel)["z-index"]).toBe("40");
+    expect(declarations(providerStage).position).toBe("relative");
+    expect(declarations(providerOverlay).position).toBe("absolute");
+    expect(declarations(providerOverlay).top).toBe("calc(100% + 8px)");
+    expect(declarations(providerOverlay).padding).toBe("14px 16px 16px");
+    expect(declarations(providerOverlay)["overflow-x"]).toBe("hidden");
+    expect(declarations(providerOverlay)["scrollbar-gutter"]).toBe("stable");
   });
 
   it("defines the component-level materials from the approved prototypes", () => {

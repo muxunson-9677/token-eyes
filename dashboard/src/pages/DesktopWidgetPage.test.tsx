@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const widget = vi.hoisted(() => ({
   updatePrefs: vi.fn(),
   setPopoverOpen: vi.fn(),
+  setCelebrationOpen: vi.fn(),
   acknowledgePendingReset: vi.fn(),
   value: {} as any,
 }));
@@ -133,6 +134,7 @@ describe("DesktopWidgetPage", () => {
     window.localStorage.clear();
     widget.updatePrefs.mockReset().mockResolvedValue(undefined);
     widget.setPopoverOpen.mockReset().mockResolvedValue(undefined);
+    widget.setCelebrationOpen.mockReset().mockResolvedValue(undefined);
     widget.acknowledgePendingReset.mockReset().mockResolvedValue(undefined);
     startDragging.mockReset().mockResolvedValue(undefined);
     widget.value = {
@@ -142,6 +144,7 @@ describe("DesktopWidgetPage", () => {
       error: null,
       updatePrefs: widget.updatePrefs,
       setPopoverOpen: widget.setPopoverOpen,
+      setCelebrationOpen: widget.setCelebrationOpen,
       acknowledgePendingReset: widget.acknowledgePendingReset,
     };
   });
@@ -572,13 +575,20 @@ describe("DesktopWidgetPage", () => {
       });
       expect(screen.getByTestId("widget-reset-celebration"))
         .toHaveAttribute("data-effect-id", "meteors");
-      expect(screen.queryByRole("button", { name: "copy:widget.reset.acknowledge" }))
-        .not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "copy:widget.reset.acknowledge" }))
+        .toHaveClass("widget-reset-celebration__dismiss");
       expect(widget.acknowledgePendingReset).not.toHaveBeenCalled();
 
       await act(async () => {
-        vi.advanceTimersByTime(6_000);
+        vi.advanceTimersByTime(60_000);
       });
+      expect(widget.acknowledgePendingReset).not.toHaveBeenCalled();
+      expect(widget.setCelebrationOpen).toHaveBeenCalledWith(true);
+
+      await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(
+        screen.getByRole("button", { name: "copy:widget.reset.acknowledge" }),
+      );
+      expect(widget.setCelebrationOpen).toHaveBeenCalledWith(false);
       expect(widget.acknowledgePendingReset).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();

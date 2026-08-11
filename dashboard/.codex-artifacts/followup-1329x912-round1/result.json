@@ -1,0 +1,73 @@
+{
+  "viewport": {
+    "width": 1329,
+    "height": 912
+  },
+  "heatmap": {
+    "display": "grid",
+    "rightGap": 15,
+    "sameRowAsCopy": true,
+    "fitsParent": true,
+    "labelsDoNotOverlap": true,
+    "group": {
+      "x": 484,
+      "y": 247,
+      "width": 762,
+      "height": 64
+    }
+  },
+  "trendBefore": {
+    "tag": "BUTTON",
+    "disabled": false,
+    "expanded": "false"
+  },
+  "trendAfter": {
+    "expanded": "true",
+    "dialogVisible": true,
+    "dialogFitsViewport": true
+  },
+  "provider": {
+    "visible": true,
+    "panelContainsRegion": true,
+    "panelScrollFits": true,
+    "rowsDoNotOverlap": true,
+    "regionHeight": 478,
+    "panelHeight": 908
+  },
+  "projects": {
+    "before": {
+      "x": 773.953125,
+      "width": 520.046875,
+      "height": 408,
+      "scrollHeight": 408,
+      "scrollTop": 0
+    },
+    "after": {
+      "x": 773.953125,
+      "width": 520.046875,
+      "height": 408,
+      "scrollHeight": 408,
+      "scrollTop": 0
+    },
+    "trackPositionStable": true,
+    "viewportStable": true,
+    "scrollExtentStable": true,
+    "scrollPositionStable": true,
+    "cardsDoNotOverlap": true
+  },
+  "widgetPress": {
+    "normal": {
+      "transform": "matrix(1, 0, 0, 1, 0, 0)",
+      "filter": "none",
+      "shadow": "rgba(31, 43, 56, 0.12) 0px 2px 5px 0px"
+    },
+    "pressed": {
+      "transform": "matrix(0.94, 0, 0, 0.94, 0, 2)",
+      "filter": "brightness(0.92) saturate(1.08)",
+      "shadow": "rgba(31, 43, 56, 0.24) 0px 3px 7px 0px inset, rgba(31, 43, 56, 0.08) 0px 1px 2px 0px"
+    },
+    "changed": true
+  },
+  "noHorizontalOverflow": true,
+  "passed": true
+}

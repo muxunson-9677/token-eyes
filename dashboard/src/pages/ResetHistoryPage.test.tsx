@@ -281,6 +281,10 @@ describe("ResetHistoryPage", () => {
       });
 
       expect(selector).toHaveValue("meteors");
+      fireEvent.pointerDown(selector, { button: 0 });
+      expect(selector).toHaveClass("tt-reset-control-click-bounce");
+      fireEvent.animationEnd(selector, { animationName: "tt-widget-press-rebound" });
+      expect(selector).not.toHaveClass("tt-reset-control-click-bounce");
       fireEvent.change(selector, { target: { value: "fireworks" } });
       expect(selector).toHaveValue("fireworks");
       expect(window.localStorage.getItem("token-eyes:reset-celebration-effect:v1"))

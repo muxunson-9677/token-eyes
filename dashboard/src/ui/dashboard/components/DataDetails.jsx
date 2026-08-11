@@ -170,7 +170,10 @@ export function DataDetails({
 
       {/* Projects Tab */}
       {activeTab === "projects" && (
-        <div className="tt-overview-project-tab min-h-0 flex-1 overflow-auto oai-scrollbar">
+        <div
+          data-testid="project-scroll-viewport"
+          className="tt-overview-project-tab min-h-0 flex-1 overflow-x-hidden overflow-y-scroll oai-scrollbar"
+        >
           <ProjectUsagePanel
             embedded
             entries={projectsWithSelectedFolders}

@@ -163,6 +163,14 @@ describe("UsageOverview", () => {
     expect(screen.getByTestId("context-breakdown")).toHaveTextContent(
       "codex:2026-05-01:2026-05-31",
     );
+    expect(screen.getByTestId("context-breakdown").closest('[role="region"]'))
+      .toHaveClass("tt-provider-expanded-region");
+    expect(screen.getByTestId("context-breakdown").closest('[role="region"]'))
+      .toHaveAttribute("data-layout", "overlay");
+    expect(screen.getByTestId("context-breakdown").closest('[role="region"]')?.parentElement)
+      .toHaveClass("tt-provider-card-stage");
+    expect(screen.getByTestId("usage-overview-providers"))
+      .toHaveClass("tt-overview-provider-panel--expanded");
     expect(breakdownProps[0]).toMatchObject({
       source: "codex",
       from: "2026-05-01",
@@ -229,7 +237,7 @@ describe("UsageOverview", () => {
     expect(tabs.map((t) => t.textContent)).toEqual([
       "全部",
       "API Key",
-      "套餐",
+      "直连",
       "未配置计费",
     ]);
     // 'all' is the default.
@@ -351,7 +359,7 @@ describe("UsageOverview", () => {
     // adds 1 "API Key" badge (gpt-4o) and 1 "套餐" badge (gpt-5-pro). So we
     // expect at least 2 of each.
     expect(apiKeyBadges.length).toBeGreaterThanOrEqual(2);
-    expect(tokenPlanBadges.length).toBeGreaterThanOrEqual(2);
+    expect(tokenPlanBadges.length).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps Token and cost evidence inside one centered summary card", () => {

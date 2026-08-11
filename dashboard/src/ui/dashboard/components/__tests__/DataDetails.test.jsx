@@ -71,6 +71,15 @@ const dailyProps = {
 };
 
 describe("DataDetails projects tab (production component tree)", () => {
+  it("uses one permanently reserved scroll viewport for project disclosure", async () => {
+    render(<DataDetails {...dailyProps} projectEntries={[makeEntry()]} projectLimit={3} />);
+
+    await clickProjectsTab();
+
+    expect(screen.getByTestId("project-scroll-viewport")).toHaveClass("overflow-y-scroll");
+    expect(screen.getByTestId("project-usage-grid")).toHaveClass("tt-overview-project-grid--stable");
+  });
+
   beforeEach(() => {
     document.documentElement.classList.add("screenshot-capture");
   });

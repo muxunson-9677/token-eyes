@@ -15,7 +15,9 @@ const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
 const MIN_WIDTH: u32 = 352;
 const MIN_HEIGHT: u32 = 72;
 const POPOVER_HEIGHT: u32 = 260;
+const CELEBRATION_PADDING: u32 = 42;
 static TRANSIENT_POPOVER_OPEN: AtomicBool = AtomicBool::new(false);
+static TRANSIENT_CELEBRATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -119,9 +121,7 @@ fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
     } else {
         1.0
     };
-    if !["all", "claude", "codex", "cursor", "hermes"]
-        .contains(&prefs.selected_agent.as_str())
-    {
+    if !["all", "claude", "codex", "cursor", "hermes"].contains(&prefs.selected_agent.as_str()) {
         prefs.selected_agent = "all".into();
     }
     if !["projects", "limits", "models"].contains(&prefs.mode.as_str()) {
@@ -243,10 +243,8 @@ fn transition_height(current: &WidgetPrefs, requested_expanded: bool) -> Option<
 fn intersection_area(geometry: Geometry, monitor: MonitorBounds) -> i64 {
     let left = geometry.x.max(monitor.x);
     let top = geometry.y.max(monitor.y);
-    let right = (geometry.x + geometry.width as i32)
-        .min(monitor.x + monitor.width as i32);
-    let bottom = (geometry.y + geometry.height as i32)
-        .min(monitor.y + monitor.height as i32);
+    let right = (geometry.x + geometry.width as i32).min(monitor.x + monitor.width as i32);
+    let bottom = (geometry.y + geometry.height as i32).min(monitor.y + monitor.height as i32);
     i64::from((right - left).max(0)) * i64::from((bottom - top).max(0))
 }
 
@@ -258,7 +256,10 @@ fn clamp_geometry(mut geometry: Geometry, monitors: &[MonitorBounds]) -> Geometr
     else {
         return geometry;
     };
-    geometry.width = geometry.width.min(monitor.width).max(MIN_WIDTH.min(monitor.width));
+    geometry.width = geometry
+        .width
+        .min(monitor.width)
+        .max(MIN_WIDTH.min(monitor.width));
     geometry.height = geometry
         .height
         .min(monitor.height)
@@ -312,7 +313,7 @@ fn monitor_bounds(window: &WebviewWindow) -> Vec<MonitorBounds> {
         .collect()
 }
 
-fn apply_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
+fn resolved_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) -> Geometry {
     let size = physical_size(
         prefs.width,
         prefs.height,
@@ -334,7 +335,7 @@ fn apply_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
             width: size.width,
             height: size.height,
         });
-    let geometry = clamp_geometry(
+    clamp_geometry(
         Geometry {
             x: prefs.x.unwrap_or(default_position.x),
             y: prefs.y.unwrap_or(default_position.y),
@@ -342,29 +343,64 @@ fn apply_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
             height: size.height,
         },
         &monitor_bounds(window),
-    );
+    )
+}
+
+fn transient_geometry(
+    mut geometry: Geometry,
+    scale_factor: f64,
+    popover_open: bool,
+    celebration_open: bool,
+) -> Geometry {
+    if popover_open {
+        geometry.height = geometry
+            .height
+            .max(physical_size(1, POPOVER_HEIGHT, scale_factor).height);
+    }
+    if celebration_open {
+        let padding = physical_size(CELEBRATION_PADDING, CELEBRATION_PADDING, scale_factor).width;
+        geometry.x -= padding as i32;
+        geometry.y -= padding as i32;
+        geometry.width += padding * 2;
+        geometry.height += padding * 2;
+    }
+    geometry
+}
+
+fn set_window_geometry(window: &WebviewWindow, geometry: Geometry) {
     let _ = window.set_size(PhysicalSize::new(geometry.width, geometry.height));
     let _ = window.set_position(PhysicalPosition::new(geometry.x, geometry.y));
 }
 
+fn apply_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
+    set_window_geometry(window, resolved_geometry(window, prefs));
+}
+
+fn apply_transient_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
+    let geometry = transient_geometry(
+        resolved_geometry(window, prefs),
+        window.scale_factor().unwrap_or(1.0),
+        TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed),
+        TRANSIENT_CELEBRATION_OPEN.load(Ordering::Relaxed),
+    );
+    set_window_geometry(window, clamp_geometry(geometry, &monitor_bounds(window)));
+}
+
 fn create_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, String> {
-    let window = WebviewWindowBuilder::new(
-        app,
-        WIDGET_LABEL,
-        WebviewUrl::App("desktop-widget".into()),
-    )
-    .title("Token Eyes Widget")
-    .inner_size(prefs.width as f64, prefs.height as f64)
-    .min_inner_size(MIN_WIDTH as f64, MIN_HEIGHT as f64)
-    .resizable(true)
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(prefs.always_on_top)
-    .skip_taskbar(true)
-    .visible(false)
-    .build()
-    .map_err(|error| format!("create desktop widget: {error}"))?;
+    let window =
+        WebviewWindowBuilder::new(app, WIDGET_LABEL, WebviewUrl::App("desktop-widget".into()))
+            .title("Token Eyes Widget")
+            .inner_size(prefs.width as f64, prefs.height as f64)
+            .min_inner_size(MIN_WIDTH as f64, MIN_HEIGHT as f64)
+            .resizable(true)
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .always_on_top(prefs.always_on_top)
+            .skip_taskbar(true)
+            .visible(false)
+            .build()
+            .map_err(|error| format!("create desktop widget: {error}"))?;
     apply_geometry(&window, prefs);
     Ok(window)
 }
@@ -384,7 +420,9 @@ pub fn persist_geometry(window: &WebviewWindow) {
     if !is_widget_window(window.label()) {
         return;
     }
-    if TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed) {
+    if TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed)
+        || TRANSIENT_CELEBRATION_OPEN.load(Ordering::Relaxed)
+    {
         return;
     }
     let mut prefs = load(window.app_handle());
@@ -429,6 +467,7 @@ pub fn toggle_desktop_widget(app: &AppHandle) {
 #[tauri::command]
 pub fn show_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
     TRANSIENT_POPOVER_OPEN.store(false, Ordering::Relaxed);
+    TRANSIENT_CELEBRATION_OPEN.store(false, Ordering::Relaxed);
     let mut prefs = load(&app);
     let window = widget_window(&app, &prefs)?;
     let _ = window.set_always_on_top(prefs.always_on_top);
@@ -443,8 +482,10 @@ pub fn show_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
 pub fn hide_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
     let mut prefs = load(&app);
     if let Some(window) = app.get_webview_window(WIDGET_LABEL) {
-        if TRANSIENT_POPOVER_OPEN.swap(false, Ordering::Relaxed) {
-            apply_geometry(&window, &prefs);
+        let had_popover = TRANSIENT_POPOVER_OPEN.swap(false, Ordering::Relaxed);
+        let had_celebration = TRANSIENT_CELEBRATION_OPEN.swap(false, Ordering::Relaxed);
+        if had_popover || had_celebration {
+            apply_transient_geometry(&window, &prefs);
         }
         persist_geometry(&window);
         window.hide().map_err(|error| error.to_string())?;
@@ -461,10 +502,7 @@ pub fn get_desktop_widget_prefs(app: AppHandle) -> WidgetPrefs {
 }
 
 #[tauri::command]
-pub fn set_desktop_widget_prefs(
-    app: AppHandle,
-    prefs: WidgetPrefs,
-) -> Result<WidgetPrefs, String> {
+pub fn set_desktop_widget_prefs(app: AppHandle, prefs: WidgetPrefs) -> Result<WidgetPrefs, String> {
     if let Some(window) = app.get_webview_window(WIDGET_LABEL) {
         persist_geometry(&window);
     }
@@ -482,9 +520,8 @@ pub fn set_desktop_widget_prefs(
             persist_geometry(&window);
             prefs = load(&app);
         }
-        let _ = window.eval(
-            "window.dispatchEvent(new Event('token-eyes:desktop-widget-prefs-changed'));",
-        );
+        let _ = window
+            .eval("window.dispatchEvent(new Event('token-eyes:desktop-widget-prefs-changed'));");
     }
     Ok(prefs)
 }
@@ -513,13 +550,22 @@ pub fn set_desktop_widget_popover(app: AppHandle, open: bool) -> Result<(), Stri
     };
     if open {
         TRANSIENT_POPOVER_OPEN.store(true, Ordering::Relaxed);
-        let mut transient = prefs;
-        transient.height = transient.height.max(POPOVER_HEIGHT);
-        apply_geometry(&window, &transient);
+        apply_transient_geometry(&window, &prefs);
     } else {
-        apply_geometry(&window, &prefs);
         TRANSIENT_POPOVER_OPEN.store(false, Ordering::Relaxed);
+        apply_transient_geometry(&window, &prefs);
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_desktop_widget_celebration(app: AppHandle, open: bool) -> Result<(), String> {
+    let prefs = load(&app);
+    let Some(window) = app.get_webview_window(WIDGET_LABEL) else {
+        return Ok(());
+    };
+    TRANSIENT_CELEBRATION_OPEN.store(open, Ordering::Relaxed);
+    apply_transient_geometry(&window, &prefs);
     Ok(())
 }
 
@@ -675,7 +721,10 @@ mod tests {
         );
 
         let merged = merge_display_prefs(WidgetPrefs::default(), prefs);
-        assert_eq!(merged.selected_limit_ids.as_ref().unwrap()[0], "codex:default:weekly");
+        assert_eq!(
+            merged.selected_limit_ids.as_ref().unwrap()[0],
+            "codex:default:weekly"
+        );
     }
 
     #[test]
@@ -702,5 +751,33 @@ mod tests {
         };
         assert_eq!(transition_height(&expanded, false), Some(200));
         assert_eq!(transition_height(&expanded, true), None);
+    }
+
+    #[test]
+    fn celebration_geometry_adds_clear_space_on_every_side_without_moving_the_card() {
+        let base = Geometry {
+            x: 500,
+            y: 300,
+            width: 352,
+            height: 72,
+        };
+        assert_eq!(
+            transient_geometry(base, 1.0, false, true),
+            Geometry {
+                x: 458,
+                y: 258,
+                width: 436,
+                height: 156
+            },
+        );
+        assert_eq!(
+            transient_geometry(base, 1.5, true, true),
+            Geometry {
+                x: 437,
+                y: 237,
+                width: 478,
+                height: 516
+            },
+        );
     }
 }

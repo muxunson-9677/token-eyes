@@ -1,0 +1,150 @@
+{
+  "viewport": {
+    "width": 1218,
+    "height": 803
+  },
+  "normal": {
+    "settingsLanguage": {
+      "tag": "BUTTON",
+      "role": "combobox",
+      "classes": "relative inline-flex min-h-10 items-center justify-between gap-2 rounded-[var(--tt-control-radius)] border border-white/80 bg-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow,background-color] hover:border-oai-gray-300 focus:outline-none focus-visible:border-oai-brand-500 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oai-brand-500/20 dark:border-white/10 dark:bg-oai-gray-900 dark:text-white dark:hover:border-oai-gray-600 tt-settings-language-select tt-raised-control tt-pressable px-2.5 py-1.5 text-xs font-medium",
+      "width": 200,
+      "height": 34,
+      "border": "1px solid rgba(31, 43, 56, 0.22)",
+      "borderRadius": "10px",
+      "background": "rgba(0, 0, 0, 0) linear-gradient(rgb(255, 255, 255) 0%, rgb(245, 247, 249) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 1px 2px 0px, rgba(31, 43, 56, 0.07) 0px 4px 10px 0px",
+      "transform": "none",
+      "transition": "transform 0.14s, box-shadow 0.14s, background-color 0.14s"
+    },
+    "settingsCurrency": {
+      "tag": "BUTTON",
+      "role": "combobox",
+      "classes": "relative inline-flex min-h-10 items-center justify-between gap-2 rounded-[var(--tt-control-radius)] border border-white/80 bg-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow,background-color] hover:border-oai-gray-300 focus:outline-none focus-visible:border-oai-brand-500 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oai-brand-500/20 dark:border-white/10 dark:bg-oai-gray-900 dark:text-white dark:hover:border-oai-gray-600 tt-settings-currency-select tt-raised-control tt-pressable px-3 py-1.5 text-xs font-medium",
+      "width": 200,
+      "height": 34,
+      "border": "1px solid rgba(31, 43, 56, 0.22)",
+      "borderRadius": "10px",
+      "background": "rgba(0, 0, 0, 0) linear-gradient(rgb(255, 255, 255) 0%, rgb(245, 247, 249) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 1px 2px 0px, rgba(31, 43, 56, 0.07) 0px 4px 10px 0px",
+      "transform": "none",
+      "transition": "transform 0.14s, box-shadow 0.14s, background-color 0.14s"
+    },
+    "chooseFolder": {
+      "tag": "BUTTON",
+      "role": null,
+      "classes": "tt-widget-project-add tt-raised-control tt-pressable",
+      "width": 133,
+      "height": 36,
+      "border": "1px solid rgba(31, 43, 56, 0.22)",
+      "borderRadius": "8px",
+      "background": "rgba(0, 0, 0, 0) linear-gradient(rgb(255, 255, 255) 0%, rgb(245, 247, 249) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 1px 2px 0px, rgba(31, 43, 56, 0.07) 0px 4px 10px 0px",
+      "transform": "none",
+      "transition": "transform 0.07s ease-out, box-shadow 0.07s ease-out, filter 0.07s ease-out, background-color 0.07s ease-out, border-color 0.07s ease-out"
+    },
+    "status": {
+      "tag": "BUTTON",
+      "role": "combobox",
+      "classes": "relative inline-flex min-h-10 items-center justify-between gap-2 rounded-[var(--tt-control-radius)] border border-white/80 bg-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow,background-color] hover:border-oai-gray-300 focus:outline-none focus-visible:border-oai-brand-500 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oai-brand-500/20 dark:border-white/10 dark:bg-oai-gray-900 dark:text-white dark:hover:border-oai-gray-600 tt-widget-toolbar-select tt-raised-control tt-pressable",
+      "width": 122,
+      "height": 40,
+      "border": "1px solid rgba(31, 43, 56, 0.22)",
+      "borderRadius": "8px",
+      "background": "rgba(0, 0, 0, 0) linear-gradient(rgb(255, 255, 255) 0%, rgb(245, 247, 249) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 1px 2px 0px, rgba(31, 43, 56, 0.07) 0px 4px 10px 0px",
+      "transform": "none",
+      "transition": "transform 0.07s ease-out, box-shadow 0.07s ease-out, filter 0.07s ease-out, background-color 0.07s ease-out, border-color 0.07s ease-out"
+    },
+    "refresh": {
+      "tag": "BUTTON",
+      "role": null,
+      "classes": "tt-raised-control tt-pressable",
+      "width": 99,
+      "height": 34,
+      "border": "1px solid rgba(31, 43, 56, 0.22)",
+      "borderRadius": "8px",
+      "background": "rgba(0, 0, 0, 0) linear-gradient(rgb(255, 255, 255) 0%, rgb(245, 247, 249) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 1px 2px 0px, rgba(31, 43, 56, 0.07) 0px 4px 10px 0px",
+      "transform": "none",
+      "transition": "transform 0.07s ease-out, box-shadow 0.07s ease-out, filter 0.07s ease-out, background-color 0.07s ease-out, border-color 0.07s ease-out"
+    }
+  },
+  "pressed": {
+    "tag": "BUTTON",
+    "role": null,
+    "classes": "tt-widget-project-add tt-raised-control tt-pressable tt-widget-click-bounce",
+    "width": 125.02001953125,
+    "height": 33.83998107910156,
+    "border": "1px solid rgba(31, 43, 56, 0.32)",
+    "borderRadius": "8px",
+    "background": "color(srgb 0.14902 0.192157 0.247059 / 0.08) linear-gradient(rgb(255, 255, 255) 0%, rgb(237, 241, 245) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+    "boxShadow": "rgba(31, 43, 56, 0.24) 0px 3px 7px 0px inset, rgba(31, 43, 56, 0.08) 0px 1px 2px 0px",
+    "transform": "matrix(0.94, 0, 0, 0.94, 0, 2)",
+    "transition": "transform 0.07s ease-out, box-shadow 0.07s ease-out, filter 0.07s ease-out, background-color 0.07s ease-out, border-color 0.07s ease-out"
+  },
+  "rebound": {
+    "tag": "BUTTON",
+    "role": null,
+    "classes": "tt-widget-project-add tt-raised-control tt-pressable",
+    "width": 133,
+    "height": 36,
+    "border": "1px solid rgba(31, 43, 56, 0.32)",
+    "borderRadius": "8px",
+    "background": "rgba(0, 0, 0, 0) linear-gradient(rgb(255, 255, 255) 0%, rgb(237, 241, 245) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+    "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 1px 2px 0px, rgba(31, 43, 56, 0.07) 0px 4px 10px 0px",
+    "transform": "matrix(1, 0, 0, 1, 0, -1)",
+    "transition": "transform 0.07s ease-out, box-shadow 0.07s ease-out, filter 0.07s ease-out, background-color 0.07s ease-out, border-color 0.07s ease-out"
+  },
+  "settled": {
+    "tag": "BUTTON",
+    "role": null,
+    "classes": "tt-widget-project-add tt-raised-control tt-pressable",
+    "width": 133,
+    "height": 36,
+    "border": "1px solid rgba(31, 43, 56, 0.32)",
+    "borderRadius": "8px",
+    "background": "rgba(0, 0, 0, 0) linear-gradient(rgb(255, 255, 255) 0%, rgb(237, 241, 245) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+    "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 1px 2px 0px, rgba(31, 43, 56, 0.07) 0px 4px 10px 0px",
+    "transform": "matrix(1, 0, 0, 1, 0, -1)",
+    "transition": "transform 0.07s ease-out, box-shadow 0.07s ease-out, filter 0.07s ease-out, background-color 0.07s ease-out, border-color 0.07s ease-out"
+  },
+  "dropdown": {
+    "chosenStatusText": "活跃项目",
+    "valueAfterSelection": "活跃项目"
+  },
+  "refreshPressed": {
+    "tag": "BUTTON",
+    "role": null,
+    "classes": "tt-raised-control tt-pressable tt-widget-click-bounce",
+    "width": 93.06005859375,
+    "height": 31.9599609375,
+    "border": "1px solid rgba(31, 43, 56, 0.32)",
+    "borderRadius": "8px",
+    "background": "color(srgb 0.14902 0.192157 0.247059 / 0.08) linear-gradient(rgb(255, 255, 255) 0%, rgb(237, 241, 245) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+    "boxShadow": "rgba(31, 43, 56, 0.24) 0px 3px 7px 0px inset, rgba(31, 43, 56, 0.08) 0px 1px 2px 0px",
+    "transform": "matrix(0.94, 0, 0, 0.94, 0, 2)",
+    "transition": "transform 0.07s ease-out, box-shadow 0.07s ease-out, filter 0.07s ease-out, background-color 0.07s ease-out, border-color 0.07s ease-out"
+  },
+  "refreshSettled": {
+    "tag": "BUTTON",
+    "role": null,
+    "classes": "tt-raised-control tt-pressable",
+    "width": 99,
+    "height": 34,
+    "border": "1px solid rgba(31, 43, 56, 0.32)",
+    "borderRadius": "8px",
+    "background": "rgba(0, 0, 0, 0) linear-gradient(rgb(255, 255, 255) 0%, rgb(237, 241, 245) 100%) repeat scroll 0% 0% / auto padding-box border-box",
+    "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 1px 2px 0px, rgba(31, 43, 56, 0.07) 0px 4px 10px 0px",
+    "transform": "matrix(1, 0, 0, 1, 0, -0.362844)",
+    "transition": "transform 0.07s ease-out, box-shadow 0.07s ease-out, filter 0.07s ease-out, background-color 0.07s ease-out, border-color 0.07s ease-out"
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

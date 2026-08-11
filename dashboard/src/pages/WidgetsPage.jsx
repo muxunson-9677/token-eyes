@@ -44,6 +44,32 @@ import {
   widgetProjectFromPath,
 } from "../lib/desktop-widget-projects.ts";
 
+const WIDGET_PRESS_TARGET = [
+  "button:not(:disabled)",
+  "select:not(:disabled)",
+  '[role="button"]:not([aria-disabled="true"])',
+].join(",");
+
+function startWidgetPressRebound(event) {
+  if (event.button !== undefined && event.button !== 0) return;
+  const interactiveTarget = event.target instanceof Element
+    ? event.target.closest(WIDGET_PRESS_TARGET)
+    : null;
+  const target = interactiveTarget?.matches("select")
+    ? interactiveTarget.closest(".tt-widget-toolbar-select, .tt-widget-window-select") || interactiveTarget
+    : interactiveTarget;
+  if (!(target instanceof HTMLElement)) return;
+  target.classList.remove("tt-widget-click-bounce");
+  void target.offsetWidth;
+  target.classList.add("tt-widget-click-bounce");
+}
+
+function finishWidgetPressRebound(event) {
+  if (event.target instanceof HTMLElement && event.target.classList.contains("tt-widget-click-bounce")) {
+    event.target.classList.remove("tt-widget-click-bounce");
+  }
+}
+
 /* ---------- SVG widget illustrations ----------
  * Hand-drawn previews of the real macOS widgets. Pure SVG so they stay
  * crisp at any scale and don't require shipping PNGs.
@@ -1267,18 +1293,47 @@ function WindowsProjectManager({ onOpenSettings }) {
           </div>
         </header>
         <div className="tt-widget-project-toolbar">
-          <button type="button" className="tt-widget-project-add" aria-label={copy("widgets.reference.add_project_folder")} onClick={() => void selectDirectoryViaTauri()}><FolderPlus aria-hidden />{copy("widgets.reference.choose_project_folder")}</button>
-          <div className="tt-widget-batch-actions"><button type="button" aria-expanded={batchOpen} onClick={() => setBatchOpen((open) => !open)}><ListChecks aria-hidden />{copy("widgets.reference.batch_actions")}<ChevronDown aria-hidden /></button>{batchOpen ? <div role="menu"><button type="button" role="menuitem" onClick={() => { setBatchOpen(false); onOpenSettings(); }}>{copy("widgets.reference.batch_manage")}</button><button type="button" role="menuitem" onClick={() => { setBatchOpen(false); prefs && void persist({ ...prefs, selectedProjectIds: [], selectedProjects: [] }); }}>{copy("widgets.reference.clear_selection")}</button></div> : null}</div>
-          <button type="button" aria-label={copy("widgets.reference.import_recent_projects")} onClick={() => {
+          <button type="button" className="tt-widget-project-add tt-raised-control tt-pressable" aria-label={copy("widgets.reference.add_project_folder")} onClick={() => void selectDirectoryViaTauri()}><FolderPlus aria-hidden />{copy("widgets.reference.choose_project_folder")}</button>
+          <div className="tt-widget-batch-actions"><button type="button" className="tt-raised-control tt-pressable" aria-expanded={batchOpen} onClick={() => setBatchOpen((open) => !open)}><ListChecks aria-hidden />{copy("widgets.reference.batch_actions")}<ChevronDown aria-hidden /></button>{batchOpen ? <div role="menu"><button type="button" role="menuitem" onClick={() => { setBatchOpen(false); onOpenSettings(); }}>{copy("widgets.reference.batch_manage")}</button><button type="button" role="menuitem" onClick={() => { setBatchOpen(false); prefs && void persist({ ...prefs, selectedProjectIds: [], selectedProjects: [] }); }}>{copy("widgets.reference.clear_selection")}</button></div> : null}</div>
+          <button type="button" className="tt-raised-control tt-pressable" aria-label={copy("widgets.reference.import_recent_projects")} onClick={() => {
             if (!prefs) return;
             setDismissedProjectIds([]);
             void persist({ ...prefs, selectedProjectIds: projects.flatMap((project) => project.sessionIds), selectedProjects: sessions });
           }}><History aria-hidden />{copy("widgets.reference.restore_recent_projects")}</button>
           <label><Search aria-hidden /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={copy("widgets.reference.search_projects")} /></label>
           <span className="tt-widget-toolbar-spacer" />
-          <label className="tt-widget-toolbar-select"><Filter aria-hidden /><select aria-label={copy("widgets.reference.status_all")} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">{copy("widgets.reference.status_all")}</option><option value="active">{copy("widgets.reference.active_projects")}</option><option value="recovering">{copy("widgets.reference.active_range")}</option><option value="inactive">{copy("widgets.reference.never_active")}</option></select></label>
-          <label className="tt-widget-toolbar-select"><select aria-label={copy("widgets.reference.sort_recent_active")} value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}><option value="recent">{copy("widgets.reference.sort_recent_active")}</option></select><ChevronDown aria-hidden /></label>
-          <label className="tt-widget-toolbar-select"><CalendarDays aria-hidden /><select aria-label={copy("widgets.reference.recent_seven_days")} value={recentRange} onChange={(event) => setRecentRange(event.target.value)}><option value="7d">{copy("widgets.reference.recent_seven_days")}</option><option value="3d">{copy("widgets.reference.three_days")}</option><option value="1d">{copy("widgets.reference.one_day")}</option></select></label>
+          <Select
+            ariaLabel={copy("widgets.reference.status_all")}
+            value={statusFilter}
+            onValueChange={setStatusFilter}
+            options={[
+              { value: "all", label: copy("widgets.reference.status_all") },
+              { value: "active", label: copy("widgets.reference.active_projects") },
+              { value: "recovering", label: copy("widgets.reference.active_range") },
+              { value: "inactive", label: copy("widgets.reference.never_active") },
+            ]}
+            leadingIcon={<Filter aria-hidden />}
+            className="tt-widget-toolbar-select tt-raised-control tt-pressable"
+          />
+          <Select
+            ariaLabel={copy("widgets.reference.sort_recent_active")}
+            value={sortOrder}
+            onValueChange={setSortOrder}
+            options={[{ value: "recent", label: copy("widgets.reference.sort_recent_active") }]}
+            className="tt-widget-toolbar-select tt-raised-control tt-pressable"
+          />
+          <Select
+            ariaLabel={copy("widgets.reference.recent_seven_days")}
+            value={recentRange}
+            onValueChange={setRecentRange}
+            options={[
+              { value: "7d", label: copy("widgets.reference.recent_seven_days") },
+              { value: "3d", label: copy("widgets.reference.three_days") },
+              { value: "1d", label: copy("widgets.reference.one_day") },
+            ]}
+            leadingIcon={<CalendarDays aria-hidden />}
+            className="tt-widget-toolbar-select tt-raised-control tt-pressable"
+          />
         </div>
         <div className="tt-widget-project-table">
           <div className="tt-widget-project-head"><span /><span>{copy("widgets.reference.project_name")}</span><span>{copy("widgets.reference.project_tag")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.last_active")}</span><span>{copy("widgets.reference.created_at")}</span><span>{copy("widgets.reference.action")}</span></div>
@@ -1327,7 +1382,7 @@ function WindowsProjectManager({ onOpenSettings }) {
 
       <div className="tt-widget-bottom-grid">
         <section className="tt-widget-limits" data-testid="widget-limits">
-          <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitIds.length, total: limits.length })}</small></div></div><button type="button" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button></header>
+          <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitIds.length, total: limits.length })}</small></div></div><button type="button" className="tt-raised-control tt-pressable" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button></header>
           <div className="tt-widget-limit-table">
             <div className="tt-widget-limit-head"><span>{copy("widgets.reference.plan_name")}</span><span>{copy("widgets.reference.provider")}</span><span>{copy("widgets.reference.usage_rate")}</span><span>{copy("widgets.reference.reset_cycle_quota")}</span><span>{copy("widgets.reference.next_reset")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.action")}</span></div>
             {displayedLimits.map((limit, index) => {
@@ -1471,7 +1526,11 @@ function SectionTitle({ titleKey }) {
 export function WidgetsPage() {
   const platform = useClientPlatform();
   return (
-    <div className="flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
+    <div
+      className="tt-reference-route-widgets flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased"
+      onPointerDownCapture={startWidgetPressRebound}
+      onAnimationEndCapture={finishWidgetPressRebound}
+    >
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
         <div className="mx-auto w-full max-w-none px-4 sm:px-6 lg:px-8">
           {/* Page header — H1 + adaptive CTA. No page subtitle (the two H2

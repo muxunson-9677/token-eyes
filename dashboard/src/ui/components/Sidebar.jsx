@@ -25,7 +25,6 @@ import { useInsforgeAuth } from "../../contexts/InsforgeAuthContext.jsx";
 import { CodexResetBanner } from "../../components/CodexResetBanner";
 import { useCodexResetEvents } from "../../hooks/use-codex-reset-events";
 import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native-bridge.js";
-import { NativeWindowBar } from "./NativeWindowBar.jsx";
 
 const STORAGE_KEY = "tt.sidebarCollapsed";
 // v2.0 IA: remembers which parent groups the user has expanded so the
@@ -790,9 +789,7 @@ export function AppLayout({ children }) {
   }, [nativeWindows]);
 
   let nativeHeader = null;
-  if (nativeWindows) {
-    nativeHeader = <NativeWindowBar />;
-  } else if (nativeEmbed) {
+  if (nativeEmbed && !nativeWindows) {
     nativeHeader = (
       <div
         className="h-7 shrink-0"

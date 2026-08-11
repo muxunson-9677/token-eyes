@@ -27,7 +27,13 @@
   height: min(var(--widget-preview-height), calc(100vh - 48px));
 }
 
+.desktop-widget-root.desktop-widget-root--browser-preview.has-celebration {
+  width: min(calc(var(--widget-preview-width) + 84px), calc(100vw - 48px));
+  height: min(calc(var(--widget-preview-height) + 84px), calc(100vh - 48px));
+}
+
 .desktop-widget-root {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 22px;
   align-items: start;
@@ -1127,8 +1133,6 @@
   box-shadow:
     0 0 0 1px rgba(185, 234, 255, 0.15),
     0 2px 0 rgba(212, 243, 255, 0.38),
-    0 11px 20px rgba(3, 10, 25, 0.56),
-    0 23px 33px rgba(9, 30, 61, 0.3),
     inset 0 1px 0 rgba(240, 252, 255, 0.46),
     inset 0 -9px 18px rgba(2, 9, 22, 0.42);
 }
@@ -1270,12 +1274,20 @@
 
 .widget-reset-celebration {
   position: absolute;
-  z-index: 1;
+  z-index: 4;
   inset: 0;
-  overflow: hidden;
-  border-radius: inherit;
+  overflow: visible;
   pointer-events: none;
   isolation: isolate;
+}
+
+.desktop-widget-root.has-celebration {
+  padding: 42px 42px 42px 47px;
+}
+
+.desktop-widget-root.has-celebration .desktop-widget-card,
+.desktop-widget-root.has-celebration .widget-mode-rail {
+  z-index: 2;
 }
 
 .widget-reset-celebration__veil,
@@ -1287,9 +1299,9 @@
 }
 
 .widget-reset-celebration__veil {
-  inset: 0;
+  inset: 24px 20px;
   background: radial-gradient(ellipse at 50% 118%, rgba(80, 255, 191, 0.24), transparent 58%);
-  animation: widget-reset-effect-life 6s ease-out both;
+  animation: widget-reset-effect-life 2.8s ease-in-out infinite;
 }
 
 .widget-reset-celebration__meteor {
@@ -1307,7 +1319,7 @@
 .widget-reset-celebration__meteor--three { top: 68%; left: -6%; width: 42%; animation-delay: 1.55s; }
 
 .widget-reset-celebration[data-effect-id="meteors"] .widget-reset-celebration__meteor {
-  animation: widget-reset-meteor 2s ease-out both;
+  animation: widget-reset-meteor 2.6s ease-out infinite;
 }
 
 .widget-reset-celebration[data-effect-id="meteors"] .widget-reset-celebration__meteor--two {
@@ -1319,8 +1331,8 @@
 }
 
 .widget-reset-celebration__firework {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   border: 1px solid rgba(255, 244, 179, 0.94);
   border-radius: 50%;
   box-shadow:
@@ -1334,30 +1346,52 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 27px;
-  height: 1px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
   transform: translate(-50%, -50%);
-  background: linear-gradient(90deg, transparent, #fff6b7, transparent);
-  box-shadow: 0 0 7px rgba(255, 238, 138, 0.95);
+  background: #fff6b7;
+  box-shadow:
+    0 -24px 0 -1px #fff6b7,
+    17px -17px 0 -1px #77e4ff,
+    24px 0 0 -1px #ff9ef5,
+    17px 17px 0 -1px #fff6b7,
+    0 24px 0 -1px #77e4ff,
+    -17px 17px 0 -1px #ff9ef5,
+    -24px 0 0 -1px #fff6b7,
+    -17px -17px 0 -1px #77e4ff,
+    0 0 9px 2px rgba(255, 238, 138, 0.95);
   content: "";
 }
 
-.widget-reset-celebration__firework::after { transform: translate(-50%, -50%) rotate(90deg); }
+.widget-reset-celebration__firework::after {
+  transform: translate(-50%, -50%) rotate(22.5deg) scale(0.72);
+  filter: hue-rotate(74deg);
+}
 .widget-reset-celebration__firework--one { top: 30%; left: 35%; }
-.widget-reset-celebration__firework--two { top: 64%; left: 70%; animation-delay: 0.9s; }
+.widget-reset-celebration__firework--two { top: 64%; left: 70%; animation-delay: -0.9s; }
+.widget-reset-celebration__firework--three { top: 15%; left: 76%; animation-delay: -1.45s; }
+.widget-reset-celebration__firework--four { top: 70%; left: 19%; animation-delay: -1.85s; }
 
 .widget-reset-celebration[data-effect-id="fireworks"] .widget-reset-celebration__firework {
-  animation: widget-reset-firework 2.15s ease-out both;
+  animation: widget-reset-firework 2.4s ease-out infinite;
 }
 
 .widget-reset-celebration[data-effect-id="fireworks"] .widget-reset-celebration__firework--two {
-  animation-delay: 0.9s;
+  animation-delay: -0.9s;
+}
+
+.widget-reset-celebration[data-effect-id="fireworks"] .widget-reset-celebration__firework--three {
+  animation-delay: -1.45s;
+}
+
+.widget-reset-celebration[data-effect-id="fireworks"] .widget-reset-celebration__firework--four {
+  animation-delay: -1.85s;
 }
 
 @keyframes widget-reset-effect-life {
-  0%, 78% { opacity: 0; }
-  11%, 68% { opacity: 1; }
-  100% { opacity: 0; }
+  0%, 100% { opacity: 0.34; }
+  50% { opacity: 0.82; }
 }
 
 @keyframes widget-reset-meteor {
@@ -1373,6 +1407,28 @@
   66% { opacity: 0.56; transform: scale(1.35); }
   100% { opacity: 0; transform: scale(1.82); }
 }
+
+.widget-reset-celebration__dismiss {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(214, 240, 255, 0.62);
+  border-radius: 999px;
+  background: rgba(19, 42, 74, 0.86);
+  box-shadow: 0 0 18px rgba(96, 190, 255, 0.66), inset 0 1px rgba(255, 255, 255, 0.34);
+  color: #f8fdff;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.widget-reset-celebration__dismiss:hover { filter: brightness(1.18); }
+.widget-reset-celebration__dismiss:active { transform: scale(0.88); }
+.widget-reset-celebration__dismiss svg { width: 16px; height: 16px; }
 
 .desktop-widget-card--reference-dock .widget-corner-controls {
   gap: 5px;

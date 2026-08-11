@@ -79,6 +79,18 @@ const PREVIEW_RESET_HISTORY: CodexResetHistoryEvent[] = PREVIEW_RESET_DATES.map(
   }),
 );
 
+function startResetControlPress(event: React.PointerEvent<HTMLElement>) {
+  if (event.button !== undefined && event.button !== 0) return;
+  const target = event.currentTarget;
+  target.classList.remove("tt-reset-control-click-bounce");
+  void target.offsetWidth;
+  target.classList.add("tt-reset-control-click-bounce");
+}
+
+function finishResetControlPress(event: React.AnimationEvent<HTMLElement>) {
+  event.currentTarget.classList.remove("tt-reset-control-click-bounce");
+}
+
 function shouldUseLocalPreviewHistory(available: boolean, history: CodexResetHistoryEvent[]) {
   if (!import.meta.env.DEV || available || history.length > 0 || typeof window === "undefined") {
     return false;
@@ -236,7 +248,7 @@ function ResetStatisticsSummary({
       Icon: ArrowUpToLine,
       tone: "rose" as const,
     },
-  ];
+];
 
   return (
     <dl
@@ -444,10 +456,12 @@ export function ResetHistoryPage() {
                 <span>{copy("reset_history.effect.label")}</span>
                 <select
                   value={celebrationEffect}
+                  onPointerDown={startResetControlPress}
+                  onAnimationEnd={finishResetControlPress}
                   onChange={(event) => {
                     setCelebrationEffect(saveResetCelebrationEffect(event.target.value));
                   }}
-                  className="tt-focus-ring h-10 min-w-40 rounded-xl border border-oai-gray-200 bg-white/80 px-3 pr-8 text-sm font-medium text-oai-gray-800 shadow-sm backdrop-blur-xl dark:border-oai-gray-700 dark:bg-oai-gray-900/75 dark:text-oai-gray-100"
+                  className="tt-reset-effect-control tt-focus-ring h-10 min-w-40 rounded-xl border border-oai-gray-200 bg-white/80 px-3 pr-8 text-sm font-medium text-oai-gray-800 shadow-sm backdrop-blur-xl dark:border-oai-gray-700 dark:bg-oai-gray-900/75 dark:text-oai-gray-100"
                 >
                   <option value="meteors">{copy("reset_history.effect.meteors")}</option>
                   <option value="fireworks">{copy("reset_history.effect.fireworks")}</option>
@@ -457,8 +471,10 @@ export function ResetHistoryPage() {
                 type="button"
                 aria-label={copy("reset_history.preview_celebration_aria")}
                 title={copy("reset_history.preview_celebration_aria")}
+                onPointerDown={startResetControlPress}
+                onAnimationEnd={finishResetControlPress}
                 onClick={() => triggerResetCelebrationPreview(celebrationEffect)}
-                className="tt-focus-ring inline-flex h-10 w-10 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 shadow-sm transition-colors hover:bg-violet-100 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200 dark:hover:bg-violet-500/20"
+                className="tt-reset-effect-control tt-focus-ring inline-flex h-10 w-10 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 shadow-sm transition-colors hover:bg-violet-100 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200 dark:hover:bg-violet-500/20"
               >
                 <Sparkles data-testid="reset-history-preview-icon" className="h-4 w-4" aria-hidden />
               </button>

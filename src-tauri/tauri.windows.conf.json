@@ -6,7 +6,7 @@
         "label": "main",
         "title": "Token Eyes",
         "titleBarStyle": "Visible",
-        "decorations": false,
+        "decorations": true,
         "visible": true,
         "minWidth": 900,
         "minHeight": 600

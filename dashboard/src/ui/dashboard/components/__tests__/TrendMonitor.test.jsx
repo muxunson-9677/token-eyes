@@ -1,11 +1,13 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 // The zoom modal pulls in use-trend-data (a .ts hook imported with a .js
 // specifier) which vitest's resolver can't follow the way the Vite build does.
 // The small-card tests never open the modal, so stub it out.
-vi.mock("../TrendMonitorZoomModal", () => ({ TrendMonitorZoomModal: () => null }));
+vi.mock("../TrendMonitorZoomModal", () => ({
+  TrendMonitorZoomModal: () => <div data-testid="trend-zoom-modal" />,
+}));
 
 import {
   TrendMonitor,
@@ -42,6 +44,15 @@ describe("TrendMonitor", () => {
     render(<TrendMonitor rows={[]} />);
 
     expect(screen.getByTestId("trend-granularity")).toHaveTextContent("天");
+  });
+
+  it("opens the real granularity picker when the granularity control is clicked", () => {
+    render(<TrendMonitor rows={[]} zoomConfig={{ baseUrl: "http://localhost" }} />);
+
+    const control = screen.getByTestId("trend-granularity");
+    expect(control.tagName).toBe("BUTTON");
+    fireEvent.click(control);
+    expect(screen.getByTestId("trend-zoom-modal")).toBeInTheDocument();
   });
 
   it("renders the reference chart y-axis from the real scale", () => {
@@ -134,12 +145,13 @@ describe("TrendMonitor", () => {
     const rows = [{ billable_total_tokens: 100 }];
 
     const without = render(<TrendMonitor rows={rows} showTimeZoneLabel={false} />);
-    expect(without.queryByRole("button")).toBeNull();
+    expect(without.queryByRole("button", { name: /展开全屏|open/i })).toBeNull();
 
     const withCfg = render(
       <TrendMonitor rows={rows} zoomConfig={{ baseUrl: "http://localhost" }} showTimeZoneLabel={false} />,
     );
-    expect(withCfg.getByRole("button")).toHaveClass("tt-analytics-focusable");
+    expect(withCfg.container.querySelector(".lucide-maximize-2")?.closest("button"))
+      .toHaveClass("tt-analytics-focusable");
   });
 });
 

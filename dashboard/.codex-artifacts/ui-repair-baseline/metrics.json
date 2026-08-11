@@ -1,0 +1,1287 @@
+[
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "light",
+    "route": "/dashboard",
+    "loadMs": 1155,
+    "fileName": "normal-light-overview.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": null,
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "light",
+    "route": "/reset-history",
+    "loadMs": 2839,
+    "fileName": "normal-light-reset.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        1220,
+        1220,
+        920,
+        912
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": [
+          {
+            "left": 484,
+            "right": 1137,
+            "top": 247,
+            "bottom": 311,
+            "width": 653,
+            "height": 64,
+            "scrollWidth": 653,
+            "scrollHeight": 64,
+            "clientWidth": 653,
+            "clientHeight": 64
+          }
+        ]
+      },
+      "overflow": [
+        {
+          "testId": "reset-history-heading",
+          "className": "mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row",
+          "client": [
+            845,
+            62
+          ],
+          "scroll": [
+            845,
+            67
+          ]
+        },
+        {
+          "testId": "reset-history-source-index",
+          "className": "mt-5 border-t border-oai-gray-200 pt-4 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400",
+          "client": [
+            1,
+            16
+          ],
+          "scroll": [
+            80,
+            136
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "light",
+    "route": "/widgets",
+    "loadMs": 1122,
+    "fileName": "normal-light-widgets.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        1220,
+        1220,
+        912,
+        912
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": [
+        {
+          "testId": "widget-summary",
+          "className": "tt-widget-summary",
+          "client": [
+            891,
+            102
+          ],
+          "scroll": [
+            891,
+            118
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "light",
+    "route": "/spend/usage",
+    "loadMs": 2093,
+    "fileName": "normal-light-usage.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        1220,
+        1220,
+        912,
+        912
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "light",
+    "route": "/settings/data",
+    "loadMs": 2693,
+    "fileName": "normal-light-diagnostics.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        1220,
+        1220,
+        912,
+        912
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [
+          {
+            "left": 277,
+            "right": 1196,
+            "top": 474,
+            "bottom": 540,
+            "width": 919,
+            "height": 66,
+            "scrollWidth": 917,
+            "scrollHeight": 64,
+            "clientWidth": 917,
+            "clientHeight": 64
+          }
+        ],
+        "[data-testid='data-privacy-boundary']": [
+          {
+            "left": 277,
+            "right": 1196,
+            "top": 560,
+            "bottom": 815,
+            "width": 919,
+            "height": 255,
+            "scrollWidth": 917,
+            "scrollHeight": 253,
+            "clientWidth": 917,
+            "clientHeight": 253
+          }
+        ],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "dark",
+    "route": "/dashboard",
+    "loadMs": 7886,
+    "fileName": "normal-dark-overview.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        1220,
+        1220,
+        912,
+        912
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": [
+        {
+          "testId": "dashboard-detail-grid",
+          "className": "grid grid-cols-1 items-stretch gap-4 lg:h-[32rem] lg:grid-cols-12",
+          "client": [
+            914,
+            512
+          ],
+          "scroll": [
+            914,
+            524
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "dark",
+    "route": "/reset-history",
+    "loadMs": 2869,
+    "fileName": "normal-dark-reset.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        1220,
+        1220,
+        920,
+        912
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": [
+          {
+            "left": 484,
+            "right": 1137,
+            "top": 247,
+            "bottom": 311,
+            "width": 653,
+            "height": 64,
+            "scrollWidth": 653,
+            "scrollHeight": 64,
+            "clientWidth": 653,
+            "clientHeight": 64
+          }
+        ]
+      },
+      "overflow": [
+        {
+          "testId": "reset-history-heading",
+          "className": "mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row",
+          "client": [
+            845,
+            62
+          ],
+          "scroll": [
+            845,
+            67
+          ]
+        },
+        {
+          "testId": "reset-history-source-index",
+          "className": "mt-5 border-t border-oai-gray-200 pt-4 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400",
+          "client": [
+            1,
+            16
+          ],
+          "scroll": [
+            80,
+            136
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "dark",
+    "route": "/widgets",
+    "loadMs": 863,
+    "fileName": "normal-dark-widgets.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": null,
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "dark",
+    "route": "/spend/usage",
+    "loadMs": 2288,
+    "fileName": "normal-dark-usage.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        1220,
+        1220,
+        912,
+        912
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [
+          {
+            "left": 281,
+            "right": 1161,
+            "top": 576,
+            "bottom": 1048,
+            "width": 880,
+            "height": 472,
+            "scrollWidth": 880,
+            "scrollHeight": 472,
+            "clientWidth": 880,
+            "clientHeight": 472
+          }
+        ],
+        "[data-testid='usage-trend-plot']": [
+          {
+            "left": 298,
+            "right": 824,
+            "top": 711,
+            "bottom": 1031,
+            "width": 526,
+            "height": 320,
+            "scrollWidth": 526,
+            "scrollHeight": 320,
+            "clientWidth": 526,
+            "clientHeight": 320
+          }
+        ],
+        "[data-testid='token-service-list']": [
+          {
+            "left": 859,
+            "right": 1161,
+            "top": 576,
+            "bottom": 1048,
+            "width": 302,
+            "height": 472,
+            "scrollWidth": 300,
+            "scrollHeight": 470,
+            "clientWidth": 300,
+            "clientHeight": 470
+          }
+        ],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "normal",
+    "viewport": {
+      "width": 1220,
+      "height": 912
+    },
+    "theme": "dark",
+    "route": "/settings/data",
+    "loadMs": 1221,
+    "fileName": "normal-dark-diagnostics.png",
+    "metrics": {
+      "document": [
+        1220,
+        1220
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        1220,
+        1220,
+        912,
+        912
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [
+          {
+            "left": 277,
+            "right": 1196,
+            "top": 734,
+            "bottom": 1012,
+            "width": 919,
+            "height": 278,
+            "scrollWidth": 917,
+            "scrollHeight": 276,
+            "clientWidth": 917,
+            "clientHeight": 276
+          }
+        ],
+        "[data-testid='data-privacy-boundary']": [
+          {
+            "left": 277,
+            "right": 1196,
+            "top": 1032,
+            "bottom": 1287,
+            "width": 919,
+            "height": 255,
+            "scrollWidth": 917,
+            "scrollHeight": 253,
+            "clientWidth": 917,
+            "clientHeight": 253
+          }
+        ],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "light",
+    "route": "/dashboard",
+    "loadMs": 3363,
+    "fileName": "minimum-light-overview.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        600,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": [
+        {
+          "testId": "dashboard-overview-grid",
+          "className": "tt-reference-overview-grid grid grid-cols-1 gap-4",
+          "client": [
+            594,
+            1106
+          ],
+          "scroll": [
+            594,
+            1114
+          ]
+        },
+        {
+          "testId": "dashboard-secondary-context",
+          "className": "order-2 flex min-w-0 flex-col gap-4 lg:order-1",
+          "client": [
+            594,
+            468
+          ],
+          "scroll": [
+            594,
+            480
+          ]
+        },
+        {
+          "testId": "dashboard-primary-workspace",
+          "className": "order-1 flex min-w-0 flex-col gap-4 lg:order-2",
+          "client": [
+            594,
+            620
+          ],
+          "scroll": [
+            594,
+            628
+          ]
+        },
+        {
+          "testId": "dashboard-detail-grid",
+          "className": "grid grid-cols-1 items-stretch gap-4 lg:h-[32rem] lg:grid-cols-12",
+          "client": [
+            594,
+            1040
+          ],
+          "scroll": [
+            594,
+            1052
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "light",
+    "route": "/reset-history",
+    "loadMs": 3005,
+    "fileName": "minimum-light-reset.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        1152,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": [
+          {
+            "left": 484,
+            "right": 817,
+            "top": 479,
+            "bottom": 543,
+            "width": 333,
+            "height": 64,
+            "scrollWidth": 333,
+            "scrollHeight": 64,
+            "clientWidth": 333,
+            "clientHeight": 64
+          }
+        ]
+      },
+      "overflow": [
+        {
+          "testId": "reset-history-heading",
+          "className": "mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row",
+          "client": [
+            525,
+            62
+          ],
+          "scroll": [
+            525,
+            67
+          ]
+        },
+        {
+          "testId": null,
+          "className": "",
+          "client": [
+            525,
+            517
+          ],
+          "scroll": [
+            525,
+            825
+          ]
+        },
+        {
+          "testId": "reset-history-list",
+          "className": "tt-reset-history-list",
+          "client": [
+            525,
+            485
+          ],
+          "scroll": [
+            525,
+            793
+          ]
+        },
+        {
+          "testId": "reset-history-timeline",
+          "className": "relative divide-y divide-oai-gray-200 before:absolute before:bottom-4 before:left-[0.875rem] before:top-4 before:w-px before:bg-oai-gray-200 dark:divide-oai-gra",
+          "client": [
+            495,
+            404
+          ],
+          "scroll": [
+            495,
+            758
+          ]
+        },
+        {
+          "testId": "reset-history-source-index",
+          "className": "mt-5 border-t border-oai-gray-200 pt-4 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400",
+          "client": [
+            1,
+            16
+          ],
+          "scroll": [
+            80,
+            136
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "light",
+    "route": "/widgets",
+    "loadMs": 1524,
+    "fileName": "minimum-light-widgets.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": null,
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "light",
+    "route": "/spend/usage",
+    "loadMs": 2022,
+    "fileName": "minimum-light-usage.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        600,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [
+          {
+            "left": 281,
+            "right": 841,
+            "top": 549,
+            "bottom": 1303,
+            "width": 560,
+            "height": 754,
+            "scrollWidth": 560,
+            "scrollHeight": 754,
+            "clientWidth": 560,
+            "clientHeight": 754
+          }
+        ],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [
+          {
+            "left": 281,
+            "right": 841,
+            "top": 953,
+            "bottom": 1303,
+            "width": 560,
+            "height": 350,
+            "scrollWidth": 558,
+            "scrollHeight": 348,
+            "clientWidth": 558,
+            "clientHeight": 348
+          }
+        ],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "light",
+    "route": "/settings/data",
+    "loadMs": 2126,
+    "fileName": "minimum-light-diagnostics.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        600,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [
+          {
+            "left": 265,
+            "right": 888,
+            "top": 599,
+            "bottom": 665,
+            "width": 623,
+            "height": 66,
+            "scrollWidth": 621,
+            "scrollHeight": 64,
+            "clientWidth": 621,
+            "clientHeight": 64
+          }
+        ],
+        "[data-testid='data-privacy-boundary']": [
+          {
+            "left": 265,
+            "right": 888,
+            "top": 685,
+            "bottom": 994,
+            "width": 623,
+            "height": 309,
+            "scrollWidth": 621,
+            "scrollHeight": 307,
+            "clientWidth": 621,
+            "clientHeight": 307
+          }
+        ],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "dark",
+    "route": "/dashboard",
+    "loadMs": 4485,
+    "fileName": "minimum-dark-overview.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        600,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": [
+        {
+          "testId": "dashboard-detail-grid",
+          "className": "grid grid-cols-1 items-stretch gap-4 lg:h-[32rem] lg:grid-cols-12",
+          "client": [
+            594,
+            1309
+          ],
+          "scroll": [
+            594,
+            1321
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "dark",
+    "route": "/reset-history",
+    "loadMs": 2794,
+    "fileName": "minimum-dark-reset.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        1152,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": [
+          {
+            "left": 484,
+            "right": 817,
+            "top": 479,
+            "bottom": 543,
+            "width": 333,
+            "height": 64,
+            "scrollWidth": 333,
+            "scrollHeight": 64,
+            "clientWidth": 333,
+            "clientHeight": 64
+          }
+        ]
+      },
+      "overflow": [
+        {
+          "testId": "reset-history-heading",
+          "className": "mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row",
+          "client": [
+            525,
+            62
+          ],
+          "scroll": [
+            525,
+            67
+          ]
+        },
+        {
+          "testId": null,
+          "className": "",
+          "client": [
+            525,
+            517
+          ],
+          "scroll": [
+            525,
+            825
+          ]
+        },
+        {
+          "testId": "reset-history-list",
+          "className": "tt-reset-history-list",
+          "client": [
+            525,
+            485
+          ],
+          "scroll": [
+            525,
+            793
+          ]
+        },
+        {
+          "testId": "reset-history-timeline",
+          "className": "relative divide-y divide-oai-gray-200 before:absolute before:bottom-4 before:left-[0.875rem] before:top-4 before:w-px before:bg-oai-gray-200 dark:divide-oai-gra",
+          "client": [
+            495,
+            404
+          ],
+          "scroll": [
+            495,
+            758
+          ]
+        },
+        {
+          "testId": "reset-history-source-index",
+          "className": "mt-5 border-t border-oai-gray-200 pt-4 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400",
+          "client": [
+            1,
+            16
+          ],
+          "scroll": [
+            80,
+            136
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "dark",
+    "route": "/widgets",
+    "loadMs": 893,
+    "fileName": "minimum-dark-widgets.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        600,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "dark",
+    "route": "/spend/usage",
+    "loadMs": 1955,
+    "fileName": "minimum-dark-usage.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        600,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [
+          {
+            "left": 281,
+            "right": 841,
+            "top": 640,
+            "bottom": 1480,
+            "width": 560,
+            "height": 840,
+            "scrollWidth": 560,
+            "scrollHeight": 840,
+            "clientWidth": 560,
+            "clientHeight": 840
+          }
+        ],
+        "[data-testid='usage-trend-plot']": [
+          {
+            "left": 298,
+            "right": 824,
+            "top": 775,
+            "bottom": 1095,
+            "width": 526,
+            "height": 320,
+            "scrollWidth": 526,
+            "scrollHeight": 320,
+            "clientWidth": 526,
+            "clientHeight": 320
+          }
+        ],
+        "[data-testid='token-service-list']": [
+          {
+            "left": 281,
+            "right": 841,
+            "top": 1130,
+            "bottom": 1480,
+            "width": 560,
+            "height": 350,
+            "scrollWidth": 558,
+            "scrollHeight": 348,
+            "clientWidth": 558,
+            "clientHeight": 348
+          }
+        ],
+        "[data-testid='data-ledger-diagnostics']": [],
+        "[data-testid='data-privacy-boundary']": [],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  },
+  {
+    "sizeName": "minimum",
+    "viewport": {
+      "width": 900,
+      "height": 600
+    },
+    "theme": "dark",
+    "route": "/settings/data",
+    "loadMs": 1689,
+    "fileName": "minimum-dark-diagnostics.png",
+    "metrics": {
+      "document": [
+        900,
+        900
+      ],
+      "main": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "shell": [
+        900,
+        900,
+        600,
+        600
+      ],
+      "boxes": {
+        ".tt-overview-stat-card": [],
+        "[data-testid='usage-chart-token-services-layout']": [],
+        "[data-testid='usage-trend-plot']": [],
+        "[data-testid='token-service-list']": [],
+        "[data-testid='data-ledger-diagnostics']": [
+          {
+            "left": 265,
+            "right": 888,
+            "top": 977,
+            "bottom": 1255,
+            "width": 623,
+            "height": 278,
+            "scrollWidth": 621,
+            "scrollHeight": 276,
+            "clientWidth": 621,
+            "clientHeight": 276
+          }
+        ],
+        "[data-testid='data-privacy-boundary']": [
+          {
+            "left": 265,
+            "right": 888,
+            "top": 1275,
+            "bottom": 1584,
+            "width": 623,
+            "height": 309,
+            "scrollWidth": 621,
+            "scrollHeight": 307,
+            "clientWidth": 621,
+            "clientHeight": 307
+          }
+        ],
+        ".tt-reset-activity-data--right-aligned": []
+      },
+      "overflow": []
+    }
+  }
+]

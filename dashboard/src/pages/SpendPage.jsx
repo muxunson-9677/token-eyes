@@ -571,20 +571,22 @@ function SpendUsagePageInner({
                     />
                   </div>
 
-                  <UsageDetailTabs
-                    activeTab={activeUsageTab}
-                    onTabChange={handleUsageTabChange}
-                    requestLogFetchReady={requestLogFetchReady}
-                    from={from}
-                    to={to}
-                    timeZone={timeZone}
-                    tzOffsetMinutes={tzOffsetMinutes}
-                    visibleProviderIds={visibleProviderIds}
-                    baseUrl={baseUrl}
-                    accessToken={accessToken}
-                    guestAllowed={guestAllowed}
-                    cacheKey={cacheKey}
-                  />
+                  {secondaryUsageEnabled ? (
+                    <UsageDetailTabs
+                      activeTab={activeUsageTab}
+                      onTabChange={handleUsageTabChange}
+                      requestLogFetchReady={requestLogFetchReady}
+                      from={from}
+                      to={to}
+                      timeZone={timeZone}
+                      tzOffsetMinutes={tzOffsetMinutes}
+                      visibleProviderIds={visibleProviderIds}
+                      baseUrl={baseUrl}
+                      accessToken={accessToken}
+                      guestAllowed={guestAllowed}
+                      cacheKey={cacheKey}
+                    />
+                  ) : null}
                 </>
               )}
             </>
@@ -850,8 +852,11 @@ function UsageDetailTabs({
           );
         })}
       </div>
-      {activeTab === "requests" && (
-        <div role="tabpanel">
+      <div
+        role="tabpanel"
+        data-testid="usage-tabpanel-requests"
+        hidden={activeTab !== "requests"}
+      >
           <RequestUsageLog
             from={from}
             to={to}
@@ -864,10 +869,12 @@ function UsageDetailTabs({
             cacheKey={cacheKey}
             fetchEnabled={requestLogFetchReady}
           />
-        </div>
-      )}
-      {activeTab === "provider" && (
-        <div role="tabpanel">
+      </div>
+      <div
+        role="tabpanel"
+        data-testid="usage-tabpanel-provider"
+        hidden={activeTab !== "provider"}
+      >
           <ProviderUsageTable
             from={from}
             to={to}
@@ -879,10 +886,12 @@ function UsageDetailTabs({
             cacheKey={cacheKey}
             visibleProviderIds={visibleProviderIds}
           />
-        </div>
-      )}
-      {activeTab === "model" && (
-        <div role="tabpanel">
+      </div>
+      <div
+        role="tabpanel"
+        data-testid="usage-tabpanel-model"
+        hidden={activeTab !== "model"}
+      >
           <ModelUsageTable
             from={from}
             to={to}
@@ -894,8 +903,7 @@ function UsageDetailTabs({
             cacheKey={cacheKey}
             visibleProviderIds={visibleProviderIds}
           />
-        </div>
-      )}
+      </div>
     </section>
   );
 }

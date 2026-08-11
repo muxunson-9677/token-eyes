@@ -118,6 +118,11 @@ export function useDesktopWidget() {
     if (invoke) await invoke("set_desktop_widget_popover", { open });
   }, []);
 
+  const setCelebrationOpen = useCallback(async (open: boolean) => {
+    const invoke = getInvoke();
+    if (invoke) await invoke("set_desktop_widget_celebration", { open });
+  }, []);
+
   const acknowledgePendingReset = useCallback(async () => {
     const eventId = viewModel?.pendingReset?.id;
     if (!eventId) return;
@@ -133,6 +138,7 @@ export function useDesktopWidget() {
     refresh,
     updatePrefs,
     setPopoverOpen,
+    setCelebrationOpen,
     acknowledgePendingReset,
   };
 }

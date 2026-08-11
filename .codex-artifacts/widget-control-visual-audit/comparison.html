@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Widget control visual comparison</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: #e9edf1; font-family: system-ui, sans-serif; color: #1f2b38; }
+    h1 { margin: 0 0 18px; font-size: 20px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+    figure { margin: 0; padding: 14px; border-radius: 14px; background: white; box-shadow: 0 8px 24px rgba(31,43,56,.12); }
+    figcaption { margin-bottom: 10px; font-size: 13px; font-weight: 700; }
+    img { display: block; width: 100%; height: auto; border: 1px solid #d8e0e8; border-radius: 8px; }
+    .pressed { grid-column: 2; }
+  </style>
+</head>
+<body>
+  <h1>基础设置控件与小组件控件：同一立体表面及按压状态</h1>
+  <div class="grid">
+    <figure>
+      <figcaption>视觉基准：基础设置「系统 / 美元」</figcaption>
+      <img src="reference-basic-settings.png" alt="基础设置控件参考" />
+    </figure>
+    <figure>
+      <figcaption>实现：小组件工具栏静止状态</figcaption>
+      <img src="widgets-toolbar-resting.png" alt="小组件工具栏静止状态" />
+    </figure>
+    <figure class="pressed">
+      <figcaption>实现：小组件工具栏按下状态</figcaption>
+      <img src="widgets-toolbar-pressed.png" alt="小组件工具栏按下状态" />
+    </figure>
+  </div>
+</body>
+</html>

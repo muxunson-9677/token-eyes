@@ -120,7 +120,7 @@
 }
 
 .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned {
-  width: auto;
+  width: fit-content;
   grid-template-columns: max-content minmax(122px, 142px) minmax(122px, 142px);
   justify-content: end;
   justify-self: end;
@@ -4141,6 +4141,342 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
   }
 }
 
+/* 0.54.40 repair pass: the Windows shell now uses the operating system title
+   bar. Keep the WebView content geometry independent from the removed custom
+   header and harden the accepted pages at the supported 900px minimum. */
+html.native-windows-app .tt-app-shell {
+  --tt-window-bar-height: 0px;
+}
+
+html.native-windows-app .tt-native-window-bar {
+  display: none !important;
+}
+
+/* Overview statistic cards: preserve all values while reducing the density
+   that caused labels and units to leave their cards. */
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-grid {
+  height: 112px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card {
+  height: 112px;
+  padding: 8px 7px 7px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > div:first-child {
+  min-width: 0;
+  gap: 4px;
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > div:first-child > span:last-child {
+  min-width: 0;
+  white-space: normal;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card [data-testid="overview-stat-icon"] {
+  width: 21px;
+  height: 21px;
+  border-radius: 7px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card [data-testid="overview-stat-icon"] svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > span:nth-of-type(1) {
+  margin-top: 4px;
+  overflow: visible;
+  font-size: clamp(13px, 4cqw, 18px);
+  line-height: 18px;
+  text-overflow: clip;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > span:nth-of-type(2),
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > span:nth-of-type(3) {
+  margin-top: 1px;
+  font-size: 9px;
+  line-height: 11px;
+}
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > svg {
+  height: 12px;
+}
+
+/* Provider/agent cards wrap as complete cards instead of retaining the old
+   fixed five-column strip that exposed a clipped final card. */
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel {
+  height: auto;
+  min-height: 257px;
+  overflow: visible;
+}
+
+.tt-reference-route-dashboard .tt-overview-provider-panel .grid.grid-cols-2 {
+  grid-template-columns: repeat(auto-fit, minmax(122px, 1fr));
+  align-items: stretch;
+}
+
+.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 900px) and (max-width: 1080px) {
+  .tt-reference-route-dashboard [data-testid="dashboard-secondary-context"] { order: 1; }
+  .tt-reference-route-dashboard [data-testid="dashboard-primary-workspace"] { order: 2; }
+}
+
+/* Widget manager controls use the same short physical press response. */
+.tt-reference-route-widgets button:not(:disabled),
+.tt-reference-route-widgets select:not(:disabled),
+.tt-reference-route-widgets [role="button"]:not([aria-disabled="true"]) {
+  transition-property: transform, box-shadow, filter, background-color, border-color;
+  transition-duration: 130ms;
+  transition-timing-function: ease-out;
+}
+
+.tt-reference-route-widgets button:not(:disabled):active,
+.tt-reference-route-widgets select:not(:disabled):active,
+.tt-reference-route-widgets [role="button"]:not([aria-disabled="true"]):active {
+  transform: translateY(2px) scale(0.94);
+  filter: brightness(0.92) saturate(1.08);
+  background-color: color-mix(in srgb, currentColor 8%, transparent);
+  box-shadow: inset 0 3px 7px rgba(31, 43, 56, 0.24), 0 1px 2px rgba(31, 43, 56, 0.08);
+}
+
+/* Usage details: give the chart a useful plotting area, let service cards own
+   their content height, and keep the tab panels in normal document flow. */
+.tt-reference-route-spend-usage [data-testid="usage-chart-token-services-layout"] {
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.tt-reference-route-spend-usage [data-testid="usage-chart-token-services-layout"] > * {
+  height: auto;
+  min-height: 390px;
+  overflow: visible;
+  border: 1px solid rgba(125, 139, 158, 0.16);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.98), 0 3px 7px rgba(31, 43, 56, 0.08), 0 18px 38px rgba(31, 43, 56, 0.1);
+}
+
+.tt-reference-route-spend-usage [data-testid="usage-trend-plot"] {
+  min-height: 270px !important;
+}
+
+.tt-reference-route-spend-usage [data-testid="usage-trend-plot"] + div {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.tt-reference-route-spend-usage [data-testid="token-service-list"] {
+  min-height: 390px;
+}
+
+.tt-reference-route-spend-usage [data-testid="token-service-row"] {
+  height: auto;
+  min-height: 78px;
+  margin-inline: 0;
+  overflow: visible;
+}
+
+.tt-spend-usage-detail-scope [data-testid^="usage-tabpanel-"][hidden] {
+  display: none !important;
+}
+
+@media (max-width: 1100px) {
+  html.native-windows-app .tt-main-work-surface main > .mx-auto {
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .tt-reference-route-spend-usage [data-testid="usage-chart-token-services-layout"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tt-reference-route-spend-usage [data-testid="usage-chart-token-services-layout"] > *,
+  .tt-reference-route-spend-usage [data-testid="token-service-list"] {
+    min-height: 350px;
+  }
+}
+
+/* Interaction follow-up: these rules intentionally sit after the shared
+   .tt-pressable contract so widget controls keep a clearly visible physical
+   press instead of being reduced to the generic 1px response. */
+.tt-reference-route-widgets button:not(:disabled),
+.tt-reference-route-widgets select:not(:disabled),
+.tt-reference-route-widgets [role="button"]:not([aria-disabled="true"]) {
+  transition-duration: 70ms;
+}
+
+.tt-reference-route-widgets .tt-widget-project-toolbar > button:hover,
+.tt-reference-route-widgets .tt-widget-project-toolbar .tt-widget-batch-actions > button:hover,
+.tt-reference-route-widgets .tt-widget-project-toolbar .tt-widget-toolbar-select:hover,
+.tt-reference-route-widgets .tt-widget-limits > header > button:hover {
+  border-color: rgba(100, 116, 139, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 1), inset 0 -1px 0 rgba(100, 116, 139, 0.15), 0 3px 5px rgba(31, 43, 56, 0.12), 0 9px 18px rgba(31, 43, 56, 0.1);
+}
+
+.tt-reference-route-widgets button:not(:disabled):active,
+.tt-reference-route-widgets select:not(:disabled):active,
+.tt-reference-route-widgets [role="button"]:not([aria-disabled="true"]):active {
+  transform: translateY(2px) scale(0.94) !important;
+  filter: brightness(0.92) saturate(1.08) !important;
+  background-color: color-mix(in srgb, currentColor 8%, transparent) !important;
+  box-shadow: inset 0 3px 7px rgba(31, 43, 56, 0.24), 0 1px 2px rgba(31, 43, 56, 0.08) !important;
+}
+
+@keyframes tt-widget-press-rebound {
+  0%, 42% { transform: translateY(3px) scale(0.92); }
+  72% { transform: translateY(-1px) scale(1.025); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.tt-reference-route-widgets .tt-widget-click-bounce {
+  transform-origin: center;
+  animation: tt-widget-press-rebound 300ms cubic-bezier(0.22, 0.8, 0.28, 1) both !important;
+  will-change: transform;
+}
+
+.tt-reference-route-reset-history .tt-reset-effect-control {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 246, 250, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), inset 0 -1px 0 rgba(100, 116, 139, 0.14), 0 2px 4px rgba(31, 43, 56, 0.1), 0 7px 14px rgba(31, 43, 56, 0.08);
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out, filter 120ms ease-out, transform 120ms ease-out;
+}
+
+.tt-reference-route-reset-history .tt-reset-control-click-bounce {
+  transform-origin: center;
+  animation: tt-widget-press-rebound 300ms cubic-bezier(0.22, 0.8, 0.28, 1) both !important;
+  will-change: transform;
+}
+
+/* Data and diagnostics: remove reference-only fixed widths/heights and let
+   paths, health controls, privacy copy and badges wrap inside their cards. */
+.tt-reference-route-settings-data [data-testid="data-storage-location"] {
+  height: auto;
+  min-height: 47px;
+  overflow-wrap: anywhere;
+}
+
+.tt-reference-route-settings-data .tt-data-privacy-badges {
+  width: 100%;
+  max-width: none;
+}
+
+.tt-reference-route-settings-data .tt-data-privacy-badges span {
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-width: 0;
+  align-items: start;
+}
+
+.tt-reference-route-settings-data .tt-data-privacy-badges > span > span {
+  display: block;
+  min-width: 0;
+  color: inherit;
+}
+
+.tt-reference-route-settings-data .tt-data-privacy-badges > span > span > strong,
+.tt-reference-route-settings-data .tt-data-privacy-badges > span > span > small {
+  display: block;
+  min-width: 0;
+}
+
+.tt-reference-route-settings-data .tt-data-privacy-badges strong,
+.tt-reference-route-settings-data .tt-data-privacy-badges small {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (max-width: 1500px) {
+  html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    padding-right: 24px !important;
+    padding-left: 24px !important;
+  }
+
+  .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header,
+  .tt-reference-route-settings-data [data-testid="data-source-summary"],
+  .tt-reference-route-settings-data [data-testid="data-ledger-diagnostics"],
+  .tt-reference-route-settings-data [data-testid="data-privacy-boundary"] {
+    grid-column: 1;
+    height: auto;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-source-summary"] > div:last-child {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .tt-reference-route-settings-data [data-testid^="data-source-"]:not([data-testid="data-source-summary"]) {
+    height: auto;
+    min-height: 108px;
+    padding: 12px;
+  }
+
+  .tt-reference-route-settings-data [data-testid^="data-source-"] dl {
+    margin-left: 0;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-privacy-boundary"] > div > div > div:last-of-type {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+@media (max-width: 1100px) {
+  html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface main {
+    padding-top: 18px !important;
+  }
+
+  html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto {
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .tt-reference-route-settings-data .tt-main-work-surface main > .mx-auto > header {
+    height: auto;
+    min-height: 72px;
+    flex-wrap: wrap;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-health-toolbar"] {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-health-toolbar"] > div {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-health-toolbar"] label {
+    width: 100%;
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-privacy-boundary"] > div > div > div:last-of-type {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tt-reference-route-settings-data .tt-data-privacy-badges {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-reference-route-widgets button,
+  .tt-reference-route-widgets select,
+  .tt-reference-route-widgets [role="button"] {
+    transition-duration: 0ms !important;
+    transform: none !important;
+  }
+}
+
 /* Fixed 0.54.38 desktop chrome. Content-route layouts remain page-owned. */
 html.native-windows-app .tt-app-shell {
   --tt-window-bar-height: 62px;
@@ -5668,6 +6004,28 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
   transform: none;
 }
 
+/* Shared physical surface used by the accepted Basic Settings selects and
+   the widget manager controls. Keeping one class prevents the two pages from
+   drifting back to different depth and border treatments. */
+.tt-raised-control {
+  border: 1px solid rgba(31, 43, 56, 0.22) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f7f9 100%) !important;
+  color: #26313f !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 1px 2px rgba(31, 43, 56, 0.1), 0 4px 10px rgba(31, 43, 56, 0.07) !important;
+}
+
+.tt-raised-control:hover {
+  border-color: rgba(31, 43, 56, 0.32) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #edf1f5 100%) !important;
+}
+
+:root.dark .tt-raised-control {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: linear-gradient(180deg, rgba(43, 48, 56, 0.98), rgba(27, 31, 37, 0.98)) !important;
+  color: #edf1f6 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.35), 0 5px 12px rgba(0, 0, 0, 0.22) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tt-pressable {
     transition: none;
@@ -6567,6 +6925,12 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 /* Overview / project usage: independent disclosures must not stretch adjacent cards. */
 .tt-overview-project-panel { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
 .tt-overview-project-grid { min-height: 0; align-items: start; flex: 1 1 0; overflow-y: auto; }
+.tt-overview-project-grid--stable {
+  min-height: 340px;
+  flex: 1 0 auto;
+  grid-auto-rows: 340px;
+  align-items: start;
+}
 .tt-overview-project-header { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0 0 12px; }
 .tt-overview-project-folder-button { display: inline-flex; min-height: 32px; flex: 0 0 auto; align-items: center; gap: 5px; border: 1px solid rgba(22,169,111,.28); border-radius: 10px; padding: 0 10px; background: linear-gradient(145deg,#f5fffa,#e8f9f0); box-shadow: inset 0 1px 0 rgba(255,255,255,.96),0 3px 8px rgba(22,169,111,.08); color: #087d54; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .tt-overview-project-folder-button svg { width: 14px; height: 14px; }
@@ -6578,7 +6942,13 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-overview-project-summary strong { margin-top: 2px; color: #17212b; font-size: 12px; }
 .tt-overview-project-panel { --tt-project-accent-blue: #4d9cff; --tt-project-accent-green: #45c873; --tt-project-accent-purple: #9a6bff; --tt-project-accent-orange: #ff9f43; --tt-project-accent-pink: #ec6aa7; }
 .tt-overview-project-card--embedded { min-height: 150px; gap: 10px; overflow: hidden; border: 1px solid rgba(31,43,56,.12); border-radius: 14px; padding: 13px; background: linear-gradient(145deg,#fff 0%,#f6faf9 100%); box-shadow: 0 8px 18px rgba(31,43,56,.09),inset 0 1px 0 rgba(255,255,255,.98); }
-.tt-overview-project-card--embedded[data-expanded="true"] { min-height: 340px; }
+.tt-overview-project-card--embedded[data-expanded="true"] {
+  height: 340px;
+  min-height: 340px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
 .tt-overview-project-card--embedded.tt-overview-project-card--compact { min-height: 108px; gap: 4px; padding: 8px; }
 .tt-overview-project-card--compact .tt-overview-project-toggle { gap: 6px; }
 .tt-overview-project-card--compact .tt-overview-project-icon { width: 28px; height: 28px; flex-basis: 28px; border-radius: 8px; }
@@ -7059,7 +7429,7 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 
 @media (min-width: 1200px) {
   .tt-reference-route-dashboard .tt-overview-locked .tt-overview-aligned-stack {
-    grid-template-rows: minmax(0, 620px) minmax(0, 257px);
+    grid-template-rows: minmax(0, 620px) minmax(257px, auto);
   }
 }
 
@@ -7316,5 +7686,233 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 
   .tt-reference-route-spend-cost .tt-cost-row-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Final cascade guard for the 0.54.40 repair rules. Historical reference
+   blocks above intentionally remain intact, so these route-scoped values must
+   win after every legacy desktop override. */
+html.native-windows-app .tt-app-shell { --tt-window-bar-height: 0px; }
+html.native-windows-app .tt-native-window-bar { display: none !important; }
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-grid { height: 112px; }
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card { height: 112px; padding: 8px 7px 7px; }
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > div:first-child { min-width: 0; gap: 4px; font-size: 9px; line-height: 1.1; }
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > div:first-child > span:last-child { min-width: 0; white-space: normal; }
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card [data-testid="overview-stat-icon"] { width: 21px; height: 21px; border-radius: 7px; }
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card [data-testid="overview-stat-icon"] svg { width: 12px; height: 12px; }
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > span:nth-of-type(1) { margin-top: 4px; overflow: visible; font-size: clamp(13px, 4cqw, 18px); line-height: 18px; text-overflow: clip; }
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > span:nth-of-type(2),
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > span:nth-of-type(3) { margin-top: 1px; font-size: 9px; line-height: 11px; }
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > svg { height: 12px; }
+
+.tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel { height: auto; min-height: 257px; overflow: visible; }
+.tt-reference-route-dashboard .tt-overview-provider-panel .grid.grid-cols-2 { grid-template-columns: repeat(auto-fit, minmax(122px, 1fr)); align-items: stretch; }
+.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card { width: 100%; min-width: 0; }
+.tt-reference-route-dashboard .tt-overview-usage.tt-overview-aligned-stack { height: auto; }
+.tt-reference-route-dashboard .tt-overview-provider-panel--expanded { position: relative; z-index: 40; }
+.tt-reference-route-dashboard .tt-provider-card-stage { position: relative; }
+.tt-reference-route-dashboard .tt-provider-expanded-region {
+  box-sizing: border-box;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  left: 0;
+  z-index: 41;
+  max-height: min(478px, calc(100vh - 96px));
+  padding: 14px 16px 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  border: 1px solid var(--tt-surface-border);
+  border-radius: var(--tt-card-radius);
+  background: var(--tt-service-surface);
+  box-shadow: 0 22px 48px rgba(31, 43, 56, 0.22), 0 4px 12px rgba(31, 43, 56, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-reference-route-widgets .tt-widget-click-bounce,
+  .tt-reference-route-reset-history .tt-reset-control-click-bounce {
+    animation: none !important;
+  }
+}
+
+.tt-spend-usage-detail-scope [data-testid="usage-cost-secondary-row"] {
+  width: 100%;
+  flex-wrap: wrap;
+  row-gap: 2px;
+  white-space: normal;
+}
+
+.tt-spend-usage-detail-scope [data-testid="usage-cost-secondary-row"] > * {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  html.native-windows-app .tt-main-work-surface main > .mx-auto { padding-right: 12px !important; padding-left: 12px !important; }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero [role="tablist"] {
+    order: 2;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero > div > div:first-child > div:last-child {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+}
+
+/* Responsive overflow guards verified at the supported 900x600 desktop
+   minimum. Keep dense control groups inside their own surfaces instead of
+   allowing them to widen the app shell. */
+@media (max-width: 1500px) {
+  .tt-reference-route-settings-data .tt-data-bottom-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-source-summary"] > [data-testid="data-health-toolbar"]:first-child {
+    height: auto;
+  }
+
+  .tt-reference-route-spend-usage .tt-usage-filter-toolbar {
+    height: auto;
+    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+
+  .tt-reference-route-spend-usage .tt-usage-source-switcher,
+  .tt-reference-route-spend-usage .tt-usage-filter-controls {
+    width: 100%;
+  }
+
+  .tt-reference-route-spend-usage .tt-usage-source-switcher > [role="group"] {
+    width: 100%;
+    max-width: none;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .tt-reference-route-spend-usage .tt-usage-filter-controls {
+    flex-wrap: wrap;
+  }
+
+  .tt-reference-route-widgets .tt-widget-manager,
+  .tt-reference-route-widgets .tt-widget-projects,
+  .tt-reference-route-widgets .tt-widget-bottom-grid {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-toolbar {
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    padding: 6px 0;
+  }
+
+  .tt-reference-route-widgets .tt-widget-toolbar-spacer {
+    display: none;
+  }
+
+  .tt-reference-route-widgets .tt-widget-project-table,
+  .tt-reference-route-widgets .tt-widget-limit-table {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    overscroll-behavior-inline: contain;
+  }
+}
+
+@container tt-reset-page (max-width: 700px) {
+  .tt-reference-route-reset-history .tt-reset-history-page .tt-reset-activity {
+    min-height: 128px;
+    grid-template-columns: minmax(116px, 132px) minmax(0, 1fr);
+    align-content: stretch;
+    column-gap: 8px;
+    padding: 0 12px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned {
+    width: min(100%, 382px);
+    grid-template-columns: minmax(0, 226px) minmax(68px, 78px) minmax(68px, 78px);
+    justify-self: end;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap {
+    min-width: 0;
+    gap: 2px;
+    padding-right: 4px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-label {
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-cells {
+    grid-template-columns: repeat(3, 9px);
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-cells span {
+    width: 9px;
+    height: 9px;
+  }
+
+  .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-activity-stat {
+    min-width: 0;
+    padding-left: 8px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .tt-reference-route-spend-usage .tt-usage-filter-toolbar {
+    padding: 12px;
+  }
+
+  .tt-reference-route-spend-usage .tt-usage-filter-controls {
+    justify-content: flex-start;
+  }
+
+  .tt-spend-usage-detail-scope [data-testid="usage-cost-secondary-row"] {
+    flex-wrap: wrap;
+    row-gap: 2px;
+    white-space: normal;
+  }
+
+  .tt-spend-usage-detail-scope [data-testid="usage-cost-secondary-row"] > * {
+    overflow-wrap: anywhere;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-health-toolbar"] {
+    height: auto;
+    min-height: 0;
+    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    overflow: visible;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-source-summary"] > [data-testid="data-health-toolbar"]:first-child {
+    height: auto;
+  }
+
+  .tt-reference-route-settings-data [data-testid="data-health-toolbar"] > div {
+    width: 100%;
+    min-width: 0;
+    flex: 0 0 auto;
+    justify-content: flex-start;
   }
 }

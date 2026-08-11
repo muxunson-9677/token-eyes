@@ -115,6 +115,18 @@ describe("useDesktopWidget", () => {
     expect(api.getDesktopWidgetViewModel).toHaveBeenCalledTimes(2);
   });
 
+  it("opens and closes the native celebration canvas without persisting its temporary size", async () => {
+    const { result } = renderHook(() => useDesktopWidget());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await result.current.setCelebrationOpen(true);
+      await result.current.setCelebrationOpen(false);
+    });
+    expect(invoke).toHaveBeenCalledWith("set_desktop_widget_celebration", { open: true });
+    expect(invoke).toHaveBeenCalledWith("set_desktop_widget_celebration", { open: false });
+  });
+
   it("reloads saved project preferences immediately when the settings page synchronizes them", async () => {
     const { result } = renderHook(() => useDesktopWidget());
     await act(async () => {

@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "motion/react";
 import { Info, Maximize2 } from "lucide-react";
 import { copy } from "../../../lib/copy";
@@ -535,7 +536,18 @@ export function TrendMonitor({
             )}
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <span data-testid="trend-granularity" className="tt-trend-granularity">{copy("shared.unit.day")}</span>
+            <button
+              type="button"
+              data-testid="trend-granularity"
+              className="tt-trend-granularity tt-analytics-focusable tt-pressable"
+              onClick={() => zoomConfig && setIsZoomOpen(true)}
+              disabled={!zoomConfig}
+              aria-haspopup="dialog"
+              aria-expanded={isZoomOpen}
+              title={copy("trend.zoom.open_aria")}
+            >
+              {copy("shared.unit.day")}
+            </button>
           {zoomConfig && (
             <button
               type="button"
@@ -816,7 +828,7 @@ export function TrendMonitor({
         </div>
       )}
 
-      {isZoomOpen && zoomConfig && (
+      {isZoomOpen && zoomConfig && createPortal(
         <TrendMonitorZoomModal
           zoomConfig={zoomConfig}
           period={period}
@@ -827,7 +839,8 @@ export function TrendMonitor({
           renderChart={(chartProps) => (
             <TrendMonitor embedded isZoom chartHeightClass="h-full" {...chartProps} />
           )}
-        />
+        />,
+        document.body,
       )}
     </div>
   );

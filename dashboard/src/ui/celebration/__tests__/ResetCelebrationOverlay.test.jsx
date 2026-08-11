@@ -9,6 +9,7 @@ import {
   saveResetCelebrationEffect,
 } from "../reset-celebration-preference.js";
 import {
+  DESKTOP_WIDGET_CELEBRATION_EVENT,
   RESET_CELEBRATION_DURATION_MS,
   RESET_CELEBRATION_PREVIEW_EVENT,
   ResetCelebrationProvider,
@@ -82,11 +83,11 @@ function NavigationFixture() {
   );
 }
 
-function renderProvider({ reducedMotion = false, theme = "light" } = {}) {
+function renderProvider({ reducedMotion = false, theme = "light", initialEntry = "/dashboard" } = {}) {
   window.localStorage.setItem("tokentracker-theme", theme);
   window.matchMedia = createMatchMedia({ reducedMotion, dark: theme === "dark" });
   return render(
-    <MemoryRouter initialEntries={["/dashboard"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <ThemeProvider>
         <ResetCelebrationProvider>
           <NavigationFixture />
@@ -148,6 +149,19 @@ describe("ResetCelebrationProvider", () => {
     expect(document.querySelector("[data-effect-renderer='meteors']")).not.toBeNull();
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
     expect(screen.getByTestId("page-content")).toBeVisible();
+  });
+
+  it("does not render the full-page notice overlay inside the compact desktop widget route", async () => {
+    const widgetListener = vi.fn();
+    window.addEventListener(DESKTOP_WIDGET_CELEBRATION_EVENT, widgetListener);
+    renderProvider({ initialEntry: "/desktop-widget" });
+    dispatchCelebration();
+    await flushLazyRender();
+    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
+    expect(widgetListener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ eventId: VALID_EVENT.eventId, effectId: "meteors" }),
+    }));
+    window.removeEventListener(DESKTOP_WIDGET_CELEBRATION_EVENT, widgetListener);
   });
 
   it("uses the saved fireworks effect for a real reset", async () => {

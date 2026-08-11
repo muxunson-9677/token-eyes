@@ -74,10 +74,6 @@ vi.mock("../../../lib/native-bridge.js", () => ({
   isNativeWindowsApp: () => nativeBridgeContext.windows,
 }));
 
-vi.mock("../NativeWindowBar.jsx", () => ({
-  NativeWindowBar: () => <header data-testid="native-window-bar" />,
-}));
-
 vi.mock("../../../hooks/use-codex-reset-events", () => ({
   useCodexResetEvents: () => codexResetContext.value,
 }));
@@ -479,7 +475,7 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
 
     const view = renderSidebar("/dashboard");
 
-    expect(screen.getByTestId("native-window-bar")).toBeInTheDocument();
+    expect(screen.queryByTestId("native-window-bar")).not.toBeInTheDocument();
     expect(document.documentElement).toHaveClass("native-windows-app");
     expect(document.querySelector(".tt-app-shell")).toHaveAttribute(
       "data-reference-route",

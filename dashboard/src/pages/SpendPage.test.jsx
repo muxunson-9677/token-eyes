@@ -535,17 +535,24 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
   });
 
-  it("does not mount inactive provider/model detail tabs on initial load", async () => {
+  it("preloads provider/model detail tabs once and keeps their panels mounted for instant switching", async () => {
     render(<SpendUsagePage />);
 
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
+    await waitFor(() => expect(getProviderStats.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(getModelStats.mock.calls.length).toBeGreaterThanOrEqual(2));
 
-    // One call each is expected for the top filter dropdown metadata. Hidden
-    // detail tabs must not add extra provider/model stats requests.
-    expect(getProviderStats).toHaveBeenCalledTimes(1);
-    expect(getProviderStats.mock.calls[0][0]?.sources).toEqual(VISIBLE_PROVIDERS);
-    expect(getModelStats).toHaveBeenCalledTimes(1);
-    expect(getModelStats.mock.calls[0][0]?.sources).toEqual(VISIBLE_PROVIDERS);
+    expect(screen.getByTestId("usage-tabpanel-requests")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("usage-tabpanel-provider")).toHaveAttribute("hidden");
+    expect(screen.getByTestId("usage-tabpanel-model")).toHaveAttribute("hidden");
+
+    const providerCalls = getProviderStats.mock.calls.length;
+    const modelCalls = getModelStats.mock.calls.length;
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Provider 统计" }));
+    await user.click(screen.getByRole("tab", { name: "模型统计" }));
+    expect(getProviderStats).toHaveBeenCalledTimes(providerCalls);
+    expect(getModelStats).toHaveBeenCalledTimes(modelCalls);
   });
 
   it("renders UsageTrendChartCard", async () => {

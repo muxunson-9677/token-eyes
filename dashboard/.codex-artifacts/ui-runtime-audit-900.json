@@ -1,0 +1,59 @@
+{
+  "overview": {
+    "documentHasHorizontalOverflow": false,
+    "statCardCount": 4,
+    "statCardsFit": true,
+    "statCardSizes": [
+      [
+        143,
+        112
+      ],
+      [
+        143,
+        112
+      ],
+      [
+        143,
+        112
+      ],
+      [
+        143,
+        112
+      ]
+    ],
+    "providerCardCount": 5,
+    "providerCardsFitPanel": true
+  },
+  "resetHistory": {
+    "exists": true,
+    "rightGap": 13,
+    "heatmapWidth": 203,
+    "uniformCells": true,
+    "labelsDoNotOverlap": true,
+    "labelsFitColumns": true
+  },
+  "widgets": {
+    "beforeTransform": "none",
+    "pressedTransform": "matrix(0.940239, 0, 0, 0.940239, 0, 1.99202)",
+    "releasedTransform": "matrix(0.940239, 0, 0, 0.940239, 0, 1.99202)",
+    "pressFeedbackWorked": true,
+    "documentHasHorizontalOverflow": false
+  },
+  "usage": {
+    "providerSwitchMs": 64,
+    "modelSwitchMs": 48,
+    "providerSpinnerCount": 0,
+    "modelSpinnerCount": 0,
+    "instantSwitch": true,
+    "chartExists": true,
+    "serviceListExists": true,
+    "documentHasHorizontalOverflow": false
+  },
+  "diagnostics": {
+    "targetCount": 3,
+    "cardsFit": true,
+    "documentHasHorizontalOverflow": false,
+    "principleItemsReadable": true
+  },
+  "passed": true
+}

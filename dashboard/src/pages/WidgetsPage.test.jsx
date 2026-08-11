@@ -162,6 +162,71 @@ describe("WidgetsPage menu bar configurator", () => {
 });
 
 describe("WidgetsPage Windows desktop widget", () => {
+  it("reuses the basic-settings raised control surface for widget toolbar actions", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+
+    render(<WidgetsPage />);
+
+    await screen.findByTestId("widget-manager");
+    const chooseFolder = screen.getByRole("button", {
+      name: copy("widgets.reference.add_project_folder"),
+    });
+    const status = screen.getByRole("combobox", {
+      name: copy("widgets.reference.status_all"),
+    });
+    const refresh = screen.getByRole("button", {
+      name: copy("widgets.reference.refresh_data"),
+    });
+
+    expect(chooseFolder).toHaveClass("tt-raised-control");
+    expect(status).toHaveClass("tt-raised-control");
+    expect(refresh).toHaveClass("tt-raised-control");
+    expect(document.querySelector(".tt-widget-project-toolbar select")).toBeNull();
+    expect(screen.getByTestId("widget-manager").closest(".tt-reference-route-widgets"))
+      .not.toBeNull();
+  });
+
+  it("plays a complete press-and-rebound animation on the visible widget toolbar controls", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    window.__TAURI__ = {
+      core: {
+        invoke: vi.fn(async (command) => (
+          command === "get_desktop_widget_prefs" ? { visible: false } : undefined
+        )),
+      },
+    };
+
+    render(<WidgetsPage />);
+
+    await screen.findByTestId("widget-manager");
+    const chooseFolder = screen.getByRole("button", {
+      name: copy("widgets.reference.add_project_folder"),
+    });
+    fireEvent.pointerDown(chooseFolder, { button: 0 });
+    expect(chooseFolder).toHaveClass("tt-widget-click-bounce");
+
+    fireEvent.animationEnd(chooseFolder, { animationName: "tt-widget-press-rebound" });
+    expect(chooseFolder).not.toHaveClass("tt-widget-click-bounce");
+
+    const statusSelect = screen.getByRole("combobox", {
+      name: copy("widgets.reference.status_all"),
+    });
+    fireEvent.pointerDown(statusSelect, { button: 0 });
+    expect(statusSelect).toHaveClass("tt-widget-click-bounce");
+
+    fireEvent.animationEnd(statusSelect, { animationName: "tt-widget-press-rebound" });
+    expect(statusSelect).not.toHaveClass("tt-widget-click-bounce");
+
+    const refresh = document.querySelector(".tt-widget-limits > header > button");
+    expect(refresh).not.toBeNull();
+    fireEvent.pointerDown(refresh, { button: 0 });
+    expect(refresh).toHaveClass("tt-widget-click-bounce");
+  });
+
   it("keeps aligned work-surface gutters in a Windows browser preview", async () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",

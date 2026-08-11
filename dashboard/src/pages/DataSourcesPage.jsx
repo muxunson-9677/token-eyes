@@ -363,7 +363,7 @@ export function DataSourcesPage() {
             )}
           </section>
 
-          <div className="col-span-full mb-5 grid items-stretch gap-5 lg:grid-cols-[430px_minmax(0,1fr)] xl:grid-cols-[500px_minmax(0,1fr)]">
+          <div className="tt-data-bottom-grid col-span-full mb-5 grid items-stretch gap-5 lg:grid-cols-[430px_minmax(0,1fr)] xl:grid-cols-[500px_minmax(0,1fr)]">
           <section data-testid="data-ledger-diagnostics" className="tt-surface h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">

@@ -144,7 +144,10 @@ export function ProjectUsagePanel({
       {displayEntries.length === 0 ? (
         <div className="py-6 text-sm text-oai-gray-400">{copy("dashboard.projects.empty")}</div>
       ) : (
-        <div className="tt-overview-project-grid grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+        <div
+          data-testid="project-usage-grid"
+          className="tt-overview-project-grid tt-overview-project-grid--stable grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3"
+        >
           {displayEntries.map((entry, index) => (
             <ProjectUsageCard key={`${entry?.project_key || "project"}-${entry?.project_path || entry?.project_ref || ""}`} entry={entry} embedded={embedded} aggregateTokens={totalTokens} compactOptions={compactOptions} projectIndex={index} />
           ))}

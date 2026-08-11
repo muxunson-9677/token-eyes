@@ -10,6 +10,7 @@ import {
 export const RESET_CELEBRATION_DURATION_MS = 6_000;
 const RESET_CELEBRATION_EVENT = "token-eyes:official-reset-celebration";
 export const RESET_CELEBRATION_PREVIEW_EVENT = "token-eyes:reset-celebration-preview";
+export const DESKTOP_WIDGET_CELEBRATION_EVENT = "token-eyes:desktop-widget-celebration";
 const RESET_CELEBRATION_CHANNEL = "token-eyes:reset-celebration:v1";
 const RESET_CELEBRATION_CHANNEL_MESSAGE = "reset-celebration";
 export { RESET_CELEBRATION_EFFECT_IDS };
@@ -120,10 +121,17 @@ export function ResetCelebrationProvider({ children }) {
     return () => window.clearTimeout(timer);
   }, [activeEvent]);
 
+  useEffect(() => {
+    if (!activeEvent || location.pathname !== "/desktop-widget") return;
+    window.dispatchEvent(new CustomEvent(DESKTOP_WIDGET_CELEBRATION_EVENT, {
+      detail: activeEvent,
+    }));
+  }, [activeEvent, location.pathname]);
+
   return (
     <>
       {children}
-      {activeEvent ? (
+      {activeEvent && location.pathname !== "/desktop-widget" ? (
         <ResetCelebrationOverlay
           key={activeEvent.eventId}
           event={activeEvent}

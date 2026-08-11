@@ -593,7 +593,9 @@ export function UsageOverview({
       {hasAnyFleetModel ? (
       <section
         data-testid="usage-overview-providers"
-        className="tt-overview-provider-panel tt-surface rounded-[var(--tt-card-radius)]"
+        className={`tt-overview-provider-panel tt-surface rounded-[var(--tt-card-radius)] ${
+          expandedProvider ? "tt-overview-provider-panel--expanded" : ""
+        }`}
       >
         <div className="flex h-full flex-col p-5">
 
@@ -669,6 +671,7 @@ export function UsageOverview({
 
             {/* Provider Cards 鈥?responsive grid keeps cells equal-width so the
                 last row never stretches when the count doesn't divide evenly. */}
+            <div className="tt-provider-card-stage">
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
               {providers.map((provider, idx) => {
                 const color = getProviderColor(provider.label, idx);
@@ -731,10 +734,11 @@ export function UsageOverview({
               <div
                 id={`provider-details-${expandedProvider}`}
                 role="region"
+                data-layout="overlay"
                 aria-label={copy("usage.overview.model_details_aria", {
                   provider: expandedProvider,
                 })}
-                className="mt-2"
+                className="tt-provider-expanded-region min-w-0"
               >
                 {providers
                   .filter((p) => p.label === expandedProvider)
@@ -764,6 +768,7 @@ export function UsageOverview({
                   })}
               </div>
             )}
+            </div>
 
           </div>
         )}

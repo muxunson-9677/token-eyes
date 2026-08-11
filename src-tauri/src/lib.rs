@@ -11,9 +11,9 @@ mod kimi_session;
 mod minimax_session;
 mod trae_session;
 mod tray;
+mod widget_window;
 mod window_control;
 mod window_prefs;
-mod widget_window;
 mod xiaomi_mimo_session;
 
 use std::sync::Mutex;
@@ -74,6 +74,7 @@ pub fn run() {
             widget_window::set_desktop_widget_prefs,
             widget_window::set_desktop_widget_always_on_top,
             widget_window::set_desktop_widget_popover,
+            widget_window::set_desktop_widget_celebration,
             window_prefs::get_window_prefs,
             window_prefs::set_minimize_to_tray_on_close,
             window_prefs::set_launch_on_startup,

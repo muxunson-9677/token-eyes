@@ -124,7 +124,7 @@ describe("UsageFilterBar", () => {
     });
 
     // source_display_name from the option + the Apply button (zh-CN "应用")
-    expect(await screen.findByText("Codex")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Codex" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "应用" })).toBeInTheDocument();
   });
 

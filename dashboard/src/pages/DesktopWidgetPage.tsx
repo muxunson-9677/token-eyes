@@ -7,6 +7,7 @@ import {
   Palette,
   Pin,
   PinOff,
+  Sparkles,
   Terminal,
   X,
 } from "lucide-react";
@@ -26,6 +27,9 @@ import {
   RESET_CELEBRATION_EFFECT_STORAGE_KEY,
   type ResetCelebrationEffectId,
 } from "../ui/celebration/reset-celebration-preference.js";
+// ResetCelebrationProvider is a JSX module with no declaration file.
+// @ts-expect-error importing a named constant from an untyped JSX module
+import { DESKTOP_WIDGET_CELEBRATION_EVENT } from "../ui/celebration/ResetCelebrationProvider.jsx";
 // PillNav is a JSX module with a stable prop contract but no declaration file.
 // @ts-expect-error importing an untyped JSX component
 import { PillNav } from "../ui/components/PillNav";
@@ -192,9 +196,17 @@ function ModelsSummary({ model }: { model: DesktopWidgetViewModel }) {
   );
 }
 
-function WidgetResetCelebration({ resetId }: { resetId: string }) {
+function WidgetResetCelebration({
+  resetId,
+  preferredEffectId,
+  onDismiss,
+}: {
+  resetId: string;
+  preferredEffectId?: ResetCelebrationEffectId;
+  onDismiss: () => void;
+}) {
   const [effectId, setEffectId] = useState<ResetCelebrationEffectId>(
-    readResetCelebrationEffect,
+    preferredEffectId ?? readResetCelebrationEffect,
   );
 
   useEffect(() => {
@@ -203,7 +215,7 @@ function WidgetResetCelebration({ resetId }: { resetId: string }) {
         ?.detail?.effectId;
       setEffectId(selected === "fireworks" || selected === "meteors"
         ? selected
-        : readResetCelebrationEffect());
+        : preferredEffectId ?? readResetCelebrationEffect());
     };
     const syncStoredEffect = (event: StorageEvent) => {
       if (event.key === RESET_CELEBRATION_EFFECT_STORAGE_KEY) syncEffect();
@@ -215,14 +227,13 @@ function WidgetResetCelebration({ resetId }: { resetId: string }) {
       window.removeEventListener(RESET_CELEBRATION_EFFECT_CHANGE_EVENT, syncEffect);
       window.removeEventListener("storage", syncStoredEffect);
     };
-  }, [resetId]);
+  }, [preferredEffectId, resetId]);
 
   return (
     <div
       className="widget-reset-celebration"
       data-testid="widget-reset-celebration"
       data-effect-id={effectId}
-      aria-hidden="true"
     >
       <span className="widget-reset-celebration__veil" />
       <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--one" />
@@ -230,6 +241,16 @@ function WidgetResetCelebration({ resetId }: { resetId: string }) {
       <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--three" />
       <span className="widget-reset-celebration__firework widget-reset-celebration__firework--one" />
       <span className="widget-reset-celebration__firework widget-reset-celebration__firework--two" />
+      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--three" />
+      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--four" />
+      <button
+        type="button"
+        aria-label={copy("widget.reset.acknowledge")}
+        onClick={onDismiss}
+        className="widget-reset-celebration__dismiss"
+      >
+        <Sparkles aria-hidden />
+      </button>
     </div>
   );
 }
@@ -534,10 +555,16 @@ export function DesktopWidgetPage() {
     error,
     updatePrefs,
     setPopoverOpen,
+    setCelebrationOpen,
     acknowledgePendingReset,
   } = useDesktopWidget();
   const [openMenu, setOpenMenu] = useState(null as "agent" | null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [previewCelebration, setPreviewCelebration] = useState(null as {
+    eventId: string;
+    effectId: ResetCelebrationEffectId;
+  } | null);
+  const [dismissedResetId, setDismissedResetId] = useState(null as string | null);
   const agentMenuAnchor = useRef(null as HTMLButtonElement | null);
   const appearanceAnchor = useRef(null as HTMLButtonElement | null);
   const isBrowserPreview = typeof window !== "undefined"
@@ -585,6 +612,19 @@ export function DesktopWidgetPage() {
     void setPopoverOpen(false);
   }, [setPopoverOpen]);
 
+  useEffect(() => {
+    const handleCelebration = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        eventId?: string;
+        effectId?: ResetCelebrationEffectId;
+      }>).detail;
+      if (!detail?.eventId || (detail.effectId !== "fireworks" && detail.effectId !== "meteors")) return;
+      setPreviewCelebration({ eventId: detail.eventId, effectId: detail.effectId });
+    };
+    window.addEventListener(DESKTOP_WIDGET_CELEBRATION_EVENT, handleCelebration);
+    return () => window.removeEventListener(DESKTOP_WIDGET_CELEBRATION_EVENT, handleCelebration);
+  }, []);
+
   const model = viewModel;
   const selectedProjectIds = prefs.selectedProjectIds ?? [];
   const visibleLimits = model
@@ -606,6 +646,10 @@ export function DesktopWidgetPage() {
     : model;
   const pendingReset = model?.pendingReset;
   const pendingResetId = pendingReset?.id;
+  const activePendingResetId = pendingResetId && pendingResetId !== dismissedResetId
+    ? pendingResetId
+    : undefined;
+  const activeCelebrationId = activePendingResetId ?? previewCelebration?.eventId;
   const rootStyle = {
     "--widget-opacity": prefs.opacity,
     "--widget-preview-width": `${prefs.width}px`,
@@ -624,24 +668,38 @@ export function DesktopWidgetPage() {
   };
 
   useEffect(() => {
-    if (!pendingResetId) return undefined;
-    const timer = window.setTimeout(() => {
+    void setCelebrationOpen(Boolean(activeCelebrationId));
+    return () => {
+      if (activeCelebrationId) void setCelebrationOpen(false);
+    };
+  }, [activeCelebrationId, setCelebrationOpen]);
+
+  const dismissCelebration = () => {
+    void setCelebrationOpen(false);
+    if (activePendingResetId) {
+      setDismissedResetId(activePendingResetId);
       void acknowledgePendingReset();
-    }, 6_000);
-    return () => window.clearTimeout(timer);
-  }, [acknowledgePendingReset, pendingResetId]);
+    }
+    setPreviewCelebration(null);
+  };
 
   return (
     <main
-      className={`desktop-widget-root${browserPreviewClassName} ${openMenu || appearanceOpen ? "has-popover" : ""}`}
+      className={`desktop-widget-root${browserPreviewClassName} ${openMenu || appearanceOpen ? "has-popover" : ""} ${activeCelebrationId ? "has-celebration" : ""}`}
       style={rootStyle}
     >
+      {activeCelebrationId ? (
+        <WidgetResetCelebration
+          resetId={activeCelebrationId}
+          preferredEffectId={activePendingResetId ? undefined : previewCelebration?.effectId}
+          onDismiss={dismissCelebration}
+        />
+      ) : null}
       <article
         className={`desktop-widget-card desktop-widget-card--reference-dock desktop-widget-card--${prefs.material} ${prefs.expanded ? "is-expanded" : ""}`}
         data-testid="desktop-widget-card"
         onPointerDown={handleDragStart}
       >
-        {pendingReset ? <WidgetResetCelebration resetId={pendingReset.id} /> : null}
         <div className="widget-toolbar">
           <div className="widget-agent-control">
             <button

@@ -108,6 +108,7 @@ describe("TokenServiceList", () => {
     render(
       <TokenServiceList
         plans={[cursor, plan("A", 90), plan("B", 80), plan("C", 70), plan("D", 60)]}
+        now={new Date("2026-08-01T00:00:00Z")}
       />,
     );
 

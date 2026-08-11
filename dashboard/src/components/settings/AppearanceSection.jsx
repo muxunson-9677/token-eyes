@@ -55,7 +55,7 @@ function LanguageDropdown({ locale, setLocale }) {
       onValueChange={setLocale}
       options={options}
       ariaLabel={copy("settings.appearance.language.label")}
-      className="tt-settings-language-select px-2.5 py-1.5 text-xs font-medium"
+      className="tt-settings-language-select tt-raised-control tt-pressable px-2.5 py-1.5 text-xs font-medium"
       leadingIcon={
         <Languages
           className="h-3.5 w-3.5 text-oai-gray-500 dark:text-oai-gray-400"
@@ -77,7 +77,7 @@ function CurrencyDropdown({ currency, setCurrency }) {
       onValueChange={setCurrency}
       options={options}
       ariaLabel={copy("settings.appearance.currency.label")}
-      className="tt-settings-currency-select px-3 py-1.5 text-xs font-medium"
+      className="tt-settings-currency-select tt-raised-control tt-pressable px-3 py-1.5 text-xs font-medium"
       leadingIcon={<WalletCards className="h-3.5 w-3.5 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />}
     />
   );

@@ -251,8 +251,10 @@ export function TrendMonitorZoomModal({
         }
       `}</style>
 
-      <div
-        className={cn(
+    <div
+      role="dialog"
+      aria-modal="true"
+      className={cn(
           "relative w-full max-w-6xl h-[88vh] backdrop-blur-2xl bg-white/90 dark:bg-oai-gray-900/90 border border-oai-gray-200/50 dark:border-white/10 shadow-2xl rounded-2xl flex flex-col md:flex-row overflow-hidden",
           isClosing ? "animate-tt-modal-exit" : "animate-tt-modal",
         )}
