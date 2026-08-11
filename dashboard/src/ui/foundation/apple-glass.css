@@ -3640,10 +3640,10 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
 }
 
 .tt-settings-cost-page main > .tt-settings-cost-shell {
-  width: min(100%, 68rem);
+  width: 100%;
   max-width: none;
   margin-inline: auto;
-  padding-inline: clamp(1rem, 2vw, 2rem);
+  padding-inline: clamp(0.75rem, 1.5vw, 1.5rem);
 }
 
 .tt-settings-cost-page .tt-settings-cost-heading {
@@ -3718,7 +3718,9 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
   border-radius: var(--tt-cost-card-radius);
   border: 1px solid #e5e7eb;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow:
+    0 10px 28px rgba(15, 23, 42, 0.09),
+    0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 /* Keep section header chrome identical when collapsing/expanding to avoid
@@ -3741,6 +3743,10 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
 .tt-settings-cost-page .tt-surface button[aria-expanded] {
   align-items: center;
   gap: 0.75rem;
+}
+
+.tt-settings-cost-page .tt-surface button[aria-expanded] > span:last-of-type {
+  flex: 0 1 auto;
 }
 
 .tt-settings-cost-page .tt-surface button[aria-expanded] > svg:first-child {

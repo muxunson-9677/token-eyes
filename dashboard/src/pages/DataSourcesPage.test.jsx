@@ -89,6 +89,7 @@ it("shows a health summary and a compact source workspace", async () => {
   expect(screen.getByTestId("data-privacy-boundary")).toContainElement(
     screen.getByRole("button", { name: "清除本地导入数据" }),
   );
+  expect(screen.getByTestId("data-privacy-principles")).toHaveClass("ml-auto", "max-w-[25rem]");
 
   const nativeSelectorMatches = [...document.querySelectorAll('[data-testid^="data-source-"]')];
   expect(nativeSelectorMatches.every((element) => (

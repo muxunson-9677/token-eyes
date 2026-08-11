@@ -389,6 +389,35 @@ async function handleLocalApi(req, res, url) {
     }
   }
 
+  function readQueueDiagnostics(visibleRecords) {
+    try {
+      const lines = fs.readFileSync(QUEUE_PATH, "utf8").split("\n").filter(line => line.trim());
+      let validRecords = 0;
+      let malformedRecords = 0;
+      for (const line of lines) {
+        try {
+          JSON.parse(line);
+          validRecords += 1;
+        } catch {
+          malformedRecords += 1;
+        }
+      }
+      return {
+        raw_records: lines.length,
+        visible_records: visibleRecords,
+        duplicate_records: Math.max(0, validRecords - visibleRecords),
+        malformed_records: malformedRecords,
+      };
+    } catch {
+      return {
+        raw_records: 0,
+        visible_records: visibleRecords,
+        duplicate_records: 0,
+        malformed_records: 0,
+      };
+    }
+  }
+
   function aggregateByDay(rows) {
     const byDay = new Map();
     for (const row of rows) {
@@ -550,6 +579,7 @@ async function handleLocalApi(req, res, url) {
     res.end(JSON.stringify({
       from, to, days: daily.length,
       totals: { ...totals, total_cost_usd: totalCost.toFixed(6) },
+      data_integrity: readQueueDiagnostics(rows.length),
       rolling: {
         last_7d: {
           from: last7dFrom.toISOString().slice(0, 10),
@@ -1199,6 +1229,8 @@ async function proxyToLocalCli(req, res) {
 // another Windows service, use the same read-only source handler in-process.
 const DEV_LOCAL_DATA_FALLBACK_PATHS = new Set([
   "/functions/tokentracker-desktop-widget",
+  "/functions/tokentracker-agent-environment",
+  "/functions/tokentracker-usage-summary",
   "/functions/tokentracker-usage-bounds",
   "/functions/tokentracker-local-settings",
   "/functions/tokentracker-spend-timeseries",

@@ -443,7 +443,10 @@ export function DataSourcesPage() {
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                     {clearing ? copy("data_sources.clear.clearing") : copy("data_sources.clear.action")}
                   </button>
-                  <div className="tt-data-privacy-badges grid w-full min-w-0 flex-1 gap-3 text-xs sm:grid-cols-3 min-[1440px]:w-auto">
+                  <div
+                    data-testid="data-privacy-principles"
+                    className="tt-data-privacy-badges ml-auto grid w-full max-w-[25rem] min-w-0 gap-3 text-xs sm:grid-cols-3"
+                  >
                   <span className="flex min-w-0 gap-2"><HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden /><span><strong className="block text-oai-gray-800 dark:text-oai-gray-100">{copy("data_sources.reference.local_only")}</strong><small className="mt-0.5 block leading-4 text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.reference.local_only_detail")}</small></span></span>
                   <span className="flex min-w-0 gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden /><span><strong className="block text-oai-gray-800 dark:text-oai-gray-100">{copy("data_sources.reference.privacy_first")}</strong><small className="mt-0.5 block leading-4 text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.reference.privacy_first_detail")}</small></span></span>
                   <span className="flex min-w-0 gap-2"><CloudOff className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden /><span><strong className="block text-oai-gray-800 dark:text-oai-gray-100">{copy("data_sources.reference.optional_cloud")}</strong><small className="mt-0.5 block leading-4 text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.reference.optional_cloud_detail")}</small></span></span>
