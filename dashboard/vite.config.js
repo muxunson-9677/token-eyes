@@ -1204,6 +1204,11 @@ const DEV_LOCAL_DATA_FALLBACK_PATHS = new Set([
   "/functions/tokentracker-spend-timeseries",
   "/functions/tokentracker-spend-records",
   "/functions/tokentracker-token-plans",
+  "/functions/tokentracker-api-billing-accounts",
+  "/functions/tokentracker-provider-api-configs",
+  "/functions/tokentracker-provider-api-balances",
+  "/functions/tokentracker-provider-api-refresh",
+  "/api/local-auth",
   "/functions/tokentracker-provider-stats",
   "/functions/tokentracker-model-stats",
   "/functions/tokentracker-request-usage-records",
@@ -1219,8 +1224,18 @@ function localDataApiPlugin() {
     configureServer(server) {
       // 添加中间件到最前面，拦截所有请求
       server.middlewares.use((req, res, next) => {
-        if (typeof req.url === "string" && req.url.startsWith("/functions/")) {
+        if (
+          typeof req.url === "string"
+          && (req.url.startsWith("/functions/") || req.url.startsWith("/api/local-auth"))
+        ) {
           const url = new URL(req.url, `http://${req.headers.host}`);
+          if (url.pathname === "/api/local-auth") {
+            Promise.resolve(localDataHandler(req, res, url)).then((handled) => {
+              if (handled) return;
+              return proxyToLocalCli(req, res);
+            }).catch(next);
+            return;
+          }
           Promise.resolve(handleLocalApi(req, res, url))
             .then((handled) => {
               if (handled) return;

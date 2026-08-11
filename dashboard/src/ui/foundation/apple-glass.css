@@ -623,15 +623,18 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   height: auto;
   min-height: 0;
   margin-bottom: 14px;
-  padding: 18px;
+  padding: 14px;
   overflow: visible;
+  border-color: rgba(31, 43, 56, 0.12);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(246, 249, 253, 0.97));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.98), 0 2px 4px rgba(31, 43, 56, 0.08), 0 12px 28px rgba(31, 43, 56, 0.1);
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-month-picker"] {
   position: absolute;
-  top: 20px;
-  right: 18px;
-  height: 42px;
+  top: 14px;
+  right: 14px;
+  height: 38px;
   margin: 0;
 }
 
@@ -645,12 +648,13 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p {
   display: flex;
-  height: 42px;
+  height: 36px;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   border-radius: 8px;
-  padding: 0 18px;
-  background: #f7f9fc;
+  padding: 0 14px;
+  background: rgba(247, 249, 252, 0.9);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.96), 0 2px 7px rgba(31, 43, 56, 0.045);
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p svg {
@@ -658,8 +662,8 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
-  grid-template-columns: 1fr 1.055fr;
-  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] > div:nth-child(2) {
@@ -668,8 +672,9 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] {
-  min-height: 176px;
-  padding: 14px 16px;
+  min-height: 150px;
+  padding: 12px 14px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.98), 0 2px 4px rgba(31, 43, 56, 0.07), 0 9px 20px rgba(31, 43, 56, 0.08);
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] {
@@ -775,7 +780,7 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   display: grid;
   height: 48px;
   margin: 0;
-  grid-template-columns: minmax(210px, 1fr) minmax(480px, 830px) 160px;
+  grid-template-columns: minmax(210px, 1fr) minmax(480px, 830px);
   column-gap: 0;
   align-items: center;
 }
@@ -794,7 +799,7 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   width: 100%;
   min-width: 0;
   margin-left: 0;
-  grid-template-columns: minmax(0, 225px) minmax(0, 225px) minmax(0, 380px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: center;
 }
 
@@ -816,13 +821,19 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   height: 44px;
   flex-direction: column;
   justify-content: center;
-  align-items: flex-start;
-  border-left: 1px solid #e8ebef;
+  align-items: flex-end;
+  border-left: 1px solid #d3dae3;
   padding: 0 24px;
   color: #697386;
   font-size: 10px;
   line-height: 1.25;
-  text-align: left;
+  text-align: right;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metric > span,
+.tt-reference-route-spend-cost .tt-cost-row-metric > strong {
+  width: 100%;
+  text-align: right;
 }
 
 .tt-reference-route-spend-cost .tt-cost-row-metric strong {
@@ -856,6 +867,168 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 
 .tt-reference-route-spend-cost [data-cost-section] button > div {
   margin: 0;
+}
+
+/* Cost page accepted design: two evidence cards followed by five compact data rows. */
+.tt-reference-route-spend-cost main > div > .mb-6 {
+  align-items: center;
+}
+
+.tt-reference-route-spend-cost main > div > .mb-6 [data-testid="cost-month-picker"] {
+  position: static;
+  margin: 0;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-region"] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p {
+  display: none;
+}
+
+.tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
+  gap: 20px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-card {
+  min-height: 300px;
+  padding: 28px 30px 20px;
+  border: 1px solid rgba(135, 151, 171, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(255,255,255,.98), rgba(248,250,253,.96));
+  box-shadow: inset 0 1px rgba(255,255,255,.98), 0 2px 5px rgba(36,48,65,.08), 0 16px 34px rgba(36,48,65,.1);
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-heading {
+  align-items: center;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-mark {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-mark svg {
+  width: 28px;
+  height: 28px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-label {
+  color: #536174;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-change {
+  max-width: 150px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-primary {
+  margin: -24px 0 0 76px;
+  width: calc(100% - 76px);
+  font-size: clamp(24px, 2vw, 34px);
+  line-height: 1.05;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-primary > div > span {
+  margin-top: 9px;
+  font-size: 12px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-details {
+  display: grid;
+  width: 100%;
+  margin-top: 34px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid rgba(135,151,171,.16);
+  border-radius: 12px;
+  background: rgba(255,255,255,.58);
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-details > div {
+  display: flex;
+  min-width: 0;
+  min-height: 74px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-details > div + div {
+  border-left: 1px solid rgba(135,151,171,.22);
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-details span {
+  color: #667085;
+  font-size: 11px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-details strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #182230;
+  font-size: clamp(10px, 1.15vw, 14px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-primary {
+  margin: 8px 0 0 76px;
+  width: calc(100% - 76px);
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-footer {
+  min-height: 44px !important;
+  margin-top: 12px !important;
+}
+
+.tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+  height: 82px;
+  padding: 12px 20px;
+  border-radius: 14px;
+}
+
+.tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+  height: 56px;
+  grid-template-columns: minmax(330px, .95fr) minmax(520px, 1.05fr);
+}
+
+.tt-reference-route-spend-cost [data-cost-section] > div:first-child > button {
+  height: 56px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metric {
+  height: 48px;
+  padding: 0 18px;
+  border-left-color: rgba(125,139,158,.34);
+}
+
+.tt-reference-route-spend-cost .tt-cost-section-description {
+  max-width: 280px;
+  margin-top: 3px;
+}
+
+@media (max-width: 960px) {
+  .tt-reference-route-spend-cost .tt-cost-summary-card { min-height: 280px; padding: 22px 20px 18px; }
+  .tt-reference-route-spend-cost .tt-cost-summary-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tt-reference-route-spend-cost .tt-cost-summary-details > div:nth-child(3) { border-left: 0; border-top: 1px solid rgba(135,151,171,.22); }
+  .tt-reference-route-spend-cost .tt-cost-summary-details > div:nth-child(4) { border-top: 1px solid rgba(135,151,171,.22); }
+  .tt-reference-route-spend-cost [data-cost-section] > div:first-child { grid-template-columns: minmax(245px, .8fr) minmax(420px, 1.2fr); }
+  .tt-reference-route-spend-cost .tt-cost-row-metric { padding: 0 10px; }
 }
 
 .tt-reference-route-spend-cost .tt-cost-section-action {
@@ -1080,13 +1253,13 @@ body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .
 
 @media (max-width: 1440px) and (min-width: 721px) {
   .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
-    grid-template-columns: minmax(210px, 1fr) minmax(230px, 496px) 96px;
+    grid-template-columns: minmax(210px, 1fr) minmax(360px, 496px);
   }
 
   .tt-reference-route-spend-cost .tt-cost-row-metrics {
     width: 100%;
     min-width: 0;
-    grid-template-columns: minmax(0, 135px) minmax(0, 135px) minmax(0, 226px);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .tt-reference-route-spend-cost .tt-cost-row-actions {
@@ -1107,7 +1280,7 @@ body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .
 
 @media (max-width: 1200px) and (min-width: 721px) {
   .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
-    grid-template-columns: minmax(210px, 1fr) minmax(230px, 496px) 220px;
+    grid-template-columns: minmax(190px, 1fr) minmax(360px, 1.45fr);
   }
 
   .tt-reference-route-spend-cost .tt-cost-row-actions {
@@ -4227,7 +4400,7 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
 .tt-reference-route-dashboard .tt-overview-stats {
   width: 100%;
   min-width: 0;
-  max-width: 100%;
+  max-width: none;
   overflow: visible;
   border: 0;
   background: transparent;
@@ -6837,4 +7010,139 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
     height: 6px;
   }
 
+}
+
+/* Cost overview final alignment: keep each collapsed row compact and reserve
+   one stable four-column lane for its local metrics. */
+.tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+  height: 72px;
+  min-height: 72px;
+  overflow: hidden;
+}
+
+.tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) auto;
+  align-items: center;
+  min-height: 46px;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, clamp(78px, 8.5vw, 132px));
+  width: max-content;
+  min-width: 0;
+  justify-self: end;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metric {
+  position: relative;
+  min-width: 0;
+  height: 46px;
+  padding-inline: 8px;
+  border-left: 0;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metric::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1px;
+  height: 32px;
+  background: rgba(125, 139, 158, 0.28);
+  content: "";
+  transform: translateY(-50%);
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metric[data-tone="orange"] strong {
+  color: #f05a28;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metric[data-tone="blue"] strong {
+  color: #2f80ed;
+}
+
+.tt-reference-route-spend-cost .tt-cost-row-metric[data-tone="green"] strong {
+  color: #00a870;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-details strong {
+  display: block;
+  width: 125%;
+  max-width: none;
+  overflow: visible;
+  font-size: clamp(11px, 1.15vw, 14px);
+  letter-spacing: -0.04em;
+  transform: scaleX(0.8);
+  transform-origin: center;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-primary > div > span:first-child {
+  display: block;
+  margin-top: 0;
+  overflow: hidden;
+  font-size: clamp(22px, 2.15vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-primary > div > span:nth-child(2) {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+    height: 72px;
+    min-height: 72px;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+    grid-template-columns: minmax(210px, 1fr) auto;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-section-description {
+    max-width: 185px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metric {
+    height: 44px;
+    padding-inline: 4px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metrics {
+    grid-template-columns: repeat(4, clamp(72px, 8.4vw, 92px));
+    width: max-content;
+    justify-content: end;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metric > span {
+    font-size: 9px;
+    line-height: 1.15;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metric > strong {
+    font-size: 12px;
+    line-height: 1.15;
+  }
+}
+
+@media (max-width: 760px) {
+  .tt-reference-route-spend-cost [data-cost-section][data-open="false"] {
+    height: auto;
+    min-height: 0;
+  }
+
+  .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 12px;
+  }
+
+  .tt-reference-route-spend-cost .tt-cost-row-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

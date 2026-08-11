@@ -41,7 +41,7 @@ import { useUsageDateBounds } from "../hooks/use-usage-date-bounds";
 import { useCostAccumulation } from "../hooks/use-cost-accumulation.js";
 import { useProviderApiBalances } from "../hooks/use-provider-api-balances.js";
 import { useTokenServicePlans } from "../hooks/use-token-service-plans.js";
-import { CostAccumulation } from "../ui/dashboard/components/CostAccumulation.jsx";
+import { CostAccumulation, CostMonthPicker } from "../ui/dashboard/components/CostAccumulation.jsx";
 import { ObservabilityExportActions } from "../ui/dashboard/components/ObservabilityExportActions.jsx";
 
 // v2.0 IA refactor (work order 01): the old single SpendPage with a top-level
@@ -764,6 +764,11 @@ function SpendCostPageInner({
                 {copy("spend.cost.page.subtitle")}
               </p>
             </div>
+            <CostMonthPicker
+              selectedMonth={selectedCostMonth}
+              currentMonth={currentCostMonth}
+              onChange={setSelectedCostMonth}
+            />
           </div>
 
           <CostAccumulation
@@ -775,6 +780,7 @@ function SpendCostPageInner({
             selectedMonth={selectedCostMonth}
             currentMonth={currentCostMonth}
             onSelectedMonthChange={setSelectedCostMonth}
+            showMonthPicker={false}
             loading={costLoading}
             error={costError}
             costSummaryStale={costSummaryStale}

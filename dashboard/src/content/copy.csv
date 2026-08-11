@@ -1916,6 +1916,30 @@ spend.cost.row.unbilled_usd,dashboard,SpendPage,CostAccumulation,row_unbilled_us
 spend.cost.row.month_subscription,dashboard,SpendPage,CostAccumulation,row_month_subscription,"Subscriptions this month (USD)",,active
 spend.cost.row.lifetime_subscription,dashboard,SpendPage,CostAccumulation,row_lifetime_subscription,"Lifetime subscriptions (USD)",,active
 spend.cost.row.unavailable,dashboard,SpendPage,CostAccumulation,row_unavailable,"Unavailable",,active
+spend.cost.design.daily_average,dashboard,SpendPage,CostAccumulation,design_daily_average,"Daily average cost",,active
+spend.cost.design.month_usage,dashboard,SpendPage,CostAccumulation,design_month_usage,"Monthly usage (estimated)",,active
+spend.cost.design.highest_daily,dashboard,SpendPage,CostAccumulation,design_highest_daily,"Highest daily cost",,active
+spend.cost.design.month_daily_average,dashboard,SpendPage,CostAccumulation,design_month_daily_average,"Monthly daily average",,active
+spend.cost.design.subscription_count,dashboard,SpendPage,CostAccumulation,design_subscription_count,"Subscriptions",,active
+spend.cost.design.subscription_added,dashboard,SpendPage,CostAccumulation,design_subscription_added,"Added this month",,active
+spend.cost.design.subscription_changed,dashboard,SpendPage,CostAccumulation,design_subscription_changed,"Changed this month",,active
+spend.cost.design.subscription_renewing,dashboard,SpendPage,CostAccumulation,design_subscription_renewing,"Renewing soon",,active
+spend.cost.design.groups_description,dashboard,SpendPage,CostAccumulation,design_groups_description,"Aggregate costs by business, team, or project",,active
+spend.cost.design.packages_description,dashboard,SpendPage,CostAccumulation,design_packages_description,"Manage plans and monitor usage and quota",,active
+spend.cost.design.providers_description,dashboard,SpendPage,CostAccumulation,design_providers_description,"Provider balances and monthly usage",,active
+spend.cost.design.api_description,dashboard,SpendPage,CostAccumulation,design_api_description,"Track API call costs and usage",,active
+spend.cost.design.subscriptions_description,dashboard,SpendPage,CostAccumulation,design_subscriptions_description,"Review subscription history and fees",,active
+spend.cost.design.month_total,dashboard,SpendPage,CostAccumulation,design_month_total,"Monthly total cost (USD)",,active
+spend.cost.design.group_count,dashboard,SpendPage,CostAccumulation,design_group_count,"Groups",,active
+spend.cost.design.highest_group,dashboard,SpendPage,CostAccumulation,design_highest_group,"Highest group cost",,active
+spend.cost.design.package_count,dashboard,SpendPage,CostAccumulation,design_package_count,"Plans",,active
+spend.cost.design.month_spend,dashboard,SpendPage,CostAccumulation,design_month_spend,"Monthly spend (USD)",,active
+spend.cost.design.account_count,dashboard,SpendPage,CostAccumulation,design_account_count,"Accounts",,active
+spend.cost.design.balance_health,dashboard,SpendPage,CostAccumulation,design_balance_health,"Balance health",,active
+spend.cost.design.health_good,dashboard,SpendPage,CostAccumulation,design_health_good,"Good",,active
+spend.cost.design.success_calls,dashboard,SpendPage,CostAccumulation,design_success_calls,"Successful calls",,active
+spend.cost.design.error_rate,dashboard,SpendPage,CostAccumulation,design_error_rate,"Error rate",,active
+spend.cost.design.refunds_credit,dashboard,SpendPage,CostAccumulation,design_refunds_credit,"Refunds / credit (USD)",,active
 leaderboard.table.rank,dashboard,LeaderboardPage,LeaderboardPage,table_rank,"Rank",,active
 leaderboard.table.user_share,dashboard,LeaderboardPage,LeaderboardPage,table_user_share,"User / model usage share",,active
 leaderboard.table.token_cost,dashboard,LeaderboardPage,LeaderboardPage,table_token_cost,"Token total / estimated spend",,active

@@ -312,9 +312,18 @@ it("visually separates the summary and each existing management section without 
     );
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const metrics = within(section).queryByTestId("cost-row-metrics");
+    if (metrics) {
+      expect(metrics).toHaveClass("tt-cost-row-metrics--right");
+      expect(metrics).toHaveAttribute("data-align", "right");
+    }
+    expect(section.querySelector(".tt-cost-row-actions")).toBeNull();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
   }
+  expect(screen.queryByText("settings.cost.other_ai.edit_group")).not.toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.provider_account.refresh_all")).not.toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.subscription.add")).not.toBeInTheDocument();
   expect(screen.getByLabelText("spend.cost.month_picker.label")).toBeInTheDocument();
 });
 

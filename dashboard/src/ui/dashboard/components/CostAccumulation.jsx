@@ -181,7 +181,7 @@ function formatCostError(error) {
   return message;
 }
 
-function CostMonthPicker({ selectedMonth, currentMonth, onChange }) {
+export function CostMonthPicker({ selectedMonth, currentMonth, onChange }) {
   if (!selectedMonth || !currentMonth || typeof onChange !== "function") return null;
   const nextDisabled = selectedMonth >= currentMonth;
   const changeMonth = (value) => {
@@ -234,6 +234,7 @@ function CostSummaryCards({
   selectedMonth,
   stale = false,
   lastSuccessfulAt = null,
+  subscriptionRecords = [],
 }) {
   if (loading) {
     return (
@@ -276,6 +277,17 @@ function CostSummaryCards({
   const hasSubscriptionCost = Number.isFinite(Number(summary.monthSubscriptionCostUsd))
     && summary.monthSubscriptionCostUsd !== null
     && summary.monthSubscriptionCostUsd !== undefined;
+  const selectedDate = /^\d{4}-\d{2}$/.test(selectedMonth) ? new Date(`${selectedMonth}-01T00:00:00`) : null;
+  const now = new Date();
+  const elapsedDays = selectedDate
+    ? (selectedDate.getFullYear() === now.getFullYear() && selectedDate.getMonth() === now.getMonth()
+      ? now.getDate()
+      : new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate())
+    : null;
+  const dailyAverage = hasApiCost && elapsedDays ? Number(summary.monthApiCostUsd) / elapsedDays : null;
+  const unavailable = copy("spend.cost.row.unavailable");
+  const activeSubscriptions = subscriptionRecords.filter((record) => record.status === "active").length;
+  const renewingSubscriptions = subscriptionRecords.filter((record) => record.status === "active" && record.renewsAt).length;
 
   return (
     <div>
@@ -303,6 +315,13 @@ function CostSummaryCards({
           copy("data.confidence.method.api_pricing"),
         )}
         confidenceTestId="cost-confidence-estimated"
+        comparison={comparison("api", summary.monthApiCostUsd, summary.previousMonthApiCostUsd)}
+        metrics={[
+          { label: copy("spend.cost.design.daily_average"), value: dailyAverage === null ? unavailable : formatAmount(dailyAverage) },
+          { label: copy("spend.cost.design.month_usage"), value: summary.monthTotalTokens == null ? unavailable : formatChineseTokenCount(summary.monthTotalTokens) },
+          { label: copy("spend.cost.design.highest_daily"), value: summary.highestDailyCostUsd == null ? unavailable : formatAmount(summary.highestDailyCostUsd) },
+          { label: copy("spend.cost.design.month_daily_average"), value: dailyAverage === null ? unavailable : formatAmount(dailyAverage) },
+        ]}
       /> : null}
       {hasSubscriptionCost ? <SummaryCard
         id="subscription"
@@ -322,6 +341,13 @@ function CostSummaryCards({
           copy("spend.cost.subscription.section"),
         )}
         confidenceTestId="cost-confidence-subscription"
+        comparison={comparison("subscription", summary.monthSubscriptionCostUsd, summary.previousMonthSubscriptionCostUsd)}
+        metrics={[
+          { label: copy("spend.cost.design.subscription_count"), value: subscriptionRecords.length.toLocaleString() },
+          { label: copy("spend.cost.design.subscription_added"), value: unavailable },
+          { label: copy("spend.cost.design.subscription_changed"), value: unavailable },
+          { label: copy("spend.cost.design.subscription_renewing"), value: renewingSubscriptions || activeSubscriptions ? renewingSubscriptions.toLocaleString() : "0" },
+        ]}
       /> : null}
       </div>
     </div>
@@ -334,6 +360,8 @@ function SummaryCard({
   value,
   confidence = null,
   confidenceTestId = null,
+  comparison = null,
+  metrics = [],
   highlight = false,
   icon: Icon,
   iconTone = "blue",
@@ -343,33 +371,37 @@ function SummaryCard({
       data-testid="cost-summary-card"
       data-cost-summary-card={id}
       className={cn(
-        "tt-surface-nested flex h-full flex-col items-start rounded-lg p-3 text-left",
+        "tt-surface-nested tt-cost-summary-card flex h-full flex-col items-start rounded-lg p-3 text-left",
         highlight ? "tt-cost-summary-total" : "",
       )}
     >
-      <div className="flex items-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+      <div className="tt-cost-summary-heading flex w-full items-start gap-3 text-xs text-oai-gray-500 dark:text-oai-gray-400">
         <span data-testid="cost-summary-icon">
           <span
             data-testid={`cost-summary-icon-${id}`}
             data-tone={iconTone}
-            className={cn("flex h-7 w-7 items-center justify-center rounded-lg", COST_ICON_TONES[iconTone])}
+            className={cn("tt-cost-summary-mark flex items-center justify-center rounded-xl", COST_ICON_TONES[iconTone])}
           >
             <Icon className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
         </span>
-        <span>{label}</span>
-        <Info className="h-3.5 w-3.5 text-oai-gray-400" aria-hidden="true" />
+        <span className="tt-cost-summary-label">{label}</span>
+        <Info className="mt-0.5 h-3.5 w-3.5 text-oai-gray-400" aria-hidden="true" />
+        {comparison ? <span className={cn("tt-cost-summary-change ml-auto", comparison.className)}>{comparison.label}</span> : null}
       </div>
       <div className={cn(
-        "mt-1 w-full text-left text-lg font-semibold",
+        "tt-cost-summary-primary mt-1 w-full text-left text-lg font-semibold",
         highlight ? "text-oai-brand-600 dark:text-oai-brand-400" : "text-oai-gray-900 dark:text-oai-gray-100"
       )}>
         {value}
       </div>
+      <div className="tt-cost-summary-details">
+        {metrics.map((metric) => <div key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong></div>)}
+      </div>
       {confidence ? (
         <DataConfidenceBadge
           confidence={confidence}
-          className="mt-2 w-full justify-start text-left"
+          className="tt-cost-summary-footer mt-2 w-full justify-start text-left"
           data-testid={confidenceTestId}
         />
       ) : null}
@@ -377,7 +409,7 @@ function SummaryCard({
   );
 }
 
-function FoldableSection({ id, icon, iconTone = "blue", title, count, actions = null, summaryMetrics = [], children, className = "mb-6", testId, initiallyOpen = true }) {
+function FoldableSection({ id, icon, iconTone = "blue", title, description, count, summaryMetrics = [], children, className = "mb-6", testId, initiallyOpen = true }) {
   const storageKey = `token-eyes:cost-section:${id}`;
   const [open, setOpen] = useState(() => {
     try {
@@ -404,29 +436,26 @@ function FoldableSection({ id, icon, iconTone = "blue", title, count, actions = 
       data-open={open ? "true" : "false"}
       data-testid={testId}
     >
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="tt-cost-row-layout mb-3 flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={toggle}
           aria-expanded={open}
           className="tt-analytics-focusable tt-pressable -m-1.5 flex min-w-0 items-center gap-2 rounded-[var(--tt-control-radius)] p-1.5 text-left"
         >
-          <SectionHeader icon={icon} iconTone={iconTone} title={title} count={count} />
+          <SectionHeader icon={icon} iconTone={iconTone} title={title} description={description} count={count} />
           {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
         </button>
         {!open && summaryMetrics.length > 0 ? (
-          <div className="tt-cost-row-metrics" data-testid="cost-row-metrics" data-align="right">
+          <div className="tt-cost-row-metrics tt-cost-row-metrics--right" data-testid="cost-row-metrics" data-align="right">
             {summaryMetrics.map((metric) => (
-              <div key={metric.label} className="tt-cost-row-metric">
+              <div key={metric.label} className="tt-cost-row-metric" data-tone={metric.tone || "neutral"}>
                 <span>{metric.label}</span>
                 <strong>{metric.value}</strong>
               </div>
             ))}
           </div>
         ) : null}
-        <div className="tt-cost-row-actions">
-          {actions}
-        </div>
       </div>
       {open ? children : null}
     </section>
@@ -480,24 +509,16 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth, estimatedTotalUsd
       icon={BarChart3}
       iconTone="rose"
       title={copy("spend.cost.other_ai_groups.section")}
+      description={copy("spend.cost.design.groups_description")}
       count={groups.length}
       className="mb-4"
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
-        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
-        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
-        { label: copy("spend.cost.row.subscription_usd"), value: Number(subscriptionUsd || 0).toFixed(2) },
+        { label: copy("spend.cost.design.month_total"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "orange" },
+        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%`, tone: "orange" },
+        { label: copy("spend.cost.design.group_count"), value: groups.length.toLocaleString() },
+        { label: copy("spend.cost.design.highest_group"), value: Math.max(...groups.map((group) => Number(group.month_usd || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
       ]}
-      actions={(
-        <button
-          type="button"
-          onClick={() => navigate("/settings/cost")}
-          className="tt-cost-section-action inline-flex min-h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
-        >
-          <Pencil className="h-3 w-3" aria-hidden="true" />
-          {copy("settings.cost.other_ai.edit_group")}
-        </button>
-      )}
     >
       <div data-testid="compact-cost-group-grid" data-layout="reference-cost-group-grid" className="tt-cost-group-grid">
         {groups.map((group, index) => {
@@ -552,19 +573,15 @@ function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, section
       icon={Package}
       iconTone="violet"
       title={copy("spend.cost.token_package.section")}
+      description={copy("spend.cost.design.packages_description")}
       count={packages.length}
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
         { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
         { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
+        { label: copy("spend.cost.design.package_count"), value: packages.length.toLocaleString() },
         { label: copy("spend.cost.row.available_quota"), value: quota },
       ]}
-      actions={onRefresh ? (
-        <button type="button" onClick={onRefresh} disabled={loading} className="tt-cost-section-action inline-flex min-h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800">
-          <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} aria-hidden="true" />
-          {copy("spend.cost.provider_account.refresh_all")}
-        </button>
-      ) : null}
     >
       {loading ? (
         <LoadingSkeleton />
@@ -690,33 +707,18 @@ function ProviderApiAccountSection({
       icon={Globe}
       iconTone="blue"
       title={copy("spend.cost.provider_account.section")}
+      description={stale
+        ? <span className="shrink-0 whitespace-nowrap">{copy("spend.cost.provider_account.stale")}</span>
+        : copy("spend.cost.design.providers_description")}
       count={hasBalances ? balances.length : 0}
       testId="provider-api-account-section"
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={hasBalances ? [
-        { label: copy("spend.cost.row.month_estimate"), value: monthSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
-        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
-        { label: copy("spend.cost.row.available_balance"), value: available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.design.month_spend"), value: monthSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "blue" },
+        { label: copy("spend.cost.row.available_balance"), value: available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "blue" },
+        { label: copy("spend.cost.design.account_count"), value: balances.length.toLocaleString() },
+        { label: copy("spend.cost.design.balance_health"), value: balances.every((item) => item.status === "synced") ? copy("spend.cost.design.health_good") : copy("spend.cost.row.unavailable"), tone: "green" },
       ] : []}
-      actions={<div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-          {stale && (
-            <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-yellow-50 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
-              <AlertCircle className="h-3 w-3" aria-hidden="true" />
-              {copy("spend.cost.provider_account.stale")}
-            </span>
-          )}
-          {hasBalances && (
-            <button
-              type="button"
-              onClick={onRefreshAll}
-              disabled={refreshing}
-              className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
-            >
-              <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} aria-hidden="true" />
-              {refreshing ? copy("spend.cost.provider_account.refreshing") : copy("spend.cost.provider_account.refresh_all")}
-            </button>
-          )}
-        </div>}
     >
 
       {!hasBalances ? (
@@ -831,11 +833,13 @@ function ApiBillingSection({ accounts, loading, estimatedTotalUsd = 0, sectionsI
       icon={Code2}
       iconTone="green"
       title={copy("spend.cost.api_billing.section")}
+      description={copy("spend.cost.design.api_description")}
       count={accounts.length}
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
-        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
-        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
+        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "orange" },
+        { label: copy("spend.cost.design.success_calls"), value: copy("spend.cost.row.unavailable") },
+        { label: copy("spend.cost.design.error_rate"), value: copy("spend.cost.row.unavailable"), tone: "green" },
         { label: copy("spend.cost.row.unbilled_usd"), value: lifetimeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
       ]}
     >
@@ -931,20 +935,15 @@ function SubscriptionSection({ records, loading, onAdd, onEdit, onDelete, sectio
       icon={CreditCard}
       iconTone="orange"
       title={copy("spend.cost.subscription.section")}
+      description={copy("spend.cost.design.subscriptions_description")}
       count={records.length}
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
         { label: copy("spend.cost.row.month_subscription"), value: monthUsd.toFixed(2) },
         { label: copy("spend.cost.row.lifetime_subscription"), value: lifetimeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.design.subscription_renewing"), value: records.filter((record) => record.status === "active" && record.renewsAt).length.toLocaleString() },
+        { label: copy("spend.cost.design.refunds_credit"), value: copy("spend.cost.row.unavailable") },
       ]}
-      actions={<button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex min-h-10 items-center gap-1 rounded-md bg-oai-brand-600 px-3 text-xs font-medium text-white hover:bg-oai-brand-700"
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          {copy("spend.cost.subscription.add")}
-        </button>}
     >
 
       {/* Separate-columns note — subscription fees vs provider API spend. */}
@@ -1179,9 +1178,9 @@ function SubscriptionForm({ initial, onSave, onCancel, saving, formError }) {
 // Shared helper components
 // ---------------------------------------------------------------------------
 
-function SectionHeader({ icon: Icon, iconTone = "blue", title, count }) {
+function SectionHeader({ icon: Icon, iconTone = "blue", title, description, count }) {
   return (
-    <div className="mb-3 flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-3">
       <span
         data-testid="cost-section-icon"
         data-tone={iconTone}
@@ -1189,7 +1188,10 @@ function SectionHeader({ icon: Icon, iconTone = "blue", title, count }) {
       >
         <Icon className="h-4 w-4" aria-hidden="true" />
       </span>
-      <h3 className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">{title}</h3>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-oai-gray-800 dark:text-oai-gray-200">{title}</span>
+        {description ? <span className="tt-cost-section-description block truncate whitespace-nowrap text-xs font-normal text-oai-gray-500 dark:text-oai-gray-400">{description}</span> : null}
+      </span>
       {count > 0 && (
         <span className="rounded-full bg-oai-gray-100 px-2 py-0.5 text-xs text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400">
           {count}
@@ -1250,6 +1252,7 @@ export function CostAccumulation({
   selectedMonth = "",
   currentMonth = "",
   onSelectedMonthChange,
+  showMonthPicker = true,
   loading = false,
   error = null,
   costSummaryStale = false,
@@ -1283,17 +1286,18 @@ export function CostAccumulation({
         data-testid="cost-summary-region"
         className="tt-surface rounded-[var(--tt-card-radius)] p-4"
       >
-        <CostMonthPicker
+        {showMonthPicker ? <CostMonthPicker
           selectedMonth={selectedMonth}
           currentMonth={currentMonth}
           onChange={onSelectedMonthChange}
-        />
+        /> : null}
         <CostSummaryCards
           summary={costSummary}
           loading={loading}
           selectedMonth={selectedMonth}
           stale={costSummaryStale}
           lastSuccessfulAt={costLastSuccessfulAt}
+          subscriptionRecords={subscriptionRecords}
         />
       </div>
       <OtherAiGroupCostSection
