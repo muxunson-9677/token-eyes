@@ -181,6 +181,64 @@ describe("ResetCelebrationProvider", () => {
     window.removeEventListener(RESET_CELEBRATION_PREVIEW_EVENT, listener);
   });
 
+  it("broadcasts the selected preview effect to the other app WebView", async () => {
+    const channels = [];
+    const postMessage = vi.fn();
+    vi.stubGlobal("BroadcastChannel", vi.fn(function MockBroadcastChannel(name) {
+      this.name = name;
+      this.postMessage = postMessage;
+      this.close = vi.fn();
+      this.onmessage = null;
+      channels.push(this);
+    }));
+    renderProvider();
+
+    act(() => expect(triggerResetCelebrationPreview("fireworks")).toBe(true));
+    await flushLazyRender();
+
+    expect(channels).toHaveLength(1);
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "reset-celebration",
+      effectId: "fireworks",
+      detail: expect.objectContaining({ eventId: expect.stringMatching(/^preview:fireworks:/) }),
+    }));
+  });
+
+  it("shows a remote celebration once without broadcasting it back", async () => {
+    const channels = [];
+    const postMessage = vi.fn();
+    vi.stubGlobal("BroadcastChannel", vi.fn(function MockBroadcastChannel(name) {
+      this.name = name;
+      this.postMessage = postMessage;
+      this.close = vi.fn();
+      this.onmessage = null;
+      channels.push(this);
+    }));
+    renderProvider();
+
+    act(() => channels[0].onmessage({ data: {
+      type: "reset-celebration",
+      detail: VALID_EVENT,
+      effectId: "fireworks",
+    } }));
+    await flushLazyRender();
+
+    expect(document.querySelector(".tt-reset-celebration")).toHaveAttribute(
+      "data-effect-id",
+      "fireworks",
+    );
+    expect(postMessage).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(RESET_CELEBRATION_DURATION_MS));
+    act(() => channels[0].onmessage({ data: {
+      type: "reset-celebration",
+      detail: VALID_EVENT,
+      effectId: "fireworks",
+    } }));
+    await flushLazyRender();
+    expect(document.querySelector(".tt-reset-celebration")).toBeNull();
+  });
+
   it("rejects unknown preview effect ids", () => {
     renderProvider();
     expect(triggerResetCelebrationPreview("unknown-effect")).toBe(false);

@@ -2276,6 +2276,8 @@ widgets.windows.limits.empty,ui,WidgetsPage,WindowsWidgetProjectSettings,empty,"
 widgets.windows.limits.unavailable,ui,WidgetsPage,WindowsWidgetProjectSettings,value,"--",,active
 native.window.status.label,ui,AppLayout,NativeWindowBar,status_label,"System status",,active
 native.window.status.normal,ui,AppLayout,NativeWindowBar,status_normal,"Normal",,active
+native.window.status.connected,ui,AppLayout,NativeWindowBar,status_connected,"Connected",,active
+native.window.refresh_local_data,ui,AppLayout,NativeWindowBar,refresh_local_data,"Refresh local data",,active
 native.window.sync.local,ui,AppLayout,NativeWindowBar,sync_local,"Local data",,active
 native.window.sync.recent,ui,AppLayout,NativeWindowBar,sync_recent,"Synced a moment ago",,active
 native.window.sync.earlier,ui,AppLayout,NativeWindowBar,sync_earlier,"Previously synced",,active

@@ -120,14 +120,15 @@
 }
 
 .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned {
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr) minmax(122px, 142px) minmax(122px, 142px);
-  justify-self: stretch;
+  width: auto;
+  grid-template-columns: max-content minmax(122px, 142px) minmax(122px, 142px);
+  justify-content: end;
+  justify-self: end;
 }
 
 .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap {
-  gap: 7px;
-  padding-right: 20px;
+  gap: 4px;
+  padding-right: 8px;
 }
 
 .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-cells {
@@ -167,12 +168,12 @@
   }
 
   .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned {
-    grid-template-columns: minmax(0, 1fr) 92px 92px;
+    grid-template-columns: max-content 92px 92px;
   }
 
   .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap {
-    gap: 4px;
-    padding-right: 8px;
+    gap: 3px;
+    padding-right: 4px;
   }
 
   .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap-cells {
@@ -4140,6 +4141,103 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
   }
 }
 
+/* Fixed 0.54.38 desktop chrome. Content-route layouts remain page-owned. */
+html.native-windows-app .tt-app-shell {
+  --tt-window-bar-height: 62px;
+  --tt-sidebar-width: 252px;
+}
+
+html.native-windows-app .tt-native-window-bar,
+html.native-windows-app .tt-reference-route-widgets > .tt-native-window-bar {
+  display: flex !important;
+  height: 62px;
+  min-height: 62px;
+}
+
+html.native-windows-app .tt-native-window-brand {
+  gap: 10px;
+  padding-left: 18px;
+  transform: none;
+  font-size: 18px;
+}
+
+html.native-windows-app .tt-native-window-brand img {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+  border-radius: 7px;
+  transform: none;
+}
+
+html.native-windows-app .tt-native-window-brand > span:last-child,
+html.native-windows-app .tt-native-window-tools {
+  transform: none;
+}
+
+html.native-windows-app .tt-desktop-sidebar {
+  flex: 0 0 252px;
+  width: 252px;
+  min-width: 252px;
+  max-width: 252px;
+  transition: none;
+}
+
+html.native-windows-app .tt-desktop-sidebar > div:first-child {
+  display: none;
+}
+
+html.native-windows-app .tt-desktop-sidebar nav {
+  padding-top: 28px;
+  padding-right: 19px;
+  padding-left: 9px;
+}
+
+html.native-windows-app .tt-desktop-sidebar nav > div:first-child > div:last-child {
+  gap: 6px;
+}
+
+html.native-windows-app .tt-desktop-sidebar .tt-sidebar-item {
+  min-height: 44px;
+  gap: 17px;
+  padding-left: 14px;
+  font-size: 14px;
+}
+
+html.native-windows-app .tt-desktop-sidebar .tt-sidebar-item svg {
+  width: 18px;
+  height: 18px;
+}
+
+html.native-windows-app .tt-desktop-sidebar ul {
+  margin-left: 40px;
+}
+
+html.native-windows-app .tt-desktop-sidebar nav > div:not(:first-child) > div:first-child {
+  padding-left: 12px;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+html.native-windows-app .tt-desktop-sidebar nav > div:not(:first-child) > div:first-child {
+  padding-bottom: 14px;
+}
+
+html.native-windows-app .tt-desktop-sidebar .tt-sidebar-item[aria-current="page"] {
+  transform: none;
+  background: #eaf7f3;
+  box-shadow: none;
+  color: #00a76f;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+html.native-windows-app .tt-reference-route-widgets .tt-desktop-sidebar::before,
+html.native-windows-app .tt-reference-route-widgets .tt-desktop-sidebar::after {
+  display: none;
+  content: none;
+}
+
 /* Provider API */
 .tt-settings-cost-page .tt-provider-api-list {
   display: grid;
@@ -4920,8 +5018,7 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   gap: 62px;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar > div:first-child,
-.tt-reference-route-dashboard .tt-desktop-sidebar nav > div:first-child > div:first-child {
+.tt-reference-route-dashboard .tt-desktop-sidebar > div:first-child {
   display: none;
 }
 
@@ -4960,7 +5057,7 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   font-weight: 600;
 }
 
-.tt-reference-route-dashboard .tt-desktop-sidebar nav > div > div:first-child {
+.tt-reference-route-dashboard .tt-desktop-sidebar nav > div:not(:first-child) > div:first-child {
   padding-left: 12px;
   font-size: 11px;
   letter-spacing: 0;
@@ -5209,11 +5306,7 @@ html[data-reference-scenario="13-settings-cost-4"] .tt-native-status-pill:first-
 }
 
 .tt-native-status-pill:first-child {
-  min-width: 125px;
-}
-
-.tt-native-status-pill:nth-child(2) {
-  min-width: 152px;
+  min-width: 168px;
 }
 
 .tt-native-status-value {
@@ -5224,6 +5317,51 @@ html[data-reference-scenario="13-settings-cost-4"] .tt-native-status-pill:first-
 .tt-native-status-pill svg {
   width: 15px;
   height: 15px;
+}
+
+.tt-system-status-control {
+  display: flex;
+  min-width: 0;
+  height: 40px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--tt-surface-border);
+  border-radius: 8px;
+  padding-left: 9px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tt-system-status-control .tt-native-status-value {
+  font-size: 11px;
+}
+
+.tt-system-status-refresh {
+  display: inline-flex;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 0;
+  border: 0;
+  border-left: 1px solid rgba(31, 43, 56, 0.1);
+  padding: 0 0 0 7px;
+  background: transparent;
+  color: #667085;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.tt-system-status-refresh:hover {
+  color: #08aa70;
+}
+
+.tt-system-status-refresh:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .tt-native-status-dot {
@@ -5239,8 +5377,8 @@ html[data-reference-scenario="13-settings-cost-4"] .tt-native-status-pill:first-
 .tt-native-window-button {
   position: relative;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border: 0;
   background: transparent;
   color: #667085;
@@ -5249,9 +5387,37 @@ html[data-reference-scenario="13-settings-cost-4"] .tt-native-status-pill:first-
 .tt-native-notification-status svg,
 .tt-native-theme-button svg,
 .tt-native-window-button svg {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   stroke-width: 1.75;
+}
+
+html.native-windows-app .tt-reference-route-dashboard .tt-native-window-brand {
+  gap: 10px;
+  padding-left: 18px;
+  transform: none;
+  font-size: 18px;
+}
+
+html.native-windows-app .tt-reference-route-dashboard .tt-native-window-brand img {
+  width: 28px;
+  height: 28px;
+  transform: none;
+}
+
+html.native-windows-app .tt-reference-route-dashboard .tt-native-window-brand > span:last-child,
+html.native-windows-app .tt-reference-route-dashboard .tt-native-window-tools {
+  transform: none;
+}
+
+html.native-windows-app .tt-reference-route-dashboard .tt-native-status-pill:first-child {
+  width: auto;
+  min-width: 168px;
+  margin-left: 0;
+  gap: 8px;
+  padding-right: 13px;
+  padding-left: 13px;
+  font-size: 13px;
 }
 
 .tt-native-theme-button,

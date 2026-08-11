@@ -13,7 +13,9 @@ import {
   Trophy,
   History,
   PanelsTopLeft,
+  RotateCw,
 } from "lucide-react";
+import { triggerLocalSync } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { useTheme } from "../../hooks/useTheme.js";
@@ -435,6 +437,38 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false, coll
   );
 }
 
+function SystemStatusControl() {
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refreshLocalData = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await triggerLocalSync();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing]);
+
+  return (
+    <div className="tt-theme-trigger tt-system-status-control" aria-label={copy("native.window.status.label")}>
+      <span className="tt-native-status-dot" aria-hidden />
+      <span>{copy("native.window.status.label")}</span>
+      <strong className="tt-native-status-value">{copy("native.window.status.connected")}</strong>
+      <button
+        type="button"
+        aria-label={copy("native.window.refresh_local_data")}
+        title={copy("native.window.refresh_local_data")}
+        className="tt-system-status-refresh tt-sidebar-focusable"
+        disabled={refreshing}
+        onClick={refreshLocalData}
+      >
+        <RotateCw className={refreshing ? "animate-spin" : ""} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 /**
  * SidebarBody 鈥?shared markup used by both desktop sticky Sidebar and mobile Drawer.
  *
@@ -453,6 +487,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
   const { resolvedLocale } = useLocale();
   const { signedIn } = useInsforgeAuth();
   const { unreadCount } = useCodexResetEvents();
+  const showSystemStatus = !showCloseButton && isNativeWindowsApp();
   const navGroups = useMemo(() => getNavGroups(), [resolvedLocale]);
 
   // v2.0 IA: expanded parent groups. Initial state: a parent is expanded
@@ -590,6 +625,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
         )}
       >
         <ThemePill theme={theme} resolvedTheme={resolvedTheme} onSetTheme={setTheme} glassChrome={glassChrome} collapsed={collapsed} />
+        {showSystemStatus && !collapsed ? <SystemStatusControl /> : null}
         <div className="flex items-center gap-1.5">
           {/* TEMP: collapse button hidden 鈥?restore when ready
           {!showCloseButton && (
@@ -628,8 +664,10 @@ function Sidebar({ collapsed, onToggleCollapsed }) {
     <aside
       aria-label={copy("nav.aside_label")}
       className={cn(
-        "tt-sidebar-material tt-desktop-sidebar hidden min-[900px]:flex flex-col shrink-0 h-full min-h-0 transition-[width] duration-200",
-        collapsed ? "w-[72px]" : "w-[220px]",
+        "tt-sidebar-material tt-desktop-sidebar hidden min-[900px]:flex flex-col shrink-0 h-full min-h-0",
+        collapsed
+          ? "w-[72px] min-w-[72px] max-w-[72px] basis-[72px]"
+          : "w-[252px] min-w-[252px] max-w-[252px] basis-[252px]",
       )}
     >
       <SidebarBody collapsed={collapsed} onToggleCollapsed={onToggleCollapsed} glassChrome={nativeGlass} />
@@ -780,7 +818,7 @@ export function AppLayout({ children }) {
     >
       {nativeHeader}
       <div className="flex-1 min-h-0 flex">
-        <Sidebar collapsed={collapsed} onToggleCollapsed={toggle} />
+        <Sidebar collapsed={nativeWindows ? false : collapsed} onToggleCollapsed={toggle} />
         <MobileDrawer open={drawerOpen} onClose={closeDrawer} />
         {/* lg锛氫笌渚ф爮鍐呭鍖哄榻?鈥?渚ф爮搴曢儴鎸夐挳鍖轰负 px-2 py-3锛涗富鍗″彸渚?搴曚晶鐢?pr-3 pb-3 涓?py-3 瑙嗚涓€鑷达紝閬垮厤浠呴潬 p-2 鏄惧緱璐磋竟 */}
         {/* Mac App锛歚lg:pr-3 lg:pb-3` (12pt) 椤讳笌 Swift `DashboardChromeMetrics.mainGutterPoints` 涓€鑷达紝涓诲崱鍦嗚鐢?`--tt-main-card-radius` 娉ㄥ叆 */}

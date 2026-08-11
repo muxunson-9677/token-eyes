@@ -19,6 +19,25 @@ describe("isTauriApp", () => {
 });
 
 describe("isNativeWindowsApp", () => {
+  afterEach(() => {
+    window.history.replaceState({}, "", "/");
+    window.sessionStorage.clear();
+  });
+
+  it("enables the full Windows chrome in an explicit browser preview", () => {
+    window.history.replaceState({}, "", "/dashboard?native_windows_preview=1");
+
+    expect(isNativeWindowsApp()).toBe(true);
+  });
+
+  it("keeps the browser preview active while navigating between routes", () => {
+    window.history.replaceState({}, "", "/dashboard?native_windows_preview=1");
+    expect(isNativeWindowsApp()).toBe(true);
+
+    window.history.replaceState({}, "", "/settings/data");
+    expect(isNativeWindowsApp()).toBe(true);
+  });
+
   const originalPlatform = navigator.platform;
 
   beforeEach(() => {

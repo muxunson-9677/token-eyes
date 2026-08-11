@@ -393,6 +393,8 @@
   "shared.data.unattributed": "未归因",
   "native.window.status.label": "系统状态",
   "native.window.status.normal": "正常",
+  "native.window.status.connected": "已连接",
+  "native.window.refresh_local_data": "刷新检测本地数据",
   "native.window.sync.local": "本地数据",
   "native.window.sync.recent": "已同步 1 分钟前",
   "native.window.sync.earlier": "早前已同步",

@@ -8,7 +8,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getNavGroups, AppLayout } from "../Sidebar.jsx";
 
-const { authContext, codexResetContext, nativeBridgeContext, setTheme } = vi.hoisted(() => ({
+const { authContext, codexResetContext, nativeBridgeContext, setTheme, triggerLocalSync } = vi.hoisted(() => ({
   authContext: {
     value: {
       enabled: true,
@@ -27,6 +27,7 @@ const { authContext, codexResetContext, nativeBridgeContext, setTheme } = vi.hoi
   },
   nativeBridgeContext: { windows: false },
   setTheme: vi.fn(),
+  triggerLocalSync: vi.fn(),
 }));
 
 // Sidebar two-level navigation tests for the v2.0 IA refactor (work order 01).
@@ -80,6 +81,8 @@ vi.mock("../NativeWindowBar.jsx", () => ({
 vi.mock("../../../hooks/use-codex-reset-events", () => ({
   useCodexResetEvents: () => codexResetContext.value,
 }));
+
+vi.mock("../../../lib/api", () => ({ triggerLocalSync }));
 
 describe("getNavGroups structure (v2.0 IA)", () => {
   it("keeps core routes primary and moves optional features into More", () => {
@@ -158,6 +161,7 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     codexResetContext.value.unreadCount = 0;
     nativeBridgeContext.windows = false;
     setTheme.mockClear();
+    triggerLocalSync.mockReset();
     window.localStorage.clear();
     document.documentElement.classList.remove("native-windows-app");
     // jsdom doesn't implement layout, so the desktop <aside> is always in
@@ -442,6 +446,34 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(sidebars[1].parentElement).toHaveClass("min-[900px]:hidden");
   });
 
+  it("fixes every expanded desktop sidebar dimension at 252px before route CSS loads", () => {
+    renderSidebar("/dashboard");
+
+    expect(screen.getByRole("complementary", { name: "copy:nav.aside_label" })).toHaveClass(
+      "w-[252px]",
+      "min-w-[252px]",
+      "max-w-[252px]",
+      "basis-[252px]",
+    );
+  });
+
+  it("places the connected system status beside the theme control in the native sidebar", async () => {
+    nativeBridgeContext.windows = true;
+    const user = userEvent.setup();
+    renderSidebar("/dashboard");
+
+    const sidebar = screen.getByRole("complementary", { name: "copy:nav.aside_label" });
+    expect(within(sidebar).getByText("copy:native.window.status.label")).toBeInTheDocument();
+    expect(within(sidebar).getByText("copy:native.window.status.connected")).toBeInTheDocument();
+
+    await act(async () => {
+      await user.click(within(sidebar).getByRole("button", {
+        name: "copy:native.window.refresh_local_data",
+      }));
+    });
+    expect(triggerLocalSync).toHaveBeenCalledTimes(1);
+  });
+
   it("marks the document root while the Tauri Windows shell is mounted", () => {
     nativeBridgeContext.windows = true;
 
@@ -484,5 +516,20 @@ describe("Sidebar keyboard focus styles", () => {
     expect(outline?.important).toBe(true);
     expect(Number.parseFloat(outlineOffset?.value)).toBeLessThan(0);
     expect(outlineOffset?.important).toBe(true);
+  });
+
+  it("does not let route-specific CSS indent the overview navigation or push refresh outside its control", () => {
+    const stylesheet = postcss.parse(
+      readFileSync(resolve("src/ui/foundation/apple-glass.css"), "utf8"),
+    );
+    const rules = stylesheet.nodes.filter((node) => node.type === "rule");
+
+    expect(rules.some((rule) => rule.selector
+      === ".tt-reference-route-dashboard .tt-desktop-sidebar nav > div > div:first-child"))
+      .toBe(false);
+
+    const refreshRule = rules.find((rule) => rule.selector === ".tt-system-status-refresh");
+    const marginRight = refreshRule?.nodes.find((node) => node.prop === "margin-right");
+    expect(marginRight?.value).toBe("0");
   });
 });
