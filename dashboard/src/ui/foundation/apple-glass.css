@@ -319,36 +319,228 @@ html.native-windows-app .tt-reference-route-spend-usage .tt-main-work-surface ma
   border-radius: 8px;
 }
 
-.tt-reference-route-spend-usage [data-testid="usage-stats-layout"] {
-  grid-template-columns: minmax(0, 1fr) 235px;
-  column-gap: 16px;
-  row-gap: 8px;
+.tt-spend-usage-detail-scope [data-testid="usage-stats-layout"] {
+  grid-template-columns: minmax(0, 1fr) 220px;
+  column-gap: 12px;
+  row-gap: 6px;
 }
 
-.tt-reference-route-spend-usage .tt-surface:has([data-testid="usage-stats-layout"]) {
-  height: 313px;
-  margin-bottom: 13px;
+.tt-spend-usage-detail-scope .tt-surface:has([data-testid="usage-stats-layout"]) {
+  height: auto;
+  min-height: 218px;
+  margin-bottom: 18px;
   overflow: hidden;
 }
 
-.tt-reference-route-spend-usage .tt-surface:has([data-testid="usage-stats-layout"]) > div {
-  padding-top: 18px;
-  padding-right: 10px;
-  padding-bottom: 18px;
-  padding-left: 20px;
+.tt-spend-usage-detail-scope .tt-surface:has([data-testid="usage-stats-layout"]) > div {
+  padding: 10px 14px;
 }
 
-.tt-reference-route-spend-usage [data-testid="usage-stats-layout"] [data-layout-row="tokens"] {
-  margin-top: -4px;
+.tt-spend-usage-detail-scope [data-testid="usage-stats-layout"] [data-layout-row="tokens"] {
+  margin-top: 6px;
 }
 
-.tt-reference-route-spend-usage [data-testid="usage-dimension-card"] {
-  min-height: 82px;
-  padding: 10px 12px;
+.tt-spend-usage-detail-scope [data-testid="usage-dimension-card"] {
+  min-height: 56px;
+  padding: 6px 9px;
 }
 
-.tt-reference-route-spend-usage [data-testid="usage-cost-summary"] {
-  margin-top: 7px;
+.tt-spend-usage-detail-scope [data-testid="usage-cost-summary"] {
+  margin-top: 6px;
+}
+
+.tt-spend-usage-detail-scope .tt-usage-stats-card {
+  border-radius: 18px;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.98),
+    0 2px 4px rgba(31, 43, 56, 0.08),
+    0 18px 38px rgba(31, 43, 56, 0.11);
+}
+
+.tt-spend-usage-detail-scope .tt-usage-stats-reference {
+  min-height: 196px;
+}
+
+.tt-spend-usage-detail-scope .tt-usage-dimension,
+.tt-spend-usage-detail-scope .tt-usage-cost-card,
+.tt-spend-usage-detail-scope .tt-usage-summary-card {
+  border-radius: 13px;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.96),
+    0 2px 4px rgba(31, 43, 56, 0.07),
+    0 10px 22px rgba(31, 43, 56, 0.09);
+}
+
+.tt-spend-usage-detail-scope .tt-usage-summary-card {
+  display: flex;
+  min-height: 56px;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.tt-spend-usage-detail-scope .tt-usage-cost-card {
+  min-height: 56px;
+  padding: 5px 9px;
+}
+
+.tt-spend-usage-detail-scope .tt-usage-stats-main > [data-layout-row="headline"] {
+  min-height: 64px;
+  align-items: center;
+}
+
+.tt-spend-usage-detail-scope .tt-usage-stats-main > [data-layout-row="headline"] .text-3xl {
+  font-size: 1.65rem;
+  line-height: 1.05;
+}
+
+.tt-spend-usage-detail-scope [data-testid="usage-token-confidence"] {
+  margin-top: 4px;
+  gap: 4px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.tt-spend-usage-detail-scope [data-testid="usage-token-confidence"] > span:first-child {
+  padding: 2px 6px;
+}
+
+.tt-spend-usage-detail-scope [data-testid="usage-token-confidence"] button {
+  min-height: 20px;
+  padding: 0 4px;
+}
+
+.tt-spend-usage-detail-scope [data-testid="usage-cost-secondary-row"] {
+  flex-wrap: nowrap;
+  column-gap: 4px;
+  white-space: nowrap;
+}
+
+.tt-spend-usage-detail-scope [data-testid="usage-cost-secondary-row"] > * {
+  font-size: 9px;
+}
+
+.tt-spend-usage-detail-scope .tt-usage-detail-tabbar {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 15px;
+}
+
+.tt-spend-usage-detail-scope .tt-usage-detail-tab--active {
+  color: #1677ff;
+  box-shadow: inset 0 -2px #1677ff, 0 4px 12px rgba(22, 119, 255, 0.12);
+}
+
+.tt-spend-usage-detail-scope .tt-usage-table-card {
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.98),
+    0 2px 4px rgba(31, 43, 56, 0.07),
+    0 16px 34px rgba(31, 43, 56, 0.1);
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-metric {
+  display: flex;
+  min-height: 78px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-metric-icon-well {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-metric[data-tone="blue"] .tt-request-log-metric-icon-well {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-metric[data-tone="green"] .tt-request-log-metric-icon-well {
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-metric[data-tone="purple"] .tt-request-log-metric-icon-well {
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-metric .text-sm.font-semibold {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-metric-detail {
+  margin-top: 2px;
+  color: #7a8391;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-card > div {
+  padding: 18px 20px 12px;
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-card thead tr {
+  height: 42px;
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-row--featured {
+  background: rgba(59, 130, 246, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.24);
+}
+
+.tt-spend-usage-detail-scope .tt-request-provider-chip {
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid rgba(59, 130, 246, 0.16);
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.07);
+}
+
+.tt-spend-usage-detail-scope .tt-request-status-chip {
+  display: inline-flex;
+  min-width: 42px;
+  min-height: 25px;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.tt-spend-usage-detail-scope .tt-request-source-chip {
+  display: inline-flex;
+  max-width: 170px;
+  min-height: 24px;
+  align-items: center;
+  overflow: hidden;
+  padding: 2px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 7px;
+  background: rgba(148, 163, 184, 0.07);
+  text-overflow: ellipsis;
+}
+
+.tt-spend-usage-detail-scope .tt-request-log-total-row {
+  background: rgba(16, 185, 129, 0.045);
+  box-shadow: inset 0 1px rgba(16, 185, 129, 0.18), inset 0 -1px rgba(16, 185, 129, 0.18);
+}
+
+.tt-spend-usage-detail-scope .tt-usage-table-card tbody tr {
+  height: 48px;
+}
+
+.tt-spend-usage-detail-scope .tt-usage-table-pagination {
+  min-height: 62px;
+  margin-top: 0;
+  padding-top: 10px;
 }
 
 .tt-reference-route-spend-usage [data-testid="usage-chart-token-services-layout"] {

@@ -57,6 +57,8 @@ describe("UsageStatsPanel", () => {
     expect(container.querySelectorAll('[data-layout-row="tokens"]')).toHaveLength(2);
     expect(container.querySelectorAll('[data-layout-row="costs"]')).toHaveLength(2);
     expect(screen.getByTestId("usage-summary-rail")).toHaveClass("tt-usage-summary-rail");
+    expect(screen.getByTestId("usage-stats-layout")).toHaveClass("tt-usage-stats-reference");
+    expect(screen.getByTestId("usage-request-summary")).toHaveClass("tt-usage-summary-card");
   });
 
   it("renders exact token status and all four token dimensions", () => {
@@ -347,5 +349,16 @@ describe("UsageStatsPanel", () => {
   ])("normalizes cache hit rate %s", (value, expected) => {
     render(<UsageStatsPanel summary={{ totals: { total_tokens: 1, cache_hit_rate: value } }} />);
     expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it("derives the cache hit rate from token dimensions when the aggregate omits it", () => {
+    render(<UsageStatsPanel summary={{ totals: {
+      total_tokens: 1_000,
+      input_tokens: 50,
+      cache_creation_input_tokens: 10,
+      cached_input_tokens: 940,
+    } }} />);
+
+    expect(screen.getByTestId("usage-cache-hit-summary")).toHaveTextContent("94.0%");
   });
 });

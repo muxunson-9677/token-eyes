@@ -8,6 +8,7 @@ import { ProviderIcon } from "./ProviderIcon";
 import { getProviderColor } from "./UsageOverview.jsx";
 import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
 import { deriveDataConfidence } from "../../../lib/data-confidence";
+import { calculateCacheHitSummary } from "../../../lib/cache-hit";
 
 /**
  * Ticket-02 F: 统计面板。
@@ -216,8 +217,15 @@ export function UsageStatsPanel({
   const costValue = totals?.cost_usd ?? totals?.total_cost_usd;
   const costProvided = isProvidedNumber(costValue);
   const cost = costProvided ? Number(costValue) : null;
-  const hitRateProvided = isProvidedNumber(totals?.cache_hit_rate);
-  const hitRate = hitRateProvided ? normalizeHitRate(totals.cache_hit_rate) : null;
+  const explicitHitRateProvided = isProvidedNumber(totals?.cache_hit_rate);
+  const derivedHitRate = calculateCacheHitSummary(totals).cacheHitRate;
+  const canDeriveHitRate = isProvidedNumber(totals?.cached_input_tokens)
+    && [totals?.input_tokens, totals?.cache_creation_input_tokens, totals?.cached_input_tokens]
+      .some((value) => Number(value || 0) > 0);
+  const hitRateProvided = explicitHitRateProvided || canDeriveHitRate;
+  const hitRate = explicitHitRateProvided
+    ? normalizeHitRate(totals.cache_hit_rate)
+    : derivedHitRate * 100;
   const selectedAgentBrandColor = selectedAgent?.queueSource
     ? getProviderColor(selectedAgent.queueSource.toUpperCase(), 0)
     : null;
@@ -303,7 +311,7 @@ export function UsageStatsPanel({
   }
 
   return (
-    <Card className={cn("mb-6", className)} bodyClassName="p-4 sm:p-6">
+    <Card className={cn("tt-usage-stats-card mb-6", className)} bodyClassName="p-4 sm:p-6">
       {error ? (
         <div
           role="status"
@@ -357,7 +365,7 @@ export function UsageStatsPanel({
         </div>
       ) : null}
       <div
-        className="tt-usage-stats-layout flex min-w-0 flex-col gap-4 lg:items-stretch"
+        className="tt-usage-stats-layout tt-usage-stats-reference flex min-w-0 flex-col gap-4 lg:items-stretch"
         data-testid="usage-stats-layout"
       >
         {/* Left: main metric + 4 dimension cards */}
@@ -479,7 +487,7 @@ export function UsageStatsPanel({
                   <div
                     key={card.labelKey}
                     data-testid="usage-cost-card"
-                    className="tt-surface-nested min-w-0 rounded-lg px-2.5 py-2"
+                    className="tt-surface-nested tt-usage-cost-card min-w-0 rounded-lg px-2.5 py-2"
                   >
                     <div className="flex items-start gap-1.5 text-[10px] leading-tight text-oai-gray-500 dark:text-oai-gray-400">
                       <CostIcon className={cn("mt-px h-3 w-3 shrink-0", card.iconClass)} aria-hidden="true" />
@@ -529,7 +537,7 @@ export function UsageStatsPanel({
         >
           {requestCount !== null ? (
           <div
-            className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
+            className="tt-surface-nested tt-usage-summary-card min-w-0 flex-1 rounded-lg px-3 py-2"
             data-layout-row="headline"
             data-testid="usage-request-summary"
           >
@@ -551,7 +559,7 @@ export function UsageStatsPanel({
 
           {costProvided ? (
             <div
-              className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
+              className="tt-surface-nested tt-usage-summary-card min-w-0 flex-1 rounded-lg px-3 py-2"
               data-layout-row="tokens"
               data-testid="usage-total-cost-summary"
             >
@@ -578,7 +586,7 @@ export function UsageStatsPanel({
 
           {hitRateProvided ? (
           <div
-            className="tt-surface-nested min-w-0 flex-1 rounded-lg px-3 py-2"
+            className="tt-surface-nested tt-usage-summary-card min-w-0 flex-1 rounded-lg px-3 py-2"
             data-layout-row="costs"
             data-testid="usage-cache-hit-summary"
           >

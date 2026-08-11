@@ -27,6 +27,7 @@ vi.mock("../../../../lib/copy", () => ({
       "ticket04.provider.column.success_rate": "Success Rate",
       "ticket04.provider.column.avg_latency": "Avg Latency",
       "usage.provider.connected_no_precise_tokens": "Connected; precise tokens unavailable",
+      "spend.usage.metric.not_collected": "Not collected",
     };
     return map[key] || key;
   },
@@ -143,6 +144,26 @@ describe("ProviderUsageTable", () => {
     render(<ProviderUsageTable from="2026-06-01" to="2026-06-30" />);
     expect(screen.getByText("Trae")).toBeInTheDocument();
     expect(screen.getByText("Connected; precise tokens unavailable")).toBeInTheDocument();
+  });
+
+  it("uses aggregate conversation counts and labels genuinely uncollected metrics", () => {
+    useProviderStats.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      providers: {
+        providers: [makeProvider({
+          request_count: null,
+          conversation_count: 1623,
+          success_rate: null,
+          avg_latency_ms: null,
+        })],
+        totals: {},
+      },
+    });
+
+    const { container } = render(<ProviderUsageTable from="2026-06-01" to="2026-06-30" />);
+    expect(screen.getByText("1,623")).toBeInTheDocument();
+    expect(screen.getAllByText("Not collected")).toHaveLength(2);
+    expect(container).not.toHaveTextContent("—");
   });
 
   it("success rate 100% is green, <100% is orange", () => {

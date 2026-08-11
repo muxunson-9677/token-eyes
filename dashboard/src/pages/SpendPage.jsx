@@ -491,7 +491,7 @@ function SpendUsagePageInner({
   };
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
+    <div className="tt-spend-usage-detail-scope flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -820,7 +820,7 @@ function UsageDetailTabs({
 }) {
   return (
     <section className="mb-6">
-      <div className="inline-flex rounded-lg bg-oai-gray-50 p-1 dark:bg-oai-gray-900" role="tablist" aria-label={copy("spend.usage.title")}>
+      <div className="tt-surface tt-usage-detail-tabbar inline-flex rounded-xl p-1" role="tablist" aria-label={copy("spend.usage.title")}>
         {SPEND_USAGE_TABS.map((tab) => {
           const Icon = tab.icon;
           const selected = activeTab === tab.id;
@@ -834,7 +834,7 @@ function UsageDetailTabs({
               className={cn(
                 "inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors",
                 selected
-                  ? "bg-white text-oai-black shadow-sm dark:bg-oai-gray-800 dark:text-white"
+                  ? "tt-usage-detail-tab--active bg-white text-oai-black shadow-sm dark:bg-oai-gray-800 dark:text-white"
                   : "text-oai-gray-500 hover:text-oai-gray-900 dark:text-oai-gray-400 dark:hover:text-white",
               )}
             >

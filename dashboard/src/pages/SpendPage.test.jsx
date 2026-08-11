@@ -252,6 +252,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     render(<SpendUsagePage />);
 
     expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
+    expect(document.querySelector(".tt-spend-usage-detail-scope")).toBeInTheDocument();
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
     expect(screen.getAllByTestId("usage-cost-card")).toHaveLength(4);

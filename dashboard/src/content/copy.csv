@@ -1529,8 +1529,15 @@ usage.request_log.loading_aria,ui,DashboardPage,RequestUsageLog,loading_aria,"�
 usage.request_log.source_filter_aria,ui,DashboardPage,RequestUsageLog,source_filter_aria,"选择数据源",,active
 usage.request_log.totals,ui,DashboardPage,RequestUsageLog,totals,"合计",,active
 usage.request_log.metric.requests,ui,DashboardPage,RequestUsageLog,metric_requests,"Requests",,active
+usage.request_log.metric.requests_detail,ui,DashboardPage,RequestUsageLog,metric_requests_detail,"{{count}} requests recorded",,active
 usage.request_log.metric.success_rate,ui,DashboardPage,RequestUsageLog,metric_success_rate,"Success rate",,active
+usage.request_log.metric.success_detail,ui,DashboardPage,RequestUsageLog,metric_success_detail,"{{success}} succeeded / {{failed}} failed",,active
 usage.request_log.metric.avg_latency,ui,DashboardPage,RequestUsageLog,metric_avg_latency,"Average latency",,active
+usage.request_log.metric.latency_detail,ui,DashboardPage,RequestUsageLog,metric_latency_detail,"Based on recorded requests",,active
+spend.usage.metric.not_collected,dashboard,SpendPage,UsageTables,metric_not_collected,"Not collected",,active
+spend.usage.pagination.records,dashboard,SpendPage,ModelUsageTable,pagination_records,"{{total}} records",,active
+spend.usage.pagination.previous,dashboard,SpendPage,ModelUsageTable,pagination_previous,"Previous",,active
+spend.usage.pagination.next,dashboard,SpendPage,ModelUsageTable,pagination_next,"Next",,active
 usage.request_log.showing,ui,DashboardPage,RequestUsageLog,showing,"显示 {{count}} 条记录",,active
 usage.request_log.column.time,ui,DashboardPage,RequestUsageLog,column_time,"时间",,active
 usage.request_log.column.agent,ui,DashboardPage,RequestUsageLog,column_agent,"Agent",,active

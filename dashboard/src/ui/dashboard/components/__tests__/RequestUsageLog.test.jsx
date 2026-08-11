@@ -32,6 +32,9 @@ vi.mock("../../../../lib/copy", () => ({
       "ticket04.request.page_jump": "Go to page",
       "ticket04.request.page_of": `of ${vars.total} pages`,
       "ticket04.request.page_jump_btn": "Jump",
+      "spend.usage.pagination.records": `${vars.total} records`,
+      "spend.usage.pagination.previous": "Previous",
+      "spend.usage.pagination.next": "Next",
       "ticket04.request.column.time": "Time",
       "ticket04.request.column.provider": "Provider",
       "ticket04.request.column.model": "Model",
@@ -55,6 +58,9 @@ vi.mock("../../../../lib/copy", () => ({
       "usage.request_log.metric.requests": "Requests",
       "usage.request_log.metric.success_rate": "Success rate",
       "usage.request_log.metric.avg_latency": "Average latency",
+      "usage.request_log.metric.requests_detail": `${vars.count} requests recorded`,
+      "usage.request_log.metric.success_detail": `${vars.success} succeeded / ${vars.failed} failed`,
+      "usage.request_log.metric.latency_detail": "Based on recorded requests",
       "usage.request_log.source_filter_aria": "Select source",
     };
     return map[key] || key;
@@ -120,8 +126,10 @@ describe("RequestUsageLog", () => {
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
 
     const metrics = screen.getByTestId("request-log-metrics");
-    for (const metric of within(metrics).getAllByTestId(/request-log-metric-/)) {
+    for (const metric of Array.from(metrics.children)) {
       expect(metric).toHaveClass("tt-surface-nested");
+      expect(metric).toHaveClass("tt-request-log-metric");
+      expect(within(metric).getByTestId("request-log-metric-icon")).toBeInTheDocument();
     }
     expect(within(metrics).getByText("7")).toBeInTheDocument();
   });
@@ -278,6 +286,34 @@ describe("RequestUsageLog", () => {
     expect(screen.getByTestId("request-log-metric-requests")).toHaveTextContent("25");
     expect(screen.getByTestId("request-log-metric-success-rate")).toHaveTextContent("96.0%");
     expect(screen.getByTestId("request-log-metric-avg-latency")).toHaveTextContent("830ms");
+    expect(screen.getByTestId("request-log-metric-requests")).toHaveTextContent("25 requests recorded");
+    expect(screen.getByTestId("request-log-metric-success-rate")).toHaveTextContent("24 succeeded / 1 failed");
+    expect(screen.getByTestId("request-log-metric-avg-latency")).toHaveTextContent("Based on recorded requests");
+  });
+
+  it("uses reference chips, row emphasis, total band, and a truthful record-count fallback", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord()],
+      totals: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cost_usd: 0.01,
+        request_count: 1,
+        success_count: 1,
+        success_rate: 100,
+        avg_latency_ms: 830,
+      },
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByTestId("request-log-row-0")).toHaveClass("tt-request-log-row--featured");
+    expect(screen.getByTestId("request-provider-chip")).toHaveClass("tt-request-provider-chip");
+    expect(screen.getByTestId("request-status-chip")).toHaveClass("tt-request-status-chip");
+    expect(screen.getByTestId("request-source-chip")).toHaveClass("tt-request-source-chip");
+    expect(screen.getByTestId("request-log-total-row")).toHaveClass("tt-request-log-total-row");
+    expect(screen.getByText("1 records")).toBeInTheDocument();
   });
 
   it("hides unavailable summary metrics instead of rendering placeholder dashes", () => {
@@ -349,10 +385,33 @@ describe("RequestUsageLog", () => {
     });
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
 
-    // PAGE_SIZE = 10, server reports total=60, so showing 10 / 60
-    expect(screen.getByText("Showing 10 of 60 records")).toBeInTheDocument();
+    expect(screen.getByText("60 records")).toBeInTheDocument();
     // Should show page number 1 as active
     expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
+  });
+
+  it("uses the request summary total when cached page metadata only describes the visible page", () => {
+    const records = Array.from({ length: 10 }, (_, i) => makeRecord({ id: `cached-${i}` }));
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records,
+      total: 10,
+      totalPages: 1,
+      totals: {
+        request_count: 33,
+        success_count: 33,
+        success_rate: 100,
+        avg_latency_ms: 830,
+      },
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByText("33 records")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Jump" })).not.toBeInTheDocument();
   });
 
   it("clicking page 2 triggers server-side pagination", async () => {
@@ -392,14 +451,14 @@ describe("RequestUsageLog", () => {
 
     const { rerender } = render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
     fireEvent.click(screen.getByRole("button", { name: "2" }));
-    expect(screen.getByLabelText("Go to page")).toHaveValue(2);
+    expect(screen.getByRole("button", { name: "2" })).toHaveAttribute("aria-current", "page");
 
     rerender(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByLabelText("Go to page")).toHaveValue(2);
+    expect(screen.getByRole("button", { name: "2" })).toHaveAttribute("aria-current", "page");
     expect(useRequestUsageRecords).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 2, pageSize: 10 }),
     );
@@ -408,7 +467,7 @@ describe("RequestUsageLog", () => {
   // Note: Frontend sorting is removed, so "sorting resets to page 1" test is obsolete.
   // Server-side sorting doesn't reset pagination - it's handled by the backend.
 
-  it("page input value syncs when clicking page number button", () => {
+  it("marks the selected page when clicking a page number", () => {
     const records = Array.from({ length: 60 }, (_, i) =>
       makeRecord({ id: `rec-${i}`, timestamp: `2026-06-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`, model: `model-${i}` }),
     );
@@ -416,111 +475,8 @@ describe("RequestUsageLog", () => {
     useRequestUsageRecords.mockReturnValue({ ...HOOK_DEFAULTS, records, total: 60, totalPages: 6 });
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
 
-    const input = screen.getByLabelText("Go to page");
-    expect(input).toHaveValue(1);
-
-    // Click page 2
     fireEvent.click(screen.getByRole("button", { name: "2" }));
-
-    // Input should now show 2
-    expect(input).toHaveValue(2);
-  });
-
-  it("jumps to a specific page when entering page number and pressing Enter", () => {
-    const allRecords = Array.from({ length: 60 }, (_, i) =>
-      makeRecord({ id: `rec-${i}`, timestamp: `2026-06-${String((i % 30) + 1).padStart(2, "0")}T00:00:00.000Z`, model: `model-${i}` }),
-    );
-    // Mock implementation returns different page based on page parameter
-    useRequestUsageRecords.mockImplementation(({ page }) => ({
-      ...HOOK_DEFAULTS,
-      records: allRecords.slice((page - 1) * 10, page * 10),
-      total: 60,
-      totalPages: 6,
-    }));
-    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
-
-    const input = screen.getByLabelText("Go to page");
-    expect(input).toHaveValue(1);
-    // Initial render shows page 1 with 10 records
-    expect(screen.getByText("Showing 10 of 60 records")).toBeInTheDocument();
-
-    // Jump to page 6
-    fireEvent.change(input, { target: { value: "6" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    // Should now be on page 6
-    expect(input).toHaveValue(6);
-    expect(screen.getByText("Showing 10 of 60 records")).toBeInTheDocument();
-    // Page 6 button should be the active/current page
-    const page6Btn = screen.getByRole("button", { name: "6" });
-    expect(page6Btn.className).toContain("bg-oai-brand");
-  });
-
-  it("clamps page number to valid range when input exceeds total pages", () => {
-    const records = Array.from({ length: 60 }, (_, i) =>
-      makeRecord({ id: `rec-${i}`, timestamp: `2026-06-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`, model: `model-${i}` }),
-    );
-    // Need proper pagination metadata for pagination controls to show
-    useRequestUsageRecords.mockReturnValue({ ...HOOK_DEFAULTS, records, total: 60, totalPages: 6 });
-    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
-
-    const input = screen.getByLabelText("Go to page");
-    // Try to go to page 99 (should clamp to 6)
-    fireEvent.change(input, { target: { value: "99" } });
-
-    // Should clamp to page 6 (total pages)
-    expect(input).toHaveValue(6);
-  });
-
-  it("clamps page number to 1 when input is less than 1", () => {
-    const records = Array.from({ length: 60 }, (_, i) =>
-      makeRecord({ id: `rec-${i}`, timestamp: `2026-06-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`, model: `model-${i}` }),
-    );
-    // Need proper pagination metadata for pagination controls to show
-    useRequestUsageRecords.mockReturnValue({ ...HOOK_DEFAULTS, records, total: 60, totalPages: 6 });
-    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
-
-    const input = screen.getByLabelText("Go to page");
-    // Try to go to page 0 (should clamp to 1)
-    fireEvent.change(input, { target: { value: "0" } });
-
-    // Should clamp to page 1
-    expect(input).toHaveValue(1);
-  });
-
-  it("has a Jump button for page navigation and clicking it confirms current page", () => {
-    const records = Array.from({ length: 60 }, (_, i) =>
-      makeRecord({ id: `rec-${i}`, timestamp: `2026-06-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`, model: `model-${i}` }),
-    );
-    // Need proper pagination metadata for pagination controls to show
-    useRequestUsageRecords.mockReturnValue({ ...HOOK_DEFAULTS, records, total: 60, totalPages: 6 });
-    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
-
-    // Jump button must be present
-    const jumpBtn = screen.getByRole("button", { name: "Jump" });
-    expect(jumpBtn).toBeInTheDocument();
-
-    // Input shows page 1 initially
-    const input = screen.getByLabelText("Go to page");
-    expect(input).toHaveValue(1);
-
-    // Jump on page 1: clicking should keep page 1 (no-op but button is live)
-    fireEvent.click(jumpBtn);
-    expect(input).toHaveValue(1);
-
-    // Move to page 2 via button click
-    fireEvent.click(screen.getByRole("button", { name: "2" }));
-    expect(input).toHaveValue(2);
-
-    // Jump on page 2: clicking should keep page 2
-    fireEvent.click(jumpBtn);
-    expect(input).toHaveValue(2);
-
-    // Jump on page 6 (via page number button), then Jump again
-    fireEvent.click(screen.getByRole("button", { name: "6" }));
-    expect(input).toHaveValue(6);
-    fireEvent.click(jumpBtn);
-    expect(input).toHaveValue(6);
+    expect(screen.getByRole("button", { name: "2" })).toHaveAttribute("aria-current", "page");
   });
 
   it("shows ellipsis in page numbers when there are many pages", () => {
