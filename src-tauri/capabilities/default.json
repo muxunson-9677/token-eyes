@@ -3,11 +3,14 @@
   "identifier": "default",
   "description": "enables the default permissions",
   "windows": [
-    "main"
+    "main",
+    "desktop-widget"
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "dialog:default",
-    "opener:default"
+    "opener:default",
+    "notification:default"
   ]
 }

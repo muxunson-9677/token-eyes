@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { formatChineseTokenCount, formatUsdCurrency } from "./format";
+import { formatChineseTokenCount, formatTokenCount, formatUsdCurrency } from "./format";
+
+describe("formatTokenCount", () => {
+  it("uses Western compact units in English without leaking Chinese suffixes", () => {
+    expect(formatTokenCount(4_716_100, { locale: "en" })).toBe("4.72M");
+    expect(formatTokenCount(20_000, { locale: "en" })).toBe("20K");
+  });
+
+  it("keeps the established Chinese token vocabulary in Chinese", () => {
+    expect(formatTokenCount(4_716_100, { locale: "zh-CN" })).toBe("471.61万");
+  });
+});
 
 describe("formatChineseTokenCount", () => {
   it.each([

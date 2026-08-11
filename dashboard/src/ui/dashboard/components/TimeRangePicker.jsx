@@ -18,6 +18,7 @@ import { getCopyLocale } from "../../../lib/copy";
  * setTimeRange("custom", from, to)。
  */
 const QUICK_KEYS = [
+  { key: "total", labelKey: "ticket02.time.total" },
   { key: "today", labelKey: "ticket02.time.today" },
   { key: "1d", labelKey: "ticket02.time.1d" },
   { key: "7d", labelKey: "ticket02.time.7d" },
@@ -42,7 +43,7 @@ export function TimeRangePicker({ timeZone, offsetMinutes }) {
       return copy("ticket02.time.custom");
     }
     const opt = QUICK_KEYS.find((o) => o.key === state.timeRange);
-    return opt ? copy(opt.labelKey) : copy("ticket02.time.30d");
+    return opt ? copy(opt.labelKey) : copy("ticket02.time.total");
   }, [state.timeRange, state.from, state.to]);
 
   const handleOpenChange = (next) => {
@@ -77,7 +78,7 @@ export function TimeRangePicker({ timeZone, offsetMinutes }) {
           <button
             type="button"
             aria-label={copy("ticket02.time.aria")}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-oai-brand-500 bg-white px-3 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 dark:border-oai-brand-400 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-oai-brand-500 bg-white px-3 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 dark:border-oai-brand-400 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
           />
         }
       >

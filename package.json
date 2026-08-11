@@ -1,6 +1,6 @@
 {
   "name": "tokentracker-cli",
-  "version": "0.54.25",
+  "version": "0.54.40",
   "description": "Token usage tracker for AI agent CLIs (Claude Code, Codex, Cursor, Gemini, Kiro, OpenCode, OpenClaw, Every Code, Hermes, GitHub Copilot, Kimi Code, CodeBuddy, Grok Build, oh-my-pi, pi, Craft Agents, Kilo CLI, Kilo Code, Roo Code, Zed Agent, Goose)",
   "main": "src/cli.js",
   "bin": {
@@ -21,7 +21,7 @@
     "access": "public"
   },
   "scripts": {
-    "ci:local": "npm --prefix dashboard run build && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js",
+    "ci:local": "npm --prefix dashboard run build && npm --prefix dashboard run verify:data-display-policy && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js",
     "copy:pull": "node scripts/copy-sync.cjs pull",
     "copy:push": "node scripts/copy-sync.cjs push",
     "dashboard:build": "npm --prefix dashboard run build",
@@ -41,7 +41,8 @@
     "validate:retros": "node scripts/validate-retros.cjs",
     "validate:ui-hardcode": "node scripts/ops/validate-ui-hardcode.cjs",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build && npm run tauri:verify-runtime && npm run tauri:verify-installer && node scripts/clean-old-tauri-installers.cjs",
+    "tauri:build": "tauri build && npm run tauri:verify-runtime && node scripts/clean-old-tauri-installers.cjs",
+    "tauri:build:ci": "npm run tauri:build && npm run tauri:verify-installer",
     "tauri:verify-runtime": "node --test test/windows-bundled-runtime-smoke.test.cjs && cargo test resolve_bundled_runtime_at --manifest-path src-tauri/Cargo.toml --lib",
     "tauri:verify-installer": "node --test test/windows-installed-runtime-smoke.test.cjs",
     "tauri:prepare-runtime": "powershell -ExecutionPolicy Bypass -File src-tauri/scripts/bundle-runtime.ps1"

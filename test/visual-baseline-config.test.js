@@ -24,3 +24,24 @@ test("baseline jobs use screenshot for landing and mock for dashboard", async ()
   assert.ok(dashboardMobile.url.includes("screenshot=1"));
   assert.ok(dashboardMobile.url.includes("mock=1"));
 });
+
+test("screenshot theme setup is explicit only for supported URL themes", async () => {
+  const { createScreenshotThemeSetup } = await import(modulePath);
+
+  assert.deepEqual(
+    createScreenshotThemeSetup("http://localhost:5173/spend/usage?theme=light"),
+    { colorScheme: "light", localStorageTheme: "light" },
+  );
+  assert.deepEqual(
+    createScreenshotThemeSetup("http://localhost:5173/spend/usage?theme=dark"),
+    { colorScheme: "dark", localStorageTheme: "dark" },
+  );
+  assert.equal(
+    createScreenshotThemeSetup("http://localhost:5173/?screenshot=1"),
+    null,
+  );
+  assert.equal(
+    createScreenshotThemeSetup("http://localhost:5173/?theme=system"),
+    null,
+  );
+});

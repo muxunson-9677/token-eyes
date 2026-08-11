@@ -1,0 +1,213 @@
+import React from "react";
+import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createBaselineJobs } from "../../../../scripts/visual-baseline-config.js";
+import { copy, setCopyLocale } from "../../../lib/copy";
+import { getDetailsSortColumns } from "../../../lib/daily";
+import { DataDetails } from "../../dashboard/components/DataDetails.jsx";
+import { UsageStatsPanel } from "../../dashboard/components/UsageStatsPanel.jsx";
+
+const usageSummary = {
+  totals: {
+    total_tokens: 150,
+    input_tokens: 100,
+    output_tokens: 50,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    request_count: 1,
+    cost_usd: 0.01,
+    cache_hit_rate: 0,
+  },
+};
+
+const dailyRow = {
+  day: "2025-12-31",
+  total_tokens: 150,
+  input_tokens: 100,
+  output_tokens: 50,
+  cached_input_tokens: 0,
+  reasoning_output_tokens: 0,
+  conversation_count: 1,
+};
+
+function UsageContentFixture() {
+  return (
+    <>
+      <UsageStatsPanel summary={usageSummary} />
+      <DataDetails
+        copy={copy}
+        dailyEmptyPrefix=""
+        installSyncCmd=""
+        dailyEmptySuffix=""
+        dailyBreakdownRows={[dailyRow]}
+        dailyBreakdownColumns={getDetailsSortColumns("day")}
+        dailyBreakdownAriaSortFor={() => "none"}
+        dailyBreakdownSortIconFor={() => ""}
+        dailyBreakdownDateKey="day"
+        renderDailyBreakdownDate={(row) => row.day}
+        renderDetailCell={(row, key) => String(row[key])}
+        toggleSort={() => {}}
+        DETAILS_PAGED_PERIODS={new Set()}
+        period="7d"
+        detailsPageCount={1}
+        detailsPage={0}
+        setDetailsPage={() => {}}
+      />
+    </>
+  );
+}
+
+function directTexts(container) {
+  return Array.from(container.querySelectorAll("*"))
+    .flatMap((element) => Array.from(element.childNodes))
+    .filter((node) => node.nodeType === 3)
+    .map((node) => node.textContent.trim())
+    .filter(Boolean);
+}
+
+function captureContentContract(theme) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  const view = render(<UsageContentFixture />);
+  const contract = {
+    texts: directTexts(view.container),
+    buttonCount: view.container.querySelectorAll("button").length,
+    tableRowCount: view.container.querySelectorAll("tr").length,
+    tableBodyRowCount: view.container.querySelectorAll("tbody tr").length,
+    tableHeaders: Array.from(view.container.querySelectorAll("th"))
+      .map((element) => element.textContent.trim()),
+    tabLabels: Array.from(view.container.querySelectorAll('[role="tab"]'))
+      .map((element) => element.textContent.trim()),
+    testIds: Array.from(view.container.querySelectorAll("[data-testid]"))
+      .map((element) => element.getAttribute("data-testid"))
+      .sort(),
+  };
+  view.unmount();
+  return contract;
+}
+
+describe("visual baseline contract", () => {
+  it("targets distinct ready dashboard and landing content", () => {
+    const baseUrl = "http://localhost:5173";
+    const jobs = createBaselineJobs(baseUrl);
+
+    expect(jobs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "dashboard-desktop",
+        url: `${baseUrl}/?screenshot=1&mock=1&mock_seed=baseline&mock_today=2025-12-31&mock_now=2025-12-31T12:00:00Z`,
+        readySelector: '[data-testid="dashboard-primary-workspace"]',
+      }),
+      expect.objectContaining({
+        name: "landing-desktop",
+        url: `${baseUrl}/landing?screenshot=1`,
+        readySelector: '[data-testid="marketing-landing"]',
+      }),
+    ]));
+  });
+
+  it("captures usage statistics in light, dark, and narrow-window modes", () => {
+    const baseUrl = "http://localhost:5173";
+    const jobs = createBaselineJobs(baseUrl);
+
+    expect(jobs).toEqual(expect.arrayContaining([
+      {
+        name: "spend-usage-light-1180",
+        url: `${baseUrl}/spend/usage?screenshot=1&theme=light&mock=1&mock_seed=baseline&mock_today=2025-12-31&mock_now=2025-12-31T12:00:00Z`,
+        width: 1180,
+        height: 760,
+        dpr: 1,
+        readySelector: '[data-testid="usage-chart-token-services-layout"]:has([data-testid="usage-trend-plot"]):has([data-testid="token-service-cards"])',
+      },
+      {
+        name: "spend-usage-dark-1180",
+        url: `${baseUrl}/spend/usage?screenshot=1&theme=dark&mock=1&mock_seed=baseline&mock_today=2025-12-31&mock_now=2025-12-31T12:00:00Z`,
+        width: 1180,
+        height: 760,
+        dpr: 1,
+        readySelector: '[data-testid="usage-chart-token-services-layout"]:has([data-testid="usage-trend-plot"]):has([data-testid="token-service-cards"])',
+      },
+      {
+        name: "spend-usage-narrow-390",
+        url: `${baseUrl}/spend/usage?screenshot=1&theme=light&mock=1&mock_seed=baseline&mock_today=2025-12-31&mock_now=2025-12-31T12:00:00Z`,
+        width: 390,
+        height: 844,
+        dpr: 2,
+        readySelector: '[data-testid="usage-chart-token-services-layout"]:has([data-testid="usage-trend-plot"]):has([data-testid="token-service-cards"])',
+      },
+    ]));
+  });
+});
+
+describe("theme content contract", () => {
+  beforeEach(() => {
+    setCopyLocale("zh-CN");
+    document.documentElement.classList.remove("dark");
+  });
+
+  afterEach(() => {
+    document.documentElement.classList.remove("dark");
+  });
+
+  it("keeps usage text and controls identical across light and dark roots", () => {
+    const light = captureContentContract("light");
+    const dark = captureContentContract("dark");
+
+    expect(light.tableHeaders).toEqual(
+      getDetailsSortColumns("day").map((column) => column.label),
+    );
+    expect(light.tableBodyRowCount).toBe(1);
+    expect(light.texts).toContain(dailyRow.day);
+    expect(light.tabLabels).toEqual([
+      copy("dashboard.daily.title"),
+      copy("dashboard.projects.title"),
+    ]);
+    expect(light.tableRowCount).toBe(2);
+    expect(light.buttonCount).toBe(9);
+    expect(light.testIds).not.toContain("usage-cost-summary");
+
+    expect(dark.texts).toEqual(light.texts);
+    expect(dark.buttonCount).toBe(light.buttonCount);
+    expect(dark.tableRowCount).toBe(light.tableRowCount);
+    expect(dark.testIds).toEqual(light.testIds);
+  });
+});
+
+describe("usage statistics content contract", () => {
+  beforeEach(() => {
+    setCopyLocale("zh-CN");
+  });
+
+  it("preserves dimension labels and semantic hooks", () => {
+    render(<UsageStatsPanel summary={usageSummary} />);
+
+    expect(screen.getByText(copy("ticket02.stats.input"))).toBeInTheDocument();
+    expect(screen.getByText(copy("ticket02.stats.output"))).toBeInTheDocument();
+    expect(screen.getByText(copy("ticket02.stats.cache_create"))).toBeInTheDocument();
+    expect(screen.getByText(copy("ticket02.stats.cache_hit"))).toBeInTheDocument();
+    expect(screen.queryByTestId("usage-cost-summary")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("usage-dimension-icon")).toHaveLength(4);
+  });
+});
+
+describe("restoration copy contract", () => {
+  afterEach(() => {
+    setCopyLocale("zh-CN");
+  });
+
+  it("keeps new navigation, reset preview, and attribution copy bilingual", () => {
+    setCopyLocale("en");
+    expect(copy("nav.settings.data")).toBe("Data & diagnostics");
+    expect(copy("reset_history.effect.label")).toBe("Surprise effect");
+    expect(copy("reset_history.effect.meteors")).toBe("Meteor shower (default)");
+    expect(copy("reset_history.effect.fireworks")).toBe("Fireworks");
+    expect(copy("reset_history.preview_celebration_aria")).toBe("Preview surprise effect");
+    expect(copy("shared.data.unattributed")).toBe("Unattributed");
+
+    setCopyLocale("zh-CN");
+    expect(copy("nav.settings.data")).toBe("数据与诊断");
+    expect(copy("reset_history.effect.label")).toBe("选择惊喜效果");
+    expect(copy("reset_history.effect.meteors")).toBe("流星雨（默认）");
+    expect(copy("reset_history.effect.fireworks")).toBe("烟花");
+    expect(copy("reset_history.preview_celebration_aria")).toBe("预览惊喜效果");
+    expect(copy("shared.data.unattributed")).toBe("未归因");
+  });
+});

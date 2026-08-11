@@ -9,6 +9,7 @@ import {
 const MAX_PAYLOAD_BYTES = 8 * 1024;
 const LOCAL_STATE_URL = "/functions/tokentracker-leaderboard-state";
 const UPSERT_RPC = "upsert_my_leaderboard_device_state";
+const REFRESH_FUNCTION = "tokentracker-leaderboard-refresh";
 
 export type LeaderboardSyncReason =
   | "first-login"
@@ -66,6 +67,32 @@ function isValidStateResponse(
       value.state.periods &&
       typeof value.state.periods === "object",
   );
+}
+
+async function refreshPublishedLeaderboard(options: {
+  baseUrl: string;
+  accessToken: string;
+  anonKey: string;
+}): Promise<boolean> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${options.accessToken}`,
+  };
+  if (options.anonKey) headers.apikey = options.anonKey;
+  try {
+    const response = await fetch(`${options.baseUrl}/functions/${REFRESH_FUNCTION}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        period: "total",
+        source: "compact-state-upload",
+      }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function getLocalLeaderboardState(): Promise<
@@ -143,6 +170,12 @@ export async function syncLeaderboardState(options: {
   } catch {
     return defer(options.reason, options.accountId, summaryHash);
   }
+  const refreshed = await refreshPublishedLeaderboard({
+    baseUrl,
+    accessToken,
+    anonKey,
+  });
+  if (!refreshed) return defer(options.reason, options.accountId, summaryHash);
 
   setLeaderboardSyncState({
     ...getLeaderboardSyncState(options.accountId),

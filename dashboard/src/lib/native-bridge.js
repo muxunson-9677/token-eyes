@@ -79,7 +79,23 @@ export function isNativeEmbed() {
  */
 export function isNativeWindowsApp() {
   if (typeof window === "undefined") return false;
-  return Boolean(window.chrome?.webview) && isNativeApp();
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("native_windows_preview") === "1") {
+      window.sessionStorage?.setItem("tokentracker_native_windows_preview", "1");
+      return true;
+    }
+    if (window.sessionStorage?.getItem("tokentracker_native_windows_preview") === "1") return true;
+  } catch { /* ignore malformed preview URLs */ }
+  if (Boolean(window.chrome?.webview) && isNativeApp()) return true;
+  if (!isTauriApp()) return false;
+  const platform = String(
+    window.navigator?.userAgentData?.platform ||
+    window.navigator?.platform ||
+    window.navigator?.userAgent ||
+    "",
+  );
+  return /win/i.test(platform);
 }
 
 function getHandler() {

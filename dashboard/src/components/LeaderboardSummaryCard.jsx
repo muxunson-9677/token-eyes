@@ -65,6 +65,7 @@ export function LeaderboardMeChip({
   return (
     <Tag
       {...interactiveProps}
+      data-testid="leaderboard-me-status"
       className={cn(
         "group inline-flex h-9 items-center gap-2.5 rounded-full border pl-1 pr-3.5 transition-all duration-300 select-none shadow-[0_1px_2px_rgba(0,0,0,0.03)]",
         interactive

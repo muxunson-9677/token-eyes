@@ -1,9 +1,34 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Download, Monitor } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowUpRight,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Clock3,
+  Download,
+  Ellipsis,
+  Filter,
+  FolderKanban,
+  FolderPlus,
+  Gauge,
+  GripVertical,
+  History,
+  ListChecks,
+  Monitor,
+  Package,
+  RefreshCw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
 import { Select } from "../ui/components";
-import { isNativeEmbed, nativeAction } from "../lib/native-bridge.js";
+import { isNativeEmbed, isTauriApp, nativeAction } from "../lib/native-bridge.js";
 import { useNativeSettings } from "../hooks/use-native-settings.js";
 import {
   FALLBACK_MENU_BAR_ITEMS,
@@ -11,6 +36,39 @@ import {
 } from "../lib/menu-bar-display.js";
 import { ToggleSwitch } from "../components/settings/Controls.jsx";
 import { FadeIn, StaggerContainer, StaggerItem } from "../ui/foundation/FadeIn.jsx";
+import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
+import { getDesktopWidgetViewModel, selectLocalDirectory } from "../lib/api.ts";
+import { selectDirectoryViaTauri } from "../lib/tauri-directory.js";
+import {
+  mergeWidgetProjectOptions,
+  widgetProjectFromPath,
+} from "../lib/desktop-widget-projects.ts";
+
+const WIDGET_PRESS_TARGET = [
+  "button:not(:disabled)",
+  "select:not(:disabled)",
+  '[role="button"]:not([aria-disabled="true"])',
+].join(",");
+
+function startWidgetPressRebound(event) {
+  if (event.button !== undefined && event.button !== 0) return;
+  const interactiveTarget = event.target instanceof Element
+    ? event.target.closest(WIDGET_PRESS_TARGET)
+    : null;
+  const target = interactiveTarget?.matches("select")
+    ? interactiveTarget.closest(".tt-widget-toolbar-select, .tt-widget-window-select") || interactiveTarget
+    : interactiveTarget;
+  if (!(target instanceof HTMLElement)) return;
+  target.classList.remove("tt-widget-click-bounce");
+  void target.offsetWidth;
+  target.classList.add("tt-widget-click-bounce");
+}
+
+function finishWidgetPressRebound(event) {
+  if (event.target instanceof HTMLElement && event.target.classList.contains("tt-widget-click-bounce")) {
+    event.target.classList.remove("tt-widget-click-bounce");
+  }
+}
 
 /* ---------- SVG widget illustrations ----------
  * Hand-drawn previews of the real macOS widgets. Pure SVG so they stay
@@ -26,6 +84,7 @@ import { FadeIn, StaggerContainer, StaggerItem } from "../ui/foundation/FadeIn.j
 const WIDGET_W = 264;
 const WIDGET_H = 124;
 const ROUNDED_FONT = "ui-rounded, -apple-system, system-ui";
+const ACTIVE_SESSION_WINDOWS = ["1h", "3h", "5h", "1d", "3d"];
 
 // Model accent palette — mirrors WidgetTheme.modelDot in
 // TokenTrackerBar/TokenTrackerWidget/Views/WidgetTheme.swift
@@ -64,7 +123,7 @@ function PreviewShell({ size = "sm", children }) {
   return (
     <div
       className={cn(
-        "flex w-full items-center justify-center rounded-xl bg-oai-gray-100 dark:bg-oai-gray-950/60",
+        "tt-surface-nested flex w-full items-center justify-center rounded-[var(--tt-card-radius)]",
         isHero ? "py-10 sm:py-14 px-6" : "py-6 px-4",
       )}
     >
@@ -80,99 +139,6 @@ function PreviewShell({ size = "sm", children }) {
         {children}
       </div>
     </div>
-  );
-}
-
-function SummaryWidgetPreview({ size = "sm" }) {
-  // Sparkline curve — extended flat at both ends so it spans the full tile
-  // width (x=0 → x=264) instead of leaving visible gaps at the widget edges.
-  const sparklinePath =
-    "M0,104 L14,104 C26,98 34,100 44,96 S58,88 68,92 80,100 90,94 102,80 112,82 126,92 136,88 150,74 162,76 178,88 188,86 204,72 216,74 236,84 250,80 L264,80";
-  // Closed area: follow the curve then drop to the baseline and back.
-  const areaPath = `${sparklinePath} L264,124 L0,124 Z`;
-  const gradientId = `sparkArea-${size}`;
-  return (
-    <PreviewShell size={size}>
-      <svg viewBox="0 0 264 124" className="h-full w-full" aria-hidden="true">
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0A84FF" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#0A84FF" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* TODAY column */}
-        <text x="14" y="20" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="700" letterSpacing="0.6">TODAY</text>
-        <text x="14" y="46" className="fill-oai-black dark:fill-white" fontSize="22" fontWeight="700" fontFamily={ROUNDED_FONT}>203.2M</text>
-        <text x="14" y="60" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="500" fontFamily={ROUNDED_FONT}>$129.56 ±0%</text>
-        {/* 7 DAYS column */}
-        <text x="134" y="20" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="700" letterSpacing="0.6">7 DAYS</text>
-        <text x="134" y="46" className="fill-oai-black dark:fill-white" fontSize="22" fontWeight="700" fontFamily={ROUNDED_FONT}>880.9M</text>
-        <text x="134" y="60" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="500" fontFamily={ROUNDED_FONT}>$673.61</text>
-        {/* Area fill under the curve */}
-        <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
-        {/* Sparkline stroke on top */}
-        <path d={sparklinePath} fill="none" stroke="#0A84FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </PreviewShell>
-  );
-}
-
-// Deterministic heatmap cells — 26 weeks × 7 days, matching Swift
-// HeatmapWidget.weeks for systemMedium. Uses a sin-hash (GLSL classic)
-// because modular PRNG on small seed ranges produces a visible "letter"
-// pattern. Computed once at module load.
-const HEATMAP_CELLS = (() => {
-  const weeks = 26;
-  const days = 7;
-  const cells = [];
-  for (let w = 0; w < weeks; w++) {
-    for (let d = 0; d < days; d++) {
-      const n = Math.sin((w + 1) * 12.9898 + (d + 1) * 78.233 + 17) * 43758.5453;
-      const v = Math.floor(Math.abs(n - Math.floor(n)) * 100);
-      cells.push({ w, d, v });
-    }
-  }
-  return cells;
-})();
-
-// Mirrors WidgetTheme.heatmapLevels — gray base + four steps of accent blue.
-// Empty cells snap to oai-gray-200 / -800 (design tokens); blue stays as
-// the macOS system accent, matching SwiftUI's Color.accentColor.
-function heatmapFill(v, dark) {
-  if (v < 18) return dark ? "#262626" /* oai-gray-800 */ : "#e5e5e5" /* oai-gray-200 */;
-  if (v < 38) return "rgba(10, 132, 255, 0.28)";
-  if (v < 58) return "rgba(10, 132, 255, 0.50)";
-  if (v < 80) return "rgba(10, 132, 255, 0.75)";
-  return "#0A84FF";
-}
-
-function HeatmapWidgetPreview() {
-  // 264×124 tile: cellW 7.5, cellH 8, gap 1.2
-  //   grid width  = 26*7.5 + 25*1.2 = 225   → left margin (264-225)/2 = 19.5
-  //   grid height = 7*8   + 6*1.2  = 63.2  → top margin 10
-  //   footer baseline at y=102 → ~22px clear above the bottom edge
-  const cellW = 7.5;
-  const cellH = 8;
-  const gap = 1.2;
-  const gridX = 19.5;
-  const gridY = 10;
-  return (
-    <PreviewShell>
-      <svg viewBox="0 0 264 124" className="h-full w-full" aria-hidden="true">
-        <g transform={`translate(${gridX}, ${gridY})`} className="hidden dark:inline">
-          {HEATMAP_CELLS.map((c) => (
-            <rect key={`d-${c.w}-${c.d}`} x={c.w * (cellW + gap)} y={c.d * (cellH + gap)} width={cellW} height={cellH} rx="1.3" fill={heatmapFill(c.v, true)} />
-          ))}
-        </g>
-        <g transform={`translate(${gridX}, ${gridY})`} className="dark:hidden">
-          {HEATMAP_CELLS.map((c) => (
-            <rect key={`l-${c.w}-${c.d}`} x={c.w * (cellW + gap)} y={c.d * (cellH + gap)} width={cellW} height={cellH} rx="1.3" fill={heatmapFill(c.v, false)} />
-          ))}
-        </g>
-        <text x={gridX} y="102" className="fill-oai-black dark:fill-white" fontSize="10" fontWeight="700" fontFamily={ROUNDED_FONT}>10.3B</text>
-        <text x={gridX + 30} y="102" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="9" fontWeight="500">tokens · 202 active days</text>
-      </svg>
-    </PreviewShell>
   );
 }
 
@@ -439,7 +405,7 @@ function MenuBarDisplayCard() {
   const confettiOnReset = settings?.confettiOnReset !== false;
 
   return (
-    <article className="rounded-xl border border-oai-gray-200 bg-white p-5 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-6">
+    <article className="tt-surface rounded-[var(--tt-card-radius)] p-5 sm:p-6">
       <MenuBarPreview slotConfigs={slotConfigs} showStats={showStats} />
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -502,15 +468,982 @@ function useClientPlatform() {
       setPlatform("native");
       return;
     }
+    if (isTauriApp()) {
+      setPlatform("windows");
+      return;
+    }
     const ua = (navigator.userAgent || "").toLowerCase();
+    if (/windows/.test(ua)) {
+      setPlatform("windows");
+      return;
+    }
     const isMac = /mac/.test(ua) && !/iphone|ipad/.test(ua);
     setPlatform(isMac ? "mac-web" : "other");
   }, []);
   return platform;
 }
 
-function HeaderCta() {
-  const platform = useClientPlatform();
+function getTauriInvoke() {
+  if (typeof window === "undefined") return null;
+  return window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || null;
+}
+
+function WindowsWidgetToggle() {
+  const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    const invoke = getTauriInvoke();
+    if (!invoke) {
+      setBusy(false);
+      return;
+    }
+    let mounted = true;
+    void invoke("get_desktop_widget_prefs")
+      .then((prefs) => {
+        if (mounted) setVisible(prefs?.visible === true);
+      })
+      .finally(() => {
+        if (mounted) setBusy(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const toggle = async () => {
+    const invoke = getTauriInvoke();
+    if (!invoke || busy) return;
+    setBusy(true);
+    try {
+      await invoke(visible ? "hide_desktop_widget" : "show_desktop_widget");
+      setVisible(!visible);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => void toggle()}
+      className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white hover:bg-oai-gray-800 disabled:cursor-wait disabled:opacity-60 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+    >
+      <Monitor className="h-4 w-4" aria-hidden="true" />
+      {copy(visible ? "widgets.windows.hide" : "widgets.windows.show")}
+    </button>
+  );
+}
+
+function WindowsWidgetProjectSettings() {
+  const [prefs, setPrefs] = useState(null);
+  const [recentProjects, setRecentProjects] = useState([]);
+  const [draftIds, setDraftIds] = useState([]);
+  const [draftProjects, setDraftProjects] = useState([]);
+  const [draftActiveSessionWindow, setDraftActiveSessionWindow] = useState("1h");
+  const [limitOptions, setLimitOptions] = useState([]);
+  const [draftLimitIds, setDraftLimitIds] = useState([]);
+  const draggedLimitId = useRef(null);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [projectsExpanded, setProjectsExpanded] = useState(false);
+  const [limitsExpanded, setLimitsExpanded] = useState(false);
+
+  useEffect(() => {
+    const invoke = getTauriInvoke();
+    if (!invoke) return undefined;
+    let mounted = true;
+    void Promise.all([
+      invoke("get_desktop_widget_prefs"),
+      getDesktopWidgetViewModel("all"),
+    ]).then(([nextPrefs, model]) => {
+      if (!mounted) return;
+      const detectedLimits = Array.isArray(model?.limits) ? model.limits : [];
+      const detectedLimitIds = detectedLimits.map((limit) => String(limit.id || "")).filter(Boolean);
+      const restoredLimitIds = Array.isArray(nextPrefs?.selectedLimitIds)
+        ? nextPrefs.selectedLimitIds.filter((id) => detectedLimitIds.includes(id))
+        : detectedLimitIds;
+      const selectedLimitSet = new Set(restoredLimitIds);
+      const orderedLimits = [
+        ...restoredLimitIds.map((id) => detectedLimits.find((limit) => limit.id === id)).filter(Boolean),
+        ...detectedLimits.filter((limit) => !selectedLimitSet.has(limit.id)),
+      ];
+      const restored = {
+        ...(nextPrefs || {}),
+        activeSessionWindow: ACTIVE_SESSION_WINDOWS.includes(nextPrefs?.activeSessionWindow)
+          ? nextPrefs.activeSessionWindow
+          : "1h",
+        selectedProjectIds: Array.isArray(nextPrefs?.selectedProjectIds)
+          ? nextPrefs.selectedProjectIds
+          : [],
+        selectedProjects: Array.isArray(nextPrefs?.selectedProjects)
+          ? nextPrefs.selectedProjects
+          : [],
+        selectedLimitIds: restoredLimitIds,
+      };
+      setPrefs(restored);
+      setDraftIds(restored.selectedProjectIds);
+      setDraftProjects(restored.selectedProjects);
+      setDraftActiveSessionWindow(restored.activeSessionWindow);
+      setLimitOptions(orderedLimits);
+      setDraftLimitIds(restored.selectedLimitIds);
+      setRecentProjects(
+        (Array.isArray(model?.projectStatus?.recentProjects)
+          ? model.projectStatus.recentProjects
+          : Array.isArray(model?.projectStatus?.projects)
+            ? model.projectStatus.projects
+          : []).slice(0, 10),
+      );
+      setError(false);
+    }).catch(() => {
+      if (mounted) setError(true);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const selectedIds = draftIds;
+  const projectOptions = mergeWidgetProjectOptions(
+    recentProjects,
+    draftProjects,
+  );
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleProjects = normalizedQuery
+    ? projectOptions.filter((project) => (
+      String(project?.label || "").toLocaleLowerCase().includes(normalizedQuery)
+    ))
+    : projectOptions;
+
+  const save = async () => {
+    const invoke = getTauriInvoke();
+    if (!invoke || !prefs || !dirty || saving) return;
+    const byId = new Map(projectOptions.map((project) => [project.id, project]));
+    const nextPrefs = {
+      ...prefs,
+      activeSessionWindow: draftActiveSessionWindow,
+      selectedProjectIds: draftIds,
+      selectedProjects: draftIds.map((id) => byId.get(id)).filter(Boolean),
+      selectedLimitIds: draftLimitIds,
+    };
+    setSaving(true);
+    setSaved(false);
+    setError(false);
+    try {
+      const persisted = await invoke("set_desktop_widget_prefs", { prefs: nextPrefs });
+      setPrefs(persisted || nextPrefs);
+      setDraftProjects(nextPrefs.selectedProjects);
+      setDirty(false);
+      setSaved(true);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleProject = (project) => {
+    setDraftProjects((current) => mergeWidgetProjectOptions([], [...current, project]));
+    setDraftIds((current) => (
+      current.includes(project.id)
+        ? current.filter((value) => value !== project.id)
+        : [...current, project.id]
+    ));
+    setDirty(true);
+    setSaved(false);
+  };
+
+  const toggleLimit = (id) => {
+    setDraftLimitIds((current) => (
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id]
+    ));
+    setDirty(true);
+    setSaved(false);
+  };
+
+  const dropLimit = (targetId) => {
+    const sourceId = draggedLimitId.current;
+    draggedLimitId.current = null;
+    if (!sourceId || sourceId === targetId) return;
+    setDraftLimitIds((current) => {
+      if (!current.includes(sourceId) || !current.includes(targetId)) return current;
+      const targetIndex = current.indexOf(targetId);
+      const next = current.filter((id) => id !== sourceId);
+      next.splice(targetIndex, 0, sourceId);
+      return next;
+    });
+    setDirty(true);
+    setSaved(false);
+  };
+
+  const addProjectFolder = async () => {
+    setError(false);
+    const invoke = getTauriInvoke();
+    let selectedPath = await selectDirectoryViaTauri();
+    if (!selectedPath && !invoke) {
+      const result = await selectLocalDirectory();
+      selectedPath = result?.path || null;
+    }
+    const project = await widgetProjectFromPath(selectedPath);
+    if (!project) return;
+    setDraftProjects((current) => mergeWidgetProjectOptions([], [...current, project]));
+    setDraftIds((current) => (
+      current.includes(project.id) ? current : [...current, project.id]
+    ));
+    setDirty(true);
+    setSaved(false);
+  };
+
+  const useRecentProjects = () => {
+    setDraftIds(recentProjects.map((project) => String(project.id || "")).filter(Boolean));
+    setDraftProjects((current) => mergeWidgetProjectOptions(recentProjects, current));
+    setDirty(true);
+    setSaved(false);
+  };
+
+  const limitById = new Map(limitOptions.map((limit) => [limit.id, limit]));
+  const selectedLimitSet = new Set(draftLimitIds);
+  const visibleLimitOptions = [
+    ...draftLimitIds.map((id) => limitById.get(id)).filter(Boolean),
+    ...limitOptions.filter(function keepUnselectedLimit(limit) {
+      return !selectedLimitSet.has(limit.id);
+    }),
+  ];
+
+  return (
+    <div className="tt-surface mb-5 rounded-[var(--tt-card-radius)] p-3 sm:p-4">
+      <section className="overflow-hidden rounded-xl border border-oai-gray-200/80 bg-white/45 shadow-sm dark:border-white/10 dark:bg-white/[0.035]">
+        <button
+          type="button"
+          aria-expanded={projectsExpanded}
+          aria-controls="windows-widget-projects-panel"
+          onClick={() => setProjectsExpanded((current) => !current)}
+          className="tt-pressable tt-product-focusable flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left transition-colors hover:bg-white/70 dark:hover:bg-white/[0.06] sm:px-4"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-sky-200/70 bg-sky-50 text-sky-600 shadow-sm dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-300">
+            <FolderKanban className="h-4.5 w-4.5" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold text-oai-black dark:text-white">
+              {copy("widgets.windows.projects.title")}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
+              {selectedIds.length > 0
+                ? copy("widgets.windows.projects.selected_count", { count: selectedIds.length })
+                : copy("widgets.windows.projects.recent_hint")}
+            </span>
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-oai-gray-500 transition-transform duration-200",
+              projectsExpanded && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
+        </button>
+
+        {projectsExpanded ? (
+          <div
+            id="windows-widget-projects-panel"
+            className="border-t border-oai-gray-200/70 px-3.5 pb-4 pt-3 dark:border-white/10 sm:px-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex min-w-0 items-center gap-1.5 text-[11px] leading-5 text-oai-gray-500 dark:text-oai-gray-400">
+                <Clock3 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>{copy("widgets.windows.projects.active_window_hint")}</span>
+              </p>
+              <label className="inline-flex h-9 shrink-0 items-center gap-2 rounded-[var(--tt-control-radius)] border border-oai-gray-200 bg-white px-2.5 text-xs font-medium text-oai-gray-700 shadow-sm dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-200">
+                <span>{copy("widgets.windows.projects.active_window")}</span>
+                <select
+                  value={draftActiveSessionWindow}
+                  aria-label={copy("widgets.windows.projects.active_window")}
+                  onChange={(event) => {
+                    setDraftActiveSessionWindow(event.target.value);
+                    setDirty(true);
+                    setSaved(false);
+                  }}
+                  className="h-7 min-w-[4.5rem] cursor-pointer rounded-md border-0 bg-oai-gray-50 px-2 text-xs font-semibold text-oai-black outline-none focus:ring-2 focus:ring-oai-gray-300 dark:bg-oai-gray-800 dark:text-white dark:focus:ring-oai-gray-600"
+                >
+                  {ACTIVE_SESSION_WINDOWS.map((window) => (
+                    <option key={window} value={window}>
+                      {copy(`widgets.windows.projects.active_window.${window}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-label={copy("widgets.windows.projects.add_folder")}
+                disabled={!prefs}
+                onClick={() => void addProjectFolder()}
+                className="tt-pressable tt-product-focusable inline-flex h-9 items-center gap-1.5 rounded-[var(--tt-control-radius)] border border-oai-gray-200 bg-white px-3 text-xs font-medium text-oai-gray-700 shadow-sm hover:border-oai-gray-300 hover:bg-oai-gray-50 disabled:cursor-default disabled:opacity-45 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+              >
+                <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                {copy("widgets.windows.projects.add_folder")}
+              </button>
+              <button
+                type="button"
+                aria-label={copy("widgets.windows.projects.use_recent")}
+                disabled={!prefs || recentProjects.length === 0}
+                onClick={useRecentProjects}
+                className="tt-pressable tt-product-focusable inline-flex h-9 items-center gap-1.5 rounded-[var(--tt-control-radius)] border border-oai-gray-200 bg-white px-3 text-xs font-medium text-oai-gray-700 shadow-sm hover:border-oai-gray-300 hover:bg-oai-gray-50 disabled:cursor-default disabled:opacity-45 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+              >
+                <History className="h-3.5 w-3.5" aria-hidden="true" />
+                {copy("widgets.windows.projects.use_recent")}
+              </button>
+            </div>
+
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              aria-label={copy("widgets.windows.projects.search")}
+              placeholder={copy("widgets.windows.projects.search")}
+              className="mt-3 h-9 w-full rounded-lg border border-oai-gray-200 bg-white/75 px-3 text-sm outline-none transition-colors placeholder:text-oai-gray-400 focus:border-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900/80 dark:focus:border-oai-gray-500"
+            />
+
+            <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-oai-gray-200/80 bg-white/50 dark:border-oai-gray-800 dark:bg-oai-gray-900/30">
+              {!normalizedQuery && recentProjects.length > 0 ? (
+                <p className="border-b border-oai-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
+                  {copy("widgets.windows.projects.recent_title")}
+                </p>
+              ) : null}
+              {error ? (
+                <p className="px-3 py-4 text-sm text-red-600 dark:text-red-400">
+                  {copy("widgets.windows.projects.load_failed")}
+                </p>
+              ) : visibleProjects.length > 0 ? (
+                visibleProjects.map((project) => {
+                  const id = String(project.id || "");
+                  const checked = selectedIds.includes(id);
+                  return (
+                    <label
+                      key={id}
+                      className="flex min-h-10 cursor-pointer items-center gap-3 border-b border-oai-gray-100 px-3 py-2 text-sm last:border-b-0 hover:bg-white/70 dark:border-oai-gray-800 dark:hover:bg-white/[0.04]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        aria-label={project.label}
+                        onChange={() => toggleProject(project)}
+                        className="h-4 w-4 accent-oai-brand-600"
+                      />
+                      <span className="min-w-0 truncate">{project.label}</span>
+                    </label>
+                  );
+                })
+              ) : (
+                <p className="px-3 py-4 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                  {copy("widgets.windows.projects.empty")}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="mt-3 overflow-hidden rounded-xl border border-oai-gray-200/80 bg-white/45 shadow-sm dark:border-white/10 dark:bg-white/[0.035]">
+        <button
+          type="button"
+          aria-expanded={limitsExpanded}
+          aria-controls="windows-widget-limits-panel"
+          onClick={() => setLimitsExpanded((current) => !current)}
+          className="tt-pressable tt-product-focusable flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left transition-colors hover:bg-white/70 dark:hover:bg-white/[0.06] sm:px-4"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-violet-200/70 bg-violet-50 text-violet-600 shadow-sm dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300">
+            <Gauge className="h-4.5 w-4.5" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold text-oai-black dark:text-white">
+              {copy("widgets.windows.limits.title")}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
+              {draftLimitIds.length} / {limitOptions.length}
+            </span>
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-oai-gray-500 transition-transform duration-200",
+              limitsExpanded && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
+        </button>
+
+        {limitsExpanded ? (
+          <div
+            id="windows-widget-limits-panel"
+            className="border-t border-oai-gray-200/70 px-3.5 pb-4 pt-3 dark:border-white/10 sm:px-4"
+          >
+            <p className="text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">
+              {copy("widgets.windows.limits.hint")}
+            </p>
+            <div className="mt-3 overflow-hidden rounded-lg border border-oai-gray-200/80 bg-white/50 dark:border-oai-gray-800 dark:bg-oai-gray-900/30">
+              {visibleLimitOptions.length > 0 ? visibleLimitOptions.map((limit) => {
+                const id = String(limit.id || "");
+                const checked = draftLimitIds.includes(id);
+                const label = [limit.provider, limit.accountLabel, limit.window].filter(Boolean).join(" - ");
+                return (
+                  <div
+                    key={id}
+                    draggable={checked}
+                    onDragStart={() => {
+                      draggedLimitId.current = id;
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => dropLimit(id)}
+                    className="flex min-h-11 items-center gap-2 border-b border-oai-gray-100 px-3 py-2 last:border-b-0 hover:bg-white/70 dark:border-oai-gray-800 dark:hover:bg-white/[0.04]"
+                  >
+                    <GripVertical
+                      className={cn(
+                        "h-4 w-4 shrink-0 text-oai-gray-400",
+                        checked ? "cursor-grab" : "opacity-35",
+                      )}
+                      aria-hidden="true"
+                    />
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        aria-label={label}
+                        onChange={() => toggleLimit(id)}
+                        className="h-4 w-4 accent-oai-brand-600"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">{label}</span>
+                        {limit.notes ? (
+                          <span
+                            className="mt-0.5 block truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400"
+                            title={limit.notes}
+                          >
+                            {limit.notes}
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                    <span className="text-xs tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                      {limit.usedPercent == null
+                        ? copy("widgets.windows.limits.unavailable")
+                        : `${limit.usedPercent}%`}
+                    </span>
+                  </div>
+                );
+              }) : (
+                <p className="px-3 py-4 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                  {copy("widgets.windows.limits.empty")}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <div className="mt-4 flex items-center justify-end gap-3">
+        {saved ? (
+          <span className="text-xs text-emerald-700 dark:text-emerald-300" role="status">
+            {copy("widgets.windows.projects.saved")}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          disabled={!prefs || !dirty || saving}
+          onClick={() => void save()}
+          className="tt-pressable tt-product-focusable inline-flex h-9 items-center rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white hover:bg-oai-gray-800 disabled:cursor-default disabled:opacity-40 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+        >
+          {saving
+            ? copy("widgets.windows.projects.saving")
+            : copy("widgets.windows.projects.save")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function formatProjectLastActive(project, index) {
+  if (project?.lastActiveLabel) return project.lastActiveLabel;
+  const updatedAt = Date.parse(project?.updatedAt || "");
+  const fallbackDays = [0, 1, 2, 3, 5, 6, 30, 60][index] ?? 30;
+  const elapsedHours = Number.isFinite(updatedAt)
+    ? Math.max(0, Math.floor((Date.now() - updatedAt) / 3_600_000))
+    : fallbackDays * 24;
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  const formatter = new Intl.RelativeTimeFormat("zh-CN", { numeric: "always" });
+  if (elapsedHours < 24) return formatter.format(-elapsedHours, "hour");
+  if (elapsedDays < 7) return formatter.format(-elapsedDays, "day");
+  if (elapsedDays < 30) return formatter.format(-Math.floor(elapsedDays / 7), "week");
+  return formatter.format(-Math.floor(elapsedDays / 30), "month");
+}
+
+function formatProjectCreatedAt(project) {
+  const timestamp = Date.parse(project?.createdAt || project?.updatedAt || "");
+  if (!Number.isFinite(timestamp)) return copy("widgets.reference.never_active");
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(timestamp).replaceAll("/", "-");
+}
+
+function formatLimitWindow(limit) {
+  const windowHours = Number.parseInt(String(limit?.window || ""), 10);
+  if (Number.isFinite(windowHours) && windowHours > 0) {
+    return copy("widgets.reference.reset_every_hours", { hours: windowHours, quota: 100 });
+  }
+  return String(limit?.window || "");
+}
+
+function formatLimitResetAt(limit) {
+  if (Number(limit?.usedPercent || 0) >= 100) return copy("widgets.reference.resets_at_limit");
+  const resetAt = Date.parse(limit?.resetAt || "");
+  if (!Number.isFinite(resetAt)) return copy("widgets.reference.never_active");
+  const minutes = Math.max(0, Math.round((resetAt - Date.now()) / 60_000));
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return copy("widgets.reference.reset_after", { hours, minutes: remainder });
+}
+
+function widgetProjectStatus(project, index) {
+  return project.status || (index < 2 ? "active" : index < 4 ? "recovering" : "inactive");
+}
+
+function widgetProjectGroupKey(project) {
+  return String(project?.path || project?.label || project?.id || "")
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function groupWidgetProjectSessions(sessions) {
+  const grouped = new Map();
+
+  sessions.forEach((session) => {
+    const groupId = widgetProjectGroupKey(session);
+    const sessionId = String(session?.id || "");
+    const existing = grouped.get(groupId);
+
+    if (!existing) {
+      grouped.set(groupId, {
+        ...session,
+        groupId,
+        sessionIds: sessionId ? [sessionId] : [],
+        sessions: [session],
+      });
+      return;
+    }
+
+    if (sessionId && !existing.sessionIds.includes(sessionId)) {
+      existing.sessionIds.push(sessionId);
+    }
+    existing.sessions.push(session);
+
+    const currentUpdatedAt = Date.parse(existing.updatedAt || "");
+    const nextUpdatedAt = Date.parse(session?.updatedAt || "");
+    if (Number.isFinite(nextUpdatedAt) && (!Number.isFinite(currentUpdatedAt) || nextUpdatedAt > currentUpdatedAt)) {
+      const { groupId: preservedGroupId, sessionIds, sessions: preservedSessions } = existing;
+      Object.assign(existing, session, {
+        groupId: preservedGroupId,
+        sessionIds,
+        sessions: preservedSessions,
+      });
+    }
+  });
+
+  return [...grouped.values()];
+}
+
+function widgetProjectTags(project) {
+  const savedTags = Array.isArray(project?.tags)
+    ? project.tags.filter(Boolean)
+    : project?.tag
+      ? [project.tag]
+      : [];
+  if (savedTags.length) return savedTags;
+
+  const name = String(project?.label || project?.path || project?.id || "").toLowerCase();
+  if (name.includes("skin") || name.includes("theme")) return [copy("widgets.reference.tag_theme")];
+  if (name.includes("token") || name.includes("eye")) return [copy("widgets.reference.tag_core")];
+  if (name.includes("text") || name.includes("clash")) return [copy("widgets.reference.tag_tool")];
+  if (name.includes("card") || name.includes("mind") || name.includes("思维")) return [copy("widgets.reference.tag_card"), copy("widgets.reference.tag_design")];
+  if (name.includes("xls") || name.includes("excel") || name.includes("sheet")) return [copy("widgets.reference.tag_experiment")];
+  if (name.includes("pet") || name.includes("qiuzhi") || name.includes("生存")) return [copy("widgets.reference.tag_personal")];
+  return [copy("widgets.reference.tag_project")];
+}
+
+function widgetProjectTagTone(tag) {
+  const tones = {
+    [copy("widgets.reference.tag_core")]: "core",
+    [copy("widgets.reference.tag_tool")]: "tool",
+    [copy("widgets.reference.tag_card")]: "card",
+    [copy("widgets.reference.tag_design")]: "design",
+    [copy("widgets.reference.tag_personal")]: "personal",
+    [copy("widgets.reference.tag_theme")]: "theme",
+    [copy("widgets.reference.tag_experiment")]: "experiment",
+  };
+  return tones[tag] || "project";
+}
+
+function widgetPlanBadge(limit, index, total) {
+  if (limit?.notes) return limit.notes;
+  if (index === 0) return copy("widgets.reference.primary_plan");
+  if (index === total - 1) return copy("widgets.reference.backup_plan");
+  return "";
+}
+
+function WidgetTablePagination() {
+  return (
+    <div className="tt-widget-table-pagination" aria-label={copy("widgets.reference.pagination")}>
+      <button type="button" disabled aria-hidden><ChevronsLeft /></button>
+      <button type="button" disabled aria-hidden><ChevronLeft /></button>
+      <b>{1}</b>
+      <button type="button" disabled aria-hidden><ChevronRight /></button>
+      <button type="button" disabled aria-hidden><ChevronsRight /></button>
+      <label><select aria-label={copy("widgets.reference.page_size")} value="10" onChange={() => {}}><option value="10">{copy("widgets.reference.page_size")}</option></select><ChevronDown aria-hidden /></label>
+    </div>
+  );
+}
+
+function WindowsProjectManager({ onOpenSettings }) {
+  const [model, setModel] = useState(null);
+  const [prefs, setPrefs] = useState(null);
+  const [query, setQuery] = useState("");
+  const [refreshingPlans, setRefreshingPlans] = useState(false);
+  const [openMenu, setOpenMenu] = useState(null);
+  const [dismissedProjectIds, setDismissedProjectIds] = useState([]);
+  const [dismissedLimitIds, setDismissedLimitIds] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState("recent");
+  const [recentRange, setRecentRange] = useState("7d");
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [expandedProjectIds, setExpandedProjectIds] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const invoke = getTauriInvoke();
+    const prefsPromise = invoke
+      ? invoke("get_desktop_widget_prefs")
+      : Promise.resolve(null);
+    void Promise.all([prefsPromise, getDesktopWidgetViewModel("all")])
+      .then(([savedPrefs, nextModel]) => {
+        if (!mounted) return;
+        const sessions = Array.isArray(nextModel?.projectStatus?.recentProjects)
+          ? nextModel.projectStatus.recentProjects
+          : [];
+        const projects = groupWidgetProjectSessions(sessions);
+        const limits = Array.isArray(nextModel?.limits) ? nextModel.limits : [];
+        setModel(nextModel || { projectStatus: { recentProjects: [] }, limits: [] });
+        setPrefs(savedPrefs || {
+          activeSessionWindow: "3d",
+          selectedProjectIds: projects.slice(0, 2).flatMap((project) => project.sessionIds),
+          selectedProjects: projects.slice(0, 2).flatMap((project) => project.sessions),
+          selectedLimitIds: limits.map((limit) => String(limit.id)),
+        });
+      })
+      .catch(() => {
+        if (mounted) setModel({ projectStatus: { recentProjects: [] }, limits: [] });
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const sessions = Array.isArray(model?.projectStatus?.recentProjects)
+    ? model.projectStatus.recentProjects
+    : [];
+  const projects = groupWidgetProjectSessions(sessions);
+  const limits = Array.isArray(model?.limits) ? model.limits : [];
+  const selectedProjectIds = Array.isArray(prefs?.selectedProjectIds) ? prefs.selectedProjectIds : [];
+  const selectedLimitIds = Array.isArray(prefs?.selectedLimitIds) ? prefs.selectedLimitIds : [];
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const displayedProjects = projects
+    .map((project, index) => ({ project, index, status: widgetProjectStatus(project, index) }))
+    .filter(({ project, status }) => (
+      (!normalizedQuery || String(project.label || "").toLocaleLowerCase().includes(normalizedQuery))
+      && (statusFilter === "all" || status === statusFilter)
+      && !dismissedProjectIds.includes(project.groupId)
+    ))
+    .sort((left, right) => {
+      if (sortOrder !== "recent") return 0;
+      return Date.parse(right.project.updatedAt || "") - Date.parse(left.project.updatedAt || "");
+    });
+  const displayedLimits = limits.slice(0, 3).filter((limit) => !dismissedLimitIds.includes(String(limit.id)));
+
+  const persist = async (next) => {
+    setPrefs(next);
+    const invoke = getTauriInvoke();
+    if (invoke) await invoke("set_desktop_widget_prefs", { prefs: next });
+  };
+
+  const toggleProject = (project) => {
+    if (!prefs) return;
+    const projectSessionIds = project.sessionIds.length
+      ? project.sessionIds
+      : [String(project.id)];
+    const selected = projectSessionIds.every((id) => selectedProjectIds.includes(id));
+    const nextIds = selected
+      ? selectedProjectIds.filter((value) => !projectSessionIds.includes(value))
+      : [...new Set([...selectedProjectIds, ...projectSessionIds])];
+    void persist({
+      ...prefs,
+      selectedProjectIds: nextIds,
+      selectedProjects: sessions.filter((item) => nextIds.includes(String(item.id))),
+    });
+  };
+
+  const toggleLimit = (limit) => {
+    if (!prefs) return;
+    const id = String(limit.id);
+    const nextIds = selectedLimitIds.includes(id)
+      ? selectedLimitIds.filter((value) => value !== id)
+      : [...selectedLimitIds, id];
+    void persist({ ...prefs, selectedLimitIds: nextIds });
+  };
+
+  const removeProjectFromWidget = (project) => {
+    if (!prefs) return;
+    const projectSessionIds = project.sessionIds.length
+      ? project.sessionIds
+      : [String(project.id)];
+    setDismissedProjectIds((current) => [...current, project.groupId]);
+    setOpenMenu(null);
+    const nextIds = selectedProjectIds.filter((value) => !projectSessionIds.includes(value));
+    void persist({
+      ...prefs,
+      selectedProjectIds: nextIds,
+      selectedProjects: sessions.filter((item) => nextIds.includes(String(item.id))),
+    });
+  };
+
+  const toggleProjectSessions = (project) => {
+    setExpandedProjectIds((current) => (
+      current.includes(project.groupId)
+        ? current.filter((id) => id !== project.groupId)
+        : [...current, project.groupId]
+    ));
+  };
+
+  const removeLimitFromWidget = (limit) => {
+    if (!prefs) return;
+    const id = String(limit.id);
+    setDismissedLimitIds((current) => [...current, id]);
+    setOpenMenu(null);
+    void persist({ ...prefs, selectedLimitIds: selectedLimitIds.filter((value) => value !== id) });
+  };
+
+  const activeProjects = projects.filter((project) => {
+    const updatedAt = Date.parse(project.updatedAt || "");
+    return Number.isFinite(updatedAt) && Date.now() - updatedAt < 3 * 24 * 60 * 60 * 1000;
+  }).length;
+  const activeToday = projects.filter((project) => {
+    const updatedAt = Date.parse(project.updatedAt || "");
+    return Number.isFinite(updatedAt) && Date.now() - updatedAt < 24 * 60 * 60 * 1000;
+  }).length;
+  const activeThisWeek = projects.filter((project) => {
+    const updatedAt = Date.parse(project.updatedAt || "");
+    return Number.isFinite(updatedAt) && Date.now() - updatedAt < 7 * 24 * 60 * 60 * 1000;
+  }).length;
+  const selectedProjectCount = projects.filter((project) => (
+    project.sessionIds.some((id) => selectedProjectIds.includes(id))
+  )).length;
+
+  const refreshPlans = async () => {
+    if (refreshingPlans) return;
+    setRefreshingPlans(true);
+    try {
+      const nextModel = await getDesktopWidgetViewModel("all");
+      setModel(nextModel || { projectStatus: { recentProjects: [] }, limits: [] });
+    } finally {
+      setRefreshingPlans(false);
+    }
+  };
+
+  return (
+    <div className="tt-widget-manager" data-testid="widget-manager">
+      <section className="tt-widget-summary" data-testid="widget-summary">
+        <article data-tone="blue">
+          <span className="tt-widget-summary-icon"><FolderKanban aria-hidden /></span>
+          <div><span>{copy("widgets.reference.selected_projects")}</span><strong>{selectedProjectCount}</strong><small>{copy("widgets.reference.selected_projects_detail")}</small></div>
+          <aside><b>{copy("widgets.reference.yesterday_delta", { count: activeToday })}</b><small>{copy("widgets.reference.week_added", { count: activeThisWeek })}</small></aside>
+        </article>
+        <article data-tone="green">
+          <span className="tt-widget-summary-icon"><CheckCircle2 aria-hidden /></span>
+          <div><span>{copy("widgets.reference.active_projects")}</span><strong>{activeProjects}</strong><small>{copy("widgets.reference.active_projects_detail")}</small></div>
+          <aside><b>{copy("widgets.reference.yesterday_delta", { count: activeToday })}</b><small>{copy("widgets.reference.active_rate", { rate: projects.length ? Math.round((activeProjects / projects.length) * 100) : 0 })}</small></aside>
+        </article>
+        <article data-tone="violet">
+          <span className="tt-widget-summary-icon"><Package aria-hidden /></span>
+          <div><span>{copy("widgets.reference.plan_usage")}</span><strong>{selectedLimitIds.length} / {limits.length}</strong><small>{copy("widgets.reference.plan_usage_detail")}</small></div>
+          <aside className="tt-widget-summary-ring-wrap"><span className="tt-widget-summary-ring" style={{ "--widget-progress": `${limits.length ? Math.round((selectedLimitIds.length / limits.length) * 100) : 0}%` }}><b>{limits.length ? Math.round((selectedLimitIds.length / limits.length) * 100) : 0}%</b></span><small>{copy("widgets.reference.all_plans_enabled")}</small></aside>
+        </article>
+      </section>
+
+      <section className="tt-widget-projects" data-testid="widget-projects">
+        <header>
+          <div className="tt-widget-section-title">
+            <span><FolderKanban aria-hidden /></span>
+            <h2>{copy("widgets.reference.desktop_projects")}</h2>
+            <small>{copy("widgets.reference.total_projects", { count: projects.length })}</small>
+          </div>
+        </header>
+        <div className="tt-widget-project-toolbar">
+          <button type="button" className="tt-widget-project-add tt-raised-control tt-pressable" aria-label={copy("widgets.reference.add_project_folder")} onClick={() => void selectDirectoryViaTauri()}><FolderPlus aria-hidden />{copy("widgets.reference.choose_project_folder")}</button>
+          <div className="tt-widget-batch-actions"><button type="button" className="tt-raised-control tt-pressable" aria-expanded={batchOpen} onClick={() => setBatchOpen((open) => !open)}><ListChecks aria-hidden />{copy("widgets.reference.batch_actions")}<ChevronDown aria-hidden /></button>{batchOpen ? <div role="menu"><button type="button" role="menuitem" onClick={() => { setBatchOpen(false); onOpenSettings(); }}>{copy("widgets.reference.batch_manage")}</button><button type="button" role="menuitem" onClick={() => { setBatchOpen(false); prefs && void persist({ ...prefs, selectedProjectIds: [], selectedProjects: [] }); }}>{copy("widgets.reference.clear_selection")}</button></div> : null}</div>
+          <button type="button" className="tt-raised-control tt-pressable" aria-label={copy("widgets.reference.import_recent_projects")} onClick={() => {
+            if (!prefs) return;
+            setDismissedProjectIds([]);
+            void persist({ ...prefs, selectedProjectIds: projects.flatMap((project) => project.sessionIds), selectedProjects: sessions });
+          }}><History aria-hidden />{copy("widgets.reference.restore_recent_projects")}</button>
+          <label><Search aria-hidden /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={copy("widgets.reference.search_projects")} /></label>
+          <span className="tt-widget-toolbar-spacer" />
+          <Select
+            ariaLabel={copy("widgets.reference.status_all")}
+            value={statusFilter}
+            onValueChange={setStatusFilter}
+            options={[
+              { value: "all", label: copy("widgets.reference.status_all") },
+              { value: "active", label: copy("widgets.reference.active_projects") },
+              { value: "recovering", label: copy("widgets.reference.active_range") },
+              { value: "inactive", label: copy("widgets.reference.never_active") },
+            ]}
+            leadingIcon={<Filter aria-hidden />}
+            className="tt-widget-toolbar-select tt-raised-control tt-pressable"
+          />
+          <Select
+            ariaLabel={copy("widgets.reference.sort_recent_active")}
+            value={sortOrder}
+            onValueChange={setSortOrder}
+            options={[{ value: "recent", label: copy("widgets.reference.sort_recent_active") }]}
+            className="tt-widget-toolbar-select tt-raised-control tt-pressable"
+          />
+          <Select
+            ariaLabel={copy("widgets.reference.recent_seven_days")}
+            value={recentRange}
+            onValueChange={setRecentRange}
+            options={[
+              { value: "7d", label: copy("widgets.reference.recent_seven_days") },
+              { value: "3d", label: copy("widgets.reference.three_days") },
+              { value: "1d", label: copy("widgets.reference.one_day") },
+            ]}
+            leadingIcon={<CalendarDays aria-hidden />}
+            className="tt-widget-toolbar-select tt-raised-control tt-pressable"
+          />
+        </div>
+        <div className="tt-widget-project-table">
+          <div className="tt-widget-project-head"><span /><span>{copy("widgets.reference.project_name")}</span><span>{copy("widgets.reference.project_tag")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.last_active")}</span><span>{copy("widgets.reference.created_at")}</span><span>{copy("widgets.reference.action")}</span></div>
+          {displayedProjects.map(({ project, index, status }) => {
+            const checked = project.sessionIds.some((id) => selectedProjectIds.includes(id));
+            const tags = widgetProjectTags(project);
+            const canExpand = project.sessions.length > 1;
+            const expanded = canExpand && expandedProjectIds.includes(project.groupId);
+            return (
+              <React.Fragment key={project.groupId}>
+                <div className="tt-widget-project-row">
+                  <button type="button" className={cn("tt-widget-check", checked && "is-checked")} onClick={() => toggleProject(project)} aria-label={project.label}>{checked ? <Check aria-hidden /> : null}</button>
+                  <span className={cn("tt-widget-project-name", canExpand && "is-expandable")}>
+                    {canExpand ? (
+                      <button type="button" data-testid="widget-project-expand" aria-expanded={expanded} onClick={() => toggleProjectSessions(project)}>
+                        <i data-tone={index % 6}>{String(project.label || "PR").slice(0, 3).toUpperCase()}</i><span>{project.label}</span><ChevronDown aria-hidden />
+                      </button>
+                    ) : <span className="tt-widget-project-name-static"><i data-tone={index % 6}>{String(project.label || "PR").slice(0, 3).toUpperCase()}</i><span>{project.label}</span></span>}
+                  </span>
+                  <span className="tt-widget-project-tag">{tags.map((tag) => <i key={tag} data-tone={widgetProjectTagTone(tag)}>{tag}</i>)}</span>
+                  <span className={cn("tt-widget-project-status", `is-${status}`)}><i />{status === "active" ? "活跃" : status === "recovering" ? "较活跃" : "未激活"}</span>
+                  <time>{formatProjectLastActive(project, index)}</time>
+                  <time className="tt-widget-project-created">{formatProjectCreatedAt(project)}</time>
+                  <div className="tt-widget-row-actions">
+                    <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `project:${project.groupId}`} onClick={() => setOpenMenu((current) => current === `project:${project.groupId}` ? null : `project:${project.groupId}`)}><Ellipsis aria-hidden /></button>
+                    {openMenu === `project:${project.groupId}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeProjectFromWidget(project)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
+                  </div>
+                </div>
+                {expanded ? <div className="tt-widget-project-sessions" data-testid="widget-project-sessions">
+                  <div className="tt-widget-project-sessions-title">{copy("widgets.reference.project_sessions", { count: project.sessions.length })}</div>
+                  {project.sessions.map((session, sessionIndex) => {
+                    const sessionStatus = widgetProjectStatus(session, sessionIndex);
+                    return <div className="tt-widget-project-session" data-testid="widget-project-session" key={session.id || `${project.groupId}:${sessionIndex}`}>
+                      <span>{copy("widgets.reference.session_name", { index: sessionIndex + 1 })}</span>
+                      <span className={cn("tt-widget-project-status", `is-${sessionStatus}`)}><i />{sessionStatus === "active" ? "活跃" : sessionStatus === "recovering" ? "较活跃" : "未激活"}</span>
+                      <time>{formatProjectLastActive(session, sessionIndex)}</time>
+                    </div>;
+                  })}
+                </div> : null}
+              </React.Fragment>
+            );
+          })}
+          <footer><span className="tt-widget-table-selection">{copy("widgets.reference.selected_prefix")} <b>{selectedProjectCount}</b> {copy("widgets.reference.project_count_suffix")}<button type="button" onClick={() => prefs && void persist({ ...prefs, selectedProjectIds: [], selectedProjects: [] })}>{copy("widgets.reference.clear_selection")}</button></span><WidgetTablePagination /></footer>
+        </div>
+      </section>
+
+      <div className="tt-widget-bottom-grid">
+        <section className="tt-widget-limits" data-testid="widget-limits">
+          <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitIds.length, total: limits.length })}</small></div></div><button type="button" className="tt-raised-control tt-pressable" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button></header>
+          <div className="tt-widget-limit-table">
+            <div className="tt-widget-limit-head"><span>{copy("widgets.reference.plan_name")}</span><span>{copy("widgets.reference.provider")}</span><span>{copy("widgets.reference.usage_rate")}</span><span>{copy("widgets.reference.reset_cycle_quota")}</span><span>{copy("widgets.reference.next_reset")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.action")}</span></div>
+            {displayedLimits.map((limit, index) => {
+              const selected = selectedLimitIds.includes(String(limit.id));
+              const used = Number(limit.usedPercent || 0);
+              const agent = String(limit.agent || limit.provider || "").toLowerCase();
+              const planName = [limit.accountLabel, limit.window].filter(Boolean).join(" · ") || limit.provider;
+              const planBadge = widgetPlanBadge(limit, index, displayedLimits.length);
+              return <div className="tt-widget-limit-row" key={limit.id}>
+                <GripVertical aria-hidden />
+                <button type="button" className={cn("tt-widget-check", selected && "is-checked")} onClick={() => toggleLimit(limit)}>{selected ? <Check aria-hidden /> : null}</button>
+                <span className="tt-widget-limit-name"><ProviderIcon provider={agent} size={22} className={`tt-widget-agent-logo is-${agent}`} />{planName}{planBadge ? <i>{planBadge}</i> : null}</span>
+                <span>{limit.provider || agent}</span>
+                <span className="tt-widget-limit-usage"><i><b style={{ width: `${used}%` }} /></i>{copy("widgets.reference.used_of_quota", { used, quota: 100 })}</span>
+                <span className="tt-widget-limit-cycle">{formatLimitWindow(limit)}</span>
+                <span className="tt-widget-limit-reset">{formatLimitResetAt(limit)}</span>
+                <span className={cn("tt-widget-limit-status", used >= 100 ? "is-max" : used >= 90 ? "is-warning" : "is-normal")}>{used >= 100 ? "已达上限" : used >= 90 ? "接近上限" : "正常"}</span>
+                <div className="tt-widget-row-actions">
+                  <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `limit:${limit.id}`} onClick={() => setOpenMenu((current) => current === `limit:${limit.id}` ? null : `limit:${limit.id}`)}><Ellipsis aria-hidden /></button>
+                  {openMenu === `limit:${limit.id}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeLimitFromWidget(limit)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
+                </div>
+              </div>;
+            })}
+            <footer><span className="tt-widget-table-count">{copy("widgets.reference.plan_count", { count: displayedLimits.length })}</span><WidgetTablePagination /></footer>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function WindowsWidgetsContent() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  return (
+    <>
+      <WindowsProjectManager onOpenSettings={() => setSettingsOpen(true)} />
+      {settingsOpen ? (
+        <div
+          className="tt-widget-settings-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={copy("widgets.windows.projects.title")}
+        >
+          <div className="tt-widget-settings-dialog">
+            <button
+              type="button"
+              className="tt-widget-settings-close"
+              aria-label={copy("widgets.reference.batch_manage")}
+              onClick={() => setSettingsOpen(false)}
+            >
+              ×
+            </button>
+            <WindowsWidgetProjectSettings />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function HeaderCta({ platform }) {
 
   // Reserve space so the layout doesn't jump once detection resolves.
   if (platform === "loading") {
@@ -522,12 +1455,16 @@ function HeaderCta() {
       <button
         type="button"
         onClick={() => nativeAction("openWidgetGallery")}
-        className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white transition-colors hover:bg-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+        className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white hover:bg-oai-gray-800 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
       >
         {copy("widgets.cta.open_gallery")}
         <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
       </button>
     );
+  }
+
+  if (platform === "windows") {
+    return <WindowsWidgetToggle />;
   }
 
   if (platform === "mac-web") {
@@ -536,7 +1473,7 @@ function HeaderCta() {
         href="https://github.com/mm7894215/TokenTracker/releases/latest"
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white no-underline transition-colors hover:bg-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+        className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white no-underline hover:bg-oai-gray-800 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
       >
         <Download className="h-4 w-4" aria-hidden="true" />
         {copy("widgets.cta.download")}
@@ -556,15 +1493,13 @@ function HeaderCta() {
 /* ---------- Secondary catalog data ---------- */
 
 const SECONDARY_WIDGETS = [
-  { id: "summary",  Preview: SummaryWidgetPreview,      nameKey: "widgets.summary.name",   descKey: "widgets.summary.description" },
-  { id: "heatmap",   Preview: HeatmapWidgetPreview,    nameKey: "widgets.heatmap.name",   descKey: "widgets.heatmap.description" },
   { id: "topModels", Preview: TopModelsWidgetPreview,  nameKey: "widgets.topModels.name", descKey: "widgets.topModels.description" },
   { id: "limits",    Preview: UsageLimitsWidgetPreview, nameKey: "widgets.limits.name",   descKey: "widgets.limits.description" },
 ];
 
 function WidgetCatalogCard({ Preview, nameKey, descKey }) {
   return (
-    <article className="flex h-full flex-col rounded-xl border border-oai-gray-200 bg-white p-4 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-5">
+    <article className="tt-surface flex h-full flex-col rounded-[var(--tt-card-radius)] p-4 sm:p-5">
       <Preview />
       <div className="mt-4">
         <h3 className="text-[15px] font-semibold text-oai-black dark:text-white">
@@ -589,43 +1524,65 @@ function SectionTitle({ titleKey }) {
 }
 
 export function WidgetsPage() {
+  const platform = useClientPlatform();
   return (
-    <div className="flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
+    <div
+      className="tt-reference-route-widgets flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased"
+      onPointerDownCapture={startWidgetPressRebound}
+      onAnimationEndCapture={finishWidgetPressRebound}
+    >
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-none px-4 sm:px-6 lg:px-8">
           {/* Page header — H1 + adaptive CTA. No page subtitle (the two H2
               sections speak for themselves; subtitles only added title noise). */}
           <FadeIn y={12}>
-            <header className="mb-10 flex items-start justify-between gap-4 sm:mb-12">
-              <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
-                {copy("widgets.page.title")}
-              </h1>
-              <div className="shrink-0">
-                <HeaderCta />
+            <header className="tt-widgets-heading mb-10 flex items-start justify-between gap-4 sm:mb-12" data-testid="widgets-heading">
+              <div>
+                <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
+                  {copy("widgets.page.title")}
+                </h1>
+                {platform === "windows" ? <p>{copy("widgets.reference.subtitle")}</p> : null}
               </div>
+              {platform === "windows" ? (
+                <div className="tt-widget-top-controls">
+                  <div className="tt-widget-primary-action">
+                    <WindowsWidgetToggle />
+                  </div>
+                </div>
+              ) : (
+                <div className="shrink-0"><HeaderCta platform={platform} /></div>
+              )}
             </header>
           </FadeIn>
 
           {/* Menu Bar — own section, dedicated card */}
-          <FadeIn y={12} delay={0.06}>
-            <section aria-label={copy("widgets.menubar.section.title")} className="mb-12 sm:mb-14">
-              <SectionTitle titleKey="widgets.menubar.section.title" />
-              <MenuBarDisplayCard />
-            </section>
-          </FadeIn>
+          {platform !== "windows" ? (
+            <FadeIn y={12} delay={0.06}>
+              <section aria-label={copy("widgets.menubar.section.title")} className="mb-12 sm:mb-14">
+                <SectionTitle titleKey="widgets.menubar.section.title" />
+                <MenuBarDisplayCard />
+              </section>
+            </FadeIn>
+          ) : null}
 
           {/* Desktop Widgets gallery */}
           <section aria-label={copy("widgets.gallery.section.title")}>
-            <SectionTitle titleKey="widgets.gallery.section.title" />
-            <StaggerContainer staggerDelay={0.08} initialDelay={0.04}>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
-                {SECONDARY_WIDGETS.map(({ id, Preview, nameKey, descKey }) => (
-                  <StaggerItem key={id}>
-                    <WidgetCatalogCard Preview={Preview} nameKey={nameKey} descKey={descKey} />
-                  </StaggerItem>
-                ))}
-              </div>
-            </StaggerContainer>
+            {platform === "windows" ? (
+              <WindowsWidgetsContent />
+            ) : (
+              <>
+                <SectionTitle titleKey="widgets.gallery.section.title" />
+                <StaggerContainer staggerDelay={0.08} initialDelay={0.04}>
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
+                    {SECONDARY_WIDGETS.map(({ id, Preview, nameKey, descKey }) => (
+                      <StaggerItem key={id}>
+                        <WidgetCatalogCard Preview={Preview} nameKey={nameKey} descKey={descKey} />
+                      </StaggerItem>
+                    ))}
+                  </div>
+                </StaggerContainer>
+              </>
+            )}
           </section>
         </div>
       </main>

@@ -121,6 +121,45 @@ test("inspectDataDirectory recognizes Gemini, CodeBuddy and Antigravity token lo
   }
 });
 
+test("inspectDataDirectory does not mistake a generic Gemini directory for Antigravity", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "token-eyes-antigravity-identity-"));
+  try {
+    const geminiHome = path.join(tmp, ".gemini");
+    await fs.promises.mkdir(path.join(geminiHome, "tmp", "project", "chats"), { recursive: true });
+    await fs.promises.mkdir(path.join(geminiHome, "antigravity"), { recursive: true });
+    await fs.promises.writeFile(path.join(geminiHome, "tmp", "project", "chats", "session.json"), "{}", "utf8");
+    await fs.promises.writeFile(path.join(geminiHome, "antigravity", "mcp_config.json"), "{}", "utf8");
+
+    const inspection = inspectDataDirectory("antigravity", geminiHome);
+    assert.equal(inspection.status, "not-detected");
+    assert.equal(inspection.evidence, "antigravity_path_missing");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("inspectDataDirectory keeps vendor-protected Trae and CodeBuddy activity timestamps", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "token-eyes-protected-source-"));
+  try {
+    const timestamp = new Date("2026-08-02T12:34:56.000Z");
+    const traeHome = path.join(tmp, "Trae CN");
+    const traeDb = path.join(traeHome, "ModularData", "ai-agent", "database.db");
+    const codebuddyHome = path.join(tmp, "CodeBuddy CN");
+    const codebuddyDb = path.join(codebuddyHome, "User", "globalStorage", "state.vscdb");
+    await fs.promises.mkdir(path.dirname(traeDb), { recursive: true });
+    await fs.promises.mkdir(path.dirname(codebuddyDb), { recursive: true });
+    await fs.promises.writeFile(traeDb, "encrypted", "utf8");
+    await fs.promises.writeFile(codebuddyDb, "sqlite", "utf8");
+    await fs.promises.utimes(traeDb, timestamp, timestamp);
+    await fs.promises.utimes(codebuddyDb, timestamp, timestamp);
+
+    assert.equal(inspectDataDirectory("trae", traeHome).latestActivityAt, timestamp.toISOString());
+    assert.equal(inspectDataDirectory("codebuddy", codebuddyHome).latestActivityAt, timestamp.toISOString());
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("inspectDataDirectory redirects Trae and CodeBuddy install folders to their roaming data", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-data-dirs-install-redirect-"));
   try {

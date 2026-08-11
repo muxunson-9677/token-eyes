@@ -1,12 +1,17 @@
 import { createClient } from "npm:@insforge/sdk";
 
 const OPENAI_STATUS_URL = "https://status.openai.com/api/v2/incidents.json";
-const TAVILY_URL = "https://api.tavily.com/search";
-const TAVILY_INTERVAL_MS = 60 * 60_000;
-const X_WINDOW_MS = 48 * 60 * 60_000;
+const FXTWITTER_URL = "https://api.fxtwitter.com/2/profile/thsottiaux/statuses";
+const X_OEMBED_URL = "https://publish.x.com/oembed";
+const X_WINDOW_MS = 30 * 24 * 60 * 60_000;
+const ANNOUNCEMENT_RETENTION_MS = 30 * 24 * 60 * 60_000;
+const MAX_X_PAGES = 12;
 const X_EPOCH_MS = 1_288_834_974_657n;
 const CODEX_CONCEPT = /\bcodex\b/iu;
 const RESET_CONCEPT = /\b(reset|rate\s+limits?|usage\s+limits?|quota|credits?|extra\s+usage|additional\s+usage)\b|重置|额度|使用限制|额外用量|赠送额度/iu;
+const GLOBAL_RESET_CONCEPT = /\b(?:i(?:'ve| have)\s+reset|we(?:'ve| have|\s+are)\b[\s\S]{0,50}\breset(?:ting)?|usage\s+limits?\b[\s\S]{0,35}\breset|(?:added|granted|have\s+added)\s+(?:a\s+)?banked\s+reset|(?:full|another|new)\b[\s\S]{0,50}\breset|enjoy\b[\s\S]{0,50}\breset|reset(?:ting)?\b[\s\S]{0,50}\b(?:for\s+all|everyone))\b/iu;
+type ResetKind = "hard" | "banked" | "mixed" | "unknown";
+type ResetScope = "all_paid_users" | "all_codex_work_users" | "unknown";
 
 type Announcement = {
   id: string;
@@ -19,7 +24,41 @@ type Announcement = {
   expires_at: string;
   source_author?: "thsottiaux";
   source_post_id?: string;
+  reset_kind: ResetKind;
+  reset_scope: ResetScope;
 };
+
+function classifyResetKind(text: string): ResetKind {
+  const normalized = String(text || "").replace(/&#39;/gu, "'").toLowerCase();
+  const banked = /\bbanked\s+reset\b/u.test(normalized);
+  const hard = (
+    /\b(?:reset|resetting|reset of)\s+(?:your\s+|the\s+)?usage\s+limits?\b/u.test(normalized)
+    || /\busage\s+limits?\s+(?:have\s+been\s+|are\s+|were\s+)?reset\b/u.test(normalized)
+    || /\b(?:full|another|new)\s+reset\b/u.test(normalized)
+  );
+  if (hard && banked) return "mixed";
+  if (hard) return "hard";
+  if (banked) return "banked";
+  return "unknown";
+}
+
+function classifyResetScope(text: string): ResetScope {
+  const normalized = String(text || "").replace(/&#39;/gu, "'").toLowerCase();
+  if (/\ball\s+paid\s+(?:codex\s+)?users\b/u.test(normalized)) return "all_paid_users";
+  if (
+    /\ball\s+(?:chatgpt\s+work\s+and\s+codex|codex\s+and\s+chatgpt\s+work)\s+users\b/u.test(normalized)
+    || /\bfor\s+(?:chatgpt\s+work\s+and\s+codex|codex\s+and\s+chatgpt\s+work)\b/u.test(normalized)
+  ) return "all_codex_work_users";
+  return "unknown";
+}
+
+function enrichAnnouncement(item: Announcement): Announcement {
+  return {
+    ...item,
+    reset_kind: classifyResetKind(item.summary),
+    reset_scope: classifyResetScope(item.summary),
+  };
+}
 
 function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -60,7 +99,7 @@ function xPublishedAt(postId: string) {
   }
 }
 
-function tiboAnnouncement(result: Record<string, unknown>, nowMs: number): Announcement | null {
+function tiboCandidate(result: Record<string, unknown>, nowMs: number) {
   let url: URL;
   try {
     url = new URL(String(result.url || ""));
@@ -70,28 +109,108 @@ function tiboAnnouncement(result: Record<string, unknown>, nowMs: number): Annou
   if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "x.com" || url.search || url.hash) return null;
   const match = url.pathname.match(/^\/thsottiaux\/status\/([0-9]+)\/?$/u);
   if (!match) return null;
-  const text = `${String(result.title || "")} ${String(result.content || "")}`.trim();
-  if (!CODEX_CONCEPT.test(text) || !RESET_CONCEPT.test(text)) return null;
+  const author = result.author && typeof result.author === "object"
+    ? result.author as Record<string, unknown>
+    : {};
+  if (
+    String(author.screen_name || "") !== "thsottiaux"
+    || String(author.url || "") !== "https://x.com/thsottiaux"
+  ) {
+    return null;
+  }
+  const text = String(result.text || "").trim();
+  if (
+    !CODEX_CONCEPT.test(text)
+    || !RESET_CONCEPT.test(text)
+    || !GLOBAL_RESET_CONCEPT.test(text)
+  ) return null;
   const publishedAt = xPublishedAt(match[1]);
   const publishedMs = publishedAt ? Date.parse(publishedAt) : Number.NaN;
   if (!Number.isFinite(publishedMs) || publishedMs > nowMs + 5 * 60_000 || nowMs - publishedMs > X_WINDOW_MS) return null;
+  return { postId: match[1], text, publishedAt, publishedMs };
+}
+
+async function verifyTiboAnnouncement(
+  result: Record<string, unknown>,
+  nowMs: number,
+): Promise<Announcement | null> {
+  const candidate = tiboCandidate(result, nowMs);
+  if (!candidate) return null;
+  const sourceUrl = `https://x.com/thsottiaux/status/${candidate.postId}`;
+  const oembedUrl = new URL(X_OEMBED_URL);
+  oembedUrl.searchParams.set("omit_script", "true");
+  oembedUrl.searchParams.set("dnt", "true");
+  oembedUrl.searchParams.set("url", sourceUrl);
+  const response = await fetch(oembedUrl, { headers: { Accept: "application/json" } });
+  if (!response.ok) return null;
+  const verified = await response.json();
+  const verifiedText = String(verified?.html || "");
+  if (
+    verified?.url !== sourceUrl
+    || verified?.author_url !== "https://x.com/thsottiaux"
+    || verified?.provider_name !== "X"
+    || !CODEX_CONCEPT.test(verifiedText)
+    || !RESET_CONCEPT.test(verifiedText)
+    || !GLOBAL_RESET_CONCEPT.test(verifiedText.replace(/&#39;/gu, "'"))
+  ) {
+    return null;
+  }
   return {
-    id: `x:${match[1]}`,
+    id: `x:${candidate.postId}`,
     type: "official_reset_announcement",
-    title: String(result.title || "Tibo 发布了 Codex 额度公告").slice(0, 80),
-    summary: String(result.content || "请查看 Tibo 的原帖确认适用范围。").slice(0, 240),
-    source_url: `https://x.com/thsottiaux/status/${match[1]}`,
+    title: "Codex 官方额外重置",
+    summary: candidate.text.slice(0, 240),
+    source_url: sourceUrl,
     official_url: "https://chatgpt.com/codex",
-    published_at: publishedAt,
-    expires_at: new Date(publishedMs + X_WINDOW_MS).toISOString(),
+    published_at: candidate.publishedAt,
+    expires_at: new Date(candidate.publishedMs + ANNOUNCEMENT_RETENTION_MS).toISOString(),
     source_author: "thsottiaux",
-    source_post_id: match[1],
+    source_post_id: candidate.postId,
+    reset_kind: classifyResetKind(candidate.text),
+    reset_scope: classifyResetScope(candidate.text),
   };
+}
+
+async function fetchTiboResults(nowMs: number) {
+  const results: Array<Record<string, unknown>> = [];
+  const seenCursors = new Set<string>();
+  const cutoffMs = nowMs - X_WINDOW_MS;
+  let cursor = "";
+
+  for (let page = 0; page < MAX_X_PAGES; page += 1) {
+    const url = new URL(FXTWITTER_URL);
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error("discovery request failed");
+    const body = await response.json();
+    const pageResults = Array.isArray(body?.results) ? body.results : [];
+    results.push(...pageResults);
+
+    const publishedTimes = pageResults
+      .map((result: Record<string, unknown>) => {
+        const match = String(result?.url || "").match(/\/status\/([0-9]+)$/u);
+        const publishedAt = match ? xPublishedAt(match[1]) : null;
+        return publishedAt ? Date.parse(publishedAt) : Number.NaN;
+      })
+      .filter((value: number) => Number.isFinite(value));
+    if (publishedTimes.length > 0 && Math.min(...publishedTimes) <= cutoffMs) break;
+
+    const nextCursor = String(body?.cursor?.bottom || "");
+    if (!nextCursor || seenCursors.has(nextCursor)) break;
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  return results;
 }
 
 function statusAnnouncement(incident: Record<string, unknown>, nowMs: number): Announcement | null {
   const text = `${String(incident.name || "")} ${String(incident.incident_updates || "")}`;
-  if (!CODEX_CONCEPT.test(text) || !RESET_CONCEPT.test(text)) return null;
+  if (
+    !CODEX_CONCEPT.test(text)
+    || !RESET_CONCEPT.test(text)
+    || !GLOBAL_RESET_CONCEPT.test(text)
+  ) return null;
   const publishedMs = Date.parse(String(incident.created_at || incident.started_at || ""));
   if (!Number.isFinite(publishedMs) || nowMs - publishedMs > X_WINDOW_MS) return null;
   const incidentId = String(incident.id || "");
@@ -105,7 +224,9 @@ function statusAnnouncement(incident: Record<string, unknown>, nowMs: number): A
     source_url: sourceUrl,
     official_url: "https://status.openai.com/",
     published_at: new Date(publishedMs).toISOString(),
-    expires_at: new Date(publishedMs + X_WINDOW_MS).toISOString(),
+    expires_at: new Date(publishedMs + ANNOUNCEMENT_RETENTION_MS).toISOString(),
+    reset_kind: classifyResetKind(text),
+    reset_scope: classifyResetScope(text),
   };
 }
 
@@ -139,13 +260,14 @@ export default async function (request: Request): Promise<Response> {
   const client = createClient({ baseUrl, edgeFunctionToken: serviceKey });
   const { data: current } = await client.database
     .from("tokentracker_codex_reset_feed_state")
-    .select("envelope,last_openai_checked_at,last_tavily_checked_at")
+    .select("envelope,last_openai_checked_at")
     .eq("singleton", true)
     .maybeSingle();
 
   const nowMs = Date.now();
   const announcements = decodeBase64UrlJson(current?.envelope?.payload_b64)
-    .filter((item) => Date.parse(item.expires_at) > nowMs);
+    .filter((item) => Date.parse(item.expires_at) > nowMs)
+    .map(enrichAnnouncement);
   let openaiStatus = "ok";
   try {
     const response = await fetch(OPENAI_STATUS_URL, { headers: { Accept: "application/json" } });
@@ -159,42 +281,27 @@ export default async function (request: Request): Promise<Response> {
     openaiStatus = "unavailable";
   }
 
-  const tavilyKey = Deno.env.get("TAVILY_API_KEY") || "";
-  const lastTavilyMs = Date.parse(String(current?.last_tavily_checked_at || ""));
-  const tavilyDue = !Number.isFinite(lastTavilyMs) || nowMs - lastTavilyMs >= TAVILY_INTERVAL_MS;
-  let tavilyStatus = tavilyKey ? "not_due" : "not_configured";
-  let lastTavilyCheckedAt = current?.last_tavily_checked_at || null;
-  if (tavilyKey && tavilyDue) {
-    tavilyStatus = "ok";
-    lastTavilyCheckedAt = new Date(nowMs).toISOString();
-    try {
-      const response = await fetch(TAVILY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: tavilyKey,
-          query: "site:x.com/thsottiaux/status Codex reset quota credits usage limit",
-          topic: "general",
-          search_depth: "basic",
-          include_domains: ["x.com"],
-          max_results: 10,
-          days: 2,
-        }),
-      });
-      if (!response.ok) throw new Error("search request failed");
-      const body = await response.json();
-      for (const result of Array.isArray(body?.results) ? body.results : []) {
-        const item = tiboAnnouncement(result, nowMs);
-        if (item) announcements.push(item);
+  let xStatus = "ok";
+  try {
+    const knownPostIds = new Set(
+      announcements.map((item) => item.source_post_id).filter(Boolean),
+    );
+    for (const result of await fetchTiboResults(nowMs)) {
+      const candidate = tiboCandidate(result, nowMs);
+      if (!candidate || knownPostIds.has(candidate.postId)) continue;
+      const item = await verifyTiboAnnouncement(result, nowMs);
+      if (item) {
+        announcements.push(item);
+        knownPostIds.add(candidate.postId);
       }
-    } catch {
-      tavilyStatus = "unavailable";
     }
+  } catch {
+    xStatus = "unavailable";
   }
 
   const unique = [...new Map(announcements.map((item) => [item.id, item])).values()]
     .sort((left, right) => Date.parse(right.published_at) - Date.parse(left.published_at))
-    .slice(0, 20);
+    .slice(0, 100);
   const envelope = await signedEnvelope(unique, signingKey, nowMs);
   const { error } = await client.database
     .from("tokentracker_codex_reset_feed_state")
@@ -202,9 +309,8 @@ export default async function (request: Request): Promise<Response> {
       singleton: true,
       envelope,
       last_openai_checked_at: new Date(nowMs).toISOString(),
-      last_tavily_checked_at: lastTavilyCheckedAt,
       updated_at: new Date(nowMs).toISOString(),
     }, { onConflict: "singleton" });
   if (error) return json({ error: error.message || "feed update failed" }, 500);
-  return json({ ok: true, announcements: unique.length, openai_status: openaiStatus, tavily_status: tavilyStatus });
+  return json({ ok: true, announcements: unique.length, openai_status: openaiStatus, x_status: xStatus });
 }

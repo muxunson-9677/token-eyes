@@ -60,25 +60,27 @@ describe("ProjectUsagePanel", () => {
     expect(copyButton).toBeInTheDocument();
   });
 
-  it("shows 'no path' fallback when project_path is empty", () => {
+  it("hides the path row when project_path is empty", () => {
     const entryWithoutPath = {
       ...baseEntry,
       project_path: "",
     };
     render(<ProjectUsagePanel entries={[entryWithoutPath]} />);
 
-    expect(screen.getByText(copy("dashboard.projects.no_path"))).toBeInTheDocument();
+    expect(screen.queryByText(copy("dashboard.projects.no_path"))).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="project-path"]')).toBeNull();
     expect(screen.queryByTitle(copy("dashboard.projects.copy_path"))).not.toBeInTheDocument();
   });
 
-  it("shows 'no path' fallback when project_path is null", () => {
+  it("hides the path row when project_path is null", () => {
     const entryWithoutPath = {
       ...baseEntry,
       project_path: null,
     };
     render(<ProjectUsagePanel entries={[entryWithoutPath]} />);
 
-    expect(screen.getByText(copy("dashboard.projects.no_path"))).toBeInTheDocument();
+    expect(screen.queryByText(copy("dashboard.projects.no_path"))).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="project-path"]')).toBeNull();
   });
 
   it("prefers total tokens when billable tokens are zero", () => {
@@ -175,5 +177,94 @@ describe("ProjectUsagePanel", () => {
     expect(screen.getByText("Test Project")).toBeInTheDocument();
     // Should not crash and should show no_path fallback-free since path exists
     expect(screen.getByText("/test")).toBeInTheDocument();
+  });
+
+  it("hides missing token, cost, request, and time values without placeholders", () => {
+    const { container } = render(<ProjectUsagePanel entries={[{
+      project_key: "test",
+      project_name: "Test Project",
+      pricing_coverage: "unpriced",
+    }]} />);
+
+    expect(screen.getByText("Test Project")).toBeInTheDocument();
+    expect(container).not.toHaveTextContent("—");
+    expect(container).not.toHaveTextContent(" - ");
+    expect(screen.queryByText(copy("dashboard.projects.tokens_label"))).not.toBeInTheDocument();
+  });
+
+  it("keeps project disclosures independent and uses official provider icons", async () => {
+    const user = userEvent.setup();
+    const entries = [
+      { ...baseEntry, project_key: "first", project_name: "First project", top_agents: ["codex"], top_models: ["gpt-5.6-sol"], model_providers: { "gpt-5.6-sol": "codex" } },
+      { ...baseEntry, project_key: "second", project_name: "Second project", top_agents: ["claude"], top_models: ["claude-3.5"], model_providers: { "claude-3.5": "claude" } },
+      { ...baseEntry, project_key: "third", project_name: "Third project", top_agents: ["cursor"] },
+    ];
+
+    render(<ProjectUsagePanel embedded entries={entries} />);
+    const cards = screen.getAllByTestId("project-usage-card");
+
+    expect(cards[0]).toHaveClass("tt-overview-project-card--compact");
+    await user.click(screen.getByRole("button", { name: /Second project/ }));
+    expect(cards[0]).toHaveAttribute("data-expanded", "false");
+    expect(cards[1]).toHaveAttribute("data-expanded", "true");
+    expect(cards[2]).toHaveAttribute("data-expanded", "false");
+    expect(cards[1].querySelector('[data-slot="project-agent-icon"]')).toBeInTheDocument();
+    expect(cards[1].querySelector('[data-slot="project-model-icon"]')).toBeInTheDocument();
+  });
+
+  it("reveals real agent, model, period, activity and trend details for only the selected project", async () => {
+    const user = userEvent.setup();
+    const entries = [
+      {
+        ...baseEntry,
+        project_key: "detailed",
+        project_name: "Detailed project",
+        agent_usage: [{ id: "codex", tokens: 9000, percent: 75 }],
+        model_usage: [{ id: "gpt-5.6-sol", provider: "codex", tokens: 7200, percent: 60 }],
+        usage_trend: [
+          { day: "2026-06-28", tokens: 1000 },
+          { day: "2026-06-29", tokens: 11000 },
+        ],
+        period_from: "2026-06-28",
+        period_to: "2026-06-29",
+      },
+      { ...baseEntry, project_key: "other", project_name: "Other project" },
+    ];
+
+    render(<ProjectUsagePanel embedded entries={entries} />);
+    const cards = screen.getAllByTestId("project-usage-card");
+
+    expect(cards[0]).toHaveAttribute("data-expanded", "false");
+    expect(cards[1]).toHaveAttribute("data-expanded", "false");
+    await user.click(screen.getByRole("button", { name: /Detailed project/ }));
+
+    expect(cards[0]).toHaveAttribute("data-expanded", "true");
+    expect(cards[1]).toHaveAttribute("data-expanded", "false");
+    expect(cards[0].querySelector('[data-slot="project-agent-usage"]')).toHaveTextContent("9");
+    expect(cards[0].querySelector('[data-slot="project-model-usage"]')).toHaveTextContent("7.2");
+    expect(cards[0].querySelector('[data-slot="project-period"]')).toHaveTextContent("2026-06-28");
+    expect(cards[0].querySelector('[data-slot="project-period"]')).toHaveTextContent("2026-06-29");
+    expect(cards[0].querySelector('[data-slot="project-last-active"]')).toBeInTheDocument();
+    expect(cards[0].querySelector('[data-testid="project-usage-sparkline"]')).toBeInTheDocument();
+  });
+
+  it("shows total records and lets users jump to a project page", async () => {
+    const user = userEvent.setup();
+    const entries = Array.from({ length: 4 }, (_, index) => ({
+      ...baseEntry,
+      project_key: `project-${index + 1}`,
+      project_name: `Project ${index + 1}`,
+      total_tokens: 10000 - index,
+    }));
+
+    render(<ProjectUsagePanel embedded entries={entries} limit={3} />);
+
+    expect(screen.getByTestId("project-pagination-total")).toHaveTextContent("4");
+    expect(screen.getByTestId("project-pagination")).toHaveClass("tt-overview-pagination");
+    const pageInput = screen.getByLabelText(copy("dashboard.projects.page_number"));
+    await user.clear(pageInput);
+    await user.type(pageInput, "2");
+    await user.click(screen.getByRole("button", { name: copy("dashboard.projects.page_jump") }));
+    expect(screen.getByText("Project 4")).toBeInTheDocument();
   });
 });

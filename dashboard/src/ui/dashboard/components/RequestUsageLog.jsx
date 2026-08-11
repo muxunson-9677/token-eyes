@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, Clock3, FileText } from "lucide-react";
 import { Card } from "../../components";
 import { useCurrency } from "../../../hooks/useCurrency";
 import { copy } from "../../../lib/copy";
@@ -70,14 +70,19 @@ function safeNum(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isProvidedNumber(value) {
+  return value !== null
+    && value !== undefined
+    && value !== ""
+    && Number.isFinite(Number(value));
+}
+
 function formatFullNum(value) {
   return safeNum(value).toLocaleString();
 }
 
 function formatAverageLatency(value) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
-    return copy("ticket06.metric.unavailable");
-  }
+  if (!isProvidedNumber(value)) return null;
   const milliseconds = Math.max(0, Number(value));
   return milliseconds < 1_000
     ? `${Math.round(milliseconds)}ms`
@@ -85,10 +90,11 @@ function formatAverageLatency(value) {
 }
 
 function formatCost(value, currency, rate, pricingCoverage) {
-  const n = Number(value);
   if (pricingCoverage === "unpriced") {
     return copy("ticket06.pricing.unpriced");
   }
+  if (!isProvidedNumber(value)) return null;
+  const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return `${getCurrencySymbol(currency)}0`;
   return formatUsdCurrency(n, { decimals: n < 1 ? 4 : 2, currency, rate });
 }
@@ -107,17 +113,19 @@ function formatTime(timestamp) {
 
 /** `0.0s / 830ms` — total latency + first-token latency. */
 function formatLatencyFirst(latencyMs, firstTokenMs) {
-  if (latencyMs === null || latencyMs === undefined) {
-    return copy("ticket06.metric.unavailable");
+  const hasLatency = isProvidedNumber(latencyMs);
+  const hasFirstToken = isProvidedNumber(firstTokenMs);
+  if (!hasLatency && !hasFirstToken) return null;
+
+  const values = [];
+  if (hasLatency) {
+    const latency = Math.max(0, Number(latencyMs));
+    values.push(latency === 0 ? "0ms" : `${(latency / 1000).toFixed(1)}s`);
   }
-  const lat = safeNum(latencyMs);
-  const ft = firstTokenMs == null ? null : safeNum(firstTokenMs);
-  const hasLat = lat > 0;
-  const hasFt = ft != null && ft > 0;
-  if (!hasLat && !hasFt) return copy("ticket04.request.latency_none");
-  const latStr = hasLat ? `${(lat / 1000).toFixed(1)}s` : "-";
-  const ftStr = hasFt ? `${Math.round(ft)}ms` : "-";
-  return `${latStr} / ${ftStr}`;
+  if (hasFirstToken) {
+    values.push(`${Math.round(Math.max(0, Number(firstTokenMs)))}ms`);
+  }
+  return values.join(" / ");
 }
 
 function statusIsError(status) {
@@ -173,24 +181,16 @@ export function RequestUsageLog({
   const { currency, rate } = useCurrency();
   const [sourceFilter, setSourceFilter] = useState(""); // "" = all
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageDraft, setPageDraft] = useState("1");
   const visibleProviderKey = useMemo(
     () => (Array.isArray(visibleProviderIds) ? visibleProviderIds.join("\u0001") : "__all__"),
     [visibleProviderIds],
   );
-
-  // Sync pageDraft when currentPage changes externally (e.g., clicking page buttons)
-  const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
-    setPageDraft(String(newPage));
-  };
 
   // When the global source filter or visibleProviderIds changes, reset the
   // local source dropdown and page.
   useEffect(() => {
     setSourceFilter("");
     setCurrentPage(1);
-    setPageDraft("1");
   }, [visibleProviderKey, from, to, timeZone, tzOffsetMinutes]);
 
   const queriedProviderIds = useMemo(
@@ -221,8 +221,25 @@ export function RequestUsageLog({
   const visibleRecords = records;
 
   // Use server-side pagination metadata
-  const totalPages = serverTotalPages || 1;
-  const total = serverTotal || 0;
+  const summaryTotal = isProvidedNumber(totals?.request_count) ? Number(totals.request_count) : 0;
+  const total = Math.max(serverTotal || 0, summaryTotal, visibleRecords.length);
+  const totalPages = Math.max(serverTotalPages || 1, Math.ceil(total / PAGE_SIZE));
+  const successRate = isProvidedNumber(totals?.success_rate)
+    ? Math.max(0, Math.min(100, Number(totals.success_rate)))
+    : null;
+  const reportedSuccessfulRequests = isProvidedNumber(totals?.success_count)
+    ? Math.max(0, Number(totals.success_count))
+    : null;
+  const derivedSuccessfulRequests = successRate !== null && isProvidedNumber(totals?.request_count)
+    ? Math.round(Number(totals.request_count) * successRate / 100)
+    : null;
+  const successfulRequests = reportedSuccessfulRequests !== null
+    && (derivedSuccessfulRequests === null || reportedSuccessfulRequests === derivedSuccessfulRequests)
+    ? reportedSuccessfulRequests
+    : derivedSuccessfulRequests;
+  const failedRequests = successfulRequests !== null && isProvidedNumber(totals?.request_count)
+    ? Math.max(0, Number(totals.request_count) - successfulRequests)
+    : null;
 
   const sources = useMemo(() => {
     if (!Array.isArray(visibleProviderIds)) return [];
@@ -247,7 +264,7 @@ export function RequestUsageLog({
         <button
           type="button"
           onClick={refresh}
-          className="inline-flex h-8 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
+          className="inline-flex h-10 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
         >
           {copy("ticket04.request.retry")}
         </button>
@@ -300,13 +317,14 @@ export function RequestUsageLog({
                 return (
                   <tr
                     key={record.id || `${record.timestamp}-${idx}`}
-                    className="border-b border-oai-gray-100 dark:border-oai-gray-800 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50 transition-colors"
+                    className={`tt-request-log-row border-b border-oai-gray-100 dark:border-oai-gray-800 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50 transition-colors ${idx === 0 ? "tt-request-log-row--featured" : ""}`}
+                    data-testid={`request-log-row-${idx}`}
                   >
                     <td className="px-3 py-2 text-sm text-oai-gray-700 dark:text-oai-gray-300 whitespace-nowrap tabular-nums">
                       {formatTime(record.timestamp)}
                     </td>
                     <td className="px-3 py-2 text-sm font-medium text-oai-black dark:text-oai-white whitespace-nowrap">
-                      <span className="inline-flex items-center gap-2">
+                      <span className="tt-request-provider-chip inline-flex items-center gap-2" data-testid="request-provider-chip">
                         <span
                           aria-hidden="true"
                           className="inline-block h-2 w-2 rounded-full shrink-0"
@@ -320,7 +338,7 @@ export function RequestUsageLog({
                     </td>
                     <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
                       <div className="flex flex-col items-end leading-tight">
-                        <span>{formatFullNum(record.input_tokens)}</span>
+                        {isProvidedNumber(record.input_tokens) && <span>{formatFullNum(record.input_tokens)}</span>}
                         {safeNum(record.cached_input_tokens) > 0 && (
                           <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
                             {copy("ticket04.request.cache_read_prefix")}{formatFullNum(record.cached_input_tokens)}
@@ -329,7 +347,7 @@ export function RequestUsageLog({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
-                      {formatFullNum(record.output_tokens)}
+                      {isProvidedNumber(record.output_tokens) ? formatFullNum(record.output_tokens) : null}
                     </td>
                     <td className="px-3 py-2 text-sm text-oai-brand whitespace-nowrap text-right tabular-nums">
                       {formatCost(record.cost_usd, currency, rate, record.pricing_coverage)}
@@ -338,20 +356,19 @@ export function RequestUsageLog({
                       {formatLatencyFirst(record.latency_ms, record.first_token_ms)}
                     </td>
                     <td className="px-3 py-2 text-sm whitespace-nowrap text-right tabular-nums">
-                      {record.status === null || record.status === undefined ? (
-                        <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("ticket06.metric.unavailable")}</span>
-                      ) : (
+                      {record.status !== null && record.status !== undefined ? (
                         <span
                           className={
                             isStatusError
-                              ? "text-red-600 dark:text-red-400 font-medium"
-                              : "text-emerald-600 dark:text-emerald-400 font-medium"
+                              ? "tt-request-status-chip text-red-600 dark:text-red-400 font-medium"
+                              : "tt-request-status-chip text-emerald-600 dark:text-emerald-400 font-medium"
                           }
+                          data-testid="request-status-chip"
                           aria-label={copy(isStatusError ? "ticket04.request.status_error_aria" : "ticket04.request.status_success_aria")}
                         >
                           {record.status}
                         </span>
-                      )}
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-xs text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap">
                       <div>{getCacheDiagnostic(record)}</div>
@@ -360,18 +377,22 @@ export function RequestUsageLog({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap">
-                      {record.request_source || record.origin || "-"}
+                      {(record.request_source || record.origin) ? (
+                        <span className="tt-request-source-chip" data-testid="request-source-chip">
+                          {record.request_source || record.origin}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 );
               })}
               {totals && (
-                <tr className="bg-oai-gray-50 dark:bg-oai-gray-800/60">
+                <tr className="tt-request-log-total-row bg-oai-gray-50 dark:bg-oai-gray-800/60" data-testid="request-log-total-row">
                   <td className="px-3 py-2 text-sm font-semibold text-oai-black dark:text-oai-white" colSpan={3}>
                     {copy("usage.request_log.totals")}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold text-oai-black dark:text-oai-white whitespace-nowrap text-right tabular-nums">
-                    {formatFullNum(totals.input_tokens)}
+                    {isProvidedNumber(totals.input_tokens) ? formatFullNum(totals.input_tokens) : null}
                     {safeNum(totals.cached_input_tokens) > 0 && (
                       <div className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
                         {copy("ticket04.request.cache_read_prefix")}{formatFullNum(totals.cached_input_tokens)}
@@ -379,28 +400,16 @@ export function RequestUsageLog({
                     )}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold text-oai-black dark:text-oai-white whitespace-nowrap text-right tabular-nums">
-                    {formatFullNum(totals.output_tokens)}
+                    {isProvidedNumber(totals.output_tokens) ? formatFullNum(totals.output_tokens) : null}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold text-oai-brand whitespace-nowrap text-right tabular-nums">
                     {formatCost(totals.cost_usd, currency, rate, totals.pricing_coverage)}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold whitespace-nowrap text-right tabular-nums">
-                    {totals.avg_latency_ms === null || totals.avg_latency_ms === undefined ? (
-                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("ticket06.metric.unavailable")}</span>
-                    ) : safeNum(totals.avg_latency_ms) > 0 ? (
-                      `${(safeNum(totals.avg_latency_ms) / 1000).toFixed(1)}s`
-                    ) : (
-                      "-"
-                    )}
+                    {formatAverageLatency(totals.avg_latency_ms)}
                   </td>
                   <td className="px-3 py-2 text-sm font-semibold whitespace-nowrap text-right tabular-nums">
-                    {totals.success_rate === null || totals.success_rate === undefined ? (
-                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("ticket06.metric.unavailable")}</span>
-                    ) : safeNum(totals.success_rate) > 0 ? (
-                      `${safeNum(totals.success_rate).toFixed(1)}%`
-                    ) : (
-                      "-"
-                    )}
+                    {isProvidedNumber(totals.success_rate) ? `${Number(totals.success_rate).toFixed(1)}%` : null}
                   </td>
                   <td className="px-3 py-2" />
                   <td className="px-3 py-2" />
@@ -409,34 +418,18 @@ export function RequestUsageLog({
             </tbody>
           </table>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-          <span>
-            {copy("ticket04.request.showing", {
-              count: visibleRecords.length,
-              total: total,
-            })}
-          </span>
+        <div className="tt-usage-table-pagination mt-3 flex items-center justify-between gap-3 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          <span>{copy("spend.usage.pagination.records", { total })}</span>
           {totalPages > 1 && (
-            <div className="flex items-center gap-1 flex-wrap">
-              {/* First page button */}
+            <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => handlePageChange(1)}
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                 disabled={currentPage === 1}
-                className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-1.5 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors disabled:opacity-50"
+                className="inline-flex h-8 items-center rounded-lg border border-oai-gray-200 bg-white px-3 disabled:opacity-40 dark:border-oai-gray-700 dark:bg-oai-gray-900"
               >
-                {"<<"}
+                {copy("spend.usage.pagination.previous")}
               </button>
-              {/* Previous page button */}
-              <button
-                type="button"
-                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-1.5 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors disabled:opacity-50"
-              >
-                {"<"}
-              </button>
-              {/* Page number buttons */}
               {getPageNumbers(currentPage, totalPages).map((page, idx) =>
                 page === "..." ? (
                   <span key={`ellipsis-${idx}`} className="px-1 text-oai-gray-400">
@@ -446,105 +439,24 @@ export function RequestUsageLog({
                   <button
                     key={page}
                     type="button"
-                    onClick={() => handlePageChange(page)}
-                    className={`inline-flex h-7 min-w-[28px] items-center justify-center rounded-md px-1.5 text-xs font-medium transition-colors ${
-                      page === currentPage
-                        ? "bg-oai-brand-500 text-white border border-oai-brand-500"
-                        : "border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
-                    }`}
+                    onClick={() => setCurrentPage(page)}
+                    aria-current={page === currentPage ? "page" : undefined}
+                    className={page === currentPage
+                      ? "inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-oai-brand text-white"
+                      : "inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-oai-gray-200 bg-white dark:border-oai-gray-700 dark:bg-oai-gray-900"}
                   >
                     {page}
                   </button>
                 ),
               )}
-              {/* Next page button */}
               <button
                 type="button"
-                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
                 disabled={currentPage === totalPages}
-                className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-1.5 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors disabled:opacity-50"
+                className="inline-flex h-8 items-center rounded-lg border border-oai-gray-200 bg-white px-3 disabled:opacity-40 dark:border-oai-gray-700 dark:bg-oai-gray-900"
               >
-                {">"}
+                {copy("spend.usage.pagination.next")}
               </button>
-              {/* Last page button */}
-              <button
-                type="button"
-                onClick={() => handlePageChange(totalPages)}
-                disabled={currentPage === totalPages}
-                className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-1.5 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors disabled:opacity-50"
-              >
-                {">>"}
-              </button>
-              {/* Page jump input */}
-              <div className="flex items-center gap-1 ml-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={totalPages}
-                  value={pageDraft}
-                  onChange={(e) => {
-                    // Update draft value, clamp to valid range immediately for UX
-                    const rawValue = e.target.value;
-                    if (rawValue === "" || rawValue === "-") {
-                      setPageDraft(rawValue);
-                      return;
-                    }
-                    const page = parseInt(rawValue, 10);
-                    if (isNaN(page)) {
-                      setPageDraft(rawValue);
-                      return;
-                    }
-                    // Clamp to valid range immediately
-                    const clampedPage = Math.max(1, Math.min(totalPages, page));
-                    setPageDraft(String(clampedPage));
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      // Submit jump on Enter
-                      const page = parseInt(pageDraft, 10);
-                      if (!isNaN(page)) {
-                        const clampedPage = Math.max(1, Math.min(totalPages, page));
-                        setCurrentPage(clampedPage);
-                        setPageDraft(String(clampedPage));
-                      } else {
-                        setCurrentPage(1);
-                        setPageDraft("1");
-                      }
-                      e.target.blur();
-                    }
-                  }}
-                  onBlur={() => {
-                    // Reset draft to current page if left empty or invalid
-                    const page = parseInt(pageDraft, 10);
-                    if (isNaN(page) || pageDraft === "") {
-                      setPageDraft(String(currentPage));
-                    }
-                  }}
-                  className="h-7 w-12 rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-2 text-xs text-oai-gray-700 dark:text-oai-gray-300 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-oai-brand/50 focus:border-oai-brand"
-                  aria-label={copy("ticket04.request.page_jump")}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Jump to page in draft input
-                    const page = parseInt(pageDraft, 10);
-                    if (!isNaN(page)) {
-                      const clampedPage = Math.max(1, Math.min(totalPages, page));
-                      setCurrentPage(clampedPage);
-                      setPageDraft(String(clampedPage));
-                    } else {
-                      setCurrentPage(1);
-                      setPageDraft("1");
-                    }
-                  }}
-                  className="inline-flex h-7 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-2 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
-                >
-                  {copy("ticket04.request.page_jump_btn")}
-                </button>
-                <span className="text-oai-gray-400 whitespace-nowrap">
-                  {copy("ticket04.request.page_of", { total: totalPages })}
-                </span>
-              </div>
             </div>
           )}
         </div>
@@ -553,7 +465,7 @@ export function RequestUsageLog({
   }
 
   return (
-    <Card className="mt-4">
+    <Card className="tt-usage-table-card tt-request-log-card mt-4">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold text-oai-black dark:text-oai-white">
@@ -568,9 +480,9 @@ export function RequestUsageLog({
             value={sourceFilter}
             onChange={(e) => {
               setSourceFilter(e.target.value);
-              handlePageChange(1);
+              setCurrentPage(1);
             }}
-            className="h-8 px-2.5 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand/50 focus:border-oai-brand"
+            className="h-10 px-2.5 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand/50 focus:border-oai-brand"
             aria-label={copy("usage.request_log.source_filter_aria")}
           >
             <option value="">{copy("ticket04.request.all_sources")}</option>
@@ -583,22 +495,45 @@ export function RequestUsageLog({
         </div>
       </div>
 
-      {totals && (
+      {totals && [totals.request_count, totals.success_rate, totals.avg_latency_ms].some(isProvidedNumber) && (
         <div className="mb-4 grid grid-cols-3 gap-2" data-testid="request-log-metrics">
-          <div data-testid="request-log-metric-requests" className="rounded-xl bg-oai-gray-50 px-3 py-2.5 dark:bg-oai-gray-800/70">
-            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.requests")}</div>
-            <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatFullNum(totals.request_count)}</div>
-          </div>
-          <div data-testid="request-log-metric-success-rate" className="rounded-xl bg-emerald-50/70 px-3 py-2.5 dark:bg-emerald-950/20">
-            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.success_rate")}</div>
-            <div className="mt-1 text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
-              {totals.success_rate === null || totals.success_rate === undefined ? copy("ticket06.metric.unavailable") : `${safeNum(totals.success_rate).toFixed(1)}%`}
+          {isProvidedNumber(totals.request_count) && (
+            <div data-testid="request-log-metric-requests" className="tt-surface-nested tt-request-log-metric min-w-0 rounded-xl px-3 py-2.5" data-tone="blue">
+              <span className="tt-request-log-metric-icon-well" aria-hidden="true">
+                <FileText data-testid="request-log-metric-icon" className="h-6 w-6 text-blue-500" />
+              </span>
+              <div className="min-w-0"><div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.requests")}</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatFullNum(totals.request_count)}</div>
+              <div className="tt-request-log-metric-detail">{copy("usage.request_log.metric.requests_detail", { count: formatFullNum(totals.request_count) })}</div></div>
             </div>
-          </div>
-          <div data-testid="request-log-metric-avg-latency" className="rounded-xl bg-oai-gray-50 px-3 py-2.5 dark:bg-oai-gray-800/70">
-            <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.avg_latency")}</div>
-            <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatAverageLatency(totals.avg_latency_ms)}</div>
-          </div>
+          )}
+          {isProvidedNumber(totals.success_rate) && (
+            <div data-testid="request-log-metric-success-rate" className="tt-surface-nested tt-request-log-metric min-w-0 rounded-xl px-3 py-2.5" data-tone="green">
+              <span className="tt-request-log-metric-icon-well" aria-hidden="true">
+                <CheckCircle2 data-testid="request-log-metric-icon" className="h-6 w-6 text-emerald-500" />
+              </span>
+              <div className="min-w-0"><div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.success_rate")}</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                {`${Number(totals.success_rate).toFixed(1)}%`}
+              </div>
+              {successfulRequests !== null && failedRequests !== null ? (
+                <div className="tt-request-log-metric-detail">{copy("usage.request_log.metric.success_detail", {
+                  success: formatFullNum(successfulRequests),
+                  failed: formatFullNum(failedRequests),
+                })}</div>
+              ) : null}</div>
+            </div>
+          )}
+          {isProvidedNumber(totals.avg_latency_ms) && (
+            <div data-testid="request-log-metric-avg-latency" className="tt-surface-nested tt-request-log-metric min-w-0 rounded-xl px-3 py-2.5" data-tone="purple">
+              <span className="tt-request-log-metric-icon-well" aria-hidden="true">
+                <Clock3 data-testid="request-log-metric-icon" className="h-6 w-6 text-violet-500" />
+              </span>
+              <div className="min-w-0"><div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{copy("usage.request_log.metric.avg_latency")}</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatAverageLatency(totals.avg_latency_ms)}</div>
+              <div className="tt-request-log-metric-detail">{copy("usage.request_log.metric.latency_detail")}</div></div>
+            </div>
+          )}
         </div>
       )}
 

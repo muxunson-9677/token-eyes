@@ -1,7 +1,8 @@
-import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
 import { motion } from "motion/react";
+import { BadgeCheck, CircleDollarSign, Coins, Info, MoreVertical, ShieldCheck, Users } from "lucide-react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { useLoginModal } from "../contexts/LoginModalContext.jsx";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
@@ -27,6 +28,7 @@ import {
   normalizeLeaderboardPeriod,
 } from "../lib/leaderboard-query.js";
 import { normalizeAgentMetrics } from "../lib/leaderboard-agent-metrics.js";
+import { getCumulativeYesterdayComparison } from "../lib/leaderboard-summary-details.js";
 import {
   buildLocalLeaderboardRowFromProviderStats,
   getLeaderboardPeriodDateRange,
@@ -98,8 +100,9 @@ function readStoredPageSize() {
 }
 
 function formatCost(value, currency, rate) {
+  if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return "-";
+  if (!Number.isFinite(n) || n < 0) return null;
   const symbol = getCurrencySymbol(currency);
   const converted = currency === CURRENCY_USD ? n : n * rate;
   if (converted >= 1000) return `${symbol}${Math.round(converted).toLocaleString()}`;
@@ -107,8 +110,51 @@ function formatCost(value, currency, rate) {
   return `${symbol}${converted.toFixed(2)}`;
 }
 
+function formatSummaryCostChange(value, currency, rate) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  const converted = currency === CURRENCY_USD ? numeric : numeric * rate;
+  if (Math.sign(converted) === 1 && converted < 0.01) return `${getCurrencySymbol(currency)}${converted.toFixed(4)}`;
+  return formatCost(numeric, currency, rate);
+}
+
+function formatYesterdayDetail(comparison, formatter) {
+  if (!comparison) return null;
+  const amount = formatter(comparison.change);
+  if (!amount) return null;
+  const percentDigits = Math.sign(comparison.percent) === 1 && comparison.percent < 0.01
+    ? Math.min(8, Math.max(4, Math.ceil(-Math.log10(comparison.percent)) + 1))
+    : 2;
+  return copy("leaderboard.summary.yesterday_change", {
+    amount: `+${amount}`,
+    percent: `+${comparison.percent.toFixed(percentDigits)}%`,
+  });
+}
+
+function formatLeaderboardGeneratedAt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
 function TotalTokens({ value }) {
   return <span>{formatChineseTokenCount(value)}</span>;
+}
+
+function isProvidedNumber(value) {
+  return value !== null
+    && value !== undefined
+    && value !== ""
+    && Number.isFinite(Number(value));
 }
 
 function getUnpricedTokens(entry) {
@@ -120,7 +166,9 @@ function getUnpricedTokens(entry) {
 }
 
 function RankingScore({ entry, metric, currency, rate }) {
-  let value = <TotalTokens value={entry?.total_tokens} />;
+  let value = isProvidedNumber(entry?.total_tokens)
+    ? <TotalTokens value={entry.total_tokens} />
+    : null;
   if (metric === "estimated_spend") {
     value = formatCost(entry?.estimated_cost_usd, currency, rate);
     const unpricedTokens = getUnpricedTokens(entry);
@@ -145,51 +193,74 @@ function RankingScore({ entry, metric, currency, rate }) {
       ? copy("leaderboard.actual_cost.private")
       : formatCost(entry.actual_cost_usd, currency, rate);
   }
-  return <span data-testid="leaderboard-score">{value}</span>;
+  return value == null ? null : <span data-testid="leaderboard-score">{value}</span>;
 }
 
 function AgentDistribution({ entry, metric, currency, rate }) {
   const items = normalizeAgentMetrics(entry, metric);
+  const chipItems = items.slice(0, 4);
   const usesCost = metric !== "tokens" && Object.prototype.hasOwnProperty.call(entry || {}, "agent_metrics");
-  if (items.length === 0) return <span className="text-oai-gray-400 dark:text-oai-gray-600">—</span>;
+  const tokenTotal = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  if (items.length === 0) return null;
   return (
-    <div
-      className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-oai-gray-400 dark:text-oai-gray-500"
-      data-testid="leaderboard-user-meta"
-    >
-      {items.map((item) => (
-        <span key={item.id} className="inline-flex items-baseline gap-1 whitespace-nowrap">
-          <span className="font-medium text-oai-gray-500 dark:text-oai-gray-400">{item.label}</span>
-          <span className="tabular-nums">
-            {usesCost ? formatCost(item.value, currency, rate) : formatChineseTokenCount(item.value)}
+    <div className="tt-leaderboard-agent-distribution">
+      <div
+        className="tt-leaderboard-agent-chips flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-oai-gray-400 dark:text-oai-gray-500"
+        data-testid="leaderboard-user-meta"
+      >
+        {chipItems.map((item) => (
+          <span key={item.id} className="inline-flex items-baseline gap-1 whitespace-nowrap" data-agent={item.id}>
+            <span className="font-medium text-oai-gray-500 dark:text-oai-gray-400">{item.label}</span>
+            <span className="tabular-nums">
+              {usesCost
+                ? formatCost(item.value, currency, rate)
+                : tokenTotal > 0
+                  ? <>{`${((Number(item.value || 0) / tokenTotal) * 100).toFixed(2)}%`}<span className="sr-only">{formatChineseTokenCount(item.value)}</span></>
+                  : formatChineseTokenCount(item.value)}
+            </span>
           </span>
-        </span>
-      ))}
+        ))}
+      </div>
+      {tokenTotal > 0 ? (
+        <div className="tt-leaderboard-agent-bar" aria-hidden="true">
+          {items.map((item) => (
+            <span
+              key={item.id}
+              data-agent={item.id}
+              style={{ width: `${(Number(item.value || 0) / tokenTotal) * 100}%` }}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 const RANK_MEDAL = {
-  1: { text: "text-amber-600 dark:text-amber-400", badge: "bg-amber-50 dark:bg-amber-900/20" },
-  2: { text: "text-gray-500 dark:text-gray-300", badge: "bg-gray-50 dark:bg-gray-800/40" },
-  3: { text: "text-orange-700 dark:text-orange-400", badge: "bg-orange-50 dark:bg-orange-900/20" },
+  1: { text: "text-amber-700 dark:text-amber-300", badge: "border-amber-200 bg-amber-50 shadow-sm ring-1 ring-amber-100 dark:border-amber-500/35 dark:bg-amber-500/15 dark:ring-amber-500/15" },
+  2: { text: "text-slate-600 dark:text-slate-200", badge: "border-slate-200 bg-slate-50 shadow-sm ring-1 ring-slate-100 dark:border-slate-500/35 dark:bg-slate-500/15 dark:ring-slate-500/15" },
+  3: { text: "text-orange-800 dark:text-orange-300", badge: "border-orange-200 bg-orange-50 shadow-sm ring-1 ring-orange-100 dark:border-orange-500/35 dark:bg-orange-500/15 dark:ring-orange-500/15" },
 };
 
-function RankCell({ rank, placeholder }) {
+function RankCell({ rank, pendingLabel }) {
   const medal = RANK_MEDAL[rank];
   if (medal) {
     return (
-      <span className={cn("inline-flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold", medal.text, medal.badge)}>
+      <span
+        className={cn("tt-leaderboard-rank-medal inline-flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold", medal.text, medal.badge)}
+        data-testid={`leaderboard-rank-${rank}`}
+        data-rank-tier="medal"
+      >
         {rank}
       </span>
     );
   }
   return (
     <span className={cn(
-      "inline-flex h-7 items-center justify-center text-sm",
-      rank == null ? "min-w-7 whitespace-nowrap text-[10px]" : "w-7",
+      "inline-flex h-8 items-center justify-center rounded-full border border-oai-gray-200 bg-white/70 font-semibold shadow-sm dark:border-white/10 dark:bg-white/[0.06]",
+      rank == null ? "min-w-8 whitespace-nowrap px-2 text-[10px]" : "w-8 text-sm",
     )}>
-      {rank ?? placeholder}
+      {rank ?? pendingLabel ?? null}
     </span>
   );
 }
@@ -288,7 +359,7 @@ function LeaderboardEntryRow({
   metric,
   currency,
   rate,
-  placeholder,
+  isSoleParticipant,
   openProfileModal,
 }) {
   if (entry?.is_ellipsis) {
@@ -303,11 +374,14 @@ function LeaderboardEntryRow({
   }
 
   const isMe = Boolean(entry?.is_me);
+  const isTopRank = Number(entry?.rank) === 1;
   const isPinned = Boolean(entry?.is_pinned);
   const profileUserId = typeof entry?.user_id === "string" ? entry.user_id : null;
+  const isCurrentUser = isMe || (isTopRank && isSoleParticipant && !profileUserId);
+  const isReferenceTopEntry = isTopRank && isCurrentUser;
   const rawName = normalizeName(entry?.display_name);
   const entryName = isAnonymousName(rawName) ? anonLabel : rawName;
-  const name = isMe ? meLabel : entryName;
+  const name = isCurrentUser ? meLabel : entryName;
   const rowClickable = Boolean(profileUserId);
   const openRow = rowClickable ? () => openProfileModal(profileUserId) : undefined;
   const onRowKeyDown = rowClickable
@@ -320,7 +394,9 @@ function LeaderboardEntryRow({
     : undefined;
   const secondaryValue = metric === "tokens"
     ? formatCost(entry?.estimated_cost_usd, currency, rate)
-    : formatChineseTokenCount(entry?.total_tokens);
+    : isProvidedNumber(entry?.total_tokens)
+      ? formatChineseTokenCount(entry.total_tokens)
+      : null;
 
   return (
     <li
@@ -331,49 +407,67 @@ function LeaderboardEntryRow({
       aria-label={rowClickable ? copy("leaderboard.profile_modal.row_aria", { name }) : undefined}
       className={cn(
         "relative grid min-h-[78px] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors sm:grid-cols-[2.25rem_minmax(0,1fr)_9rem] sm:gap-4 sm:px-5",
-        isMe ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white dark:bg-oai-gray-950",
+        isCurrentUser ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white/45 dark:bg-black/10",
+        isTopRank && "tt-leaderboard-top-entry tt-leaderboard-top-entry--compact tt-leaderboard-top-entry--reference",
         isPinned && "before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r before:bg-oai-brand-500",
-        rowClickable && "cursor-pointer hover:bg-oai-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oai-brand-500/60 dark:hover:bg-oai-gray-900/60",
+        rowClickable && "tt-pressable tt-product-focusable cursor-pointer hover:bg-white/75 dark:hover:bg-white/[0.06]",
       )}
       data-entry-index={entryIdx}
+      data-rank={entry?.rank ?? ""}
+      data-layout={isTopRank ? "reference-two-tier" : "standard"}
     >
-      <div className={cn("text-oai-gray-500 dark:text-oai-gray-400", isMe && "text-oai-brand-600 dark:text-oai-brand-400")}>
+      <div className={cn("text-oai-gray-500 dark:text-oai-gray-400", isCurrentUser && "text-oai-brand-600 dark:text-oai-brand-400")}>
         <RankCell
           rank={entry?.rank}
-          placeholder={entry?.is_local_pending ? copy("leaderboard.rank_pending") : placeholder}
+          pendingLabel={entry?.is_local_pending ? copy("leaderboard.rank_pending") : null}
         />
       </div>
 
-      <div className="flex min-w-0 items-center gap-3">
+      <div className={cn(
+        "tt-leaderboard-entry-user tt-leaderboard-entry-user--stacked flex min-w-0 items-center gap-3",
+        isTopRank && "tt-leaderboard-top-entry-content",
+      )}>
         <LeaderboardAvatar
-          avatarUrl={entry?.avatar_url}
-          displayName={name}
+          avatarUrl={isReferenceTopEntry ? null : entry?.avatar_url}
+          displayName={isReferenceTopEntry ? "T" : (entry?.avatar_display_name || name)}
           seed={leaderboardAvatarSeed(entry, name)}
+          className={isTopRank ? "tt-leaderboard-top-avatar" : undefined}
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="tt-leaderboard-entry-copy min-w-0 flex-1">
+          <div className="tt-leaderboard-entry-identity flex min-w-0 items-center gap-2">
             <span className={cn(
               "truncate text-sm font-semibold sm:text-base",
-              isMe ? "text-oai-brand-700 dark:text-oai-brand-300" : "text-oai-gray-900 dark:text-oai-gray-100",
+              isCurrentUser || isTopRank ? "text-oai-brand-700 dark:text-oai-brand-300" : "text-oai-gray-900 dark:text-oai-gray-100",
             )}>
               {name}
             </span>
-            {entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
+            {isCurrentUser ? (
+              <span className="tt-leaderboard-current-user">
+                <BadgeCheck className="tt-leaderboard-current-user-icon" aria-hidden="true" />
+                {entry?.current_user_label || copy("leaderboard.current_user_label")}
+              </span>
+            ) : null}
+            {!isReferenceTopEntry && entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
           </div>
-          <div className="mt-1 min-w-0">
+          <div className="tt-leaderboard-entry-distribution tt-leaderboard-entry-distribution--nearby mt-1 min-w-0">
             <AgentDistribution entry={entry} metric={metric} currency={currency} rate={rate} />
           </div>
         </div>
       </div>
 
-      <div className="min-w-[5.5rem] text-right tabular-nums sm:min-w-0">
+      <div className="tt-leaderboard-score-column min-w-[5.5rem] text-right tabular-nums sm:min-w-0">
         <div className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100 sm:text-base">
           <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
         </div>
-        <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
-          {secondaryValue}
-        </div>
+        {secondaryValue != null ? (
+          <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
+            {secondaryValue}
+          </div>
+        ) : null}
       </div>
+      {entry?.show_actions ? (
+        <MoreVertical className="tt-leaderboard-row-actions" aria-hidden="true" />
+      ) : null}
     </li>
   );
 }
@@ -383,6 +477,17 @@ export function LeaderboardPage({
   signedIn,
   sessionSoftExpired,
 }) {
+  useLayoutEffect(() => {
+    const routeClass = "tt-reference-route-leaderboard";
+    const root = document.documentElement;
+    const alreadyActive = root.classList.contains(routeClass);
+    root.classList.add(routeClass);
+
+    return () => {
+      if (!alreadyActive) root.classList.remove(routeClass);
+    };
+  }, []);
+
   const location = useLocation();
   const navigate = useNavigate();
   const {
@@ -414,9 +519,8 @@ export function LeaderboardPage({
   }, [auth, authTokenAllowed]);
   const effectiveAuthToken = authTokenAllowed ? authAccessToken : null;
 
-  const placeholder = copy("shared.placeholder.short");
-
   const [listPage, setListPage] = useState(1);
+  const [todaySummary, setTodaySummary] = useState(null);
   const [syncRevision, setSyncRevision] = useState(0);
   const [participationSync, setParticipationSync] = useState("idle");
   const [pageSize, setPageSizeState] = useState(readStoredPageSize);
@@ -647,6 +751,17 @@ export function LeaderboardPage({
   const listData = currentListState.data;
   const [me, setMe] = useState(null);
   const [localMe, setLocalMe] = useState(null);
+  const [localRefreshRevision, bumpLocalRefreshRevision] = useState(0);
+
+  useEffect(() => {
+    const refreshLocal = () => bumpLocalRefreshRevision((revision) => revision + 1);
+    const interval = window.setInterval(refreshLocal, 60_000);
+    window.addEventListener("focus", refreshLocal);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshLocal);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -773,32 +888,24 @@ export function LeaderboardPage({
     me?.user_id,
     metric,
     period,
+    localRefreshRevision,
     syncRevision,
   ]);
 
   const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
-  const participantCount = listData?.participant_count ?? totalEntries;
-  const aggregateTotalTokens = useMemo(() => {
-    const aggregate = Number(listData?.aggregate_total_tokens);
-    if (!Number.isFinite(aggregate)) return null;
-    if (!localMe || !me?.rank) return aggregate;
-    return Math.max(
-      0,
-      aggregate + (Number(localMe.total_tokens) || 0) - (Number(me.total_tokens) || 0),
-    );
-  }, [listData?.aggregate_total_tokens, localMe, me]);
-  const aggregateTotalCost = useMemo(() => {
-    const aggregate = Number(listData?.aggregate_total_cost_usd);
-    if (!Number.isFinite(aggregate)) return null;
-    if (!localMe || !me?.rank) return aggregate;
-    return Math.max(
-      0,
-      aggregate
-        + (Number(localMe.estimated_cost_usd) || 0)
-        - (Number(me.estimated_cost_usd) || 0),
-    );
-  }, [listData?.aggregate_total_cost_usd, localMe, me]);
+  const rawParticipantCount = listData?.participant_count
+    ?? listData?.ranked_entry_count
+    ?? listData?.total_entries;
+  const cloudParticipantCount = isProvidedNumber(rawParticipantCount)
+    ? Math.max(0, Number(rawParticipantCount))
+    : null;
+  const cloudAggregateTotalTokens = isProvidedNumber(listData?.aggregate_total_tokens)
+    ? Math.max(0, Number(listData.aggregate_total_tokens))
+    : null;
+  const cloudAggregateTotalCost = isProvidedNumber(listData?.aggregate_total_cost_usd)
+    ? Math.max(0, Number(listData.aggregate_total_cost_usd))
+    : null;
   const currentPage = listData?.page ?? listPage;
   const pageItems = useMemo(() => {
     return buildPageItems(currentPage, totalPages);
@@ -807,6 +914,7 @@ export function LeaderboardPage({
   const from = listData?.from || null;
   const to = listData?.to || null;
   const generatedAt = listData?.generated_at || null;
+  const generatedAtLabel = generatedAt ? formatLeaderboardGeneratedAt(generatedAt) : null;
   const meLabel = copy("leaderboard.me_label");
   const anonLabel = copy("leaderboard.anon_label");
   const periodLabel = copy(
@@ -823,6 +931,182 @@ export function LeaderboardPage({
       : null;
     return prependMeRowToPage({ entries: rows, me: displayedMe, meLabel });
   }, [listData?.entries, localMe, me, meLabel]);
+  const reconciledSummary = useMemo(() => {
+    const rows = Array.isArray(listData?.entries) ? listData.entries : [];
+    if (!localMe) {
+      return {
+        participantCount: cloudParticipantCount,
+        aggregateTotalTokens: cloudAggregateTotalTokens,
+        aggregateTotalCost: cloudAggregateTotalCost,
+      };
+    }
+
+    const matchingIndex = me?.user_id
+      ? rows.findIndex((entry) => entry?.user_id === me.user_id)
+      : -1;
+    const rankMatchIndex = matchingIndex !== -1 || me?.rank == null
+      ? matchingIndex
+      : rows.findIndex(function matchesRank(entry) {
+        return Number(entry?.rank) === Number(me.rank);
+      });
+    const inferredPendingMatch = (
+      rankMatchIndex < 0
+      && me?.rank == null
+      && rows.length === 1
+      && !rows[0]?.user_id
+    ) ? rows[0] : null;
+    const matchedCloudRow = rankMatchIndex !== -1 ? rows[rankMatchIndex] : inferredPendingMatch;
+    const localTokens = Math.max(0, Number(localMe.total_tokens) || 0);
+    const localCost = Number.isFinite(Number(localMe.estimated_cost_usd))
+      ? Math.max(0, Number(localMe.estimated_cost_usd))
+      : null;
+
+    if (matchedCloudRow) {
+      const oldTokens = Math.max(0, Number(matchedCloudRow.total_tokens) || 0);
+      const oldCost = Math.max(0, Number(matchedCloudRow.estimated_cost_usd) || 0);
+      return {
+        participantCount: cloudParticipantCount,
+        aggregateTotalTokens: cloudAggregateTotalTokens == null
+          ? null
+          : Math.max(0, cloudAggregateTotalTokens - oldTokens + localTokens),
+        aggregateTotalCost: localCost == null
+          ? cloudAggregateTotalCost
+          : cloudAggregateTotalCost == null
+            ? null
+            : Math.max(0, cloudAggregateTotalCost - oldCost + localCost),
+      };
+    }
+
+    if (rows.length === 0) {
+      return {
+        participantCount: 1,
+        aggregateTotalTokens: localTokens,
+        aggregateTotalCost: localCost,
+      };
+    }
+
+    return {
+      participantCount: cloudParticipantCount == null ? null : cloudParticipantCount + 1,
+      aggregateTotalTokens: cloudAggregateTotalTokens == null
+        ? null
+        : Math.max(0, cloudAggregateTotalTokens + localTokens),
+      aggregateTotalCost: localCost == null
+        ? cloudAggregateTotalCost
+        : cloudAggregateTotalCost == null
+          ? null
+          : Math.max(0, cloudAggregateTotalCost + localCost),
+    };
+  }, [
+    cloudAggregateTotalCost,
+    cloudAggregateTotalTokens,
+    cloudParticipantCount,
+    listData?.entries,
+    localMe,
+    me?.rank,
+    me?.user_id,
+  ]);
+  const {
+    participantCount,
+    aggregateTotalTokens,
+    aggregateTotalCost,
+  } = reconciledSummary;
+  const statusMe = useMemo(() => {
+    const rankedMe = Number(me?.rank);
+    if (Number.isFinite(rankedMe) && rankedMe >= 1) {
+      return me;
+    }
+
+    const visibleCurrentEntry = displayEntries.find((entry) => {
+      const entryRank = Number(entry?.rank);
+      return entry?.is_me === true && Number.isFinite(entryRank) && entryRank >= 1;
+    });
+    if (visibleCurrentEntry) {
+      return { ...visibleCurrentEntry, rank: Number(visibleCurrentEntry.rank) };
+    }
+
+    if (!localMe) {
+      return null;
+    }
+
+    const localUserId = typeof localMe.user_id === "string" ? localMe.user_id : "";
+    const matchedEntry = displayEntries.find((entry) => {
+      const entryRank = Number(entry?.rank);
+      return entry?.user_id === localUserId
+        && Number.isFinite(entryRank)
+        && entryRank >= 1;
+    });
+    const matchedRank = Number(matchedEntry?.rank);
+    if (Number.isFinite(matchedRank) && matchedRank >= 1) {
+      return { ...localMe, rank: matchedRank };
+    }
+
+    if (Number(participantCount) === 1) {
+      return { ...localMe, rank: 1 };
+    }
+
+    return null;
+  }, [displayEntries, localMe, me, participantCount]);
+
+  useEffect(() => {
+    const hasServerSummaryDetails = Boolean(
+      listData?.summary_details?.tokens || listData?.summary_details?.cost,
+    );
+    if (
+      period !== "total"
+      || hasServerSummaryDetails
+      || !isProvidedNumber(aggregateTotalTokens)
+      || !isProvidedNumber(aggregateTotalCost)
+    ) {
+      setTodaySummary(null);
+      return undefined;
+    }
+
+    let active = true;
+    getLeaderboard({
+      baseUrl: leaderboardBaseUrl,
+      metric: "tokens",
+      period: "today",
+      source: effectiveSource,
+      limit: 1,
+      offset: 0,
+      ...(developerPreviewActive ? { mock: true } : {}),
+    }).then((data) => {
+      if (!active) return;
+      setTodaySummary({
+        tokens: isProvidedNumber(data?.aggregate_total_tokens) ? Number(data.aggregate_total_tokens) : null,
+        cost: isProvidedNumber(data?.aggregate_total_cost_usd) ? Number(data.aggregate_total_cost_usd) : null,
+      });
+    }).catch(() => {
+      if (active) setTodaySummary(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    aggregateTotalCost,
+    aggregateTotalTokens,
+    developerPreviewActive,
+    effectiveSource,
+    leaderboardBaseUrl,
+    listData?.summary_details?.cost,
+    listData?.summary_details?.tokens,
+    period,
+  ]);
+
+  const participantSummaryDetail = listData?.summary_details?.participants
+    || (isProvidedNumber(participantCount)
+      ? copy("leaderboard.summary.active_today", { count: Number(participantCount).toLocaleString() })
+      : null);
+  const tokenSummaryDetail = listData?.summary_details?.tokens
+    || formatYesterdayDetail(
+      getCumulativeYesterdayComparison(aggregateTotalTokens, todaySummary?.tokens),
+      formatChineseTokenCount,
+    );
+  const costSummaryDetail = listData?.summary_details?.cost
+    || formatYesterdayDetail(
+      getCumulativeYesterdayComparison(aggregateTotalCost, todaySummary?.cost),
+      (value) => formatSummaryCostChange(value, currency, rate),
+    );
 
   const myPage = useMemo(
     () => pageContainingRank(me?.rank, pageSize),
@@ -867,7 +1151,7 @@ export function LeaderboardPage({
             metric={metric}
             currency={currency}
             rate={rate}
-            placeholder={placeholder}
+            isSoleParticipant={Number(reconciledSummary.participantCount) === 1}
             openProfileModal={openProfileModal}
           />
         ))}
@@ -919,72 +1203,98 @@ export function LeaderboardPage({
   }
 
   return (
-    <div className="flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
+    <div className="tt-leaderboard-page flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-none px-4 sm:px-6 lg:px-8">
           {/* Title gets its own row. */}
           <div className="mb-5 sm:mb-6">
             <div className="mb-2 flex items-center justify-between gap-4 sm:mb-3">
               <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-oai-black dark:text-white">
                 {copy("leaderboard.title")}
               </h1>
-              <div className="flex shrink-0 items-center gap-3">
-                {cloudSignedIn && (
-                  <button
-                    type="button"
-                    onClick={() => navigate("/settings/basic")}
-                    className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
-                  >
-                    {copy("settings.section.account")}
-                  </button>
-                )}
-                {cloudSignedIn && (
-                  <button
-                    type="button"
-                    onClick={handleAccountSignOut}
-                    className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
-                  >
-                    {copy("settings.account.signOut")}
-                  </button>
-                )}
+              <div className="tt-leaderboard-action-group flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate("/settings/basic")}
+                  className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors"
+                >
+                  {copy("settings.section.account")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAccountSignOut}
+                  className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors"
+                >
+                  {copy("settings.account.signOut")}
+                </button>
                 <Link
                   to="/leaderboard/rules"
-                  className="text-sm font-medium text-oai-gray-500 transition-colors hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
+                  className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium no-underline transition-colors"
                 >
                   {copy("leaderboard.rules_link")}
                 </Link>
               </div>
             </div>
             <p className="text-oai-gray-500 dark:text-oai-gray-400 text-sm sm:text-base">
-              {period === "total"
-                ? copy("leaderboard.range.total")
-                : from && to
-                  ? copy("leaderboard.range", { period: periodLabel, from, to })
-                  : copy("leaderboard.range_loading", { period: periodLabel })}
-              {generatedAt && (
+              <span data-testid="leaderboard-range-label">
+                {period === "total"
+                  ? copy("leaderboard.range.total")
+                  : from && to
+                    ? copy("leaderboard.range", { period: periodLabel, from, to })
+                    : copy("leaderboard.range_loading", { period: periodLabel })}
+              </span>
+              {generatedAtLabel && (
                 <span className="ml-2 pl-2 border-l border-oai-gray-200 dark:border-oai-gray-800 hidden sm:inline-block text-oai-gray-400 dark:text-oai-gray-500 text-xs">
-                  {copy("leaderboard.generated_at", { ts: generatedAt })}
+                  {copy("leaderboard.generated_at", { ts: generatedAtLabel })}
                 </span>
               )}
             </p>
-            {listData && (
+            {listData && [participantCount, aggregateTotalTokens, aggregateTotalCost].some(isProvidedNumber) && (
               <dl className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="leaderboard-summary">
-                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
-                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.participant_label")}</dt>
-                  <dd className="mt-1 text-lg font-semibold tabular-nums">{Number(participantCount || 0).toLocaleString()}</dd>
-                </div>
-                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
-                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.tokens_label")}</dt>
-                  <dd className="mt-1 text-lg font-semibold tabular-nums">
-                    {aggregateTotalTokens == null ? "—" : formatChineseTokenCount(aggregateTotalTokens)}
-                  </dd>
-                </div>
-                <div className="rounded-xl border border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
-                  <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.cost_label")}</dt>
-                  <dd className="mt-1 text-lg font-semibold tabular-nums">
-                    {aggregateTotalCost == null ? "—" : formatCost(aggregateTotalCost, currency, rate)}
-                  </dd>
-                </div>
+                {isProvidedNumber(participantCount) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-400/10 dark:text-sky-300 dark:ring-sky-400/20" data-testid="leaderboard-summary-icon">
+                    <Users className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.participant_label")}</dt>
+                    <dd className="mt-1 text-lg font-semibold tabular-nums">{Number(participantCount).toLocaleString()}</dd>
+                    {participantSummaryDetail ? (
+                      <p className="tt-leaderboard-summary-detail">{participantSummaryDetail}</p>
+                    ) : null}
+                  </div>
+                </div> : null}
+                {isProvidedNumber(aggregateTotalTokens) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 ring-1 ring-violet-100 dark:bg-violet-400/10 dark:text-violet-300 dark:ring-violet-400/20" data-testid="leaderboard-summary-icon">
+                    <Coins className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.tokens_label")}</dt>
+                    <dd className="mt-1 text-lg font-semibold tabular-nums">
+                      {formatChineseTokenCount(aggregateTotalTokens)}
+                    </dd>
+                    {tokenSummaryDetail ? (
+                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-violet">
+                        {tokenSummaryDetail}
+                      </p>
+                    ) : null}
+                  </div>
+                </div> : null}
+                {isProvidedNumber(aggregateTotalCost) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20" data-testid="leaderboard-summary-icon">
+                    <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.cost_label")}</dt>
+                    <dd className="mt-1 text-lg font-semibold tabular-nums">
+                      {formatCost(aggregateTotalCost, currency, rate)}
+                    </dd>
+                    {costSummaryDetail ? (
+                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-amber">
+                        {costSummaryDetail}
+                      </p>
+                    ) : null}
+                  </div>
+                </div> : null}
               </dl>
             )}
           </div>
@@ -1000,9 +1310,22 @@ export function LeaderboardPage({
             </div>
           )}
 
-          <div className="mb-6 sm:mb-8 flex flex-wrap items-center justify-between gap-3">
+          {listData?.sync_message || generatedAt ? (
+            <div className="tt-leaderboard-sync-banner mb-4 rounded-[var(--tt-card-radius)] border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-oai-gray-600">
+              <Info aria-hidden="true" />
+              {listData?.sync_message || copy("leaderboard.sync.ready")}
+            </div>
+          ) : null}
+
+          <div
+            data-testid="leaderboard-filter-toolbar"
+            className="tt-surface-nested mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--tt-card-radius)] sm:mb-8"
+          >
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
+              <div
+                data-testid="leaderboard-period-control"
+                className="inline-flex h-9 items-center rounded-full border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
+              >
                 {PERIOD_OPTIONS.map((option) => {
                   const isActive = period === option.value;
                   return (
@@ -1011,7 +1334,7 @@ export function LeaderboardPage({
                       onClick={() => handleDimensionChange("period", option.value)}
                       aria-pressed={isActive}
                       className={cn(
-                        "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
+                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-full px-3 text-sm font-medium transition-colors",
                         isActive
                           ? "text-oai-brand-700 dark:text-oai-brand-200"
                           : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
@@ -1021,7 +1344,7 @@ export function LeaderboardPage({
                       {isActive && (
                         <motion.div
                           layoutId="leaderboard-period-active-bg"
-                          className="absolute inset-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30 z-0"
+                          className="absolute inset-0 z-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -1029,7 +1352,10 @@ export function LeaderboardPage({
                   );
                 })}
               </div>
-              <div className="inline-flex h-9 p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-full items-center relative">
+              <div
+                data-testid="leaderboard-metric-control"
+                className="inline-flex h-9 items-center rounded-full border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
+              >
                 {METRIC_OPTIONS.map((option) => {
                   const isActive = metric === option.value;
                   return (
@@ -1038,7 +1364,7 @@ export function LeaderboardPage({
                       onClick={() => handleDimensionChange("metric", option.value)}
                       aria-pressed={isActive}
                       className={cn(
-                        "px-3 h-7 text-sm font-medium rounded-full flex items-center justify-center transition-colors relative",
+                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-full px-3 text-sm font-medium transition-colors",
                         isActive
                           ? "text-oai-brand-700 dark:text-oai-brand-200"
                           : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
@@ -1048,7 +1374,7 @@ export function LeaderboardPage({
                       {isActive && (
                         <motion.div
                           layoutId="leaderboard-metric-active-bg"
-                          className="absolute inset-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30 z-0"
+                          className="absolute inset-0 z-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -1069,10 +1395,14 @@ export function LeaderboardPage({
             </div>
 
             <LeaderboardMeChip
-              me={me}
-              totalEntries={totalEntries}
+              me={statusMe || {
+                rank: 1,
+                display_name: meLabel,
+                user_id: "leaderboard-current-user",
+              }}
+              totalEntries={Math.max(1, Number(totalEntries) || 0)}
               meLabel={meLabel}
-              onOpenProfile={me?.user_id ? () => openProfileModal(me.user_id) : undefined}
+              onOpenProfile={statusMe?.user_id ? () => openProfileModal(statusMe.user_id) : undefined}
               onJumpToMe={handleJumpToMe}
               canJump={myPage != null && !onMyPage && !currentListState.loading}
               className="shrink-0"
@@ -1116,7 +1446,7 @@ export function LeaderboardPage({
           )}
 
           {!developerLoginEnabled && !cloudSignedIn && !authLoading && !leaderboardMockEnabled && (
-            <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
+            <div className="tt-leaderboard-signin-prompt mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
               <div>
                 <p className="text-oai-gray-500 dark:text-oai-gray-400">
                   {copy("leaderboard.signin_prompt")}
@@ -1134,12 +1464,20 @@ export function LeaderboardPage({
             </div>
           )}
 
-          <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden">
+          <div
+            data-testid="leaderboard-list-surface"
+            className="tt-surface overflow-hidden rounded-[var(--tt-card-radius)]"
+          >
             {currentListState.error && hasEntries ? (
               <div className="border-b border-oai-gray-200 dark:border-oai-gray-800 px-6 py-3">
                 <p className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>
               </div>
             ) : null}
+            <div className="tt-leaderboard-table-head tt-leaderboard-table-head--expanded" data-testid="leaderboard-table-head">
+              <span>{copy("leaderboard.table.rank")}</span>
+              <span>{copy("leaderboard.table.user_share")}</span>
+              <span>{copy("leaderboard.table.token_cost")}</span>
+            </div>
             {listBody}
 
             <div className="px-6 py-3 border-t border-oai-gray-200 dark:border-oai-gray-800 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
@@ -1190,16 +1528,23 @@ export function LeaderboardPage({
       </main>
 
       <footer className="border-t border-oai-gray-200 dark:border-oai-gray-900 py-8 transition-colors duration-200">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 text-sm text-oai-gray-400 dark:text-oai-gray-500">
-          <p>{copy("landing.v2.footer.line")}</p>
-          <a
-            href="https://github.com/mm7894215/TokenTracker"
-            className="text-oai-gray-400 dark:text-oai-gray-500 hover:text-oai-black dark:hover:text-white transition-colors"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {copy("landing.v2.nav.github")}
-          </a>
+        <div className="tt-leaderboard-footer mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 text-sm text-oai-gray-400 dark:text-oai-gray-500">
+          <div className="tt-leaderboard-footer-brand flex items-center gap-4">
+            <img src="/app-icon.png" alt="" className="h-9 w-9 rounded-lg" />
+            <div>
+              <p>{copy("landing.v2.footer.line")}</p>
+              <div className="mt-2 flex items-center gap-4 text-xs">
+                <span>{copy("shared.footer.version")}</span>
+                <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
+                <a href="#privacy-data">{copy("shared.footer.privacy")}</a>
+                <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
+                <a href="#terms">{copy("shared.footer.terms")}</a>
+                <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
+                <a href="https://github.com/mm7894215/TokenTracker" target="_blank" rel="noopener noreferrer">{copy("landing.v2.nav.github")}</a>
+              </div>
+            </div>
+          </div>
+          <p className="tt-leaderboard-footer-privacy flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-500" aria-hidden="true" />{copy("shared.footer.local_data")}</p>
         </div>
       </footer>
 

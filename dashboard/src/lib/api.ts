@@ -1,5 +1,6 @@
 import {
   getMockUsageDaily,
+  getMockUsageBounds,
   getMockUsageHourly,
   getMockUsageHeatmap,
   getMockUsageMonthly,
@@ -10,6 +11,8 @@ import {
   getMockLeaderboard,
   getMockProviderStats,
   getMockModelStats,
+  getMockSpendTimeseries,
+  getMockTokenPlans,
   isMockEnabled,
 } from "./mock-data";
 import { getInsforgeFunctionsUrl, getInsforgeRemoteUrl, getInsforgeAnonKey } from "./insforge-config";
@@ -30,6 +33,7 @@ function notifyTokenPlansChanged() {
 export type CodexResetEventType =
   | "reset_upcoming"
   | "reset_completed"
+  | "manual_reset"
   | "unexpected_quota_restore"
   | "banked_reset_available"
   | "official_reset_announcement";
@@ -47,26 +51,37 @@ export interface CodexResetMonitorStatus {
   feed_enabled: boolean;
   feed_last_checked_at: string | null;
   feed_error_code: string | null;
+  backfill_error_code: string | null;
 }
 
 export interface CodexResetEvent {
   id: string;
   type: CodexResetEventType;
+  agent: "codex";
+  account_key: string;
   window: "rolling_5_hour" | "rolling_weekly" | null;
   created_at: string;
   reset_at: string | null;
   official_url: string;
-  source: "local_quota" | "signed_feed";
+  source: "local_quota" | "live_usage" | "codex_rollout" | "signed_feed";
+  observed_at: string | null;
+  previous_used_percent: number | null;
+  current_used_percent: number | null;
+  confidence: "confirmed" | "recovered";
+  alert_eligible: boolean;
+  occurred_at?: string;
   source_url?: string;
   source_author?: "OpenAI" | "thsottiaux" | null;
   source_post_id?: string | null;
+  reset_kind?: "hard" | "banked" | "mixed" | "unknown";
+  reset_scope?: "all_paid_users" | "all_codex_work_users" | "unknown";
   title?: string;
   summary?: string;
   expires_at?: string;
 }
 
 export interface CodexResetHistoryEvent extends CodexResetEvent {
-  type: "reset_completed" | "unexpected_quota_restore";
+  type: "official_reset_announcement";
   occurred_at: string;
 }
 
@@ -74,10 +89,105 @@ export interface CodexResetEventsResponse {
   ok: boolean;
   status: CodexResetMonitorStatus;
   events: CodexResetEvent[];
+  tray_events: CodexResetEvent[];
+  widget_events: CodexResetEvent[];
+  notification_events: CodexResetEvent[];
   history: CodexResetHistoryEvent[];
 }
 
+export type DesktopWidgetAgent = "all" | "claude" | "codex" | "cursor" | "hermes";
+export type DesktopWidgetMode = "projects" | "limits" | "models";
+export type DesktopWidgetMaterial = "frost" | "graphite" | "ocean" | "sand";
+export type DesktopWidgetActiveSessionWindow = "1h" | "3h" | "5h" | "1d" | "3d";
+
+export interface DesktopWidgetPrefs {
+  version: number;
+  visible: boolean;
+  x?: number | null;
+  y?: number | null;
+  width: number;
+  height: number;
+  collapsedHeight: number;
+  expandedHeight: number;
+  scaleFactor: number;
+  selectedAgent: DesktopWidgetAgent;
+  mode: DesktopWidgetMode;
+  expanded: boolean;
+  material: DesktopWidgetMaterial;
+  opacity: number;
+  alwaysOnTop: boolean;
+  activeSessionWindow: DesktopWidgetActiveSessionWindow;
+  selectedProjectIds: string[];
+  selectedLimitIds: string[] | null;
+  selectedProjects: Array<{
+    id: string;
+    label: string;
+    path: string;
+  }>;
+}
+
+export interface DesktopWidgetViewModel {
+  agents: DesktopWidgetAgent[];
+  selectedAgent: DesktopWidgetAgent;
+  projectStatus: {
+    red: number;
+    yellow: number;
+    green: number;
+    unknown: number;
+    recentProjects: Array<{
+      id: string;
+      label: string;
+      updatedAt: string | null;
+    }>;
+    projects: Array<{
+      id: string;
+      label: string;
+      red: number;
+      yellow: number;
+      green: number;
+      unknown: number;
+      sessions: Array<{
+        id: string;
+        label: string | null;
+        status: "red" | "yellow" | "green" | "stopped" | "unknown";
+        state: "waiting_approval" | "error" | "running" | "completed" | "stopped" | "unknown";
+        updatedAt: string | null;
+      }>;
+    }>;
+  };
+  limits: Array<{
+    id: string;
+    agent: string;
+    provider: string;
+    accountLabel: string;
+    window: string;
+    usedPercent: number | null;
+    resetAt: string | null;
+    notes: string | null;
+    error: string | null;
+  }>;
+  totals: {
+    tokens: number;
+    costUsd: number;
+    models: Array<{
+      name: string;
+      tokens: number;
+      share: number;
+      costUsd: number;
+    }>;
+  };
+  pendingReset: {
+    id: string;
+    agent: string;
+    window: "rolling_5_hour" | "rolling_weekly" | null;
+    occurredAt: string;
+    previousUsedPercent: number | null;
+    currentUsedPercent: number | null;
+  } | null;
+}
+
 const PATHS = {
+  usageBounds: "tokentracker-usage-bounds",
   usageSummary: "tokentracker-usage-summary",
   usageDaily: "tokentracker-usage-daily",
   usageHourly: "tokentracker-usage-hourly",
@@ -91,7 +201,9 @@ const PATHS = {
   usageLimits: "tokentracker-usage-limits",
   limitAccounts: "tokentracker-limit-accounts",
   codexResetEvents: "tokentracker-codex-reset-events",
+  desktopWidget: "tokentracker-desktop-widget",
   localSettings: "tokentracker-local-settings",
+  clearLocalData: "tokentracker-clear-local-data",
   detectDataDirectories: "tokentracker-detect-data-directories",
   selectDirectory: "tokentracker-select-directory",
   tokenPlans: "tokentracker-token-plans",
@@ -120,6 +232,17 @@ const PATHS = {
   providerApiBalances: "tokentracker-provider-api-balances",
   officialModelPricing: "tokentracker-official-model-pricing",
 };
+
+export async function getUsageBounds({
+  timeZone,
+  tzOffsetMinutes,
+}: AnyRecord = {}) {
+  if (isMockEnabled()) {
+    return getMockUsageBounds();
+  }
+  const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
+  return fetchLocalJson(PATHS.usageBounds, tzParams);
+}
 
 /**
  * usage-* (local CLI) 鈫?account-* (cloud) slug map. The cloud `account-*`
@@ -163,7 +286,7 @@ async function readJsonResponse(response: Response) {
     const contentType = response.headers.get("content-type") || "";
     const startsLikeHtml = /^\s*<!doctype\s+html|^\s*<html[\s>]/i.test(text);
     if (startsLikeHtml || contentType.toLowerCase().includes("text/html")) {
-      throw new Error("本地 API 未连接：桌面应用收到的是前端 HTML，不是 JSON。请重新打开 Token Eyes，或先运行本地 Token Tracker 服务后再刷新。");
+      throw new Error("本地 API 未连接：桌面应用收到的是前端 HTML，不是 JSON。请重新打开 Token Eyes，或确认 Token Eyes 本地服务已启动后再刷新。");
     }
     throw err;
   }
@@ -326,6 +449,19 @@ export async function getLocalSettings() {
   return fetchLocalJson(PATHS.localSettings);
 }
 
+export async function clearLocalData() {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.clearLocalData, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ confirm: true }),
+  });
+}
+
 export async function detectLocalDataDirectories() {
   return fetchLocalJson(PATHS.detectDataDirectories);
 }
@@ -379,6 +515,9 @@ export async function getAllAgentEnvironments() {
 }
 
 export async function getTokenPlans() {
+  if (isMockEnabled()) {
+    return getMockTokenPlans();
+  }
   return fetchLocalJson(PATHS.tokenPlans);
 }
 
@@ -442,6 +581,9 @@ export async function getSpendRecords(params?: AnyRecord) {
 }
 
 export async function getSpendTimeseries(params?: AnyRecord) {
+  if (isMockEnabled()) {
+    return getMockSpendTimeseries(params);
+  }
   const tzParams = buildTimeZoneParams(params || {});
   const multiParams = buildMultiFilterParams(params || {});
   return fetchLocalJson(PATHS.spendTimeseries, { ...(params || {}), ...tzParams, ...multiParams });
@@ -1569,8 +1711,19 @@ export async function getCodexResetEvents(): Promise<CodexResetEventsResponse> {
   return fetchLocalJson(PATHS.codexResetEvents) as Promise<CodexResetEventsResponse>;
 }
 
+export async function getDesktopWidgetViewModel(
+  agent: DesktopWidgetAgent = "all",
+  activeSessionWindow: DesktopWidgetActiveSessionWindow = "1h",
+): Promise<DesktopWidgetViewModel> {
+  return fetchLocalJson(PATHS.desktopWidget, {
+    agent,
+    active_window: activeSessionWindow,
+  }) as Promise<DesktopWidgetViewModel>;
+}
+
 export async function acknowledgeCodexResetEvent(
   eventId: string,
+  channels?: Array<"banner" | "tray" | "widget">,
 ): Promise<void> {
   const authHeaders = await getLocalApiAuthHeaders();
   await fetchLocalJson(`${PATHS.codexResetEvents}/ack`, undefined, {
@@ -1580,7 +1733,26 @@ export async function acknowledgeCodexResetEvent(
       "Content-Type": "application/json",
       ...authHeaders,
     },
-    body: JSON.stringify({ event_id: eventId }),
+    body: JSON.stringify({
+      event_id: eventId,
+      ...(channels?.length ? { channels } : {}),
+    }),
+  });
+}
+
+export async function markCodexResetEventDelivered(
+  eventId: string,
+  channel: "windows_notification",
+): Promise<void> {
+  const authHeaders = await getLocalApiAuthHeaders();
+  await fetchLocalJson(`${PATHS.codexResetEvents}/delivered`, undefined, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ event_id: eventId, channel }),
   });
 }
 

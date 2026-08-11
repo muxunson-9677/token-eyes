@@ -1,6 +1,6 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -59,24 +59,11 @@ describe("Codex reset banner", () => {
     resetContext.value.acknowledge.mockReset().mockResolvedValue(undefined);
   });
 
-  it("shows local reset actions and acknowledges the event", () => {
+  it("never shows rolling 5-hour or weekly quota resets", () => {
     resetContext.value.events = [resetEvent()];
     resetContext.value.unreadCount = 1;
-    renderBanner();
-
-    expect(screen.getByText("Codex 额度已重置")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看额度" })).toHaveAttribute(
-      "href",
-      "/settings/cost#codex-quota",
-    );
-    expect(screen.getByRole("link", { name: "前往 Codex" })).toHaveAttribute(
-      "href",
-      "https://chatgpt.com/codex",
-    );
-    expect(screen.queryByRole("link", { name: "查看官方说明" })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "知道了" }));
-    expect(resetContext.value.acknowledge).toHaveBeenCalledWith("reset-1");
+    const { container } = renderBanner();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("shows conservative signed announcement copy and the exact source link", () => {
@@ -101,10 +88,38 @@ describe("Codex reset banner", () => {
       "href",
       "https://x.com/thsottiaux/status/2078990367241046272",
     );
+    expect(screen.queryByRole("link", { name: "查看额度" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "前往 Codex" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "知道了" }));
+    expect(resetContext.value.acknowledge).toHaveBeenCalledWith("official:promo");
   });
 
   it("renders nothing without an unread event", () => {
     const { container } = renderBanner();
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("uses the green reset treatment only for official announcements", async () => {
+    resetContext.value.events = [{
+      ...resetEvent(),
+      id: "official:promo",
+      type: "official_reset_announcement",
+      source: "signed_feed",
+      source_url: "https://x.com/thsottiaux/status/2078990367241046272",
+    }];
+    const { container, rerender } = renderBanner();
+    expect(container.querySelector("[role='status']")).toHaveClass("bg-emerald-50");
+
+    resetContext.value.events = [{
+      ...resetEvent(),
+      type: "reset_upcoming",
+    }];
+    rerender(
+      <MemoryRouter>
+        <CodexResetBanner />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 });

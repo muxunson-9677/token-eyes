@@ -1,8 +1,11 @@
 import React from "react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { expiryTimestamp, TokenServiceList } from "./TokenServiceList.jsx";
+import { setCopyLocale } from "../../../lib/copy";
+
+afterEach(() => setCopyLocale("zh-CN"));
 
 function plan(id, used, total = 1_000, overrides = {}) {
   return {
@@ -21,6 +24,20 @@ function plan(id, used, total = 1_000, overrides = {}) {
 }
 
 describe("TokenServiceList", () => {
+  it("uses one glass service panel with quiet nested rows", () => {
+    render(
+      <TokenServiceList
+        plans={[plan("codex", 250, 1000)]}
+        now={new Date("2026-07-13T00:00:00Z")}
+      />,
+    );
+
+    expect(screen.getByTestId("token-service-list")).toHaveClass("tt-surface");
+    expect(screen.getByTestId("token-service-list")).toHaveClass("p-4");
+    expect(screen.getByTestId("token-service-list-title")).toBeInTheDocument();
+    expect(screen.getByTestId("token-service-row")).toHaveClass("tt-surface-nested");
+  });
+
   it("treats a date-only expiry as the end of that date in the local timezone", () => {
     expect(expiryTimestamp("2026-07-19")).toBe(new Date(2026, 6, 19, 23, 59, 59, 999).getTime());
   });
@@ -91,6 +108,7 @@ describe("TokenServiceList", () => {
     render(
       <TokenServiceList
         plans={[cursor, plan("A", 90), plan("B", 80), plan("C", 70), plan("D", 60)]}
+        now={new Date("2026-08-01T00:00:00Z")}
       />,
     );
 
@@ -319,6 +337,7 @@ describe("TokenServiceList", () => {
   });
 
   it("shows Cursor Total Usage / Auto + Composer / API Usage percentages per account", () => {
+    setCopyLocale("en");
     render(
       <TokenServiceList
         now={new Date("2026-07-19T00:00:00Z")}
@@ -369,5 +388,35 @@ describe("TokenServiceList", () => {
     expect(within(rows[1]).getByTestId("token-service-window-total")).toHaveTextContent("6%");
     expect(within(rows[1]).getByTestId("token-service-window-auto_composer")).toHaveTextContent("1%");
     expect(within(rows[1]).getByTestId("token-service-window-api")).toHaveTextContent("39%");
+  });
+
+  it("localizes Cursor window labels and percent quota units in Chinese", () => {
+    setCopyLocale("zh-CN");
+    render(
+      <TokenServiceList
+        now={new Date("2026-07-19T00:00:00Z")}
+        plans={[plan("cursor-zh", 0, 0, {
+          provider_id: "cursor",
+          plan_label: "Pro",
+          quota_source: "official",
+          quota_unit: "percent",
+          detection_method: "official_account",
+          sync_status: "success",
+          expires_at: null,
+          quota_windows: [
+            { kind: "total", unit: "percent", total: 100, used: 32, percentage: 32 },
+            { kind: "auto_composer", unit: "percent", total: 100, used: 27, percentage: 27 },
+            { kind: "api", unit: "percent", total: 100, used: 4, percentage: 4 },
+          ],
+        })]}
+      />,
+    );
+
+    const row = screen.getByTestId("token-service-row");
+    expect(within(row).getByTestId("token-service-window-total")).toHaveTextContent("总用量");
+    expect(within(row).getByTestId("token-service-window-auto_composer")).toHaveTextContent("自动与 Composer");
+    expect(within(row).getByTestId("token-service-window-api")).toHaveTextContent("API 用量");
+    expect(row).toHaveTextContent("已用 32% / 总量 100%");
+    expect(row).not.toHaveTextContent("percent");
   });
 });

@@ -252,6 +252,33 @@ it("refreshAll refreshes all enabled+keyed configs", async () => {
   expect(refreshProviderApiBalance).toHaveBeenCalledWith("cfg-b");
 });
 
+it("refreshAll clears stale after every enabled config returns a balance", async () => {
+  getProviderApiConfigs.mockResolvedValue({
+    ok: true,
+    data: { configs: [SAMPLE_CONFIG] },
+  });
+  getProviderApiBalances.mockResolvedValue({
+    ok: true,
+    data: { balances: [SAMPLE_BALANCE] },
+  });
+  refreshProviderApiBalance
+    .mockRejectedValueOnce(new Error("Network error"))
+    .mockResolvedValue({
+      ok: true,
+      data: { balance: { ...SAMPLE_BALANCE, balance: 120 } },
+    });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+  await waitFor(() => expect(result.current.stale).toBe(true));
+
+  await act(async () => {
+    await result.current.refreshAll();
+  });
+
+  await waitFor(() => expect(result.current.stale).toBe(false));
+  expect(result.current.balances[0].balance).toBe(120);
+});
+
 // Polling-interval contract: spy on window.setInterval to verify the clamped
 // minimum is exactly 60_000ms (30s → clamped UP to 60s, not bumped to 300s).
 // We filter out testing-library's internal 50ms polling intervals by only

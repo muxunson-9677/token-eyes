@@ -83,6 +83,37 @@ test("agent environment API validates the current draft path instead of stale sa
   assert.equal(receivedConfig.dataDirectories.claude, draftPath);
 });
 
+test("clear local data removes only derived Token Eyes ledgers and sync cursors", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-clear-local-data-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    for (const name of ["queue.jsonl", "project.queue.jsonl", "queue.state.json", "cursors.json"]) {
+      await fs.writeFile(path.join(trackerDir, name), "derived", "utf8");
+    }
+    await fs.writeFile(path.join(trackerDir, "config.json"), "{}", "utf8");
+
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
+    const auth = await call(handler, "/api/local-auth");
+    const token = readJsonResponse(auth).token;
+    const response = await call(handler, "/functions/tokentracker-clear-local-data", {
+      method: "POST",
+      headers: { "x-tokentracker-local-auth": token, "content-type": "application/json" },
+      body: JSON.stringify({ confirm: true }),
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(readJsonResponse(response).ok, true);
+    for (const name of ["queue.jsonl", "project.queue.jsonl", "queue.state.json", "cursors.json"]) {
+      await assert.rejects(fs.stat(path.join(trackerDir, name)), { code: "ENOENT" });
+    }
+    assert.equal((await fs.stat(path.join(trackerDir, "config.json"))).isFile(), true);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("local settings API saves machine-only data directory and pricing overrides", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-local-settings-"));
   try {

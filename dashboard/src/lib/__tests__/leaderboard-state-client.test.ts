@@ -62,7 +62,11 @@ function installStorage() {
   });
 }
 
-function installFetch(options: { remoteOk?: boolean; state?: unknown } = {}) {
+function installFetch(options: {
+  remoteOk?: boolean;
+  refreshOk?: boolean;
+  state?: unknown;
+} = {}) {
   const fetchMock = vi.fn(async (url: string) => {
     if (url === "http://127.0.0.1:7681/functions/tokentracker-leaderboard-state") {
       return response(true, {
@@ -73,6 +77,11 @@ function installFetch(options: { remoteOk?: boolean; state?: unknown } = {}) {
     }
     if (url === "https://cloud.example/api/database/rpc/upsert_my_leaderboard_device_state") {
       return response(options.remoteOk !== false);
+    }
+    if (url === "https://cloud.example/functions/tokentracker-leaderboard-refresh") {
+      return response(options.refreshOk !== false, {
+        ok: options.refreshOk !== false,
+      });
     }
     throw new Error(`Unexpected fetch: ${url}`);
   });
@@ -111,7 +120,7 @@ describe("leaderboard state client", () => {
     expect(getLeaderboardSyncState().pending).toBe(true);
   });
 
-  it("calls only the authenticated RPC with a minimal, user-id-free body", async () => {
+  it("publishes the authenticated compact state and refreshes the public total immediately", async () => {
     const fetchMock = installFetch();
     const tokenWithSubject = "header.eyJzdWIiOiJ1c2VyLTEyMyJ9.signature";
     setLeaderboardSyncState({
@@ -159,6 +168,18 @@ describe("leaderboard state client", () => {
     expect(JSON.stringify(body)).not.toContain("user-123");
     expect(body.user_id).toBeUndefined();
     expect(body.p_user_id).toBeUndefined();
+    const refreshCall = fetchMock.mock.calls[2];
+    expect(refreshCall[0]).toBe(
+      "https://cloud.example/functions/tokentracker-leaderboard-refresh",
+    );
+    expect(refreshCall[1]).toMatchObject({
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokenWithSubject}`,
+        apikey: "anon-key",
+      },
+      body: JSON.stringify({ period: "total", source: "compact-state-upload" }),
+    });
     expect(getLeaderboardSyncState()).toMatchObject({
       pending: false,
       accountId: "account-a",
@@ -198,7 +219,7 @@ describe("leaderboard state client", () => {
       accountId: "account-b",
       getAccessToken: async () => "jwt-b",
     })).resolves.toEqual({ status: "uploaded", summaryHash: SUMMARY_HASH });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(getLeaderboardSyncState("account-b")).toMatchObject({
       accountId: "account-b",
       pending: false,
@@ -232,6 +253,23 @@ describe("leaderboard state client", () => {
       pending: true,
       summaryHash: SUMMARY_HASH,
       lastReason: "app-exit",
+    });
+  });
+
+  it("keeps the upload pending when the public snapshot refresh fails", async () => {
+    const fetchMock = installFetch({ refreshOk: false });
+
+    await expect(syncLeaderboardState({
+      reason: "leaderboard-open",
+      accountId: "account-a",
+      getAccessToken: async () => "jwt",
+    })).resolves.toEqual({ status: "deferred", summaryHash: SUMMARY_HASH });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(getLeaderboardSyncState("account-a")).toMatchObject({
+      pending: true,
+      summaryHash: SUMMARY_HASH,
+      lastReason: "leaderboard-open",
     });
   });
 });

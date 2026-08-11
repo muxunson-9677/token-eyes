@@ -4,7 +4,7 @@ import React, { useMemo } from "react";
 // Types
 // ---------------------------------------------------------------------------
 
-export type TimeRange = "today" | "1d" | "7d" | "14d" | "30d" | "custom";
+export type TimeRange = "total" | "today" | "1d" | "7d" | "14d" | "30d" | "custom";
 export type RefreshInterval = "30s" | "1m" | "5m" | "manual";
 
 export interface UsageFilters {
@@ -49,7 +49,7 @@ const DEFAULT_STATE: UsageFilters = {
   agentIds: null,
   sources: null,
   models: null,
-  timeRange: "30d",
+  timeRange: "total",
   from: null,
   to: null,
   refreshInterval: "1m",
@@ -99,7 +99,7 @@ export function UsageFiltersProvider({ children }: { children: React.ReactNode }
     if (state.agentIds && state.agentIds.length > 0) n += 1;
     if (state.sources && state.sources.length > 0) n += 1;
     if (state.models && state.models.length > 0) n += 1;
-    if (state.timeRange !== "30d") n += 1;
+    if (state.timeRange !== "total") n += 1;
     return n;
   }, [state]);
   const value = useMemo(

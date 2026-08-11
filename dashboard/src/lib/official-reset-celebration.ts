@@ -1,0 +1,189 @@
+import type { CodexResetEvent, CodexResetMonitorStatus } from "./api";
+
+export interface OfficialResetCelebrationEvent {
+  eventId: string;
+  provider: string;
+  occurredAt: string;
+  sourceUrl: string;
+  resetKind: "official-extra-reset";
+  appliesToCurrentUsage: boolean;
+}
+
+export const CELEBRATED_EVENT_KEY =
+  "token-eyes:official-reset-celebrated:v1";
+export const OFFICIAL_RESET_CELEBRATION_LOCK =
+  "token-eyes:official-reset-celebration:v1";
+
+const OFFICIAL_RESET_HOSTS = new Set([
+  "help.openai.com",
+  "openai.com",
+  "chatgpt.com",
+  "x.com",
+]);
+
+function diagnose(reason: string) {
+  console.warn("[official-reset-celebration] skipped", { reason });
+}
+
+export function reportOfficialResetCelebrationFailure(reason: "dispatch-failed") {
+  diagnose(reason);
+}
+
+function isValidDate(value: string) {
+  return Number.isFinite(Date.parse(value));
+}
+
+export function isOfficialResetCelebrationSource(value: string) {
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:"
+      || url.username
+      || url.password
+      || url.port
+      || url.hash
+    ) {
+      return false;
+    }
+    const host = url.hostname.toLowerCase();
+    if (!OFFICIAL_RESET_HOSTS.has(host)) return false;
+    if (host !== "x.com") return true;
+    return (
+      !url.search
+      && /^\/(?:OpenAI|thsottiaux)\/status\/[0-9]+\/?$/u.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isOfficialResetCelebrationEvent(
+  value: unknown,
+): value is OfficialResetCelebrationEvent {
+  if (!value || typeof value !== "object") return false;
+  const event = value as Partial<OfficialResetCelebrationEvent>;
+  return (
+    typeof event.eventId === "string"
+    && Boolean(event.eventId.trim())
+    && typeof event.provider === "string"
+    && Boolean(event.provider.trim())
+    && typeof event.occurredAt === "string"
+    && isValidDate(event.occurredAt)
+    && typeof event.sourceUrl === "string"
+    && isOfficialResetCelebrationSource(event.sourceUrl)
+    && event.resetKind === "official-extra-reset"
+    && event.appliesToCurrentUsage === true
+  );
+}
+
+export function toOfficialResetCelebrationEvent(
+  event: CodexResetEvent,
+  monitorStatus: CodexResetMonitorStatus | null,
+): OfficialResetCelebrationEvent | null {
+  if (event.type !== "official_reset_announcement") return null;
+  if (!event.id?.trim()) {
+    diagnose("missing-event-id");
+    return null;
+  }
+  if (!event.occurred_at?.trim()) {
+    diagnose("missing-occurred-at");
+    return null;
+  }
+  if (!event.source_url?.trim()) {
+    diagnose("missing-source-url");
+    return null;
+  }
+
+  const supportedScope = (
+    event.reset_scope === "all_paid_users"
+    || event.reset_scope === "all_codex_work_users"
+  );
+  return {
+    eventId: event.id,
+    provider: event.agent,
+    occurredAt: event.occurred_at,
+    sourceUrl: event.source_url,
+    resetKind: "official-extra-reset",
+    appliesToCurrentUsage:
+      monitorStatus?.configured === true
+      && event.alert_eligible === true
+      && supportedScope,
+  };
+}
+
+interface ClaimOfficialResetCelebrationOptions {
+  isCurrent?: () => boolean;
+  onClaim?: () => void;
+}
+
+export async function claimOfficialResetCelebration(
+  event: OfficialResetCelebrationEvent,
+  options: ClaimOfficialResetCelebrationOptions = {},
+): Promise<boolean> {
+  if (event.resetKind !== "official-extra-reset") {
+    diagnose("unsupported-reset-kind");
+    return false;
+  }
+  if (event.appliesToCurrentUsage !== true) {
+    diagnose("not-applicable");
+    return false;
+  }
+  if (!isValidDate(event.occurredAt)) {
+    diagnose("invalid-occurred-at");
+    return false;
+  }
+  if (!isOfficialResetCelebrationSource(event.sourceUrl)) {
+    diagnose("untrusted-source");
+    return false;
+  }
+  if (!isOfficialResetCelebrationEvent(event)) {
+    diagnose("invalid-event-shape");
+    return false;
+  }
+
+  let locks: LockManager | undefined;
+  try {
+    locks = typeof navigator === "undefined" ? undefined : navigator.locks;
+  } catch {
+    diagnose("lock-unavailable");
+    return false;
+  }
+  if (!locks || typeof locks.request !== "function") {
+    diagnose("lock-unavailable");
+    return false;
+  }
+
+  try {
+    return await locks.request(
+      OFFICIAL_RESET_CELEBRATION_LOCK,
+      { mode: "exclusive" },
+      () => {
+        if (options.isCurrent?.() === false) return false;
+
+        let storage: Storage;
+        try {
+          storage = window.localStorage;
+          if (storage.getItem(CELEBRATED_EVENT_KEY) === event.eventId) {
+            return false;
+          }
+        } catch {
+          diagnose("storage-read-failed");
+          return false;
+        }
+
+        if (options.isCurrent?.() === false) return false;
+        try {
+          storage.setItem(CELEBRATED_EVENT_KEY, event.eventId);
+        } catch {
+          diagnose("storage-write-failed");
+          return false;
+        }
+        options.onClaim?.();
+        return true;
+      },
+    );
+  } catch {
+    diagnose("lock-request-failed");
+    return false;
+  }
+}

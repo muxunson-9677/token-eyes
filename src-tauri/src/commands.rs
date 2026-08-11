@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 #[cfg(windows)]
@@ -79,6 +79,7 @@ fn sanitize_message(msg: impl AsRef<str>) -> String {
 pub struct LocalServerState {
     child: Mutex<Option<Child>>,
     url: Mutex<Option<String>>,
+    startup: Mutex<()>,
 }
 
 impl Drop for LocalServerState {
@@ -549,6 +550,11 @@ pub fn ensure_local_server_started(
     app: &AppHandle,
     state: &LocalServerState,
 ) -> Result<String, String> {
+    let _startup_guard = state
+        .startup
+        .lock()
+        .map_err(|_| "Local server startup lock poisoned".to_string())?;
+
     // 1. Fast path: known URL is still serving.
     if let Some(url) = get_known_url(state)? {
         if port_from_url(&url).is_some_and(is_token_tracker_api_available) {
@@ -689,13 +695,15 @@ pub fn ensure_local_server_started(
 }
 
 #[tauri::command]
-pub fn local_server_status(
-    app: AppHandle,
-    state: State<'_, LocalServerState>,
-) -> Result<LocalServerStatus, String> {
-    let url = ensure_local_server_started(&app, state.inner())?;
-    let running = port_from_url(&url).is_some_and(is_token_tracker_api_available);
-    Ok(LocalServerStatus { running, url })
+pub async fn local_server_status(app: AppHandle) -> Result<LocalServerStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<LocalServerState>();
+        let url = ensure_local_server_started(&app, state.inner())?;
+        let running = port_from_url(&url).is_some_and(is_token_tracker_api_available);
+        Ok(LocalServerStatus { running, url })
+    })
+    .await
+    .map_err(|error| format!("Local server status task failed: {error}"))?
 }
 
 /// Opens a native folder picker dialog and returns the selected path,
@@ -743,6 +751,13 @@ mod tests {
 
     fn serve_probe_response(response: impl Into<String>) -> (u16, thread::JoinHandle<()>) {
         serve_probe_response_with_close_delay(response, Duration::ZERO)
+    }
+
+    #[test]
+    fn local_server_state_has_a_single_flight_startup_lock() {
+        let state = LocalServerState::default();
+        let _guard = state.startup.lock().expect("lock startup");
+        assert!(state.startup.try_lock().is_err());
     }
 
     fn serve_probe_response_with_close_delay(

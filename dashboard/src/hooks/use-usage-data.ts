@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
 import { formatDateLocal, formatDateUTC } from "../lib/date-range";
 import { isLocalDashboardRuntime } from "../lib/local-api-url";
@@ -116,7 +116,7 @@ export function useUsageData({
 
   const isLocalMode = isLocalDashboardRuntime();
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ background = false }: any = {}) => {
     const resolvedToken = await resolveAuthAccessToken(accessToken);
     const cloudToken = useCloud ? await resolveAuthAccessToken(accountAccessToken) : null;
     // 本地模式允许空 token；云端模式必须 resolve 到一个 JWT 字符串
@@ -132,7 +132,7 @@ export function useUsageData({
     const dailyFetcher = useCloud ? fetchCloudUsageDaily : getUsageDaily;
     const summaryFetcher = useCloud ? fetchCloudUsageSummary : getUsageSummary;
     const tokenForFetch = useCloud ? cloudToken : resolvedToken;
-    setLoading(true);
+    if (!background) setLoading(true);
     setError(null);
     try {
       let dailyRes = null;
@@ -160,8 +160,9 @@ export function useUsageData({
           }),
         ]);
         if (dailyResult.status === "rejected") throw dailyResult.reason;
+        if (summaryResult.status === "rejected") throw summaryResult.reason;
         dailyRes = dailyResult.value;
-        summaryRes = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+        summaryRes = summaryResult.value;
       } else {
         summaryRes = await summaryFetcher({
           baseUrl,
@@ -183,7 +184,14 @@ export function useUsageData({
           now,
         });
       }
-      let nextSummary = summaryRes?.totals || dailyRes?.summary?.totals || null;
+      const summaryPayload = summaryRes || dailyRes?.summary || null;
+      let nextSummary = summaryPayload?.totals || null;
+      if (nextSummary && summaryPayload?.data_integrity) {
+        nextSummary = {
+          ...nextSummary,
+          data_integrity: summaryPayload.data_integrity,
+        };
+      }
       let nextRolling = summaryRes?.rolling || dailyRes?.summary?.rolling || null;
       if (includeDaily && !nextSummary && !summaryRes) {
         try {
@@ -197,7 +205,12 @@ export function useUsageData({
             rolling: true,
             ...filterProps,
           });
-          nextSummary = fallback?.totals || null;
+          nextSummary = fallback?.totals
+            ? {
+                ...fallback.totals,
+                ...(fallback.data_integrity ? { data_integrity: fallback.data_integrity } : {}),
+              }
+            : null;
           nextRolling = fallback?.rolling || nextRolling;
         } catch (_e) {
           // Ignore summary fallback errors when daily data is available.
@@ -225,6 +238,8 @@ export function useUsageData({
         clearCache();
       }
     } catch (e) {
+      const err = e as any;
+      const errorMessage = err?.message || String(err);
       if (cacheAllowed) {
         const cached = readCache();
         if (cached?.summary) {
@@ -241,15 +256,13 @@ export function useUsageData({
           setDaily(filledDaily);
           setSource("cache");
           setFetchedAt(cached.fetchedAt || null);
-          setError(null);
+          setError(errorMessage);
         } else {
-          const err = e as any;
-          setError(err?.message || String(err));
+          setError(errorMessage);
           setSource("edge");
         }
       } else {
-        const err = e as any;
-        setError(err?.message || String(err));
+        setError(errorMessage);
         setSource("edge");
       }
     } finally {
@@ -280,7 +293,7 @@ export function useUsageData({
     filterProps,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (accountViewResolving) {
       // Scope not yet resolved (auth loading, cloud likely). Hold a loading
       // state without reading the local cache or firing the local fetch, so we
@@ -298,6 +311,7 @@ export function useUsageData({
       setFetchedAt(null);
       return;
     }
+    let hasCachedData = false;
     if (!cacheAllowed) {
       clearCache();
       setError(null);
@@ -305,6 +319,7 @@ export function useUsageData({
     } else {
       const cached = readCache();
       if (cached?.summary) {
+        hasCachedData = true;
         setSummary(cached.summary);
         setRolling(cached.rolling || null);
         const cachedDaily = Array.isArray(cached.daily) ? cached.daily : [];
@@ -318,9 +333,10 @@ export function useUsageData({
         setDaily(filledDaily);
         setSource("cache");
         setFetchedAt(cached.fetchedAt || null);
+        setLoading(false);
       }
     }
-    refresh();
+    void refresh({ background: hasCachedData });
   }, [
     accessToken,
     mockEnabled,
@@ -350,7 +366,7 @@ export function useUsageData({
       const nowMs = Date.now();
       if (nowMs - lastAt < MIN_GAP_MS) return;
       lastAt = nowMs;
-      void refresh();
+      void refresh({ background: true });
     };
     window.addEventListener("focus", maybeRefresh);
     document.addEventListener("visibilitychange", maybeRefresh);

@@ -89,6 +89,10 @@ const BASE_CONFIG = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.setItem(
+    "token-eyes.settings.disclosure.cost.provider-api.v1",
+    "1",
+  );
   getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [] } });
   // F4: the hook calls getProviderApiBalances on mount alongside configs.
   getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [] } });
@@ -121,6 +125,19 @@ async function openAddForm(user) {
 }
 
 describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
+  it("uses the shared left-aligned disclosure header and defaults closed", async () => {
+    window.localStorage.removeItem("token-eyes.settings.disclosure.cost.provider-api.v1");
+    render(<ProviderApiConfigSection />);
+
+    const trigger = await screen.findByRole("button", {
+      name: "settings.cost.provider_api.section",
+    });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger.firstElementChild).toHaveClass("lucide-chevron-down");
+    expect(trigger.children[1]).toHaveAttribute("data-testid", "settings-section-icon");
+    expect(screen.queryByText("settings.cost.provider_api.empty")).not.toBeInTheDocument();
+  });
+
   it("keeps verified provider presets in UI parity with the backend contract", () => {
     expect(PROVIDER_API_MODES.map((mode) => mode.value)).toEqual([
       "",
@@ -158,7 +175,8 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     render(<ProviderApiConfigSection />);
     expect(await screen.findByText("settings.cost.provider_api.section")).toBeInTheDocument();
     expect(screen.getByText("settings.cost.provider_api.empty")).toBeInTheDocument();
-    expect(screen.getByTestId("provider-api-config-section")).toHaveClass("rounded-2xl", "shadow-oai-md", "bg-white/95");
+    expect(screen.getByTestId("provider-api-config-section").querySelector(".tt-surface"))
+      .not.toBeNull();
   });
 
   it("renders existing configs from getProviderApiConfigs", async () => {
@@ -815,8 +833,7 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
   // copied internals) and assert the real DOM.
   // --------------------------------------------------------------------------
 
-  it("F4 reproduction: with no balance, financial fields render '—' (never 0)", async () => {
-    // Config exists but no balance record → every financial field must be "—".
+  it("F4 reproduction: with no balance, financial fields are hidden", async () => {
     getProviderApiConfigs.mockResolvedValue({
       ok: true,
       data: { configs: [BASE_CONFIG] },
@@ -828,23 +845,11 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     render(<ProviderApiConfigSection />);
     await screen.findByText("OpenAI 主账户");
 
-    const balanceEl = screen.getByTestId("provider-api-card-balance-cfg-1");
-    const monthSpendEl = screen.getByTestId("provider-api-card-month-spend-cfg-1");
-    const lifetimeSpendEl = screen.getByTestId("provider-api-card-lifetime-spend-cfg-1");
-    const currencyEl = screen.getByTestId("provider-api-card-currency-cfg-1");
-
-    // The copy mock returns the key string; data_unknown key → "—" via copy.csv
-    // but here copy(key) returns the key itself. Assert it is the unknown key
-    // (i.e. NOT a faked "0" or "0.00").
-    expect(balanceEl.textContent).toBe("settings.cost.provider_api.data_unknown");
-    expect(monthSpendEl.textContent).toBe("settings.cost.provider_api.data_unknown");
-    expect(lifetimeSpendEl.textContent).toBe("settings.cost.provider_api.data_unknown");
-    expect(currencyEl.textContent).toBe("settings.cost.provider_api.data_unknown");
-
-    // Hard assertion: NEVER fake 0 for unknown.
-    expect(balanceEl.textContent).not.toBe("0");
-    expect(balanceEl.textContent).not.toBe("0.00");
-    expect(balanceEl.textContent).not.toBe("USD 0.00");
+    expect(screen.queryByTestId("provider-api-card-balance-cfg-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("provider-api-card-month-spend-cfg-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("provider-api-card-lifetime-spend-cfg-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("provider-api-card-currency-cfg-1")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("settings.cost.provider_api.data_unknown");
   });
 
   it("F4 verification: auto-displays balance/monthSpend/lifetimeSpend/currency when synced", async () => {
@@ -913,9 +918,9 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(screen.getByTestId("provider-api-card-currency-cfg-1").textContent).toBe("USD");
   });
 
-  it("F4 verification: partial nulls in a synced balance render '—' for the missing field only", async () => {
+  it("F4 verification: partial nulls in a synced balance hide only the missing fields", async () => {
     // Provider returns balance + currency but no monthSpend/lifetimeSpend.
-    // The known fields render numbers; the unknown fields render "—" — never 0.
+    // The known fields render numbers; missing fields are omitted.
     const PARTIAL_BALANCE = {
       configId: "cfg-1",
       providerId: "openai",
@@ -941,12 +946,12 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     await screen.findByText("OpenAI 主账户");
 
     expect(screen.getByTestId("provider-api-card-balance-cfg-1").textContent).toBe("USD 200.00");
-    expect(screen.getByTestId("provider-api-card-month-spend-cfg-1").textContent).toBe("settings.cost.provider_api.data_unknown");
-    expect(screen.getByTestId("provider-api-card-lifetime-spend-cfg-1").textContent).toBe("settings.cost.provider_api.data_unknown");
+    expect(screen.queryByTestId("provider-api-card-month-spend-cfg-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("provider-api-card-lifetime-spend-cfg-1")).not.toBeInTheDocument();
     expect(screen.getByTestId("provider-api-card-currency-cfg-1").textContent).toBe("USD");
   });
 
-  it("F4 verification: non-synced balance renders '—' for all financial fields", async () => {
+  it("F4 verification: non-synced balance hides all financial fields", async () => {
     // error / unsupported / not-connected statuses have no meaningful amounts.
     const ERROR_BALANCE = {
       configId: "cfg-1",
@@ -972,10 +977,10 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     render(<ProviderApiConfigSection />);
     await screen.findByText("OpenAI 主账户");
 
-    expect(screen.getByTestId("provider-api-card-balance-cfg-1").textContent).toBe("settings.cost.provider_api.data_unknown");
-    expect(screen.getByTestId("provider-api-card-month-spend-cfg-1").textContent).toBe("settings.cost.provider_api.data_unknown");
-    expect(screen.getByTestId("provider-api-card-lifetime-spend-cfg-1").textContent).toBe("settings.cost.provider_api.data_unknown");
-    expect(screen.getByTestId("provider-api-card-currency-cfg-1").textContent).toBe("settings.cost.provider_api.data_unknown");
+    expect(screen.queryByTestId("provider-api-card-balance-cfg-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("provider-api-card-month-spend-cfg-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("provider-api-card-lifetime-spend-cfg-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("provider-api-card-currency-cfg-1")).not.toBeInTheDocument();
   });
 
   it("F4 verification: manual refresh calls refreshProviderApiBalance for that config", async () => {

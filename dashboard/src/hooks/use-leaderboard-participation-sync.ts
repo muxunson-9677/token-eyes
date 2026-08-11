@@ -72,7 +72,7 @@ export function useLeaderboardParticipationSync(): void {
       | null = null;
     if (priorSignedIn === false) {
       reason = "first-login";
-    } else if (enteredLeaderboard && dailyCatchupDue(syncState)) {
+    } else if (enteredLeaderboard) {
       reason = "leaderboard-open";
     } else if (priorSignedIn === null && dailyCatchupDue(syncState)) {
       reason = "daily-catchup";

@@ -4,6 +4,7 @@ import {
   acknowledgeCodexResetEvent,
   checkCodexResetEvents,
   getCodexResetEvents,
+  markCodexResetEventDelivered,
 } from "../api";
 import { clearLocalApiAuthToken } from "../local-api-auth";
 import { resetLocalApiOriginForTests } from "../local-api-url";
@@ -72,6 +73,7 @@ describe("Codex reset local API client", () => {
 
     await expect(getCodexResetEvents()).resolves.toEqual(payload);
     await acknowledgeCodexResetEvent("official:reset");
+    await markCodexResetEventDelivered("official:reset", "windows_notification");
     await expect(checkCodexResetEvents(true)).resolves.toEqual(payload);
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -86,6 +88,19 @@ describe("Codex reset local API client", () => {
           "x-tokentracker-local-auth": "local-token",
         }),
         body: JSON.stringify({ event_id: "official:reset" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${ORIGIN}/functions/tokentracker-codex-reset-events/delivered`,
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "x-tokentracker-local-auth": "local-token",
+        }),
+        body: JSON.stringify({
+          event_id: "official:reset",
+          channel: "windows_notification",
+        }),
       }),
     );
     expect(fetchMock).toHaveBeenCalledWith(

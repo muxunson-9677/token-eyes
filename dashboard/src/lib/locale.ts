@@ -3,13 +3,16 @@ import { safeGetItem, safeSetItem } from "./safe-browser";
 export const LOCALE_STORAGE_KEY = "tokentracker-locale";
 export const SYSTEM_LOCALE = "system";
 export const ZH_CN_LOCALE = "zh-CN";
-export const EN_LOCALE = ZH_CN_LOCALE;
+export const EN_LOCALE = "en";
 export const ZH_TW_LOCALE = ZH_CN_LOCALE;
 export const JA_LOCALE = ZH_CN_LOCALE;
 export const KO_LOCALE = ZH_CN_LOCALE;
 
 function classifyLanguageTag(tag: string): string | null {
-  return tag.trim() ? ZH_CN_LOCALE : null;
+  const normalized = tag.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "en" || normalized.startsWith("en-")) return EN_LOCALE;
+  return ZH_CN_LOCALE;
 }
 
 export function normalizeResolvedLocale(value: any) {
@@ -32,7 +35,7 @@ function getBrowserLanguages() {
 
 export function resolvePreferredLocale(preference: any, languages = getBrowserLanguages()) {
   const normalized = normalizeLocalePreference(preference);
-  if (normalized !== SYSTEM_LOCALE) return ZH_CN_LOCALE;
+  if (normalized !== SYSTEM_LOCALE) return normalized;
   const primary = languages
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .find((value) => value.length > 0);

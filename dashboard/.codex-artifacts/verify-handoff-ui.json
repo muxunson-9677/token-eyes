@@ -1,0 +1,189 @@
+{
+  "statusCheck": {
+    "headerStatus": 0,
+    "sidebarStatusCount": 1,
+    "sidebarText": "系统状态已连接",
+    "refreshCount": 1,
+    "refreshContained": true,
+    "sharedStyle": {
+      "height": [
+        "40px",
+        "40px"
+      ],
+      "borderRadius": [
+        "8px",
+        "8px"
+      ],
+      "borderColor": [
+        "rgba(255, 255, 255, 0.98)",
+        "rgba(255, 255, 255, 0.98)"
+      ],
+      "backgroundColor": [
+        "rgba(0, 0, 0, 0)",
+        "rgba(0, 0, 0, 0)"
+      ],
+      "boxShadow": [
+        "rgba(255, 255, 255, 0.99) 1px 1px 0px 0px inset, rgba(205, 213, 221, 0.2) -1px -1px 0px 0px inset, rgba(31, 43, 56, 0.08) 0px 3px 6px 0px, rgba(31, 43, 56, 0.11) 0px 12px 26px 0px",
+        "rgba(255, 255, 255, 0.99) 1px 1px 0px 0px inset, rgba(205, 213, 221, 0.2) -1px -1px 0px 0px inset, rgba(31, 43, 56, 0.08) 0px 3px 6px 0px, rgba(31, 43, 56, 0.11) 0px 12px 26px 0px"
+      ]
+    }
+  },
+  "measurements": [
+    {
+      "route": "/dashboard",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    },
+    {
+      "route": "/leaderboard",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    },
+    {
+      "route": "/reset-history",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    },
+    {
+      "route": "/widgets",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    },
+    {
+      "route": "/spend/usage",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    },
+    {
+      "route": "/spend/cost",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    },
+    {
+      "route": "/settings/basic",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    },
+    {
+      "route": "/settings/cost",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    },
+    {
+      "route": "/settings/data",
+      "left": 0,
+      "right": 252,
+      "width": 252,
+      "cssWidth": "252px",
+      "minWidth": "252px",
+      "maxWidth": "252px",
+      "flexBasis": "252px",
+      "navLeft": 0,
+      "navRight": 251,
+      "navWidth": 251,
+      "firstItemLeft": 9,
+      "firstItemRight": 232,
+      "firstItemWidth": 223
+    }
+  ],
+  "uniqueBounds": [
+    "0:252:252"
+  ],
+  "uniqueNavGeometry": [
+    "0:251:251:9:232:223"
+  ],
+  "synchronizedEffect": {
+    "main": "fireworks",
+    "widget": "fireworks",
+    "persistedUntilClick": true,
+    "dismissedByEffectClick": true
+  }
+}

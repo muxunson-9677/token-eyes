@@ -14,6 +14,10 @@ vi.mock("../../lib/api", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.setItem(
+    "token-eyes.settings.disclosure.cost.agent-pricing.v1",
+    "1",
+  );
   getUsageModelBreakdown.mockResolvedValue({ sources: [] });
   getLocalSettings.mockResolvedValue({
     agentDefaultPricing: {
@@ -62,6 +66,30 @@ it("renders the verified public model price table with official sources", async 
   expect(screen.getByText("MiniMax-M2.7")).toBeInTheDocument();
   expect(screen.getAllByRole("link", { name: "官网" }).length).toBeGreaterThan(0);
   expect(screen.getByText("价格核验于 2026-07-14")).toBeInTheDocument();
+});
+
+it("keeps the pricing help action outside the disclosure and stable across collapsed and expanded states", async () => {
+  const user = userEvent.setup();
+  window.localStorage.setItem(
+    "token-eyes.settings.disclosure.cost.agent-pricing.v1",
+    "0",
+  );
+  render(<AgentPricingSection />);
+
+  const disclosure = screen.getByRole("button", { name: "模型定价表" });
+  expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("link", { name: "如何定价?" })).toBeNull();
+
+  await user.click(disclosure);
+  const help = await screen.findByRole("link", { name: "如何定价?" });
+  expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  expect(disclosure).not.toContainElement(help);
+
+  const catalog = document.getElementById("model-pricing-catalog");
+  catalog.scrollIntoView = vi.fn();
+  await user.click(help);
+  expect(catalog.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  expect(disclosure).toHaveAttribute("aria-expanded", "true");
 });
 
 it("covers the requested model catalog and flags newly observed models", async () => {
@@ -185,7 +213,7 @@ it("adds a new pricing rule via the form and saves it", async () => {
 
   // Save all changes.
   await act(async () => {
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存更改" }));
   });
 
   await waitFor(() => {

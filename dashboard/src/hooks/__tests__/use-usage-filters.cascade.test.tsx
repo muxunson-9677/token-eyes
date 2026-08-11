@@ -17,6 +17,11 @@ function setup() {
 }
 
 describe("useUsageFilters cascade", () => {
+  it("defaults usage statistics to the cumulative local ledger", () => {
+    const { result } = setup();
+    expect(result.current.state.timeRange).toBe("total");
+  });
+
   it("SET_AGENT_IDS forward-cascades: clears sources and models to null", () => {
     const { result } = setup();
 

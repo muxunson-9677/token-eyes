@@ -4,11 +4,13 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  RESET_HISTORY_DAYS,
   acknowledgeCodexResetEvent,
   compactCodexResetEvents,
   evaluateCodexResetSnapshot,
   listCodexResetHistory,
   listUnreadCodexResetEvents,
+  mergeCodexResetSnapshots,
 } = require("../src/lib/codex-reset-monitor");
 
 const MINUTE = 60_000;
@@ -77,6 +79,91 @@ test("crossing a reset emits completed only for a later window with lower usage"
   assert.equal(after.events.filter((event) => event.type === "reset_completed").length, 1);
 });
 
+test("credit decrease plus a new future window emits one manual reset", () => {
+  const before = evaluateCodexResetSnapshot(
+    null,
+    snapshot({
+      primaryUsed: 21,
+      primaryResetMs: BASE + 7 * 24 * 60 * MINUTE,
+      reset_credits: { available_count: 2, applicable_available_count: 2 },
+    }),
+    { nowMs: BASE },
+  );
+  const after = evaluateCodexResetSnapshot(
+    before,
+    snapshot({
+      nowMs: BASE + MINUTE,
+      primaryUsed: 0,
+      primaryResetMs: BASE + 8 * 24 * 60 * MINUTE,
+      reset_credits: { available_count: 1, applicable_available_count: 1 },
+    }),
+    { nowMs: BASE + MINUTE },
+  );
+
+  const event = after.events.find((item) => item.type === "manual_reset");
+  assert.ok(event);
+  assert.equal(event.agent, "codex");
+  assert.equal(event.previousUsedPercent, 21);
+  assert.equal(event.currentUsedPercent, 0);
+  assert.equal(event.alertEligible, true);
+  assert.deepEqual(event.deliveredChannels, []);
+});
+
+test("rollout backfill records a recovered manual reset without alerting", () => {
+  assert.equal(typeof mergeCodexResetSnapshots, "function");
+  const snapshots = [
+    {
+      observedAt: new Date(BASE).toISOString(),
+      window: "rolling_weekly",
+      usedPercent: 21,
+      resetAt: new Date(BASE + 6 * 24 * 60 * MINUTE).toISOString(),
+      accountKey: null,
+      source: "codex_rollout",
+    },
+    {
+      observedAt: new Date(BASE + MINUTE).toISOString(),
+      window: "rolling_weekly",
+      usedPercent: 0,
+      resetAt: new Date(BASE + 7 * 24 * 60 * MINUTE + MINUTE).toISOString(),
+      accountKey: null,
+      source: "codex_rollout",
+    },
+  ];
+  const state = mergeCodexResetSnapshots(null, snapshots, {
+    nowMs: BASE + 2 * MINUTE,
+    backfill: true,
+  });
+  const event = state.events.find((item) => item.type === "manual_reset");
+  assert.ok(event);
+  assert.equal(event.source, "codex_rollout");
+  assert.equal(event.confidence, "recovered");
+  assert.equal(event.alertEligible, false);
+});
+
+test("metadata-only snapshots do not erase the last reset-credit counters", () => {
+  const live = evaluateCodexResetSnapshot(
+    null,
+    snapshot({
+      reset_credits: { available_count: 2, applicable_available_count: 2 },
+    }),
+    { nowMs: BASE },
+  );
+  const merged = mergeCodexResetSnapshots(live, [{
+    observedAt: new Date(BASE + MINUTE).toISOString(),
+    window: "rolling_weekly",
+    usedPercent: 39,
+    resetAt: new Date(BASE + 5 * 24 * 60 * MINUTE).toISOString(),
+    source: "codex_rollout",
+  }], {
+    nowMs: BASE + MINUTE,
+    backfill: true,
+  });
+  assert.deepEqual(merged.resetCredits, {
+    availableCount: 2,
+    applicableAvailableCount: 2,
+  });
+});
+
 test("early 20-point drop requires two observations at least five minutes apart", () => {
   const baseline = evaluateCodexResetSnapshot(
     null,
@@ -108,10 +195,13 @@ test("early 20-point drop requires two observations at least five minutes apart"
     snapshot({ nowMs: BASE + 7 * MINUTE, primaryUsed: 48 }),
     { nowMs: BASE + 7 * MINUTE },
   );
-  assert.equal(
-    confirmed.events.filter((event) => event.type === "unexpected_quota_restore").length,
-    1,
+  const event = confirmed.events.find(
+    (item) => item.type === "unexpected_quota_restore",
   );
+  assert.ok(event);
+  assert.equal(event.alertEligible, true);
+  assert.equal(event.previousUsedPercent, 75);
+  assert.equal(event.currentUsedPercent, 48);
 });
 
 test("bounce, missing, stale, error, and unsupported snapshots clear restore candidates", () => {
@@ -160,6 +250,15 @@ test("acknowledgement hides unread event but retains bounded history", () => {
   );
   assert.equal(listUnreadCodexResetEvents(state).length, 2);
   const firstId = state.events[0].id;
+  state = acknowledgeCodexResetEvent(state, firstId, {
+    channels: ["widget", "tray"],
+    nowMs: BASE + MINUTE,
+  });
+  assert.deepEqual(state.events[0].acknowledgedChannels, ["widget", "tray"]);
+  assert.equal(listUnreadCodexResetEvents(state, { channel: "banner" }).length, 2);
+  assert.equal(listUnreadCodexResetEvents(state, { channel: "widget" }).length, 1);
+  assert.equal(listUnreadCodexResetEvents(state, { channel: "tray" }).length, 1);
+
   state = acknowledgeCodexResetEvent(state, firstId, { nowMs: BASE + MINUTE });
   assert.equal(state.events.length, 2);
   assert.equal(listUnreadCodexResetEvents(state).length, 1);
@@ -179,13 +278,13 @@ test("acknowledgement hides unread event but retains bounded history", () => {
   assert.equal(state.acknowledgedEventIds.length, 200);
 });
 
-test("reset history contains only the latest three actual resets in occurrence order", () => {
+test("reset history retains local and official resets from the last 30 days in occurrence order", () => {
   const completed = Array.from({ length: 6 }, (_, index) => ({
     id: `completed-${index}`,
     type: "reset_completed",
     window: "rolling_5_hour",
-    createdAt: new Date(BASE + (index + 1) * MINUTE).toISOString(),
-    resetAt: new Date(BASE + index * MINUTE).toISOString(),
+    createdAt: new Date(BASE - (index + 1) * 24 * 60 * MINUTE).toISOString(),
+    resetAt: new Date(BASE - (index + 1) * 24 * 60 * MINUTE).toISOString(),
     officialUrl: "https://chatgpt.com/codex",
     source: "local_quota",
   }));
@@ -193,7 +292,7 @@ test("reset history contains only the latest three actual resets in occurrence o
     id: "restored-latest",
     type: "unexpected_quota_restore",
     window: "rolling_weekly",
-    createdAt: new Date(BASE + 10 * MINUTE).toISOString(),
+    createdAt: new Date(BASE - 10 * MINUTE).toISOString(),
     resetAt: new Date(BASE + 24 * 60 * MINUTE).toISOString(),
     officialUrl: "https://chatgpt.com/codex",
     source: "local_quota",
@@ -213,26 +312,44 @@ test("reset history contains only the latest three actual resets in occurrence o
     },
   ];
 
-  const history = listCodexResetHistory({
-    events: [...completed, restored, ...ignored],
-  });
+  const expired = {
+    ...completed[0],
+    id: "expired",
+    createdAt: new Date(BASE - 31 * 24 * 60 * MINUTE).toISOString(),
+    resetAt: new Date(BASE - 31 * 24 * 60 * MINUTE).toISOString(),
+  };
+  const history = listCodexResetHistory(
+    { events: [...completed, restored, expired, ...ignored] },
+    { nowMs: BASE },
+  );
 
-  assert.equal(history.length, 3);
+  assert.equal(RESET_HISTORY_DAYS, 30);
+  assert.equal(history.length, 8);
   assert.deepEqual(
     history.map((event) => event.id),
-    ["restored-latest", "completed-5", "completed-4"],
+    [
+      "official",
+      "restored-latest",
+      "completed-0",
+      "completed-1",
+      "completed-2",
+      "completed-3",
+      "completed-4",
+      "completed-5",
+    ],
   );
-  assert.equal(history[0].occurredAt, restored.createdAt);
-  assert.equal(history[1].occurredAt, completed[5].resetAt);
+  assert.equal(history[0].occurredAt, ignored[1].createdAt);
+  assert.equal(history[1].occurredAt, restored.createdAt);
+  assert.equal(history[2].occurredAt, completed[0].resetAt);
 });
 
-test("event compaction keeps three actual resets without deleting other reminder types", () => {
-  const actual = Array.from({ length: 7 }, (_, index) => ({
+test("event compaction keeps all 30-day resets without deleting other reminder types", () => {
+  const actual = Array.from({ length: 130 }, (_, index) => ({
     id: `actual-${index}`,
     type: "reset_completed",
     window: "rolling_5_hour",
-    createdAt: new Date(BASE + index * MINUTE).toISOString(),
-    resetAt: new Date(BASE + index * MINUTE).toISOString(),
+    createdAt: new Date(BASE - index * 60 * MINUTE).toISOString(),
+    resetAt: new Date(BASE - index * 60 * MINUTE).toISOString(),
   }));
   const other = [
     {
@@ -249,14 +366,14 @@ test("event compaction keeps three actual resets without deleting other reminder
     },
   ];
 
-  const compacted = compactCodexResetEvents([...actual, ...other]);
+  const compacted = compactCodexResetEvents([...actual, ...other], { nowMs: BASE });
 
   assert.equal(
     compacted.filter((event) => event.type === "reset_completed").length,
-    3,
+    130,
   );
   assert.equal(compacted.some((event) => event.id === "upcoming"), true);
   assert.equal(compacted.some((event) => event.id === "official"), true);
-  assert.equal(compacted.some((event) => event.id === "actual-0"), false);
-  assert.equal(compacted.some((event) => event.id === "actual-6"), true);
+  assert.equal(compacted.some((event) => event.id === "actual-0"), true);
+  assert.equal(compacted.some((event) => event.id === "actual-129"), true);
 });

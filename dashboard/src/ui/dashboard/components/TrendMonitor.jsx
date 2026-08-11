@@ -1,12 +1,21 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "motion/react";
-import { Maximize2 } from "lucide-react";
+import { Info, Maximize2 } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 import { useCurrency } from "../../../hooks/useCurrency.js";
 import { formatUsdCurrency } from "../../../lib/format";
 import { formatBucketRange, formatTickLabel, granularityFromPeriod } from "../../../lib/trend-stats";
 import { TrendMonitorZoomModal } from "./TrendMonitorZoomModal";
+
+function formatAxisValue(value) {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(value >= 10_000_000_000 ? 0 : 1)}B`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;
+  return Math.round(value).toLocaleString();
+}
 
 function interpolateQuantile(sortedValues, ratio) {
   if (!Array.isArray(sortedValues) || sortedValues.length === 0) return 0;
@@ -57,6 +66,20 @@ export function getTrendMonitorScale(values) {
         })
       : [],
   };
+}
+
+export function computeMovingAverageSeries(values, windowSize = 5) {
+  const safeValues = Array.isArray(values) ? values : [];
+  const size = Math.max(1, Math.floor(Number(windowSize) || 1));
+  return safeValues.map((_, index) => {
+    const start = Math.max(0, index - size + 1);
+    const windowValues = safeValues
+      .slice(start, index + 1)
+      .filter((value) => Number.isFinite(value));
+    if (windowValues.length === 0) return 0;
+    const total = windowValues.reduce((sum, value) => sum + value, 0);
+    return total / windowValues.length;
+  });
 }
 
 const STACK_COLORS = [
@@ -383,8 +406,12 @@ export function TrendMonitor({
   // present) on the standalone card; null disables the maximize button.
   zoomConfig = null,
 }) {
+  // Overview contract: only render real observations. Future/missing rows must
+  // not appear as interpolated/extrapolated "Predicted" usage bars.
   const series = React.useMemo(
-    () => (Array.isArray(rows) && rows.length ? rows : []),
+    () => (Array.isArray(rows) && rows.length
+      ? rows.filter((row) => row && !row.future && !row.missing)
+      : []),
     [rows],
   );
 
@@ -401,6 +428,20 @@ export function TrendMonitor({
       interpolatedValues: computeInterpolatedSeries(raw),
     };
   }, [series]);
+  const movingAveragePoints = React.useMemo(function buildMovingAveragePoints() {
+    const values = computeMovingAverageSeries(scale.clippedValues, 5);
+    const count = values.length;
+    return values.map(function buildMovingAveragePoint(value, index) {
+      const x = count === 0 || count === 1 ? 50 : (index / (count - 1)) * 100;
+      const normalized = scale.effectiveMax !== 0
+        ? Math.min(Math.max(value / scale.effectiveMax, 0), 1)
+        : 0;
+      return `${x.toFixed(2)},${(100 - normalized * 96).toFixed(2)}`;
+    }).join(" ");
+  }, [scale]);
+  const hasSeriesValues = seriesValues.length !== 0;
+  const showsMovingAverage = seriesValues.length !== 0 && seriesValues.length !== 1;
+
 
   const { currency, rate } = useCurrency();
   const granularity = granularityFromPeriod(period);
@@ -471,10 +512,11 @@ export function TrendMonitor({
   return (
     <div
       ref={containerRef}
+      data-testid="dashboard-trend"
       className={cn(
         "relative",
         !embedded &&
-          "rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5",
+          "tt-surface rounded-[var(--tt-card-radius)] p-5",
         isZoom && "flex h-full flex-col",
         className,
       )}
@@ -482,30 +524,74 @@ export function TrendMonitor({
       {!embedded && (
         <div className="mb-3 flex items-start justify-between gap-2">
           <div>
-            <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
+            <h3
+              className="flex items-center gap-1.5 text-base font-semibold text-oai-black dark:text-white"
+              data-testid="trend-monitor-title"
+            >
               {copy("trend.monitor.label")}
+              <Info className="h-3.5 w-3.5 text-oai-gray-500" aria-hidden="true" />
             </h3>
             {showTimeZoneLabel && timeZoneLabel && (
               <p className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">{timeZoneLabel}</p>
             )}
           </div>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="trend-granularity"
+              className="tt-trend-granularity tt-analytics-focusable tt-pressable"
+              onClick={() => zoomConfig && setIsZoomOpen(true)}
+              disabled={!zoomConfig}
+              aria-haspopup="dialog"
+              aria-expanded={isZoomOpen}
+              title={copy("trend.zoom.open_aria")}
+            >
+              {copy("shared.unit.day")}
+            </button>
           {zoomConfig && (
             <button
               type="button"
               onClick={() => setIsZoomOpen(true)}
               aria-label={copy("trend.zoom.open_aria")}
               title={copy("trend.zoom.open_aria")}
-              className="shrink-0 p-1.5 rounded-md text-oai-gray-400 hover:text-oai-gray-700 dark:hover:text-oai-gray-200 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 transition-colors"
+              className="tt-analytics-focusable tt-pressable flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-[var(--tt-control-radius)] text-oai-gray-400 transition-colors hover:bg-oai-gray-100 hover:text-oai-gray-700 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200"
             >
               <Maximize2 size={14} />
             </button>
           )}
+          </div>
         </div>
       )}
+      {hasSeriesValues ? (
+        <div
+          className="mb-2 flex items-center gap-4 text-[10px] font-medium text-oai-gray-500 dark:text-oai-gray-400"
+          data-testid="trend-chart-legend"
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <i className="h-2.5 w-2.5 rounded-sm bg-emerald-500" aria-hidden="true" />
+            {copy("trend.monitor.legend.bars")}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <i className="h-0.5 w-4 rounded-full bg-violet-600" aria-hidden="true" />
+            {copy("trend.monitor.legend.average")}
+          </span>
+        </div>
+      ) : null}
+
       <div className={cn("space-y-3", isZoom && "flex flex-1 flex-col min-h-0 !space-y-0 gap-3")}>
         <div className={cn("relative", isZoom && "flex-1 min-h-0")}>
-          <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-            {[0, 25, 50, 75, 100].map((pct) => (
+          {!isZoom ? (
+            <div
+              data-testid="trend-y-axis"
+              className="absolute inset-y-0 left-0 z-20 flex w-9 flex-col justify-between pr-2 text-right text-[10px] tabular-nums text-oai-gray-400"
+            >
+              {[100, 80, 60, 40, 20, 0].map((pct) => (
+                <span key={pct}>{formatAxisValue((scale.effectiveMax * pct) / 100)}</span>
+              ))}
+            </div>
+          ) : null}
+          <div data-testid="trend-grid-lines" className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+            {[0, 20, 40, 60, 80, 100].map((pct) => (
               <div
                 key={pct}
                 className="w-full border-t border-oai-gray-100 dark:border-oai-gray-800"
@@ -513,7 +599,18 @@ export function TrendMonitor({
               />
             ))}
           </div>
-          <div className={cn("flex items-end gap-0.5 relative z-0", chartHeightClass)}>
+          <div
+            className={cn(
+              "flex items-end relative z-0",
+              seriesValues.length > 120
+                ? "gap-0"
+                : seriesValues.length > 60
+                  ? "gap-px"
+                  : "gap-0.5",
+              chartHeightClass,
+            )}
+            data-testid="trend-bar-row"
+          >
             {seriesValues.length > 0 ? (
               seriesValues.map((value, index) => {
                 const row = series[index];
@@ -544,6 +641,25 @@ export function TrendMonitor({
               </div>
             )}
           </div>
+          {showsMovingAverage ? (
+            <svg
+              aria-hidden="true"
+              className="tt-overview-moving-average-svg pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
+              preserveAspectRatio="none"
+              viewBox="0 0 100 100"
+            >
+              <polyline
+                data-testid="trend-moving-average-line"
+                className="stroke-violet-600"
+                fill="none"
+                points={movingAveragePoints}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.5"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          ) : null}
         </div>
 
         {isZoom && seriesValues.length > 0 && (
@@ -567,12 +683,18 @@ export function TrendMonitor({
           </div>
         )}
 
-        {from && to && (
-          <div className="flex justify-between text-xs text-oai-gray-500 dark:text-oai-gray-300 font-medium pt-2 border-t border-oai-gray-100 dark:border-oai-gray-800">
+        {!isZoom && series.some((row) => row?.day) ? (
+          <div data-testid="trend-range" className="ml-9 flex justify-between text-[10px] text-oai-gray-500 dark:text-oai-gray-300 pt-2">
+            {series
+              .filter((_, index) => Array.from({ length: 6 }, (__, tick) => Math.round(((series.length - 1) * tick) / 5)).includes(index))
+              .map((row, index) => <span key={`${row?.day || row?.hour || index}`}>{row?.axis_label || row?.day || formatTickLabel(row, granularity)}</span>)}
+          </div>
+        ) : from && to ? (
+          <div data-testid="trend-range" className="flex justify-between text-xs text-oai-gray-500 dark:text-oai-gray-300 font-medium pt-2 border-t border-oai-gray-100 dark:border-oai-gray-800">
             <span>{from === to ? `${from} 00:00` : from}</span>
             <span>{from === to ? `${to} 24:00` : to}</span>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* 2D 精致 Hover Tooltip */}
@@ -706,7 +828,7 @@ export function TrendMonitor({
         </div>
       )}
 
-      {isZoomOpen && zoomConfig && (
+      {isZoomOpen && zoomConfig && createPortal(
         <TrendMonitorZoomModal
           zoomConfig={zoomConfig}
           period={period}
@@ -717,7 +839,8 @@ export function TrendMonitor({
           renderChart={(chartProps) => (
             <TrendMonitor embedded isZoom chartHeightClass="h-full" {...chartProps} />
           )}
-        />
+        />,
+        document.body,
       )}
     </div>
   );

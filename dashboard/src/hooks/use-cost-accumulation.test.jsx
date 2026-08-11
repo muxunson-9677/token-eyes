@@ -115,6 +115,35 @@ describe("useCostAccumulation selected month", () => {
       monthOtherAiCostUsd: null,
       monthTotalCostUsd: null,
     }));
+    expect(result.current.error).toContain("selected month unavailable");
+  });
+
+  it("keeps the last successful financial totals and reports them stale when refresh fails", async () => {
+    const { result, rerender } = renderHook(
+      ({ refreshRevision }) => useCostAccumulation({
+        selectedMonth: "2025-06",
+        timeZone: "Asia/Shanghai",
+        sources: COST_SOURCES,
+        refreshRevision,
+      }),
+      { initialProps: { refreshRevision: 0 } },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary.monthApiCostUsd).toBe(10);
+
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockRejectedValueOnce(new Error("financial refresh unavailable"))
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 5 }));
+
+    rerender({ refreshRevision: 1 });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary.monthApiCostUsd).toBe(10);
+    expect(result.current.error).toContain("financial refresh unavailable");
+    expect(result.current.costSummaryStale).toBe(true);
+    expect(result.current.costLastSuccessfulAt).toEqual(expect.any(String));
   });
 
   it("preserves explicit real zero totals", async () => {

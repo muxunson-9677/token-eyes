@@ -74,14 +74,33 @@ beforeEach(() => {
 
 describe("SkillsPage", () => {
   it("renders installed skills instead of the empty state", async () => {
-    render(<SkillsPage />);
+    const { container } = render(<SkillsPage />);
 
+    expect(screen.getByRole("heading", { name: copy("skills.page.title") })).toBeInTheDocument();
     expect(await screen.findByText("Alpha Skill")).toBeInTheDocument();
     expect(screen.getByText("Beta Skill")).toBeInTheDocument();
     expect(screen.getByText("First installed skill.")).toBeInTheDocument();
     expect(
       screen.getByRole("searchbox", { name: copy("skills.action.search_aria") }),
     ).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-skill-row='1']")).toHaveLength(2);
+    expect(container.querySelector("[data-skills-list-surface]")).toHaveClass("tt-surface");
+    const filterToolbar = container.querySelector("[data-skills-filter-toolbar]");
+    expect(filterToolbar).toHaveClass(
+      "tt-surface-nested",
+      "mb-2",
+      "pt-1",
+    );
+    expect(filterToolbar).not.toHaveClass("mb-3", "p-2");
+    expect(screen.getByRole("button", { name: copy("skills.tab.my") })).not.toHaveClass(
+      "px-3",
+      "pt-1",
+    );
+    for (const row of container.querySelectorAll("[data-skill-row='1']")) {
+      expect(row).toHaveClass("tt-pressable", "tt-product-focusable");
+      expect(row).toHaveClass("pr-2");
+      expect(row).not.toHaveClass("px-2");
+    }
 
     await waitFor(() => {
       expect(screen.queryByText(copy("skills.empty.my"))).not.toBeInTheDocument();

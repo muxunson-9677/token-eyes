@@ -27,9 +27,9 @@ export function ConfirmModal({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[2px] transition-opacity duration-200 ease-out data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
+        <Dialog.Backdrop className="tt-modal-backdrop tt-modal-motion fixed inset-0 z-[100] transition-opacity duration-200 ease-out data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
         <Dialog.Viewport className="fixed inset-0 z-[101] flex items-center justify-center p-4">
-          <Dialog.Popup className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.25)] ring-1 ring-oai-gray-200 transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.16,1,0.3,1)] data-[ending-style]:translate-y-2 data-[ending-style]:scale-[0.96] data-[ending-style]:opacity-0 data-[starting-style]:translate-y-2 data-[starting-style]:scale-[0.96] data-[starting-style]:opacity-0 dark:bg-oai-gray-950 dark:shadow-[0_20px_60px_-10px_rgba(0,0,0,0.65)] dark:ring-oai-gray-800">
+          <Dialog.Popup className="tt-surface tt-modal-popup tt-modal-motion relative w-full max-w-md rounded-[var(--tt-card-radius)] p-6 transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.16,1,0.3,1)] data-[ending-style]:translate-y-2 data-[ending-style]:scale-[0.96] data-[ending-style]:opacity-0 data-[starting-style]:translate-y-2 data-[starting-style]:scale-[0.96] data-[starting-style]:opacity-0">
             <Dialog.Title className="text-base font-semibold text-oai-black dark:text-white">
               {title}
             </Dialog.Title>

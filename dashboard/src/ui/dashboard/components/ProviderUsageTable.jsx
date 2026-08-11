@@ -33,6 +33,10 @@ function formatFullNum(value) {
   return safeNum(value).toLocaleString();
 }
 
+function resolveRequestCount(row) {
+  return row?.request_count ?? row?.conversation_count ?? null;
+}
+
 function formatCost(value, currency, rate) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return `${getCurrencySymbol(currency)}0`;
@@ -101,8 +105,8 @@ export function ProviderUsageTable({
     const dir = sortDir === "asc" ? 1 : -1;
     const field = meta.field;
     return [...list].sort((a, b) => {
-      let av = a[field];
-      let bv = b[field];
+      let av = field === "request_count" ? resolveRequestCount(a) : a[field];
+      let bv = field === "request_count" ? resolveRequestCount(b) : b[field];
       if (field === "source_display_name") {
         av = String(av || "").toLowerCase();
         bv = String(bv || "").toLowerCase();
@@ -151,7 +155,7 @@ export function ProviderUsageTable({
         <button
           type="button"
           onClick={refresh}
-          className="inline-flex h-8 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
+          className="inline-flex h-10 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
         >
           {copy("ticket04.provider.retry")}
         </button>
@@ -215,7 +219,9 @@ export function ProviderUsageTable({
                     </span>
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
-                    {row.request_count === null || row.request_count === undefined ? copy("ticket06.metric.unavailable") : formatFullNum(row.request_count)}
+                    {resolveRequestCount(row) === null
+                      ? copy("spend.usage.metric.not_collected")
+                      : formatFullNum(resolveRequestCount(row))}
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
                     {formatTokensCompact(row.tokens)}
@@ -225,7 +231,7 @@ export function ProviderUsageTable({
                   </td>
                   <td className="px-3 py-2 text-sm whitespace-nowrap text-right tabular-nums">
                     {row.success_rate === null || row.success_rate === undefined ? (
-                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("ticket06.metric.unavailable")}</span>
+                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("spend.usage.metric.not_collected")}</span>
                     ) : (
                       <span
                         className={
@@ -239,7 +245,9 @@ export function ProviderUsageTable({
                     )}
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
-                    {formatLatency(row.avg_latency_ms)}
+                    {row.avg_latency_ms === null || row.avg_latency_ms === undefined
+                      ? copy("spend.usage.metric.not_collected")
+                      : formatLatency(row.avg_latency_ms)}
                   </td>
                 </tr>
               );

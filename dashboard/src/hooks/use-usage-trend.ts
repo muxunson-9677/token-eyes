@@ -172,9 +172,9 @@ export function useUsageTrend({
     }
     setError(null);
     try {
-      // getSpendTimeseries does not short-circuit on isMockEnabled and does
-      // not accept `baseUrl` (it always goes through fetchLocalJson). We pass
-      // only time + filter params; baseUrl is used solely for storageKey host.
+      // getSpendTimeseries owns the mock-mode short-circuit and does not accept
+      // `baseUrl`. We pass only time + filter params; baseUrl is used solely
+      // for the storageKey host.
       const res = await getSpendTimeseries({
         from,
         to,
@@ -255,10 +255,8 @@ export function useUsageTrend({
     void refresh({ background: Boolean(trend) });
   }, [refreshRevision, refresh, trend]);
 
-  // Note: getSpendTimeseries has no isMockEnabled short-circuit, so even when
-  // mock mode is on the real local API is hit (returns empty series if no
-  // server). We therefore report the actual source ("edge"|"cache") rather
-  // than pretending it was mock data.
+  // Mock mode is fulfilled inside getSpendTimeseries, while this hook keeps
+  // the same edge/cache state handling for both real and deterministic data.
   return {
     trend,
     source,

@@ -40,7 +40,7 @@ export function Shell({
 }) {
   if (bare) {
     return (
-      <div className={`flex flex-col flex-1 min-h-0 ${className}`}>
+      <div className={`tt-shell tt-shell--bare flex flex-col flex-1 min-h-0 ${className}`}>
         <main className="flex-1 px-6 py-6">{children}</main>
         {!hideFooter && footer && (
           <footer className="border-t border-oai-gray-200 dark:border-oai-gray-800 px-6 py-4 mt-auto transition-colors duration-200">
@@ -53,7 +53,7 @@ export function Shell({
 
   return (
     <div
-      className={`min-h-screen bg-oai-white dark:bg-oai-gray-950 text-oai-black dark:text-oai-white font-sans flex flex-col transition-colors duration-200 ${className}`}
+      className={`tt-shell min-h-screen text-oai-black dark:text-oai-white font-sans flex flex-col transition-colors duration-200 ${className}`}
     >
       {!hideHeader && (
         <header className="border-b border-oai-gray-200 dark:border-oai-gray-800 px-6 py-4 flex items-center justify-between transition-colors duration-200">

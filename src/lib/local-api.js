@@ -35,6 +35,16 @@ const {
 const {
   createCodexResetMonitorService,
 } = require("./codex-reset-monitor-service");
+const {
+  collectCodexResetSnapshots,
+} = require("./codex-reset-rollout-reader");
+const {
+  collectCodexLifecycleSessions,
+} = require("./codex-lifecycle-reader");
+const {
+  buildWidgetViewModel,
+  flattenUsageLimitsPayload,
+} = require("./widget-view-model");
 const { getCodexUsageLimits } = require("./usage-limits");
 
 const SYNC_TIMEOUT_MS = 120_000;
@@ -58,6 +68,7 @@ const LOCAL_API_CAPABILITIES = Object.freeze([
   "data_directory_detection",
   "provider_api_balance",
   "codex_reset_events",
+  "desktop_widget_view_model",
   "request_diagnostics_v2",
   "observability_export_v2",
   "tray_compact_v2",
@@ -98,6 +109,7 @@ const zonedPartsCache = new Map();
 const USAGE_AGGREGATE_RESPONSE_CACHE_TTL_MS = 30_000;
 const USAGE_AGGREGATE_RESPONSE_CACHE_MAX_ENTRIES = 64;
 const USAGE_AGGREGATE_RESPONSE_PATHS = new Set([
+  "/functions/tokentracker-usage-bounds",
   "/functions/tokentracker-usage-summary",
   "/functions/tokentracker-provider-stats",
   "/functions/tokentracker-model-stats",
@@ -338,7 +350,7 @@ function resolveQueuePath() {
   return path.join(home, ".tokentracker", "tracker", "queue.jsonl");
 }
 
-function readProjectQueueData(projectQueuePath) {
+function readProjectQueueData(projectQueuePath, mainQueuePath = resolveQueuePath()) {
   let raw;
   try {
     raw = fs.readFileSync(projectQueuePath, "utf8");
@@ -362,19 +374,24 @@ function readProjectQueueData(projectQueuePath) {
   const projectRows = Array.from(seen.values());
   const missingModelRows = projectRows.filter((row) => !row.model);
   if (missingModelRows.length > 0) {
-    const mainQueueRows = readQueueData(resolveQueuePath());
+    const mainQueueRows = readQueueData(mainQueuePath);
     const sourceHourModelMap = new Map();
     for (const r of mainQueueRows) {
       const mainKey = `${r.source || ""}|${r.hour_start || ""}`;
-      if (!sourceHourModelMap.has(mainKey) && r.model) {
-        sourceHourModelMap.set(mainKey, r.model);
-      }
+      if (!r.model) continue;
+      if (!sourceHourModelMap.has(mainKey)) sourceHourModelMap.set(mainKey, new Map());
+      const models = sourceHourModelMap.get(mainKey);
+      models.set(r.model, (models.get(r.model) || 0) + Number(r.total_tokens || 0));
     }
     for (const row of missingModelRows) {
       const mainKey = `${row.source || ""}|${row.hour_start || ""}`;
-      if (sourceHourModelMap.has(mainKey)) {
-        row.model = sourceHourModelMap.get(mainKey);
+      const models = sourceHourModelMap.get(mainKey);
+      if (!models || models.size === 0) continue;
+      if (models.size === 1) {
+        row.model = models.keys().next().value;
+        continue;
       }
+      row.model_breakdown = Array.from(models.entries()).map(([model, tokens]) => ({ model, tokens }));
     }
   }
   return projectRows;
@@ -494,6 +511,52 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     queueDataCache.delete(oldestKey);
   }
   return rows;
+}
+
+function readQueueDiagnostics(queuePath, { dedupeMode = "legacy" } = {}) {
+  let raw = "";
+  let updatedAt = null;
+  try {
+    raw = fs.readFileSync(queuePath, "utf8");
+    updatedAt = fs.statSync(queuePath).mtime.toISOString();
+  } catch {
+    return {
+      raw_records: 0,
+      valid_records: 0,
+      duplicate_records: 0,
+      malformed_records: 0,
+      ignored_synthetic_records: 0,
+      updated_at: null,
+      dedupe_basis: "latest_cumulative_bucket",
+    };
+  }
+
+  const lines = raw.split("\n").filter((line) => line.trim());
+  let malformedRecords = 0;
+  let ignoredSyntheticRecords = 0;
+  let parsedRecords = 0;
+  for (const line of lines) {
+    try {
+      const row = JSON.parse(line);
+      parsedRecords += 1;
+      if (isKnownSyntheticOpenClawSmokeRow(row)) ignoredSyntheticRecords += 1;
+    } catch {
+      malformedRecords += 1;
+    }
+  }
+  const validRecords = readQueueData(queuePath, { dedupeMode }).length;
+  return {
+    raw_records: lines.length,
+    valid_records: validRecords,
+    duplicate_records: Math.max(
+      0,
+      parsedRecords - ignoredSyntheticRecords - validRecords,
+    ),
+    malformed_records: malformedRecords,
+    ignored_synthetic_records: ignoredSyntheticRecords,
+    updated_at: updatedAt,
+    dedupe_basis: "latest_cumulative_bucket",
+  };
 }
 
 function queueRowDimensionsKey(row) {
@@ -938,6 +1001,27 @@ function getSourceDisplayName(source) {
 // this function with the same rows + filters + time range.
 // ---------------------------------------------------------------------------
 
+function tokenComponentDelta(row) {
+  const source = normalizeSource(row?.source);
+  const rawInput = Number(row?.input_tokens || 0);
+  const output = Number(row?.output_tokens || 0);
+  const cacheRead = Number(row?.cached_input_tokens || 0);
+  const cacheWrite = Number(row?.cache_creation_input_tokens || 0);
+  const reasoning = Number(row?.reasoning_output_tokens || 0);
+  const total = Number(row?.total_tokens || 0);
+  const isCodex = source === "codex" || source === "every-code";
+  const isLegacyInclusive = isCodex
+    && cacheRead > 0
+    && rawInput >= cacheRead
+    && total === rawInput + output;
+  const input = isLegacyInclusive ? rawInput - cacheRead : rawInput;
+  const baseParts = input + output + cacheRead + cacheWrite;
+  const componentTotal = isCodex
+    ? (reasoning > 0 && total === baseParts + reasoning ? baseParts + reasoning : baseParts)
+    : baseParts + reasoning;
+  return total - componentTotal;
+}
+
 function computeQueueTotals(rows, options = {}) {
   const {
     fromKey = null,
@@ -959,6 +1043,8 @@ function computeQueueTotals(rows, options = {}) {
     priced_tokens: 0,
     unpriced_tokens: 0,
     pricing_coverage: "complete",
+    component_token_delta: 0,
+    component_mismatch_records: 0,
   };
   for (const row of rows) {
     if (!row || !row.hour_start) continue;
@@ -975,6 +1061,9 @@ function computeQueueTotals(rows, options = {}) {
     acc.cached_input_tokens += Number(row.cached_input_tokens || 0);
     acc.cache_creation_input_tokens += Number(row.cache_creation_input_tokens || 0);
     acc.reasoning_output_tokens += Number(row.reasoning_output_tokens || 0);
+    const componentDelta = tokenComponentDelta(row);
+    acc.component_token_delta += componentDelta;
+    if (componentDelta !== 0) acc.component_mismatch_records += 1;
     const rowCost = computeRowCostDetailed(row, pricingOptions);
     acc.cost_usd += Number(rowCost.cost_usd || 0);
     acc.conversation_count += Number(row.conversation_count || 0);
@@ -1815,11 +1904,20 @@ function json(res, data, status) {
 const CODEX_RESET_EVENT_TYPES = new Set([
   "reset_upcoming",
   "reset_completed",
+  "manual_reset",
   "unexpected_quota_restore",
   "banked_reset_available",
   "official_reset_announcement",
 ]);
 const CODEX_RESET_WINDOWS = new Set(["rolling_5_hour", "rolling_weekly"]);
+const CODEX_RESET_KINDS = new Set(["hard", "banked", "mixed", "unknown"]);
+const CODEX_RESET_SCOPES = new Set(["all_paid_users", "all_codex_work_users", "unknown"]);
+const CODEX_RESET_SOURCES = new Set([
+  "local_quota",
+  "live_usage",
+  "codex_rollout",
+  "signed_feed",
+]);
 const CODEX_RESET_OFFICIAL_HOSTS = new Set([
   "help.openai.com",
   "openai.com",
@@ -1890,6 +1988,7 @@ function sanitizeCodexResetStatus(status) {
     feed_enabled: status?.feed_enabled === true,
     feed_last_checked_at: safeIsoString(status?.feed_last_checked_at),
     feed_error_code: errorCode(status?.feed_error_code),
+    backfill_error_code: errorCode(status?.backfill_error_code),
   };
 }
 
@@ -1899,14 +1998,31 @@ function sanitizeCodexResetEvent(event) {
   const createdAt = safeIsoString(event?.createdAt);
   const officialUrl = safeCodexResetUrl(event?.officialUrl);
   if (!id || !type || !createdAt || !officialUrl) return null;
+  const percent = (value) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 && numeric <= 100
+      ? Math.round(numeric)
+      : null;
+  };
+  const accountKey = (
+    typeof event.accountKey === "string"
+    && /^[a-z0-9_-]{1,32}$/u.test(event.accountKey)
+  ) ? event.accountKey : "default";
   const dto = {
     id,
     type,
+    agent: event.agent === "codex" ? "codex" : "codex",
+    account_key: accountKey,
     window: CODEX_RESET_WINDOWS.has(event.window) ? event.window : null,
     created_at: createdAt,
     reset_at: safeIsoString(event.resetAt),
     official_url: officialUrl,
-    source: event.source === "signed_feed" ? "signed_feed" : "local_quota",
+    source: CODEX_RESET_SOURCES.has(event.source) ? event.source : "local_quota",
+    observed_at: safeIsoString(event.observedAt || event.createdAt),
+    previous_used_percent: percent(event.previousUsedPercent),
+    current_used_percent: percent(event.currentUsedPercent),
+    confidence: event.confidence === "recovered" ? "recovered" : "confirmed",
+    alert_eligible: event.alertEligible === true,
   };
   const occurredAt = safeIsoString(event.occurredAt);
   if (occurredAt) dto.occurred_at = occurredAt;
@@ -1932,6 +2048,8 @@ function sanitizeCodexResetEvent(event) {
     dto.source_url = sourceUrl;
     dto.source_author = boundedString(event.sourceAuthor, 32);
     dto.source_post_id = boundedString(event.sourcePostId, 32);
+    dto.reset_kind = CODEX_RESET_KINDS.has(event.resetKind) ? event.resetKind : "unknown";
+    dto.reset_scope = CODEX_RESET_SCOPES.has(event.resetScope) ? event.resetScope : "unknown";
     dto.title = title;
     dto.summary = summary;
     dto.expires_at = expiresAt;
@@ -2038,6 +2156,7 @@ function createLocalApiHandler({
   providerApiTestMode = false,
   providerApiTimeoutMs,
   usageLimitsProvider,
+  codexLifecycleProvider,
   limitAccountsProvider,
   tokenOnlyDirectoryStatesProvider,
   now: nowProvider = () => new Date(),
@@ -2141,6 +2260,22 @@ function createLocalApiHandler({
       },
       loadState: codexResetMonitorStore.load,
       saveState: codexResetMonitorStore.save,
+      collectCodexResetSnapshots,
+      getCodexHomes: () => {
+        const dataDirectoryPaths = resolveDataDirectoryPaths({
+          config: readTrackerConfigAt(trackerDataDir),
+          env: process.env,
+          home: os.homedir(),
+          platform: process.platform,
+        });
+        return [...new Set(
+          (dataDirectoryPaths.codexHomes?.length
+            ? dataDirectoryPaths.codexHomes
+            : [dataDirectoryPaths.codexHome])
+            .filter(Boolean)
+            .map((value) => path.resolve(value)),
+        )];
+      },
        enabled: process.env.TOKEN_EYES_CODEX_RESET_MONITOR_ENABLED !== "0",
        feedEnabled: codexResetFeedEnabled,
       feedPublicKey: codexResetFeedEnabled
@@ -4353,11 +4488,54 @@ function createLocalApiHandler({
   async function readSpendTimeseries(fromStr, toStr, requestedBucket, timeZoneContext, filters = {}) {
     const usdToCny = getUsdToCny();
     const pricingOptions = getPricingOptions();
-
     const today = new Date();
+    const config = readTrackerConfig();
+    const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
+    const planCosts = tokenPlanCostRecords(config);
+    const normalizedRecords = [
+      ...withoutTokenPlanCostDuplicates(records.map((r) => normalizeSpendRecord(r)), planCosts),
+      ...planCosts,
+    ];
+    const spendSources = Array.isArray(filters.sources)
+      ? new Set(filters.sources.map((source) => String(source).trim().toLowerCase()))
+      : null;
+    const filteredSpendRecords = spendSources
+      ? normalizedRecords.filter((record) => spendSources.has(String(record.source || "").toLowerCase()))
+      : normalizedRecords;
+    const totalRangeRequested = fromStr === "1970-01-01";
+    let preloadedRows = readQueueData(qp);
+    let effectiveFromStr = fromStr;
+
+    if (totalRangeRequested) {
+      preloadedRows = await withCodexRolloutRows(preloadedRows, {
+        from: "",
+        to: toStr,
+        timeZoneContext,
+        sources: filters.sources || null,
+      });
+      const sourceFilter = Array.isArray(filters.sources) ? new Set(filters.sources) : null;
+      const modelFilter = Array.isArray(filters.models)
+        ? new Set(filters.models.map((model) => String(model).trim().toLowerCase()))
+        : null;
+      const ledgerDays = preloadedRows
+        .filter((row) => {
+          const source = normalizeSource(row?.source);
+          if (sourceFilter && !sourceFilter.has(source)) return false;
+          const model = String(row?.model || "").trim().toLowerCase();
+          return !modelFilter || modelFilter.has(model);
+        })
+        .map((row) => rowDayKey(row, timeZoneContext))
+        .filter((day) => day && (!toStr || day <= toStr));
+      const spendDays = filteredSpendRecords
+        .map((record) => String(record?.start_date || ""))
+        .filter((day) => day && (!toStr || day <= toStr));
+      const earliestDay = [...ledgerDays, ...spendDays].sort()[0];
+      effectiveFromStr = earliestDay || toStr || new Date().toISOString().slice(0, 10);
+    }
+
     let fromDate, toDate;
-    if (fromStr) {
-      const [y, m, d] = fromStr.split("-").map(Number);
+    if (effectiveFromStr) {
+      const [y, m, d] = effectiveFromStr.split("-").map(Number);
       fromDate = new Date(Date.UTC(y, m - 1, d));
       if (Number.isFinite(timeZoneContext.offsetMinutes)) {
         fromDate.setUTCMinutes(fromDate.getUTCMinutes() - timeZoneContext.offsetMinutes);
@@ -4388,27 +4566,15 @@ function createLocalApiHandler({
     const toPartsForRows = getZonedParts(toDate, timeZoneContext);
     const fromKeyForRows = fromPartsForRows ? formatPartsDayKey(fromPartsForRows) : fromDate.toISOString().slice(0, 10);
     const toKeyForRows = toPartsForRows ? formatPartsDayKey(toPartsForRows) : toDate.toISOString().slice(0, 10);
-    const allRows = await withCodexRolloutRows(readQueueData(qp), {
-      from: fromKeyForRows,
-      to: toKeyForRows,
-      timeZoneContext,
-      sources: filters.sources || null,
-    });
+    const allRows = totalRangeRequested
+      ? preloadedRows
+      : await withCodexRolloutRows(readQueueData(qp), {
+          from: fromKeyForRows,
+          to: toKeyForRows,
+          timeZoneContext,
+          sources: filters.sources || null,
+        });
     const apiAggregate = aggregateUsageBySourceModelBucket(allRows, fromDate, toDate, bucket, timeZoneContext, pricingOptions, filters);
-
-    const config = readTrackerConfig();
-    const records = Array.isArray(config.spendRecords) ? config.spendRecords : [];
-    const planCosts = tokenPlanCostRecords(config);
-    const normalizedRecords = [
-      ...withoutTokenPlanCostDuplicates(records.map((r) => normalizeSpendRecord(r)), planCosts),
-      ...planCosts,
-    ];
-    const spendSources = Array.isArray(filters.sources)
-      ? new Set(filters.sources.map((source) => String(source).trim().toLowerCase()))
-      : null;
-    const filteredSpendRecords = spendSources
-      ? normalizedRecords.filter((record) => spendSources.has(String(record.source || "").toLowerCase()))
-      : normalizedRecords;
 
     const subAllocations = [];
     for (const record of filteredSpendRecords) {
@@ -4909,10 +5075,79 @@ function createLocalApiHandler({
 
     if (prepareUsageAggregateResponseCache(req, res, url)) return true;
 
+    if (p === "/functions/tokentracker-desktop-widget") {
+      if (!hasAllowedLoopbackOrigin(req?.headers || {})) {
+        writeCodexResetResponse(res, { ok: false, error: "Forbidden" }, 403);
+        return true;
+      }
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        writeCodexResetResponse(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      try {
+        const loadUsageLimits = typeof usageLimitsProvider === "function"
+          ? usageLimitsProvider
+          : require("./usage-limits").getUsageLimits;
+        const dataDirectoryPaths = resolveDataDirectoryPaths({
+          config: readTrackerConfigAt(trackerDataDir),
+          env: process.env,
+          home: os.homedir(),
+          platform: process.platform,
+        });
+        const codexHomes = [...new Set(
+          (dataDirectoryPaths.codexHomes?.length
+            ? dataDirectoryPaths.codexHomes
+            : [dataDirectoryPaths.codexHome])
+            .filter(Boolean)
+            .map((value) => path.resolve(value)),
+        )];
+        const widgetNow = nowProvider();
+        const [usageLimits, sessions] = await Promise.all([
+          loadUsageLimits({
+            home: os.homedir(),
+            env: process.env,
+            platform: process.platform,
+          }),
+          typeof codexLifecycleProvider === "function"
+            ? codexLifecycleProvider({ homes: codexHomes, nowMs: widgetNow.getTime() })
+            : collectCodexLifecycleSessions({
+              homes: codexHomes,
+              nowMs: widgetNow.getTime(),
+            }),
+        ]);
+        const usage = aggregateByModel(readQueueData(qp), {
+          pricingOptions: getPricingOptions(),
+        }).map((model) => ({
+          agent: model.source,
+          model: model.model,
+          tokens: model.tokens,
+          costUsd: model.cost_usd,
+        }));
+        const viewModel = buildWidgetViewModel({
+          agent: url.searchParams.get("agent") || "all",
+          activeSessionWindow: url.searchParams.get("active_window") || "1h",
+          usage,
+          sessions,
+          limits: flattenUsageLimitsPayload(usageLimits, readTokenPlanRecords()),
+          pendingResets: codexResetMonitorService.listUnread("widget"),
+          nowMs: widgetNow.getTime(),
+        });
+        writeCodexResetResponse(res, viewModel);
+      } catch (error) {
+        writeCodexResetResponse(
+          res,
+          { ok: false, error: "widget_view_model_unavailable" },
+          500,
+        );
+      }
+      return true;
+    }
+
     if (
       p === "/functions/tokentracker-codex-reset-events"
       || p === "/functions/tokentracker-codex-reset-events/ack"
       || p === "/functions/tokentracker-codex-reset-events/check"
+      || p === "/functions/tokentracker-codex-reset-events/delivered"
     ) {
       if (!hasAllowedLoopbackOrigin(req?.headers || {})) {
         writeCodexResetResponse(res, { ok: false, error: "Forbidden" }, 403);
@@ -4923,7 +5158,20 @@ function createLocalApiHandler({
         ok: true,
         status: sanitizeCodexResetStatus(codexResetMonitorService.getStatus()),
         events: codexResetMonitorService
-          .listUnread()
+          .listUnread("banner")
+          .map(sanitizeCodexResetEvent)
+          .filter(Boolean),
+        tray_events: codexResetMonitorService
+          .listUnread("tray")
+          .map(sanitizeCodexResetEvent)
+          .filter(Boolean),
+        widget_events: codexResetMonitorService
+          .listUnread("widget")
+          .map(sanitizeCodexResetEvent)
+          .filter(Boolean),
+        notification_events: (
+          codexResetMonitorService.listNotificationPending?.() || []
+        )
           .map(sanitizeCodexResetEvent)
           .filter(Boolean),
         history: codexResetMonitorService
@@ -4960,7 +5208,25 @@ function createLocalApiHandler({
           writeCodexResetResponse(res, { ok: false, error: "Invalid event_id" }, 400);
           return true;
         }
-        codexResetMonitorService.acknowledge(eventId);
+        const channels = Array.isArray(body?.channels)
+          ? [...new Set(body.channels.filter((channel) => (
+            channel === "banner" || channel === "tray" || channel === "widget"
+          )))]
+          : [];
+        codexResetMonitorService.acknowledge(
+          eventId,
+          channels.length > 0 ? { channels } : undefined,
+        );
+      } else if (p.endsWith("/delivered")) {
+        const eventId = boundedString(body?.event_id, 128);
+        const channel = body?.channel === "windows_notification"
+          ? body.channel
+          : null;
+        if (!eventId || !channel || !/^[a-z0-9:._-]+$/iu.test(eventId)) {
+          writeCodexResetResponse(res, { ok: false, error: "Invalid delivery" }, 400);
+          return true;
+        }
+        codexResetMonitorService.markDelivered(eventId, channel);
       } else {
         await codexResetMonitorService.check({
           reason: "manual",
@@ -5696,6 +5962,23 @@ function createLocalApiHandler({
       }
     }
 
+    // --- usage-bounds ---
+    if (p === "/functions/tokentracker-usage-bounds") {
+      const timeZoneContext = getTimeZoneContext(url);
+      const { rows } = scopedQueueRows(qp, url);
+      const days = rows
+        .map((row) => rowDayKey(row, timeZoneContext))
+        .filter((day) => /^\d{4}-\d{2}-\d{2}$/u.test(String(day || "")))
+        .sort();
+      json(res, {
+        ok: true,
+        from: days[0] || null,
+        to: days.at(-1) || null,
+        empty: days.length === 0,
+      });
+      return true;
+    }
+
     // --- usage-summary ---
     if (p === "/functions/tokentracker-usage-summary") {
       const from = url.searchParams.get("from") || "";
@@ -5801,6 +6084,13 @@ function createLocalApiHandler({
       const pricedTokens = queueTotals.priced_tokens;
       const unpricedTokens = queueTotals.unpriced_tokens;
       const pricingCoverage = queueTotals.pricing_coverage;
+      const queueDiagnostics = readQueueDiagnostics(qp);
+      const visibleBucketTimes = rows
+        .map((row) => String(row?.hour_start || ""))
+        .filter(Boolean)
+        .sort();
+      const tokenDelta = Number(totals.total_tokens || 0)
+        - Number(queueTotals.total_tokens || 0);
 
       json(res, {
         ok: true,
@@ -5822,6 +6112,21 @@ function createLocalApiHandler({
           unpriced_tokens: unpricedTokens,
           pricing_coverage: pricingCoverage,
           metric_availability: "aggregate_only",
+        },
+        data_integrity: {
+          ...queueDiagnostics,
+          visible_records: rows.length,
+          visible_from: visibleBucketTimes[0] || null,
+          visible_to: visibleBucketTimes.at(-1) || null,
+          displayed_total_tokens: Number(totals.total_tokens || 0),
+          reconciled_total_tokens: Number(queueTotals.total_tokens || 0),
+          token_delta: tokenDelta,
+          component_token_delta: Number(queueTotals.component_token_delta || 0),
+          component_mismatch_records: Number(queueTotals.component_mismatch_records || 0),
+          status: tokenDelta === 0 && queueDiagnostics.malformed_records === 0
+            ? "verified"
+            : "attention",
+          user_action_required: tokenDelta !== 0 || queueDiagnostics.malformed_records > 0,
         },
         rolling: {
           last_7d: { from: l7fromStr, to: todayStr, active_days: l7.length, totals: l7t },
@@ -6214,7 +6519,7 @@ function createLocalApiHandler({
         path.dirname(qp),
         "project.queue.jsonl",
       );
-      const projectRows = readProjectQueueData(projectQueuePath);
+      const projectRows = readProjectQueueData(projectQueuePath, qp);
       const pricingOptions = getPricingOptions();
 
       const byProject = new Map();
@@ -6248,12 +6553,43 @@ function createLocalApiHandler({
             pricing_coverage: "complete",
             request_count: 0,
             last_active_at: null,
+            agent_usage: new Map(),
+            model_usage: new Map(),
+            usage_trend: new Map(),
           });
         }
         const agg = byProject.get(normalizedKey);
         const tokens = Number(row.total_tokens || 0);
         agg.total_tokens += tokens;
         agg.billable_total_tokens += tokens;
+
+        const source = String(row.source || "unknown").trim().toLowerCase() || "unknown";
+        agg.agent_usage.set(source, (agg.agent_usage.get(source) || 0) + tokens);
+        const modelBreakdown = Array.isArray(row.model_breakdown)
+          ? row.model_breakdown.filter((item) => item?.model && Number(item.tokens) > 0)
+          : [];
+        const modelAllocations = [];
+        if (modelBreakdown.length > 0 && tokens > 0) {
+          const breakdownTotal = modelBreakdown.reduce((sum, item) => sum + Number(item.tokens), 0);
+          let allocated = 0;
+          modelBreakdown.forEach((item, index) => {
+            const modelTokens = index === modelBreakdown.length - 1
+              ? tokens - allocated
+              : Math.round(tokens * (Number(item.tokens) / breakdownTotal));
+            allocated += modelTokens;
+            modelAllocations.push({ model: String(item.model), tokens: modelTokens });
+          });
+        } else {
+          modelAllocations.push({
+            model: String(row.model || "unknown").trim() || "unknown",
+            tokens,
+          });
+        }
+        for (const allocation of modelAllocations) {
+          const modelKey = `${source}\u0000${allocation.model}`;
+          agg.model_usage.set(modelKey, (agg.model_usage.get(modelKey) || 0) + allocation.tokens);
+        }
+        agg.usage_trend.set(dayKey, (agg.usage_trend.get(dayKey) || 0) + tokens);
 
         if (rawRepoRoot && !agg.project_path) {
           agg.project_path = resolveProjectPathDisplay(rawKey, rawRef, rawRepoRoot);
@@ -6289,6 +6625,52 @@ function createLocalApiHandler({
         }
       }
 
+      const serializeProjectUsageEntry = (entry) => {
+        const pricingTotal = Number(entry.priced_tokens || 0) + Number(entry.unpriced_tokens || 0);
+        let pricingCoverage = "complete";
+        if (pricingTotal > 0) {
+          if (Number(entry.unpriced_tokens || 0) === 0) pricingCoverage = "complete";
+          else if (Number(entry.priced_tokens || 0) === 0) pricingCoverage = "unpriced";
+          else pricingCoverage = "partial";
+        }
+        const usageTotal = Math.max(0, Number(entry.total_tokens || 0));
+        const percentOfProject = (value) => usageTotal > 0
+          ? Math.round((Number(value || 0) / usageTotal) * 1000) / 10
+          : 0;
+        const agentUsage = Array.from(entry.agent_usage.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([id, value]) => ({ id, tokens: String(value), percent: percentOfProject(value) }));
+        const modelUsage = Array.from(entry.model_usage.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([key, value]) => {
+            const [provider, id] = key.split("\u0000");
+            return { id, provider, tokens: String(value), percent: percentOfProject(value) };
+          });
+        const usageTrend = Array.from(entry.usage_trend.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([day, value]) => ({ day, tokens: String(value) }));
+        const { agent_usage: _agentUsage, model_usage: _modelUsage, usage_trend: _usageTrend, ...publicEntry } = entry;
+        return {
+          ...publicEntry,
+          total_tokens: String(entry.total_tokens),
+          billable_total_tokens: String(entry.billable_total_tokens),
+          cost_usd: String(entry.cost_usd),
+          priced_tokens: String(entry.priced_tokens || 0),
+          unpriced_tokens: String(entry.unpriced_tokens || 0),
+          pricing_coverage: pricingCoverage,
+          request_count: String(entry.request_count),
+          last_active_at: entry.last_active_at || null,
+          agent_usage: agentUsage,
+          model_usage: modelUsage,
+          top_agents: agentUsage.map((item) => item.id),
+          top_models: modelUsage.map((item) => item.id),
+          model_providers: Object.fromEntries(modelUsage.map((item) => [item.id, item.provider])),
+          usage_trend: usageTrend,
+          period_from: from || usageTrend[0]?.day || null,
+          period_to: to || usageTrend[usageTrend.length - 1]?.day || null,
+        };
+      };
+
       // If no project-attributed rows exist yet (user hasn't synced project
       // attribution, or never used a project-capable CLI), fall back to
       // per-source aggregation over the main queue so the panel isn't
@@ -6318,11 +6700,19 @@ function createLocalApiHandler({
               unpriced_tokens: 0,
               request_count: 0,
               last_active_at: null,
+              agent_usage: new Map(),
+              model_usage: new Map(),
+              usage_trend: new Map(),
             });
           }
           const agg = bySrc.get(src);
           agg.total_tokens += row.total_tokens || 0;
           agg.billable_total_tokens += row.total_tokens || 0;
+          const tokens = Number(row.total_tokens || 0);
+          const model = String(row.model || "unknown").trim() || "unknown";
+          agg.agent_usage.set(src, (agg.agent_usage.get(src) || 0) + tokens);
+          agg.model_usage.set(`${src}\u0000${model}`, (agg.model_usage.get(`${src}\u0000${model}`) || 0) + tokens);
+          agg.usage_trend.set(dayKey, (agg.usage_trend.get(dayKey) || 0) + tokens);
 
           const rowCost = computeRowCostDetailed(row, pricingOptions);
           agg.cost_usd += Number(rowCost.cost_usd || 0);
@@ -6346,50 +6736,12 @@ function createLocalApiHandler({
         entries = Array.from(bySrc.values())
           .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
           .slice(0, limit)
-          .map((e) => {
-            const total = Number(e.priced_tokens || 0) + Number(e.unpriced_tokens || 0);
-            let pricingCoverage = "complete";
-            if (total > 0) {
-              if (Number(e.unpriced_tokens || 0) === 0) pricingCoverage = "complete";
-              else if (Number(e.priced_tokens || 0) === 0) pricingCoverage = "unpriced";
-              else pricingCoverage = "partial";
-            }
-            return {
-              ...e,
-              total_tokens: String(e.total_tokens),
-              billable_total_tokens: String(e.billable_total_tokens),
-              cost_usd: String(e.cost_usd),
-              priced_tokens: String(e.priced_tokens || 0),
-              unpriced_tokens: String(e.unpriced_tokens || 0),
-              pricing_coverage: pricingCoverage,
-              request_count: String(e.request_count),
-              last_active_at: e.last_active_at || null,
-            };
-          });
+          .map(serializeProjectUsageEntry);
       } else {
         entries = Array.from(byProject.values())
           .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
           .slice(0, limit)
-          .map((e) => {
-            const total = Number(e.priced_tokens || 0) + Number(e.unpriced_tokens || 0);
-            let pricingCoverage = "complete";
-            if (total > 0) {
-              if (Number(e.unpriced_tokens || 0) === 0) pricingCoverage = "complete";
-              else if (Number(e.priced_tokens || 0) === 0) pricingCoverage = "unpriced";
-              else pricingCoverage = "partial";
-            }
-            return {
-              ...e,
-              total_tokens: String(e.total_tokens),
-              billable_total_tokens: String(e.billable_total_tokens),
-              cost_usd: String(e.cost_usd),
-              priced_tokens: String(e.priced_tokens || 0),
-              unpriced_tokens: String(e.unpriced_tokens || 0),
-              pricing_coverage: pricingCoverage,
-              request_count: String(e.request_count),
-              last_active_at: e.last_active_at || null,
-            };
-          });
+          .map(serializeProjectUsageEntry);
       }
 
       json(res, { generated_at: new Date().toISOString(), from: from || null, to: to || null, entries });
@@ -7482,6 +7834,48 @@ function createLocalApiHandler({
       json(res, { ok: false, error: "Method Not Allowed" }, 405);
       return true;
     }
+    // --- clear derived local usage data; preserves settings, secrets, and source logs ---
+    if (p === "/functions/tokentracker-clear-local-data") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method !== "POST") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        const body = await readJsonBody(req);
+        if (body?.confirm !== true) {
+          json(res, { ok: false, error: "Explicit confirmation is required" }, 400);
+          return true;
+        }
+        const resolvedTrackerDir = path.resolve(trackerDataDir);
+        const derivedTargets = new Set([
+          path.resolve(qp),
+          path.join(resolvedTrackerDir, "project.queue.jsonl"),
+          path.join(resolvedTrackerDir, "queue.state.json"),
+          path.join(resolvedTrackerDir, "cursors.json"),
+        ]);
+        const removed = [];
+        for (const target of derivedTargets) {
+          const resolvedTarget = path.resolve(target);
+          if (!resolvedTarget.startsWith(`${resolvedTrackerDir}${path.sep}`)) {
+            throw new Error("Refusing to clear data outside the tracker directory");
+          }
+          if (fs.existsSync(resolvedTarget)) {
+            fs.rmSync(resolvedTarget, { force: true });
+            removed.push(path.basename(resolvedTarget));
+          }
+        }
+        usageAggregateResponseCache.clear();
+        json(res, { ok: true, removed });
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || "Unable to clear local data" }, 500);
+      }
+      return true;
+    }
     // --- discover known local/WSL agent data roots without reading their contents ---
     if (p === "/functions/tokentracker-detect-data-directories") {
       const method = String(req.method || "GET").toUpperCase();
@@ -7594,10 +7988,20 @@ function createLocalApiHandler({
 
     // --- usage-monthly (stub for trend view) ---
     if (p === "/functions/tokentracker-usage-monthly") {
-      const from = url.searchParams.get("from") || "";
-      const to = url.searchParams.get("to") || "";
+      const requestedFrom = url.searchParams.get("from") || "";
+      const requestedTo = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
       const { rows, scope, excludedSources } = scopedQueueRows(qp, url);
+      const availableDays = rows
+        .map((row) => rowDayKey(row, timeZoneContext))
+        .filter((day) => /^\d{4}-\d{2}-\d{2}$/u.test(String(day || "")))
+        .sort();
+      const availableFrom = availableDays[0] || requestedTo || "";
+      const availableTo = availableDays.at(-1) || requestedTo || availableFrom;
+      const from = requestedFrom && requestedFrom > availableFrom
+        ? requestedFrom
+        : availableFrom;
+      const to = requestedTo || availableTo;
       const byMonth = new Map();
       for (const row of rows) {
         if (!row.hour_start) continue;

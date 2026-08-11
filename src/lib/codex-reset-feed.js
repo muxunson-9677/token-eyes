@@ -93,6 +93,18 @@ function validateAnnouncement(item, { nowMs }) {
   }
   assertBoundedText(item.title, "announcement title", 80);
   assertBoundedText(item.summary, "announcement summary", 240);
+  if (
+    item.reset_kind !== undefined
+    && !["hard", "banked", "mixed", "unknown"].includes(item.reset_kind)
+  ) {
+    throw new TypeError("announcement reset kind is unsupported");
+  }
+  if (
+    item.reset_scope !== undefined
+    && !["all_paid_users", "all_codex_work_users", "unknown"].includes(item.reset_scope)
+  ) {
+    throw new TypeError("announcement reset scope is unsupported");
+  }
   assertOfficialOpenAiUrl(item.official_url, "official_url");
 
   const sourceUrl = parseHttpsUrl(item.source_url, "source_url");

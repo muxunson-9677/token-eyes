@@ -11,6 +11,14 @@ const repoRoot = path.resolve(__dirname, "..");
 const config = JSON.parse(fs.readFileSync(path.join(repoRoot, "src-tauri", "tauri.conf.json"), "utf8"));
 const installerPath = path.join(repoRoot, "src-tauri", "target", "release", "bundle", "nsis", `Token Eyes_${config.version}_x64-setup.exe`);
 
+test("Tauri bundles the runtime matching the app version", () => {
+  const expectedRuntimeResource = `EmbeddedServer-${config.version}/**/*`;
+  assert.ok(
+    config.bundle.resources.includes(expectedRuntimeResource),
+    `tauri.conf.json must bundle ${expectedRuntimeResource}`,
+  );
+});
+
 function findFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -31,6 +39,10 @@ function run(command, args, options = {}) {
     child.once("error", reject);
     child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`${path.basename(command)} exited ${code}: ${stderr}`)));
   });
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function requestLocalAuth(port) {
@@ -64,13 +76,33 @@ async function waitForLocalAuth(port, child) {
 async function stopRuntimeProcesses(runtimeDir) {
   const script = [
     "$runtimeDir = [Environment]::GetEnvironmentVariable('TOKEN_EYES_SMOKE_RUNTIME_DIR')",
-    "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |",
-    "  Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($runtimeDir, [System.StringComparison]::OrdinalIgnoreCase) } |",
-    "  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+    "$deadline = [DateTime]::UtcNow.AddSeconds(10)",
+    "do {",
+    "  $processes = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |",
+    "    Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($runtimeDir, [System.StringComparison]::OrdinalIgnoreCase) })",
+    "  $processes | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+    "  if ($processes.Count -gt 0) { Start-Sleep -Milliseconds 100 }",
+    "} while ($processes.Count -gt 0 -and [DateTime]::UtcNow -lt $deadline)",
+    "if ($processes.Count -gt 0) { throw \"installed runtime processes did not exit\" }",
   ].join("\n");
   await run("powershell.exe", ["-NoProfile", "-Command", script], {
     env: { ...process.env, TOKEN_EYES_SMOKE_RUNTIME_DIR: runtimeDir },
   });
+}
+
+async function removeInstallRoot(installRoot) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      fs.rmSync(installRoot, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!error || !["EBUSY", "EPERM", "ENOTEMPTY"].includes(error.code)) throw error;
+      await delay(250);
+    }
+  }
+  throw lastError;
 }
 
 test("Windows NSIS installer deploys and starts the versioned bundled runtime", async (t) => {
@@ -104,7 +136,7 @@ test("Windows NSIS installer deploys and starts the versioned bundled runtime", 
   child.stderr.on("data", (chunk) => { stderr += chunk; });
   t.after(async () => {
     await stopRuntimeProcesses(runtimeDir);
-    fs.rmSync(installRoot, { recursive: true, force: true, maxRetries: 30, retryDelay: 250 });
+    await removeInstallRoot(installRoot);
   });
 
   const response = await waitForLocalAuth(port, child).catch((error) => { throw new Error(`${error.message}\nInstalled backend stderr:\n${stderr}`); });

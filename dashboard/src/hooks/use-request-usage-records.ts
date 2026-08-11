@@ -170,24 +170,31 @@ export function useRequestUsageRecords({
     return `tokentracker.requestUsageRecords.${cacheKey}.${host}.${from}.${to}.${tzKey}.${filterCacheKey}.${visibleKey}.${limit}.p${page}.s${pageSize}`;
   }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, filterCacheKey, visibleKey, limit, page, pageSize]);
 
-  const readCache = useCallback((): { records: UsageRecord[]; totals: MergedTotals } | null => {
+  const readCache = useCallback((): { records: UsageRecord[]; totals: MergedTotals; pageMeta: { page: number; totalPages: number; total: number } } | null => {
     if (!storageKey || typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem(storageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.records)) return null;
+      const cachedTotals = (parsed.totals || EMPTY_TOTALS) as MergedTotals;
+      const cachedTotal = safeNum(parsed.pageMeta?.total) || safeNum(cachedTotals.request_count) || parsed.records.length;
       return {
         records: parsed.records as UsageRecord[],
-        totals: (parsed.totals || EMPTY_TOTALS) as MergedTotals,
+        totals: cachedTotals,
+        pageMeta: {
+          page: safeNum(parsed.pageMeta?.page) || page,
+          totalPages: safeNum(parsed.pageMeta?.totalPages) || Math.max(1, Math.ceil(cachedTotal / pageSize)),
+          total: cachedTotal,
+        },
       };
     } catch {
       return null;
     }
-  }, [storageKey]);
+  }, [page, pageSize, storageKey]);
 
   const writeCache = useCallback(
-    (payload: { records: UsageRecord[]; totals: MergedTotals }) => {
+    (payload: { records: UsageRecord[]; totals: MergedTotals; pageMeta: { page: number; totalPages: number; total: number } }) => {
       if (!storageKey || typeof window === "undefined") return;
       try {
         window.localStorage.setItem(
@@ -296,7 +303,7 @@ export function useRequestUsageRecords({
       setPageMeta(extractedPageMeta);
       setSource(mockEnabled ? "mock" : "edge");
       setFetchedAt(new Date().toISOString());
-      if (cacheAllowed) writeCache({ records: allRecords, totals: mergedTotals });
+      if (cacheAllowed) writeCache({ records: allRecords, totals: mergedTotals, pageMeta: extractedPageMeta });
       else clearCache();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -305,6 +312,7 @@ export function useRequestUsageRecords({
         if (cached) {
           setRecords(cached.records);
           setTotals(cached.totals);
+          setPageMeta(cached.pageMeta);
           setSource("cache");
           setError(null);
         } else {
@@ -361,6 +369,7 @@ export function useRequestUsageRecords({
       if (cached) {
         setRecords(cached.records);
         setTotals(cached.totals);
+        setPageMeta(cached.pageMeta);
         setSource("cache");
       }
     }

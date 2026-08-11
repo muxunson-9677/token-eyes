@@ -70,4 +70,51 @@ describe("AppearanceSection", () => {
     );
     expect(screen.getByDisplayValue("7.31")).toBeInTheDocument();
   });
+
+  it("marks only the selected theme option as pressed", async () => {
+    render(<AppearanceSection />);
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("7.2")).toBeInTheDocument(),
+    );
+    const themeButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("aria-pressed"));
+    expect(themeButtons).toHaveLength(3);
+    expect(themeButtons.filter((button) => button.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+    expect(themeButtons.filter((button) => button.getAttribute("aria-pressed") === "false")).toHaveLength(2);
+  });
+
+  it("provides stable hooks for the reference-sized appearance controls", async () => {
+    const { container } = render(<AppearanceSection />);
+
+    await waitFor(() => expect(screen.getByDisplayValue("7.2")).toBeInTheDocument());
+    expect(container.querySelector(".tt-settings-theme-control")).toBeInTheDocument();
+    expect(container.querySelector(".tt-settings-language-select")).toBeInTheDocument();
+    expect(container.querySelector(".tt-settings-currency-select")).toBeInTheDocument();
+    expect(container.querySelector(".tt-settings-exchange-controls")).toBeInTheDocument();
+  });
+
+  it("renders a smaller icon for every second-level appearance setting", async () => {
+    const { container } = render(<AppearanceSection />);
+
+    await waitFor(() => expect(screen.getByDisplayValue("7.2")).toBeInTheDocument());
+    const rows = [...container.querySelectorAll(".tt-settings-row")];
+    expect(rows).toHaveLength(4);
+    expect(rows.map((row) => row.querySelector("[data-testid^='settings-row-icon-']")?.dataset.testid)).toEqual([
+      "settings-row-icon-theme",
+      "settings-row-icon-language",
+      "settings-row-icon-currency",
+      "settings-row-icon-exchange",
+    ]);
+  });
+
+  it("groups refresh and save together inside the exchange-rate controls", async () => {
+    const { container } = render(<AppearanceSection />);
+
+    await waitFor(() => expect(screen.getByDisplayValue("7.2")).toBeInTheDocument());
+    const actions = container.querySelector(".tt-settings-exchange-actions");
+    expect(actions).toBeInTheDocument();
+    expect(actions.querySelectorAll("button")).toHaveLength(2);
+  });
 });

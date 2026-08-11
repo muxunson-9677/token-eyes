@@ -1,0 +1,45 @@
+{
+  "viewport": {
+    "width": 1329,
+    "height": 912
+  },
+  "widgetClick": {
+    "pressedFrame": {
+      "classActive": true,
+      "transform": "matrix(0.988601, 0, 0, 0.988601, 0, 0.0559597)",
+      "animationName": "tt-widget-press-rebound"
+    },
+    "reboundFrame": {
+      "classActive": false,
+      "transform": "matrix(1, 0, 0, 1, 0, -1)",
+      "animationName": "none"
+    },
+    "settledFrame": {
+      "classActive": false,
+      "transform": "matrix(1, 0, 0, 1, 0, -1)",
+      "animationName": "none"
+    },
+    "fullCycleVisible": false
+  },
+  "providerOverlay": {
+    "before": {
+      "panelHeight": 405,
+      "lowerTop": 1076
+    },
+    "after": {
+      "panelHeight": 405,
+      "lowerTop": 1076,
+      "regionTop": 1059,
+      "regionBottom": 1537,
+      "position": "absolute",
+      "zIndex": "41",
+      "overlayCoversLowerGrid": true,
+      "insideViewportWidth": true
+    },
+    "panelHeightStable": true,
+    "lowerGridStable": true,
+    "absoluteOverlay": true
+  },
+  "noHorizontalOverflow": true,
+  "passed": false
+}

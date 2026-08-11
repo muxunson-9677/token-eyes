@@ -257,6 +257,26 @@ describe("useRequestUsageRecords", () => {
     expect(keys.some((key) => key.includes(".p2.s10"))).toBe(true);
   });
 
+  it("restores pagination metadata from cache while a refresh is unavailable", async () => {
+    getRequestUsageRecords.mockResolvedValueOnce({
+      records: [makeRecord("codex", "gpt-5", "2026-06-24T01:00:00.000Z")],
+      totals: makeTotals({ request_count: 33 }),
+      page: { page: 1, pageSize: 10, total: 33, total_pages: 4 },
+    });
+
+    const first = setup(["codex"], { page: 1, pageSize: 10 });
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    first.unmount();
+
+    getRequestUsageRecords.mockRejectedValueOnce(new Error("refresh unavailable"));
+    const cached = setup(["codex"], { page: 1, pageSize: 10 });
+
+    await waitFor(() => expect(cached.result.current.loading).toBe(false));
+    expect(cached.result.current.records).toHaveLength(1);
+    expect(cached.result.current.total).toBe(33);
+    expect(cached.result.current.totalPages).toBe(4);
+  });
+
   it("sets error when fetch fails", async () => {
     getRequestUsageRecords.mockRejectedValue(new Error("api down"));
 

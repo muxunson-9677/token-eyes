@@ -71,6 +71,15 @@ const dailyProps = {
 };
 
 describe("DataDetails projects tab (production component tree)", () => {
+  it("uses one permanently reserved scroll viewport for project disclosure", async () => {
+    render(<DataDetails {...dailyProps} projectEntries={[makeEntry()]} projectLimit={3} />);
+
+    await clickProjectsTab();
+
+    expect(screen.getByTestId("project-scroll-viewport")).toHaveClass("overflow-y-scroll");
+    expect(screen.getByTestId("project-usage-grid")).toHaveClass("tt-overview-project-grid--stable");
+  });
+
   beforeEach(() => {
     document.documentElement.classList.add("screenshot-capture");
   });
@@ -147,15 +156,16 @@ describe("DataDetails projects tab (production component tree)", () => {
 
     await clickProjectsTab();
 
-    // "No real project path" hint must appear
-    expect(screen.getByText(copy("dashboard.projects.no_path"))).toBeInTheDocument();
+    // Missing local path is omitted; the remote repository remains visible.
+    expect(screen.queryByText(copy("dashboard.projects.no_path"))).not.toBeInTheDocument();
 
     // Remote repo URL must appear somewhere as remote repo info
     expect(screen.getByText(/github\.com\/owner\/repo-only/)).toBeInTheDocument();
 
     // CRITICAL: the remote https:// URL must NOT appear in the local-path
-    // position. The path slot must show the "no path" hint, never the URL.
+    // position. No local-path slot is rendered for the missing value.
     const pathHolders = container.querySelectorAll('[data-slot="project-path"]');
+    expect(pathHolders).toHaveLength(0);
     pathHolders.forEach((el) => {
       expect(el.textContent).not.toContain("https://");
       expect(el.textContent).not.toContain("github.com");
@@ -254,8 +264,8 @@ describe("DataDetails projects tab (production component tree)", () => {
     expect(screen.getByText(/D:\\code\\priced/)).toBeInTheDocument();
     expect(screen.getByText(/\$5\.6700/)).toBeInTheDocument();
 
-    // Category 2: no path + remote repo
-    expect(screen.getByText(copy("dashboard.projects.no_path"))).toBeInTheDocument();
+    // Category 2: missing local path is hidden; remote repo remains visible.
+    expect(screen.queryByText(copy("dashboard.projects.no_path"))).not.toBeInTheDocument();
     expect(screen.getByText(/github\.com\/owner\/repo-no-path/)).toBeInTheDocument();
 
     // Category 3: unpriced (label visible, no real $0.0000)
@@ -264,5 +274,120 @@ describe("DataDetails projects tab (production component tree)", () => {
 
     // Real POSIX path appears too
     expect(screen.getByText(/\/Users\/dev\/unpriced/)).toBeInTheDocument();
+  });
+});
+
+describe("DataDetails daily rows", () => {
+  it("shows a plain empty state without an initialization or sync command card", () => {
+    const { container } = render(
+      <DataDetails
+        {...dailyProps}
+        dailyEmptyMessage="当前范围暂无活动数据，请先使用 AI CLI，然后点击刷新。"
+        dailyEmptyPrefix="本地服务已连接，请运行："
+        installSyncCmd="npx --yes tokentracker-cli init"
+        dailyEmptySuffix=""
+      />,
+    );
+
+    expect(screen.getByText("当前范围暂无活动数据，请先使用 AI CLI，然后点击刷新。")).toBeInTheDocument();
+    expect(container.querySelector("code")).toBeNull();
+    expect(container).not.toHaveTextContent("tokentracker-cli");
+  });
+
+  it("uses semantic icons for both daily and project view tabs", async () => {
+    render(<DataDetails {...dailyProps} />);
+
+    const dailyTab = screen.getByRole("tab", { name: copy("dashboard.daily.title") });
+    const projectsTab = screen.getByRole("tab", { name: copy("dashboard.projects.title") });
+    expect(dailyTab).toHaveClass(
+      "tt-analytics-focusable",
+      "tt-pressable",
+      "rounded-[var(--tt-control-radius)]",
+    );
+    expect(projectsTab).toHaveClass(
+      "tt-analytics-focusable",
+      "tt-pressable",
+      "rounded-[var(--tt-control-radius)]",
+    );
+    expect(dailyTab.querySelector("svg")).not.toBeNull();
+    expect(projectsTab.querySelector("svg")).not.toBeNull();
+  });
+
+  it("omits days with no recorded usage instead of rendering an all-placeholder row", () => {
+    const { container } = render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownColumns={[{ key: "day", label: "Date" }]}
+        dailyBreakdownRows={[
+          { day: "2026-07-24", total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 },
+          { day: "2026-07-25", total_tokens: 120, input_tokens: 100, output_tokens: 20, cached_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 1 },
+        ]}
+        renderDetailCell={(row, key) => String(row[key] ?? "")}
+      />,
+    );
+
+    expect(container.firstChild).toHaveClass("tt-surface-nested");
+    expect(container.firstChild).toHaveClass("h-full", "min-h-0");
+    expect(container.firstChild.firstElementChild).toHaveClass("flex", "h-full", "min-h-0", "flex-col");
+    expect(container.firstChild).not.toHaveClass("tt-surface");
+    expect(screen.queryByText("2026-07-24")).not.toBeInTheDocument();
+    expect(screen.getByText("2026-07-25")).toBeInTheDocument();
+  });
+
+  it("keeps the daily pagination bar visible and switches table pages", async () => {
+    const user = userEvent.setup();
+    const rows = Array.from({ length: 11 }, (_, index) => ({
+      day: `2026-08-${String(11 - index).padStart(2, "0")}`,
+      total_tokens: index + 1,
+    }));
+
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownColumns={[{ key: "day", label: "Date" }]}
+        dailyBreakdownRows={rows}
+        renderDetailCell={(row, key) => String(row[key] ?? "")}
+      />,
+    );
+
+    expect(screen.getByTestId("daily-pagination-total")).toHaveTextContent("11");
+    expect(screen.getByTestId("daily-pagination")).toHaveClass("tt-overview-pagination");
+    expect(screen.getByText("2026-08-11")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "2" }));
+
+    expect(screen.getByText("2026-08-01")).toBeInTheDocument();
+    expect(screen.queryByText("2026-08-11")).not.toBeInTheDocument();
+  });
+
+  it("restores the accepted daily summary, date range and yesterday comparison column", () => {
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownColumns={[
+          { key: "day", label: "日期" },
+          { key: "total_tokens", label: "总计" },
+          { key: "input_tokens", label: "输入" },
+          { key: "output_tokens", label: "输出" },
+          { key: "cached_input_tokens", label: "缓存" },
+          { key: "reasoning_output_tokens", label: "推理" },
+          { key: "conversation_count", label: "对话数" },
+        ]}
+        dailyBreakdownRows={[
+          { day: "2026-08-07", total_tokens: 200, input_tokens: 10, output_tokens: 20, cached_input_tokens: 150, reasoning_output_tokens: 20, conversation_count: 2 },
+          { day: "2026-08-06", total_tokens: 100, input_tokens: 10, output_tokens: 10, cached_input_tokens: 70, reasoning_output_tokens: 10, conversation_count: 1 },
+        ]}
+        renderDetailCell={(row, key) => String(row[key] ?? "")}
+      />,
+    );
+
+    expect(screen.getByTestId("daily-summary-peak")).toHaveTextContent("200");
+    expect(screen.getByTestId("daily-summary-average")).toHaveTextContent("150");
+    expect(screen.getByTestId("daily-summary-active-days")).toHaveTextContent("2");
+    expect(screen.getByTestId("daily-summary-peak").parentElement).toHaveClass("ml-auto");
+    expect(screen.getByTestId("daily-date-range")).toHaveTextContent("2026-08-06");
+    expect(screen.getByTestId("daily-date-range")).toHaveTextContent("2026-08-07");
+    expect(screen.getByRole("columnheader", { name: "较昨日" })).toBeInTheDocument();
+    expect(screen.getByTestId("daily-change-2026-08-07")).toHaveTextContent("100.0%");
   });
 });

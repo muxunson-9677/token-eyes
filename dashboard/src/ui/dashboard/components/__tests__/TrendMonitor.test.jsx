@@ -1,15 +1,18 @@
 import React from "react";
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 // The zoom modal pulls in use-trend-data (a .ts hook imported with a .js
 // specifier) which vitest's resolver can't follow the way the Vite build does.
 // The small-card tests never open the modal, so stub it out.
-vi.mock("../TrendMonitorZoomModal", () => ({ TrendMonitorZoomModal: () => null }));
+vi.mock("../TrendMonitorZoomModal", () => ({
+  TrendMonitorZoomModal: () => <div data-testid="trend-zoom-modal" />,
+}));
 
 import {
   TrendMonitor,
   computeInterpolatedSeries,
+  computeMovingAverageSeries,
   getTrendMonitorScale,
 } from "../TrendMonitor.jsx";
 
@@ -24,7 +27,40 @@ describe("getTrendMonitorScale", () => {
   });
 });
 
+describe("computeMovingAverageSeries", () => {
+  it("computes a trailing moving average without inventing future observations", () => {
+    expect(computeMovingAverageSeries([10, 20, 30, 40], 3)).toEqual([10, 15, 20, 30]);
+  });
+});
+
 describe("TrendMonitor", () => {
+  it("uses a semantic icon in the usage-trend heading", () => {
+    render(<TrendMonitor rows={[]} />);
+
+    expect(screen.getByTestId("trend-monitor-title").querySelector("svg")).not.toBeNull();
+  });
+
+  it("renders the reference daily-granularity control", () => {
+    render(<TrendMonitor rows={[]} />);
+
+    expect(screen.getByTestId("trend-granularity")).toHaveTextContent("天");
+  });
+
+  it("opens the real granularity picker when the granularity control is clicked", () => {
+    render(<TrendMonitor rows={[]} zoomConfig={{ baseUrl: "http://localhost" }} />);
+
+    const control = screen.getByTestId("trend-granularity");
+    expect(control.tagName).toBe("BUTTON");
+    fireEvent.click(control);
+    expect(screen.getByTestId("trend-zoom-modal")).toBeInTheDocument();
+  });
+
+  it("renders the reference chart y-axis from the real scale", () => {
+    render(<TrendMonitor rows={[{ billable_total_tokens: 100 }, { billable_total_tokens: 200 }]} />);
+    expect(screen.getByTestId("trend-y-axis").children).toHaveLength(6);
+    expect(screen.getByTestId("trend-y-axis")).toHaveTextContent("200");
+  });
+
   it("keeps normal bars visible when a single day is an outlier", () => {
     const rows = [80, 90, 95, 110, 120, 140, 10000].map((value) => ({
       billable_total_tokens: value,
@@ -35,11 +71,28 @@ describe("TrendMonitor", () => {
     );
     const bars = Array.from(container.querySelectorAll('[data-trend-bar="true"]'));
 
+    expect(container.firstChild).toHaveClass("tt-surface");
+    expect(container.firstChild).not.toHaveClass("tt-surface-nested");
+    expect(screen.getByTestId("trend-moving-average-line")).toBeInTheDocument();
     expect(bars).toHaveLength(rows.length);
     expect(parseFloat(bars[0].parentElement?.style.height ?? "")).toBeGreaterThan(30);
     expect(parseFloat(bars.at(-1)?.parentElement?.style.height ?? "")).toBe(100);
     expect(bars[0].parentElement?.className).toContain("absolute");
     expect(bars[0].parentElement?.parentElement?.className).toContain("self-stretch");
+  });
+
+  it("keeps dense daily bars alongside the moving-average line in the narrow overview column", () => {
+    const rows = Array.from({ length: 214 }, (_, index) => ({
+      billable_total_tokens: 100 + (index % 17) * 10,
+    }));
+
+    const { container } = render(
+      <TrendMonitor rows={rows} showTimeZoneLabel={false} />,
+    );
+
+    expect(screen.getByTestId("trend-bar-row")).toHaveClass("gap-0");
+    expect(container.querySelectorAll('[data-trend-bar="true"]')).toHaveLength(rows.length);
+    expect(screen.getByTestId("trend-moving-average-line")).toBeInTheDocument();
   });
 
   it("renders real-zero observations as flat baseline bars, not interpolated", () => {
@@ -58,7 +111,7 @@ describe("TrendMonitor", () => {
     expect(bars[1].parentElement?.style.height).toBe("2px");
   });
 
-  it("renders future bars at faint preview opacity with interpolated heights", () => {
+  it("does not render a speculative future bar as observed usage", () => {
     const rows = [
       { billable_total_tokens: 100 },
       { billable_total_tokens: 100 },
@@ -68,10 +121,8 @@ describe("TrendMonitor", () => {
       <TrendMonitor rows={rows} showTimeZoneLabel={false} />,
     );
     const bars = Array.from(container.querySelectorAll('[data-trend-bar="true"]'));
-    const previewBar = bars.at(-1);
-    expect(previewBar?.style.opacity).toBe("0.35");
-    // Predicted heights are clipped to the y-axis max and rendered as a percentage.
-    expect(previewBar?.parentElement?.style.height).toMatch(/%$/);
+    expect(bars).toHaveLength(2);
+    expect(container.textContent).not.toContain("Predicted");
   });
 
   it("renders X-axis tick labels only in zoom mode (small card unchanged)", () => {
@@ -94,12 +145,13 @@ describe("TrendMonitor", () => {
     const rows = [{ billable_total_tokens: 100 }];
 
     const without = render(<TrendMonitor rows={rows} showTimeZoneLabel={false} />);
-    expect(without.queryByRole("button")).toBeNull();
+    expect(without.queryByRole("button", { name: /展开全屏|open/i })).toBeNull();
 
     const withCfg = render(
       <TrendMonitor rows={rows} zoomConfig={{ baseUrl: "http://localhost" }} showTimeZoneLabel={false} />,
     );
-    expect(withCfg.queryByRole("button")).not.toBeNull();
+    expect(withCfg.container.querySelector(".lucide-maximize-2")?.closest("button"))
+      .toHaveClass("tt-analytics-focusable");
   });
 });
 

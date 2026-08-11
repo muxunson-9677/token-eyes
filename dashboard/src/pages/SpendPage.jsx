@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Activity, BarChart3, ListFilter } from "lucide-react";
 import {
   getSpendRecords,
@@ -14,6 +15,7 @@ import { computeRangeFromKey, getCostMonthRanges, getMonthComparisonRanges } fro
 import { getBrowserTimeZone, getBrowserTimeZoneOffsetMinutes } from "../lib/timezone";
 import { normalizeAccessToken } from "../lib/auth-token";
 import { DASHBOARD_AGENTS } from "../lib/agent-adapters-dashboard";
+import { getMockNow } from "../lib/mock-data";
 import { RequestUsageLog } from "../ui/dashboard/components/RequestUsageLog.jsx";
 import { ProviderUsageTable } from "../ui/dashboard/components/ProviderUsageTable.jsx";
 import { ModelUsageTable } from "../ui/dashboard/components/ModelUsageTable.jsx";
@@ -35,10 +37,11 @@ import {
 } from "../hooks/use-usage-filters";
 import { useUsageSummary } from "../hooks/use-usage-summary";
 import { useUsageFilterOptions } from "../hooks/use-usage-filter-options";
+import { useUsageDateBounds } from "../hooks/use-usage-date-bounds";
 import { useCostAccumulation } from "../hooks/use-cost-accumulation.js";
 import { useProviderApiBalances } from "../hooks/use-provider-api-balances.js";
 import { useTokenServicePlans } from "../hooks/use-token-service-plans.js";
-import { CostAccumulation } from "../ui/dashboard/components/CostAccumulation.jsx";
+import { CostAccumulation, CostMonthPicker } from "../ui/dashboard/components/CostAccumulation.jsx";
 import { ObservabilityExportActions } from "../ui/dashboard/components/ObservabilityExportActions.jsx";
 
 // v2.0 IA refactor (work order 01): the old single SpendPage with a top-level
@@ -67,6 +70,16 @@ const SPEND_USAGE_TABS = [
 
 const HEAVY_USAGE_PANELS_DEFER_MS = 150;
 const REQUEST_LOG_IDLE_TIMEOUT_MS = 500;
+
+function getErrorMessage(error) {
+  const text = error instanceof Error
+    ? error.message.trim()
+    : String(error || "").trim();
+  if (/local cli not reachable|failed to fetch|networkerror/iu.test(text)) {
+    return copy("data_sources.error.local_service_unreachable");
+  }
+  return text || copy("spend.cost.error.unavailable");
+}
 
 function useDeferredHeavyUsagePanels(enabled) {
   const [ready, setReady] = useState(false);
@@ -138,26 +151,27 @@ function SpendUsagePageInner({
   publicMode = false,
   publicToken = null,
 }) {
+  const navigate = useNavigate();
   const [financialState, setFinancialState] = useState({
     scopeKey: null,
     totals: null,
-    lastUpdatedAt: null,
+    lastSuccessfulAt: null,
+    error: null,
+    stale: false,
+    baselineUnavailable: false,
+    loading: false,
   });
   const financialRequestIdRef = useRef(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const initialIntervalLoaded = useRef(false);
 
-  // Usage statistics must reflect every locally collected provider. Token-plan
-  // card visibility is a layout preference and must never alter token totals.
+  const { visibleOrdered } = useLimitsDisplayPrefs();
   const visibleProviderIds = useMemo(
-    () => normalizeVisibleProviderIds(DASHBOARD_AGENTS.map((agent) => agent.queueSource)),
-    [],
+    () => normalizeVisibleProviderIds(visibleOrdered),
+    [visibleOrdered],
   );
-  const heavyUsagePanelsReady = useDeferredHeavyUsagePanels(visibleProviderIds.length > 0);
 
   // Ticket-02: filter state from UsageFiltersContext
   const { state: filterState, refreshRevision, requestRefresh } = useUsageFilters();
-  const tokenServices = useTokenServicePlans(refreshRevision);
   const effectiveUsageSources = useMemo(
     () => resolveEffectiveUsageSources({
       sources: filterState.sources,
@@ -166,14 +180,11 @@ function SpendUsagePageInner({
     }),
     [filterState.sources, filterState.agentIds, visibleProviderIds],
   );
-  const costSources = useMemo(
-    () => {
-      const hasExplicitProviderScope = (filterState.agentIds?.length || 0) > 0
-        || (filterState.sources?.length || 0) > 0;
-      return hasExplicitProviderScope ? effectiveUsageSources : null;
-    },
-    [effectiveUsageSources, filterState.agentIds, filterState.sources],
-  );
+  const costSources = useMemo(() => {
+    const hasExplicitProviderScope = (filterState.agentIds?.length || 0) > 0
+      || (filterState.sources?.length || 0) > 0;
+    return hasExplicitProviderScope ? effectiveUsageSources : null;
+  }, [effectiveUsageSources, filterState.agentIds, filterState.sources]);
   const {
     setRefreshInterval: dispatchRefreshInterval,
     setAgentIds: dispatchAgentIds,
@@ -186,9 +197,6 @@ function SpendUsagePageInner({
     if (tab === "requests") setRequestLogForced(true);
     setActiveUsageTab(tab);
   }, []);
-  const requestLogFetchReady = useDeferredRequestLogFetch(
-    heavyUsagePanelsReady && activeUsageTab === "requests",
-  ) || requestLogForced;
   const selectedUsageAgent = useMemo(() => {
     const selectedAgentId = filterState.agentIds?.length === 1 ? filterState.agentIds[0] : null;
     if (!selectedAgentId) return null;
@@ -210,17 +218,22 @@ function SpendUsagePageInner({
   // Timezone context
   const timeZone = useMemo(() => getBrowserTimeZone() || "UTC", []);
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
+  const usageDateBounds = useUsageDateBounds({ timeZone, tzOffsetMinutes });
+  const mockNow = useMemo(() => getMockNow(), []);
   const financialScopeKey = useMemo(
     () => JSON.stringify([timeZone, tzOffsetMinutes, costSources]),
     [timeZone, tzOffsetMinutes, costSources],
   );
-  const totals = financialState.scopeKey === financialScopeKey
-    ? financialState.totals
-    : null;
-  const lastUpdatedAt = financialState.scopeKey === financialScopeKey
-    ? financialState.lastUpdatedAt
-    : null;
-
+  const scopedFinancialState = financialState.scopeKey === financialScopeKey
+    ? financialState
+    : {
+      totals: null,
+      lastSuccessfulAt: null,
+      error: null,
+      stale: false,
+      baselineUnavailable: false,
+      loading: false,
+    };
   // Compute from/to based on filter time range (Ticket-02 keys)
   const range = useMemo(() => {
     if (filterState.timeRange === "custom" && filterState.from && filterState.to) {
@@ -229,8 +242,18 @@ function SpendUsagePageInner({
     return computeRangeFromKey(filterState.timeRange, {
       timeZone,
       offsetMinutes: tzOffsetMinutes,
+      now: mockNow || undefined,
+      availableFrom: usageDateBounds.from,
     });
-  }, [filterState.timeRange, filterState.from, filterState.to, timeZone, tzOffsetMinutes]);
+  }, [
+    filterState.timeRange,
+    filterState.from,
+    filterState.to,
+    timeZone,
+    tzOffsetMinutes,
+    mockNow,
+    usageDateBounds.from,
+  ]);
 
   const { from, to } = range;
 
@@ -264,7 +287,14 @@ function SpendUsagePageInner({
   }, [visibleProviderIds, filterState.agentIds, filterState.sources, filterState.models]);
 
   // Ticket-02: usage summary + filter options
-  const { summary, loading: summaryLoading, error: summaryError } = useUsageSummary({
+  const {
+    summary,
+    source: summarySource,
+    loading: summaryLoading,
+    error: summaryError,
+    fetchedAt: summaryFetchedAt,
+  } = useUsageSummary({
+    enabled: !usageDateBounds.loading,
     baseUrl,
     accessToken,
     guestAllowed,
@@ -273,38 +303,79 @@ function SpendUsagePageInner({
     cacheKey,
     timeZone,
     tzOffsetMinutes,
+    allowedSources: visibleProviderIds,
   });
+  const [primaryUsageBootstrapped, setPrimaryUsageBootstrapped] = useState(false);
+  const [initialTrendSettled, setInitialTrendSettled] = useState(false);
+  const handleInitialTrendSettled = useCallback(() => {
+    setInitialTrendSettled(true);
+  }, []);
+  useEffect(() => {
+    if (!summaryLoading && (summary || summaryError)) {
+      setPrimaryUsageBootstrapped(true);
+    }
+  }, [summary, summaryError, summaryLoading]);
+  const primaryUsagePanelsEnabled = primaryUsageBootstrapped && visibleProviderIds.length > 0;
+  const secondaryUsageEnabled = primaryUsagePanelsEnabled && initialTrendSettled;
   const { sources: sourceOptions, modelsBySource } = useUsageFilterOptions({
+    enabled: secondaryUsageEnabled,
     baseUrl,
     accessToken,
     guestAllowed,
     cacheKey,
     timeZone,
     tzOffsetMinutes,
+    allowedSources: visibleProviderIds,
   });
+  const tokenServices = useTokenServicePlans(refreshRevision, {
+    enabled: secondaryUsageEnabled,
+  });
+  const heavyUsagePanelsReady = useDeferredHeavyUsagePanels(
+    primaryUsagePanelsEnabled,
+  );
+  const requestLogFetchReady = useDeferredRequestLogFetch(
+    heavyUsagePanelsReady && activeUsageTab === "requests",
+  ) || requestLogForced;
 
-  // The financial cards use adjacent natural months in the browser timezone.
-  // Agent/provider source filters still apply, while the Token trend's rolling
-  // date range does not redefine a card explicitly labelled "本月".
-  const fetchTotals = useCallback(async () => {
+  const fetchFinancialSummary = useCallback(async () => {
     const requestId = financialRequestIdRef.current + 1;
     financialRequestIdRef.current = requestId;
 
     if (costSources?.length === 0) {
-      setFinancialState({ scopeKey: financialScopeKey, totals: null, lastUpdatedAt: null });
+      setFinancialState({
+        scopeKey: financialScopeKey,
+        totals: null,
+        lastSuccessfulAt: null,
+        error: null,
+        stale: false,
+        baselineUnavailable: false,
+        loading: false,
+      });
       return;
     }
+
+    setFinancialState((previous) => previous.scopeKey === financialScopeKey
+      ? { ...previous, loading: true }
+      : {
+        scopeKey: financialScopeKey,
+        totals: null,
+        lastSuccessfulAt: null,
+        error: null,
+        stale: false,
+        baselineUnavailable: false,
+        loading: true,
+      });
 
     const monthRanges = getMonthComparisonRanges({
       timeZone,
       offsetMinutes: tzOffsetMinutes,
+      now: mockNow || undefined,
     });
     const requestMonth = (monthRange) => getSpendRecords({
       from: monthRange.from,
       to: monthRange.to,
       ...(costSources ? { sources: costSources } : {}),
     });
-
     const [currentResult, previousResult] = await Promise.allSettled([
       requestMonth(monthRanges.current),
       requestMonth(monthRanges.previous),
@@ -312,37 +383,68 @@ function SpendUsagePageInner({
 
     if (requestId !== financialRequestIdRef.current) return;
 
-    if (currentResult.status === "fulfilled") {
-      const currentTotals = currentResult.value?.totals || null;
-      const previousTotals = previousResult.status === "fulfilled"
-        ? previousResult.value?.totals
-        : null;
-      setFinancialState({
-        scopeKey: financialScopeKey,
-        totals: currentTotals ? {
-          ...currentTotals,
-          previous_api_usd: previousTotals?.api_usd ?? null,
-          previous_api_cny: previousTotals?.api_cny ?? null,
-          previous_subscription_usd: previousTotals?.subscription_usd ?? null,
-          previous_subscription_cny: previousTotals?.subscription_cny ?? null,
-          previous_combined_usd: previousTotals?.combined_usd ?? null,
-          previous_combined_cny: previousTotals?.combined_cny ?? null,
-        } : null,
-        lastUpdatedAt: new Date(),
+    const currentTotals = currentResult.status === "fulfilled"
+      ? currentResult.value?.totals
+      : null;
+    if (!currentTotals) {
+      const failure = currentResult.status === "rejected"
+        ? currentResult.reason
+        : copy("spend.cost.error.unavailable");
+      setFinancialState((previous) => {
+        const previousTotals = previous.scopeKey === financialScopeKey
+          ? previous.totals
+          : null;
+        return {
+          scopeKey: financialScopeKey,
+          totals: previousTotals,
+          lastSuccessfulAt: previous.scopeKey === financialScopeKey
+            ? previous.lastSuccessfulAt
+            : null,
+          error: getErrorMessage(failure),
+          stale: Boolean(previousTotals),
+          baselineUnavailable: false,
+          loading: false,
+        };
       });
-    } else {
-      // Totals are optional for the usage page; swallow the error so a
-      // transient backend hiccup doesn't crash the stats panel below.
-      console.error("[SpendUsagePage] Failed to load current-month totals:", currentResult.reason);
+      return;
     }
-    if (previousResult.status === "rejected") {
-      console.error("[SpendUsagePage] Failed to load previous-month totals:", previousResult.reason);
-    }
-  }, [financialScopeKey, timeZone, tzOffsetMinutes, costSources]);
+
+    const previousTotals = previousResult.status === "fulfilled"
+      ? previousResult.value?.totals
+      : null;
+    setFinancialState({
+      scopeKey: financialScopeKey,
+      totals: {
+        ...currentTotals,
+        previous_api_usd: previousTotals?.api_usd ?? null,
+        previous_api_cny: previousTotals?.api_cny ?? null,
+        previous_subscription_usd: previousTotals?.subscription_usd ?? null,
+        previous_subscription_cny: previousTotals?.subscription_cny ?? null,
+        previous_combined_usd: previousTotals?.combined_usd ?? null,
+        previous_combined_cny: previousTotals?.combined_cny ?? null,
+      },
+      lastSuccessfulAt: new Date().toISOString(),
+      error: previousResult.status === "rejected"
+        ? getErrorMessage(previousResult.reason)
+        : null,
+      stale: false,
+      baselineUnavailable: previousResult.status === "rejected" || !previousTotals,
+      loading: false,
+    });
+  }, [costSources, financialScopeKey, mockNow, timeZone, tzOffsetMinutes]);
 
   useEffect(() => {
-    fetchTotals();
-  }, [fetchTotals]);
+    if (visibleProviderIds.length === 0) return;
+    if (!primaryUsageBootstrapped || !initialTrendSettled) return;
+    fetchFinancialSummary();
+  }, [
+    fetchFinancialSummary,
+    initialTrendSettled,
+    primaryUsageBootstrapped,
+    refreshRevision,
+    visibleProviderIds.length,
+  ]);
+
 
   // Ticket-02: load saved refresh interval from local settings on mount
   useEffect(() => {
@@ -373,12 +475,7 @@ function SpendUsagePageInner({
     });
   }, [filterState.refreshInterval]);
 
-  // Ticket-05: refresh totals on revision change
-  useEffect(() => {
-    if (refreshRevision === 0) return;
-    setIsRefreshing(true);
-    fetchTotals().finally(() => setIsRefreshing(false));
-  }, [refreshRevision, fetchTotals]);
+
 
   // Ticket-02: auto-refresh based on filterState.refreshInterval
   useEffect(() => {
@@ -394,7 +491,7 @@ function SpendUsagePageInner({
   };
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
+    <div className="tt-spend-usage-detail-scope flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -414,8 +511,8 @@ function SpendUsagePageInner({
             sourceOptions={sourceOptions}
             modelsBySource={modelsBySource}
             onManualRefresh={handleManualRefresh}
-            isRefreshing={isRefreshing}
-            lastUpdatedAt={lastUpdatedAt ? lastUpdatedAt.toISOString() : null}
+            isRefreshing={(summaryLoading && primaryUsageBootstrapped) || scopedFinancialState.loading}
+            lastUpdatedAt={summaryFetchedAt ? new Date(summaryFetchedAt).toISOString() : null}
             timeZone={timeZone}
             offsetMinutes={tzOffsetMinutes}
             visibleProviderIds={visibleProviderIds}
@@ -432,10 +529,18 @@ function SpendUsagePageInner({
               {/* Ticket-02: Stats Panel */}
               <UsageStatsPanel
                 summary={summary}
-                costSummary={totals}
+                costSummary={scopedFinancialState.totals}
+                costSummaryError={scopedFinancialState.error}
+                costSummaryStale={scopedFinancialState.stale}
+                costSummaryBaselineUnavailable={scopedFinancialState.baselineUnavailable}
+                costLastSuccessfulAt={scopedFinancialState.lastSuccessfulAt}
+                onRetryCostSummary={fetchFinancialSummary}
                 selectedAgent={selectedUsageAgent}
                 loading={summaryLoading}
                 error={summaryError}
+                source={summarySource}
+                fetchedAt={summaryFetchedAt}
+                onOpenDiagnostics={() => navigate("/settings/data")}
               />
 
               {heavyUsagePanelsReady && (
@@ -455,30 +560,33 @@ function SpendUsagePageInner({
                       timeZone={timeZone}
                       tzOffsetMinutes={tzOffsetMinutes}
                       allowedSources={visibleProviderIds}
+                      onSettled={handleInitialTrendSettled}
                       className="min-w-0"
                     />
                     <TokenServiceList
                       plans={tokenServices.plans}
-                      loading={tokenServices.loading}
+                      loading={!secondaryUsageEnabled || tokenServices.loading}
                       error={tokenServices.error}
                       className="min-w-0"
                     />
                   </div>
 
-                  <UsageDetailTabs
-                    activeTab={activeUsageTab}
-                    onTabChange={handleUsageTabChange}
-                    requestLogFetchReady={requestLogFetchReady}
-                    from={from}
-                    to={to}
-                    timeZone={timeZone}
-                    tzOffsetMinutes={tzOffsetMinutes}
-                    visibleProviderIds={visibleProviderIds}
-                    baseUrl={baseUrl}
-                    accessToken={accessToken}
-                    guestAllowed={guestAllowed}
-                    cacheKey={cacheKey}
-                  />
+                  {secondaryUsageEnabled ? (
+                    <UsageDetailTabs
+                      activeTab={activeUsageTab}
+                      onTabChange={handleUsageTabChange}
+                      requestLogFetchReady={requestLogFetchReady}
+                      from={from}
+                      to={to}
+                      timeZone={timeZone}
+                      tzOffsetMinutes={tzOffsetMinutes}
+                      visibleProviderIds={visibleProviderIds}
+                      baseUrl={baseUrl}
+                      accessToken={accessToken}
+                      guestAllowed={guestAllowed}
+                      cacheKey={cacheKey}
+                    />
+                  ) : null}
                 </>
               )}
             </>
@@ -561,6 +669,8 @@ function SpendCostPageInner({
     otherAiGroupCosts,
     loading: costLoading,
     error: costError,
+    costSummaryStale,
+    costLastSuccessfulAt,
     refresh: refreshCostAccumulation,
   } = costAccumulation;
 
@@ -644,7 +754,7 @@ function SpendCostPageInner({
   }, [requestRefresh, refreshCostAccumulation]);
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
+    <div className="tt-reference-route-spend-cost flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
       <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
         <div className="mx-auto w-full max-w-none px-4 sm:px-6">
           <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -656,6 +766,11 @@ function SpendCostPageInner({
                 {copy("spend.cost.page.subtitle")}
               </p>
             </div>
+            <CostMonthPicker
+              selectedMonth={selectedCostMonth}
+              currentMonth={currentCostMonth}
+              onChange={setSelectedCostMonth}
+            />
           </div>
 
           <CostAccumulation
@@ -667,8 +782,12 @@ function SpendCostPageInner({
             selectedMonth={selectedCostMonth}
             currentMonth={currentCostMonth}
             onSelectedMonthChange={setSelectedCostMonth}
+            showMonthPicker={false}
             loading={costLoading}
             error={costError}
+            costSummaryStale={costSummaryStale}
+            costLastSuccessfulAt={costLastSuccessfulAt}
+            onRetry={refreshCostAccumulation}
             providerApiBalances={providerApiBalances}
             providerApiRefreshing={providerApiRefreshing}
             providerApiRefreshingIds={providerApiRefreshingIds}
@@ -676,6 +795,7 @@ function SpendCostPageInner({
             providerApiLastUpdatedAt={providerApiLastUpdatedAt}
             onRefreshAllProviderApis={refreshAllProviderApis}
             onRefreshOneProviderApi={refreshOneProviderApi}
+            onRefreshTokenPackages={refreshCostAccumulation}
             subscriptionFormState={subscriptionFormState}
             subscriptionFormSaving={subscriptionFormSaving}
             subscriptionFormError={subscriptionFormError}
@@ -684,6 +804,7 @@ function SpendCostPageInner({
             onSaveSubscription={handleSaveSubscription}
             onDeleteSubscription={handleDeleteSubscription}
             onCancelSubscriptionForm={handleCancelSubscriptionForm}
+            sectionsInitiallyOpen={false}
           />
         </div>
       </main>
@@ -707,7 +828,7 @@ function UsageDetailTabs({
 }) {
   return (
     <section className="mb-6">
-      <div className="inline-flex rounded-lg bg-oai-gray-50 p-1 dark:bg-oai-gray-900" role="tablist" aria-label={copy("spend.usage.title")}>
+      <div className="tt-surface tt-usage-detail-tabbar inline-flex rounded-xl p-1" role="tablist" aria-label={copy("spend.usage.title")}>
         {SPEND_USAGE_TABS.map((tab) => {
           const Icon = tab.icon;
           const selected = activeTab === tab.id;
@@ -719,9 +840,9 @@ function UsageDetailTabs({
               aria-selected={selected}
               onClick={() => onTabChange(tab.id)}
               className={cn(
-                "inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors",
+                "inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors",
                 selected
-                  ? "bg-white text-oai-black shadow-sm dark:bg-oai-gray-800 dark:text-white"
+                  ? "tt-usage-detail-tab--active bg-white text-oai-black shadow-sm dark:bg-oai-gray-800 dark:text-white"
                   : "text-oai-gray-500 hover:text-oai-gray-900 dark:text-oai-gray-400 dark:hover:text-white",
               )}
             >
@@ -731,8 +852,11 @@ function UsageDetailTabs({
           );
         })}
       </div>
-      {activeTab === "requests" && (
-        <div role="tabpanel">
+      <div
+        role="tabpanel"
+        data-testid="usage-tabpanel-requests"
+        hidden={activeTab !== "requests"}
+      >
           <RequestUsageLog
             from={from}
             to={to}
@@ -745,10 +869,12 @@ function UsageDetailTabs({
             cacheKey={cacheKey}
             fetchEnabled={requestLogFetchReady}
           />
-        </div>
-      )}
-      {activeTab === "provider" && (
-        <div role="tabpanel">
+      </div>
+      <div
+        role="tabpanel"
+        data-testid="usage-tabpanel-provider"
+        hidden={activeTab !== "provider"}
+      >
           <ProviderUsageTable
             from={from}
             to={to}
@@ -760,10 +886,12 @@ function UsageDetailTabs({
             cacheKey={cacheKey}
             visibleProviderIds={visibleProviderIds}
           />
-        </div>
-      )}
-      {activeTab === "model" && (
-        <div role="tabpanel">
+      </div>
+      <div
+        role="tabpanel"
+        data-testid="usage-tabpanel-model"
+        hidden={activeTab !== "model"}
+      >
           <ModelUsageTable
             from={from}
             to={to}
@@ -775,8 +903,7 @@ function UsageDetailTabs({
             cacheKey={cacheKey}
             visibleProviderIds={visibleProviderIds}
           />
-        </div>
-      )}
+      </div>
     </section>
   );
 }

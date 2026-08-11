@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { getCostMonthRanges, getMonthComparisonRanges } from "./date-range";
+import { getCostMonthRanges, getMonthComparisonRanges, getRangeForPeriod } from "./date-range";
+
+describe("getRangeForPeriod", () => {
+  it("treats total as the complete local ledger instead of a rolling window", () => {
+    expect(getRangeForPeriod("total", {
+      now: new Date("2026-07-29T12:00:00+08:00"),
+      timeZone: "Asia/Shanghai",
+      availableFrom: "2026-03-16",
+    })).toEqual({ from: "2026-03-16", to: "2026-07-29" });
+  });
+});
 
 describe("getMonthComparisonRanges", () => {
   it("compares month-to-date with the same elapsed period last month", () => {

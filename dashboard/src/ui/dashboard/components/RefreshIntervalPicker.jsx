@@ -66,13 +66,13 @@ export function RefreshIntervalPicker({
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <div className="inline-flex h-8 items-center gap-0.5 rounded-full border border-oai-gray-300 bg-white pl-1 pr-2 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-gray-400 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800">
+      <div className="inline-flex h-10 items-center gap-0.5 rounded-full border border-oai-gray-300 bg-white pl-1 pr-2 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-gray-400 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800">
         <button
           type="button"
           onClick={handleIconClick}
           aria-label={copy("ticket02.refresh.manual_aria")}
           disabled={isRefreshing}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-oai-gray-500 transition-colors hover:text-oai-brand-500 disabled:opacity-50 dark:text-oai-gray-400 dark:hover:text-oai-brand-300"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full text-oai-gray-500 transition-colors hover:text-oai-brand-500 disabled:opacity-50 dark:text-oai-gray-400 dark:hover:text-oai-brand-300"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} aria-hidden="true" />
         </button>
@@ -81,7 +81,7 @@ export function RefreshIntervalPicker({
             <button
               type="button"
               aria-label={copy("ticket02.refresh.aria")}
-              className="inline-flex items-center gap-1 rounded-full px-1 py-0.5 text-xs font-medium text-oai-gray-700 transition-colors hover:text-oai-black dark:text-oai-gray-300 dark:hover:text-white"
+              className="inline-flex min-h-10 items-center gap-1 rounded-full px-2 text-xs font-medium text-oai-gray-700 transition-colors hover:text-oai-black dark:text-oai-gray-300 dark:hover:text-white"
             />
           }
         >

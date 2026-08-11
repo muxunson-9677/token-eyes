@@ -25,50 +25,81 @@ const projectUsagePath = path.join(
   "components",
   "ProjectUsagePanel.jsx",
 );
-const installStatusPath = path.join(
-  __dirname,
-  "..",
-  "dashboard",
-  "src",
-  "lib",
-  "install-status.js",
-);
 const spendPath = path.join(__dirname, "..", "dashboard", "src", "pages", "SpendPage.jsx");
 const sidebarPath = path.join(__dirname, "..", "dashboard", "src", "ui", "components", "Sidebar.jsx");
 const cardPath = path.join(__dirname, "..", "dashboard", "src", "ui", "components", "Card.jsx");
 const usageOverviewPath = path.join(__dirname, "..", "dashboard", "src", "ui", "dashboard", "components", "UsageOverview.jsx");
 const costAccumulationPath = path.join(__dirname, "..", "dashboard", "src", "ui", "dashboard", "components", "CostAccumulation.jsx");
+const appleGlassPath = path.join(__dirname, "..", "dashboard", "src", "ui", "foundation", "apple-glass.css");
+const dashboardSkeletonPath = path.join(__dirname, "..", "dashboard", "src", "components", "DashboardSkeleton.jsx");
+const usageStatsPath = path.join(
+  __dirname,
+  "..",
+  "dashboard",
+  "src",
+  "ui",
+  "dashboard",
+  "components",
+  "UsageStatsPanel.jsx",
+);
+const settingsPath = path.join(__dirname, "..", "dashboard", "src", "pages", "SettingsPage.jsx");
+const resetHistoryPath = path.join(__dirname, "..", "dashboard", "src", "pages", "ResetHistoryPage.tsx");
 
 function readFile(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-test("DashboardPage places TrendMonitor in left column (heatmap removed)", () => {
+test("DashboardPage keeps approved secondary analytics in the normal overview", () => {
   const src = readFile(viewPath);
-  const leftStart = src.indexOf("lg:col-span-4");
-  const rightStart = src.indexOf("lg:col-span-8", leftStart + 1);
-  assert.ok(leftStart !== -1, "expected left column markup");
-  assert.ok(rightStart !== -1, "expected right column markup");
+  const secondaryIndex = src.indexOf('data-testid="dashboard-secondary-context"');
+  const statsIndex = src.indexOf("<StatsPanel");
+  const trendIndex = src.indexOf("<TrendMonitor", statsIndex);
+  const detailGridIndex = src.indexOf('data-testid="dashboard-detail-grid"');
+  const donutIndex = src.indexOf("<ModelUsageDonut", detailGridIndex);
+  const detailsIndex = src.indexOf("<DataDetails", detailGridIndex);
 
-  const leftColumn = src.slice(leftStart, rightStart);
-  const trendIndex = leftColumn.indexOf("<TrendMonitor");
-  assert.ok(trendIndex !== -1, "expected TrendMonitor in left column");
-  // Heatmap block was removed in v2.0 — assert it no longer exists
-  assert.ok(
-    !src.includes("activityHeatmapBlock"),
-    "expected heatmap block to be removed from DashboardView",
-  );
+  assert.ok(secondaryIndex !== -1, "expected the compact secondary overview column");
+  assert.ok(statsIndex > secondaryIndex, "expected StatsPanel in the secondary overview column");
+  assert.ok(trendIndex > statsIndex, "expected the original compact TrendMonitor after StatsPanel");
+  assert.ok(detailGridIndex > trendIndex, "expected detail grid after TrendMonitor");
+  assert.ok(donutIndex > detailGridIndex, "expected ModelUsageDonut in the detail grid");
+  assert.ok(detailsIndex > donutIndex, "expected DataDetails beside ModelUsageDonut");
+  assert.ok(!src.includes("activityHeatmapBlock"), "expected heatmap block to remain removed");
 });
 
-test("DashboardPage right column contains UsageOverview", () => {
+test("DashboardPage normal workspace keeps UsageOverview and DataDetails in the wider column", () => {
   const src = readFile(viewPath);
-  const leftStart = src.indexOf("lg:col-span-4");
-  const rightStart = src.indexOf("lg:col-span-8", leftStart + 1);
-  assert.ok(leftStart !== -1, "expected left column markup");
-  assert.ok(rightStart !== -1, "expected right column markup");
+  const workspaceStart = src.indexOf('data-testid="dashboard-primary-workspace"');
+  const overviewIndex = src.indexOf("<UsageOverview", workspaceStart);
+  const detailsIndex = src.indexOf("<DataDetails", overviewIndex);
+  assert.ok(workspaceStart !== -1, "expected primary workspace markup");
+  assert.ok(src.slice(workspaceStart - 120, workspaceStart).includes("lg:col-span-8"), "expected eight-column primary workspace");
+  assert.ok(overviewIndex > workspaceStart, "expected UsageOverview in the primary workspace");
+  assert.ok(detailsIndex > overviewIndex, "expected DataDetails after UsageOverview");
+});
 
-  const rightColumn = src.slice(rightStart);
-  assert.ok(rightColumn.includes("<UsageOverview"), "expected UsageOverview in right column");
+test("Dashboard refreshes primary data before secondary analytics without failing the whole overview", () => {
+  const src = readFile(containerPath);
+  const refreshStart = src.indexOf("const refreshAll = useCallback");
+  const refreshEnd = src.indexOf("const handleUsageRefresh", refreshStart);
+  const refreshBlock = src.slice(refreshStart, refreshEnd);
+  const primaryRefresh = refreshBlock.indexOf("await Promise.all([refreshUsage({ background }), refreshUsageLimits()])");
+  const secondaryRefresh = refreshBlock.indexOf("await Promise.allSettled([");
+
+  assert.ok(primaryRefresh !== -1, "expected primary usage and quota refresh first");
+  assert.ok(secondaryRefresh > primaryRefresh, "expected secondary analytics after the primary summary");
+  assert.ok(refreshBlock.includes("refreshTrend()"), "expected trend refresh");
+  assert.ok(refreshBlock.includes("refreshModelBreakdown()"), "expected model refresh");
+  assert.ok(refreshBlock.includes("refreshProjectUsage()"), "expected project refresh");
+  assert.ok(refreshBlock.includes("refreshDailyBreakdown({ background })"), "expected daily refresh");
+  assert.ok(!refreshBlock.includes("if (!screenshotMode)"), "expected normal mode to refresh secondary analytics");
+});
+
+test("Dashboard skeleton mirrors the restored two-column overview", () => {
+  const src = readFile(dashboardSkeletonPath);
+  assert.ok(src.includes("grid-cols-1"), "expected a responsive skeleton grid");
+  assert.ok(src.includes("lg:col-span-4"), "expected a secondary-column skeleton");
+  assert.ok(src.includes("lg:col-span-8"), "expected a primary-column skeleton");
 });
 
 test("ProjectUsagePanel lays out cards in responsive grid", () => {
@@ -98,7 +129,7 @@ test("ProjectUsagePanel does not render star values (stars removed)", () => {
 
 test("ProjectUsagePanel renders token and cost info", () => {
   const src = readFile(projectUsagePath);
-  assert.ok(src.includes("tokensCompact"), "expected project usage card to show tokens");
+  assert.ok(src.includes("formatCompactNumber(tokens"), "expected project usage card to show tokens");
   assert.ok(src.includes("costDisplay") || src.includes("cost_usd"), "expected project usage card to show cost");
   assert.ok(src.includes("pricing_coverage") || src.includes("pricingCoverage"), "expected project usage card to show pricing coverage");
   assert.ok(src.includes("project_path") || src.includes("projectPath"), "expected project usage card to show project path");
@@ -110,43 +141,12 @@ test("ProjectUsagePanel constrains identity text width", () => {
   assert.ok(src.includes("min-w-0"), "expected min width constraint for identity text");
 });
 
-test("DashboardPage wires install panel gating through helper", () => {
+test("DashboardPage does not restore the removed initialization prompt", () => {
   const containerSrc = readFile(containerPath);
-  const installStatusSrc = readFile(installStatusPath);
   const viewSrc = readFile(viewPath);
-  assert.ok(containerSrc.includes("shouldShowInstallCard"), "expected install status helper usage");
-  assert.ok(
-    containerSrc.includes("has_active_device_token"),
-    "expected snake_case install token field usage",
-  );
-  assert.ok(containerSrc.includes("hasActiveDeviceToken"), "expected camelCase fallback usage");
-  assert.ok(
-    containerSrc.includes("const shouldShowInstall =") &&
-      containerSrc.includes("shouldShowInstallCard({"),
-    "expected helper-based install gate assignment",
-  );
-  assert.ok(
-    installStatusSrc.includes("publicMode || screenshotMode"),
-    "expected helper to hide in public/screenshot mode",
-  );
-  assert.ok(
-    installStatusSrc.includes("if (forceInstall) return true"),
-    "expected helper to honor forceInstall",
-  );
-  assert.ok(installStatusSrc.includes("accessEnabled"), "expected helper to check accessEnabled");
-  assert.ok(
-    installStatusSrc.includes("!heatmapLoading"),
-    "expected helper to check heatmapLoading",
-  );
-  assert.ok(installStatusSrc.includes("activeDays === 0"), "expected helper to gate on activeDays");
-  assert.ok(
-    installStatusSrc.includes("!hasActiveDeviceToken"),
-    "expected helper to hide card for active device token",
-  );
-  assert.ok(
-    viewSrc.includes("shouldShowInstall ? ("),
-    "expected install panel to use shouldShowInstall",
-  );
+  assert.ok(!containerSrc.includes("shouldShowInstallCard"), "removed prompt must not be gated back in");
+  assert.ok(!containerSrc.includes("installSyncCommand"), "removed init command must stay out of the container");
+  assert.ok(!viewSrc.includes("shouldShowInstall ? ("), "removed prompt must stay out of the view");
 });
 
 test("DashboardPage removes heatmap range label", () => {
@@ -188,23 +188,20 @@ test("TrendMonitor root does not force full height", () => {
     ),
   );
   assert.ok(src.includes("export function TrendMonitor"), "expected TrendMonitor component");
-  const lines = src.split("\n");
-  const rootLine = lines.find((line) => line.includes('"rounded-xl border border-oai-gray-200'));
-  assert.ok(rootLine, "expected TrendMonitor root className line");
-  assert.ok(!rootLine.includes("h-full"), "expected TrendMonitor root to avoid h-full");
+  assert.ok(
+    src.includes('"tt-surface rounded-[var(--tt-card-radius)] p-5"'),
+    "expected TrendMonitor to use the shared surface without forcing full height",
+  );
+  assert.ok(
+    src.includes('isZoom && "flex h-full flex-col"'),
+    "expected full height to remain limited to the zoom presentation",
+  );
 });
 
-test("DashboardPage supports force_install preview", () => {
+test("DashboardPage does not expose the removed force_install preview", () => {
   const src = readFile(containerPath);
-  assert.ok(src.includes("force_install"), "expected force_install query param support");
-  assert.ok(
-    src.includes("isProductionHost"),
-    "expected force_install gated by production host check",
-  );
-  assert.ok(
-    src.includes("forceInstall"),
-    "expected forceInstall flag to influence install visibility",
-  );
+  assert.ok(!src.includes("force_install"), "removed initialization prompt must not have a preview backdoor");
+  assert.ok(!src.includes("forceInstall"), "removed initialization prompt must not be restorable by state");
 });
 
 test("overview does not duplicate the request log from usage statistics", () => {
@@ -221,15 +218,12 @@ test("usage trend expands beside the readable 17rem Token service column", () =>
   assert.ok(!src.includes("lg:grid-cols-[minmax(0,1fr)_13rem]"), "expected the cramped 13rem Token service column removed");
 });
 
-test("overview places a model usage donut directly below the trend card", () => {
+test("overview preserves approved analysis and dedicated next-step actions", () => {
   const src = readFile(viewPath);
-  const trendIndex = src.indexOf("<TrendMonitor");
-  const donutIndex = src.indexOf("<ModelUsageDonut", trendIndex);
-  const rightColumnIndex = src.indexOf("lg:col-span-8", trendIndex);
-
-  assert.ok(trendIndex !== -1, "expected usage trend");
-  assert.ok(donutIndex > trendIndex, "expected model donut after usage trend");
-  assert.ok(donutIndex < rightColumnIndex, "expected model donut to remain in the left column");
+  assert.ok(src.includes("onOpenUsageDetails"), "expected a dedicated usage-details action");
+  assert.ok(src.includes("onOpenCost"), "expected a dedicated cost-and-quota action");
+  assert.ok(src.includes("onOpenDataSources"), "expected a dedicated data-sources action");
+  assert.ok(src.includes("<DataDetails"), "expected approved detailed analysis on the overview");
 });
 
 test("workspace and cards expose the approved layered surface hierarchy", () => {
@@ -237,13 +231,15 @@ test("workspace and cards expose the approved layered surface hierarchy", () => 
   const cardSrc = readFile(cardPath);
   const overviewSrc = readFile(usageOverviewPath);
   const costSrc = readFile(costAccumulationPath);
+  const appleGlassSrc = readFile(appleGlassPath);
 
   assert.ok(sidebarSrc.includes("bg-oai-gray-100/80"), "expected a visible workspace wash");
-  assert.ok(sidebarSrc.includes("shadow-oai-lg"), "expected the main surface to float above the workspace");
-  assert.ok(cardSrc.includes("rounded-2xl"), "expected the shared card radius to be strengthened");
-  assert.ok(cardSrc.includes("shadow-oai-md"), "expected shared cards to have material depth");
+  assert.ok(sidebarSrc.includes("tt-main-work-surface"), "expected the main surface to float above the workspace");
+  assert.ok(cardSrc.includes("rounded-[var(--tt-card-radius)]"), "expected cards to use the shared radius");
+  assert.ok(cardSrc.includes('"tt-surface"'), "expected shared cards to use the glass surface");
+  assert.ok(appleGlassSrc.includes("box-shadow: var(--tt-surface-shadow)"), "expected glass surfaces to have material depth");
   assert.ok(overviewSrc.includes("ring-2 ring-oai-brand-200"), "expected provider selection to have a strong selected state");
-  assert.ok(costSrc.includes("shadow-oai-sm"), "expected cost cards to use the shared depth rhythm");
+  assert.ok(costSrc.includes("tt-surface-nested"), "expected cost cards to use the nested surface depth");
 });
 
 test("custom spend group cards wrap names and preserve readable responsive amount columns", () => {
@@ -266,4 +262,30 @@ test("cost page can exercise 1280, 1440, and 1920 content widths without a fixed
 
   assert.ok(costPage.includes('className="mx-auto w-full max-w-none px-4 sm:px-6"'));
   assert.ok(!costPage.includes('className="mx-auto max-w-5xl px-4 sm:px-6"'));
+});
+
+test("approved overview, usage, settings, diagnostics, and reset-history capabilities cannot be removed", () => {
+  const dashboardSrc = readFile(viewPath);
+  const usageSrc = readFile(usageStatsPath);
+  const settingsSrc = readFile(settingsPath);
+  const sidebarSrc = readFile(sidebarPath);
+  const resetHistorySrc = readFile(resetHistoryPath);
+
+  assert.ok(dashboardSrc.includes("<StatsPanel"), "expected overview secondary context");
+  assert.ok(dashboardSrc.includes("<DataDetails"), "expected overview data details");
+  assert.ok(usageSrc.includes('data-testid="usage-cost-summary"'), "expected usage cost summary");
+  assert.ok(usageSrc.includes('data-testid="monthly-cost-comparison"'), "expected monthly comparison");
+  assert.ok(settingsSrc.includes("<DataDirectoriesSection"), "expected data directories in general settings");
+  for (const component of [
+    "<AgentPricingSection",
+    "<TokenPlanSection",
+    "<ProviderApiConfigSection",
+    "<OtherAiSpendSection",
+  ]) {
+    assert.ok(settingsSrc.includes(component), `expected cost settings module ${component}`);
+  }
+  assert.ok(sidebarSrc.includes('to: "/settings/data"'), "expected settings data diagnostics item");
+  assert.ok(!sidebarSrc.includes('to: "/data-sources"'), "legacy data-sources route must not be a primary item");
+  assert.ok(resetHistorySrc.includes("triggerResetCelebrationPreview"), "expected reset effect preview");
+  assert.ok(resetHistorySrc.includes('data-testid="reset-history-source-index"'), "expected reset source index");
 });

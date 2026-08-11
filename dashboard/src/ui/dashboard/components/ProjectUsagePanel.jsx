@@ -1,252 +1,246 @@
 import React, { useMemo, useState } from "react";
+import { ChevronDown, Clock3, FolderOpen, FolderPlus, MessageSquareText } from "lucide-react";
 
 import { Select } from "../../components";
 import { copy } from "../../../lib/copy";
-import { formatCompactNumber, toDisplayNumber, toFiniteNumber } from "../../../lib/format";
+import { formatCompactNumber, toFiniteNumber } from "../../../lib/format";
 import { ProviderIcon } from "./ProviderIcon";
 
 const LIMIT_OPTIONS = [3, 6, 10];
+const PROJECT_CARD_COLORS = [
+  "var(--tt-project-accent-blue)",
+  "var(--tt-project-accent-green)",
+  "var(--tt-project-accent-purple)",
+  "var(--tt-project-accent-orange)",
+  "var(--tt-project-accent-pink)",
+];
 
 function resolveTokens(entry) {
-  if (!entry) return null;
-  const total = entry.total_tokens ?? null;
-  const billable = entry.billable_total_tokens ?? null;
-  const billableValue = toFiniteNumber(billable);
-  const totalValue = toFiniteNumber(total);
-  if (billableValue === 0 && totalValue != null && totalValue > 0) {
-    return total;
-  }
-  return billable ?? total ?? null;
+  const billable = toFiniteNumber(entry?.billable_total_tokens);
+  const total = toFiniteNumber(entry?.total_tokens);
+  return billable === 0 && total > 0 ? total : (billable ?? total ?? 0);
 }
 
-function formatCost(costUsd) {
-  if (costUsd == null || isNaN(costUsd)) return null;
-  return Number(costUsd).toFixed(4);
+function formatRelativeTime(value) {
+  if (!value) return null;
+  const diff = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(diff) || diff < 0) return null;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
-function formatRelativeTime(isoString) {
-  if (!isoString) return null;
-  try {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffSecs < 60) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 30) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  } catch {
-    return isoString;
+function normalizeUsageItems(items, fallbackIds = [], providerMap = {}) {
+  if (Array.isArray(items) && items.length > 0) {
+    return items.filter((item) => item?.id).map((item) => ({
+      id: item.id,
+      provider: item.provider || providerMap[item.id] || item.id,
+      tokens: toFiniteNumber(item.tokens),
+      percent: toFiniteNumber(item.percent),
+    }));
   }
+  return fallbackIds.map((id) => ({ id, provider: providerMap[id] || id, tokens: null, percent: null }));
+}
+
+function ProjectSparkline({ points, color }) {
+  const values = (Array.isArray(points) ? points : [])
+    .map(function mapPoint(point) { return toFiniteNumber(point?.tokens); })
+    .filter(function isValidPoint(value) { return value != null && value >= 0; });
+  if (values.length < 2) return null;
+  const maximum = Math.max(...values, 1);
+  const pointsValue = values.map((value, index) => {
+    const x = (index / Math.max(values.length - 1, 1)) * 100;
+    const y = 26 - ((value / maximum) * 21);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  return (
+    <svg data-testid="project-usage-sparkline" className="tt-overview-project-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-label={copy("dashboard.projects.usage_trend")}>
+      <path d="M0 27 H100" className="tt-overview-project-sparkline-base" />
+      <polyline points={pointsValue} fill="none" stroke={color} strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ProjectUsageHeader({ entries, limit, onLimitChange, onSelectFolder, showSummary = true }) {
+  const compactOptions = {
+    thousandSuffix: copy("shared.unit.thousand_abbrev"),
+    millionSuffix: copy("shared.unit.million_abbrev"),
+    billionSuffix: copy("shared.unit.billion_abbrev"),
+    decimals: 1,
+  };
+  const tokenTotal = entries.reduce((total, entry) => total + resolveTokens(entry), 0);
+  const costTotal = entries.reduce(function sumCost(total, entry) {
+    return total + (toFiniteNumber(entry?.cost_usd) ?? 0);
+  }, 0);
+  return (
+    <div className="tt-overview-project-header">
+      {typeof onSelectFolder === "function" ? (
+        <button type="button" className="tt-overview-project-folder-button" onClick={onSelectFolder}>
+          <FolderPlus aria-hidden="true" />
+          {copy("widgets.windows.projects.add_folder")}
+        </button>
+      ) : null}
+      {showSummary ? <div data-testid="project-usage-summary" className="tt-overview-project-summary">
+        <div><span>{copy("dashboard.projects.count")}</span><strong>{entries.length}</strong></div>
+        <div><span>{copy("dashboard.projects.total_tokens")}</span><strong>{formatCompactNumber(tokenTotal, compactOptions)}</strong></div>
+        <div><span>{copy("dashboard.projects.total_cost")}</span><strong>${costTotal.toFixed(2)}</strong></div>
+      </div> : null}
+      <Select
+        value={limit}
+        onValueChange={(value) => onLimitChange?.(value)}
+        options={LIMIT_OPTIONS.map((value) => ({
+          value,
+          label: { 3: copy("dashboard.projects.limit_top_3"), 6: copy("dashboard.projects.limit_top_6"), 10: copy("dashboard.projects.limit_top_10") }[value],
+        }))}
+        ariaLabel={copy("dashboard.projects.limit_aria")}
+        align="end"
+        className="tt-overview-project-limit px-2 py-1 text-xs text-oai-gray-600 dark:text-oai-gray-300"
+      />
+    </div>
+  );
 }
 
 export function ProjectUsagePanel({
   entries = [],
   limit = 3,
   onLimitChange,
-  loading = false,
-  error = null,
   className = "",
   embedded = false,
+  onSelectFolder,
 }) {
-  const placeholder = copy("shared.placeholder.short");
-  const tokensLabel = copy("dashboard.projects.tokens_label");
-  const emptyLabel = copy("dashboard.projects.empty");
-  const limitLabel = copy("dashboard.projects.limit_label");
-  const limitAria = copy("dashboard.projects.limit_aria");
-  const optionLabels = {
-    3: copy("dashboard.projects.limit_top_3"),
-    6: copy("dashboard.projects.limit_top_6"),
-    10: copy("dashboard.projects.limit_top_10"),
-  };
   const resolvedLimit = LIMIT_OPTIONS.includes(limit) ? limit : LIMIT_OPTIONS[0];
-
-  const sortedEntries = useMemo(() => {
-    const list = Array.isArray(entries) ? entries.slice() : [];
-    return list.sort((a, b) => {
-      const aValue = toFiniteNumber(resolveTokens(a)) ?? 0;
-      const bValue = toFiniteNumber(resolveTokens(b)) ?? 0;
-      return bValue - aValue;
-    });
-  }, [entries]);
-
-  const displayEntries = sortedEntries.slice(0, Math.max(1, limit));
-
-  const tokenFormatOptions = {
+  const sortedEntries = useMemo(() => (Array.isArray(entries) ? entries.slice() : []).sort((a, b) => {
+    if (Boolean(a?.selected_folder) !== Boolean(b?.selected_folder)) return a?.selected_folder ? -1 : 1;
+    return resolveTokens(b) - resolveTokens(a);
+  }), [entries]);
+  const [page, setPage] = useState(0);
+  const [pageInput, setPageInput] = useState("1");
+  const pageCount = Math.max(1, Math.ceil(sortedEntries.length / resolvedLimit));
+  const currentPage = Math.min(page, pageCount - 1);
+  const displayEntries = sortedEntries.slice(currentPage * resolvedLimit, (currentPage + 1) * resolvedLimit);
+  const compactOptions = {
     thousandSuffix: copy("shared.unit.thousand_abbrev"),
     millionSuffix: copy("shared.unit.million_abbrev"),
     billionSuffix: copy("shared.unit.billion_abbrev"),
     decimals: 1,
   };
-
-  const containerClass = embedded
-    ? `${className}`
-    : `rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`;
+  const totalTokens = sortedEntries.reduce((total, entry) => total + resolveTokens(entry), 0);
+  const navigate = (nextPage) => {
+    const target = Math.max(0, Math.min(pageCount - 1, nextPage));
+    setPage(target);
+    setPageInput(String(target + 1));
+  };
+  const jump = () => {
+    const target = Number.parseInt(pageInput, 10);
+    if (Number.isFinite(target)) navigate(target - 1);
+  };
 
   return (
-    <div className={containerClass}>
-      {!embedded && (
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
-            {copy("dashboard.projects.title")}
-          </h3>
-        </div>
-      )}
-      <div className={`flex items-center ${embedded ? "justify-end mb-3" : "justify-between gap-3 mb-4"}`}>
-        <Select
-          value={resolvedLimit}
-          onValueChange={(value) => {
-            if (typeof onLimitChange === "function" && value != null) {
-              onLimitChange(value);
-            }
-          }}
-          options={LIMIT_OPTIONS.map((value) => ({ value, label: optionLabels[value] }))}
-          ariaLabel={limitAria}
-          align="end"
-          className="px-2 py-1 text-xs text-oai-gray-600 dark:text-oai-gray-300"
-        />
-      </div>
-
+    <div className={embedded ? `tt-overview-project-panel ${className}` : `rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}>
+      {!embedded ? <h3 className="mb-4 text-sm font-medium uppercase tracking-wide text-oai-gray-500">{copy("dashboard.projects.title")}</h3> : null}
+      <ProjectUsageHeader entries={sortedEntries} limit={resolvedLimit} onLimitChange={(value) => { navigate(0); onLimitChange?.(value); }} onSelectFolder={embedded ? onSelectFolder : undefined} showSummary={embedded} />
       {displayEntries.length === 0 ? (
-        <div className="text-sm text-oai-gray-400 dark:text-oai-gray-400">{emptyLabel}</div>
+        <div className="py-6 text-sm text-oai-gray-400">{copy("dashboard.projects.empty")}</div>
       ) : (
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
-          {displayEntries.map((entry) => (
-            <ProjectUsageCard
-              key={`${entry?.project_key || "project"}-${entry?.project_ref || ""}`}
-              entry={entry}
-              placeholder={placeholder}
-              tokensLabel={tokensLabel}
-              tokenFormatOptions={tokenFormatOptions}
-            />
+        <div
+          data-testid="project-usage-grid"
+          className="tt-overview-project-grid tt-overview-project-grid--stable grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3"
+        >
+          {displayEntries.map((entry, index) => (
+            <ProjectUsageCard key={`${entry?.project_key || "project"}-${entry?.project_path || entry?.project_ref || ""}`} entry={entry} embedded={embedded} aggregateTokens={totalTokens} compactOptions={compactOptions} projectIndex={index} />
           ))}
         </div>
       )}
+      {Math.sign(sortedEntries.length) === 1 ? (
+        <div className="tt-overview-pagination tt-overview-project-pagination" data-testid="project-pagination">
+          <span data-testid="project-pagination-total">{copy("dashboard.projects.records", { count: sortedEntries.length })}</span>
+          <div>
+            <button type="button" disabled={currentPage === 0} onClick={() => navigate(currentPage - 1)}>{copy("details.pagination.prev")}</button>
+            {Array.from({ length: pageCount }, (_, index) => <button key={index} type="button" aria-current={currentPage === index ? "page" : undefined} onClick={() => navigate(index)}>{index + 1}</button>)}
+            <button type="button" disabled={currentPage + 1 >= pageCount} onClick={() => navigate(currentPage + 1)}>{copy("details.pagination.next")}</button>
+            <input aria-label={copy("dashboard.projects.page_number")} value={pageInput} inputMode="numeric" onChange={(event) => setPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jump(); }} />
+            <button type="button" onClick={jump}>{copy("dashboard.projects.page_jump")}</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function ProjectUsageCard({
-  entry,
-  placeholder,
-  tokensLabel,
-  tokenFormatOptions,
-}) {
-  const [copyStatus, setCopyStatus] = useState(null);
-
-  const projectKey = entry?.project_key || "";
-  const projectName = entry?.project_name || projectKey || placeholder;
+function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, projectIndex }) {
+  const [expanded, setExpanded] = useState(false);
+  const projectName = entry?.project_name || entry?.project_key || copy("data.confidence.unattributed");
   const projectPath = entry?.project_path || "";
-  const hasRealPath = Boolean(projectPath && projectPath.length > 0);
-  const costUsd = entry?.cost_usd ?? null;
-  const requestCount = entry?.request_count ?? null;
-  const lastActive = entry?.last_active_at;
-  const pricingCoverage = entry?.pricing_coverage || "unpriced";
-  const pricedTokens = entry?.priced_tokens ?? 0;
-  const unpricedTokens = entry?.unpriced_tokens ?? 0;
   const projectRef = entry?.project_ref || "";
-
-  const tokensRaw = resolveTokens(entry);
-  const tokensCompact =
-    tokensRaw == null
-      ? placeholder
-      : formatCompactNumber(tokensRaw, tokenFormatOptions);
-
+  const tokens = resolveTokens(entry);
+  const hasTokens = toFiniteNumber(entry?.billable_total_tokens) != null || toFiniteNumber(entry?.total_tokens) != null;
+  const cost = toFiniteNumber(entry?.cost_usd);
+  const pricingCoverage = entry?.pricing_coverage || "unpriced";
   const isUnpriced = pricingCoverage === "unpriced";
-  const costDisplay = (!isUnpriced && costUsd != null) ? formatCost(costUsd) : null;
-  const requestsDisplay = requestCount != null ? String(requestCount) : null;
-  const lastActiveDisplay = formatRelativeTime(lastActive);
-
+  const costDisplay = !isUnpriced && cost != null ? cost.toFixed(4) : null;
   const pricingLabel = {
     complete: copy("dashboard.projects.pricing_complete"),
     partial: copy("dashboard.projects.pricing_partial"),
     unpriced: copy("dashboard.projects.pricing_unpriced"),
   }[pricingCoverage] || copy("dashboard.projects.pricing_unpriced");
+  const agents = Array.isArray(entry?.top_agents) ? entry.top_agents : [];
+  const models = Array.isArray(entry?.top_models) ? entry.top_models : [];
+  const providers = entry?.model_providers || {};
+  const agentUsage = normalizeUsageItems(entry?.agent_usage, agents);
+  const modelUsage = normalizeUsageItems(entry?.model_usage, models, providers);
+  const accent = PROJECT_CARD_COLORS[projectIndex % PROJECT_CARD_COLORS.length];
+  const percentage = aggregateTokens > 0 ? Math.round((tokens / aggregateTokens) * 1000) / 10 : 0;
+  const detailsId = `project-details-${String(entry?.project_key || projectName).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 
-  const pricingClass = {
-    complete: "text-oai-green-600 dark:text-oai-green-400",
-    partial: "text-oai-yellow-600 dark:text-oai-yellow-400",
-    unpriced: "text-oai-gray-400",
-  }[pricingCoverage] || "text-oai-gray-400";
-
-  const handleCopyPath = async (e) => {
-    e.stopPropagation();
-    if (!projectPath) return;
-    try {
-      await navigator.clipboard.writeText(projectPath);
-      setCopyStatus("copied");
-      setTimeout(() => setCopyStatus(null), 2000);
-    } catch {
-      setCopyStatus("failed");
-      setTimeout(() => setCopyStatus(null), 2000);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-2 p-3 rounded-lg border border-oai-gray-200 dark:border-oai-gray-700">
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800 flex items-center justify-center flex-shrink-0">
-          <ProviderIcon provider={projectKey} size={24} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-oai-black dark:text-oai-white truncate" title={projectName}>
-            {projectName}
+  if (!embedded) {
+    return (
+      <article className="flex flex-col gap-3 rounded-lg border border-oai-gray-200 p-3 dark:border-oai-gray-700">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-oai-gray-100 dark:bg-oai-gray-800"><ProviderIcon provider={entry?.project_key} size={24} /></div>
+          <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-oai-black dark:text-oai-white">{projectName}</div>
+            {projectPath ? <div data-slot="project-path" className="mt-1 flex items-center gap-1.5"><span className="max-w-[120px] truncate text-xs text-oai-gray-400">{projectPath}</span><button type="button" title={copy("dashboard.projects.copy_path")} onClick={() => navigator.clipboard?.writeText(projectPath)}>⎘</button></div> : null}
+            {projectRef && /^https?:\/\//.test(projectRef) ? <div data-slot="project-remote" className="mt-1 truncate text-xs text-oai-gray-400">{copy("dashboard.projects.remote_repo")} {projectRef.replace(/^https?:\/\//, "")}</div> : null}
           </div>
-          {hasRealPath ? (
-            <div data-slot="project-path" className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-xs text-oai-gray-400 dark:text-oai-gray-400 truncate max-w-[120px]" title={projectPath}>
-                {projectPath}
-              </span>
-              <button
-                onClick={handleCopyPath}
-                className="flex-shrink-0 px-1.5 py-0.5 text-xs text-oai-blue-600 dark:text-oai-blue-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 rounded transition-colors"
-                title={copy("dashboard.projects.copy_path")}
-              >
-                {copyStatus === "copied" ? "✓" : "⎘"}
-              </button>
-            </div>
-          ) : (
-            <div data-slot="project-path" className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">
-              {copy("dashboard.projects.no_path")}
-            </div>
-          )}
-          {projectRef && /^https?:\/\//.test(projectRef) && (
-            <div data-slot="project-remote" className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5 truncate max-w-[180px]">
-              <span className="text-oai-gray-400">{copy("dashboard.projects.remote_repo")} </span>
-              <span title={projectRef}>{projectRef.replace(/^https?:\/\//, "")}</span>
-            </div>
-          )}
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-        <span title={tokensLabel}>
-          {tokensCompact} <span className="text-oai-gray-400">{tokensLabel}</span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-oai-gray-500">{hasTokens ? <span>{formatCompactNumber(tokens, compactOptions)} <span className="text-oai-gray-400">{copy("dashboard.projects.tokens_label")}</span></span> : null}{costDisplay != null ? <span>${costDisplay} <span className="text-oai-gray-400">{copy("dashboard.projects.cost_label")}</span></span> : null}{entry?.request_count != null ? <span>{entry.request_count} <span className="text-oai-gray-400">{copy("dashboard.projects.requests_label")}</span></span> : null}<span>{pricingLabel}</span></div>
+      </article>
+    );
+  }
+  return (
+    <article data-testid="project-usage-card" data-expanded={expanded} className="tt-overview-project-card tt-overview-project-card--embedded tt-overview-project-card--compact flex flex-col" style={{ "--tt-project-accent": accent }}>
+      <button type="button" className="tt-overview-project-toggle" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-controls={detailsId}>
+        <span className="tt-overview-project-icon" aria-hidden="true"><FolderOpen size={18} /></span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block truncate text-sm font-semibold text-oai-black dark:text-oai-white">{projectName}</span>
+          {entry?.selected_folder && projectPath ? <span data-slot="selected-project-folder" className="mt-0.5 block truncate text-[10px] text-oai-green-600">{copy("dashboard.projects.selected_folder")} · {projectPath}</span> : null}
+          {!entry?.selected_folder && /^https?:\/\//.test(projectRef) ? <span data-slot="project-remote" className="mt-0.5 block truncate text-[10px] text-oai-gray-400">{copy("dashboard.projects.remote_repo")} · {projectRef.replace(/^https?:\/\//, "")}</span> : null}
         </span>
-        {costDisplay != null && (
-          <span>
-            ${costDisplay} <span className="text-oai-gray-400">{copy("dashboard.projects.cost_label")}</span>
-          </span>
-        )}
-        {requestsDisplay != null && (
-          <span>
-            {requestsDisplay} <span className="text-oai-gray-400">{copy("dashboard.projects.requests_label")}</span>
-          </span>
-        )}
-        <span className={`${pricingClass}`}>
-          {pricingLabel}
-        </span>
-        {lastActiveDisplay && (
-          <span className="text-oai-gray-400">
-            {lastActiveDisplay}
-          </span>
-        )}
+        <ChevronDown className={`h-4 w-4 shrink-0 text-oai-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+      </button>
+      <div className="tt-overview-project-location">
+        {!entry?.selected_folder && projectPath ? <span data-slot="project-path" className="block truncate text-[10px] text-oai-gray-400">{projectPath}</span> : null}
       </div>
-    </div>
+      {agentUsage.length ? <div className="tt-overview-project-tags tt-overview-project-tags--summary" data-slot="project-agent-summary">
+        {agentUsage.slice(0, 3).map((agent) => <span key={`summary-agent-${agent.id}`}><i><ProviderIcon provider={agent.provider} size={12} /></i>{agent.id}</span>)}
+      </div> : null}
+      <div className="tt-overview-project-default-metrics">
+        <div><span>{copy("dashboard.projects.tokens_label")}</span><strong>{formatCompactNumber(tokens, compactOptions)}</strong></div>
+        <div><span>{copy("dashboard.projects.cost_label")}</span><strong>{costDisplay == null ? "—" : `$${costDisplay}`}</strong></div>
+      </div>
+      <span className="tt-overview-project-pricing">{pricingLabel}</span>
+      <div className="tt-overview-project-progress-row"><div className="tt-overview-project-progress" style={{ "--tt-project-progress": `${percentage}%` }} /><span>{percentage}%</span></div>
+      <div id={detailsId} hidden={!expanded} className="tt-overview-project-details">
+        <div className="tt-overview-project-detail-grid">
+          {entry?.request_count != null ? <div><MessageSquareText aria-hidden="true" /><span><small>{copy("dashboard.projects.requests_label")}</small>{entry.request_count}</span></div> : null}
+          {entry?.last_active_at ? <div data-slot="project-last-active"><Clock3 aria-hidden="true" /><span><small>{copy("dashboard.projects.last_active_label")}</small>{formatRelativeTime(entry.last_active_at)}</span></div> : null}
+          {(entry?.period_from || entry?.period_to) ? <div data-slot="project-period"><Clock3 aria-hidden="true" /><span><small>{copy("dashboard.projects.period_label")}</small>{entry?.period_from || entry?.period_to} — {entry?.period_to || entry?.period_from}</span></div> : null}
+        </div>
+        {agentUsage.length ? <div className="tt-overview-project-breakdown" data-slot="project-agent-usage"><small>{copy("dashboard.projects.agents_label")}</small>{agentUsage.slice(0, 4).map((agent) => <span key={`agent-${agent.id}`}><i data-slot="project-agent-icon"><ProviderIcon provider={agent.provider} size={12} /></i><b>{agent.id}</b>{agent.tokens != null ? <em>{formatCompactNumber(agent.tokens, compactOptions)}</em> : null}{agent.percent != null ? <strong>{agent.percent}%</strong> : null}</span>)}</div> : null}
+        {modelUsage.length ? <div className="tt-overview-project-breakdown" data-slot="project-model-usage"><small>{copy("dashboard.projects.models_label")}</small>{modelUsage.slice(0, 4).map((model) => <span key={`model-${model.id}`}><i data-slot="project-model-icon"><ProviderIcon provider={model.provider} size={12} /></i><b>{model.id}</b>{model.tokens != null ? <em>{formatCompactNumber(model.tokens, compactOptions)}</em> : null}{model.percent != null ? <strong>{model.percent}%</strong> : null}</span>)}</div> : null}
+        <ProjectSparkline points={entry?.usage_trend} color={accent} />
+      </div>
+    </article>
   );
 }

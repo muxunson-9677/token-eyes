@@ -20,7 +20,7 @@ export function MenuBarSection() {
   const isSyncing = Boolean(settings?.isSyncing);
 
   return (
-    <SectionCard title={copy("settings.section.menubar")}>
+    <SectionCard title={copy("settings.section.menubar")} icon={Activity} iconTone="violet">
       {launchAtLoginSupported ? (
         <SettingsRow
           label={copy("settings.menubar.launchAtLogin")}
@@ -76,7 +76,7 @@ export function NativeAppFooter() {
     <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-500">
       {showNativeInfo ? (
         <>
-          <span>TokenTrackerBar v{settings.version}</span>
+          <span>Token Eyes v{settings.version}</span>
           <span aria-hidden>·</span>
           <button
             type="button"

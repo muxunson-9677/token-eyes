@@ -7,6 +7,7 @@ import "@fontsource/geist-mono/500.css";
 import "@fontsource/geist-mono/700.css";
 import "@fontsource/geist-mono/900.css";
 import "./styles.css";
+import "./ui/foundation/apple-glass.css";
 
 applyDocumentIdentity();
 performance.mark?.("token-eyes-react-start");

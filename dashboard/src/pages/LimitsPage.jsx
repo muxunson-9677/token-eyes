@@ -1,13 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { Settings as SettingsIcon } from "lucide-react";
+import { RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { useUsageLimits } from "../hooks/use-usage-limits";
 import { useLimitAccounts } from "../hooks/use-limit-accounts";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { copy } from "../lib/copy";
 import { LimitsPageSkeleton } from "../components/LimitsPageSkeleton.jsx";
 import { UsageLimitsPanel } from "../ui/dashboard/components/UsageLimitsPanel.jsx";
-import { LimitAccountMatrix } from "../ui/dashboard/components/LimitAccountMatrix.jsx";
 import { LocalOnlyNotice } from "../components/LocalOnlyNotice.jsx";
 import { isMockEnabled } from "../lib/mock-data";
 import { readUsageLimitsPreloadState } from "../lib/dashboard-preload.js";
@@ -18,13 +17,32 @@ const IS_LOCAL_HOST =
 
 export function LimitsPage() {
   const preloadedUsageLimits = readUsageLimitsPreloadState();
-  const { data: usageLimits, error, isLoading } = useUsageLimits(
+  const { data: usageLimits, error, isLoading, refresh: refreshUsageLimits } = useUsageLimits(
     preloadedUsageLimits
       ? { initialRefresh: true, initialState: preloadedUsageLimits, publishToPreloadCache: true }
       : { initialRefresh: true, publishToPreloadCache: true },
   );
   const prefs = useLimitsDisplayPrefs();
-  const { data: limitAccounts, error: limitAccountsError, isLoading: limitAccountsLoading } = useLimitAccounts();
+  const {
+    data: limitAccounts,
+    error: limitAccountsError,
+    isLoading: limitAccountsLoading,
+    refresh: refreshLimitAccounts,
+  } = useLimitAccounts();
+  const [accountsRefreshing, setAccountsRefreshing] = useState(false);
+
+  const refreshAllAccounts = async () => {
+    if (accountsRefreshing) return;
+    setAccountsRefreshing(true);
+    try {
+      await Promise.all([
+        refreshUsageLimits?.(),
+        refreshLimitAccounts?.(),
+      ]);
+    } finally {
+      setAccountsRefreshing(false);
+    }
+  };
 
   // Limits read the local plan/rate-limit tier from the machine running the
   // CLI; there's no cloud source. On the deployed web app, surface the
@@ -50,14 +68,33 @@ export function LimitsPage() {
                 {copy("limits.page.subtitle")}
               </p>
             </div>
-            <Link
-              to="/settings"
-              aria-label={copy("limits.page.openSettings")}
-              title={copy("limits.page.openSettings")}
-              className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
+            <div
+              role="toolbar"
+              aria-label={copy("nav.limits")}
+              className="tt-surface-nested flex shrink-0 items-center gap-2 rounded-[var(--tt-control-radius)]"
             >
-              <SettingsIcon className="h-4 w-4" aria-hidden />
-            </Link>
+              <button
+                type="button"
+                onClick={() => void refreshAllAccounts()}
+                disabled={accountsRefreshing}
+                aria-label={copy("limits.accounts.refresh_all")}
+                title={copy("limits.accounts.refresh_all")}
+                className="tt-pressable tt-product-focusable inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-oai-gray-600 hover:bg-white/70 hover:text-oai-black disabled:cursor-wait disabled:opacity-60 dark:text-oai-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                <RefreshCw className={`h-4 w-4 ${accountsRefreshing ? "animate-spin" : ""}`} aria-hidden />
+                <span className="hidden sm:inline">
+                  {copy(accountsRefreshing ? "limits.accounts.refreshing_short" : "limits.accounts.refresh_all")}
+                </span>
+              </button>
+              <Link
+                to="/settings"
+                aria-label={copy("limits.page.openSettings")}
+                title={copy("limits.page.openSettings")}
+                className="tt-pressable tt-product-focusable inline-flex h-9 w-9 items-center justify-center rounded-lg text-oai-gray-600 hover:bg-white/70 hover:text-oai-black dark:text-oai-gray-300 dark:hover:bg-white/10 dark:hover:text-white no-underline"
+              >
+                <SettingsIcon className="h-4 w-4" aria-hidden />
+              </Link>
+            </div>
           </div>
 
           {isLoading && limitAccountsLoading ? (
@@ -84,12 +121,13 @@ export function LimitsPage() {
                 grok={usageLimits?.grok}
                 antigravity={usageLimits?.antigravity}
                 copilot={usageLimits?.copilot}
+                accounts={limitAccounts?.accounts}
+                accountsRefreshing={accountsRefreshing}
                 order={prefs.order}
                 visibility={prefs.visibility}
                 displayMode={prefs.displayMode}
               />
               {limitAccountsError ? <p className="mt-4 text-sm text-red-500">{copy("shared.error.prefix", { error: limitAccountsError })}</p> : null}
-              <div className="mt-8"><LimitAccountMatrix accounts={limitAccounts?.accounts} forecasts={limitAccounts?.forecasts} /></div>
             </>
           )}
         </div>

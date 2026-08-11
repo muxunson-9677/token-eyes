@@ -42,3 +42,41 @@ test("Token Eyes Tauri metadata has no legacy visible product name", () => {
   assert.equal(windowsConfig.app.windows[0].visible, true);
   assert.match(cargo, /description = "Token Eyes - AI Token Usage Tracker Desktop"/);
 });
+
+test("Token Eyes Windows main window delegates chrome to the reference UI shell", () => {
+  const windowsConfig = JSON.parse(read("src-tauri/tauri.windows.conf.json"));
+  const mainWindow = windowsConfig.app.windows.find((window) => window.label === "main");
+
+  assert.equal(mainWindow.decorations, false);
+  assert.equal(mainWindow.visible, true);
+});
+
+test("reference screenshot verification can isolate one image during the required per-image loop", () => {
+  const verifier = read("dashboard/scripts/verify-p0-desktop-ux.mjs");
+
+  assert.match(verifier, /TOKEN_EYES_REFERENCE_SCENARIO/);
+  assert.match(verifier, /referenceScenarioFilter/);
+});
+
+test("reference screenshot verification enforces reference geometry instead of reporting a visual pass", () => {
+  const verifier = read("dashboard/scripts/verify-p0-desktop-ux.mjs");
+  assert.match(verifier, /referenceGeometry/);
+  assert.match(verifier, /STRUCTURE_PASS/);
+  assert.doesNotMatch(verifier, /referenceMode[\s\S]{0,120}status:\s*"PASS"/);
+});
+
+test("reference screenshot verification uses the reference fixture instead of product mock data", () => {
+  const verifier = read("dashboard/scripts/verify-p0-desktop-ux.mjs");
+
+  assert.match(verifier, /if \(!referenceMode && !scenario\.staleAfterLoad\) params\.set\("mock", "1"\)/);
+  for (const sample of [
+    "10_251_000_000",
+    "gpt-5.6-sol",
+    "deepseek-v4-pro",
+    "claude-3.5-sonnet",
+    "hermes: 1_517_148_000",
+    'collection_status: "connected_no_precise_tokens"',
+  ]) {
+    assert.match(verifier, new RegExp(sample.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});

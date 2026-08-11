@@ -4,6 +4,7 @@ type DateRangeOptions = {
   timeZone?: string;
   offsetMinutes?: number;
   now?: Date;
+  availableFrom?: string | null;
 };
 
 export function formatDateUTC(d: Date) {
@@ -48,7 +49,7 @@ function formatDateParts(parts: any) {
 
 export function getRangeForPeriod(
   period: any,
-  { timeZone, offsetMinutes, now }: DateRangeOptions = {},
+  { timeZone, offsetMinutes, now, availableFrom }: DateRangeOptions = {},
 ) {
   const baseDate = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
   const parts = getLocalDateParts({ timeZone, offsetMinutes, date: baseDate });
@@ -86,10 +87,13 @@ export function getRangeForPeriod(
     return { from: formatDateUTC(fromDate), to };
   }
 
-  // "total": last 24 months (local month window).
+  // "total": the complete local ledger.
   if (period === "total") {
-    const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 23, 1));
-    return { from: formatDateUTC(start), to };
+    const availableStart = parseDateString(availableFrom);
+    return {
+      from: availableStart && String(availableFrom) <= to ? String(availableFrom) : "1970-01-01",
+      to,
+    };
   }
 
   // Default to week (safe fallback)
@@ -205,7 +209,7 @@ export function getCostMonthRanges(options: CostMonthRangeOptions = {}) {
  */
 export function computeRangeFromKey(
   key: string,
-  { timeZone, offsetMinutes, now }: DateRangeOptions = {},
+  { timeZone, offsetMinutes, now, availableFrom }: DateRangeOptions = {},
 ): { from: string; to: string } {
   const baseDate = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
   const parts = getLocalDateParts({ timeZone, offsetMinutes, date: baseDate });
@@ -216,6 +220,14 @@ export function computeRangeFromKey(
   const to = formatDateParts(parts);
   const today = parseDateString(to);
   if (!today) return { from: to, to };
+
+  if (key === "total") {
+    const availableStart = parseDateString(availableFrom);
+    return {
+      from: availableStart && String(availableFrom) <= to ? String(availableFrom) : "1970-01-01",
+      to,
+    };
+  }
 
   if (key === "today") {
     return { from: to, to };

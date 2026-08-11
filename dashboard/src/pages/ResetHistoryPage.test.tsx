@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexResetHistoryEvent } from "../lib/api";
 
 const resetContext = vi.hoisted(() => ({
@@ -26,65 +27,275 @@ vi.mock("../lib/copy", () => ({
 
 import { ResetHistoryPage } from "./ResetHistoryPage";
 
-function resetEvent(
-  id: string,
-  type: "reset_completed" | "unexpected_quota_restore",
-  occurredAt: Date,
-) {
+function resetEvent(id: string, occurredAt: Date): CodexResetHistoryEvent {
   return {
     id,
-    type,
-    window: "rolling_5_hour" as const,
+    type: "manual_reset",
+    agent: "codex",
+    account_key: "account-a",
+    window: "rolling_5_hour",
     created_at: occurredAt.toISOString(),
     reset_at: occurredAt.toISOString(),
     occurred_at: occurredAt.toISOString(),
+    observed_at: occurredAt.toISOString(),
+    previous_used_percent: 64,
+    current_used_percent: 3,
+    confidence: "confirmed",
+    alert_eligible: false,
     official_url: "https://chatgpt.com/codex",
-    source: "local_quota" as const,
-  };
+    source: "local_quota",
+  } as unknown as CodexResetHistoryEvent;
+}
+
+function officialReset(
+  id: string,
+  occurredAt: Date,
+  sourceUrl = "https://x.com/thsottiaux/status/2082317452755751098",
+  resetKind: "hard" | "banked" | "mixed" | "unknown" = "hard",
+): CodexResetHistoryEvent {
+  return {
+    id,
+    type: "official_reset_announcement",
+    agent: "codex",
+    account_key: null,
+    window: null,
+    created_at: occurredAt.toISOString(),
+    reset_at: null,
+    occurred_at: occurredAt.toISOString(),
+    observed_at: occurredAt.toISOString(),
+    previous_used_percent: null,
+    current_used_percent: null,
+    confidence: "confirmed",
+    alert_eligible: true,
+    official_url: "https://chatgpt.com/codex",
+    source_url: sourceUrl,
+    source_author: "thsottiaux",
+    source: "signed_feed",
+    reset_kind: resetKind,
+    reset_scope: "all_codex_work_users",
+    title: "Codex official extra reset",
+    summary: "FULL_SUMMARY_MUST_NOT_RENDER",
+  } as unknown as CodexResetHistoryEvent;
 }
 
 describe("ResetHistoryPage", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 6, 26, 18, 0));
+    window.localStorage.clear();
+    resetContext.value.available = true;
     resetContext.value.history = [];
+    document.documentElement.classList.remove("tt-reference-route-reset-history");
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
+  it("activates reset-history-only route styles while the page is mounted", () => {
+    const routeClass = "tt-reference-route-reset-history";
+    const { unmount } = render(<ResetHistoryPage />);
+
+    expect(document.documentElement).toHaveClass(routeClass);
+
+    unmount();
+    expect(document.documentElement).not.toHaveClass(routeClass);
   });
 
-  it("prominently shows today's latest reset once and keeps older records in history", () => {
-    const today = new Date(2026, 6, 26, 14, 32);
-    const yesterday = new Date(2026, 6, 25, 9, 8);
+  it("shows deterministic preview records when the local desktop API is unavailable", () => {
+    window.history.replaceState({}, "", "/reset-history");
+    resetContext.value.available = false;
+    resetContext.value.history = [];
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(11);
+    expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
+    expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
+  });
+
+  it("keeps the heatmap and summary figures in one right-side divided group", () => {
     resetContext.value.history = [
-      resetEvent("today", "reset_completed", today),
-      resetEvent("past", "unexpected_quota_restore", yesterday),
+      officialReset("activity", new Date("2026-08-01T11:32:00.000Z")),
     ];
 
     render(<ResetHistoryPage />);
 
-    const todayRegion = screen.getByTestId("reset-today");
-    expect(todayRegion).toHaveTextContent("2026年7月26日 14:32");
-    expect(within(todayRegion).getByText("copy:reset_history.completed")).toBeInTheDocument();
-
-    const historyRegion = screen.getByTestId("reset-history-list");
-    expect(historyRegion).toHaveTextContent("2026年7月25日 09:08");
-    expect(historyRegion).not.toHaveTextContent("2026年7月26日 14:32");
+    const activity = screen.getByTestId("reset-history-activity");
+    const dataGroup = activity.querySelector(".tt-reset-activity-data");
+    expect(dataGroup).not.toBeNull();
+    expect(dataGroup).toHaveClass("tt-reset-activity-data--right-aligned");
+    expect(dataGroup?.querySelector(".tt-reset-heatmap")).not.toBeNull();
+    expect(dataGroup?.querySelectorAll(".tt-reset-activity-stat")).toHaveLength(2);
+    expect(dataGroup?.querySelector(".tt-reset-activity-peak")).toHaveClass("tt-reset-activity-stat--divided");
   });
 
-  it("leaves today's reminder content empty and shows up to three past timestamps", () => {
+  it("shows only official extra resets with a concise source, reset type, scope, and exact time", () => {
+    const official = officialReset("today", new Date(2026, 6, 26, 14, 32));
+    resetContext.value.history = [
+      official,
+      resetEvent("past", new Date(2026, 6, 25, 9, 8)),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    const historyRegion = screen.getByTestId("reset-history-list");
+    expect(within(historyRegion).getAllByTestId("reset-history-item")).toHaveLength(1);
+    expect(historyRegion).not.toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
+    expect(historyRegion).not.toHaveTextContent("account-a");
+    expect(historyRegion).not.toHaveTextContent("5h");
+    expect(historyRegion).toHaveTextContent("copy:reset_history.source.tibo");
+    expect(historyRegion).toHaveTextContent("copy:reset_history.kind.hard");
+    expect(historyRegion).toHaveTextContent("copy:reset_history.scope.all_codex_work_users");
+    expect(historyRegion.querySelector("time")).toHaveAttribute(
+      "datetime",
+      official.occurred_at,
+    );
+  });
+
+  it("shows all retained records in descending occurrence order instead of capping at three", () => {
     resetContext.value.history = Array.from({ length: 5 }, (_, index) =>
-      resetEvent(
+      officialReset(
         `past-${index}`,
-        "reset_completed",
         new Date(2026, 6, 25 - index, 8, index),
       ));
 
     render(<ResetHistoryPage />);
 
-    expect(screen.getByTestId("reset-today")).toBeEmptyDOMElement();
-    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(3);
-    expect(screen.queryByText(/今天|昨天|本周/u)).not.toBeInTheDocument();
+    const items = screen.getAllByTestId("reset-history-item");
+    expect(items).toHaveLength(5);
+    expect(items[0].querySelector("time")).toHaveAttribute(
+      "datetime",
+      new Date(2026, 6, 25, 8, 0).toISOString(),
+    );
+    expect(items[4].querySelector("time")).toHaveAttribute(
+      "datetime",
+      new Date(2026, 6, 21, 8, 4).toISOString(),
+    );
+  });
+
+  it("reveals the remaining official announcements from the history control", async () => {
+    const user = userEvent.setup();
+    resetContext.value.history = Array.from({ length: 13 }, (_, index) =>
+      officialReset(`record-${index}`, new Date(2026, 6, 29 - index, 8, index)));
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(11);
+    await user.click(screen.getByRole("button", { name: "copy:reset_history.load_more" }));
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(13);
+  });
+
+  it("renders compact timeline nodes and indexes each unique official source once", () => {
+    resetContext.value.history = [
+      officialReset("newest", new Date(2026, 6, 29, 12, 9), "https://x.com/source/one"),
+      officialReset("middle", new Date(2026, 6, 28, 11, 9), "https://x.com/source/one"),
+      officialReset("oldest", new Date(2026, 6, 26, 3, 17), "https://x.com/source/two"),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getByTestId("reset-history-timeline")).toBeInTheDocument();
+    expect(screen.getAllByTestId("reset-history-node")).toHaveLength(3);
+    expect(screen.getAllByTestId("reset-history-source-ref").map((node) => node.textContent))
+      .toEqual(["[1]", "[1]", "[2]"]);
+    const sourceIndex = screen.getByTestId("reset-history-source-index");
+    expect(within(sourceIndex).getAllByRole("link")).toHaveLength(2);
+    expect(sourceIndex).toHaveTextContent("copy:reset_history.sources_title");
+    expect(sourceIndex).toHaveTextContent("[1]");
+    expect(sourceIndex).toHaveTextContent("[2]");
+    expect(screen.queryByRole("contentinfo", { name: "Token Eyes" })).not.toBeInTheDocument();
+  });
+
+  it("shows a compact thirty-day reset count and adjacent interval statistics", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-30T12:00:00.000Z"));
+    resetContext.value.history = [
+      officialReset("one", new Date("2026-07-20T00:00:00.000Z")),
+      officialReset("two", new Date("2026-07-22T00:00:00.000Z")),
+      officialReset("three", new Date("2026-07-25T00:00:00.000Z")),
+      officialReset("four", new Date("2026-07-29T00:00:00.000Z")),
+      officialReset("outside", new Date("2026-06-29T00:00:00.000Z")),
+    ];
+
+    try {
+      render(<ResetHistoryPage />);
+
+      const stats = screen.getByTestId("reset-history-statistics");
+      expect(stats).toHaveClass("tt-reset-statistics--compact");
+      expect(within(stats).getAllByTestId("reset-history-stat")).toHaveLength(5);
+      expect(within(stats).getAllByTestId("reset-history-stat-icon")).toHaveLength(5);
+      expect(within(stats).getAllByTestId("reset-history-stat").map((node) => node.dataset.tone))
+        .toEqual(["blue", "emerald", "violet", "amber", "rose"]);
+      expect(within(stats).getAllByTestId("reset-history-stat").map((node) =>
+        node.querySelector("dd")?.classList.contains("truncate")))
+        .toEqual([false, false, false, false, false]);
+      expect(stats).toHaveTextContent("copy:reset_history.stats.period");
+      expect(stats).toHaveTextContent("copy:reset_history.stats.count");
+      expect(stats).toHaveTextContent("copy:reset_history.stats.average");
+      expect(stats).toHaveTextContent("copy:reset_history.stats.shortest");
+      expect(stats).toHaveTextContent("copy:reset_history.stats.longest");
+      expect(screen.getAllByTestId("reset-history-item")).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the complete statistics layout and labels unavailable interval data honestly", () => {
+    resetContext.value.history = [
+      officialReset("one", new Date()),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getAllByTestId("reset-history-stat")).toHaveLength(5);
+    expect(screen.getAllByTestId("reset-history-stat").filter((node) => node.dataset.empty === "true"))
+      .toHaveLength(3);
+    expect(document.body).toHaveTextContent("copy:reset_history.stats.insufficient");
+  });
+
+  it("uses a different semantic icon and tone for each reset kind", () => {
+    resetContext.value.history = [
+      officialReset("hard", new Date("2026-07-29T00:00:00.000Z"), "https://x.com/source/hard", "hard"),
+      officialReset("banked", new Date("2026-07-28T00:00:00.000Z"), "https://x.com/source/banked", "banked"),
+      officialReset("mixed", new Date("2026-07-27T00:00:00.000Z"), "https://x.com/source/mixed", "mixed"),
+      officialReset("unknown", new Date("2026-07-26T00:00:00.000Z"), "https://x.com/source/unknown", "unknown"),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    const nodes = screen.getAllByTestId("reset-history-node");
+    expect(nodes.map((node) => node.dataset.kind)).toEqual(["hard", "banked", "mixed", "unknown"]);
+    expect(nodes.map((node) => node.dataset.tone)).toEqual(["emerald", "blue", "violet", "amber"]);
+    expect(nodes.map((node) => node.querySelector("svg")?.getAttribute("data-kind")))
+      .toEqual(["hard", "banked", "mixed", "unknown"]);
+  });
+
+  it("saves the selected surprise effect and previews it without reset side effects", async () => {
+    const user = userEvent.setup();
+    const previews: unknown[] = [];
+    const listener = (event: Event) => previews.push((event as CustomEvent).detail);
+    window.addEventListener("token-eyes:reset-celebration-preview", listener);
+    window.localStorage.removeItem("token-eyes:official-reset-celebrated:v1");
+    resetContext.value.history = [];
+
+    try {
+      render(<ResetHistoryPage />);
+      const selector = screen.getByLabelText("copy:reset_history.effect.label");
+      const button = screen.getByRole("button", {
+        name: "copy:reset_history.preview_celebration_aria",
+      });
+
+      expect(selector).toHaveValue("meteors");
+      fireEvent.pointerDown(selector, { button: 0 });
+      expect(selector).toHaveClass("tt-reset-control-click-bounce");
+      fireEvent.animationEnd(selector, { animationName: "tt-widget-press-rebound" });
+      expect(selector).not.toHaveClass("tt-reset-control-click-bounce");
+      fireEvent.change(selector, { target: { value: "fireworks" } });
+      expect(selector).toHaveValue("fireworks");
+      expect(window.localStorage.getItem("token-eyes:reset-celebration-effect:v1"))
+        .toBe("fireworks");
+      expect(within(button).getByTestId("reset-history-preview-icon")).toBeInTheDocument();
+      await user.click(button);
+
+      expect(previews).toEqual([{ effectId: "fireworks" }]);
+      expect(window.localStorage.getItem("token-eyes:official-reset-celebrated:v1")).toBeNull();
+    } finally {
+      window.removeEventListener("token-eyes:reset-celebration-preview", listener);
+    }
   });
 });

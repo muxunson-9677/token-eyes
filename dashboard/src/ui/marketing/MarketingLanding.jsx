@@ -141,7 +141,10 @@ export function MarketingLanding({
   const spring = reduceMotion ? { duration: 0 } : undefined;
 
   return (
-    <div className="relative min-h-screen bg-oai-gray-950 text-oai-white font-oai antialiased dark">
+    <div
+      className="relative min-h-screen bg-oai-gray-950 text-oai-white font-oai antialiased dark"
+      data-testid="marketing-landing"
+    >
       {/* LightRays — covers header + hero, behind all content */}
       <div className="absolute inset-0 z-0 pointer-events-none" style={{ height: "100vh" }}>
         <LightRays

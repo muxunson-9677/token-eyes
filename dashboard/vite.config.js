@@ -389,6 +389,35 @@ async function handleLocalApi(req, res, url) {
     }
   }
 
+  function readQueueDiagnostics(visibleRecords) {
+    try {
+      const lines = fs.readFileSync(QUEUE_PATH, "utf8").split("\n").filter(line => line.trim());
+      let validRecords = 0;
+      let malformedRecords = 0;
+      for (const line of lines) {
+        try {
+          JSON.parse(line);
+          validRecords += 1;
+        } catch {
+          malformedRecords += 1;
+        }
+      }
+      return {
+        raw_records: lines.length,
+        visible_records: visibleRecords,
+        duplicate_records: Math.max(0, validRecords - visibleRecords),
+        malformed_records: malformedRecords,
+      };
+    } catch {
+      return {
+        raw_records: 0,
+        visible_records: visibleRecords,
+        duplicate_records: 0,
+        malformed_records: 0,
+      };
+    }
+  }
+
   function aggregateByDay(rows) {
     const byDay = new Map();
     for (const row of rows) {
@@ -550,6 +579,7 @@ async function handleLocalApi(req, res, url) {
     res.end(JSON.stringify({
       from, to, days: daily.length,
       totals: { ...totals, total_cost_usd: totalCost.toFixed(6) },
+      data_integrity: readQueueDiagnostics(rows.length),
       rolling: {
         last_7d: {
           from: last7dFrom.toISOString().slice(0, 10),
@@ -841,6 +871,9 @@ async function handleLocalApi(req, res, url) {
 
   // 处理 project-usage-summary
   if (pathname === "/functions/tokentracker-project-usage-summary") {
+    const from = url.searchParams.get("from") || "";
+    const to = url.searchParams.get("to") || "";
+    const limit = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("limit") || "50", 10) || 50));
     // 优先读 ~/.tokentracker/tracker/project.queue.jsonl（与 7680 真实归因一致）
     const projectQueuePath = path.join(os.homedir(), ".tokentracker", "tracker", "project.queue.jsonl");
     try {
@@ -855,32 +888,96 @@ async function handleLocalApi(req, res, url) {
           dedup.set(k, row);
         } catch { /* skip malformed */ }
       }
+      const sourceHourModels = new Map();
+      for (const row of readQueueData()) {
+        if (!row.model) continue;
+        const modelKey = `${row.source || ""}|${row.hour_start || ""}`;
+        if (!sourceHourModels.has(modelKey)) sourceHourModels.set(modelKey, new Map());
+        const models = sourceHourModels.get(modelKey);
+        models.set(row.model, (models.get(row.model) || 0) + Number(row.total_tokens || 0));
+      }
       const byProject = new Map();
       for (const row of dedup.values()) {
+        const day = row.hour_start ? String(row.hour_start).slice(0, 10) : "";
+        if (from && day < from) continue;
+        if (to && day > to) continue;
         const key = row.project_key || "unknown";
         if (!byProject.has(key)) {
           byProject.set(key, {
             project_key: key,
+            project_name: String(key).split(/[\\/]/).filter(Boolean).pop() || key,
+            project_path: row.repo_root || "",
             project_ref: row.project_ref || key,
             total_tokens: 0,
             billable_total_tokens: 0,
+            cost_usd: 0,
+            request_count: 0,
+            last_active_at: null,
+            agent_usage: new Map(),
+            model_usage: new Map(),
+            usage_trend: new Map(),
           });
         }
         const agg = byProject.get(key);
-        agg.total_tokens += Number(row.total_tokens || 0);
-        agg.billable_total_tokens += Number(row.total_tokens || 0);
+        const tokens = Number(row.total_tokens || 0);
+        const source = String(row.source || "unknown").trim().toLowerCase() || "unknown";
+        agg.total_tokens += tokens;
+        agg.billable_total_tokens += tokens;
+        agg.cost_usd += computeRowCost(row);
+        agg.request_count += Math.max(1, Number(row.conversation_count || 0));
+        if (row.hour_start && (!agg.last_active_at || row.hour_start > agg.last_active_at)) agg.last_active_at = row.hour_start;
+        agg.agent_usage.set(source, (agg.agent_usage.get(source) || 0) + tokens);
+        const inferredModels = !row.model
+          ? sourceHourModels.get(`${row.source || ""}|${row.hour_start || ""}`)
+          : null;
+        if (inferredModels?.size > 0 && tokens > 0) {
+          const entries = Array.from(inferredModels.entries());
+          const inferredTotal = entries.reduce((sum, [, value]) => sum + Number(value), 0);
+          let allocated = 0;
+          entries.forEach(([model, value], index) => {
+            const modelTokens = index === entries.length - 1
+              ? tokens - allocated
+              : Math.round(tokens * (Number(value) / inferredTotal));
+            allocated += modelTokens;
+            const modelKey = `${source}\u0000${model}`;
+            agg.model_usage.set(modelKey, (agg.model_usage.get(modelKey) || 0) + modelTokens);
+          });
+        } else {
+          const model = String(row.model || "unknown").trim() || "unknown";
+          const modelKey = `${source}\u0000${model}`;
+          agg.model_usage.set(modelKey, (agg.model_usage.get(modelKey) || 0) + tokens);
+        }
+        if (day) agg.usage_trend.set(day, (agg.usage_trend.get(day) || 0) + tokens);
         if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
       }
       if (byProject.size > 0) {
         const entries = Array.from(byProject.values())
           .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
+          .slice(0, limit)
           .map((e) => ({
-            ...e,
+            project_key: e.project_key,
+            project_name: e.project_name,
+            project_path: e.project_path,
+            project_ref: e.project_ref,
             total_tokens: String(e.total_tokens),
             billable_total_tokens: String(e.billable_total_tokens),
+            cost_usd: String(e.cost_usd),
+            priced_tokens: e.cost_usd > 0 ? String(e.total_tokens) : "0",
+            unpriced_tokens: e.cost_usd > 0 ? "0" : String(e.total_tokens),
+            pricing_coverage: e.cost_usd > 0 ? "complete" : "unpriced",
+            request_count: String(e.request_count),
+            last_active_at: e.last_active_at,
+            agent_usage: Array.from(e.agent_usage.entries()).sort((a, b) => b[1] - a[1]).map(([id, value]) => ({ id, tokens: String(value), percent: e.total_tokens > 0 ? Math.round((value / e.total_tokens) * 1000) / 10 : 0 })),
+            model_usage: Array.from(e.model_usage.entries()).sort((a, b) => b[1] - a[1]).map(([entryKey, value]) => { const [provider, id] = entryKey.split("\u0000"); return { id, provider, tokens: String(value), percent: e.total_tokens > 0 ? Math.round((value / e.total_tokens) * 1000) / 10 : 0 }; }),
+            top_agents: Array.from(e.agent_usage.entries()).sort((a, b) => b[1] - a[1]).map(([id]) => id),
+            top_models: Array.from(e.model_usage.entries()).sort((a, b) => b[1] - a[1]).map(([entryKey]) => entryKey.split("\u0000")[1]),
+            model_providers: Object.fromEntries(Array.from(e.model_usage.keys()).map((entryKey) => { const [provider, id] = entryKey.split("\u0000"); return [id, provider]; })),
+            usage_trend: Array.from(e.usage_trend.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([trendDay, value]) => ({ day: trendDay, tokens: String(value) })),
+            period_from: from || Array.from(e.usage_trend.keys()).sort()[0] || null,
+            period_to: to || Array.from(e.usage_trend.keys()).sort().at(-1) || null,
           }));
         res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ generated_at: new Date().toISOString(), entries }));
+        res.end(JSON.stringify({ generated_at: new Date().toISOString(), from: from || null, to: to || null, entries }));
         return true;
       }
     } catch (e) {
@@ -1127,17 +1224,59 @@ async function proxyToLocalCli(req, res) {
   }
 }
 
+// These routes supply the Widgets and Usage Detail pages. In normal local
+// development they are proxied to the CLI on :7680; when that port is owned by
+// another Windows service, use the same read-only source handler in-process.
+const DEV_LOCAL_DATA_FALLBACK_PATHS = new Set([
+  "/functions/tokentracker-desktop-widget",
+  "/functions/tokentracker-agent-environment",
+  "/functions/tokentracker-usage-summary",
+  "/functions/tokentracker-usage-bounds",
+  "/functions/tokentracker-local-settings",
+  "/functions/tokentracker-spend-timeseries",
+  "/functions/tokentracker-spend-records",
+  "/functions/tokentracker-token-plans",
+  "/functions/tokentracker-api-billing-accounts",
+  "/functions/tokentracker-provider-api-configs",
+  "/functions/tokentracker-provider-api-balances",
+  "/functions/tokentracker-provider-api-refresh",
+  "/api/local-auth",
+  "/functions/tokentracker-provider-stats",
+  "/functions/tokentracker-model-stats",
+  "/functions/tokentracker-request-usage-records",
+]);
+
 function localDataApiPlugin() {
+  const { createLocalApiHandler, resolveQueuePath } = __viteRequire(
+    path.resolve(REPO_ROOT, "src", "lib", "local-api.js"),
+  );
+  const localDataHandler = createLocalApiHandler({ queuePath: resolveQueuePath() });
   return {
     name: "tokentracker-local-data-api",
     configureServer(server) {
       // 添加中间件到最前面，拦截所有请求
       server.middlewares.use((req, res, next) => {
-        if (typeof req.url === "string" && req.url.startsWith("/functions/")) {
+        if (
+          typeof req.url === "string"
+          && (req.url.startsWith("/functions/") || req.url.startsWith("/api/local-auth"))
+        ) {
           const url = new URL(req.url, `http://${req.headers.host}`);
+          if (url.pathname === "/api/local-auth") {
+            Promise.resolve(localDataHandler(req, res, url)).then((handled) => {
+              if (handled) return;
+              return proxyToLocalCli(req, res);
+            }).catch(next);
+            return;
+          }
           Promise.resolve(handleLocalApi(req, res, url))
             .then((handled) => {
               if (handled) return;
+              if (DEV_LOCAL_DATA_FALLBACK_PATHS.has(url.pathname)) {
+                return localDataHandler(req, res, url).then((sourceHandled) => {
+                  if (sourceHandled) return;
+                  return proxyToLocalCli(req, res);
+                });
+              }
               // Mock 没识别的 endpoint → 转发到仓库 CLI（7680）
               return proxyToLocalCli(req, res);
             })

@@ -71,7 +71,7 @@ function harness(reader, overrides = {}) {
 
 test("uses the exact startup, success, freshness, and failure schedules", async () => {
   assert.equal(STARTUP_DELAY_MS, 10_000);
-  assert.equal(SUCCESS_INTERVAL_MS, 2 * 60_000);
+  assert.equal(SUCCESS_INTERVAL_MS, 30_000);
   assert.equal(FOCUS_FRESHNESS_MS, 60_000);
   assert.deepEqual(FAILURE_BACKOFF_MS, [2 * 60_000, 10 * 60_000, 30 * 60_000]);
 
@@ -89,6 +89,127 @@ test("uses the exact startup, success, freshness, and failure schedules", async 
   const skipped = await h.service.check({ reason: "focus" });
   assert.equal(skipped.skipped, "fresh");
   assert.equal(reads.length, 1);
+});
+
+test("backfills 30 days of rollout resets without making them notification pending", async () => {
+  const calls = [];
+  const h = harness(async () => validSnapshot(BASE), {
+    getCodexHomes: () => ["C:/private/codex-home"],
+    collectCodexResetSnapshots: async (options) => {
+      calls.push(options);
+      return {
+        snapshots: [
+          {
+            observedAt: new Date(BASE).toISOString(),
+            window: "rolling_weekly",
+            usedPercent: 21,
+            resetAt: new Date(BASE + 6 * 24 * 60 * 60_000).toISOString(),
+            accountKey: null,
+            source: "codex_rollout",
+          },
+          {
+            observedAt: new Date(BASE + 60_000).toISOString(),
+            window: "rolling_weekly",
+            usedPercent: 0,
+            resetAt: new Date(BASE + 7 * 24 * 60 * 60_000 + 60_000).toISOString(),
+            accountKey: null,
+            source: "codex_rollout",
+          },
+        ],
+        cursor: { files: { abcdef0123456789abcdef0123456789: { offset: 42 } } },
+      };
+    },
+  });
+  assert.equal(typeof h.service.backfill, "function");
+  await h.service.backfill();
+  assert.equal(calls[0].sinceMs, BASE - 30 * 24 * 60 * 60_000);
+  assert.equal(h.service.listHistory().length, 0);
+  assert.equal(h.service.listNotificationPending().length, 0);
+  assert.equal(h.getSaved().rolloutCursor.files.abcdef0123456789abcdef0123456789.offset, 42);
+  assert.doesNotMatch(JSON.stringify(h.getSaved().rolloutCursor), /private|codex-home/u);
+});
+
+test("only signed official extra resets reach unread, history, and native notification surfaces", () => {
+  const localEvent = {
+    id: "restore-1",
+    type: "unexpected_quota_restore",
+    window: "rolling_5_hour",
+    createdAt: new Date(BASE).toISOString(),
+    occurredAt: new Date(BASE).toISOString(),
+    resetAt: new Date(BASE + 60 * 60_000).toISOString(),
+    officialUrl: "https://chatgpt.com/codex",
+    source: "live_usage",
+    alertEligible: true,
+    deliveredChannels: [],
+  };
+  const official = {
+    id: "official:x:2082317452755751098",
+    type: "official_reset_announcement",
+    window: null,
+    createdAt: new Date(BASE + 60_000).toISOString(),
+    sourceUrl: "https://x.com/thsottiaux/status/2082317452755751098",
+    officialUrl: "https://chatgpt.com/codex",
+    source: "signed_feed",
+    alertEligible: true,
+    deliveredChannels: [],
+    expiresAt: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
+  };
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 2,
+      events: [localEvent, official],
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: [],
+    }),
+  });
+  assert.deepEqual(
+    h.service.listNotificationPending().map((item) => item.id),
+    [official.id],
+  );
+  assert.deepEqual(h.service.listUnread().map((item) => item.id), [official.id]);
+  assert.deepEqual(h.service.listHistory().map((item) => item.id), [official.id]);
+});
+
+test("acknowledging the newest official reset never promotes older history into the banner", () => {
+  const previous = {
+    id: "official:x:2081955008658252238",
+    type: "official_reset_announcement",
+    window: null,
+    createdAt: new Date(BASE - 24 * 60 * 60_000).toISOString(),
+    sourceUrl: "https://x.com/thsottiaux/status/2081955008658252238",
+    officialUrl: "https://chatgpt.com/codex",
+    source: "signed_feed",
+    alertEligible: true,
+    deliveredChannels: [],
+    expiresAt: new Date(BASE + 29 * 24 * 60 * 60_000).toISOString(),
+  };
+  const latest = {
+    ...previous,
+    id: "official:x:2082317452755751098",
+    createdAt: new Date(BASE).toISOString(),
+    sourceUrl: "https://x.com/thsottiaux/status/2082317452755751098",
+    expiresAt: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
+  };
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 2,
+      events: [previous, latest],
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: [],
+    }),
+  });
+
+  assert.deepEqual(h.service.listUnread().map((item) => item.id), [latest.id]);
+  assert.deepEqual(
+    h.service.listNotificationPending().map((item) => item.id),
+    [latest.id],
+  );
+  h.service.acknowledge(latest.id);
+  assert.deepEqual(h.service.listUnread(), []);
+  assert.deepEqual(h.service.listNotificationPending(), []);
+  assert.equal(h.service.listHistory().length, 2);
 });
 
 test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", async () => {
@@ -138,7 +259,12 @@ test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", a
   await h.service.checkFeed({ force: true });
   assert.equal(requests[0].url, FEED_URL);
   assert.deepEqual(requests[0].options.headers, { Accept: "application/json" });
-  assert.equal(h.service.listUnread()[0].type, "official_reset_announcement");
+  const [unread] = h.service.listUnread();
+  assert.equal(unread.type, "official_reset_announcement");
+  assert.equal(
+    unread.occurredAt,
+    feedPayload.announcements[0].published_at,
+  );
 
   const cached = await h.service.checkFeed();
   assert.equal(cached.skipped, "fresh");
@@ -152,6 +278,51 @@ test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", a
     "Sun, 20 Jul 2026 08:00:00 GMT",
   );
   assert.equal(h.service.listUnread().length, 1);
+});
+
+test("startup rematerializes cached official events when a newer app adds feed metadata", () => {
+  const announcement = {
+    id: "x:2082317452755751098",
+    type: "official_reset_announcement",
+    title: "Codex official extra reset",
+    summary: "Usage limits were reset for all ChatGPT Work and Codex users.",
+    source_url: "https://x.com/thsottiaux/status/2082317452755751098",
+    source_author: "thsottiaux",
+    source_post_id: "2082317452755751098",
+    official_url: "https://chatgpt.com/codex",
+    published_at: new Date(BASE - 60_000).toISOString(),
+    expires_at: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
+    reset_kind: "hard",
+    reset_scope: "all_codex_work_users",
+  };
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 2,
+      events: [{
+        id: `official:${announcement.id}`,
+        type: "official_reset_announcement",
+        createdAt: announcement.published_at,
+        expiresAt: announcement.expires_at,
+        sourceUrl: announcement.source_url,
+        sourceAuthor: announcement.source_author,
+        source: "signed_feed",
+        alertEligible: true,
+      }],
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: [],
+      feed: {
+        fetchedAt: new Date(BASE).toISOString(),
+        announcements: [announcement],
+      },
+    }),
+  });
+
+  const [event] = h.service.listHistory();
+  assert.equal(event.resetKind, "hard");
+  assert.equal(event.resetScope, "all_codex_work_users");
+  assert.equal(event.sourcePostId, "2082317452755751098");
+  assert.equal(event.occurredAt, announcement.published_at);
 });
 
 test("offline or invalid feed keeps prior unexpired events and never blocks quota checks", async () => {
@@ -271,27 +442,31 @@ test("single-flight, unconfigured state, valid-only evaluation, and stop are saf
   assert.ok(h.cleared.length >= 1);
 });
 
-test("valid snapshots enter the state machine and acknowledgement persists", async () => {
+test("rolling quota snapshots never create a user-facing reset alert", async () => {
   const resetAt = new Date(BASE + 60 * 60_000).toISOString();
   const h = harness(async () => ({
-    ...validSnapshot(BASE, 80),
+    ...validSnapshot(BASE, h.getNow() <= Date.parse(resetAt) ? 80 : 0),
     checked_at: new Date(h.getNow()).toISOString(),
     primary_window: {
-      used_percent: 80,
-      reset_at: resetAt,
+      used_percent: h.getNow() <= Date.parse(resetAt) ? 80 : 0,
+      reset_at: h.getNow() <= Date.parse(resetAt)
+        ? resetAt
+        : new Date(h.getNow() + 5 * 60 * 60_000).toISOString(),
     },
   }));
   await h.service.check({ reason: "manual", force: true });
-  h.setNow(BASE + 31 * 60_000);
+  h.setNow(BASE + 61 * 60_000);
   await h.service.check({ reason: "manual", force: true });
-  const unread = h.service.listUnread();
-  assert.equal(unread.length, 1);
-  h.service.acknowledge(unread[0].id);
+  const localEvent = h.getSaved().events.find((event) => event.type === "reset_completed");
+  assert.ok(localEvent);
   assert.equal(h.service.listUnread().length, 0);
-  assert.ok(h.getSaved().acknowledgedEventIds.includes(unread[0].id));
+  assert.equal(h.service.listHistory().length, 0);
+  h.service.acknowledge(localEvent.id);
+  assert.equal(h.service.listUnread().length, 0);
+  assert.ok(h.getSaved().acknowledgedEventIds.includes(localEvent.id));
 });
 
-test("service exposes only the latest three actual reset records", () => {
+test("service hides rolling-window ledger records from the official reset history", () => {
   const events = Array.from({ length: 6 }, (_, index) => ({
     id: `completed-${index}`,
     type: "reset_completed",
@@ -317,8 +492,5 @@ test("service exposes only the latest three actual reset records", () => {
     }),
   });
 
-  assert.deepEqual(
-    h.service.listHistory().map((event) => event.id),
-    ["completed-5", "completed-4", "completed-3"],
-  );
+  assert.deepEqual(h.service.listHistory(), []);
 });

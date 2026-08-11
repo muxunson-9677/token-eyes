@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
 import { cn } from "../../../lib/cn";
-import { copy } from "../../../lib/copy";
-import { formatChineseTokenCount } from "../../../lib/format";
+import { copy, getCopyLocale } from "../../../lib/copy";
+import { formatTokenCount } from "../../../lib/format";
 import { ProviderIcon } from "./ProviderIcon.jsx";
 
 export const TOKEN_SERVICE_PAGE_SIZE = 5;
@@ -190,9 +190,11 @@ export function compareTokenServices(left, right) {
 
 function formatQuota(value, unit) {
   const number = toNonNegativeNumber(value);
-  if (!unit || unit === "tokens") return formatChineseTokenCount(number);
+  const locale = getCopyLocale();
+  if (!unit || unit === "tokens") return formatTokenCount(number, { locale });
+  if (unit === "percent") return `${number.toLocaleString(locale)}${copy("shared.unit.percent")}`;
   const suffix = unit && unit !== "tokens" ? ` ${unit}` : "";
-  return `${number.toLocaleString("zh-CN")}${suffix}`;
+  return `${number.toLocaleString(locale)}${suffix}`;
 }
 
 function formatDateTime(value, includeTime = false) {
@@ -202,7 +204,7 @@ function formatDateTime(value, includeTime = false) {
     ? Number(normalized) * (normalized.length <= 10 ? 1000 : 1)
     : Date.parse(normalized);
   if (!Number.isFinite(timestamp)) return String(value);
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(getCopyLocale(), {
     year: includeTime ? undefined : "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -243,12 +245,12 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
     <aside
       data-testid="token-service-list"
       className={cn(
-        "flex h-full min-h-[220px] min-w-0 flex-col rounded-xl border border-oai-gray-200 bg-white p-2.5 shadow-sm shadow-black/[0.04] dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:shadow-black/20",
+        "tt-surface flex h-full min-h-[220px] min-w-0 flex-col rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
     >
       <div className="flex items-center justify-between gap-2 border-b border-oai-gray-100 pb-2 dark:border-oai-gray-800">
-        <h3 className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100">
+        <h3 data-testid="token-service-list-title" className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100">
           {copy("spend.usage.token_services.title")}
         </h3>
         {!loading && !error && services.length > 0 && (
@@ -283,7 +285,7 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
               <li
                 key={service.id}
                 data-testid="token-service-row"
-                className="rounded-lg border border-oai-gray-200 bg-oai-gray-50/45 p-2 dark:border-oai-gray-700 dark:bg-oai-gray-800/35"
+                className="tt-surface-nested tt-token-service-card min-w-0 rounded-lg border p-2"
               >
                 <div className="flex min-w-0 items-start gap-1.5">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-oai-gray-100 text-[11px] font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400">

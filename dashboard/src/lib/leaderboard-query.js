@@ -1,6 +1,6 @@
 import { DASHBOARD_AGENTS } from "./agent-adapters-dashboard";
 
-export const LEADERBOARD_DEFAULT_PERIOD = "30d";
+export const LEADERBOARD_DEFAULT_PERIOD = "total";
 export const LEADERBOARD_DEFAULT_AGENT = "all";
 export const LEADERBOARD_DEFAULT_METRIC = "tokens";
 

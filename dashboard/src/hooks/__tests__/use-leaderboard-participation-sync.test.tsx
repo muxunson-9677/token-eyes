@@ -116,7 +116,7 @@ describe("leaderboard participation lifecycle", () => {
     });
   });
 
-  it("does not spend another upload when an authenticated user opens the leaderboard after a recent success", async () => {
+  it("checks the local summary hash whenever an authenticated user opens the leaderboard", async () => {
     mocks.auth.signedIn = true;
     mocks.auth.user = { id: "account-a" };
     mocks.getSyncState.mockReturnValue({
@@ -125,8 +125,13 @@ describe("leaderboard participation lifecycle", () => {
     });
     renderProbe("/leaderboard");
 
-    await waitFor(() => expect(mocks.getProfile).toHaveBeenCalled());
-    expect(mocks.sync).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mocks.sync).toHaveBeenCalledWith({
+        getAccessToken: expect.any(Function),
+        reason: "leaderboard-open",
+        accountId: "account-a",
+      });
+    });
   });
 
   it("requests daily catch-up only when the last success is over 24 hours old", async () => {

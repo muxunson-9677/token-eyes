@@ -27,15 +27,40 @@ vi.mock("../lib/api", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
 
 describe("useTokenServicePlans", () => {
+  it("shows saved plans before connected account refreshes finish", async () => {
+    const neverFinishes = new Promise(() => {});
+    getConsoleSessions.mockResolvedValue({ sessions: [] });
+    getTokenPlans.mockResolvedValue({
+      records: [{
+        id: "codex-local",
+        provider_id: "codex",
+        detection_method: "official_account",
+        detection_config: {
+          official_account: {
+            account_binding_id: "console-codex-local",
+            session_ref: "token-plan/codex/session/local",
+          },
+        },
+      }],
+    });
+    syncCodexConsoleQuota.mockReturnValue(neverFinishes);
+
+    const { result } = renderHook(() => useTokenServicePlans());
+
+    await waitFor(() => expect(result.current.plans).toEqual([
+      expect.objectContaining({ id: "codex-local" }),
+    ]));
+    expect(result.current.loading).toBe(false);
+  });
+
   it("reloads saved plans immediately after the settings page changes them", async () => {
     getConsoleSessions.mockResolvedValue({ sessions: [] });
     getTokenPlans
       .mockResolvedValueOnce({ records: [] })
-      .mockResolvedValueOnce({ records: [] })
-      .mockResolvedValueOnce({ records: [{ id: "cursor-new", provider_id: "cursor" }] })
       .mockResolvedValueOnce({ records: [{ id: "cursor-new", provider_id: "cursor" }] });
 
     const { result } = renderHook(() => useTokenServicePlans());

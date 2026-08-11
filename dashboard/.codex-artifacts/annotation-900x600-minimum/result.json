@@ -1,0 +1,166 @@
+{
+  "viewport": {
+    "width": 900,
+    "height": 600
+  },
+  "toolbarButton": {
+    "normal": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.12) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 2px 4px 0px, rgba(31, 43, 56, 0.08) 0px 7px 14px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": "tt-widget-project-add"
+    },
+    "pressed": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgba(31, 43, 56, 0.24) 0px 3px 7px 0px inset, rgba(31, 43, 56, 0.08) 0px 1px 2px 0px",
+      "transform": "matrix(0.94, 0, 0, 0.94, 0, 2)",
+      "animationName": "tt-widget-press-rebound",
+      "className": "tt-widget-project-add tt-widget-click-bounce"
+    },
+    "rebound": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgb(255, 255, 255) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.15) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.12) 0px 3px 5px 0px, rgba(31, 43, 56, 0.1) 0px 9px 18px 0px",
+      "transform": "matrix(1.01414, 0, 0, 1.01414, 0, -0.965677)",
+      "animationName": "tt-widget-press-rebound",
+      "className": "tt-widget-project-add tt-widget-click-bounce"
+    },
+    "settled": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgb(255, 255, 255) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.15) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.12) 0px 3px 5px 0px, rgba(31, 43, 56, 0.1) 0px 9px 18px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": "tt-widget-project-add"
+    },
+    "visibleDepth": true,
+    "pressedVisible": true,
+    "settledCleanly": true
+  },
+  "toolbarSelect": {
+    "normal": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.12) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 2px 4px 0px, rgba(31, 43, 56, 0.08) 0px 7px 14px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": "tt-widget-toolbar-select"
+    },
+    "pressed": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgb(255, 255, 255) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.15) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.12) 0px 3px 5px 0px, rgba(31, 43, 56, 0.1) 0px 9px 18px 0px",
+      "transform": "matrix(0.940045, 0, 0, 0.940045, 0, 1.99852)",
+      "animationName": "tt-widget-press-rebound",
+      "className": "tt-widget-toolbar-select tt-widget-click-bounce"
+    },
+    "rebound": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgb(255, 255, 255) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.15) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.12) 0px 3px 5px 0px, rgba(31, 43, 56, 0.1) 0px 9px 18px 0px",
+      "transform": "matrix(1.015, 0, 0, 1.015, 0, -0.999971)",
+      "animationName": "tt-widget-press-rebound",
+      "className": "tt-widget-toolbar-select tt-widget-click-bounce"
+    },
+    "settled": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgb(255, 255, 255) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.15) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.12) 0px 3px 5px 0px, rgba(31, 43, 56, 0.1) 0px 9px 18px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": "tt-widget-toolbar-select"
+    },
+    "visibleDepth": true,
+    "pressedVisible": true,
+    "settledCleanly": true
+  },
+  "refreshButton": {
+    "normal": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.12) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 2px 4px 0px, rgba(31, 43, 56, 0.08) 0px 7px 14px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": ""
+    },
+    "pressed": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgba(31, 43, 56, 0.24) 0px 3px 7px 0px inset, rgba(31, 43, 56, 0.08) 0px 1px 2px 0px",
+      "transform": "matrix(0.94, 0, 0, 0.94, 0, 2)",
+      "animationName": "tt-widget-press-rebound",
+      "className": "tt-widget-click-bounce"
+    },
+    "rebound": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgb(255, 255, 255) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.15) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.12) 0px 3px 5px 0px, rgba(31, 43, 56, 0.1) 0px 9px 18px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": ""
+    },
+    "settled": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.92))",
+      "boxShadow": "rgb(255, 255, 255) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.15) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.12) 0px 3px 5px 0px, rgba(31, 43, 56, 0.1) 0px 9px 18px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": ""
+    },
+    "visibleDepth": true,
+    "pressedVisible": true,
+    "settledCleanly": true
+  },
+  "widgetsNoHorizontalOverflow": true,
+  "resetSelect": {
+    "normal": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.96), rgba(243, 246, 250, 0.9))",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.14) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 2px 4px 0px, rgba(31, 43, 56, 0.08) 0px 7px 14px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": "tt-reset-effect-control tt-focus-ring h-10 min-w-40 rounded-xl border border-oai-gray-200 bg-white/80 px-3 pr-8 text-sm font-medium text-oai-gray-800 shadow-sm backdrop-blur-xl dark:border-oai-gray-700 dark:bg-oai-gray-900/75 dark:text-oai-gray-100"
+    },
+    "pressed": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.96), rgba(243, 246, 250, 0.9))",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.14) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 2px 4px 0px, rgba(31, 43, 56, 0.08) 0px 7px 14px 0px",
+      "transform": "matrix(0.940045, 0, 0, 0.940045, 0, 1.9985)",
+      "animationName": "tt-widget-press-rebound",
+      "className": "tt-reset-effect-control tt-focus-ring h-10 min-w-40 rounded-xl border border-oai-gray-200 bg-white/80 px-3 pr-8 text-sm font-medium text-oai-gray-800 shadow-sm backdrop-blur-xl dark:border-oai-gray-700 dark:bg-oai-gray-900/75 dark:text-oai-gray-100 tt-reset-control-click-bounce"
+    },
+    "rebound": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.96), rgba(243, 246, 250, 0.9))",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.14) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 2px 4px 0px, rgba(31, 43, 56, 0.08) 0px 7px 14px 0px",
+      "transform": "matrix(1.015, 0, 0, 1.015, 0, -0.999968)",
+      "animationName": "tt-widget-press-rebound",
+      "className": "tt-reset-effect-control tt-focus-ring h-10 min-w-40 rounded-xl border border-oai-gray-200 bg-white/80 px-3 pr-8 text-sm font-medium text-oai-gray-800 shadow-sm backdrop-blur-xl dark:border-oai-gray-700 dark:bg-oai-gray-900/75 dark:text-oai-gray-100 tt-reset-control-click-bounce"
+    },
+    "settled": {
+      "borderWidth": "1px",
+      "backgroundImage": "linear-gradient(rgba(255, 255, 255, 0.96), rgba(243, 246, 250, 0.9))",
+      "boxShadow": "rgba(255, 255, 255, 0.98) 0px 1px 0px 0px inset, rgba(100, 116, 139, 0.14) 0px -1px 0px 0px inset, rgba(31, 43, 56, 0.1) 0px 2px 4px 0px, rgba(31, 43, 56, 0.08) 0px 7px 14px 0px",
+      "transform": "none",
+      "animationName": "none",
+      "className": "tt-reset-effect-control tt-focus-ring h-10 min-w-40 rounded-xl border border-oai-gray-200 bg-white/80 px-3 pr-8 text-sm font-medium text-oai-gray-800 shadow-sm backdrop-blur-xl dark:border-oai-gray-700 dark:bg-oai-gray-900/75 dark:text-oai-gray-100"
+    },
+    "visibleDepth": true,
+    "pressedVisible": true,
+    "settledCleanly": true
+  },
+  "provider": {
+    "padding": "14px 16px 16px",
+    "overflowX": "hidden",
+    "scrollbarGutter": "stable",
+    "leftGap": 17,
+    "rightGap": 32,
+    "noHorizontalOverflow": true,
+    "rowsInsideSafeArea": true,
+    "contentVisible": true
+  },
+  "passed": true
+}

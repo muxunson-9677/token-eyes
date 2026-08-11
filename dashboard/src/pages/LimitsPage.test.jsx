@@ -1,17 +1,23 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   publishUsageLimitsPreloadState,
   resetDashboardPreload,
 } from "../lib/dashboard-preload.js";
+import { copy } from "../lib/copy";
 import { LimitsPage } from "./LimitsPage.jsx";
 
 const useUsageLimitsMock = vi.hoisted(() => vi.fn());
+const useLimitAccountsMock = vi.hoisted(() => vi.fn());
 const useLimitsDisplayPrefsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../hooks/use-usage-limits", () => ({
   useUsageLimits: useUsageLimitsMock,
+}));
+vi.mock("../hooks/use-limit-accounts", () => ({
+  useLimitAccounts: useLimitAccountsMock,
 }));
 
 vi.mock("../hooks/use-limits-display-prefs.js", () => ({
@@ -19,8 +25,13 @@ vi.mock("../hooks/use-limits-display-prefs.js", () => ({
 }));
 
 vi.mock("../ui/dashboard/components/UsageLimitsPanel.jsx", () => ({
-  UsageLimitsPanel: ({ kimi, codex, displayMode }) => (
-    <div data-testid="limits-panel" data-display-mode={displayMode ?? "absent"}>
+  UsageLimitsPanel: ({ kimi, codex, displayMode, accounts, accountsRefreshing }) => (
+    <div
+      data-testid="limits-panel"
+      data-display-mode={displayMode ?? "absent"}
+      data-account-count={accounts?.length ?? 0}
+      data-accounts-refreshing={accountsRefreshing ? "true" : "false"}
+    >
       {kimi?.configured ? "Kimi connected" : "Kimi missing"}
       {codex?.configured ? " Codex connected" : ""}
     </div>
@@ -55,6 +66,14 @@ describe("LimitsPage", () => {
       data: apiLimits,
       error: null,
       isLoading: false,
+      refresh: vi.fn(),
+    }));
+    useLimitAccountsMock.mockReset();
+    useLimitAccountsMock.mockImplementation(() => ({
+      data: { accounts: [], forecasts: [] },
+      error: null,
+      isLoading: false,
+      refresh: vi.fn(),
     }));
     useLimitsDisplayPrefsMock.mockReset();
     useLimitsDisplayPrefsMock.mockImplementation(() => ({
@@ -65,13 +84,22 @@ describe("LimitsPage", () => {
   });
 
   it("passes Kimi limits from the API response into the limits panel", () => {
-    render(
+    const { container } = render(
       <MemoryRouter>
         <LimitsPage />
       </MemoryRouter>,
     );
 
+    expect(screen.getByRole("heading", { name: copy("nav.limits") })).toBeInTheDocument();
     expect(screen.getByText("Kimi connected")).toBeInTheDocument();
+    const toolbar = screen.getByRole("toolbar", { name: copy("nav.limits") });
+    expect(toolbar).toHaveClass("tt-surface-nested", "gap-2");
+    expect(toolbar).not.toHaveClass("gap-1", "p-1");
+    expect(toolbar.querySelectorAll("button, a")).toHaveLength(2);
+    for (const control of toolbar.querySelectorAll("button, a")) {
+      expect(control).toHaveClass("h-9", "rounded-lg");
+    }
+    expect(container.querySelectorAll(".tt-product-focusable")).toHaveLength(2);
   });
 
   it("uses matching preloaded limits as the hook initial state and skips the full skeleton", () => {
@@ -130,5 +158,52 @@ describe("LimitsPage", () => {
       "data-display-mode",
       "remaining",
     );
+  });
+
+  it("batch-refreshes usage and privacy-safe account rows from one control", async () => {
+    const user = userEvent.setup();
+    let resolveAccounts;
+    const refreshUsage = vi.fn().mockResolvedValue(undefined);
+    const refreshAccounts = vi.fn(() => new Promise((resolve) => {
+      resolveAccounts = resolve;
+    }));
+    useUsageLimitsMock.mockImplementation(() => ({
+      data: apiLimits,
+      error: null,
+      isLoading: false,
+      refresh: refreshUsage,
+    }));
+    useLimitAccountsMock.mockImplementation(() => ({
+      data: {
+        accounts: [{ provider_id: "codex", account_key: "hashed", account_label: "Work" }],
+        forecasts: [],
+      },
+      error: null,
+      isLoading: false,
+      refresh: refreshAccounts,
+    }));
+
+    render(
+      <MemoryRouter>
+        <LimitsPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("limits-panel")).toHaveAttribute("data-account-count", "1");
+    await user.click(screen.getByRole("button", { name: copy("limits.accounts.refresh_all") }));
+    expect(refreshUsage).toHaveBeenCalledTimes(1);
+    expect(refreshAccounts).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("limits-panel")).toHaveAttribute(
+      "data-accounts-refreshing",
+      "true",
+    );
+
+    resolveAccounts();
+    await waitFor(() => {
+      expect(screen.getByTestId("limits-panel")).toHaveAttribute(
+        "data-accounts-refreshing",
+        "false",
+      );
+    });
   });
 });

@@ -9,6 +9,7 @@ import { useUsageFilterParams, useUsageFilterCacheKey, useUsageFilters } from ".
 import { resolveEffectiveUsageSources } from "../lib/spend-provider-visibility.js";
 
 interface UseUsageSummaryParams {
+  enabled?: boolean;
   baseUrl?: string;
   accessToken?: string | null;
   guestAllowed?: boolean;
@@ -30,6 +31,11 @@ interface UseUsageSummaryReturn {
   disabledByVisibility: boolean;
 }
 
+interface UsageSummaryCacheEntry {
+  summary: UsageSummaryResponse;
+  fetchedAt: string | null;
+}
+
 function safeHost(baseUrl: unknown): string | null {
   try {
     const url = new URL(baseUrl as string);
@@ -40,6 +46,7 @@ function safeHost(baseUrl: unknown): string | null {
 }
 
 export function useUsageSummary({
+  enabled = true,
   baseUrl,
   accessToken,
   guestAllowed = false,
@@ -93,26 +100,29 @@ export function useUsageSummary({
     return `tokentracker.usageSummary.${cacheKey}.${host}.${from}.${to}.${tzKey}.${filterCacheKey}.${sourcesKey}`;
   }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, filterCacheKey, effectiveSources]);
 
-  const readCache = useCallback((): UsageSummaryResponse | null => {
+  const readCache = useCallback((): UsageSummaryCacheEntry | null => {
     if (!storageKey || typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem(storageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || !parsed.summary) return null;
-      return parsed.summary as UsageSummaryResponse;
+      return {
+        summary: parsed.summary as UsageSummaryResponse,
+        fetchedAt: typeof parsed.fetchedAt === "string" ? parsed.fetchedAt : null,
+      };
     } catch {
       return null;
     }
   }, [storageKey]);
 
   const writeCache = useCallback(
-    (payload: UsageSummaryResponse) => {
+    (payload: UsageSummaryResponse, successfulAt: string) => {
       if (!storageKey || typeof window === "undefined") return;
       try {
         window.localStorage.setItem(
           storageKey,
-          JSON.stringify({ summary: payload, fetchedAt: new Date().toISOString() }),
+          JSON.stringify({ summary: payload, fetchedAt: successfulAt }),
         );
       } catch {
         // quota / serialization errors are non-fatal
@@ -139,7 +149,8 @@ export function useUsageSummary({
     setError(null);
     const cached = cacheAllowed ? readCache() : null;
     if (cached) {
-      setSummary(cached);
+      setSummary(cached.summary);
+      setFetchedAt(cached.fetchedAt);
       setLoading(false);
     } else {
       setLoading(true);
@@ -147,6 +158,11 @@ export function useUsageSummary({
   }, [scopeKey, cacheAllowed, readCache]);
 
   const refresh = useCallback(async ({ background = false } = {}) => {
+    if (!enabled) {
+      setLoading(true);
+      return;
+    }
+
     const token = await resolveAuthAccessToken(accessToken);
     if (!token && !mockEnabled && !guestAllowed && !isLocalMode) {
       setLoading(false);
@@ -186,16 +202,17 @@ export function useUsageSummary({
       setSource(mockEnabled ? "mock" : "edge");
       const now = new Date().toISOString();
       setFetchedAt(now);
-      if (cacheAllowed) writeCache(res as UsageSummaryResponse);
+      if (cacheAllowed) writeCache(res as UsageSummaryResponse, now);
       else clearCache();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (cacheAllowed) {
         const cached = readCache();
         if (cached) {
-          setSummary(cached);
+          setSummary(cached.summary);
           setSource("cache");
-          setError(null);
+          setFetchedAt(cached.fetchedAt);
+          setError(message);
         } else {
           setError(message);
         }
@@ -224,9 +241,14 @@ export function useUsageSummary({
     filterParams.models,
     filterParams.agentIds,
     disabledByVisibility,
+    enabled,
   ]);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(true);
+      return;
+    }
     if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
       setSummary(null);
       setError(null);
@@ -238,20 +260,22 @@ export function useUsageSummary({
     } else {
       const cached = readCache();
       if (cached) {
-        setSummary(cached);
+        setSummary(cached.summary);
         setSource("cache");
+        setFetchedAt(cached.fetchedAt);
         setLoading(false);
       }
     }
     void refresh({ background: Boolean(readCache()) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh, cacheAllowed, tokenReady, mockEnabled, guestAllowed]);
+  }, [refresh, cacheAllowed, tokenReady, mockEnabled, guestAllowed, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (handledRefreshRevision.current === refreshRevision) return;
     handledRefreshRevision.current = refreshRevision;
     void refresh({ background: Boolean(summary) });
-  }, [refreshRevision, refresh, summary]);
+  }, [refreshRevision, refresh, summary, enabled]);
 
   return {
     summary,

@@ -26,6 +26,10 @@ vi.mock("../../../../lib/copy", () => ({
       "ticket04.model.column.cost": "Cost",
       "ticket04.model.column.success_rate": "Success Rate",
       "ticket04.model.column.avg_latency": "Avg Latency",
+      "spend.usage.metric.not_collected": "Not collected",
+      "spend.usage.pagination.records": `${vars.total} records`,
+      "spend.usage.pagination.previous": "Previous",
+      "spend.usage.pagination.next": "Next",
     };
     return map[key] || key;
   },
@@ -139,6 +143,44 @@ describe("ModelUsageTable", () => {
     // gpt-5 (50000 tokens) should appear before claude-sonnet (1000 tokens)
     expect(rows[0].textContent).toContain("gpt-5");
     expect(rows[1].textContent).toContain("claude-sonnet");
+  });
+
+  it("keeps the model card fixed to ten rows and paginates the rest", () => {
+    const modelRows = Array.from({ length: 12 }, (_, index) => makeModel({
+      model: `model-${index + 1}`,
+      tokens: 12 - index,
+    }));
+    useModelStats.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      models: { models: modelRows, totals: {} },
+    });
+
+    const { container } = render(<ModelUsageTable from="2026-06-01" to="2026-06-30" />);
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(10);
+    expect(screen.getByText("12 records")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(screen.getByText("model-11")).toBeInTheDocument();
+  });
+
+  it("uses aggregate conversation counts and labels genuinely uncollected metrics", () => {
+    useModelStats.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      models: {
+        models: [makeModel({
+          request_count: null,
+          conversation_count: 168,
+          success_rate: null,
+          avg_latency_ms: null,
+        })],
+        totals: {},
+      },
+    });
+
+    const { container } = render(<ModelUsageTable from="2026-06-01" to="2026-06-30" />);
+    expect(screen.getByText("168")).toBeInTheDocument();
+    expect(screen.getAllByText("Not collected")).toHaveLength(2);
+    expect(container).not.toHaveTextContent("—");
   });
 
   it("success rate 100% is green, <100% is orange", () => {

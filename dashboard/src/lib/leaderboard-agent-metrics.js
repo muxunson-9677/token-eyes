@@ -42,8 +42,17 @@ export function normalizeAgentMetrics(entry, metric = "with_cache") {
       .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
   }
 
-  return LEGACY_AGENT_FIELDS
+  const legacyItems = LEGACY_AGENT_FIELDS
     .map(([agentId, field]) => positiveMetric(agentId, record[field]))
+    .filter(Boolean)
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+  if (legacyItems.length > 0) return legacyItems;
+
+  const breakdownValue = metric === "estimated_cost" || metric === "estimated_spend"
+    ? "estimated_cost_usd"
+    : "total_tokens";
+  return (Array.isArray(record.source_breakdown) ? record.source_breakdown : [])
+    .map((row) => positiveMetric(String(row?.source || "").trim().toLowerCase(), row?.[breakdownValue]))
     .filter(Boolean)
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
 }

@@ -175,12 +175,28 @@ async function fetchClaudeUsageLimits(accessToken, { fetchImpl = fetch, maxAttem
 // reading mislabels it as "5h". Aligned with steipete/CodexBar's rate-window normalizer.
 const CODEX_SESSION_WINDOW_SECONDS = 18000;
 const CODEX_WEEKLY_WINDOW_SECONDS = 604800;
-const CODEX_RESET_CREDIT_ALLOWLIST = Object.freeze([]);
+const CODEX_RESET_CREDIT_ALLOWLIST = Object.freeze([
+  "rate_limit_reset_credits.available_count",
+  "rate_limit_reset_credits.applicable_available_count",
+]);
 
-function parseCodexResetCreditFields(_body) {
-  // Intentionally disabled until an exact official response schema is captured
-  // as a redacted fixture and its field path is explicitly allowlisted.
-  return null;
+function parseCodexResetCreditFields(body) {
+  const source = body?.rate_limit_reset_credits;
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+  const available = Number(source.available_count);
+  const applicable = Number(source.applicable_available_count);
+  if (
+    !Number.isSafeInteger(available)
+    || available < 0
+    || !Number.isSafeInteger(applicable)
+    || applicable < 0
+  ) {
+    return null;
+  }
+  return {
+    available_count: available,
+    applicable_available_count: applicable,
+  };
 }
 
 function classifyCodexWindow(window) {
@@ -331,9 +347,11 @@ async function fetchCodexUsageLimits(
     throw new Error(`Codex API returned ${res.status}`);
   }
   const body = await res.json();
+  const resetCredits = parseCodexResetCreditFields(body);
   return {
     ...normalizeCodexRateWindows(body.rate_limit || {}),
     ...normalizeCodexSparkRateWindows(body.additional_rate_limits),
+    ...(resetCredits ? { reset_credits: resetCredits } : {}),
   };
 }
 
@@ -470,6 +488,7 @@ async function getCodexUsageLimits({
   }
   const regular = normalizeCodexRateWindows(body?.rate_limit);
   const spark = normalizeCodexSparkRateWindows(body?.additional_rate_limits);
+  const resetCredits = parseCodexResetCreditFields(body);
   if (!regular.primary_window && !regular.secondary_window) {
     return {
       configured: true,
@@ -478,7 +497,6 @@ async function getCodexUsageLimits({
       error_code: "response_unsupported",
     };
   }
-  parseCodexResetCreditFields(body);
   return {
     configured: true,
     checked_at,
@@ -486,6 +504,7 @@ async function getCodexUsageLimits({
     secondary_window: sanitizeCodexWindow(regular.secondary_window),
     spark_primary_window: sanitizeCodexWindow(spark.spark_primary_window),
     spark_secondary_window: sanitizeCodexWindow(spark.spark_secondary_window),
+    ...(resetCredits ? { reset_credits: resetCredits } : {}),
   };
 }
 

@@ -90,6 +90,90 @@ describe("local dashboard runtime hooks", () => {
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalledTimes(1));
   });
 
+  it("preserves ledger integrity evidence for the overview confidence state", async () => {
+    vi.mocked(getUsageSummary).mockResolvedValueOnce({
+      totals: { total_tokens: 123, billable_total_tokens: 123 },
+      data_integrity: { status: "attention", token_delta: 3, malformed_records: 0 },
+      rolling: {},
+    } as any);
+
+    const { result } = renderHook(
+      () =>
+        useUsageData({
+          baseUrl: "http://127.0.0.1:7680",
+          accessToken: null,
+          from: "2026-07-06",
+          to: "2026-07-06",
+          includeDaily: false,
+        }),
+      { wrapper: UsageFiltersProvider },
+    );
+
+    await waitFor(() => expect(result.current.summary?.total_tokens).toBe(123));
+    expect(result.current.summary?.data_integrity).toEqual({
+      status: "attention",
+      token_delta: 3,
+      malformed_records: 0,
+    });
+  });
+
+  it("keeps the last successful overview data and exposes the refresh failure", async () => {
+    const { result } = renderHook(
+      () =>
+        useUsageData({
+          baseUrl: "http://127.0.0.1:7680",
+          accessToken: null,
+          from: "2026-07-06",
+          to: "2026-07-06",
+          includeDaily: false,
+          cacheKey: "dashboard",
+        }),
+      { wrapper: UsageFiltersProvider },
+    );
+
+    await waitFor(() => expect(result.current.summary?.total_tokens).toBe(123));
+    const lastSuccessAt = result.current.fetchedAt;
+    vi.mocked(getUsageSummary).mockRejectedValueOnce(new Error("local service unavailable"));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.summary?.total_tokens).toBe(123);
+    expect(result.current.source).toBe("cache");
+    expect(result.current.fetchedAt).toBe(lastSuccessAt);
+    expect(result.current.error).toBe("local service unavailable");
+  });
+
+  it("does not swallow a core summary failure when daily details still load", async () => {
+    const { result } = renderHook(
+      () =>
+        useUsageData({
+          baseUrl: "http://127.0.0.1:7680",
+          accessToken: null,
+          from: "2026-07-06",
+          to: "2026-07-06",
+          includeDaily: true,
+          cacheKey: "dashboard-with-daily",
+        }),
+      { wrapper: UsageFiltersProvider },
+    );
+
+    await waitFor(() => expect(result.current.summary?.total_tokens).toBe(123));
+    const lastSuccessAt = result.current.fetchedAt;
+    vi.mocked(getUsageDaily).mockResolvedValueOnce({ data: [] });
+    vi.mocked(getUsageSummary).mockRejectedValueOnce(new Error("summary refresh unavailable"));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.summary?.total_tokens).toBe(123);
+    expect(result.current.source).toBe("cache");
+    expect(result.current.fetchedAt).toBe(lastSuccessAt);
+    expect(result.current.error).toBe("summary refresh unavailable");
+  });
+
   it("loads trend data from the local API in Tauri even without a login token", async () => {
     renderHook(() =>
       useTrendData({

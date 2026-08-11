@@ -7,15 +7,16 @@ import { useCurrency } from "../../../hooks/useCurrency.js";
 import { CURRENCY_USD, getCurrencySymbol } from "../../../lib/currency";
 
 function formatHeroTotal(value, currency, rate) {
-  if (!Number.isFinite(value)) return copy("shared.placeholder.short");
+  if (!Number.isFinite(value)) return null;
   const formatted = formatUsdCurrency(value, { decimals: 2, currency, rate });
-  return formatted === "-" ? copy("shared.placeholder.short") : formatted;
+  return formatted === "-" ? null : formatted;
 }
 
 function formatCostCell(value, currency, rate) {
-  if (!Number.isFinite(value) || value <= 0) return null;
+  if (!Number.isFinite(value) || value < 0) return null;
   const symbol = getCurrencySymbol(currency);
   const converted = currency === CURRENCY_USD ? value : value * rate;
+  if (converted === 0) return formatUsdCurrency(value, { decimals: 2, currency, rate });
   if (converted < 0.01) return `<${symbol}0.01`;
   return formatUsdCurrency(value, { decimals: 2, currency, rate });
 }
@@ -37,36 +38,38 @@ export const CostAnalysisModal = React.memo(function CostAnalysisModal({
   const normalizedFleet = useMemo(() => {
     return (Array.isArray(fleetData) ? fleetData : [])
       .map((fleet) => {
-        const usdValue = toFiniteNumber(fleet?.usd) ?? 0;
-        const tokenValue = toFiniteNumber(fleet?.usage) ?? 0;
+        const usdValue = toFiniteNumber(fleet?.usd);
+        const tokenValue = toFiniteNumber(fleet?.usage);
         const models = Array.isArray(fleet?.models) ? fleet.models : [];
         return {
-          label: fleet?.label ? String(fleet.label) : "",
+          label: fleet?.label ? String(fleet.label) : copy("data.confidence.unattributed"),
           usdValue,
           costLabel: formatCostCell(usdValue, currency, rate),
           tokensLabel: formatTokensCell(tokenValue),
           models: models
             .map((model) => {
-              const tokens = toFiniteNumber(model?.usage) ?? 0;
-              const cost = toFiniteNumber(model?.cost) ?? 0;
+              const tokens = toFiniteNumber(model?.usage);
+              const cost = toFiniteNumber(model?.cost);
               return {
                 id: model?.id ? String(model.id) : "",
-                name: model?.name ? String(model.name) : "",
+                name: model?.name ? String(model.name) : copy("data.confidence.unattributed"),
                 tokensLabel: formatTokensCell(tokens),
                 costLabel: formatCostCell(cost, currency, rate),
-                sortCost: cost,
+                sortCost: cost ?? -1,
               };
             })
             .filter((m) => m.costLabel || m.tokensLabel)
             .sort((a, b) => b.sortCost - a.sortCost),
         };
       })
-      .filter((fleet) => fleet.usdValue > 0 || fleet.models.length > 0)
-      .sort((a, b) => b.usdValue - a.usdValue);
+      .filter((fleet) => fleet.costLabel || fleet.tokensLabel || fleet.models.length > 0)
+      .sort((a, b) => (b.usdValue ?? -1) - (a.usdValue ?? -1));
   }, [fleetData, currency, rate]);
 
   const totalLabel = useMemo(() => {
-    const totalUsd = normalizedFleet.reduce((acc, fleet) => acc + fleet.usdValue, 0);
+    const costRows = normalizedFleet.filter((fleet) => Number.isFinite(fleet.usdValue));
+    if (costRows.length === 0) return null;
+    const totalUsd = costRows.reduce((acc, fleet) => acc + fleet.usdValue, 0);
     return formatHeroTotal(totalUsd, currency, rate);
   }, [normalizedFleet, currency, rate]);
 
@@ -97,15 +100,17 @@ export const CostAnalysisModal = React.memo(function CostAnalysisModal({
 
             <div className="flex-1 min-h-0 overflow-y-auto oai-scrollbar">
               <div className="px-3 py-6">
-                <p className="text-label uppercase tracking-[0.12em] text-oai-gray-500 dark:text-oai-gray-400 mb-2">
-                  {copy("dashboard.cost_breakdown.total_label")}
-                </p>
-                <p
-                  className="font-bold text-oai-brand tabular-nums tracking-tight leading-none mb-6"
-                  style={{ fontSize: "clamp(24px, 6.5vw, 32px)" }}
-                >
-                  {totalLabel}
-                </p>
+                {totalLabel ? <>
+                  <p className="text-label uppercase tracking-[0.12em] text-oai-gray-500 dark:text-oai-gray-400 mb-2">
+                    {copy("dashboard.cost_breakdown.total_label")}
+                  </p>
+                  <p
+                    className="font-bold text-oai-brand tabular-nums tracking-tight leading-none mb-6"
+                    style={{ fontSize: "clamp(24px, 6.5vw, 32px)" }}
+                  >
+                    {totalLabel}
+                  </p>
+                </> : null}
 
                 {normalizedFleet.length === 0 ? (
                   <p className="text-body-sm text-oai-gray-500 dark:text-oai-gray-400">
@@ -141,12 +146,12 @@ export const CostAnalysisModal = React.memo(function CostAnalysisModal({
                           >
                             {fleet.label}
                           </span>
-                          <span
+                          {fleet.costLabel ? <span
                             role="cell"
                             className="shrink-0 text-body-sm font-semibold text-oai-black dark:text-oai-white tabular-nums leading-none"
                           >
-                            {fleet.costLabel || "—"}
-                          </span>
+                            {fleet.costLabel}
+                          </span> : null}
                         </div>
 
                         {fleet.models.map((model, mi) => (
@@ -162,12 +167,12 @@ export const CostAnalysisModal = React.memo(function CostAnalysisModal({
                             >
                               {model.name}
                             </span>
-                            <span
+                            {model.costLabel ? <span
                               role="cell"
                               className="shrink-0 text-caption text-oai-gray-700 dark:text-oai-gray-300 tabular-nums leading-none"
                             >
-                              {model.costLabel || ""}
-                            </span>
+                              {model.costLabel}
+                            </span> : null}
                           </div>
                         ))}
                       </div>

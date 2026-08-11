@@ -2,6 +2,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 import {
   getAgentEnvironment,
   getObservabilityExport,
+  getSpendTimeseries,
+  getUsageBounds,
   getUsageAttribution,
   getTokenPlans,
   openXiaomiMimoConsoleLogin,
@@ -49,6 +51,42 @@ it("routes local function requests to the Tauri-reported loopback CLI API", asyn
       headers: expect.objectContaining({ Accept: "application/json" }),
     }),
   );
+});
+
+it("uses deterministic spend trend and Token service fixtures in screenshot mock mode", async () => {
+  const fetchMock = vi.fn(() => {
+    throw new Error("mock mode must not call the local API");
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(
+    {},
+    "",
+    "/?mock=1&mock_seed=baseline&mock_today=2025-12-31&mock_now=2025-12-31T12:00:00Z",
+  );
+
+  try {
+    const [trend, plans, bounds] = await Promise.all([
+      getSpendTimeseries({ from: "2025-12-01", to: "2025-12-31" }),
+      getTokenPlans(),
+      getUsageBounds(),
+    ]);
+
+    expect(trend.ok).toBe(true);
+    expect(trend.series.length).toBeGreaterThan(1);
+    expect(trend.totals.api_usd).toBe(trend.totals.api_cost_usd);
+    expect(trend.totals.subscription_usd).toBe(trend.totals.subscription_cost_usd);
+    expect(trend.totals.other_ai_usd).toBe(0);
+    expect(plans.records.length).toBeGreaterThan(0);
+    expect(bounds).toEqual({
+      ok: true,
+      from: "2025-01-01",
+      to: "2025-12-31",
+      empty: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  } finally {
+    window.history.replaceState({}, "", "/");
+  }
 });
 
 it("requests local-only usage attribution with the active source and model filters", async () => {

@@ -180,7 +180,7 @@ body {
 
 body {
   margin: 0;
-  background: var(--oai-white);
+  background: var(--tt-canvas);
   color: var(--oai-black);
   font-family: var(--oai-font-sans);
   font-size: var(--text-body);
@@ -189,13 +189,195 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Global: suppress focus outlines and Tailwind ring on Tab/click focus.
-   Inputs/textareas keep their own border-color :focus styling defined per-component. */
-*:focus,
-*:focus-visible {
-  outline: none !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
+.tt-app-shell,
+.tt-shell:not(.tt-shell--bare) {
+  background:
+    radial-gradient(circle at 11% -8%, rgba(255, 255, 255, 0.92), transparent 34%),
+    linear-gradient(145deg, #edf0f2 0%, #f7f8f9 46%, #e9edf0 100%);
+}
+
+:root.dark .tt-app-shell,
+:root.dark .tt-shell:not(.tt-shell--bare) {
+  background:
+    radial-gradient(circle at 12% -10%, rgba(255, 255, 255, 0.075), transparent 32%),
+    linear-gradient(145deg, #202329 0%, #15181d 48%, #101216 100%);
+}
+
+.tt-sidebar-material {
+  background:
+    linear-gradient(112deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.44)),
+    rgba(238, 241, 243, 0.64);
+  border-right: 1px solid rgba(64, 76, 88, 0.08);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.42);
+  backdrop-filter: blur(24px) saturate(132%);
+  -webkit-backdrop-filter: blur(24px) saturate(132%);
+}
+
+:root.dark .tt-sidebar-material {
+  background:
+    linear-gradient(112deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.018)),
+    rgba(27, 30, 35, 0.72);
+  border-right-color: rgba(255, 255, 255, 0.065);
+  box-shadow:
+    inset -1px 0 0 rgba(0, 0, 0, 0.28),
+    inset 1px 0 0 rgba(255, 255, 255, 0.025);
+}
+
+/* The native window can be exactly 900px wide. Keep its desktop navigation
+   deterministic instead of depending on the framework's 1024px `lg` tier. */
+@media (min-width: 900px) {
+  .tt-desktop-sidebar {
+    display: flex !important;
+  }
+
+  .tt-mobile-navigation {
+    display: none !important;
+  }
+}
+
+.tt-sidebar-item {
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.tt-sidebar-item.tt-pressable:not(:disabled):not([aria-disabled="true"]):hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+:root.dark .tt-sidebar-item.tt-pressable:not(:disabled):not([aria-disabled="true"]):hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.tt-sidebar-item.tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-current="page"] {
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.88), rgba(226, 231, 235, 0.62));
+  box-shadow:
+    inset 0 2px 5px rgba(59, 72, 85, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+:root.dark .tt-sidebar-item.tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-current="page"] {
+  background:
+    linear-gradient(155deg, rgba(91, 97, 108, 0.52), rgba(45, 49, 57, 0.66));
+  box-shadow:
+    inset 0 3px 7px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.tt-theme-menu {
+  border: 1px solid rgba(58, 70, 82, 0.12);
+  background: rgba(250, 251, 252, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 12px 28px rgba(31, 42, 53, 0.18);
+  backdrop-filter: blur(22px) saturate(142%);
+  -webkit-backdrop-filter: blur(22px) saturate(142%);
+}
+
+:root.dark .tt-theme-menu {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(34, 37, 43, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 14px 30px rgba(0, 0, 0, 0.42);
+}
+
+.tt-main-work-surface {
+  background: var(--oai-white);
+  border: 1px solid rgba(48, 61, 73, 0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 8px 24px rgba(37, 49, 61, 0.08);
+}
+
+:root.dark .tt-main-work-surface {
+  border-color: rgba(255, 255, 255, 0.075);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 12px 28px rgba(0, 0, 0, 0.23);
+}
+
+.tt-mobile-drawer {
+  box-shadow: 18px 0 42px rgba(25, 34, 43, 0.22);
+}
+
+/* Every native interactive control keeps a visible keyboard focus indicator.
+   Component focus tokens below may tune the offset for their surface. */
+:is(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: 2px !important;
+}
+
+.tt-sidebar-focusable:focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: -2px !important;
+}
+
+.tt-analytics-focusable:focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: -2px !important;
+}
+
+.tt-product-focusable:focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: 2px !important;
+}
+
+:root.dark .tt-product-focusable:focus-visible {
+  outline-color: var(--oai-black) !important;
+}
+
+.tt-modal-backdrop {
+  background: rgba(15, 18, 22, 0.42);
+  backdrop-filter: blur(8px) saturate(90%);
+  -webkit-backdrop-filter: blur(8px) saturate(90%);
+}
+
+:root.dark .tt-modal-backdrop {
+  background: rgba(5, 7, 10, 0.58);
+}
+
+.tt-modal-popup {
+  isolation: isolate;
+}
+
+.tt-login-focus-scope
+  :is(a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: 2px !important;
+}
+
+:root.dark
+  .tt-login-focus-scope
+  :is(a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline-color: var(--oai-black) !important;
+}
+
+.tt-usage-filter-toolbar button:focus-visible {
+  outline: 2px solid var(--oai-black) !important;
+  outline-offset: -2px !important;
+}
+
+:root.dark .tt-usage-filter-toolbar button:focus-visible {
+  outline-color: var(--oai-white) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-modal-motion {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .tt-usage-filter-toolbar button {
+    transform: none !important;
+    transition: none !important;
+  }
 }
 
 /* TokenTrackerBar WKWebView: `native-app` on <html> (inline head script + Swift); NSVisualEffectView under transparent WKWebView. */
@@ -213,6 +395,10 @@ html.native-app #root {
   min-height: 100%;
 }
 
+html.native-app .tt-app-shell {
+  background: transparent !important;
+}
+
 /* Mac App：主内容卡圆角由 Swift 注入 --tt-main-card-radius（与窗口留白同心近似），见 DashboardChromeMetrics */
 html.native-app {
   --tt-main-card-radius: 1rem;
@@ -227,22 +413,11 @@ html.native-app .tt-native-main-card {
    OS backdrop has little content behind it to blur. */
 html.native-windows-app .tt-native-glass-shell {
   isolation: isolate;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.018) 36%, rgba(0, 0, 0, 0.14)),
-    rgba(32, 32, 32, 0.72) !important;
+  background: #f5f7f8 !important;
 }
 
 html.native-windows-app .tt-native-glass-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.018) 28%, transparent 58%),
-    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px);
-  backdrop-filter: blur(28px) saturate(150%);
-  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  content: none;
 }
 
 html.native-windows-app .tt-native-glass-shell > * {
@@ -251,21 +426,24 @@ html.native-windows-app .tt-native-glass-shell > * {
 }
 
 html.native-windows-app.dark .tt-native-glass-shell::before {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 28%, transparent 58%),
-    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 5px);
+  content: none;
 }
 
 html.native-windows-app .tt-native-glass-shell aside[aria-label] {
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.018) 42%, rgba(0, 0, 0, 0.1)),
-    rgba(28, 28, 28, 0.58);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset -1px 0 0 rgba(0, 0, 0, 0.22),
-    inset 1px 0 0 rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(30px) saturate(155%);
-  -webkit-backdrop-filter: blur(30px) saturate(155%);
+  background: rgba(250, 251, 252, 0.96);
+  border-right: 1px solid var(--tt-page-border);
+  box-shadow: none;
+  backdrop-filter: blur(18px) saturate(110%);
+  -webkit-backdrop-filter: blur(18px) saturate(110%);
+}
+
+html.native-windows-app.dark .tt-native-glass-shell {
+  background: #111318 !important;
+}
+
+html.native-windows-app.dark .tt-native-glass-shell aside[aria-label] {
+  background: rgba(27, 30, 36, 0.96);
+  border-right-color: rgba(255, 255, 255, 0.08);
 }
 
 @layer components {

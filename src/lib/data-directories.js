@@ -368,12 +368,26 @@ function inspectDataDirectory(agentId, directoryPath, options = {}) {
     const sessionDb = fileStat(path.join(normalizedPath, "codebuddy-sessions.vscdb"));
     const stateDb = fileStat(path.join(normalizedPath, "User", "globalStorage", "state.vscdb"));
     recognized = isDirectory(projectsDir) || Boolean(sessionDb) || Boolean(stateDb);
-    result = findEvidenceFiles(projectsDir, { extension: ".jsonl", maxDepth: 3 });
+    const projectLogs = findEvidenceFiles(projectsDir, { extension: ".jsonl", maxDepth: 3 });
+    result = {
+      count: projectLogs.count,
+      latestMs: Math.max(projectLogs.latestMs, sessionDb?.mtimeMs || 0, stateDb?.mtimeMs || 0),
+    };
     evidence = result.count > 0 ? "token_logs" : sessionDb || stateDb ? "session_database" : "projects_directory";
   } else if (agentId === "antigravity") {
-    recognized = isDirectory(normalizedPath);
     result = findEvidenceFiles(normalizedPath, { fileName: "transcript.jsonl", maxDepth: 8 });
-    evidence = result.count > 0 ? "token_logs" : "antigravity_directory";
+    const directoryName = path.basename(normalizedPath).toLowerCase();
+    const hasActivityDirectory = ["antigravity", "antigravity-ide", "antigravity-cli"].includes(directoryName)
+      ? isDirectory(path.join(normalizedPath, "brain"))
+      : ["antigravity", "antigravity-ide", "antigravity-cli"].some((name) => (
+          isDirectory(path.join(normalizedPath, name, "brain"))
+        ));
+    recognized = result.count > 0 || hasActivityDirectory;
+    evidence = result.count > 0
+      ? "token_logs"
+      : recognized
+        ? "antigravity_directory"
+        : "antigravity_path_missing";
   } else if (agentId === "opencode") {
     const database = fileStat(path.join(normalizedPath, "opencode.db"));
     const databaseWal = fileStat(path.join(normalizedPath, "opencode.db-wal"));

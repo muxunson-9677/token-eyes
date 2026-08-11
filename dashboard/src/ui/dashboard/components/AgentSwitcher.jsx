@@ -43,13 +43,14 @@ export function AgentSwitcher({ visibleProviderIds = [] }) {
         aria-label={copy("ticket02.agent.aria_all")}
         title={copy("ticket02.agent.all")}
         className={cn(
-          "inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+          "inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors",
           isAll
             ? "bg-white text-oai-black shadow-sm ring-2 ring-oai-gray-400 dark:bg-oai-gray-800 dark:text-white dark:ring-oai-gray-500"
             : "text-oai-gray-500 hover:bg-oai-gray-200 hover:text-oai-black dark:text-oai-gray-400 dark:hover:bg-oai-gray-800 dark:hover:text-white",
         )}
       >
         <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+        <span className="tt-agent-switcher-text">{copy("ticket02.agent.all")}</span>
       </button>
 
       {visibleAgents.map((agent) => {
@@ -64,7 +65,7 @@ export function AgentSwitcher({ visibleProviderIds = [] }) {
             aria-label={copy("ticket02.agent.aria_one", { name: agent.displayName })}
             title={agent.displayName}
             className={cn(
-              "inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+              "inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors",
               selected
                 ? "bg-white shadow-sm dark:bg-oai-gray-800"
                 : "text-oai-gray-500 hover:bg-oai-gray-200 hover:text-oai-black dark:text-oai-gray-400 dark:hover:bg-oai-gray-800 dark:hover:text-white",
@@ -77,6 +78,7 @@ export function AgentSwitcher({ visibleProviderIds = [] }) {
               className="shrink-0"
               color={selected ? brandColor : undefined}
             />
+            <span className="tt-agent-switcher-text">{agent.displayName}</span>
           </button>
         );
       })}

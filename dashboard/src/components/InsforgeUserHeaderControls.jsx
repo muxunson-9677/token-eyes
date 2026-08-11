@@ -71,8 +71,8 @@ export function InsforgeUserHeaderControls({ className, variant = "header", coll
           type="button"
           onClick={() => { openLoginModal(); onAfterAction?.(); }}
           className={cn(
-            "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 min-w-0",
-            collapsed ? "h-8 w-8 justify-center px-0" : "w-full",
+            "tt-sidebar-focusable flex min-h-10 items-center gap-2 rounded-md px-2 py-1.5 text-[13px] font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 min-w-0",
+            collapsed ? "h-10 w-10 justify-center px-0" : "w-full",
             className,
           )}
           aria-label={copy("header.auth.sign_in_aria")}
@@ -124,8 +124,8 @@ export function InsforgeUserHeaderControls({ className, variant = "header", coll
         className={cn(
           isSidebar
             ? cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 transition-colors min-w-0",
-                collapsed && "justify-center px-0 py-0 h-9 w-9",
+                "tt-sidebar-focusable flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 transition-colors min-w-0",
+                collapsed && "h-10 w-10 justify-center px-0 py-0",
               )
             : "flex items-center gap-2 rounded-md pl-1 pr-2 py-1 border border-transparent hover:bg-oai-gray-100 dark:hover:bg-oai-gray-900/80 hover:border-oai-gray-200 dark:hover:border-oai-gray-800 transition-colors",
         )}

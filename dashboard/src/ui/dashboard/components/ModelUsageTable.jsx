@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Loader2, AlertCircle, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { Card } from "../../components";
 import { useCurrency } from "../../../hooks/useCurrency";
@@ -30,6 +30,10 @@ function formatTokensCompact(value) {
 
 function formatFullNum(value) {
   return safeNum(value).toLocaleString();
+}
+
+function resolveRequestCount(row) {
+  return row?.request_count ?? row?.conversation_count ?? null;
 }
 
 function formatCost(value, currency, rate) {
@@ -64,6 +68,8 @@ const COLUMNS = [
   { id: "avg_latency", labelKey: "ticket04.model.column.avg_latency", field: "avg_latency_ms", align: "right" },
 ];
 
+const PAGE_SIZE = 10;
+
 export function ModelUsageTable({
   from,
   to,
@@ -78,6 +84,7 @@ export function ModelUsageTable({
   const { currency, rate } = useCurrency();
   const [sortKey, setSortKey] = useState("tokens");
   const [sortDir, setSortDir] = useState("desc");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { models, loading, error, refresh } = useModelStats({
     baseUrl,
@@ -98,8 +105,8 @@ export function ModelUsageTable({
     const dir = sortDir === "asc" ? 1 : -1;
     const field = meta.field;
     return [...list].sort((a, b) => {
-      let av = a[field];
-      let bv = b[field];
+      let av = field === "request_count" ? resolveRequestCount(a) : a[field];
+      let bv = field === "request_count" ? resolveRequestCount(b) : b[field];
       if (field === "model") {
         av = String(av || "").toLowerCase();
         bv = String(bv || "").toLowerCase();
@@ -115,7 +122,15 @@ export function ModelUsageTable({
     });
   }, [models, sortKey, sortDir]);
 
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const visibleRows = rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
   const handleSort = (colId) => {
+    setCurrentPage(1);
     if (colId === sortKey) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
@@ -148,7 +163,7 @@ export function ModelUsageTable({
         <button
           type="button"
           onClick={refresh}
-          className="inline-flex h-8 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
+          className="inline-flex h-10 items-center rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 px-3 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 transition-colors"
         >
           {copy("ticket04.model.retry")}
         </button>
@@ -188,7 +203,7 @@ export function ModelUsageTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => {
+            {visibleRows.map((row, idx) => {
               const providerLabel = row.source_display_name || row.source;
               return (
                 <tr
@@ -206,7 +221,9 @@ export function ModelUsageTable({
                     </div>
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
-                    {row.request_count === null || row.request_count === undefined ? copy("ticket06.metric.unavailable") : formatFullNum(row.request_count)}
+                    {resolveRequestCount(row) === null
+                      ? copy("spend.usage.metric.not_collected")
+                      : formatFullNum(resolveRequestCount(row))}
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
                     {formatTokensCompact(row.tokens)}
@@ -216,7 +233,7 @@ export function ModelUsageTable({
                   </td>
                   <td className="px-3 py-2 text-sm whitespace-nowrap text-right tabular-nums">
                     {row.success_rate === null || row.success_rate === undefined ? (
-                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("ticket06.metric.unavailable")}</span>
+                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("spend.usage.metric.not_collected")}</span>
                     ) : (
                       <span
                         className={
@@ -230,19 +247,55 @@ export function ModelUsageTable({
                     )}
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
-                    {formatLatency(row.avg_latency_ms)}
+                    {row.avg_latency_ms === null || row.avg_latency_ms === undefined
+                      ? copy("spend.usage.metric.not_collected")
+                      : formatLatency(row.avg_latency_ms)}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        <div className="tt-usage-table-pagination flex min-h-12 items-center justify-between gap-3 border-t border-oai-gray-100 px-3 pt-3 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
+          <span>{copy("spend.usage.pagination.records", { total: rows.length })}</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={currentPage === 1}
+              className="inline-flex h-8 items-center rounded-lg border border-oai-gray-200 bg-white px-3 disabled:opacity-40 dark:border-oai-gray-700 dark:bg-oai-gray-900"
+            >
+              {copy("spend.usage.pagination.previous")}
+            </button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => setCurrentPage(page)}
+                aria-current={page === currentPage ? "page" : undefined}
+                className={page === currentPage
+                  ? "inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-oai-brand text-white"
+                  : "inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-oai-gray-200 bg-white dark:border-oai-gray-700 dark:bg-oai-gray-900"}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+              disabled={currentPage === totalPages}
+              className="inline-flex h-8 items-center rounded-lg border border-oai-gray-200 bg-white px-3 disabled:opacity-40 dark:border-oai-gray-700 dark:bg-oai-gray-900"
+            >
+              {copy("spend.usage.pagination.next")}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <Card className="mt-4">
+    <Card className="tt-usage-table-card mt-4">
       {body}
     </Card>
   );

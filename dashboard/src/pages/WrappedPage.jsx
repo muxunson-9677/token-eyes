@@ -96,7 +96,7 @@ export default function WrappedPage() {
       <div className="max-w-3xl mx-auto space-y-6">
         <header className="text-center pb-6">
           <p className="text-sm uppercase tracking-widest text-oai-gray-500 dark:text-oai-gray-400">
-            TokenTracker Wrapped
+            Token Eyes Wrapped
           </p>
           <h1 className="text-6xl font-bold text-oai-gray-900 dark:text-white mt-2">
             {data.year}

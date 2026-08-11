@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2, Package } from "lucide-react";
 import {
   getTokenPlans,
   deleteTokenPlan,
@@ -43,6 +43,7 @@ import {
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { limitProviderName, useLimitsDisplayPrefs } from "../../hooks/use-limits-display-prefs.js";
+import { ProviderIcon } from "../../ui/dashboard/components/ProviderIcon.jsx";
 import { SectionCard } from "./Controls.jsx";
 
 function isCodexSource(source) {
@@ -545,28 +546,6 @@ function WebviewConsoleConnectPanel({
   );
 }
 
-function formatRecordTotalQuota(record, catalog) {
-  if (record?.total_quota_display) return record.total_quota_display;
-  const plan = catalog ? findCatalogPlan(catalog, record.provider_id, record.plan_id) : null;
-  if (plan?.total_quota_display) return plan.total_quota_display;
-  if (plan?.total_quota) return formatQuota(plan.total_quota);
-  return formatQuota(record?.total_quota);
-}
-
-function formatRecordQuotaLine(record, catalog) {
-  const totalLabel = formatRecordTotalQuota(record, catalog);
-  const used = formatQuota(record.used_quota);
-  const remaining = formatQuota(record.remaining_quota);
-  const hasLiveQuota = Array.isArray(record?.quota_windows) && record.quota_windows.length > 0
-    || record?.sync_status === "success";
-  if (!hasLiveQuota && Number(record?.remaining_quota || 0) > 0
-    && !record?.total_quota_display
-    && Number(record?.total_quota || 0) === 0) {
-    return `${used} / ${totalLabel}`;
-  }
-  return `${used} / ${totalLabel} - ${remaining}`;
-}
-
 function normalizeCatalog(value) {
   const providers = Array.isArray(value?.providers) ? value.providers : [];
   return providers.map((p) => ({
@@ -594,6 +573,45 @@ function SortableTokenPlanCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
   const planLabel = record.plan_label || record.id;
   const style = { transform: CSS.Transform.toString(transform), transition };
+  const totalQuota = Number(record.total_quota || 0);
+  const remainingQuota = Number(record.remaining_quota || 0);
+  const usedQuota = Number(record.used_quota || Math.max(0, totalQuota - remainingQuota));
+  const usagePercent = totalQuota > 0 ? Math.max(0, Math.min(100, (usedQuota / totalQuota) * 100)) : 0;
+  const remainingPercent = Number.isFinite(Number(record.remaining_percent))
+    ? Number(record.remaining_percent)
+    : totalQuota > 0
+      ? Math.max(-100, Math.min(100, (remainingQuota / totalQuota) * 100))
+      : 0;
+  const progressPercent = remainingQuota < 0 || Math.abs(remainingPercent) < 1
+    ? usagePercent
+    : Math.max(0, Math.min(100, remainingPercent));
+  const providerKey = String(record.provider_id || record.source || "").toLowerCase();
+  const liveQuotaLabel = providerKey === "cursor"
+    ? `${formatQuota(usedQuota)} / 账户周期用量`
+    : providerKey === "codex"
+      ? `${formatQuota(usedQuota)} / 官方动态额度`
+      : providerKey === "trae"
+        ? `${formatQuota(usedQuota)} / 官方账户订阅额度`
+        : `${formatQuota(usedQuota)} / ${formatQuota(totalQuota)}`;
+  const liveQuotaSubline = providerKey === "cursor"
+    ? "(官方自动均)"
+    : providerKey === "codex"
+      ? "(5 小时与 7 天窗口)"
+      : providerKey === "trae"
+        ? `(${record.quota_unit || "requests"})`
+        : record.quota_unit && record.quota_unit !== "tokens"
+          ? `(${totalQuota >= 1_000_000_000 ? `${Math.round(totalQuota / 1_000_000_000)}B` : formatQuota(totalQuota)}) ${record.quota_unit}`
+          : "";
+  const inferredQuotaStatus = remainingQuota < 0
+    ? { label: "已超额", tone: "danger" }
+    : usagePercent >= 80
+      ? { label: "接近上限", tone: "warning" }
+      : record.sync_status === "error"
+        ? { label: "待刷新", tone: "muted" }
+        : { label: "正常", tone: "success" };
+  const quotaStatus = record.ui_status_label
+    ? { label: record.ui_status_label, tone: record.ui_status_tone || inferredQuotaStatus.tone }
+    : inferredQuotaStatus;
 
   return (
     <div
@@ -601,7 +619,7 @@ function SortableTokenPlanCard({
       style={style}
       data-testid="token-plan-card"
       className={cn(
-        "rounded-md border border-oai-gray-200 px-3 py-2 dark:border-oai-gray-800",
+        "tt-token-plan-card rounded-md border border-oai-gray-200 px-3 py-2 dark:border-oai-gray-800",
         isDragging && "relative z-10 bg-white shadow-lg dark:bg-oai-gray-900",
       )}
     >
@@ -623,26 +641,53 @@ function SortableTokenPlanCard({
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-oai-gray-900 dark:text-oai-gray-100">
-            {record.provider_id && record.provider_id !== "custom"
-              ? `${record.source} / ${record.provider_id} / ${record.plan_label}`
-              : `${record.source} / ${record.plan_label}`}
+        <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${record.provider_id || record.source || "custom"}`)} aria-hidden="true">
+          {providerKey === "xiaomi_mimo"
+            ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6H5v12h3M16 6h3v12h-3M9 9h6v6H9z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            : ["codex", "cursor", "trae"].includes(providerKey)
+            ? <ProviderIcon provider={record.provider_id || record.source} size={24} />
+            : String(record.provider_id || record.source || "T").slice(0, 1).toUpperCase()}
+        </span>
+        <div className="tt-token-plan-copy min-w-0">
+          <div
+            className="tt-token-plan-full"
+            data-provider-label={record.provider_id && record.provider_id !== "custom" ? `${record.source} / ${record.provider_id}` : record.source}
+            data-plan-label={record.plan_label}
+          >
+            <span className="tt-token-plan-full-text">
+              {record.provider_id && record.provider_id !== "custom"
+                ? `${record.source} / ${record.provider_id} / ${record.plan_label}`
+                : `${record.source} / ${record.plan_label}`}
+            </span>
           </div>
-          <div className="truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            {formatRecordQuotaLine(record, catalog)}
-            {record.quota_unit && record.quota_unit !== "tokens" ? ` ${record.quota_unit}` : ""}
+        </div>
+        <div className="tt-token-plan-live" aria-label={copy("settings.token_plan.live_quota_aria")}>
+          <div className="tt-token-plan-account">{record.account_label || record.account_name || ""}</div>
+          <div className="tt-token-plan-quota">
+            <span>
+              <span className="tt-token-plan-quota-label">{liveQuotaLabel}</span>
+              {liveQuotaSubline ? <span className="tt-token-plan-quota-sub">{liveQuotaSubline}</span> : null}
+            </span>
+            <span className="tt-token-plan-progress" data-tone={quotaStatus.tone}><i style={{ width: `${progressPercent}%` }} /></span>
           </div>
-          {record.notes && (
-            <div className="truncate text-[11px] text-oai-gray-400 dark:text-oai-gray-500" title={record.notes}>
-              {record.notes}
-            </div>
-          )}
+          <div className="tt-token-plan-remaining">
+            <span className="tt-token-plan-remaining-label">{copy("settings.token_plan.remaining")}</span>
+            <span className="tt-token-plan-remaining-value">
+              {formatQuota(remainingQuota)}
+              <small>({remainingPercent.toFixed(Math.abs(remainingPercent) < 1 ? 2 : 1)}%)</small>
+            </span>
+          </div>
+          <div className="tt-token-plan-updated">
+            <span className="tt-token-plan-updated-time" title={record.last_refreshed_at || record.updated_at || undefined}>
+              {String(record.last_refreshed_at || record.updated_at || "—").replace("T", " ").slice(0, 16)}
+            </span>
+            <small data-tone={quotaStatus.tone}>{quotaStatus.label}</small>
+          </div>
         </div>
         <button
           type="button"
           onClick={() => onEdit(record)}
-          className="shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark"
+          className="tt-token-plan-edit shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark"
         >
           {copy("settings.token_plan.edit")}
         </button>
@@ -1769,7 +1814,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     form.detection_config?.official_account?.claude_account_mode,
   );
   const isStaticCatalogPlan = Boolean(isCatalogPlan) && !supportsOfficialAccountDetection;
-  const showRefreshControls = !Boolean(isCatalogPlan);
+  const showRefreshControls = !isCatalogPlan;
   // W03-R3D: When a detection method is configured, disable manual quota entry.
   // Detection is the primary path — used_quota/remaining_quota/expires_at come from the detection source.
   const hasDetectionConfigured = form.detection_method && form.detection_method !== "not_configured";
@@ -2198,21 +2243,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
             provider_home_url: resolveProviderHomeUrl("cursor"),
             account_binding_id: formCursorSession?.id
-              || payload.detection_config?.official_account?.account_binding_id
-              || "",
-          },
-        };
-      } else if (
-        payload.detection_method === "official_account" &&
-        form.provider_id === "kimi" &&
-        form.plan_id !== "kimi_api_budget"
-      ) {
-        payload.detection_config = {
-          ...payload.detection_config,
-          official_account: {
-            ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
-            provider_home_url: resolveProviderHomeUrl("kimi", form.plan_id),
-            account_binding_id: formKimiSession?.id
               || payload.detection_config?.official_account?.account_binding_id
               || "",
           },
@@ -2948,21 +2978,41 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     <SectionCard
       title={copy("settings.section.token_plan")}
       subtitle={copy("settings.token_plan.subtitle")}
+      icon={Package}
+      iconTone="violet"
       collapsible={!editorPlanId}
+      defaultOpen={false}
+      storageKey={!editorPlanId ? "cost.token-plans" : null}
+      collapsedSummary={copy("settings.token_plan.collapsed_summary", { count: records.length })}
+      collapsedSummaryTone="violet"
       action={!editorPlanId ? (
-        <button
-          type="button"
-          onClick={openNewForm}
-          disabled={loading || saving}
-          className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-            "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-            "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-          )}
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
-          {copy("settings.token_plan.add")}
-        </button>
+        <div className="tt-token-plan-actions flex items-center gap-2">
+          <span className="tt-token-plan-count tt-token-plan-count--active">
+            {copy("settings.token_plan.count_active", { count: records.length })}
+          </span>
+          <span className="tt-token-plan-count tt-token-plan-count--watch">
+            {copy("settings.token_plan.count_watch", {
+              count: records.filter((record) => Number(record.remaining_quota || 0) <= 0 || Number(record.used_quota || 0) / Math.max(1, Number(record.total_quota || 0)) >= 0.8).length,
+            })}
+          </span>
+          <button type="button" onClick={() => records.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-300">
+            <RefreshCw className={cn("h-3.5 w-3.5", refreshingId && "animate-spin")} aria-hidden />
+            {copy("settings.token_plan.batch_refresh")}
+          </button>
+          <button
+            type="button"
+            onClick={openNewForm}
+            disabled={loading || saving}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
+              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
+            )}
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+            {copy("settings.token_plan.add")}
+          </button>
+        </div>
       ) : null}
     >
       {!editorPlanId && <div className="border-b border-oai-gray-200 pb-3 dark:border-oai-gray-800">

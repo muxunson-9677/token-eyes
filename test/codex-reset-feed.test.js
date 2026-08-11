@@ -27,6 +27,8 @@ function announcement(overrides = {}) {
     source_author: "thsottiaux",
     source_post_id: X_POST_ID,
     source_url: `https://x.com/thsottiaux/status/${X_POST_ID}`,
+    reset_kind: "hard",
+    reset_scope: "all_codex_work_users",
     official_url: "https://help.openai.com/en/articles/20001271",
     published_at: "2026-07-20T07:00:00.000Z",
     expires_at: "2026-08-20T00:00:00.000Z",
@@ -82,6 +84,8 @@ test("rejects expired, duplicate, oversized, and unsupported announcements", () 
     payload([announcement({ title: "x".repeat(81) })]),
     payload([announcement({ summary: "x".repeat(241) })]),
     payload([announcement({ type: "banked_reset_available" })]),
+    payload([announcement({ reset_kind: "weekly" })]),
+    payload([announcement({ reset_scope: "everyone_maybe" })]),
     payload(Array.from({ length: 21 }, (_, index) => announcement({
       id: `announcement-${index}`,
       source_post_id: String(BigInt(X_POST_ID) + BigInt(index)),
@@ -143,6 +147,21 @@ test("rejects invalid generated timestamps and accepts an empty signed feed", ()
   assert.deepEqual(
     verifyCodexResetFeed(envelope(empty), { publicKey, nowMs: NOW }),
     empty,
+  );
+});
+
+test("rejects missing or invalid signed publication timestamps without guessing", () => {
+  const missing = announcement();
+  delete missing.published_at;
+  assert.throws(
+    () => validateCodexResetFeedPayload(payload([missing]), { nowMs: NOW }),
+    /published/i,
+  );
+  assert.throws(
+    () => validateCodexResetFeedPayload(payload([
+      announcement({ published_at: "not-a-date" }),
+    ]), { nowMs: NOW }),
+    /published/i,
   );
 });
 

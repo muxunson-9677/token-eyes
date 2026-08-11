@@ -1,9 +1,9 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { DollarSign, Plus, Pencil, Trash2 } from "lucide-react";
+import { DollarSign, FolderOpen, Plus, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { getLocalSettings, getUsageModelBreakdown, setLocalSettings, verifyOfficialModelPricing } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
-import { SectionCard } from "./Controls.jsx";
+import { SectionCard, ToggleSwitch } from "./Controls.jsx";
 
 const AGENTS = [
   { key: "claude", labelKey: "settings.agent_pricing.claude" },
@@ -119,6 +119,7 @@ export function AgentPricingSection() {
   const [verifyingModel, setVerifyingModel] = useState("");
   const [verificationNotice, setVerificationNotice] = useState(null);
   const [officialSnapshots, setOfficialSnapshots] = useState({});
+  const [automaticComparison, setAutomaticComparison] = useState(true);
 
   // Rule editor state. `editorMode` is "idle" | "add" | "edit". When "add" or
   // "edit" the form is visible; `editingId` holds the id being edited (null
@@ -345,22 +346,48 @@ export function AgentPricingSection() {
   return (
     <SectionCard
       title={copy("settings.section.agent_pricing")}
-      subtitle={copy("settings.agent_pricing.subtitle")}
+      subtitle={copy("settings.agent_pricing.reference_subtitle")}
+      icon={DollarSign}
+      iconTone="green"
       collapsible
+      defaultOpen={false}
+      storageKey="cost.agent-pricing"
+      collapsedSummary={copy("settings.agent_pricing.collapsed_summary", { count: VERIFIED_MODEL_PRICES.length })}
+      collapsedSummaryTone="green"
       action={
-        <button
-          type="button"
-          onClick={save}
-          disabled={loading || saving || !dirty}
-          className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-            "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-            "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-          )}
-        >
-          <DollarSign className="h-3.5 w-3.5" aria-hidden />
-          {saving ? copy("settings.agent_pricing.saving") : copy("settings.agent_pricing.save")}
-        </button>
+        <div className="tt-pricing-header-actions flex items-center gap-2">
+          <a
+            className="tt-agent-pricing-help"
+            href="#model-pricing-catalog"
+            onClick={(event) => {
+              event.preventDefault();
+              document.getElementById("model-pricing-catalog")?.scrollIntoView({ block: "nearest" });
+            }}
+          >
+            {copy("settings.agent_pricing.how_pricing")}
+          </a>
+          <button
+            type="button"
+            onClick={() => document.getElementById("model-pricing-catalog")?.scrollIntoView({ block: "nearest" })}
+            className="tt-pricing-source-directory inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 dark:border-oai-gray-800 dark:text-oai-gray-300"
+          >
+            <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+            {copy("settings.agent_pricing.source_directory")}
+          </button>
+          <span className="tt-pricing-auto-compare inline-flex items-center gap-1.5 text-xs text-oai-gray-700 dark:text-oai-gray-300">
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            {copy("settings.agent_pricing.auto_compare")}
+            <ToggleSwitch checked={automaticComparison} onChange={() => setAutomaticComparison((value) => !value)} ariaLabel={copy("settings.agent_pricing.auto_compare")} />
+          </span>
+          <button
+            type="button"
+            onClick={save}
+            disabled={loading || saving || !dirty}
+            className="tt-pricing-save inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed"
+          >
+            {saving ? copy("settings.agent_pricing.saving") : copy("settings.agent_pricing.save_changes")}
+          </button>
+        </div>
       }
     >
       <div className="space-y-3 py-3">
@@ -372,7 +399,7 @@ export function AgentPricingSection() {
             {copy("settings.agent_pricing.catalog.subtitle")}
           </div>
         </div>
-        <div className="overflow-hidden rounded-xl border border-oai-gray-200 bg-white shadow-sm shadow-black/[0.03] dark:border-oai-gray-800 dark:bg-oai-gray-950">
+        <div id="model-pricing-catalog" className="overflow-hidden rounded-xl border border-oai-gray-200 bg-white shadow-sm shadow-black/[0.03] dark:border-oai-gray-800 dark:bg-oai-gray-950">
           <table data-testid="model-pricing-table" className="w-full table-fixed text-[11px] sm:text-xs">
             <colgroup>
               <col className="w-[26%]" />
@@ -414,18 +441,18 @@ export function AgentPricingSection() {
                   <PriceCell value={displayPrice.cacheWrite} currency={displayPrice.currency} />
                   <td className="break-words px-2 py-2.5 text-right leading-5">
                     {displayPrice.sourceUrl ? (
-                      <a className="font-medium text-oai-brand-600 hover:underline dark:text-oai-brand-400" href={displayPrice.sourceUrl} target="_blank" rel="noreferrer">
+                      <a className="tt-pricing-source-badge" data-tone="official" href={displayPrice.sourceUrl} target="_blank" rel="noreferrer">
                         {copy("settings.agent_pricing.catalog.official")}
                       </a>
                     ) : (
-                      <span className="text-amber-600 dark:text-amber-300">{copy("settings.agent_pricing.catalog.pending_verification")}</span>
+                      <span className="tt-pricing-source-badge" data-tone="pending">{copy("settings.agent_pricing.catalog.pending_verification")}</span>
                     )}
                     <button
                       type="button"
                       aria-label={copy("settings.agent_pricing.catalog.auto_verify_model", { model: price.model })}
                       onClick={() => autoVerifyModel({ source, model: price.model, modelId: price.modelId, currency: price.currency })}
                       disabled={Boolean(verifyingModel)}
-                      className="ml-2 font-medium text-oai-brand-600 hover:underline disabled:opacity-50 dark:text-oai-brand-400"
+                      className={cn("tt-pricing-row-auto ml-2 font-medium text-oai-brand-600 hover:underline disabled:opacity-50 dark:text-oai-brand-400", !automaticComparison && "hidden")}
                     >
                       {verifyingModel === verificationKey
                         ? copy("settings.agent_pricing.catalog.verifying")
@@ -584,9 +611,16 @@ export function AgentPricingSection() {
 }
 
 function PriceCell({ value, currency }) {
+  const number = Number(value);
+  const decimals = Number.isFinite(number) && String(number).includes(".")
+    ? String(number).split(".")[1].length
+    : 0;
+  const formatted = Number.isFinite(number)
+    ? number.toFixed(Math.max(2, decimals))
+    : null;
   return (
     <td className="px-1 py-2.5 text-right font-mono tabular-nums">
-      {value == null ? "—" : `${currency === "CNY" ? "¥" : "$"}${value}`}
+      {value == null ? "—" : `${currency === "CNY" ? "¥" : "$"}${formatted}`}
     </td>
   );
 }

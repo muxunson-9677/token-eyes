@@ -10,9 +10,10 @@ import { LoginModalProvider } from "./contexts/LoginModalContext.jsx";
 import { getBackendBaseUrl, getLeaderboardBaseUrl } from "./lib/config";
 import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
-import { clearDashboardUsageCachesForRealData } from "./lib/usage-cache";
+import { clearDashboardMockUsageCaches } from "./lib/usage-cache";
 import { useLeaderboardParticipationSync } from "./hooks/use-leaderboard-participation-sync";
 import { CodexResetEventsProvider } from "./hooks/use-codex-reset-events";
+import { ResetCelebrationProvider } from "./ui/celebration/ResetCelebrationProvider.jsx";
 import { AppLayout } from "./ui/components/Sidebar.jsx";
 import { ToastProvider } from "./ui/components/Toast.jsx";
 import { UsageFiltersProvider } from "./hooks/use-usage-filters";
@@ -30,6 +31,7 @@ import {
 // param has already been removed 鈥?the page then falls through to the
 // "Sign-in incomplete" failure state.
 import { NativeAuthCallbackPage } from "./pages/NativeAuthCallbackPage.jsx";
+import { DesktopWidgetPage } from "./pages/DesktopWidgetPage";
 
 // Pages are lazy-loaded so each route ships in its own chunk; keeps the
 // initial main bundle small (was 1.9 MB before splitting, all 11 pages
@@ -73,6 +75,12 @@ const SettingsCostPage = lazy(() =>
 );
 const TokenPlanEditorPage = lazy(() =>
   import("./pages/TokenPlanEditorPage.jsx").then((m) => ({ default: m.TokenPlanEditorPage })),
+);
+const FirstRunPage = lazy(() =>
+  import("./pages/FirstRunPage.jsx").then((m) => ({ default: m.FirstRunPage })),
+);
+const DataSourcesPage = lazy(() =>
+  import("./pages/DataSourcesPage.jsx").then((m) => ({ default: m.DataSourcesPage })),
 );
 const SpendUsagePage = lazy(() =>
   import("./pages/SpendPage.jsx").then((m) => ({ default: m.SpendUsagePage })),
@@ -127,6 +135,8 @@ export default function App() {
     sharePathname === "/share.html" ||
     sharePathname.startsWith("/share/");
   const isTauriMode = isTauriApp();
+  const firstRunCompleted = typeof window !== "undefined"
+    && window.localStorage.getItem("tokentracker.firstRun.completed.v1") === "1";
 
   const isLocalMode =
     typeof window !== "undefined" &&
@@ -135,6 +145,7 @@ export default function App() {
       isTauriMode);
 
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+  const isDesktopWidgetPath = normalizedPath === "/desktop-widget";
   const isDashboardDefaultPath = normalizedPath === "/" || normalizedPath === "/dashboard";
   const isLeaderboardPath = normalizedPath === "/leaderboard";
   const isLeaderboardRulesPath = normalizedPath === "/leaderboard/rules";
@@ -205,7 +216,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isLocalMode || mockEnabled) return;
-    clearDashboardUsageCachesForRealData();
+    clearDashboardMockUsageCaches();
   }, [isLocalMode, mockEnabled]);
 
   const authObject = useMemo(() => {
@@ -222,6 +233,7 @@ export default function App() {
   if (normalizedPath === "/dashboard") gate = "dashboard";
   if (isPublicLeaderboardPath) gate = "dashboard";
   if (profileUserId) gate = "dashboard";
+  if (isDesktopWidgetPath) gate = "dashboard";
 
   const isLimitsPath = normalizedPath === "/limits";
   const isResetHistoryPath = normalizedPath === "/reset-history";
@@ -229,12 +241,15 @@ export default function App() {
   // /spend and /settings paths redirect to their default children below.
   const isSettingsBasicPath = normalizedPath === "/settings/basic";
   const isSettingsCostPath = normalizedPath === "/settings/cost";
+  const isSettingsDataPath = normalizedPath === "/settings/data";
   const isTokenPlanNewPath = normalizedPath === "/settings/cost/token-plans/new";
   const isTokenPlanEditPath = /^\/settings\/cost\/token-plans\/[^/]+\/edit$/.test(normalizedPath);
   const isTokenPlanEditorPath = isTokenPlanNewPath || isTokenPlanEditPath;
   const isSettingsRootPath = normalizedPath === "/settings";
+  const isFirstRunPath = normalizedPath === "/first-run";
+  const isLegacyDataSourcesPath = normalizedPath === "/data-sources";
   const isSettingsSubPath =
-    isSettingsBasicPath || isSettingsCostPath || isTokenPlanEditorPath || isSettingsRootPath;
+    isSettingsBasicPath || isSettingsCostPath || isSettingsDataPath || isTokenPlanEditorPath || isSettingsRootPath;
   const isSpendUsagePath = normalizedPath === "/spend/usage";
   const isSpendCostPath = normalizedPath === "/spend/cost";
   const isSpendRootPath = normalizedPath === "/spend";
@@ -249,9 +264,12 @@ export default function App() {
     isSpendSubPath ||
     isSkillsPath ||
     isWidgetsPath ||
-    isIpCheckPath
+    isIpCheckPath ||
+    isSettingsDataPath ||
+    isLegacyDataSourcesPath
   )
     gate = "dashboard";
+  if (isFirstRunPath) gate = "dashboard";
   const isMvpHiddenProductPath =
     isLimitsPath ||
     isSkillsPath ||
@@ -269,11 +287,14 @@ export default function App() {
   if (isSettingsRootPath) {
     return <Navigate to="/settings/basic" replace />;
   }
+  if (isLegacyDataSourcesPath) {
+    return <Navigate to="/settings/data" replace />;
+  }
   if (isTauriMode && (normalizedPath === "/" || normalizedPath === "/index.html")) {
     return (
       <>
         <AppBootSplash />
-        <Navigate to="/settings/basic" replace />
+        <Navigate to={firstRunCompleted ? "/dashboard" : "/first-run"} replace />
       </>
     );
   }
@@ -291,6 +312,10 @@ export default function App() {
     PageComponent = LimitsPage;
   } else if (isSettingsBasicPath) {
     PageComponent = SettingsBasicPage;
+  } else if (isFirstRunPath) {
+    PageComponent = FirstRunPage;
+  } else if (isSettingsDataPath) {
+    PageComponent = DataSourcesPage;
   } else if (isTokenPlanEditorPath) {
     PageComponent = TokenPlanEditorPage;
   } else if (isSettingsCostPath) {
@@ -315,6 +340,7 @@ export default function App() {
       isResetHistoryPath ||
       isSettingsSubPath ||
       isSpendSubPath ||
+      isSettingsDataPath ||
       isWidgetsPath ||
       (isLocalMode && isPublicLeaderboardPath));
 
@@ -344,7 +370,9 @@ export default function App() {
   }
 
   let content = null;
-  if (normalizedPath === "/auth/callback" || normalizedPath === "/auth/native-callback") {
+  if (isDesktopWidgetPath) {
+    content = <DesktopWidgetPage />;
+  } else if (normalizedPath === "/auth/callback" || normalizedPath === "/auth/native-callback") {
     content = <NativeAuthCallbackPage />;
   } else if (normalizedPath === "/login") {
     content = <LoginPage />;
@@ -393,13 +421,15 @@ export default function App() {
           <LoginModalProvider>
             <UsageFiltersProvider>
               <CodexResetEventsProvider enabled={isLocalMode && showSidebar}>
-                <Suspense fallback={<AppBootSplash />}>{content}</Suspense>
-                <Suspense fallback={null}>
-                  {showSidebar ? <CommandPalette /> : null}
-                  <LoginModal />
-                  {!isLocalMode && <Analytics />}
-                  {!isLocalMode && <SpeedInsights />}
-                </Suspense>
+                <ResetCelebrationProvider>
+                  <Suspense fallback={<AppBootSplash />}>{content}</Suspense>
+                  <Suspense fallback={null}>
+                    {showSidebar ? <CommandPalette /> : null}
+                    <LoginModal />
+                    {!isLocalMode && <Analytics />}
+                    {!isLocalMode && <SpeedInsights />}
+                  </Suspense>
+                </ResetCelebrationProvider>
               </CodexResetEventsProvider>
             </UsageFiltersProvider>
           </LoginModalProvider>

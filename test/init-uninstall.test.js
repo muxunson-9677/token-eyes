@@ -231,7 +231,7 @@ test("init then uninstall restores original Codex notify (when pre-existing noti
     assert.ok(!installed.includes('["echo", "hello"]'), "expected init to override notify");
 
     const cursorsPath = path.join(tmp, ".tokentracker", "tracker", "cursors.json");
-    const cursorsRaw = await waitForFile(cursorsPath);
+    const cursorsRaw = await waitForFile(cursorsPath, { timeoutMs: 5000 });
     assert.ok(cursorsRaw, "expected init to trigger sync and write cursors");
     const cursors = JSON.parse(cursorsRaw);
     assert.ok(typeof cursors.updatedAt === "string" && cursors.updatedAt.length > 0);

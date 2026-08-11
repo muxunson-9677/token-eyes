@@ -118,6 +118,7 @@ mod tests {
     fn only_the_main_window_can_be_intercepted_for_minimize_to_tray() {
         assert!(should_minimize_to_tray("main", true));
         assert!(!should_minimize_to_tray("main", false));
+        assert!(!should_minimize_to_tray("desktop-widget", true));
         assert!(!should_minimize_to_tray("codex_login_123", true));
         assert!(!should_minimize_to_tray("glm_login_123", true));
     }

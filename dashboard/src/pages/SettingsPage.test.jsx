@@ -48,9 +48,10 @@ vi.mock("../components/settings/AppearanceSection.jsx", () => ({
 }));
 
 vi.mock("../components/settings/Controls.jsx", () => ({
-  SectionCard: ({ title, children }) => (
+  SectionCard: ({ title, children, icon: Icon, iconTestId }) => (
     <section data-testid="section-card">
       <h2>{title}</h2>
+      {Icon ? <Icon data-testid={iconTestId} /> : null}
       {children}
     </section>
   ),
@@ -88,9 +89,9 @@ describe("SettingsBasicPage (v2.0 IA split)", () => {
     );
     expect(screen.getByTestId("appearance-section")).toBeInTheDocument();
     expect(screen.getByTestId("menubar-section")).toBeInTheDocument();
-    expect(screen.queryByTestId("account-section")).not.toBeInTheDocument();
     expect(screen.getByTestId("data-dirs-section")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-pricing-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("account-section")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agent-pricing-section")).not.toBeInTheDocument();
     expect(screen.getByTestId("limits-panel")).toBeInTheDocument();
     expect(screen.getByTestId("native-app-footer")).toBeInTheDocument();
   });
@@ -121,6 +122,27 @@ describe("SettingsBasicPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("copy:settings.basic.page.title")).toBeInTheDocument();
+  });
+
+  it("keeps the accepted basic-settings visual identity without preview query parameters", () => {
+    render(
+      <MemoryRouter initialEntries={["/settings/basic"]}>
+        <SettingsBasicPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("settings-basic-page")).toHaveClass(
+      "tt-reference-route-settings-basic",
+    );
+  });
+
+  it("uses the reference shield icon for limits display", () => {
+    render(
+      <MemoryRouter>
+        <SettingsBasicPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("settings-limits-icon")).toHaveClass("lucide-shield");
   });
 });
 
@@ -157,7 +179,7 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
     expect(await screen.findByTestId("other-ai-spend-section")).toBeInTheDocument();
   });
 
-  it("does NOT render Appearance / Account / DataDirs / AgentPricing / MenuBar", () => {
+  it("keeps cost configuration together and excludes general preferences", () => {
     render(
       <MemoryRouter>
         <SettingsCostPage />
@@ -166,7 +188,7 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
     expect(screen.queryByTestId("appearance-section")).not.toBeInTheDocument();
     expect(screen.queryByTestId("account-section")).not.toBeInTheDocument();
     expect(screen.queryByTestId("data-dirs-section")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("agent-pricing-section")).not.toBeInTheDocument();
+    expect(screen.getByTestId("agent-pricing-section")).toBeInTheDocument();
     expect(screen.queryByTestId("menubar-section")).not.toBeInTheDocument();
   });
 

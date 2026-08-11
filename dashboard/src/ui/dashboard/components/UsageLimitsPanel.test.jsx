@@ -196,4 +196,69 @@ describe("UsageLimitsPanel", () => {
     expectLimitRow("Spark 5h", "4%");
     expectLimitRow("Spark 7d", "18%");
   });
+
+  it("keeps distinct privacy-safe accounts and per-account failures in the existing list", () => {
+    render(
+      <UsageLimitsPanel
+        accounts={[
+          {
+            provider_id: "codex",
+            account_key: "hashed-work",
+            account_label: "Work",
+            plan_label: "Plus",
+            status: "ok",
+            windows: [{ kind: "five_hour", label: "5h", used_percent: 42, reset_at: null }],
+          },
+          {
+            provider_id: "codex",
+            account_key: "hashed-personal",
+            account_label: "Personal",
+            plan_label: null,
+            status: "auth_error",
+            error_code: "reauth_required",
+            windows: [],
+          },
+        ]}
+        order={["codex"]}
+      />,
+    );
+
+    expect(screen.getByText("Codex · Work · Plus")).toBeInTheDocument();
+    expect(screen.getByText("Codex · Personal")).toBeInTheDocument();
+    expect(screen.getByText("42%")).toBeInTheDocument();
+    expect(screen.getByText(/reauth_required/)).toBeInTheDocument();
+    expect(screen.getAllByTestId("limit-account-service-row")).toHaveLength(2);
+  });
+
+  it("shows aggregate and per-account refresh state without hiding cached rows", () => {
+    render(
+      <UsageLimitsPanel
+        accounts={[
+          {
+            provider_id: "claude",
+            account_key: "hashed-a",
+            account_label: "Team A",
+            status: "ok",
+            windows: [{ kind: "five_hour", label: "5h", used_percent: 30, reset_at: null }],
+          },
+          {
+            provider_id: "claude",
+            account_key: "hashed-b",
+            account_label: "Team B",
+            status: "stale",
+            windows: [{ kind: "five_hour", label: "5h", used_percent: 55, reset_at: null }],
+          },
+        ]}
+        accountsRefreshing
+        order={["claude"]}
+      />,
+    );
+
+    expect(screen.getByText(copy("limits.accounts.refreshing", { count: 2 }))).toBeInTheDocument();
+    const rows = screen.getAllByTestId("limit-account-service-row");
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.dataset.refreshing === "true")).toBe(true);
+    expect(screen.getByText("30%")).toBeInTheDocument();
+    expect(screen.getByText("55%")).toBeInTheDocument();
+  });
 });

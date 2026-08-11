@@ -98,4 +98,29 @@ describe("useUsageData — accountViewResolving gate (double-flash fix)", () => 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.summary).toEqual(SUMMARY.totals);
   });
+
+  it("restores persistent usage immediately and refreshes it without a visible loading state", async () => {
+    const first = renderHook(
+      () => useUsageData({ ...baseProps, accountViewResolving: false }),
+      { wrapper: UsageFiltersProvider },
+    );
+    await waitFor(() => expect(first.result.current.summary?.total_tokens).toBe(123));
+    expect(first.result.current.loading).toBe(false);
+    first.unmount();
+
+    vi.mocked(getUsageSummary).mockReturnValue(new Promise(() => {}) as any);
+    vi.mocked(getUsageDaily).mockReturnValue(new Promise(() => {}) as any);
+
+    const second = renderHook(
+      () => useUsageData({ ...baseProps, accountViewResolving: false }),
+      { wrapper: UsageFiltersProvider },
+    );
+
+    await waitFor(() => expect(second.result.current.summary?.total_tokens).toBe(123));
+    expect(second.result.current.source).toBe("cache");
+    expect(second.result.current.loading).toBe(false);
+    expect(getUsageSummary).toHaveBeenCalledTimes(2);
+
+    second.unmount();
+  });
 });
