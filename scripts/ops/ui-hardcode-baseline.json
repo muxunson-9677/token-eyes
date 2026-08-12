@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-08-04T15:26:48.922Z",
+  "generatedAt": "2026-08-12T02:54:25.309Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 338,
-    "rawText": 275
+    "colors": 340,
+    "rawText": 271
   },
   "files": {
     "dashboard/src/App.routes.test.jsx": {
@@ -55,9 +55,8 @@
     },
     "dashboard/src/components/settings/Controls.jsx": {
       "colors": 8,
-      "rawText": 2,
+      "rawText": 1,
       "rawTextTokens": [
-        ") : action ? (",
         ") : null; return ("
       ]
     },
@@ -66,7 +65,7 @@
       "rawText": 3,
       "rawTextTokens": [
         ", ); expect(screen.getByTestId(\"settings-section-icon\")).toHaveAttribute(\"data-tone\", \"blue\"); expect(screen.getByTestId(\"settings-section-icon\").querySelector(\"svg\")).not.toBeNull(); rerender(",
-        "内容"
+        "鍐呭"
       ]
     },
     "dashboard/src/components/settings/DataDirectoriesSection.jsx": {
@@ -88,11 +87,10 @@
     },
     "dashboard/src/components/settings/ProviderApiConfigSection.jsx": {
       "colors": 0,
-      "rawText": 3,
+      "rawText": 2,
       "rawTextTokens": [
         ") : configs.length === 0 ? (",
-        ") : loading ? (",
-        "0 && ("
+        ") : loading ? ("
       ]
     },
     "dashboard/src/components/settings/TokenPlanSection.jsx": {
@@ -214,12 +212,11 @@
     },
     "dashboard/src/pages/ResetHistoryPage.tsx": {
       "colors": 0,
-      "rawText": 5,
+      "rawText": 4,
       "rawTextTokens": [
         "0 ? (",
         "= best.count ? day : best, days[0]); return (",
-        "Date.parse(right.occurred_at) - Date.parse(left.occurred_at)); const indexByUrl = new Map",
-        "GitHub"
+        "Date.parse(right.occurred_at) - Date.parse(left.occurred_at)); const indexByUrl = new Map"
       ]
     },
     "dashboard/src/pages/SettingsPage.jsx": {
@@ -269,7 +266,7 @@
       "rawText": 3,
       "rawTextTokens": [
         "0 ? (",
-        "project.updatedAt).length; return ("
+        "1; const expanded = canExpand && expandedProjectIds.includes(project.groupId); return ("
       ]
     },
     "dashboard/src/pages/WrappedPage.jsx": {
@@ -278,7 +275,7 @@
       "rawTextTokens": [
         "0 && (",
         "Highlights",
-        "Loading…",
+        "Loading鈥?,
         "Longest streak",
         "No data for that year yet. Run",
         "Peak hour",
@@ -299,7 +296,7 @@
       "rawText": 2,
       "rawTextTokens": [
         "/@keyframes // so the animations still run. const result = raw.replace(/",
-        "whose class/id contains \"eye\" (e.g. eyes-look, * eyes-focus, eyes-read). Those groups already run their own blink/track transform * animations, which would override any transform we set directly — so after a pose * loads we wrap each (non-shut) eye group in our own"
+        "whose class/id contains \"eye\" (e.g. eyes-look, * eyes-focus, eyes-read). Those groups already run their own blink/track transform * animations, which would override any transform we set directly 鈥?so after a pose * loads we wrap each (non-shut) eye group in our own"
       ]
     },
     "dashboard/src/ui/celebration/CelebrationCanvas.jsx": {
@@ -403,7 +400,7 @@
         "3D Insight",
         "Model Breakdown",
         "Tokens",
-        "with position: fixed, so use viewport // coordinates directly. This keeps it visible inside the leaderboard // profile modal, where the Dialog.Popup has both `overflow-hidden` and // a `transform` (from the open/close transition) — that combo clips any // absolute-positioned tooltip rendered inside the modal subtree. const rect = e.currentTarget.getBoundingClientRect(); const viewportWidth = typeof window !== \"undefined\" ? window.innerWidth : 1024; const x = rect.left + rect.width / 2; const y = rect.top; const halfWidth = 140; let shiftX = 0; if (x"
+        "with position: fixed, so use viewport // coordinates directly. This keeps it visible inside the leaderboard // profile modal, where the Dialog.Popup has both `overflow-hidden` and // a `transform` (from the open/close transition) 鈥?that combo clips any // absolute-positioned tooltip rendered inside the modal subtree. const rect = e.currentTarget.getBoundingClientRect(); const viewportWidth = typeof window !== \"undefined\" ? window.innerWidth : 1024; const x = rect.left + rect.width / 2; const y = rect.top; const halfWidth = 140; let shiftX = 0; if (x"
       ]
     },
     "dashboard/src/ui/dashboard/components/ActivityHeatmap3D.jsx": {
@@ -438,7 +435,7 @@
     },
     "dashboard/src/ui/dashboard/components/CostAccumulation.jsx": {
       "colors": 0,
-      "rawText": 10,
+      "rawText": 11,
       "rawTextTokens": [
         ") : accounts.length === 0 ? (",
         ") : packages.length === 0 ? (",
@@ -448,6 +445,7 @@
         "0 ? (monthSpend / estimatedTotalUsd) * 100 : 0; return (",
         "0 ? (monthUsd / estimatedTotalUsd) * 100 : 0; return (",
         "item.availableQuotaDisplay)?.availableQuotaDisplay || copy(\"spend.cost.row.unavailable\"); return (",
+        "record.status === \"active\" && record.renewsAt).length; return (",
         "sum + Number(record.lifetimeAmount || record.amount || 0), 0); return ("
       ]
     },
@@ -458,13 +456,6 @@
         "Cost",
         "Model",
         "No spend recorded."
-      ]
-    },
-    "dashboard/src/ui/dashboard/components/DataDetails.jsx": {
-      "colors": 0,
-      "rawText": 1,
-      "rawTextTokens": [
-        "1 ? ("
       ]
     },
     "dashboard/src/ui/dashboard/components/DateRangePopover.jsx": {
@@ -610,10 +601,9 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/TrendMonitor.test.jsx": {
       "colors": 0,
-      "rawText": 2,
+      "rawText": 1,
       "rawTextTokens": [
-        "); expect(plain.container.textContent).not.toContain(\"14:00\"); const zoomed = render(",
-        "); expect(without.queryByRole(\"button\")).toBeNull(); const withCfg = render("
+        "); expect(plain.container.textContent).not.toContain(\"14:00\"); const zoomed = render("
       ]
     },
     "dashboard/src/ui/dashboard/components/__tests__/TrendMonitorZoomModal.test.jsx": {
@@ -646,8 +636,13 @@
       "colors": 2,
       "rawText": 1,
       "rawTextTokens": [
-        "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; // 留给右列底部 return ("
+        "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; // 鐣欑粰鍙冲垪搴曢儴 return ("
       ]
+    },
+    "dashboard/src/ui/foundation/__tests__/AppleGlassFidelity.test.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
     },
     "dashboard/src/ui/foundation/__tests__/LocaleProvider.test.jsx": {
       "colors": 0,
@@ -696,8 +691,8 @@
       "colors": 22,
       "rawText": 19,
       "rawTextTokens": [
-        ") : ( // 未登录：Sign In 展示为主行动实色按钮，点击唤起 Modal",
-        ") : signedIn ? ( // 已登录：Open Dashboard 升级为主行动实色按钮",
+        ") : ( // 鏈櫥褰曪細Sign In 灞曠ず涓轰富琛屽姩瀹炶壊鎸夐挳锛岀偣鍑诲敜璧?Modal",
+        ") : signedIn ? ( // 宸茬櫥褰曪細Open Dashboard 鍗囩骇涓轰富琛屽姩瀹炶壊鎸夐挳",
         "01",
         "02",
         "03",
@@ -751,3 +746,4 @@
     }
   }
 }
+

@@ -14,8 +14,8 @@ test("basic settings sections use the approved semantic icon tones", () => {
     ["components/settings/AppearanceSection.jsx", 'icon={Monitor}', 'iconTone="blue"'],
     ["components/settings/MenuBarSection.jsx", 'icon={Activity}', 'iconTone="violet"'],
     ["components/settings/DataDirectoriesSection.jsx", 'icon={FolderOpen}', 'iconTone="green"'],
-    ["components/settings/AgentPricingSection.jsx", 'icon={DollarSign}', 'iconTone="orange"'],
-    ["pages/SettingsPage.jsx", 'icon={Gauge}', 'iconTone="green"'],
+    ["components/settings/AgentPricingSection.jsx", 'icon={DollarSign}', 'iconTone="green"'],
+    ["pages/SettingsPage.jsx", 'icon={Shield}', 'iconTone="violet"'],
   ];
 
   for (const [file, icon, tone] of expectations) {
@@ -28,7 +28,7 @@ test("basic settings sections use the approved semantic icon tones", () => {
 test("cost settings sections use the approved semantic icon tones", () => {
   const expectations = [
     ["components/settings/TokenPlanSection.jsx", 'icon={Package}', 'iconTone="violet"'],
-    ["components/settings/OtherAiSpendSection.jsx", 'icon={Sparkles}', 'iconTone="rose"'],
+    ["components/settings/OtherAiSpendSection.jsx", 'icon={Atom}', 'iconTone="rose"'],
   ];
 
   for (const [file, icon, tone] of expectations) {
@@ -38,7 +38,8 @@ test("cost settings sections use the approved semantic icon tones", () => {
   }
 
   const providerApi = read("components/settings/ProviderApiConfigSection.jsx");
-  assert.ok(providerApi.includes('icon={PlugZap}'));
+  assert.ok(providerApi.includes('icon={Orbit}'));
   assert.ok(providerApi.includes('iconTone="blue"'));
   assert.ok(providerApi.includes('iconTestId="provider-api-section-icon"'));
 });
+

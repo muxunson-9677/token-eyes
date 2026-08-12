@@ -72,7 +72,7 @@ test("frontend and Rust use the same prefs argument for widget updates", () => {
   assert.match(hook, /invoke\("set_desktop_widget_prefs",\s*\{\s*prefs:\s*next\s*\}\)/u);
   assert.match(
     widgetWindow,
-    /pub fn set_desktop_widget_prefs\(\s*app:\s*AppHandle,\s*prefs:\s*WidgetPrefs,/u,
+    /pub fn set_desktop_widget_prefs\(\s*app:\s*AppHandle,\s*prefs:\s*WidgetPrefs\)/u,
   );
 });
 
@@ -130,3 +130,4 @@ test("appearance controls render as a document-level popover instead of covering
   assert.match(widget, /createPortal\([\s\S]*widget-appearance/u);
   assert.match(css, /\.widget-appearance\s*\{[\s\S]*position:\s*fixed/u);
 });
+
