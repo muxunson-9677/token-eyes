@@ -72,7 +72,7 @@ test("frontend and Rust use the same prefs argument for widget updates", () => {
   assert.match(hook, /invoke\("set_desktop_widget_prefs",\s*\{\s*prefs:\s*next\s*\}\)/u);
   assert.match(
     widgetWindow,
-    /pub fn set_desktop_widget_prefs\(\s*app:\s*AppHandle,\s*prefs:\s*WidgetPrefs,/u,
+    /pub fn set_desktop_widget_prefs\(\s*app:\s*AppHandle,\s*prefs:\s*WidgetPrefs\)/u,
   );
 });
 

@@ -345,7 +345,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
   });
 
-  it("mirrors the selected AgentSwitcher agent in the real-token headline", async () => {
+  it("mirrors the selected AgentSwitcher agent in the real-token headline and scopes its ledger", async () => {
     const user = userEvent.setup();
 
     render(<SpendUsagePage />);
@@ -357,7 +357,10 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     const selectedAgent = await screen.findByTestId("usage-selected-agent");
     expect(selectedAgent).toHaveTextContent("Claude Code");
-    expect(getSpendRecords).not.toHaveBeenCalled();
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
+    for (const [params] of getSpendRecords.mock.calls) {
+      expect(params.sources).toEqual(["claude"]);
+    }
   });
 
   it("scopes the restored financial ledger when selecting a usage service", async () => {

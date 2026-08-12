@@ -207,7 +207,7 @@ describe("resolveCursorPaths", () => {
     });
 
     assert.equal(resolved.appDir, appDir);
-    assert.equal(resolved.stateDbPath, path.join(appDir, "User", "globalStorage", "state.vscdb"));
+    assert.equal(resolved.stateDbPath, path.win32.join(appDir, "User", "globalStorage", "state.vscdb"));
   });
 
   it("uses ~/Library/Application Support/Cursor on macOS", () => {

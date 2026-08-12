@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-08-04T15:26:48.922Z",
+  "generatedAt": "2026-08-12T02:54:25.309Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 338,
-    "rawText": 275
+    "colors": 340,
+    "rawText": 271
   },
   "files": {
     "dashboard/src/App.routes.test.jsx": {
@@ -55,9 +55,8 @@
     },
     "dashboard/src/components/settings/Controls.jsx": {
       "colors": 8,
-      "rawText": 2,
+      "rawText": 1,
       "rawTextTokens": [
-        ") : action ? (",
         ") : null; return ("
       ]
     },
@@ -88,11 +87,10 @@
     },
     "dashboard/src/components/settings/ProviderApiConfigSection.jsx": {
       "colors": 0,
-      "rawText": 3,
+      "rawText": 2,
       "rawTextTokens": [
         ") : configs.length === 0 ? (",
-        ") : loading ? (",
-        "0 && ("
+        ") : loading ? ("
       ]
     },
     "dashboard/src/components/settings/TokenPlanSection.jsx": {
@@ -214,12 +212,11 @@
     },
     "dashboard/src/pages/ResetHistoryPage.tsx": {
       "colors": 0,
-      "rawText": 5,
+      "rawText": 4,
       "rawTextTokens": [
         "0 ? (",
         "= best.count ? day : best, days[0]); return (",
-        "Date.parse(right.occurred_at) - Date.parse(left.occurred_at)); const indexByUrl = new Map",
-        "GitHub"
+        "Date.parse(right.occurred_at) - Date.parse(left.occurred_at)); const indexByUrl = new Map"
       ]
     },
     "dashboard/src/pages/SettingsPage.jsx": {
@@ -269,7 +266,7 @@
       "rawText": 3,
       "rawTextTokens": [
         "0 ? (",
-        "project.updatedAt).length; return ("
+        "1; const expanded = canExpand && expandedProjectIds.includes(project.groupId); return ("
       ]
     },
     "dashboard/src/pages/WrappedPage.jsx": {
@@ -438,7 +435,7 @@
     },
     "dashboard/src/ui/dashboard/components/CostAccumulation.jsx": {
       "colors": 0,
-      "rawText": 10,
+      "rawText": 11,
       "rawTextTokens": [
         ") : accounts.length === 0 ? (",
         ") : packages.length === 0 ? (",
@@ -448,6 +445,7 @@
         "0 ? (monthSpend / estimatedTotalUsd) * 100 : 0; return (",
         "0 ? (monthUsd / estimatedTotalUsd) * 100 : 0; return (",
         "item.availableQuotaDisplay)?.availableQuotaDisplay || copy(\"spend.cost.row.unavailable\"); return (",
+        "record.status === \"active\" && record.renewsAt).length; return (",
         "sum + Number(record.lifetimeAmount || record.amount || 0), 0); return ("
       ]
     },
@@ -458,13 +456,6 @@
         "Cost",
         "Model",
         "No spend recorded."
-      ]
-    },
-    "dashboard/src/ui/dashboard/components/DataDetails.jsx": {
-      "colors": 0,
-      "rawText": 1,
-      "rawTextTokens": [
-        "1 ? ("
       ]
     },
     "dashboard/src/ui/dashboard/components/DateRangePopover.jsx": {
@@ -610,10 +601,9 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/TrendMonitor.test.jsx": {
       "colors": 0,
-      "rawText": 2,
+      "rawText": 1,
       "rawTextTokens": [
-        "); expect(plain.container.textContent).not.toContain(\"14:00\"); const zoomed = render(",
-        "); expect(without.queryByRole(\"button\")).toBeNull(); const withCfg = render("
+        "); expect(plain.container.textContent).not.toContain(\"14:00\"); const zoomed = render("
       ]
     },
     "dashboard/src/ui/dashboard/components/__tests__/TrendMonitorZoomModal.test.jsx": {
@@ -648,6 +638,11 @@
       "rawTextTokens": [
         "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; // 留给右列底部 return ("
       ]
+    },
+    "dashboard/src/ui/foundation/__tests__/AppleGlassFidelity.test.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
     },
     "dashboard/src/ui/foundation/__tests__/LocaleProvider.test.jsx": {
       "colors": 0,

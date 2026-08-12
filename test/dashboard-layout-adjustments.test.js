@@ -67,15 +67,17 @@ test("DashboardPage keeps approved secondary analytics in the normal overview", 
   assert.ok(!src.includes("activityHeatmapBlock"), "expected heatmap block to remain removed");
 });
 
-test("DashboardPage normal workspace keeps UsageOverview and DataDetails in the wider column", () => {
+test("DashboardPage keeps its primary usage panel separate from the eight-column data details panel", () => {
   const src = readFile(viewPath);
   const workspaceStart = src.indexOf('data-testid="dashboard-primary-workspace"');
   const overviewIndex = src.indexOf("<UsageOverview", workspaceStart);
-  const detailsIndex = src.indexOf("<DataDetails", overviewIndex);
+  const detailGridIndex = src.indexOf('data-testid="dashboard-detail-grid"');
+  const detailsIndex = src.indexOf("<DataDetails", detailGridIndex);
   assert.ok(workspaceStart !== -1, "expected primary workspace markup");
-  assert.ok(src.slice(workspaceStart - 120, workspaceStart).includes("lg:col-span-8"), "expected eight-column primary workspace");
   assert.ok(overviewIndex > workspaceStart, "expected UsageOverview in the primary workspace");
-  assert.ok(detailsIndex > overviewIndex, "expected DataDetails after UsageOverview");
+  assert.ok(detailGridIndex > overviewIndex, "expected the dedicated detail grid after the primary workspace");
+  assert.ok(src.slice(detailGridIndex, detailsIndex).includes("lg:col-span-8"), "expected eight-column data details panel");
+  assert.ok(detailsIndex > detailGridIndex, "expected DataDetails in the dedicated details panel");
 });
 
 test("Dashboard refreshes primary data before secondary analytics without failing the whole overview", () => {
@@ -248,10 +250,10 @@ test("custom spend group cards wrap names and preserve readable responsive amoun
   const sectionEnd = src.indexOf("function TokenPackageSection", sectionStart);
   const section = src.slice(sectionStart, sectionEnd);
 
-  assert.ok(section.includes("minmax(300px,1fr)"), "expected compact responsive card columns");
-  assert.ok(section.includes("minmax(108px,1fr)"), "expected amount columns to wrap below their readable minimum");
+  assert.ok(section.includes("tt-cost-group-grid"), "expected responsive cost group grid");
+  assert.ok(section.includes("tt-cost-group-card"), "expected responsive cost group cards");
   assert.ok(section.includes("break-words text-sm"), "expected group names to wrap at a readable size");
-  assert.ok(section.includes("break-words text-xs"), "expected USD/CNY amounts to stay readable");
+  assert.ok(section.includes("text-xs text-oai-gray-500"), "expected USD/CNY amounts to stay readable");
   assert.ok(!section.includes('<h4 className="truncate'), "group names must not use ellipsis truncation");
 });
 

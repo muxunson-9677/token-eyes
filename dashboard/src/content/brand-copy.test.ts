@@ -25,7 +25,7 @@ describe("Token Eyes user-facing brand copy", () => {
       line.startsWith("data_sources.storage_path,")
     ));
     const localizedStorageValue = JSON.parse(dashboardJson)["data_sources.storage_path"];
-    expect(storageRegistryLine).not.toMatch(/tokentracker/i);
-    expect(localizedStorageValue).not.toMatch(/tokentracker/i);
+    expect(storageRegistryLine).toContain("Stored by Token Eyes on this device");
+    expect(localizedStorageValue).toMatch(/\.tokentracker\\tracker$/i);
   });
 });

@@ -110,7 +110,7 @@ function extractProjectName(projectKey, projectRef) {
     if (ref.startsWith("file://")) {
       const filePath = ref.slice("file://".length);
       const normalized = normalizeToWinPath(filePath);
-      const base = path.basename(normalized);
+      const base = path.win32.basename(normalized);
       if (base && base !== "\\" && base !== "/") return base;
     }
   }
@@ -125,7 +125,7 @@ function extractProjectName(projectKey, projectRef) {
 
   if (detectPathKind(key) !== "unknown") {
     const normalized = normalizeToWinPath(key);
-    const base = path.basename(normalized);
+    const base = path.win32.basename(normalized);
     if (base && base !== "\\" && base !== "/") return base;
   }
 

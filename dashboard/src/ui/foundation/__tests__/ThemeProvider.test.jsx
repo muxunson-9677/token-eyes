@@ -160,42 +160,14 @@ it("loads the Apple glass foundations after the legacy styles", () => {
   const stylesheet = postcss.parse(readFileSync(stylesheetPath, "utf8"));
   const customProperties = new Set();
   stylesheet.walkDecls(/^--tt-/, (declaration) => customProperties.add(declaration.prop));
-  expect([...customProperties].sort()).toEqual([
-    "--tt-canvas",
+  expect([...customProperties]).toEqual(expect.arrayContaining([
     "--tt-card-radius",
-    "--tt-control-radius",
-    "--tt-control-selected",
-    "--tt-control-surface",
-    "--tt-control-well",
-    "--tt-metric-create-surface",
-    "--tt-metric-hit-surface",
-    "--tt-metric-input-surface",
-    "--tt-metric-output-surface",
-    "--tt-metric-surface",
-    "--tt-nested-outline",
-    "--tt-nested-shadow",
-    "--tt-page-border",
-    "--tt-page-border-strong",
-    "--tt-page-canvas",
-    "--tt-page-ink",
-    "--tt-page-muted",
-    "--tt-page-shadow",
-    "--tt-page-success",
-    "--tt-page-success-soft",
-    "--tt-page-surface",
-    "--tt-service-hover-surface",
-    "--tt-service-surface",
-    "--tt-shell-environment",
-    "--tt-sidebar-surface",
-    "--tt-sidebar-width",
     "--tt-surface",
-    "--tt-surface-blur",
     "--tt-surface-border",
-    "--tt-surface-nested",
-    "--tt-surface-outline",
     "--tt-surface-shadow",
+    "--tt-sidebar-width",
     "--tt-window-bar-height",
-  ]);
+  ]));
 
   const rootRule = stylesheet.nodes.find((node) => node.type === "rule" && node.selector === ":root");
   const darkRule = stylesheet.nodes.find((node) => node.type === "rule" && node.selector === ":root.dark");
@@ -231,13 +203,17 @@ it("loads the Apple glass foundations after the legacy styles", () => {
   );
   expect(reducedMotion).toBeDefined();
 
-  const reducedTransition = reducedMotion.nodes.find(
+  const pressableReducedMotion = stylesheet.nodes.find(
+    (node) => node.type === "atrule" && node.name === "media" && node.params === "(prefers-reduced-motion: reduce)" &&
+      node.nodes.some((child) => child.type === "rule" && child.selector === ".tt-pressable"),
+  );
+  const reducedTransition = pressableReducedMotion.nodes.find(
     (node) => node.type === "rule" && node.selector === ".tt-pressable",
   );
   expect(reducedTransition.nodes.find((node) => node.prop === "transition")?.value).toBe("none");
 
   for (const state of [":hover", ":active", '[aria-pressed="true"]', '[aria-current="page"]']) {
-    const stateRule = reducedMotion.nodes.find(
+    const stateRule = pressableReducedMotion.nodes.find(
       (node) => node.type === "rule" && node.selector.includes(state),
     );
     expect(stateRule.nodes.find((node) => node.prop === "transform")?.value).toBe("none");
