@@ -57,23 +57,32 @@ jobs:
         id: version-check
         run: |
           CURRENT_VERSION=$(jq -r '.version' package.json)
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "has-npm-token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-npm-token=false" >> "$GITHUB_OUTPUT"
+          fi
           if npm view tokentracker-cli@$CURRENT_VERSION version >/dev/null 2>&1; then
             echo "version-exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "version-exists=false" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Install root dependencies
-        if: steps.version-check.outputs.version-exists == 'false'
+        if: steps.version-check.outputs.version-exists == 'false' && steps.version-check.outputs.has-npm-token == 'true'
         run: npm ci
       - name: Install dashboard dependencies
-        if: steps.version-check.outputs.version-exists == 'false'
+        if: steps.version-check.outputs.version-exists == 'false' && steps.version-check.outputs.has-npm-token == 'true'
         run: npm ci --prefix dashboard
       - name: Build dashboard
-        if: steps.version-check.outputs.version-exists == 'false'
+        if: steps.version-check.outputs.version-exists == 'false' && steps.version-check.outputs.has-npm-token == 'true'
         run: npm run dashboard:build
       - name: Publish to npm
-        if: steps.version-check.outputs.version-exists == 'false'
+        if: steps.version-check.outputs.version-exists == 'false' && steps.version-check.outputs.has-npm-token == 'true'
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
+      - name: Skip npm publish without token
+        if: steps.version-check.outputs.version-exists == 'false' && steps.version-check.outputs.has-npm-token != 'true'
+        run: echo "NPM_TOKEN is not configured; package publication was skipped."
