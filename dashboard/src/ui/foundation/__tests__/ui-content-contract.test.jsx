@@ -203,12 +203,11 @@ describe("restoration copy contract", () => {
     expect(copy("shared.data.unattributed")).toBe("Unattributed");
 
     setCopyLocale("zh-CN");
-    expect(copy("nav.settings.data")).toBe("鏁版嵁涓庤瘖鏂?);
-    expect(copy("reset_history.effect.label")).toBe("閫夋嫨鎯婂枩鏁堟灉");
-    expect(copy("reset_history.effect.meteors")).toBe("娴佹槦闆紙榛樿锛?);
-    expect(copy("reset_history.effect.fireworks")).toBe("鐑熻姳");
-    expect(copy("reset_history.preview_celebration_aria")).toBe("棰勮鎯婂枩鏁堟灉");
-    expect(copy("shared.data.unattributed")).toBe("鏈綊鍥?);
+    expect(copy("nav.settings.data")).toBe("数据与诊断");
+    expect(copy("reset_history.effect.label")).toBe("选择惊喜效果");
+    expect(copy("reset_history.effect.meteors")).toBe("流星雨（默认）");
+    expect(copy("reset_history.effect.fireworks")).toBe("烟花");
+    expect(copy("reset_history.preview_celebration_aria")).toBe("预览惊喜效果");
+    expect(copy("shared.data.unattributed")).toBe("未归因");
   });
 });
-
