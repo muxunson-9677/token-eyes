@@ -55,7 +55,7 @@ test("detectEnvironmentForPath returns not-detected when directory exists but no
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-agent-env-no-exec-"));
   try {
     const result = detectEnvironmentForPath(tmp, "claude");
-    assert.equal(result.environment, "win");
+    assert.equal(result.environment, process.platform === "win32" ? "win" : "not-detected");
     assert.equal(result.status, "not-detected");
     assert.equal(result.executablePath, undefined);
   } finally {
@@ -68,6 +68,13 @@ test("detectEnvironmentForPath returns detected when executable exists in direct
   try {
     await fs.promises.writeFile(path.join(tmp, "claude.exe"), "", "utf8");
     const result = detectEnvironmentForPath(tmp, "claude");
+    if (process.platform !== "win32") {
+      assert.equal(result.environment, "not-detected");
+      assert.equal(result.status, "not-detected");
+      assert.equal(result.executablePath, undefined);
+      return;
+    }
+
     assert.equal(result.environment, "win");
     assert.equal(result.status, "detected");
     assert.ok(result.executablePath);
@@ -221,3 +228,4 @@ test("detectAgentEnvironment keeps a selected install path and reports the resol
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
+

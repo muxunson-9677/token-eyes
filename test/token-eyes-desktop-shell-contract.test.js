@@ -43,11 +43,11 @@ test("Token Eyes Tauri metadata has no legacy visible product name", () => {
   assert.match(cargo, /description = "Token Eyes - AI Token Usage Tracker Desktop"/);
 });
 
-test("Token Eyes Windows main window delegates chrome to the reference UI shell", () => {
+test("Token Eyes Windows main window uses native system window controls", () => {
   const windowsConfig = JSON.parse(read("src-tauri/tauri.windows.conf.json"));
   const mainWindow = windowsConfig.app.windows.find((window) => window.label === "main");
 
-  assert.equal(mainWindow.decorations, false);
+  assert.equal(mainWindow.decorations, true);
   assert.equal(mainWindow.visible, true);
 });
 
@@ -80,3 +80,4 @@ test("reference screenshot verification uses the reference fixture instead of pr
     assert.match(verifier, new RegExp(sample.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 });
+

@@ -34,6 +34,10 @@ jobs:
       - run: npm --prefix dashboard run lint
       - run: npm --prefix dashboard test -- --run
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+        env:
+          # Unit tests do not package the Windows runtime. The release build
+          # still supplies this versioned resource via tauri:prepare-runtime.
+          TAURI_CONFIG: '{"bundle":{"resources":[]}}'
       - run: npm run validate:copy
       - run: npm run validate:ui-hardcode
       - run: npm run validate:guardrails
@@ -72,3 +76,4 @@ jobs:
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+

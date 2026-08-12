@@ -41,10 +41,10 @@ vi.mock("react-router-dom", async () => {
 // 03-ia-api-balance provider-balance + subscription-CRUD coverage.
 // - SpendUsagePage covers stats panel, summary cards, trend chart, and the
 //   three usage detail tabs (requests / provider / model). The independent
-//   "按来源拆分" table is GONE — tests that asserted it are removed.
+//   "鎸夋潵婧愭媶鍒? table is GONE 鈥?tests that asserted it are removed.
 // - SpendCostPage covers the CostAccumulation component, including the NEW
 //   provider API account section (03) and subscription CRUD (03).
-// - Top-level "使用统计 / 成本累积" Tab UI is GONE — each route renders its
+// - Top-level "浣跨敤缁熻 / 鎴愭湰绱Н" Tab UI is GONE 鈥?each route renders its
 //   own content; tests no longer click a tab to switch.
 
 vi.mock("../lib/api", () => ({
@@ -251,7 +251,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     render(<SpendUsagePage />);
 
-    expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
+    expect(await screen.findByText("鐪熷疄娑堣€?Tokens")).toBeInTheDocument();
     expect(document.querySelector(".tt-spend-usage-detail-scope")).toBeInTheDocument();
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
@@ -265,7 +265,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     render(<SpendUsagePage />);
 
-    expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
+    expect(await screen.findByText("鐪熷疄娑堣€?Tokens")).toBeInTheDocument();
     const financialStatus = await screen.findByTestId("usage-financial-status");
     expect(financialStatus).toHaveAttribute("data-state", "unavailable");
     expect(financialStatus).toHaveTextContent("financial ledger offline");
@@ -274,7 +274,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
   it("does not expose an internal startup command when the local financial service is unavailable", async () => {
     getSpendRecords.mockRejectedValue(new Error(
-      "Local CLI not reachable on :7680 — start it with: node bin/tracker.js serve --no-sync --no-open",
+      "Local CLI not reachable on :7680 鈥?start it with: node bin/tracker.js serve --no-sync --no-open",
     ));
 
     render(<SpendUsagePage />);
@@ -294,28 +294,28 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     getSpendRecords.mockRejectedValue(new Error("financial refresh timed out"));
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "立即刷新" }));
+      await user.click(screen.getByRole("button", { name: "绔嬪嵆鍒锋柊" }));
     });
 
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(4));
     const financialStatus = await screen.findByTestId("usage-financial-status");
     expect(financialStatus).toHaveAttribute("data-state", "stale");
     expect(financialStatus).toHaveTextContent("financial refresh timed out");
-    expect(financialStatus).toHaveTextContent("最后成功时间");
+    expect(financialStatus).toHaveTextContent("鏈€鍚庢垚鍔熸椂闂?);
     expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
   });
 
   it("does not fetch or display unrequested account quota and usage attribution panels", async () => {
     render(<SpendUsagePage />);
 
-    await screen.findByText("真实消耗 Tokens");
+    await screen.findByText("鐪熷疄娑堣€?Tokens");
     expect(getLimitAccounts).not.toHaveBeenCalled();
     expect(getUsageAttribution).not.toHaveBeenCalled();
-    expect(screen.queryByText("账户配额")).not.toBeInTheDocument();
-    expect(screen.queryByText("使用归因")).not.toBeInTheDocument();
+    expect(screen.queryByText("璐︽埛閰嶉")).not.toBeInTheDocument();
+    expect(screen.queryByText("浣跨敤褰掑洜")).not.toBeInTheDocument();
   });
 
-  it("does NOT render the independent '按来源拆分' table", async () => {
+  it("does NOT render the independent '鎸夋潵婧愭媶鍒? table", async () => {
     getSpendRecords.mockResolvedValue({
       records: [SAMPLE_RECORD],
       totals: { ...EMPTY_RESULT.totals },
@@ -324,28 +324,28 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     render(<SpendUsagePage />);
 
-    expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
-    expect(screen.queryByText("按来源拆分")).not.toBeInTheDocument();
-    expect(screen.queryByText("订阅成本")).not.toBeInTheDocument();
+    expect(await screen.findByText("鐪熷疄娑堣€?Tokens")).toBeInTheDocument();
+    expect(screen.queryByText("鎸夋潵婧愭媶鍒?)).not.toBeInTheDocument();
+    expect(screen.queryByText("璁㈤槄鎴愭湰")).not.toBeInTheDocument();
   });
 
-  it("does NOT render the top-level '使用统计 / 成本累积' Tab UI", async () => {
+  it("does NOT render the top-level '浣跨敤缁熻 / 鎴愭湰绱Н' Tab UI", async () => {
     render(<SpendUsagePage />);
-    expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
+    expect(await screen.findByText("鐪熷疄娑堣€?Tokens")).toBeInTheDocument();
     // The old top-level tabs must not appear as toggle buttons.
-    expect(screen.queryByRole("button", { name: "成本累积" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "鎴愭湰绱Н" })).not.toBeInTheDocument();
   });
 
   it("keeps estimated usage cost distinct from the restored monthly ledger", async () => {
     render(<SpendUsagePage />);
 
-    await screen.findByText("真实消耗 Tokens");
-    expect(screen.getByTestId("usage-total-cost-summary")).toHaveTextContent("估算用量成本");
+    await screen.findByText("鐪熷疄娑堣€?Tokens");
+    expect(screen.getByTestId("usage-total-cost-summary")).toHaveTextContent("浼扮畻鐢ㄩ噺鎴愭湰");
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
   });
 
-  it("mirrors the selected AgentSwitcher agent in the real-token headline", async () => {
+  it("mirrors the selected AgentSwitcher agent in the real-token headline and scopes its ledger", async () => {
     const user = userEvent.setup();
 
     render(<SpendUsagePage />);
@@ -357,7 +357,10 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     const selectedAgent = await screen.findByTestId("usage-selected-agent");
     expect(selectedAgent).toHaveTextContent("Claude Code");
-    expect(getSpendRecords).not.toHaveBeenCalled();
+    await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
+    for (const [params] of getSpendRecords.mock.calls) {
+      expect(params.sources).toEqual(["claude"]);
+    }
   });
 
   it("scopes the restored financial ledger when selecting a usage service", async () => {
@@ -381,8 +384,8 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
 
     expect(getSpendTimeseries).not.toHaveBeenCalled();
     expect(getRequestUsageRecords).not.toHaveBeenCalled();
-    expect(screen.queryByText(/正在加载趋势数据/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/正在加载请求记录/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/姝ｅ湪鍔犺浇瓒嬪娍鏁版嵁/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/姝ｅ湪鍔犺浇璇锋眰璁板綍/)).not.toBeInTheDocument();
 
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
     await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalled());
@@ -495,7 +498,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     vi.clearAllMocks();
 
     const user = userEvent.setup();
-    const timeTrigger = screen.getByRole("button", { name: "时间范围" });
+    const timeTrigger = screen.getByRole("button", { name: "鏃堕棿鑼冨洿" });
     await act(async () => {
       await user.click(timeTrigger);
     });
@@ -522,16 +525,16 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     });
 
     render(<SpendUsagePage />);
-    await waitFor(() => expect(screen.getByText("暂无趋势数据")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("鏆傛棤瓒嬪娍鏁版嵁")).toBeInTheDocument());
   });
 
   it("renders usage statistics and request/provider/model tabs", async () => {
     render(<SpendUsagePage />);
-    expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
-    expect(screen.getByText("总请求数")).toBeInTheDocument();
-    expect(await screen.findByRole("tab", { name: "请求日志" })).toBeInTheDocument();
-    expect(await screen.findByRole("tab", { name: "Provider 统计" })).toBeInTheDocument();
-    expect(await screen.findByRole("tab", { name: "模型统计" })).toBeInTheDocument();
+    expect(await screen.findByText("鐪熷疄娑堣€?Tokens")).toBeInTheDocument();
+    expect(screen.getByText("鎬昏姹傛暟")).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "璇锋眰鏃ュ織" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Provider 缁熻" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "妯″瀷缁熻" })).toBeInTheDocument();
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
   });
 
@@ -549,8 +552,8 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     const providerCalls = getProviderStats.mock.calls.length;
     const modelCalls = getModelStats.mock.calls.length;
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Provider 统计" }));
-    await user.click(screen.getByRole("tab", { name: "模型统计" }));
+    await user.click(screen.getByRole("tab", { name: "Provider 缁熻" }));
+    await user.click(screen.getByRole("tab", { name: "妯″瀷缁熻" }));
     expect(getProviderStats).toHaveBeenCalledTimes(providerCalls);
     expect(getModelStats).toHaveBeenCalledTimes(modelCalls);
   });
@@ -580,7 +583,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     });
 
     render(<SpendUsagePage />);
-    await waitFor(() => expect(screen.getByRole("img", { name: "使用趋势图" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("img", { name: "浣跨敤瓒嬪娍鍥? })).toBeInTheDocument());
     expect(screen.getByText("2026-06-01")).toBeInTheDocument();
     expect(screen.queryByText(/1970-01-01/)).not.toBeInTheDocument();
   });
@@ -612,7 +615,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       records: Array.from({ length: 6 }, (_, index) => ({
         id: `plan-${index + 1}`,
         source: `source-${index + 1}`,
-        plan_label: `套餐 ${index + 1}`,
+        plan_label: `濂楅 ${index + 1}`,
         total_quota: 1_000,
         used_quota: 900 - index * 100,
         remaining_quota: 100 + index * 100,
@@ -624,7 +627,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     render(<SpendUsagePage />);
 
     const layout = await screen.findByTestId("usage-chart-token-services-layout");
-    expect(within(layout).getByText("Token 服务列表")).toBeInTheDocument();
+    expect(within(layout).getByText("Token 鏈嶅姟鍒楄〃")).toBeInTheDocument();
     expect(await within(layout).findAllByTestId("token-service-row")).toHaveLength(5);
     expect(layout).toHaveClass("lg:items-stretch");
     expect(layout).toHaveClass("lg:grid-cols-[minmax(0,1fr)_17rem]");
@@ -650,7 +653,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     });
 
     render(<SpendUsagePage />);
-    const providerTab = await screen.findByRole("tab", { name: "Provider 统计" });
+    const providerTab = await screen.findByRole("tab", { name: "Provider 缁熻" });
     await act(async () => {
       await user.click(providerTab);
     });
@@ -675,7 +678,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     });
 
     render(<SpendUsagePage />);
-    const modelTab = await screen.findByRole("tab", { name: "模型统计" });
+    const modelTab = await screen.findByRole("tab", { name: "妯″瀷缁熻" });
     await act(async () => {
       await user.click(modelTab);
     });
@@ -694,7 +697,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["claude"] });
     const user = userEvent.setup();
     render(<SpendUsagePage />);
-    const providerTab = await screen.findByRole("tab", { name: "Provider 统计" });
+    const providerTab = await screen.findByRole("tab", { name: "Provider 缁熻" });
     await act(async () => {
       await user.click(providerTab);
     });
@@ -706,7 +709,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   it("shows no usage statistics when no provider is enabled in Limits display", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
     render(<SpendUsagePage />);
-    await screen.findByText("请在显示设置中启用至少一个数据源。");
+    await screen.findByText("璇峰湪鏄剧ず璁剧疆涓惎鐢ㄨ嚦灏戜竴涓暟鎹簮銆?);
     expect(getSpendRecords).not.toHaveBeenCalled();
     expect(getUsageSummary).not.toHaveBeenCalled();
     expect(getProviderStats).not.toHaveBeenCalled();
@@ -755,7 +758,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
 
-    const picker = await screen.findByLabelText("选择成本月份");
+    const picker = await screen.findByLabelText("閫夋嫨鎴愭湰鏈堜唤");
     await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(2));
     fireEvent.change(picker, { target: { value: "2025-06" } });
 
@@ -779,7 +782,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
         {
           id: "plan-1",
           source: "claude",
-          plan_label: "Pro 套餐",
+          plan_label: "Pro 濂楅",
           total_quota: 1000000,
           used_quota: 500000,
           remaining_quota: 500000,
@@ -810,11 +813,11 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     );
 
     expect(document.querySelector(".tt-reference-route-spend-cost")).toBeInTheDocument();
-    expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
-    expect(screen.getByText("API 计费")).toBeInTheDocument();
+    expect(await screen.findByText("Token 濂楅")).toBeInTheDocument();
+    expect(screen.getByText("API 璁¤垂")).toBeInTheDocument();
     const tokenSection = await expandCostSection("token-packages");
     expect(tokenSection).toHaveAttribute("data-open", "true");
-    expect(await within(tokenSection).findByText("Pro 套餐")).toBeInTheDocument();
+    expect(await within(tokenSection).findByText("Pro 濂楅")).toBeInTheDocument();
     const apiSection = await expandCostSection("api-billing");
     expect(await within(apiSection).findByText("OpenAI API")).toBeInTheDocument();
     expect(getTokenPlans).toHaveBeenCalled();
@@ -843,9 +846,9 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     );
     const apiSection = await expandCostSection("api-billing");
     expect(await within(apiSection).findByText("Anthropic")).toBeInTheDocument();
-    expect(screen.queryByText("未提供字段")).not.toBeInTheDocument();
+    expect(screen.queryByText("鏈彁渚涘瓧娈?)).not.toBeInTheDocument();
     expect(screen.queryByText("USD 0.00")).not.toBeInTheDocument();
-    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/鈥?)).not.toBeInTheDocument();
   });
 
   it("initial load calls getApiBillingAccounts for cost accumulation data", async () => {
@@ -866,22 +869,22 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
+    expect(await screen.findByText("Token 濂楅")).toBeInTheDocument();
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalled());
     expect(getSpendRecords.mock.calls[0][0]?.sources).toEqual(["other_ai"]);
   });
 
-  it("does NOT render the top-level '使用统计 / 成本累积' Tab UI", async () => {
+  it("does NOT render the top-level '浣跨敤缁熻 / 鎴愭湰绱Н' Tab UI", async () => {
     render(
       <MemoryRouter>
         <SpendCostPage />
       </MemoryRouter>,
     );
-    expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "使用统计" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Token 濂楅")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "浣跨敤缁熻" })).not.toBeInTheDocument();
   });
 
-  it("does NOT render the independent '按来源拆分' table", async () => {
+  it("does NOT render the independent '鎸夋潵婧愭媶鍒? table", async () => {
     getSpendRecords.mockResolvedValue({
       records: [],
       totals: { ...EMPTY_RESULT.totals },
@@ -893,15 +896,15 @@ describe("SpendCostPage (v2.0 IA split)", () => {
         <SpendCostPage />
       </MemoryRouter>,
     );
-    expect(await screen.findByText("Token 套餐")).toBeInTheDocument();
-    expect(screen.queryByText("按来源拆分")).not.toBeInTheDocument();
+    expect(await screen.findByText("Token 濂楅")).toBeInTheDocument();
+    expect(screen.queryByText("鎸夋潵婧愭媶鍒?)).not.toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
   // 03-ia-api-balance: provider API account section + subscription CRUD
   // -------------------------------------------------------------------------
 
-  it("renders the 供应商账户 section and calls provider API balance endpoints on mount", async () => {
+  it("renders the 渚涘簲鍟嗚处鎴?section and calls provider API balance endpoints on mount", async () => {
     getProviderApiConfigs.mockResolvedValue({
       ok: true,
       data: {
@@ -909,7 +912,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
           {
             id: "cfg-1",
             providerId: "openai",
-            label: "OpenAI 主账户",
+            label: "OpenAI 涓昏处鎴?,
             enabled: true,
             apiKeyRef: "ref-1",
             refreshIntervalSeconds: 300,
@@ -924,7 +927,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
           {
             configId: "cfg-1",
             providerId: "openai",
-            accountLabel: "OpenAI 主账户",
+            accountLabel: "OpenAI 涓昏处鎴?,
             balance: 125.5,
             monthSpend: 32.1,
             lifetimeSpend: 480.0,
@@ -942,10 +945,10 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("供应商账户")).toBeInTheDocument();
+    expect(await screen.findByText("渚涘簲鍟嗚处鎴?)).toBeInTheDocument();
     const providerSection = await expandCostSection("provider-api");
     // Balance card shows provider + financial data from 02 endpoints.
-    expect(await within(providerSection).findByText("OpenAI 主账户")).toBeInTheDocument();
+    expect(await within(providerSection).findByText("OpenAI 涓昏处鎴?)).toBeInTheDocument();
     expect(within(providerSection).getByText(/125\.50/)).toBeInTheDocument();
     // mount triggers an immediate refresh of enabled+keyed configs.
     await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledWith("cfg-1"));
@@ -988,9 +991,9 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     const providerSection = await expandCostSection("provider-api");
     expect(await within(providerSection).findByText("Anthropic")).toBeInTheDocument();
     // The status badge text for not-connected.
-    expect(screen.getByText("未连接")).toBeInTheDocument();
-    expect(screen.queryByText("未提供字段")).not.toBeInTheDocument();
-    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
+    expect(screen.getByText("鏈繛鎺?)).toBeInTheDocument();
+    expect(screen.queryByText("鏈彁渚涘瓧娈?)).not.toBeInTheDocument();
+    expect(screen.queryByText(/鈥?)).not.toBeInTheDocument();
   });
 
   it("hides financial values while retaining the actionable error when status is error", async () => {
@@ -998,7 +1001,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       ok: true,
       data: {
         configs: [
-          { id: "cfg-3", providerId: "kimi", label: "Kimi 账户", enabled: true, apiKeyRef: "ref-3", refreshIntervalSeconds: 300 },
+          { id: "cfg-3", providerId: "kimi", label: "Kimi 璐︽埛", enabled: true, apiKeyRef: "ref-3", refreshIntervalSeconds: 300 },
         ],
       },
     });
@@ -1009,14 +1012,14 @@ describe("SpendCostPage (v2.0 IA split)", () => {
           {
             configId: "cfg-3",
             providerId: "kimi",
-            accountLabel: "Kimi 账户",
+            accountLabel: "Kimi 璐︽埛",
             balance: null,
             monthSpend: null,
             lifetimeSpend: null,
             currency: null,
             status: "error",
             lastSyncedAt: null,
-            errorMessage: "请求超时",
+            errorMessage: "璇锋眰瓒呮椂",
           },
         ],
       },
@@ -1029,12 +1032,12 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     );
 
     const providerSection = await expandCostSection("provider-api");
-    expect(await within(providerSection).findByText("Kimi 账户")).toBeInTheDocument();
-    expect(screen.getByText("同步错误")).toBeInTheDocument();
+    expect(await within(providerSection).findByText("Kimi 璐︽埛")).toBeInTheDocument();
+    expect(screen.getByText("鍚屾閿欒")).toBeInTheDocument();
     // The actionable error message renders.
-    expect(screen.getByText("请求超时")).toBeInTheDocument();
-    expect(screen.queryByText("未提供字段")).not.toBeInTheDocument();
-    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
+    expect(screen.getByText("璇锋眰瓒呮椂")).toBeInTheDocument();
+    expect(screen.queryByText("鏈彁渚涘瓧娈?)).not.toBeInTheDocument();
+    expect(screen.queryByText(/鈥?)).not.toBeInTheDocument();
   });
 
   it("does NOT render any API Key input on /spend/cost (keys only in settings)", async () => {
@@ -1043,7 +1046,7 @@ describe("SpendCostPage (v2.0 IA split)", () => {
         <SpendCostPage />
       </MemoryRouter>,
     );
-    await screen.findByText("Token 套餐");
+    await screen.findByText("Token 濂楅");
     // No password inputs and no api key labeled inputs anywhere on the cost page.
     const passwordInputs = screen.queryAllByLabelText(/api.?key/i);
     expect(passwordInputs).toHaveLength(0);
@@ -1066,3 +1069,4 @@ describe("SpendUsagePage does not call provider balance endpoints (03 work order
     expect(refreshProviderApiBalance).not.toHaveBeenCalled();
   });
 });
+

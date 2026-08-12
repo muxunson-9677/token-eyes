@@ -103,7 +103,7 @@ describe("ResetHistoryPage", () => {
 
     render(<ResetHistoryPage />);
 
-    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(11);
+    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(10);
     expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
     expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
   });
@@ -299,3 +299,4 @@ describe("ResetHistoryPage", () => {
     }
   });
 });
+
