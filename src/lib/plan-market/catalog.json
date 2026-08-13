@@ -1,0 +1,162 @@
+{
+  "_meta": {
+    "version": 1,
+    "updated_at": "2026-08-13",
+    "note": "Curated provider subscription plan market snapshot. Every provider entry must cite official sources and carry last_verified. Prices are marketing-page list prices, not user-billed amounts."
+  },
+  "providers": [
+    {
+      "id": "glm",
+      "display_name": "智谱 GLM Coding Plan",
+      "vendor": "Zhipu AI",
+      "region": "CN",
+      "last_verified": "2026-08-13",
+      "announcement": "2026-07-30 套餐改版为透明积分制；周末全天按非高峰 0.5 倍抵扣；2026-08-15 前订阅包年享 7 折、包季享 8 折",
+      "sources": [
+        { "label": "官方订阅页", "url": "https://bigmodel.cn/glm-coding" },
+        { "label": "官方套餐说明", "url": "https://docs.bigmodel.cn/cn/coding-plan/overview" },
+        { "label": "改版公告", "url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision" }
+      ],
+      "plans": [
+        {
+          "plan_id": "lite",
+          "display_name": "Lite",
+          "price": { "amount": 118, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [
+            { "amount": 94.4, "currency": "CNY", "cycle": "monthly", "note": "连续包季（8 折，限时）" }
+          ],
+          "quota_summary": "每 5 小时 2,000 积分；每周 10,000 积分（约 0.43–0.87 亿 tokens/周，GLM-5.2 口径）",
+          "highlights": ["支持 ZCode、Claude Code 等 20+ 编程工具", "非高峰时段按 0.5 倍积分抵扣"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro",
+          "display_name": "Pro",
+          "price": { "amount": 538, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [
+            { "amount": 430.4, "currency": "CNY", "cycle": "monthly", "note": "连续包季（8 折，限时）" }
+          ],
+          "quota_summary": "每 5 小时 12,000 积分；每周 60,000 积分（6 倍 Lite 用量）",
+          "highlights": ["优先体验最新旗舰模型", "覆盖多款精选 MCP 工具", "更快生成速度"],
+          "status": "available"
+        },
+        {
+          "plan_id": "max",
+          "display_name": "Max",
+          "price": { "amount": 1078, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [
+            { "amount": 862.4, "currency": "CNY", "cycle": "monthly", "note": "连续包季（8 折，限时）" }
+          ],
+          "quota_summary": "每 5 小时 28,000 积分；每周 140,000 积分（14 倍 Lite 用量）",
+          "highlights": ["首发接入最新旗舰模型及功能", "高峰期专属资源优先保障"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "aliyun-bailian",
+      "display_name": "阿里云百炼 Coding Plan",
+      "vendor": "Alibaba Cloud",
+      "region": "CN",
+      "last_verified": "2026-08-13",
+      "announcement": "Lite 基础版已于 2026-03-20 停止新购、2026-04-13 停止续费；当前仅 Pro 可订阅，新客首月 ¥39.90",
+      "sources": [
+        { "label": "官方帮助中心（中国站）", "url": "https://help.aliyun.com/zh/model-studio/coding-plan" },
+        { "label": "国际版文档", "url": "https://docs.qwencloud.com/coding-plan/overview" }
+      ],
+      "plans": [
+        {
+          "plan_id": "pro",
+          "display_name": "Pro 高级套餐",
+          "price": { "amount": 200, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [
+            { "amount": 50, "currency": "USD", "cycle": "monthly", "note": "国际版定价" },
+            { "amount": 39.9, "currency": "CNY", "cycle": "monthly", "note": "新客首月特惠" }
+          ],
+          "quota_summary": "每 5 小时 6,000 次请求；每周 45,000 次；每月 90,000 次",
+          "highlights": [
+            "整合 qwen3.7-plus、kimi-k2.5、glm-5、MiniMax-M2.5 等模型",
+            "需使用 sk-sp- 专属 API Key 与 coding 专属 Base URL",
+            "仅限交互式编码工具使用，禁止后端批量调用"
+          ],
+          "status": "available"
+        },
+        {
+          "plan_id": "lite",
+          "display_name": "Lite 基础套餐",
+          "price": { "amount": 39.9, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "已停售；已购用户可用至服务到期",
+          "highlights": ["2026-03-20 起停止新购", "2026-04-13 起停止续费与升级"],
+          "status": "discontinued"
+        }
+      ]
+    },
+    {
+      "id": "claude",
+      "display_name": "Anthropic Claude（含 Claude Code）",
+      "vendor": "Anthropic",
+      "region": "GLOBAL",
+      "last_verified": "2026-08-13",
+      "announcement": "订阅额度为 5 小时滚动窗口 + 每周活跃上限双重限制，额度在 Claude Code、Claude.ai、Cowork 间共享",
+      "sources": [
+        { "label": "官方定价页", "url": "https://claude.com/pricing" },
+        { "label": "第三方 2026 定价梳理（Finout）", "url": "https://www.finout.io/blog/claude-code-pricing-2026" }
+      ],
+      "plans": [
+        {
+          "plan_id": "pro",
+          "display_name": "Pro",
+          "price": { "amount": 20, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "约 10–40 prompts / 5 小时窗口，适合轻度使用与小型仓库",
+          "highlights": ["包含 Claude Code 使用权"],
+          "status": "available"
+        },
+        {
+          "plan_id": "max-5x",
+          "display_name": "Max 5x",
+          "price": { "amount": 100, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "Pro 的 5 倍用量，适合高频真实项目",
+          "highlights": ["包含 Claude Code 使用权"],
+          "status": "available"
+        },
+        {
+          "plan_id": "max-20x",
+          "display_name": "Max 20x",
+          "price": { "amount": 200, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "Pro 的 20 倍用量（约 800 prompts/5h），适合日常重度编码与 Agent 任务",
+          "highlights": ["重度用户 API 等价价值可达每月 $600–$1,500"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "display_name": "OpenAI ChatGPT（含 Codex）",
+      "vendor": "OpenAI",
+      "region": "GLOBAL",
+      "last_verified": "2026-08-13",
+      "announcement": "Codex 用量包含在 ChatGPT 订阅内，不同档位配额不同",
+      "sources": [
+        { "label": "官方定价页", "url": "https://openai.com/chatgpt/pricing" }
+      ],
+      "plans": [
+        {
+          "plan_id": "plus",
+          "display_name": "Plus",
+          "price": { "amount": 20, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "含 Codex 基础配额，适合轻中度使用",
+          "highlights": ["Codex CLI / IDE 扩展共享订阅额度"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro",
+          "display_name": "Pro",
+          "price": { "amount": 200, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "Codex 高配额档位，适合日常重度使用",
+          "highlights": ["更高模型档位与更宽松限额"],
+          "status": "available"
+        }
+      ]
+    }
+  ]
+}

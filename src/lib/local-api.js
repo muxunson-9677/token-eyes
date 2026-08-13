@@ -306,6 +306,7 @@ const { computeCodexContextBreakdown } = require("./codex-context-breakdown");
 
 const tokenPlanRefresh = require("./token-plan-refresh");
 const { getPlanById, listProviderOptions, getProviderCatalog } = require("./token-plan-catalog");
+const { getPlanMarketCatalog } = require("./plan-market");
 const { getAgentAdapter, listAgentAdapters } = require("./agent-adapters");
 const { collectApiBillingAccounts } = require("./api-billing");
 
@@ -7229,6 +7230,17 @@ function createLocalApiHandler({
         };
       });
       json(res, { providers });
+      return true;
+    }
+    // --- plan market (V2-W1: 供应商套餐行情快照，只读，含来源链接) ---
+    if (p === "/functions/tokentracker-plan-market") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method !== "GET") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const catalog = getPlanMarketCatalog();
+      json(res, { updated_at: catalog.updated_at, providers: catalog.providers });
       return true;
     }
     // --- token plans refresh (F03: 鎵嬪姩瑙﹀彂鍗曚釜 plan 鐨勫埛鏂? ---
