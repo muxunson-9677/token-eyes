@@ -64,6 +64,7 @@ export function getNavGroups() {
       children: [
         { id: "spend-usage", to: "/spend/usage", label: copy("nav.spend.usage") },
         { id: "spend-cost", to: "/spend/cost", label: copy("nav.spend.cost") },
+        { id: "spend-plans", to: "/spend/plans", label: copy("nav.spend.plans") },
       ],
     },
     {

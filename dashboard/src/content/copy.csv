@@ -1946,6 +1946,17 @@ spend.cost.design.refunds_credit,dashboard,SpendPage,CostAccumulation,design_ref
 leaderboard.table.rank,dashboard,LeaderboardPage,LeaderboardPage,table_rank,"Rank",,active
 leaderboard.table.user_share,dashboard,LeaderboardPage,LeaderboardPage,table_user_share,"User / model usage share",,active
 leaderboard.table.token_cost,dashboard,LeaderboardPage,LeaderboardPage,table_token_cost,"Token total / estimated spend",,active
+nav.spend.plans,ui,Sidebar,Sidebar,nav_spend_plans,"套餐行情",,active
+plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接。",,active
+plan_market.disclaimer,dashboard,PlanMarketPage,PlanMarketPage,disclaimer,"以下为人工核实的套餐行情快照，价格与额度可能随时调整，请以官方页面为准。",,active
+plan_market.last_verified_label,dashboard,PlanMarketPage,PlanMarketPage,last_verified_label,"核实于",,active
+plan_market.sources_label,dashboard,PlanMarketPage,PlanMarketPage,sources_label,"来源",,active
+plan_market.status.discontinued,dashboard,PlanMarketPage,PlanMarketPage,status_discontinued,"已停售",,active
+plan_market.quota_label,dashboard,PlanMarketPage,PlanMarketPage,quota_label,"额度",,active
+plan_market.cycle.monthly,dashboard,PlanMarketPage,PlanMarketPage,cycle_monthly,"/月",,active
+plan_market.cycle.quarterly,dashboard,PlanMarketPage,PlanMarketPage,cycle_quarterly,"/季",,active
+plan_market.cycle.yearly,dashboard,PlanMarketPage,PlanMarketPage,cycle_yearly,"/年",,active
+plan_market.cycle.one_time,dashboard,PlanMarketPage,PlanMarketPage,cycle_one_time,"一次性",,active
 settings.basic.page.title,ui,SettingsPage,SettingsPage,basic_page_title,"基础设置",,active
 settings.basic.page.subtitle,ui,SettingsPage,SettingsPage,basic_page_subtitle,"Manage appearance, menu bar, account, and display preferences.",,active
 settings.cost.page.title,ui,SettingsPage,SettingsPage,cost_page_title,"Cost settings",,active
