@@ -29,6 +29,9 @@ describe("calculateResetStatistics", () => {
       averageIntervalMs: 3 * DAY_MS,
       shortestIntervalMs: 2 * DAY_MS,
       longestIntervalMs: 4 * DAY_MS,
+      // "old" (2026-06-29) sits in the preceding 30-day window.
+      previousCount: 1,
+      countChangePercent: 300,
     });
   });
 
@@ -41,6 +44,23 @@ describe("calculateResetStatistics", () => {
       averageIntervalMs: null,
       shortestIntervalMs: null,
       longestIntervalMs: null,
+      previousCount: 0,
+      // No baseline in the previous window: comparison is undefined, not 0%.
+      countChangePercent: null,
     });
+  });
+
+  it("reports a negative period-over-period change when activity slows down", () => {
+    const result = calculateResetStatistics([
+      event("prev-1", "2026-06-05T00:00:00.000Z"),
+      event("prev-2", "2026-06-15T00:00:00.000Z"),
+      event("prev-3", "2026-06-25T00:00:00.000Z"),
+      event("prev-4", "2026-06-29T00:00:00.000Z"),
+      event("cur-1", "2026-07-20T00:00:00.000Z"),
+    ], NOW_MS);
+
+    expect(result.count).toBe(1);
+    expect(result.previousCount).toBe(4);
+    expect(result.countChangePercent).toBe(-75);
   });
 });

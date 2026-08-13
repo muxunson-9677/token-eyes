@@ -204,8 +204,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
       "sm:mb-8",
     );
     expect(screen.getByTestId("leaderboard-filter-toolbar")).not.toHaveClass("p-2");
-    expect(screen.getByTestId("leaderboard-period-control")).toHaveClass("rounded-full");
-    expect(screen.getByTestId("leaderboard-metric-control")).toHaveClass("rounded-full");
+    // V4 item-8: period/metric filters render as raised button tabs (matching
+    // the overview data tabs) instead of the old flat rounded-full pills.
+    expect(screen.getByTestId("leaderboard-period-control")).toHaveClass("tt-overview-data-tabs");
+    expect(screen.getByTestId("leaderboard-metric-control")).toHaveClass("tt-overview-data-tabs");
     expect(screen.getByTestId("leaderboard-list-surface")).toHaveClass("tt-surface");
     expect(screen.getAllByText("Preloaded User")[0].closest("li")).toHaveClass(
       "tt-product-focusable",
@@ -839,14 +841,14 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "本周" }));
+      await user.click(screen.getByRole("tab", { name: "本周" }));
     });
 
     expect(screen.getAllByText("Week User").length).toBeGreaterThan(0);
     expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: copy("leaderboard.period.total") }));
+      await user.click(screen.getByRole("tab", { name: copy("leaderboard.period.total") }));
     });
 
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
@@ -868,7 +870,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "本周" }));
+      await user.click(screen.getByRole("tab", { name: "本周" }));
     });
 
     expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
@@ -882,20 +884,20 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard();
 
-    expect(screen.getByRole("button", { name: "今日" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "本周" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: copy("leaderboard.period.30d") })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "本月" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "总累计" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "总榜" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Codex" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Token" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "估算花销" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "实际成本" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "今日" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "本周" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: copy("leaderboard.period.30d") })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "本月" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "总累计" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "总榜" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Codex" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Token" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "估算花销" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "实际成本" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "今日" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "估算花销" })).not.toBeDisabled());
-    await user.click(screen.getByRole("button", { name: "估算花销" }));
+    await user.click(screen.getByRole("tab", { name: "今日" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "估算花销" })).not.toBeDisabled());
+    await user.click(screen.getByRole("tab", { name: "估算花销" }));
 
     await waitFor(() => {
       expect(getLeaderboard).toHaveBeenLastCalledWith({
@@ -915,7 +917,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard();
 
-    const actualCostButton = screen.getByRole("button", { name: copy("leaderboard.metric.actual_cost") });
+    const actualCostButton = screen.getByRole("tab", { name: copy("leaderboard.metric.actual_cost") });
     expect(actualCostButton).not.toBeDisabled();
     await user.click(actualCostButton);
     await waitFor(() => {

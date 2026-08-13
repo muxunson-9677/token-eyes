@@ -1410,6 +1410,9 @@
 
 .widget-reset-celebration__dismiss {
   position: absolute;
+  /* Above the embedded tt-reset-celebration overlay (z-index 120) inside the
+     wrapper's isolated stacking context. */
+  z-index: 130;
   top: 8px;
   right: 10px;
   display: grid;

@@ -396,15 +396,15 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false, coll
         title={themeLabel}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "tt-theme-trigger tt-sidebar-focusable tt-pressable inline-flex h-10 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
-          collapsed ? "w-10" : "gap-2 px-3",
+          "tt-theme-trigger tt-sidebar-focusable tt-pressable inline-flex h-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
+          collapsed ? "w-8" : "gap-1.5 px-2.5",
           glassChrome
             ? "border backdrop-blur-[2px] text-oai-gray-700 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-white"
             : "border text-oai-gray-600 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-white",
         )}
       >
         <ActiveIcon className="h-3.5 w-3.5" aria-hidden />
-        {!collapsed && <span className="text-xs font-medium">{resolvedThemeLabel}</span>}
+        {!collapsed && <span className="text-[11px] font-medium">{resolvedThemeLabel}</span>}
       </button>
       {open && (
         <div

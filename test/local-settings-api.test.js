@@ -132,6 +132,7 @@ test("local settings API saves machine-only data directory and pricing overrides
       openclaw: "",
       hermes: "",
       codebuddy: "",
+      workbuddy: "",
       antigravity: "",
     });
     assert.deepEqual(readJsonResponse(initial).agentDefaultPricing, {
@@ -162,6 +163,7 @@ test("local settings API saves machine-only data directory and pricing overrides
       opencode: "C:\\Users\\admin\\AppData\\Local\\opencode",
       openclaw: "D:\\OpenClaw",
       codebuddy: "C:\\Users\\admin\\.codebuddy",
+      workbuddy: "",
       antigravity: "C:\\Users\\admin\\.gemini",
     };
     const saved = await call(handler, "/functions/tokentracker-local-settings", {

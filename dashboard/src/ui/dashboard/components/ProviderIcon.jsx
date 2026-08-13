@@ -217,6 +217,8 @@ function ZedIcon({ size = 16, className = "" }) {
 const PROVIDER_ICON_MAP = {
   CLAUDE: ClaudeIcon,
   CODEBUDDY: CodeBuddyIcon,
+  // WorkBuddy is the CodeBuddy CLI rebrand — same brand mark family.
+  WORKBUDDY: CodeBuddyIcon,
   CODEX: CodexIcon,
   COPILOT: CopilotIcon,
   CRAFT: CraftIcon,
@@ -244,6 +246,7 @@ const PROVIDER_LOGO_MAP = {
   ANTIGRAVITY: "/brand-logos/antigravity.svg",
   CLAUDE: "/brand-logos/claude-code.svg",
   CODEBUDDY: "/brand-logos/codebuddy.svg",
+  WORKBUDDY: "/brand-logos/codebuddy.svg",
   HERMES: "/brand-logos/hermes.svg",
   CURSOR: "/brand-logos/cursor.svg",
   GEMINI: "/brand-logos/gemini.svg",

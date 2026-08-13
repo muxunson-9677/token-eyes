@@ -99,9 +99,10 @@ describe("useLimitsDisplayPrefs", () => {
   });
 
   it("matches the provider list used for visibility/order keys", () => {
-    // First 10 must match Swift LimitsSettingsStore.allProviders; "zed" is a
-    // deliberate web-only addition (Swift normalizedOrder drops unknown ids
-    // from mirrored snapshots, normalizeOrder here re-appends them), see
+    // V4 item-3a: the list now covers every implemented agent channel so the
+    // settings 限制显示 panel can toggle all of them. The historical first
+    // segment keeps its order (Swift normalizedOrder drops ids it doesn't
+    // know about; normalizeOrder here re-appends them), see
     // limits-providers.js.
     expect(LIMIT_PROVIDER_IDS).toEqual([
       "claude",
@@ -115,10 +116,23 @@ describe("useLimitsDisplayPrefs", () => {
       "opencode",
       "antigravity",
       "zed",
+      "workbuddy",
+      "every-code",
+      "kilo-cli",
+      "kilocode",
+      "roocode",
+      "kiro",
+      "kiro-cli",
+      "kimi",
+      "kimi-code",
+      "omp",
+      "pi",
+      "craft",
+      "grok",
+      "copilot",
+      "goose",
+      "droid",
     ]);
-    expect(LIMIT_PROVIDER_IDS).not.toEqual(
-      expect.arrayContaining(["kimi", "kiro", "grok", "copilot"]),
-    );
   });
 
   it("reads and normalizes the existing localStorage keys", () => {

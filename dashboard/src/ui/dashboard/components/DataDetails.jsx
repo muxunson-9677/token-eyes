@@ -19,6 +19,30 @@ const DAILY_USAGE_KEYS = [
 ];
 const DEFAULT_DAILY_PAGE_SIZE = 10;
 
+// V4 round 1 item-5: manual project folders and dismissed auto-project cards
+// survive reloads. Both live in localStorage so "add" really accumulates.
+const SELECTED_FOLDERS_KEY = "tt.projects.selectedFolders";
+const HIDDEN_PROJECTS_KEY = "tt.projects.hiddenKeys";
+
+function readStoredStringArray(key) {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string" && item) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredStringArray(key, values) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(values));
+  } catch {
+    // Ignore quota/privacy-mode failures — the in-memory list still works.
+  }
+}
+
 export function hasRecordedDailyUsage(row) {
   if (!row || row.future || row.missing || !row.day) return false;
   return DAILY_USAGE_KEYS.some((key) => Number(row[key]) > 0);
@@ -54,7 +78,12 @@ export function DataDetails({
   setDetailsPage,
 }) {
   const [activeTab, setActiveTab] = useState("daily");
-  const [selectedProjectFolders, setSelectedProjectFolders] = useState([]);
+  const [selectedProjectFolders, setSelectedProjectFolders] = useState(
+    () => readStoredStringArray(SELECTED_FOLDERS_KEY),
+  );
+  const [hiddenProjectKeys, setHiddenProjectKeys] = useState(
+    () => readStoredStringArray(HIDDEN_PROJECTS_KEY),
+  );
   const [dailyPage, setDailyPage] = useState(0);
   const [dailyPageInput, setDailyPageInput] = useState("1");
   const [dailyPageSize, setDailyPageSize] = useState(DEFAULT_DAILY_PAGE_SIZE);
@@ -96,7 +125,10 @@ export function DataDetails({
     if (Number.isFinite(target)) navigateDailyPage(target - 1);
   };
   const projectsWithSelectedFolders = useMemo(() => {
-    const entries = Array.isArray(projectEntries) ? projectEntries.slice() : [];
+    const hidden = new Set(hiddenProjectKeys);
+    const entries = (Array.isArray(projectEntries) ? projectEntries : []).filter(
+      (entry) => !hidden.has(String(entry?.project_key || "")),
+    );
     for (const projectPath of selectedProjectFolders) {
       if (entries.some((entry) => entry?.project_path === projectPath)) continue;
       const parts = projectPath.split(/[\\/]/).filter(Boolean);
@@ -111,13 +143,51 @@ export function DataDetails({
       });
     }
     return entries;
-  }, [projectEntries, selectedProjectFolders]);
+  }, [projectEntries, selectedProjectFolders, hiddenProjectKeys]);
   const chooseProjectFolder = async () => {
     const tauriPath = await selectDirectoryViaTauri();
     const fallback = tauriPath ? { path: tauriPath } : await selectLocalDirectory();
     const selectedPath = typeof fallback?.path === "string" ? fallback.path.trim() : "";
     if (!selectedPath) return;
-    setSelectedProjectFolders((current) => current.includes(selectedPath) ? current : [...current, selectedPath]);
+    setSelectedProjectFolders((current) => {
+      const next = current.includes(selectedPath) ? current : [...current, selectedPath];
+      writeStoredStringArray(SELECTED_FOLDERS_KEY, next);
+      return next;
+    });
+    // Re-adding a folder always resurfaces its card, even if the auto entry
+    // for the same project was dismissed earlier.
+    setHiddenProjectKeys((current) => {
+      const matched = (Array.isArray(projectEntries) ? projectEntries : []).filter(
+        (entry) => entry?.project_path === selectedPath,
+      ).map((entry) => String(entry?.project_key || ""));
+      if (!matched.some((key) => current.includes(key))) return current;
+      const next = current.filter((key) => !matched.includes(key));
+      writeStoredStringArray(HIDDEN_PROJECTS_KEY, next);
+      return next;
+    });
+  };
+  const removeProjectCard = (entry) => {
+    const projectPath = String(entry?.project_path || "");
+    const projectKey = String(entry?.project_key || "");
+    // Deleting a card always drops the matching manual folder (if any) AND
+    // hides the auto entry (if it has a real key), so the card cannot come
+    // back through the other source on the next render.
+    if (projectPath) {
+      setSelectedProjectFolders((current) => {
+        if (!current.includes(projectPath)) return current;
+        const next = current.filter((path) => path !== projectPath);
+        writeStoredStringArray(SELECTED_FOLDERS_KEY, next);
+        return next;
+      });
+    }
+    if (projectKey && !projectKey.startsWith("selected-folder:")) {
+      setHiddenProjectKeys((current) => {
+        if (current.includes(projectKey)) return current;
+        const next = [...current, projectKey];
+        writeStoredStringArray(HIDDEN_PROJECTS_KEY, next);
+        return next;
+      });
+    }
   };
 
   return (
@@ -180,6 +250,7 @@ export function DataDetails({
             limit={projectLimit}
             onLimitChange={onProjectLimitChange}
             onSelectFolder={chooseProjectFolder}
+            onRemoveProject={removeProjectCard}
           />
         </div>
       )}

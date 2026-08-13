@@ -1,7 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
-import { motion } from "motion/react";
 import { BadgeCheck, CircleDollarSign, Coins, Info, MoreVertical, ShieldCheck, Users } from "lucide-react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { useLoginModal } from "../contexts/LoginModalContext.jsx";
@@ -661,12 +660,16 @@ export function LeaderboardPage({
         contextKey: leaderboardPreloadContextKey,
       });
     } else {
-      setListState({
+      // V4 item-8: same-context refetch (sync refresh) keeps rows on screen;
+      // a context change (period/metric/source/page) clears them so stale
+      // rows never masquerade as the new dimension. The frame below keeps
+      // its height via same-size placeholders, so the buttons never jump.
+      setListState((prev) => ({
         loading: true,
         error: null,
-        data: null,
-        contextKey: null,
-      });
+        data: prev.contextKey === leaderboardPreloadContextKey ? prev.data : null,
+        contextKey: leaderboardPreloadContextKey,
+      }));
     }
     (async () => {
       const pendingPreload = readPendingLeaderboardPreloadState(leaderboardPreloadContextKey);
@@ -737,6 +740,8 @@ export function LeaderboardPage({
     return {
       loading: Boolean(leaderboardBaseUrl || leaderboardMockEnabled) && leaderboardAccessMode !== "unavailable",
       error: null,
+      // Uncached context: rows clear (no cross-dimension data), the layout
+      // holds via loading placeholders rendered by the frame below.
       data: null,
       contextKey: leaderboardPreloadContextKey,
     };
@@ -1138,24 +1143,45 @@ export function LeaderboardPage({
     );
   } else if (hasEntries) {
     listBody = (
-      <ol className="divide-y divide-oai-gray-100 dark:divide-oai-gray-800/70">
-        {displayEntries.map((entry, entryIdx) => (
-          <LeaderboardEntryRow
-            key={entry?.is_ellipsis
-              ? `ellipsis-${entryIdx}`
-              : `row-${entry?.rank}-${entry?.user_id || entryIdx}-${entry?.is_pinned ? "pin" : "entry"}`}
-            entry={entry}
-            entryIdx={entryIdx}
-            anonLabel={anonLabel}
-            meLabel={meLabel}
-            metric={metric}
-            currency={currency}
-            rate={rate}
-            isSoleParticipant={Number(reconciledSummary.participantCount) === 1}
-            openProfileModal={openProfileModal}
-          />
-        ))}
-      </ol>
+      <>
+        <ol className="divide-y divide-oai-gray-100 dark:divide-oai-gray-800/70">
+          {displayEntries.map((entry, entryIdx) => (
+            <LeaderboardEntryRow
+              key={entry?.is_ellipsis
+                ? `ellipsis-${entryIdx}`
+                : `row-${entry?.rank}-${entry?.user_id || entryIdx}-${entry?.is_pinned ? "pin" : "entry"}`}
+              entry={entry}
+              entryIdx={entryIdx}
+              anonLabel={anonLabel}
+              meLabel={meLabel}
+              metric={metric}
+              currency={currency}
+              rate={rate}
+              isSoleParticipant={Number(reconciledSummary.participantCount) === 1}
+              openProfileModal={openProfileModal}
+            />
+          ))}
+        </ol>
+        {currentListState.loading ? (
+          /* V4 item-8: ghost rows hold the list height while public rows for
+             the new dimension load behind the pinned local row. */
+          <div
+            aria-hidden="true"
+            className="divide-y divide-oai-gray-100 border-t border-oai-gray-100 dark:divide-oai-gray-800/70 dark:border-oai-gray-800/70"
+          >
+            {Array.from({ length: Math.max(3, Math.min(pageSize - displayEntries.length, 8)) }).map((_, idx) => (
+              <div key={idx} className="flex min-h-[78px] items-center gap-3 px-4 py-3 sm:px-5">
+                <span className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-oai-gray-100 dark:bg-oai-gray-800" />
+                <div className="min-w-0 flex-1">
+                  <div className="h-4 w-40 max-w-full animate-pulse rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                  <div className="mt-2 h-3 w-24 animate-pulse rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                </div>
+                <div className="h-4 w-16 animate-pulse rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </>
     );
   } else {
     listBody = (
@@ -1249,50 +1275,75 @@ export function LeaderboardPage({
                 </span>
               )}
             </p>
+            {!listData && !currentListState.error ? (
+              /* V4 item-8: ghost cards mirror the real summary card DOM
+                 (same classes, nbsp text) so their height matches exactly and
+                 the toolbar below never jumps while an uncached load runs.
+                 They render whenever data is absent (loading OR the brief
+                 idle gap before the first fetch) — only an error yields. */
+              <dl
+                className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3"
+                data-testid="leaderboard-summary-placeholder"
+                aria-hidden="true"
+              >
+                {[0, 1, 2].map((idx) => (
+                  <div key={idx} className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                    <span className="flex h-9 w-9 shrink-0 animate-pulse items-center justify-center rounded-xl bg-oai-gray-100 dark:bg-oai-gray-800" />
+                    <div className="min-w-0 flex-1">
+                      <dt className="text-xs text-transparent">
+                        <span className="inline-block h-3 w-16 animate-pulse rounded bg-oai-gray-100 align-middle dark:bg-oai-gray-800" />
+                      </dt>
+                      <dd className="mt-1 text-lg font-semibold tabular-nums text-transparent">
+                        <span className="inline-block h-5 w-24 animate-pulse rounded bg-oai-gray-100 align-middle dark:bg-oai-gray-800" />
+                      </dd>
+                      <p className="tt-leaderboard-summary-detail text-transparent">
+                        <span className="inline-block h-3 w-20 animate-pulse rounded bg-oai-gray-100 align-middle dark:bg-oai-gray-800" />
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
             {listData && [participantCount, aggregateTotalTokens, aggregateTotalCost].some(isProvidedNumber) && (
               <dl className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="leaderboard-summary">
-                {isProvidedNumber(participantCount) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                {isProvidedNumber(participantCount) ? <div className="tt-leaderboard-summary-card tt-surface-nested tt-pressable flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-400/10 dark:text-sky-300 dark:ring-sky-400/20" data-testid="leaderboard-summary-icon">
                     <Users className="h-4 w-4" aria-hidden="true" />
                   </span>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.participant_label")}</dt>
                     <dd className="mt-1 text-lg font-semibold tabular-nums">{Number(participantCount).toLocaleString()}</dd>
-                    {participantSummaryDetail ? (
-                      <p className="tt-leaderboard-summary-detail">{participantSummaryDetail}</p>
-                    ) : null}
+                    {/* V4 item-8: detail line always renders (nbsp fallback) so
+                        the card height never varies across periods/metrics. */}
+                    <p className="tt-leaderboard-summary-detail">{participantSummaryDetail || "\u00A0"}</p>
                   </div>
                 </div> : null}
-                {isProvidedNumber(aggregateTotalTokens) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                {isProvidedNumber(aggregateTotalTokens) ? <div className="tt-leaderboard-summary-card tt-surface-nested tt-pressable flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 ring-1 ring-violet-100 dark:bg-violet-400/10 dark:text-violet-300 dark:ring-violet-400/20" data-testid="leaderboard-summary-icon">
                     <Coins className="h-4 w-4" aria-hidden="true" />
                   </span>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.tokens_label")}</dt>
                     <dd className="mt-1 text-lg font-semibold tabular-nums">
                       {formatChineseTokenCount(aggregateTotalTokens)}
                     </dd>
-                    {tokenSummaryDetail ? (
-                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-violet">
-                        {tokenSummaryDetail}
-                      </p>
-                    ) : null}
+                    <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-violet">
+                      {tokenSummaryDetail || "\u00A0"}
+                    </p>
                   </div>
                 </div> : null}
-                {isProvidedNumber(aggregateTotalCost) ? <div className="tt-leaderboard-summary-card tt-surface-nested flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
+                {isProvidedNumber(aggregateTotalCost) ? <div className="tt-leaderboard-summary-card tt-surface-nested tt-pressable flex items-center gap-3 rounded-[var(--tt-card-radius)] px-4 py-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20" data-testid="leaderboard-summary-icon">
                     <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
                   </span>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <dt className="text-xs text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.summary.cost_label")}</dt>
                     <dd className="mt-1 text-lg font-semibold tabular-nums">
                       {formatCost(aggregateTotalCost, currency, rate)}
                     </dd>
-                    {costSummaryDetail ? (
-                      <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-amber">
-                        {costSummaryDetail}
-                      </p>
-                    ) : null}
+                    <p className="tt-leaderboard-summary-detail tt-leaderboard-summary-detail-amber">
+                      {costSummaryDetail || "\u00A0"}
+                    </p>
                   </div>
                 </div> : null}
               </dl>
@@ -1310,12 +1361,13 @@ export function LeaderboardPage({
             </div>
           )}
 
-          {listData?.sync_message || generatedAt ? (
-            <div className="tt-leaderboard-sync-banner mb-4 rounded-[var(--tt-card-radius)] border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-oai-gray-600">
-              <Info aria-hidden="true" />
-              {listData?.sync_message || copy("leaderboard.sync.ready")}
-            </div>
-          ) : null}
+          {/* V4 item-8: the sync banner is a permanent fixture — some periods
+              return no sync_message/generated_at, and letting the banner
+              disappear used to shift the filter toolbar by its full height. */}
+          <div className="tt-leaderboard-sync-banner mb-4 rounded-[var(--tt-card-radius)] border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-oai-gray-600">
+            <Info aria-hidden="true" />
+            {listData?.sync_message || copy("leaderboard.sync.ready")}
+          </div>
 
           <div
             data-testid="leaderboard-filter-toolbar"
@@ -1324,60 +1376,54 @@ export function LeaderboardPage({
             <div className="flex flex-wrap items-center gap-2">
               <div
                 data-testid="leaderboard-period-control"
-                className="inline-flex h-9 items-center rounded-full border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
+                role="tablist"
+                aria-label={copy("leaderboard.period.label")}
+                className="tt-overview-data-tabs inline-flex items-center"
               >
                 {PERIOD_OPTIONS.map((option) => {
                   const isActive = period === option.value;
                   return (
                     <button
                       key={option.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
                       onClick={() => handleDimensionChange("period", option.value)}
-                      aria-pressed={isActive}
                       className={cn(
-                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-full px-3 text-sm font-medium transition-colors",
+                        "tt-overview-data-tab tt-pressable tt-product-focusable inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors",
                         isActive
-                          ? "text-oai-brand-700 dark:text-oai-brand-200"
-                          : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
+                          ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                          : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50",
                       )}
                     >
-                      <span className="relative z-10">{copy(option.copyKey)}</span>
-                      {isActive && (
-                        <motion.div
-                          layoutId="leaderboard-period-active-bg"
-                          className="absolute inset-0 z-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                        />
-                      )}
+                      {copy(option.copyKey)}
                     </button>
                   );
                 })}
               </div>
               <div
                 data-testid="leaderboard-metric-control"
-                className="inline-flex h-9 items-center rounded-full border border-white/70 bg-white/45 p-1 shadow-inner dark:border-white/10 dark:bg-black/20"
+                role="tablist"
+                aria-label={copy("leaderboard.metric.label")}
+                className="tt-overview-data-tabs inline-flex items-center"
               >
                 {METRIC_OPTIONS.map((option) => {
                   const isActive = metric === option.value;
                   return (
                     <button
                       key={option.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
                       onClick={() => handleDimensionChange("metric", option.value)}
-                      aria-pressed={isActive}
                       className={cn(
-                        "tt-pressable tt-product-focusable relative flex h-7 items-center justify-center rounded-full px-3 text-sm font-medium transition-colors",
+                        "tt-overview-data-tab tt-pressable tt-product-focusable inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors",
                         isActive
-                          ? "text-oai-brand-700 dark:text-oai-brand-200"
-                          : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200",
+                          ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                          : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50",
                       )}
                     >
-                      <span className="relative z-10">{copy(option.copyKey)}</span>
-                      {isActive && (
-                        <motion.div
-                          layoutId="leaderboard-metric-active-bg"
-                          className="absolute inset-0 z-0 rounded-full bg-oai-brand-50 ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:ring-oai-brand-500/30"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                        />
-                      )}
+                      {copy(option.copyKey)}
                     </button>
                   );
                 })}

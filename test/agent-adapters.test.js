@@ -183,7 +183,7 @@ test("listDataDirectoryAdapterKeys returns every configurable desktop source", (
 });
 
 test("DATA_DIRECTORY_KEYS equals the registry-backed configurable directory keys", () => {
-  const expected = ["claude", "codex", "cursor", "trae", "codebuddy", "gemini", "hermes", "openclaw", "opencode", "antigravity"];
+  const expected = ["claude", "codex", "cursor", "trae", "codebuddy", "workbuddy", "gemini", "hermes", "openclaw", "opencode", "antigravity"];
   assert.deepEqual(
     DATA_DIRECTORY_KEYS.sort(),
     expected.sort(),

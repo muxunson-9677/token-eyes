@@ -52,6 +52,7 @@ const LEADERBOARD_AGENT_SOURCES = new Set([
   "kimi",
   "kimi-code",
   "codebuddy",
+  "workbuddy",
   "omp",
   "pi",
   "craft",

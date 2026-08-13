@@ -28,8 +28,11 @@ import {
   type ResetCelebrationEffectId,
 } from "../ui/celebration/reset-celebration-preference.js";
 // ResetCelebrationProvider is a JSX module with no declaration file.
-// @ts-expect-error importing a named constant from an untyped JSX module
-import { DESKTOP_WIDGET_CELEBRATION_EVENT } from "../ui/celebration/ResetCelebrationProvider.jsx";
+// @ts-expect-error importing named constants from an untyped JSX module
+import { DESKTOP_WIDGET_CELEBRATION_EVENT, RESET_CELEBRATION_DURATION_MS } from "../ui/celebration/ResetCelebrationProvider.jsx";
+// The widget reuses the SAME full-strength canvas overlay as the reset page.
+// @ts-expect-error importing an untyped JSX component
+import { ResetCelebrationOverlay } from "../ui/celebration/ResetCelebrationOverlay.jsx";
 // PillNav is a JSX module with a stable prop contract but no declaration file.
 // @ts-expect-error importing an untyped JSX component
 import { PillNav } from "../ui/components/PillNav";
@@ -208,6 +211,17 @@ function WidgetResetCelebration({
   const [effectId, setEffectId] = useState<ResetCelebrationEffectId>(
     preferredEffectId ?? readResetCelebrationEffect,
   );
+  // The page overlay plays one 6s show then fades out; the widget keeps the
+  // celebration up until the user acknowledges it, so replay the full show
+  // on a loop by re-keying the overlay each cycle.
+  const [cycle, setCycle] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setCycle((value) => value + 1),
+      RESET_CELEBRATION_DURATION_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [resetId, effectId]);
 
   useEffect(() => {
     const syncEffect = (event?: Event) => {
@@ -229,20 +243,23 @@ function WidgetResetCelebration({
     };
   }, [preferredEffectId, resetId]);
 
+  // V4 item-9b: render the exact same canvas celebration the reset-history
+  // page uses (meteor/firework scenes at full particle density) instead of
+  // the old three-span CSS sketch that was barely visible on the widget.
   return (
     <div
       className="widget-reset-celebration"
       data-testid="widget-reset-celebration"
       data-effect-id={effectId}
+      data-renderer="canvas"
     >
-      <span className="widget-reset-celebration__veil" />
-      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--one" />
-      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--two" />
-      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--three" />
-      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--one" />
-      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--two" />
-      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--three" />
-      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--four" />
+      <ResetCelebrationOverlay
+        key={`${resetId}:${effectId}:${cycle}`}
+        event={{ eventId: `${resetId}:${cycle}` }}
+        effectId={effectId}
+        durationMs={RESET_CELEBRATION_DURATION_MS}
+        showNotice={false}
+      />
       <button
         type="button"
         aria-label={copy("widget.reset.acknowledge")}

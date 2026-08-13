@@ -10,6 +10,7 @@ import { DateRangePopover, formatDateShort, getDateFnsLocale } from "./DateRange
 import { ProviderIcon } from "./ProviderIcon.jsx";
 import { formatChineseTokenCount, formatCompactNumber, formatUsdCurrency } from "../../../lib/format";
 import { ContextBreakdownPanel } from "./ContextBreakdownPanel.jsx";
+import { getWorkbuddyQuota } from "../../../lib/api";
 import {
   BILLING_FILTERS,
   filterFleetByBillingMode,
@@ -609,7 +610,7 @@ export function UsageOverview({
             <div
               role="tablist"
               aria-label={copy("usage.billing_filter.label")}
-              className="inline-flex items-center gap-1 p-0.5 rounded-md border border-oai-gray-200 dark:border-oai-gray-700 bg-oai-gray-50 dark:bg-oai-gray-900/40"
+              className="tt-overview-data-tabs inline-flex items-center"
             >
               {BILLING_FILTERS.map((value) => {
                 const isActive = safeBillingFilter === value;
@@ -620,10 +621,10 @@ export function UsageOverview({
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setBillingFilter(value)}
-                    className={`min-h-10 shrink-0 whitespace-nowrap rounded px-2.5 py-2 text-[11px] font-medium transition-colors ${
+                    className={`tt-overview-data-tab tt-pressable inline-flex min-h-9 shrink-0 items-center whitespace-nowrap rounded-[var(--tt-control-radius)] px-3 py-1.5 text-xs font-medium transition-colors ${
                       isActive
-                        ? "bg-oai-brand-50 text-oai-brand-700 shadow-sm ring-1 ring-inset ring-oai-brand-200 dark:bg-oai-brand-500/15 dark:text-oai-brand-200 dark:ring-oai-brand-500/30"
-                        : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white"
+                        ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                        : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
                     }`}
                   >
                     {copy(billingFilterCopyKeys[value])}
@@ -710,7 +711,16 @@ export function UsageOverview({
                     {provider.collectionStatus === "connected_no_precise_tokens" ? (
                       <>
                         <div className="mt-1 text-[11px] leading-4 text-emerald-600 dark:text-emerald-400">
-                          {copy("settings.data_dirs.installed_no_data")}
+                          {/* V4 item-3b: say WHY there's no data — TRAE keeps usage in an
+                              encrypted DB; CodeBuddy IDE logs carry no token fields (its
+                              CLI is tracked as WorkBuddy). */}
+                          {copy(
+                            String(provider.source).toLowerCase() === "trae"
+                              ? "usage.provider.trae_encrypted_db"
+                              : String(provider.source).toLowerCase() === "codebuddy"
+                                ? "usage.provider.codebuddy_no_local_logs"
+                                : "settings.data_dirs.installed_no_data",
+                          )}
                         </div>
                         <div className="tt-provider-no-data-dash text-sm font-semibold text-oai-gray-500" aria-hidden="true">–</div>
                       </>
@@ -787,14 +797,106 @@ export function UsageOverview({
   );
 }
 
+const WORKBUDDY_GROUP_NAME_KEYS = {
+  base: "limits.workbuddy.group_base",
+  activity: "limits.workbuddy.group_activity",
+  extra: "limits.workbuddy.group_extra",
+  other: "limits.workbuddy.group_other",
+};
+
+function formatWorkbuddyCredits(value) {
+  return Number(value || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+/**
+ * V4 item-3c: WorkBuddy account + credit packages (基础体验包 / 活动赠送包 /
+ * 加量包) inside the expanded overview card — the same numbers the official
+ * client's 账号管理 screen shows, read via the local codebuddy.cn relay.
+ */
+function WorkbuddyQuotaSection({ color }) {
+  const [quota, setQuota] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    getWorkbuddyQuota()
+      .then((data) => {
+        if (alive) setQuota(data && typeof data === "object" ? data : null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (!quota || quota.signed_in === false) return null;
+  const groups = Array.isArray(quota.groups) ? quota.groups : [];
+  const accountText = [quota.plan, quota.account?.nickname, quota.account?.phone_masked]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div
+      className="mb-4 pb-4 border-b border-oai-gray-200 dark:border-oai-gray-700"
+      data-testid="workbuddy-quota-section"
+    >
+      {accountText ? (
+        <p className="mb-2 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400" data-testid="workbuddy-account-line">
+          {accountText}
+        </p>
+      ) : null}
+      <div className="space-y-2">
+        {groups.map((group) => {
+          const usedPct = Math.max(0, Math.min(100, Number(group.used_percent) || 0));
+          return (
+            <div key={group.id} data-testid="workbuddy-credit-row" data-group={group.id}>
+              <div className="flex items-baseline gap-3 mb-1">
+                <span className="flex-1 min-w-0 truncate text-sm text-oai-gray-700 dark:text-oai-gray-300">
+                  {copy(WORKBUDDY_GROUP_NAME_KEYS[group.id] || WORKBUDDY_GROUP_NAME_KEYS.other)}
+                  {group.items > 1 ? ` ×${group.items}` : ""}
+                </span>
+                <span className="shrink-0 text-right text-sm text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">
+                  {copy("limits.workbuddy.credits_remaining", {
+                    remain: formatWorkbuddyCredits(group.remain),
+                    total: formatWorkbuddyCredits(group.total),
+                  })}
+                </span>
+              </div>
+              <div
+                className="h-[3px] bg-oai-gray-100 dark:bg-oai-gray-800 rounded-full overflow-hidden"
+                role="progressbar"
+                aria-valuenow={usedPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className="h-full transition-[width] duration-500 ease-out"
+                  style={{ width: `${usedPct}%`, backgroundColor: color, opacity: 0.45 }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {quota.error === "unauthorized" ? (
+        <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+          {copy("limits.workbuddy.error_unauthorized")}
+        </p>
+      ) : null}
+      {quota.error && quota.error !== "unauthorized" ? (
+        <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+          {copy("limits.workbuddy.error_fetch")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // Renders a single expanded provider section. Hosts loading state for the
 // inline Context Breakdown so the spinner can sit next to the heading instead
 // of taking its own row.
 function ProviderExpandedSection({ provider, color, providerHeading, contextSource, from, to, sortedModels, billingModeCopyKeys }) {
   const { currency, rate } = useCurrency();
   const [breakdownLoading, setBreakdownLoading] = useState(false);
-  const isAntigravity =
-    String(provider?.source || provider?.label || "").trim().toLowerCase() === "antigravity";
+  const providerKey = String(provider?.source || provider?.label || "").trim().toLowerCase();
+  const isAntigravity = providerKey === "antigravity";
+  const isWorkbuddy = providerKey === "workbuddy";
   const modeKeys = billingModeCopyKeys || {
     api_key: "usage.billing_mode.api_key",
     token_plan: "usage.billing_mode.token_plan",
@@ -832,6 +934,9 @@ function ProviderExpandedSection({ provider, color, providerHeading, contextSour
                             {copy("usage.overview.antigravity_notice_body")}
                           </p>
                         )}
+
+                        {/* WorkBuddy account + credit packages (item 3c). */}
+                        {isWorkbuddy ? <WorkbuddyQuotaSection color={color} /> : null}
 
                         {/* Context Breakdown drill-down.
                             Claude: category-based (approx /context).

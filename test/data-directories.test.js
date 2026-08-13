@@ -33,6 +33,7 @@ test("normalizeDataDirectories trims known directory overrides", () => {
       opencode: "E:\\opencode",
       hermes: "",
       codebuddy: "",
+      workbuddy: "",
       antigravity: "",
     },
   );
@@ -334,11 +335,12 @@ test("detectDataDirectoryPaths chooses installed agents with live token evidence
       opencode: opencodeHome,
       openclaw: "",
       codebuddy: "",
+      workbuddy: "",
       antigravity: "",
     });
     assert.equal(result.detected.claude.evidence, "token_logs");
     assert.equal(result.detected.hermes.evidence, "state_db_exists");
-    assert.deepEqual(result.missing.sort(), ["antigravity", "codebuddy", "gemini", "openclaw", "trae"].sort());
+    assert.deepEqual(result.missing.sort(), ["antigravity", "codebuddy", "workbuddy", "gemini", "openclaw", "trae"].sort());
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

@@ -326,6 +326,94 @@ function renderProviderGroup(id, data, mode, expanded, onToggle) {
   return renderConfiguredProvider(id, data, title, mode, expanded, onToggle);
 }
 
+const WORKBUDDY_GROUP_NAME_KEYS = {
+  base: "limits.workbuddy.group_base",
+  activity: "limits.workbuddy.group_activity",
+  extra: "limits.workbuddy.group_extra",
+  other: "limits.workbuddy.group_other",
+};
+
+function formatWorkbuddyCredits(value) {
+  return Number(value || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+/** One credit package row: label + bar + used/total credits (wider right column than LimitBar's %). */
+function WorkbuddyCreditRow({ group, mode }) {
+  const remaining = mode === LIMIT_DISPLAY_MODES.REMAINING;
+  const usedPct = Math.max(0, Math.min(100, Number(group.used_percent) || 0));
+  const displayPct = remaining ? 100 - usedPct : usedPct;
+  const label = `${copy(WORKBUDDY_GROUP_NAME_KEYS[group.id] || WORKBUDDY_GROUP_NAME_KEYS.other)} (${group.items})`;
+  const credits = copy(
+    remaining ? "limits.workbuddy.credits_remaining" : "limits.workbuddy.credits_used",
+    {
+      used: formatWorkbuddyCredits(group.used),
+      remain: formatWorkbuddyCredits(group.remain),
+      total: formatWorkbuddyCredits(group.total),
+    },
+  );
+  return (
+    <div className="flex items-center gap-2" data-testid="workbuddy-credit-row" data-group={group.id}>
+      <span
+        data-limit-label=""
+        className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400 shrink-0 whitespace-nowrap"
+        style={{ width: "var(--tt-limits-label-w)" }}
+      >
+        {label}
+      </span>
+      <div className="relative flex-1 bg-oai-gray-100 dark:bg-oai-gray-700/50 rounded-full h-1.5 overflow-hidden">
+        <div
+          className={`${barColor(displayPct, mode)} rounded-full h-full transition-[width] duration-500 ease-out`}
+          style={{ width: `${displayPct}%`, minWidth: displayPct > 0 ? "3px" : 0 }}
+        />
+      </div>
+      <span className="text-[11px] tabular-nums text-oai-gray-500 dark:text-oai-gray-400 text-right shrink-0 whitespace-nowrap">
+        {credits}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * V4 item-3c: WorkBuddy account + credit packages (基础体验包 / 活动赠送包 /
+ * 加量包), read via the local API from codebuddy.cn's billing endpoint —
+ * mirrors the official client's 账号管理 screen.
+ */
+function WorkbuddyCreditsGroup({ data, mode }) {
+  const baseName = limitProviderName("workbuddy");
+  if (!data || data.signed_in === false) {
+    return (
+      <ToolGroup name={baseName} providerId="workbuddy">
+        <StatusLine>{copy("limits.status.not_connected")}</StatusLine>
+      </ToolGroup>
+    );
+  }
+  const accountText = [
+    data.plan,
+    data.account?.nickname,
+    data.account?.phone_masked,
+  ].filter(Boolean).join(" · ");
+  const title = accountText ? `${baseName} ${accountText}` : baseName;
+  const groups = Array.isArray(data.groups) ? data.groups : [];
+  return (
+    <div data-testid="workbuddy-credits-group">
+      <ToolGroup name={title} providerId="workbuddy">
+        {groups.map((group) => (
+          <WorkbuddyCreditRow key={group.id} group={group} mode={mode} />
+        ))}
+        {data.error === "unauthorized" ? (
+          <StatusLine tone="error">{copy("limits.workbuddy.error_unauthorized")}</StatusLine>
+        ) : null}
+        {data.error && data.error !== "unauthorized" ? (
+          <StatusLine tone="error">{copy("limits.workbuddy.error_fetch")}</StatusLine>
+        ) : null}
+        {!data.error && groups.length === 0 ? (
+          <StatusLine>{copy("limits.status.no_data")}</StatusLine>
+        ) : null}
+      </ToolGroup>
+    </div>
+  );
+}
+
 function AccountServiceRows({ providerId, accounts, mode, refreshing }) {
   const providerName = limitProviderName(providerId);
   return accounts.map((account) => {
@@ -443,7 +531,7 @@ function useWidestLabelWidth(containerRef) {
   return labelWidth;
 }
 
-export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, zed, accounts = [], accountsRefreshing = false, order, visibility, displayMode }) {
+export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, workbuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, zed, accounts = [], accountsRefreshing = false, order, visibility, displayMode }) {
   const dataById = { claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, zed };
   const containerRef = useRef(null);
   const labelWidth = useWidestLabelWidth(containerRef);
@@ -468,6 +556,9 @@ export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemin
   const groups = effectiveOrder
     .filter((id) => !visibility || visibility[id] !== false)
     .map((id) => {
+      if (id === "workbuddy") {
+        return <WorkbuddyCreditsGroup key={id} data={workbuddy} mode={effectiveMode} />;
+      }
       const providerAccounts = accountsByProvider.get(id);
       if (providerAccounts?.length) {
         return (

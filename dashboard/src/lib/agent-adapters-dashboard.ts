@@ -38,6 +38,7 @@ export const DASHBOARD_AGENTS: readonly DashboardAgent[] = [
   { id: "kimi", displayName: "Kimi", queueSource: "kimi" },
   { id: "kimi-code", displayName: "Kimi Code", queueSource: "kimi-code" },
   { id: "codebuddy", displayName: "CodeBuddy", queueSource: "codebuddy" },
+  { id: "workbuddy", displayName: "WorkBuddy", queueSource: "workbuddy" },
   { id: "omp", displayName: "oh-my-pi", queueSource: "omp" },
   { id: "pi", displayName: "pi", queueSource: "pi" },
   { id: "craft", displayName: "Craft Agents", queueSource: "craft" },

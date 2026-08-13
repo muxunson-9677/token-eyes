@@ -1267,17 +1267,17 @@ function WindowsProjectManager({ onOpenSettings }) {
   return (
     <div className="tt-widget-manager" data-testid="widget-manager">
       <section className="tt-widget-summary" data-testid="widget-summary">
-        <article data-tone="blue">
+        <article data-tone="blue" className="tt-pressable">
           <span className="tt-widget-summary-icon"><FolderKanban aria-hidden /></span>
           <div><span>{copy("widgets.reference.selected_projects")}</span><strong>{selectedProjectCount}</strong><small>{copy("widgets.reference.selected_projects_detail")}</small></div>
           <aside><b>{copy("widgets.reference.yesterday_delta", { count: activeToday })}</b><small>{copy("widgets.reference.week_added", { count: activeThisWeek })}</small></aside>
         </article>
-        <article data-tone="green">
+        <article data-tone="green" className="tt-pressable">
           <span className="tt-widget-summary-icon"><CheckCircle2 aria-hidden /></span>
           <div><span>{copy("widgets.reference.active_projects")}</span><strong>{activeProjects}</strong><small>{copy("widgets.reference.active_projects_detail")}</small></div>
           <aside><b>{copy("widgets.reference.yesterday_delta", { count: activeToday })}</b><small>{copy("widgets.reference.active_rate", { rate: projects.length ? Math.round((activeProjects / projects.length) * 100) : 0 })}</small></aside>
         </article>
-        <article data-tone="violet">
+        <article data-tone="violet" className="tt-pressable">
           <span className="tt-widget-summary-icon"><Package aria-hidden /></span>
           <div><span>{copy("widgets.reference.plan_usage")}</span><strong>{selectedLimitIds.length} / {limits.length}</strong><small>{copy("widgets.reference.plan_usage_detail")}</small></div>
           <aside className="tt-widget-summary-ring-wrap"><span className="tt-widget-summary-ring" style={{ "--widget-progress": `${limits.length ? Math.round((selectedLimitIds.length / limits.length) * 100) : 0}%` }}><b>{limits.length ? Math.round((selectedLimitIds.length / limits.length) * 100) : 0}%</b></span><small>{copy("widgets.reference.all_plans_enabled")}</small></aside>

@@ -346,6 +346,8 @@ dashboard.projects.limit_aria,ui,ProjectUsagePanel,ProjectUsagePanel,limit_aria,
 dashboard.projects.limit_top_3,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_3,"TOP 3",,active
 dashboard.projects.limit_top_6,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_6,"TOP 6",,active
 dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_10,"TOP 10",,active
+dashboard.projects.limit_all,ui,ProjectUsagePanel,ProjectUsagePanel,limit_all,"All",,active
+dashboard.projects.remove,ui,ProjectUsagePanel,ProjectUsagePanel,remove,"Remove {{name}}",,active
 dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,"No project usage data",,active
 dashboard.projects.cost_label,ui,ProjectUsagePanel,ProjectUsagePanel,cost_label,"Cost",,active
 dashboard.projects.requests_label,ui,ProjectUsagePanel,ProjectUsagePanel,requests_label,"Requests",,active
@@ -464,6 +466,8 @@ leaderboard.period.yesterday,dashboard,LeaderboardPage,LeaderboardPage,period_ye
 leaderboard.period.7d,dashboard,LeaderboardPage,LeaderboardPage,period_7d,"Last 7 days",,active
 leaderboard.period.30d,dashboard,LeaderboardPage,LeaderboardPage,period_30d,"Last 30 days",,active
 leaderboard.period.total,dashboard,LeaderboardPage,LeaderboardPage,period_total,"All time",,active
+leaderboard.period.label,dashboard,LeaderboardPage,LeaderboardPage,period_label,"Time range",,active
+leaderboard.metric.label,dashboard,LeaderboardPage,LeaderboardPage,metric_label,"Ranking metric",,active
 leaderboard.agent.all,dashboard,LeaderboardPage,LeaderboardPage,agent_all,"Overall",,active
 leaderboard.agent.more,dashboard,LeaderboardPage,LeaderboardPage,agent_more,"More Agents",,active
 leaderboard.back_overview,dashboard,LeaderboardPage,LeaderboardPage,back_overview,"Back to overview",,active
@@ -844,6 +848,15 @@ limits.provider.cursor,ui,LimitsPage,UsageLimitsPanel,provider_cursor,"Cursor",,
 usage.provider.connected_no_precise_tokens,ui,ProviderUsageTable,ProviderUsageTable,connected_no_precise_tokens,"已连接，当前日志未提供精确 Token 字段",,active
 limits.provider.trae,ui,LimitsPage,UsageLimitsPanel,provider_trae,"Trae",,active
 limits.provider.codebuddy,ui,LimitsPage,UsageLimitsPanel,provider_codebuddy,"CodeBuddy",,active
+limits.provider.workbuddy,ui,LimitsPage,UsageLimitsPanel,provider_workbuddy,"WorkBuddy",,active
+limits.workbuddy.group_base,ui,LimitsPage,UsageLimitsPanel,workbuddy_group_base,"Base package",,active
+limits.workbuddy.group_activity,ui,LimitsPage,UsageLimitsPanel,workbuddy_group_activity,"Gift packages",,active
+limits.workbuddy.group_extra,ui,LimitsPage,UsageLimitsPanel,workbuddy_group_extra,"Booster packs",,active
+limits.workbuddy.group_other,ui,LimitsPage,UsageLimitsPanel,workbuddy_group_other,"Other packages",,active
+limits.workbuddy.credits_used,ui,LimitsPage,UsageLimitsPanel,workbuddy_credits_used,"{{used}} / {{total}} credits",,active
+limits.workbuddy.credits_remaining,ui,LimitsPage,UsageLimitsPanel,workbuddy_credits_remaining,"{{remain}} / {{total}} credits left",,active
+limits.workbuddy.error_unauthorized,ui,LimitsPage,UsageLimitsPanel,workbuddy_error_unauthorized,"Session expired — sign in again in the WorkBuddy client",,active
+limits.workbuddy.error_fetch,ui,LimitsPage,UsageLimitsPanel,workbuddy_error_fetch,"Couldn't load credit packages — check network and retry",,active
 limits.provider.gemini,ui,LimitsPage,UsageLimitsPanel,provider_gemini,"Gemini",,active
 limits.provider.kimi,ui,LimitsPage,UsageLimitsPanel,provider_kimi,"Kimi",,active
 limits.provider.kiro,ui,LimitsPage,UsageLimitsPanel,provider_kiro,"Kiro",,active
@@ -1446,6 +1459,8 @@ settings.data_dirs.saved_button,ui,SettingsPage,DataDirectoriesSection,saved_but
 settings.data_dirs.syncing,ui,SettingsPage,DataDirectoriesSection,syncing,"路径已保存，正在同步 Token 数据。",,active
 settings.data_dirs.sync_error,ui,SettingsPage,DataDirectoriesSection,sync_error,"路径已保存，但 Token 同步失败，请稍后重试。",,active
 settings.data_dirs.installed_no_data,ui,SettingsPage,DataDirectoriesSection,installed_no_data,"已连接，当前日志未查到明确 Token 字段",,active
+usage.provider.trae_encrypted_db,ui,UsageOverview,UsageOverview,trae_encrypted_db,"已连接，用量存储在加密数据库中，暂无法读取",,active
+usage.provider.codebuddy_no_local_logs,ui,UsageOverview,UsageOverview,codebuddy_no_local_logs,"已连接，本地日志无 Token 字段；CLI 用量请见 WorkBuddy",,active
 settings.data_dirs.not_detected,ui,SettingsPage,DataDirectoriesSection,not_detected,"未检测到",,active
 settings.data_dirs.not_detected_reason,ui,SettingsPage,DataDirectoriesSection,not_detected_reason,"路径不存在或未配置",,active
 settings.data_dirs.env.win,ui,SettingsPage,DataDirectoriesSection,env_win,"Win",,active
@@ -1560,6 +1575,17 @@ usage.request_log.column.origin,ui,DashboardPage,RequestUsageLog,column_origin,"
 limits.provider.hermes,ui,LimitsPage,UsageLimitsPanel,provider_hermes,"Hermes",,active
 limits.provider.openclaw,ui,LimitsPage,UsageLimitsPanel,provider_openclaw,"OpenClaw",,active
 limits.provider.opencode,ui,LimitsPage,UsageLimitsPanel,provider_opencode,"OpenCode",,active
+limits.provider.every_code,ui,LimitsPage,UsageLimitsPanel,provider_every_code,"Every Code",,active
+limits.provider.kilo_cli,ui,LimitsPage,UsageLimitsPanel,provider_kilo_cli,"Kilo CLI",,active
+limits.provider.kilocode,ui,LimitsPage,UsageLimitsPanel,provider_kilocode,"Kilo Code",,active
+limits.provider.roocode,ui,LimitsPage,UsageLimitsPanel,provider_roocode,"Roo Code",,active
+limits.provider.kiro_cli,ui,LimitsPage,UsageLimitsPanel,provider_kiro_cli,"Kiro CLI",,active
+limits.provider.kimi_code,ui,LimitsPage,UsageLimitsPanel,provider_kimi_code,"Kimi Code",,active
+limits.provider.omp,ui,LimitsPage,UsageLimitsPanel,provider_omp,"oh-my-pi",,active
+limits.provider.pi,ui,LimitsPage,UsageLimitsPanel,provider_pi,"pi",,active
+limits.provider.craft,ui,LimitsPage,UsageLimitsPanel,provider_craft,"Craft Agents",,active
+limits.provider.goose,ui,LimitsPage,UsageLimitsPanel,provider_goose,"Goose",,active
+limits.provider.droid,ui,LimitsPage,UsageLimitsPanel,provider_droid,"Droid",,active
 spend.usage.title,dashboard,SpendPage,UsageStatsPanel,title,"Usage statistics",,active
 spend.usage.subtitle,dashboard,SpendPage,UsageStatsPanel,subtitle,"Review AI model usage and estimated cost.",,active
 spend.usage.real_tokens,dashboard,SpendPage,UsageStatsPanel,real_tokens,"Recorded Tokens",,active
@@ -2167,6 +2193,8 @@ reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
 reset_history.completed,ui,ResetHistoryPage,ResetRecord,completed,"Quota reset completed",,active
 reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored early",,active
 reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active
+reset_history.activity.day_today,ui,ResetHistoryPage,ResetHistoryPage,activity_day_today,"Today",,active
+reset_history.activity.day_yesterday,ui,ResetHistoryPage,ResetHistoryPage,activity_day_yesterday,"Yesterday",,active
 reset_history.source.tibo,ui,ResetHistoryPage,ResetRecord,source_tibo,"Tibo @thsottiaux · X",,active
 reset_history.source.openai,ui,ResetHistoryPage,ResetRecord,source_openai,"OpenAI official source",,active
 reset_history.kind.hard,ui,ResetHistoryPage,ResetRecord,kind_hard,"Usage-limit reset",,active
@@ -2183,6 +2211,8 @@ reset_history.stats.period_detail,ui,ResetHistoryPage,ResetStatisticsSummary,per
 reset_history.stats.count,ui,ResetHistoryPage,ResetStatisticsSummary,count,"Resets",,active
 reset_history.stats.count_value,ui,ResetHistoryPage,ResetStatisticsSummary,count_value,"{{count}} times",,active
 reset_history.stats.count_detail,ui,ResetHistoryPage,ResetStatisticsSummary,count_detail,"Official announcements in the last 30 days",,active
+reset_history.stats.count_change,ui,ResetHistoryPage,ResetStatisticsSummary,count_change,"{{change}} vs previous {{days}} days",,active
+reset_history.stats.count_change_new,ui,ResetHistoryPage,ResetStatisticsSummary,count_change_new,"+{{count}} vs previous {{days}} days (none before)",,active
 reset_history.stats.average,ui,ResetHistoryPage,ResetStatisticsSummary,average,"Average interval",,active
 reset_history.stats.average_detail,ui,ResetHistoryPage,ResetStatisticsSummary,average_detail,"Calculated from {{count}} adjacent intervals",,active
 reset_history.stats.shortest,ui,ResetHistoryPage,ResetStatisticsSummary,shortest,"Shortest interval",,active

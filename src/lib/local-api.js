@@ -618,7 +618,7 @@ function clearQueueDataCacheForTests() {
 }
 
 function summarizeTokenOnlyUsage(rows, directoryStates = {}) {
-  const totals = { trae: 0, codebuddy: 0, opencode: 0 };
+  const totals = { trae: 0, codebuddy: 0, workbuddy: 0, opencode: 0 };
   for (const row of Array.isArray(rows) ? rows : []) {
     const source = normalizeSource(row?.source);
     if (!Object.prototype.hasOwnProperty.call(totals, source)) continue;
@@ -655,6 +655,7 @@ function resolveTokenOnlyDirectoryStates(settings, options = {}) {
   return {
     trae: inspectDataDirectory("trae", resolved.traeHome, options),
     codebuddy: inspectDataDirectory("codebuddy", resolved.codebuddyHome, options),
+    workbuddy: inspectDataDirectory("workbuddy", resolved.workbuddyHome, options),
     opencode: inspectDataDirectory("opencode", resolved.opencodeHome, options),
   };
 }
@@ -662,7 +663,7 @@ function resolveTokenOnlyDirectoryStates(settings, options = {}) {
 function appendDetectedTokenOnlyProviders(providers, directoryStates = {}, sources = null) {
   const result = Array.isArray(providers) ? providers.slice() : [];
   const existing = new Set(result.map((provider) => normalizeSource(provider?.source)));
-  for (const source of ["trae", "codebuddy", "opencode"]) {
+  for (const source of ["trae", "codebuddy", "workbuddy", "opencode"]) {
     if (sources && !sources.includes(source)) continue;
     if (existing.has(source)) continue;
     const state = directoryStates?.[source];
@@ -2218,6 +2219,10 @@ function createLocalApiHandler({
   const trackerDataDir = trackerDataDirOverride || path.join(os.homedir(), ".tokentracker", "tracker");
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
   const usageAggregateResponseCache = new Map();
+  // WorkBuddy credit quota — cache the codebuddy.cn billing response so the
+  // dashboard can poll freely without hammering the remote API.
+  const WORKBUDDY_QUOTA_CACHE_MS = 5 * 60 * 1000;
+  const workbuddyQuotaCache = { payload: null, fetchedAtMs: 0 };
 
   function prepareUsageAggregateResponseCache(req, res, url) {
     if (String(req.method || "GET").toUpperCase() !== "GET") return false;
@@ -8298,6 +8303,32 @@ function createLocalApiHandler({
           ...data,
           ...summarizeTokenOnlyUsage(queueRows, directoryStates),
         }, queueRows, { nowMs: nowProvider().getTime() }));
+      } catch (e) {
+        json(res, { error: e?.message || "Unknown error" }, 500);
+      }
+      return true;
+    }
+
+    // --- workbuddy-quota (read-only credit packages from codebuddy.cn) ---
+    if (p === "/functions/tokentracker-workbuddy-quota") {
+      const { fetchWorkbuddyQuota } = require("./workbuddy-quota");
+      try {
+        const forceRefresh = url.searchParams.get("refresh");
+        const nowMs = nowProvider().getTime();
+        const cached = workbuddyQuotaCache.payload;
+        const fresh = cached && nowMs - workbuddyQuotaCache.fetchedAtMs < WORKBUDDY_QUOTA_CACHE_MS;
+        if (fresh && forceRefresh !== "1" && forceRefresh !== "true") {
+          json(res, cached);
+          return true;
+        }
+        const data = await fetchWorkbuddyQuota({
+          env: process.env,
+          home: os.homedir(),
+          platform: process.platform,
+        });
+        workbuddyQuotaCache.payload = data;
+        workbuddyQuotaCache.fetchedAtMs = nowMs;
+        json(res, data);
       } catch (e) {
         json(res, { error: e?.message || "Unknown error" }, 500);
       }

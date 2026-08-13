@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { useUsageLimits } from "../hooks/use-usage-limits";
 import { useLimitAccounts } from "../hooks/use-limit-accounts";
+import { getWorkbuddyQuota } from "../lib/api";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { copy } from "../lib/copy";
 import { LimitsPageSkeleton } from "../components/LimitsPageSkeleton.jsx";
@@ -31,6 +32,22 @@ export function LimitsPage() {
   } = useLimitAccounts();
   const [accountsRefreshing, setAccountsRefreshing] = useState(false);
 
+  // V4 item-3c: WorkBuddy credit packages come from their own local endpoint
+  // (codebuddy.cn billing relay) rather than the usage-limits aggregate.
+  const [workbuddyQuota, setWorkbuddyQuota] = useState(null);
+  const loadWorkbuddyQuota = useCallback(async (refresh = false) => {
+    try {
+      const quota = await getWorkbuddyQuota(refresh ? { refresh: true } : {});
+      setWorkbuddyQuota(quota && typeof quota === "object" ? quota : null);
+    } catch {
+      // Local server without the endpoint (older CLI) — hide the card.
+      setWorkbuddyQuota(null);
+    }
+  }, []);
+  useEffect(() => {
+    void loadWorkbuddyQuota(false);
+  }, [loadWorkbuddyQuota]);
+
   const refreshAllAccounts = async () => {
     if (accountsRefreshing) return;
     setAccountsRefreshing(true);
@@ -38,6 +55,7 @@ export function LimitsPage() {
       await Promise.all([
         refreshUsageLimits?.(),
         refreshLimitAccounts?.(),
+        loadWorkbuddyQuota(true),
       ]);
     } finally {
       setAccountsRefreshing(false);
@@ -112,6 +130,7 @@ export function LimitsPage() {
                 cursor={usageLimits?.cursor}
                 trae={usageLimits?.trae}
                 codebuddy={usageLimits?.codebuddy}
+                workbuddy={workbuddyQuota}
                 gemini={usageLimits?.gemini}
                 hermes={usageLimits?.hermes}
                 openclaw={usageLimits?.openclaw}

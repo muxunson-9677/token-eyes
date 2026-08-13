@@ -87,6 +87,7 @@ test("usage-limits appends Trae, CodeBuddy and OpenCode token-only totals", asyn
     ]), {
       trae: { configured: true, error: null, token_only: true, total_tokens: 180 },
       codebuddy: { configured: true, error: null, token_only: true, total_tokens: 300 },
+      workbuddy: { configured: false, error: null, token_only: true, total_tokens: 0 },
       opencode: { configured: true, error: null, token_only: true, total_tokens: 420 },
     });
 

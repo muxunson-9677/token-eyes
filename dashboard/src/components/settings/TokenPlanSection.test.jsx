@@ -345,26 +345,9 @@ it("new plan Agent source options mirror the limits display providers", async ()
     .map((option) => option.value)
     .filter(Boolean);
 
+  // V4 item-3a: the registry now covers every implemented channel, so the
+  // Agent dropdown mirrors it 1:1 — no extra filtering on top.
   expect(optionValues).toEqual(LIMIT_PROVIDER_IDS);
-  expect(optionValues).not.toEqual(expect.arrayContaining([
-    "every-code",
-    "kilo-cli",
-    "kilocode",
-    "roocode",
-    "kiro",
-    "kiro-cli",
-    "kimi",
-    "kimi-code",
-    "codebuddy",
-    "omp",
-    "pi",
-    "craft",
-    "grok",
-    "copilot",
-    "zed",
-    "goose",
-    "droid",
-  ]));
 });
 
 it("new plan Agent source options follow visible limits display preferences", async () => {
@@ -400,9 +383,32 @@ it("new plan Agent source options follow visible limits display preferences", as
     .map((option) => option.value)
     .filter(Boolean);
 
-  // codebuddy and zed are omitted from the stored visibility map, so they
-  // fall back to the default (visible) and stay in the option list.
-  expect(optionValues).toEqual(["hermes", "claude", "codebuddy", "zed"]);
+  // Providers omitted from the stored visibility map fall back to the
+  // default (visible) and stay in the option list — with the V4 item-3a
+  // expanded registry that now includes every newly-added channel, appended
+  // in registry order after the stored custom order.
+  expect(optionValues).toEqual([
+    "hermes",
+    "claude",
+    "codebuddy",
+    "zed",
+    "workbuddy",
+    "every-code",
+    "kilo-cli",
+    "kilocode",
+    "roocode",
+    "kiro",
+    "kiro-cli",
+    "kimi",
+    "kimi-code",
+    "omp",
+    "pi",
+    "craft",
+    "grok",
+    "copilot",
+    "goose",
+    "droid",
+  ]);
 });
 
 it("new plan provider choices render as separated card options", async () => {

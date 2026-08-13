@@ -45,6 +45,8 @@ const {
   parseAntigravityIncremental,
   resolveCodebuddyProjectFiles,
   parseCodebuddyIncremental,
+  resolveWorkbuddyProjectFiles,
+  parseWorkbuddyIncremental,
   resolveKiroCliSessionFiles,
   resolveKiroCliDbPath,
   parseKiroCliIncremental,
@@ -205,6 +207,7 @@ async function cmdSync(argv) {
     const geminiHome = dataDirectoryPaths.geminiHome;
     const antigravityHome = dataDirectoryPaths.antigravityHome;
     const codebuddyEnv = { ...process.env, CODEBUDDY_HOME: dataDirectoryPaths.codebuddyHome };
+    const workbuddyEnv = { ...process.env, WORKBUDDY_HOME: dataDirectoryPaths.workbuddyHome };
     const geminiTmpDir = path.join(geminiHome, "tmp");
     const xdgDataHome = process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
     const opencodeHome = dataDirectoryPaths.opencodeHome;
@@ -908,6 +911,34 @@ async function cmdSync(argv) {
       }
     }
 
+    // ── WorkBuddy CLI (passive ~/.workbuddy/projects/**/*.jsonl reader) ──
+    // The CodeBuddy CLI rebrand; identical per-turn JSONL, separate home +
+    // queue source so both installs coexist without double counting.
+    let workbuddyResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const workbuddyFiles = resolveWorkbuddyProjectFiles(workbuddyEnv);
+    if (workbuddyFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing WorkBuddy ${renderBar(0)} | buckets 0`);
+      }
+      try {
+        workbuddyResult = await parseWorkbuddyIncremental({
+          projectFiles: workbuddyFiles,
+          cursors,
+          queuePath,
+          env: workbuddyEnv,
+          onProgress: (p) => {
+            if (!progress?.enabled) return;
+            const pct = p.total > 0 ? p.index / p.total : 1;
+            progress.update(
+              `Parsing WorkBuddy ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+            );
+          },
+        });
+      } catch (err) {
+        warnProviderParseFailure("WorkBuddy", err, opts);
+      }
+    }
+
     // ── oh-my-pi (passive ~/.omp/agent/sessions/**/*.jsonl reader) ──
     let ompResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     const ompFiles = resolveOmpSessionFiles(process.env);
@@ -1205,6 +1236,7 @@ async function cmdSync(argv) {
         kimiResult.recordsProcessed +
         kimiCodeResult.recordsProcessed +
         codebuddyResult.recordsProcessed +
+        workbuddyResult.recordsProcessed +
         ompResult.recordsProcessed +
         piResult.recordsProcessed +
         craftResult.recordsProcessed +
@@ -1231,6 +1263,7 @@ async function cmdSync(argv) {
         kimiResult.bucketsQueued +
         kimiCodeResult.bucketsQueued +
         codebuddyResult.bucketsQueued +
+        workbuddyResult.bucketsQueued +
         ompResult.bucketsQueued +
         piResult.bucketsQueued +
         craftResult.bucketsQueued +

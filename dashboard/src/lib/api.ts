@@ -200,6 +200,7 @@ const PATHS = {
   localSync: "tokentracker-local-sync",
   usageLimits: "tokentracker-usage-limits",
   limitAccounts: "tokentracker-limit-accounts",
+  workbuddyQuota: "tokentracker-workbuddy-quota",
   codexResetEvents: "tokentracker-codex-reset-events",
   desktopWidget: "tokentracker-desktop-widget",
   localSettings: "tokentracker-local-settings",
@@ -1708,6 +1709,31 @@ export async function getUsageLimits(opts: { refresh?: boolean } = {}) {
 
 export async function getLimitAccounts(opts: { refresh?: boolean } = {}) {
   return fetchLocalJson(PATHS.limitAccounts, opts?.refresh ? { refresh: "1" } : undefined);
+}
+
+export interface WorkbuddyQuotaGroup {
+  id: "base" | "activity" | "extra" | "other";
+  items: number;
+  total: number;
+  remain: number;
+  used: number;
+  used_percent: number;
+}
+
+export interface WorkbuddyQuotaResponse {
+  signed_in: boolean;
+  account?: { nickname: string; phone_masked: string; type: string };
+  plan?: string | null;
+  groups?: WorkbuddyQuotaGroup[];
+  fetched_at: string;
+  error?: string | null;
+}
+
+export async function getWorkbuddyQuota(opts: { refresh?: boolean } = {}): Promise<WorkbuddyQuotaResponse> {
+  return fetchLocalJson(
+    PATHS.workbuddyQuota,
+    opts?.refresh ? { refresh: "1" } : undefined,
+  ) as Promise<WorkbuddyQuotaResponse>;
 }
 
 export async function getCodexResetEvents(): Promise<CodexResetEventsResponse> {

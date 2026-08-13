@@ -61,6 +61,26 @@ test("macOS LimitsSettingsStore.allProviders matches dashboard LIMIT_PROVIDER_ID
     "antigravity",
   ]);
   // Web-only tail: providers visible in the dashboard but not (yet) in the
-  // macOS native popover.
-  assert.deepEqual(jsIds.slice(swiftIds.length), ["zed"]);
+  // macOS native popover. V4 item-3a expanded this to every implemented
+  // channel; Swift's normalizedOrder drops the ids it doesn't know and the
+  // dashboard re-appends them, so tail-only additions stay safe.
+  assert.deepEqual(jsIds.slice(swiftIds.length), [
+    "zed",
+    "workbuddy",
+    "every-code",
+    "kilo-cli",
+    "kilocode",
+    "roocode",
+    "kiro",
+    "kiro-cli",
+    "kimi",
+    "kimi-code",
+    "omp",
+    "pi",
+    "craft",
+    "grok",
+    "copilot",
+    "goose",
+    "droid",
+  ]);
 });

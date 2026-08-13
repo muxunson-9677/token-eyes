@@ -6,6 +6,9 @@ import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
 import { useTrendData } from "../hooks/use-trend-data.js";
 import { useUsageData } from "../hooks/use-usage-data.js";
 import { useUsageLimits } from "../hooks/use-usage-limits.js";
+import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
+import { LIMIT_PROVIDER_IDS } from "../lib/limits-providers.js";
+import { getAgentIdByQueueSource } from "../lib/agent-adapters-dashboard";
 import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
 import { useUsageDateBounds } from "../hooks/use-usage-date-bounds";
 import {
@@ -494,7 +497,9 @@ export function DashboardPage({
     accountViewResolving,
   });
 
-  const [projectUsageLimit, setProjectUsageLimit] = useState(3);
+  // V4 item-5: default to showing every project card (0 = All) — recent
+  // active projects plus manually added folders — instead of a fixed TOP 3.
+  const [projectUsageLimit, setProjectUsageLimit] = useState(0);
   const {
     entries: projectUsageEntries,
     refresh: refreshProjectUsage,
@@ -1189,12 +1194,29 @@ export function DashboardPage({
     [summary?.conversation_count],
   );
 
+  // V4 round 1 item-3a: the overview agent cards follow the settings
+  // "限制显示" allowlist — a provider unchecked there disappears here (and the
+  // usage-details source filter already follows the same prefs). Sources that
+  // aren't toggleable in the limits list (unknown/legacy) stay visible so no
+  // data silently vanishes.
+  const { visibleOrdered: limitsVisibleOrdered } = useLimitsDisplayPrefs();
   const fleetData = useMemo(
-    () => appendConnectedTokenOnlySources(
-      buildFleetData(modelBreakdown, { copyFn: copy }),
-      usageLimits,
-    ),
-    [modelBreakdown, usageLimits],
+    () => {
+      const full = appendConnectedTokenOnlySources(
+        buildFleetData(modelBreakdown, { copyFn: copy }),
+        usageLimits,
+      );
+      const visible = new Set(limitsVisibleOrdered);
+      const toggleable = new Set(LIMIT_PROVIDER_IDS);
+      return full.filter((entry) => {
+        const source = String(entry?.source || "").trim().toLowerCase();
+        if (!source) return true;
+        const agentId = getAgentIdByQueueSource(source) || source;
+        if (!toggleable.has(agentId)) return true;
+        return visible.has(agentId);
+      });
+    },
+    [modelBreakdown, usageLimits, limitsVisibleOrdered],
   );
   const topModels = useMemo(
     () => buildTopModels(modelBreakdown, { limit: 3, copyFn: copy }),

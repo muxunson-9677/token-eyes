@@ -1443,7 +1443,10 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
   padding: 0;
 }
 
-.tt-reference-route-leaderboard [data-testid="leaderboard-summary"] {
+/* V4 item-8: the loading placeholder shares the summary sizing so swapping
+   between them never moves the filter toolbar below. */
+.tt-reference-route-leaderboard [data-testid="leaderboard-summary"],
+.tt-reference-route-leaderboard [data-testid="leaderboard-summary-placeholder"] {
   height: 166px;
   gap: 18px;
   margin-top: 28px;
@@ -1504,6 +1507,11 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
   color: #5f6877;
   font-size: 12px;
   line-height: 16px;
+  /* V4 item-8: one line always — a wrapping detail used to change the card
+     height between periods, shifting the filter toolbar below. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tt-reference-route-leaderboard .tt-leaderboard-summary-detail-violet {
@@ -2250,8 +2258,33 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   border-left: 1px solid #d5dfe8;
 }
 .tt-reference-route-reset-history .tt-reset-activity-stat span { color: #798394; font-size: 12px; }
-.tt-reference-route-reset-history .tt-reset-activity-stat strong { font-size: 22px; }
+/* V4 item-9a: shared line-height keeps both value rows on the same visual
+   baseline (the 13px peak value used to float against the 22px count). */
+.tt-reference-route-reset-history .tt-reset-activity-stat strong { font-size: 22px; line-height: 28px; display: flex; align-items: center; }
 .tt-reference-route-reset-history .tt-reset-activity-peak strong { color: #08a66f; font-size: 13px; }
+
+.tt-reference-route-reset-history .tt-reset-activity-change {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #e7f7f0;
+  color: #08a66f;
+}
+
+.tt-reference-route-reset-history .tt-reset-activity-change[data-positive="false"] {
+  background: #fdeeee;
+  color: #d2494f;
+}
+
+.tt-reference-route-reset-history .tt-reset-heatmap-label[data-today="true"] {
+  color: #08a66f;
+  font-weight: 600;
+}
 
 @media (max-width: 1400px) {
   .tt-reference-route-reset-history .tt-reset-activity {
@@ -3370,9 +3403,9 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   width: auto;
 }
 
-.tt-reference-route-settings-basic #settings-limits .flex.flex-col > div:nth-child(n+7) {
-  display: none;
-}
+/* V4 item-3a: the old reference design hid every provider row after the
+   sixth (display:none on n+7). The registry now carries 27 channels — all
+   rows stay visible and the card body scrolls instead. */
 
 .tt-reference-route-settings-basic .tt-settings-data-directory-card > div {
   position: relative !important;
@@ -3420,9 +3453,12 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 
 .tt-reference-route-settings-basic .tt-settings-limits-card > div > div:last-child {
   display: block !important;
-  height: 216px !important;
+  /* V4 item-3a: the channel registry grew from 6 to 27 entries — scroll
+     inside the card instead of clipping everything after row six. */
+  height: auto !important;
+  max-height: 420px !important;
   margin-bottom: 0 !important;
-  overflow: hidden !important;
+  overflow-y: auto !important;
   border: 1px solid #e5e9ef !important;
   border-radius: 9px !important;
 }
@@ -4213,8 +4249,11 @@ html.native-windows-app .tt-native-window-bar {
   overflow: visible;
 }
 
+/* V4 round 1 item-4: auto-fill (not auto-fit) keeps empty tracks, so the
+   card width stays identical whether a billing tab shows 2 providers or 10;
+   extra cards wrap to the next row at the same size. */
 .tt-reference-route-dashboard .tt-overview-provider-panel .grid.grid-cols-2 {
-  grid-template-columns: repeat(auto-fit, minmax(122px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
   align-items: stretch;
 }
 
@@ -4826,8 +4865,10 @@ html.native-windows-app .tt-reference-route-widgets .tt-desktop-sidebar::after {
   color: #f9fafb;
 }
 
+/* V4 round 1 item-6: keep breathing room under the last row of cards so
+   their drop shadow reads as volume instead of clipping at the window edge. */
 html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
-  padding: 19px 14px 0 39px;
+  padding: 19px 14px 22px 39px;
 }
 
 @media (min-width: 900px) {
@@ -5155,31 +5196,11 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   padding: 5px 8px 8px;
 }
 
-.tt-reference-route-dashboard .tt-overview-provider-panel [role="tablist"] button {
-  min-height: 33px;
-  padding: 6px 14px;
-}
-
+/* V4 round 1 item-4: the billing filter now reuses the raised
+   tt-overview-data-tabs treatment, so the old flat-text overrides
+   (zeroed container + per-button fixed widths) are gone. */
 .tt-reference-route-dashboard .tt-overview-provider-panel [role="tablist"] {
-  gap: 0;
   min-height: 38px;
-  border: 0;
-  padding: 0;
-  background: transparent;
-}
-
-.tt-reference-route-dashboard .tt-overview-provider-panel [role="tablist"] button:first-child {
-  min-width: 56px;
-}
-
-.tt-reference-route-dashboard .tt-overview-provider-panel [role="tablist"] button:nth-child(2) {
-  width: 96px;
-}
-
-.tt-reference-route-dashboard .tt-overview-provider-panel [role="tablist"] button:nth-child(3) {
-  width: 42px;
-  padding-right: 4px;
-  padding-left: 4px;
 }
 
 .tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card {
@@ -5211,7 +5232,6 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
 
 .tt-reference-route-dashboard .tt-overview-provider-panel .grid.grid-cols-2 {
   gap: 8px;
-  grid-template-columns: 134px 140px 140px 136px 137px;
 }
 
 .tt-reference-route-dashboard .tt-overview-provider-panel .space-y-6 > :not([hidden]) ~ :not([hidden]) {
@@ -5655,40 +5675,47 @@ html[data-reference-scenario="13-settings-cost-4"] .tt-native-status-pill:first-
   height: 15px;
 }
 
+/* V4 round 1 item-7: slimmer footer pill — was 40px tall and read as a
+   chunky bar next to the nav; 30px keeps it legible but visually light. */
 .tt-system-status-control {
   display: flex;
   min-width: 0;
-  height: 40px;
+  height: 30px;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   border: 1px solid var(--tt-surface-border);
   border-radius: 8px;
-  padding-left: 9px;
+  padding-left: 8px;
   color: #667085;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .tt-system-status-control .tt-native-status-value {
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
 .tt-system-status-refresh {
   display: inline-flex;
-  flex: 0 0 26px;
+  flex: 0 0 22px;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   margin-right: 0;
   border: 0;
   border-left: 1px solid rgba(31, 43, 56, 0.1);
-  padding: 0 0 0 7px;
+  padding: 0 0 0 5px;
   background: transparent;
   color: #667085;
   cursor: pointer;
   -webkit-app-region: no-drag;
+}
+
+.tt-system-status-refresh svg {
+  width: 12px;
+  height: 12px;
 }
 
 .tt-system-status-refresh:hover {
@@ -5701,11 +5728,11 @@ html[data-reference-scenario="13-settings-cost-4"] .tt-native-status-pill:first-
 }
 
 .tt-native-status-dot {
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: #20c77d;
-  box-shadow: 0 0 0 3px rgba(32, 199, 125, 0.1);
+  box-shadow: 0 0 0 2px rgba(32, 199, 125, 0.1);
 }
 
 .tt-native-notification-status,
@@ -6004,6 +6031,32 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
   transform: none;
 }
 
+/* Item-2 (V4 round 1): the usage-detail and cost-settings pages promote the
+   widget-manager press feedback to every action control. Scoping by page root
+   keeps the ~80 raw <button>/<select> nodes there consistent without editing
+   each call site. */
+.tt-spend-usage-detail-scope button,
+.tt-spend-usage-detail-scope select,
+.tt-settings-cost-page button,
+.tt-settings-cost-page select {
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.tt-spend-usage-detail-scope button:not(:disabled):not([aria-disabled="true"]):hover,
+.tt-spend-usage-detail-scope select:not(:disabled):hover,
+.tt-settings-cost-page button:not(:disabled):not([aria-disabled="true"]):hover,
+.tt-settings-cost-page select:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.tt-spend-usage-detail-scope button:not(:disabled):not([aria-disabled="true"]):active,
+.tt-spend-usage-detail-scope select:not(:disabled):active,
+.tt-settings-cost-page button:not(:disabled):not([aria-disabled="true"]):active,
+.tt-settings-cost-page select:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow: inset 0 4px 9px rgba(24, 44, 62, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
 /* Shared physical surface used by the accepted Basic Settings selects and
    the widget manager controls. Keeping one class prevents the two pages from
    drifting back to different depth and border treatments. */
@@ -6035,6 +6088,25 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
   .tt-pressable:not(:disabled):not([aria-disabled="true"]):active,
   .tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-pressed="true"],
   .tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-current="page"] {
+    transform: none;
+  }
+
+  /* V4 item-2: page-scoped press feedback stands down with reduced motion. */
+  .tt-spend-usage-detail-scope button,
+  .tt-spend-usage-detail-scope select,
+  .tt-settings-cost-page button,
+  .tt-settings-cost-page select {
+    transition: none;
+  }
+
+  .tt-spend-usage-detail-scope button:hover,
+  .tt-spend-usage-detail-scope button:active,
+  .tt-spend-usage-detail-scope select:hover,
+  .tt-spend-usage-detail-scope select:active,
+  .tt-settings-cost-page button:hover,
+  .tt-settings-cost-page button:active,
+  .tt-settings-cost-page select:hover,
+  .tt-settings-cost-page select:active {
     transform: none;
   }
 }
@@ -6289,7 +6361,8 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 }
 
 .tt-reference-route-settings-basic .tt-settings-limits-card > div > div:last-child {
-  overflow: hidden !important;
+  /* V4 item-3a: scroll (not clip) — 27 registered channels. */
+  overflow-y: auto !important;
 }
 
 .tt-reference-route-settings-basic #settings-limits .flex.flex-col > div {
@@ -7707,7 +7780,8 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-stat-card > svg { height: 12px; }
 
 .tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel { height: auto; min-height: 257px; overflow: visible; }
-.tt-reference-route-dashboard .tt-overview-provider-panel .grid.grid-cols-2 { grid-template-columns: repeat(auto-fit, minmax(122px, 1fr)); align-items: stretch; }
+/* V4 item-4: auto-fill (not auto-fit) so sparse billing tabs keep the same card width as the "all" tab. */
+.tt-reference-route-dashboard .tt-overview-provider-panel .grid.grid-cols-2 { grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); align-items: stretch; }
 .tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card { width: 100%; min-width: 0; }
 .tt-reference-route-dashboard .tt-overview-usage.tt-overview-aligned-stack { height: auto; }
 .tt-reference-route-dashboard .tt-overview-provider-panel--expanded { position: relative; z-index: 40; }

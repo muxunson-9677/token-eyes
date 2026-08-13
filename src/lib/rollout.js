@@ -4824,35 +4824,47 @@ async function parseKimiCodeIncremental({ wireFiles, cursors, queuePath, onProgr
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CodeBuddy CLI — passive JSONL reader (~/.codebuddy/projects/<cwd>/<sid>.jsonl)
+// CodeBuddy / WorkBuddy CLI — passive JSONL readers
 //
 // Tencent's CodeBuddy CLI is structurally cloned from Claude Code:
 //   ~/.codebuddy/projects/<encoded-cwd>/<sessionId>.jsonl  — conversation log
 //   ~/.codebuddy/sessions/<pid>.json                       — session metadata
 //   ~/.codebuddy/settings.json                             — `{"model": "..."}`
 //
-// CodeBuddy ships NO hook system — we incrementally tail the JSONL files on
+// The CLI was rebranded to WorkBuddy; newer installs write the exact same
+// per-turn JSONL under ~/.workbuddy/projects/** instead. Token Eyes tracks
+// them as two sources (codebuddy / workbuddy) sharing one parser core.
+//
+// Neither ships a hook system — we incrementally tail the JSONL files on
 // each sync (passive scan only, same shape as Kimi's wire.jsonl reader).
 //
 // Per-line record types: message, reasoning, topic, file-history-snapshot.
-// Only `type=="message" && role=="assistant"` carry token usage. The shape:
+// Only `type=="message" && role=="assistant"` carry token usage. The shape
+// (verified against a live ~/.workbuddy corpus, 2026-08):
 //
 //   providerData.rawUsage = {
-//     prompt_tokens: 22223,           // OpenAI-style — INCLUDES cached
-//     completion_tokens: 250,
-//     prompt_tokens_details: { cached_tokens: 512, reasoning_tokens?: number },
+//     prompt_tokens: 44199,           // OpenAI-style — INCLUDES cached
+//     completion_tokens: 1298,        // INCLUDES reasoning
+//     prompt_tokens_details:     { cached_tokens: 41984 },
+//     completion_tokens_details: { reasoning_tokens: 682 },
+//     prompt_cache_hit_tokens: 41984, // Tencent mirror of cached_tokens
+//     prompt_cache_miss_tokens: 2215, //   = prompt_tokens - cache hits
 //     cache_read_input_tokens: 0,     // Anthropic-style mirror (often 0)
 //     cache_creation_input_tokens: 0,
+//     prompt_cache_write_tokens: 0,   // Tencent mirror of cache_creation
 //   }
 //
 // Token math (matches the repo's queue convention; do NOT pass prompt_tokens
-// through unchanged — that double-counts cached input):
-//   input_tokens               = prompt_tokens - prompt_tokens_details.cached_tokens
-//   cached_input_tokens        = prompt_tokens_details.cached_tokens
-//   cache_creation_input_tokens = cache_creation_input_tokens (often 0)
-//   output_tokens              = completion_tokens
-//   reasoning_output_tokens    = prompt_tokens_details.reasoning_tokens || 0
-//   total_tokens               = sum of the above
+// or completion_tokens through unchanged — that double-counts cached input
+// and reasoning output):
+//   cached_input_tokens         = max(cached_tokens, cache_read_input_tokens,
+//                                     prompt_cache_hit_tokens)
+//   input_tokens                = prompt_tokens - cached_input_tokens
+//   cache_creation_input_tokens = max(cache_creation_input_tokens,
+//                                     prompt_cache_write_tokens)
+//   reasoning_output_tokens     = completion_tokens_details.reasoning_tokens
+//   output_tokens               = completion_tokens - reasoning_output_tokens
+//   total_tokens                = sum of the above
 // ─────────────────────────────────────────────────────────────────────────────
 
 function resolveCodebuddyHome(env = process.env) {
@@ -4860,10 +4872,14 @@ function resolveCodebuddyHome(env = process.env) {
   return env.CODEBUDDY_HOME || path.join(home, ".codebuddy");
 }
 
-function resolveCodebuddyDefaultModel(env = process.env) {
-  const fallback = "codebuddy-unknown";
+function resolveWorkbuddyHome(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  return env.WORKBUDDY_HOME || path.join(home, ".workbuddy");
+}
+
+function resolveCodebuddyFamilyDefaultModel(home, fallback) {
   try {
-    const settingsPath = path.join(resolveCodebuddyHome(env), "settings.json");
+    const settingsPath = path.join(home, "settings.json");
     const raw = fssync.readFileSync(settingsPath, "utf8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && typeof parsed.model === "string" && parsed.model.trim()) {
@@ -4875,8 +4891,16 @@ function resolveCodebuddyDefaultModel(env = process.env) {
   return fallback;
 }
 
-function resolveCodebuddyProjectFiles(env = process.env) {
-  const projectsDir = path.join(resolveCodebuddyHome(env), "projects");
+function resolveCodebuddyDefaultModel(env = process.env) {
+  return resolveCodebuddyFamilyDefaultModel(resolveCodebuddyHome(env), "codebuddy-unknown");
+}
+
+function resolveWorkbuddyDefaultModel(env = process.env) {
+  return resolveCodebuddyFamilyDefaultModel(resolveWorkbuddyHome(env), "workbuddy-unknown");
+}
+
+function resolveCodebuddyFamilyProjectFiles(home) {
+  const projectsDir = path.join(home, "projects");
   if (!fssync.existsSync(projectsDir)) return [];
   const files = [];
   try {
@@ -4899,33 +4923,45 @@ function resolveCodebuddyProjectFiles(env = process.env) {
   return files;
 }
 
-async function parseCodebuddyIncremental({
+function resolveCodebuddyProjectFiles(env = process.env) {
+  return resolveCodebuddyFamilyProjectFiles(resolveCodebuddyHome(env));
+}
+
+function resolveWorkbuddyProjectFiles(env = process.env) {
+  return resolveCodebuddyFamilyProjectFiles(resolveWorkbuddyHome(env));
+}
+
+async function parseCodebuddyFamilyIncremental({
+  source,
+  cursorKey,
   projectFiles,
   cursors,
   queuePath,
   onProgress,
   env,
   defaultModel,
+  resolveFiles,
+  resolveDefaultModel,
 } = {}) {
   await ensureDir(path.dirname(queuePath));
-  const codebuddyState =
-    cursors.codebuddy && typeof cursors.codebuddy === "object" ? cursors.codebuddy : {};
+  const parserState =
+    cursors[cursorKey] && typeof cursors[cursorKey] === "object" ? cursors[cursorKey] : {};
   const seenIds = new Set(
-    Array.isArray(codebuddyState.seenIds) ? codebuddyState.seenIds : [],
+    Array.isArray(parserState.seenIds) ? parserState.seenIds : [],
   );
   const fileOffsets =
-    codebuddyState.fileOffsets && typeof codebuddyState.fileOffsets === "object"
-      ? { ...codebuddyState.fileOffsets }
+    parserState.fileOffsets && typeof parserState.fileOffsets === "object"
+      ? { ...parserState.fileOffsets }
       : {};
 
   const files = Array.isArray(projectFiles)
     ? projectFiles
-    : resolveCodebuddyProjectFiles(env || process.env);
-  const fallbackModel = defaultModel || resolveCodebuddyDefaultModel(env || process.env);
+    : resolveFiles(env || process.env);
+  const fallbackModel = defaultModel || resolveDefaultModel(env || process.env);
 
   if (files.length === 0) {
-    cursors.codebuddy = {
-      ...codebuddyState,
+    cursors[cursorKey] = {
+      ...parserState,
       seenIds: Array.from(seenIds),
       fileOffsets,
       updatedAt: new Date().toISOString(),
@@ -4999,25 +5035,36 @@ async function parseCodebuddyIncremental({
 
       const promptTokens = toNonNegativeInt(rawUsage.prompt_tokens);
       const completionTokens = toNonNegativeInt(rawUsage.completion_tokens);
-      const details =
+      const promptDetails =
         rawUsage.prompt_tokens_details && typeof rawUsage.prompt_tokens_details === "object"
           ? rawUsage.prompt_tokens_details
           : {};
-      const cachedTokens = toNonNegativeInt(details.cached_tokens);
-      // Anthropic-style mirror; CodeBuddy emits these too even if usually 0.
+      const completionDetails =
+        rawUsage.completion_tokens_details && typeof rawUsage.completion_tokens_details === "object"
+          ? rawUsage.completion_tokens_details
+          : {};
+      const cachedTokens = toNonNegativeInt(promptDetails.cached_tokens);
+      // Anthropic-style + Tencent mirrors; the CLI populates one of the three
+      // depending on upstream provider, so take the largest.
       const cacheReadAlt = toNonNegativeInt(rawUsage.cache_read_input_tokens);
-      const cacheCreation = toNonNegativeInt(rawUsage.cache_creation_input_tokens);
-      const reasoningTokens = toNonNegativeInt(details.reasoning_tokens);
+      const cacheHitAlt = toNonNegativeInt(rawUsage.prompt_cache_hit_tokens);
+      const cacheCreation = Math.max(
+        toNonNegativeInt(rawUsage.cache_creation_input_tokens),
+        toNonNegativeInt(rawUsage.prompt_cache_write_tokens),
+      );
+      // Reasoning lives in completion_tokens_details (OpenAI convention) —
+      // NOT prompt_tokens_details. Reading the wrong side silently dropped
+      // all reasoning tokens.
+      const reasoningTokens = toNonNegativeInt(completionDetails.reasoning_tokens);
 
-      // CRITICAL: prompt_tokens is OpenAI-style and INCLUDES cached.
-      // Subtract cached so input_tokens is pure non-cached input — matches
-      // the repo's normalization convention (see CLAUDE.md "Token
-      // Normalization Convention"). cache_read takes the larger of the two
-      // mirrored fields (rawUsage.cache_read_input_tokens vs
-      // prompt_tokens_details.cached_tokens) since CodeBuddy populates one
-      // or the other depending on upstream provider.
-      const cacheRead = Math.max(cachedTokens, cacheReadAlt);
+      // CRITICAL: prompt_tokens is OpenAI-style and INCLUDES cached, and
+      // completion_tokens INCLUDES reasoning. Subtract both so each queue
+      // column is disjoint — matches the repo's normalization convention
+      // (see CLAUDE.md "Token Normalization Convention"); total_tokens then
+      // reconstructs rawUsage.total_tokens exactly.
+      const cacheRead = Math.max(cachedTokens, cacheReadAlt, cacheHitAlt);
       const inputTokens = Math.max(0, promptTokens - cacheRead);
+      const outputTokens = Math.max(0, completionTokens - reasoningTokens);
 
       if (
         inputTokens === 0 &&
@@ -5046,16 +5093,16 @@ async function parseCodebuddyIncremental({
         input_tokens: inputTokens,
         cached_input_tokens: cacheRead,
         cache_creation_input_tokens: cacheCreation,
-        output_tokens: completionTokens,
+        output_tokens: outputTokens,
         reasoning_output_tokens: reasoningTokens,
         total_tokens:
-          inputTokens + completionTokens + cacheRead + cacheCreation + reasoningTokens,
+          inputTokens + outputTokens + cacheRead + cacheCreation + reasoningTokens,
         conversation_count: 1,
       };
 
-      const bucket = getHourlyBucket(hourlyState, "codebuddy", model, bucketStart);
+      const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
       addTotals(bucket.totals, delta);
-      touchedBuckets.add(bucketKey("codebuddy", model, bucketStart));
+      touchedBuckets.add(bucketKey(source, model, bucketStart));
       seenIds.add(messageId);
       eventsAggregated++;
 
@@ -5093,14 +5140,34 @@ async function parseCodebuddyIncremental({
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
-  cursors.codebuddy = {
-    ...codebuddyState,
+  cursors[cursorKey] = {
+    ...parserState,
     seenIds: cappedSeen,
     fileOffsets,
     updatedAt,
   };
 
   return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+async function parseCodebuddyIncremental(options = {}) {
+  return parseCodebuddyFamilyIncremental({
+    ...options,
+    source: "codebuddy",
+    cursorKey: "codebuddy",
+    resolveFiles: resolveCodebuddyProjectFiles,
+    resolveDefaultModel: resolveCodebuddyDefaultModel,
+  });
+}
+
+async function parseWorkbuddyIncremental(options = {}) {
+  return parseCodebuddyFamilyIncremental({
+    ...options,
+    source: "workbuddy",
+    cursorKey: "workbuddy",
+    resolveFiles: resolveWorkbuddyProjectFiles,
+    resolveDefaultModel: resolveWorkbuddyDefaultModel,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9327,6 +9394,10 @@ module.exports = {
   resolveCodebuddyProjectFiles,
   resolveCodebuddyDefaultModel,
   parseCodebuddyIncremental,
+  resolveWorkbuddyHome,
+  resolveWorkbuddyProjectFiles,
+  resolveWorkbuddyDefaultModel,
+  parseWorkbuddyIncremental,
   resolveKiroCliSessionFiles,
   resolveKiroCliDbPath,
   parseKiroCliIncremental,

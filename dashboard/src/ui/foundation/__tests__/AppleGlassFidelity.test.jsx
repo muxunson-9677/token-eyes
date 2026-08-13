@@ -170,8 +170,10 @@ describe("approved M/N material fidelity", () => {
     expect(declarations(metrics)["column-gap"]).toBe("35px");
     expect(declarations(metric).width).toBe("min(94px, 100%)");
     expect(declarations(provider).height).toBe("auto");
+    // V4 item-4: auto-fill keeps card width identical across billing filter
+    // tabs (auto-fit stretched the last sparse row's cards wider).
     expect(declarations(providerGrid)["grid-template-columns"])
-      .toBe("repeat(auto-fit, minmax(122px, 1fr))");
+      .toBe("repeat(auto-fill, minmax(122px, 1fr))");
     expect(mediaDeclarations("(min-width: 1200px)", alignedStack)["grid-template-rows"])
       .toBe("minmax(0, 620px) minmax(257px, auto)");
     expect(Object.keys(mediaDeclarations("(min-width: 1081px) and (max-width: 1199px)", providerGrid)))

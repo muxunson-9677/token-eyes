@@ -41,6 +41,8 @@ const {
   resolveKiroCliDbPath,
   resolveCodebuddyHome,
   resolveCodebuddyProjectFiles,
+  resolveWorkbuddyHome,
+  resolveWorkbuddyProjectFiles,
   resolveOmpSessionFiles,
   resolveOmpAgentDir,
   resolvePiSessionFiles,
@@ -197,6 +199,13 @@ async function cmdStatus(argv = []) {
     ? resolveCodebuddyProjectFiles(process.env)
     : [];
 
+  // WorkBuddy — CodeBuddy CLI rebrand; same passive scan against ~/.workbuddy.
+  const workbuddyHome = resolveWorkbuddyHome(process.env);
+  const workbuddyInstalled = fssync.existsSync(workbuddyHome);
+  const workbuddyFiles = workbuddyInstalled
+    ? resolveWorkbuddyProjectFiles(process.env)
+    : [];
+
   // oh-my-pi — passive scan only (no hooks).
   const ompAgentDir = resolveOmpAgentDir(process.env);
   const ompInstalled = fssync.existsSync(path.join(ompAgentDir, "sessions"));
@@ -321,6 +330,9 @@ async function cmdStatus(argv = []) {
         codebuddy: codebuddyInstalled
           ? { installed: true, files: codebuddyFiles.length }
           : { installed: false },
+        workbuddy: workbuddyInstalled
+          ? { installed: true, files: workbuddyFiles.length }
+          : { installed: false },
         omp: ompInstalled
           ? { installed: true, files: ompFiles.length }
           : { installed: false },
@@ -405,6 +417,9 @@ async function cmdStatus(argv = []) {
         : null,
       codebuddyInstalled
         ? `- CodeBuddy hooks: ${codebuddyHookConfigured ? "set" : "unset"} (${codebuddyFiles.length} session jsonl file${codebuddyFiles.length !== 1 ? "s" : ""} found)`
+        : null,
+      workbuddyInstalled
+        ? `- WorkBuddy: passive reader (${workbuddyFiles.length} session jsonl file${workbuddyFiles.length !== 1 ? "s" : ""} found)`
         : null,
       ompInstalled
         ? `- oh-my-pi: passive reader (${ompFiles.length} session jsonl file${ompFiles.length !== 1 ? "s" : ""} found)`

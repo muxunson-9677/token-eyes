@@ -38,7 +38,8 @@ function SettingsCostFallback() {
 // entries. Neither sub-page duplicates the other's sections.
 
 function LimitsDisplayModeControl({ prefs }) {
-  const displayedProviders = prefs.order.slice(0, 6);
+  // V4 item-3a: count every registered channel — the list is no longer capped at 6.
+  const displayedProviders = prefs.order;
   const enabledCount = displayedProviders.filter((id) => prefs.visibility[id] !== false).length;
   return (
     <div className="tt-limits-header-actions">

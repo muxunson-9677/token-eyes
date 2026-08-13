@@ -248,6 +248,9 @@ describe("WidgetsPage Windows desktop widget", () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     );
+    // Relative timestamps: the "active" bucket is a rolling 3-day window, so
+    // fixed dates rot as the calendar moves on.
+    const hoursAgo = (hours) => new Date(Date.now() - hours * 3600_000).toISOString();
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       text: async () => JSON.stringify({
@@ -255,10 +258,10 @@ describe("WidgetsPage Windows desktop widget", () => {
           green: 8,
           yellow: 2,
           recentProjects: [
-            { id: "project-a", label: "Token Eyes", updatedAt: "2026-08-10T12:00:00.000Z" },
-            { id: "project-b", label: "Website", updatedAt: "2026-08-10T11:00:00.000Z" },
-            { id: "project-c", label: "Token Eyes", updatedAt: "2026-08-10T10:00:00.000Z" },
-            { id: "project-d", label: "Token Eyes", updatedAt: "2026-08-10T09:00:00.000Z" },
+            { id: "project-a", label: "Token Eyes", updatedAt: hoursAgo(2) },
+            { id: "project-b", label: "Website", updatedAt: hoursAgo(3) },
+            { id: "project-c", label: "Token Eyes", updatedAt: hoursAgo(26) },
+            { id: "project-d", label: "Token Eyes", updatedAt: hoursAgo(50) },
           ],
         },
         limits: [],
@@ -282,15 +285,16 @@ describe("WidgetsPage Windows desktop widget", () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     );
+    const hoursAgo = (hours) => new Date(Date.now() - hours * 3600_000).toISOString();
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       text: async () => JSON.stringify({
         projectStatus: {
           recentProjects: [
-            { id: "project-a", label: "Token Eyes", updatedAt: "2026-08-10T12:00:00.000Z" },
-            { id: "project-b", label: "Website", updatedAt: "2026-08-10T11:00:00.000Z" },
-            { id: "project-c", label: "Token Eyes", updatedAt: "2026-08-10T10:00:00.000Z" },
-            { id: "project-d", label: "Token Eyes", updatedAt: "2026-08-10T09:00:00.000Z" },
+            { id: "project-a", label: "Token Eyes", updatedAt: hoursAgo(2) },
+            { id: "project-b", label: "Website", updatedAt: hoursAgo(3) },
+            { id: "project-c", label: "Token Eyes", updatedAt: hoursAgo(26) },
+            { id: "project-d", label: "Token Eyes", updatedAt: hoursAgo(50) },
           ],
         },
         limits: [],

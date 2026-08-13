@@ -214,7 +214,17 @@ function ResetStatisticsSummary({
     {
       label: copy("reset_history.stats.count"),
       value: copy("reset_history.stats.count_value", { count: statistics.count }),
-      detail: copy("reset_history.stats.count_detail"),
+      detail: statistics.countChangePercent !== null
+        ? copy("reset_history.stats.count_change", {
+          change: formatCountChange(statistics.countChangePercent) ?? "",
+          days: statistics.periodDays,
+        })
+        : statistics.count > 0 && statistics.previousCount === 0
+          ? copy("reset_history.stats.count_change_new", {
+            count: statistics.count,
+            days: statistics.periodDays,
+          })
+          : copy("reset_history.stats.count_detail"),
       Icon: RotateCcw,
       tone: "emerald" as const,
     },
@@ -261,7 +271,7 @@ function ResetStatisticsSummary({
           data-testid="reset-history-stat"
           data-tone={item.tone}
           data-empty={item.value === null || isLoading ? "true" : undefined}
-          className="tt-surface-nested min-w-0 rounded-2xl border border-oai-gray-200/80 px-4 py-4 dark:border-oai-gray-800"
+          className="tt-surface-nested tt-pressable min-w-0 rounded-2xl border border-oai-gray-200/80 px-4 py-4 dark:border-oai-gray-800"
         >
           <span
             data-testid="reset-history-stat-icon"
@@ -285,51 +295,89 @@ function ResetStatisticsSummary({
   );
 }
 
+function formatCountChange(percent: number | null) {
+  if (percent === null || !Number.isFinite(percent)) return null;
+  const rounded = Math.round(Math.abs(percent) * 10) / 10;
+  if (rounded === 0) return "±0%";
+  return `${percent > 0 ? "+" : "-"}${rounded.toFixed(1)}%`;
+}
+
 function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[]; statistics: ResetStatistics }) {
   const zh = getCopyLocale().toLowerCase().startsWith("zh");
-  const newest = events[0] ? new Date(events[0].occurred_at) : new Date();
+  // V4 item-9a: the 7-day window is anchored to TODAY (it used to anchor to
+  // the newest event, so the whole panel looked frozen on that date), and all
+  // counts are real — no minimum-2 floor, no force-lit heatmap cells.
+  const today = new Date();
   const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(newest);
-    date.setDate(newest.getDate() - (6 - index));
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
     const key = date.toISOString().slice(0, 10);
     const count = events.filter((event) => event.occurred_at.slice(0, 10) === key).length;
-    return { key, count, label: `${date.getMonth() + 1}/${date.getDate()}` };
+    return { key, count, label: `${date.getMonth() + 1}/${date.getDate()}`, offset: 6 - index };
   });
-  const peak = days.reduce((best, day) => day.count >= best.count ? day : best, days[0]);
+  const peak = days.reduce((best, day) => day.count > best.count ? day : best, days[0]);
+  const hasRecentActivity = peak.count > 0;
+  const peakDayLabel = (() => {
+    if (peak.offset === 0) return copy("reset_history.activity.day_today");
+    if (peak.offset === 1) return copy("reset_history.activity.day_yesterday");
+    return peak.label;
+  })();
+  // V4 item-9a: prior window empty → percent is undefined, but the user still
+  // deserves a period-over-period cue, so fall back to the absolute delta.
+  const countChange = statistics.countChangePercent !== null
+    ? formatCountChange(statistics.countChangePercent)
+    : statistics.count > 0 && statistics.previousCount === 0
+      ? (zh ? `+${statistics.count} 次` : `+${statistics.count}`)
+      : null;
 
   return (
-    <section className="tt-reset-activity" data-testid="reset-history-activity">
+    <section className="tt-reset-activity tt-pressable" data-testid="reset-history-activity">
       <div className="tt-reset-activity-copy">
         <span className="tt-reset-activity-icon"><Sparkles aria-hidden /></span>
         <div>
           <h2>{zh ? "重置节奏洞察" : "Reset rhythm insight"}</h2>
           <p>{zh ? "最近 7 天重置活跃度" : "Reset activity over the last 7 days"}</p>
-          <strong>{zh ? `昨日达到高峰（${Math.max(2, peak.count)} 次）` : `Peak day (${Math.max(2, peak.count)} times)`}</strong>
+          <strong data-testid="reset-activity-peak-line">
+            {hasRecentActivity
+              ? (zh ? `${peakDayLabel}达到高峰（${peak.count} 次）` : `Peak on ${peakDayLabel} (${peak.count}x)`)
+              : (zh ? "近 7 天暂无官方重置" : "No official resets in the last 7 days")}
+          </strong>
         </div>
       </div>
       <div className="tt-reset-activity-data tt-reset-activity-data--right-aligned">
         <div className="tt-reset-heatmap" aria-label={zh ? "最近七天重置热力图" : "Seven-day reset heatmap"}>
-          {days.map((day, dayIndex) => (
+          {days.map((day) => (
             <div className="tt-reset-heatmap-day" key={day.key}>
               <div className="tt-reset-heatmap-cells">
                 {Array.from({ length: 9 }, (_, cellIndex) => (
                   <span
                     key={cellIndex}
-                    data-level={cellIndex < day.count * 2 || (dayIndex === 6 && cellIndex < 5) ? Math.min(3, day.count + 1) : 0}
+                    data-level={cellIndex < Math.min(9, day.count * 2) ? Math.min(3, day.count + 1) : 0}
                   />
                 ))}
               </div>
-              <span className="tt-reset-heatmap-label">{day.label}</span>
+              <span className="tt-reset-heatmap-label" data-today={day.offset === 0 ? "true" : undefined}>{day.label}</span>
             </div>
           ))}
         </div>
         <div className="tt-reset-activity-stat">
-          <span>{zh ? "本月累计（截至今日）" : "This month"}</span>
-          <strong>{statistics.count} 次</strong>
+          <span>
+            {zh ? `近 ${statistics.periodDays} 天累计` : `Last ${statistics.periodDays} days`}
+            {countChange ? (
+              <em className="tt-reset-activity-change" data-positive={statistics.countChangePercent == null || statistics.countChangePercent >= 0 ? "true" : "false"} data-testid="reset-activity-count-change">
+                {countChange}
+              </em>
+            ) : null}
+          </span>
+          <strong>{zh ? `${statistics.count} 次` : `${statistics.count}x`}</strong>
         </div>
         <div className="tt-reset-activity-stat tt-reset-activity-stat--divided tt-reset-activity-peak">
           <span>{zh ? "高峰日" : "Peak day"}</span>
-          <strong>{peak.label}（{Math.max(2, peak.count)} 次）</strong>
+          <strong>
+            {hasRecentActivity
+              ? (zh ? `${peak.label}（${peak.count} 次）` : `${peak.label} (${peak.count}x)`)
+              : (zh ? "近 7 天无重置" : "None in 7 days")}
+          </strong>
         </div>
       </div>
     </section>
@@ -416,7 +464,10 @@ export function ResetHistoryPage() {
       .sort((left, right) => Date.parse(right.occurred_at) - Date.parse(left.occurred_at));
     const indexByUrl = new Map<string, number>();
     const indexedSources: TimelineSource[] = [];
-    const resetStatistics = calculateResetStatistics(official);
+    // Feed the FULL history so the previous 30-day window is available for
+    // the period-over-period comparison (item-9a); the current-window stats
+    // are still filtered inside calculateResetStatistics.
+    const resetStatistics = calculateResetStatistics(displayedHistory);
     const indexedEvents: TimelineEvent[] = official.map((event) => {
       const url = String(event.source_url || "").trim();
       if (!url) return { ...event, sourceIndex: null };

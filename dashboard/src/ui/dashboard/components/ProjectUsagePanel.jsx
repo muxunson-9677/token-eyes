@@ -1,12 +1,15 @@
 import React, { useMemo, useState } from "react";
-import { ChevronDown, Clock3, FolderOpen, FolderPlus, MessageSquareText } from "lucide-react";
+import { ChevronDown, Clock3, FolderOpen, FolderPlus, MessageSquareText, X } from "lucide-react";
 
 import { Select } from "../../components";
 import { copy } from "../../../lib/copy";
 import { formatCompactNumber, toFiniteNumber } from "../../../lib/format";
 import { ProviderIcon } from "./ProviderIcon";
 
-const LIMIT_OPTIONS = [3, 6, 10];
+// V4 round 1 item-5: 0 = show every project (recent + manually added) in the
+// scrollable grid; the numeric options keep the old paginated TOP-N views.
+const LIMIT_ALL = 0;
+const LIMIT_OPTIONS = [LIMIT_ALL, 3, 6, 10];
 const PROJECT_CARD_COLORS = [
   "var(--tt-project-accent-blue)",
   "var(--tt-project-accent-green)",
@@ -92,7 +95,12 @@ function ProjectUsageHeader({ entries, limit, onLimitChange, onSelectFolder, sho
         onValueChange={(value) => onLimitChange?.(value)}
         options={LIMIT_OPTIONS.map((value) => ({
           value,
-          label: { 3: copy("dashboard.projects.limit_top_3"), 6: copy("dashboard.projects.limit_top_6"), 10: copy("dashboard.projects.limit_top_10") }[value],
+          label: {
+            [LIMIT_ALL]: copy("dashboard.projects.limit_all"),
+            3: copy("dashboard.projects.limit_top_3"),
+            6: copy("dashboard.projects.limit_top_6"),
+            10: copy("dashboard.projects.limit_top_10"),
+          }[value],
         }))}
         ariaLabel={copy("dashboard.projects.limit_aria")}
         align="end"
@@ -104,22 +112,26 @@ function ProjectUsageHeader({ entries, limit, onLimitChange, onSelectFolder, sho
 
 export function ProjectUsagePanel({
   entries = [],
-  limit = 3,
+  limit = LIMIT_ALL,
   onLimitChange,
   className = "",
   embedded = false,
   onSelectFolder,
+  onRemoveProject,
 }) {
   const resolvedLimit = LIMIT_OPTIONS.includes(limit) ? limit : LIMIT_OPTIONS[0];
+  const showAll = resolvedLimit === LIMIT_ALL;
   const sortedEntries = useMemo(() => (Array.isArray(entries) ? entries.slice() : []).sort((a, b) => {
     if (Boolean(a?.selected_folder) !== Boolean(b?.selected_folder)) return a?.selected_folder ? -1 : 1;
     return resolveTokens(b) - resolveTokens(a);
   }), [entries]);
   const [page, setPage] = useState(0);
   const [pageInput, setPageInput] = useState("1");
-  const pageCount = Math.max(1, Math.ceil(sortedEntries.length / resolvedLimit));
+  const pageCount = showAll ? 1 : Math.max(1, Math.ceil(sortedEntries.length / resolvedLimit));
   const currentPage = Math.min(page, pageCount - 1);
-  const displayEntries = sortedEntries.slice(currentPage * resolvedLimit, (currentPage + 1) * resolvedLimit);
+  const displayEntries = showAll
+    ? sortedEntries
+    : sortedEntries.slice(currentPage * resolvedLimit, (currentPage + 1) * resolvedLimit);
   const compactOptions = {
     thousandSuffix: copy("shared.unit.thousand_abbrev"),
     millionSuffix: copy("shared.unit.million_abbrev"),
@@ -149,27 +161,29 @@ export function ProjectUsagePanel({
           className="tt-overview-project-grid tt-overview-project-grid--stable grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3"
         >
           {displayEntries.map((entry, index) => (
-            <ProjectUsageCard key={`${entry?.project_key || "project"}-${entry?.project_path || entry?.project_ref || ""}`} entry={entry} embedded={embedded} aggregateTokens={totalTokens} compactOptions={compactOptions} projectIndex={index} />
+            <ProjectUsageCard key={`${entry?.project_key || "project"}-${entry?.project_path || entry?.project_ref || ""}`} entry={entry} embedded={embedded} aggregateTokens={totalTokens} compactOptions={compactOptions} projectIndex={index} onRemove={onRemoveProject} />
           ))}
         </div>
       )}
       {Math.sign(sortedEntries.length) === 1 ? (
         <div className="tt-overview-pagination tt-overview-project-pagination" data-testid="project-pagination">
           <span data-testid="project-pagination-total">{copy("dashboard.projects.records", { count: sortedEntries.length })}</span>
-          <div>
-            <button type="button" disabled={currentPage === 0} onClick={() => navigate(currentPage - 1)}>{copy("details.pagination.prev")}</button>
-            {Array.from({ length: pageCount }, (_, index) => <button key={index} type="button" aria-current={currentPage === index ? "page" : undefined} onClick={() => navigate(index)}>{index + 1}</button>)}
-            <button type="button" disabled={currentPage + 1 >= pageCount} onClick={() => navigate(currentPage + 1)}>{copy("details.pagination.next")}</button>
-            <input aria-label={copy("dashboard.projects.page_number")} value={pageInput} inputMode="numeric" onChange={(event) => setPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jump(); }} />
-            <button type="button" onClick={jump}>{copy("dashboard.projects.page_jump")}</button>
-          </div>
+          {!showAll ? (
+            <div>
+              <button type="button" disabled={currentPage === 0} onClick={() => navigate(currentPage - 1)}>{copy("details.pagination.prev")}</button>
+              {Array.from({ length: pageCount }, (_, index) => <button key={index} type="button" aria-current={currentPage === index ? "page" : undefined} onClick={() => navigate(index)}>{index + 1}</button>)}
+              <button type="button" disabled={currentPage + 1 >= pageCount} onClick={() => navigate(currentPage + 1)}>{copy("details.pagination.next")}</button>
+              <input aria-label={copy("dashboard.projects.page_number")} value={pageInput} inputMode="numeric" onChange={(event) => setPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jump(); }} />
+              <button type="button" onClick={jump}>{copy("dashboard.projects.page_jump")}</button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
   );
 }
 
-function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, projectIndex }) {
+function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, projectIndex, onRemove }) {
   const [expanded, setExpanded] = useState(false);
   const projectName = entry?.project_name || entry?.project_key || copy("data.confidence.unattributed");
   const projectPath = entry?.project_path || "";
@@ -210,15 +224,29 @@ function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, pr
   }
   return (
     <article data-testid="project-usage-card" data-expanded={expanded} className="tt-overview-project-card tt-overview-project-card--embedded tt-overview-project-card--compact flex flex-col" style={{ "--tt-project-accent": accent }}>
-      <button type="button" className="tt-overview-project-toggle" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-controls={detailsId}>
-        <span className="tt-overview-project-icon" aria-hidden="true"><FolderOpen size={18} /></span>
-        <span className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-sm font-semibold text-oai-black dark:text-oai-white">{projectName}</span>
-          {entry?.selected_folder && projectPath ? <span data-slot="selected-project-folder" className="mt-0.5 block truncate text-[10px] text-oai-green-600">{copy("dashboard.projects.selected_folder")} · {projectPath}</span> : null}
-          {!entry?.selected_folder && /^https?:\/\//.test(projectRef) ? <span data-slot="project-remote" className="mt-0.5 block truncate text-[10px] text-oai-gray-400">{copy("dashboard.projects.remote_repo")} · {projectRef.replace(/^https?:\/\//, "")}</span> : null}
-        </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-oai-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
-      </button>
+      <div className="tt-overview-project-toggle-row flex items-start gap-1">
+        <button type="button" className="tt-overview-project-toggle min-w-0 flex-1" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-controls={detailsId}>
+          <span className="tt-overview-project-icon" aria-hidden="true"><FolderOpen size={18} /></span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block truncate text-sm font-semibold text-oai-black dark:text-oai-white">{projectName}</span>
+            {entry?.selected_folder && projectPath ? <span data-slot="selected-project-folder" className="mt-0.5 block truncate text-[10px] text-oai-green-600">{copy("dashboard.projects.selected_folder")} · {projectPath}</span> : null}
+            {!entry?.selected_folder && /^https?:\/\//.test(projectRef) ? <span data-slot="project-remote" className="mt-0.5 block truncate text-[10px] text-oai-gray-400">{copy("dashboard.projects.remote_repo")} · {projectRef.replace(/^https?:\/\//, "")}</span> : null}
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-oai-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+        </button>
+        {typeof onRemove === "function" ? (
+          <button
+            type="button"
+            data-testid="project-usage-remove"
+            className="tt-pressable mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-oai-gray-400 transition-colors hover:bg-oai-gray-100 hover:text-oai-gray-700 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200"
+            aria-label={copy("dashboard.projects.remove", { name: projectName })}
+            title={copy("dashboard.projects.remove", { name: projectName })}
+            onClick={(event) => { event.stopPropagation(); onRemove(entry); }}
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
       <div className="tt-overview-project-location">
         {!entry?.selected_folder && projectPath ? <span data-slot="project-path" className="block truncate text-[10px] text-oai-gray-400">{projectPath}</span> : null}
       </div>
