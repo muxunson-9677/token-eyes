@@ -10,6 +10,8 @@
   - P2：Zed 订阅额度检测（`src/lib/zed-limits.js` + limit-account 适配器 + Web 面板全链路，12 个测试；
     web-only 上线，Swift 原生弹窗留 backlog，parity 规则改为「Swift 列表 = JS 列表前缀」）
   - 全量验证：node 1810 pass / dashboard vitest 1306 pass / validate:copy·ui-hardcode·guardrails 全过
+  - 额度 backlog（Windsurf/CodeBuddy/Qoder 原生会话、Zed macOS 原生弹窗、ZCode 回退密钥真机确认）：
+    **暂停**（用户决策 2026-08-13：当前无账号无条件测试）
 
 ## 1. 目标
 
