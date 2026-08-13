@@ -97,15 +97,23 @@ describe("ResetHistoryPage", () => {
   });
 
   it("shows deterministic preview records when the local desktop API is unavailable", () => {
-    window.history.replaceState({}, "", "/reset-history");
-    resetContext.value.available = false;
-    resetContext.value.history = [];
+    // The preview dataset uses fixed July 2026 dates and the page filters by a
+    // rolling recency window, so freeze the clock to keep the count stable.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
+    try {
+      window.history.replaceState({}, "", "/reset-history");
+      resetContext.value.available = false;
+      resetContext.value.history = [];
 
-    render(<ResetHistoryPage />);
+      render(<ResetHistoryPage />);
 
-    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(10);
-    expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
-    expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
+      expect(screen.getAllByTestId("reset-history-item")).toHaveLength(10);
+      expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
+      expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the heatmap and summary figures in one right-side divided group", () => {
