@@ -1946,6 +1946,11 @@ spend.cost.design.refunds_credit,dashboard,SpendPage,CostAccumulation,design_ref
 leaderboard.table.rank,dashboard,LeaderboardPage,LeaderboardPage,table_rank,"Rank",,active
 leaderboard.table.user_share,dashboard,LeaderboardPage,LeaderboardPage,table_user_share,"User / model usage share",,active
 leaderboard.table.token_cost,dashboard,LeaderboardPage,LeaderboardPage,table_token_cost,"Token total / estimated spend",,active
+spend.cost.roi.title,dashboard,SpendPage,CostAccumulation,roi_title,"回本倍数",,active
+spend.cost.roi.subtitle,dashboard,SpendPage,CostAccumulation,roi_subtitle,"订阅的每 1 元，本月已用出 {{value}} 元的 API 等价价值",,active
+spend.cost.roi.below_one,dashboard,SpendPage,CostAccumulation,roi_below_one,"本月 API 等价用量为订阅费的 {{percent}}%",,active
+spend.cost.roi.empty,dashboard,SpendPage,CostAccumulation,roi_empty,"添加订阅记录后，这里会显示订阅回本倍数（API 等价价值 ÷ 订阅支出）。",,active
+spend.cost.roi.formula,dashboard,SpendPage,CostAccumulation,roi_formula,"本月 API 等价价值 ÷ 本月订阅支出（USD 口径，汇率与定价引擎一致）",,active
 nav.spend.plans,ui,Sidebar,Sidebar,nav_spend_plans,"套餐行情",,active
 plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接。",,active
 plan_market.disclaimer,dashboard,PlanMarketPage,PlanMarketPage,disclaimer,"以下为人工核实的套餐行情快照，价格与额度可能随时调整，请以官方页面为准。",,active

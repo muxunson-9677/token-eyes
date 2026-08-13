@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Code2, CreditCard, Package, Globe, Info, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Code2, CreditCard, Package, Globe, Info, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings, TrendingUp } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 import { formatChineseTokenCount } from "../../../lib/format";
 import { deriveDataConfidence } from "../../../lib/data-confidence";
 import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
 import { ProviderIcon } from "./ProviderIcon.jsx";
+import { computeSubscriptionRoi } from "../../../lib/subscription-roi";
 
 const COST_ICON_TONES = {
   blue: "bg-blue-50 text-blue-600 dark:bg-blue-950/45 dark:text-blue-300",
@@ -349,6 +350,54 @@ function CostSummaryCards({
           { label: copy("spend.cost.design.subscription_renewing"), value: renewingSubscriptions || activeSubscriptions ? renewingSubscriptions.toLocaleString() : "0" },
         ]}
       /> : null}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Subscription ROI card (V2-W2 回本倍数)
+// ---------------------------------------------------------------------------
+
+// multiplier = month API-equivalent usage value / month subscription spend.
+// No subscription recorded → guidance state; multiplier < 1 → neutral framing
+// (percentage of the subscription fee), never a shaming tone.
+function SubscriptionRoiCard({ summary, loading }) {
+  if (loading) return null;
+  const roi = computeSubscriptionRoi({
+    monthApiCostUsd: summary.monthApiCostUsd,
+    monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
+  });
+  if (!roi) {
+    return (
+      <div className="rounded-lg border border-dashed border-oai-gray-200 dark:border-oai-gray-800 px-4 py-3 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+        {copy("spend.cost.roi.empty")}
+      </div>
+    );
+  }
+  const belowOne = roi.multiplier < 1;
+  const multiplierLabel = `${roi.multiplier.toFixed(1)}×`;
+  const detailText = belowOne
+    ? copy("spend.cost.roi.below_one", {
+        percent: (roi.multiplier * 100).toFixed(0),
+      })
+    : copy("spend.cost.roi.subtitle", { value: roi.multiplier.toFixed(1) });
+  return (
+    <div className="rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 p-4 flex flex-wrap items-center gap-x-8 gap-y-2">
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          <TrendingUp className="h-3.5 w-3.5" aria-hidden />
+          {copy("spend.cost.roi.title")}
+        </span>
+        <span className="text-3xl font-semibold tracking-tight tabular-nums text-oai-black dark:text-white">
+          {multiplierLabel}
+        </span>
+      </div>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm text-oai-gray-700 dark:text-oai-gray-300">{detailText}</span>
+        <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("spend.cost.roi.formula")}
+        </span>
       </div>
     </div>
   );
@@ -1307,6 +1356,9 @@ export function CostAccumulation({
         subscriptionUsd={costSummary.monthSubscriptionCostUsd}
         sectionsInitiallyOpen={sectionsInitiallyOpen}
       />
+
+      {/* Subscription ROI (V2-W2 回本倍数) */}
+      <SubscriptionRoiCard summary={costSummary} loading={loading} />
 
       {/* Error state */}
       {error && (
