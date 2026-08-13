@@ -33,6 +33,42 @@ function formatReset(isoOrUnix) {
  * In "remaining" mode a high percentage is good (lots of quota left), so the
  * red/amber thresholds are mirrored: low remaining = red.
  */
+/** "2h 13m" / "45m" until reset, or null when unknown/past. */
+function formatResetLong(resetMs, now = Date.now()) {
+  if (!Number.isFinite(resetMs)) return null;
+  const diff = resetMs - now;
+  if (diff <= 0) return null;
+  const totalMinutes = Math.floor(diff / 60000);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/**
+ * W7: projected limit-hit time from the server's sliding-window burn rate
+ * (local queue estimate) + long-form reset countdown. The bars above stay the
+ * official provider numbers; this line is explicitly tagged as local estimate.
+ */
+function BurnRateLine({ burnRate, resetIso }) {
+  if (!burnRate) return null;
+  const etaMs = burnRate.eta_exhaust_at ? Date.parse(burnRate.eta_exhaust_at) : NaN;
+  const timeText = Number.isFinite(etaMs)
+    ? new Date(etaMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : copy("limits.burn.eta_placeholder");
+  const resetText = formatResetLong(resetToMs(resetIso));
+  const parts = [copy("limits.burn.eta", { time: timeText })];
+  if (resetText) parts.push(copy("limits.burn.reset_in", { reset: resetText }));
+  parts.push(copy("limits.burn.local_estimate"));
+  return (
+    <div
+      data-testid="limits-burn-line"
+      className="text-[10.5px] leading-snug text-oai-gray-400 dark:text-oai-gray-500"
+    >
+      {parts.join(" · ")}
+    </div>
+  );
+}
+
 function barColor(displayPct, mode) {
   const pct = mode === LIMIT_DISPLAY_MODES.REMAINING ? 100 - displayPct : displayPct;
   if (pct >= 90) return "bg-red-500";
@@ -257,9 +293,12 @@ function renderConfiguredProvider(id, data, title, mode, expanded, onToggle) {
     .filter((s) => s.window)
     .map((s) => ({ spec: s, pace: paceForSpec(s, mode) }));
   const extra = renderProviderExtra(spec.extra, data);
+  const firstRow = rows[0] || null;
+  const burnResetIso = firstRow ? readWindowReset(firstRow.spec.window, firstRow.spec.resetField) : null;
   return (
     <ToolGroup key={id} name={title} providerId={id} evidence={data.evidence} expandable={rows.length > 0} expanded={expanded} onToggle={onToggle}>
       <LimitWindowSection mode={mode} rows={rows} extra={extra} />
+      {firstRow ? <BurnRateLine burnRate={data.burn_rate} resetIso={burnResetIso} /> : null}
       {expanded ? <LimitDetail rows={rows} mode={mode} /> : null}
     </ToolGroup>
   );

@@ -8292,10 +8292,12 @@ function createLocalApiHandler({
         const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
           ? tokenOnlyDirectoryStatesProvider(readLocalSettings())
           : resolveTokenOnlyDirectoryStates(readLocalSettings());
-        json(res, {
+        const { attachBurnRates } = require("./burn-rate");
+        const queueRows = readQueueData(qp);
+        json(res, attachBurnRates({
           ...data,
-          ...summarizeTokenOnlyUsage(readQueueData(qp), directoryStates),
-        });
+          ...summarizeTokenOnlyUsage(queueRows, directoryStates),
+        }, queueRows, { nowMs: nowProvider().getTime() }));
       } catch (e) {
         json(res, { error: e?.message || "Unknown error" }, 500);
       }
