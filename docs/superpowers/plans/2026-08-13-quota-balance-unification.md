@@ -3,7 +3,13 @@
 - 日期：2026-08-13
 - 基线：`codex/fix-npm-ci-05440` @ `2e18d6cb`（已发布的 0.54.40）
 - 分支：`0.54.40-V3`（独立 worktree：`.worktrees/0.54.40-V3`）
-- 状态：进行中
+- 状态：P0/P1/P2 已完成（P3 backlog 见 §5 与 dev-notes §4）
+  - P0：余额链路核验通过（206 个 provider-api 测试全绿）；文档已交付
+    （`docs/guides/provider-quota-and-balance-setup.md` + `docs/dev-notes/provider-quota-balance-interfaces.md`）
+  - P1：ZCode 套餐额度检测（`src/lib/zcode-token-plan.js`，读本机加密凭据 + billing/balance，15 个测试）
+  - P2：Zed 订阅额度检测（`src/lib/zed-limits.js` + limit-account 适配器 + Web 面板全链路，12 个测试；
+    web-only 上线，Swift 原生弹窗留 backlog，parity 规则改为「Swift 列表 = JS 列表前缀」）
+  - 全量验证：node 1810 pass / dashboard vitest 1306 pass / validate:copy·ui-hardcode·guardrails 全过
 
 ## 1. 目标
 
