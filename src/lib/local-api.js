@@ -210,6 +210,11 @@ async function buildRequestUsageRecordsList({
   const toKeyRur = toPartsRur ? formatPartsDayKey(toPartsRur) : null;
 
   const wantsCodex = !effectiveSources || effectiveSources.includes("codex");
+  // V2 Task 6 (W3): Claude gets true message-level events from its session
+  // jsonl logs. When events exist for the range they REPLACE the half-hour
+  // aggregate rows (same data source, so keeping both would double count);
+  // when the logs are absent we fall back to aggregates.
+  const wantsClaude = !effectiveSources || effectiveSources.includes("claude");
   const nonCodexSources = effectiveSources
     ? effectiveSources.filter((s) => s !== "codex")
     : null;
@@ -219,6 +224,37 @@ async function buildRequestUsageRecordsList({
   } else if (!effectiveSources) {
     const queueSources = [...new Set(allRows.map(r => normalizeSource(r.source)).filter(Boolean))];
     aggregateOnlySources = queueSources.filter(s => s !== "codex");
+  }
+
+  const dataDirectoryPaths = (wantsCodex || wantsClaude)
+    ? resolveDataDirectoryPaths({
+        config: readTrackerConfigAt(trackerDataDir),
+        env: process.env,
+        home: os.homedir(),
+      })
+    : null;
+
+  let claudeEventRecords = [];
+  if (wantsClaude && dataDirectoryPaths?.claudeProjectsDir) {
+    try {
+      const claudeFiles = await listClaudeProjectFiles(dataDirectoryPaths.claudeProjectsDir);
+      if (claudeFiles.length > 0) {
+        const claudeResult = await collectClaudeRequestUsageRecords({
+          claudeProjectFiles: claudeFiles,
+          from: from || undefined,
+          to: to || undefined,
+          timeZoneContext,
+          limit,
+          pricingOptions,
+        });
+        claudeEventRecords = claudeResult.records || [];
+      }
+    } catch (e) {
+      console.error("[LocalAPI] request-usage-records claude branch error:", e?.message || e);
+    }
+  }
+  if (claudeEventRecords.length > 0) {
+    aggregateOnlySources = aggregateOnlySources.filter((s) => s !== "claude");
   }
 
   const aggregateRecords = buildAggregateUsageRecords(allRows, {
@@ -231,13 +267,13 @@ async function buildRequestUsageRecordsList({
   });
   allRecords.push(...aggregateRecords);
 
+  for (const record of claudeEventRecords) {
+    record.source_display_name = getSourceDisplayName("claude");
+    allRecords.push(record);
+  }
+
   if (wantsCodex) {
     try {
-      const dataDirectoryPaths = resolveDataDirectoryPaths({
-        config: readTrackerConfigAt(trackerDataDir),
-        env: process.env,
-        home: os.homedir(),
-      });
       const rolloutFiles = await listCodexRolloutFilesFromHomes(
         dataDirectoryPaths.codexHomes?.length ? dataDirectoryPaths.codexHomes : [dataDirectoryPaths.codexHome],
       );
@@ -321,7 +357,11 @@ const providerApiExecutor = require("./provider-api-executor");
 const {
   listRolloutFilesDeep,
   collectRolloutRequestUsageRecords,
+  listClaudeProjectFiles,
 } = require("./rollout");
+
+// V2 Task 6 (W3): message-level usage events parsed from Claude session logs.
+const { collectClaudeRequestUsageRecords } = require("./claude-request-usage");
 
 const {
   extractTokenCount: extractCodexTokenCount,

@@ -9256,6 +9256,12 @@ module.exports = {
   bucketKey,
   totalsKey,
   claudeMessageDedupKey,
+  // Shared with src/lib/claude-request-usage.js so the message-level
+  // collector normalizes usage and boundaries exactly like the parser.
+  normalizeClaudeUsage,
+  toUtcHalfHourStart,
+  parseRequestUsageBoundary,
+  normalizeModelInput,
   groupBucketKey,
   // Exposed for regression tests covering nested-group remote URLs.
   canonicalizeProjectRef,
