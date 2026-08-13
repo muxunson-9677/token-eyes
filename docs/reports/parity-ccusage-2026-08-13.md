@@ -10,13 +10,14 @@
 | 来源 | Token Eyes 总 tokens | ccusage 总 tokens | 相对差 | 结论 |
 |---|---:|---:|---:|---|
 | Claude Code | 0 | 0 | n/a | 无数据 (两侧均为 0) — 待真机数据 |
-| Codex | 9,258,006,963 | 8,752,921,431 | +5.770% | FAIL (超出 ±0.5%) |
+| Codex | 9,258,330,554 | 8,753,138,351 | +5.772% | FAIL (超出 ±0.5%) |
 
-## Claude Code (~/.claude/projects)
+## Claude Code
 
 ccusage 命令: `npx --yes ccusage daily --json --timezone UTC`
 Token Eyes 扫描目录: `C:\Users\admin\.claude\projects`
 Token Eyes 解析文件数: 1
+逐行一致率: 1/1 行在 ±0.5% 以内
 
 ### 逐日逐模型对比 (total tokens)
 
@@ -28,13 +29,14 @@ Token Eyes 解析文件数: 1
 
 | 来源 | Token Eyes 总 tokens | ccusage 总 tokens | 绝对差 | 相对差 | 结论 |
 |---|---:|---:|---:|---:|---|
-| Claude Code (~/.claude/projects) | 0 | 0 | 0 | n/a | 无数据 (两侧均为 0) — 待真机数据 |
+| Claude Code | 0 | 0 | 0 | n/a | 无数据 (两侧均为 0) — 待真机数据 |
 
-## Codex (~/.codex/sessions)
+## Codex
 
 ccusage 命令: `npx --yes ccusage@latest codex daily --json --timezone UTC`
 Token Eyes 扫描目录: `E:\AgentData\Codex`
 Token Eyes 解析文件数: 337
+逐行一致率: 115/136 行在 ±0.5% 以内
 
 ### 逐日逐模型对比 (total tokens)
 
@@ -173,7 +175,7 @@ Token Eyes 解析文件数: 337
 | 2026-08-12 | gpt-5.6-sol | 62,671,561 | 62,671,561 | 0 | +0.000% | OK |
 | 2026-08-12 | gpt-5.6-terra | 37,857,843 | 37,857,843 | 0 | +0.000% | OK |
 | 2026-08-12 | unknown | 814,493 | 0 | 814,493 | n/a | SIDE-ONLY |
-| 2026-08-13 | gpt-5.3-codex-spark | 155,089,025 | 155,195,696 | -106,671 | -0.069% | OK |
+| 2026-08-13 | gpt-5.3-codex-spark | 155,412,616 | 155,412,616 | 0 | +0.000% | OK |
 | 2026-08-13 | gpt-5.6-sol | 168,395,463 | 165,370,444 | 3,025,019 | +1.829% | DIFF |
 | 2026-08-13 | unknown | 413,302 | 0 | 413,302 | n/a | SIDE-ONLY |
 
@@ -181,7 +183,7 @@ Token Eyes 解析文件数: 337
 
 | 来源 | Token Eyes 总 tokens | ccusage 总 tokens | 绝对差 | 相对差 | 结论 |
 |---|---:|---:|---:|---:|---|
-| Codex (~/.codex/sessions) | 9,258,006,963 | 8,752,921,431 | 505,085,532 | +5.770% | FAIL (超出 ±0.5%) |
+| Codex | 9,258,330,554 | 8,753,138,351 | 505,192,203 | +5.772% | FAIL (超出 ±0.5%) |
 
 ### Token Eyes 额外覆盖 (ccusage 扫描范围之外)
 
@@ -197,5 +199,13 @@ Token Eyes 解析文件数: 337
 
 - Token Eyes `total_tokens` = input + output + cache_creation + cache_read + reasoning_output。
 - ccusage `totalTokens` (Claude) = input + output + cacheCreation + cacheRead; Claude 无独立 reasoning 列, 两侧口径一致。
-- Codex 侧: Token Eyes 将 cached input 从 input 中拆出、reasoning 单列; 若 ccusage codex 口径不同, 以逐列核对为准 (见上表)。
-- 逐行 SIDE-ONLY 常见原因: 模型命名差异 (如 `<synthetic>`)、dedup 策略差异、日期分桶时区差异。
+- Codex 侧: Token Eyes 将 cached input 从 input 中拆出、reasoning 单列; ccusage codex 同样输出五列, 总量口径一致。
+- ccusage 只读取 `$CODEX_HOME` (默认 `~/.codex`) 一个目录; Token Eyes 的真实 sync 会扫描所有 tracking-ready 的 codex home。上方 parity 判定只使用 ccusage 可见的那个 home, 其余目录单列为额外覆盖。
+
+## 已知差异类别 (解读逐行 DIFF / SIDE-ONLY 时参考)
+
+1. 模型归因差异: Token Eyes 将 Codex auto-review 子会话计入伪模型 `codex-auto-review`, ccusage 归入底层真实模型 (如 `gpt-5.5`)。同一天两行加总相等时属于纯命名差异, 不是丢数据。
+2. `unknown` 模型行: 缺少模型元数据的会话 Token Eyes 记为 `unknown` 并保留 tokens, ccusage 可能跳过或并入其他行。
+3. Token Eyes 额外扫描 `archived_sessions/`; ccusage 是否扫描该目录未确认, 可能造成 Token Eyes 偏高。
+4. fork/resume 会话的跨文件重放事件, 两侧 dedup 策略可能不同, 重度使用日容易放大差异 — 若某天 Token Eyes 明显偏高, 优先核对该天是否有 fork 会话。
+5. 日期分桶: 双方都按 UTC 分桶时跨午夜会话对齐; 若 ccusage 回退到本地时区, 相邻两天会互相补偿。

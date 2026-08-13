@@ -425,6 +425,7 @@ function renderSection(title, ours, theirs) {
   }
 
   const rows = diffRows(ours.byDayModel, theirs.byDayModel);
+  const okRows = rows.filter((r) => Number.isFinite(r.pct) && Math.abs(r.pct) <= THRESHOLD_PCT).length;
   const ourTotal = sumTotals(ours.byDayModel);
   const theirTotal = sumTotals(theirs.byDayModel);
   const totalDiff = ourTotal - theirTotal;
@@ -439,6 +440,7 @@ function renderSection(title, ours, theirs) {
   lines.push(`ccusage 命令: \`${theirs.command}\``);
   lines.push(`Token Eyes 扫描目录: ${(ours.scanned || []).map((p) => `\`${p}\``).join(", ")}`);
   lines.push(`Token Eyes 解析文件数: ${ours.files}`);
+  lines.push(`逐行一致率: ${okRows}/${rows.length} 行在 ±${THRESHOLD_PCT}% 以内`);
   lines.push("");
   lines.push("### 逐日逐模型对比 (total tokens)");
   lines.push("");
@@ -517,8 +519,8 @@ async function main() {
     ["--yes", "ccusage", "codex", "daily", "--json"],
   ]);
 
-  const claudeSection = renderSection("Claude Code (~/.claude/projects)", claudeOurs, claudeCc);
-  const codexSection = renderSection("Codex (~/.codex/sessions)", codexOurs, codexCc);
+  const claudeSection = renderSection("Claude Code", claudeOurs, claudeCc);
+  const codexSection = renderSection("Codex", codexOurs, codexCc);
 
   const tzCaveat =
     (claudeCc.available && !claudeCc.command.includes("--timezone")) ||
@@ -547,8 +549,16 @@ async function main() {
     "",
     "- Token Eyes `total_tokens` = input + output + cache_creation + cache_read + reasoning_output。",
     "- ccusage `totalTokens` (Claude) = input + output + cacheCreation + cacheRead; Claude 无独立 reasoning 列, 两侧口径一致。",
-    "- Codex 侧: Token Eyes 将 cached input 从 input 中拆出、reasoning 单列; 若 ccusage codex 口径不同, 以逐列核对为准 (见上表)。",
-    "- 逐行 SIDE-ONLY 常见原因: 模型命名差异 (如 `<synthetic>`)、dedup 策略差异、日期分桶时区差异。",
+    "- Codex 侧: Token Eyes 将 cached input 从 input 中拆出、reasoning 单列; ccusage codex 同样输出五列, 总量口径一致。",
+    "- ccusage 只读取 `$CODEX_HOME` (默认 `~/.codex`) 一个目录; Token Eyes 的真实 sync 会扫描所有 tracking-ready 的 codex home。上方 parity 判定只使用 ccusage 可见的那个 home, 其余目录单列为额外覆盖。",
+    "",
+    "## 已知差异类别 (解读逐行 DIFF / SIDE-ONLY 时参考)",
+    "",
+    "1. 模型归因差异: Token Eyes 将 Codex auto-review 子会话计入伪模型 `codex-auto-review`, ccusage 归入底层真实模型 (如 `gpt-5.5`)。同一天两行加总相等时属于纯命名差异, 不是丢数据。",
+    "2. `unknown` 模型行: 缺少模型元数据的会话 Token Eyes 记为 `unknown` 并保留 tokens, ccusage 可能跳过或并入其他行。",
+    "3. Token Eyes 额外扫描 `archived_sessions/`; ccusage 是否扫描该目录未确认, 可能造成 Token Eyes 偏高。",
+    "4. fork/resume 会话的跨文件重放事件, 两侧 dedup 策略可能不同, 重度使用日容易放大差异 — 若某天 Token Eyes 明显偏高, 优先核对该天是否有 fork 会话。",
+    "5. 日期分桶: 双方都按 UTC 分桶时跨午夜会话对齐; 若 ccusage 回退到本地时区, 相邻两天会互相补偿。",
     "",
   ].join("\n");
 
