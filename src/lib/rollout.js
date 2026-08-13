@@ -150,6 +150,13 @@ async function parseRolloutIncremental({
     const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
     const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
     const lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
+    // Fork-replay flags are positional: they describe the scan up to prev.offset,
+    // so they only carry over when resuming that exact byte range. An inode
+    // change re-scans from 0 and the tracker re-derives them from the stream.
+    const forkedState =
+      prev && prev.inode === inode
+        ? { forked: prev.forked === true, replayDone: prev.replayDone === true }
+        : null;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -168,6 +175,7 @@ async function parseRolloutIncremental({
       startOffset,
       lastTotal,
       lastModel,
+      forkedState,
       hourlyState,
       touchedBuckets,
       source: fileSource,
@@ -187,6 +195,8 @@ async function parseRolloutIncremental({
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      forked: result.forked === true,
+      replayDone: result.replayDone === true,
       updatedAt: new Date().toISOString(),
     };
 
@@ -772,11 +782,102 @@ function codexSessionIdFromPath(filePath) {
   return m ? m[1] : null;
 }
 
+/**
+ * Millisecond timestamp prefix of a UUIDv7 id (Codex mints session ids and
+ * turn ids as v7 ULIDs, so their first 48 bits order by creation time).
+ * Returns null for anything that is not a full v7 UUID — v4 ids have random
+ * bits where v7 stores the timestamp and must never participate in
+ * fork-replay ordering decisions.
+ */
+function uuidV7TimestampMs(id) {
+  if (typeof id !== "string") return null;
+  const m = id
+    .trim()
+    .match(/^([0-9a-fA-F]{8})-([0-9a-fA-F]{4})-7[0-9a-fA-F]{3}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
+  if (!m) return null;
+  return Number.parseInt(m[1] + m[2], 16);
+}
+
+/**
+ * Tracks whether a rollout scan is inside the REPLAYED prefix of a forked
+ * Codex rollout, so replayed usage is never counted twice.
+ *
+ * Forked rollouts (Codex Desktop subagent fan-out, `codex fork`) start by
+ * re-serializing the parent session's ENTIRE history — including token_count
+ * events — into the new file. The replayed events carry FRESH timestamps (the
+ * fork moment) and the file has a fresh session UUID, so the
+ * sessionUUID:timestamp dedup cannot catch them, and the old date-only guard
+ * (`current_date < rollout date`) missed every same-day replay (measured
+ * +52.6% vs ccusage on a heavy fork day, 2026-08-10).
+ *
+ * Boundary detection: replayed turn_context.turn_id ULIDs were minted BEFORE
+ * the fork file's own session UUID, while the first live turn mints a fresh
+ * id at/after it. Comparing the UUIDv7 millisecond prefixes cleanly separates
+ * replay from live without any cross-file state.
+ *
+ * When the file's own session UUID is v7 (every observed fork), the v7
+ * comparison is the ONLY boundary: replayed histories also contain
+ * UUIDv4-turn sub-turns (auto-review/compact style) whose ids carry no
+ * timestamp, and their current_date is the fork-day date — any date fallback
+ * would fail open mid-replay (measured +11.8% on 2026-07-30). Live regions
+ * always open with a v7 user/task turn (verified across all 138 real fork
+ * files: v7-only boundary reproduces ccusage session totals exactly), so
+ * ignoring non-v7 ids cannot drop live usage. The date heuristic (replayed
+ * contexts carry original dates older than the file's date; unknown dates
+ * fail open like the previous guard) remains only for hypothetical legacy
+ * files whose own session id is not v7.
+ *
+ * States: "plain" (not a fork — count everything), "replay" (forked, before
+ * the live boundary — skip usage), "live" (forked, boundary crossed — count).
+ * The flip to "live" is one-way: replays only ever occur once, at the head of
+ * the file (verified against real multi-day sessions whose mid-file "reopen"
+ * session_meta markers never re-replay history).
+ */
+function createForkReplayTracker({ sessionId, rolloutDate, forked = false, replayDone = false }) {
+  let baselineMs = uuidV7TimestampMs(sessionId);
+  let sawFirstMeta = false;
+  let state = forked ? (replayDone ? "live" : "replay") : "plain";
+
+  return {
+    onSessionMeta(payload) {
+      if (!sawFirstMeta) {
+        sawFirstMeta = true;
+        // The first session_meta is always the file's own; replayed parent
+        // metas (whose id differs from the filename UUID) come later.
+        if (baselineMs === null) baselineMs = uuidV7TimestampMs(payload?.id);
+      }
+      const forkedFrom =
+        typeof payload?.forked_from_id === "string" ? payload.forked_from_id.trim() : "";
+      if (forkedFrom && state === "plain") state = "replay";
+    },
+    onTurnContext(payload) {
+      if (state !== "replay") return;
+      if (baselineMs !== null) {
+        const turnMs = uuidV7TimestampMs(payload?.turn_id);
+        if (turnMs !== null && turnMs >= baselineMs) state = "live";
+        return;
+      }
+      const currentDate = normalizeIsoDate(payload?.current_date);
+      if (!currentDate || !rolloutDate || currentDate >= rolloutDate) state = "live";
+    },
+    get replaying() {
+      return state === "replay";
+    },
+    get forked() {
+      return state !== "plain";
+    },
+    get replayDone() {
+      return state === "live";
+    },
+  };
+}
+
 async function parseRolloutFile({
   filePath,
   startOffset,
   lastTotal,
   lastModel,
+  forkedState,
   hourlyState,
   touchedBuckets,
   source,
@@ -790,10 +891,23 @@ async function parseRolloutFile({
   seenCodexEvents,
   sessionId,
 }) {
+  const forkTracker = createForkReplayTracker({
+    sessionId,
+    rolloutDate: rolloutDateFromPath(filePath),
+    forked: forkedState?.forked === true,
+    replayDone: forkedState?.replayDone === true,
+  });
   const st = await fs.stat(filePath);
   const endOffset = st.size;
   if (startOffset >= endOffset) {
-    return { endOffset, lastTotal, lastModel, eventsAggregated: 0 };
+    return {
+      endOffset,
+      lastTotal,
+      lastModel,
+      eventsAggregated: 0,
+      forked: forkTracker.forked,
+      replayDone: forkTracker.replayDone,
+    };
   }
 
   const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
@@ -802,9 +916,6 @@ async function parseRolloutFile({
   let model = typeof lastModel === "string" ? lastModel : null;
   let totals = lastTotal && typeof lastTotal === "object" ? lastTotal : null;
   let currentCwd = null;
-  let currentDate = null;
-  let isForkedRollout = false;
-  const rolloutDate = rolloutDateFromPath(filePath);
   let currentProjectRef = projectRef || null;
   let currentProjectKey = projectKey || null;
   let currentRepoRoot = null;
@@ -819,6 +930,7 @@ async function parseRolloutFile({
       (line.includes('"model"') ||
         line.includes('"cwd"') ||
         line.includes('"current_date"') ||
+        line.includes('"turn_id"') ||
         line.includes('"forked_from_id"'));
     if (!maybeTokenCount && !maybeTurnContext) continue;
 
@@ -834,11 +946,11 @@ async function parseRolloutFile({
       obj?.payload &&
       typeof obj.payload === "object"
     ) {
-      if (obj.type === "session_meta" && typeof obj.payload.forked_from_id === "string") {
-        isForkedRollout = obj.payload.forked_from_id.trim().length > 0;
+      if (obj.type === "session_meta") {
+        forkTracker.onSessionMeta(obj.payload);
       }
-      if (obj.type === "turn_context" && typeof obj.payload.current_date === "string") {
-        currentDate = normalizeIsoDate(obj.payload.current_date);
+      if (obj.type === "turn_context") {
+        forkTracker.onTurnContext(obj.payload);
       }
       if (typeof obj.payload.model === "string") {
         model = obj.payload.model;
@@ -882,8 +994,10 @@ async function parseRolloutFile({
       totals = totalUsage;
     }
 
-    // date matching is conservative; same-day fork replays are still counted.
-    if (isForkedReplayToken({ isForkedRollout, rolloutDate, currentDate })) continue;
+    // Replayed fork history is a serialization copy of usage already counted
+    // in the parent file — skip it, but keep `totals` advanced (above) so the
+    // cumulative-delta chain lands on the right baseline for live turns.
+    if (forkTracker.replaying) continue;
 
     const bucketStart = toUtcHalfHourStart(tokenTimestamp);
     if (!bucketStart) continue;
@@ -929,7 +1043,14 @@ async function parseRolloutFile({
     eventsAggregated += 1;
   }
 
-  return { endOffset, lastTotal: totals, lastModel: model, eventsAggregated };
+  return {
+    endOffset,
+    lastTotal: totals,
+    lastModel: model,
+    eventsAggregated,
+    forked: forkTracker.forked,
+    replayDone: forkTracker.replayDone,
+  };
 }
 
 async function parseClaudeFile({
@@ -1893,10 +2014,6 @@ function normalizeIsoDate(value) {
   const raw = typeof value === "string" ? value.trim() : "";
   const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
   return match ? match[1] : null;
-}
-
-function isForkedReplayToken({ isForkedRollout, rolloutDate, currentDate }) {
-  return Boolean(isForkedRollout && rolloutDate && currentDate && currentDate < rolloutDate);
 }
 
 function normalizeNonNegativeNumber(value) {
@@ -8922,6 +9039,10 @@ async function collectRolloutRequestUsageRecords(options) {
     if (!st || !st.isFile()) continue;
 
     const sessionId = codexSessionIdFromPath(filePath) || path.basename(filePath);
+    const forkTracker = createForkReplayTracker({
+      sessionId: codexSessionIdFromPath(filePath),
+      rolloutDate: rolloutDateFromPath(filePath),
+    });
 
     const stream = fssync.createReadStream(filePath, { encoding: "utf8" });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -8943,7 +9064,9 @@ async function collectRolloutRequestUsageRecords(options) {
         const maybeTurnContext =
           !maybeTokenCount &&
           (line.includes('"turn_context"') || line.includes('"session_meta"')) &&
-          line.includes('"model"');
+          (line.includes('"model"') ||
+            line.includes('"turn_id"') ||
+            line.includes('"forked_from_id"'));
 
         if (!maybeTokenCount && !maybeTurnContext && !maybeLifecycle) continue;
 
@@ -8959,11 +9082,22 @@ async function collectRolloutRequestUsageRecords(options) {
           obj?.payload &&
           typeof obj.payload === "object"
         ) {
+          if (obj.type === "session_meta") {
+            forkTracker.onSessionMeta(obj.payload);
+          }
+          if (obj.type === "turn_context") {
+            forkTracker.onTurnContext(obj.payload);
+          }
           if (typeof obj.payload.model === "string") {
             model = obj.payload.model;
           }
           continue;
         }
+
+        // Replayed fork history: both its token_count events (usage already
+        // recorded in the parent session) and its lifecycle events (stale
+        // task_started/task_complete copies) must not produce records.
+        if (forkTracker.replaying) continue;
 
         const lifecycleType = String(obj?.payload?.type || "");
         if (lifecycleType === "task_started") {

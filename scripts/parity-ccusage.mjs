@@ -44,6 +44,24 @@ const PENDING = "待真机数据";
 // ───────────────────────── Token Eyes side ─────────────────────────
 
 /**
+ * Attribution aliases applied to BOTH sides before joining, so pure naming
+ * differences do not surface as token diffs.
+ *
+ * codex-auto-review → gpt-5.5: Codex auto-review sub-sessions store the
+ * literal model slug "codex-auto-review" in turn_context, which Token Eyes
+ * reports verbatim. ccusage maps those sessions to the underlying model
+ * instead (session JSON shows model "gpt-5.5" with isFallback: true), so the
+ * same tokens land under different names (verified equal-sum on
+ * 2026-05-24/25). Comparison-only merge — the parser keeps the real slug.
+ */
+const MODEL_ALIASES = new Map([["codex-auto-review", "gpt-5.5"]]);
+
+function canonicalModel(model) {
+  const slug = String(model ?? "unknown").trim() || "unknown";
+  return MODEL_ALIASES.get(slug) || slug;
+}
+
+/**
  * Collapse the parser's half-hour buckets (`source|model|hourStartISO`) into
  * a per-(UTC day, model) map. Source is intentionally dropped: ccusage reads
  * the same directory without source attribution, so grouping by model only
@@ -59,7 +77,7 @@ function aggregateBuckets(hourlyState) {
     const first = key.indexOf("|");
     const second = key.indexOf("|", first + 1);
     if (first <= 0 || second <= first) continue;
-    const model = key.slice(first + 1, second);
+    const model = canonicalModel(key.slice(first + 1, second));
     const day = key.slice(second + 1, second + 11);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
     const mapKey = `${day}|${model}`;
@@ -284,7 +302,8 @@ function extractCcusageDaily(json) {
         : null;
   if (!days) return null;
   const map = new Map();
-  const add = (day, model, tokens) => {
+  const add = (day, rawModel, tokens) => {
+    const model = canonicalModel(rawModel);
     const mapKey = `${day}|${model}`;
     const acc = map.get(mapKey) || {
       day,
@@ -554,10 +573,10 @@ async function main() {
     "",
     "## 已知差异类别 (解读逐行 DIFF / SIDE-ONLY 时参考)",
     "",
-    "1. 模型归因差异: Token Eyes 将 Codex auto-review 子会话计入伪模型 `codex-auto-review`, ccusage 归入底层真实模型 (如 `gpt-5.5`)。同一天两行加总相等时属于纯命名差异, 不是丢数据。",
+    "1. 模型归因差异: Token Eyes 将 Codex auto-review 子会话记为伪模型 `codex-auto-review`, ccusage 归入底层真实模型。本脚本对比前已把 `codex-auto-review` 并入 `gpt-5.5` (两侧同规则), 该类纯命名差异不再出现在表格中。",
     "2. `unknown` 模型行: 缺少模型元数据的会话 Token Eyes 记为 `unknown` 并保留 tokens, ccusage 可能跳过或并入其他行。",
     "3. Token Eyes 额外扫描 `archived_sessions/`; ccusage 是否扫描该目录未确认, 可能造成 Token Eyes 偏高。",
-    "4. fork/resume 会话的跨文件重放事件, 两侧 dedup 策略可能不同, 重度使用日容易放大差异 — 若某天 Token Eyes 明显偏高, 优先核对该天是否有 fork 会话。",
+    "4. fork 子会话会把父会话完整历史(含 token_count)重放进新文件。解析器已按 turn_id UUIDv7 时间戳边界跳过重放段(2026-08 修复), 两侧对 fork 的处理应一致; 若某天仍明显偏高, 优先核对该天的 fork 会话。",
     "5. 日期分桶: 双方都按 UTC 分桶时跨午夜会话对齐; 若 ccusage 回退到本地时区, 相邻两天会互相补偿。",
     "",
   ].join("\n");
