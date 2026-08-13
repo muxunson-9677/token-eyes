@@ -1643,6 +1643,11 @@ ticket04.request.column.source,dashboard,SpendPage,RequestUsageLog,column_source
 ticket04.request.cache_read_prefix,dashboard,SpendPage,RequestUsageLog,cache_read_prefix,"R",,active
 ticket04.request.latency_none,dashboard,SpendPage,RequestUsageLog,latency_none,"-",,active
 ticket04.request.all_sources,dashboard,SpendPage,RequestUsageLog,all_sources,"All",,active
+ticket04.request.kind_filter,dashboard,SpendPage,RequestUsageLog,kind_filter,"Per-message only",,active
+ticket04.request.kind.request_event,dashboard,SpendPage,RequestUsageLog,kind_request_event,"Per-message",,active
+ticket04.request.kind.aggregate,dashboard,SpendPage,RequestUsageLog,kind_aggregate,"30-min aggregate",,active
+ticket04.request.kind.request_event_title,dashboard,SpendPage,RequestUsageLog,kind_request_event_title,"Real usage of a single request/message",,active
+ticket04.request.kind.aggregate_title,dashboard,SpendPage,RequestUsageLog,kind_aggregate_title,"This provider's logs are aggregated into half-hour buckets; per-message detail is not available yet",,active
 ticket04.request.load_more,dashboard,SpendPage,RequestUsageLog,load_more,"Load more",,active
 ticket04.request.showing,dashboard,SpendPage,RequestUsageLog,showing,"Showing {{count}} of {{total}} records",,active
 ticket04.request.page_loading,dashboard,SpendPage,RequestUsageLog,page_loading,"正在加载第 {{page}} 页…",,active

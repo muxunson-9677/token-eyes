@@ -6911,6 +6911,14 @@ function createLocalApiHandler({
         const agentIds = parseMultiParam(url, "agent_ids");
         const models = parseMultiParam(url, "models");
         const effectiveSources = mergeSourceFilters(singleSource, sourcesParam, agentIds);
+        // V2-W3: optional record_kind filter ("request_event" | "aggregate_bucket").
+        // Applied BEFORE pagination and totals so "仅看消息级" never mixes
+        // aggregate tokens into a request-event view.
+        const recordKindParam = String(url.searchParams.get("record_kind") || "").trim();
+        const recordKindFilter =
+          recordKindParam === "request_event" || recordKindParam === "aggregate_bucket"
+            ? recordKindParam
+            : null;
 
         const timeZoneContext = {
           timeZone: tz || null,
@@ -6970,13 +6978,22 @@ function createLocalApiHandler({
             });
           }
 
-          const totalCount = allRecords.length;
+          // V2-W3: anything that is not an aggregate bucket counts as a
+          // request event (matches the granularity heuristic below).
+          const filteredRecords = recordKindFilter
+            ? allRecords.filter((r) => {
+                const kind = r.record_kind === "aggregate_bucket" ? "aggregate_bucket" : "request_event";
+                return kind === recordKindFilter;
+              })
+            : allRecords;
+
+          const totalCount = filteredRecords.length;
           const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
           const currentPage = Math.min(page, totalPages);
           const startIdx = (currentPage - 1) * pageSize;
-          const pagedRecords = allRecords.slice(startIdx, startIdx + pageSize);
+          const pagedRecords = filteredRecords.slice(startIdx, startIdx + pageSize);
 
-          const totals = computeRecordTotals(allRecords);
+          const totals = computeRecordTotals(filteredRecords);
 
           const queueBaselineTotals = computeQueueTotals(allRows, {
             fromKey: fromKeyRur,

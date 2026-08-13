@@ -551,3 +551,59 @@ describe("RequestUsageLog", () => {
     expect(screen.queryByText("codex-model")).not.toBeInTheDocument();
   });
 });
+
+// V2-W3: per-message granularity honesty — every row is labeled as a true
+// request/message event or a half-hour aggregate, and a toggle narrows the
+// server query to request events only.
+describe("RequestUsageLog record granularity (V2-W3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useRequestUsageRecords.mockReturnValue(HOOK_DEFAULTS);
+  });
+
+  it("labels request-event and aggregate rows with granularity badges", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [
+        makeRecord({ id: "r1", record_kind: "request_event" }),
+        makeRecord({
+          id: "r2",
+          source: "claude",
+          source_display_name: "Claude",
+          record_kind: "aggregate_bucket",
+          request_source: "queue_aggregate",
+        }),
+      ],
+      total: 2,
+    });
+    render(
+      <RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex", "claude"]} />,
+    );
+    expect(screen.getByText("ticket04.request.kind.request_event")).toBeInTheDocument();
+    expect(screen.getByText("ticket04.request.kind.aggregate")).toBeInTheDocument();
+  });
+
+  it("treats records without record_kind as request events (server heuristic)", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({ id: "r1" })],
+      total: 1,
+    });
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+    expect(screen.getByText("ticket04.request.kind.request_event")).toBeInTheDocument();
+    expect(screen.queryByText("ticket04.request.kind.aggregate")).not.toBeInTheDocument();
+  });
+
+  it("toggling the request-event filter refetches with recordKind and resets the page", () => {
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+    const toggle = screen.getByRole("checkbox", { name: "ticket04.request.kind_filter" });
+    fireEvent.click(toggle);
+    expect(useRequestUsageRecords).toHaveBeenLastCalledWith(
+      expect.objectContaining({ recordKind: "request_event", page: 1 }),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "ticket04.request.kind_filter" }));
+    expect(useRequestUsageRecords).toHaveBeenLastCalledWith(
+      expect.objectContaining({ recordKind: "" }),
+    );
+  });
+});

@@ -601,6 +601,7 @@ export async function getRequestUsageRecords({
   limit,
   page,
   pageSize,
+  recordKind,
   accessToken,
 }: AnyRecord = {}) {
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
@@ -612,6 +613,8 @@ export async function getRequestUsageRecords({
   if (limit != null) params.limit = String(limit);
   if (page != null) params.page = String(page);
   if (pageSize != null) params.pageSize = String(pageSize);
+  // V2-W3: server-side granularity filter ("request_event" | "aggregate_bucket").
+  if (recordKind) params.record_kind = String(recordKind);
   return fetchLocalJson(PATHS.requestUsageRecords, params, { accessToken });
 }
 

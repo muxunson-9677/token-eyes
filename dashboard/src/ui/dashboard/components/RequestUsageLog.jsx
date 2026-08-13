@@ -180,6 +180,8 @@ export function RequestUsageLog({
 }) {
   const { currency, rate } = useCurrency();
   const [sourceFilter, setSourceFilter] = useState(""); // "" = all
+  // V2-W3: "" = all records, "request_event" = per-message records only.
+  const [kindFilter, setKindFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const visibleProviderKey = useMemo(
     () => (Array.isArray(visibleProviderIds) ? visibleProviderIds.join("\u0001") : "__all__"),
@@ -212,6 +214,7 @@ export function RequestUsageLog({
     limit: 1000,
     page: currentPage,
     pageSize: PAGE_SIZE,
+    recordKind: kindFilter,
   });
   const pageLoadingLabel = copy("ticket04.request.page_loading", { page: currentPage });
   const isPageLoading = loading && records.length > 0;
@@ -377,8 +380,26 @@ export function RequestUsageLog({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap">
+                      {/* V2-W3 granularity badge: honest about whether this row is
+                          a real per-message event or a half-hour aggregate. The raw
+                          request_source stays inspectable via the title tooltip. */}
+                      {record.record_kind === "aggregate_bucket" ? (
+                        <span
+                          className="inline-flex items-center rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 px-2 py-0.5 text-[10px] text-oai-gray-500 dark:text-oai-gray-400"
+                          title={`${copy("ticket04.request.kind.aggregate_title")}${record.request_source ? ` (${record.request_source})` : ""}`}
+                        >
+                          {copy("ticket04.request.kind.aggregate")}
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-400"
+                          title={`${copy("ticket04.request.kind.request_event_title")}${record.request_source ? ` (${record.request_source})` : ""}`}
+                        >
+                          {copy("ticket04.request.kind.request_event")}
+                        </span>
+                      )}
                       {(record.request_source || record.origin) ? (
-                        <span className="tt-request-source-chip" data-testid="request-source-chip">
+                        <span className="tt-request-source-chip ml-1.5" data-testid="request-source-chip">
                           {record.request_source || record.origin}
                         </span>
                       ) : null}
@@ -476,6 +497,19 @@ export function RequestUsageLog({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-1.5 text-xs text-oai-gray-600 dark:text-oai-gray-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={kindFilter === "request_event"}
+              onChange={(e) => {
+                setKindFilter(e.target.checked ? "request_event" : "");
+                setCurrentPage(1);
+              }}
+              aria-label={copy("ticket04.request.kind_filter")}
+              className="h-3.5 w-3.5 rounded border-oai-gray-300 dark:border-oai-gray-700 accent-[var(--brand-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
+            />
+            {copy("ticket04.request.kind_filter")}
+          </label>
           <select
             value={sourceFilter}
             onChange={(e) => {
