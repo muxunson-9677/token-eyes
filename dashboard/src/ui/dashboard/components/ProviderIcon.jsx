@@ -244,6 +244,8 @@ const PROVIDER_LOGO_MAP = {
   OPENCODE: "/brand-logos/opencode.svg",
   TRAE: "/brand-logos/trae.svg",
   XIAOMI_MIMO: "https://cdn.cnbj1.fds.api.mi-img.com/aife/mimo-blog-fe/doc_build/mimo.ico",
+  // ZCode is Zhipu's coding CLI — reuse the BigModel brand favicon.
+  ZCODE: "https://static.bigmodel.cn/wd-paas-front/static/images/favicon.png",
 };
 
 function PlaceholderIcon({ size = 16, className = "" }) {

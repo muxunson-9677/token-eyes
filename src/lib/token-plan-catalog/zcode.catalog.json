@@ -1,0 +1,36 @@
+{
+  "provider_id": "zcode",
+  "provider_name": "ZCode",
+  "official_site": "https://zcode.z.ai/",
+  "catalog_version": "2026-08-13",
+  "evidence": [
+    {
+      "url": "https://zcode.z.ai/",
+      "title": "ZCode 官方站点",
+      "accessed_at": "2026-08-13"
+    }
+  ],
+  "plans": [
+    {
+      "plan_id": "zcode_plan",
+      "display_name": "ZCode Plan",
+      "quota": {
+        "kind": "subscription_period",
+        "total": 0,
+        "unit": "tokens",
+        "display": "按订阅套餐分配的 Token 额度（实时用量以官方返回为准）"
+      },
+      "expires": {
+        "kind": "provider_reported"
+      },
+      "official_evidence_url": "https://zcode.z.ai/"
+    }
+  ],
+  "account_access": {
+    "official_quota_api": true,
+    "authorization": "local_encrypted_credentials",
+    "usage_endpoint_documented": true,
+    "fields_available": ["subscription", "total"],
+    "notes": "读取本机 ~/.zcode/v2/credentials.json 中的 zcode_jwt_token（AES-256-GCM），调用官方 billing/balance 接口按模型汇总额度。需在本机登录 ZCode。"
+  }
+}

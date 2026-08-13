@@ -429,6 +429,21 @@
       "catalog_order": 1
     },
     {
+      "id": "zcode",
+      "display_name": "ZCode",
+      "token_usage_collection": false,
+      "official_rate_limit": false,
+      "manual_token_plan": true,
+      "provider_balance": false,
+      "desktop_visibility": false,
+      "agent_display_name": null,
+      "queue_source": null,
+      "native_session_bridge": false,
+      "catalog_token_plan": true,
+      "agent_order": null,
+      "catalog_order": 8
+    },
+    {
       "id": "minimax",
       "display_name": "MiniMax",
       "token_usage_collection": false,

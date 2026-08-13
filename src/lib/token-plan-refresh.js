@@ -585,6 +585,18 @@ function mapAdapterErrorToSyncStatus(error) {
   } catch {
     // cursor module unavailable — fall through
   }
+  try {
+    const zcodeTokenPlan = require("./zcode-token-plan");
+    if (error instanceof zcodeTokenPlan.ZcodeTokenPlanError) {
+      return {
+        syncStatus: zcodeTokenPlan.mapZcodeErrorCode(error),
+        errorCode: error.code,
+        errorMessage: error.message,
+      };
+    }
+  } catch {
+    // zcode module unavailable — fall through
+  }
   const msg = error && error.message ? error.message : String(error);
   return {
     syncStatus: "failed",
@@ -1078,6 +1090,7 @@ const aliyunBailianTokenPlan = require("./aliyun-bailian-token-plan");
 const codexTokenPlan = require("./codex-token-plan");
 const claudeTokenPlan = require("./claude-token-plan");
 const cursorTokenPlan = require("./cursor-token-plan");
+const zcodeTokenPlan = require("./zcode-token-plan");
 registerProviderAdapter("glm", glmTokenPlan.createGlmProviderAdapter());
 registerProviderAdapter("kimi", kimiTokenPlan.createKimiProviderAdapter());
 registerProviderAdapter("minimax", miniMaxTokenPlan.createMiniMaxProviderAdapter());
@@ -1085,6 +1098,7 @@ registerProviderAdapter("aliyun_bailian", aliyunBailianTokenPlan.createAliyunBai
 registerProviderAdapter("codex", codexTokenPlan.createCodexProviderAdapter());
 registerProviderAdapter("claude", claudeTokenPlan.createClaudeProviderAdapter());
 registerProviderAdapter("cursor", cursorTokenPlan.createCursorProviderAdapter());
+registerProviderAdapter("zcode", zcodeTokenPlan.createZcodeProviderAdapter());
 
 module.exports = {
   ALLOWED_INTERVALS,
