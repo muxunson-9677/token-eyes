@@ -22,6 +22,15 @@ interface ShareCardHeatmapCell {
   future: boolean;
 }
 
+// W8 weekly bill inputs. null means "unknown" — the card renders a neutral
+// placeholder instead of faking a 0 (same contract as computeSubscriptionRoi).
+export interface ShareCardWeeklyBill {
+  weekCostUsd: number | null;
+  prevWeekCostUsd: number | null;
+  monthApiCostUsd: number | null;
+  monthSubscriptionCostUsd: number | null;
+}
+
 export interface ShareCardData {
   handle: string;
   startDate: string | null;
@@ -39,6 +48,7 @@ export interface ShareCardData {
   capturedAt: string;
   currency: string;
   exchangeRate: number;
+  weeklyBill: ShareCardWeeklyBill;
 }
 
 function coerceNumber(value: unknown): number {
@@ -49,6 +59,29 @@ function coerceNumber(value: unknown): number {
 function pickBillable(row: AnyRec | null | undefined): number {
   if (!row) return 0;
   return coerceNumber(row.billable_total_tokens ?? row.total_tokens);
+}
+
+function toNullableCost(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function normalizeWeeklyBill(
+  raw: Partial<ShareCardWeeklyBill> | null | undefined,
+  summary: AnyRec | null,
+  period: ShareCardPeriod,
+): ShareCardWeeklyBill {
+  // When the dashboard is already scoped to the current week, its summary
+  // cost IS the week spend — use it unless the caller passed an explicit one.
+  const weekFromSummary =
+    period === "week" ? toNullableCost(summary?.total_cost_usd) : null;
+  return {
+    weekCostUsd: toNullableCost(raw?.weekCostUsd) ?? weekFromSummary,
+    prevWeekCostUsd: toNullableCost(raw?.prevWeekCostUsd),
+    monthApiCostUsd: toNullableCost(raw?.monthApiCostUsd),
+    monthSubscriptionCostUsd: toNullableCost(raw?.monthSubscriptionCostUsd),
+  };
 }
 
 function normalizeHeatmap(raw: any): {
@@ -100,6 +133,7 @@ export function buildShareCardData(params: {
   capturedAt?: string;
   currency?: string;
   exchangeRate?: number;
+  weeklyBill?: Partial<ShareCardWeeklyBill> | null;
 }): ShareCardData {
   const {
     handle,
@@ -115,6 +149,7 @@ export function buildShareCardData(params: {
     capturedAt,
     currency,
     exchangeRate,
+    weeklyBill,
   } = params;
 
   const totalTokens = pickBillable(summary);
@@ -151,6 +186,7 @@ export function buildShareCardData(params: {
     exchangeRate: Number.isFinite(exchangeRate as number) && (exchangeRate as number) > 0
       ? (exchangeRate as number)
       : 1,
+    weeklyBill: normalizeWeeklyBill(weeklyBill, summary, period),
   };
 }
 
@@ -261,6 +297,23 @@ export function buildShareHook(data: ShareCardData): string {
     return copy("share.hook.days_record", { days: data.activeDays });
   }
   return copy("share.hook.new_chapter");
+}
+
+// Week-over-week change ("环比") as a signed percent string, e.g. "+23%".
+// Returns null when the comparison is undefined (unknown or zero baseline)
+// so the card can show a neutral placeholder instead of a fake number.
+export function formatWowChange(
+  current: number | null | undefined,
+  previous: number | null | undefined,
+): string | null {
+  if (current === null || current === undefined) return null;
+  if (previous === null || previous === undefined) return null;
+  const cur = Number(current);
+  const prev = Number(previous);
+  if (!Number.isFinite(cur) || !Number.isFinite(prev)) return null;
+  if (cur < 0 || prev <= 0) return null;
+  const pct = Math.round(((cur - prev) / prev) * 100);
+  return pct >= 0 ? `+${pct}%` : `-${Math.abs(pct)}%`;
 }
 
 // Dynamically compute hero font size so long numbers still fit the card.

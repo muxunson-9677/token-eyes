@@ -2,16 +2,19 @@ import React, { forwardRef } from "react";
 import { copy } from "../../lib/copy";
 import { BroadsheetCard } from "./variants/BroadsheetCard.jsx";
 import { AnnualReportCard } from "./variants/AnnualReportCard.jsx";
+import { WeeklyBillCard } from "./variants/WeeklyBillCard.jsx";
 import { SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT, VARIANT_SIZES } from "./share-card-constants";
 
 export const SHARE_VARIANTS = [
   { id: "annual-report", labelKey: "share.variant.neon" },
   { id: "broadsheet", labelKey: "share.variant.broadsheet" },
+  { id: "weekly-bill", labelKey: "share.variant.weekly_bill" },
 ];
 
 const VARIANT_MAP = {
   broadsheet: BroadsheetCard,
   "annual-report": AnnualReportCard,
+  "weekly-bill": WeeklyBillCard,
 };
 
 export function getVariantSize(variant) {

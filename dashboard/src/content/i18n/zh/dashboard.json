@@ -1119,5 +1119,13 @@
     "widgets.reference.desktop_display": "桌面显示",
     "widgets.reference.desktop_display_detail": "显示在桌面浮动小组件中",
     "widgets.reference.compact_mode": "紧凑模式",
-    "widgets.reference.compact_mode_detail": "在桌面小组件中使用紧凑布局"
+    "widgets.reference.compact_mode_detail": "在桌面小组件中使用紧凑布局",
+    "share.variant.weekly_bill": "周账单",
+    "share.card.weekly_bill.title": "AI 周账单",
+    "share.card.weekly_bill.week_spend": "本周花费",
+    "share.card.weekly_bill.wow_label": "环比上周",
+    "share.card.weekly_bill.top_model": "本周 Top 模型",
+    "share.card.weekly_bill.roi_label": "订阅回本倍数",
+    "share.card.weekly_bill.roi_value": "{{multiplier}}×",
+    "share.card.weekly_bill.roi_empty": "设置订阅费用后即可查看回本倍数"
 }

@@ -2430,3 +2430,11 @@ settings.token_plan.live_quota_aria,ui,SettingsPage,TokenPlanSection,live_quota_
 settings.cost.provider_api.collapsed_summary,ui,SettingsPage,ProviderApiConfigSection,collapsed_summary,"{{count}} 个供应商",,active
 settings.cost.other_ai.collapsed_summary,ui,SettingsPage,OtherAiSpendSection,collapsed_summary,"{{count}} 个分组",,active
 settings.cost.other_ai.summary_counts,ui,SettingsPage,OtherAiSpendSection,summary_counts,"共 {{groups}} 个分组 · {{records}} 笔花销",,active
+share.variant.weekly_bill,share,DashboardPage,ShareModal,variant_weekly_bill,"Weekly Bill",,active
+share.card.weekly_bill.title,share,DashboardPage,WeeklyBillCard,title,"AI Weekly Bill",,active
+share.card.weekly_bill.week_spend,share,DashboardPage,WeeklyBillCard,week_spend,"This week's spend",,active
+share.card.weekly_bill.wow_label,share,DashboardPage,WeeklyBillCard,wow_label,"vs last week",,active
+share.card.weekly_bill.top_model,share,DashboardPage,WeeklyBillCard,top_model,"Top model",,active
+share.card.weekly_bill.roi_label,share,DashboardPage,WeeklyBillCard,roi_label,"Subscription ROI",,active
+share.card.weekly_bill.roi_value,share,DashboardPage,WeeklyBillCard,roi_value,"{{multiplier}}×",,active
+share.card.weekly_bill.roi_empty,share,DashboardPage,WeeklyBillCard,roi_empty,"Add a subscription cost to see ROI",,active
