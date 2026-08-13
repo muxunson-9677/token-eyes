@@ -1,7 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const CATALOG_PATH = path.join(__dirname, "catalog.json");
+// Single source of truth shared with the dashboard bundle (which imports the
+// JSON directly, see dashboard/src/pages/PlanMarketPage.jsx).
+const CATALOG_PATH = path.join(__dirname, "..", "..", "..", "shared", "plan-market-catalog.json");
 
 let rawCache = null;
 
