@@ -782,7 +782,7 @@ export function ActivityHeatmap({
                         onClick={() => setActivePalette(key)}
                         title={copy(`heatmap.3d.modal.palette.${key}`)}
                         className={`w-3.5 h-3.5 rounded-full transition-all duration-200 relative hover:scale-125 ${
-                          key === "emerald" ? "bg-[#10b981]" : key === "ocean" ? "bg-[#3b82f6]" : key === "neon" ? "bg-[#a855f7]" : "bg-[#f59e0b]"
+                          key === "emerald" ? "bg-[color:var(--brand-500)]" : key === "ocean" ? "bg-[#3b82f6]" : key === "neon" ? "bg-[#a855f7]" : "bg-[color:var(--oai-warning)]"
                         }`}
                       >
                         {isSelected && (

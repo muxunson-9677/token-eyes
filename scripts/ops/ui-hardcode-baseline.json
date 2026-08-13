@@ -1,17 +1,20 @@
 {
-  "generatedAt": "2026-08-12T02:54:25.309Z",
+  "generatedAt": "2026-08-13T08:20:23.078Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
+    "radii": "hardcoded px border-radius (Tailwind arbitrary or inline style)",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 340,
+    "colors": 338,
+    "radii": 5,
     "rawText": 271
   },
   "files": {
     "dashboard/src/App.routes.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         ", ); expect(await screen.findByText(TEXT.leaderboard)).toBeInTheDocument(); expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument(); leaderboardRender.unmount(); render("
@@ -19,6 +22,7 @@
     },
     "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         ") : avatarSrc && !avatarFailed ? (",
@@ -27,6 +31,7 @@
     },
     "dashboard/src/components/leaderboard/LeaderboardProfileModal.jsx": {
       "colors": 6,
+      "radii": 1,
       "rawText": 2,
       "rawTextTokens": [
         "0 && n",
@@ -35,11 +40,13 @@
     },
     "dashboard/src/components/LeaderboardSummaryCard.jsx": {
       "colors": 3,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/components/LoginCard.jsx": {
       "colors": 4,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "); const GITHUB_ICON = ("
@@ -47,6 +54,7 @@
     },
     "dashboard/src/components/LoginModal.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 2,
       "rawTextTokens": [
         "Open login",
@@ -55,6 +63,7 @@
     },
     "dashboard/src/components/settings/Controls.jsx": {
       "colors": 8,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         ") : null; return ("
@@ -62,6 +71,7 @@
     },
     "dashboard/src/components/settings/Controls.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         ", ); expect(screen.getByTestId(\"settings-section-icon\")).toHaveAttribute(\"data-tone\", \"blue\"); expect(screen.getByTestId(\"settings-section-icon\").querySelector(\"svg\")).not.toBeNull(); rerender(",
@@ -70,6 +80,7 @@
     },
     "dashboard/src/components/settings/DataDirectoriesSection.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 6,
       "rawTextTokens": [
         ") : detectNotice ? (",
@@ -80,6 +91,7 @@
     },
     "dashboard/src/components/settings/MenuBarSection.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "GitHub"
@@ -87,6 +99,7 @@
     },
     "dashboard/src/components/settings/ProviderApiConfigSection.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 2,
       "rawTextTokens": [
         ") : configs.length === 0 ? (",
@@ -95,6 +108,7 @@
     },
     "dashboard/src/components/settings/TokenPlanSection.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 32,
       "rawTextTokens": [
         ") ) : form.provider_id === \"cursor\" ? (",
@@ -132,6 +146,7 @@
     },
     "dashboard/src/components/spend/SpendTrendChart.jsx": {
       "colors": 24,
+      "radii": 0,
       "rawText": 2,
       "rawTextTokens": [
         "b.bucket_start === item.bucket_start); if (bucketIdx"
@@ -139,6 +154,7 @@
     },
     "dashboard/src/hooks/__tests__/use-codex-reset-events.test.tsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 10,
       "rawTextTokens": [
         "( name: string, options: LockOptions, callback: LockGrantedCallback",
@@ -153,6 +169,7 @@
     },
     "dashboard/src/main.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "root.render("
@@ -160,11 +177,13 @@
     },
     "dashboard/src/pages/DashboardPage.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/pages/DevicePage.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         "Approve your CLI",
@@ -174,6 +193,7 @@
     },
     "dashboard/src/pages/IpCheckPage.jsx": {
       "colors": 12,
+      "radii": 0,
       "rawText": 17,
       "rawTextTokens": [
         "', ipAddrCN: ipHeroSkeleton(), ipGeoCN: ipGeoSkeleton(), ipAddr: ipHeroSkeleton(), ipGeo: ipGeoSkeleton(), ipAddrClaude: ipHeroSkeleton(), ipGeoClaude: ipGeoSkeleton(), propsContent: loadingRows([t.propsRegion, t.propsCity, t.propsType, t.propsAsn, t.propsOrg]), securityContent: loadingRows([t.secVpn, t.secProxy, t.secTor, t.secCrawler, t.secAbuser]), claudeAvailContent: row(\"claude.ai\", undefined, true) + row(\"anthropic.com\", undefined, true), dnsLeakContent: row(t.dnsStatus, undefined, true) + row(t.dnsOutletIp, undefined, true), udpLeakContent: row(t.udpStatus, undefined, true) + row(t.udpOutletIp, undefined, true), deviceContent: loadingRows([t.devTz, t.devLang, t.devOs, t.devTouch, t.devNet, t.devDnt, t.devWebglRender, t.devCanvasFp]), ipHistoryContent: `",
@@ -196,6 +216,7 @@
     },
     "dashboard/src/pages/LeaderboardPage.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         "0 ?",
@@ -205,6 +226,7 @@
     },
     "dashboard/src/pages/LeaderboardProfilePage.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         ") : realSignedIn ? ("
@@ -212,6 +234,7 @@
     },
     "dashboard/src/pages/ResetHistoryPage.tsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 4,
       "rawTextTokens": [
         "0 ? (",
@@ -221,6 +244,7 @@
     },
     "dashboard/src/pages/SettingsPage.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "prefs.visibility[id] !== false).length; return ("
@@ -228,6 +252,7 @@
     },
     "dashboard/src/pages/SettingsPage.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 9,
       "rawTextTokens": [
         "Account",
@@ -243,6 +268,7 @@
     },
     "dashboard/src/pages/SkillDetailPanel.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         ") : skill.directory && skill.directory !== title ? ("
@@ -250,6 +276,7 @@
     },
     "dashboard/src/pages/SkillsPage.jsx": {
       "colors": 4,
+      "radii": 0,
       "rawText": 9,
       "rawTextTokens": [
         ") : null; const hintNode = !manageOpen && !isSkillsSh && !isPopular && repos.length",
@@ -263,6 +290,7 @@
     },
     "dashboard/src/pages/WidgetsPage.jsx": {
       "colors": 16,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         "0 ? (",
@@ -271,6 +299,7 @@
     },
     "dashboard/src/pages/WrappedPage.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 18,
       "rawTextTokens": [
         "0 && (",
@@ -293,6 +322,7 @@
     },
     "dashboard/src/pet.jsx": {
       "colors": 3,
+      "radii": 0,
       "rawText": 2,
       "rawTextTokens": [
         "/@keyframes // so the animations still run. const result = raw.replace(/",
@@ -301,6 +331,7 @@
     },
     "dashboard/src/ui/celebration/CelebrationCanvas.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 2,
       "rawTextTokens": [
         "1.5) scale = 0.92; if ((window.navigator.hardwareConcurrency || 8)",
@@ -309,6 +340,7 @@
     },
     "dashboard/src/ui/celebration/FireworksCelebrationCanvas.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "20) bursts.shift(); const count = Math.min( 2_600 - sparks.length, Math.floor(108 * size * surface.scale * surface.density), ); for (let index = 0; index"
@@ -316,6 +348,7 @@
     },
     "dashboard/src/ui/celebration/MeteorCelebrationCanvas.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "0.72 && Math.random()"
@@ -323,6 +356,7 @@
     },
     "dashboard/src/ui/celebration/ResetCelebrationOverlay.jsx": {
       "colors": 6,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "setRendererFailed(true), []); const useCanvas = !reducedMotion && !rendererFailed; const Renderer = normalizedEffect === \"fireworks\" ? LazyFireworksCanvas : LazyMeteorCanvas; return ("
@@ -330,6 +364,7 @@
     },
     "dashboard/src/ui/celebration/__tests__/ResetCelebrationOverlay.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         "Navigate",
@@ -339,11 +374,13 @@
     },
     "dashboard/src/ui/components/Button.jsx": {
       "colors": 5,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/components/Counter.jsx": {
       "colors": 1,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "/\\d/.test(char) && (decimalIndex === -1 || index"
@@ -351,6 +388,7 @@
     },
     "dashboard/src/ui/components/HeaderGithubStar.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "Star"
@@ -358,16 +396,19 @@
     },
     "dashboard/src/ui/components/Input.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/components/Select.jsx": {
       "colors": 3,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/components/__tests__/Button.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 5,
       "rawTextTokens": [
         "Custom save",
@@ -379,6 +420,7 @@
     },
     "dashboard/src/ui/components/__tests__/Card.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 2,
       "rawTextTokens": [
         "42 tokens",
@@ -387,13 +429,15 @@
     },
     "dashboard/src/ui/components/__tests__/Sidebar.nav.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "page"
       ]
     },
     "dashboard/src/ui/dashboard/components/ActivityHeatmap.jsx": {
-      "colors": 28,
+      "colors": 26,
+      "radii": 3,
       "rawText": 5,
       "rawTextTokens": [
         "0 ? (",
@@ -405,6 +449,7 @@
     },
     "dashboard/src/ui/dashboard/components/ActivityHeatmap3D.jsx": {
       "colors": 53,
+      "radii": 0,
       "rawText": 4,
       "rawTextTokens": [
         "0 ? (",
@@ -415,6 +460,7 @@
     },
     "dashboard/src/ui/dashboard/components/CommandPalette.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         ") : isRenderableIcon(item.Icon) ? ("
@@ -422,6 +468,7 @@
     },
     "dashboard/src/ui/dashboard/components/ContextBreakdownPanel.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 10,
       "rawTextTokens": [
         "(b.totals?.total_tokens || 0) - (a.totals?.total_tokens || 0), ); return (",
@@ -435,6 +482,7 @@
     },
     "dashboard/src/ui/dashboard/components/CostAccumulation.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 11,
       "rawTextTokens": [
         ") : accounts.length === 0 ? (",
@@ -451,6 +499,7 @@
     },
     "dashboard/src/ui/dashboard/components/CostAnalysisModal.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         "Cost",
@@ -460,6 +509,7 @@
     },
     "dashboard/src/ui/dashboard/components/DateRangePopover.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "23 || mi"
@@ -467,6 +517,7 @@
     },
     "dashboard/src/ui/dashboard/components/LikeButton.jsx": {
       "colors": 6,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "setTriggerNumAnim(false), 500); const colors = [\"#ff4757\", \"#ff6b81\", \"#ffa502\", \"#70a1ff\", \"#2ed573\", \"#a29bfe\"]; const shapes = [\"circle\", \"heart\"]; const newParticles = []; for (let i = 0; i"
@@ -474,6 +525,7 @@
     },
     "dashboard/src/ui/dashboard/components/ModelFilter.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         ") : searchedOptions.length === 0 ? (",
@@ -483,16 +535,19 @@
     },
     "dashboard/src/ui/dashboard/components/ModelUsageDonut.jsx": {
       "colors": 5,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/dashboard/components/ProviderIcon.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/dashboard/components/RequestUsageLog.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 5,
       "rawTextTokens": [
         "0 && (",
@@ -503,6 +558,7 @@
     },
     "dashboard/src/ui/dashboard/components/SourceFilter.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         ") : searchedOptions.length === 0 ? (",
@@ -512,6 +568,7 @@
     },
     "dashboard/src/ui/dashboard/components/StatsPanel.jsx": {
       "colors": 6,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "0 && ("
@@ -519,6 +576,7 @@
     },
     "dashboard/src/ui/dashboard/components/TokenServiceList.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 6,
       "rawTextTokens": [
         ") : error ? (",
@@ -531,6 +589,7 @@
     },
     "dashboard/src/ui/dashboard/components/TrendMonitor.jsx": {
       "colors": 30,
+      "radii": 0,
       "rawText": 11,
       "rawTextTokens": [
         ") : from && to ? (",
@@ -547,6 +606,7 @@
     },
     "dashboard/src/ui/dashboard/components/TrendMonitorZoomModal.jsx": {
       "colors": 1,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "(outside #root) mount and composite in the renderer // but are NOT presented on-screen, so the modal looked like it \"didn't open\". // The 3D heatmap modal renders inline for the same reason and works. macOS // WKWebView / browsers are unaffected either way. return ("
@@ -554,6 +614,7 @@
     },
     "dashboard/src/ui/dashboard/components/UsageLimitsPanel.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         ", ); expect(screen.getByText(\"Cursor\")).toBeInTheDocument(); rerender("
@@ -561,6 +622,7 @@
     },
     "dashboard/src/ui/dashboard/components/UsageOverview.jsx": {
       "colors": 15,
+      "radii": 0,
       "rawText": 2,
       "rawTextTokens": [
         "0 && (",
@@ -569,6 +631,7 @@
     },
     "dashboard/src/ui/dashboard/components/UsageTrendChart.jsx": {
       "colors": 5,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         "1 ? chartWidth / (numBuckets - 1) / 2 : chartWidth / 2; return (",
@@ -578,6 +641,7 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/ActivityHeatmap3D.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 3,
       "rawTextTokens": [
         ").container; // The top face is rendered last in each cell",
@@ -587,6 +651,7 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/ModelUsageTable.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "0.5 // Click again to toggle to asc fireEvent.click(screen.getByText(\"Cost\")); rows = container.querySelectorAll(\"tbody tr\"); expect(rows[0].textContent).toContain(\"claude-sonnet\"); // cost 0.5"
@@ -594,6 +659,7 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/ProviderUsageTable.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "0.5 // Click again to toggle to asc fireEvent.click(screen.getByText(\"Cost\")); rows = container.querySelectorAll(\"tbody tr\"); expect(rows[0].textContent).toContain(\"Claude\"); // cost 0.5"
@@ -601,6 +667,7 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/TrendMonitor.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "); expect(plain.container.textContent).not.toContain(\"14:00\"); const zoomed = render("
@@ -608,6 +675,7 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/TrendMonitorZoomModal.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "Chart"
@@ -615,6 +683,7 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/UsageFilterBar.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "render("
@@ -622,6 +691,7 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/UsageStatsPanel.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "); expect(screen.getByTestId(\"usage-stats-state\")).toHaveAttribute(\"data-state\", \"loading\"); rerender("
@@ -629,11 +699,13 @@
     },
     "dashboard/src/ui/dashboard/components/__tests__/UsageTrendChart.test.jsx": {
       "colors": 10,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/dashboard/views/DashboardView.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; // 留给右列底部 return ("
@@ -641,11 +713,13 @@
     },
     "dashboard/src/ui/foundation/__tests__/AppleGlassFidelity.test.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/foundation/__tests__/LocaleProvider.test.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 2,
       "rawTextTokens": [
         "en",
@@ -654,6 +728,7 @@
     },
     "dashboard/src/ui/foundation/__tests__/ThemeProvider.test.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 4,
       "rawTextTokens": [
         "dark",
@@ -664,31 +739,37 @@
     },
     "dashboard/src/ui/marketing/components/BorderGlow.jsx": {
       "colors": 6,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/marketing/components/LaserFlow.jsx": {
       "colors": 1,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/marketing/components/LightRays.jsx": {
       "colors": 1,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/marketing/components/SpotlightCard.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/marketing/components/TiltedCard.jsx": {
       "colors": 2,
+      "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
     },
     "dashboard/src/ui/marketing/MarketingLanding.jsx": {
       "colors": 22,
+      "radii": 1,
       "rawText": 19,
       "rawTextTokens": [
         ") : ( // 未登录：Sign In 展示为主行动实色按钮，点击唤起 Modal",
@@ -714,6 +795,7 @@
     },
     "dashboard/src/ui/share/HeatmapStrip.jsx": {
       "colors": 5,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "= 7) return null; const level = normalizeLevel(cell); const x = wi * (cellSize + gap); const y = di * (cellSize + gap); const fill = level === null ? empty : innerPalette[level]; return ("
@@ -721,6 +803,7 @@
     },
     "dashboard/src/ui/share/ShareModal.tsx": {
       "colors": 1,
+      "radii": 0,
       "rawText": 5,
       "rawTextTokens": [
         "(\"\"); const [variant, setVariant] = useState",
@@ -732,6 +815,7 @@
     },
     "dashboard/src/ui/share/variants/AnnualReportCard.jsx": {
       "colors": 24,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "!v||v"
@@ -739,6 +823,7 @@
     },
     "dashboard/src/ui/share/variants/BroadsheetCard.jsx": {
       "colors": 0,
+      "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
         "0; return ("

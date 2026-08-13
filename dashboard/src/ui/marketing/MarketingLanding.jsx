@@ -200,13 +200,13 @@ export function MarketingLanding({
             {/* Dashboard / Sign In 按钮及头像区 */}
             <div className="flex items-center gap-2.5 sm:gap-3.5">
               {authLoading ? (
-                <div className="h-8 w-16 animate-pulse rounded-[8px] bg-white/10" aria-hidden />
+                <div className="h-8 w-16 animate-pulse rounded-[var(--radius-md)] bg-white/10" aria-hidden />
               ) : signedIn ? (
                 // 已登录：Open Dashboard 升级为主行动实色按钮
                 <>
                   <Link
                     to={getDashboardEntryPath()}
-                    className="inline-flex h-8 items-center justify-center rounded-[8px] bg-white px-3.5 text-xs font-bold text-oai-gray-950 hover:bg-oai-gray-100 transition-all duration-200 active:scale-[0.98] shadow-sm select-none"
+                    className="inline-flex h-8 items-center justify-center rounded-[var(--radius-md)] bg-white px-3.5 text-xs font-bold text-oai-gray-950 hover:bg-oai-gray-100 transition-all duration-200 active:scale-[0.98] shadow-sm select-none"
                   >
                     {copy("landing.v2.cta.primary")}
                   </Link>
@@ -218,7 +218,7 @@ export function MarketingLanding({
                 <button
                   type="button"
                   onClick={openLoginModal}
-                  className="inline-flex h-8 min-w-[80px] items-center justify-center rounded-[8px] bg-white px-3.5 text-xs font-bold text-oai-gray-950 hover:bg-oai-gray-100 transition-all duration-200 active:scale-[0.98] shadow-sm select-none"
+                  className="inline-flex h-8 min-w-[80px] items-center justify-center rounded-[var(--radius-md)] bg-white px-3.5 text-xs font-bold text-oai-gray-950 hover:bg-oai-gray-100 transition-all duration-200 active:scale-[0.98] shadow-sm select-none"
                 >
                   {copy("header.auth.sign_in_aria")}
                 </button>
@@ -473,7 +473,7 @@ export function MarketingLanding({
                 <div className="pt-4">
                   <Link
                     to="/leaderboard"
-                    className="inline-flex h-9 items-center justify-center rounded-[8px] bg-white px-6 text-xs font-bold text-oai-gray-950 hover:bg-oai-gray-100 transition-all duration-200 shadow-sm active:scale-[0.98] select-none whitespace-nowrap"
+                    className="inline-flex h-9 items-center justify-center rounded-[var(--radius-md)] bg-white px-6 text-xs font-bold text-oai-gray-950 hover:bg-oai-gray-100 transition-all duration-200 shadow-sm active:scale-[0.98] select-none whitespace-nowrap"
                   >
                     {copy("landing.v2.leaderboard.view_more")}
                   </Link>

@@ -309,7 +309,7 @@ function SkillDetailPanelInner({
                       onCheckedChange={(next) =>
                         onToggleTarget?.(skill, target.id, Boolean(next))
                       }
-                      className="peer flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-oai-gray-300/80 bg-white/80 shadow-sm transition-colors hover:border-oai-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-gray-400/40 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-50 data-[checked]:border-oai-black data-[checked]:bg-oai-black dark:border-oai-gray-500/60 dark:bg-oai-gray-900/60 dark:hover:border-oai-gray-400 dark:data-[checked]:border-white dark:data-[checked]:bg-white"
+                      className="peer flex h-4 w-4 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-oai-gray-300/80 bg-white/80 shadow-sm transition-colors hover:border-oai-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-gray-400/40 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-50 data-[checked]:border-oai-black data-[checked]:bg-oai-black dark:border-oai-gray-500/60 dark:bg-oai-gray-900/60 dark:hover:border-oai-gray-400 dark:data-[checked]:border-white dark:data-[checked]:bg-white"
                     >
                       <Checkbox.Indicator className="flex items-center justify-center text-white dark:text-oai-black">
                         <Check

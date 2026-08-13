@@ -1554,7 +1554,7 @@ export function SkillsPage() {
                       else if (source === SOURCE_SKILLSSH || source === SOURCE_POPULAR) setSource(SOURCE_ALL);
                     }}
                     className={cn(
-                      "tt-pressable tt-product-focusable inline-flex items-center gap-1.5 rounded-[8px] px-3 py-1 text-sm font-medium transition-colors",
+                      "tt-pressable tt-product-focusable inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1 text-sm font-medium transition-colors",
                       active
                         ? "bg-oai-gray-100 text-oai-black dark:bg-oai-gray-700 dark:text-white"
                         : "text-oai-gray-500 hover:text-oai-gray-800 dark:text-oai-gray-400 dark:hover:text-oai-gray-200",
