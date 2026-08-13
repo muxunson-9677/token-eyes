@@ -121,6 +121,7 @@ export function LimitsPage() {
                 grok={usageLimits?.grok}
                 antigravity={usageLimits?.antigravity}
                 copilot={usageLimits?.copilot}
+                zed={usageLimits?.zed}
                 accounts={limitAccounts?.accounts}
                 accountsRefreshing={accountsRefreshing}
                 order={prefs.order}

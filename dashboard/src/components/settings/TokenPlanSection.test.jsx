@@ -400,7 +400,9 @@ it("new plan Agent source options follow visible limits display preferences", as
     .map((option) => option.value)
     .filter(Boolean);
 
-  expect(optionValues).toEqual(["hermes", "claude", "codebuddy"]);
+  // codebuddy and zed are omitted from the stored visibility map, so they
+  // fall back to the default (visible) and stay in the option list.
+  expect(optionValues).toEqual(["hermes", "claude", "codebuddy", "zed"]);
 });
 
 it("new plan provider choices render as separated card options", async () => {

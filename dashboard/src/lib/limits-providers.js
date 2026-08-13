@@ -1,6 +1,12 @@
 import { copy } from "./copy";
 
-/** Canonical usage-limits provider ids (order defaults in useLimitsDisplayPrefs). */
+/**
+ * Canonical usage-limits provider ids (order defaults in useLimitsDisplayPrefs).
+ * First 10 mirror Swift LimitsSettingsStore.allProviders; "zed" is a
+ * web-dashboard-only provider (the macOS native popover has no typed Zed row
+ * yet — Swift's normalizedOrder safely drops unknown ids from mirrored
+ * snapshots, and normalizeOrder here re-appends them).
+ */
 export const LIMIT_PROVIDER_IDS = [
   "claude",
   "codex",
@@ -12,6 +18,7 @@ export const LIMIT_PROVIDER_IDS = [
   "openclaw",
   "opencode",
   "antigravity",
+  "zed",
 ];
 
 /** Keys for ProviderIcon; mono logos use inline SVG and colored logos use /brand-logos/. */
@@ -26,6 +33,7 @@ export const LIMIT_PROVIDER_ICON_KEYS = {
   openclaw: "OPENCLAW",
   opencode: "OPENCODE",
   antigravity: "ANTIGRAVITY",
+  zed: "ZED",
 };
 
 export function limitProviderIconKey(id) {
@@ -62,6 +70,8 @@ export function limitProviderName(id) {
       return copy("limits.provider.copilot");
     case "antigravity":
       return copy("limits.provider.antigravity");
+    case "zed":
+      return copy("limits.provider.zed");
     default:
       return String(id || "");
   }

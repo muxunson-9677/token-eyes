@@ -203,6 +203,17 @@ function TraeIcon({ size = 16, className = "" }) {
   );
 }
 
+function ZedIcon({ size = 16, className = "" }) {
+  // Mono rendition of Zed's angular "Z" mark.
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M4 5h13" />
+      <path d="M17 5 7 19" />
+      <path d="M7 19h13" />
+    </svg>
+  );
+}
+
 const PROVIDER_ICON_MAP = {
   CLAUDE: ClaudeIcon,
   CODEBUDDY: CodeBuddyIcon,
@@ -221,6 +232,7 @@ const PROVIDER_ICON_MAP = {
   OMP: OmpIcon,
   PI: PiIcon,
   TRAE: TraeIcon,
+  ZED: ZedIcon,
 };
 
 // Multi-color brand SVG assets in /public/brand-logos/. Only logos that have

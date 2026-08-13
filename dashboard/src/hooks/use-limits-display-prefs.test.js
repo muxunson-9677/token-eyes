@@ -99,7 +99,10 @@ describe("useLimitsDisplayPrefs", () => {
   });
 
   it("matches the provider list used for visibility/order keys", () => {
-    // Must match Swift LimitsSettingsStore.allProviders (see limits-providers.js).
+    // First 10 must match Swift LimitsSettingsStore.allProviders; "zed" is a
+    // deliberate web-only addition (Swift normalizedOrder drops unknown ids
+    // from mirrored snapshots, normalizeOrder here re-appends them), see
+    // limits-providers.js.
     expect(LIMIT_PROVIDER_IDS).toEqual([
       "claude",
       "codex",
@@ -111,6 +114,7 @@ describe("useLimitsDisplayPrefs", () => {
       "openclaw",
       "opencode",
       "antigravity",
+      "zed",
     ]);
     expect(LIMIT_PROVIDER_IDS).not.toEqual(
       expect.arrayContaining(["kimi", "kiro", "grok", "copilot"]),

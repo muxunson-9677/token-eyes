@@ -404,8 +404,8 @@ function useWidestLabelWidth(containerRef) {
   return labelWidth;
 }
 
-export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, accounts = [], accountsRefreshing = false, order, visibility, displayMode }) {
-  const dataById = { claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot };
+export function UsageLimitsPanel({ claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, zed, accounts = [], accountsRefreshing = false, order, visibility, displayMode }) {
+  const dataById = { claude, codex, cursor, trae, codebuddy, gemini, hermes, openclaw, opencode, kimi, kiro, grok, antigravity, copilot, zed };
   const containerRef = useRef(null);
   const labelWidth = useWidestLabelWidth(containerRef);
   const [expandedId, setExpandedId] = useState(null);

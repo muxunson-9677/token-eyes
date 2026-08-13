@@ -357,7 +357,7 @@
       "id": "zed",
       "display_name": "Zed",
       "token_usage_collection": true,
-      "official_rate_limit": false,
+      "official_rate_limit": true,
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,

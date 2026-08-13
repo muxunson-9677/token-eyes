@@ -18,6 +18,7 @@ const kiroAdapter = require("./kiro");
 const antigravityAdapter = require("./antigravity");
 const copilotAdapter = require("./copilot");
 const grokAdapter = require("./grok");
+const zedAdapter = require("./zed");
 
 function getDefaultAdapters() {
   return {
@@ -30,6 +31,7 @@ function getDefaultAdapters() {
     antigravity: antigravityAdapter,
     copilot: copilotAdapter,
     grok: grokAdapter,
+    zed: zedAdapter,
   };
 }
 
@@ -44,4 +46,5 @@ module.exports = {
   antigravityAdapter,
   copilotAdapter,
   grokAdapter,
+  zedAdapter,
 };

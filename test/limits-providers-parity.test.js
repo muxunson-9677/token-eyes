@@ -5,8 +5,13 @@ const { test } = require("node:test");
 
 // The macOS app and the dashboard each keep their own canonical list of
 // usage-limits provider ids. The native bridge syncs preference snapshots
-// keyed by these ids, so the two lists must stay identical — same ids, same
-// default order — or visibility/order entries silently drop on one side.
+// keyed by these ids, so the Swift list must stay a strict prefix of the
+// dashboard list — same ids, same default order. The dashboard may append
+// web-only providers at the tail (currently "zed"): Swift's normalizedOrder
+// drops ids it doesn't know, and the dashboard's normalizeOrder re-appends
+// them after a native round-trip, so tail-only additions are safe. A native
+// row for such providers requires typed decode + assets in TokenTrackerBar
+// before the id moves into the shared prefix.
 
 const repoRoot = path.join(__dirname, "..");
 
@@ -38,8 +43,12 @@ test("macOS LimitsSettingsStore.allProviders matches dashboard LIMIT_PROVIDER_ID
   );
 
   assert.ok(swiftIds.length > 0, "provider lists must not be empty");
-  assert.deepEqual(swiftIds, jsIds);
-  assert.deepEqual(jsIds, [
+  assert.deepEqual(
+    jsIds.slice(0, swiftIds.length),
+    swiftIds,
+    "Swift allProviders must be a strict prefix of dashboard LIMIT_PROVIDER_IDS",
+  );
+  assert.deepEqual(swiftIds, [
     "claude",
     "codex",
     "cursor",
@@ -51,4 +60,7 @@ test("macOS LimitsSettingsStore.allProviders matches dashboard LIMIT_PROVIDER_ID
     "opencode",
     "antigravity",
   ]);
+  // Web-only tail: providers visible in the dashboard but not (yet) in the
+  // macOS native popover.
+  assert.deepEqual(jsIds.slice(swiftIds.length), ["zed"]);
 });
