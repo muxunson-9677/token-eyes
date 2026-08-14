@@ -1,7 +1,3 @@
-:root.desktop-widget-document {
-  --widget-effect-halo: 140px;
-}
-
 :root.desktop-widget-document,
 :root.desktop-widget-document body,
 :root.desktop-widget-document #root {
@@ -27,17 +23,13 @@
 }
 
 .desktop-widget-root.desktop-widget-root--browser-preview {
-  width: max-content;
-  max-width: min(var(--widget-preview-width), calc(100vw - 48px));
-  height: max-content;
-}
-
-.desktop-widget-root.desktop-widget-root--browser-preview:has(.desktop-widget-card.is-expanded) {
   width: min(var(--widget-preview-width), calc(100vw - 48px));
+  height: min(var(--widget-preview-height), calc(100vh - 48px));
 }
 
 .desktop-widget-root.desktop-widget-root--browser-preview.has-celebration {
-  width: max-content;
+  width: min(calc(var(--widget-preview-width) + 84px), calc(100vw - 48px));
+  height: min(calc(var(--widget-preview-height) + 84px), calc(100vh - 48px));
 }
 
 .desktop-widget-root {
@@ -49,7 +41,7 @@
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding: 4px;
+  padding: 5px;
   color: #f8fafc;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   user-select: none;
@@ -60,13 +52,11 @@
   --widget-edge: 255, 255, 255;
   position: relative;
   box-sizing: border-box;
-  width: max-content;
-  max-width: 100%;
-  height: auto;
+  width: 100%;
+  height: 100%;
   grid-column: 1;
-  justify-self: start;
   min-width: 0;
-  min-height: 52px;
+  min-height: 62px;
   overflow: hidden;
   border: 1px solid rgba(var(--widget-edge), 0.16);
   border-radius: 19px;
@@ -80,16 +70,8 @@
   -webkit-backdrop-filter: blur(26px) saturate(145%);
 }
 
-.desktop-widget-card:not(.is-expanded) {
-  height: 52px;
-}
-
-.desktop-widget-card.is-expanded {
-  height: 100%;
-}
-
 .desktop-widget-root.has-popover .desktop-widget-card:not(.is-expanded) {
-  height: 52px;
+  height: 62px;
 }
 
 .desktop-widget-card--graphite { --widget-tint: 22, 23, 27; }
@@ -104,8 +86,8 @@
   column-gap: 4px;
   row-gap: 2px;
   box-sizing: border-box;
-  height: 52px;
-  padding: 3px 10px;
+  height: 61px;
+  padding: 4px 10px;
 }
 
 .widget-agent-control {
@@ -113,7 +95,7 @@
   display: grid;
   grid-template-columns: 37px 15px;
   align-items: stretch;
-  height: 42px;
+  height: 48px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.065);
 }
@@ -1136,32 +1118,9 @@
 /* Reference dock: the actual desktop widget keeps its native frame and data
    model, while this layer recreates the approved dark-glass chrome. */
 .desktop-widget-root {
-  width: max-content;
-  max-width: 100%;
-  grid-template-columns: max-content 16px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 22px;
   gap: 0;
-  padding: var(--widget-effect-halo, 140px);
-  overflow: visible;
-  pointer-events: none;
-}
-
-.desktop-widget-card,
-.widget-mode-rail,
-.widget-reset-celebration,
-.widget-appearance,
-.widget-menu {
-  pointer-events: auto;
-}
-
-.desktop-widget-root:has(.desktop-widget-card.is-expanded) {
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr) 16px;
-  align-items: start;
-}
-
-.desktop-widget-card.is-expanded {
-  width: 100%;
+  padding: 5px 0 5px 5px;
 }
 
 .desktop-widget-card--reference-dock {
@@ -1203,22 +1162,15 @@
 }
 
 .desktop-widget-card--reference-dock .widget-toolbar {
-  grid-template-columns: 58px max-content 58px;
-  column-gap: 14px;
-  width: max-content;
-  min-width: 336px;
-  height: 52px;
-  padding: 3px 18px;
-}
-
-.desktop-widget-card--reference-dock.is-expanded .widget-toolbar {
-  width: 100%;
   grid-template-columns: 58px minmax(0, 1fr) 58px;
+  column-gap: 7px;
+  height: 61px;
+  padding: 5px 10px;
 }
 
 .desktop-widget-card--reference-dock .widget-agent-control {
   grid-template-columns: 42px 16px;
-  height: 42px;
+  height: 49px;
   border-color: rgba(168, 221, 255, 0.52);
   border-radius: 15px;
   background:
@@ -1256,13 +1208,8 @@
 }
 
 .desktop-widget-card--reference-dock .widget-traffic-lights {
-  justify-content: flex-start;
-  width: max-content;
+  justify-content: space-around;
   gap: 0;
-}
-
-.desktop-widget-card--reference-dock .widget-traffic-light:not(:last-child) {
-  padding-right: 18px;
 }
 
 .desktop-widget-card--reference-dock .widget-traffic-light {
@@ -1335,7 +1282,7 @@
 }
 
 .desktop-widget-root.has-celebration {
-  padding: var(--widget-effect-halo, 140px);
+  padding: 42px 42px 42px 47px;
 }
 
 .desktop-widget-root.has-celebration .desktop-widget-card,
@@ -1463,34 +1410,25 @@
 
 .widget-reset-celebration__dismiss {
   position: absolute;
-  z-index: 140;
-  left: calc(100% + 8px);
-  top: 50%;
+  top: 8px;
+  right: 10px;
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   place-items: center;
-  border: 1px solid #ddd6fe;
-  border-radius: 12px;
-  background: #f5f3ff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-  color: #6d28d9;
+  border: 1px solid rgba(214, 240, 255, 0.62);
+  border-radius: 999px;
+  background: rgba(19, 42, 74, 0.86);
+  box-shadow: 0 0 18px rgba(96, 190, 255, 0.66), inset 0 1px rgba(255, 255, 255, 0.34);
+  color: #f8fdff;
   cursor: pointer;
   pointer-events: auto;
-  transform: translateY(-50%);
+  transition: transform 120ms ease, filter 120ms ease;
 }
 
-.widget-reset-celebration__dismiss:hover,
-.widget-reset-celebration__dismiss:active {
-  background: #ede9fe;
-  filter: none;
-}
-
-.widget-reset-celebration__dismiss svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-}
+.widget-reset-celebration__dismiss:hover { filter: brightness(1.18); }
+.widget-reset-celebration__dismiss:active { transform: scale(0.88); }
+.widget-reset-celebration__dismiss svg { width: 16px; height: 16px; }
 
 .desktop-widget-card--reference-dock .widget-corner-controls {
   gap: 5px;
@@ -1518,24 +1456,22 @@
 .widget-mode-rail--reference-dock {
   align-self: start;
   margin-top: 4px;
-  margin-left: -1px;
-  position: relative;
-  z-index: 5;
+  margin-left: -5px;
 }
 
 .widget-mode-rail--reference-dock .pill-nav {
-  grid-template-rows: repeat(3, 14px);
-  width: 16px;
-  height: 44px;
+  grid-template-rows: repeat(3, 19px);
+  width: 25px;
+  height: 59px;
   gap: 1px;
   padding: 0;
 }
 
 .widget-mode-rail--reference-dock .pill-nav__item {
-  width: 16px;
-  height: 14px;
+  width: 25px;
+  height: 19px;
   border-color: rgba(185, 227, 255, 0.58);
-  border-radius: 0 7px 7px 0;
+  border-radius: 0 9px 9px 0;
   box-shadow:
     0 5px 11px rgba(4, 14, 32, 0.36),
     inset 0 1px 0 rgba(242, 252, 255, 0.32),
@@ -1559,8 +1495,8 @@
 }
 
 .widget-mode-rail--reference-dock .pill-nav__label {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
   border: 1px solid rgba(255, 255, 255, 0.6);
   background: #f8fbff;
   box-shadow: 0 1px 3px rgba(5, 14, 32, 0.3);

@@ -30,7 +30,7 @@ import {
 // ResetCelebrationProvider is a JSX module with no declaration file.
 // @ts-expect-error importing named constants from an untyped JSX module
 import { DESKTOP_WIDGET_CELEBRATION_EVENT, RESET_CELEBRATION_DURATION_MS } from "../ui/celebration/ResetCelebrationProvider.jsx";
-// The widget reuses the SAME full-strength canvas overlay as the reset page.
+// The widget reuses the same canvas celebration as the reset page.
 // @ts-expect-error importing an untyped JSX component
 import { ResetCelebrationOverlay } from "../ui/celebration/ResetCelebrationOverlay.jsx";
 // PillNav is a JSX module with a stable prop contract but no declaration file.
@@ -202,17 +202,17 @@ function ModelsSummary({ model }: { model: DesktopWidgetViewModel }) {
 function WidgetResetCelebration({
   resetId,
   preferredEffectId,
+  onDismiss,
 }: {
   resetId: string;
   preferredEffectId?: ResetCelebrationEffectId;
+  onDismiss: () => void;
 }) {
   const [effectId, setEffectId] = useState<ResetCelebrationEffectId>(
     preferredEffectId ?? readResetCelebrationEffect,
   );
-  // The page overlay plays one 6s show then fades out; the widget keeps the
-  // celebration up until the user acknowledges it, so replay the full show
-  // on a loop by re-keying the overlay each cycle.
   const [cycle, setCycle] = useState(0);
+
   useEffect(() => {
     const timer = window.setInterval(
       () => setCycle((value) => value + 1),
@@ -241,15 +241,11 @@ function WidgetResetCelebration({
     };
   }, [preferredEffectId, resetId]);
 
-  // V4 item-9b: render the exact same canvas celebration the reset-history
-  // page uses (meteor/firework scenes at full particle density) instead of
-  // the old three-span CSS sketch that was barely visible on the widget.
   return (
     <div
       className="widget-reset-celebration"
       data-testid="widget-reset-celebration"
       data-effect-id={effectId}
-      data-renderer="canvas"
     >
       <ResetCelebrationOverlay
         key={`${resetId}:${effectId}:${cycle}`}
@@ -259,6 +255,14 @@ function WidgetResetCelebration({
         showNotice={false}
         fitToHost
       />
+      <button
+        type="button"
+        aria-label={copy("widget.reset.acknowledge")}
+        onClick={onDismiss}
+        className="widget-reset-celebration__dismiss"
+      >
+        <Sparkles aria-hidden />
+      </button>
     </div>
   );
 }
@@ -683,12 +687,12 @@ export function DesktopWidgetPage() {
   }, [activeCelebrationId, setCelebrationOpen]);
 
   const dismissCelebration = () => {
+    void setCelebrationOpen(false);
     if (activePendingResetId) {
       setDismissedResetId(activePendingResetId);
       void acknowledgePendingReset();
     }
     setPreviewCelebration(null);
-    void setCelebrationOpen(false);
   };
 
   return (
@@ -700,6 +704,7 @@ export function DesktopWidgetPage() {
         <WidgetResetCelebration
           resetId={activeCelebrationId}
           preferredEffectId={activePendingResetId ? undefined : previewCelebration?.effectId}
+          onDismiss={dismissCelebration}
         />
       ) : null}
       <article
@@ -788,17 +793,6 @@ export function DesktopWidgetPage() {
           onValueChange={setMode}
           ariaLabel={copy("widget.mode_menu")}
         />
-        {activeCelebrationId ? (
-          <button
-            type="button"
-            aria-label={copy("widget.reset.acknowledge")}
-            title={copy("reset_history.preview_celebration_aria")}
-            onClick={dismissCelebration}
-            className="widget-reset-celebration__dismiss"
-          >
-            <Sparkles aria-hidden />
-          </button>
-        ) : null}
       </nav>
 
       {openMenu === "agent" ? (

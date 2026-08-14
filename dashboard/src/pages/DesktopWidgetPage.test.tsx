@@ -224,7 +224,7 @@ describe("DesktopWidgetPage", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("keeps the external mode rail beside the card in both widget states", () => {
+  it("keeps the 0.54.40 external mode rail beside the card in both widget states", () => {
     const { rerender } = render(<DesktopWidgetPage />);
     const card = screen.getByTestId("desktop-widget-card");
     const rail = screen.getByTestId("widget-mode-rail");
@@ -236,10 +236,9 @@ describe("DesktopWidgetPage", () => {
     rerender(<DesktopWidgetPage />);
     expect(screen.getByTestId("widget-mode-rail").parentElement)
       .toBe(screen.getByTestId("desktop-widget-card").parentElement);
-    expect(widgetStyles).toContain(".widget-mode-rail--reference-dock {\n  align-self: start;\n  margin-top: 4px;");
-    expect(widgetStyles).toContain("grid-template-columns: 58px max-content 58px");
-    expect(widgetStyles).toContain("margin-left: -1px");
-    expect(widgetStyles).toContain("width: 16px;\n  height: 14px;");
+    expect(widgetStyles).toContain("grid-template-columns: minmax(0, 1fr) 22px");
+    expect(widgetStyles).toContain("min-height: 62px");
+    expect(widgetStyles).toContain("height: 61px");
   });
 
   it("uses the reference dock chrome while keeping the real model totals available", () => {
@@ -582,7 +581,7 @@ describe("DesktopWidgetPage", () => {
       expect(readFileSync("src/pages/DesktopWidgetPage.tsx", "utf8")).not.toContain("surroundMeteors");
       expect(screen.getByRole("button", { name: "copy:widget.reset.acknowledge" }))
         .toHaveClass("widget-reset-celebration__dismiss");
-      expect(widgetStyles).toContain(".widget-reset-celebration__dismiss svg {\n  display: block;");
+      expect(widgetStyles).toContain(".widget-reset-celebration__dismiss svg { width: 16px; height: 16px; }");
       expect(widget.acknowledgePendingReset).not.toHaveBeenCalled();
 
       await act(async () => {
