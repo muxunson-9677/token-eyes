@@ -8243,3 +8243,417 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 .tt-reference-route-leaderboard .tt-leaderboard-entry-distribution {
   margin-top: 8px;
 }
+
+/* V4: curated plan market, matched to the compact/expanded market reference. */
+.tt-reference-route-spend-plans {
+  background: #fff;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-shell {
+  width: 100%;
+  padding: 22px 40px 40px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 56px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-header h1 {
+  margin: 0;
+  color: #121826;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-header p {
+  margin: 10px 0 0;
+  color: #667085;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-controls,
+.tt-reference-route-spend-plans .tt-plan-market-updated,
+.tt-reference-route-spend-plans .tt-plan-market-select-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 14px 20px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-updated {
+  gap: 9px;
+  color: #667085;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-updated svg {
+  width: 19px;
+  height: 19px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-select-wrap {
+  position: relative;
+  height: 48px;
+  min-width: 158px;
+  gap: 10px;
+  padding: 0 13px;
+  border: 1px solid #dfe3ea;
+  border-radius: 9px;
+  color: #4b5565;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.03);
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-select-wrap > svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-select-wrap select {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  appearance: auto;
+  color: #4b5565;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-select-wrap:focus-within {
+  border-color: #7ca7ff;
+  box-shadow: 0 0 0 3px rgb(54 128 255 / 0.15);
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 22px;
+  margin-bottom: 30px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat {
+  display: flex;
+  align-items: center;
+  min-height: 154px;
+  gap: 22px;
+  padding: 25px;
+  border: 1px solid #e5e8ee;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 5px rgb(16 24 40 / 0.02);
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat > span:last-child {
+  display: grid;
+  gap: 4px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon {
+  display: grid;
+  width: 76px;
+  height: 76px;
+  flex: 0 0 76px;
+  place-items: center;
+  border-radius: 15px;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 8px 16px rgb(16 24 40 / 0.12);
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon svg {
+  width: 34px;
+  height: 34px;
+  stroke-width: 2.25;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon--blue { background: #2675f6; }
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon--green { background: #19b849; }
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon--violet { background: #7557da; }
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon--orange { background: #ff944c; }
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-label,
+.tt-reference-route-spend-plans .tt-plan-market-stat small {
+  color: #788295;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat strong {
+  color: #121826;
+  font-size: 29px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-list {
+  display: grid;
+  gap: 14px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider {
+  overflow: hidden;
+  border: 1px solid #e3e7ed;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 7px rgb(16 24 40 / 0.035);
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-summary {
+  display: grid;
+  width: 100%;
+  min-height: 118px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  padding: 22px 28px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-summary:hover {
+  background: #fbfcfe;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-summary:focus-visible {
+  outline: 3px solid rgb(54 128 255 / 0.32);
+  outline-offset: -3px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 22px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-icon {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  place-items: center;
+  border-radius: 13px;
+  color: #111827;
+  background: #f8fafc;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-icon img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-name {
+  margin: 0;
+  color: #151b2a;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  line-height: 1.25;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-official {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border: 1px solid #d7e8ff;
+  border-radius: 7px;
+  color: #3785e8;
+  background: #f2f8ff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-official svg {
+  width: 13px;
+  height: 13px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-verified {
+  color: #8a94a5;
+  font-size: 13px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-description {
+  display: block;
+  max-width: 720px;
+  margin-top: 7px;
+  overflow: hidden;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-metadata {
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  color: #202939;
+  white-space: nowrap;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-plan-count,
+.tt-reference-route-spend-plans .tt-plan-market-starting-price {
+  min-width: 112px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-starting-price {
+  min-width: 132px;
+  padding-left: 34px;
+  border-left: 1px solid #e2e6ec;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-starting-price small {
+  color: #778194;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-metadata > svg {
+  width: 24px;
+  height: 24px;
+  color: #465267;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-provider-details {
+  display: grid;
+  gap: 18px;
+  padding: 0 32px 20px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-announcement {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 13px;
+  border: 1px solid #dfd5ff;
+  border-radius: 8px;
+  color: #7053b3;
+  background: #faf8ff;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-announcement svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-announcement--aliyun-bailian { border-color: #d5e7ff; color: #377ecb; background: #f5f9ff; }
+.tt-reference-route-spend-plans .tt-plan-market-announcement--claude { border-color: #ffe7c3; color: #b77932; background: #fffaf2; }
+
+.tt-reference-route-spend-plans .tt-plan-market-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-plan-grid > div {
+  min-height: 178px;
+  border-color: #e0e5ec;
+  border-radius: 13px;
+  padding: 18px 20px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.025);
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-plan-grid > div > div:first-child > span:first-child {
+  color: #172033;
+  font-size: 18px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-plan-grid ul {
+  margin-top: 2px;
+  color: #5d687a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px 16px;
+  color: #7c8797;
+  font-size: 13px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-sources a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px;
+  border: 1px solid #e3e7ed;
+  border-radius: 7px;
+  color: #657185;
+  background: #fff;
+  text-decoration: none;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-sources a:hover {
+  border-color: #bed8ff;
+  color: #2b79d8;
+  background: #f6faff;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-sources svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 1180px) {
+  .tt-reference-route-spend-plans .tt-plan-market-header { align-items: flex-start; flex-direction: column; }
+  .tt-reference-route-spend-plans .tt-plan-market-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-metadata { gap: 20px; }
+  .tt-reference-route-spend-plans .tt-plan-market-plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .tt-reference-route-spend-plans .tt-plan-market-shell { padding: 22px 16px 28px; }
+  .tt-reference-route-spend-plans .tt-plan-market-header { align-items: flex-start; flex-direction: column; margin-bottom: 26px; }
+  .tt-reference-route-spend-plans .tt-plan-market-header h1 { font-size: 29px; }
+  .tt-reference-route-spend-plans .tt-plan-market-controls { justify-content: flex-start; }
+  .tt-reference-route-spend-plans .tt-plan-market-select-wrap { min-width: 142px; }
+  .tt-reference-route-spend-plans .tt-plan-market-overview { grid-template-columns: 1fr; gap: 12px; }
+  .tt-reference-route-spend-plans .tt-plan-market-stat { min-height: 104px; padding: 17px; }
+  .tt-reference-route-spend-plans .tt-plan-market-stat-icon { width: 58px; height: 58px; flex-basis: 58px; border-radius: 12px; }
+  .tt-reference-route-spend-plans .tt-plan-market-stat-icon svg { width: 27px; height: 27px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-summary { grid-template-columns: 1fr auto; padding: 16px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-identity { gap: 12px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-icon { width: 48px; height: 48px; flex-basis: 48px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-icon img { width: 31px; height: 31px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-name { font-size: 16px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-description { max-width: 220px; font-size: 12px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-metadata { gap: 12px; }
+  .tt-reference-route-spend-plans .tt-plan-market-plan-count { display: none; }
+  .tt-reference-route-spend-plans .tt-plan-market-starting-price { min-width: 0; padding-left: 0; border-left: 0; font-size: 16px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-details { padding: 0 16px 16px; }
+  .tt-reference-route-spend-plans .tt-plan-market-plan-grid { grid-template-columns: 1fr; gap: 12px; }
+}

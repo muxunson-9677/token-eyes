@@ -347,7 +347,7 @@ export default function App() {
       normalizedPath === "/" ||
       isResetHistoryPath ||
       isSettingsSubPath ||
-      isSpendSubPath ||
+      (isSpendSubPath && !isSpendPlansPath) ||
       isSettingsDataPath ||
       isWidgetsPath ||
       (isLocalMode && isPublicLeaderboardPath));

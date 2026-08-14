@@ -1994,8 +1994,28 @@ spend.cost.roi.below_one,dashboard,SpendPage,CostAccumulation,roi_below_one,"本
 spend.cost.roi.empty,dashboard,SpendPage,CostAccumulation,roi_empty,"添加订阅记录后，这里会显示订阅回本倍数（API 等价价值 ÷ 订阅支出）。",,active
 spend.cost.roi.formula,dashboard,SpendPage,CostAccumulation,roi_formula,"本月 API 等价价值 ÷ 本月订阅支出（USD 口径，汇率与定价引擎一致）",,active
 nav.spend.plans,ui,Sidebar,Sidebar,nav_spend_plans,"套餐行情",,active
-plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接。",,active
-plan_market.disclaimer,dashboard,PlanMarketPage,PlanMarketPage,disclaimer,"以下为人工核实的套餐行情快照，价格与额度可能随时调整，请以官方页面为准。",,active
+plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接，助您明智选择。",,active
+plan_market.filter.all,dashboard,PlanMarketPage,PlanMarketPage,filter_all,"全部厂商",,active
+plan_market.filter.label,dashboard,PlanMarketPage,PlanMarketPage,filter_label,"筛选厂商",,active
+plan_market.sort.default,dashboard,PlanMarketPage,PlanMarketPage,sort_default,"默认排序",,active
+plan_market.sort.plan_count_asc,dashboard,PlanMarketPage,PlanMarketPage,sort_plan_count_asc,"套餐数从少到多",,active
+plan_market.sort.label,dashboard,PlanMarketPage,PlanMarketPage,sort_label,"排序方式",,active
+plan_market.stat.providers,dashboard,PlanMarketPage,PlanMarketPage,stat_providers,"已收录厂商",,active
+plan_market.stat.providers_note,dashboard,PlanMarketPage,PlanMarketPage,stat_providers_note,"持续更新中",,active
+plan_market.stat.recent,dashboard,PlanMarketPage,PlanMarketPage,stat_recent,"最近核实厂商",,active
+plan_market.stat.recent_note,dashboard,PlanMarketPage,PlanMarketPage,stat_recent_note,"核实于 {{date}}",,active
+plan_market.stat.plans,dashboard,PlanMarketPage,PlanMarketPage,stat_plans,"当前套餐和套餐",,active
+plan_market.stat.plans_note,dashboard,PlanMarketPage,PlanMarketPage,stat_plans_note,"已核实套餐快照",,active
+plan_market.stat.coverage,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage,"官方来源覆盖",,active
+plan_market.stat.coverage_note,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage_note,"可信来源链接",,active
+plan_market.stat.providers_value,dashboard,PlanMarketPage,PlanMarketPage,stat_providers_value,"{{count}} 家",,active
+plan_market.stat.plans_value,dashboard,PlanMarketPage,PlanMarketPage,stat_plans_value,"{{count}} 个",,active
+plan_market.stat.coverage_value,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage_value,"100%",,active
+plan_market.official,dashboard,PlanMarketPage,PlanMarketPage,official,"官方",,active
+plan_market.plan_count,dashboard,PlanMarketPage,PlanMarketPage,plan_count,"{{count}} 个套餐",,active
+plan_market.starting_from,dashboard,PlanMarketPage,PlanMarketPage,starting_from,"起",,active
+plan_market.summary,dashboard,PlanMarketPage,PlanMarketPage,summary,"覆盖 {{plans}} 等 {{count}} 个套餐，{{detail}}",,active
+plan_market.quota_separator,dashboard,PlanMarketPage,PlanMarketPage,quota_separator," · ",,active
 plan_market.last_verified_label,dashboard,PlanMarketPage,PlanMarketPage,last_verified_label,"核实于",,active
 plan_market.sources_label,dashboard,PlanMarketPage,PlanMarketPage,sources_label,"来源",,active
 plan_market.status.discontinued,dashboard,PlanMarketPage,PlanMarketPage,status_discontinued,"已停售",,active
