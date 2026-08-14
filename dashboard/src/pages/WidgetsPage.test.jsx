@@ -329,6 +329,66 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(toggle).toBeEnabled();
   });
 
+  it("migrates five legacy quota-window selections into two configured widget plans", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    window.__TAURI__ = {
+      core: {
+        invoke: vi.fn(async (command) => {
+          if (command === "local_server_status") {
+            return { running: true, url: "http://127.0.0.1:7681" };
+          }
+          if (command === "get_desktop_widget_prefs") {
+            return {
+              visible: true,
+              selectedLimitIds: [
+                "codex:main:5h",
+                "cursor:pro:7d",
+                "cursor:pro:monthly",
+                "cursor:pro:auto_composer",
+                "cursor:pro:api",
+              ],
+            };
+          }
+          return undefined;
+        }),
+      },
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const body = String(url).includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : {
+          projectStatus: { recentProjects: [] },
+          limits: [
+            { id: "codex:main", provider: "Codex", accountLabel: "Pro 20x", window: "5h", usedPercent: 2 },
+            { id: "cursor:pro", provider: "Cursor", accountLabel: "Pro", window: "7d", usedPercent: 100 },
+          ],
+        };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+
+    await screen.findByTestId("widget-manager");
+    await waitFor(() => {
+      expect(document.querySelectorAll(".tt-widget-limit-row")).toHaveLength(2);
+      expect(document.querySelector(".tt-widget-summary article[data-tone='violet']"))
+        .toHaveTextContent("2 / 2");
+    });
+    expect(window.__TAURI__.core.invoke).toHaveBeenCalledWith(
+      "set_desktop_widget_prefs",
+      expect.objectContaining({
+        prefs: expect.objectContaining({ selectedLimitIds: ["codex:main", "cursor:pro"] }),
+      }),
+    );
+  });
+
   it("keeps real project and plan settings available in the final manager", async () => {
     const user = userEvent.setup();
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(

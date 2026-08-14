@@ -630,7 +630,9 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(within(layout).getByText("Token 服务列表")).toBeInTheDocument();
     expect(await within(layout).findAllByTestId("token-service-row")).toHaveLength(5);
     expect(layout).toHaveClass("lg:items-stretch");
-    expect(layout).toHaveClass("lg:grid-cols-[minmax(0,1fr)_17rem]");
+    expect(layout).toHaveClass("lg:grid-cols-4");
+    expect((await within(layout).findByTestId("usage-trend-plot")).parentElement).toHaveClass("lg:col-span-3");
+    expect(within(layout).getByTestId("token-service-list")).toHaveClass("lg:col-span-1");
     expect(within(layout).getByTestId("token-service-list")).toHaveClass("h-full");
     expect(await within(layout).findByTestId("usage-trend-plot")).toHaveClass("flex-1");
     expect(getTokenPlans).toHaveBeenCalledTimes(1);

@@ -2230,6 +2230,7 @@ export interface CodexQuotaSnapshot {
   used_quota: number;
   remaining_quota: number;
   provider_reported_at: string;
+  subscription_expires_at?: string;
   quota_windows?: Array<{
     kind: string;
     unit: string;
@@ -2333,6 +2334,7 @@ export interface CursorQuotaSnapshot {
   auto_composer_percent?: number | null;
   api_usage_percent?: number | null;
   reset_at?: string | null;
+  subscription_expires_at?: string | null;
   fetched_at?: string;
   total_quota: number;
   used_quota: number;

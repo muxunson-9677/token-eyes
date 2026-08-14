@@ -99,11 +99,7 @@ describe("useLimitsDisplayPrefs", () => {
   });
 
   it("matches the provider list used for visibility/order keys", () => {
-    // V4 item-3a: the list now covers every implemented agent channel so the
-    // settings 限制显示 panel can toggle all of them. The historical first
-    // segment keeps its order (Swift normalizedOrder drops ids it doesn't
-    // know about; normalizeOrder here re-appends them), see
-    // limits-providers.js.
+    // The limits panel exposes only the providers retained for display.
     expect(LIMIT_PROVIDER_IDS).toEqual([
       "claude",
       "codex",
@@ -117,21 +113,11 @@ describe("useLimitsDisplayPrefs", () => {
       "antigravity",
       "zed",
       "workbuddy",
-      "every-code",
-      "kilo-cli",
-      "kilocode",
-      "roocode",
-      "kiro",
-      "kiro-cli",
       "kimi",
       "kimi-code",
-      "omp",
       "pi",
-      "craft",
       "grok",
       "copilot",
-      "goose",
-      "droid",
     ]);
   });
 

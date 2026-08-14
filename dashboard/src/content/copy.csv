@@ -1940,6 +1940,13 @@ spend.usage.token_services.window.auto_composer,dashboard,SpendPage,TokenService
 spend.usage.token_services.window.api,dashboard,SpendPage,TokenServiceList,token_services_window_api,"API Usage",,active
 spend.usage.token_services.reset_at,dashboard,SpendPage,TokenServiceList,token_services_reset_at,"Resets {{value}}",,active
 spend.usage.token_services.expires_at,dashboard,SpendPage,TokenServiceList,token_services_expires_at,"Expires {{value}}",,active
+spend.usage.token_services.reset_countdown,dashboard,SpendPage,TokenServiceList,token_services_reset_countdown,"{{remaining}} left · resets {{value}}",,active
+spend.usage.token_services.validity,dashboard,SpendPage,TokenServiceList,token_services_validity,"Validity: {{remaining}} · {{value}}",,active
+spend.usage.token_services.validity_unknown,dashboard,SpendPage,TokenServiceList,token_services_validity_unknown,"Validity not configured",,active
+spend.usage.token_services.duration.days_hours,dashboard,SpendPage,TokenServiceList,token_services_duration_days_hours,"{{days}}d {{hours}}h",,active
+spend.usage.token_services.duration.hours_minutes,dashboard,SpendPage,TokenServiceList,token_services_duration_hours_minutes,"{{hours}}h {{minutes}}m",,active
+spend.usage.token_services.duration.minutes,dashboard,SpendPage,TokenServiceList,token_services_duration_minutes,"{{minutes}}m",,active
+spend.usage.token_services.duration.elapsed,dashboard,SpendPage,TokenServiceList,token_services_duration_elapsed,"due now",,active
 app.boot.loading,ui,App,AppBootSplash,app_boot_loading,"正在启动本地仪表盘…",,active
 app.boot.loading_aria,ui,App,AppBootSplash,app_boot_loading_aria,"Token Eyes 正在启动",,active
 settings.cost.loading,ui,SettingsPage,SettingsCostFallback,settings_cost_loading,"正在加载成本设置…",,active
@@ -2329,7 +2336,7 @@ limits.accounts.refreshing_short,ui,LimitsPage,LimitsHeader,refreshing_short,"Re
 official_reset_celebration.title,ui,ResetCelebrationOverlay,Notice,title,"Official extra reset",,active
 official_reset_celebration.summary,ui,ResetCelebrationOverlay,Notice,summary,"Your Codex usage received an official extra reset.",,active
 widgets.windows.limits.title,ui,WidgetsPage,WindowsWidgetProjectSettings,title,"Widget usage plans",,active
-widgets.windows.limits.hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"Choose plans to show and drag to reorder them. Collapsed mode shows only the first plan.",,active
+widgets.windows.limits.hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"Choose plans to show and drag to reorder them.",,active
 widgets.windows.limits.empty,ui,WidgetsPage,WindowsWidgetProjectSettings,empty,"No usage plans detected",,active
 widgets.windows.limits.unavailable,ui,WidgetsPage,WindowsWidgetProjectSettings,value,"--",,active
 native.window.status.label,ui,AppLayout,NativeWindowBar,status_label,"System status",,active

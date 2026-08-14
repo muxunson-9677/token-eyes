@@ -346,6 +346,7 @@ pub struct CursorQuotaDto {
     pub auto_composer_percent: Option<f64>,
     pub api_usage_percent: Option<f64>,
     pub reset_at: Option<String>,
+    pub subscription_expires_at: Option<String>,
     pub fetched_at: String,
     pub total_quota: f64,
     pub used_quota: f64,
@@ -771,6 +772,10 @@ pub fn map_quota_fetch_result_to_status(
                     .first()
                     .map(|window| window.resets_at.clone())
                     .filter(|value| !value.is_empty()),
+                subscription_expires_at: quota_windows
+                    .first()
+                    .map(|window| window.resets_at.clone())
+                    .filter(|value| !value.is_empty()),
                 fetched_at: result.provider_reported_at.clone().unwrap_or_default(),
                 total_quota,
                 used_quota,
@@ -936,6 +941,7 @@ fn quota_dto_from_snapshot(snapshot: CursorQuotaSnapshot) -> CursorQuotaDto {
         auto_composer_percent: snapshot.auto_composer_percent,
         api_usage_percent: snapshot.api_usage_percent,
         reset_at: snapshot.reset_at.clone(),
+        subscription_expires_at: snapshot.reset_at.clone(),
         fetched_at: snapshot.fetched_at.clone(),
         total_quota: PERCENT_SCALE,
         used_quota: used,
@@ -1737,8 +1743,10 @@ mod tests {
     #[test]
     fn forced_cursor_retry_exchanges_an_unexpired_access_token() {
         let now = 1_800_000_000_i64;
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(format!(r#"{{"sub":"auth0|user_example","exp":{}}}"#, now + 3600));
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
+            r#"{{"sub":"auth0|user_example","exp":{}}}"#,
+            now + 3600
+        ));
         let token = format!("header.{payload}.signature");
 
         assert!(!should_exchange_refresh_token_at(&token, false, true, now));
@@ -2193,6 +2201,25 @@ mod tests {
         assert!(
             err.contains("missing") || err.contains("NO_QUOTA"),
             "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn exposes_billing_cycle_end_as_subscription_validity() {
+        let payload = serde_json::json!({
+            "membershipType": "pro",
+            "billingCycleEnd": "2026-08-22T04:17:12Z",
+            "individualUsage": {
+                "plan": { "totalPercentUsed": 60 }
+            }
+        });
+        let snapshot = parse_cursor_quota_snapshot(&payload, "auth0|user_validity")
+            .expect("snapshot");
+        let quota = quota_dto_from_snapshot(snapshot);
+
+        assert_eq!(
+            quota.subscription_expires_at.as_deref(),
+            Some("2026-08-22T04:17:12Z")
         );
     }
 

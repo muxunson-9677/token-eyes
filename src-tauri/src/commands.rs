@@ -250,8 +250,8 @@ fn find_running_token_tracker_api() -> Option<u16> {
         .find(|port| is_token_tracker_api_available(*port))
 }
 
-fn should_probe_existing_server(dev_runtime_allowed: bool) -> bool {
-    dev_runtime_allowed
+fn should_probe_existing_server() -> bool {
+    false
 }
 
 fn choose_bindable_port() -> Option<u16> {
@@ -564,7 +564,7 @@ pub fn ensure_local_server_started(
 
     // 2. Probe for any already-running Token Tracker API on the local machine
     //    (e.g. a `node serve` started by another invocation).
-    if should_probe_existing_server(is_dev_runtime_allowed()) {
+    if should_probe_existing_server() {
         if let Some(port) = find_running_token_tracker_api() {
             return set_known_url(state, local_server_url(port));
         }
@@ -792,9 +792,8 @@ mod tests {
     }
 
     #[test]
-    fn release_runtime_never_reuses_an_unowned_local_server() {
-        assert!(!should_probe_existing_server(false));
-        assert!(should_probe_existing_server(true));
+    fn desktop_runtime_never_reuses_an_unowned_local_server() {
+        assert!(!should_probe_existing_server());
     }
 
     #[test]
@@ -1083,7 +1082,11 @@ mod tests {
     #[test]
     fn resolve_bundled_runtime_at_returns_missing_manifest_when_manifest_absent() {
         let root = make_complete_runtime_root();
-        std::fs::remove_file(root.join(bundled_runtime_dir_name()).join("runtime-manifest.json")).unwrap();
+        std::fs::remove_file(
+            root.join(bundled_runtime_dir_name())
+                .join("runtime-manifest.json"),
+        )
+        .unwrap();
         let err = resolve_bundled_runtime_at(&root).expect_err("missing manifest should fail");
         std::fs::remove_dir_all(&root).ok();
         assert!(

@@ -327,92 +327,47 @@ function flattenTokenPlanRecords(records) {
     const notes = safeNote(record.notes);
     const planId = safeId(record.id, "plan");
     const windows = Array.isArray(record.quota_windows) ? record.quota_windows : [];
-    for (const window of windows) {
-      const windowName = planWindowName(window?.kind);
-      const windowId = windowName === "other"
-        ? safeId(window?.kind, "window")
-        : ["5h", "7d", "monthly"].includes(windowName)
-          ? windowName
-          : String(window?.kind || "other").trim().toLowerCase();
+    const primaryWindow = windows
+      .map((window) => ({ window, name: planWindowName(window?.kind) }))
+      .sort((left, right) => (
+        (WINDOW_ORDER[left.name] ?? 99) - (WINDOW_ORDER[right.name] ?? 99)
+      ))[0];
+    if (primaryWindow) {
       output.push({
-        id: safeId(`${agent}:${planId}:${windowId}`, "limit"),
+        id: safeId(`${agent}:${planId}`, "limit"),
         agent,
         provider,
         accountLabel,
-        window: windowName,
-        usedPercent: quotaWindowPercent(window),
-        resetAt: safeIso(window?.resets_at || window?.reset_at),
+        window: primaryWindow.name,
+        usedPercent: quotaWindowPercent(primaryWindow.window),
+        resetAt: safeIso(primaryWindow.window?.resets_at || primaryWindow.window?.reset_at),
         notes,
         error: null,
       });
-    }
-    if (windows.length === 0) {
+    } else {
       const total = Number(record.total_quota);
       const used = Number(record.used_quota);
-      if (Number.isFinite(total) && total > 0 && Number.isFinite(used) && used >= 0) {
-        output.push({
-          id: safeId(`${agent}:${planId}:monthly`, "limit"),
-          agent,
-          provider,
-          accountLabel,
-          window: "monthly",
-          usedPercent: usedPercent((used / total) * 100),
-          resetAt: safeIso(record.expires_at),
-          notes,
-          error: null,
-        });
-      }
+      output.push({
+        id: safeId(`${agent}:${planId}`, "limit"),
+        agent,
+        provider,
+        accountLabel,
+        window: "monthly",
+        usedPercent: Number.isFinite(total) && total > 0 && Number.isFinite(used) && used >= 0
+          ? usedPercent((used / total) * 100)
+          : null,
+        resetAt: safeIso(record.expires_at),
+        notes,
+        error: null,
+      });
     }
   }
   return output;
 }
 
-function flattenUsageLimitsPayload(payload, tokenPlans = []) {
+function flattenUsageLimitsPayload(_payload, tokenPlans = []) {
   const planLimits = flattenTokenPlanRecords(tokenPlans);
-  const planAgents = new Set(planLimits.map((item) => item.agent));
-  const output = [];
-  for (const agent of ["claude", "codex", "cursor", "hermes"]) {
-    if (planAgents.has(agent)) continue;
-    const provider = providerName(agent);
-    const data = payload?.[agent];
-    if (!data || data.configured !== true) continue;
-    const windows = [
-      ["primary_window", data.primary_window],
-      ["secondary_window", data.secondary_window],
-    ];
-    for (const [field, window] of windows) {
-      if (!window || typeof window !== "object") continue;
-      const seconds = Number(window.limit_window_seconds);
-      const windowName = seconds === 18_000
-        ? "5h"
-        : seconds === 604_800 ? "7d" : field === "primary_window" ? "5h" : "7d";
-      output.push({
-        id: `${agent}:default:${windowName}`,
-        agent,
-        provider,
-        accountLabel: safeLabel(data.account_label || data.plan_label, provider),
-        window: windowName,
-        usedPercent: usedPercent(window.used_percent),
-        resetAt: limitResetIso(window.reset_at),
-        notes: null,
-        error: null,
-      });
-    }
-    if (output.every((item) => item.agent !== agent) && typeof data.error === "string") {
-      output.push({
-        id: `${agent}:default:error`,
-        agent,
-        provider,
-        accountLabel: safeLabel(data.account_label || data.plan_label, provider),
-        window: "other",
-        usedPercent: null,
-        resetAt: null,
-        notes: null,
-        error: safeLabel(data.error, "Refresh failed").slice(0, 120),
-      });
-    }
-  }
-  return [...planLimits, ...output];
+  return planLimits;
 }
 
 function buildWidgetViewModel({

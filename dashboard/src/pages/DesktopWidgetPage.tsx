@@ -110,9 +110,13 @@ export function orderedWidgetLimits(
 ) {
   if (selectedIds == null) return limits;
   const byId = new Map(limits.map((limit) => [limit.id, limit]));
-  return selectedIds
-    .map((id) => byId.get(id))
-    .filter((limit): limit is DesktopWidgetLimit => Boolean(limit));
+  const selected = new Set<string>();
+  return selectedIds.flatMap((id) => {
+    const limit = byId.get(id) || limits.find((candidate) => id.startsWith(`${candidate.id}:`));
+    if (!limit || selected.has(limit.id)) return [];
+    selected.add(limit.id);
+    return [limit];
+  });
 }
 
 export function activeWidgetModels(models: DesktopWidgetModelUsage[]) {
@@ -162,7 +166,7 @@ function LimitProgress({ value }: { value: number | null }) {
 }
 
 function LimitsSummary({ model }: { model: DesktopWidgetViewModel }) {
-  const limits = model.limits.slice(0, 1);
+  const limits = model.limits;
   if (!limits.length) {
     return React.createElement("span", { className: "widget-empty" }, copy("widget.empty"));
   }
@@ -307,6 +311,13 @@ function filteredProjectStatus(
       } : null;
     }).filter(Boolean) as DesktopWidgetViewModel["projectStatus"]["projects"];
   }
+  projects = projects.filter((project) => (
+    project.sessions.length > 0
+    || project.red > 0
+    || project.yellow > 0
+    || project.green > 0
+    || project.unknown > 0
+  ));
   return projects.reduce((result, project) => ({
     red: result.red + project.red,
     yellow: result.yellow + project.yellow,

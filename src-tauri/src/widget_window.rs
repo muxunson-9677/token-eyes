@@ -458,7 +458,10 @@ pub fn restore_if_visible(app: &AppHandle) {
     let prefs = load(app);
     if let Ok(window) = widget_window(app, &prefs) {
         if prefs.visible {
+            apply_geometry(&window, &prefs);
+            let _ = window.unminimize();
             let _ = window.show();
+            let _ = window.set_focus();
         }
     }
 }
@@ -483,7 +486,9 @@ pub fn show_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
     let window = widget_window(&app, &prefs)?;
     let _ = window.set_always_on_top(prefs.always_on_top);
     apply_geometry(&window, &prefs);
+    let _ = window.unminimize();
     window.show().map_err(|error| error.to_string())?;
+    let _ = window.set_focus();
     prefs.visible = true;
     save(&app, &prefs)?;
     Ok(prefs)

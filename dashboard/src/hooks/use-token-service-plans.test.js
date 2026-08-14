@@ -57,6 +57,31 @@ describe("useTokenServicePlans", () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it("adds the bound official session name to a saved Codex plan", async () => {
+    getConsoleSessions.mockResolvedValue({
+      sessions: [{
+        id: "console-codex-local",
+        session_ref: "token-plan/codex/session/local",
+        display_name: "muxunson@gmail.com",
+      }],
+    });
+    getTokenPlans.mockResolvedValue({
+      records: [{
+        id: "codex-local",
+        provider_id: "codex",
+        detection_method: "official_account",
+        detection_config: {
+          official_account: { account_binding_id: "console-codex-local" },
+        },
+      }],
+    });
+
+    const { result } = renderHook(() => useTokenServicePlans());
+
+    await waitFor(() => expect(result.current.plans[0]?.detection_config?.official_account?.display_name)
+      .toBe("muxunson@gmail.com"));
+  });
+
   it("reloads saved plans immediately after the settings page changes them", async () => {
     getConsoleSessions.mockResolvedValue({ sessions: [] });
     getTokenPlans
@@ -75,6 +100,61 @@ describe("useTokenServicePlans", () => {
 });
 
 describe("refreshConnectedCodexPlans", () => {
+  it("persists both official weekly windows and the subscription expiry", async () => {
+    syncCodexConsoleQuota.mockResolvedValue({
+      state_code: "connected",
+      session_ref: "token-plan/codex/session/direct",
+      quota: {
+        total_quota: 100,
+        used_quota: 4,
+        remaining_quota: 96,
+        subscription_expires_at: "2026-08-30T14:24:24+00:00",
+        quota_windows: [
+          { kind: "rolling_weekly", total: 100, used: 4, remaining: 96, percentage: 4, resets_at: "1787196800" },
+          { kind: "gpt_5_3_codex_spark_weekly", total: 100, used: 56, remaining: 44, percentage: 56, resets_at: "1787701607" },
+        ],
+      },
+    });
+    saveTokenPlan.mockResolvedValue({ records: [] });
+
+    await refreshConnectedCodexPlans([{
+      id: "direct-plan",
+      provider_id: "codex",
+      detection_method: "official_account",
+      detection_config: { official_account: { session_ref: "token-plan/codex/session/direct" } },
+    }]);
+
+    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+      expires_at: "2026-08-30T14:24:24+00:00",
+      quota_windows: [
+        expect.objectContaining({ kind: "rolling_weekly", resets_at: "1787196800" }),
+        expect.objectContaining({ kind: "gpt_5_3_codex_spark_weekly", resets_at: "1787701607" }),
+      ],
+    }), { notify: false });
+  });
+
+  it("refreshes an official Codex plan that is bound directly by session_ref", async () => {
+    syncCodexConsoleQuota.mockResolvedValue({
+      state_code: "connected",
+      session_ref: "token-plan/codex/session/direct",
+      quota: { total_quota: 100, used_quota: 3, remaining_quota: 97, quota_windows: [] },
+    });
+    saveTokenPlan.mockResolvedValue({ records: [] });
+
+    await refreshConnectedCodexPlans([{
+      id: "direct-plan",
+      provider_id: "codex",
+      detection_method: "official_account",
+      detection_config: { official_account: { session_ref: "token-plan/codex/session/direct" } },
+    }]);
+
+    expect(syncCodexConsoleQuota).toHaveBeenCalledWith("token-plan/codex/session/direct");
+    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+      id: "direct-plan",
+      used_quota: 3,
+    }), { notify: false });
+  });
+
   it("refreshes every bound Codex account independently", async () => {
     syncCodexConsoleQuota.mockImplementation(async (sessionRef) => ({
       state_code: "connected",
@@ -161,6 +241,32 @@ describe("refreshConnectedTraePlans", () => {
 });
 
 describe("refreshConnectedCursorPlans", () => {
+  it("persists the official billing-cycle expiry as plan validity", async () => {
+    verifyCursorConsoleSession.mockResolvedValue({
+      state_code: "connected",
+      session_ref: "token-plan/cursor/session/validity",
+      quota: {
+        total_quota: 100,
+        used_quota: 60,
+        remaining_quota: 40,
+        subscription_expires_at: "2026-08-22T04:17:12Z",
+        quota_windows: [],
+      },
+    });
+    saveTokenPlan.mockResolvedValue({ records: [] });
+
+    await refreshConnectedCursorPlans([{
+      id: "cursor-validity",
+      provider_id: "cursor",
+      detection_method: "official_account",
+      detection_config: { official_account: { session_ref: "token-plan/cursor/session/validity" } },
+    }]);
+
+    expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+      expires_at: "2026-08-22T04:17:12Z",
+    }), { notify: false });
+  });
+
   it("refreshes each Cursor plan via its own session_ref without sharing accounts", async () => {
     verifyCursorConsoleSession.mockImplementation(async (sessionRef) => ({
       state_code: "connected",

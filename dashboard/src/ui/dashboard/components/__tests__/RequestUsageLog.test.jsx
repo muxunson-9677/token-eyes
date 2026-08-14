@@ -129,6 +129,7 @@ describe("RequestUsageLog", () => {
     for (const metric of Array.from(metrics.children)) {
       expect(metric).toHaveClass("tt-surface-nested");
       expect(metric).toHaveClass("tt-request-log-metric");
+      expect(metric).toHaveClass("tt-request-log-metric--raised");
       expect(within(metric).getByTestId("request-log-metric-icon")).toBeInTheDocument();
     }
     expect(within(metrics).getByText("7")).toBeInTheDocument();

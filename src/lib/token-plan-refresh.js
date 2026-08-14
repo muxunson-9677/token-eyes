@@ -415,7 +415,16 @@ function getProviderAdapterForPlan(plan) {
 }
 
 function normalizeQuotaWindows(input, fallback = []) {
-  const allowedKinds = new Set(["rolling_5_hour", "rolling_weekly", "total", "auto_composer", "api", "fast_request"]);
+  const allowedKinds = new Set([
+    "rolling_5_hour",
+    "rolling_weekly",
+    "gpt_5_3_codex_spark_5_hour",
+    "gpt_5_3_codex_spark_weekly",
+    "total",
+    "auto_composer",
+    "api",
+    "fast_request",
+  ]);
   const source = Array.isArray(input) ? input : (Array.isArray(fallback) ? fallback : []);
   const toSafeNumber = (value, allowFraction) => {
     const number = Number(value);

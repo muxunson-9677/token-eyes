@@ -383,31 +383,20 @@ it("new plan Agent source options follow visible limits display preferences", as
     .map((option) => option.value)
     .filter(Boolean);
 
-  // Providers omitted from the stored visibility map fall back to the
-  // default (visible) and stay in the option list — with the V4 item-3a
-  // expanded registry that now includes every newly-added channel, appended
-  // in registry order after the stored custom order.
+  // Providers removed from the limits-display registry must not leak back
+  // into the new-plan Agent selector. Remaining visible providers preserve
+  // the stored custom order, followed by the current registry order.
   expect(optionValues).toEqual([
     "hermes",
     "claude",
     "codebuddy",
     "zed",
     "workbuddy",
-    "every-code",
-    "kilo-cli",
-    "kilocode",
-    "roocode",
-    "kiro",
-    "kiro-cli",
     "kimi",
     "kimi-code",
-    "omp",
     "pi",
-    "craft",
     "grok",
     "copilot",
-    "goose",
-    "droid",
   ]);
 });
 

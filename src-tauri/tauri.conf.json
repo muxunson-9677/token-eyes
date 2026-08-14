@@ -5,7 +5,7 @@
   "identifier": "com.tokeneyes.desktop",
   "build": {
     "frontendDist": "../dashboard/dist",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:5174",
     "beforeDevCommand": "npm --prefix dashboard run dev -- --host 127.0.0.1",
     "beforeBuildCommand": "npm run dashboard:build && npm run tauri:prepare-runtime"
   },

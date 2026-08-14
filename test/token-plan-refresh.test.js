@@ -63,6 +63,19 @@ test("Cursor percentage windows preserve fractional Total Auto and API dimension
   assert.equal(windows[2].used, 71.53333333333333);
 });
 
+test("Codex model-specific weekly quota survives persistence normalization", () => {
+  const windows = normalizeQuotaWindows([
+    { kind: "rolling_weekly", unit: "percent", total: 100, used: 4, remaining: 96, percentage: 4, resets_at: "1787196800" },
+    { kind: "gpt_5_3_codex_spark_weekly", unit: "percent", total: 100, used: 56, remaining: 44, percentage: 56, resets_at: "1787701607" },
+  ]);
+
+  assert.deepEqual(windows.map((window) => window.kind), [
+    "rolling_weekly",
+    "gpt_5_3_codex_spark_weekly",
+  ]);
+  assert.deepEqual(windows.map((window) => window.resets_at), ["1787196800", "1787701607"]);
+});
+
 test("pickIntervalMinutes clamps to allowed set", () => {
   assert.equal(pickIntervalMinutes(15), 15);
   assert.equal(pickIntervalMinutes(1440), 1440);

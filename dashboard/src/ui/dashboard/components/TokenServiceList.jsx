@@ -46,7 +46,16 @@ function isExpired(expiresAt, now) {
   return timestamp !== null && timestamp <= now.getTime();
 }
 
-const WINDOW_PRIORITY = ["rolling_5_hour", "rolling_weekly", "total", "auto_composer", "api", "fast_request"];
+const WINDOW_PRIORITY = [
+  "rolling_5_hour",
+  "rolling_weekly",
+  "gpt_5_3_codex_spark_5_hour",
+  "gpt_5_3_codex_spark_weekly",
+  "total",
+  "auto_composer",
+  "api",
+  "fast_request",
+];
 // Cockpit-aligned Cursor lanes: Total Usage / Auto+Composer / API Usage.
 const CURSOR_WINDOW_PRIORITY = ["total", "rolling_weekly", "auto_composer", "api"];
 
@@ -69,16 +78,21 @@ function quotaMetric(source, kind, unit) {
   };
 }
 
+function windowPriority(kind, priority) {
+  const index = priority.indexOf(kind);
+  return index === -1 ? priority.length : index;
+}
+
 function readQuotaMetrics(plan) {
   const windows = Array.isArray(plan?.quota_windows) ? plan.quota_windows : [];
   const unit = String(plan?.quota_unit || "tokens");
   const providerId = String(plan?.provider_id || "").trim().toLowerCase();
   const priority = providerId === "cursor" ? CURSOR_WINDOW_PRIORITY : WINDOW_PRIORITY;
   const liveMetrics = windows
-    .filter((window) => priority.includes(window?.kind))
-    .map((window) => quotaMetric(window, window.kind, window?.unit || unit))
+    .filter((window) => String(window?.kind || "").trim())
+    .map((window) => quotaMetric(window, String(window.kind), window?.unit || unit))
     .filter((metric) => metric.total > 0 || Number.isFinite(metric.percentage))
-    .sort((left, right) => priority.indexOf(left.kind) - priority.indexOf(right.kind));
+    .sort((left, right) => windowPriority(left.kind, priority) - windowPriority(right.kind, priority));
   // Cursor emits both `total` and `rolling_weekly` as the same Total Usage lane —
   // keep a single headline window plus Auto/API breakdowns.
   if (providerId === "cursor" && liveMetrics.length > 0) {
@@ -134,6 +148,18 @@ function serviceLabels(plan) {
   return { provider, planLabel, providerId: providerId || "custom" };
 }
 
+function authorizedAccountLabel(plan) {
+  if (String(plan?.detection_method || "").trim() !== "official_account") return "";
+  const official = plan?.detection_config?.official_account || {};
+  return String(
+    official.display_name
+    || official.account_label
+    || official.account_id
+    || plan?.notes
+    || "",
+  ).trim();
+}
+
 export function normalizeTokenServices(plans, now = new Date()) {
   if (!Array.isArray(plans)) return [];
 
@@ -145,8 +171,7 @@ export function normalizeTokenServices(plans, now = new Date()) {
         || metrics[0]
         || { total: 0, used: 0, percentage: 0 };
       const labels = serviceLabels(plan);
-      const resetDates = [...new Set(metrics.map((metric) => metric.resetsAt).filter(Boolean))];
-      const effectiveExpiry = plan?.expires_at || (resetDates.length === 1 ? resetDates[0] : null);
+      const effectiveExpiry = plan?.subscription_end_date || plan?.expires_at || null;
       const verifiedExpiry = expiryTimestamp(effectiveExpiry);
       return {
         id: String(plan?.id || `${labels.provider}-${index}`),
@@ -154,6 +179,7 @@ export function normalizeTokenServices(plans, now = new Date()) {
         unit: String(plan?.quota_unit || "tokens"),
         expiresAt: effectiveExpiry,
         notes: String(plan?.notes || "").trim(),
+        accountLabel: authorizedAccountLabel(plan),
         originalIndex: index,
         metrics,
         ...primaryMetric,
@@ -205,7 +231,7 @@ function formatDateTime(value, includeTime = false) {
     : Date.parse(normalized);
   if (!Number.isFinite(timestamp)) return String(value);
   return new Intl.DateTimeFormat(getCopyLocale(), {
-    year: includeTime ? undefined : "numeric",
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: includeTime ? "2-digit" : undefined,
@@ -214,12 +240,31 @@ function formatDateTime(value, includeTime = false) {
   }).format(new Date(timestamp));
 }
 
+function formatRemainingDuration(value, now) {
+  const timestamp = expiryTimestamp(value);
+  if (timestamp === null) return null;
+  const totalMinutes = Math.floor((timestamp - now.getTime()) / 60_000);
+  if (totalMinutes <= 0) return copy("spend.usage.token_services.duration.elapsed");
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) {
+    return copy("spend.usage.token_services.duration.days_hours", { days, hours });
+  }
+  if (hours > 0) {
+    return copy("spend.usage.token_services.duration.hours_minutes", { hours, minutes });
+  }
+  return copy("spend.usage.token_services.duration.minutes", { minutes });
+}
+
 function windowLabel(kind) {
   if (kind === "rolling_5_hour") return copy("spend.usage.token_services.window.rolling_5_hour");
   if (kind === "rolling_weekly") return copy("spend.usage.token_services.window.rolling_weekly");
   if (kind === "auto_composer") return copy("spend.usage.token_services.window.auto_composer");
   if (kind === "api") return copy("spend.usage.token_services.window.api");
   if (kind === "total") return copy("spend.usage.token_services.window.total_usage");
+  if (kind === "gpt_5_3_codex_spark_5_hour") return "GPT 5.3 Codex Spark · 5 小时";
+  if (kind === "gpt_5_3_codex_spark_weekly") return "GPT 5.3 Codex Spark Weekly";
   return copy("spend.usage.token_services.window.total");
 }
 
@@ -276,11 +321,6 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
         <ol data-testid="token-service-cards" className="mt-1.5 flex min-h-0 flex-1 flex-col gap-1.5">
           {pageRows.map((service, index) => {
             const rank = pageStart + index + 1;
-            const sharedResetAt = service.metrics.length > 0
-              && service.metrics[0].resetsAt
-              && service.metrics.every((metric) => metric.resetsAt === service.metrics[0].resetsAt)
-              ? service.metrics[0].resetsAt
-              : null;
             return (
               <li
                 key={service.id}
@@ -308,9 +348,9 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
                         </span>
                       )}
                     </span>
-                    {service.notes && (
-                      <span className="mt-0.5 block break-words text-[9px] leading-3 text-oai-gray-400 dark:text-oai-gray-500" title={service.notes}>
-                        {service.notes}
+                    {(service.accountLabel || service.notes) && (
+                      <span className="mt-0.5 block break-words text-[9px] leading-3 text-oai-gray-400 dark:text-oai-gray-500" title={service.accountLabel || service.notes}>
+                        {service.accountLabel || service.notes}
                       </span>
                     )}
                   </span>
@@ -340,27 +380,33 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
                             aria-valuenow={roundedPercentage}
                           />
                         </div>
-                        {metric.resetsAt && !sharedResetAt && (
-                          <div className="mt-0.5 text-right text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
-                            {copy("spend.usage.token_services.reset_at", { value: formatDateTime(metric.resetsAt, true) })}
+                        {metric.resetsAt && (
+                          <div
+                            data-testid={`token-service-reset-${metric.kind}`}
+                            className="mt-0.5 text-right text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600"
+                          >
+                            {copy("spend.usage.token_services.reset_countdown", {
+                              remaining: formatRemainingDuration(metric.resetsAt, now),
+                              value: formatDateTime(metric.resetsAt, true),
+                            })}
                           </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
-                {sharedResetAt && (
-                  <div data-testid="token-service-shared-reset" className="mt-1 flex items-center gap-1 text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
-                    <Clock3 className="h-3 w-3" aria-hidden="true" />
-                    {copy("spend.usage.token_services.reset_at", { value: formatDateTime(sharedResetAt, true) })}
-                  </div>
-                )}
-                {service.expiresAt && service.expiresAt !== sharedResetAt && (
-                  <div className="mt-1 flex items-center gap-1 text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600">
-                    <CalendarDays className="h-3 w-3" aria-hidden="true" />
-                    {copy("spend.usage.token_services.expires_at", { value: formatDateTime(service.expiresAt) })}
-                  </div>
-                )}
+                <div
+                  data-testid="token-service-validity"
+                  className="mt-1 flex items-center gap-1 rounded-md bg-emerald-50/70 px-1.5 py-1 text-[9px] font-medium leading-3 tabular-nums text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                >
+                  <CalendarDays className="h-3 w-3" aria-hidden="true" />
+                  {service.expiresAt
+                    ? copy("spend.usage.token_services.validity", {
+                      remaining: formatRemainingDuration(service.expiresAt, now),
+                      value: formatDateTime(service.expiresAt, true),
+                    })
+                    : copy("spend.usage.token_services.validity_unknown")}
+                </div>
               </li>
             );
           })}

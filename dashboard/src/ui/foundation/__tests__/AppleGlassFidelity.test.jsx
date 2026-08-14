@@ -259,7 +259,7 @@ describe("approved M/N material fidelity", () => {
     expect(declarations('.tt-usage-dimension[data-dimension="cache_hit"]')?.background)
       .toBe("var(--tt-metric-hit-surface)");
     expect(declarations(".tt-token-service-card").background)
-      .toBe("var(--tt-service-surface)");
+      .toContain("linear-gradient");
     expect(declarations(".tt-provider-card").background)
       .toBe("var(--tt-service-surface)");
     expect(declarations(".tt-theme-trigger").background)

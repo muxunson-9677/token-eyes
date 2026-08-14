@@ -532,7 +532,7 @@ export function RequestUsageLog({
       {totals && [totals.request_count, totals.success_rate, totals.avg_latency_ms].some(isProvidedNumber) && (
         <div className="mb-4 grid grid-cols-3 gap-2" data-testid="request-log-metrics">
           {isProvidedNumber(totals.request_count) && (
-            <div data-testid="request-log-metric-requests" className="tt-surface-nested tt-request-log-metric min-w-0 rounded-xl px-3 py-2.5" data-tone="blue">
+            <div data-testid="request-log-metric-requests" className="tt-surface-nested tt-request-log-metric tt-request-log-metric--raised min-w-0 rounded-xl px-3 py-2.5" data-tone="blue">
               <span className="tt-request-log-metric-icon-well" aria-hidden="true">
                 <FileText data-testid="request-log-metric-icon" className="h-6 w-6 text-blue-500" />
               </span>
@@ -542,7 +542,7 @@ export function RequestUsageLog({
             </div>
           )}
           {isProvidedNumber(totals.success_rate) && (
-            <div data-testid="request-log-metric-success-rate" className="tt-surface-nested tt-request-log-metric min-w-0 rounded-xl px-3 py-2.5" data-tone="green">
+            <div data-testid="request-log-metric-success-rate" className="tt-surface-nested tt-request-log-metric tt-request-log-metric--raised min-w-0 rounded-xl px-3 py-2.5" data-tone="green">
               <span className="tt-request-log-metric-icon-well" aria-hidden="true">
                 <CheckCircle2 data-testid="request-log-metric-icon" className="h-6 w-6 text-emerald-500" />
               </span>
@@ -559,7 +559,7 @@ export function RequestUsageLog({
             </div>
           )}
           {isProvidedNumber(totals.avg_latency_ms) && (
-            <div data-testid="request-log-metric-avg-latency" className="tt-surface-nested tt-request-log-metric min-w-0 rounded-xl px-3 py-2.5" data-tone="purple">
+            <div data-testid="request-log-metric-avg-latency" className="tt-surface-nested tt-request-log-metric tt-request-log-metric--raised min-w-0 rounded-xl px-3 py-2.5" data-tone="purple">
               <span className="tt-request-log-metric-icon-well" aria-hidden="true">
                 <Clock3 data-testid="request-log-metric-icon" className="h-6 w-6 text-violet-500" />
               </span>

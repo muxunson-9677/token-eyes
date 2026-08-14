@@ -565,7 +565,7 @@ function WindowsWidgetProjectSettings() {
       const detectedLimits = Array.isArray(model?.limits) ? model.limits : [];
       const detectedLimitIds = detectedLimits.map((limit) => String(limit.id || "")).filter(Boolean);
       const restoredLimitIds = Array.isArray(nextPrefs?.selectedLimitIds)
-        ? nextPrefs.selectedLimitIds.filter((id) => detectedLimitIds.includes(id))
+        ? selectedWidgetLimitIds(detectedLimits, nextPrefs.selectedLimitIds)
         : detectedLimitIds;
       const selectedLimitSet = new Set(restoredLimitIds);
       const orderedLimits = [
@@ -1097,6 +1097,19 @@ function widgetPlanBadge(limit, index, total) {
   return "";
 }
 
+function isWidgetLimitSelected(limit, selectedIds) {
+  const id = String(limit?.id || "");
+  return selectedIds.includes(id) || selectedIds.some((selectedId) => (
+    selectedId.startsWith(`${id}:`)
+  ));
+}
+
+function selectedWidgetLimitIds(limits, selectedIds) {
+  return limits
+    .filter((limit) => isWidgetLimitSelected(limit, selectedIds))
+    .map((limit) => String(limit.id));
+}
+
 function WidgetTablePagination() {
   return (
     <div className="tt-widget-table-pagination" aria-label={copy("widgets.reference.pagination")}>
@@ -1138,13 +1151,27 @@ function WindowsProjectManager({ onOpenSettings }) {
           : [];
         const projects = groupWidgetProjectSessions(sessions);
         const limits = Array.isArray(nextModel?.limits) ? nextModel.limits : [];
-        setModel(nextModel || { projectStatus: { recentProjects: [] }, limits: [] });
-        setPrefs(savedPrefs || {
+        const fallbackPrefs = {
           activeSessionWindow: "3d",
           selectedProjectIds: projects.slice(0, 2).flatMap((project) => project.sessionIds),
           selectedProjects: projects.slice(0, 2).flatMap((project) => project.sessions),
           selectedLimitIds: limits.map((limit) => String(limit.id)),
-        });
+        };
+        const currentPrefs = savedPrefs || fallbackPrefs;
+        const storedLimitIds = Array.isArray(currentPrefs.selectedLimitIds)
+          ? currentPrefs.selectedLimitIds
+          : fallbackPrefs.selectedLimitIds;
+        const restoredLimitIds = selectedWidgetLimitIds(limits, storedLimitIds);
+        const restoredPrefs = { ...currentPrefs, selectedLimitIds: restoredLimitIds };
+        setModel(nextModel || { projectStatus: { recentProjects: [] }, limits: [] });
+        setPrefs(restoredPrefs);
+        if (
+          invoke
+          && Array.isArray(currentPrefs.selectedLimitIds)
+          && currentPrefs.selectedLimitIds.join("\u0000") !== restoredLimitIds.join("\u0000")
+        ) {
+          void invoke("set_desktop_widget_prefs", { prefs: restoredPrefs });
+        }
       })
       .catch(() => {
         if (mounted) setModel({ projectStatus: { recentProjects: [] }, limits: [] });
@@ -1160,7 +1187,8 @@ function WindowsProjectManager({ onOpenSettings }) {
   const projects = groupWidgetProjectSessions(sessions);
   const limits = Array.isArray(model?.limits) ? model.limits : [];
   const selectedProjectIds = Array.isArray(prefs?.selectedProjectIds) ? prefs.selectedProjectIds : [];
-  const selectedLimitIds = Array.isArray(prefs?.selectedLimitIds) ? prefs.selectedLimitIds : [];
+  const storedSelectedLimitIds = Array.isArray(prefs?.selectedLimitIds) ? prefs.selectedLimitIds : [];
+  const selectedLimitIds = selectedWidgetLimitIds(limits, storedSelectedLimitIds);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const displayedProjects = projects
     .map((project, index) => ({ project, index, status: widgetProjectStatus(project, index) }))
@@ -1173,7 +1201,7 @@ function WindowsProjectManager({ onOpenSettings }) {
       if (sortOrder !== "recent") return 0;
       return Date.parse(right.project.updatedAt || "") - Date.parse(left.project.updatedAt || "");
     });
-  const displayedLimits = limits.slice(0, 3).filter((limit) => !dismissedLimitIds.includes(String(limit.id)));
+  const displayedLimits = limits.filter((limit) => !dismissedLimitIds.includes(String(limit.id)));
 
   const persist = async (next) => {
     setPrefs(next);

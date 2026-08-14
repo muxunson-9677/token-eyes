@@ -52,6 +52,7 @@ import {
   DesktopWidgetPage,
   formatWidgetCompactCost,
   formatWidgetCompactTokenCount,
+  orderedWidgetLimits,
 } from "./DesktopWidgetPage";
 
 const widgetStyles = readFileSync("src/pages/desktop-widget.css", "utf8");
@@ -147,6 +148,22 @@ describe("DesktopWidgetPage", () => {
       setCelebrationOpen: widget.setCelebrationOpen,
       acknowledgePendingReset: widget.acknowledgePendingReset,
     };
+  });
+
+  it("keeps legacy window selections attached to their configured plan", () => {
+    const limit = {
+      id: "cursor:pro-plan",
+      agent: "cursor",
+      provider: "Cursor",
+      accountLabel: "Pro",
+      window: "7d",
+      usedPercent: 42,
+      resetAt: null,
+      error: null,
+      notes: null,
+    };
+
+    expect(orderedWidgetLimits([limit], ["cursor:pro-plan:weekly"])).toEqual([limit]);
   });
 
   it("formats widget totals with Chinese compact units", () => {
@@ -343,7 +360,7 @@ describe("DesktopWidgetPage", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps selected project folders visible with an empty state when no session is active", () => {
+  it("hides selected project folders with no sessions or traffic-light activity", () => {
     widget.value = {
       ...widget.value,
       prefs: {
@@ -369,8 +386,9 @@ describe("DesktopWidgetPage", () => {
     };
 
     render(<DesktopWidgetPage />);
-    expect(screen.getByText("012-EDU-lite")).toBeInTheDocument();
-    expect(screen.getByText("copy:widget.projects.no_active")).toBeInTheDocument();
+    expect(screen.queryByText("012-EDU-lite")).not.toBeInTheDocument();
+    expect(screen.queryByText("copy:widget.projects.no_active")).not.toBeInTheDocument();
+    expect(screen.getByText("copy:widget.empty")).toBeInTheDocument();
   });
 
   it("shows the official task title, exact stopped state, and a readable fallback instead of UUIDs", async () => {
@@ -427,7 +445,7 @@ describe("DesktopWidgetPage", () => {
     expect(screen.getByText(new RegExp("\u7684\u4f1a\u8bdd$", "u"))).toBeInTheDocument();
   });
 
-  it("shows only the first selected limit while collapsed and keeps the reference status lights above all expanded limits", () => {
+  it("shows all selected limits while collapsed and keeps the reference status lights above expanded limits", () => {
     widget.value = {
       ...widget.value,
       prefs: {
@@ -439,10 +457,10 @@ describe("DesktopWidgetPage", () => {
     const { rerender } = render(<DesktopWidgetPage />);
     expect(screen.getByText("1w")).toBeInTheDocument();
     expect(screen.getByText("备用周额度")).toBeInTheDocument();
-    expect(screen.queryByText("主力开发账号")).not.toBeInTheDocument();
-    expect(screen.queryByText("5h")).not.toBeInTheDocument();
-    expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(1);
-    expect(screen.getByTestId("widget-limit-progress")).toHaveClass("widget-limit-progress-bar");
+    expect(screen.getByText("主力开发账号")).toBeInTheDocument();
+    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(2);
+    expect(screen.getAllByTestId("widget-limit-progress")[0]).toHaveClass("widget-limit-progress-bar");
 
     widget.value = {
       ...widget.value,

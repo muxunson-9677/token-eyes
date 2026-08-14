@@ -34,7 +34,7 @@ export function UsageFilterBar({
       role="toolbar"
       aria-label={copy("ticket02.agent.aria")}
       className={cn(
-        "tt-surface tt-usage-filter-toolbar flex flex-wrap items-center justify-end gap-2 rounded-[var(--tt-card-radius)] p-2",
+        "tt-surface tt-usage-filter-toolbar tt-usage-filter-inline-row flex flex-wrap items-center justify-start gap-2 rounded-[var(--tt-card-radius)] p-2",
         "[&_button]:rounded-[var(--tt-control-radius)] [&_button]:transition-[transform,box-shadow,background-color,border-color] [&_button]:duration-150",
         "[&_button:active:not(:disabled)]:translate-y-px [&_button[aria-pressed=true]]:translate-y-px [&_button[aria-pressed=true]]:shadow-inner",
         "[&_button[data-popup-open]]:translate-y-px [&_button[data-popup-open]]:shadow-inner",
@@ -43,11 +43,10 @@ export function UsageFilterBar({
         className,
       )}
     >
-      <div className="tt-usage-source-switcher">
-        <span className="tt-usage-filter-label">{copy("spend.source")}</span>
+      <div className="tt-usage-source-switcher tt-usage-source-switcher--left">
         <AgentSwitcher visibleProviderIds={visibleProviderIds} />
       </div>
-      <div className="tt-usage-filter-controls">
+      <div className="tt-usage-filter-controls tt-usage-filter-controls--raised tt-usage-filter-controls--separated">
         <SourceFilter options={sourceOptions} />
         <ModelFilter options={modelsBySource} />
         <RefreshIntervalPicker

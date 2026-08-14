@@ -253,11 +253,14 @@ pub async fn complete_oauth(
     }))
 }
 
-fn account_id_from_id_token(id_token: &str) -> Option<String> {
+fn id_token_claims(id_token: &str) -> Option<Value> {
     let payload = id_token.split('.').nth(1)?;
     let decoded = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let claims: Value = serde_json::from_slice(&decoded).ok()?;
-    claims
+    serde_json::from_slice(&decoded).ok()
+}
+
+fn account_id_from_id_token(id_token: &str) -> Option<String> {
+    id_token_claims(id_token)?
         .get("https://api.openai.com/auth")
         .and_then(Value::as_object)
         .and_then(|auth| auth.get("chatgpt_account_id"))
@@ -265,16 +268,39 @@ fn account_id_from_id_token(id_token: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+pub fn account_label_from_id_token(id_token: &str) -> Option<String> {
+    id_token_claims(id_token)?
+        .get("email")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|email| !email.is_empty())
+        .map(str::to_string)
+}
+
+pub fn subscription_expires_at_from_id_token(id_token: &str) -> Option<String> {
+    id_token_claims(id_token)?
+        .get("https://api.openai.com/auth")
+        .and_then(Value::as_object)
+        .and_then(|auth| auth.get("chatgpt_subscription_active_until"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 pub fn save_tokens(directory: &Path, tokens: &StoredCodexTokens) -> Result<(), String> {
     fs::create_dir_all(directory)
         .map_err(|_| "Unable to prepare Codex account storage".to_string())?;
-    let saved_at = SystemTime::now()
+    let saved_at = chrono::Utc::now().to_rfc3339();
+    let saved_at_unix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
     let value = serde_json::json!({
+        "OPENAI_API_KEY": Value::Null,
         "auth_mode": "chatgpt",
-        "last_refresh_unix": saved_at,
+        "last_refresh": saved_at,
+        "last_refresh_unix": saved_at_unix,
         "tokens": tokens,
     });
     let temporary = directory.join("auth.json.tmp");
@@ -303,13 +329,38 @@ pub fn load_tokens(directory: &Path) -> Result<Option<StoredCodexTokens>, String
     Ok(Some(tokens))
 }
 
+/// Keeps Token Eyes' per-plan credentials readable by the official
+/// `codex app-server`. Older app versions omitted the two envelope fields that
+/// the CLI checks before reading the nested OAuth tokens.
+pub fn ensure_app_server_auth_envelope(directory: &Path) -> Result<(), String> {
+    let path = directory.join("auth.json");
+    if !path.is_file() {
+        return Ok(());
+    }
+    let raw: Value = serde_json::from_slice(
+        &fs::read(&path).map_err(|_| "Unable to read Codex credentials".to_string())?,
+    )
+    .map_err(|_| "Codex credentials are invalid".to_string())?;
+    let already_compatible = raw.get("OPENAI_API_KEY").is_some()
+        && raw
+            .get("last_refresh")
+            .and_then(Value::as_str)
+            .is_some_and(|value| chrono::DateTime::parse_from_rfc3339(value).is_ok());
+    if already_compatible {
+        return Ok(());
+    }
+    let tokens = serde_json::from_value(raw.get("tokens").cloned().unwrap_or(Value::Null))
+        .map_err(|_| "Codex credentials are incomplete".to_string())?;
+    save_tokens(directory, &tokens)
+}
+
 pub fn parse_usage_response(value: &Value) -> Result<Vec<CodexUsageWindow>, String> {
     let limits = value
         .get("rate_limit")
         .and_then(Value::as_object)
         .ok_or_else(|| "Codex usage response is missing rate_limit".to_string())?;
     let mut windows = Vec::new();
-    for (field, kind) in [
+    for (field, fallback_kind) in [
         ("primary_window", "rolling_5_hour"),
         ("secondary_window", "rolling_weekly"),
     ] {
@@ -319,11 +370,51 @@ pub fn parse_usage_response(value: &Value) -> Result<Vec<CodexUsageWindow>, Stri
         let Some(used_percent) = window.get("used_percent").and_then(Value::as_f64) else {
             continue;
         };
+        let kind = match window.get("limit_window_seconds").and_then(Value::as_i64) {
+            Some(18_000) => "rolling_5_hour",
+            Some(604_800) => "rolling_weekly",
+            _ => fallback_kind,
+        };
         windows.push(CodexUsageWindow {
             kind: kind.to_string(),
             used_percent: used_percent.clamp(0.0, 100.0),
             resets_at: window.get("reset_at").and_then(Value::as_i64).unwrap_or(0),
         });
+    }
+    for additional in value
+        .get("additional_rate_limits")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let limit_name = additional
+            .get("limit_name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if !limit_name.contains("gpt-5.3") || !limit_name.contains("codex-spark") {
+            continue;
+        }
+        let Some(rate_limit) = additional.get("rate_limit").and_then(Value::as_object) else {
+            continue;
+        };
+        for field in ["primary_window", "secondary_window"] {
+            let Some(window) = rate_limit.get(field).and_then(Value::as_object) else {
+                continue;
+            };
+            let Some(used_percent) = window.get("used_percent").and_then(Value::as_f64) else {
+                continue;
+            };
+            let kind = match window.get("limit_window_seconds").and_then(Value::as_i64) {
+                Some(18_000) => "gpt_5_3_codex_spark_5_hour",
+                _ => "gpt_5_3_codex_spark_weekly",
+            };
+            windows.push(CodexUsageWindow {
+                kind: kind.to_string(),
+                used_percent: used_percent.clamp(0.0, 100.0),
+                resets_at: window.get("reset_at").and_then(Value::as_i64).unwrap_or(0),
+            });
+        }
     }
     if windows.is_empty() {
         return Err("Codex returned no supported quota windows".to_string());
@@ -424,12 +515,63 @@ mod tests {
     }
 
     #[test]
+    fn parses_real_wham_weekly_and_gpt_5_3_additional_limits() {
+        let windows = parse_usage_response(&serde_json::json!({
+            "rate_limit": {
+                "primary_window": {
+                    "used_percent": 4,
+                    "limit_window_seconds": 604800,
+                    "reset_at": 1787196799
+                }
+            },
+            "additional_rate_limits": [{
+                "limit_name": "GPT-5.3-Codex-Spark",
+                "metered_feature": "codex_bengalfox",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 56,
+                        "limit_window_seconds": 604800,
+                        "reset_at": 1787701607
+                    }
+                }
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].kind, "rolling_weekly");
+        assert_eq!(windows[0].used_percent, 4.0);
+        assert_eq!(windows[1].kind, "gpt_5_3_codex_spark_weekly");
+        assert_eq!(windows[1].used_percent, 56.0);
+    }
+
+    #[test]
     fn extracts_account_id_from_id_token_without_exposing_claims() {
         let payload = URL_SAFE_NO_PAD
             .encode(br#"{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-123"}}"#);
         assert_eq!(
             account_id_from_id_token(&format!("x.{payload}.y")).as_deref(),
             Some("acct-123")
+        );
+    }
+
+    #[test]
+    fn extracts_email_label_from_id_token() {
+        let payload = URL_SAFE_NO_PAD.encode(br#"{"email":"muxunson@gmail.com"}"#);
+        assert_eq!(
+            account_label_from_id_token(&format!("x.{payload}.y")).as_deref(),
+            Some("muxunson@gmail.com")
+        );
+    }
+
+    #[test]
+    fn extracts_official_subscription_expiry_from_id_token() {
+        let payload = URL_SAFE_NO_PAD.encode(
+            br#"{"https://api.openai.com/auth":{"chatgpt_subscription_active_until":"2026-08-30T14:24:24+00:00"}}"#,
+        );
+        assert_eq!(
+            subscription_expires_at_from_id_token(&format!("x.{payload}.y")).as_deref(),
+            Some("2026-08-30T14:24:24+00:00")
         );
     }
 
@@ -456,6 +598,74 @@ mod tests {
 
         assert_eq!(load_tokens(&first).unwrap(), Some(first_tokens));
         assert_eq!(load_tokens(&second).unwrap(), Some(second_tokens));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stores_a_codex_app_server_compatible_auth_envelope() {
+        let root =
+            std::env::temp_dir().join(format!("token-eyes-codex-envelope-{}", random_urlsafe(8)));
+        let tokens = StoredCodexTokens {
+            access_token: "access".into(),
+            refresh_token: "refresh".into(),
+            id_token: "id".into(),
+            account_id: "account".into(),
+        };
+
+        save_tokens(&root, &tokens).unwrap();
+
+        let raw: Value =
+            serde_json::from_slice(&fs::read(root.join("auth.json")).unwrap()).unwrap();
+        assert!(raw.get("OPENAI_API_KEY").is_some());
+        assert!(raw
+            .get("last_refresh")
+            .and_then(Value::as_str)
+            .is_some_and(|value| chrono::DateTime::parse_from_rfc3339(value).is_ok()));
+        assert!(raw
+            .get("last_refresh_unix")
+            .and_then(Value::as_u64)
+            .is_some());
+        assert_eq!(
+            raw.pointer("/tokens/access_token").and_then(Value::as_str),
+            Some("access")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn upgrades_a_legacy_token_eyes_auth_envelope_for_codex_app_server() {
+        let root =
+            std::env::temp_dir().join(format!("token-eyes-codex-migrate-{}", random_urlsafe(8)));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("auth.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "auth_mode": "chatgpt",
+                "last_refresh_unix": 123,
+                "tokens": {
+                    "access_token": "access",
+                    "refresh_token": "refresh",
+                    "id_token": "id",
+                    "account_id": "account"
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        ensure_app_server_auth_envelope(&root).unwrap();
+
+        let raw: Value =
+            serde_json::from_slice(&fs::read(root.join("auth.json")).unwrap()).unwrap();
+        assert!(raw.get("OPENAI_API_KEY").is_some());
+        assert!(raw
+            .get("last_refresh")
+            .and_then(Value::as_str)
+            .is_some_and(|value| chrono::DateTime::parse_from_rfc3339(value).is_ok()));
+        assert_eq!(
+            raw.pointer("/tokens/account_id").and_then(Value::as_str),
+            Some("account")
+        );
         let _ = fs::remove_dir_all(root);
     }
 }

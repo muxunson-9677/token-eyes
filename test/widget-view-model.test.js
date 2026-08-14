@@ -432,7 +432,7 @@ test("local rolling-window events never replace the widget capsule", () => {
   assert.equal(result.pendingReset, null);
 });
 
-test("flattens the existing usage-limit payload without credentials", () => {
+test("does not expose provider windows when no Token plan is configured", () => {
   const limits = flattenUsageLimitsPayload({
     fetched_at: "2026-07-29T08:00:00.000Z",
     codex: {
@@ -452,28 +452,7 @@ test("flattens the existing usage-limit payload without credentials", () => {
     },
   });
 
-  assert.deepEqual(limits.map((item) => ({
-    agent: item.agent,
-    provider: item.provider,
-    accountLabel: item.accountLabel,
-    window: item.window,
-    usedPercent: item.usedPercent,
-  })), [
-    {
-      agent: "codex",
-      provider: "Codex",
-      accountLabel: "Codex Plus",
-      window: "5h",
-      usedPercent: 21,
-    },
-    {
-      agent: "codex",
-      provider: "Codex",
-      accountLabel: "Codex Plus",
-      window: "7d",
-      usedPercent: 44,
-    },
-  ]);
+  assert.deepEqual(limits, []);
   assert.doesNotMatch(JSON.stringify(limits), /access_token|must-not-leak/u);
 });
 
@@ -520,7 +499,7 @@ test("uses configured token plans as the widget limit source and carries their n
     notes: item.notes,
   })), [
     {
-      id: "codex:codex-main:5h",
+      id: "codex:codex-main",
       agent: "codex",
       provider: "Codex",
       accountLabel: "Plus",
@@ -529,16 +508,7 @@ test("uses configured token plans as the widget limit source and carries their n
       notes: "主力开发账号",
     },
     {
-      id: "codex:codex-main:7d",
-      agent: "codex",
-      provider: "Codex",
-      accountLabel: "Plus",
-      window: "7d",
-      usedPercent: 68,
-      notes: "主力开发账号",
-    },
-    {
-      id: "cursor:cursor-backup:monthly",
+      id: "cursor:cursor-backup",
       agent: "cursor",
       provider: "Cursor",
       accountLabel: "Pro",
@@ -550,7 +520,7 @@ test("uses configured token plans as the widget limit source and carries their n
   assert.doesNotMatch(JSON.stringify(limits), /Fallback Plus|99/u);
 });
 
-test("keeps every quota window from one configured plan as a distinct widget item", () => {
+test("uses one representative quota window for each configured widget plan", () => {
   const limits = flattenUsageLimitsPayload({}, [{
     id: "cursor-main",
     source: "cursor",
@@ -566,11 +536,7 @@ test("keeps every quota window from one configured plan as a distinct widget ite
   }]);
 
   assert.deepEqual(limits.map((item) => ({ id: item.id, window: item.window })), [
-    { id: "cursor:cursor-main:monthly", window: "monthly" },
-    { id: "cursor:cursor-main:7d", window: "7d" },
-    { id: "cursor:cursor-main:auto_composer", window: "自动与 Composer" },
-    { id: "cursor:cursor-main:api", window: "API" },
-    { id: "cursor:cursor-main:fast_request", window: "快速请求" },
+    { id: "cursor:cursor-main", window: "7d" },
   ]);
   assert.equal(new Set(limits.map((item) => item.id)).size, limits.length);
 });

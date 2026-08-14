@@ -66,6 +66,16 @@ test("desktop widget is preloaded during app setup before frontend commands can 
   assert.match(restoreBody, /widget_window\(app,\s*&prefs\)/u);
 });
 
+test("showing the desktop widget restores and focuses its native window", () => {
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  const showBody = widgetWindow.match(
+    /pub fn show_desktop_widget[\s\S]*?\n\}\n\n#\[tauri::command\]/u,
+  )?.[0];
+  assert.ok(showBody, "show_desktop_widget implementation must exist");
+  assert.match(showBody, /window\.unminimize\(\)/u);
+  assert.match(showBody, /window\.set_focus\(\)/u);
+});
+
 test("frontend and Rust use the same prefs argument for widget updates", () => {
   const hook = read("dashboard/src/hooks/use-desktop-widget.ts");
   const widgetWindow = read("src-tauri/src/widget_window.rs");
