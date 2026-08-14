@@ -84,6 +84,7 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 ### Project-wide
 
 - **Repository boundary (hard rule)**: all agent/tool mutations for Token Eyes work must stay inside this repository root. Do not create, edit, delete, move, install, uninstall, update, launch, stop, or reconfigure files or software outside the repository, including CC Switch or any other independent application. Read-only inspection outside the repository is allowed only when needed for diagnosis. Any external mutation requires the user's explicit approval first.
+- **Branch and worktree authority (hard rule)**: before any mutation, report and verify the exact worktree path, branch, HEAD, and status. Never create, switch, merge, rebase, delete, or push a branch/worktree unless the user has explicitly authorized that specific branch/worktree action. A UI implementation request, a request to commit/push, or a detached HEAD never authorizes creating a side branch. When the user has named or previously confirmed a target branch/worktree, work only there; if it is unavailable, detached, dirty, or ambiguous, stop and ask instead of choosing or creating another branch. Do not create a new branch merely to make a commit or push possible.
 - CommonJS in `src/`, ESM + TypeScript strict in `dashboard/`. No mixing.
 - Env-var prefixes: `TOKENTRACKER_` for CLI, `VITE_` for dashboard.
 - Git commits in **English**, conventional style (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:` / `ci:`).
