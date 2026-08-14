@@ -8,14 +8,16 @@ use tauri::{
 };
 
 pub const WIDGET_LABEL: &str = "desktop-widget";
-const PREFS_VERSION: u8 = 6;
-const DEFAULT_WIDTH: u32 = 352;
-const DEFAULT_HEIGHT: u32 = 72;
-const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
-const MIN_WIDTH: u32 = 352;
-const MIN_HEIGHT: u32 = 72;
+const PREFS_VERSION: u8 = 10;
+const EFFECT_HALO: u32 = 140;
+const V9_HALO: u32 = 64;
+const DEFAULT_WIDTH: u32 = 632;
+const DEFAULT_HEIGHT: u32 = 342;
+const DEFAULT_EXPANDED_HEIGHT: u32 = 640;
+const MIN_WIDTH: u32 = 632;
+const MIN_HEIGHT: u32 = 342;
 const POPOVER_HEIGHT: u32 = 260;
-const CELEBRATION_PADDING: u32 = 42;
+const CELEBRATION_PADDING: u32 = 140;
 static TRANSIENT_POPOVER_OPEN: AtomicBool = AtomicBool::new(false);
 static TRANSIENT_CELEBRATION_OPEN: AtomicBool = AtomicBool::new(false);
 
@@ -109,6 +111,49 @@ fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
             prefs.expanded_height = prefs.height.max(DEFAULT_EXPANDED_HEIGHT);
         } else {
             prefs.collapsed_height = prefs.height.max(DEFAULT_HEIGHT);
+        }
+    }
+    if prefs.version < 7 {
+        if !prefs.expanded && prefs.height == 72 {
+            prefs.height = DEFAULT_HEIGHT;
+        }
+        if prefs.collapsed_height == 72 {
+            prefs.collapsed_height = DEFAULT_HEIGHT;
+        }
+    }
+    if prefs.version < 8 {
+        prefs.collapsed_height = 62;
+        if !prefs.expanded {
+            prefs.height = 62;
+        }
+    }
+    if prefs.version < 9 {
+        if let (Some(x), Some(y)) = (prefs.x, prefs.y) {
+            prefs.x = Some(x - V9_HALO as i32);
+            prefs.y = Some(y - V9_HALO as i32);
+        }
+        prefs.width = prefs.width.max(336) + V9_HALO * 2;
+        prefs.collapsed_height = 190;
+        prefs.expanded_height = prefs.expanded_height.max(360) + V9_HALO * 2;
+        if prefs.expanded {
+            prefs.height = prefs.expanded_height;
+        } else {
+            prefs.height = 190;
+        }
+    }
+    if prefs.version < 10 {
+        let extra = EFFECT_HALO - V9_HALO;
+        if let (Some(x), Some(y)) = (prefs.x, prefs.y) {
+            prefs.x = Some(x - extra as i32);
+            prefs.y = Some(y - extra as i32);
+        }
+        prefs.width = prefs.width + extra * 2;
+        prefs.collapsed_height = 342;
+        prefs.expanded_height = prefs.expanded_height.max(488) + extra * 2;
+        if prefs.expanded {
+            prefs.height = prefs.expanded_height;
+        } else {
+            prefs.height = 342;
         }
     }
     prefs.version = PREFS_VERSION;
@@ -560,12 +605,10 @@ pub fn set_desktop_widget_popover(app: AppHandle, open: bool) -> Result<(), Stri
 
 #[tauri::command]
 pub fn set_desktop_widget_celebration(app: AppHandle, open: bool) -> Result<(), String> {
-    let prefs = load(&app);
-    let Some(window) = app.get_webview_window(WIDGET_LABEL) else {
-        return Ok(());
-    };
+    // Keep the capsule where it is. Growing/shrinking the native window to
+    // make room for meteors made dismiss look like the widget jumped.
     TRANSIENT_CELEBRATION_OPEN.store(open, Ordering::Relaxed);
-    apply_transient_geometry(&window, &prefs);
+    let _ = app;
     Ok(())
 }
 
@@ -574,10 +617,44 @@ mod tests {
     use super::*;
 
     #[test]
+    fn migrates_oversized_collapsed_height_to_the_compact_capsule() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            version: 7,
+            expanded: false,
+            height: 96,
+            collapsed_height: 96,
+            ..WidgetPrefs::default()
+        });
+        assert_eq!(prefs.version, 10);
+        assert_eq!(prefs.height, 342);
+        assert_eq!(prefs.collapsed_height, 342);
+    }
+
+    #[test]
+    fn migrates_v8_compact_capsule_to_a_stable_effect_halo() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            version: 8,
+            x: Some(500),
+            y: Some(300),
+            width: 352,
+            height: 62,
+            collapsed_height: 62,
+            expanded_height: 360,
+            expanded: false,
+            ..WidgetPrefs::default()
+        });
+        assert_eq!(prefs.version, 10);
+        assert_eq!(prefs.x, Some(360));
+        assert_eq!(prefs.y, Some(160));
+        assert_eq!((prefs.width, prefs.height), (632, 342));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (342, 640));
+    }
+
+    #[test]
     fn defaults_to_the_compact_resizable_glass_capsule() {
         let prefs = WidgetPrefs::default();
-        assert_eq!((prefs.width, prefs.height), (352, 72));
-        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
+        assert_eq!((prefs.width, prefs.height), (632, 342));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (342, 640));
         assert!(prefs.always_on_top);
         assert_eq!(prefs.material, "frost");
         assert_eq!(prefs.opacity, 0.72);
@@ -625,8 +702,8 @@ mod tests {
             active_session_window: "30m".into(),
             ..WidgetPrefs::default()
         });
-        assert_eq!(prefs.version, 6);
-        assert_eq!((prefs.width, prefs.height), (352, 72));
+        assert_eq!(prefs.version, 10);
+        assert_eq!((prefs.width, prefs.height), (632, 342));
         assert_eq!(prefs.opacity, 0.4);
         assert_eq!(prefs.selected_agent, "all");
         assert_eq!(prefs.mode, "projects");
@@ -640,8 +717,8 @@ mod tests {
             visible: true,
             x: Some(410),
             y: Some(220),
-            width: 488,
-            height: 256,
+            width: 700,
+            height: 500,
             scale_factor: 1.5,
             ..WidgetPrefs::default()
         };
@@ -729,7 +806,7 @@ mod tests {
 
     #[test]
     fn logical_size_round_trips_across_dpi_changes() {
-        assert_eq!(logical_size(PhysicalSize::new(483, 216), 1.5), (352, 144));
+        assert_eq!(logical_size(PhysicalSize::new(483, 216), 1.5), (632, 342));
         assert_eq!(physical_size(322, 144, 2.0), PhysicalSize::new(644, 288));
     }
 
@@ -764,19 +841,19 @@ mod tests {
         assert_eq!(
             transient_geometry(base, 1.0, false, true),
             Geometry {
-                x: 458,
-                y: 258,
-                width: 436,
-                height: 156
+                x: 360,
+                y: 160,
+                width: 632,
+                height: 352
             },
         );
         assert_eq!(
             transient_geometry(base, 1.5, true, true),
             Geometry {
-                x: 437,
-                y: 237,
-                width: 478,
-                height: 516
+                x: 290,
+                y: 90,
+                width: 772,
+                height: 810
             },
         );
     }

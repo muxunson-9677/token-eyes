@@ -5,6 +5,7 @@ import {
   clamp,
   drawGlow,
   drawLine,
+  edgeFade,
   fadeTransparentSurface,
   hsla,
   pickRandom,
@@ -17,18 +18,21 @@ export function createMeteorScene(surface) {
   let meteors = [];
   let stars = [];
   let embers = [];
+  const fadeMargin = 0.16;
 
   const makeMeteor = (initial = false, giant = false) => {
     const depth = giant ? 1 : Math.pow(Math.random(), 1.6);
     const speed = (giant ? 1_700 : 470 + depth * 1_450) * surface.scale;
     const angle = randomBetween(2.25, 2.44);
+    const x = initial
+      ? randomBetween(-surface.width * 0.2, surface.width * 1.2)
+      : randomBetween(surface.width * 0.48, surface.width * 1.25);
+    const y = initial
+      ? randomBetween(-surface.height * 0.35, surface.height * 1.05)
+      : randomBetween(-surface.height * 0.38, surface.height * 0.08);
     return {
-      x: initial
-        ? randomBetween(-surface.width * 0.2, surface.width * 1.2)
-        : randomBetween(surface.width * 0.48, surface.width * 1.25),
-      y: initial
-        ? randomBetween(-surface.height * 0.35, surface.height * 1.05)
-        : randomBetween(-surface.height * 0.38, surface.height * 0.08),
+      x,
+      y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       depth,
@@ -37,6 +41,7 @@ export function createMeteorScene(surface) {
       hue: pickRandom(METEOR_HUES),
       life: randomBetween(0.7, 2.25),
       age: initial ? randomBetween(0, 0.8) : 0,
+      vanishAt: randomBetween(0.42, 1),
     };
   };
 
@@ -76,6 +81,8 @@ export function createMeteorScene(surface) {
       const speed = Math.hypot(meteor.vx, meteor.vy);
       const tailX = meteor.x - (meteor.vx / speed) * meteor.length;
       const tailY = meteor.y - (meteor.vy / speed) * meteor.length;
+      const lifeFade = clamp(1 - meteor.age / meteor.life, 0, 1);
+      const fade = lifeFade * edgeFade(meteor.x, meteor.y, width, height, fadeMargin);
       drawLine(
         context,
         tailX,
@@ -84,7 +91,7 @@ export function createMeteorScene(surface) {
         meteor.y,
         hsla(meteor.hue, 100, 60),
         meteor.width * 3.2,
-        0.2 + 0.25 * meteor.depth,
+        (0.2 + 0.25 * meteor.depth) * fade,
       );
       drawLine(
         context,
@@ -94,10 +101,10 @@ export function createMeteorScene(surface) {
         meteor.y,
         "rgba(245,252,255,1)",
         Math.max(0.7, meteor.width * 0.52),
-        0.96,
+        0.96 * fade,
       );
       if (meteor.depth > 0.6) {
-        drawGlow(context, meteor.x, meteor.y, 7 + meteor.width * 3.4, meteor.hue, 0.72);
+        drawGlow(context, meteor.x, meteor.y, 7 + meteor.width * 3.4, meteor.hue, 0.72 * fade);
       }
       if (meteor.depth > 0.72 && Math.random() < delta * 14 && embers.length < 260) {
         embers.push({
@@ -111,11 +118,8 @@ export function createMeteorScene(surface) {
           radius: randomBetween(0.7, 2.1),
         });
       }
-      if (
-        meteor.x < -width * 0.45
-        || meteor.y > height * 1.45
-        || meteor.age > meteor.life
-      ) {
+      const offCanvas = meteor.x < -width * 0.2 || meteor.y > height * 1.2;
+      if (fade < 0.04 || meteor.age > meteor.life * meteor.vanishAt || offCanvas) {
         meteors[index] = makeMeteor(false, Math.random() < 0.014);
       }
     }
@@ -141,12 +145,13 @@ export function createMeteorScene(surface) {
   return { render, resize: reset };
 }
 
-export default function MeteorCelebrationCanvas({ onFallback }) {
+export default function MeteorCelebrationCanvas({ onFallback, fitParent = false }) {
   return (
     <CelebrationCanvas
       effectId="meteors"
       createScene={createMeteorScene}
       onFallback={onFallback}
+      fitParent={fitParent}
     />
   );
 }

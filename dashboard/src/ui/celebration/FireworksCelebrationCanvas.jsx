@@ -4,6 +4,7 @@ import {
   TAU,
   clamp,
   drawGlow,
+  edgeFade,
   fadeTransparentSurface,
   hsla,
   randomBetween,
@@ -132,19 +133,20 @@ export function createFireworksScene(surface) {
       const life = clamp(1 - spark.age / spark.life, 0, 1);
       const bin = life > 0.67 ? 2 : life > 0.3 ? 1 : 0;
       const hue = PALETTES[spark.paletteIndex][1];
+      const fade = life * edgeFade(spark.x, spark.y, width, height, 0.16);
       context.strokeStyle = hsla(hue, 100, 62);
-      context.globalAlpha = [0.3, 0.58, 0.96][bin];
+      context.globalAlpha = [0.3, 0.58, 0.96][bin] * fade;
       context.lineWidth = [1.45, 2.15, 3.05][bin];
       context.beginPath();
       context.moveTo(spark.previousX, spark.previousY);
       context.lineTo(spark.x, spark.y);
       context.stroke();
       context.strokeStyle = "rgba(255,248,236,.96)";
-      context.globalAlpha = [0.28, 0.62, 1][bin];
+      context.globalAlpha = [0.28, 0.62, 1][bin] * fade;
       context.lineWidth = [0.55, 0.86, 1.2][bin];
       context.stroke();
       if (glowBudget > 0 && bin === 2 && index % 11 === 0) {
-        drawGlow(context, spark.x, spark.y, spark.width * 7, hue, 0.42);
+        drawGlow(context, spark.x, spark.y, spark.width * 7, hue, 0.42 * fade);
         glowBudget -= 1;
       }
     }
@@ -174,12 +176,13 @@ export function createFireworksScene(surface) {
   return { render, resize: reset };
 }
 
-export default function FireworksCelebrationCanvas({ onFallback }) {
+export default function FireworksCelebrationCanvas({ onFallback, fitParent = false }) {
   return (
     <CelebrationCanvas
       effectId="fireworks"
       createScene={createFireworksScene}
       onFallback={onFallback}
+      fitParent={fitParent}
     />
   );
 }

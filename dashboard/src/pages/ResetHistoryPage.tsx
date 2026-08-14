@@ -76,6 +76,7 @@ const PREVIEW_RESET_HISTORY: CodexResetHistoryEvent[] = PREVIEW_RESET_DATES.map(
     reset_kind: index === 4 ? "unknown" : index >= 8 ? "banked" : "hard",
     reset_scope: index % 3 === 0 ? "all_codex_work_users" : "all_paid_users",
     title: "Codex official extra reset",
+    summary: "OpenAI issued an extra Codex usage reset for paid users.",
   }),
 );
 
@@ -271,24 +272,26 @@ function ResetStatisticsSummary({
           data-testid="reset-history-stat"
           data-tone={item.tone}
           data-empty={item.value === null || isLoading ? "true" : undefined}
-          className="tt-surface-nested tt-pressable min-w-0 rounded-2xl border border-oai-gray-200/80 px-4 py-4 dark:border-oai-gray-800"
+          className="tt-reset-stat-card tt-surface-nested tt-pressable min-w-0 rounded-2xl border border-oai-gray-200/80 px-4 py-4 dark:border-oai-gray-800"
         >
           <span
             data-testid="reset-history-stat-icon"
-            className={`flex h-9 w-9 items-center justify-center rounded-xl ${STAT_TONE_CLASSES[item.tone]}`}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${STAT_TONE_CLASSES[item.tone]}`}
             aria-hidden
           >
             <Icon className="h-4 w-4" />
           </span>
-          <dt className="mt-4 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
-            {item.label}
-          </dt>
-          <dd className="mt-1 text-lg font-semibold tabular-nums">
-            {isLoading ? copy("reset_history.loading") : item.value ?? unavailableValue}
-          </dd>
-          <p className="tt-reset-stat-detail">
-            {isLoading ? copy("reset_history.loading_detail") : item.detail}
-          </p>
+          <div className="tt-reset-stat-copy min-w-0 flex-1">
+            <dt className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
+              {item.label}
+            </dt>
+            <dd className="mt-1 text-lg font-semibold tabular-nums">
+              {isLoading ? copy("reset_history.loading") : item.value ?? unavailableValue}
+            </dd>
+            <p className="tt-reset-stat-detail">
+              {isLoading ? copy("reset_history.loading_detail") : item.detail}
+            </p>
+          </div>
         </div>
       ))}
     </dl>
@@ -385,6 +388,7 @@ function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[];
 }
 
 function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLatest?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
   const sourceLabel = getSourceLabel(event);
   const resetKind = event.reset_kind && event.reset_kind in RESET_KIND_VISUALS
     ? event.reset_kind as keyof typeof RESET_KIND_VISUALS
@@ -392,11 +396,24 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
   const kindLabel = copy(`reset_history.kind.${resetKind}`);
   const scopeLabel = copy(`reset_history.scope.${event.reset_scope || "unknown"}`);
   const { Icon, tone, className } = RESET_KIND_VISUALS[resetKind];
+  const quotedAuthor = event.source_author === "thsottiaux"
+    ? copy("reset_history.source.tibo")
+    : event.source_author === "OpenAI"
+      ? copy("reset_history.source.openai")
+      : event.source_author;
+  const hasDetail = Boolean(event.title || event.summary || event.source_url);
+
+  const toggleExpanded = () => {
+    if (!hasDetail) return;
+    setExpanded((current) => !current);
+  };
 
   return (
     <li
       data-testid="reset-history-item"
-      className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 py-2 sm:grid-cols-[1.75rem_minmax(0,1fr)_auto]"
+      data-expanded={expanded ? "true" : "false"}
+      className="tt-reset-history-card tt-pressable grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 sm:grid-cols-[1.75rem_minmax(0,1fr)_auto]"
+      onClick={toggleExpanded}
     >
       <span className="relative flex justify-center pt-0.5" aria-hidden>
         <span
@@ -408,7 +425,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
           <Icon data-kind={resetKind} className="h-3.5 w-3.5" />
         </span>
       </span>
-      <p className="min-w-0 text-sm leading-6 text-oai-gray-700 dark:text-oai-gray-200">
+      <p className="tt-reset-history-headline min-w-0 text-sm leading-6 text-oai-gray-700 dark:text-oai-gray-200">
         <span className="font-medium text-oai-black dark:text-white">{sourceLabel}</span>
         <span aria-hidden> · </span>
         {kindLabel}
@@ -424,6 +441,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
               rel="noopener noreferrer"
               className="font-medium text-emerald-700 hover:underline dark:text-emerald-300"
               aria-label={`${copy("codex_reset.action.view_official")} ${event.sourceIndex}`}
+              onClick={(event) => event.stopPropagation()}
             >
               [{event.sourceIndex}]
             </a>
@@ -436,8 +454,48 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
       >
         {isLatest ? <span className="tt-reset-latest-badge">{copy("reset_history.latest")}</span> : null}
         {formatResetDateTime(event.occurred_at)}
-        <ChevronRight className="tt-reset-row-chevron" aria-hidden />
+        <button
+          type="button"
+          className="tt-reset-row-chevron-button"
+          data-testid="reset-history-expand"
+          aria-label={expanded ? copy("reset_history.collapse_aria") : copy("reset_history.expand_aria")}
+          aria-expanded={expanded}
+          onClick={(event) => {
+            event.stopPropagation();
+            toggleExpanded();
+          }}
+        >
+          <ChevronRight className={`tt-reset-row-chevron${expanded ? " is-expanded" : ""}`} aria-hidden />
+        </button>
       </time>
+      {expanded && hasDetail ? (
+        <div className="tt-reset-history-detail" data-testid="reset-history-detail">
+          {event.title ? <h3>{event.title}</h3> : null}
+          <dl>
+            {event.summary ? (
+              <div>
+                <dt>{copy("reset_history.detail_content")}</dt>
+                <dd>{event.summary}</dd>
+              </div>
+            ) : null}
+            {event.source_url ? (
+              <div>
+                <dt>{copy("reset_history.quoted_tweet")}</dt>
+                <dd>
+                  <a
+                    href={event.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {quotedAuthor || event.source_url}
+                  </a>
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -557,7 +615,7 @@ export function ResetHistoryPage() {
                   </div>
                   <ol
                     data-testid="reset-history-timeline"
-                    className="relative divide-y divide-oai-gray-200 before:absolute before:bottom-4 before:left-[0.875rem] before:top-4 before:w-px before:bg-oai-gray-200 dark:divide-oai-gray-800 dark:before:bg-oai-gray-700"
+                    className="tt-reset-history-cards relative"
                   >
                     {visibleEvents.map((event, index) => (
                       <ResetRecord key={event.id} event={event} isLatest={index === 0} />

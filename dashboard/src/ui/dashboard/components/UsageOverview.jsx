@@ -699,14 +699,17 @@ export function UsageOverview({
                         : ""
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 mb-1 min-w-0">
+                    <div className="tt-provider-card-identity flex items-start gap-1.5 mb-1 min-w-0">
                       <ProviderIcon provider={provider.label} size={32} color={color} className="text-oai-gray-700 dark:text-oai-gray-300 shrink-0" />
-                      <span className="text-sm font-medium text-oai-black dark:text-oai-white truncate min-w-0 flex-1">{provider.label}</span>
-                      <BillingBadge
-                        mode={sourceBillingMode}
-                        copyKey={sourceBillingKey}
-                        label={sourceBillingMode === "api_key" ? "直连" : sourceBillingMode === "token_plan" ? "套餐" : undefined}
-                      />
+                      <div className="tt-provider-card-nameplate min-w-0 flex-1">
+                        <span className="tt-provider-card-name block text-sm font-medium leading-tight text-oai-black dark:text-oai-white truncate">{provider.label}</span>
+                        <BillingBadge
+                          className="tt-provider-card-badge mt-1"
+                          mode={sourceBillingMode}
+                          copyKey={sourceBillingKey}
+                          label={sourceBillingMode === "api_key" ? "直连" : sourceBillingMode === "token_plan" ? "套餐" : undefined}
+                        />
+                      </div>
                     </div>
                     {provider.collectionStatus === "connected_no_precise_tokens" ? (
                       <>

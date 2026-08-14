@@ -51,7 +51,7 @@ export function hasRecordedDailyUsage(row) {
 export function DataDetails({
   // Project props
   projectEntries = [],
-  projectLimit = 3,
+  projectLimit = 0,
   onProjectLimitChange,
   // Daily breakdown props
   copy,

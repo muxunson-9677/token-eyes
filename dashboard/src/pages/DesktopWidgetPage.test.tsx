@@ -237,6 +237,9 @@ describe("DesktopWidgetPage", () => {
     expect(screen.getByTestId("widget-mode-rail").parentElement)
       .toBe(screen.getByTestId("desktop-widget-card").parentElement);
     expect(widgetStyles).toContain(".widget-mode-rail--reference-dock {\n  align-self: start;\n  margin-top: 4px;");
+    expect(widgetStyles).toContain("grid-template-columns: 58px max-content 58px");
+    expect(widgetStyles).toContain("margin-left: -1px");
+    expect(widgetStyles).toContain("width: 16px;\n  height: 14px;");
   });
 
   it("uses the reference dock chrome while keeping the real model totals available", () => {
@@ -575,8 +578,11 @@ describe("DesktopWidgetPage", () => {
       });
       expect(screen.getByTestId("widget-reset-celebration"))
         .toHaveAttribute("data-effect-id", "meteors");
+      expect(readFileSync("src/pages/DesktopWidgetPage.tsx", "utf8")).toContain("fitToHost");
+      expect(readFileSync("src/pages/DesktopWidgetPage.tsx", "utf8")).not.toContain("surroundMeteors");
       expect(screen.getByRole("button", { name: "copy:widget.reset.acknowledge" }))
         .toHaveClass("widget-reset-celebration__dismiss");
+      expect(widgetStyles).toContain(".widget-reset-celebration__dismiss svg {\n  display: block;");
       expect(widget.acknowledgePendingReset).not.toHaveBeenCalled();
 
       await act(async () => {

@@ -405,7 +405,7 @@ function LeaderboardEntryRow({
       onKeyDown={onRowKeyDown}
       aria-label={rowClickable ? copy("leaderboard.profile_modal.row_aria", { name }) : undefined}
       className={cn(
-        "relative grid min-h-[78px] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors sm:grid-cols-[2.25rem_minmax(0,1fr)_9rem] sm:gap-4 sm:px-5",
+        "relative grid min-h-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-3 px-4 py-2.5 transition-colors sm:grid-cols-[2.25rem_minmax(0,1fr)_10rem] sm:gap-4 sm:px-5",
         isCurrentUser ? "bg-oai-brand-50/70 dark:bg-oai-brand-900/10" : "bg-white/45 dark:bg-black/10",
         isTopRank && "tt-leaderboard-top-entry tt-leaderboard-top-entry--compact tt-leaderboard-top-entry--reference",
         isPinned && "before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r before:bg-oai-brand-500",
@@ -448,18 +448,18 @@ function LeaderboardEntryRow({
             ) : null}
             {!isReferenceTopEntry && entry?.github_url && <GithubLinkWithTooltip githubUrl={entry.github_url} />}
           </div>
-          <div className="tt-leaderboard-entry-distribution tt-leaderboard-entry-distribution--nearby mt-1 min-w-0">
+          <div className="tt-leaderboard-entry-distribution tt-leaderboard-entry-distribution--nearby mt-2.5 min-w-0">
             <AgentDistribution entry={entry} metric={metric} currency={currency} rate={rate} />
           </div>
         </div>
       </div>
 
-      <div className="tt-leaderboard-score-column min-w-[5.5rem] text-right tabular-nums sm:min-w-0">
-        <div className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100 sm:text-base">
+      <div className="tt-leaderboard-score-column min-w-[6.5rem] pt-0.5 text-right tabular-nums sm:min-w-0">
+        <div className="text-xl font-bold leading-7 text-oai-gray-900 dark:text-oai-gray-100 sm:text-[22px]">
           <RankingScore entry={entry} metric={metric} currency={currency} rate={rate} />
         </div>
         {secondaryValue != null ? (
-          <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
+          <div className="mt-1 text-sm text-oai-gray-400 dark:text-oai-gray-500">
             {secondaryValue}
           </div>
         ) : null}
@@ -519,6 +519,7 @@ export function LeaderboardPage({
   const effectiveAuthToken = authTokenAllowed ? authAccessToken : null;
 
   const [listPage, setListPage] = useState(1);
+  const [pageInput, setPageInput] = useState("");
   const [todaySummary, setTodaySummary] = useState(null);
   const [syncRevision, setSyncRevision] = useState(0);
   const [participationSync, setParticipationSync] = useState("idle");
@@ -1191,6 +1192,13 @@ export function LeaderboardPage({
     );
   }
 
+  const jumpToListPage = () => {
+    const parsed = Number.parseInt(String(pageInput).trim(), 10);
+    if (!Number.isFinite(parsed) || parsed < 1) return;
+    const max = typeof totalPages === "number" && totalPages > 0 ? totalPages : parsed;
+    setListPage(Math.min(parsed, max));
+  };
+
   let pageButtons = null;
   if (typeof totalPages === "number") {
     pageButtons = pageItems.map((p, idx) => {
@@ -1207,12 +1215,8 @@ export function LeaderboardPage({
       return (
         <button
           key={`page-${p}`}
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-md text-sm font-medium transition-colors",
-            p === currentPage
-              ? "bg-oai-gray-200 dark:bg-oai-gray-800 text-oai-black dark:text-white"
-              : "text-oai-gray-500 dark:text-oai-gray-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white"
-          )}
+          type="button"
+          aria-current={p === currentPage ? "page" : undefined}
           onClick={() => setListPage(p)}
           disabled={currentListState.loading}
         >
@@ -1526,48 +1530,55 @@ export function LeaderboardPage({
             </div>
             {listBody}
 
-            <div className="px-6 py-3 border-t border-oai-gray-200 dark:border-oai-gray-800 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-              <div className="flex items-center gap-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-                <label htmlFor="leaderboard-page-size" className="whitespace-nowrap">
-                  {copy("leaderboard.pagination.page_size_label")}
+            <div
+              className="tt-overview-pagination tt-leaderboard-pagination"
+              data-testid="leaderboard-pagination"
+            >
+              <div>
+                <label className="tt-overview-page-size">
+                  {copy("dashboard.daily.page_size_label")}
+                  <select
+                    id="leaderboard-page-size"
+                    aria-label={copy("dashboard.daily.page_size_aria")}
+                    value={pageSize}
+                    disabled={currentListState.loading}
+                    onChange={(event) => setPageSize(Number(event.target.value))}
+                  >
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>
+                        {copy("dashboard.daily.page_size_value", { count: size })}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <Select
-                  id="leaderboard-page-size"
-                  value={pageSize}
-                  onValueChange={(value) => setPageSize(Number(value))}
-                  disabled={currentListState.loading}
-                  ariaLabel={copy("leaderboard.pagination.page_size_label")}
-                  options={PAGE_SIZE_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
-                  align="end"
-                  className="px-3 py-1 text-oai-gray-700 dark:text-oai-gray-300"
+                <button
+                  type="button"
+                  disabled={!canPrev || currentListState.loading}
+                  onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                >
+                  {copy("details.pagination.prev")}
+                </button>
+                {pageButtons}
+                <button
+                  type="button"
+                  disabled={!canNext || currentListState.loading}
+                  onClick={() => setListPage((p) => p + 1)}
+                >
+                  {copy("details.pagination.next")}
+                </button>
+                <input
+                  aria-label={copy("dashboard.projects.page_number")}
+                  value={pageInput}
+                  inputMode="numeric"
+                  onChange={(event) => setPageInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") jumpToListPage();
+                  }}
                 />
+                <button type="button" onClick={jumpToListPage}>
+                  {copy("dashboard.projects.page_jump")}
+                </button>
               </div>
-              <div className="h-5 w-px bg-oai-gray-200 dark:bg-oai-gray-800" aria-hidden="true" />
-              <button
-                className={cn(
-                  "px-3 py-1.5 text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 rounded-md transition-colors",
-                  canPrev && !currentListState.loading
-                    ? "hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white"
-                    : "opacity-50 cursor-not-allowed"
-                )}
-                onClick={() => setListPage((p) => Math.max(1, p - 1))}
-                disabled={!canPrev || currentListState.loading}
-              >
-                {copy("leaderboard.pagination.prev")}
-              </button>
-              <div className="flex flex-wrap items-center gap-1">{pageButtons}</div>
-              <button
-                className={cn(
-                  "px-3 py-1.5 text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 rounded-md transition-colors",
-                  canNext && !currentListState.loading
-                    ? "hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white"
-                    : "opacity-50 cursor-not-allowed"
-                )}
-                onClick={() => setListPage((p) => p + 1)}
-                disabled={!canNext || currentListState.loading}
-              >
-                {copy("leaderboard.pagination.next")}
-              </button>
             </div>
           </div>
         </div>
@@ -1580,13 +1591,13 @@ export function LeaderboardPage({
             <div>
               <p>{copy("landing.v2.footer.line")}</p>
               <div className="mt-2 flex items-center gap-4 text-xs">
-                <span>{copy("shared.footer.version")}</span>
+                <span>{copy("shared.footer.version", { version: import.meta.env.VITE_APP_VERSION || "0.54.42" })}</span>
                 <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
                 <a href="#privacy-data">{copy("shared.footer.privacy")}</a>
                 <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
                 <a href="#terms">{copy("shared.footer.terms")}</a>
                 <span className="h-3 w-px bg-oai-gray-200" aria-hidden="true" />
-                <a href="https://github.com/mm7894215/TokenTracker" target="_blank" rel="noopener noreferrer">{copy("landing.v2.nav.github")}</a>
+                <span>{copy("landing.v2.nav.github")} · {copy("shared.footer.github_private")}</span>
               </div>
             </div>
           </div>

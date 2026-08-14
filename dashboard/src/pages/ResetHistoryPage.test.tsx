@@ -155,6 +155,29 @@ describe("ResetHistoryPage", () => {
     );
   });
 
+  it("expands the announcement title, details, and quoted post from the card or chevron", async () => {
+    const user = userEvent.setup();
+    resetContext.value.history = [
+      officialReset("today", new Date(2026, 6, 26, 14, 32)),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    const item = screen.getByTestId("reset-history-item");
+    expect(screen.queryByTestId("reset-history-detail")).not.toBeInTheDocument();
+    expect(item).not.toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
+
+    expect(item).toHaveClass("tt-pressable");
+    await user.click(screen.getByTestId("reset-history-expand"));
+
+    const detail = screen.getByTestId("reset-history-detail");
+    expect(detail).toHaveTextContent("Codex official extra reset");
+    expect(detail).toHaveTextContent("copy:reset_history.detail_content");
+    expect(detail).toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
+    expect(detail).toHaveTextContent("copy:reset_history.quoted_tweet");
+    expect(item).toHaveAttribute("data-expanded", "true");
+  });
+
   it("shows all retained records in descending occurrence order instead of capping at three", () => {
     resetContext.value.history = Array.from({ length: 5 }, (_, index) =>
       officialReset(

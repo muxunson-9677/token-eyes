@@ -1885,7 +1885,7 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
 
 /* First-ranked row: the reference is a compact two-tier data row, not a stacked card. */
 .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"]:has(ol > li.tt-leaderboard-top-entry--reference:only-child) {
-  height: 204px;
+  height: auto;
 }
 
 .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"]:has(ol > li.tt-leaderboard-top-entry--reference:only-child) .tt-leaderboard-table-head {
@@ -1895,10 +1895,12 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
 }
 
 .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] ol > li.tt-leaderboard-top-entry--reference {
-  min-height: 86px;
-  grid-template-columns: 46px minmax(0, 1fr) 108px;
+  min-height: 0;
+  height: auto;
+  grid-template-columns: 46px minmax(0, 1fr) 132px;
   gap: 10px;
   padding: 10px 22px 10px 14px;
+  align-items: start;
 }
 
 .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-top-entry-content {
@@ -1922,8 +1924,10 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 28px 24px;
-  gap: 2px;
+  grid-template-rows: auto auto;
+  gap: 10px;
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 
 .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-identity {
@@ -1956,7 +1960,7 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
 
 .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-entry-distribution--nearby {
   min-width: 0;
-  margin-top: 0;
+  margin-top: 4px;
 }
 
 .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-agent-distribution {
@@ -2023,22 +2027,25 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
 .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-score-column {
   min-width: 0;
   padding-right: 18px;
+  padding-top: 2px;
 }
 
 .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-score-column > div:first-child {
-  font-size: 15px;
-  line-height: 20px;
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 700;
 }
 
 .tt-reference-route-leaderboard .tt-leaderboard-top-entry--reference .tt-leaderboard-score-column > div:last-child {
-  margin-top: 1px;
-  font-size: 11px;
-  line-height: 14px;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 18px;
 }
 
 .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"]:has(ol > li.tt-leaderboard-top-entry--reference:only-child) > div:last-child {
-  height: 58px;
-  padding: 0 20px;
+  height: auto;
+  min-height: 0;
+  padding: 10px 16px 12px;
 }
 
 .tt-reference-route-reset-history {
@@ -2104,7 +2111,10 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-stat"] {
+  display: flex;
   min-height: 160px;
+  align-items: center;
+  gap: 14px;
   border-color: #e1e8f0;
   border-radius: 18px;
   padding: 22px 20px 18px;
@@ -2115,10 +2125,11 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-stat-icon"] {
-  float: left;
+  float: none;
+  flex: 0 0 auto;
   width: 48px;
   height: 48px;
-  margin-right: 17px;
+  margin-right: 0;
   border-radius: 999px;
 }
 
@@ -2127,20 +2138,28 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   height: 23px;
 }
 
+.tt-reference-route-reset-history .tt-reset-stat-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .tt-reference-route-reset-history [data-testid="reset-history-stat"] dt {
-  margin-top: 2px;
+  margin-top: 0;
   font-size: 12px;
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-stat"] dd {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 22px;
   line-height: 28px;
 }
 
 .tt-reference-route-reset-history .tt-reset-stat-detail {
-  clear: both;
-  margin-top: 10px;
+  clear: none;
+  margin-top: 6px;
   overflow: hidden;
   color: #7f8998;
   font-size: 11px;
@@ -2322,17 +2341,14 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   }
 
   .tt-reference-route-reset-history [data-testid="reset-history-stat"] {
-    display: grid;
+    display: flex;
     min-height: 140px;
-    grid-template-columns: 32px minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
-    align-content: start;
-    column-gap: 8px;
+    align-items: center;
+    gap: 10px;
     padding: 14px 10px 12px;
   }
 
   .tt-reference-route-reset-history [data-testid="reset-history-stat-icon"] {
-    grid-row: 1 / 3;
     width: 32px;
     height: 32px;
     margin: 0;
@@ -2345,14 +2361,12 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   }
 
   .tt-reference-route-reset-history [data-testid="reset-history-stat"] dt {
-    grid-column: 2;
     margin-top: 0;
     font-size: 10px;
     line-height: 14px;
   }
 
   .tt-reference-route-reset-history [data-testid="reset-history-stat"] dd {
-    grid-column: 2;
     margin-top: 2px;
     overflow: visible;
     font-size: 16px;
@@ -2362,8 +2376,7 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   }
 
   .tt-reference-route-reset-history .tt-reset-stat-detail {
-    grid-column: 1 / -1;
-    margin-top: 9px;
+    margin-top: 6px;
     overflow: visible;
     font-size: 10px;
     line-height: 14px;
@@ -2492,14 +2505,20 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 .tt-reference-route-reset-history .tt-reset-history-table-head span:last-child { justify-self: start; }
 
 .tt-reference-route-reset-history [data-testid="reset-history-timeline"] {
-  height: 406px;
-  width: calc(100% - 28px);
-  margin-left: 28px;
+  position: relative;
+  display: flex;
+  height: auto;
+  min-height: 0;
+  width: 100%;
+  margin-left: 0;
+  padding-left: 18px;
+  flex-direction: column;
+  gap: 6px;
   overflow: visible;
-  border: 1px solid #e4eaf0;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 10px 24px rgba(28, 43, 59, 0.045);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .tt-reference-route-reset-history .tt-reset-history-empty {
@@ -2516,35 +2535,92 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-timeline"]::before {
-  top: 15px;
-  bottom: 15px;
-  left: -21px;
-  background: #11bc83;
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 5px;
+  z-index: 0;
+  display: block;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(14, 166, 113, 0.42), rgba(14, 166, 113, 0.14));
+  content: "";
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-item"] {
   position: relative;
-  min-height: 36px;
+  min-height: 56px;
   grid-template-columns: 28px minmax(0, 1fr) 190px;
-  align-items: center;
-  padding: 0 16px;
+  align-items: start;
+  border: 1px solid #e1e8f0;
+  border-radius: 16px;
+  padding: 12px 16px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 255, 255, 0.98), transparent 42%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 252, 0.88));
+  box-shadow: 0 10px 22px rgba(28, 43, 59, 0.07), 0 2px 5px rgba(28, 43, 59, 0.04);
   font-size: 13px;
+  cursor: pointer;
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-item"]::before {
   position: absolute;
-  left: -24px;
-  width: 8px;
-  height: 8px;
-  border: 2px solid #11bc83;
+  top: 22px;
+  left: -17px;
+  z-index: 1;
+  display: block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
   border-radius: 999px;
-  background: #fff;
+  background: #12b37a;
+  box-shadow: 0 0 0 3px rgba(18, 179, 122, 0.16);
   content: "";
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-item"] p {
   font-size: 13px;
-  line-height: 34px;
+  line-height: 22px;
+}
+
+.tt-reference-route-reset-history [data-testid="reset-history-item"] .tt-reset-history-headline {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+
+.tt-reference-route-reset-history .tt-reset-history-detail {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(31, 43, 56, 0.08);
+}
+
+.tt-reference-route-reset-history .tt-reset-history-detail h3 {
+  margin: 0;
+  color: #17212b;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.tt-reference-route-reset-history .tt-reset-history-detail dt {
+  color: #8794a2;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tt-reference-route-reset-history .tt-reset-history-detail dd {
+  margin: 2px 0 0;
+  color: #3d4b59;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.tt-reference-route-reset-history .tt-reset-row-chevron.is-expanded {
+  transform: rotate(90deg);
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-item"] time {
@@ -2563,11 +2639,21 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   font-weight: 700;
 }
 
+.tt-reference-route-reset-history .tt-reset-row-chevron-button {
+  display: inline-flex;
+  margin-left: auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
 .tt-reference-route-reset-history .tt-reset-row-chevron {
   width: 13px;
   height: 13px;
-  margin-left: auto;
   color: #a6afbb;
+  transition: transform 160ms ease;
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-node"] {
@@ -5208,9 +5294,9 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
-  height: 151px;
+  height: 168px;
   border-radius: 16px;
-  padding: 15px 8px 12px;
+  padding: 13px 8px 12px;
 }
 
 .tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card > .text-lg {
@@ -5225,9 +5311,12 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   margin-top: 8px;
 }
 
-.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card > div:first-child > .text-sm {
-  overflow: visible;
+.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card-name {
+  overflow: hidden;
   font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tt-reference-route-dashboard .tt-overview-provider-panel .grid.grid-cols-2 {
@@ -5245,38 +5334,20 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   transform: translateY(1px);
 }
 
-.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card:last-child {
-  position: relative;
-  padding-right: 8px;
-  padding-left: 10px;
+.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
 }
 
-.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card:last-child > div:first-child {
-  display: grid;
-  height: 38px;
-  grid-template-columns: 38px minmax(0, 1fr);
-  grid-template-rows: 18px 18px;
-  column-gap: 8px;
-  margin-bottom: 0;
+.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card-nameplate {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card:last-child > div:first-child > img,
-.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card:last-child > div:first-child > svg {
-  width: 44px;
-  height: 44px;
-  grid-row: 1 / 3;
-  transform: translate(-3px, -3px);
-}
-
-.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card:last-child > div:first-child > .text-sm {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card:last-child > div:first-child > .inline-flex {
-  grid-column: 2;
-  grid-row: 2;
-  justify-self: start;
+.tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card-badge {
+  margin-top: 4px;
 }
 
 .tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card:last-child > .text-emerald-600 {
@@ -5683,13 +5754,17 @@ html[data-reference-scenario="13-settings-cost-4"] .tt-native-status-pill:first-
   height: 30px;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--tt-surface-border);
+  border: 1px solid rgba(31, 43, 56, 0.16);
   border-radius: 8px;
   padding-left: 8px;
   color: #667085;
   font-size: 10.5px;
   font-weight: 500;
   white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 4px 10px rgba(31, 43, 56, 0.1),
+    0 1px 2px rgba(31, 43, 56, 0.06);
 }
 
 .tt-system-status-control .tt-native-status-value {
@@ -5994,9 +6069,12 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
 
 .tt-theme-trigger {
   background: var(--tt-control-surface);
-  border-color: var(--tt-surface-border);
+  border-color: rgba(31, 43, 56, 0.16);
   outline: 1px solid var(--tt-nested-outline);
-  box-shadow: var(--tt-nested-shadow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 4px 10px rgba(31, 43, 56, 0.1),
+    0 1px 2px rgba(31, 43, 56, 0.06);
 }
 
 .tt-theme-trigger[aria-expanded="true"] {
@@ -6996,12 +7074,14 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 }
 
 /* Overview / project usage: independent disclosures must not stretch adjacent cards. */
-.tt-overview-project-panel { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
-.tt-overview-project-grid { min-height: 0; align-items: start; flex: 1 1 0; overflow-y: auto; }
+.tt-overview-project-panel { display: flex; min-height: 0; flex-direction: column; overflow: visible; }
+.tt-overview-project-grid { min-height: 0; align-items: start; flex: 1 1 auto; overflow: visible; }
 .tt-overview-project-grid--stable {
-  min-height: 340px;
-  flex: 1 0 auto;
-  grid-auto-rows: 340px;
+  /* V4 r1.2: auto rows so recent + manual cards wrap instead of a single
+     340px-tall row that clipped everything after the first three. */
+  min-height: 0;
+  flex: 0 0 auto;
+  grid-auto-rows: auto;
   align-items: start;
 }
 .tt-overview-project-header { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0 0 12px; }
@@ -7014,7 +7094,22 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-overview-project-summary span { color: #8794a2; font-size: 9px; }
 .tt-overview-project-summary strong { margin-top: 2px; color: #17212b; font-size: 12px; }
 .tt-overview-project-panel { --tt-project-accent-blue: #4d9cff; --tt-project-accent-green: #45c873; --tt-project-accent-purple: #9a6bff; --tt-project-accent-orange: #ff9f43; --tt-project-accent-pink: #ec6aa7; }
-.tt-overview-project-card--embedded { min-height: 150px; gap: 10px; overflow: hidden; border: 1px solid rgba(31,43,56,.12); border-radius: 14px; padding: 13px; background: linear-gradient(145deg,#fff 0%,#f6faf9 100%); box-shadow: 0 8px 18px rgba(31,43,56,.09),inset 0 1px 0 rgba(255,255,255,.98); }
+.tt-overview-project-card--embedded {
+  min-height: 150px;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(28, 43, 59, 0.16);
+  border-radius: 16px;
+  padding: 13px;
+  background:
+    linear-gradient(165deg, #ffffff 0%, #f7fbf9 72%, #eef5f2 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 1px 0 rgba(255, 255, 255, 0.7),
+    0 8px 14px rgba(28, 43, 59, 0.08),
+    0 18px 32px rgba(28, 43, 59, 0.12);
+  transform: translateY(-1px);
+}
 .tt-overview-project-card--embedded[data-expanded="true"] {
   height: 340px;
   min-height: 340px;
@@ -7071,7 +7166,7 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-overview-project-breakdown strong { color: var(--tt-project-accent,#438df0); font-variant-numeric: tabular-nums; }
 .tt-overview-project-sparkline { display: block; width: 100%; height: 32px; }
 .tt-overview-project-sparkline-base { stroke: rgba(31,43,56,.08); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.tt-overview-project-tab > .tt-overview-project-panel { height: 100%; min-height: 0; }
+.tt-overview-project-tab > .tt-overview-project-panel { height: auto; min-height: 100%; }
 .tt-overview-data-tabs { display: inline-flex; gap: 4px; border: 1px solid rgba(31,43,56,.08); border-radius: 12px; padding: 4px; background: #f7f9fb; box-shadow: inset 0 1px 0 rgba(255,255,255,.9); }
 .tt-overview-data-tab { border: 1px solid transparent; }
 .tt-overview-data-tab[aria-selected="true"] { border-color: rgba(31,43,56,.08); background: #fff; box-shadow: 0 2px 7px rgba(31,43,56,.08), inset 0 1px 0 rgba(255,255,255,.98); }
@@ -7989,4 +8084,36 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
     flex: 0 0 auto;
     justify-content: flex-start;
   }
+}
+
+/* V4 r1.2: click-path overrides that must win over earlier reference locks. */
+.tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] ol > li {
+  min-height: 0;
+  height: auto;
+  align-items: start;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-pagination {
+  margin-top: 0;
+  padding: 10px 16px 12px;
+  border-top: 1px solid rgba(31, 43, 56, 0.08);
+  justify-content: flex-end;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-score-column > div:first-child {
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 700;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-score-column > div:last-child {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.tt-reference-route-leaderboard .tt-leaderboard-entry-distribution {
+  margin-top: 8px;
 }

@@ -1,6 +1,16 @@
 export const TAU = Math.PI * 2;
 
 export const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+export function edgeFade(x, y, width, height, marginRatio = 0.14, pixelMargin = null) {
+  const marginX = pixelMargin ?? Math.max(12, width * marginRatio);
+  const marginY = pixelMargin ?? Math.max(12, height * marginRatio);
+  return clamp(
+    Math.min(x / marginX, (width - x) / marginX, y / marginY, (height - y) / marginY, 1),
+    0,
+    1,
+  );
+}
 export const randomBetween = (min = 0, max = 1) => min + Math.random() * (max - min);
 export const pickRandom = (values) => values[(Math.random() * values.length) | 0];
 export const hsla = (hue, saturation, lightness, alpha = 1) => (

@@ -2362,11 +2362,16 @@ data_sources.reference.privacy_first,data_sources,DataSourcesPage,Privacy,privac
 data_sources.reference.privacy_first_detail,data_sources,DataSourcesPage,Privacy,privacy_first_detail,"Sensitive requests are never uploaded or stored",,active
 data_sources.reference.optional_cloud,data_sources,DataSourcesPage,Privacy,optional_cloud,"Optional cloud features",,active
 data_sources.reference.optional_cloud_detail,data_sources,DataSourcesPage,Privacy,optional_cloud_detail,"Used only when you explicitly enable them",,active
-shared.footer.version,ui,Shared,Footer,version,"Version 2.1.0",,active
+shared.footer.version,ui,Shared,Footer,version,"Version {{version}}",,active
+shared.footer.github_private,ui,Shared,Footer,github_private,"Unlisted",,active
 shared.footer.privacy,ui,Shared,Footer,privacy,"Privacy Policy",,active
 shared.footer.terms,ui,Shared,Footer,terms,"Terms of Use",,active
 shared.footer.local_data,ui,Shared,Footer,local_data,"All data is stored only on this device",,active
 reset_history.latest,ui,ResetHistoryPage,ResetEventCard,latest,"Latest",,active
+reset_history.detail_content,ui,ResetHistoryPage,ResetRecord,detail_content,"Details",,active
+reset_history.quoted_tweet,ui,ResetHistoryPage,ResetRecord,quoted_tweet,"Quoted post",,active
+reset_history.expand_aria,ui,ResetHistoryPage,ResetRecord,expand_aria,"Expand announcement details",,active
+reset_history.collapse_aria,ui,ResetHistoryPage,ResetRecord,collapse_aria,"Collapse announcement details",,active
 settings.reference.reset_default,ui,SettingsPage,SettingsToolbar,reset_default,"Reset to defaults",,active
 settings.reference.import,ui,SettingsPage,SettingsToolbar,import,"Import configuration",,active
 settings.reference.export,ui,SettingsPage,SettingsToolbar,export,"Export configuration",,active

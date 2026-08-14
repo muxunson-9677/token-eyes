@@ -202,11 +202,9 @@ function ModelsSummary({ model }: { model: DesktopWidgetViewModel }) {
 function WidgetResetCelebration({
   resetId,
   preferredEffectId,
-  onDismiss,
 }: {
   resetId: string;
   preferredEffectId?: ResetCelebrationEffectId;
-  onDismiss: () => void;
 }) {
   const [effectId, setEffectId] = useState<ResetCelebrationEffectId>(
     preferredEffectId ?? readResetCelebrationEffect,
@@ -259,15 +257,8 @@ function WidgetResetCelebration({
         effectId={effectId}
         durationMs={RESET_CELEBRATION_DURATION_MS}
         showNotice={false}
+        fitToHost
       />
-      <button
-        type="button"
-        aria-label={copy("widget.reset.acknowledge")}
-        onClick={onDismiss}
-        className="widget-reset-celebration__dismiss"
-      >
-        <Sparkles aria-hidden />
-      </button>
     </div>
   );
 }
@@ -692,12 +683,12 @@ export function DesktopWidgetPage() {
   }, [activeCelebrationId, setCelebrationOpen]);
 
   const dismissCelebration = () => {
-    void setCelebrationOpen(false);
     if (activePendingResetId) {
       setDismissedResetId(activePendingResetId);
       void acknowledgePendingReset();
     }
     setPreviewCelebration(null);
+    void setCelebrationOpen(false);
   };
 
   return (
@@ -709,7 +700,6 @@ export function DesktopWidgetPage() {
         <WidgetResetCelebration
           resetId={activeCelebrationId}
           preferredEffectId={activePendingResetId ? undefined : previewCelebration?.effectId}
-          onDismiss={dismissCelebration}
         />
       ) : null}
       <article
@@ -798,6 +788,17 @@ export function DesktopWidgetPage() {
           onValueChange={setMode}
           ariaLabel={copy("widget.mode_menu")}
         />
+        {activeCelebrationId ? (
+          <button
+            type="button"
+            aria-label={copy("widget.reset.acknowledge")}
+            title={copy("reset_history.preview_celebration_aria")}
+            onClick={dismissCelebration}
+            className="widget-reset-celebration__dismiss"
+          >
+            <Sparkles aria-hidden />
+          </button>
+        ) : null}
       </nav>
 
       {openMenu === "agent" ? (

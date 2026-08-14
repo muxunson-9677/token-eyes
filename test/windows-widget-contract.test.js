@@ -111,7 +111,7 @@ test("desktop widget persists project, active-session, and usage-plan preference
   assert.match(widgetWindow, /selected_projects/u);
   assert.match(widgetWindow, /active_session_window/u);
   assert.match(widgetWindow, /selected_limit_ids/u);
-  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*6/u);
+  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*10/u);
 });
 
 test("saving widget preferences notifies the already-open floating WebView", () => {
@@ -129,4 +129,17 @@ test("appearance controls render as a document-level popover instead of covering
   const css = read("dashboard/src/pages/desktop-widget.css");
   assert.match(widget, /createPortal\([\s\S]*widget-appearance/u);
   assert.match(css, /\.widget-appearance\s*\{[\s\S]*position:\s*fixed/u);
+});
+
+test("dismissing the widget celebration does not move or resize the native window", () => {
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  const css = read("dashboard/src/pages/desktop-widget.css");
+  const command = widgetWindow.match(
+    /pub fn set_desktop_widget_celebration[\s\S]*?\n\}/u,
+  )?.[0];
+  assert.ok(command, "set_desktop_widget_celebration must exist");
+  assert.doesNotMatch(command, /apply_transient_geometry/u);
+  assert.doesNotMatch(command, /set_window_geometry/u);
+  assert.match(widgetWindow, /EFFECT_HALO:\s*u32\s*=\s*140/u);
+  assert.match(css, /--widget-effect-halo:\s*140px/u);
 });

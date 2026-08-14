@@ -77,7 +77,7 @@ function CelebrationGiftIcon() {
   );
 }
 
-export function ResetCelebrationOverlay({ event, durationMs, effectId = "meteors", showNotice = true }) {
+export function ResetCelebrationOverlay({ event, durationMs, effectId = "meteors", showNotice = true, fitToHost = false }) {
   // Optional read: the desktop-widget window renders this overlay outside the
   // main app's ThemeProvider, so fall back to light instead of throwing.
   const resolvedTheme = useContext(ThemeContext)?.resolvedTheme ?? "light";
@@ -111,7 +111,7 @@ export function ResetCelebrationOverlay({ event, durationMs, effectId = "meteors
       {useCanvas ? (
         <RendererErrorBoundary key={event.eventId} onFallback={handleFallback}>
           <Suspense fallback={null}>
-            <Renderer onFallback={handleFallback} />
+            <Renderer onFallback={handleFallback} fitParent={fitToHost} />
           </Suspense>
         </RendererErrorBoundary>
       ) : null}
