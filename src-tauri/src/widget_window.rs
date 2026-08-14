@@ -8,7 +8,7 @@ use tauri::{
 };
 
 pub const WIDGET_LABEL: &str = "desktop-widget";
-const PREFS_VERSION: u8 = 6;
+const PREFS_VERSION: u8 = 7;
 const DEFAULT_WIDTH: u32 = 352;
 const DEFAULT_HEIGHT: u32 = 72;
 const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
@@ -110,6 +110,17 @@ fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
         } else {
             prefs.collapsed_height = prefs.height.max(DEFAULT_HEIGHT);
         }
+    }
+    if prefs.version < 7
+        && prefs.width == 632
+        && prefs.height == 342
+        && prefs.collapsed_height == 342
+        && prefs.expanded_height == 640
+    {
+        prefs.width = DEFAULT_WIDTH;
+        prefs.height = DEFAULT_HEIGHT;
+        prefs.collapsed_height = DEFAULT_HEIGHT;
+        prefs.expanded_height = DEFAULT_EXPANDED_HEIGHT;
     }
     prefs.version = PREFS_VERSION;
     prefs.width = prefs.width.max(MIN_WIDTH);
@@ -585,6 +596,26 @@ mod tests {
         assert_eq!(prefs.mode, "projects");
         assert_eq!(prefs.active_session_window, "1h");
         assert_eq!(prefs.selected_limit_ids, None);
+    }
+
+    #[test]
+    fn migrates_the_v4_large_panel_geometry_back_to_the_05440_capsule() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            version: 6,
+            width: 632,
+            height: 342,
+            collapsed_height: 342,
+            expanded_height: 640,
+            selected_agent: "codex".into(),
+            mode: "models".into(),
+            ..WidgetPrefs::default()
+        });
+
+        assert_eq!(prefs.version, 7);
+        assert_eq!((prefs.width, prefs.height), (352, 72));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
+        assert_eq!(prefs.selected_agent, "codex");
+        assert_eq!(prefs.mode, "models");
     }
 
     #[test]

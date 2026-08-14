@@ -111,7 +111,7 @@ test("0.54.40 widget baseline keeps project, active-session, and usage-plan pref
   assert.match(widgetWindow, /selected_projects/u);
   assert.match(widgetWindow, /active_session_window/u);
   assert.match(widgetWindow, /selected_limit_ids/u);
-  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*6/u);
+  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*7/u);
   assert.match(widgetWindow, /DEFAULT_WIDTH:\s*u32\s*=\s*352/u);
   assert.match(widgetWindow, /DEFAULT_HEIGHT:\s*u32\s*=\s*72/u);
 });
