@@ -14,7 +14,17 @@ async function writeQueue(queuePath, rows) {
 }
 
 async function callEndpoint(queuePath, endpoint) {
-  const handler = createLocalApiHandler({ queuePath });
+  const trackerDataDir = path.dirname(queuePath);
+  await fs.promises.writeFile(
+    path.join(trackerDataDir, "config.json"),
+    JSON.stringify({
+      dataDirectories: {
+        claude: path.join(trackerDataDir, "claude"),
+        codex: path.join(trackerDataDir, "codex"),
+      },
+    }),
+  );
+  const handler = createLocalApiHandler({ queuePath, trackerDataDir });
   return callEndpointWithHandler(handler, endpoint);
 }
 

@@ -211,13 +211,14 @@ test("overview does not duplicate the request log from usage statistics", () => 
   assert.ok(!src.includes("RequestUsageLog"), "expected request log to exist only in usage statistics");
 });
 
-test("usage trend expands beside the readable 17rem Token service column", () => {
+test("usage trend uses the approved 3:1 layout beside Token services", () => {
   const src = readFile(spendPath);
   assert.ok(
-    src.includes("lg:grid-cols-[minmax(0,1fr)_17rem]"),
-    "expected lower usage grid to reserve a readable 17rem Token service column",
+    src.includes("lg:grid-cols-4"),
+    "expected lower usage grid to use four equal tracks for the approved 3:1 layout",
   );
-  assert.ok(!src.includes("lg:grid-cols-[minmax(0,1fr)_13rem]"), "expected the cramped 13rem Token service column removed");
+  assert.ok(src.includes("lg:col-span-3"), "expected usage trend to span three tracks");
+  assert.ok(src.includes("lg:col-span-1"), "expected Token services to occupy one track");
 });
 
 test("overview preserves approved analysis and dedicated next-step actions", () => {

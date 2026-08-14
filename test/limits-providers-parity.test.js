@@ -67,20 +67,10 @@ test("macOS LimitsSettingsStore.allProviders matches dashboard LIMIT_PROVIDER_ID
   assert.deepEqual(jsIds.slice(swiftIds.length), [
     "zed",
     "workbuddy",
-    "every-code",
-    "kilo-cli",
-    "kilocode",
-    "roocode",
-    "kiro",
-    "kiro-cli",
     "kimi",
     "kimi-code",
-    "omp",
     "pi",
-    "craft",
     "grok",
     "copilot",
-    "goose",
-    "droid",
   ]);
 });

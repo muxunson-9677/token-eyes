@@ -40,6 +40,19 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-widget-api-"));
   try {
     const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
+      tokenPlans: [{
+        id: "codex-main",
+        source: "codex",
+        provider_id: "codex",
+        plan_label: "Codex Plus",
+        quota_windows: [{
+          kind: "rolling_5_hour",
+          percentage: 21,
+          resets_at: "2026-07-29T16:00:00.000Z",
+        }],
+      }],
+    }), "utf8");
     fs.writeFileSync(queuePath, `${JSON.stringify({
       source: "codex",
       model: "gpt-5",
