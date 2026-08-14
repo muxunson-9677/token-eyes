@@ -2100,6 +2100,9 @@ spend.cost.provider_account.currency,dashboard,SpendPage,CostAccumulation,provid
 spend.cost.provider_account.status,dashboard,SpendPage,CostAccumulation,provider_account_status,"Status",,active
 spend.cost.provider_account.last_synced,dashboard,SpendPage,CostAccumulation,provider_account_last_synced,"Last synced",,active
 spend.cost.provider_account.refresh_all,dashboard,SpendPage,CostAccumulation,provider_account_refresh_all,"Refresh all",,active
+spend.cost.provider_account.refresh_one,dashboard,SpendPage,CostAccumulation,provider_account_refresh_one,"刷新此账户余额",,active
+spend.cost.provider_account.refresh_failed,dashboard,SpendPage,CostAccumulation,provider_account_refresh_failed,"刷新失败，当前显示的是上次成功余额。",,active
+spend.cost.provider_account.status.stale,dashboard,SpendPage,CostAccumulation,provider_account_status_stale,"数据过期",,active
 spend.cost.provider_account.refreshing,dashboard,SpendPage,CostAccumulation,provider_account_refreshing,"Refreshing…",,active
 spend.cost.provider_account.config_link,dashboard,SpendPage,CostAccumulation,provider_account_config_link,"Configure in cost settings",,active
 spend.cost.provider_account.stale,dashboard,SpendPage,CostAccumulation,provider_account_stale,"Data may be stale",,active
@@ -2472,6 +2475,11 @@ settings.agent_pricing.save_changes,ui,SettingsPage,AgentPricingSection,save_cha
 settings.token_plan.collapsed_summary,ui,SettingsPage,TokenPlanSection,collapsed_summary,"{{count}} 个套餐",,active
 settings.token_plan.count_active,ui,SettingsPage,TokenPlanSection,count_active,"已激活 {{count}} 个",,active
 settings.token_plan.count_watch,ui,SettingsPage,TokenPlanSection,count_watch,"需关注 {{count}} 个",,active
+settings.token_plan.expired_group,ui,SettingsPage,TokenPlanSection,expired_group,"已过期套餐",,active
+settings.token_plan.status_expired,ui,SettingsPage,TokenPlanSection,status_expired,"已过期",,active
+settings.token_plan.expired_at,ui,SettingsPage,TokenPlanSection,expired_at,"到期",,active
+settings.token_plan.quota_source_label,ui,SettingsPage,TokenPlanSection,quota_source_label,"额度来源",,active
+settings.token_plan.quota_source_provider_reported,ui,SettingsPage,TokenPlanSection,quota_source_provider_reported,"官网同步",,active
 settings.token_plan.live_quota_aria,ui,SettingsPage,TokenPlanSection,live_quota_aria,"套餐实时额度",,active
 settings.cost.provider_api.collapsed_summary,ui,SettingsPage,ProviderApiConfigSection,collapsed_summary,"{{count}} 个供应商",,active
 settings.cost.other_ai.collapsed_summary,ui,SettingsPage,OtherAiSpendSection,collapsed_summary,"{{count}} 个分组",,active

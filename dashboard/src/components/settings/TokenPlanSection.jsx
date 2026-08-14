@@ -70,6 +70,45 @@ function formatQuota(value) {
   return new Intl.NumberFormat().format(Number.isFinite(n) ? n : 0);
 }
 
+function quotaSourceLabel(source) {
+  if (source === "catalog") return copy("settings.token_plan.quota_source_catalog");
+  if (source === "custom_api") return copy("settings.token_plan.quota_source_custom_api");
+  if (source === "provider_reported") return copy("settings.token_plan.quota_source_provider_reported");
+  return copy("settings.token_plan.quota_source_manual");
+}
+
+export function tokenPlanExpiryTimestamp(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (dateOnly) {
+    return new Date(
+      Number(dateOnly[1]),
+      Number(dateOnly[2]) - 1,
+      Number(dateOnly[3]),
+      23,
+      59,
+      59,
+      999,
+    ).getTime();
+  }
+  const timestamp = Date.parse(raw);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function isTokenPlanExpired(record, now = new Date()) {
+  const timestamp = tokenPlanExpiryTimestamp(record?.subscription_end_date || record?.expires_at);
+  return timestamp !== null && timestamp < now.getTime();
+}
+
+function isUsableTokenPlan(record) {
+  return !isTokenPlanExpired(record);
+}
+
+function isExpiredTokenPlanRecord(record) {
+  return isTokenPlanExpired(record);
+}
+
 const EMPTY_FORM = {
   id: "",
   source: "",
@@ -612,6 +651,9 @@ function SortableTokenPlanCard({
   const quotaStatus = record.ui_status_label
     ? { label: record.ui_status_label, tone: record.ui_status_tone || inferredQuotaStatus.tone }
     : inferredQuotaStatus;
+  const subscriptionSummary = record.subscription_amount > 0
+    ? `${copy("settings.token_plan.subscription_cost")}: ${record.subscription_currency} ${Number(record.subscription_amount).toLocaleString()} · ${copy(`settings.token_plan.subscription_cycle.${record.subscription_cycle}`)}`
+    : `${copy("settings.token_plan.subscription_cost")}: ${copy("settings.token_plan.cost_not_set")}`;
 
   return (
     <div
@@ -702,23 +744,17 @@ function SortableTokenPlanCard({
         </button>
       </div>
 
+      <div data-testid="active-token-plan-summary" className="ml-9 mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-oai-gray-100 pt-2 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
+        <span>{subscriptionSummary}</span>
+        {record.subscription_start_date ? <span>{copy("settings.token_plan.subscription_start")} {record.subscription_start_date}</span> : null}
+        {record.expires_at ? <span>{copy("settings.token_plan.expires_at")} {record.expires_at}</span> : null}
+        {record.quota_source ? <span>{copy("settings.token_plan.quota_source_label")}: {quotaSourceLabel(record.quota_source)}</span> : null}
+      </div>
+
       {expanded && (
         <div className="ml-9 mt-2 border-t border-oai-gray-100 pt-2 dark:border-oai-gray-800">
           <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
-            {record.quota_source
-              ? (record.quota_source === "catalog"
-                ? copy("settings.token_plan.quota_source_catalog")
-                : record.quota_source === "custom_api"
-                ? copy("settings.token_plan.quota_source_custom_api")
-                : copy("settings.token_plan.quota_source_manual"))
-              : ""}
-            {record.expires_at ? ` · ${copy("settings.token_plan.expires_at")} ${record.expires_at}` : ""}
-          </div>
-          <div className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            {record.subscription_amount > 0
-              ? `${copy("settings.token_plan.subscription_cost")}: ${record.subscription_currency} ${Number(record.subscription_amount).toLocaleString()} · ${copy(`settings.token_plan.subscription_cycle.${record.subscription_cycle}`)}`
-              : `${copy("settings.token_plan.subscription_cost")}: ${copy("settings.token_plan.cost_not_set")}`}
-            {record.subscription_start_date ? ` · ${copy("settings.token_plan.subscription_start")} ${record.subscription_start_date}` : ""}
+            {record.quota_source ? quotaSourceLabel(record.quota_source) : ""}
           </div>
           <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
             {record.created_at ? `${copy("settings.token_plan.recorded_at")}: ${new Date(record.created_at).toLocaleString()}` : ""}
@@ -756,6 +792,38 @@ function SortableTokenPlanCard({
   );
 }
 
+function ExpiredTokenPlanRow({ record, onEdit }) {
+  const providerKey = String(record.provider_id || record.source || "custom").toLowerCase();
+  const endedAt = record.subscription_end_date || record.expires_at || "—";
+  const subscriptionCost = Number(record.subscription_amount) > 0
+    ? ` · ${record.subscription_currency || "USD"} ${Number(record.subscription_amount).toLocaleString()}`
+    : "";
+  return (
+    <div data-testid="expired-token-plan-row" className="flex items-center gap-3 rounded-md border border-oai-gray-200 px-3 py-2 dark:border-oai-gray-800">
+      <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${providerKey}`)} aria-hidden="true">
+        {["codex", "cursor", "trae"].includes(providerKey)
+          ? <ProviderIcon provider={providerKey} size={22} />
+          : String(record.source || "T").slice(0, 1).toUpperCase()}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-oai-gray-800 dark:text-oai-gray-200">
+          {record.source} / {record.plan_label || record.id}
+        </div>
+        <div className="mt-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("settings.token_plan.expired_at")} {endedAt}
+          {subscriptionCost}
+        </div>
+      </div>
+      <span className="shrink-0 rounded bg-oai-gray-100 px-2 py-1 text-xs font-medium text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400">
+        {copy("settings.token_plan.status_expired")}
+      </span>
+      <button type="button" onClick={() => onEdit(record)} className="shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark">
+        {copy("settings.token_plan.edit")}
+      </button>
+    </div>
+  );
+}
+
 export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNavigate = () => {} }) {
   const { visibleOrdered: visibleLimitProviders } = useLimitsDisplayPrefs();
   const [records, setRecords] = useState([]);
@@ -785,6 +853,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [planRefreshTargetId, setPlanRefreshTargetId] = useState("");
   const [expandedPlanIds, setExpandedPlanIds] = useState(() => new Set());
+  const [expiredPlansOpen, setExpiredPlansOpen] = useState(false);
   const [editorInitialized, setEditorInitialized] = useState(false);
   const [editorMissing, setEditorMissing] = useState(false);
   const recordsRef = useRef(records);
@@ -2974,6 +3043,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     return formatQuota(form.total_quota);
   }, [isCatalogPlan, selectedPlan, form.quota_kind, form.total_quota]);
 
+  const activeRecords = records.filter(isUsableTokenPlan);
+  const expiredRecords = records.filter(isExpiredTokenPlanRecord);
+  const hasExpiredRecords = Boolean(expiredRecords.length);
+
   return (
     <SectionCard
       title={copy("settings.section.token_plan")}
@@ -2988,14 +3061,14 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       action={!editorPlanId ? (
         <div className="tt-token-plan-actions flex items-center gap-2">
           <span className="tt-token-plan-count tt-token-plan-count--active">
-            {copy("settings.token_plan.count_active", { count: records.length })}
+            {copy("settings.token_plan.count_active", { count: activeRecords.length })}
           </span>
           <span className="tt-token-plan-count tt-token-plan-count--watch">
             {copy("settings.token_plan.count_watch", {
-              count: records.filter((record) => Number(record.remaining_quota || 0) <= 0 || Number(record.used_quota || 0) / Math.max(1, Number(record.total_quota || 0)) >= 0.8).length,
+              count: activeRecords.filter((record) => Number(record.remaining_quota || 0) <= 0 || Number(record.used_quota || 0) / Math.max(1, Number(record.total_quota || 0)) >= 0.8).length,
             })}
           </span>
-          <button type="button" onClick={() => records.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-300">
+          <button type="button" onClick={() => activeRecords.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-300">
             <RefreshCw className={cn("h-3.5 w-3.5", refreshingId && "animate-spin")} aria-hidden />
             {copy("settings.token_plan.batch_refresh")}
           </button>
@@ -3021,10 +3094,11 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             {copy("settings.token_plan.empty")}
           </div>
         ) : (
+          <>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePlanDragEnd}>
-            <SortableContext items={records.map((record) => record.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={activeRecords.map((record) => record.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
-                {records.map((record) => (
+                {activeRecords.map((record) => (
                   <SortableTokenPlanCard
                     key={record.id}
                     record={record}
@@ -3045,6 +3119,28 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
               </div>
             </SortableContext>
           </DndContext>
+          {hasExpiredRecords && (
+            <section data-testid="expired-token-plans" className="mt-3 rounded-md border border-oai-gray-200 dark:border-oai-gray-800">
+              <button
+                type="button"
+                onClick={() => setExpiredPlansOpen((open) => !open)}
+                aria-expanded={expiredPlansOpen}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+              >
+                <span>
+                  <strong className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">{copy("settings.token_plan.expired_group")}</strong>
+                  <small className="ml-2 text-xs text-oai-gray-400">{expiredRecords.length}</small>
+                </span>
+                {expiredPlansOpen ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
+              </button>
+              {expiredPlansOpen ? (
+                <div className="space-y-2 border-t border-oai-gray-100 p-2 dark:border-oai-gray-800">
+                  {expiredRecords.map((record) => <ExpiredTokenPlanRow key={record.id} record={record} onEdit={openRecordEditor} />)}
+                </div>
+              ) : null}
+            </section>
+          )}
+          </>
         )}
       </div>}
 

@@ -172,6 +172,43 @@ describe("useCostAccumulation selected month", () => {
     }));
   });
 
+  it("mirrors paid expired token plans into subscription records as read-only history", async () => {
+    getTokenPlans.mockResolvedValue({
+      records: [{
+        id: "expired-plan",
+        source: "codex",
+        provider_id: "codex",
+        plan_label: "Plus",
+        subscription_amount: 20,
+        subscription_currency: "USD",
+        subscription_cycle: "monthly",
+        subscription_start_date: "2025-01-01",
+        subscription_end_date: "2025-02-01",
+        expires_at: "2025-02-01",
+      }],
+    });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: COST_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.subscriptionRecords).toContainEqual(expect.objectContaining({
+      id: "token-plan-cost:expired-plan",
+      name: "Plus",
+      provider: "codex",
+      amount: 20,
+      currency: "USD",
+      cycle: "monthly",
+      status: "expired",
+      origin: "token_plan",
+      readOnly: true,
+    }));
+    expect(result.current.tokenPackages).toEqual([]);
+  });
+
   it("does not let a slower old month overwrite the latest selection", async () => {
     getSpendTimeseries.mockReset();
     const calls = [deferred(), deferred(), deferred(), deferred()];

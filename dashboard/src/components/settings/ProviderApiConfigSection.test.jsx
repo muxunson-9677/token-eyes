@@ -45,6 +45,7 @@ vi.mock("../../lib/api", () => ({
   deleteProviderApiSecret: vi.fn(),
   testProviderApiConfig: vi.fn(),
   refreshProviderApiBalance: vi.fn(),
+  refreshOfficialConsoleProviderBalance: vi.fn(),
   createConsoleSession: vi.fn(),
   deleteConsoleSession: vi.fn(),
   verifyConsoleSession: vi.fn(),

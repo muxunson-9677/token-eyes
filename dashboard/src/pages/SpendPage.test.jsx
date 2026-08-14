@@ -73,6 +73,7 @@ vi.mock("../lib/api", () => ({
   getProviderApiConfigs: vi.fn(),
   getProviderApiBalances: vi.fn(),
   refreshProviderApiBalance: vi.fn(),
+  refreshOfficialConsoleProviderBalance: vi.fn(),
   saveProviderApiConfig: vi.fn(),
   updateProviderApiConfig: vi.fn(),
   deleteProviderApiConfig: vi.fn(),
@@ -951,9 +952,51 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     const providerSection = await expandCostSection("provider-api");
     // Balance card shows provider + financial data from 02 endpoints.
     expect(await within(providerSection).findByText("OpenAI 主账户")).toBeInTheDocument();
-    expect(within(providerSection).getByText(/125\.50/)).toBeInTheDocument();
+    expect(within(providerSection).getAllByText(/125\.50/)).toHaveLength(2);
     // mount triggers an immediate refresh of enabled+keyed configs.
     await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledWith("cfg-1"));
+  });
+
+  it("updates the account row and currency-aware section total after an individual refresh", async () => {
+    getProviderApiConfigs.mockResolvedValue({
+      ok: true,
+      data: { configs: [{ id: "cfg-1", providerId: "deepseek", label: "DeepSeek", enabled: true, apiKeyRef: "ref-1", refreshIntervalSeconds: 300 }] },
+    });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: { balances: [{
+        configId: "cfg-1",
+        providerId: "deepseek",
+        accountLabel: "DeepSeek",
+        balance: 86.06,
+        monthSpend: 1.5,
+        currency: "CNY",
+        status: "synced",
+      }] },
+    });
+    refreshProviderApiBalance
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { balance: { configId: "cfg-1", providerId: "deepseek", accountLabel: "DeepSeek", balance: 86.06, monthSpend: 1.5, currency: "CNY", status: "synced" } },
+      })
+      .mockResolvedValue({
+        ok: true,
+        data: { balance: { configId: "cfg-1", providerId: "deepseek", accountLabel: "DeepSeek", balance: 73.25, monthSpend: 2.25, currency: "CNY", status: "synced" } },
+      });
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <SpendCostPage />
+      </MemoryRouter>,
+    );
+    const providerSection = await expandCostSection("provider-api");
+    await waitFor(() => expect(within(providerSection).getAllByText(/CNY 86\.06/).length).toBeGreaterThan(0));
+
+    await user.click(within(providerSection).getByRole("button", { name: "刷新此账户余额" }));
+
+    await waitFor(() => expect(within(providerSection).getAllByText(/CNY 73\.25/).length).toBeGreaterThanOrEqual(2));
+    expect(within(providerSection).queryByText(/USD 73\.25/)).not.toBeInTheDocument();
   });
 
   it("shows an explicit unavailable state for balance and spend fields when status is not-connected", async () => {

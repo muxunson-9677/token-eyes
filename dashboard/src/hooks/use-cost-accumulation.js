@@ -208,7 +208,7 @@ export function useCostAccumulation({
 
   // Transform spend records into subscription records format
   const subscriptionRecords = useMemo(() => {
-    return filteredSpendRecords
+    const savedRecords = filteredSpendRecords
       .filter((record) => String(record.source || "").toLowerCase() !== OTHER_AI_SPEND_SOURCE)
       .map((record) => ({
         id: record.id,
@@ -222,11 +222,44 @@ export function useCostAccumulation({
         status: getSubscriptionStatus(record),
         lifetimeAmount: record.lifetime_amount ?? record.amount ?? 0,
       }));
-  }, [filteredSpendRecords]);
+
+    const mirroredPlanRecords = tokenPlans
+      .filter((plan) => Number(plan.subscription_amount) > 0)
+      .filter((plan) => !savedRecords.some((record) => (
+        record.id === `token-plan-cost:${plan.id}`
+        || record.tokenPlanId === plan.id
+      )))
+      .map((plan) => {
+        const endDate = plan.subscription_end_date || plan.expires_at || null;
+        return {
+          id: `token-plan-cost:${plan.id}`,
+          tokenPlanId: plan.id,
+          name: plan.plan_label || plan.source || "未知",
+          provider: plan.provider_id || plan.source || "未知",
+          cycle: normalizeCycle(plan.subscription_cycle),
+          amount: Number(plan.subscription_amount) || 0,
+          currency: plan.subscription_currency || "USD",
+          startedAt: plan.subscription_start_date || null,
+          renewsAt: endDate,
+          status: getSubscriptionStatus({
+            start_date: plan.subscription_start_date,
+            end_date: endDate,
+          }),
+          lifetimeAmount: Number(plan.subscription_amount) || 0,
+          origin: "token_plan",
+          readOnly: true,
+        };
+      });
+
+    return [...savedRecords, ...mirroredPlanRecords];
+  }, [filteredSpendRecords, tokenPlans]);
 
   // Transform token plans for display
   const tokenPackages = useMemo(() => {
-    return tokenPlans.map((plan) => ({
+    return tokenPlans
+      .filter((plan) => !isExpiredTokenPlan(plan))
+      .map((plan) => ({
+      ...plan,
       id: plan.id,
       name: plan.plan_label || "未知套餐",
       provider: plan.provider_id || plan.source || "未知",
@@ -239,7 +272,7 @@ export function useCostAccumulation({
       syncStatusLabel: getSyncStatusLabel(plan.sync_status || plan.last_refresh_status),
       monthCostUsd: plan.month_cost_usd ?? 0,
       availableQuotaDisplay: plan.available_quota_display || null,
-    }));
+      }));
   }, [tokenPlans]);
 
   return {
@@ -283,6 +316,17 @@ function getSubscriptionStatus(record) {
   if (end && end < now) return "expired";
   if (record.note?.toLowerCase().includes("取消")) return "cancelled";
   return "active";
+}
+
+function isExpiredTokenPlan(plan, now = new Date()) {
+  const value = plan.subscription_end_date || plan.expires_at;
+  if (!value) return false;
+  const raw = String(value).trim();
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  const timestamp = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 23, 59, 59, 999).getTime()
+    : Date.parse(raw);
+  return Number.isFinite(timestamp) && timestamp < now.getTime();
 }
 
 function getPlanCycle(plan) {

@@ -59,6 +59,9 @@ it("uses neutral framing when the multiplier is below one", () => {
 
 it("shows the guidance state when there is no subscription spend", () => {
   render(<CostAccumulation costSummary={{ ...BASE_SUMMARY }} />);
-  expect(screen.getByText("spend.cost.roi.empty")).toBeInTheDocument();
+  const note = screen.getByTestId("subscription-roi-empty-note");
+  expect(note).toHaveTextContent("spend.cost.roi.empty");
+  expect(screen.getByTestId("cost-summary-region")).toContainElement(note);
+  expect(note).toHaveClass("text-xs");
   expect(screen.queryByText("spend.cost.roi.title")).not.toBeInTheDocument();
 });

@@ -5,6 +5,7 @@ import {
   getProviderApiConfigs,
   getProviderApiBalances,
   refreshProviderApiBalance,
+  refreshOfficialConsoleProviderBalance,
 } from "../lib/api";
 
 // 03-ia-api-balance: useProviderApiBalances hook tests.
@@ -22,6 +23,7 @@ vi.mock("../lib/api", () => ({
   getProviderApiConfigs: vi.fn(),
   getProviderApiBalances: vi.fn(),
   refreshProviderApiBalance: vi.fn(),
+  refreshOfficialConsoleProviderBalance: vi.fn(),
 }));
 
 const SAMPLE_CONFIG = {
@@ -50,6 +52,7 @@ beforeEach(() => {
   getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [] } });
   getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [] } });
   refreshProviderApiBalance.mockResolvedValue({ ok: true, data: { balance: null } });
+  refreshOfficialConsoleProviderBalance.mockResolvedValue({ connected: true, balance: { available_balance: 1 } });
 });
 
 afterEach(() => {
@@ -207,8 +210,57 @@ it("network failure: keeps last successful balance and marks stale (never shows 
 
   // The last successful balance (150) is kept — NOT replaced with 0.
   expect(result.current.balances[0].balance).toBe(150);
+  expect(result.current.balances[0].status).toBe("stale");
   // The set is marked stale.
   expect(result.current.stale).toBe(true);
+});
+
+it("refreshes an official console snapshot before reading its latest financial balance", async () => {
+  const officialConfig = {
+    ...SAMPLE_CONFIG,
+    providerId: "glm",
+    authType: "official_console",
+    apiKeyRef: null,
+  };
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [officialConfig] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [{ ...SAMPLE_BALANCE, balance: 499.99 }] } });
+  refreshProviderApiBalance.mockResolvedValue({
+    ok: true,
+    data: { balance: { ...SAMPLE_BALANCE, providerId: "glm", balance: 475.5, currency: "CNY" } },
+  });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(refreshOfficialConsoleProviderBalance).toHaveBeenCalledWith("glm"));
+  await waitFor(() => expect(result.current.balances[0].balance).toBe(475.5));
+  expect(refreshOfficialConsoleProviderBalance.mock.invocationCallOrder[0])
+    .toBeLessThan(refreshProviderApiBalance.mock.invocationCallOrder[0]);
+});
+
+it("reads the preserved stale balance after an official console refresh expires", async () => {
+  const officialConfig = {
+    ...SAMPLE_CONFIG,
+    providerId: "glm",
+    authType: "official_console",
+    apiKeyRef: null,
+  };
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [officialConfig] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [{ ...SAMPLE_BALANCE, balance: 499.99 }] } });
+  refreshOfficialConsoleProviderBalance.mockResolvedValue({
+    connected: false,
+    state_code: "session_not_found",
+    error_code: "SESSION_NOT_FOUND",
+  });
+  refreshProviderApiBalance.mockResolvedValue({
+    ok: true,
+    data: { balance: { ...SAMPLE_BALANCE, providerId: "glm", balance: 499.99, currency: "CNY", status: "stale", errorCode: "SESSION_NOT_FOUND" } },
+  });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(result.current.balances[0].status).toBe("stale"));
+  expect(result.current.balances[0].balance).toBe(499.99);
+  expect(refreshProviderApiBalance).toHaveBeenCalledWith("cfg-1");
 });
 
 it("first failure with no prior balance: balance stays null (UI shows —)", async () => {

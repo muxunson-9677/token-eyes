@@ -414,11 +414,10 @@ fn uuid_simple() -> String {
 // Tauri commands
 // ---------------------------------------------------------------------------
 
-/// Opens the GLM official console login page in a new window.
-#[tauri::command]
-pub async fn open_glm_console_login(
-    app: AppHandle,
-    session_ref: String,
+fn open_glm_console_window(
+    app: &AppHandle,
+    session_ref: &str,
+    visible: bool,
 ) -> Result<GlmSessionStatus, String> {
     if let Err(reason) = validate_session_ref(&session_ref) {
         return Err(reason.to_string());
@@ -427,7 +426,7 @@ pub async fn open_glm_console_login(
     let window_label = format!("glm_login_{}", uuid_simple());
 
     let window = WebviewWindowBuilder::new(
-        &app,
+        app,
         &window_label,
         WebviewUrl::External(
             LOGIN_URL
@@ -439,6 +438,7 @@ pub async fn open_glm_console_login(
     .inner_size(960.0, 720.0)
     .resizable(true)
     .center()
+    .visible(visible)
     .initialization_script(SESSION_FETCH_JS)
     .on_navigation(|url| is_official_glm_url(url.as_str()))
     .build()
@@ -446,7 +446,7 @@ pub async fn open_glm_console_login(
 
     if let Some(state) = app.try_state::<Mutex<GlmSessionState>>() {
         if let Ok(mut guard) = state.lock() {
-            guard.active_session_ref = Some(session_ref.clone());
+            guard.active_session_ref = Some(session_ref.to_string());
             guard.last_known_url = Some(LOGIN_URL.to_string());
             guard.active_window_label = Some(window_label.clone());
         }
@@ -461,6 +461,15 @@ pub async fn open_glm_console_login(
         "LOGIN_STARTED",
         "官方控制台登录窗口已打开，请在窗口内完成登录。",
     ))
+}
+
+/// Opens the GLM official console login page in a new window.
+#[tauri::command]
+pub async fn open_glm_console_login(
+    app: AppHandle,
+    session_ref: String,
+) -> Result<GlmSessionStatus, String> {
+    open_glm_console_window(&app, &session_ref, true)
 }
 
 /// Verifies whether the session reference has reached the official console
@@ -570,6 +579,25 @@ pub async fn verify_glm_console_session(
     }
 
     Ok(status)
+}
+
+/// Refreshes a persisted GLM session without flashing a login window. The
+/// hidden WebView uses the same desktop profile, so its official console
+/// cookies remain inside WebView2 and are never copied into application state.
+#[tauri::command]
+pub async fn refresh_glm_console_session(
+    app: AppHandle,
+    session_ref: String,
+) -> Result<GlmSessionStatus, String> {
+    let initial = verify_glm_console_session(app.clone(), session_ref.clone()).await?;
+    if initial.state_code != SessionStateCode::SessionNotFound {
+        return Ok(initial);
+    }
+
+    open_glm_console_window(&app, &session_ref, false)?;
+    let status = verify_glm_console_session(app.clone(), session_ref.clone()).await;
+    let _ = delete_glm_console_session(app, session_ref).await;
+    status
 }
 
 /// Deletes the active GLM console session.
