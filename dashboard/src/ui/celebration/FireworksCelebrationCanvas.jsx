@@ -4,9 +4,9 @@ import {
   TAU,
   clamp,
   drawGlow,
-  edgeFade,
   fadeTransparentSurface,
   hsla,
+  lifecycleFade,
   randomBetween,
 } from "./celebration-canvas-drawing.js";
 
@@ -28,10 +28,12 @@ export function createFireworksScene(surface) {
   let clock = 0;
 
   const addBurst = (x, y, size = 1, type = "sphere", paletteIndex = null) => {
+    const safeX = clamp(x, surface.width * 0.18, surface.width * 0.82);
+    const safeY = clamp(y, surface.height * 0.24, surface.height * 0.76);
     const selectedPalette = paletteIndex ?? ((Math.random() * PALETTES.length) | 0);
     bursts.push({
-      x,
-      y,
+      x: safeX,
+      y: safeY,
       size,
       hue: PALETTES[selectedPalette][1],
       age: 0,
@@ -60,16 +62,18 @@ export function createFireworksScene(surface) {
         speed = randomBetween(145, 360) * size * Math.pow(Math.random(), 0.3);
       }
       sparks.push({
-        x,
-        y,
-        previousX: x,
-        previousY: y,
+        x: safeX,
+        y: safeY,
+        previousX: safeX,
+        previousY: safeY,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         age: 0,
         life,
         drag,
         gravity,
+        appearAt: randomBetween(0, 0.12),
+        vanishAt: randomBetween(0.72, 1),
         paletteIndex: selectedPalette,
         width: randomBetween(0.7, 1.9) * size,
       });
@@ -133,7 +137,7 @@ export function createFireworksScene(surface) {
       const life = clamp(1 - spark.age / spark.life, 0, 1);
       const bin = life > 0.67 ? 2 : life > 0.3 ? 1 : 0;
       const hue = PALETTES[spark.paletteIndex][1];
-      const fade = life * edgeFade(spark.x, spark.y, width, height, 0.16);
+      const fade = life * lifecycleFade(spark.age / spark.life, spark.appearAt, spark.vanishAt);
       context.strokeStyle = hsla(hue, 100, 62);
       context.globalAlpha = [0.3, 0.58, 0.96][bin] * fade;
       context.lineWidth = [1.45, 2.15, 3.05][bin];
@@ -156,8 +160,8 @@ export function createFireworksScene(surface) {
       burst.age += delta;
       const core = clamp(1 - burst.age / 0.42, 0, 1);
       if (core > 0) {
-        drawGlow(context, burst.x, burst.y, 132 * burst.size, burst.hue, core * 0.96);
-        drawGlow(context, burst.x, burst.y, 46 * burst.size, 48, core);
+        drawGlow(context, burst.x, burst.y, 86 * burst.size, burst.hue, core * 0.9);
+        drawGlow(context, burst.x, burst.y, 32 * burst.size, 48, core);
       }
       const ring = clamp(burst.age / 0.85, 0, 1);
       if (ring < 1) {
@@ -165,7 +169,7 @@ export function createFireworksScene(surface) {
         context.strokeStyle = "rgba(255,255,255,.92)";
         context.lineWidth = 1.4;
         context.beginPath();
-        context.arc(burst.x, burst.y, easeOut(ring) * 110 * burst.size, 0, TAU);
+        context.arc(burst.x, burst.y, easeOut(ring) * 76 * burst.size, 0, TAU);
         context.stroke();
       }
       if (burst.age > burst.life) bursts.splice(index, 1);

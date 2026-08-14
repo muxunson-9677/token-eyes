@@ -28,8 +28,8 @@
 }
 
 .desktop-widget-root.desktop-widget-root--browser-preview.has-celebration {
-  width: min(calc(var(--widget-preview-width) + 84px), calc(100vw - 48px));
-  height: min(calc(var(--widget-preview-height) + 84px), calc(100vh - 48px));
+  width: min(calc(var(--widget-preview-width) + 280px), calc(100vw - 48px));
+  height: min(calc(var(--widget-preview-height) + 280px), calc(100vh - 48px));
 }
 
 .desktop-widget-root {
@@ -1282,7 +1282,7 @@
 }
 
 .desktop-widget-root.has-celebration {
-  padding: 42px 42px 42px 47px;
+  padding: var(--widget-effect-halo, 140px);
 }
 
 .desktop-widget-root.has-celebration .desktop-widget-card,

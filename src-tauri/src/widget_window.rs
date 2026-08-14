@@ -15,7 +15,7 @@ const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
 const MIN_WIDTH: u32 = 352;
 const MIN_HEIGHT: u32 = 72;
 const POPOVER_HEIGHT: u32 = 260;
-const CELEBRATION_PADDING: u32 = 42;
+const CELEBRATION_PADDING: u32 = 140;
 static TRANSIENT_POPOVER_OPEN: AtomicBool = AtomicBool::new(false);
 static TRANSIENT_CELEBRATION_OPEN: AtomicBool = AtomicBool::new(false);
 
@@ -795,19 +795,19 @@ mod tests {
         assert_eq!(
             transient_geometry(base, 1.0, false, true),
             Geometry {
-                x: 458,
-                y: 258,
-                width: 436,
-                height: 156
+                x: 360,
+                y: 160,
+                width: 632,
+                height: 352
             },
         );
         assert_eq!(
             transient_geometry(base, 1.5, true, true),
             Geometry {
-                x: 437,
-                y: 237,
-                width: 478,
-                height: 516
+                x: 290,
+                y: 90,
+                width: 772,
+                height: 810
             },
         );
     }

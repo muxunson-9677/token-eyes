@@ -169,6 +169,19 @@ describe("DesktopWidgetPage", () => {
     }
   });
 
+  it("shows a requested celebration directly in the browser-only preview", () => {
+    window.history.pushState({}, "", "/desktop-widget?preview=1&celebration=fireworks");
+    const { unmount } = render(<DesktopWidgetPage />);
+
+    try {
+      expect(screen.getByTestId("widget-reset-celebration"))
+        .toHaveAttribute("data-effect-id", "fireworks");
+    } finally {
+      unmount();
+      window.history.pushState({}, "", "/desktop-widget");
+    }
+  });
+
   it("keeps one card, separates expand and agent controls, and portals the agent menu", async () => {
     const user = userEvent.setup();
     render(<DesktopWidgetPage />);

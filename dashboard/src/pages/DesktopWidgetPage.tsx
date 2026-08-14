@@ -572,10 +572,16 @@ export function DesktopWidgetPage() {
   } = useDesktopWidget();
   const [openMenu, setOpenMenu] = useState(null as "agent" | null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
-  const [previewCelebration, setPreviewCelebration] = useState(null as {
+  const browserPreviewEffect = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).has("preview")
+    ? new URLSearchParams(window.location.search).get("celebration")
+    : null;
+  const [previewCelebration, setPreviewCelebration] = useState<{
     eventId: string;
     effectId: ResetCelebrationEffectId;
-  } | null);
+  } | null>(() => browserPreviewEffect === "meteors" || browserPreviewEffect === "fireworks"
+    ? { eventId: `browser-preview:${browserPreviewEffect}`, effectId: browserPreviewEffect }
+    : null);
   const [dismissedResetId, setDismissedResetId] = useState(null as string | null);
   const agentMenuAnchor = useRef(null as HTMLButtonElement | null);
   const appearanceAnchor = useRef(null as HTMLButtonElement | null);

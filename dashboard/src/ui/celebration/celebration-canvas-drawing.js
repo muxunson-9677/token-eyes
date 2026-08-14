@@ -11,6 +11,13 @@ export function edgeFade(x, y, width, height, marginRatio = 0.14, pixelMargin = 
     1,
   );
 }
+
+export function lifecycleFade(progress, appearAt = 0.08, vanishAt = 0.9) {
+  if (progress <= appearAt || progress >= vanishAt) return 0;
+  const phase = clamp((progress - appearAt) / Math.max(0.001, vanishAt - appearAt), 0, 1);
+  return Math.sin(Math.PI * phase);
+}
+
 export const randomBetween = (min = 0, max = 1) => min + Math.random() * (max - min);
 export const pickRandom = (values) => values[(Math.random() * values.length) | 0];
 export const hsla = (hue, saturation, lightness, alpha = 1) => (

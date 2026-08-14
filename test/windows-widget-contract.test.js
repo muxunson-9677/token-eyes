@@ -133,12 +133,17 @@ test("appearance controls render as a document-level popover instead of covering
   assert.match(css, /\.widget-appearance\s*\{[\s\S]*position:\s*fixed/u);
 });
 
-test("0.54.40 widget geometry expands temporarily for the retained celebration effect", () => {
+test("widget celebration reserves a full transparent halo around the capsule", () => {
   const widgetWindow = read("src-tauri/src/widget_window.rs");
+  const css = read("dashboard/src/pages/desktop-widget.css");
   const command = widgetWindow.match(
     /pub fn set_desktop_widget_celebration[\s\S]*?\n\}/u,
   )?.[0];
   assert.ok(command, "set_desktop_widget_celebration must exist");
   assert.match(command, /apply_transient_geometry\(&window, &prefs\)/u);
-  assert.match(widgetWindow, /CELEBRATION_PADDING:\s*u32\s*=\s*42/u);
+  assert.match(widgetWindow, /CELEBRATION_PADDING:\s*u32\s*=\s*140/u);
+  assert.match(
+    css,
+    /\.desktop-widget-root\.has-celebration\s*\{\s*padding:\s*var\(--widget-effect-halo,\s*140px\);/u,
+  );
 });

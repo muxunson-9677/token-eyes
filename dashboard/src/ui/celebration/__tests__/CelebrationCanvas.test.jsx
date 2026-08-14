@@ -2,7 +2,8 @@ import React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FireworksCelebrationCanvas from "../FireworksCelebrationCanvas.jsx";
-import MeteorCelebrationCanvas from "../MeteorCelebrationCanvas.jsx";
+import MeteorCelebrationCanvas, { selectMeteorLane } from "../MeteorCelebrationCanvas.jsx";
+import { lifecycleFade } from "../celebration-canvas-drawing.js";
 
 let context;
 let rafCallbacks;
@@ -63,6 +64,18 @@ afterEach(() => {
 });
 
 describe("celebration canvas renderers", () => {
+  it("fades each particle according to its own lifetime instead of a shared canvas edge", () => {
+    expect(lifecycleFade(0.04, 0.12, 0.82)).toBe(0);
+    expect(lifecycleFade(0.48, 0.12, 0.82)).toBeGreaterThan(0.9);
+    expect(lifecycleFade(0.96, 0.12, 0.82)).toBe(0);
+  });
+
+  it("keeps a staggered foreground lane as part of the meteor shower", () => {
+    expect(selectMeteorLane(true, () => 0.1)).toBe("front");
+    expect(selectMeteorLane(true, () => 0.9)).toBe("rear");
+    expect(selectMeteorLane(false, () => 0.1)).toBe("front");
+  });
+
   it("renders meteors on a transparent capped canvas and releases listeners", () => {
     const removeWindowListener = vi.spyOn(window, "removeEventListener");
     const removeDocumentListener = vi.spyOn(document, "removeEventListener");
