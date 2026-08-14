@@ -741,13 +741,13 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
   overflow: hidden;
   border-radius: 8px;
   padding: 0 12px;
-  background: #f3f7ff;
+  background: #e6f0ff;
   color: #667085;
   font-size: 12px;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-subscription"] {
-  background: #f1faf6;
+  background: #e4f6ec;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid^="cost-confidence-"] > span:first-child {
@@ -766,13 +766,13 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-estimated"] > span:first-child {
-  background: #dceeff;
-  color: #1877d1;
+  background: #b9dcff;
+  color: #0b64b8;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-card"] [data-testid="cost-confidence-subscription"] > span:first-child {
-  background: #d9f6e7;
-  color: #07945a;
+  background: #bfead4;
+  color: #057a4b;
 }
 
 .tt-reference-route-spend-cost .tt-summary-comparison {
@@ -801,9 +801,6 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 
 .tt-reference-route-spend-cost [data-cost-summary-card="subscription"] .tt-summary-comparison {
   min-width: 122px;
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: #eaf8f1;
   color: #149467;
 }
 
@@ -1277,23 +1274,6 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 .tt-reference-route-spend-cost .tt-provider-account-mark--glm { background: #f2efff; color: #7047eb; }
 .tt-reference-route-spend-cost .tt-provider-account-mark--volcengine_billing { background: #eef5ff; }
 .tt-reference-route-spend-cost .tt-provider-account-mark--aliyun_bss { background: #fff5ed; color: #f26722; }
-
-body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] .tt-cost-row-metrics,
-body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] .tt-cost-row-actions {
-  display: none;
-}
-
-body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child > button {
-  width: 100%;
-}
-
-body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"]) .tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child > button > svg:last-child {
-  margin-left: auto;
-}
 
 .tt-reference-route-spend-cost .tt-provider-api-expanded-list {
   display: grid;
@@ -7802,11 +7782,26 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   overflow: hidden;
 }
 
+.tt-reference-route-spend-cost [data-cost-section] {
+  padding: 12px 20px !important;
+}
+
+.tt-reference-route-spend-cost [data-cost-section][data-open="false"] > div:first-child {
+  margin-bottom: 0;
+  transform: none;
+}
+
 .tt-reference-route-spend-cost [data-cost-section] > div:first-child {
   display: grid;
   grid-template-columns: minmax(300px, 1fr) auto;
   align-items: center;
-  min-height: 46px;
+  height: 48px !important;
+  min-height: 48px !important;
+}
+
+.tt-reference-route-spend-cost [data-cost-section] > div:first-child > button:hover,
+.tt-reference-route-spend-cost [data-cost-section] > div:first-child > button:active {
+  transform: none;
 }
 
 .tt-reference-route-spend-cost .tt-cost-row-metrics {
@@ -7858,6 +7853,60 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   transform: scaleX(0.8);
   transform-origin: center;
   white-space: nowrap;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-card {
+  display: grid !important;
+  grid-template-rows: 58px 82px 74px 44px;
+  align-content: start;
+}
+
+.tt-reference-route-spend-cost [data-testid="subscription-roi-empty-note"] {
+  display: block !important;
+  margin: 8px 4px 0;
+  color: #7c8796;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-heading {
+  grid-row: 1;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-primary {
+  grid-row: 2;
+  margin-top: 8px !important;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-details {
+  grid-row: 3;
+  margin-top: 0 !important;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-footer {
+  grid-row: 4;
+  margin-top: 0 !important;
+}
+
+.tt-reference-route-spend-cost .tt-cost-summary-heading,
+.tt-reference-route-spend-cost .tt-cost-summary-primary,
+.tt-reference-route-spend-cost .tt-cost-summary-details,
+.tt-reference-route-spend-cost .tt-cost-summary-footer {
+  align-self: start;
+}
+
+.tt-reference-route-spend-cost .tt-token-package-table {
+  overflow: visible;
+  padding: 12px;
+}
+
+.tt-reference-route-spend-cost .tt-token-service-list--embedded [data-testid="token-service-cards"] {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 0;
+}
+
+.tt-reference-route-spend-cost .tt-token-service-list--embedded .tt-token-service-card {
+  padding: 14px;
 }
 
 .tt-reference-route-spend-cost .tt-cost-summary-primary > div > span:first-child {

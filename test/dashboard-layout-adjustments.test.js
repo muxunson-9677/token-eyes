@@ -258,6 +258,18 @@ test("custom spend group cards wrap names and preserve readable responsive amoun
   assert.ok(!section.includes('<h4 className="truncate'), "group names must not use ellipsis truncation");
 });
 
+test("cost section summaries stay visible and header geometry stays fixed while details expand", () => {
+  const src = readFile(costAccumulationPath);
+  const css = readFile(appleGlassPath);
+
+  assert.ok(src.includes("{summaryMetrics.length > 0 ? ("), "expected metrics in both collapsed and expanded states");
+  assert.ok(!src.includes("{!open && summaryMetrics.length > 0 ? ("), "expanded sections must not remove summary metrics");
+  assert.ok(!css.includes('body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])'), "one expanded section must not hide sibling summaries");
+  assert.ok(css.includes('[data-cost-section][data-open="false"] > div:first-child'), "expected a closed-state margin override without moving the header content");
+  assert.ok(css.includes("transform: none;"), "collapsed and expanded headers must keep the same vertical origin");
+  assert.ok(css.includes('[data-cost-section] > div:first-child > button:hover'), "section toggles must not shift their labels on hover");
+});
+
 test("cost page can exercise 1280, 1440, and 1920 content widths without a fixed max-width cap", () => {
   const src = readFile(spendPath);
   const costPageStart = src.indexOf("function SpendCostPageInner");

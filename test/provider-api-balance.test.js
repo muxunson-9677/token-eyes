@@ -574,6 +574,31 @@ test("refreshBalance reads an official-console snapshot without reading an API s
   assert.equal(readSecretCalls, 0);
 });
 
+test("refreshBalance preserves a failed official-console snapshot as stale", async () => {
+  const manager = createBalanceRefreshManager({
+    resolveOfficialConsoleBalance: () => ({
+      available_balance: 96.25,
+      currency: "CNY",
+      provider_reported_at: "2026-07-14T06:00:00.000Z",
+      stale: true,
+      error_code: "SESSION_NOT_FOUND",
+      error_message: "未找到对应的登录会话，请重新连接。",
+    }),
+  });
+
+  const balance = await manager.refreshBalance({
+    id: "glm-console-stale",
+    providerId: "glm",
+    label: "智谱 GLM",
+    authType: "official_console",
+  });
+
+  assert.equal(balance.status, "stale");
+  assert.equal(balance.balance, 96.25);
+  assert.equal(balance.currency, "CNY");
+  assert.equal(balance.errorCode, "SESSION_NOT_FOUND");
+});
+
 test("refreshBalance reports an unbound official console without reading an API secret", async () => {
   let readSecretCalls = 0;
   const manager = createBalanceRefreshManager({
@@ -1093,6 +1118,52 @@ test("concurrent refresh of same config triggers only one upstream request", asy
   }
 });
 
+test("sequential manual refresh bypasses the short cache and returns the provider's latest balance", async () => {
+  let requestCount = 0;
+  const { server, url } = await startMockServer((req, res) => {
+    requestCount++;
+    const balance = requestCount === 1 ? "86.06" : "73.25";
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ data: { balance, currency: "CNY" } }));
+  });
+  try {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-balance-"));
+    try {
+      const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+      const handler = createLocalApiHandler({
+        queuePath: path.join(trackerDir, "queue.jsonl"),
+        trackerDataDir: trackerDir,
+        credentialStore: createTestCredentialStore(),
+        providerApiTestMode: true,
+      });
+      const headers = await getAuthHeaders(handler);
+      const created = await call(handler, "/functions/tokentracker-provider-api-configs", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(validConfig({ requestUrl: `${url}/balance` })),
+      });
+      const configId = readJsonResponse(created).config.id;
+      await call(handler, "/functions/tokentracker-provider-api-secrets", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ configId, secret: "sk-test" }),
+      });
+
+      const first = readJsonResponse(await call(handler, `/functions/tokentracker-provider-api-refresh?id=${configId}`, { method: "POST", headers }));
+      const second = readJsonResponse(await call(handler, `/functions/tokentracker-provider-api-refresh?id=${configId}`, { method: "POST", headers }));
+
+      assert.equal(first.balance.balance, 86.06);
+      assert.equal(second.balance.balance, 73.25);
+      assert.equal(second.balance.currency, "CNY");
+      assert.equal(requestCount, 2, "each manual click must reach the provider even inside the cache TTL");
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  } finally {
+    server.close();
+  }
+});
+
 // Test 2: API Key 重启后仍可通过安全引用读取；普通配置文件中不存在明文
 test("API Key survives handler restart via credential store reference; no plaintext in config.json", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-balance-"));
@@ -1315,6 +1386,85 @@ test("official-console balance is returned from a verified session without an AP
     assert.equal(refreshed.balance.status, "synced");
     assert.equal(refreshed.balance.balance, 88.5);
     assert.equal(readSecretCalls, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("official-console balance keeps the provider-account snapshot visible when refresh is stale", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-console-stale-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(path.join(trackerDir, "config.json"), JSON.stringify({
+      providerApiConfigs: [{
+        id: "glm-config",
+        providerId: "glm",
+        label: "智谱 GLM",
+        requestUrl: "https://www.bigmodel.cn/coding-plan/personal/usage",
+        requestMethod: "GET",
+        authType: "official_console",
+        apiKeyRef: "",
+        balancePath: "balance.available_balance",
+        monthSpendPath: "",
+        lifetimeSpendPath: "",
+        currencyPath: "balance.currency",
+        refreshIntervalSeconds: 300,
+        enabled: true,
+      }],
+      consoleSessions: [{
+        id: "token-plan-session",
+        provider_id: "glm",
+        auth_kind: "official_console_session",
+        display_name: "智谱 GLM",
+        status: "connected",
+        session_ref: "token-plan/glm/session/test",
+        last_verified_at: "2026-07-15T06:00:00.000Z",
+        balance: {
+          balance: 888,
+          available_balance: 888,
+          credit_balance: 0,
+          currency: "CNY",
+          provider_reported_at: "2026-07-15T06:00:00.000Z",
+        },
+      }, {
+        id: "provider-account-session",
+        provider_id: "glm",
+        auth_kind: "official_console_session",
+        display_name: "智谱 GLM",
+        status: "failed",
+        session_ref: "provider-api/glm/session/test",
+        last_verified_at: "2026-07-14T06:00:00.000Z",
+        last_error_code: "SESSION_NOT_FOUND",
+        last_error_message: "未找到对应的登录会话，请重新连接。",
+        balance: {
+          balance: 520,
+          available_balance: 499.98,
+          credit_balance: 20.02,
+          currency: "CNY",
+          provider_reported_at: "2026-07-14T06:00:00.000Z",
+        },
+      }],
+    }), "utf8");
+
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+
+    const listed = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-balances"));
+    assert.equal(listed.balances[0].status, "stale");
+    assert.equal(listed.balances[0].balance, 499.98);
+    assert.equal(listed.balances[0].currency, "CNY");
+    assert.equal(listed.balances[0].errorCode, "SESSION_NOT_FOUND");
+
+    const headers = await getAuthHeaders(handler);
+    const refreshed = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-refresh?id=glm-config", {
+      method: "POST",
+      headers,
+    }));
+    assert.equal(refreshed.balance.status, "stale");
+    assert.equal(refreshed.balance.balance, 499.98);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

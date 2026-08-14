@@ -87,6 +87,34 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
   });
 
+  it("supports a ten-card cost-page window while still filtering expired plans", async () => {
+    const user = userEvent.setup();
+    const plans = [
+      ...Array.from({ length: 11 }, (_, index) => plan(`active-${index + 1}`, 900 - index * 10)),
+      plan("expired-cost-plan", 950, 1_000, { expires_at: "2020-01-01" }),
+    ];
+
+    render(
+      <TokenServiceList
+        plans={plans}
+        pageSize={10}
+        now={new Date("2026-07-13T00:00:00Z")}
+      />,
+    );
+
+    expect(screen.getAllByTestId("token-service-row")).toHaveLength(10);
+    expect(screen.queryByText("Service expired-cost-plan")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "下一页" }));
+    });
+
+    const secondPageRows = screen.getAllByTestId("token-service-row");
+    expect(secondPageRows).toHaveLength(1);
+    expect(within(secondPageRows[0]).getByText("11")).toBeInTheDocument();
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+  });
+
   it("renders five compact independent cards without hiding multi-lane quota values", () => {
     const sharedReset = "2026-08-06T14:31:29.000Z";
     const cursor = plan("cursor-live", 0, 0, {

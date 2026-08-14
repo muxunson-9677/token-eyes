@@ -7,6 +7,8 @@ import {
   getUsageAttribution,
   getTokenPlans,
   openXiaomiMimoConsoleLogin,
+  refreshGlmConsoleSession,
+  refreshOfficialConsoleProviderBalance,
   reorderTokenPlans,
   triggerLocalSync,
   verifyOfficialModelPricing,
@@ -267,4 +269,69 @@ it("invokes the Xiaomi MiMo native commands with camelCase arguments", async () 
   expect(invoke).toHaveBeenNthCalledWith(2, "verify_xiaomi_mimo_console_session", {
     sessionRef: "session-ref",
   });
+});
+
+it("invokes the GLM silent refresh command with the persisted session reference", async () => {
+  const invoke = vi.fn().mockResolvedValue({
+    connected: true,
+    state_code: "connected",
+    balance: { balance: 475.5, available_balance: 475.5, credit_balance: 0, currency: "CNY" },
+  });
+  Object.defineProperty(window, "__TAURI__", {
+    configurable: true,
+    value: { core: { invoke } },
+  });
+
+  const status = await refreshGlmConsoleSession("session-ref");
+
+  expect(status.balance?.balance).toBe(475.5);
+  expect(invoke).toHaveBeenCalledWith("refresh_glm_console_session", {
+    sessionRef: "session-ref",
+  });
+});
+
+it("persists an expired official-console refresh so restart cannot report it synced", async () => {
+  const nativeFailure = {
+    connected: false,
+    session_ref: "provider-api/glm/session/ref",
+    state_code: "session_not_found",
+    error_code: "SESSION_NOT_FOUND",
+    error_message: "请重新连接",
+  };
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "local_server_status") return { running: true, url: "http://127.0.0.1:17680" };
+    if (command === "refresh_glm_console_session") return nativeFailure;
+    throw new Error(`unexpected native command: ${command}`);
+  });
+  Object.defineProperty(window, "__TAURI__", {
+    configurable: true,
+    value: { core: { invoke } },
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/api/local-auth")) {
+      return new Response(JSON.stringify({ token: "local-token" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("tokentracker-token-plan-console-sessions/provider-session/verify")) {
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("tokentracker-token-plan-console-sessions")) {
+      return new Response(JSON.stringify({ sessions: [{
+        id: "provider-session",
+        provider_id: "glm",
+        session_ref: "provider-api/glm/session/ref",
+        status: "connected",
+      }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(refreshOfficialConsoleProviderBalance("glm")).resolves.toEqual(nativeFailure);
+
+  const verifyCall = fetchMock.mock.calls.find(([input]) => String(input).includes("/provider-session/verify"));
+  expect(verifyCall?.[1]).toEqual(expect.objectContaining({
+    method: "POST",
+    body: JSON.stringify({ native_result: nativeFailure }),
+  }));
 });

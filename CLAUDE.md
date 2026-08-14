@@ -96,6 +96,23 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 - `TokenTrackerBar/EmbeddedServer/` is gitignored; built on demand by `TokenTrackerBar/scripts/bundle-node.sh`.
 - After editing `TokenTrackerBar/project.yml`: `(cd TokenTrackerBar && xcodegen generate && ruby scripts/patch-pbxproj-icon.rb)`.
 
+#### User-facing verification and delivery gate (hard rule)
+
+- **Tests are necessary, never sufficient**: unit, integration, typecheck, lint, and build results may support a claim, but cannot by themselves prove that a user-visible requirement is complete or correctly rendered.
+- **Create a traceable acceptance matrix before signoff**: map every user request to the exact data state, viewport/runtime, user action, expected visible result, negative condition, and evidence. A requirement without direct evidence remains incomplete.
+- **First verification pass — requirement match**: compare the implementation with the user's wording line by line. Verify content, hierarchy, alignment, color, spacing, size, persistence, and interaction behavior; do not silently reinterpret or weaken a requirement because the code or tests are convenient.
+- **Second verification pass — independent real-effect audit**: reset assumptions and use a different scenario or data set to actively look for defects. Do not call two runs of the same fixture, assertion set, or mental checklist “two checks.”
+- **Exercise complete state transitions**: for every changed control, test the initial state, action, changed state, reverse action, and restored state using normal mouse/keyboard input. When relevant, include scroll position, focus, hover/press, expand/collapse, refresh, navigation away/back, reload, restart, and failure recovery.
+- **Measure layout stability**: capture before/during/after screenshots and relevant geometry such as element rectangles, scroll offsets, viewport/client width, overflow, clipping, and unexpected layout shift. A settled endpoint alone does not prove that the transition is stable.
+- **Test realistic density and boundaries**: cover empty, single, typical, and dense data, plus long text and missing/stale/error states. For repeatable cards or rows, explicitly test at least 0, 1, 2, 5, and 10 items unless a stricter product limit applies.
+- **Verify representative viewports**: inspect the real desktop launch size and at least one smaller supported size; include mobile when the changed surface supports it. Check the initial viewport and the densest reachable state for overflow, occlusion, distortion, and unintended scrolling.
+- **Use real runtime and data where behavior depends on them**: mocks prove controlled states, not local persistence, external authentication, provider responses, cache refresh, native bridges, or restart behavior. Diagnose and report the difference between missing configuration, expired authentication, network failure, upstream schema drift, and stale cached data.
+- **Verify the production artifact**: after a production build, confirm that the artifact contains the current frontend/native resources. When installation or upgrade testing is authorized, launch the exact generated installer/build and repeat the critical user journey; source/dev-server evidence does not prove the packaged experience.
+- **Installer smoke tests have a narrow meaning**: successful packaging, extraction, launch, or runtime startup proves only those facts. Never present them as proof that the requested UI or workflow is visually and behaviorally correct.
+- **Review screenshots visually, not only numerically**: inspect the whole relevant surface and compare related components side by side. If screenshots and numeric checks disagree, investigate; neither may be used to dismiss an obvious visible defect.
+- **No silent gaps**: if a required runtime, real account state, browser/native automation path, or installation permission is unavailable, state exactly what was not verified and label the result as partial or preview-only.
+- **Completion claim gate**: do not say “完成”, “已修复”, “验收通过”, or hand off an installer as acceptance-ready until every acceptance-matrix row has current evidence and both verification passes have no unresolved mismatch. Report failures and residual risks explicitly.
+
 ## Release workflow
 
 **Any change under `src/` or `dashboard/` ships npm + DMG + Windows**, because both `TokenTrackerBar/EmbeddedServer/` (macOS) and `TokenTrackerWin/EmbeddedServer/` (Windows) bundle the CLI runtime and built dashboard. Bumping only `package.json` leaves desktop-app users on the stale embedded copy.

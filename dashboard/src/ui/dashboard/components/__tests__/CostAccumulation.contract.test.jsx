@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
+import { calculateCollapseScrollReserve, CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
 
 // 02 work order contract tests for CostAccumulation.
 //
@@ -52,6 +52,80 @@ const BASE_SUMMARY = {
   usdToCny: 7.2,
 };
 
+it("reserves only the missing scroll range when collapsing a tall section", () => {
+  expect(calculateCollapseScrollReserve({
+    scrollTop: 120,
+    scrollHeight: 1114,
+    clientHeight: 975,
+    removedHeight: 220,
+  })).toBe(120);
+  expect(calculateCollapseScrollReserve({
+    scrollTop: 40,
+    scrollHeight: 1400,
+    clientHeight: 900,
+    removedHeight: 200,
+  })).toBe(0);
+});
+
+it("shows ten usable token plans per cost-page view and keeps expired plans out", () => {
+  window.localStorage.removeItem("token-eyes:cost-section:token-packages");
+  const tokenPackages = [
+    ...Array.from({ length: 11 }, (_, index) => ({
+      id: `active-${index + 1}`,
+      source: `active-${index + 1}`,
+      provider_id: "custom",
+      plan_label: `Plan ${index + 1}`,
+      total_quota: 100,
+      used_quota: 90 - index,
+      remaining_quota: 10 + index,
+      expires_at: "2099-12-31",
+    })),
+    {
+      id: "expired",
+      source: "expired",
+      provider_id: "custom",
+      plan_label: "Expired plan",
+      total_quota: 100,
+      used_quota: 99,
+      remaining_quota: 1,
+      expires_at: "2020-01-01",
+    },
+  ];
+
+  render(<CostAccumulation costSummary={{ ...BASE_SUMMARY }} tokenPackages={tokenPackages} />);
+
+  expect(screen.getAllByTestId("token-service-row")).toHaveLength(10);
+  expect(screen.queryByText("Expired plan")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "spend.usage.token_services.next" }));
+  expect(screen.getAllByTestId("token-service-row")).toHaveLength(1);
+});
+
+it("shows expired token-plan subscriptions as read-only history", () => {
+  window.localStorage.removeItem("token-eyes:cost-section:subscriptions");
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      subscriptionRecords={[{
+        id: "token-plan-cost:expired",
+        name: "Expired Plus",
+        provider: "codex",
+        cycle: "monthly",
+        amount: 20,
+        currency: "USD",
+        renewsAt: "2025-01-01",
+        status: "expired",
+        origin: "token_plan",
+        readOnly: true,
+      }]}
+    />,
+  );
+
+  expect(screen.getByText("Expired Plus")).toBeInTheDocument();
+  expect(screen.getByText("spend.cost.subscription.status.expired")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "spend.cost.subscription.edit" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "spend.cost.subscription.delete" })).not.toBeInTheDocument();
+});
+
 it("renders asynchronously loaded Other AI groups without changing the hook order", () => {
   const props = {
     costSummary: { ...BASE_SUMMARY },
@@ -98,6 +172,28 @@ it("keeps the stale provider status on one line inside the collapsed action row"
 
   expect(staleStatus).toHaveClass("shrink-0", "whitespace-nowrap");
   expect(staleStatus.parentElement).toHaveClass("whitespace-nowrap");
+});
+
+it("shows a stale account as stale while retaining its last successful amount", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      providerApiBalances={[{
+        configId: "provider-1",
+        providerId: "deepseek",
+        accountLabel: "DeepSeek",
+        status: "stale",
+        balance: 86.06,
+        currency: "CNY",
+      }]}
+      onRefreshOneProviderApi={() => {}}
+    />,
+  );
+
+  const section = screen.getByTestId("provider-api-account-section");
+  expect(within(section).getByText("spend.cost.provider_account.status.stale")).toBeInTheDocument();
+  expect(within(section).getAllByText(/CNY 86\.06/).length).toBeGreaterThanOrEqual(2);
+  expect(within(section).getByText("spend.cost.provider_account.refresh_failed")).toBeInTheDocument();
 });
 
 it("keeps estimated usage cost and actual subscription spend separate without a combined total", () => {
@@ -171,7 +267,42 @@ it("starts the cost-page groups collapsed when requested and expands their full 
 
   expect(section).toHaveAttribute("data-open", "true");
   expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(within(section).getByTestId("cost-row-metrics")).toHaveAttribute("data-align", "right");
   expect(within(section).getByText("Codex Pro")).toBeVisible();
+});
+
+it("shows the same complete Token service details on the cost page", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      tokenPackages={[{
+        id: "plan-codex",
+        plan_label: "Pro 20x",
+        provider_id: "codex",
+        detection_method: "official_account",
+        detection_config: {
+          official_account: { display_name: "work@example.com" },
+        },
+        quota_unit: "percent",
+        quota_windows: [
+          { kind: "rolling_5_hour", total: 100, used: 12, percentage: 12, resets_at: "2026-08-15T12:00:00.000Z" },
+          { kind: "rolling_weekly", total: 100, used: 34, percentage: 34, resets_at: "2026-08-20T12:00:00.000Z" },
+        ],
+        subscription_end_date: "2026-09-15T12:00:00.000Z",
+        sync_status: "success",
+      }]}
+      now={new Date("2026-08-15T10:00:00.000Z")}
+    />,
+  );
+
+  const section = document.querySelector('[data-cost-section="token-packages"]');
+  expect(within(section).getByText("Codex")).toBeInTheDocument();
+  expect(within(section).getByText("Pro 20x")).toBeInTheDocument();
+  expect(within(section).getByText("work@example.com")).toBeInTheDocument();
+  expect(within(section).getByTestId("token-service-window-rolling_5_hour")).toHaveTextContent("12%");
+  expect(within(section).getByTestId("token-service-window-rolling_weekly")).toHaveTextContent("34%");
+  expect(within(section).getByTestId("token-service-reset-rolling_5_hour")).toBeInTheDocument();
+  expect(within(section).getByTestId("token-service-validity")).toBeInTheDocument();
 });
 
 it("uses the reference-style expanded layouts for custom groups, token packages, and provider accounts", () => {
@@ -320,6 +451,11 @@ it("visually separates the summary and each existing management section without 
     expect(section.querySelector(".tt-cost-row-actions")).toBeNull();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const expandedMetrics = within(section).queryByTestId("cost-row-metrics");
+    if (expandedMetrics) {
+      expect(expandedMetrics).toHaveClass("tt-cost-row-metrics--right");
+      expect(expandedMetrics).toHaveAttribute("data-align", "right");
+    }
   }
   expect(screen.queryByText("settings.cost.other_ai.edit_group")).not.toBeInTheDocument();
   expect(screen.queryByText("spend.cost.provider_account.refresh_all")).not.toBeInTheDocument();

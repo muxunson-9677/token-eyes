@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BarChart3, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Code2, CreditCard, Package, Globe, Info, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings, TrendingUp } from "lucide-react";
 import { copy } from "../../../lib/copy";
@@ -6,7 +6,7 @@ import { cn } from "../../../lib/cn";
 import { formatChineseTokenCount } from "../../../lib/format";
 import { deriveDataConfidence } from "../../../lib/data-confidence";
 import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
-import { ProviderIcon } from "./ProviderIcon.jsx";
+import { TokenServiceList } from "./TokenServiceList.jsx";
 import { computeSubscriptionRoi } from "../../../lib/subscription-roi";
 
 const COST_ICON_TONES = {
@@ -16,6 +16,21 @@ const COST_ICON_TONES = {
   orange: "bg-orange-50 text-orange-600 dark:bg-orange-950/45 dark:text-orange-300",
   rose: "bg-rose-50 text-rose-600 dark:bg-rose-950/45 dark:text-rose-300",
 };
+
+export function calculateCollapseScrollReserve({ scrollTop, scrollHeight, clientHeight, removedHeight }) {
+  const futureMaxScroll = Math.max(0, Number(scrollHeight) - Number(removedHeight) - Number(clientHeight));
+  return Math.max(0, Number(scrollTop) - futureMaxScroll);
+}
+
+function findVerticalScrollContainer(node) {
+  let current = node?.parentElement;
+  while (current) {
+    const overflowY = window.getComputedStyle(current).overflowY;
+    if (["auto", "scroll"].includes(overflowY)) return current;
+    current = current.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
 
 /**
  * CostAccumulation component (03-cost-billing).
@@ -126,33 +141,10 @@ function formatDualAmount(usd, cny, comparison = null, { compactCny = false } = 
   );
 }
 
-function formatQuotaDisplay(quota) {
-  if (!hasDisplayValue(quota)) return null;
-  return quota;
-}
-
-function parseQuotaNumber(value) {
-  if (!hasDisplayValue(value)) return null;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const match = String(value).replaceAll(",", "").trim().match(/^(-?\d+(?:\.\d+)?)\s*([kmbt])?/i);
-  if (!match) return null;
-  const multiplier = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 }[String(match[2] || "").toLowerCase()] || 1;
-  const parsed = Number(match[1]) * multiplier;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function formatFinancialValue(value, currency, formatter = formatAmount) {
   if (value === null || value === undefined) return null;
   if (!Number.isFinite(Number(value))) return null;
   return formatter(value, currency);
-}
-
-function hasDisplayValue(value) {
-  return value !== null
-    && value !== undefined
-    && value !== ""
-    && value !== "-"
-    && value !== "—";
 }
 
 function formatSelectedMonth(monthKey) {
@@ -289,6 +281,10 @@ function CostSummaryCards({
   const unavailable = copy("spend.cost.row.unavailable");
   const activeSubscriptions = subscriptionRecords.filter((record) => record.status === "active").length;
   const renewingSubscriptions = subscriptionRecords.filter((record) => record.status === "active" && record.renewsAt).length;
+  const roi = computeSubscriptionRoi({
+    monthApiCostUsd: summary.monthApiCostUsd,
+    monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
+  });
 
   return (
     <div>
@@ -351,6 +347,14 @@ function CostSummaryCards({
         ]}
       /> : null}
       </div>
+      {!roi ? (
+        <p
+          data-testid="subscription-roi-empty-note"
+          className="mt-2 text-xs leading-5 text-oai-gray-400 dark:text-oai-gray-500"
+        >
+          {copy("spend.cost.roi.empty")}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -369,11 +373,7 @@ function SubscriptionRoiCard({ summary, loading }) {
     monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
   });
   if (!roi) {
-    return (
-      <div className="rounded-lg border border-dashed border-oai-gray-200 dark:border-oai-gray-800 px-4 py-3 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-        {copy("spend.cost.roi.empty")}
-      </div>
-    );
+    return null;
   }
   const belowOne = roi.multiplier < 1;
   const multiplierLabel = `${roi.multiplier.toFixed(1)}×`;
@@ -470,13 +470,43 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
       return initiallyOpen;
     }
   });
-  const toggle = () => setOpen((value) => {
-    const next = !value;
+  const [scrollReserve, setScrollReserve] = useState(0);
+  const sectionRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer || scrollReserve <= 0) return undefined;
+    const releaseReserve = () => {
+      const naturalMaxScroll = Math.max(0, scrollContainer.scrollHeight - scrollReserve - scrollContainer.clientHeight);
+      if (scrollContainer.scrollTop <= naturalMaxScroll + 1) setScrollReserve(0);
+    };
+    scrollContainer.addEventListener("scroll", releaseReserve, { passive: true });
+    return () => scrollContainer.removeEventListener("scroll", releaseReserve);
+  }, [scrollReserve]);
+
+  const toggle = () => {
+    const next = !open;
+    if (open && sectionRef.current) {
+      const scrollContainer = findVerticalScrollContainer(sectionRef.current);
+      const removedHeight = Math.max(0, sectionRef.current.offsetHeight - 72);
+      scrollContainerRef.current = scrollContainer;
+      setScrollReserve(calculateCollapseScrollReserve({
+        scrollTop: scrollContainer.scrollTop,
+        scrollHeight: scrollContainer.scrollHeight,
+        clientHeight: scrollContainer.clientHeight,
+        removedHeight,
+      }));
+    } else {
+      setScrollReserve(0);
+    }
     try { window.localStorage.setItem(storageKey, next ? "open" : "closed"); } catch { /* local preference only */ }
-    return next;
-  });
+    setOpen(next);
+  };
   return (
+    <>
     <section
+      ref={sectionRef}
       className={cn(
         "tt-surface-nested rounded-[var(--tt-card-radius)] p-4",
         className,
@@ -495,7 +525,7 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
           <SectionHeader icon={icon} iconTone={iconTone} title={title} description={description} count={count} />
           {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
         </button>
-        {!open && summaryMetrics.length > 0 ? (
+        {summaryMetrics.length > 0 ? (
           <div className="tt-cost-row-metrics tt-cost-row-metrics--right" data-testid="cost-row-metrics" data-align="right">
             {summaryMetrics.map((metric) => (
               <div key={metric.label} className="tt-cost-row-metric" data-tone={metric.tone || "neutral"}>
@@ -508,6 +538,14 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
       </div>
       {open ? children : null}
     </section>
+    {scrollReserve > 0 ? (
+      <div
+        aria-hidden="true"
+        data-testid={`cost-scroll-reserve-${id}`}
+        style={{ height: `${scrollReserve}px` }}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -522,29 +560,6 @@ function getOtherAiGroupVisual(group, index) {
     { icon: CreditCard, tone: "orange" },
     { icon: Package, tone: "violet" },
   ][index % 4];
-}
-
-function getTokenProviderMeta(provider) {
-  const key = String(provider || "").toLowerCase();
-  const catalogSource = copy("settings.token_plan.quota_source_catalog");
-  const entries = {
-    xiaomi_mimo: { label: "Xiaomi MiMo", source: catalogSource },
-    cursor: { label: "Cursor", source: catalogSource },
-    codex: { label: "Codex", source: catalogSource },
-    trae: { label: "Trae", source: catalogSource },
-  };
-  return entries[key] || { label: provider || "—", source: catalogSource };
-}
-
-function TokenProviderMark({ provider }) {
-  const key = String(provider || "custom").toLowerCase();
-  return (
-    <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${key}`)} aria-hidden="true">
-      {key === "xiaomi_mimo"
-        ? <svg viewBox="0 0 24 24"><path d="M8 6H5v12h3M16 6h3v12h-3M9 9h6v6H9z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        : <ProviderIcon provider={provider} size={22} />}
-    </span>
-  );
 }
 
 function OtherAiGroupCostSection({ groups = [], selectedMonth, estimatedTotalUsd = 0, subscriptionUsd = 0, sectionsInitiallyOpen }) {
@@ -612,7 +627,7 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth, estimatedTotalUsd
 // Token Package Section
 // ---------------------------------------------------------------------------
 
-function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, sectionsInitiallyOpen, onRefresh }) {
+function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, sectionsInitiallyOpen, onRefresh, now }) {
   const monthUsd = packages.reduce((sum, item) => sum + Number(item.monthCostUsd || 0), 0);
   const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
   const quota = packages.find((item) => item.availableQuotaDisplay)?.availableQuotaDisplay || copy("spend.cost.row.unavailable");
@@ -638,59 +653,23 @@ function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, section
         <EmptyState message={copy("spend.cost.token_package.empty")} />
       ) : (
         <div data-testid="token-package-table" className="tt-token-package-table">
-          <div className="tt-token-package-table-head" aria-hidden="true">
-            <span>{copy("settings.token_plan.plan")}</span>
-            <span>{copy("settings.token_plan.provider")} / {copy("settings.token_plan.source")}</span>
-            <span>{copy("settings.token_plan.total_quota")}</span>
-            <span>{copy("settings.token_plan.used_quota")}</span>
-            <span>{copy("settings.token_plan.used_quota")}</span>
-            <span>{copy("settings.token_plan.remaining")}</span>
-            <span>{copy("spend.cost.provider_account.status")}</span>
-          </div>
-          {packages.map((pkg) => <TokenPackageCard key={pkg.id} package={pkg} />)}
+          <TokenServiceList
+            plans={packages.map((pkg) => ({
+              ...pkg,
+              plan_label: pkg.plan_label || pkg.name,
+              provider_id: pkg.provider_id || pkg.provider,
+              sync_status: pkg.sync_status || pkg.syncStatus,
+              expires_at: pkg.expires_at || pkg.expiresAt,
+            }))}
+            loading={loading}
+            now={now}
+            embedded
+            hideHeader
+            pageSize={10}
+          />
         </div>
       )}
     </FoldableSection>
-  );
-}
-
-function TokenPackageCard({ package: pkg }) {
-  const syncStatusColor = {
-    synced: "text-green-600 dark:text-green-400",
-    success: "text-green-600 dark:text-green-400",
-    not_configured: "text-oai-gray-400",
-    auth_required: "text-yellow-600 dark:text-yellow-400",
-    syncing: "text-blue-600 dark:text-blue-400",
-    failed: "text-red-600 dark:text-red-400",
-    error: "text-red-600 dark:text-red-400",
-    reauth_required: "text-orange-600 dark:text-orange-400",
-    unsupported: "text-oai-gray-400",
-  };
-  const hasQuotaValue = [pkg.quota, pkg.used, pkg.remaining].some(hasDisplayValue);
-  const connectedWithoutQuota = ["synced", "success"].includes(pkg.syncStatus) && !hasQuotaValue;
-  const quotaNumber = parseQuotaNumber(pkg.quota);
-  const usedNumber = parseQuotaNumber(pkg.used);
-  const usagePercent = quotaNumber && usedNumber !== null ? Math.min(100, Math.max(0, (usedNumber / quotaNumber) * 100)) : 0;
-  const providerMeta = getTokenProviderMeta(pkg.provider);
-  const usedText = hasDisplayValue(pkg.used) ? formatQuotaDisplay(pkg.used) : "—";
-  const remainingText = hasDisplayValue(pkg.remaining) ? formatQuotaDisplay(pkg.remaining) : "—";
-
-  return (
-    <div className="tt-token-package-row">
-      <div><strong>{pkg.name}</strong><small>{pkg.id}</small></div>
-      <div className="tt-token-provider-cell">
-        <TokenProviderMark provider={pkg.provider} />
-        <span>
-          <strong>{providerMeta.label}</strong>
-          <small>{pkg.expiresAt ? `${copy("spend.cost.token_package.expires_at")}: ${pkg.expiresAt}` : providerMeta.source}</small>
-        </span>
-      </div>
-      <div>{hasDisplayValue(pkg.quota) ? formatQuotaDisplay(pkg.quota) : "—"}</div>
-      <div className="tt-token-package-usage"><small>{usagePercent ? `${usagePercent.toFixed(0)}%` : "—"}</small><span className="tt-token-package-progress"><span style={{ width: `${usagePercent}%` }} /></span></div>
-      <div>{usedText}</div>
-      <div>{remainingText}</div>
-      <div className={cn("font-medium", connectedWithoutQuota ? "text-amber-700 dark:text-amber-300" : syncStatusColor[pkg.syncStatus] || "text-oai-gray-400")}>{connectedWithoutQuota ? copy("spend.cost.token_package.connected_no_quota") : pkg.syncStatusLabel}</div>
-    </div>
   );
 }
 
@@ -700,6 +679,7 @@ function TokenPackageCard({ package: pkg }) {
 
 function statusBadgeKey(status) {
   if (status === "synced") return "spend.cost.provider_account.status.synced";
+  if (status === "stale") return "spend.cost.provider_account.status.stale";
   if (status === "not-connected") return "spend.cost.provider_account.status.not_connected";
   if (status === "unsupported") return "spend.cost.provider_account.status.unsupported";
   return "spend.cost.provider_account.status.error";
@@ -711,6 +691,9 @@ function statusBadgeClass(status) {
   }
   if (status === "unsupported") {
     return "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400";
+  }
+  if (status === "stale") {
+    return "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300";
   }
   if (status === "not-connected") {
     return "bg-oai-gray-50 text-oai-gray-500 dark:bg-oai-gray-900/20 dark:text-oai-gray-400";
@@ -733,6 +716,21 @@ function ProviderAccountMark({ providerId, label }) {
   return <span className={cn("tt-provider-account-mark", `tt-provider-account-mark--${id}`)} aria-hidden="true">{mark}</span>;
 }
 
+function formatProviderCurrencyTotals(balances, field) {
+  const totals = new Map();
+  for (const item of balances || []) {
+    if (!item || !["synced", "stale"].includes(item.status)) continue;
+    const value = Number(item[field]);
+    if (!Number.isFinite(value)) continue;
+    const currency = String(item.currency || "USD").toUpperCase();
+    totals.set(currency, (totals.get(currency) || 0) + value);
+  }
+  if (totals.size === 0) return copy("spend.cost.row.unavailable");
+  return [...totals.entries()]
+    .map(([currency, value]) => formatAmount(value, currency))
+    .join(copy("limits.panel.mode_separator"));
+}
+
 function ProviderApiAccountSection({
   balances,
   refreshing,
@@ -741,14 +739,10 @@ function ProviderApiAccountSection({
   lastUpdatedAt,
   onRefreshAll,
   onRefreshOne,
-  estimatedTotalUsd = 0,
   sectionsInitiallyOpen,
 }) {
   const navigate = useNavigate();
-  const hasBalances = Array.isArray(balances) && balances.length > 0;
-  const monthSpend = (balances || []).reduce((sum, item) => sum + Number(item.monthSpend || 0), 0);
-  const available = (balances || []).reduce((sum, item) => sum + Number(item.balance || 0), 0);
-  const share = estimatedTotalUsd > 0 ? (monthSpend / estimatedTotalUsd) * 100 : 0;
+  const hasBalances = Boolean(balances?.length);
 
   return (
     <FoldableSection
@@ -763,8 +757,8 @@ function ProviderApiAccountSection({
       testId="provider-api-account-section"
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={hasBalances ? [
-        { label: copy("spend.cost.design.month_spend"), value: monthSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "blue" },
-        { label: copy("spend.cost.row.available_balance"), value: available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "blue" },
+        { label: copy("spend.cost.provider_account.month_spend"), value: formatProviderCurrencyTotals(balances, "monthSpend"), tone: "blue" },
+        { label: copy("spend.cost.provider_account.balance"), value: formatProviderCurrencyTotals(balances, "balance"), tone: "blue" },
         { label: copy("spend.cost.design.account_count"), value: balances.length.toLocaleString() },
         { label: copy("spend.cost.design.balance_health"), value: balances.every((item) => item.status === "synced") ? copy("spend.cost.design.health_good") : copy("spend.cost.row.unavailable"), tone: "green" },
       ] : []}
@@ -802,7 +796,7 @@ function ProviderApiAccountSection({
 
 function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
   const status = balance?.status || "not-connected";
-  const isSynced = status === "synced";
+  const isSynced = status === "synced" || status === "stale";
   const balanceValue = isSynced ? formatFinancialValue(balance?.balance, balance?.currency) : null;
   const monthSpendValue = isSynced ? formatFinancialValue(balance?.monthSpend, balance?.currency) : null;
   const lifetimeSpendValue = isSynced ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : null;
@@ -847,9 +841,9 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
             )}
           </div>
           {/* Error message line — shows actionable reason for error status. */}
-          {status === "error" && balance?.errorMessage && (
+          {(status === "error" || status === "stale") && (
             <div className="mt-1 text-xs text-red-600 dark:text-red-400">
-              {balance.errorMessage}
+              {balance?.errorMessage || copy("spend.cost.provider_account.refresh_failed")}
             </div>
           )}
           </div>
@@ -859,7 +853,7 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
           onClick={onRefresh}
           disabled={refreshing || !balance?.configId}
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-oai-gray-200 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
-          aria-label={copy("spend.cost.provider_account.refresh_all")}
+          aria-label={copy("spend.cost.provider_account.refresh_one")}
         >
           <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} aria-hidden="true" />
         </button>
@@ -1060,24 +1054,28 @@ function SubscriptionCard({ record, onEdit, onDelete }) {
           <div className={cn("text-xs font-medium", status.color)}>
             {status.label}
           </div>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex min-h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
-            aria-label={copy("spend.cost.subscription.edit")}
-          >
-            <Pencil className="h-3 w-3" aria-hidden="true" />
-            {copy("spend.cost.subscription.edit")}
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="inline-flex min-h-10 items-center gap-1 rounded-md border border-red-200 px-2.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20"
-            aria-label={copy("spend.cost.subscription.delete")}
-          >
-            <Trash2 className="h-3 w-3" aria-hidden="true" />
-            {copy("spend.cost.subscription.delete")}
-          </button>
+          {!record.readOnly ? (
+            <>
+              <button
+                type="button"
+                onClick={onEdit}
+                className="inline-flex min-h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+                aria-label={copy("spend.cost.subscription.edit")}
+              >
+                <Pencil className="h-3 w-3" aria-hidden="true" />
+                {copy("spend.cost.subscription.edit")}
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="inline-flex min-h-10 items-center gap-1 rounded-md border border-red-200 px-2.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20"
+                aria-label={copy("spend.cost.subscription.delete")}
+              >
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+                {copy("spend.cost.subscription.delete")}
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1326,6 +1324,7 @@ export function CostAccumulation({
   onDeleteSubscription,
   onCancelSubscriptionForm,
   sectionsInitiallyOpen = true,
+  now = new Date(),
 }) {
   const navigate = useNavigate();
   return (
@@ -1398,7 +1397,7 @@ export function CostAccumulation({
       )}
 
       {/* Token Packages */}
-      <TokenPackageSection packages={tokenPackages} loading={loading} estimatedTotalUsd={costSummary.monthApiCostUsd} sectionsInitiallyOpen={sectionsInitiallyOpen} onRefresh={onRefreshTokenPackages} />
+      <TokenPackageSection packages={tokenPackages} loading={loading} estimatedTotalUsd={costSummary.monthApiCostUsd} sectionsInitiallyOpen={sectionsInitiallyOpen} onRefresh={onRefreshTokenPackages} now={now} />
 
       {/* Provider API Accounts (NEW — 03 work order, data from 02 endpoints) */}
       <ProviderApiAccountSection
@@ -1409,7 +1408,6 @@ export function CostAccumulation({
         lastUpdatedAt={providerApiLastUpdatedAt}
         onRefreshAll={onRefreshAllProviderApis}
         onRefreshOne={onRefreshOneProviderApi}
-        estimatedTotalUsd={costSummary.monthApiCostUsd}
         sectionsInitiallyOpen={sectionsInitiallyOpen}
       />
 

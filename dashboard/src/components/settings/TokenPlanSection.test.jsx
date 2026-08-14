@@ -1582,7 +1582,7 @@ it("R3D record with custom_api detection shows success status and quota_source c
       total_quota: 11000000000,
       used_quota: 3200000000,
       remaining_quota: 7800000000,
-      expires_at: "2026-07-25",
+      expires_at: "2099-07-25",
       quota_source: "custom_api",
       detection_method: "custom_api",
       sync_status: "success",
@@ -1618,7 +1618,7 @@ it("R3D failed record shows last successful quota and error reason", async () =>
       total_quota: 11000000000,
       used_quota: 2000000000,
       remaining_quota: 9000000000,
-      expires_at: "2026-07-01",
+      expires_at: "2099-07-01",
       quota_source: "custom_api",
       detection_method: "custom_api",
       sync_status: "failed",
@@ -1831,7 +1831,7 @@ it("R3D P1 editing existing custom_api record with new key replaces api_key_ref"
       total_quota: 11000000000,
       used_quota: 2000000000,
       remaining_quota: 9000000000,
-      expires_at: "2026-07-01",
+      expires_at: "2099-07-01",
       quota_source: "custom_api",
       detection_method: "custom_api",
       detection_config: {
@@ -1925,7 +1925,7 @@ it("R3D P1 editing existing custom_api record with EMPTY key field keeps old ref
       total_quota: 11000000000,
       used_quota: 2000000000,
       remaining_quota: 9000000000,
-      expires_at: "2026-07-01",
+      expires_at: "2099-07-01",
       quota_source: "custom_api",
       detection_method: "custom_api",
       detection_config: {
@@ -2710,4 +2710,46 @@ it("formats Codex reset timestamps returned as Unix-second strings", async () =>
 
   expect(screen.getByText(/重置 \d+m|重置 \d+h/)).toBeInTheDocument();
   expect(screen.queryByText(/重置 --/)).not.toBeInTheDocument();
+});
+
+it("shows usable plans with full summary and keeps expired plans in a collapsed compact group", async () => {
+  const user = userEvent.setup();
+  getTokenPlans.mockResolvedValue({
+    records: [
+      {
+        ...BASE_RECORD,
+        id: "active-plan",
+        plan_label: "Active Max",
+        expires_at: "2099-12-31",
+        subscription_amount: 100,
+        subscription_currency: "USD",
+        subscription_cycle: "monthly",
+        subscription_start_date: "2026-01-01",
+      },
+      {
+        ...BASE_RECORD,
+        id: "expired-plan",
+        plan_label: "Expired Max",
+        expires_at: "2025-12-31",
+        subscription_amount: 80,
+        subscription_currency: "USD",
+      },
+    ],
+  });
+
+  render(<TokenPlanSection />);
+
+  expect(await screen.findByText(/claude \/ Active Max/i)).toBeInTheDocument();
+  expect(screen.getByTestId("active-token-plan-summary")).toHaveTextContent("USD 100");
+  expect(screen.queryByText(/claude \/ Expired Max/i)).not.toBeInTheDocument();
+
+  const expiredGroup = screen.getByTestId("expired-token-plans");
+  expect(expiredGroup).toHaveTextContent("已过期套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: /已过期套餐/ }));
+  });
+
+  expect(screen.getByText(/claude \/ Expired Max/i)).toBeInTheDocument();
+  expect(screen.getByTestId("expired-token-plan-row")).toHaveTextContent("已过期");
+  expect(screen.getAllByTestId("active-token-plan-summary")).toHaveLength(1);
 });

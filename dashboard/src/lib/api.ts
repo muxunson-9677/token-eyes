@@ -2195,6 +2195,14 @@ export async function verifyGlmConsoleSession(sessionRef: string): Promise<GlmSe
   return invoke("verify_glm_console_session", { sessionRef });
 }
 
+export async function refreshGlmConsoleSession(sessionRef: string): Promise<GlmSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    throw new Error("Tauri runtime not available");
+  }
+  return invoke("refresh_glm_console_session", { sessionRef });
+}
+
 export async function deleteGlmConsoleSession(sessionRef: string): Promise<void> {
   const invoke = getTauriInvoke();
   if (!invoke) {
@@ -2223,6 +2231,39 @@ export async function deleteMiniMaxConsoleSession(sessionRef: string): Promise<v
   const invoke = getTauriInvoke();
   if (!invoke) throw new Error("Tauri runtime not available");
   return invoke("delete_minimax_console_session", { sessionRef });
+}
+
+/**
+ * Re-check a connected provider console in the native desktop runtime and
+ * persist the new balance snapshot before the financial API reads it.
+ */
+export async function refreshOfficialConsoleProviderBalance(providerId: string): Promise<NativeSessionResult> {
+  const normalizedProvider = String(providerId || "").trim().toLowerCase();
+  const sessions = (await getConsoleSessions()).sessions || [];
+  const session = sessions
+    .filter((item) => (
+      String(item.provider_id || "").trim().toLowerCase() === normalizedProvider
+      && item.session_ref
+    ))
+    .sort((left, right) => {
+      const leftProviderAccount = String(left.session_ref).startsWith("provider-api/") ? 1 : 0;
+      const rightProviderAccount = String(right.session_ref).startsWith("provider-api/") ? 1 : 0;
+      if (leftProviderAccount !== rightProviderAccount) return rightProviderAccount - leftProviderAccount;
+      return String(right.last_verified_at || "").localeCompare(String(left.last_verified_at || ""));
+    })[0];
+  if (!session) throw new Error("No connected official console session");
+
+  const verifiers: Record<string, (sessionRef: string) => Promise<NativeSessionResult>> = {
+    xiaomi_mimo: verifyXiaomiMimoConsoleSession,
+    glm: refreshGlmConsoleSession,
+    minimax: verifyMiniMaxConsoleSession,
+  };
+  const verify = verifiers[normalizedProvider];
+  if (!verify) throw new Error("Unsupported official console provider");
+
+  const nativeResult = await verify(session.session_ref);
+  await verifyConsoleSession(session.id, nativeResult);
+  return nativeResult;
 }
 
 export interface CodexQuotaSnapshot {

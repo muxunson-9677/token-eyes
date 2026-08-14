@@ -3,6 +3,7 @@ import {
   getProviderApiConfigs,
   getProviderApiBalances,
   refreshProviderApiBalance,
+  refreshOfficialConsoleProviderBalance,
 } from "../lib/api";
 
 /**
@@ -106,6 +107,10 @@ export function useProviderApiBalances() {
     inFlightRef.current.add(configId);
     setRefreshing(configId, true);
     try {
+      const config = configsRef.current.find((item) => item.id === configId);
+      if (String(config?.authType || "").toLowerCase() === "official_console") {
+        await refreshOfficialConsoleProviderBalance(config.providerId);
+      }
       const result = await refreshProviderApiBalance(configId);
       if (cancelledRef.current) return;
       const balance = result?.data?.balance;
@@ -113,15 +118,22 @@ export function useProviderApiBalances() {
         setBalances((prev) => prev.some((b) => b.configId === configId)
           ? prev.map((b) => (b.configId === configId ? balance : b))
           : [...prev, balance]);
-        setStale(false);
-        setLastUpdatedAt(new Date().toISOString());
+        const synced = balance.status === "synced";
+        setStale(!synced);
+        if (synced) setLastUpdatedAt(new Date().toISOString());
       } else if (!result?.ok) {
         // HTTP-level failure: keep last balance, mark stale.
+        setBalances((prev) => prev.map((item) => (
+          item.configId === configId ? { ...item, status: "stale" } : item
+        )));
         setStale(true);
       }
     } catch {
       if (cancelledRef.current) return;
       // Network error — keep last successful balance, mark stale (never 0).
+      setBalances((prev) => prev.map((item) => (
+        item.configId === configId ? { ...item, status: "stale" } : item
+      )));
       setStale(true);
     } finally {
       inFlightRef.current.delete(configId);

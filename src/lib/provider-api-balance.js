@@ -27,6 +27,7 @@ const { getCredentialRedactions } = require("./provider-api-signing");
 // ---------------------------------------------------------------------------
 
 const STATUS_SYNCED = "synced";
+const STATUS_STALE = "stale";
 const STATUS_NOT_CONNECTED = "not-connected";
 const STATUS_UNSUPPORTED = "unsupported";
 const STATUS_ERROR = "error";
@@ -485,13 +486,13 @@ function createBalanceRefreshManager(options = {}) {
       }
 
       const balance = makeBalance(config, {
-        status: STATUS_SYNCED,
+        status: snapshot.stale ? STATUS_STALE : STATUS_SYNCED,
         balance: availableBalance,
         monthSpend: null,
         lifetimeSpend: null,
         currency: String(snapshot.currency || "CNY"),
-        errorCode: undefined,
-        errorMessage: undefined,
+        errorCode: snapshot.stale ? String(snapshot.error_code || ERROR_CODES.PROVIDER_UNAVAILABLE) : undefined,
+        errorMessage: snapshot.stale ? String(snapshot.error_message || "刷新失败，当前显示的是上次成功余额。") : undefined,
         lastSyncedAt: String(snapshot.provider_reported_at || now),
       });
       cache.set(config.id, { balance, timestamp: Date.now() });
@@ -664,6 +665,7 @@ function makeErrorBalance(configId, providerId, errorCode, errorMessage) {
 
 module.exports = {
   STATUS_SYNCED,
+  STATUS_STALE,
   STATUS_NOT_CONNECTED,
   STATUS_UNSUPPORTED,
   STATUS_ERROR,

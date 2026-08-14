@@ -180,6 +180,8 @@ export function normalizeTokenServices(plans, now = new Date()) {
         expiresAt: effectiveExpiry,
         notes: String(plan?.notes || "").trim(),
         accountLabel: authorizedAccountLabel(plan),
+        syncStatus: String(plan?.sync_status || plan?.last_refresh_status || "").trim().toLowerCase(),
+        errorMessage: String(plan?.last_error_message || "").trim(),
         originalIndex: index,
         metrics,
         ...primaryMetric,
@@ -274,27 +276,58 @@ function progressColor(percentage) {
   return "bg-emerald-500";
 }
 
-export function TokenServiceList({ plans = [], loading = false, error = null, now = new Date(), className }) {
+function syncStatusClass(status) {
+  if (status === "success" || status === "synced") return "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300";
+  if (status === "failed" || status === "error") return "bg-red-50 text-red-700 dark:bg-red-950/35 dark:text-red-300";
+  if (status === "reauth_required" || status === "auth_required") return "bg-amber-50 text-amber-700 dark:bg-amber-950/35 dark:text-amber-300";
+  if (status === "syncing") return "bg-blue-50 text-blue-700 dark:bg-blue-950/35 dark:text-blue-300";
+  return "bg-oai-gray-100 text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400";
+}
+
+function syncStatusLabel(status) {
+  const normalized = status === "synced" ? "success" : status;
+  return copy(`settings.token_plan.sync_status.${normalized || "not_configured"}`);
+}
+
+export function TokenServiceList({
+  plans = [],
+  loading = false,
+  error = null,
+  now = new Date(),
+  className,
+  embedded = false,
+  hideHeader = false,
+  paginate = true,
+  pageSize = TOKEN_SERVICE_PAGE_SIZE,
+}) {
   const [page, setPage] = useState(1);
   const services = useMemo(() => normalizeTokenServices(plans, now), [plans, now]);
-  const pageCount = Math.max(1, Math.ceil(services.length / TOKEN_SERVICE_PAGE_SIZE));
+  const effectivePageSize = Math.max(1, Number(pageSize) || TOKEN_SERVICE_PAGE_SIZE);
+  const pageCount = Math.max(1, Math.ceil(services.length / effectivePageSize));
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
 
-  const pageStart = (page - 1) * TOKEN_SERVICE_PAGE_SIZE;
-  const pageRows = services.slice(pageStart, pageStart + TOKEN_SERVICE_PAGE_SIZE);
+  const pageStart = (page - 1) * effectivePageSize;
+  const pageRows = paginate ? services.slice(pageStart, pageStart + effectivePageSize) : services;
+  const showPagination = paginate
+    && !loading
+    && !error
+    && services.length !== Math.min(services.length, effectivePageSize);
 
   return (
     <aside
       data-testid="token-service-list"
       className={cn(
-        "tt-surface flex h-full min-h-[220px] min-w-0 flex-col rounded-[var(--tt-card-radius)] p-4",
+        "flex h-full min-w-0 flex-col",
+        embedded
+          ? "tt-token-service-list--embedded"
+          : "tt-surface min-h-[220px] rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-oai-gray-100 pb-2 dark:border-oai-gray-800">
+      {!hideHeader ? <div className="flex items-center justify-between gap-2 border-b border-oai-gray-100 pb-2 dark:border-oai-gray-800">
         <h3 data-testid="token-service-list-title" className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100">
           {copy("spend.usage.token_services.title")}
         </h3>
@@ -303,7 +336,7 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
             {page} / {pageCount}
           </span>
         )}
-      </div>
+      </div> : null}
 
       {loading ? (
         <div className="flex flex-1 items-center justify-center text-xs text-oai-gray-400 dark:text-oai-gray-500">
@@ -321,6 +354,8 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
         <ol data-testid="token-service-cards" className="mt-1.5 flex min-h-0 flex-1 flex-col gap-1.5">
           {pageRows.map((service, index) => {
             const rank = pageStart + index + 1;
+            const connectedWithoutQuota = ["success", "synced"].includes(service.syncStatus)
+              && service.metrics.length === 0;
             return (
               <li
                 key={service.id}
@@ -347,6 +382,16 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
                           {service.planLabel}
                         </span>
                       )}
+                      {service.syncStatus ? <span className={cn(
+                        "rounded px-1.5 py-0.5 text-[9px] font-medium",
+                        connectedWithoutQuota
+                          ? "bg-amber-50 text-amber-700 dark:bg-amber-950/35 dark:text-amber-300"
+                          : syncStatusClass(service.syncStatus),
+                      )}>
+                        {connectedWithoutQuota
+                          ? copy("spend.cost.token_package.connected_no_quota")
+                          : syncStatusLabel(service.syncStatus)}
+                      </span> : null}
                     </span>
                     {(service.accountLabel || service.notes) && (
                       <span className="mt-0.5 block break-words text-[9px] leading-3 text-oai-gray-400 dark:text-oai-gray-500" title={service.accountLabel || service.notes}>
@@ -366,7 +411,7 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
                             {windowLabel(metric.kind)}
                           </span>
                           <span className="tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
-                            {copy("spend.usage.token_services.used")} {formatQuota(metric.used, metric.unit)} / {copy("spend.usage.token_services.total")} {formatQuota(metric.total, metric.unit)} · <strong className="font-semibold text-oai-gray-700 dark:text-oai-gray-300">{roundedPercentage}%</strong>
+                            {copy("spend.usage.token_services.used")} {formatQuota(metric.used, metric.unit)} / {copy("spend.usage.token_services.total")} {formatQuota(metric.total, metric.unit)} · {copy("settings.token_plan.remaining")} {formatQuota(Math.max(0, metric.total - metric.used), metric.unit)} · <strong className="font-semibold text-oai-gray-700 dark:text-oai-gray-300">{roundedPercentage}%</strong>
                           </span>
                         </div>
                         <div className="h-0.5 overflow-hidden rounded-full bg-oai-gray-200 dark:bg-oai-gray-700">
@@ -407,13 +452,18 @@ export function TokenServiceList({ plans = [], loading = false, error = null, no
                     })
                     : copy("spend.usage.token_services.validity_unknown")}
                 </div>
+                {service.errorMessage ? (
+                  <div className="mt-1 break-words text-[9px] leading-3 text-red-600 dark:text-red-400">
+                    {service.errorMessage}
+                  </div>
+                ) : null}
               </li>
             );
           })}
         </ol>
       )}
 
-      {!loading && !error && services.length > TOKEN_SERVICE_PAGE_SIZE && (
+      {showPagination && (
         <div className="mt-auto flex items-center justify-end gap-1 border-t border-oai-gray-100 pt-2 dark:border-oai-gray-800">
           <button
             type="button"

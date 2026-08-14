@@ -3353,14 +3353,26 @@ function createLocalApiHandler({
   function resolveOfficialConsoleBalance(providerConfig) {
     const providerId = String(providerConfig?.providerId || "").trim();
     if (!providerId) return null;
-    const connected = readConsoleSessions()
+    const sessions = readConsoleSessions()
       .filter((session) => (
         session.provider_id === providerId
-        && session.status === "connected"
+        && session.status !== "revoked"
         && session.balance
       ))
-      .sort((left, right) => String(right.last_verified_at || "").localeCompare(String(left.last_verified_at || "")));
-    return connected[0]?.balance || null;
+      .sort((left, right) => {
+        const leftProviderAccount = String(left.session_ref || "").startsWith("provider-api/") ? 1 : 0;
+        const rightProviderAccount = String(right.session_ref || "").startsWith("provider-api/") ? 1 : 0;
+        if (leftProviderAccount !== rightProviderAccount) return rightProviderAccount - leftProviderAccount;
+        return String(right.last_verified_at || "").localeCompare(String(left.last_verified_at || ""));
+      });
+    const session = sessions[0];
+    if (!session) return null;
+    return {
+      ...session.balance,
+      stale: session.status !== "connected",
+      error_code: session.last_error_code,
+      error_message: session.last_error_message,
+    };
   }
 
   function normalizeConsoleBalance(input) {
@@ -7694,6 +7706,7 @@ function createLocalApiHandler({
           json(res, { ok: false, error: "配置不存在", error_code: "invalid_config" }, 404);
           return true;
         }
+        providerApiBalanceManager.clearCache(configId);
         const balance = await providerApiBalanceManager.refreshBalance(existing);
         json(res, { balance });
       } catch (e) {
@@ -7730,11 +7743,13 @@ function createLocalApiHandler({
             const snapshot = resolveOfficialConsoleBalance(c);
             if (snapshot) {
               return providerApiBalance.makeBalance(c, {
-                status: providerApiBalance.STATUS_SYNCED,
+                status: snapshot.stale ? providerApiBalance.STATUS_STALE : providerApiBalance.STATUS_SYNCED,
                 balance: Number(snapshot.available_balance ?? snapshot.balance),
                 monthSpend: null,
                 lifetimeSpend: null,
                 currency: String(snapshot.currency || "CNY"),
+                errorCode: snapshot.stale ? String(snapshot.error_code || providerApiBalance.ERROR_CODES.PROVIDER_UNAVAILABLE) : undefined,
+                errorMessage: snapshot.stale ? String(snapshot.error_message || "刷新失败，当前显示的是上次成功余额。") : undefined,
                 lastSyncedAt: String(snapshot.provider_reported_at || new Date().toISOString()),
               });
             }
