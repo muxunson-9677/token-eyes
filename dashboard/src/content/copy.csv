@@ -2002,10 +2002,10 @@ plan_market.sort.plan_count_asc,dashboard,PlanMarketPage,PlanMarketPage,sort_pla
 plan_market.sort.label,dashboard,PlanMarketPage,PlanMarketPage,sort_label,"排序方式",,active
 plan_market.stat.providers,dashboard,PlanMarketPage,PlanMarketPage,stat_providers,"已收录厂商",,active
 plan_market.stat.providers_note,dashboard,PlanMarketPage,PlanMarketPage,stat_providers_note,"持续更新中",,active
-plan_market.stat.recent,dashboard,PlanMarketPage,PlanMarketPage,stat_recent,"最近核实厂商",,active
-plan_market.stat.recent_note,dashboard,PlanMarketPage,PlanMarketPage,stat_recent_note,"核实于 {{date}}",,active
-plan_market.stat.plans,dashboard,PlanMarketPage,PlanMarketPage,stat_plans,"当前套餐和套餐",,active
-plan_market.stat.plans_note,dashboard,PlanMarketPage,PlanMarketPage,stat_plans_note,"已核实套餐快照",,active
+plan_market.stat.recent,dashboard,PlanMarketPage,PlanMarketPage,stat_recent,"最近更新厂商",,active
+plan_market.stat.recent_note,dashboard,PlanMarketPage,PlanMarketPage,stat_recent_note,"今日更新",,active
+plan_market.stat.plans,dashboard,PlanMarketPage,PlanMarketPage,stat_plans,"当前收录套餐",,active
+plan_market.stat.plans_note,dashboard,PlanMarketPage,PlanMarketPage,stat_plans_note,"含免费、付费与组织方案",,active
 plan_market.stat.coverage,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage,"官方来源覆盖",,active
 plan_market.stat.coverage_note,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage_note,"可信来源链接",,active
 plan_market.stat.providers_value,dashboard,PlanMarketPage,PlanMarketPage,stat_providers_value,"{{count}} 家",,active
@@ -2016,7 +2016,13 @@ plan_market.plan_count,dashboard,PlanMarketPage,PlanMarketPage,plan_count,"{{cou
 plan_market.starting_from,dashboard,PlanMarketPage,PlanMarketPage,starting_from,"起",,active
 plan_market.summary,dashboard,PlanMarketPage,PlanMarketPage,summary,"覆盖 {{plans}} 等 {{count}} 个套餐，{{detail}}",,active
 plan_market.quota_separator,dashboard,PlanMarketPage,PlanMarketPage,quota_separator," · ",,active
-plan_market.last_verified_label,dashboard,PlanMarketPage,PlanMarketPage,last_verified_label,"核实于",,active
+plan_market.last_verified_label,dashboard,PlanMarketPage,PlanMarketPage,last_verified_label,"更新于",,active
+plan_market.tag.hot,dashboard,PlanMarketPage,PlanMarketPage,tag_hot,"热门",,active
+plan_market.tag.discount,dashboard,PlanMarketPage,PlanMarketPage,tag_discount,"折扣",,active
+plan_market.tag.new,dashboard,PlanMarketPage,PlanMarketPage,tag_new,"新上架",,active
+plan_market.plan_badge.entry,dashboard,PlanMarketPage,PlanMarketPage,plan_badge_entry,"入门",,active
+plan_market.plan_badge.recommended,dashboard,PlanMarketPage,PlanMarketPage,plan_badge_recommended,"推荐",,active
+plan_market.plan_badge.premium,dashboard,PlanMarketPage,PlanMarketPage,plan_badge_premium,"高配",,active
 plan_market.sources_label,dashboard,PlanMarketPage,PlanMarketPage,sources_label,"来源",,active
 plan_market.status.discontinued,dashboard,PlanMarketPage,PlanMarketPage,status_discontinued,"已停售",,active
 plan_market.quota_label,dashboard,PlanMarketPage,PlanMarketPage,quota_label,"额度",,active
@@ -2024,6 +2030,14 @@ plan_market.cycle.monthly,dashboard,PlanMarketPage,PlanMarketPage,cycle_monthly,
 plan_market.cycle.quarterly,dashboard,PlanMarketPage,PlanMarketPage,cycle_quarterly,"/季",,active
 plan_market.cycle.yearly,dashboard,PlanMarketPage,PlanMarketPage,cycle_yearly,"/年",,active
 plan_market.cycle.one_time,dashboard,PlanMarketPage,PlanMarketPage,cycle_one_time,"一次性",,active
+plan_market.global_price_comparison,dashboard,PlanMarketPage,PlanMarketPage,global_price_comparison,"全球不同地区订阅费比价",,active
+plan_market.access.direct,dashboard,PlanMarketPage,PlanMarketPage,access_direct,"国内直连",,active
+plan_market.access.vpn,dashboard,PlanMarketPage,PlanMarketPage,access_vpn,"需要 VPN",,active
+plan_market.risk_label,dashboard,PlanMarketPage,PlanMarketPage,risk_label,"风控风险",,active
+plan_market.risk.low,dashboard,PlanMarketPage,PlanMarketPage,risk_low,"低",,active
+plan_market.risk.medium,dashboard,PlanMarketPage,PlanMarketPage,risk_medium,"中",,active
+plan_market.risk.high,dashboard,PlanMarketPage,PlanMarketPage,risk_high,"高",,active
+plan_market.risk.extreme,dashboard,PlanMarketPage,PlanMarketPage,risk_extreme,"极高",,active
 settings.basic.page.title,ui,SettingsPage,SettingsPage,basic_page_title,"基础设置",,active
 settings.basic.page.subtitle,ui,SettingsPage,SettingsPage,basic_page_subtitle,"Manage appearance, menu bar, account, and display preferences.",,active
 settings.cost.page.title,ui,SettingsPage,SettingsPage,cost_page_title,"Cost settings",,active

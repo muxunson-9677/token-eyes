@@ -79,15 +79,22 @@ test("plan market catalog exposes validated, sourced provider plan data", () => 
       seenPlanIds.add(plan.plan_id);
       assert.ok(plan.display_name, `plan ${provider.id}/${plan.plan_id} needs display_name`);
       assert.ok(plan.price && typeof plan.price === "object");
-      assert.ok(Number(plan.price.amount) > 0, `plan ${provider.id}/${plan.plan_id} price must be > 0`);
+      const hasNumericPrice = Number.isFinite(Number(plan.price.amount)) && Number(plan.price.amount) >= 0;
+      const hasOfficialDisplayPrice = typeof plan.price.display === "string" && plan.price.display.trim().length > 0;
       assert.ok(
-        ALLOWED_CURRENCIES.has(plan.price.currency),
-        `plan ${provider.id}/${plan.plan_id} currency must be CNY or USD`,
+        hasNumericPrice || hasOfficialDisplayPrice,
+        `plan ${provider.id}/${plan.plan_id} price must be a non-negative amount or official display label`,
       );
-      assert.ok(
-        ALLOWED_CYCLES.has(plan.price.cycle),
-        `plan ${provider.id}/${plan.plan_id} cycle invalid: ${plan.price.cycle}`,
-      );
+      if (hasNumericPrice) {
+        assert.ok(
+          ALLOWED_CURRENCIES.has(plan.price.currency),
+          `plan ${provider.id}/${plan.plan_id} currency must be CNY or USD`,
+        );
+        assert.ok(
+          ALLOWED_CYCLES.has(plan.price.cycle),
+          `plan ${provider.id}/${plan.plan_id} cycle invalid: ${plan.price.cycle}`,
+        );
+      }
       assert.ok(plan.quota_summary, `plan ${provider.id}/${plan.plan_id} needs quota_summary`);
       assert.ok(
         ALLOWED_STATUS.has(plan.status),
@@ -97,9 +104,24 @@ test("plan market catalog exposes validated, sourced provider plan data", () => 
   }
 
   const providerIds = catalog.providers.map((p) => p.id);
-  for (const expected of ["glm", "aliyun-bailian", "claude", "openai"]) {
+  for (const expected of ["glm", "aliyun-bailian", "claude", "openai", "xiaomi-mimo"]) {
     assert.ok(providerIds.includes(expected), `catalog must include seed provider ${expected}`);
   }
+
+  const kimi = catalog.providers.find((provider) => provider.id === "kimi");
+  assert.deepEqual(
+    kimi.plans.map((plan) => [plan.display_name, plan.price.amount]),
+    [["Andante", 49], ["Moderato", 99], ["Allegretto", 199], ["Allegro", 699]],
+  );
+
+  const xiaomiMiMo = catalog.providers.find((provider) => provider.id === "xiaomi-mimo");
+  assert.deepEqual(
+    xiaomiMiMo.plans.map((plan) => [plan.display_name, plan.price.amount]),
+    [["Lite", 39], ["Standard", 99], ["Pro", 329], ["Max", 659]],
+  );
+
+  const grok = catalog.providers.find((provider) => provider.id === "grok");
+  assert.deepEqual(grok.plans.slice(0, 6).map((plan) => plan.price.amount), [0, 10, 30, 100, 300, 30]);
 });
 
 test("plan market catalog returns defensive copies", () => {

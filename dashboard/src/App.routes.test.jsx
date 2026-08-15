@@ -207,10 +207,10 @@ describe("App routes (v2.0 IA refactor)", () => {
     expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
   });
 
-  it("/spend/plans renders the full-width plan market without the navigation shell", async () => {
+  it("/spend/plans renders the plan market inside the persistent navigation shell", async () => {
     renderApp("/spend/plans");
     expect(await screen.findByText(TEXT.planMarket)).toBeInTheDocument();
-    expect(screen.queryByTestId("sidebar-shell")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-shell")).toBeInTheDocument();
   });
 
   it("/settings/basic renders SettingsBasicPage with sidebar", async () => {
