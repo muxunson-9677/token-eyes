@@ -2396,6 +2396,7 @@ settings.agent_pricing.reference_subtitle,ui,SettingsPage,AgentPricingSection,ex
 settings.agent_pricing.how_pricing,ui,SettingsPage,AgentPricingSection,help,"How is pricing calculated?",,active
 settings.agent_pricing.source_directory,ui,SettingsPage,AgentPricingSection,source_directory,"Pricing sources",,active
 settings.agent_pricing.auto_compare,ui,SettingsPage,AgentPricingSection,auto_compare,"Auto compare",,active
+settings.agent_pricing.tools,ui,SettingsPage,AgentPricingSection,tools,"Pricing tools",,active
 settings.data_dirs.change_directory,ui,SettingsPage,DataDirectoriesSection,change_directory,"Change directory",,active
 settings.cost.other_ai.month_spend,ui,SettingsPage,OtherAiSpendSection,month_spend,"This month",,active
 settings.cost.other_ai.lifetime_spend,ui,SettingsPage,OtherAiSpendSection,lifetime_spend,"Lifetime spend",,active

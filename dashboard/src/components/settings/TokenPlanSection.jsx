@@ -42,6 +42,7 @@ import {
 } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
+import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 import { limitProviderName, useLimitsDisplayPrefs } from "../../hooks/use-limits-display-prefs.js";
 import { ProviderIcon } from "../../ui/dashboard/components/ProviderIcon.jsx";
 import { SectionCard } from "./Controls.jsx";
@@ -1033,10 +1034,13 @@ function TokenPlanPagination({ pagination, onPageChange, testId }) {
 
 export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNavigate = () => {}, onSummaryChange }) {
   const { visibleOrdered: visibleLimitProviders } = useLimitsDisplayPrefs();
-  const [records, setRecords] = useState([]);
+  const cachedPlanData = useRef(
+    listOnly && !editorPlanId ? readCostSettingsSessionCache("token-plans") : null,
+  ).current;
+  const [records, setRecords] = useState(cachedPlanData?.records || []);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formOpen, setFormOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedPlanData);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
   const [refreshingId, setRefreshingId] = useState("");
@@ -1044,7 +1048,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const [savedNotice, setSavedNotice] = useState(false);
   const [usageLimits, setUsageLimits] = useState(null);
   const [loadingUsageLimits, setLoadingUsageLimits] = useState(false);
-  const [catalog, setCatalog] = useState([]);
+  const [catalog, setCatalog] = useState(cachedPlanData?.catalog || []);
   const [catalogError, setCatalogError] = useState("");
   const [loadingCatalog, setLoadingCatalog] = useState(false);
 
@@ -1079,6 +1083,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   );
 
   useEffect(() => {
+    if (cachedPlanData) return undefined;
     let cancelled = false;
     setLoading(true);
     setLoadingCatalog(true);
@@ -1089,8 +1094,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       .then(([plansResult, catalogResult]) => {
         if (cancelled) return;
         const cat = normalizeCatalog(catalogResult);
+        const nextRecords = normalizeRecords(plansResult?.records).map((r) => enrichRecordWithCatalog(r, cat));
         setCatalog(cat);
-        setRecords(normalizeRecords(plansResult?.records).map((r) => enrichRecordWithCatalog(r, cat)));
+        setRecords(nextRecords);
+        writeCostSettingsSessionCache("token-plans", { records: nextRecords, catalog: cat });
         setError("");
       })
       .catch((err) => {
@@ -1106,7 +1113,11 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [cachedPlanData]);
+
+  useEffect(() => {
+    if (!loading) writeCostSettingsSessionCache("token-plans", { records, catalog });
+  }, [catalog, loading, records]);
 
   useEffect(() => {
     const hasCodexRecord = records.some((r) => isCodexSource(r.source));
@@ -3266,18 +3277,27 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       collapsible={!editorPlanId}
       defaultOpen={false}
       storageKey={!editorPlanId ? "cost.token-plans" : null}
-      collapsedSummary={copy("settings.token_plan.collapsed_summary", { count: records.length })}
-      collapsedSummaryTone="violet"
-      action={!editorPlanId ? (
-        <div className="tt-token-plan-actions flex items-center gap-2">
+      collapsedSummaryContent={(
+        <span className="tt-token-plan-summary-labels">
+          <span
+            className="tt-collapsed-summary"
+            data-testid="settings-section-collapsed-summary"
+            data-tone="violet"
+            data-summary={copy("settings.token_plan.collapsed_summary", { count: records.length })}
+          >
+            {copy("settings.token_plan.collapsed_summary", { count: records.length })}
+          </span>
           <span className="tt-token-plan-count tt-token-plan-count--active">
             {copy("settings.token_plan.count_active", { count: activeRecords.length })}
           </span>
           <span className="tt-token-plan-count tt-token-plan-count--watch">
-            {copy("settings.token_plan.count_watch", {
-              count: attentionCount,
-            })}
+            {copy("settings.token_plan.count_watch", { count: attentionCount })}
           </span>
+        </span>
+      )}
+      collapsedSummaryTone="violet"
+      action={!editorPlanId ? (
+        <div className="tt-token-plan-actions flex items-center gap-2">
           <button
             type="button"
             data-testid="token-plan-email-visibility"
@@ -3296,14 +3316,14 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 // The preference remains active for this session when storage is unavailable.
               }
             }}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-oai-gray-200 px-2.5 text-xs font-medium text-oai-gray-600 dark:border-oai-gray-800 dark:text-oai-gray-300"
+            className="tt-cost-header-action"
           >
             {showFullEmail ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
             {copy(showFullEmail
               ? "settings.token_plan.email.hide"
               : "settings.token_plan.email.show_full")}
           </button>
-          <button type="button" onClick={() => activeRecords.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-300">
+          <button type="button" onClick={() => activeRecords.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="tt-cost-header-action">
             <RefreshCw className={cn("h-3.5 w-3.5", refreshingId && "animate-spin")} aria-hidden />
             {copy("settings.token_plan.batch_refresh")}
           </button>
@@ -3311,11 +3331,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             type="button"
             onClick={openNewForm}
             disabled={loading || saving}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-            )}
+            className="tt-cost-header-action tt-cost-header-action-primary"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
             {copy("settings.token_plan.add")}

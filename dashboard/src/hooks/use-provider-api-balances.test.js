@@ -7,6 +7,7 @@ import {
   refreshProviderApiBalance,
   refreshOfficialConsoleProviderBalance,
 } from "../lib/api";
+import { clearCostSettingsSessionCache } from "../lib/cost-settings-session-cache";
 
 // 03-ia-api-balance: useProviderApiBalances hook tests.
 //
@@ -48,11 +49,25 @@ const SAMPLE_BALANCE = {
 };
 
 beforeEach(() => {
+  clearCostSettingsSessionCache();
   vi.clearAllMocks();
   getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [] } });
   getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [] } });
   refreshProviderApiBalance.mockResolvedValue({ ok: true, data: { balance: null } });
   refreshOfficialConsoleProviderBalance.mockResolvedValue({ connected: true, balance: { available_balance: 1 } });
+});
+
+it("paints the previous confirmed provider snapshot immediately on re-entry", async () => {
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [SAMPLE_CONFIG] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [SAMPLE_BALANCE] } });
+  const first = renderHook(() => useProviderApiBalances());
+  await waitFor(() => expect(first.result.current.loading).toBe(false));
+  first.unmount();
+
+  const second = renderHook(() => useProviderApiBalances());
+  expect(second.result.current.loading).toBe(false);
+  expect(second.result.current.balances[0].balance).toBe(100);
+  second.unmount();
 });
 
 afterEach(() => {

@@ -555,7 +555,7 @@ export function ProviderApiConfigSection({ onSummaryChange }) {
           <button
             type="button"
             onClick={startAdd}
-            className="inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
+            className="tt-cost-header-action tt-cost-header-action-primary"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden="true" />
             {copy("settings.cost.provider_api.add")}

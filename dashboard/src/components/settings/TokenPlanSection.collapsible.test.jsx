@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TokenPlanSection, paginateTokenPlans, tokenPlanDisplayStatus } from "./TokenPlanSection.jsx";
 import { deleteTokenPlan, getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, saveTokenPlanSecret, reorderTokenPlans, verifyCursorConsoleSession } from "../../lib/api";
+import { clearCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 
 vi.mock("../../lib/api", () => ({
   getTokenPlans: vi.fn(),
@@ -43,6 +44,7 @@ async function expandPlan(planLabel) {
 }
 
 beforeEach(() => {
+  clearCostSettingsSessionCache();
   vi.clearAllMocks();
   window.localStorage.setItem(
     "token-eyes.settings.disclosure.cost.token-plans.v1",
@@ -58,6 +60,18 @@ beforeEach(() => {
   saveTokenPlanSecret.mockResolvedValue({ ok: true });
   reorderTokenPlans.mockResolvedValue({ ok: true, records: [{ ...RECORD }] });
   deleteTokenPlan.mockResolvedValue({ ok: true, records: [] });
+});
+
+it("reuses confirmed plans and catalog when the cost page is entered again", async () => {
+  const first = render(<TokenPlanSection listOnly />);
+  expect(await screen.findByText("1 个套餐")).toBeInTheDocument();
+  await waitFor(() => expect(getTokenPlans).toHaveBeenCalledTimes(1));
+  first.unmount();
+
+  render(<TokenPlanSection listOnly />);
+  expect(screen.getByText("1 个套餐")).toBeInTheDocument();
+  expect(getTokenPlans).toHaveBeenCalledTimes(1);
+  expect(getTokenPlanCatalog).toHaveBeenCalledTimes(1);
 });
 
 it("classifies active, attention, and expired plans and paginates ten cards at a time", () => {

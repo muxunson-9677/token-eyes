@@ -5,6 +5,7 @@ import {
   refreshProviderApiBalance,
   refreshOfficialConsoleProviderBalance,
 } from "../lib/api";
+import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../lib/cost-settings-session-cache";
 
 /**
  * useProviderApiBalances — 03-ia-api-balance cost-accumulation data hook.
@@ -58,17 +59,18 @@ function pickPollInterval(configs) {
 }
 
 export function useProviderApiBalances() {
-  const [configs, setConfigs] = useState([]);
-  const [balances, setBalances] = useState([]);
+  const cachedSnapshot = useRef(readCostSettingsSessionCache("provider-api-balances")).current;
+  const [configs, setConfigs] = useState(cachedSnapshot?.configs || []);
+  const [balances, setBalances] = useState(cachedSnapshot?.balances || []);
   const [refreshingIds, setRefreshingIds] = useState(() => new Set());
-  const [stale, setStale] = useState(false);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [stale, setStale] = useState(cachedSnapshot?.stale || false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(cachedSnapshot?.lastUpdatedAt || null);
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedSnapshot);
 
   const cancelledRef = useRef(false);
   const inFlightRef = useRef(new Set());
-  const configsRef = useRef([]);
+  const configsRef = useRef(cachedSnapshot?.configs || []);
 
   const setRefreshing = useCallback((id, on) => {
     setRefreshingIds((prev) => {
@@ -91,8 +93,15 @@ export function useProviderApiBalances() {
       configsRef.current = nextConfigs;
       setConfigs(nextConfigs);
       setBalances(nextBalances);
-      setLastUpdatedAt(new Date().toISOString());
+      const updatedAt = new Date().toISOString();
+      setLastUpdatedAt(updatedAt);
       setStale(false);
+      writeCostSettingsSessionCache("provider-api-balances", {
+        configs: nextConfigs,
+        balances: nextBalances,
+        stale: false,
+        lastUpdatedAt: updatedAt,
+      });
     } catch (err) {
       if (cancelledRef.current) return;
       setError(err?.message || "Unable to load provider balances");
@@ -184,6 +193,17 @@ export function useProviderApiBalances() {
     }, intervalMs);
     return () => window.clearInterval(timer);
   }, [configs, refreshAll]);
+
+  useEffect(() => {
+    if (!loading) {
+      writeCostSettingsSessionCache("provider-api-balances", {
+        configs,
+        balances,
+        stale,
+        lastUpdatedAt,
+      });
+    }
+  }, [balances, configs, lastUpdatedAt, loading, stale]);
 
   return {
     configs,

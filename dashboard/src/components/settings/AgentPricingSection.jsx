@@ -1,8 +1,10 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { DollarSign, FolderOpen, Plus, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { DollarSign, FolderOpen, Plus, Pencil, Settings2, Trash2 } from "lucide-react";
+import { useRef } from "react";
 import { getLocalSettings, getUsageModelBreakdown, setLocalSettings, verifyOfficialModelPricing } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
+import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 import { SectionCard, ToggleSwitch } from "./Controls.jsx";
 
 const AGENTS = [
@@ -107,19 +109,25 @@ function ruleId(source, model) {
 }
 
 export function AgentPricingSection({ onSummaryChange }) {
-  const [defaultDraft, setDefaultDraft] = useState(EMPTY_PRICING);
-  const [defaultSaved, setDefaultSaved] = useState(EMPTY_PRICING);
-  const [rules, setRules] = useState([]);
-  const [rulesSaved, setRulesSaved] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cachedPricing = useRef(readCostSettingsSessionCache("agent-pricing")).current;
+  const cachedObservedModels = useRef(readCostSettingsSessionCache("agent-pricing-observed-models")).current;
+  const initialPricing = normalizeAgentDefaultPricing(cachedPricing?.agentDefaultPricing);
+  const initialRules = normalizePricingRules(cachedPricing?.pricingRules);
+  const [defaultDraft, setDefaultDraft] = useState(initialPricing);
+  const [defaultSaved, setDefaultSaved] = useState(initialPricing);
+  const [rules, setRules] = useState(initialRules);
+  const [rulesSaved, setRulesSaved] = useState(initialRules);
+  const [loading, setLoading] = useState(!cachedPricing);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedNotice, setSavedNotice] = useState(false);
-  const [observedModels, setObservedModels] = useState([]);
+  const [observedModels, setObservedModels] = useState(cachedObservedModels || []);
   const [verifyingModel, setVerifyingModel] = useState("");
   const [verificationNotice, setVerificationNotice] = useState(null);
   const [officialSnapshots, setOfficialSnapshots] = useState({});
   const [automaticComparison, setAutomaticComparison] = useState(true);
+  const [pricingToolsOpen, setPricingToolsOpen] = useState(false);
+  const pricingToolsButtonRef = useRef(null);
 
   // Rule editor state. `editorMode` is "idle" | "add" | "edit". When "add" or
   // "edit" the form is visible; `editingId` holds the id being edited (null
@@ -130,10 +138,23 @@ export function AgentPricingSection({ onSummaryChange }) {
   const [ruleFormError, setRuleFormError] = useState("");
 
   useEffect(() => {
+    if (!pricingToolsOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setPricingToolsOpen(false);
+        pricingToolsButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [pricingToolsOpen]);
+
+  useEffect(() => {
     onSummaryChange?.({ configuredCount: VERIFIED_MODEL_PRICES.length, customCount: rules.length });
   }, [onSummaryChange, rules.length]);
 
   useEffect(() => {
+    if (cachedPricing) return undefined;
     let cancelled = false;
     setLoading(true);
     getLocalSettings()
@@ -145,6 +166,10 @@ export function AgentPricingSection({ onSummaryChange }) {
         const ruleList = normalizePricingRules(settings?.pricingRules);
         setRules(ruleList);
         setRulesSaved(ruleList);
+        writeCostSettingsSessionCache("agent-pricing", {
+          agentDefaultPricing: pricing,
+          pricingRules: ruleList,
+        });
         setError("");
       })
       .catch((err) => {
@@ -157,9 +182,10 @@ export function AgentPricingSection({ onSummaryChange }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [cachedPricing]);
 
   useEffect(() => {
+    if (cachedObservedModels) return undefined;
     let cancelled = false;
     getUsageModelBreakdown({ from: "2000-01-01", to: new Date().toISOString().slice(0, 10) })
       .then((result) => {
@@ -171,9 +197,11 @@ export function AgentPricingSection({ onSummaryChange }) {
               model: String(model?.model || model?.model_id || "").trim(),
             })))
           .filter((entry) => entry.source && entry.model);
-        setObservedModels(Array.from(
+        const nextModels = Array.from(
           new Map(models.map((entry) => [`${entry.source}:${entry.model}`, entry])).values(),
-        ));
+        );
+        setObservedModels(nextModels);
+        writeCostSettingsSessionCache("agent-pricing-observed-models", nextModels);
       })
       .catch(() => {
         if (!cancelled) setObservedModels([]);
@@ -181,7 +209,7 @@ export function AgentPricingSection({ onSummaryChange }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [cachedObservedModels]);
 
   const uncataloguedModels = useMemo(() => {
     const known = new Set(VERIFIED_MODEL_PRICES.flatMap((price) => [price.model, price.modelId].filter(Boolean).map((value) => value.toLowerCase())));
@@ -339,6 +367,10 @@ export function AgentPricingSection({ onSummaryChange }) {
       const ruleList = normalizePricingRules(result?.pricingRules);
       setRules(ruleList);
       setRulesSaved(ruleList);
+      writeCostSettingsSessionCache("agent-pricing", {
+        agentDefaultPricing: pricing,
+        pricingRules: ruleList,
+      });
       setSavedNotice(true);
     } catch (err) {
       setError(err?.message || copy("settings.agent_pricing.save_error"));
@@ -360,34 +392,55 @@ export function AgentPricingSection({ onSummaryChange }) {
       collapsedSummaryTone="green"
       action={
         <div className="tt-pricing-header-actions flex items-center gap-2">
-          <a
-            className="tt-agent-pricing-help"
-            href="#model-pricing-catalog"
-            onClick={(event) => {
-              event.preventDefault();
-              document.getElementById("model-pricing-catalog")?.scrollIntoView({ block: "nearest" });
-            }}
-          >
-            {copy("settings.agent_pricing.how_pricing")}
-          </a>
           <button
             type="button"
             onClick={() => document.getElementById("model-pricing-catalog")?.scrollIntoView({ block: "nearest" })}
-            className="tt-pricing-source-directory inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 dark:border-oai-gray-800 dark:text-oai-gray-300"
+            className="tt-pricing-source-directory tt-cost-header-action"
           >
             <FolderOpen className="h-3.5 w-3.5" aria-hidden />
             {copy("settings.agent_pricing.source_directory")}
           </button>
-          <span className="tt-pricing-auto-compare inline-flex items-center gap-1.5 text-xs text-oai-gray-700 dark:text-oai-gray-300">
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-            {copy("settings.agent_pricing.auto_compare")}
-            <ToggleSwitch checked={automaticComparison} onChange={() => setAutomaticComparison((value) => !value)} ariaLabel={copy("settings.agent_pricing.auto_compare")} />
-          </span>
+          <div className="tt-pricing-tools-wrap">
+            <button
+              ref={pricingToolsButtonRef}
+              type="button"
+              aria-expanded={pricingToolsOpen}
+              aria-controls="pricing-tools-dialog"
+              onClick={() => setPricingToolsOpen((value) => !value)}
+              className="tt-cost-header-action"
+            >
+              <Settings2 className="h-3.5 w-3.5" aria-hidden />
+              {copy("settings.agent_pricing.tools")}
+            </button>
+            {pricingToolsOpen ? (
+              <div
+                id="pricing-tools-dialog"
+                role="dialog"
+                aria-label={copy("settings.agent_pricing.tools")}
+                className="tt-pricing-tools-popover"
+              >
+                <a
+                  className="tt-agent-pricing-help"
+                  href="#model-pricing-catalog"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    document.getElementById("model-pricing-catalog")?.scrollIntoView({ block: "nearest" });
+                  }}
+                >
+                  {copy("settings.agent_pricing.how_pricing")}
+                </a>
+                <span className="tt-pricing-auto-compare">
+                  {copy("settings.agent_pricing.auto_compare")}
+                  <ToggleSwitch checked={automaticComparison} onChange={() => setAutomaticComparison((value) => !value)} ariaLabel={copy("settings.agent_pricing.auto_compare")} />
+                </span>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={save}
             disabled={loading || saving || !dirty}
-            className="tt-pricing-save inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed"
+            className="tt-pricing-save tt-cost-header-action tt-cost-header-action-primary"
           >
             {saving ? copy("settings.agent_pricing.saving") : copy("settings.agent_pricing.save_changes")}
           </button>

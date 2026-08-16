@@ -1040,6 +1040,7 @@
     "settings.agent_pricing.how_pricing": "如何定价?",
     "settings.agent_pricing.source_directory": "价格来源目录",
     "settings.agent_pricing.auto_compare": "自动比价",
+    "settings.agent_pricing.tools": "定价工具",
     "settings.data_dirs.change_directory": "更改目录",
     "settings.cost.other_ai.month_spend": "本月支出",
     "settings.cost.other_ai.lifetime_spend": "累计支出",

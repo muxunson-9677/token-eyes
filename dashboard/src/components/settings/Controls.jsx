@@ -105,6 +105,16 @@ export function SectionCard({
     });
   };
   const summaryTone = collapsedSummaryTone || iconTone;
+  const summary = collapsedSummaryContent || (collapsedSummary ? (
+    <span
+      className="tt-collapsed-summary"
+      data-testid="settings-section-collapsed-summary"
+      data-tone={summaryTone}
+      data-summary={collapsedSummary}
+    >
+      {collapsedSummary}
+    </span>
+  ) : null);
   const sectionIcon = Icon ? (
     <span
       data-testid="settings-section-icon"
@@ -120,7 +130,8 @@ export function SectionCard({
   return (
     <Card className={className}>
       <div className="tt-section-card-header mb-3 flex items-start justify-between gap-4">
-        {collapsible ? (
+        <div className="tt-section-header-main flex min-w-0 flex-1 items-start gap-3">
+          {collapsible ? (
           <button
             type="button"
             aria-label={title}
@@ -147,7 +158,7 @@ export function SectionCard({
               ) : null}
             </span>
           </button>
-        ) : (
+          ) : (
           <div className="tt-section-card-heading flex min-w-0 flex-1 items-start gap-2">
             {sectionIcon}
             <div className="tt-section-card-title-block min-w-0 flex-1">
@@ -161,21 +172,16 @@ export function SectionCard({
               ) : null}
             </div>
           </div>
-        )}
-        {action || collapsedSummary || collapsedSummaryContent ? (
-          <div className="tt-section-header-aside shrink-0">
-            {action || null}
-            {collapsedSummaryContent || null}
-            {collapsedSummary && !collapsedSummaryContent ? (
-              <span
-                className="tt-collapsed-summary"
-                data-testid="settings-section-collapsed-summary"
-                data-tone={summaryTone}
-                data-summary={collapsedSummary}
-              >
-                {collapsedSummary}
-              </span>
-            ) : null}
+          )}
+          {summary ? (
+            <div className="tt-section-header-summary shrink-0" data-testid="settings-section-summary-slot">
+              {summary}
+            </div>
+          ) : null}
+        </div>
+        {action ? (
+          <div className="tt-section-header-aside tt-section-action-slot shrink-0" data-testid="settings-section-action-slot">
+            {action}
           </div>
         ) : null}
       </div>

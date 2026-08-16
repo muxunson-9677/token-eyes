@@ -14,6 +14,7 @@ import {
 } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { copy } from "../../lib/copy";
+import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 import { SectionCard } from "./Controls.jsx";
 
 const SOURCE = "other_ai";
@@ -164,9 +165,10 @@ function SortableSpendRow({ record, number, expanded, onToggle, onEdit, onDelete
 }
 
 export function OtherAiSpendSection({ onSummaryChange }) {
-  const [records, setRecords] = useState([]);
-  const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cachedSpend = readCostSettingsSessionCache("other-ai-spend");
+  const [records, setRecords] = useState(cachedSpend?.records || []);
+  const [groups, setGroups] = useState(cachedSpend?.groups || []);
+  const [loading, setLoading] = useState(!cachedSpend);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [groupFormOpen, setGroupFormOpen] = useState(false);
@@ -184,13 +186,17 @@ export function OtherAiSpendSection({ onSummaryChange }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (force = false) => {
+    if (!force && readCostSettingsSessionCache("other-ai-spend")) return;
     setLoading(true);
     try {
       const result = await getSpendRecords({ from: "2000-01-01", to: todayString(), sources: [SOURCE] });
       const loaded = Array.isArray(result?.records) ? result.records : [];
-      setRecords(loaded.filter((record) => String(record.source || "").toLowerCase() === SOURCE));
-      setGroups(Array.isArray(result?.other_ai_groups) ? result.other_ai_groups : []);
+      const nextRecords = loaded.filter((record) => String(record.source || "").toLowerCase() === SOURCE);
+      const nextGroups = Array.isArray(result?.other_ai_groups) ? result.other_ai_groups : [];
+      setRecords(nextRecords);
+      setGroups(nextGroups);
+      writeCostSettingsSessionCache("other-ai-spend", { records: nextRecords, groups: nextGroups });
       setError(null);
     } catch (loadError) {
       console.warn("[OtherAiSpendSection] failed to load records:", loadError);
@@ -200,7 +206,7 @@ export function OtherAiSpendSection({ onSummaryChange }) {
     }
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { reload(false); }, [reload]);
 
   const openNew = () => { setError(null); setForm(emptyForm()); setFormOpen(true); };
   const openEdit = (record) => {
@@ -244,7 +250,7 @@ export function OtherAiSpendSection({ onSummaryChange }) {
       if (result?.record) setRecords((current) => [result.record, ...current.filter((record) => record.id !== result.record.id)]);
       setFormOpen(false);
       setSaving(false);
-      await reload();
+      await reload(true);
     } catch (saveError) {
       setError(saveError?.message || copy("settings.cost.other_ai.error_save"));
       setSaving(false);
@@ -323,7 +329,7 @@ export function OtherAiSpendSection({ onSummaryChange }) {
       const result = await deleteSpendRecord(record.id);
       if (result?.ok === false) throw new Error(result.error || copy("settings.cost.other_ai.error_delete"));
       setRecords((current) => current.filter((item) => item.id !== record.id));
-      await reload();
+      await reload(true);
     } catch (deleteError) {
       console.error("[OtherAiSpendSection] delete failed:", deleteError);
       setError(deleteError?.message || copy("settings.cost.other_ai.error_delete"));
@@ -511,10 +517,10 @@ export function OtherAiSpendSection({ onSummaryChange }) {
       collapsedSummaryTone="rose"
       action={(
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => openGroupForm()} className="rounded-lg border border-oai-gray-200 px-3 py-1.5 text-xs font-medium text-oai-gray-600 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800">
+          <button type="button" onClick={() => openGroupForm()} className="tt-cost-header-action">
             {copy("settings.cost.other_ai.add_group")}
           </button>
-          <button type="button" onClick={openNew} className="inline-flex items-center gap-1.5 rounded-lg bg-oai-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-600">
+          <button type="button" onClick={openNew} className="tt-cost-header-action tt-cost-header-action-primary">
             <Plus className="h-4 w-4" aria-hidden="true" />
             {copy("settings.cost.other_ai.add")}
           </button>

@@ -116,6 +116,10 @@ describe("SectionCard visual identity", () => {
 
     expect(screen.getByRole("button", { name: actionLabel })).toBeVisible();
     expect(screen.getByTestId("settings-section-collapsed-summary")).toHaveTextContent("3 configured");
+    expect(screen.getByTestId("settings-section-collapsed-summary"))
+      .toBe(screen.getByTestId("settings-section-summary-slot").firstElementChild);
+    expect(screen.getByRole("button", { name: actionLabel }).closest("[data-testid='settings-section-action-slot']"))
+      .not.toBeNull();
     expect(screen.queryByText(detailsText)).not.toBeInTheDocument();
   });
 
