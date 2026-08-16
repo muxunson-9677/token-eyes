@@ -687,7 +687,9 @@ function SortableTokenPlanCard({
   showFullEmail,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
+  const [expanded, setExpanded] = useState(false);
   const planLabel = record.plan_label || record.id;
+  const detailId = `token-plan-detail-${record.id}`;
   const style = { transform: CSS.Transform.toString(transform), transition };
   const providerKey = String(record.provider_id || record.source || "").toLowerCase();
   const quotaWindows = Array.isArray(record.quota_windows) ? record.quota_windows : [];
@@ -733,6 +735,7 @@ function SortableTokenPlanCard({
       ref={setNodeRef}
       style={style}
       data-testid="token-plan-card"
+      data-expanded={expanded ? "true" : "false"}
       className={cn(
         "tt-token-plan-card tt-token-plan-card--reference tt-token-service-card tt-surface-nested rounded-lg border p-2",
         isDragging && "relative z-10 bg-white shadow-lg dark:bg-oai-gray-900",
@@ -756,41 +759,50 @@ function SortableTokenPlanCard({
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
-        <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${record.provider_id || record.source || "custom"}`)} aria-hidden="true">
-          <ProviderIcon provider={record.provider_id || record.source} size={14} />
-        </span>
-        <div data-testid="token-plan-card-copy" className="tt-token-plan-copy min-w-0">
-          <div
-            className="tt-token-plan-full"
-            data-provider-label={record.provider_id && record.provider_id !== "custom" ? `${record.source} / ${record.provider_id}` : record.source}
-            data-plan-label={record.plan_label}
-          >
-            <span className="tt-token-plan-full-text">
-              {`${providerTitle} / ${record.plan_label}`}
-            </span>
-          </div>
-          <div data-testid="token-plan-card-identity-meta" className="tt-token-plan-card-identity-meta">
-            <span
-              className={cn("tt-token-plan-card-account", showFullEmail && "tt-token-plan-card-account--full")}
-              title={displayedAccountLabel}
-            >
-              {displayedAccountLabel || copy("settings.token_plan.value_unavailable")}
-            </span>
-            <span className="tt-token-plan-card-cost">{subscriptionSummary}</span>
-          </div>
-        </div>
-        <span
-          data-testid="token-plan-status"
-          data-status={displayStatus.kind}
-          aria-label={tokenPlanStatusLabel(displayStatus.kind)}
-          title={tokenPlanStatusLabel(displayStatus.kind)}
-          className={cn("tt-token-plan-status", "tt-token-plan-status--corner", `tt-token-plan-status--${displayStatus.kind}`)}
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={detailId}
+          aria-label={copy(expanded ? "settings.token_plan.collapse" : "settings.token_plan.expand", { plan: planLabel })}
+          onClick={() => setExpanded((value) => !value)}
+          className="tt-token-plan-card-toggle tt-pressable tt-product-focusable flex min-w-0 flex-1 items-center gap-2 rounded-md text-left"
         >
-          <span className="sr-only">{tokenPlanStatusLabel(displayStatus.kind)}</span>
-        </span>
+          <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${record.provider_id || record.source || "custom"}`)} aria-hidden="true">
+            <ProviderIcon provider={record.provider_id || record.source} size={14} />
+          </span>
+          <span data-testid="token-plan-card-copy" className="tt-token-plan-copy min-w-0">
+            <span
+              className="tt-token-plan-full"
+              data-provider-label={record.provider_id && record.provider_id !== "custom" ? `${record.source} / ${record.provider_id}` : record.source}
+              data-plan-label={record.plan_label}
+            >
+              <span className="tt-token-plan-full-text">
+                {`${providerTitle} / ${record.plan_label}`}
+              </span>
+            </span>
+            <span data-testid="token-plan-card-identity-meta" className="tt-token-plan-card-identity-meta">
+              <span
+                className={cn("tt-token-plan-card-account", showFullEmail && "tt-token-plan-card-account--full")}
+                title={displayedAccountLabel}
+              >
+                {displayedAccountLabel || copy("settings.token_plan.value_unavailable")}
+              </span>
+              <span className="tt-token-plan-card-cost">{subscriptionSummary}</span>
+            </span>
+          </span>
+          <span
+            data-testid="token-plan-status"
+            data-status={displayStatus.kind}
+            title={tokenPlanStatusLabel(displayStatus.kind)}
+            className={cn("tt-token-plan-status", "tt-token-plan-status--corner", `tt-token-plan-status--${displayStatus.kind}`)}
+          >
+            <span className="sr-only">{tokenPlanStatusLabel(displayStatus.kind)}</span>
+          </span>
+          <ChevronDown className={cn("h-4 w-4 shrink-0 text-oai-gray-400 transition-transform", expanded && "rotate-180")} aria-hidden />
+        </button>
       </div>
 
-      <div data-testid={`token-plan-detail-${record.id}`} className="tt-token-plan-card-detail">
+      {expanded ? <div id={detailId} data-testid={detailId} className="tt-token-plan-card-detail">
         <TokenPlanQuotaWindows providerId={providerKey} windows={detailWindows} />
         {isCodexSource(record.source) && !quotaWindows.length ? <CodexQuotaBlock codexData={usageLimits?.codex} loading={loadingUsageLimits} /> : null}
         <div data-testid="active-token-plan-summary" className="tt-token-plan-card-summary">
@@ -827,12 +839,15 @@ function SortableTokenPlanCard({
             {copy("settings.token_plan.delete_short")}
           </button>
         </div>
-      </div>
+      </div> : null}
     </div>
   );
 }
 
-function tokenPlanQuotaWindowLabel(providerId, kind) {
+function tokenPlanQuotaWindowLabel(providerId, window) {
+  const kind = window?.kind;
+  const officialLabel = String(window?.model_label || window?.model_name || window?.model || "").trim();
+  if (officialLabel) return officialLabel;
   if (providerId === "cursor") {
     if (kind === "total") return copy("settings.token_plan.cursor.total_usage");
     if (kind === "auto_composer") return copy("settings.token_plan.cursor.auto_composer_usage");
@@ -933,7 +948,7 @@ function TokenPlanQuotaWindows({ providerId, windows }) {
             <div className="tt-token-plan-quota-window-head">
               <strong>
                 {window.kind === "total" ? null : <Clock aria-hidden="true" />}
-                {tokenPlanQuotaWindowLabel(providerId, window.kind)}
+                {tokenPlanQuotaWindowLabel(providerId, window)}
               </strong>
               <span data-testid="token-plan-quota-window-percent" className="tt-token-plan-quota-window-percent">
                 {Math.round(progressPercent)}%
@@ -943,12 +958,16 @@ function TokenPlanQuotaWindows({ providerId, windows }) {
               className="tt-token-plan-progress"
               data-tone={progressTone}
               role="progressbar"
-              aria-label={tokenPlanQuotaWindowLabel(providerId, window.kind)}
+              aria-label={tokenPlanQuotaWindowLabel(providerId, window)}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(progressPercent)}
             ><i style={{ width: `${progressPercent}%` }} /></span>
-            {window.resets_at ? <small>{copy("settings.token_plan.quota_window_reset")}: {formatQuotaWindowReset(window.resets_at)}</small> : null}
+            <small data-testid="token-plan-quota-window-reset">
+              {copy("settings.token_plan.quota_window_reset")}: {window.resets_at
+                ? formatQuotaWindowReset(window.resets_at)
+                : copy("settings.token_plan.reset_unavailable")}
+            </small>
           </div>
           );
         })}

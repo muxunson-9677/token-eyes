@@ -1198,5 +1198,5 @@
     "settings.token_plan.failure_reason": "同步异常：{{reason}}",
     "settings.token_plan.failure_reason_unavailable": "官方额度同步暂时不可用，请稍后重试。",
     "settings.token_plan.value_unavailable": "—",
-    "settings.token_plan.reset_unavailable": "--"
+    "settings.token_plan.reset_unavailable": "官方未提供"
 }

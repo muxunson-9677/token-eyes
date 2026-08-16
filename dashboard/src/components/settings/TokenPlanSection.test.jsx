@@ -83,7 +83,10 @@ async function expandAllPlans() {
   await waitFor(() => {
     expect(screen.getAllByTestId("token-plan-card").length).toBeGreaterThan(0);
   });
-  expect(screen.queryByRole("button", { name: /^展开 / })).not.toBeInTheDocument();
+  const user = userEvent.setup();
+  for (const toggle of screen.queryAllByRole("button", { name: /^展开 / })) {
+    await user.click(toggle);
+  }
 }
 
 beforeEach(() => {
@@ -1761,6 +1764,7 @@ it("R3D manual quota entry is disabled when detection method is configured", asy
 
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
+  await expandAllPlans();
 
   // Open edit form for the existing plan
   const editBtn = screen.getByRole("button", { name: "编辑" });
@@ -1840,6 +1844,7 @@ it("R3D P1 editing existing custom_api record with new key replaces api_key_ref"
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
   await screen.findByText(/Standard（月付）/i);
+  await expandAllPlans();
 
   // 1. Open edit form for the existing record
   await act(async () => {
@@ -1926,6 +1931,7 @@ it("R3D P1 editing existing custom_api record with EMPTY key field keeps old ref
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
   await screen.findByText(/Standard（月付）/i);
+  await expandAllPlans();
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
@@ -1991,6 +1997,7 @@ it("R3E editing a legacy refresh_method=cookie_scrape record opens the form with
 
   render(<TokenPlanSection />);
   await screen.findByText(/Legacy Cookie Plan/i);
+  await expandAllPlans();
 
   // Opening edit must not crash
   await act(async () => {
@@ -2025,6 +2032,7 @@ it("R3E saving an edited legacy cookie_scrape record does not write cookie_scrap
 
   render(<TokenPlanSection />);
   await screen.findByText(/Legacy Cookie Save/i);
+  await expandAllPlans();
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
@@ -2062,6 +2070,7 @@ it("saves notes field capped at 200 characters", async () => {
   const user = userEvent.setup();
   render(<TokenPlanSection />);
   await screen.findByText(/claude \/ Max/i);
+  await expandAllPlans();
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
@@ -2446,6 +2455,7 @@ it("Codex system browser completes authorization even when quota sync fails", as
 
   render(<TokenPlanSection />);
   await screen.findByText(/codex \/ Pro 5x/i);
+  await expandAllPlans();
   await act(async () => {
     await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
   });
@@ -2721,6 +2731,7 @@ it("shows usable plans with full summary and keeps expired plans in a collapsed 
   render(<TokenPlanSection />);
 
   expect(await screen.findByText(/claude \/ Active Max/i)).toBeInTheDocument();
+  await expandAllPlans();
   expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("USD 100");
   expect(screen.getByTestId("active-token-plan-summary")).not.toHaveTextContent("USD 100");
   expect(screen.queryByText(/claude \/ Expired Max/i)).not.toBeInTheDocument();

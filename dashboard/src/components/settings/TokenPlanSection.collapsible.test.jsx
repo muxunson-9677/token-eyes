@@ -37,6 +37,11 @@ const RECORD = {
   sync_status: "success",
 };
 
+async function expandPlan(planLabel) {
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: `展开 ${planLabel}` }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.setItem(
@@ -137,17 +142,28 @@ it("deletes a plan directly from its complete card after confirmation", async ()
   vi.spyOn(window, "confirm").mockReturnValue(true);
   render(<TokenPlanSection />);
 
+  await expandPlan("Max");
   await user.click(await screen.findByRole("button", { name: "删除 Max" }));
 
   await waitFor(() => expect(deleteTokenPlan).toHaveBeenCalledWith("plan-1"));
   expect(screen.queryByText(/claude \/ Max/i)).not.toBeInTheDocument();
 });
 
-it("shows each plan as a complete card without a second disclosure", async () => {
+it("starts each plan compact and reveals its complete facts without delaying collapse", async () => {
+  const user = userEvent.setup();
   render(<TokenPlanSection />);
 
   expect(await screen.findByText(/claude \/ Max/i)).toBeInTheDocument();
+  const card = screen.getByTestId("token-plan-card");
+  const toggle = screen.getByRole("button", { name: "展开 Max" });
+  expect(card).toHaveAttribute("data-expanded", "false");
+  expect(toggle).toHaveClass("tt-pressable", "tt-product-focusable");
+  expect(screen.queryByTestId("token-plan-detail-plan-1")).not.toBeInTheDocument();
+
+  await user.click(toggle);
+
   const detail = screen.getByTestId("token-plan-detail-plan-1");
+  expect(card).toHaveAttribute("data-expanded", "true");
   expect(detail).not.toHaveTextContent("200 / 1,000 · 800");
   expect(detail).not.toHaveTextContent("已用额度");
   expect(detail).not.toHaveTextContent("剩余额度");
@@ -155,8 +171,14 @@ it("shows each plan as a complete card without a second disclosure", async () =>
   expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("xx 元");
   expect(screen.getByTestId("token-plan-detail-plan-1")).not.toHaveTextContent("只在展开后出现的备注");
   expect(screen.getByRole("button", { name: "拖动 Max" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "展开 Max" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "收起 Max" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "收起 Max" })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "编辑" }));
+  expect(card).toHaveAttribute("data-expanded", "true");
+
+  await user.click(screen.getByRole("button", { name: "收起 Max" }));
+  expect(card).toHaveAttribute("data-expanded", "false");
+  expect(screen.queryByTestId("token-plan-detail-plan-1")).not.toBeInTheDocument();
 });
 
 it("matches the cost-and-quota card hierarchy with account, cost, detailed validity, and no sync block", async () => {
@@ -179,6 +201,7 @@ it("matches the cost-and-quota card hierarchy with account, cost, detailed valid
   });
   render(<TokenPlanSection />);
 
+  await expandPlan("Pro 20x");
   const card = await screen.findByTestId("token-plan-card");
   expect(card).toHaveClass("tt-token-plan-card--reference");
   expect(card).toHaveClass("tt-token-service-card", "tt-surface-nested");
@@ -376,6 +399,7 @@ it("renders complete quota and subscription details immediately inside each plan
   });
   render(<TokenPlanSection />);
 
+  await expandPlan("Max");
   const detail = await screen.findByTestId("token-plan-detail-plan-1");
   expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("工作账户");
   expect(detail).not.toHaveTextContent("10 / 50 · 40");
@@ -419,6 +443,8 @@ it("shows every Codex and Cursor quota window with used, remaining, total, and r
   });
   render(<TokenPlanSection />);
 
+  await expandPlan("Plus");
+  await expandPlan("Pro");
   const codexDetail = await screen.findByTestId("token-plan-detail-codex-plan");
   expect(within(codexDetail).getByText("5 小时")).toBeInTheDocument();
   expect(within(codexDetail).getByText("7 天")).toBeInTheDocument();
@@ -435,6 +461,34 @@ it("shows every Codex and Cursor quota window with used, remaining, total, and r
   expect(screen.getByTestId("active-token-plan-grid").style.getPropertyValue("--tt-token-plan-columns")).toBe("5");
   expect(within(screen.getAllByTestId("token-plan-card")[0]).getByTestId("token-plan-status"))
     .toHaveClass("tt-token-plan-status--corner");
+});
+
+it("keeps every official model window reset independent and marks missing facts unavailable", async () => {
+  getTokenPlans.mockResolvedValue({
+    records: [{
+      ...RECORD,
+      expires_at: "",
+      subscription_end_date: "",
+      quota_windows: [
+        { kind: "rolling_5_hour", model_label: "模型 A · 5h", used: 20, remaining: 80, total: 100, resets_at: "2026-08-18T01:00:00Z" },
+        { kind: "rolling_weekly", model_label: "模型 B · 7d", used: 40, remaining: 60, total: 100, resets_at: "2026-08-22T09:30:00Z" },
+        { kind: "model_c_weekly", model_label: "模型 C · 7d", used: 10, remaining: 90, total: 100 },
+      ],
+    }],
+  });
+  render(<TokenPlanSection />);
+
+  await expandPlan("Max");
+
+  const card = screen.getByTestId("token-plan-card");
+  expect(card).toHaveTextContent("模型 A · 5h");
+  expect(card).toHaveTextContent("模型 B · 7d");
+  expect(card).toHaveTextContent("模型 C · 7d");
+  const resets = within(card).getAllByTestId("token-plan-quota-window-reset");
+  expect(resets).toHaveLength(3);
+  expect(resets[0].textContent).not.toBe(resets[1].textContent);
+  expect(resets[2]).toHaveTextContent("官方未提供");
+  expect(within(card).getByTestId("token-plan-validity")).toHaveTextContent("有效期：未设置");
 });
 
 it("maps live Codex Spark windows and Unix-second reset timestamps without duplicating Cursor totals", async () => {
@@ -468,6 +522,8 @@ it("maps live Codex Spark windows and Unix-second reset timestamps without dupli
   });
   render(<TokenPlanSection />);
 
+  await expandPlan("Pro 20x");
+  await expandPlan("Pro");
   const cursorCard = (await screen.findAllByTestId("token-plan-card"))
     .find((card) => card.textContent.includes("cursor / Pro"));
   expect(cursorCard).toHaveTextContent("Total Usage");
@@ -529,6 +585,7 @@ it("list-only mode navigates to child editor routes without mounting the editor 
   expect(onNavigate).toHaveBeenCalledWith("/settings/cost/token-plans/new");
   expect(screen.queryByLabelText("Agent 来源")).not.toBeInTheDocument();
 
+  await expandPlan("Max");
   await user.click(screen.getByRole("button", { name: "编辑" }));
   expect(onNavigate).toHaveBeenCalledWith("/settings/cost/token-plans/plan-1/edit");
   expect(screen.queryByLabelText("Agent 来源")).not.toBeInTheDocument();

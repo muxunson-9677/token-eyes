@@ -2562,7 +2562,7 @@ settings.token_plan.validity_summary,ui,SettingsPage,TokenPlanSection,validity_s
 settings.token_plan.failure_reason,ui,SettingsPage,TokenPlanSection,failure_reason,"Sync issue: {{reason}}",,active
 settings.token_plan.failure_reason_unavailable,ui,SettingsPage,TokenPlanSection,failure_reason_unavailable,"Official quota sync is temporarily unavailable. Try again later.",,active
 settings.token_plan.value_unavailable,ui,SettingsPage,TokenPlanSection,value_unavailable,"—",,active
-settings.token_plan.reset_unavailable,ui,SettingsPage,TokenPlanSection,reset_unavailable,"--",,active
+settings.token_plan.reset_unavailable,ui,SettingsPage,TokenPlanSection,reset_unavailable,"Official source unavailable",,active
 share.variant.weekly_bill,share,DashboardPage,ShareModal,variant_weekly_bill,"Weekly Bill",,active
 share.card.weekly_bill.title,share,DashboardPage,WeeklyBillCard,title,"AI Weekly Bill",,active
 share.card.weekly_bill.week_spend,share,DashboardPage,WeeklyBillCard,week_spend,"This week's spend",,active

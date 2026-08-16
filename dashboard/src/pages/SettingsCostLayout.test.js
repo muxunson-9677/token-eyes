@@ -18,11 +18,14 @@ describe("cost settings responsive layout contract", () => {
     expect(css).toMatch(/\.tt-settings-cost-page \.tt-surface:has\(button\[aria-expanded\]\)\s*\{[\s\S]*?box-shadow:\s*0 10px 28px/);
   });
 
-  it("keeps five active plans on each desktop row and overflow inside disclosure bodies", () => {
+  it("keeps five active plans on each desktop row, collapses their height immediately, and contains overflow", () => {
     expect(css).toMatch(/@media \(min-width:\s*720px\)\s*\{[\s\S]*?\.tt-settings-cost-page \.tt-token-plan-grid\s*\{[\s\S]*?repeat\(var\(--tt-token-plan-columns,\s*5\)/);
     expect(css).toMatch(/\.tt-main-scroll-region:has\(\.tt-settings-cost-page\)\s*\{[\s\S]*?scrollbar-width:\s*none;/);
     expect(css).toMatch(/\.tt-settings-cost-page \.tt-section-card-body\s*\{[\s\S]*?overflow-y:\s*auto;/);
-    expect(css).toMatch(/\.tt-settings-cost-page \.tt-token-plan-grid\s*\{[\s\S]*?grid-auto-rows:\s*1fr;/);
+    const gridRule = css.match(/\.tt-settings-cost-page \.tt-token-plan-grid\s*\{[^}]*\}/)?.[0] ?? "";
+    const cardRule = css.match(/\.tt-settings-cost-page \.tt-token-plan-grid \.tt-token-plan-card\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(gridRule).not.toMatch(/grid-auto-rows:\s*1fr/);
+    expect(cardRule).not.toMatch(/height:\s*100%/);
   });
 
   it("keeps the new overview and plan surfaces readable in dark mode", () => {
