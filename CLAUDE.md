@@ -92,6 +92,7 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 - CommonJS in `src/`, ESM + TypeScript strict in `dashboard/`. No mixing.
 - Env-var prefixes: `TOKENTRACKER_` for CLI, `VITE_` for dashboard.
 - Git commits in **English**, conventional style (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:` / `ci:`).
+- **文档语言（硬规则）**：计划、规格、PRD、验收矩阵以及开发、测试、交付等面向人的文档，凡可准确使用中文表达的内容一律使用中文；仅代码、命令、文件路径、标识符、外部产品名和不可翻译的专有名称保留原文。
 - **Privacy**: token counts only — never prompts, messages, or conversation bodies.
 - `TokenTrackerBar/EmbeddedServer/` is gitignored; built on demand by `TokenTrackerBar/scripts/bundle-node.sh`.
 - After editing `TokenTrackerBar/project.yml`: `(cd TokenTrackerBar && xcodegen generate && ruby scripts/patch-pbxproj-icon.rb)`.
