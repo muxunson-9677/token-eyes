@@ -21,26 +21,38 @@ vi.mock("../components/settings/DataDirectoriesSection.jsx", () => ({
 }));
 
 vi.mock("../components/settings/AgentPricingSection.jsx", () => ({
-  AgentPricingSection: () => <section data-testid="agent-pricing-section">AgentPricing</section>,
+  AgentPricingSection: ({ onSummaryChange }) => {
+    React.useEffect(() => onSummaryChange?.({ configuredCount: 27, customCount: 2 }), [onSummaryChange]);
+    return <section data-testid="agent-pricing-section">AgentPricing</section>;
+  },
 }));
 
 vi.mock("../components/settings/TokenPlanSection.jsx", () => ({
-  TokenPlanSection: () => <section data-testid="token-plan-section">TokenPlan</section>,
+  TokenPlanSection: ({ onSummaryChange }) => {
+    React.useEffect(() => onSummaryChange?.({ activeCount: 2, attentionCount: 1, costCny: 682.04 }), [onSummaryChange]);
+    return <section data-testid="token-plan-section">TokenPlan</section>;
+  },
 }));
 
 // 03-ia-api-balance: mock ProviderApiConfigSection so SettingsPage structural
 // tests don't need to wire up the full provider API config + balance mocks.
 // The anchor attribute is asserted separately for the insertion-point test.
 vi.mock("../components/settings/ProviderApiConfigSection.jsx", () => ({
-  ProviderApiConfigSection: () => (
-    <section data-testid="provider-api-config-section" data-provider-api-config-anchor>
-      ProviderApiConfig
-    </section>
-  ),
+  ProviderApiConfigSection: ({ onSummaryChange }) => {
+    React.useEffect(() => onSummaryChange?.({ total: 4, connected: 3, disconnected: 1, totalBalanceCny: 682.04 }), [onSummaryChange]);
+    return (
+      <section data-testid="provider-api-config-section" data-provider-api-config-anchor>
+        ProviderApiConfig
+      </section>
+    );
+  },
 }));
 
 vi.mock("../components/settings/OtherAiSpendSection.jsx", () => ({
-  OtherAiSpendSection: () => <section data-testid="other-ai-spend-section" />,
+  OtherAiSpendSection: ({ onSummaryChange }) => {
+    React.useEffect(() => onSummaryChange?.({ groupCount: 4, currentMonthCny: 89.6, recordCount: 3 }), [onSummaryChange]);
+    return <section data-testid="other-ai-spend-section" />;
+  },
 }));
 
 vi.mock("../components/settings/AppearanceSection.jsx", () => ({
@@ -177,6 +189,23 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByTestId("other-ai-spend-section")).toBeInTheDocument();
+  });
+
+  it("renders four aligned cost overview cards from live section summaries", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsCostPage />
+      </MemoryRouter>,
+    );
+
+    const cards = await screen.findAllByTestId(/cost-overview-card-/);
+    expect(cards).toHaveLength(4);
+    expect(screen.getByTestId("cost-overview-card-pricing")).toHaveTextContent("27");
+    expect(screen.getByTestId("cost-overview-card-plans")).toHaveTextContent("2");
+    expect(screen.getByTestId("cost-overview-card-providers")).toHaveTextContent("3 / 1");
+    expect(screen.getByTestId("cost-overview-card-other")).toHaveTextContent("4");
+    expect(screen.getByTestId("cost-overview-card-plans")).toHaveTextContent("682.04");
+    expect(screen.getByTestId("cost-overview-card-other")).toHaveTextContent("89.60");
   });
 
   it("keeps cost configuration together and excludes general preferences", () => {

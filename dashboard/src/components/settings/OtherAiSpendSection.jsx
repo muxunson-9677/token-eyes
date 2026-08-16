@@ -163,7 +163,7 @@ function SortableSpendRow({ record, number, expanded, onToggle, onEdit, onDelete
   );
 }
 
-export function OtherAiSpendSection() {
+export function OtherAiSpendSection({ onSummaryChange }) {
   const [records, setRecords] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -374,6 +374,17 @@ export function OtherAiSpendSection() {
       String(record.start_date || "").startsWith(month) ? total + Number(record.amount || 0) : total
     ), 0);
   }, [records]);
+  const currentMonthCny = useMemo(() => {
+    const month = todayString().slice(0, 7);
+    return records.reduce((total, record) => (
+      String(record.start_date || "").startsWith(month) && String(record.currency || "CNY").toUpperCase() === "CNY"
+        ? total + Number(record.amount || 0)
+        : total
+    ), 0);
+  }, [records]);
+  useEffect(() => {
+    onSummaryChange?.({ groupCount: groups.length, currentMonthCny, recordCount: records.length });
+  }, [currentMonthCny, groups.length, onSummaryChange, records.length]);
 
   const rootGroups = useMemo(() => [
     ...groups.filter((group) => !group.parent_id),

@@ -533,16 +533,8 @@ fn save_account_meta(dir: &Path, meta: &CursorAccountMeta) -> Result<(), String>
     fs::write(meta_path(dir), raw).map_err(|_| "Unable to save Cursor account metadata".to_string())
 }
 
-fn redact_email(email: &str) -> String {
-    let email = email.trim();
-    if email.is_empty() {
-        return String::new();
-    }
-    let Some((local, domain)) = email.split_once('@') else {
-        return format!("{}***", email.chars().take(3).collect::<String>());
-    };
-    let prefix: String = local.chars().take(3).collect();
-    format!("{prefix}***@{domain}")
+fn cursor_account_display_name(email: &str) -> String {
+    email.trim().to_string()
 }
 
 fn decode_cursor_access_token_payload(access_token: &str) -> Option<serde_json::Value> {
@@ -1222,7 +1214,7 @@ async fn refresh_cursor_auth_bundle(
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
         {
-            display_name = redact_email(&email);
+            display_name = cursor_account_display_name(&email);
         }
         if account_id.is_empty() {
             if let Some(workos_id) = meta
@@ -2272,5 +2264,13 @@ mod tests {
         assert_eq!(decoded.display_name, meta.display_name);
         assert!(!encoded.contains("access_token"));
         assert!(!encoded.contains("refresh_token"));
+    }
+
+    #[test]
+    fn cursor_account_email_stays_complete_for_the_user_visibility_toggle() {
+        assert_eq!(
+            cursor_account_display_name("  authorized.cursor@example.com  "),
+            "authorized.cursor@example.com",
+        );
     }
 }

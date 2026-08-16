@@ -139,6 +139,61 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(screen.queryByText("settings.cost.provider_api.empty")).not.toBeInTheDocument();
   });
 
+  it("keeps connected, disconnected, and balance indicators in the collapsed header", async () => {
+    window.localStorage.removeItem("token-eyes.settings.disclosure.cost.provider-api.v1");
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [BASE_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: { balances: [{ configId: BASE_CONFIG.id, status: "synced", balance: 18.5, currency: "CNY" }] },
+    });
+
+    render(<ProviderApiConfigSection />);
+
+    const summary = await screen.findByTestId("provider-api-collapsed-summary");
+    expect(summary).toHaveTextContent("settings.cost.provider_api.summary.connected");
+    expect(summary).toHaveTextContent("● 1");
+    expect(summary).toHaveTextContent("18.50");
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.section" }))
+      .toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps the CNY header total isolated from balances in other currencies", async () => {
+    window.localStorage.removeItem("token-eyes.settings.disclosure.cost.provider-api.v1");
+    const usdConfig = { ...BASE_CONFIG, id: "cfg-usd", label: "USD account" };
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [BASE_CONFIG, usdConfig] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: {
+        balances: [
+          { configId: BASE_CONFIG.id, status: "synced", balance: 18.5, currency: "CNY" },
+          { configId: usdConfig.id, status: "synced", balance: 50, currency: "USD" },
+        ],
+      },
+    });
+
+    render(<ProviderApiConfigSection />);
+
+    const summary = await screen.findByTestId("provider-api-collapsed-summary");
+    expect(summary).toHaveTextContent("18.50");
+    expect(summary).not.toHaveTextContent("68.50");
+  });
+
+  it("does not repeat the provider summary inside the expanded content", async () => {
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [BASE_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: { balances: [{ configId: BASE_CONFIG.id, status: "synced", balance: 18.5, currency: "CNY" }] },
+    });
+
+    render(<ProviderApiConfigSection />);
+
+    await screen.findByText("OpenAI 主账户");
+    expect(screen.getByTestId("provider-api-config-section").querySelectorAll(".tt-provider-api-summary"))
+      .toHaveLength(1);
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.refresh_all" }))
+      .toBeInTheDocument();
+  });
+
   it("keeps verified provider presets in UI parity with the backend contract", () => {
     expect(PROVIDER_API_MODES.map((mode) => mode.value)).toEqual([
       "",

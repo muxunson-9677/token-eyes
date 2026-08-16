@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T08:20:23.078Z",
+  "generatedAt": "2026-08-16T02:35:29.040Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
@@ -9,7 +9,7 @@
   "totals": {
     "colors": 338,
     "radii": 5,
-    "rawText": 271
+    "rawText": 266
   },
   "files": {
     "dashboard/src/App.routes.test.jsx": {
@@ -109,7 +109,7 @@
     "dashboard/src/components/settings/TokenPlanSection.jsx": {
       "colors": 0,
       "radii": 0,
-      "rawText": 32,
+      "rawText": 29,
       "rawTextTokens": [
         ") ) : form.provider_id === \"cursor\" ? (",
         ") ) : form.provider_id === \"minimax\" ? (",
@@ -136,9 +136,6 @@
         ") : xiaomiMimoStage === \"failed\" || xiaomiMimoStage === \"desktop_not_verified\" ? (",
         ") : xiaomiMimoStage === \"login_started\" ? (",
         "0 && (",
-        "0 ? Math.max(-100, Math.min(100, (remainingQuota / totalQuota) * 100)) : 0; const progressPercent = remainingQuota",
-        ": [\"codex\", \"cursor\", \"trae\"].includes(providerKey) ?",
-        "Number(record.remaining_quota || 0)",
         "record.id === id); const newIndex = Math.max(0, Math.min(records.length - 1, oldIndex + direction)); if (oldIndex",
         "record.id === over.id); if (oldIndex",
         "window.kind === \"api\"); const resetAt = total?.resets_at || auto?.resets_at || api?.resets_at || \"\"; const displayName = String(official.display_name || \"\").trim(); const accountId = maskCursorAccountId(official.account_id); const planName = String(official.plan_name || record?.plan_label || \"\").trim(); return ("
@@ -180,6 +177,14 @@
       "radii": 0,
       "rawText": 0,
       "rawTextTokens": []
+    },
+    "dashboard/src/pages/DesktopWidgetPage.tsx": {
+      "colors": 0,
+      "radii": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "[limit.id, limit])); const selected = new Set"
+      ]
     },
     "dashboard/src/pages/DevicePage.jsx": {
       "colors": 0,
@@ -232,13 +237,20 @@
         ") : realSignedIn ? ("
       ]
     },
+    "dashboard/src/pages/PlanMarketPage.jsx": {
+      "colors": 0,
+      "radii": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "; return"
+      ]
+    },
     "dashboard/src/pages/ResetHistoryPage.tsx": {
       "colors": 0,
       "radii": 0,
-      "rawText": 4,
+      "rawText": 3,
       "rawTextTokens": [
         "0 ? (",
-        "= best.count ? day : best, days[0]); return (",
         "Date.parse(right.occurred_at) - Date.parse(left.occurred_at)); const indexByUrl = new Map"
       ]
     },
@@ -483,17 +495,15 @@
     "dashboard/src/ui/dashboard/components/CostAccumulation.jsx": {
       "colors": 0,
       "radii": 0,
-      "rawText": 11,
+      "rawText": 10,
       "rawTextTokens": [
         ") : accounts.length === 0 ? (",
         ") : packages.length === 0 ? (",
         ") : records.length === 0 ? (",
         "0 && (",
         "0 ? (",
-        "0 ? (monthSpend / estimatedTotalUsd) * 100 : 0; return (",
         "0 ? (monthUsd / estimatedTotalUsd) * 100 : 0; return (",
         "item.availableQuotaDisplay)?.availableQuotaDisplay || copy(\"spend.cost.row.unavailable\"); return (",
-        "record.status === \"active\" && record.renewsAt).length; return (",
         "sum + Number(record.lifetimeAmount || record.amount || 0), 0); return ("
       ]
     },
@@ -577,14 +587,12 @@
     "dashboard/src/ui/dashboard/components/TokenServiceList.jsx": {
       "colors": 0,
       "radii": 0,
-      "rawText": 6,
+      "rawText": 4,
       "rawTextTokens": [
         ") : error ? (",
         ") : pageRows.length === 0 ? (",
         "0 && (",
-        "0 && (service.used",
-        "TOKEN_SERVICE_PAGE_SIZE && (",
-        "metric.resetsAt === service.metrics[0].resetsAt) ? service.metrics[0].resetsAt : null; return ("
+        "0 && (service.used"
       ]
     },
     "dashboard/src/ui/dashboard/components/TrendMonitor.jsx": {

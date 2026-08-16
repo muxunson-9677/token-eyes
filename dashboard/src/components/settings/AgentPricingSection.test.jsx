@@ -78,10 +78,11 @@ it("keeps the pricing help action outside the disclosure and stable across colla
 
   const disclosure = screen.getByRole("button", { name: "模型定价表" });
   expect(disclosure).toHaveAttribute("aria-expanded", "false");
-  expect(screen.queryByRole("link", { name: "如何定价?" })).toBeNull();
+  const help = screen.getByRole("link", { name: "如何定价?" });
+  expect(help).toBeVisible();
+  expect(disclosure).not.toContainElement(help);
 
   await user.click(disclosure);
-  const help = await screen.findByRole("link", { name: "如何定价?" });
   expect(disclosure).toHaveAttribute("aria-expanded", "true");
   expect(disclosure).not.toContainElement(help);
 
