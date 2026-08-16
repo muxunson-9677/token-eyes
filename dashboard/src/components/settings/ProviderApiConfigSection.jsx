@@ -233,7 +233,21 @@ function ProviderApiBrandMark({ providerId, label }) {
   return <span className={cn("tt-provider-api-mark", `tt-provider-api-mark--${providerId}`)} aria-hidden="true">{mark}</span>;
 }
 
-export function ProviderApiConfigSection() {
+function ProviderApiSummary({ summary, testId }) {
+  return (
+    <div className="tt-provider-api-summary" data-testid={testId} aria-label={copy("settings.cost.provider_api.summary.aria_label")}>
+      <span>{copy("settings.cost.provider_api.summary.total")}<strong>{summary.total}</strong></span>
+      <span>{copy("settings.cost.provider_api.summary.connected")}<strong data-tone="connected">● {summary.connected}</strong></span>
+      <span>{copy("settings.cost.provider_api.summary.disconnected")}<strong data-tone="disconnected">● {summary.disconnected}</strong></span>
+      <span>
+        {copy("settings.cost.provider_api.summary.balance_cny")}
+        <strong>{summary.totalBalanceCny.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+      </span>
+    </div>
+  );
+}
+
+export function ProviderApiConfigSection({ onSummaryChange }) {
   // F4: cost settings must auto-load and display balance/monthSpend/
   // lifetimeSpend/currency from the 02 financial endpoints — same hook the
   // spend/cost page uses. The section previously kept its own configs/loading
@@ -265,12 +279,22 @@ export function ProviderApiConfigSection() {
   }, [balances]);
   const providerSummary = useMemo(() => {
     const connected = (configs || []).filter((config) => balancesByConfigId.get(config.id)?.status === "synced").length;
-    const totalBalance = (configs || []).reduce((total, config) => {
-      const value = Number(balancesByConfigId.get(config.id)?.balance);
-      return Number.isFinite(value) ? total + value : total;
+    const totalBalanceCny = (configs || []).reduce((total, config) => {
+      const balance = balancesByConfigId.get(config.id);
+      const value = Number(balance?.balance);
+      const currency = String(balance?.currency || "CNY").toUpperCase();
+      return currency === "CNY" && Number.isFinite(value) ? total + value : total;
     }, 0);
-    return { connected, disconnected: Math.max(0, (configs || []).length - connected), totalBalance };
+    return { connected, disconnected: Math.max(0, (configs || []).length - connected), totalBalanceCny };
   }, [balancesByConfigId, configs]);
+  React.useEffect(() => {
+    onSummaryChange?.({
+      total: configs.length,
+      connected: providerSummary.connected,
+      disconnected: providerSummary.disconnected,
+      totalBalanceCny: providerSummary.totalBalanceCny,
+    });
+  }, [configs.length, onSummaryChange, providerSummary]);
 
   const [editing, setEditing] = useState(null); // null | "new" | config
   const [form, setForm] = useState(DEFAULT_FORM);
@@ -525,13 +549,13 @@ export function ProviderApiConfigSection() {
         collapsible
         defaultOpen={false}
         storageKey="cost.provider-api"
-        collapsedSummary={copy("settings.cost.provider_api.collapsed_summary", { count: configs.length })}
+        collapsedSummaryContent={<ProviderApiSummary summary={{ ...providerSummary, total: configs.length }} testId="provider-api-collapsed-summary" />}
         collapsedSummaryTone="blue"
         action={editing === null ? (
           <button
             type="button"
             onClick={startAdd}
-            className="inline-flex items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
+            className="inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-md bg-oai-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-oai-brand-700"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden="true" />
             {copy("settings.cost.provider_api.add")}
@@ -569,15 +593,6 @@ export function ProviderApiConfigSection() {
       ) : (
         <div className="tt-provider-api-list space-y-2">
           <div className="tt-provider-api-toolbar">
-            <div className="tt-provider-api-summary" aria-label="供应商连接概览">
-              <span>{copy("settings.cost.provider_api.summary.total")}<strong>{configs.length}</strong></span>
-              <span>{copy("settings.cost.provider_api.summary.connected")}<strong data-tone="connected">● {providerSummary.connected}</strong></span>
-              <span>{copy("settings.cost.provider_api.summary.disconnected")}<strong data-tone="disconnected">● {providerSummary.disconnected}</strong></span>
-              <span>
-                {copy("settings.cost.provider_api.summary.balance_cny")}
-                <strong>{providerSummary.totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-              </span>
-            </div>
             <div className="flex flex-wrap items-center gap-2">
               {stale ? (
                 <span

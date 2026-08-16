@@ -72,6 +72,7 @@ export function SectionCard({
   iconTone = "blue",
   iconTestId = null,
   collapsedSummary = "",
+  collapsedSummaryContent = null,
   collapsedSummaryTone = "",
   className = "",
 }) {
@@ -118,7 +119,7 @@ export function SectionCard({
   ) : null;
   return (
     <Card className={className}>
-      <div className={cn("tt-section-card-header flex items-start justify-between gap-4", expanded && "mb-3")}>
+      <div className="tt-section-card-header mb-3 flex items-start justify-between gap-4">
         {collapsible ? (
           <button
             type="button"
@@ -161,9 +162,11 @@ export function SectionCard({
             </div>
           </div>
         )}
-        {action || collapsedSummary ? (
+        {action || collapsedSummary || collapsedSummaryContent ? (
           <div className="tt-section-header-aside shrink-0">
-            {expanded ? (action || null) : collapsedSummary ? (
+            {action || null}
+            {collapsedSummaryContent || null}
+            {collapsedSummary && !collapsedSummaryContent ? (
               <span
                 className="tt-collapsed-summary"
                 data-testid="settings-section-collapsed-summary"
@@ -177,7 +180,7 @@ export function SectionCard({
         ) : null}
       </div>
       {expanded ? (
-        <div className="-mb-3 divide-y divide-oai-gray-200/60 dark:divide-oai-gray-800/60">
+        <div className="tt-section-card-body -mb-3 divide-y divide-oai-gray-200/60 dark:divide-oai-gray-800/60">
           {children}
         </div>
       ) : null}

@@ -35,6 +35,11 @@ function formatRelativeTime(value) {
   return `${Math.floor(hours / 24)}d`;
 }
 
+function formatProjectCost(value) {
+  if (value == null) return copy("dashboard.projects.cost_unavailable");
+  return `$${value}`;
+}
+
 function normalizeUsageItems(items, fallbackIds = [], providerMap = {}) {
   if (Array.isArray(items) && items.length > 0) {
     return items.filter((item) => item?.id).map((item) => ({
@@ -255,7 +260,7 @@ function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, pr
       </div> : null}
       <div className="tt-overview-project-default-metrics">
         <div><span>{copy("dashboard.projects.tokens_label")}</span><strong>{formatCompactNumber(tokens, compactOptions)}</strong></div>
-        <div><span>{copy("dashboard.projects.cost_label")}</span><strong>{costDisplay == null ? "—" : `$${costDisplay}`}</strong></div>
+        <div><span>{copy("dashboard.projects.cost_label")}</span><strong>{formatProjectCost(costDisplay)}</strong></div>
       </div>
       <span className="tt-overview-project-pricing">{pricingLabel}</span>
       <div className="tt-overview-project-progress-row"><div className="tt-overview-project-progress" style={{ "--tt-project-progress": `${percentage}%` }} /><span>{percentage}%</span></div>

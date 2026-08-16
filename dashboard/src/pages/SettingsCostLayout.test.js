@@ -17,4 +17,17 @@ describe("cost settings responsive layout contract", () => {
     expect(css).toMatch(/\.tt-settings-cost-page \.tt-surface button\[aria-expanded\] > span:last-of-type\s*\{[\s\S]*?flex:\s*0 1 auto;/);
     expect(css).toMatch(/\.tt-settings-cost-page \.tt-surface:has\(button\[aria-expanded\]\)\s*\{[\s\S]*?box-shadow:\s*0 10px 28px/);
   });
+
+  it("keeps five active plans on each desktop row and overflow inside disclosure bodies", () => {
+    expect(css).toMatch(/@media \(min-width:\s*720px\)\s*\{[\s\S]*?\.tt-settings-cost-page \.tt-token-plan-grid\s*\{[\s\S]*?repeat\(var\(--tt-token-plan-columns,\s*5\)/);
+    expect(css).toMatch(/\.tt-main-scroll-region:has\(\.tt-settings-cost-page\)\s*\{[\s\S]*?scrollbar-width:\s*none;/);
+    expect(css).toMatch(/\.tt-settings-cost-page \.tt-section-card-body\s*\{[\s\S]*?overflow-y:\s*auto;/);
+    expect(css).toMatch(/\.tt-settings-cost-page \.tt-token-plan-grid\s*\{[\s\S]*?grid-auto-rows:\s*1fr;/);
+  });
+
+  it("keeps the new overview and plan surfaces readable in dark mode", () => {
+    expect(css).toMatch(/\.dark \.tt-settings-cost-page \.tt-cost-overview-card[\s\S]*?background:\s*rgba\(17,\s*24,\s*39,\s*0\.72\);/);
+    expect(css).toMatch(/\.dark \.tt-settings-cost-page \.tt-token-plan-grid \.tt-token-plan-card\s*\{[\s\S]*?background:\s*linear-gradient/);
+    expect(css).toMatch(/\.dark \.tt-settings-cost-page \.tt-token-plan-summary-expiry\s*\{[\s\S]*?background:[^;]+;[\s\S]*?color:[^;]+;/);
+  });
 });

@@ -3797,6 +3797,18 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
   --tt-cost-page-title: clamp(1.375rem, 1.8vw, 1.75rem);
 }
 
+/* The disclosure bodies own vertical overflow on this page. Keep the outer
+   work-surface scrollbar invisible so opening a section cannot shift the
+   heading actions or duplicate the section-local scrollbar. */
+.tt-main-scroll-region:has(.tt-settings-cost-page) {
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+}
+
+.tt-main-scroll-region:has(.tt-settings-cost-page)::-webkit-scrollbar {
+  display: none;
+}
+
 .tt-settings-cost-page main > .tt-settings-cost-shell {
   width: 100%;
   max-width: none;
@@ -3861,6 +3873,158 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
 
 .tt-settings-cost-page .tt-settings-cost-actions button:last-child svg {
   color: var(--tt-cost-accent);
+}
+
+.tt-settings-cost-page .tt-cost-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(0.75rem, 1vw, 1rem);
+  margin-bottom: clamp(1rem, 1.35vw, 1.25rem);
+}
+
+.tt-settings-cost-page .tt-cost-overview-card {
+  min-width: 0;
+  min-height: clamp(10rem, 11.5vw, 11.5rem);
+  overflow: hidden;
+  border: 1px solid #dce3eb;
+  border-radius: clamp(0.9rem, 1.1vw, 1.1rem);
+  padding: clamp(0.9rem, 1.1vw, 1.05rem);
+  background: #fff;
+  box-shadow:
+    0 16px 34px rgba(15, 23, 42, 0.1),
+    0 4px 10px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: clamp(0.65rem, 0.85vw, 0.8rem);
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-icon {
+  display: grid;
+  width: clamp(2.65rem, 3.2vw, 3.1rem);
+  height: clamp(2.65rem, 3.2vw, 3.1rem);
+  place-items: center;
+  border-radius: 50%;
+  color: #059669;
+  background: #e8faf3;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card[data-tone="blue"] .tt-cost-overview-card-icon {
+  color: #2563eb;
+  background: #e8f1ff;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card[data-tone="violet"] .tt-cost-overview-card-icon {
+  color: #7c3aed;
+  background: #f1eaff;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card[data-tone="orange"] .tt-cost-overview-card-icon {
+  color: #ea580c;
+  background: #fff0e5;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-icon svg {
+  width: 1.45rem;
+  height: 1.45rem;
+  stroke-width: 1.9;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-heading {
+  min-width: 0;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-heading h2 {
+  overflow: hidden;
+  color: #1f2937;
+  font-size: clamp(0.78rem, 0.9vw, 0.9rem);
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-heading strong {
+  display: block;
+  margin-top: 0.35rem;
+  color: #111827;
+  font-size: clamp(1.35rem, 1.75vw, 1.7rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-heading > span {
+  display: block;
+  margin-top: 0.35rem;
+  color: #7b8493;
+  font-size: clamp(0.7rem, 0.8vw, 0.78rem);
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-badge {
+  border-radius: 0.45rem;
+  padding: 0.25rem 0.45rem;
+  background: #e9f9f2;
+  color: #059669;
+  font-size: clamp(0.65rem, 0.75vw, 0.72rem);
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card[data-tone="blue"] .tt-cost-overview-card-badge {
+  background: #fff1e7;
+  color: #f97316;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-rows {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: clamp(0.85rem, 1vw, 1rem);
+  border-top: 1px solid #e8edf2;
+  padding-top: clamp(0.7rem, 0.9vw, 0.85rem);
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-rows > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #707a8a;
+  font-size: clamp(0.7rem, 0.8vw, 0.78rem);
+  line-height: 1.35;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-rows strong {
+  overflow: hidden;
+  color: #059669;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-cost-overview-card-rows strong[data-tone="blue"] { color: #2563eb; }
+.tt-settings-cost-page .tt-cost-overview-card-rows strong[data-tone="violet"] { color: #7c3aed; }
+.tt-settings-cost-page .tt-cost-overview-card-rows strong[data-tone="orange"],
+.tt-settings-cost-page .tt-cost-overview-card-rows strong[data-tone="amber"] { color: #f97316; }
+
+@media (max-width: 1100px) {
+  .tt-settings-cost-page .tt-cost-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .tt-settings-cost-page .tt-cost-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .tt-settings-cost-page .tt-settings-cost-sections {
@@ -3950,11 +4114,33 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
 
 .tt-settings-cost-page .tt-section-header-aside {
   display: flex;
+  gap: 0.5rem;
   min-width: 7.5rem;
   min-height: 2rem;
   flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
+}
+
+@media (max-width: 1150px) {
+  .tt-settings-cost-page .tt-section-card-header {
+    flex-wrap: wrap;
+  }
+
+  .tt-settings-cost-page .tt-section-card-header > :first-child {
+    flex: 1 1 100%;
+  }
+
+  .tt-settings-cost-page .tt-section-header-aside {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .tt-settings-cost-page .tt-token-plan-actions {
+    justify-content: flex-start;
+  }
 }
 
 .tt-settings-cost-page .tt-collapsed-summary {
@@ -4140,10 +4326,6 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
   gap: 0.55rem 0.65rem;
 }
 
-.tt-settings-cost-page .tt-token-plan-card .tt-token-plan-drag {
-  opacity: 0.45;
-}
-
 .tt-settings-cost-page .tt-token-plan-copy {
   min-width: 9.5rem;
   flex: 0 1 12rem;
@@ -4154,7 +4336,7 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
   gap: 0.12rem;
   white-space: normal;
   line-height: 1.3;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: #111827;
 }
@@ -4173,48 +4355,15 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
   color: #6b7280;
 }
 
-.tt-settings-cost-page .tt-token-plan-live {
-  display: grid;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 0.45rem 0.75rem;
-  grid-template-columns: minmax(3.5rem, 0.65fr) minmax(9rem, 2.2fr) minmax(5rem, 0.85fr) minmax(5.5rem, 0.95fr);
-  font-size: 0.75rem;
-}
-
-.tt-settings-cost-page .tt-token-plan-account {
-  color: #6b7280;
-  font-size: 0.75rem;
-}
-
-.tt-settings-cost-page .tt-token-plan-account:empty {
-  display: none;
-}
-
-.tt-settings-cost-page .tt-token-plan-account:empty + .tt-token-plan-quota {
-  grid-column: 1 / span 2;
-}
-
 .tt-settings-cost-page .tt-token-plan-quota {
   display: grid;
   gap: 0.25rem;
   min-width: 0;
 }
 
-.tt-settings-cost-page .tt-token-plan-quota-label {
-  color: #111827;
-  font-weight: 500;
-}
-
-.tt-settings-cost-page .tt-token-plan-quota-sub {
-  color: #6b7280;
-  font-size: 0.6875rem;
-}
-
 .tt-settings-cost-page .tt-token-plan-progress {
   display: block;
-  height: 0.28rem;
+  height: 0.2rem;
   overflow: hidden;
   border-radius: 999px;
   background: #e5e7eb;
@@ -4239,62 +4388,469 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
   background: #cbd1d8;
 }
 
-.tt-settings-cost-page .tt-token-plan-remaining,
-.tt-settings-cost-page .tt-token-plan-updated {
+.tt-settings-cost-page .tt-token-plan-grid {
   display: grid;
-  gap: 0.15rem;
-  min-width: 0;
-  justify-items: start;
+  align-items: stretch;
+  grid-auto-rows: 1fr;
+  grid-template-columns: repeat(var(--tt-token-plan-columns, 2), minmax(0, 1fr));
+  gap: 0.9rem;
 }
 
-.tt-settings-cost-page .tt-token-plan-remaining-label,
-.tt-settings-cost-page .tt-token-plan-updated-time {
+.tt-settings-cost-page .tt-token-plan-grid .tt-token-plan-card {
+  container-type: inline-size;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 0.5rem;
+  border-color: rgba(198, 211, 226, 0.95);
+  border-radius: 0.5rem;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(244, 247, 251, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 7px 17px rgba(33, 48, 67, 0.1), 0 1px 3px rgba(33, 48, 67, 0.06);
+}
+
+.tt-settings-cost-page .tt-token-plan-card-detail {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #edf0f4;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-account {
+  overflow: hidden;
+  color: #6b7280;
+  font-size: 0.5625rem;
+  line-height: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-account--full {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.tt-settings-cost-page .tt-token-plan-copy {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 0.08rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-identity-meta {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0;
+  color: #98a2b3;
+  font-size: 0.5625rem;
+  line-height: 1.25;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-cost {
+  max-width: 100%;
+  overflow: hidden;
+  color: #079f6d;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-quota-windows {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-quota-windows > span {
+  display: none;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-quota-windows > div {
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin-top: 0;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-quota-window {
+  grid-template-columns: 1fr;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-progress {
+  grid-column: 1 / -1;
+  margin-top: 0.05rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-quota-window > small {
+  grid-column: 1 / -1;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-summary {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.22rem;
+  padding-top: 0.58rem;
+  border-top: 1px solid #edf0f4;
+  color: #6b7280;
+  font-size: 0.625rem;
+  line-height: 1.35;
+}
+
+.tt-settings-cost-page .tt-token-plan-summary-expiry {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.18rem;
+  border: 1px solid #c9f2e2;
+  border-radius: 0.55rem;
+  background: #ecfdf5;
+  padding: 0.32rem 0.35rem;
+  color: #07875f;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-token-plan-validity-date {
+  flex: none;
+  white-space: nowrap;
+}
+
+.tt-settings-cost-page .tt-token-plan-summary-expiry svg {
+  width: 0.625rem;
+  height: 0.625rem;
+  flex: none;
+}
+
+.tt-settings-cost-page .tt-token-plan-failure-reason {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.28rem;
+  border: 1px solid #fed7aa;
+  border-radius: 0.45rem;
+  background: #fff7ed;
+  padding: 0.3rem 0.38rem;
+  color: #c2410c;
+  font-size: 0.5625rem;
+  line-height: 1.3;
+}
+
+.tt-settings-cost-page .tt-token-plan-failure-reason svg {
+  width: 0.65rem;
+  height: 0.65rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #edf0f4;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  color: #667085;
+  font-size: 0.625rem;
+  font-weight: 600;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-actions button:first-child {
+  color: var(--tt-cost-accent);
+}
+
+.tt-settings-cost-page .tt-token-plan-card-actions button:last-child {
+  color: #ef4444;
+}
+
+.tt-settings-cost-page .tt-token-plan-card-actions button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.tt-settings-cost-page .tt-token-plan-grid .tt-token-plan-card > div:first-child {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.4rem;
+  padding-right: 0.9rem;
+}
+
+.tt-settings-cost-page .tt-section-card-body {
+  max-height: clamp(15rem, 43vh, 23rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+  scrollbar-color: rgba(148, 163, 184, 0.65) transparent;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.tt-settings-cost-page .tt-section-card-body::-webkit-scrollbar {
+  width: 0.4rem;
+}
+
+.tt-settings-cost-page .tt-section-card-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tt-settings-cost-page .tt-section-card-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.55);
+}
+
+.tt-settings-cost-page .tt-token-plan-grid .tt-token-plan-status {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.tt-settings-cost-page .tt-token-plan-status {
+  display: block;
+  width: 0.45rem;
+  height: 0.45rem;
+  overflow: hidden;
+  border-radius: 0.14rem;
+  padding: 0;
+}
+
+.tt-settings-cost-page .tt-token-plan-card [aria-label^="拖动"] {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-card [aria-label^="拖动"] svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-card .tt-token-provider-mark {
+  display: flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #344054;
+  box-shadow: inset 0 0 0 1px #e5e7eb;
+}
+
+.tt-settings-cost-page .tt-token-plan-card .tt-token-provider-mark img,
+.tt-settings-cost-page .tt-token-plan-card .tt-token-provider-mark svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-status--active {
+  background: #10b981;
+  color: #10b981;
+}
+
+.tt-settings-cost-page .tt-token-plan-status--attention {
+  background: #f97316;
+  color: #f97316;
+}
+
+.tt-settings-cost-page .tt-token-plan-status--expired {
+  background: #94a3b8;
+  color: #94a3b8;
+}
+
+.tt-settings-cost-page .tt-token-plan-grid .tt-token-plan-card > .ml-9 {
+  margin-left: 0;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-windows {
+  min-width: 0;
+  border: 1px solid #edf0f4;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  padding: 0.35rem 0.42rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-windows > span {
+  display: block;
   color: #6b7280;
   font-size: 0.6875rem;
 }
 
-.tt-settings-cost-page .tt-token-plan-remaining-value {
-  color: #111827;
-  font-weight: 600;
+.tt-settings-cost-page .tt-token-plan-quota-windows {
+  grid-column: 1 / -1;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-windows > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.32rem;
+  margin-top: 0.3rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-window {
+  display: grid;
+  gap: 0.24rem;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid #edf0f4;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.5rem 0;
+  color: #374151;
+  font-size: 0.625rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-window:first-child {
+  padding-top: 0;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-window:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-window-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-window-head > strong {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  align-items: start;
+  gap: 0.25rem;
+  overflow: visible;
+  color: #344054;
+  font-size: 0.625rem;
+  line-height: 1.3;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-window-head > strong svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: none;
+  color: #98a2b3;
+}
+
+.tt-settings-cost-page .tt-token-plan-quota-window-percent {
+  flex: none;
+  color: #344054;
+  font-size: 0.625rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
-.tt-settings-cost-page .tt-token-plan-updated small {
-  width: max-content;
-  border-radius: 0.3rem;
-  padding: 0.05rem 0.35rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
+.tt-settings-cost-page .tt-token-plan-quota-window small {
+  color: #98a2b3;
+  font-size: 0.5625rem;
+  line-height: 1.25;
+  text-align: right;
 }
 
-.tt-settings-cost-page .tt-token-plan-updated small[data-tone="success"] {
-  background: var(--tt-cost-accent-soft);
-  color: #079f6d;
-}
-
-.tt-settings-cost-page .tt-token-plan-updated small[data-tone="warning"] {
-  background: var(--tt-cost-warn-soft);
-  color: var(--tt-cost-warn);
-}
-
-.tt-settings-cost-page .tt-token-plan-updated small[data-tone="danger"] {
-  background: #ffe7ec;
-  color: #ef3357;
-}
-
-.tt-settings-cost-page .tt-token-plan-updated small[data-tone="muted"] {
-  background: #f3f4f6;
-  color: #6b7280;
-}
-
-@media (max-width: 960px) {
-  .tt-settings-cost-page .tt-token-plan-card > div:first-child {
-    flex-wrap: wrap;
+@container (max-width: 16rem) {
+  .tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-quota-window {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+    font-size: 0.5875rem;
+    line-height: 1.3;
   }
 
-  .tt-settings-cost-page .tt-token-plan-live {
-    grid-template-columns: 1fr 1fr;
-    width: 100%;
+  .tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-quota-window > small {
+    grid-column: auto;
+    font-size: 0.55rem;
+    line-height: 1.2;
+  }
+
+  .tt-settings-cost-page .tt-token-plan-card-detail .tt-token-plan-progress {
+    grid-column: auto;
+  }
+
+  .tt-settings-cost-page .tt-token-plan-card-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container (max-width: 13rem) {
+  .tt-settings-cost-page .tt-token-plan-summary-expiry {
+    flex-wrap: wrap;
+    align-content: center;
+    row-gap: 0.08rem;
+    white-space: normal;
+  }
+}
+
+.tt-settings-cost-page .tt-token-plan-grid--expired {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tt-settings-cost-page .tt-token-plan-grid--expired [data-testid="expired-token-plan-row"] {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: start;
+}
+
+.tt-settings-cost-page .tt-token-plan-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.tt-settings-cost-page .tt-token-plan-pagination button {
+  min-height: 2rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  color: #374151;
+  font-weight: 500;
+}
+
+.tt-settings-cost-page .tt-token-plan-pagination button:hover:not(:disabled) {
+  border-color: var(--tt-cost-accent);
+  color: var(--tt-cost-accent);
+}
+
+.tt-settings-cost-page .tt-token-plan-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (min-width: 720px) {
+  .tt-settings-cost-page .tt-token-plan-grid {
+    grid-template-columns: repeat(var(--tt-token-plan-columns, 5), minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .tt-settings-cost-page .tt-token-plan-grid,
+  .tt-settings-cost-page .tt-token-plan-grid--expired {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -4980,12 +5536,47 @@ html.native-windows-app .tt-reference-route-widgets .tt-desktop-sidebar::after {
 }
 
 .dark .tt-settings-cost-page .tt-surface:has(button[aria-expanded]),
+.dark .tt-settings-cost-page .tt-cost-overview-card,
 .dark .tt-settings-cost-page .tt-settings-cost-actions button,
 .dark .tt-settings-cost-page .tt-provider-api-summary,
 .dark .tt-settings-cost-page .tt-other-ai-summary,
 .dark .tt-settings-cost-page .tt-other-ai-groups > section {
   border-color: rgba(255, 255, 255, 0.1);
   background: rgba(17, 24, 39, 0.72);
+}
+
+.dark .tt-settings-cost-page .tt-cost-overview-card-heading h2,
+.dark .tt-settings-cost-page .tt-cost-overview-card-heading strong {
+  color: #f9fafb;
+}
+
+.dark .tt-settings-cost-page .tt-cost-overview-card-heading > span,
+.dark .tt-settings-cost-page .tt-cost-overview-card-rows > div {
+  color: #9ca3af;
+}
+
+.dark .tt-settings-cost-page .tt-cost-overview-card-rows,
+.dark .tt-settings-cost-page .tt-token-plan-card-detail,
+.dark .tt-settings-cost-page .tt-token-plan-card-summary {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .tt-settings-cost-page .tt-token-plan-grid .tt-token-plan-card {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: linear-gradient(145deg, rgba(31, 41, 55, 0.96), rgba(17, 24, 39, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 7px 17px rgba(0, 0, 0, 0.26), 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.dark .tt-settings-cost-page .tt-token-plan-summary-expiry {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(6, 95, 70, 0.28);
+  color: #6ee7b7;
+}
+
+.dark .tt-settings-cost-page .tt-token-plan-failure-reason {
+  border-color: rgba(251, 146, 60, 0.28);
+  background: rgba(124, 45, 18, 0.28);
+  color: #fdba74;
 }
 
 .dark .tt-settings-cost-page .tt-settings-cost-heading p,

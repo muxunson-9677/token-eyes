@@ -106,7 +106,7 @@ function ruleId(source, model) {
   return s && m ? `${s}:${m}` : "";
 }
 
-export function AgentPricingSection() {
+export function AgentPricingSection({ onSummaryChange }) {
   const [defaultDraft, setDefaultDraft] = useState(EMPTY_PRICING);
   const [defaultSaved, setDefaultSaved] = useState(EMPTY_PRICING);
   const [rules, setRules] = useState([]);
@@ -128,6 +128,10 @@ export function AgentPricingSection() {
   const [editingId, setEditingId] = useState(null);
   const [ruleDraft, setRuleDraft] = useState({ ...EMPTY_RULE_DRAFT });
   const [ruleFormError, setRuleFormError] = useState("");
+
+  useEffect(() => {
+    onSummaryChange?.({ configuredCount: VERIFIED_MODEL_PRICES.length, customCount: rules.length });
+  }, [onSummaryChange, rules.length]);
 
   useEffect(() => {
     let cancelled = false;

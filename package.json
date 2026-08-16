@@ -81,5 +81,9 @@
   "license": "MIT",
   "engines": {
     "node": ">=20"
+  },
+  "allowScripts": {
+    "@mongodb-js/zstd@2.0.1": true,
+    "esbuild@0.28.1": true
   }
 }

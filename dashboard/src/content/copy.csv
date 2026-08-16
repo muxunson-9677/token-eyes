@@ -155,6 +155,9 @@ settings.token_plan.subscription_cycle.yearly,ui,SettingsPage,TokenPlanSection,s
 settings.token_plan.subscription_cycle.one_time,ui,SettingsPage,TokenPlanSection,subscription_cycle_one_time,"一次性",,active
 settings.token_plan.subscription_start,ui,SettingsPage,TokenPlanSection,subscription_start,"订阅开始",,active
 settings.token_plan.subscription_end,ui,SettingsPage,TokenPlanSection,subscription_end,"订阅结束",,active
+settings.token_plan.account,ui,SettingsPage,TokenPlanSection,account,"账户",,active
+settings.token_plan.quota_windows,ui,SettingsPage,TokenPlanSection,quota_windows,"额度窗口",,active
+settings.token_plan.quota_window_reset,ui,SettingsPage,TokenPlanSection,quota_window_reset,"重置时间",,active
 settings.token_plan.recorded_at,ui,SettingsPage,TokenPlanSection,recorded_at,"记录时间",,active
 login_modal.leaderboard_participation,ui,*,LoginModal,leaderboard_participation,"Signing in automatically joins the leaderboard and uploads aggregated Token statistics.",,active
 login_modal.upload_boundary,ui,*,LoginModal,upload_boundary,"Code, conversations, projects, paths, Skills, MCP data and files are never uploaded.",,active
@@ -350,6 +353,7 @@ dashboard.projects.limit_all,ui,ProjectUsagePanel,ProjectUsagePanel,limit_all,"A
 dashboard.projects.remove,ui,ProjectUsagePanel,ProjectUsagePanel,remove,"Remove {{name}}",,active
 dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,"No project usage data",,active
 dashboard.projects.cost_label,ui,ProjectUsagePanel,ProjectUsagePanel,cost_label,"Cost",,active
+dashboard.projects.cost_unavailable,ui,ProjectUsagePanel,ProjectUsagePanel,cost_unavailable,"—",,active
 dashboard.projects.requests_label,ui,ProjectUsagePanel,ProjectUsagePanel,requests_label,"Requests",,active
 dashboard.projects.last_active_label,ui,ProjectUsagePanel,ProjectUsagePanel,last_active_label,"Last active",,active
 dashboard.projects.copy_path,ui,ProjectUsagePanel,ProjectUsagePanel,copy_path,"Copy path",,active
@@ -1495,7 +1499,7 @@ settings.token_plan.codex_quota.title,ui,SettingsPage,TokenPlanSection,codex_quo
 settings.token_plan.codex_quota.5h,ui,SettingsPage,TokenPlanSection,codex_quota_5h,"5 小时",,active
 settings.token_plan.codex_quota.7d,ui,SettingsPage,TokenPlanSection,codex_quota_7d,"7 天",,active
 settings.token_plan.codex_quota.spark_5h,ui,SettingsPage,TokenPlanSection,codex_quota_spark_5h,"Spark 5 小时",,active
-settings.token_plan.codex_quota.spark_7d,ui,SettingsPage,TokenPlanSection,codex_quota_spark_7d,"Spark 7 天",,active
+settings.token_plan.codex_quota.spark_7d,ui,SettingsPage,TokenPlanSection,codex_quota_spark_7d,"GPT 5.3 Codex Spark",,active
 settings.token_plan.codex_quota.remaining,ui,SettingsPage,TokenPlanSection,codex_quota_remaining,"剩余",,active
 settings.token_plan.codex_quota.reset,ui,SettingsPage,TokenPlanSection,codex_quota_reset,"重置",,active
 settings.token_plan.codex_quota.unconfigured,ui,SettingsPage,TokenPlanSection,codex_quota_unconfigured,"Codex 未连接，无法读取实时额度",,active
@@ -2400,6 +2404,8 @@ settings.cost.provider_api.summary.connected,ui,SettingsPage,ProviderApiConfigSe
 settings.cost.provider_api.summary.disconnected,ui,SettingsPage,ProviderApiConfigSection,summary_disconnected,"Disconnected",,active
 settings.cost.provider_api.summary.balance_cny,ui,SettingsPage,ProviderApiConfigSection,summary_balance,"Total balance (CNY)",,active
 settings.token_plan.batch_refresh,ui,SettingsPage,TokenPlanSection,batch_refresh,"Refresh all",,active
+settings.token_plan.email.show_full,ui,SettingsPage,TokenPlanSection,email_show_full,"Show full email",,active
+settings.token_plan.email.hide,ui,SettingsPage,TokenPlanSection,email_hide,"Hide email",,active
 data_sources.reference.local_only,data_sources,DataSourcesPage,Privacy,local_only,"Local-only access",,active
 data_sources.reference.local_only_detail,data_sources,DataSourcesPage,Privacy,local_only_detail,"All scanning and parsing happens locally",,active
 data_sources.reference.privacy_first,data_sources,DataSourcesPage,Privacy,privacy_first,"Privacy first",,active
@@ -2511,13 +2517,52 @@ settings.token_plan.count_active,ui,SettingsPage,TokenPlanSection,count_active,"
 settings.token_plan.count_watch,ui,SettingsPage,TokenPlanSection,count_watch,"需关注 {{count}} 个",,active
 settings.token_plan.expired_group,ui,SettingsPage,TokenPlanSection,expired_group,"已过期套餐",,active
 settings.token_plan.status_expired,ui,SettingsPage,TokenPlanSection,status_expired,"已过期",,active
+settings.token_plan.status_active,ui,SettingsPage,TokenPlanSection,status_active,"已激活",,active
+settings.token_plan.status_attention,ui,SettingsPage,TokenPlanSection,status_attention,"需关注",,active
+settings.token_plan.pagination.previous,ui,SettingsPage,TokenPlanSection,pagination_previous,"上一页",,active
+settings.token_plan.pagination.next,ui,SettingsPage,TokenPlanSection,pagination_next,"下一页",,active
+settings.token_plan.pagination.status,ui,SettingsPage,TokenPlanSection,pagination_status,"第 {{current}} / {{total}} 页",,active
 settings.token_plan.expired_at,ui,SettingsPage,TokenPlanSection,expired_at,"到期",,active
-settings.token_plan.quota_source_label,ui,SettingsPage,TokenPlanSection,quota_source_label,"额度来源",,active
-settings.token_plan.quota_source_provider_reported,ui,SettingsPage,TokenPlanSection,quota_source_provider_reported,"官网同步",,active
-settings.token_plan.live_quota_aria,ui,SettingsPage,TokenPlanSection,live_quota_aria,"套餐实时额度",,active
-settings.cost.provider_api.collapsed_summary,ui,SettingsPage,ProviderApiConfigSection,collapsed_summary,"{{count}} 个供应商",,active
+settings.cost.provider_api.summary.aria_label,ui,SettingsPage,ProviderApiConfigSection,summary_aria_label,"供应商连接概览",,active
 settings.cost.other_ai.collapsed_summary,ui,SettingsPage,OtherAiSpendSection,collapsed_summary,"{{count}} 个分组",,active
 settings.cost.other_ai.summary_counts,ui,SettingsPage,OtherAiSpendSection,summary_counts,"共 {{groups}} 个分组 · {{records}} 笔花销",,active
+settings.cost.overview.aria_label,ui,SettingsPage,CostSettingsOverview,aria_label,"Cost settings overview",,active
+settings.cost.overview.unit,ui,SettingsPage,CostSettingsOverview,unit,"items",,active
+settings.cost.overview.item,ui,SettingsPage,CostSettingsOverview,item,"items",,active
+settings.cost.overview.record,ui,SettingsPage,CostSettingsOverview,record,"records",,active
+settings.cost.overview.normal,ui,SettingsPage,CostSettingsOverview,normal,"Normal",,active
+settings.cost.overview.pricing.title,ui,SettingsPage,CostSettingsOverview,pricing_title,"Model pricing",,active
+settings.cost.overview.pricing.badge,ui,SettingsPage,CostSettingsOverview,pricing_badge,"Configured",,active
+settings.cost.overview.pricing.subtitle,ui,SettingsPage,CostSettingsOverview,pricing_subtitle,"Configured model prices",,active
+settings.cost.overview.pricing.catalog,ui,SettingsPage,CostSettingsOverview,pricing_catalog,"Official catalog",,active
+settings.cost.overview.pricing.custom,ui,SettingsPage,CostSettingsOverview,pricing_custom,"Custom pricing",,active
+settings.cost.overview.plans.title,ui,SettingsPage,CostSettingsOverview,plans_title,"Plans and quotas",,active
+settings.cost.overview.plans.attention,ui,SettingsPage,CostSettingsOverview,plans_attention,"{{count}} need attention",,active
+settings.cost.overview.plans.subtitle,ui,SettingsPage,CostSettingsOverview,plans_subtitle,"Active plans",,active
+settings.cost.overview.plans.watch,ui,SettingsPage,CostSettingsOverview,plans_watch,"Plans to review",,active
+settings.cost.overview.plans.cost,ui,SettingsPage,CostSettingsOverview,plans_cost,"Current plan cost",,active
+settings.cost.overview.providers.title,ui,SettingsPage,CostSettingsOverview,providers_title,"Provider connections",,active
+settings.cost.overview.providers.attention,ui,SettingsPage,CostSettingsOverview,providers_attention,"Needs attention",,active
+settings.cost.overview.providers.normal,ui,SettingsPage,CostSettingsOverview,providers_normal,"Connected",,active
+settings.cost.overview.providers.subtitle,ui,SettingsPage,CostSettingsOverview,providers_subtitle,"Connected / disconnected",,active
+settings.cost.overview.providers.total,ui,SettingsPage,CostSettingsOverview,providers_total,"Providers",,active
+settings.cost.overview.providers.balance,ui,SettingsPage,CostSettingsOverview,providers_balance,"Balance (CNY)",,active
+settings.cost.overview.other.title,ui,SettingsPage,CostSettingsOverview,other_title,"Other AI spend groups",,active
+settings.cost.overview.other.subtitle,ui,SettingsPage,CostSettingsOverview,other_subtitle,"Spend groups",,active
+settings.cost.overview.other.month,ui,SettingsPage,CostSettingsOverview,other_month,"This month",,active
+settings.cost.overview.other.records,ui,SettingsPage,CostSettingsOverview,other_records,"Manual records",,active
+settings.token_plan.subscription_cost_cny,ui,SettingsPage,TokenPlanSection,subscription_cost_cny,"CNY {{amount}}",,active
+settings.token_plan.subscription_cost_usd,ui,SettingsPage,TokenPlanSection,subscription_cost_usd,"USD {{amount}}",,active
+settings.token_plan.subscription_cost_placeholder,ui,SettingsPage,TokenPlanSection,subscription_cost_placeholder,"xx CNY",,active
+settings.token_plan.validity_unset,ui,SettingsPage,TokenPlanSection,validity_unset,"Validity: not set",,active
+settings.token_plan.validity_days_hours,ui,SettingsPage,TokenPlanSection,validity_days_hours,"{{days}}d {{hours}}h",,active
+settings.token_plan.validity_hours_minutes,ui,SettingsPage,TokenPlanSection,validity_hours_minutes,"{{hours}}h {{minutes}}m",,active
+settings.token_plan.validity_minutes,ui,SettingsPage,TokenPlanSection,validity_minutes,"{{minutes}}m",,active
+settings.token_plan.validity_summary,ui,SettingsPage,TokenPlanSection,validity_summary,"Validity: {{remaining}} · {{date}}",,active
+settings.token_plan.failure_reason,ui,SettingsPage,TokenPlanSection,failure_reason,"Sync issue: {{reason}}",,active
+settings.token_plan.failure_reason_unavailable,ui,SettingsPage,TokenPlanSection,failure_reason_unavailable,"Official quota sync is temporarily unavailable. Try again later.",,active
+settings.token_plan.value_unavailable,ui,SettingsPage,TokenPlanSection,value_unavailable,"—",,active
+settings.token_plan.reset_unavailable,ui,SettingsPage,TokenPlanSection,reset_unavailable,"--",,active
 share.variant.weekly_bill,share,DashboardPage,ShareModal,variant_weekly_bill,"Weekly Bill",,active
 share.card.weekly_bill.title,share,DashboardPage,WeeklyBillCard,title,"AI Weekly Bill",,active
 share.card.weekly_bill.week_spend,share,DashboardPage,WeeklyBillCard,week_spend,"This week's spend",,active

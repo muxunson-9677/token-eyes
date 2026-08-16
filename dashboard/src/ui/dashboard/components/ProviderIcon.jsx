@@ -245,6 +245,7 @@ const PROVIDER_LOGO_MAP = {
   ALIYUN_BAILIAN: "https://img.alicdn.com/tfs/TB1_ZXuNcfpK1RjSZFOXXa6nFXa-32-32.ico",
   ANTIGRAVITY: "/brand-logos/antigravity.svg",
   CLAUDE: "/brand-logos/claude-code.svg",
+  CODEX: "/brand-logos/codex.svg",
   CODEBUDDY: "/brand-logos/codebuddy.svg",
   WORKBUDDY: "/brand-logos/codebuddy.svg",
   HERMES: "/brand-logos/hermes.svg",
