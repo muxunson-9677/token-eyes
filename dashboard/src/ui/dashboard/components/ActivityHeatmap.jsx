@@ -488,8 +488,18 @@ export function ActivityHeatmap({
 
       {view === "3d" && (
         <div 
-          onClick={handleOpenModal} 
-          className="cursor-pointer group relative overflow-hidden rounded-lg hover:border-oai-gray-350 dark:hover:border-oai-gray-700 border border-transparent transition-all"
+          data-testid="activity-heatmap-3d-card"
+          role="button"
+          tabIndex={0}
+          aria-label={copy("heatmap.3d.hover_tip")}
+          onClick={handleOpenModal}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              handleOpenModal();
+            }
+          }}
+          className="tt-pressable tt-product-focusable cursor-pointer group relative overflow-hidden rounded-lg hover:border-oai-gray-350 dark:hover:border-oai-gray-700 border border-transparent transition-all"
           title={copy("heatmap.3d.hover_tip")}
         >
           <ActivityHeatmap3D weeks={weeks} isDark={isDark} palette={activePalette} />
@@ -595,6 +605,9 @@ export function ActivityHeatmap({
       {/* 3D Interactive Fullscreen Modal */}
       {isModalOpen && (
         <div 
+          role="dialog"
+          aria-modal="true"
+          aria-label={copy("heatmap.3d.modal.title")}
           onAnimationEnd={handleAnimationEnd}
           onClick={(e) => {
             if (e.target === e.currentTarget) handleCloseModal();

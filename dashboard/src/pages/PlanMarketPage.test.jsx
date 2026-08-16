@@ -193,6 +193,7 @@ it("starts as a compact market list and reveals the selected provider plan detai
   const glm = screen.getByTestId("plan-market-provider-glm");
   const toggle = within(glm).getByTestId("plan-market-toggle-glm");
   expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(toggle).toHaveClass("tt-pressable", "tt-product-focusable");
   expect(within(glm).queryByTestId("plan-market-plans-glm")).not.toBeInTheDocument();
 
   fireEvent.click(toggle);

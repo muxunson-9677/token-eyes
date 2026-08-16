@@ -112,6 +112,7 @@ describe("OtherAiSpendSection", () => {
     expect(new Set([noteA, noteB, noteC].map((node) => node.getAttribute("data-tone"))).size).toBeGreaterThan(1);
     const main = noteA.closest(".tt-other-ai-row-main");
     expect(main).toBeTruthy();
+    expect(main).toHaveClass("tt-pressable", "tt-product-focusable");
     expect(main.querySelector(".tt-other-ai-row-title")).toHaveTextContent("EqualVPN");
     expect(main.querySelector(".tt-other-ai-row-primary")).toBeTruthy();
     expect(noteA.compareDocumentPosition(main.querySelector(".tt-other-ai-row-title")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();

@@ -230,7 +230,7 @@ function ProjectUsageCard({ entry, embedded, aggregateTokens, compactOptions, pr
   return (
     <article data-testid="project-usage-card" data-expanded={expanded} className="tt-overview-project-card tt-overview-project-card--embedded tt-overview-project-card--compact flex flex-col" style={{ "--tt-project-accent": accent }}>
       <div className="tt-overview-project-toggle-row flex items-start gap-1">
-        <button type="button" className="tt-overview-project-toggle min-w-0 flex-1" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-controls={detailsId}>
+        <button type="button" className="tt-overview-project-toggle tt-pressable tt-product-focusable min-w-0 flex-1" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-controls={detailsId}>
           <span className="tt-overview-project-icon" aria-hidden="true"><FolderOpen size={18} /></span>
           <span className="min-w-0 flex-1 text-left">
             <span className="block truncate text-sm font-semibold text-oai-black dark:text-oai-white">{projectName}</span>

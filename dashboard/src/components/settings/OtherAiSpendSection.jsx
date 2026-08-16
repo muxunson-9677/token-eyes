@@ -118,7 +118,7 @@ function SortableSpendRow({ record, number, expanded, onToggle, onEdit, onDelete
         <span className="tt-other-ai-row-index inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-oai-gray-100 px-1.5 text-xs font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-300">
           {number}
         </span>
-        <button type="button" onClick={onToggle} className="tt-other-ai-row-main min-w-0 flex-1 text-left">
+        <button type="button" onClick={onToggle} className="tt-other-ai-row-main tt-pressable tt-product-focusable min-w-0 flex-1 text-left">
           <div className="tt-other-ai-row-primary flex min-w-0 items-center gap-2">
             <span className="tt-other-ai-row-title truncate text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100">{record.plan_label}</span>
             <span className="tt-other-ai-row-cost shrink-0 text-sm font-semibold tabular-nums text-emerald-600">

@@ -180,7 +180,7 @@ function ProviderCard({ provider, expanded, onToggle }) {
       <button
         type="button"
         data-testid={`plan-market-toggle-${provider.id}`}
-        className="tt-plan-market-provider-summary"
+        className="tt-plan-market-provider-summary tt-pressable tt-product-focusable"
         onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={`plan-market-plans-${provider.id}`}

@@ -202,14 +202,31 @@ describe("ProjectUsagePanel", () => {
 
     render(<ProjectUsagePanel embedded entries={entries} />);
     const cards = screen.getAllByTestId("project-usage-card");
+    const secondToggle = screen.getByRole("button", { name: /Second project/ });
 
     expect(cards[0]).toHaveClass("tt-overview-project-card--compact");
-    await user.click(screen.getByRole("button", { name: /Second project/ }));
+    expect(secondToggle).toHaveClass("tt-pressable", "tt-product-focusable");
+    await user.click(secondToggle);
     expect(cards[0]).toHaveAttribute("data-expanded", "false");
     expect(cards[1]).toHaveAttribute("data-expanded", "true");
     expect(cards[2]).toHaveAttribute("data-expanded", "false");
     expect(cards[1].querySelector('[data-slot="project-agent-icon"]')).toBeInTheDocument();
     expect(cards[1].querySelector('[data-slot="project-model-icon"]')).toBeInTheDocument();
+  });
+
+  it("keeps the card remove action isolated from the disclosure", async () => {
+    const user = userEvent.setup();
+    const onRemoveProject = vi.fn();
+
+    render(<ProjectUsagePanel embedded entries={[baseEntry]} onRemoveProject={onRemoveProject} />);
+
+    const card = screen.getByTestId("project-usage-card");
+    expect(card).toHaveAttribute("data-expanded", "false");
+
+    await user.click(screen.getByTestId("project-usage-remove"));
+
+    expect(onRemoveProject).toHaveBeenCalledWith(baseEntry);
+    expect(card).toHaveAttribute("data-expanded", "false");
   });
 
   it("reveals real agent, model, period, activity and trend details for only the selected project", async () => {
