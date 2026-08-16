@@ -20,6 +20,17 @@ function declarations(selector) {
   );
 }
 
+function declarationsFromSelectorList(selector) {
+  const rule = stylesheet.nodes.find(
+    (node) => node.type === "rule" && node.selector?.includes(selector),
+  );
+  return Object.fromEntries(
+    (rule?.nodes || [])
+      .filter((node) => node.type === "decl")
+      .map((node) => [node.prop, node.value]),
+  );
+}
+
 function mediaDeclarations(params, selector) {
   let result = {};
   stylesheet.walkAtRules("media", (rule) => {
@@ -207,6 +218,30 @@ describe("approved M/N material fidelity", () => {
 
     expect(declarations(resetControl)["box-shadow"]).toContain("inset 0 1px 0");
     expect(declarations(resetRebound).animation).toContain("tt-widget-press-rebound");
+  });
+
+  it("uses one coherent dark surface system across the requested routes", () => {
+    const darkRoot = declarations(":root.dark");
+    expect(darkRoot["--tt-page-canvas"]).toBe("#15181d");
+    expect(darkRoot["--tt-page-surface"]).toBe("#20242b");
+    expect(darkRoot["--tt-page-ink"]).toBe("#f4f6f8");
+
+    const darkSelectors = [
+      ":root.dark .tt-token-service-card",
+      ":root.dark.tt-reference-route-reset-history .tt-reset-activity",
+      ":root.dark.tt-reference-route-reset-history .tt-reset-stat-card",
+      ":root.dark.tt-reference-route-reset-history .tt-reset-history-card",
+      ":root.dark.tt-reference-route-reset-history .tt-reset-history-empty",
+      ":root.dark .tt-reference-route-spend-plans .tt-plan-market-provider",
+      ":root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-card",
+      ":root.dark .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero",
+      ":root.dark .tt-reference-route-dashboard .tt-overview-locked .tt-overview-mini-metric",
+    ];
+    for (const selector of darkSelectors) {
+      const background = declarationsFromSelectorList(selector).background || "";
+      expect(background, selector).not.toBe("");
+      expect(background, selector).not.toMatch(/#fff(?:fff)?\b|rgba?\(255\s*,\s*255\s*,\s*255\s*,\s*(?:0\.[5-9]|1)\)/i);
+    }
   });
 
   it("renders provider details as a floating overlay without growing the stack", () => {

@@ -2903,6 +2903,187 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
   .tt-widget-primary-action { margin-left: 0; }
 }
 
+/* Unified dark surfaces for the routes covered by the V4 UI acceptance pass. */
+:root.dark .tt-token-service-card {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(145deg, rgba(43, 48, 57, 0.98), rgba(27, 31, 38, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+:root.dark .tt-token-service-card:hover {
+  border-color: rgba(110, 231, 183, 0.28);
+  background: linear-gradient(145deg, rgba(49, 55, 65, 0.98), rgba(30, 35, 42, 0.98));
+}
+
+:root.dark.tt-reference-route-reset-history {
+  color: var(--tt-page-ink);
+  background: var(--tt-page-canvas);
+}
+
+:root.dark.tt-reference-route-reset-history .tt-reset-activity {
+  border-color: var(--tt-page-border);
+  background: radial-gradient(circle at 8% 48%, rgba(126, 87, 194, 0.12), transparent 25%), linear-gradient(135deg, #242830, #1b1f25);
+  box-shadow: var(--tt-page-shadow);
+}
+
+:root.dark.tt-reference-route-reset-history [data-testid="reset-history-stat"][data-empty="true"],
+:root.dark.tt-reference-route-reset-history .tt-reset-history-card,
+:root.dark.tt-reference-route-reset-history .tt-reset-effect-control {
+  border-color: var(--tt-page-border);
+  background: linear-gradient(145deg, rgba(42, 47, 56, 0.94), rgba(28, 32, 39, 0.96));
+  color: var(--tt-page-ink);
+}
+
+:root.dark.tt-reference-route-reset-history .tt-reset-heatmap-cells span {
+  background: #303741;
+}
+
+:root.dark.tt-reference-route-reset-history .tt-reset-heatmap-cells span[data-level="1"] { background: #125f49; }
+:root.dark.tt-reference-route-reset-history .tt-reset-heatmap-cells span[data-level="2"] { background: #14946b; }
+:root.dark.tt-reference-route-reset-history .tt-reset-heatmap-cells span[data-level="3"] { background: #35c995; }
+:root.dark.tt-reference-route-reset-history .tt-reset-activity-copy h2,
+:root.dark.tt-reference-route-reset-history .tt-reset-activity-stat strong { color: var(--tt-page-ink); }
+:root.dark.tt-reference-route-reset-history .tt-reset-activity-copy p,
+:root.dark.tt-reference-route-reset-history .tt-reset-activity-stat span,
+:root.dark.tt-reference-route-reset-history .tt-reset-heatmap-label { color: var(--tt-page-muted); }
+
+:root.dark .tt-reference-route-spend-plans {
+  color: var(--tt-page-ink);
+  background: var(--tt-page-canvas);
+}
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-stat {
+  border-color: var(--tt-page-border);
+  background: linear-gradient(155deg, #272c34, #1d2128);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 0 #12151a, 0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider {
+  border-color: var(--tt-page-border);
+  background: linear-gradient(155deg, #272c34, #1d2128);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 0 #12151a, 0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-card {
+  border-color: var(--tt-page-border);
+  background: linear-gradient(155deg, #272c34, #1d2128);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 0 #12151a, 0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-summary:hover,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-card:hover,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-stat:hover {
+  background: #2b3039;
+}
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-select-wrap,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-sources a,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-global-price-comparison {
+  border-color: var(--tt-page-border-strong);
+  background: linear-gradient(180deg, #292e37, #21252c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 0 #15181d;
+  color: #b8c7dc;
+}
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-header h1,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-stat strong,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-name,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-metadata,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-name,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-price,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-quota { color: var(--tt-page-ink); }
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-header p,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-updated,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-stat-label,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-stat small,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-verified,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-description,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-alt-prices,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-grid ul,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-sources { color: var(--tt-page-muted); }
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-select-wrap select { color: var(--tt-page-ink); }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-metadata-separator {
+  background: linear-gradient(180deg, #718096, #4b5563);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-announcement { border-color: #514574; background: #29243a; color: #c4b5fd; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-announcement--claude { border-color: #684d2f; background: #30271f; color: #f0c58c; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-official { border-color: #315b82; background: #1c3043; color: #8dc3ff; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-tag--hot,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-badge--hot { border-color: #713f3b; background: #3a2525; color: #ff9a8d; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-tag--discount,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-badge--entry,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-access--direct,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-risk--low { border-color: #286347; background: #1b382b; color: #73dda2; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-tag--new,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-badge--premium { border-color: #554581; background: #2e2944; color: #b9a8ff; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-badge--recommended,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-access--vpn,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-risk--medium { border-color: #735522; background: #392f1d; color: #f2c66d; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-risk--high { border-color: #79422d; background: #3d2820; color: #f4a07a; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-risk--extreme { border-color: #783441; background: #3b2229; color: #ff8998; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-status-discontinued { background: #343a43; color: #b6bec9; }
+
+:root.dark .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero {
+  border-color: var(--tt-page-border);
+  background: linear-gradient(180deg, #23272e 0%, #1c2026 72%, #191d22 100%);
+}
+
+:root.dark .tt-reference-route-dashboard .tt-overview-locked .tt-overview-mini-metric {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(42, 47, 56, 0.86);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+:root.dark .tt-reference-route-dashboard [data-testid="dashboard-detail-grid"] > div > div > .tt-surface-nested,
+:root.dark .tt-reference-route-dashboard [data-testid="dashboard-data-details"] > .tt-surface-nested,
+:root.dark .tt-reference-route-dashboard .tt-overview-project-card--embedded,
+:root.dark .tt-reference-route-dashboard .tt-overview-model-table-card,
+:root.dark .tt-reference-route-dashboard .tt-overview-daily-summary {
+  border-color: var(--tt-page-border);
+  background: linear-gradient(145deg, rgba(42, 47, 56, 0.96), rgba(27, 31, 38, 0.96));
+  box-shadow: var(--tt-page-shadow);
+}
+
+:root.dark .tt-reference-route-dashboard .tt-overview-project-default-metrics > div,
+:root.dark .tt-reference-route-dashboard .tt-overview-project-breakdown > span,
+:root.dark .tt-reference-route-dashboard .tt-overview-data-tabs {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(20, 24, 30, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+:root.dark .tt-reference-route-dashboard .tt-overview-data-tab[aria-selected="true"],
+:root.dark .tt-reference-route-dashboard .tt-overview-pagination button,
+:root.dark .tt-reference-route-dashboard .tt-overview-pagination input,
+:root.dark .tt-reference-route-dashboard .tt-overview-page-size select {
+  border-color: var(--tt-page-border);
+  background: #272c34;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  color: #c6ced8;
+}
+
+:root.dark .tt-reference-route-dashboard .tt-overview-project-summary strong,
+:root.dark .tt-reference-route-dashboard .tt-overview-project-default-metrics strong,
+:root.dark .tt-reference-route-dashboard .tt-overview-model-summary strong,
+:root.dark .tt-reference-route-dashboard .tt-overview-daily-summary strong { color: var(--tt-page-ink); }
+
+:root.dark .tt-reference-route-dashboard .tt-overview-model-summary [data-tone="green"] [data-testid="model-usage-summary-icon"] { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+:root.dark .tt-reference-route-dashboard .tt-overview-model-summary [data-tone="blue"] [data-testid="model-usage-summary-icon"] { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+:root.dark .tt-reference-route-dashboard .tt-overview-model-summary [data-tone="amber"] [data-testid="model-usage-summary-icon"] { background: rgba(245, 158, 11, 0.18); color: #fcd34d; }
+:root.dark .tt-reference-route-dashboard .tt-overview-project-tags > span,
+:root.dark .tt-reference-route-dashboard .tt-overview-project-tags--summary > span { background: rgba(16, 185, 129, 0.13); color: #9ddfca; }
+
+:root.dark .tt-settings-cost-page .tt-other-ai-group-menu,
+:root.dark .tt-settings-cost-page .tt-provider-api-card {
+  border-color: var(--tt-page-border);
+  background: #20242b;
+  color: var(--tt-page-ink);
+}
+
 .tt-widget-summary {
   display: grid;
   height: 102px;
@@ -6699,6 +6880,15 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
 
 :root.dark {
   --tt-canvas: #14161a;
+  --tt-page-canvas: #15181d;
+  --tt-page-surface: #20242b;
+  --tt-page-border: #343a43;
+  --tt-page-border-strong: #454d58;
+  --tt-page-muted: #a7b0bd;
+  --tt-page-ink: #f4f6f8;
+  --tt-page-success: #42d39b;
+  --tt-page-success-soft: rgba(16, 185, 129, 0.16);
+  --tt-page-shadow: 0 1px 2px rgba(0, 0, 0, 0.34), 0 12px 30px rgba(0, 0, 0, 0.26);
   --tt-shell-environment: radial-gradient(circle at 34% 90%, rgba(78, 58, 155, 0.13), transparent 33%), linear-gradient(145deg, #1d2025, #15171b 56%, #111317);
   --tt-sidebar-surface: linear-gradient(145deg, rgba(52, 56, 64, 0.78), rgba(27, 30, 36, 0.75));
   --tt-surface: linear-gradient(145deg, rgba(52, 56, 64, 0.78), rgba(27, 30, 36, 0.75));
@@ -9577,4 +9767,48 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-summary,
   .tt-reference-route-spend-plans .tt-plan-market-plan-card,
   .tt-reference-route-spend-plans .tt-plan-market-sources a { transition: none; }
+}
+
+/* Dark leakage guard: keep these route-specific surfaces after the light-theme
+   declarations so later density work cannot reintroduce bright islands. */
+:root.dark.tt-reference-route-reset-history .tt-reset-stat-card,
+:root.dark.tt-reference-route-reset-history .tt-reset-history-card,
+:root.dark.tt-reference-route-reset-history .tt-reset-history-empty {
+  border-color: var(--tt-page-border);
+  color: var(--tt-page-ink);
+  background: linear-gradient(145deg, rgba(42, 47, 56, 0.94), rgba(28, 32, 39, 0.96));
+  box-shadow: var(--tt-page-shadow);
+}
+
+:root.dark.tt-reference-route-reset-history .tt-reset-activity {
+  border-color: var(--tt-page-border);
+  color: var(--tt-page-ink);
+  background: radial-gradient(circle at 8% 48%, rgba(126, 87, 194, 0.12), transparent 25%), linear-gradient(135deg, #242830, #1b1f25);
+  box-shadow: var(--tt-page-shadow);
+}
+
+:root.dark.tt-reference-route-reset-history .tt-reset-history-table-head,
+:root.dark.tt-reference-route-reset-history .tt-reset-history-empty,
+:root.dark.tt-reference-route-reset-history .tt-reset-stat-detail {
+  color: var(--tt-page-muted);
+}
+
+:root.dark.tt-reference-route-reset-history .tt-reset-activity-stat--divided,
+:root.dark.tt-reference-route-reset-history .tt-reset-heatmap + .tt-reset-activity-stat {
+  border-left-color: var(--tt-page-border);
+}
+
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-card,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-stat,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-select-wrap,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-sources a,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-global-price-comparison {
+  border-color: var(--tt-page-border);
+  color: var(--tt-page-ink);
+  background: var(--tt-page-surface);
+}
+
+:root.dark .tt-reference-route-settings-basic #settings-limits .tt-section-card-body > * {
+  border-color: rgba(255, 255, 255, 0.09) !important;
 }
