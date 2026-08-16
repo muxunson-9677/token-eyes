@@ -1,4 +1,5 @@
 {
+    "limits.settings.drag_handle": "拖拽排序：{{provider}}",
   "shared.data.not_provided": "未提供字段",
   "nav.group.overview": "概览",
   "nav.group.spend": "使用与成本",

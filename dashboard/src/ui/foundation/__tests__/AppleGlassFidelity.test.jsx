@@ -189,7 +189,11 @@ describe("approved M/N material fidelity", () => {
     const widgetRebound = ".tt-reference-route-widgets .tt-widget-click-bounce";
 
     expect(declarations(resetData)["justify-self"]).toBe("end");
-    expect(declarations(resetData).width).toBe("fit-content");
+    expect(declarations(resetData).width).toBe("100%");
+    expect(declarations(resetData)["max-width"]).toBe("100%");
+    expect(declarations(resetData)["min-width"]).toBe("0");
+    expect(declarations(`${resetData} .tt-reset-heatmap`)["justify-content"]).toBe("flex-end");
+    expect(declarations(`${resetData} .tt-reset-heatmap`)["max-width"]).toBe("100%");
     expect(declarations(widgetPress).transform).toBe("translateY(2px) scale(0.94)");
     expect(declarations(widgetRebound).animation).toContain("tt-widget-press-rebound");
     expect(declarations(widgetRebound).animation).toContain("300ms");

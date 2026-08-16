@@ -120,13 +120,20 @@
 }
 
 .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned {
-  width: fit-content;
-  grid-template-columns: max-content minmax(122px, 142px) minmax(122px, 142px);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(122px, 142px) minmax(122px, 142px);
   justify-content: end;
   justify-self: end;
 }
 
 .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  justify-content: flex-end;
+  overflow: hidden;
   gap: 4px;
   padding-right: 8px;
 }
@@ -168,7 +175,7 @@
   }
 
   .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned {
-    grid-template-columns: max-content 92px 92px;
+    grid-template-columns: minmax(0, 1fr) 92px 92px;
   }
 
   .tt-reference-route-reset-history .tt-reset-activity-data--right-aligned .tt-reset-heatmap {

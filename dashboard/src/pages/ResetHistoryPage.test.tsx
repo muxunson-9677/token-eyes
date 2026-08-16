@@ -202,7 +202,7 @@ describe("ResetHistoryPage", () => {
   it("reveals the remaining official announcements from the history control", async () => {
     const user = userEvent.setup();
     resetContext.value.history = Array.from({ length: 13 }, (_, index) =>
-      officialReset(`record-${index}`, new Date(2026, 6, 29 - index, 8, index)));
+      officialReset(`record-${index}`, new Date(2026, 7, 13 - index, 8, index)));
 
     render(<ResetHistoryPage />);
 
