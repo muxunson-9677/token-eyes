@@ -70,6 +70,7 @@ function quotaMetric(source, kind, unit) {
     : (total > 0 ? Math.max(0, Math.min(100, (used / total) * 100)) : 0);
   return {
     kind,
+    modelLabel: String(source?.model_label || source?.model_name || source?.model || "").trim(),
     total,
     used,
     percentage,
@@ -259,7 +260,9 @@ function formatRemainingDuration(value, now) {
   return copy("spend.usage.token_services.duration.minutes", { minutes });
 }
 
-function windowLabel(kind) {
+function windowLabel(metric) {
+  const kind = metric?.kind;
+  if (metric?.modelLabel) return metric.modelLabel;
   if (kind === "rolling_5_hour") return copy("spend.usage.token_services.window.rolling_5_hour");
   if (kind === "rolling_weekly") return copy("spend.usage.token_services.window.rolling_weekly");
   if (kind === "auto_composer") return copy("spend.usage.token_services.window.auto_composer");
@@ -356,6 +359,8 @@ export function TokenServiceList({
             const rank = pageStart + index + 1;
             const connectedWithoutQuota = ["success", "synced"].includes(service.syncStatus)
               && service.metrics.length === 0;
+            const showSyncStatus = connectedWithoutQuota
+              || (service.syncStatus && !["success", "synced"].includes(service.syncStatus));
             return (
               <li
                 key={service.id}
@@ -382,7 +387,7 @@ export function TokenServiceList({
                           {service.planLabel}
                         </span>
                       )}
-                      {service.syncStatus ? <span className={cn(
+                      {showSyncStatus ? <span className={cn(
                         "rounded px-1.5 py-0.5 text-[9px] font-medium",
                         connectedWithoutQuota
                           ? "bg-amber-50 text-amber-700 dark:bg-amber-950/35 dark:text-amber-300"
@@ -408,7 +413,7 @@ export function TokenServiceList({
                         <div className="mb-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[10px] leading-3.5 text-oai-gray-500 dark:text-oai-gray-400">
                           <span className="inline-flex items-center gap-1 whitespace-nowrap font-medium">
                             {metric.kind === "total" ? null : <Clock3 className="h-3 w-3" aria-hidden="true" />}
-                            {windowLabel(metric.kind)}
+                            {windowLabel(metric)}
                           </span>
                           <span className="tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
                             {copy("spend.usage.token_services.used")} {formatQuota(metric.used, metric.unit)} / {copy("spend.usage.token_services.total")} {formatQuota(metric.total, metric.unit)} · {copy("settings.token_plan.remaining")} {formatQuota(Math.max(0, metric.total - metric.used), metric.unit)} · <strong className="font-semibold text-oai-gray-700 dark:text-oai-gray-300">{roundedPercentage}%</strong>
@@ -425,17 +430,17 @@ export function TokenServiceList({
                             aria-valuenow={roundedPercentage}
                           />
                         </div>
-                        {metric.resetsAt && (
-                          <div
-                            data-testid={`token-service-reset-${metric.kind}`}
-                            className="mt-0.5 text-right text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600"
-                          >
-                            {copy("spend.usage.token_services.reset_countdown", {
+                        <div
+                          data-testid={`token-service-reset-${metric.kind}`}
+                          className="mt-0.5 text-right text-[9px] leading-3 tabular-nums text-oai-gray-400 dark:text-oai-gray-600"
+                        >
+                          {metric.resetsAt
+                            ? copy("spend.usage.token_services.reset_countdown", {
                               remaining: formatRemainingDuration(metric.resetsAt, now),
                               value: formatDateTime(metric.resetsAt, true),
-                            })}
-                          </div>
-                        )}
+                            })
+                            : `${copy("settings.token_plan.quota_window_reset")}: ${copy("settings.token_plan.reset_unavailable")}`}
+                        </div>
                       </div>
                     );
                   })}

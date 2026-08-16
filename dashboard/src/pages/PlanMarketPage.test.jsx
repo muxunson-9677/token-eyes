@@ -1,9 +1,16 @@
 import React from "react";
+import fs from "node:fs";
+import path from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { PlanMarketPage } from "./PlanMarketPage.jsx";
 import planMarketCatalog from "../../../shared/plan-market-catalog.json";
+
+const planMarketCss = fs.readFileSync(
+  path.resolve(process.cwd(), "src/ui/foundation/apple-glass.css"),
+  "utf8",
+);
 
 // V2-W1 plan market: static curated catalog rendered directly from
 // shared/plan-market-catalog.json (no API round-trip, works on web host too).
@@ -54,6 +61,30 @@ it("renders an explicit price or official price status for every expanded plan t
   for (const planCard of planCards) {
     expect(planCard.querySelector(".tt-plan-market-plan-price")?.textContent?.trim()).toBeTruthy();
   }
+});
+
+it("preserves every catalog title, quota, highlight, and alternate-price note", () => {
+  renderPage();
+  for (const provider of planMarketCatalog.providers) {
+    const providerCard = screen.getByTestId(`plan-market-provider-${provider.id}`);
+    fireEvent.click(within(providerCard).getByTestId(`plan-market-toggle-${provider.id}`));
+    for (const plan of provider.plans) {
+      const planCard = within(providerCard).getByText(plan.display_name).closest("article");
+      expect(planCard).not.toBeNull();
+      expect(planCard).toHaveTextContent(plan.quota_summary);
+      for (const highlight of plan.highlights || []) expect(planCard).toHaveTextContent(highlight);
+      for (const alternate of plan.alt_prices || []) {
+        if (alternate.note) expect(planCard).toHaveTextContent(alternate.note);
+      }
+    }
+  }
+});
+
+it("uses the compact cost-card density for market summary and plan cards", () => {
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-stat\s*\{[^}]*min-height:\s*96px;[^}]*padding:\s*16px;[^}]*border-radius:\s*10px;/s);
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-provider-summary\s*\{[^}]*min-height:\s*64px;[^}]*padding:\s*10px 14px;/s);
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-plan-grid\s*\{[^}]*gap:\s*12px;[^}]*grid-auto-rows:\s*auto;/s);
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-plan-card\s*\{[^}]*min-height:\s*0;[^}]*gap:\s*8px;[^}]*padding:\s*12px;[^}]*border-radius:\s*8px;/s);
 });
 
 it("renders the reference providers plus the researched Volcano Engine, Xiaomi MiMo, Grok, and Antigravity offerings", () => {

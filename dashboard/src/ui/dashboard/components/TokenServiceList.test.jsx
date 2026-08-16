@@ -153,6 +153,54 @@ describe("TokenServiceList", () => {
     expect(within(cursorRow).getAllByTestId(/^token-service-reset-/)).toHaveLength(3);
   });
 
+  it("hides the successful sync badge but keeps actionable sync states visible", () => {
+    render(
+      <TokenServiceList
+        plans={[
+          plan("healthy", 20, 100, {
+            provider_id: "codex",
+            plan_label: "Pro",
+            detection_method: "official_account",
+            sync_status: "success",
+          }),
+          plan("failed", 30, 100, {
+            provider_id: "kimi",
+            plan_label: "Moderato",
+            detection_method: "official_account",
+            sync_status: "failed",
+          }),
+        ]}
+      />,
+    );
+
+    const healthyRow = screen.getByText("Pro").closest("li");
+    const failedRow = screen.getByText("Moderato").closest("li");
+    expect(within(healthyRow).queryByText("同步成功")).not.toBeInTheDocument();
+    expect(within(failedRow).getByText("同步失败")).toBeInTheDocument();
+  });
+
+  it("uses the official model label for each quota lane", () => {
+    render(
+      <TokenServiceList
+        plans={[plan("models", 0, 0, {
+          provider_id: "codex",
+          detection_method: "official_account",
+          sync_status: "success",
+          quota_windows: [
+            { kind: "rolling_5_hour", model_label: "GPT 5.3 Codex · 5h", total: 100, used: 12, percentage: 12 },
+            { kind: "rolling_weekly", model_label: "GPT 5.3 Codex · 7d", total: 100, used: 44, percentage: 44 },
+          ],
+        })]}
+      />,
+    );
+
+    const row = screen.getByTestId("token-service-row");
+    expect(row).toHaveTextContent("GPT 5.3 Codex · 5h");
+    expect(row).toHaveTextContent("GPT 5.3 Codex · 7d");
+    expect(within(row).getAllByTestId(/^token-service-reset-/)).toHaveLength(2);
+    expect(within(row).getAllByText(/官方未提供/)).toHaveLength(2);
+  });
+
   it("shows the account label attached to an official Codex authorization", () => {
     render(
       <TokenServiceList
