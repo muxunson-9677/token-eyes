@@ -688,7 +688,6 @@ function SortableTokenPlanCard({
   showFullEmail,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
-  const [expanded, setExpanded] = useState(false);
   const planLabel = record.plan_label || record.id;
   const detailId = `token-plan-detail-${record.id}`;
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -736,7 +735,7 @@ function SortableTokenPlanCard({
       ref={setNodeRef}
       style={style}
       data-testid="token-plan-card"
-      data-expanded={expanded ? "true" : "false"}
+      data-expanded="true"
       className={cn(
         "tt-token-plan-card tt-token-plan-card--reference tt-token-service-card tt-surface-nested rounded-lg border p-2",
         isDragging && "relative z-10 bg-white shadow-lg dark:bg-oai-gray-900",
@@ -760,14 +759,7 @@ function SortableTokenPlanCard({
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={detailId}
-          aria-label={copy(expanded ? "settings.token_plan.collapse" : "settings.token_plan.expand", { plan: planLabel })}
-          onClick={() => setExpanded((value) => !value)}
-          className="tt-token-plan-card-toggle tt-pressable tt-product-focusable flex min-w-0 flex-1 items-center gap-2 rounded-md text-left"
-        >
+        <div className="tt-token-plan-card-toggle flex min-w-0 flex-1 items-center gap-2 text-left">
           <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${record.provider_id || record.source || "custom"}`)} aria-hidden="true">
             <ProviderIcon provider={record.provider_id || record.source} size={14} />
           </span>
@@ -799,11 +791,10 @@ function SortableTokenPlanCard({
           >
             <span className="sr-only">{tokenPlanStatusLabel(displayStatus.kind)}</span>
           </span>
-          <ChevronDown className={cn("h-4 w-4 shrink-0 text-oai-gray-400 transition-transform", expanded && "rotate-180")} aria-hidden />
-        </button>
+        </div>
       </div>
 
-      {expanded ? <div id={detailId} data-testid={detailId} className="tt-token-plan-card-detail">
+      <div id={detailId} data-testid={detailId} className="tt-token-plan-card-detail">
         <TokenPlanQuotaWindows providerId={providerKey} windows={detailWindows} />
         {isCodexSource(record.source) && !quotaWindows.length ? <CodexQuotaBlock codexData={usageLimits?.codex} loading={loadingUsageLimits} /> : null}
         <div data-testid="active-token-plan-summary" className="tt-token-plan-card-summary">
@@ -840,7 +831,7 @@ function SortableTokenPlanCard({
             {copy("settings.token_plan.delete_short")}
           </button>
         </div>
-      </div> : null}
+      </div>
     </div>
   );
 }

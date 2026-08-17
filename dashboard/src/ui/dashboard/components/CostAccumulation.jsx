@@ -227,7 +227,6 @@ function CostSummaryCards({
   selectedMonth,
   stale = false,
   lastSuccessfulAt = null,
-  subscriptionRecords = [],
 }) {
   if (loading) {
     return (
@@ -250,23 +249,28 @@ function CostSummaryCards({
   const label = (suffixKey, fallbackKey) => monthLabel
     ? `${monthLabel} ${copy(suffixKey)}`
     : copy(fallbackKey);
-  const confidence = (metric, value, accuracy, sourceLabel, method = null) => deriveDataConfidence({
+  const confidence = (metric, value, accuracy, sourceLabel, method = null, options = {}) => deriveDataConfidence({
     metric,
     hasValue: value !== null && value !== undefined,
     availability: value !== null && value !== undefined ? "available" : "unavailable",
     accuracy,
-    coverage: value !== null && value !== undefined ? "complete" : "unavailable",
+    coverage: options.coverage ?? (value !== null && value !== undefined ? "complete" : "unavailable"),
     sourceKind: "local",
     sourceLabel,
     observedAt: lastSuccessfulAt,
     lastSuccessAt: lastSuccessfulAt,
     isStale: stale,
     estimationMethod: method,
-    reason: null,
+    reason: options.reason ?? null,
   });
-  const hasApiCost = Number.isFinite(Number(summary.monthApiCostUsd))
-    && summary.monthApiCostUsd !== null
-    && summary.monthApiCostUsd !== undefined;
+  const apiEquivalentUsd = summary.monthApiEquivalentUsd ?? summary.monthApiCostUsd;
+  const actualCashSpendUsd = summary.monthActualCashSpendUsd ?? summary.monthSubscriptionCostUsd;
+  const hasApiEquivalent = Number.isFinite(Number(apiEquivalentUsd))
+    && apiEquivalentUsd !== null
+    && apiEquivalentUsd !== undefined;
+  const hasActualCash = Number.isFinite(Number(actualCashSpendUsd))
+    && actualCashSpendUsd !== null
+    && actualCashSpendUsd !== undefined;
   const hasSubscriptionCost = Number.isFinite(Number(summary.monthSubscriptionCostUsd))
     && summary.monthSubscriptionCostUsd !== null
     && summary.monthSubscriptionCostUsd !== undefined;
@@ -277,73 +281,85 @@ function CostSummaryCards({
       ? now.getDate()
       : new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate())
     : null;
-  const dailyAverage = hasApiCost && elapsedDays ? Number(summary.monthApiCostUsd) / elapsedDays : null;
+  const dailyAverage = hasApiEquivalent && elapsedDays ? Number(apiEquivalentUsd) / elapsedDays : null;
   const unavailable = copy("spend.cost.row.unavailable");
-  const activeSubscriptions = subscriptionRecords.filter((record) => record.status === "active").length;
-  const renewingSubscriptions = subscriptionRecords.filter((record) => record.status === "active" && record.renewsAt).length;
   const roi = computeSubscriptionRoi({
-    monthApiCostUsd: summary.monthApiCostUsd,
+    monthApiEquivalentUsd: apiEquivalentUsd,
     monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
   });
+  const actualCoverageKey = summary.actualCashCoverage === "exact"
+    ? "spend.cost.accuracy.exact"
+    : summary.actualCashCoverage === "partial"
+      ? "spend.cost.accuracy.partial"
+      : "spend.cost.accuracy.unknown";
 
   return (
     <div>
-      <p className="mb-3 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">
+      <p
+        data-testid="cost-summary-scope-note"
+        className="mb-3 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400"
+      >
         <Info className="mr-3 h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
         {copy("spend.cost.summary.scope_note")}
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
-      {hasApiCost ? <SummaryCard
-        id="api"
+      {hasActualCash ? <SummaryCard
+        id="actual-cash"
+        icon={Package}
+        iconTone="violet"
+        label={label("spend.cost.summary.actual_cash_suffix", "spend.cost.summary.actual_cash")}
+        value={formatDualAmount(
+          actualCashSpendUsd,
+          Number.isFinite(Number(summary.usdToCny)) ? actualCashSpendUsd * summary.usdToCny : null,
+          null,
+          { compactCny: true },
+        )}
+        confidence={confidence(
+          "actual-spend",
+          actualCashSpendUsd,
+          "exact",
+          copy("spend.cost.summary.actual_cash_source"),
+          null,
+          {
+            coverage: summary.actualCashCoverage === "exact" ? "complete" : "partial",
+            reason: summary.actualCashCoverage === "exact"
+              ? null
+              : copy("spend.cost.summary.actual_cash_partial_detail"),
+          },
+        )}
+        confidenceTestId="cost-confidence-actual-cash"
+        metrics={[
+          { label: copy("spend.cost.summary.subscription_cash"), value: hasSubscriptionCost ? formatAmount(summary.monthSubscriptionCostUsd) : unavailable },
+          { label: copy("spend.cost.summary.official_api_cash"), value: summary.monthOfficialApiSpendUsd == null ? unavailable : formatAmount(summary.monthOfficialApiSpendUsd) },
+          { label: copy("spend.cost.summary.custom_cash"), value: summary.monthOtherAiCostUsd == null ? unavailable : formatAmount(summary.monthOtherAiCostUsd) },
+          { label: copy("spend.cost.summary.coverage"), value: copy(actualCoverageKey) },
+        ]}
+      /> : null}
+      {hasApiEquivalent ? <SummaryCard
+        id="api-equivalent"
         icon={BarChart3}
         iconTone="blue"
-        label={label("spend.cost.summary.estimated_usage_suffix", "spend.cost.summary.estimated_usage")}
+        label={label("spend.cost.summary.api_equivalent_suffix", "spend.cost.summary.api_equivalent")}
         value={formatDualAmount(
-          summary.monthApiCostUsd,
-          Number.isFinite(Number(summary.usdToCny)) ? summary.monthApiCostUsd * summary.usdToCny : null,
-          comparison("api", summary.monthApiCostUsd, summary.previousMonthApiCostUsd),
+          apiEquivalentUsd,
+          Number.isFinite(Number(summary.usdToCny)) ? apiEquivalentUsd * summary.usdToCny : null,
+          comparison("api-equivalent", apiEquivalentUsd, summary.previousMonthApiCostUsd),
           { compactCny: true },
         )}
         confidence={confidence(
           "cost",
-          summary.monthApiCostUsd,
+          apiEquivalentUsd,
           "estimated",
           copy("data.confidence.source.pricing"),
           copy("data.confidence.method.api_pricing"),
         )}
-        confidenceTestId="cost-confidence-estimated"
-        comparison={comparison("api", summary.monthApiCostUsd, summary.previousMonthApiCostUsd)}
+        confidenceTestId="cost-confidence-api-equivalent"
+        comparison={comparison("api-equivalent", apiEquivalentUsd, summary.previousMonthApiCostUsd)}
         metrics={[
           { label: copy("spend.cost.design.daily_average"), value: dailyAverage === null ? unavailable : formatAmount(dailyAverage) },
           { label: copy("spend.cost.design.month_usage"), value: summary.monthTotalTokens == null ? unavailable : formatChineseTokenCount(summary.monthTotalTokens) },
           { label: copy("spend.cost.design.highest_daily"), value: summary.highestDailyCostUsd == null ? unavailable : formatAmount(summary.highestDailyCostUsd) },
           { label: copy("spend.cost.design.month_daily_average"), value: dailyAverage === null ? unavailable : formatAmount(dailyAverage) },
-        ]}
-      /> : null}
-      {hasSubscriptionCost ? <SummaryCard
-        id="subscription"
-        icon={Package}
-        iconTone="violet"
-        label={label("spend.cost.summary.actual_subscription_suffix", "spend.cost.summary.actual_subscription")}
-        value={formatDualAmount(
-          summary.monthSubscriptionCostUsd,
-          Number.isFinite(Number(summary.usdToCny)) ? summary.monthSubscriptionCostUsd * summary.usdToCny : null,
-          comparison("subscription", summary.monthSubscriptionCostUsd, summary.previousMonthSubscriptionCostUsd),
-          { compactCny: true },
-        )}
-        confidence={confidence(
-          "actual-spend",
-          summary.monthSubscriptionCostUsd,
-          "exact",
-          copy("spend.cost.subscription.section"),
-        )}
-        confidenceTestId="cost-confidence-subscription"
-        comparison={comparison("subscription", summary.monthSubscriptionCostUsd, summary.previousMonthSubscriptionCostUsd)}
-        metrics={[
-          { label: copy("spend.cost.design.subscription_count"), value: subscriptionRecords.length.toLocaleString() },
-          { label: copy("spend.cost.design.subscription_added"), value: unavailable },
-          { label: copy("spend.cost.design.subscription_changed"), value: unavailable },
-          { label: copy("spend.cost.design.subscription_renewing"), value: renewingSubscriptions || activeSubscriptions ? renewingSubscriptions.toLocaleString() : "0" },
         ]}
       /> : null}
       </div>
@@ -369,7 +385,7 @@ function CostSummaryCards({
 function SubscriptionRoiCard({ summary, loading }) {
   if (loading) return null;
   const roi = computeSubscriptionRoi({
-    monthApiCostUsd: summary.monthApiCostUsd,
+    monthApiEquivalentUsd: summary.monthApiEquivalentUsd ?? summary.monthApiCostUsd,
     monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
   });
   if (!roi) {
@@ -420,7 +436,7 @@ function SummaryCard({
       data-testid="cost-summary-card"
       data-cost-summary-card={id}
       className={cn(
-        "tt-surface-nested tt-cost-summary-card flex h-full flex-col items-start rounded-lg p-3 text-left",
+        "tt-surface-nested tt-cost-summary-card tt-pressable flex h-full flex-col items-start rounded-lg p-3 text-left",
         highlight ? "tt-cost-summary-total" : "",
       )}
     >
@@ -508,7 +524,7 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
     <section
       ref={sectionRef}
       className={cn(
-        "tt-surface-nested rounded-[var(--tt-card-radius)] p-4",
+        "tt-surface-nested tt-pressable-parent rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
       data-cost-section={id}
@@ -1290,6 +1306,11 @@ export function CostAccumulation({
   subscriptionRecords = [],
   costSummary = {
     monthApiCostUsd: 0,
+    monthApiEquivalentUsd: 0,
+    monthOfficialApiSpendUsd: null,
+    monthActualCashSpendUsd: 0,
+    actualCashCoverage: "unknown",
+    monthOtherAiCostUsd: 0,
     monthSubscriptionCostUsd: 0,
     monthTotalCostUsd: 0,
     lifetimeTotalCostUsd: 0,
@@ -1332,7 +1353,7 @@ export function CostAccumulation({
       {/* Cost Summary */}
       <div
         data-testid="cost-summary-region"
-        className="tt-surface rounded-[var(--tt-card-radius)] p-4"
+        className="tt-surface tt-pressable-group rounded-[var(--tt-card-radius)] p-4"
       >
         {showMonthPicker ? <CostMonthPicker
           selectedMonth={selectedMonth}
@@ -1345,7 +1366,6 @@ export function CostAccumulation({
           selectedMonth={selectedMonth}
           stale={costSummaryStale}
           lastSuccessfulAt={costLastSuccessfulAt}
-          subscriptionRecords={subscriptionRecords}
         />
       </div>
       <OtherAiGroupCostSection

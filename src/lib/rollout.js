@@ -1,5 +1,6 @@
 const fs = require("node:fs/promises");
 const fssync = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
 
@@ -5795,6 +5796,221 @@ async function parseRoocodeIncremental({
   return { recordsProcessed, eventsAggregated, bucketsQueued };
 }
 
+function resolveDeepSeekHarnessHome(env = process.env, homeDir = os.homedir()) {
+  const configured = env?.TOKENTRACKER_DSH_HOME || env?.DSH_HOME;
+  return configured ? path.resolve(configured) : path.join(homeDir, ".dsh");
+}
+
+async function listDeepSeekHarnessSessionFiles(dshHome = resolveDeepSeekHarnessHome()) {
+  const out = [];
+  async function walk(dir) {
+    const entries = await safeReadDir(dir);
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (
+        entry.isFile() &&
+        (entry.name === "session.jsonl" || entry.name === "session.jsonl.zstd")
+      ) {
+        out.push(fullPath);
+      }
+    }
+  }
+  await walk(path.join(dshHome, "sessions"));
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+function normalizeDeepSeekHarnessUsage(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const input = toNonNegativeInt(raw.inputTokens);
+  const cacheRead = toNonNegativeInt(raw.cacheReadTokens);
+  const cacheWrite = toNonNegativeInt(raw.cacheWriteTokens);
+  const output = toNonNegativeInt(raw.outputTokens);
+  const reasoning = toNonNegativeInt(raw.reasoningTokens);
+  const total = input + cacheRead + cacheWrite + output;
+  if (total <= 0) return null;
+  return {
+    input_tokens: input,
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+    conversation_count: 1,
+  };
+}
+
+async function readDeepSeekHarnessSession(filePath) {
+  const raw = await fs.readFile(filePath);
+  if (!filePath.endsWith(".zstd")) return raw.toString("utf8");
+  // Live Harness sessions append one zstd frame per flush. Node's native
+  // zstdDecompressSync stops after the first frame, while this decoder reads
+  // the concatenated frame stream as a single JSONL payload.
+  const decoded = Buffer.from(await require("@mongodb-js/zstd").decompress(raw));
+  return decoded.toString("utf8");
+}
+
+function extractDeepSeekHarnessFileTotals(text, fallbackTimestamp) {
+  let currentModel = DEFAULT_MODEL;
+  const samples = new Map();
+  for (const line of String(text || "").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event?.type === "request/context") {
+      currentModel = normalizeModelInput(event?.data?.model) || DEFAULT_MODEL;
+      continue;
+    }
+    const turn = event?.data?.turn;
+    const step = event?.data?.step;
+    if (turn == null || step == null) continue;
+    const key = `${turn}|${step}`;
+    const eventTimeMs =
+      typeof event.time === "string" ? Date.parse(event.time) : coerceEpochMs(event.time);
+    const timestamp = Number.isFinite(eventTimeMs) && eventTimeMs > 0
+      ? new Date(eventTimeMs).toISOString()
+      : fallbackTimestamp;
+    if (event.type === "assistant/chunk" && event?.data?.chunk?.type === "usage") {
+      const usage = normalizeDeepSeekHarnessUsage(event.data.chunk.usage);
+      if (usage) samples.set(key, { model: currentModel, timestamp, usage, final: false });
+      continue;
+    }
+    if (event.type === "assistant/message") {
+      const usage = normalizeDeepSeekHarnessUsage(event?.data?.usage);
+      if (usage) samples.set(key, { model: currentModel, timestamp, usage, final: true });
+    }
+  }
+
+  const byModel = {};
+  for (const sample of samples.values()) {
+    const model = normalizeModelInput(sample.model) || DEFAULT_MODEL;
+    if (!byModel[model]) {
+      byModel[model] = { totals: initTotals(), timestamp: sample.timestamp || fallbackTimestamp };
+    }
+    addTotals(byModel[model].totals, sample.usage);
+    if (Date.parse(sample.timestamp) > Date.parse(byModel[model].timestamp)) {
+      byModel[model].timestamp = sample.timestamp;
+    }
+  }
+  return byModel;
+}
+
+function diffDeepSeekHarnessTotals(current, previous) {
+  const currentTotal = Number(current?.total_tokens || 0);
+  const previousTotal = Number(previous?.total_tokens || 0);
+  const reset = currentTotal > 0 && currentTotal < previousTotal;
+  const delta = {};
+  for (const key of [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+    "conversation_count",
+  ]) {
+    const value = Number(current?.[key] || 0);
+    const prior = Number(previous?.[key] || 0);
+    delta[key] = reset ? value : Math.max(0, value - prior);
+  }
+  delta.billable_total_tokens = delta.total_tokens;
+  return delta;
+}
+
+async function parseDeepSeekHarnessIncremental({
+  sessionFiles,
+  dshHome,
+  cursors,
+  queuePath,
+  onProgress,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const files = Array.isArray(sessionFiles)
+    ? sessionFiles
+    : await listDeepSeekHarnessSessionFiles(dshHome || resolveDeepSeekHarnessHome());
+  const priorState =
+    cursors?.deepseekHarness && typeof cursors.deepseekHarness === "object"
+      ? cursors.deepseekHarness
+      : {};
+  const fileState =
+    priorState.files && typeof priorState.files === "object" ? { ...priorState.files } : {};
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let filesProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let index = 0; index < files.length; index++) {
+    const filePath = files[index];
+    let stat;
+    try {
+      stat = await fs.stat(filePath);
+    } catch {
+      continue;
+    }
+    const signature = `${stat.size}:${stat.mtimeMs}`;
+    const previousFile = fileState[filePath];
+    if (previousFile?.signature === signature) continue;
+
+    let text;
+    try {
+      text = await readDeepSeekHarnessSession(filePath);
+    } catch {
+      continue;
+    }
+    filesProcessed += 1;
+    const fallbackTimestamp = new Date(stat.mtimeMs).toISOString();
+    const currentByModel = extractDeepSeekHarnessFileTotals(text, fallbackTimestamp);
+    const previousByModel =
+      previousFile?.byModel && typeof previousFile.byModel === "object"
+        ? previousFile.byModel
+        : {};
+
+    for (const [model, currentEntry] of Object.entries(currentByModel)) {
+      const delta = diffDeepSeekHarnessTotals(
+        currentEntry.totals,
+        previousByModel[model]?.totals,
+      );
+      if (delta.total_tokens <= 0) continue;
+      const bucketStart = toUtcHalfHourStart(currentEntry.timestamp || fallbackTimestamp);
+      if (!bucketStart) continue;
+      const bucket = getHourlyBucket(
+        hourlyState,
+        "deepseek-harness",
+        model,
+        bucketStart,
+      );
+      addTotals(bucket.totals, delta);
+      touchedBuckets.add(bucketKey("deepseek-harness", model, bucketStart));
+      eventsAggregated += 1;
+    }
+
+    fileState[filePath] = { signature, byModel: currentByModel };
+    if (cb) {
+      cb({
+        index: index + 1,
+        total: files.length,
+        filesProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.deepseekHarness = { ...priorState, files: fileState, updatedAt };
+  return { filesProcessed, eventsAggregated, bucketsQueued };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Zed Agent (all model providers — hosted "zed.dev" and bring-your-own alike)
 //
@@ -9418,6 +9634,9 @@ module.exports = {
   readRoocodeTaskModel,
   normalizeRoocodeModel,
   parseRoocodeIncremental,
+  resolveDeepSeekHarnessHome,
+  listDeepSeekHarnessSessionFiles,
+  parseDeepSeekHarnessIncremental,
   resolveZedDbPath,
   decodeZedThreadBlob,
   extractZedTotals,

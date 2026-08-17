@@ -29,7 +29,7 @@ vi.mock("../../../../lib/copy", () => ({
 
 describe("ModelUsageDonut", () => {
   it("renders an accessible donut, total and exact model legend", () => {
-    render(
+    const { container } = render(
       <ModelUsageDonut
         totalTokens={12000}
         rows={[
@@ -38,6 +38,8 @@ describe("ModelUsageDonut", () => {
         ]}
       />,
     );
+
+    expect(container.firstChild).toHaveClass("tt-pressable-parent");
 
     expect(screen.getByRole("img", { name: "模型消耗分布图" })).toBeInTheDocument();
     expect(screen.getByText("1.2万")).toBeInTheDocument();
@@ -87,8 +89,9 @@ describe("ModelUsageDonut", () => {
   });
 
   it("renders an empty state without a misleading chart", () => {
-    render(<ModelUsageDonut totalTokens={0} rows={[]} />);
+    const { container } = render(<ModelUsageDonut totalTokens={0} rows={[]} />);
 
+    expect(container.firstChild).toHaveClass("tt-pressable-parent");
     expect(screen.getByText("当前范围暂无模型消耗")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "模型消耗分布图" })).not.toBeInTheDocument();
   });

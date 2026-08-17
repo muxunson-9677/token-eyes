@@ -165,6 +165,25 @@ export function useCostAccumulation({
       const totals = spendTimeseries?.totals;
       if (totals) {
         const previousTotals = previousMonthTimeseries?.totals || null;
+        const officialApiValues = apiBillingAccountsNormalized
+          // Existing `api` rows are reconstructed from local token logs and
+          // official list prices. They are equivalent-value estimates, not
+          // cash invoices. Only an explicitly identified official Billing
+          // result may enter the actual-cash ledger.
+          .filter((account) => account.billingSource === "official_api")
+          .map((account) => account.monthCostUsd)
+          .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+          .map(Number);
+        const monthOfficialApiSpendUsd = officialApiValues.length > 0
+          ? officialApiValues.reduce((sum, value) => sum + value, 0)
+          : null;
+        const subscriptionUsd = totals.subscription_usd ?? null;
+        const otherAiUsd = totals.other_ai_usd ?? null;
+        const recordedCashBase = [subscriptionUsd, otherAiUsd]
+          .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+          .reduce((sum, value) => sum + Number(value), 0);
+        const hasRecordedCashBase = [subscriptionUsd, otherAiUsd]
+          .some((value) => value !== null && value !== undefined && Number.isFinite(Number(value)));
         // F6/02 work order (未知成本不得显示 0): preserve null for missing
         // totals fields instead of masking with `?? 0`. A real 0 from the
         // backend (meaning "no cost incurred this period") stays 0 and renders
@@ -176,6 +195,12 @@ export function useCostAccumulation({
         // period last month) — never full calendar months.
         return {
           monthApiCostUsd: totals.api_usd ?? null,
+          monthApiEquivalentUsd: totals.api_usd ?? null,
+          monthOfficialApiSpendUsd,
+          monthActualCashSpendUsd: hasRecordedCashBase
+            ? recordedCashBase + (monthOfficialApiSpendUsd ?? 0)
+            : monthOfficialApiSpendUsd,
+          actualCashCoverage: monthOfficialApiSpendUsd == null ? "partial" : "exact",
           monthSubscriptionCostUsd: totals.subscription_usd ?? null,
           monthOtherAiCostUsd: totals.other_ai_usd ?? null,
           monthTotalCostUsd: totals.combined_usd ?? null,
@@ -194,6 +219,10 @@ export function useCostAccumulation({
     // missing field. Keep them as numbers so they render "0.00".
     return {
       monthApiCostUsd: null,
+      monthApiEquivalentUsd: null,
+      monthOfficialApiSpendUsd: null,
+      monthActualCashSpendUsd: null,
+      actualCashCoverage: "unknown",
       monthSubscriptionCostUsd: null,
       monthOtherAiCostUsd: null,
       monthTotalCostUsd: null,
@@ -204,7 +233,7 @@ export function useCostAccumulation({
       lifetimeTotalCostUsd: null,
       usdToCny: 7.2,
     };
-  }, [spendTimeseries, previousMonthTimeseries]);
+  }, [apiBillingAccountsNormalized, spendTimeseries, previousMonthTimeseries]);
 
   // Transform spend records into subscription records format
   const subscriptionRecords = useMemo(() => {

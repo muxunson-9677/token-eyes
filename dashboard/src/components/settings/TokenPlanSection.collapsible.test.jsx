@@ -39,8 +39,13 @@ const RECORD = {
 };
 
 async function expandPlan(planLabel) {
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: `展开 ${planLabel}` }));
+  const cards = await screen.findAllByTestId("token-plan-card");
+  const card = cards.find((candidate) => candidate.textContent.includes(planLabel));
+  expect(card).toBeDefined();
+  expect(card).toHaveAttribute("data-expanded", "true");
+  expect(within(card).queryByRole("button", { name: `展开 ${planLabel}` })).not.toBeInTheDocument();
+  expect(within(card).queryByRole("button", { name: `收起 ${planLabel}` })).not.toBeInTheDocument();
+  return card;
 }
 
 beforeEach(() => {
@@ -68,7 +73,7 @@ it("reuses confirmed plans and catalog when the cost page is entered again", asy
   await waitFor(() => expect(getTokenPlans).toHaveBeenCalledTimes(1));
   first.unmount();
 
-  render(<TokenPlanSection listOnly />);
+  render(React.createElement(TokenPlanSection, { listOnly: true }));
   expect(screen.getByText("1 个套餐")).toBeInTheDocument();
   expect(getTokenPlans).toHaveBeenCalledTimes(1);
   expect(getTokenPlanCatalog).toHaveBeenCalledTimes(1);
@@ -163,21 +168,16 @@ it("deletes a plan directly from its complete card after confirmation", async ()
   expect(screen.queryByText(/claude \/ Max/i)).not.toBeInTheDocument();
 });
 
-it("starts each plan compact and reveals its complete facts without delaying collapse", async () => {
+it("shows each plan's complete facts directly without a nested disclosure", async () => {
   const user = userEvent.setup();
   render(<TokenPlanSection />);
 
   expect(await screen.findByText(/claude \/ Max/i)).toBeInTheDocument();
   const card = screen.getByTestId("token-plan-card");
-  const toggle = screen.getByRole("button", { name: "展开 Max" });
-  expect(card).toHaveAttribute("data-expanded", "false");
-  expect(toggle).toHaveClass("tt-pressable", "tt-product-focusable");
-  expect(screen.queryByTestId("token-plan-detail-plan-1")).not.toBeInTheDocument();
-
-  await user.click(toggle);
-
   const detail = screen.getByTestId("token-plan-detail-plan-1");
   expect(card).toHaveAttribute("data-expanded", "true");
+  expect(screen.queryByRole("button", { name: "展开 Max" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "收起 Max" })).not.toBeInTheDocument();
   expect(detail).not.toHaveTextContent("200 / 1,000 · 800");
   expect(detail).not.toHaveTextContent("已用额度");
   expect(detail).not.toHaveTextContent("剩余额度");
@@ -185,14 +185,10 @@ it("starts each plan compact and reveals its complete facts without delaying col
   expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("xx 元");
   expect(screen.getByTestId("token-plan-detail-plan-1")).not.toHaveTextContent("只在展开后出现的备注");
   expect(screen.getByRole("button", { name: "拖动 Max" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "收起 Max" })).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "编辑" }));
   expect(card).toHaveAttribute("data-expanded", "true");
-
-  await user.click(screen.getByRole("button", { name: "收起 Max" }));
-  expect(card).toHaveAttribute("data-expanded", "false");
-  expect(screen.queryByTestId("token-plan-detail-plan-1")).not.toBeInTheDocument();
+  expect(screen.getByTestId("token-plan-detail-plan-1")).toBeInTheDocument();
 });
 
 it("matches the cost-and-quota card hierarchy with account, cost, detailed validity, and no sync block", async () => {

@@ -1,11 +1,14 @@
-import React, { useMemo, useState } from "react";
-import { CalendarDays, FolderKanban } from "lucide-react";
+import React, { useMemo, useRef, useState } from "react";
+import { CalendarDays, ChevronRight, FolderKanban, Loader2, X } from "lucide-react";
 import { Card } from "../../components";
 import { formatTokenCount } from "../../../lib/format";
 import { getCopyLocale } from "../../../lib/copy";
 import { selectLocalDirectory } from "../../../lib/api.ts";
 import { selectDirectoryViaTauri } from "../../../lib/tauri-directory.js";
 import { ProjectUsagePanel } from "./ProjectUsagePanel.jsx";
+import { ProviderIcon } from "./ProviderIcon.jsx";
+import { limitProviderName } from "../../../lib/limits-providers.js";
+import { resolveDisplayTokens } from "../../../lib/model-breakdown";
 
 const DAILY_USAGE_KEYS = [
   "total_tokens",
@@ -76,6 +79,7 @@ export function DataDetails({
   detailsPageCount,
   detailsPage,
   setDetailsPage,
+  onLoadDailyModelBreakdown,
 }) {
   const [activeTab, setActiveTab] = useState("daily");
   const [selectedProjectFolders, setSelectedProjectFolders] = useState(
@@ -87,6 +91,9 @@ export function DataDetails({
   const [dailyPage, setDailyPage] = useState(0);
   const [dailyPageInput, setDailyPageInput] = useState("1");
   const [dailyPageSize, setDailyPageSize] = useState(DEFAULT_DAILY_PAGE_SIZE);
+  const [dailyOverlay, setDailyOverlay] = useState(null);
+  const dailyOverlayCacheRef = useRef(new Map());
+  const dailyTableRef = useRef(null);
   const visibleDailyRows = useMemo(() => {
     if (!Array.isArray(dailyBreakdownRows)) return [];
     return dailyBreakdownRows.filter(hasRecordedDailyUsage);
@@ -189,11 +196,105 @@ export function DataDetails({
       });
     }
   };
+  const toggleDailyBreakdown = async (row, trigger) => {
+    const day = String(row?.[dailyBreakdownDateKey] || row?.day || "");
+    if (!day || typeof onLoadDailyModelBreakdown !== "function") return;
+    if (dailyOverlay?.day === day) {
+      setDailyOverlay(null);
+      return;
+    }
+    const tableViewport = dailyTableRef.current;
+    const tableRow = trigger?.closest?.("tr");
+    const desiredTop = Number(tableRow?.offsetTop || 0) + Number(tableRow?.offsetHeight || 44);
+    const maxTop = Math.max(46, Number(tableViewport?.clientHeight || 320) - 238);
+    const top = Math.min(desiredTop, maxTop);
+    const cached = dailyOverlayCacheRef.current.get(day);
+    if (cached) {
+      setDailyOverlay({ day, top, loading: false, error: null, breakdown: cached });
+      return;
+    }
+    setDailyOverlay({ day, top, loading: true, error: null, breakdown: null });
+    try {
+      const breakdown = await onLoadDailyModelBreakdown(day);
+      dailyOverlayCacheRef.current.set(day, breakdown || { sources: [] });
+      setDailyOverlay((current) => current?.day === day
+        ? { day, top, loading: false, error: null, breakdown: breakdown || { sources: [] } }
+        : current);
+    } catch (error) {
+      setDailyOverlay((current) => current?.day === day
+        ? { day, top, loading: false, error: error?.message || String(error), breakdown: null }
+        : current);
+    }
+  };
+  const dailyOverlaySources = useMemo(() => {
+    const sources = Array.isArray(dailyOverlay?.breakdown?.sources)
+      ? dailyOverlay.breakdown.sources
+      : [];
+    const normalized = sources.map((source) => {
+      const total = resolveDisplayTokens(source?.totals, 0);
+      const models = (Array.isArray(source?.models) ? source.models : [])
+        .map((model) => ({
+          name: String(model?.model || copy("data.confidence.unattributed")),
+          tokens: resolveDisplayTokens(model?.totals, 0),
+        }))
+        .filter((model) => model.tokens > 0)
+        .sort((left, right) => right.tokens - left.tokens);
+      return { id: String(source?.source || "unknown"), total, models };
+    }).filter((source) => source.total > 0 || source.models.length > 0);
+    const grandTotal = normalized.reduce((sum, source) => sum + source.total, 0);
+    return normalized.map((source) => ({
+      ...source,
+      share: grandTotal > 0 ? (source.total / grandTotal) * 100 : 0,
+      models: source.models.map((model) => ({
+        ...model,
+        share: source.total > 0 ? (model.tokens / source.total) * 100 : 0,
+      })),
+    }));
+  }, [copy, dailyOverlay]);
+  let dailyOverlayBody = null;
+  if (dailyOverlay?.loading) {
+    dailyOverlayBody = (
+      <div className="tt-daily-breakdown-state">
+        <Loader2 className="animate-spin" aria-hidden="true" />
+        {copy("dashboard.daily.overlay_loading")}
+      </div>
+    );
+  } else if (dailyOverlay?.error) {
+    dailyOverlayBody = (
+      <div className="tt-daily-breakdown-state tt-daily-breakdown-state--error">
+        {copy("dashboard.daily.overlay_error")}
+      </div>
+    );
+  } else if (dailyOverlay && dailyOverlaySources.length === 0) {
+    dailyOverlayBody = (
+      <div className="tt-daily-breakdown-state">{copy("dashboard.daily.overlay_empty")}</div>
+    );
+  } else if (dailyOverlay) {
+    dailyOverlayBody = (
+      <div className="tt-daily-breakdown-list">
+        {dailyOverlaySources.map((source) => (
+          <article key={source.id}>
+            <div className="tt-daily-breakdown-agent">
+              <ProviderIcon provider={source.id} size={18} />
+              <strong>{limitProviderName(source.id)}</strong>
+              <span>{formatTokenCount(source.total, { locale })}</span>
+              <b>{source.share.toFixed(1)}%</b>
+            </div>
+            <div className="tt-daily-breakdown-models">
+              {source.models.map((model) => (
+                <div key={model.name}><span>{model.name}</span><span>{formatTokenCount(model.tokens, { locale })}</span><b>{model.share.toFixed(1)}%</b></div>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <Card
       variant="nested"
-      className="h-full min-h-0"
+      className="tt-pressable-parent h-full min-h-0"
       bodyClassName="flex h-full min-h-0 flex-col overflow-hidden"
     >
       {/* Tab Switcher + Controls */}
@@ -263,7 +364,7 @@ export function DataDetails({
               {dailyEmptyMessage}
             </div>
           ) : (
-          <div className="tt-overview-daily-table -mx-4 min-h-0 flex-1 overflow-auto oai-scrollbar">
+          <div ref={dailyTableRef} className="tt-overview-daily-table relative -mx-4 min-h-0 flex-1 overflow-auto oai-scrollbar">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-oai-gray-200 dark:border-oai-gray-700">
@@ -299,10 +400,30 @@ export function DataDetails({
                   return (
                   <tr
                     key={rowKey}
-                    className="border-b border-oai-gray-100 dark:border-oai-gray-800 last:border-b-0 hover:bg-oai-gray-50/50 dark:hover:bg-oai-gray-800/50 transition-colors text-oai-black dark:text-oai-white"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={dailyOverlay?.day === rowKey}
+                    onClick={(event) => void toggleDailyBreakdown(row, event.currentTarget)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      void toggleDailyBreakdown(row, event.currentTarget);
+                    }}
+                    className="cursor-pointer border-b border-oai-gray-100 dark:border-oai-gray-800 last:border-b-0 hover:bg-oai-gray-50/50 dark:hover:bg-oai-gray-800/50 transition-colors text-oai-black dark:text-oai-white"
                   >
                     <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300 whitespace-nowrap">
-                      {renderDailyBreakdownDate ? renderDailyBreakdownDate(row) : renderDetailDate(row)}
+                      <button
+                        type="button"
+                        className="tt-daily-row-trigger tt-analytics-focusable"
+                        aria-expanded={dailyOverlay?.day === rowKey}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void toggleDailyBreakdown(row, event.currentTarget);
+                        }}
+                      >
+                        <span>{renderDailyBreakdownDate ? renderDailyBreakdownDate(row) : renderDetailDate(row)}</span>
+                        <ChevronRight aria-hidden="true" />
+                      </button>
                     </td>
                     <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm font-medium text-oai-black dark:text-oai-white tabular-nums">
                       {renderDetailCell(row, "total_tokens")}
@@ -330,6 +451,23 @@ export function DataDetails({
                 })}
               </tbody>
             </table>
+            {dailyOverlay ? (
+              <section
+                data-testid="daily-breakdown-overlay"
+                data-overlay-layout="cover"
+                className="tt-daily-breakdown-overlay"
+                style={{ top: dailyOverlay.top }}
+                aria-live="polite"
+              >
+                <header>
+                  <div><strong>{dailyOverlay.day}</strong><span>{copy("dashboard.daily.overlay_title")}</span></div>
+                  <button type="button" onClick={() => setDailyOverlay(null)} aria-label={copy("dashboard.daily.overlay_close")}>
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </header>
+                {dailyOverlayBody}
+              </section>
+            ) : null}
           </div>
           )}
 

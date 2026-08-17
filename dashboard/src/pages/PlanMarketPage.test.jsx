@@ -16,7 +16,7 @@ const planMarketCss = fs.readFileSync(
 // shared/plan-market-catalog.json (no API round-trip, works on web host too).
 
 vi.mock("../lib/copy", () => ({
-  copy: (key, values) => key === "plan_market.stat.plans_value"
+  copy: (key, values = {}) => Object.hasOwn(values, "count")
     ? `copy:${key}:${values.count}`
     : `copy:${key}`,
 }));
@@ -80,11 +80,39 @@ it("preserves every catalog title, quota, highlight, and alternate-price note", 
   }
 });
 
-it("uses the compact cost-card density for market summary and plan cards", () => {
-  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-stat\s*\{[^}]*min-height:\s*96px;[^}]*padding:\s*16px;[^}]*border-radius:\s*10px;/s);
+it("uses the cost-card depth with restrained type and compact risk badges", () => {
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-stat\s*\{[^}]*min-height:\s*176px;[^}]*padding:\s*20px;[^}]*border-radius:\s*12px;/s);
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-stat-icon\s*\{[^}]*width:\s*42px;[^}]*height:\s*42px;[^}]*box-shadow:\s*none;/s);
   expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-provider-summary\s*\{[^}]*min-height:\s*64px;[^}]*padding:\s*10px 14px;/s);
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-access,[\s\S]*?\.tt-plan-market-risk\s*\{[^}]*padding:\s*3px 5px;[^}]*font-size:\s*10px;/s);
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-plan-count,[\s\S]*?\.tt-plan-market-starting-price\s*\{[^}]*font-size:\s*14px;/s);
   expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-plan-grid\s*\{[^}]*gap:\s*12px;[^}]*grid-auto-rows:\s*auto;/s);
   expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-plan-card\s*\{[^}]*min-height:\s*0;[^}]*gap:\s*8px;[^}]*padding:\s*12px;[^}]*border-radius:\s*8px;/s);
+});
+
+it("derives two supporting statistics for each overview card from the catalog", () => {
+  renderPage();
+  const providers = planMarketCatalog.providers;
+  const plans = providers.flatMap((provider) => provider.plans);
+  const recentPlans = providers.filter((provider) => provider.is_recent).flatMap((provider) => provider.plans);
+  const sourcedPlans = providers.filter((provider) => provider.sources?.length).flatMap((provider) => provider.plans);
+
+  expect(screen.getByTestId("plan-market-stat-catalog-official")).toHaveTextContent(String(providers.filter((provider) => provider.sources?.length).length));
+  expect(screen.getByTestId("plan-market-stat-catalog-custom")).toHaveTextContent("0");
+  expect(screen.getByTestId("plan-market-stat-recent-vendors")).toHaveTextContent(String(providers.filter((provider) => provider.is_recent).length));
+  expect(screen.getByTestId("plan-market-stat-recent-plans")).toHaveTextContent(String(recentPlans.length));
+  expect(screen.getByTestId("plan-market-stat-paid-plans")).toHaveTextContent(String(plans.filter((plan) => Number(plan.price?.amount) > 0 || plan.price?.display).length));
+  expect(screen.getByTestId("plan-market-stat-free-plans")).toHaveTextContent(String(plans.filter((plan) => Number(plan.price?.amount) === 0).length));
+  expect(screen.getByTestId("plan-market-stat-official-source-plans")).toHaveTextContent(String(sourcedPlans.length));
+  expect(screen.getByTestId("plan-market-stat-no-source-plans")).toHaveTextContent(String(plans.length - sourcedPlans.length));
+});
+
+it("removes vendor coverage summaries and uses a light quota separator", () => {
+  renderPage();
+
+  expect(document.querySelector(".tt-plan-market-provider-description")).toBeNull();
+  expect(document.body).not.toHaveTextContent(/覆盖\s/);
+  expect(planMarketCss).toMatch(/\.tt-reference-route-spend-plans \.tt-plan-market-metadata-separator\s*\{[^}]*width:\s*1px;[^}]*background:\s*[^;]+;[^}]*box-shadow:\s*none;/s);
 });
 
 it("renders the reference providers plus the researched Volcano Engine, Xiaomi MiMo, Grok, and Antigravity offerings", () => {
@@ -135,7 +163,7 @@ it("shows one access and risk marker on the collapsed provider, never inside its
 
   const claude = screen.getByTestId("plan-market-provider-claude");
   const compactDetails = within(claude).getByTestId("plan-market-compact-details-claude");
-  expect(within(compactDetails).getByTestId("plan-market-provider-description-claude")).toBeInTheDocument();
+  expect(within(compactDetails).queryByTestId("plan-market-provider-description-claude")).not.toBeInTheDocument();
   expect(within(claude).getByTestId("plan-market-provider-access-claude")).toHaveTextContent("copy:plan_market.access.vpn");
   expect(within(claude).getByTestId("plan-market-provider-risk-claude")).toHaveTextContent("copy:plan_market.risk.extreme");
 

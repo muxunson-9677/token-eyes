@@ -209,6 +209,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getByTestId("leaderboard-period-control")).toHaveClass("tt-overview-data-tabs");
     expect(screen.getByTestId("leaderboard-metric-control")).toHaveClass("tt-overview-data-tabs");
     expect(screen.getByTestId("leaderboard-list-surface")).toHaveClass("tt-surface");
+    expect(screen.getByTestId("leaderboard-filter-toolbar")).toHaveClass("tt-pressable-group");
+    expect(screen.getByTestId("leaderboard-list-surface")).toHaveClass("tt-pressable-group");
     expect(screen.getAllByText("Preloaded User")[0].closest("li")).toHaveClass(
       "tt-product-focusable",
     );

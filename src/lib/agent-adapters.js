@@ -435,6 +435,21 @@ const AGENT_ADAPTERS = [
     accountLevel: false,
     notes: "Antigravity passive transcript reader.",
   },
+  {
+    id: "deepseek-harness",
+    displayName: "DeepSeek Harness",
+    queueSource: "deepseek-harness",
+    family: "deepseek",
+    collectionMode: "passive_log",
+    parserExport: "parseDeepSeekHarnessIncremental",
+    resolverExports: ["resolveDeepSeekHarnessHome", "listDeepSeekHarnessSessionFiles"],
+    statusSurface: true,
+    diagnosticsSurface: true,
+    usageLimitsSurface: true,
+    pathOverrideKey: null,
+    accountLevel: false,
+    notes: "DeepSeek Harness sessions under DSH_HOME or ~/.dsh/sessions/.",
+  },
 ];
 
 /**
@@ -480,6 +495,7 @@ function listUsageLimitAdapterIds() {
     "openclaw",
     "opencode",
     "antigravity",
+    "deepseek-harness",
   ].filter((id) => getAgentAdapter(id)?.usageLimitsSurface);
 }
 

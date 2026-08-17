@@ -2,7 +2,11 @@
 
 const crypto = require("node:crypto");
 
-const WIDGET_AGENTS = Object.freeze(["all", "claude", "codex", "cursor", "hermes"]);
+const WIDGET_AGENTS = Object.freeze([
+  "all", "claude", "codex", "cursor", "trae", "codebuddy", "gemini", "hermes",
+  "openclaw", "opencode", "antigravity", "zed", "workbuddy", "kimi", "kimi-code",
+  "pi", "grok", "copilot", "deepseek-harness",
+]);
 const STATUS_ORDER = Object.freeze({
   red: 0,
   yellow: 1,
@@ -11,12 +15,13 @@ const STATUS_ORDER = Object.freeze({
   unknown: 4,
 });
 const WINDOW_ORDER = Object.freeze({
-  "5h": 0,
-  "7d": 1,
-  monthly: 2,
-  "自动与 Composer": 3,
-  API: 4,
-  "快速请求": 5,
+  "5 小时": 0,
+  "7 天": 1,
+  "GPT 5.3 Codex Spark · 5 小时": 2,
+  "GPT 5.3 Codex Spark": 3,
+  "Total Usage": 4,
+  "Auto + Composer Usage": 5,
+  "API Usage": 6,
 });
 const PROVIDER_NAMES = Object.freeze({
   aliyun_bailian: "阿里云百炼",
@@ -25,6 +30,7 @@ const PROVIDER_NAMES = Object.freeze({
   cursor: "Cursor",
   glm: "GLM",
   hermes: "Hermes",
+  "deepseek-harness": "DeepSeek Harness",
   kimi: "Kimi",
   minimax: "MiniMax",
   trae: "TRAE",
@@ -218,12 +224,18 @@ function buildLimits(limits, selectedAgent) {
     ))
     .map((item) => ({
       id: safeId(item?.id, "limit"),
+      planId: safeId(item?.planId || item?.id, "plan"),
       agent: agentKey(item?.agent) || "unknown",
       provider: safeLabel(item?.provider, "Unknown"),
-      accountLabel: safeLabel(item?.accountLabel, "Default"),
+      planLabel: safeLabel(item?.planLabel, ""),
+      accountLabel: safeLabel(item?.accountLabel, ""),
+      subscriptionAmount: finiteNonNegative(item?.subscriptionAmount),
+      subscriptionCurrency: safeLabel(item?.subscriptionCurrency, "").toUpperCase(),
+      kind: safeLabel(item?.kind, ""),
       window: Object.hasOwn(WINDOW_ORDER, item?.window) ? item.window : "other",
       usedPercent: usedPercent(item?.usedPercent),
       resetAt: safeIso(item?.resetAt),
+      expiresAt: safeIso(item?.expiresAt),
       notes: safeNote(item?.notes),
       error: typeof item?.error === "string" ? safeLabel(item.error, "").slice(0, 120) : null,
     }))
@@ -285,10 +297,15 @@ function buildPendingReset(events) {
 }
 
 function limitResetIso(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) return null;
-  const milliseconds = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
-  return new Date(milliseconds).toISOString();
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (/^\d+(?:\.\d+)?$/.test(raw)) {
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric) || numeric <= 0) return null;
+    const milliseconds = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+    return new Date(milliseconds).toISOString();
+  }
+  return safeIso(raw);
 }
 
 function providerName(value, fallback = "Unknown") {
@@ -297,14 +314,17 @@ function providerName(value, fallback = "Unknown") {
   return safeLabel(value, fallback);
 }
 
-function planWindowName(kind) {
+function planWindowName(providerId, kind) {
   const normalized = String(kind || "").trim().toLowerCase();
-  if (["rolling_5_hour", "session", "5h"].includes(normalized)) return "5h";
-  if (["rolling_weekly", "weekly", "7d"].includes(normalized)) return "7d";
-  if (["total", "monthly"].includes(normalized)) return "monthly";
-  if (normalized === "auto_composer") return "自动与 Composer";
-  if (normalized === "api") return "API";
-  if (normalized === "fast_request") return "快速请求";
+  if (providerId === "cursor") {
+    if (["total", "rolling_weekly"].includes(normalized)) return "Total Usage";
+    if (normalized === "auto_composer") return "Auto + Composer Usage";
+    if (normalized === "api") return "API Usage";
+  }
+  if (["rolling_5_hour", "session", "5h"].includes(normalized)) return "5 小时";
+  if (["rolling_weekly", "weekly", "7d"].includes(normalized)) return "7 天";
+  if (normalized === "gpt_5_3_codex_spark_5_hour") return "GPT 5.3 Codex Spark · 5 小时";
+  if (normalized === "gpt_5_3_codex_spark_weekly") return "GPT 5.3 Codex Spark";
   return "other";
 }
 
@@ -317,46 +337,103 @@ function quotaWindowPercent(window) {
   return usedPercent((used / total) * 100);
 }
 
+function planWindowId(providerId, kind) {
+  const normalized = String(kind || "").trim().toLowerCase();
+  if (providerId === "cursor" && normalized === "rolling_weekly") return "total";
+  if (normalized === "gpt_5_3_codex_spark_5_hour") return "gpt_5_3_codex_spark_5h";
+  if (normalized === "gpt_5_3_codex_spark_weekly") return "gpt_5_3_codex_spark_weekly";
+  if (providerId === "cursor" && ["total", "auto_composer", "api"].includes(normalized)) return normalized;
+  if (["rolling_5_hour", "session", "5h"].includes(normalized)) return "5h";
+  if (["rolling_weekly", "weekly", "7d"].includes(normalized)) return "7d";
+  return normalized || "other";
+}
+
+function tokenPlanAccountLabel(record) {
+  const official = record?.detection_config?.official_account || {};
+  if (record?.detection_method === "official_account") {
+    return optionalLabel(
+      official.display_name || official.account_label || official.account_id
+      || record?.account_label || record?.account_name,
+    ) || "";
+  }
+  return optionalLabel(record?.account_label || record?.account_name) || "";
+}
+
+function canonicalTokenPlanWindows(providerId, windows) {
+  const items = Array.isArray(windows) ? windows : [];
+  if (providerId !== "cursor") return items;
+  const priority = ["total", "rolling_weekly", "auto_composer", "api"];
+  const seen = new Set();
+  return [...items]
+    .filter((window) => priority.includes(String(window?.kind || "").trim().toLowerCase()))
+    .sort((left, right) => (
+      priority.indexOf(String(left?.kind || "").trim().toLowerCase())
+      - priority.indexOf(String(right?.kind || "").trim().toLowerCase())
+    ))
+    .reduce((result, window) => {
+      const sourceKind = String(window?.kind || "").trim().toLowerCase();
+      const normalizedKind = sourceKind === "rolling_weekly" ? "total" : sourceKind;
+      if (seen.has(normalizedKind)) return result;
+      seen.add(normalizedKind);
+      result.push(normalizedKind === window.kind ? window : { ...window, kind: normalizedKind });
+      return result;
+    }, []);
+}
+
 function flattenTokenPlanRecords(records) {
   const output = [];
   for (const record of Array.isArray(records) ? records : []) {
     if (!record || typeof record !== "object") continue;
     const agent = agentKey(record.source || record.provider_id) || "unknown";
     const provider = providerName(record.provider_id || agent);
-    const accountLabel = safeLabel(record.plan_label, provider);
+    const planLabel = safeLabel(record.plan_label, provider);
+    const accountLabel = tokenPlanAccountLabel(record);
+    const subscriptionAmount = finiteNonNegative(record.subscription_amount);
+    const subscriptionCurrency = safeLabel(record.subscription_currency, "").toUpperCase();
+    const expiresAt = safeIso(record.subscription_end_date || record.expires_at);
     const notes = safeNote(record.notes);
     const planId = safeId(record.id, "plan");
-    const windows = Array.isArray(record.quota_windows) ? record.quota_windows : [];
-    const primaryWindow = windows
-      .map((window) => ({ window, name: planWindowName(window?.kind) }))
-      .sort((left, right) => (
-        (WINDOW_ORDER[left.name] ?? 99) - (WINDOW_ORDER[right.name] ?? 99)
-      ))[0];
-    if (primaryWindow) {
-      output.push({
-        id: safeId(`${agent}:${planId}`, "limit"),
-        agent,
-        provider,
-        accountLabel,
-        window: primaryWindow.name,
-        usedPercent: quotaWindowPercent(primaryWindow.window),
-        resetAt: safeIso(primaryWindow.window?.resets_at || primaryWindow.window?.reset_at),
-        notes,
-        error: null,
-      });
+    const windows = canonicalTokenPlanWindows(agent, record.quota_windows);
+    if (windows.length) {
+      for (const window of windows) {
+        const kind = planWindowId(agent, window?.kind);
+        output.push({
+          id: safeId(`${agent}:${planId}:${kind || "other"}`, "limit"),
+          planId: safeId(`${agent}:${planId}`, "plan"),
+          agent,
+          provider,
+          planLabel,
+          accountLabel,
+          subscriptionAmount,
+          subscriptionCurrency,
+          kind,
+          window: planWindowName(agent, window?.kind),
+          usedPercent: quotaWindowPercent(window),
+          resetAt: limitResetIso(window?.resets_at || window?.reset_at),
+          expiresAt,
+          notes,
+          error: null,
+        });
+      }
     } else {
       const total = Number(record.total_quota);
       const used = Number(record.used_quota);
       output.push({
         id: safeId(`${agent}:${planId}`, "limit"),
+        planId: safeId(`${agent}:${planId}`, "plan"),
         agent,
         provider,
+        planLabel,
         accountLabel,
-        window: "monthly",
+        subscriptionAmount,
+        subscriptionCurrency,
+        kind: agent === "cursor" ? "total" : "other",
+        window: agent === "cursor" ? "Total Usage" : "other",
         usedPercent: Number.isFinite(total) && total > 0 && Number.isFinite(used) && used >= 0
           ? usedPercent((used / total) * 100)
           : null,
-        resetAt: safeIso(record.expires_at),
+        resetAt: expiresAt,
+        expiresAt,
         notes,
         error: null,
       });

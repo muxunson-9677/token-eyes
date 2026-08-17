@@ -92,6 +92,77 @@ describe("useCostAccumulation selected month", () => {
     }));
   });
 
+  it("separates actual cash spend from API list-price equivalent value", async () => {
+    getApiBillingAccounts.mockResolvedValue({
+      accounts: [{
+        id: "official-api",
+        provider: "openai",
+        accountName: "Billing",
+        billingSource: "official_api",
+        monthCostUsd: 7,
+        status: "connected",
+      }],
+    });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: COST_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      monthApiEquivalentUsd: 10,
+      monthOfficialApiSpendUsd: 7,
+      monthActualCashSpendUsd: 57,
+      actualCashCoverage: "exact",
+    }));
+    expect(result.current.costSummary.monthActualCashSpendUsd).not.toBe(60);
+  });
+
+  it("marks actual cash spend partial when official API billing is unavailable", async () => {
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: COST_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      monthApiEquivalentUsd: 10,
+      monthOfficialApiSpendUsd: null,
+      monthActualCashSpendUsd: 50,
+      actualCashCoverage: "partial",
+    }));
+  });
+
+  it("does not mislabel a local list-price API estimate as official cash spend", async () => {
+    getApiBillingAccounts.mockResolvedValue({
+      accounts: [{
+        id: "local-estimate",
+        provider: "openai",
+        accountName: "Detected usage",
+        billingSource: "api",
+        monthCostUsd: 10,
+        status: "synced",
+      }],
+    });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: COST_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      monthApiEquivalentUsd: 10,
+      monthOfficialApiSpendUsd: null,
+      monthActualCashSpendUsd: 50,
+      actualCashCoverage: "partial",
+    }));
+  });
+
   it("keeps missing timeseries unavailable instead of inventing zero", async () => {
     getSpendTimeseries.mockReset();
     getSpendTimeseries.mockRejectedValueOnce(new Error("selected month unavailable"));

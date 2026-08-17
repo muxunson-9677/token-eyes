@@ -1,0 +1,129 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { test } = require("node:test");
+const zstd = require("@mongodb-js/zstd");
+
+const {
+  listDeepSeekHarnessSessionFiles,
+  parseDeepSeekHarnessIncremental,
+  resolveDeepSeekHarnessHome,
+} = require("../src/lib/rollout");
+
+function fixtureEvents({
+  sessionId = "session-dsh-1",
+  cwd = "D:\\projects\\token-eyes",
+  model = "deepseek-v4-flash",
+  usage = { inputTokens: 120, cacheReadTokens: 30, outputTokens: 40, reasoningTokens: 10 },
+} = {}) {
+  return [
+    { type: "session", version: 0, id: sessionId, createdAt: "2026-08-16T10:00:00.000Z", cwd },
+    { type: "request/context", seq: 1, time: "2026-08-16T10:01:00.000Z", data: { provider: "deepseek", model, contextWindow: 128000 } },
+    { type: "assistant/chunk", seq: 2, time: "2026-08-16T10:01:10.000Z", data: { turn: 1, step: 1, chunk: { type: "usage", usage: { inputTokens: 90, outputTokens: 20 } } } },
+    { type: "assistant/message", seq: 3, time: "2026-08-16T10:01:11.000Z", data: { turn: 1, step: 1, message: { role: "assistant", content: [] }, usage } },
+  ];
+}
+
+async function writeSession(root, name, events, compressed = true) {
+  const sessionDir = path.join(root, "sessions", name);
+  fs.mkdirSync(sessionDir, { recursive: true });
+  const text = `${events.map((event) => JSON.stringify(event)).join("\n")}\n`;
+  const filePath = path.join(sessionDir, compressed ? "session.jsonl.zstd" : "session.jsonl");
+  fs.writeFileSync(filePath, compressed ? Buffer.from(await zstd.compress(Buffer.from(text))) : text);
+  return filePath;
+}
+
+test("resolveDeepSeekHarnessHome follows explicit override, DSH_HOME, then ~/.dsh", () => {
+  assert.equal(resolveDeepSeekHarnessHome({ TOKENTRACKER_DSH_HOME: "D:\\override" }, "C:\\Users\\tester"), "D:\\override");
+  assert.equal(resolveDeepSeekHarnessHome({ DSH_HOME: "D:\\dsh" }, "C:\\Users\\tester"), "D:\\dsh");
+  assert.equal(resolveDeepSeekHarnessHome({}, "C:\\Users\\tester"), path.join("C:\\Users\\tester", ".dsh"));
+});
+
+test("lists compressed and raw DeepSeek Harness session logs recursively", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-list-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const compressed = await writeSession(root, "compressed", fixtureEvents(), true);
+  const raw = await writeSession(root, "raw", fixtureEvents({ sessionId: "session-dsh-2" }), false);
+
+  assert.deepEqual(await listDeepSeekHarnessSessionFiles(root), [compressed, raw].sort((a, b) => a.localeCompare(b)));
+});
+
+test("parses exact DeepSeek Harness usage and does not double count final messages", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-parse-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const sessionFile = await writeSession(root, "session-one", fixtureEvents(), true);
+  const queuePath = path.join(root, "queue.jsonl");
+  const cursors = {};
+
+  const first = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.deepEqual(first, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+
+  const rows = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].source, "deepseek-harness");
+  assert.equal(rows[0].model, "deepseek-v4-flash");
+  assert.deepEqual({
+    input_tokens: rows[0].input_tokens,
+    cached_input_tokens: rows[0].cached_input_tokens,
+    cache_creation_input_tokens: rows[0].cache_creation_input_tokens,
+    output_tokens: rows[0].output_tokens,
+    reasoning_output_tokens: rows[0].reasoning_output_tokens,
+    total_tokens: rows[0].total_tokens,
+    conversation_count: rows[0].conversation_count,
+  }, {
+    input_tokens: 120,
+    cached_input_tokens: 30,
+    cache_creation_input_tokens: 0,
+    output_tokens: 40,
+    reasoning_output_tokens: 10,
+    total_tokens: 190,
+    conversation_count: 1,
+  });
+
+  const second = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.deepEqual(second, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.equal(fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).length, 1);
+});
+
+test("keeps a streamed usage sample when a DeepSeek Harness request has no final message", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-stream-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const events = fixtureEvents({ sessionId: "session-dsh-stream" }).slice(0, 3);
+  events[2].data.chunk.usage = { inputTokens: 50, cacheReadTokens: 12, outputTokens: 8, reasoningTokens: 3 };
+  const sessionFile = await writeSession(root, "stream-only", events, false);
+  const queuePath = path.join(root, "queue.jsonl");
+  const cursors = {};
+
+  const result = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.equal(result.eventsAggregated, 1);
+  const [row] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.equal(row.total_tokens, 70);
+  assert.equal(row.reasoning_output_tokens, 3);
+});
+
+test("reads concatenated zstd frames written by live DeepSeek Harness sessions", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-frames-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const sessionDir = path.join(root, "sessions", "multi-frame");
+  fs.mkdirSync(sessionDir, { recursive: true });
+  const frames = [];
+  for (const event of fixtureEvents({ sessionId: "session-dsh-frames" })) {
+    frames.push(Buffer.from(await zstd.compress(Buffer.from(`${JSON.stringify(event)}\n`))));
+  }
+  const sessionFile = path.join(sessionDir, "session.jsonl.zstd");
+  fs.writeFileSync(sessionFile, Buffer.concat(frames));
+  const queuePath = path.join(root, "queue.jsonl");
+
+  const result = await parseDeepSeekHarnessIncremental({
+    sessionFiles: [sessionFile],
+    cursors: {},
+    queuePath,
+  });
+
+  assert.equal(result.eventsAggregated, 1);
+  const [row] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(row.total_tokens, 190);
+});

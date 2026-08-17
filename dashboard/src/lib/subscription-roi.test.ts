@@ -7,7 +7,7 @@ import { computeSubscriptionRoi } from "./subscription-roi";
 describe("computeSubscriptionRoi", () => {
   it("computes the multiplier from usage value and subscription cost", () => {
     const roi = computeSubscriptionRoi({
-      monthApiCostUsd: 316,
+      monthApiEquivalentUsd: 316,
       monthSubscriptionCostUsd: 20,
     });
     expect(roi).not.toBeNull();
@@ -18,28 +18,28 @@ describe("computeSubscriptionRoi", () => {
 
   it("returns null when there is no subscription spend", () => {
     expect(
-      computeSubscriptionRoi({ monthApiCostUsd: 100, monthSubscriptionCostUsd: 0 }),
+      computeSubscriptionRoi({ monthApiEquivalentUsd: 100, monthSubscriptionCostUsd: 0 }),
     ).toBeNull();
     expect(
-      computeSubscriptionRoi({ monthApiCostUsd: 100, monthSubscriptionCostUsd: null }),
+      computeSubscriptionRoi({ monthApiEquivalentUsd: 100, monthSubscriptionCostUsd: null }),
     ).toBeNull();
     expect(
-      computeSubscriptionRoi({ monthApiCostUsd: 100, monthSubscriptionCostUsd: undefined }),
+      computeSubscriptionRoi({ monthApiEquivalentUsd: 100, monthSubscriptionCostUsd: undefined }),
     ).toBeNull();
   });
 
   it("returns null when usage value is unknown (never fakes 0)", () => {
     expect(
-      computeSubscriptionRoi({ monthApiCostUsd: null, monthSubscriptionCostUsd: 20 }),
+      computeSubscriptionRoi({ monthApiEquivalentUsd: null, monthSubscriptionCostUsd: 20 }),
     ).toBeNull();
     expect(
-      computeSubscriptionRoi({ monthApiCostUsd: Number.NaN, monthSubscriptionCostUsd: 20 }),
+      computeSubscriptionRoi({ monthApiEquivalentUsd: Number.NaN, monthSubscriptionCostUsd: 20 }),
     ).toBeNull();
   });
 
   it("keeps a real zero usage value as multiplier 0 (not null)", () => {
     const roi = computeSubscriptionRoi({
-      monthApiCostUsd: 0,
+      monthApiEquivalentUsd: 0,
       monthSubscriptionCostUsd: 20,
     });
     expect(roi).not.toBeNull();
@@ -48,7 +48,7 @@ describe("computeSubscriptionRoi", () => {
 
   it("handles below-one multipliers without rounding them away", () => {
     const roi = computeSubscriptionRoi({
-      monthApiCostUsd: 5,
+      monthApiEquivalentUsd: 5,
       monthSubscriptionCostUsd: 20,
     });
     expect(roi!.multiplier).toBeCloseTo(0.25, 5);

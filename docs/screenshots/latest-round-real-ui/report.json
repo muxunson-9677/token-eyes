@@ -1,0 +1,57 @@
+{
+  "dailyBreakdown": {
+    "before": {
+      "rows": 10,
+      "tableHeight": 541.5
+    },
+    "after": {
+      "rows": 10,
+      "tableHeight": 541.5,
+      "overlayLayout": "cover",
+      "agents": 3,
+      "models": 5
+    },
+    "rowBox": {
+      "x": 791.828125,
+      "y": 1105.890625,
+      "width": 594.84375,
+      "height": 59
+    },
+    "rowBoxAfter": {
+      "x": 791.828125,
+      "y": 600.7651977539062,
+      "width": 594.84375,
+      "height": 59
+    },
+    "overlayBox": {
+      "x": 805.828125,
+      "y": 659.8745727539062,
+      "width": 553.171875,
+      "height": 228
+    },
+    "closesOnSecondClick": true
+  },
+  "usage": {
+    "pricingNote": "计费统计来源于模型官方标价",
+    "deepSeekFilterVisible": true,
+    "visibleAgentLabels": [
+      "全部",
+      "DeepSeek Harness",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Hermes Agent"
+    ]
+  },
+  "deepSeekHarness": {
+    "labelVisible": true,
+    "iconSource": "/brand-logos/deepseek-harness.svg"
+  },
+  "costSemantics": {
+    "actualCashVisible": true,
+    "equivalentValueVisible": true,
+    "scopeNote": "实际现金支出只汇总已记录订阅付款、官方 Billing/API 账单与自定义花销；API 标价等价价值按已记录 Token × 模型官方标价估算，仅用于衡量用量价值，不计入实际支出，避免重复计算。",
+    "roiState": "添加订阅记录后，这里会显示订阅回本倍数（API 等价价值 ÷ 订阅支出）。"
+  },
+  "status": "PASS"
+}

@@ -54,6 +54,9 @@ const {
   parseKilocodeIncremental,
   resolveRoocodeTaskFiles,
   parseRoocodeIncremental,
+  resolveDeepSeekHarnessHome,
+  listDeepSeekHarnessSessionFiles,
+  parseDeepSeekHarnessIncremental,
   parseTraeIncremental,
   resolveZedDbPath,
   parseZedIncremental,
@@ -660,6 +663,46 @@ async function cmdSync(argv) {
       }
     }
 
+    // ── DeepSeek Harness — passive DSH_HOME/~/.dsh JSONL(.zstd) sessions ──
+    const deepSeekHarnessHome = resolveDeepSeekHarnessHome(process.env, home);
+    const deepSeekHarnessSessionFiles = await listDeepSeekHarnessSessionFiles(
+      deepSeekHarnessHome,
+    );
+    let deepSeekHarnessResult = {
+      filesProcessed: 0,
+      eventsAggregated: 0,
+      bucketsQueued: 0,
+    };
+    if (deepSeekHarnessSessionFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(
+          `Parsing DeepSeek Harness ${renderBar(0)} 0/${formatNumber(
+            deepSeekHarnessSessionFiles.length,
+          )} sessions | buckets 0`,
+        );
+      }
+      try {
+        deepSeekHarnessResult = await parseDeepSeekHarnessIncremental({
+          sessionFiles: deepSeekHarnessSessionFiles,
+          cursors,
+          queuePath,
+          onProgress: (p) => {
+            if (!progress?.enabled) return;
+            const pct = p.total > 0 ? p.index / p.total : 1;
+            progress.update(
+              `Parsing DeepSeek Harness ${renderBar(pct)} ${formatNumber(
+                p.index,
+              )}/${formatNumber(p.total)} sessions | buckets ${formatNumber(
+                p.bucketsQueued,
+              )}`,
+            );
+          },
+        });
+      } catch (err) {
+        warnProviderParseFailure("DeepSeek Harness", err, opts);
+      }
+    }
+
     // ── Cursor (API-based) ──
     // One-time migration: earlier CLI versions mis-parsed the Cursor CSV after
     // Cursor inserted new "Cloud Agent ID"/"Automation ID" columns, writing
@@ -1245,6 +1288,7 @@ async function cmdSync(argv) {
         kiloResult.messagesProcessed +
         kilocodeResult.recordsProcessed +
         roocodeResult.recordsProcessed +
+        deepSeekHarnessResult.filesProcessed +
         zedResult.recordsProcessed +
         gooseResult.recordsProcessed +
         droidResult.recordsProcessed;
@@ -1272,6 +1316,7 @@ async function cmdSync(argv) {
         kiloResult.bucketsQueued +
         kilocodeResult.bucketsQueued +
         roocodeResult.bucketsQueued +
+        deepSeekHarnessResult.bucketsQueued +
         zedResult.bucketsQueued +
         gooseResult.bucketsQueued +
         droidResult.bucketsQueued;
@@ -2821,4 +2866,3 @@ async function collectClaudeMessageHashes(filePaths) {
   }
   return hashes;
 }
-

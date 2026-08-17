@@ -118,6 +118,7 @@ describe("useLimitsDisplayPrefs", () => {
       "pi",
       "grok",
       "copilot",
+      "deepseek-harness",
     ]);
   });
 

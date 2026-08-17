@@ -282,7 +282,7 @@ export function DataSourcesPage() {
             ))}
           </section>
 
-          <section data-testid="data-source-summary" style={sourceView === "list" ? { height: "auto" } : undefined} className="tt-surface mb-4 rounded-[var(--tt-card-radius)] p-2">
+          <section data-testid="data-source-summary" style={sourceView === "list" ? { height: "auto" } : undefined} className="tt-surface tt-pressable-group mb-4 rounded-[var(--tt-card-radius)] p-2">
             <div data-testid="data-health-toolbar" className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-oai-gray-100 pb-2 dark:border-oai-gray-800">
               <div className="flex flex-wrap gap-1.5" role="group" aria-label={copy("data_sources.title")}>
                 {[
@@ -342,18 +342,18 @@ export function DataSourcesPage() {
                         </span>
                         {noticeKey ? <span id={noticeId} className="sr-only">{copy(noticeKey)}</span> : null}
                       </div>
-                      <dl className={sourceView === "grid" ? "mt-2 grid grid-cols-3 gap-2 border-t border-oai-gray-100 pt-2 text-[10px] leading-3 dark:border-oai-gray-800" : "contents text-xs dark:border-oai-gray-800"}>
-                        <div>
+                      <dl className={sourceView === "grid" ? "mt-2 grid grid-cols-1 gap-1.5 border-t border-oai-gray-100 pt-2 text-[10px] leading-3 dark:border-oai-gray-800" : "contents text-xs dark:border-oai-gray-800"}>
+                        <div className={sourceView === "grid" ? "grid grid-cols-[5rem_minmax(0,1fr)] items-baseline gap-2" : undefined}>
                           <dt className="text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.evidence")}</dt>
                           <dd className="mt-0.5 font-semibold tabular-nums text-oai-gray-800 dark:text-oai-gray-100">{Number(source.evidenceCount) || 0}</dd>
                         </div>
-                        <div>
+                        <div className={sourceView === "grid" ? "grid grid-cols-[5rem_minmax(0,1fr)] items-baseline gap-2" : undefined}>
                           <dt className="text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.last_activity")}</dt>
-                          <dd className="mt-0.5 truncate font-medium text-oai-gray-700 dark:text-oai-gray-200" title={formatActivityTime(source.latestActivityAt)}>{formatActivityTime(source.latestActivityAt)}</dd>
+                          <dd className="mt-0.5 min-w-0 break-words font-medium text-oai-gray-700 dark:text-oai-gray-200" title={formatActivityTime(source.latestActivityAt)}>{formatActivityTime(source.latestActivityAt)}</dd>
                         </div>
-                        <div>
+                        <div className={sourceView === "grid" ? "grid grid-cols-[5rem_minmax(0,1fr)] items-baseline gap-2" : undefined}>
                           <dt className="text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.environment")}</dt>
-                          <dd className="mt-0.5 truncate font-medium text-oai-gray-700 dark:text-oai-gray-200" title={source.environment || copy("data_sources.unknown")}>{source.environment || copy("data_sources.unknown")}</dd>
+                          <dd className="mt-0.5 min-w-0 break-words font-medium text-oai-gray-700 dark:text-oai-gray-200" title={source.environment || copy("data_sources.unknown")}>{source.environment || copy("data_sources.unknown")}</dd>
                         </div>
                       </dl>
                     </article>
@@ -364,7 +364,7 @@ export function DataSourcesPage() {
           </section>
 
           <div className="tt-data-bottom-grid col-span-full mb-5 grid items-stretch gap-5 lg:grid-cols-[430px_minmax(0,1fr)] xl:grid-cols-[500px_minmax(0,1fr)]">
-          <section data-testid="data-ledger-diagnostics" className="tt-surface h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
+          <section data-testid="data-ledger-diagnostics" className="tt-surface tt-pressable-group h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -409,7 +409,7 @@ export function DataSourcesPage() {
               </div>
             ) : null}
             {unpricedPercent || unattributedPercent ? (
-              <div className="mt-3 border-t border-oai-gray-100 pt-3 text-xs leading-5 text-oai-gray-600 dark:border-oai-gray-800 dark:text-oai-gray-300">
+              <div className="tt-data-ledger-overflow-copy mt-3 border-t border-oai-gray-100 pt-3 text-xs leading-5 text-oai-gray-600 dark:border-oai-gray-800 dark:text-oai-gray-300">
                 {unpricedPercent ? <p>{copy("data_sources.ledger.unpriced", {
                   count: Number(unpricedTokens).toLocaleString(getCopyLocale()),
                   percent: unpricedPercent,
@@ -422,7 +422,7 @@ export function DataSourcesPage() {
             ) : null}
           </section>
 
-          <section id="privacy-data" data-testid="data-privacy-boundary" className="tt-surface h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
+          <section id="privacy-data" data-testid="data-privacy-boundary" className="tt-surface tt-pressable-group h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
               <div className="min-w-0 flex-1">

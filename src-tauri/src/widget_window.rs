@@ -8,16 +8,21 @@ use tauri::{
 };
 
 pub const WIDGET_LABEL: &str = "desktop-widget";
-const PREFS_VERSION: u8 = 7;
+const PREFS_VERSION: u8 = 11;
 const DEFAULT_WIDTH: u32 = 352;
 const DEFAULT_HEIGHT: u32 = 72;
 const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
-const MIN_WIDTH: u32 = 352;
-const MIN_HEIGHT: u32 = 72;
-const POPOVER_HEIGHT: u32 = 260;
+const MIN_WIDTH: u32 = DEFAULT_WIDTH;
+const MIN_HEIGHT: u32 = DEFAULT_HEIGHT;
+const POPOVER_HEIGHT: u32 = 280;
 const CELEBRATION_PADDING: u32 = 140;
 static TRANSIENT_POPOVER_OPEN: AtomicBool = AtomicBool::new(false);
 static TRANSIENT_CELEBRATION_OPEN: AtomicBool = AtomicBool::new(false);
+const WIDGET_AGENT_IDS: &[&str] = &[
+    "all", "claude", "codex", "cursor", "trae", "codebuddy", "gemini", "hermes",
+    "openclaw", "opencode", "antigravity", "zed", "workbuddy", "kimi", "kimi-code",
+    "pi", "grok", "copilot", "deepseek-harness",
+];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -104,35 +109,21 @@ struct MonitorBounds {
 }
 
 fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
-    if prefs.version < 2 {
-        if prefs.expanded {
-            prefs.expanded_height = prefs.height.max(DEFAULT_EXPANDED_HEIGHT);
-        } else {
-            prefs.collapsed_height = prefs.height.max(DEFAULT_HEIGHT);
-        }
-    }
-    if prefs.version < 7
-        && prefs.width == 632
-        && prefs.height == 342
-        && prefs.collapsed_height == 342
-        && prefs.expanded_height == 640
-    {
-        prefs.width = DEFAULT_WIDTH;
-        prefs.height = DEFAULT_HEIGHT;
-        prefs.collapsed_height = DEFAULT_HEIGHT;
-        prefs.expanded_height = DEFAULT_EXPANDED_HEIGHT;
-    }
     prefs.version = PREFS_VERSION;
-    prefs.width = prefs.width.max(MIN_WIDTH);
-    prefs.height = prefs.height.max(MIN_HEIGHT);
-    prefs.collapsed_height = prefs.collapsed_height.max(DEFAULT_HEIGHT);
-    prefs.expanded_height = prefs.expanded_height.max(DEFAULT_EXPANDED_HEIGHT);
+    prefs.width = DEFAULT_WIDTH;
+    prefs.collapsed_height = DEFAULT_HEIGHT;
+    prefs.expanded_height = DEFAULT_EXPANDED_HEIGHT;
+    prefs.height = if prefs.expanded {
+        DEFAULT_EXPANDED_HEIGHT
+    } else {
+        DEFAULT_HEIGHT
+    };
     prefs.scale_factor = if prefs.scale_factor.is_finite() && prefs.scale_factor > 0.0 {
         prefs.scale_factor
     } else {
         1.0
     };
-    if !["all", "claude", "codex", "cursor", "hermes"].contains(&prefs.selected_agent.as_str()) {
+    if !WIDGET_AGENT_IDS.contains(&prefs.selected_agent.as_str()) {
         prefs.selected_agent = "all".into();
     }
     if !["projects", "limits", "models"].contains(&prefs.mode.as_str()) {
@@ -240,14 +231,14 @@ fn physical_size(width: u32, height: u32, scale_factor: f64) -> PhysicalSize<u32
     )
 }
 
-fn transition_height(current: &WidgetPrefs, requested_expanded: bool) -> Option<u32> {
-    if current.expanded == requested_expanded {
+fn transition_height(current: &WidgetPrefs, requested: &WidgetPrefs) -> Option<u32> {
+    if current.expanded == requested.expanded {
         return None;
     }
-    Some(if requested_expanded {
-        current.expanded_height
+    Some(if requested.expanded {
+        DEFAULT_EXPANDED_HEIGHT
     } else {
-        current.collapsed_height
+        DEFAULT_HEIGHT
     })
 }
 
@@ -394,7 +385,10 @@ fn apply_transient_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
         TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed),
         TRANSIENT_CELEBRATION_OPEN.load(Ordering::Relaxed),
     );
-    set_window_geometry(window, clamp_geometry(geometry, &monitor_bounds(window)));
+    // Keep the saved capsule origin visually fixed. Clamping the enlarged
+    // transient window shifts the padded card near a monitor edge, which makes
+    // the widget jump when an effect is opened or dismissed.
+    set_window_geometry(window, geometry);
 }
 
 fn create_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, String> {
@@ -403,7 +397,7 @@ fn create_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, 
             .title("Token Eyes Widget")
             .inner_size(prefs.width as f64, prefs.height as f64)
             .min_inner_size(MIN_WIDTH as f64, MIN_HEIGHT as f64)
-            .resizable(true)
+            .resizable(false)
             .decorations(false)
             .transparent(true)
             .shadow(false)
@@ -423,6 +417,23 @@ fn widget_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, 
     }
 }
 
+fn with_persisted_window_position(
+    mut prefs: WidgetPrefs,
+    position: Option<(i32, i32)>,
+    scale_factor: f64,
+) -> WidgetPrefs {
+    if let Some((x, y)) = position {
+        prefs.x = Some(x);
+        prefs.y = Some(y);
+    }
+    prefs.scale_factor = if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        prefs.scale_factor
+    };
+    normalize_prefs(prefs)
+}
+
 pub fn is_widget_window(label: &str) -> bool {
     label == WIDGET_LABEL
 }
@@ -436,21 +447,12 @@ pub fn persist_geometry(window: &WebviewWindow) {
     {
         return;
     }
-    let mut prefs = load(window.app_handle());
-    if let Ok(position) = window.outer_position() {
-        prefs.x = Some(position.x);
-        prefs.y = Some(position.y);
-    }
-    if let Ok(size) = window.inner_size() {
-        let scale_factor = window.scale_factor().unwrap_or(1.0);
-        (prefs.width, prefs.height) = logical_size(size, scale_factor);
-        if prefs.expanded {
-            prefs.expanded_height = prefs.height;
-        } else {
-            prefs.collapsed_height = prefs.height;
-        }
-        prefs.scale_factor = scale_factor;
-    }
+    let position = window.outer_position().ok().map(|value| (value.x, value.y));
+    let prefs = with_persisted_window_position(
+        load(window.app_handle()),
+        position,
+        window.scale_factor().unwrap_or(1.0),
+    );
     let _ = save(window.app_handle(), &prefs);
 }
 
@@ -458,6 +460,7 @@ pub fn restore_if_visible(app: &AppHandle) {
     let prefs = load(app);
     if let Ok(window) = widget_window(app, &prefs) {
         if prefs.visible {
+            let _ = window.set_resizable(false);
             apply_geometry(&window, &prefs);
             let _ = window.unminimize();
             let _ = window.show();
@@ -485,6 +488,7 @@ pub fn show_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
     let mut prefs = load(&app);
     let window = widget_window(&app, &prefs)?;
     let _ = window.set_always_on_top(prefs.always_on_top);
+    let _ = window.set_resizable(false);
     apply_geometry(&window, &prefs);
     let _ = window.unminimize();
     window.show().map_err(|error| error.to_string())?;
@@ -523,7 +527,7 @@ pub fn set_desktop_widget_prefs(app: AppHandle, prefs: WidgetPrefs) -> Result<Wi
         persist_geometry(&window);
     }
     let current = load(&app);
-    let next_height = transition_height(&current, prefs.expanded);
+    let next_height = transition_height(&current, &prefs);
     let mut prefs = merge_display_prefs(current, prefs);
     if let Some(height) = next_height {
         prefs.height = height;
@@ -531,6 +535,7 @@ pub fn set_desktop_widget_prefs(app: AppHandle, prefs: WidgetPrefs) -> Result<Wi
     save(&app, &prefs)?;
     if let Some(window) = app.get_webview_window(WIDGET_LABEL) {
         let _ = window.set_always_on_top(prefs.always_on_top);
+        let _ = window.set_resizable(false);
         if next_height.is_some() {
             apply_geometry(&window, &prefs);
             persist_geometry(&window);
@@ -590,7 +595,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_to_the_compact_resizable_glass_capsule() {
+    fn defaults_to_the_compact_fixed_glass_capsule() {
         let prefs = WidgetPrefs::default();
         assert_eq!((prefs.width, prefs.height), (352, 72));
         assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
@@ -601,6 +606,23 @@ mod tests {
         assert_eq!(prefs.mode, "projects");
         assert_eq!(prefs.active_session_window, "1h");
         assert_eq!(prefs.selected_limit_ids, None);
+    }
+
+    #[test]
+    fn agent_menu_uses_a_bounded_scroll_viewport_without_shrinking_expanded_state() {
+        let collapsed = Geometry {
+            x: 24,
+            y: 24,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+        };
+        let expanded = Geometry {
+            height: DEFAULT_EXPANDED_HEIGHT,
+            ..collapsed
+        };
+
+        assert_eq!(transient_geometry(collapsed, 1.0, true, false).height, 280);
+        assert_eq!(transient_geometry(expanded, 1.0, true, false).height, DEFAULT_EXPANDED_HEIGHT);
     }
 
     #[test]
@@ -616,7 +638,7 @@ mod tests {
             ..WidgetPrefs::default()
         });
 
-        assert_eq!(prefs.version, 7);
+        assert_eq!(prefs.version, 11);
         assert_eq!((prefs.width, prefs.height), (352, 72));
         assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
         assert_eq!(prefs.selected_agent, "codex");
@@ -649,6 +671,23 @@ mod tests {
     }
 
     #[test]
+    fn celebration_geometry_preserves_the_capsules_screen_position() {
+        let base = Geometry {
+            x: 1_500,
+            y: 820,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+        };
+        let expanded = transient_geometry(base, 1.0, false, true);
+
+        assert_eq!(expanded.x + CELEBRATION_PADDING as i32, base.x);
+        assert_eq!(expanded.y + CELEBRATION_PADDING as i32, base.y);
+        assert_eq!(expanded.width, base.width + CELEBRATION_PADDING * 2);
+        assert_eq!(expanded.height, base.height + CELEBRATION_PADDING * 2);
+        assert_eq!(transient_geometry(base, 1.0, false, false), base);
+    }
+
+    #[test]
     fn migrates_invalid_or_legacy_preferences_to_safe_values() {
         let prefs = normalize_prefs(WidgetPrefs {
             version: 0,
@@ -661,7 +700,7 @@ mod tests {
             active_session_window: "30m".into(),
             ..WidgetPrefs::default()
         });
-        assert_eq!(prefs.version, 6);
+        assert_eq!(prefs.version, 11);
         assert_eq!((prefs.width, prefs.height), (352, 72));
         assert_eq!(prefs.opacity, 0.4);
         assert_eq!(prefs.selected_agent, "all");
@@ -676,8 +715,9 @@ mod tests {
             visible: true,
             x: Some(410),
             y: Some(220),
-            width: 488,
-            height: 256,
+            width: 700,
+            height: 500,
+            expanded: true,
             scale_factor: 1.5,
             ..WidgetPrefs::default()
         };
@@ -692,24 +732,10 @@ mod tests {
             ..WidgetPrefs::default()
         };
         let merged = merge_display_prefs(current.clone(), requested);
-        assert_eq!(
-            (
-                merged.visible,
-                merged.x,
-                merged.y,
-                merged.width,
-                merged.height,
-                merged.scale_factor,
-            ),
-            (
-                current.visible,
-                current.x,
-                current.y,
-                current.width,
-                current.height,
-                current.scale_factor,
-            ),
-        );
+        assert_eq!(merged.visible, current.visible);
+        assert_eq!((merged.x, merged.y), (current.x, current.y));
+        assert_eq!((merged.width, merged.height), (352, 360));
+        assert_eq!(merged.scale_factor, current.scale_factor);
         assert_eq!(merged.selected_agent, "codex");
         assert_eq!(merged.mode, "limits");
         assert!(merged.expanded);
@@ -765,8 +791,8 @@ mod tests {
 
     #[test]
     fn logical_size_round_trips_across_dpi_changes() {
-        assert_eq!(logical_size(PhysicalSize::new(483, 216), 1.5), (352, 144));
-        assert_eq!(physical_size(322, 144, 2.0), PhysicalSize::new(644, 288));
+        assert_eq!(logical_size(PhysicalSize::new(528, 108), 1.5), (352, 72));
+        assert_eq!(physical_size(352, 72, 2.0), PhysicalSize::new(704, 144));
     }
 
     #[test]
@@ -778,15 +804,66 @@ mod tests {
             expanded: false,
             ..WidgetPrefs::default()
         };
-        assert_eq!(transition_height(&compact, true), Some(520));
+        let requested_expanded = WidgetPrefs {
+            expanded: true,
+            expanded_height: 520,
+            ..compact.clone()
+        };
+        assert_eq!(transition_height(&compact, &requested_expanded), Some(360));
 
         let expanded = WidgetPrefs {
             height: 520,
             expanded: true,
             ..compact
         };
-        assert_eq!(transition_height(&expanded, false), Some(200));
-        assert_eq!(transition_height(&expanded, true), None);
+        let requested_collapsed = WidgetPrefs { expanded: false, ..expanded.clone() };
+        assert_eq!(transition_height(&expanded, &requested_collapsed), Some(72));
+        assert_eq!(transition_height(&expanded, &expanded), None);
+
+        let requested_models = WidgetPrefs {
+            mode: "models".into(),
+            ..expanded.clone()
+        };
+        assert_eq!(transition_height(&expanded, &requested_models), None);
+    }
+
+    #[test]
+    fn repairs_polluted_v7_collapsed_geometry_and_keeps_deepseek_selection() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            version: 7,
+            height: 260,
+            collapsed_height: 260,
+            expanded_height: 520,
+            selected_agent: "deepseek-harness".into(),
+            expanded: false,
+            ..WidgetPrefs::default()
+        });
+
+        assert_eq!(prefs.version, 11);
+        assert_eq!((prefs.width, prefs.height, prefs.collapsed_height), (352, 72, 72));
+        assert_eq!(prefs.expanded_height, 360);
+        assert_eq!(prefs.selected_agent, "deepseek-harness");
+    }
+
+    #[test]
+    fn migrates_v8_default_geometry_without_clobbering_widget_selection() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            version: 8,
+            width: 352,
+            height: 360,
+            collapsed_height: 72,
+            expanded_height: 360,
+            selected_agent: "deepseek-harness".into(),
+            mode: "limits".into(),
+            expanded: true,
+            ..WidgetPrefs::default()
+        });
+
+        assert_eq!(prefs.version, 11);
+        assert_eq!((prefs.width, prefs.height), (352, 360));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
+        assert_eq!(prefs.selected_agent, "deepseek-harness");
+        assert_eq!(prefs.mode, "limits");
     }
 
     #[test]
@@ -812,8 +889,45 @@ mod tests {
                 x: 290,
                 y: 90,
                 width: 772,
-                height: 810
+                height: 930
             },
         );
+    }
+
+    #[test]
+    fn agent_menu_transient_height_keeps_the_rounded_menu_bottom_visible() {
+        let base = Geometry {
+            x: 500,
+            y: 300,
+            width: 352,
+            height: 72,
+        };
+
+        assert_eq!(
+            transient_geometry(base, 1.0, true, false),
+            Geometry {
+                x: 500,
+                y: 300,
+                width: 352,
+                height: 360,
+            },
+        );
+    }
+
+    #[test]
+    fn persisting_position_cannot_overwrite_the_fixed_expanded_geometry() {
+        let prefs = WidgetPrefs {
+            expanded: true,
+            height: DEFAULT_EXPANDED_HEIGHT,
+            ..WidgetPrefs::default()
+        };
+
+        let persisted = with_persisted_window_position(prefs, Some((91, 133)), 1.75);
+
+        assert_eq!((persisted.x, persisted.y), (Some(91), Some(133)));
+        assert_eq!(persisted.width, DEFAULT_WIDTH);
+        assert_eq!(persisted.height, DEFAULT_EXPANDED_HEIGHT);
+        assert_eq!(persisted.expanded_height, DEFAULT_EXPANDED_HEIGHT);
+        assert!(persisted.expanded);
     }
 }

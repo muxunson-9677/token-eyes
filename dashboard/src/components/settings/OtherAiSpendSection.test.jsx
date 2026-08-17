@@ -81,7 +81,7 @@ describe("OtherAiSpendSection", () => {
     expect(await screen.findByText("被封账号历史充值")).toBeInTheDocument();
     first.unmount();
 
-    render(<OtherAiSpendSection />);
+    render(React.createElement(OtherAiSpendSection));
     expect(screen.getByText("被封账号历史充值")).toBeInTheDocument();
     expect(getSpendRecords).toHaveBeenCalledTimes(1);
   });

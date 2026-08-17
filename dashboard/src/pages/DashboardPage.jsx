@@ -53,6 +53,8 @@ import {
 } from "../lib/timezone";
 import {
   getUserStatus,
+  fetchCloudUsageModelBreakdown,
+  getUsageModelBreakdown,
   getLocalSettings,
   setLocalSettings,
   triggerLocalSync,
@@ -688,6 +690,19 @@ export function DashboardPage({
     () => sortDailyRows(dailyBreakdownRows, dailyBreakdownSort),
     [dailyBreakdownRows, dailyBreakdownSort],
   );
+  const loadDailyModelBreakdown = useCallback(async (day) => {
+    const useCloud = Boolean(accountView && accountAccessToken);
+    const resolvedToken = await resolveAuthAccessToken(useCloud ? accountAccessToken : accessToken);
+    const fetcher = useCloud ? fetchCloudUsageModelBreakdown : getUsageModelBreakdown;
+    return fetcher({
+      baseUrl,
+      accessToken: resolvedToken,
+      from: day,
+      to: day,
+      timeZone,
+      tzOffsetMinutes,
+    });
+  }, [accountAccessToken, accountView, accessToken, baseUrl, timeZone, tzOffsetMinutes]);
   const trendRowsForDisplay = useMemo(() => {
     const source = useDailyTrend
       ? daily
@@ -1459,6 +1474,7 @@ export function DashboardPage({
       detailsPageCount={detailsPageCount}
       detailsPage={detailsPage}
       setDetailsPage={setDetailsPage}
+      onLoadDailyModelBreakdown={loadDailyModelBreakdown}
       costModalOpen={costModalOpen}
       closeCostModal={closeCostModal}
     />

@@ -250,6 +250,8 @@ const PROVIDER_LOGO_MAP = {
   WORKBUDDY: "/brand-logos/codebuddy.svg",
   HERMES: "/brand-logos/hermes.svg",
   CURSOR: "/brand-logos/cursor.svg",
+  DEEPSEEK: "/brand-logos/deepseek.png",
+  "DEEPSEEK-HARNESS": "/brand-logos/deepseek-harness.svg",
   GEMINI: "/brand-logos/gemini.svg",
   GLM: "https://static.bigmodel.cn/wd-paas-front/static/images/favicon.png",
   "KILO-CLI": "/brand-logos/kilo.svg",

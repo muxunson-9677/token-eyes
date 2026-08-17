@@ -62,6 +62,7 @@ const LEADERBOARD_AGENT_SOURCES = new Set([
   "goose",
   "droid",
   "antigravity",
+  "deepseek-harness",
 ]);
 
 function json(data: unknown, status = 200) {

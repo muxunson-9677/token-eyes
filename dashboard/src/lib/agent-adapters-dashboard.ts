@@ -48,6 +48,7 @@ export const DASHBOARD_AGENTS: readonly DashboardAgent[] = [
   { id: "goose", displayName: "Goose", queueSource: "goose" },
   { id: "droid", displayName: "Droid", queueSource: "droid" },
   { id: "antigravity", displayName: "Antigravity", queueSource: "antigravity" },
+  { id: "deepseek-harness", displayName: "DeepSeek Harness", queueSource: "deepseek-harness" },
 ] as const;
 
 /**

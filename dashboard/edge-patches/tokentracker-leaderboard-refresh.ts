@@ -43,6 +43,7 @@ const LEADERBOARD_AGENT_SOURCES = new Set([
   "goose",
   "droid",
   "antigravity",
+  "deepseek-harness",
 ]);
 
 const LEADERBOARD_METRICS = ["total_without_cache_tokens", "agent_metrics"] as const;

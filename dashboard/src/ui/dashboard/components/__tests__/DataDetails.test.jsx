@@ -1,6 +1,6 @@
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { copy } from "../../../../lib/copy";
 import { render } from "../../../../test/test-utils";
@@ -295,7 +295,9 @@ describe("DataDetails daily rows", () => {
   });
 
   it("uses semantic icons for both daily and project view tabs", async () => {
-    render(<DataDetails {...dailyProps} />);
+    const { container } = render(<DataDetails {...dailyProps} />);
+
+    expect(container.firstChild).toHaveClass("tt-pressable-parent");
 
     const dailyTab = screen.getByRole("tab", { name: copy("dashboard.daily.title") });
     const projectsTab = screen.getByRole("tab", { name: copy("dashboard.projects.title") });
@@ -389,5 +391,58 @@ describe("DataDetails daily rows", () => {
     expect(screen.getByTestId("daily-date-range")).toHaveTextContent("2026-08-07");
     expect(screen.getByRole("columnheader", { name: "较昨日" })).toBeInTheDocument();
     expect(screen.getByTestId("daily-change-2026-08-07")).toHaveTextContent("100.0%");
+  });
+
+  it("opens an overlay breakdown for a day without inserting another table row", async () => {
+    const user = userEvent.setup();
+    const onLoadDailyModelBreakdown = vi.fn().mockResolvedValue({
+      sources: [{
+        source: "codex",
+        totals: { total_tokens: 120 },
+        models: [
+          { model: "gpt-5.6-sol", totals: { total_tokens: 90 } },
+          { model: "gpt-5.5", totals: { total_tokens: 30 } },
+        ],
+      }],
+    });
+
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownColumns={[
+          { key: "day", label: "日期" },
+          { key: "total_tokens", label: "总计" },
+          { key: "input_tokens", label: "输入" },
+          { key: "output_tokens", label: "输出" },
+          { key: "cached_input_tokens", label: "缓存" },
+          { key: "reasoning_output_tokens", label: "推理" },
+          { key: "conversation_count", label: "对话数" },
+        ]}
+        dailyBreakdownRows={[
+          { day: "2026-08-07", total_tokens: 120 },
+          { day: "2026-08-06", total_tokens: 80 },
+        ]}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        onLoadDailyModelBreakdown={onLoadDailyModelBreakdown}
+      />,
+    );
+
+    const table = screen.getByRole("table");
+    const originalRows = table.querySelectorAll("tbody > tr").length;
+    const targetRow = table.querySelector("tbody > tr");
+    expect(targetRow).not.toBeNull();
+    const totalCell = within(targetRow).getByText("120");
+    await user.click(totalCell);
+
+    expect(onLoadDailyModelBreakdown).toHaveBeenCalledWith("2026-08-07");
+    const overlay = await screen.findByTestId("daily-breakdown-overlay");
+    expect(overlay).toHaveAttribute("data-overlay-layout", "cover");
+    expect(overlay).toHaveTextContent("Codex");
+    expect(overlay).toHaveTextContent("gpt-5.6-sol");
+    expect(overlay).toHaveTextContent("75.0%");
+    expect(table.querySelectorAll("tbody > tr")).toHaveLength(originalRows);
+
+    await user.click(totalCell);
+    expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
   });
 });

@@ -382,7 +382,7 @@ export function UsageOverview({
     <div className={`tt-overview-usage tt-overview-aligned-stack flex h-full flex-col gap-4 ${className}`}>
       <section
         data-testid="usage-overview-hero"
-        className="tt-overview-usage-hero tt-surface rounded-[var(--tt-card-radius)]"
+        className="tt-overview-usage-hero tt-surface tt-pressable-group rounded-[var(--tt-card-radius)]"
       >
         <div className="flex h-full flex-col p-5">
         {/* Header: Period Tabs + Refresh. Tabs are a single horizontal-scroll
@@ -494,7 +494,7 @@ export function UsageOverview({
             Confidence and cost evidence share the compact footer below it. */}
         {(summaryValue != null || summaryCostValue || tokenConfidence || costConfidence) ? (
           <section
-            className="tt-surface-nested mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl"
+            className="tt-surface-nested tt-pressable mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl"
             data-testid="usage-overview-summary-card"
           >
             {summaryValue != null ? (
@@ -551,7 +551,7 @@ export function UsageOverview({
                 {overviewMetrics.length > 0 ? (
                   <div className="relative z-10 grid grid-cols-3 gap-8" data-testid="usage-overview-metrics">
                     {overviewMetrics.map((metric) => (
-                      <div key={metric.key} className="tt-overview-mini-metric min-w-[106px] rounded-xl px-4 py-2.5">
+                      <div key={metric.key} className="tt-overview-mini-metric tt-pressable min-w-[106px] rounded-xl px-4 py-2.5">
                         <div className="text-[11px] text-oai-gray-500 dark:text-oai-gray-400">{metric.label}</div>
                         <div className={`mt-1 text-base font-semibold tabular-nums ${metric.positive === true ? "text-emerald-500" : metric.positive === false ? "text-red-500" : "text-oai-black dark:text-white"}`}>
                           {metric.value}
@@ -594,7 +594,7 @@ export function UsageOverview({
       {hasAnyFleetModel ? (
       <section
         data-testid="usage-overview-providers"
-        className={`tt-overview-provider-panel tt-surface rounded-[var(--tt-card-radius)] ${
+        className={`tt-overview-provider-panel tt-surface tt-pressable-group rounded-[var(--tt-card-radius)] ${
           expandedProvider ? "tt-overview-provider-panel--expanded" : ""
         }`}
       >

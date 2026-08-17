@@ -73,7 +73,8 @@ export function WeeklyBillCard({ data }) {
   const wowColor = wow === null ? INK_SOFT : wow.startsWith("-") ? DROP : RISE;
   const top = data.topModels && data.topModels.length ? data.topModels[0] : null;
   const roi = computeSubscriptionRoi({
-    monthApiCostUsd: bill.monthApiCostUsd ?? null,
+    monthApiEquivalentUsd:
+      bill.monthApiEquivalentUsd ?? bill.monthApiCostUsd ?? null,
     monthSubscriptionCostUsd: bill.monthSubscriptionCostUsd ?? null,
   });
 

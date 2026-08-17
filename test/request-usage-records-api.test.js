@@ -4,7 +4,11 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { createLocalApiHandler, clearRequestUsageRecordsListCacheForTests } = require("../src/lib/local-api");
+const {
+  createLocalApiHandler,
+  clearRequestUsageRecordsListCacheForTests,
+  computeRecordTotals,
+} = require("../src/lib/local-api");
 
 async function writeQueue(queuePath, rows) {
   await fs.promises.writeFile(
@@ -91,6 +95,21 @@ function makeRow(overrides = {}) {
     ...overrides,
   };
 }
+
+test("request totals separate interrupted turns from provider failures", () => {
+  const totals = computeRecordTotals([
+    { record_kind: "request_event", status: 200 },
+    { record_kind: "request_event", status: 499 },
+    { record_kind: "request_event", status: 500 },
+    { record_kind: "request_event", status: null },
+  ]);
+
+  assert.equal(totals.status_sample_count, 3);
+  assert.equal(totals.success_count, 1);
+  assert.equal(totals.interrupted_count, 1);
+  assert.equal(totals.failure_count, 1);
+  assert.equal(totals.success_rate, 50);
+});
 
 test("TICKET-06: queue-derived sources return explicit aggregate bucket records", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-req-records-aggregate-bucket-"));

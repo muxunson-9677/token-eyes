@@ -115,22 +115,26 @@ export function SectionCard({
       {collapsedSummary}
     </span>
   ) : null);
-  const sectionIcon = Icon ? (
-    <span
-      data-testid="settings-section-icon"
-      data-tone={iconTone}
-      className={cn(
+  const sectionIcon = Icon ? React.createElement(
+    "span",
+    {
+      "data-testid": "settings-section-icon",
+      "data-tone": iconTone,
+      className: cn(
         "grid h-7 w-7 shrink-0 place-items-center rounded-lg",
         SECTION_ICON_TONES[iconTone] || SECTION_ICON_TONES.blue,
-      )}
-    >
-      <Icon data-testid={iconTestId || undefined} className="h-3.5 w-3.5" aria-hidden="true" />
-    </span>
+      ),
+    },
+    React.createElement(Icon, {
+      "data-testid": iconTestId || undefined,
+      className: "h-3.5 w-3.5",
+      "aria-hidden": "true",
+    }),
   ) : null;
   return (
-    <Card className={className}>
-      <div className="tt-section-card-header mb-3 flex items-start justify-between gap-4">
-        <div className="tt-section-header-main flex min-w-0 flex-1 items-start gap-3">
+    <Card className={cn("tt-pressable-group", className)}>
+      <div className="tt-section-card-header mb-3 flex items-center justify-between gap-4">
+        <div className="tt-section-header-main flex min-w-0 flex-1 items-center gap-3">
           {collapsible ? (
           <button
             type="button"

@@ -4,7 +4,7 @@ import { expect, it, vi } from "vitest";
 import { CostAccumulation } from "../CostAccumulation.jsx";
 
 // V2-W2 subscription ROI card ("回本倍数") on the cost page.
-// multiplier = monthApiCostUsd / monthSubscriptionCostUsd.
+// multiplier = monthApiEquivalentUsd / monthSubscriptionCostUsd.
 
 vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
@@ -16,6 +16,7 @@ vi.mock("../../../../lib/copy", () => ({
 
 const BASE_SUMMARY = {
   monthApiCostUsd: 0,
+  monthApiEquivalentUsd: 0,
   monthSubscriptionCostUsd: 0,
   monthTotalCostUsd: 0,
   lifetimeTotalCostUsd: 0,
@@ -28,6 +29,7 @@ it("shows the ROI hero multiplier when subscription and usage exist", () => {
       costSummary={{
         ...BASE_SUMMARY,
         monthApiCostUsd: 316,
+        monthApiEquivalentUsd: 316,
         monthSubscriptionCostUsd: 20,
         monthTotalCostUsd: 336,
       }}
@@ -46,6 +48,7 @@ it("uses neutral framing when the multiplier is below one", () => {
       costSummary={{
         ...BASE_SUMMARY,
         monthApiCostUsd: 5,
+        monthApiEquivalentUsd: 5,
         monthSubscriptionCostUsd: 20,
         monthTotalCostUsd: 25,
       }}

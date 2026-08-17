@@ -1375,7 +1375,7 @@ export function LeaderboardPage({
 
           <div
             data-testid="leaderboard-filter-toolbar"
-            className="tt-surface-nested mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--tt-card-radius)] sm:mb-8"
+            className="tt-surface-nested tt-pressable-group mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--tt-card-radius)] sm:mb-8"
           >
             <div className="flex flex-wrap items-center gap-2">
               <div
@@ -1516,7 +1516,7 @@ export function LeaderboardPage({
 
           <div
             data-testid="leaderboard-list-surface"
-            className="tt-surface overflow-hidden rounded-[var(--tt-card-radius)]"
+            className="tt-surface tt-pressable-group overflow-hidden rounded-[var(--tt-card-radius)]"
           >
             {currentListState.error && hasEntries ? (
               <div className="border-b border-oai-gray-200 dark:border-oai-gray-800 px-6 py-3">

@@ -7,6 +7,10 @@ import { DataSourcesPage } from "./DataSourcesPage.jsx";
 import { clearLocalData, getAllAgentEnvironments, getUsageSummary, triggerLocalSync } from "../lib/api";
 import { setCopyLocale } from "../lib/copy";
 import { safeWriteClipboard } from "../lib/safe-browser";
+import fs from "node:fs";
+import path from "node:path";
+
+const dataSourcesCss = fs.readFileSync(path.resolve(process.cwd(), "src/ui/foundation/apple-glass.css"), "utf8");
 
 vi.mock("../lib/api", () => ({
   getAllAgentEnvironments: vi.fn(),
@@ -81,6 +85,14 @@ it("shows a health summary and a compact source workspace", async () => {
   expect(screen.getByTestId("data-health-toolbar")).toBeInTheDocument();
   expect(screen.getByTestId("data-source-summary").parentElement).toHaveClass("max-w-[1600px]");
   expect(screen.getByTestId("data-source-codex")).toHaveClass("min-h-[88px]", "border");
+  expect(screen.getByTestId("data-source-summary")).toHaveClass("tt-pressable-group");
+  expect(screen.getByTestId("data-ledger-diagnostics")).toHaveClass("tt-pressable-group");
+  expect(screen.getByTestId("data-privacy-boundary")).toHaveClass("tt-pressable-group");
+  expect(screen.getByTestId("data-source-codex").querySelector("dl")).toHaveClass("grid-cols-1");
+  for (const detail of screen.getByTestId("data-source-codex").querySelectorAll("dd")) {
+    expect(detail).not.toHaveClass("truncate");
+  }
+  expect(screen.getByTestId("data-source-codex").querySelectorAll("dd")[1]).toHaveClass("break-words");
   expect(screen.getByTestId("data-source-cursor")).toHaveTextContent("未检测到");
   expect(screen.getByTestId("data-source-codex").querySelector("h3")).toHaveClass("flex", "leading-5");
   expect(screen.getByTestId("data-ledger-diagnostics").parentElement).toHaveClass("col-span-full", "items-stretch", "lg:grid-cols-[430px_minmax(0,1fr)]", "xl:grid-cols-[500px_minmax(0,1fr)]");
@@ -95,6 +107,17 @@ it("shows a health summary and a compact source workspace", async () => {
   expect(nativeSelectorMatches.every((element) => (
     element.dataset.testid === "data-source-summary" || element.tagName === "ARTICLE"
   ))).toBe(true);
+});
+
+it("lets dense source and ledger content expand without fixed-height overlap", async () => {
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+  await screen.findByTestId("data-source-summary");
+
+  expect(dataSourcesCss).toMatch(/\[data-testid="data-source-summary"\]\s*\{[^}]*height:\s*auto;/s);
+  expect(dataSourcesCss).toMatch(/\[data-testid="data-ledger-diagnostics"\],[\s\S]*?\[data-testid="data-privacy-boundary"\]\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*288px;/s);
+  expect(dataSourcesCss).toMatch(/\.tt-data-ledger-overflow-copy\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+  expect(dataSourcesCss).toMatch(/\[data-testid\^="data-source-"\]:not\(\[data-testid="data-source-summary"\]\)\s*\{[^}]*min-height:\s*104px;[^}]*padding:\s*10px 12px;/s);
+  expect(dataSourcesCss).toMatch(/\[data-testid\^="data-source-"\] dl\s*\{[^}]*margin-top:\s*4px;[^}]*margin-left:\s*0;/s);
 });
 
 it("filters, searches, sorts, and switches the source workspace view", async () => {

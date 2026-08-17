@@ -72,5 +72,6 @@ test("macOS LimitsSettingsStore.allProviders matches dashboard LIMIT_PROVIDER_ID
     "pi",
     "grok",
     "copilot",
+    "deepseek-harness",
   ]);
 });

@@ -13,4 +13,14 @@ describe("ProviderIcon", () => {
     expect(icon).toHaveAttribute("width", "20");
     expect(icon).toHaveAttribute("height", "20");
   });
+
+  it("renders DeepSeek Harness from the bundled official Harness repository asset", () => {
+    const { container } = render(<ProviderIcon provider="deepseek-harness" size={20} />);
+
+    const icon = container.querySelector("img");
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("src", "/brand-logos/deepseek-harness.svg");
+    expect(icon).toHaveAttribute("width", "20");
+    expect(icon).toHaveAttribute("height", "20");
+  });
 });

@@ -1197,6 +1197,8 @@ function computeRecordTotals(records) {
     cost_usd: 0,
     request_count: 0,
     success_count: null,
+    interrupted_count: 0,
+    failure_count: 0,
     success_rate: null,
     avg_latency_ms: null,
     cache_hit_rate: 0,
@@ -1210,6 +1212,8 @@ function computeRecordTotals(records) {
   let measuredStatusCount = 0;
   let measuredLatencyCount = 0;
   let successCount = 0;
+  let interruptedCount = 0;
+  let failureCount = 0;
   for (const r of records) {
     const aggregateCount = Number(r.conversation_count || 0);
     totals.request_count += r.record_kind === "aggregate_bucket"
@@ -1226,7 +1230,10 @@ function computeRecordTotals(records) {
     totals.unpriced_tokens += Number(r.unpriced_tokens || r.total_tokens || 0) - Number(r.priced_tokens || 0);
     if (r.status !== null && r.status !== undefined) {
       measuredStatusCount++;
-      if (Number(r.status) >= 200 && Number(r.status) < 300) successCount++;
+      const status = Number(r.status);
+      if (status >= 200 && status < 300) successCount++;
+      else if (status === 499) interruptedCount++;
+      else failureCount++;
     }
     if (r.latency_ms !== null && r.latency_ms !== undefined) {
       measuredLatencyCount++;
@@ -1234,10 +1241,13 @@ function computeRecordTotals(records) {
     }
   }
   totals.status_sample_count = measuredStatusCount;
+  totals.interrupted_count = interruptedCount;
+  totals.failure_count = failureCount;
   totals.latency_sample_count = measuredLatencyCount;
-  if (measuredStatusCount > 0) {
+  const completedStatusCount = successCount + failureCount;
+  if (completedStatusCount > 0) {
     totals.success_count = successCount;
-    totals.success_rate = Number(((successCount / measuredStatusCount) * 100).toFixed(2));
+    totals.success_rate = Number(((successCount / completedStatusCount) * 100).toFixed(2));
   }
   if (measuredLatencyCount > 0) {
     totals.avg_latency_ms = Math.round(latencySum / measuredLatencyCount);
@@ -8466,4 +8476,5 @@ module.exports = {
   summarizeTokenOnlyUsage,
   clearQueueDataCacheForTests,
   clearRequestUsageRecordsListCacheForTests,
+  computeRecordTotals,
 };

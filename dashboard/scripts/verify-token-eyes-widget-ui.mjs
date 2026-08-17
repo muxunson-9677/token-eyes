@@ -22,14 +22,14 @@ const server = await createServer(createTemporaryDashboardServerConfig({
 }));
 
 const basePrefs = {
-  version: 6,
+  version: 10,
   visible: true,
   x: null,
   y: null,
-  width: 352,
-  height: 72,
-  collapsedHeight: 72,
-  expandedHeight: 360,
+  width: 632,
+  height: 144,
+  collapsedHeight: 144,
+  expandedHeight: 356,
   scaleFactor: 1,
   selectedAgent: "codex",
   mode: "projects",
@@ -44,11 +44,12 @@ const basePrefs = {
 };
 
 const scenarios = [
-  { name: "01-compact", prefs: basePrefs, height: 72 },
-  { name: "02-agent-menu", prefs: basePrefs, height: 260, openAgentMenu: true },
-  { name: "03-projects", prefs: { ...basePrefs, expanded: true }, height: 360 },
-  { name: "04-limits", prefs: { ...basePrefs, expanded: true, mode: "limits" }, height: 360 },
-  { name: "05-models", prefs: { ...basePrefs, expanded: true, mode: "models" }, height: 360 },
+  { name: "01-compact", prefs: basePrefs, height: 144 },
+  { name: "02-agent-menu", prefs: basePrefs, height: 472, openAgentMenu: true },
+  { name: "03-projects", prefs: { ...basePrefs, expanded: true, expandedHeight: 356 }, height: 356 },
+  { name: "04-limits", prefs: { ...basePrefs, expanded: true, mode: "limits", expandedHeight: 426 }, height: 426 },
+  { name: "05-models", prefs: { ...basePrefs, expanded: true, mode: "models", expandedHeight: 412 }, height: 412 },
+  { name: "06-celebration", prefs: basePrefs, width: 912, height: 424, openCelebration: true },
 ];
 
 const viewModel = {
@@ -60,8 +61,8 @@ const viewModel = {
     green: 8,
     unknown: 0,
     projects: [
-      { id: "token-eyes", label: "010-Token eye", red: 0, yellow: 0, green: 6, unknown: 0, sessions: [] },
-      { id: "text", label: "text", red: 0, yellow: 0, green: 2, unknown: 0, sessions: [] },
+      { id: "token-eyes", label: "010-Token eye", red: 0, yellow: 0, green: 6, unknown: 0, sessions: [{ id: "token-eyes-active", label: "Token Eyes UI", status: "green", state: "active", updatedAt: "2026-08-17T06:00:00.000Z" }] },
+      { id: "text", label: "text", red: 0, yellow: 0, green: 2, unknown: 0, sessions: [{ id: "text-active", label: "Codex settings", status: "green", state: "active", updatedAt: "2026-08-17T06:00:00.000Z" }] },
     ],
   },
   limits: [
@@ -92,6 +93,33 @@ function jsonResponse(body) {
 async function installFixture(page, prefs) {
   await page.addInitScript((initialPrefs) => {
     window.__TOKEN_EYES_WIDGET_PREFS__ = initialPrefs;
+    window.localStorage.setItem(
+      "tt.limits.providerOrder",
+      JSON.stringify(["claude", "codex", "cursor", "hermes"]),
+    );
+    window.localStorage.setItem(
+      "tt.limits.providerVisibility",
+      JSON.stringify({
+        claude: true,
+        codex: true,
+        cursor: true,
+        trae: false,
+        codebuddy: false,
+        gemini: false,
+        hermes: true,
+        openclaw: false,
+        opencode: false,
+        antigravity: false,
+        zed: false,
+        workbuddy: false,
+        kimi: false,
+        "kimi-code": false,
+        pi: false,
+        grok: false,
+        copilot: false,
+        "deepseek-harness": false,
+      }),
+    );
     window.__TAURI__ = {
       core: {
         invoke: async (command, args) => {
@@ -130,7 +158,7 @@ try {
   for (const scale of [1, 1.25, 1.5, 2]) {
     for (const scenario of scenarios) {
       const context = await browser.newContext({
-        viewport: { width: 352, height: scenario.height },
+        viewport: { width: scenario.width ?? 632, height: scenario.height },
         deviceScaleFactor: scale,
         colorScheme: "dark",
       });
@@ -142,7 +170,7 @@ try {
         if (request.url().includes("desktop-widget")) widgetRequests.push(request.url());
       });
       await installFixture(page, { ...scenario.prefs, height: scenario.height, scaleFactor: scale });
-      await page.goto(`${baseUrl}/desktop-widget`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${baseUrl}/desktop-widget${scenario.query ?? ""}`, { waitUntil: "domcontentloaded" });
       await page.getByTestId("desktop-widget-card").waitFor({ state: "visible" });
       const readyText = scenario.prefs.mode === "limits"
         ? "67%"
@@ -151,6 +179,14 @@ try {
         await page.getByText(readyText, { exact: true }).first().waitFor({ state: "visible", timeout: 8_000 });
       } catch {
         throw new Error(`${scenario.name}@${scale}: widget data did not load; requests=${JSON.stringify(widgetRequests)} text=${await page.locator("body").innerText()}`);
+      }
+      if (scenario.openCelebration) {
+        await page.evaluate(() => {
+          window.dispatchEvent(new CustomEvent("token-eyes:desktop-widget-celebration", {
+            detail: { eventId: "visual-audit-reset", effectId: "meteors" },
+          }));
+        });
+        await page.getByTestId("widget-reset-celebration").waitFor({ state: "visible" });
       }
       if (scenario.openAgentMenu) {
         await page.locator(".widget-agent-arrow").click();
@@ -177,15 +213,76 @@ try {
       if (geometry.overflowX > 1 || geometry.overflowY > 1) {
         throw new Error(`${scenario.name}@${scale}: overflow ${JSON.stringify(geometry)}`);
       }
-      if (geometry.card.x < 0 || geometry.card.right > 352 || geometry.rail.right > 352) {
+      const expectedCardHeight = ["01-compact", "02-agent-menu", "06-celebration"].includes(scenario.name)
+        ? 138
+        : scenario.height - 6;
+      if (Math.abs(geometry.card.height - expectedCardHeight) > 1) {
+        throw new Error(`${scenario.name}@${scale}: wrong card height ${JSON.stringify(geometry)}`);
+      }
+      const viewportWidth = scenario.width ?? 632;
+      if (geometry.card.x < 0 || geometry.card.right > viewportWidth || geometry.rail.right > viewportWidth) {
         throw new Error(`${scenario.name}@${scale}: clipped ${JSON.stringify(geometry)}`);
+      }
+      const stateAudit = await page.evaluate((scenarioName) => {
+        const scroll = document.querySelector("[data-widget-scroll-region]");
+        const rows = scenarioName === "03-projects"
+          ? [...document.querySelectorAll(".widget-project")]
+          : scenarioName === "04-limits"
+            ? [...document.querySelectorAll(".widget-limit-row")]
+            : scenarioName === "05-models"
+              ? [...document.querySelectorAll(".widget-model-row")]
+              : [];
+        const menu = scenarioName === "02-agent-menu" ? document.querySelector("[role='menu']") : null;
+        const dismiss = scenarioName === "06-celebration"
+          ? document.querySelector(".widget-reset-celebration__dismiss")
+          : null;
+        const card = document.querySelector("[data-testid='desktop-widget-card']");
+        const dismissRect = dismiss?.getBoundingClientRect();
+        const stateCardRect = card?.getBoundingClientRect();
+        const last = rows.at(-1);
+        return {
+          rowCount: rows.length,
+          lastRowVisible: !last || !scroll
+            ? true
+            : last.getBoundingClientRect().bottom <= scroll.getBoundingClientRect().bottom + 1,
+          menuItemCount: menu?.querySelectorAll("[role='menuitemradio']").length ?? 0,
+          menuVisible: !menu || menu.getBoundingClientRect().bottom <= window.innerHeight + 1,
+          celebrationDismissVisible: !dismiss || (
+            dismissRect.width > 0
+            && dismissRect.height > 0
+            && Math.abs(dismissRect.left - stateCardRect.right) <= 6
+            && Math.abs(dismissRect.top - stateCardRect.top) <= 12
+          ),
+          celebrationGeometry: dismissRect && stateCardRect ? {
+            dismiss: { left: dismissRect.left, top: dismissRect.top, right: dismissRect.right, bottom: dismissRect.bottom },
+            card: { left: stateCardRect.left, top: stateCardRect.top, right: stateCardRect.right, bottom: stateCardRect.bottom },
+          } : null,
+        };
+      }, scenario.name);
+      const expectedRows = scenario.name === "03-projects" ? 2
+        : scenario.name === "04-limits" ? 3
+          : scenario.name === "05-models" ? 7 : 0;
+      if (expectedRows && (stateAudit.rowCount !== expectedRows || !stateAudit.lastRowVisible)) {
+        throw new Error(`${scenario.name}@${scale}: incomplete expanded content ${JSON.stringify(stateAudit)}`);
+      }
+      if (scenario.name === "02-agent-menu" && (stateAudit.menuItemCount !== 5 || !stateAudit.menuVisible)) {
+        throw new Error(`${scenario.name}@${scale}: incomplete agent menu ${JSON.stringify(stateAudit)}`);
+      }
+      if (scenario.name === "06-celebration" && !stateAudit.celebrationDismissVisible) {
+        throw new Error(`${scenario.name}@${scale}: effect dismiss control is detached from the widget ${JSON.stringify(stateAudit)}`);
       }
       if (pageErrors.length) throw new Error(`${scenario.name}@${scale}: ${pageErrors.join(" | ")}`);
 
       const suffix = String(scale).replace(".", "_");
       const screenshotPath = path.join(outputDir, `${scenario.name}-${suffix}x.png`);
       await page.screenshot({ path: screenshotPath, omitBackground: true });
-      results.push({ name: scenario.name, scale, screenshotPath, geometry });
+      let celebrationDismissed = null;
+      if (scenario.openCelebration) {
+        await page.locator(".widget-reset-celebration__dismiss").click();
+        await page.getByTestId("widget-reset-celebration").waitFor({ state: "hidden" });
+        celebrationDismissed = true;
+      }
+      results.push({ name: scenario.name, scale, screenshotPath, geometry, stateAudit, celebrationDismissed });
       await context.close();
     }
   }

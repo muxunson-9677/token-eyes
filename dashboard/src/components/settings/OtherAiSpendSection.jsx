@@ -472,17 +472,17 @@ export function OtherAiSpendSection({ onSummaryChange }) {
                 type="button"
                 onClick={() => openGroupForm(group.id)}
                 aria-label={`${copy("settings.cost.other_ai.add_subgroup")} ${group.name}`}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-oai-gray-500 hover:bg-white hover:text-oai-brand-600 dark:hover:bg-oai-gray-900"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-oai-gray-500 hover:bg-oai-gray-100 hover:text-oai-brand-600 dark:hover:bg-oai-gray-800"
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 {copy("settings.cost.other_ai.add_subgroup")}
               </button>
               <span className="tt-other-ai-direct-group-actions contents">
                 <button type="button" onClick={() => toggleGroupFavorite(group)} aria-label={`${copy(group.favorite ? "settings.cost.other_ai.unfavorite_group" : "settings.cost.other_ai.favorite_group")} ${group.name}`} className={cn("rounded-md p-1", group.favorite ? "text-amber-500" : "text-oai-gray-400 hover:text-amber-500")}><Star className={cn("h-4 w-4", group.favorite && "fill-current")} /></button>
-                <button type="button" onClick={() => openGroupForm(group.parent_id || "", group)} aria-label={`${copy("settings.cost.other_ai.edit_group")} ${group.name}`} className="rounded-md p-1 text-oai-gray-400 hover:bg-white hover:text-oai-brand-600 dark:hover:bg-oai-gray-900"><Pencil className="h-4 w-4" /></button>
+                <button type="button" onClick={() => openGroupForm(group.parent_id || "", group)} aria-label={`${copy("settings.cost.other_ai.edit_group")} ${group.name}`} className="rounded-md p-1 text-oai-gray-400 hover:bg-oai-gray-100 hover:text-oai-brand-600 dark:hover:bg-oai-gray-800"><Pencil className="h-4 w-4" /></button>
                 <button type="button" onClick={() => removeGroup(group)} aria-label={copy("settings.cost.other_ai.delete_group")} className="rounded-md p-1 text-oai-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
               </span>
-              <button type="button" onClick={() => setOpenGroupMenuId((current) => current === group.id ? null : group.id)} aria-label={`${group.name} 分组操作`} className="tt-other-ai-group-menu-trigger hidden rounded-md p-1 text-oai-gray-500 hover:bg-white"><MoreVertical className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setOpenGroupMenuId((current) => current === group.id ? null : group.id)} aria-label={`${group.name} 分组操作`} className="tt-other-ai-group-menu-trigger hidden rounded-md p-1 text-oai-gray-500 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800"><MoreVertical className="h-4 w-4" /></button>
               {openGroupMenuId === group.id ? (
                 <div className="tt-other-ai-group-menu absolute right-0 top-7 z-20 grid min-w-28 gap-1 rounded-lg border border-oai-gray-200 bg-white p-1 text-xs shadow-lg">
                   <button type="button" onClick={() => { toggleGroupFavorite(group); setOpenGroupMenuId(null); }} className="rounded px-2 py-1.5 text-left hover:bg-oai-gray-50">{copy(group.favorite ? "settings.cost.other_ai.unfavorite_group" : "settings.cost.other_ai.favorite_group")}</button>

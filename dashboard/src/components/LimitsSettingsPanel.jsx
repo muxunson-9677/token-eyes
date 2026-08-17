@@ -2,7 +2,6 @@ import React from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { LayoutGroup, motion } from "motion/react";
 import { GripVertical } from "lucide-react";
 import { limitProviderIconKey, limitProviderName } from "../hooks/use-limits-display-prefs.js";
 import { copy } from "../lib/copy";
@@ -33,12 +32,10 @@ function SortableLimitRow({ id, order, visible, toggle, moveToward }) {
   };
 
   return (
-    <motion.div
+    <div
       ref={setNodeRef}
-      layout
-      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className={cn("flex items-center gap-3 rounded-md py-2", "hover:bg-oai-gray-100/60 dark:hover:bg-oai-gray-800/60", isDragging && "relative z-10 opacity-60 shadow-lg")}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("flex items-center gap-3 rounded-md py-2", "hover:bg-oai-gray-100/60 dark:hover:bg-oai-gray-800/60", isDragging && "relative z-20 bg-white opacity-100 shadow-xl ring-1 ring-oai-gray-200 dark:bg-oai-gray-900 dark:ring-oai-gray-700")}
+      style={{ transform: CSS.Transform.toString(transform), transition, willChange: isDragging ? "transform" : undefined }}
     >
       <button
         type="button"
@@ -54,7 +51,7 @@ function SortableLimitRow({ id, order, visible, toggle, moveToward }) {
       {limitProviderIconKey(id) ? <ProviderIcon provider={limitProviderIconKey(id)} size={18} className={cn("pointer-events-none", LIMITS_SETTINGS_ICON_CLASS)} /> : null}
       <span className="flex-1 select-none text-sm text-oai-gray-900 dark:text-oai-gray-200">{label}</span>
       <ToggleSwitch checked={visible} onChange={() => toggle(id)} ariaLabel={`${copy("limits.settings.toggle_visible")}: ${label}`} />
-    </motion.div>
+    </div>
   );
 }
 
@@ -67,8 +64,7 @@ export function LimitsSettingsPanel({ prefs }) {
   );
 
   return (
-    <LayoutGroup>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => {
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => {
         if (over && active.id !== over.id) moveToward(String(active.id), String(over.id));
       }}>
         <SortableContext items={order} strategy={verticalListSortingStrategy}>
@@ -76,7 +72,6 @@ export function LimitsSettingsPanel({ prefs }) {
             {order.map((id) => <SortableLimitRow key={id} id={id} order={order} visible={visibility[id] !== false} toggle={toggle} moveToward={moveToward} />)}
           </div>
         </SortableContext>
-      </DndContext>
-    </LayoutGroup>
+    </DndContext>
   );
 }

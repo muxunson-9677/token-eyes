@@ -223,6 +223,7 @@ export function DashboardView(props) {
     detailsPageCount,
     detailsPage,
     setDetailsPage,
+    onLoadDailyModelBreakdown,
     refreshInterval,
     onRefreshIntervalChange,
     lastUpdatedAt,
@@ -470,6 +471,7 @@ export function DashboardView(props) {
                         detailsPageCount={detailsPageCount}
                         detailsPage={detailsPage}
                         setDetailsPage={setDetailsPage}
+                        onLoadDailyModelBreakdown={onLoadDailyModelBreakdown}
                       />
                     </div>
                   </FadeIn>

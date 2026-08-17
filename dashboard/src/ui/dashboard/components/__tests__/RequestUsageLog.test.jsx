@@ -19,6 +19,7 @@ vi.mock("../../../../lib/copy", () => ({
     const map = {
       "ticket04.request.title": "Request Token Detail",
       "ticket04.request.subtitle": "Request-level token usage",
+      "ticket04.request.pricing_source_note": "Billing statistics use official model list prices",
       "ticket04.request.loading": "Loading request records",
       "ticket04.request.empty": "No request records",
       "ticket04.request.error": "Failed to load",
@@ -60,6 +61,7 @@ vi.mock("../../../../lib/copy", () => ({
       "usage.request_log.metric.avg_latency": "Average latency",
       "usage.request_log.metric.requests_detail": `${vars.count} requests recorded`,
       "usage.request_log.metric.success_detail": `${vars.success} succeeded / ${vars.failed} failed`,
+      "usage.request_log.metric.success_detail_with_interrupted": `${vars.success} succeeded / ${vars.interrupted} interrupted / ${vars.failed} failed`,
       "usage.request_log.metric.latency_detail": "Based on recorded requests",
       "usage.request_log.source_filter_aria": "Select source",
     };
@@ -113,6 +115,12 @@ const HOOK_DEFAULTS = {
 };
 
 describe("RequestUsageLog", () => {
+  it("shows the official list-price source note in the request-log heading", () => {
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByText("Billing statistics use official model list prices")).toBeInTheDocument();
+  });
+
   it("uses nested glass metric summaries without changing the request data", () => {
     useRequestUsageRecords.mockReturnValue({
       ...HOOK_DEFAULTS,
@@ -290,6 +298,48 @@ describe("RequestUsageLog", () => {
     expect(screen.getByTestId("request-log-metric-requests")).toHaveTextContent("25 requests recorded");
     expect(screen.getByTestId("request-log-metric-success-rate")).toHaveTextContent("24 succeeded / 1 failed");
     expect(screen.getByTestId("request-log-metric-avg-latency")).toHaveTextContent("Based on recorded requests");
+  });
+
+  it("does not count records without a measured status as failed requests", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord()],
+      totals: {
+        request_count: 1_000,
+        status_sample_count: 19,
+        success_count: 18,
+        success_rate: 94.74,
+        avg_latency_ms: null,
+      },
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByTestId("request-log-metric-success-rate"))
+      .toHaveTextContent("18 succeeded / 1 failed");
+    expect(screen.getByTestId("request-log-metric-success-rate"))
+      .not.toHaveTextContent("982 failed");
+  });
+
+  it("reports interrupted Codex turns separately from provider failures", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({ status: 499 })],
+      totals: {
+        request_count: 1_000,
+        status_sample_count: 20,
+        success_count: 19,
+        interrupted_count: 1,
+        failure_count: 0,
+        success_rate: 100,
+        avg_latency_ms: null,
+      },
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByTestId("request-log-metric-success-rate"))
+      .toHaveTextContent("19 succeeded / 1 interrupted / 0 failed");
   });
 
   it("uses reference chips, row emphasis, total band, and a truthful record-count fallback", () => {

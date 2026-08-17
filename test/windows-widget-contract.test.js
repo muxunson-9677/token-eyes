@@ -110,7 +110,7 @@ test("desktop widget grants native dragging and starts it only from non-interact
   assert.match(widget, /button|input|menu|slider/u);
 });
 
-test("0.54.40 widget baseline keeps project, active-session, and usage-plan preferences", () => {
+test("widget preferences keep project, active-session, usage-plan, and current geometry contracts", () => {
   const hook = read("dashboard/src/hooks/use-desktop-widget.ts");
   const widgetWindow = read("src-tauri/src/widget_window.rs");
   assert.match(hook, /selectedProjectIds/u);
@@ -121,9 +121,21 @@ test("0.54.40 widget baseline keeps project, active-session, and usage-plan pref
   assert.match(widgetWindow, /selected_projects/u);
   assert.match(widgetWindow, /active_session_window/u);
   assert.match(widgetWindow, /selected_limit_ids/u);
-  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*7/u);
+  assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*11/u);
   assert.match(widgetWindow, /DEFAULT_WIDTH:\s*u32\s*=\s*352/u);
   assert.match(widgetWindow, /DEFAULT_HEIGHT:\s*u32\s*=\s*72/u);
+  assert.match(widgetWindow, /DEFAULT_EXPANDED_HEIGHT:\s*u32\s*=\s*360/u);
+  assert.match(widgetWindow, /POPOVER_HEIGHT:\s*u32\s*=\s*280/u);
+});
+
+test("widget mode changes preserve one fixed expanded geometry", () => {
+  const hook = read("dashboard/src/hooks/use-desktop-widget.ts");
+  const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
+  const widgetWindow = read("src-tauri/src/widget_window.rs");
+  assert.doesNotMatch(hook, /WIDGET_MODE_EXPANDED_HEIGHTS/u);
+  assert.match(widget, /updatePrefs\(\{ mode: nextMode \}\)/u);
+  assert.doesNotMatch(widget, /expandedHeight:\s*expandedHeight/u);
+  assert.doesNotMatch(widgetWindow, /expanded_height_for_mode/u);
 });
 
 test("saving widget preferences notifies the already-open floating WebView", () => {
@@ -154,6 +166,6 @@ test("widget celebration reserves a full transparent halo around the capsule", (
   assert.match(widgetWindow, /CELEBRATION_PADDING:\s*u32\s*=\s*140/u);
   assert.match(
     css,
-    /\.desktop-widget-root\.has-celebration\s*\{\s*padding:\s*var\(--widget-effect-halo,\s*140px\);/u,
+    /\.desktop-widget-root\.has-celebration\s*\{\s*padding:\s*calc\(var\(--widget-effect-halo,\s*140px\)\s*\+\s*3px\)\s+var\(--widget-effect-halo,\s*140px\)\s+calc\(var\(--widget-effect-halo,\s*140px\)\s*\+\s*3px\)\s+var\(--widget-effect-halo,\s*140px\);/u,
   );
 });

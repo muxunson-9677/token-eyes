@@ -196,14 +196,19 @@ it("shows a stale account as stale while retaining its last successful amount", 
   expect(within(section).getByText("spend.cost.provider_account.refresh_failed")).toBeInTheDocument();
 });
 
-it("keeps estimated usage cost and actual subscription spend separate without a combined total", () => {
+it("keeps actual cash spend separate from the API list-price equivalent without double counting", () => {
   render(
     <CostAccumulation
       costSummary={{
         ...BASE_SUMMARY,
         monthApiCostUsd: 120,
+        monthApiEquivalentUsd: 120,
         previousMonthApiCostUsd: 100,
         monthSubscriptionCostUsd: 80,
+        monthOfficialApiSpendUsd: null,
+        monthOtherAiCostUsd: 0,
+        monthActualCashSpendUsd: 80,
+        actualCashCoverage: "partial",
         previousMonthSubscriptionCostUsd: 100,
         monthTotalCostUsd: 200,
         previousMonthTotalCostUsd: 200,
@@ -211,30 +216,28 @@ it("keeps estimated usage cost and actual subscription spend separate without a 
     />,
   );
 
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toBeInTheDocument();
-  expect(screen.getByTestId("monthly-cost-comparison-subscription")).toBeInTheDocument();
+  expect(screen.getByTestId("monthly-cost-comparison-api-equivalent")).toBeInTheDocument();
+  expect(screen.queryByTestId("monthly-cost-comparison-actual-cash")).not.toBeInTheDocument();
   expect(screen.queryByTestId("monthly-cost-comparison-total")).not.toBeInTheDocument();
-  for (const testId of ["api", "subscription"]) {
-    const comparison = screen.getByTestId(`monthly-cost-comparison-${testId}`);
-    expect(comparison.parentElement).toHaveTextContent("CNY");
-    expect(comparison.parentElement).toHaveClass("justify-between");
-    expect(comparison.querySelector("svg")).toBeNull();
-  }
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveTextContent(
+  const comparison = screen.getByTestId("monthly-cost-comparison-api-equivalent");
+  expect(comparison.parentElement).toHaveTextContent("CNY");
+  expect(comparison.parentElement).toHaveClass("justify-between");
+  expect(comparison.querySelector("svg")).toBeNull();
+  expect(comparison).toHaveTextContent(
     "spend.monthly_change.increase:20.0%",
   );
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveTextContent("USD 20.00");
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-orange-600");
-  expect(screen.getByTestId("monthly-cost-comparison-subscription")).toHaveClass("text-emerald-600");
+  expect(comparison).toHaveTextContent("USD 20.00");
+  expect(comparison).toHaveClass("text-orange-600");
   expect(screen.getByText("spend.cost.summary.scope_note")).toBeInTheDocument();
-  expect(screen.getByTestId("cost-confidence-estimated")).toHaveAttribute(
+  expect(screen.getByTestId("cost-confidence-api-equivalent")).toHaveAttribute(
     "data-confidence-state",
     "estimated",
   );
-  expect(screen.getByTestId("cost-confidence-subscription")).toHaveAttribute(
+  expect(screen.getByTestId("cost-confidence-actual-cash")).toHaveAttribute(
     "data-confidence-state",
-    "exact",
+    "partial",
   );
+  expect(screen.getByText("spend.cost.accuracy.partial")).toBeInTheDocument();
 });
 
 it("starts the cost-page groups collapsed when requested and expands their full content without clipping", () => {
@@ -363,11 +366,11 @@ it("marks retained cost totals stale after a financial refresh failure", () => {
     />,
   );
 
-  expect(screen.getByTestId("cost-confidence-estimated")).toHaveAttribute(
+  expect(screen.getByTestId("cost-confidence-api-equivalent")).toHaveAttribute(
     "data-confidence-state",
     "stale",
   );
-  expect(screen.getByTestId("cost-confidence-subscription")).toHaveAttribute(
+  expect(screen.getByTestId("cost-confidence-actual-cash")).toHaveAttribute(
     "data-confidence-state",
     "stale",
   );
@@ -421,18 +424,18 @@ it("visually separates the summary and each existing management section without 
     expect(card).toHaveClass("flex", "h-full", "items-start", "text-left");
     expect(card).not.toHaveClass("tt-surface");
   }
-  expect(screen.getByTestId("cost-confidence-estimated")).toHaveClass("justify-start", "text-left");
-  expect(screen.getByTestId("cost-confidence-subscription")).toHaveClass("justify-start", "text-left");
+  expect(screen.getByTestId("cost-confidence-api-equivalent")).toHaveClass("justify-start", "text-left");
+  expect(screen.getByTestId("cost-confidence-actual-cash")).toHaveClass("justify-start", "text-left");
   expect(screen.queryByTestId("cost-summary-icon-total")).not.toBeInTheDocument();
   expect(screen.getAllByTestId("cost-summary-icon")).toHaveLength(2);
-  expect(screen.getByTestId("cost-summary-icon-api")).toHaveAttribute("data-tone", "blue");
-  expect(screen.getByTestId("cost-summary-icon-subscription")).toHaveAttribute("data-tone", "violet");
+  expect(screen.getByTestId("cost-summary-icon-api-equivalent")).toHaveAttribute("data-tone", "blue");
+  expect(screen.getByTestId("cost-summary-icon-actual-cash")).toHaveAttribute("data-tone", "violet");
   const sectionIds = ["other-ai", "token-packages", "provider-api", "api-billing", "subscriptions"];
   expect(document.querySelectorAll("[data-cost-section]")).toHaveLength(5);
   expect([summary, ...document.querySelectorAll("[data-cost-section]")]).toHaveLength(6);
   for (const id of sectionIds) {
     const section = document.querySelector(`[data-cost-section="${id}"]`);
-    expect(section).toHaveClass("tt-surface-nested", "rounded-[var(--tt-card-radius)]");
+    expect(section).toHaveClass("tt-surface-nested", "tt-pressable-parent", "rounded-[var(--tt-card-radius)]");
     expect(section).not.toHaveClass("tt-surface");
     expect(within(section).getByTestId("cost-section-icon")).toBeInTheDocument();
     const toggle = within(section).getByRole("button", { expanded: true });
@@ -492,8 +495,8 @@ it("lets the user browse historical cost months without advancing into the futur
   expect(picker).toHaveValue("2025-06");
   expect(picker).toHaveAttribute("max", "2026-07");
   expect(screen.getByTestId("cost-month-display")).toHaveTextContent("2025年6月");
-  expect(screen.getByText("2025年6月 spend.cost.summary.estimated_usage_suffix")).toBeInTheDocument();
-  expect(screen.getByText("2025年6月 spend.cost.summary.actual_subscription_suffix")).toBeInTheDocument();
+  expect(screen.getByText("2025年6月 spend.cost.summary.api_equivalent_suffix")).toBeInTheDocument();
+  expect(screen.getByText("2025年6月 spend.cost.summary.actual_cash_suffix")).toBeInTheDocument();
   expect(screen.queryByText("2025年6月 spend.cost.summary.total_suffix")).not.toBeInTheDocument();
   expect(screen.getAllByText("2025年6月").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("2025年截至6月")).toBeInTheDocument();
@@ -717,6 +720,7 @@ it("uses compact CNY and the confirmed percentage-only comparison in the monthly
       costSummary={{
         ...BASE_SUMMARY,
         monthApiCostUsd: 13548.56,
+        monthApiEquivalentUsd: 13548.56,
         previousMonthApiCostUsd: 100,
         monthSubscriptionCostUsd: 0,
         previousMonthSubscriptionCostUsd: 0,
@@ -729,7 +733,7 @@ it("uses compact CNY and the confirmed percentage-only comparison in the monthly
   );
 
   expect(screen.getAllByText("CNY 9.75万").length).toBeGreaterThanOrEqual(1);
-  const comparison = screen.getByTestId("monthly-cost-comparison-api");
+  const comparison = screen.getByTestId("monthly-cost-comparison-api-equivalent");
   expect(comparison.querySelector("svg")).toBeNull();
   expect(comparison).toHaveTextContent("spend.monthly_change.increase:13448.6%");
   expect(comparison).toHaveTextContent("USD 13,448.56");

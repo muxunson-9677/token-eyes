@@ -43,6 +43,7 @@ import {
   mergeWidgetProjectOptions,
   widgetProjectFromPath,
 } from "../lib/desktop-widget-projects.ts";
+import { groupWidgetLimits, widgetLimitGroupSelected } from "../lib/widget-limit-groups.js";
 
 const WIDGET_PRESS_TARGET = [
   "button:not(:disabled)",
@@ -657,12 +658,14 @@ function WindowsWidgetProjectSettings() {
     setSaved(false);
   };
 
-  const toggleLimit = (id) => {
-    setDraftLimitIds((current) => (
-      current.includes(id)
-        ? current.filter((value) => value !== id)
-        : [...current, id]
-    ));
+  const toggleLimit = (plan) => {
+    const planIds = plan.windows.map((limit) => String(limit.id));
+    setDraftLimitIds((current) => {
+      const selected = planIds.some((id) => current.includes(id));
+      return selected
+        ? current.filter((value) => !planIds.includes(value))
+        : [...current, ...planIds.filter((id) => !current.includes(id))];
+    });
     setDirty(true);
     setSaved(false);
   };
@@ -672,10 +675,16 @@ function WindowsWidgetProjectSettings() {
     draggedLimitId.current = null;
     if (!sourceId || sourceId === targetId) return;
     setDraftLimitIds((current) => {
-      if (!current.includes(sourceId) || !current.includes(targetId)) return current;
-      const targetIndex = current.indexOf(targetId);
-      const next = current.filter((id) => id !== sourceId);
-      next.splice(targetIndex, 0, sourceId);
+      const plans = groupWidgetLimits(limitOptions);
+      const source = plans.find((plan) => plan.id === sourceId);
+      const target = plans.find((plan) => plan.id === targetId);
+      if (!source || !target) return current;
+      const sourceIds = source.windows.map((limit) => String(limit.id));
+      const targetIds = target.windows.map((limit) => String(limit.id));
+      const next = current.filter((id) => !sourceIds.includes(id));
+      const targetIndex = next.findIndex((id) => targetIds.includes(id));
+      if (targetIndex < 0) return current;
+      next.splice(targetIndex, 0, ...sourceIds.filter((id) => current.includes(id)));
       return next;
     });
     setDirty(true);
@@ -707,14 +716,14 @@ function WindowsWidgetProjectSettings() {
     setSaved(false);
   };
 
-  const limitById = new Map(limitOptions.map((limit) => [limit.id, limit]));
-  const selectedLimitSet = new Set(draftLimitIds);
+  const limitPlans = groupWidgetLimits(limitOptions);
   const visibleLimitOptions = [
-    ...draftLimitIds.map((id) => limitById.get(id)).filter(Boolean),
-    ...limitOptions.filter(function keepUnselectedLimit(limit) {
-      return !selectedLimitSet.has(limit.id);
-    }),
+    ...limitPlans.filter((plan) => widgetLimitGroupSelected(plan, draftLimitIds)),
+    ...limitPlans.filter((plan) => !widgetLimitGroupSelected(plan, draftLimitIds)),
   ];
+  const selectedLimitPlanCount = limitPlans.filter((plan) => (
+    widgetLimitGroupSelected(plan, draftLimitIds)
+  )).length;
 
   return (
     <div className="tt-surface mb-5 rounded-[var(--tt-card-radius)] p-3 sm:p-4">
@@ -867,7 +876,7 @@ function WindowsWidgetProjectSettings() {
               {copy("widgets.windows.limits.title")}
             </span>
             <span className="mt-0.5 block truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
-              {draftLimitIds.length} / {limitOptions.length}
+              {selectedLimitPlanCount} / {limitPlans.length}
             </span>
           </span>
           <ChevronDown
@@ -888,10 +897,10 @@ function WindowsWidgetProjectSettings() {
               {copy("widgets.windows.limits.hint")}
             </p>
             <div className="mt-3 overflow-hidden rounded-lg border border-oai-gray-200/80 bg-white/50 dark:border-oai-gray-800 dark:bg-oai-gray-900/30">
-              {visibleLimitOptions.length > 0 ? visibleLimitOptions.map((limit) => {
-                const id = String(limit.id || "");
-                const checked = draftLimitIds.includes(id);
-                const label = [limit.provider, limit.accountLabel, limit.window].filter(Boolean).join(" - ");
+              {visibleLimitOptions.length > 0 ? visibleLimitOptions.map((plan) => {
+                const id = String(plan.id || "");
+                const checked = widgetLimitGroupSelected(plan, draftLimitIds);
+                const label = [plan.provider, plan.planLabel || plan.accountLabel].filter(Boolean).join(" - ");
                 return (
                   <div
                     key={id}
@@ -915,25 +924,27 @@ function WindowsWidgetProjectSettings() {
                         type="checkbox"
                         checked={checked}
                         aria-label={label}
-                        onChange={() => toggleLimit(id)}
+                        onChange={() => toggleLimit(plan)}
                         className="h-4 w-4 accent-oai-brand-600"
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm">{label}</span>
-                        {limit.notes ? (
+                        {plan.windows.map((limit) => (
                           <span
                             className="mt-0.5 block truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400"
-                            title={limit.notes}
+                            key={limit.id}
                           >
-                            {limit.notes}
+                            {limit.window} · {limit.usedPercent == null
+                              ? copy("widgets.windows.limits.unavailable")
+                              : `${limit.usedPercent}%`}
                           </span>
-                        ) : null}
+                        ))}
                       </span>
                     </label>
                     <span className="text-xs tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
-                      {limit.usedPercent == null
+                      {plan.usedPercent == null
                         ? copy("widgets.windows.limits.unavailable")
-                        : `${limit.usedPercent}%`}
+                        : `${plan.usedPercent}%`}
                     </span>
                   </div>
                 );
@@ -993,22 +1004,39 @@ function formatProjectCreatedAt(project) {
   }).format(timestamp).replaceAll("/", "-");
 }
 
-function formatLimitWindow(limit) {
-  const windowHours = Number.parseInt(String(limit?.window || ""), 10);
-  if (Number.isFinite(windowHours) && windowHours > 0) {
-    return copy("widgets.reference.reset_every_hours", { hours: windowHours, quota: 100 });
+function formatLimitResetAt(limit) {
+  const resetAt = Date.parse(limit?.resetAt || "");
+  if (!Number.isFinite(resetAt)) {
+    return `${copy("settings.token_plan.quota_window_reset")}: ${copy("settings.token_plan.reset_unavailable")}`;
   }
-  return String(limit?.window || "");
+  return `${copy("settings.token_plan.quota_window_reset")}: ${new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(resetAt).replaceAll("/", "-")}`;
 }
 
-function formatLimitResetAt(limit) {
-  if (Number(limit?.usedPercent || 0) >= 100) return copy("widgets.reference.resets_at_limit");
-  const resetAt = Date.parse(limit?.resetAt || "");
-  if (!Number.isFinite(resetAt)) return copy("widgets.reference.never_active");
-  const minutes = Math.max(0, Math.round((resetAt - Date.now()) / 60_000));
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return copy("widgets.reference.reset_after", { hours, minutes: remainder });
+function formatWidgetPlanValidity(value, now = new Date()) {
+  const timestamp = Date.parse(String(value || ""));
+  if (!Number.isFinite(timestamp)) return copy("settings.token_plan.validity_unset");
+
+  const totalMinutes = Math.max(0, Math.floor((timestamp - now.getTime()) / 60_000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  const remaining = days > 0
+    ? copy("settings.token_plan.validity_days_hours", { days, hours })
+    : hours > 0
+      ? copy("settings.token_plan.validity_hours_minutes", { hours, minutes })
+      : copy("settings.token_plan.validity_minutes", { minutes });
+  const expiresAt = new Date(timestamp);
+  const pad = (part) => String(part).padStart(2, "0");
+  const dateTime = `${expiresAt.getFullYear()}/${pad(expiresAt.getMonth() + 1)}/${pad(expiresAt.getDate())} ${pad(expiresAt.getHours())}:${pad(expiresAt.getMinutes())}`;
+  return copy("settings.token_plan.validity_summary", { remaining, date: dateTime });
 }
 
 function widgetProjectStatus(project, index) {
@@ -1090,24 +1118,33 @@ function widgetProjectTagTone(tag) {
   return tones[tag] || "project";
 }
 
-function widgetPlanBadge(limit, index, total) {
-  if (limit?.notes) return limit.notes;
-  if (index === 0) return copy("widgets.reference.primary_plan");
-  if (index === total - 1) return copy("widgets.reference.backup_plan");
-  return "";
+function maskWidgetPlanEmail(value) {
+  const normalized = String(value || "").trim();
+  const match = /^([^@]+)@(.+)$/.exec(normalized);
+  if (!match || match[1].includes("*")) return normalized;
+  return `${match[1].slice(0, Math.min(3, match[1].length))}***@${match[2]}`;
+}
+
+function widgetPlanSubscriptionSummary(plan) {
+  const amount = Number(plan?.subscriptionAmount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return copy("settings.token_plan.subscription_cost_placeholder");
+  }
+  const currency = String(plan?.subscriptionCurrency || "CNY").trim().toUpperCase();
+  return `${currency} ${amount.toLocaleString()}`;
 }
 
 function isWidgetLimitSelected(limit, selectedIds) {
   const id = String(limit?.id || "");
   return selectedIds.includes(id) || selectedIds.some((selectedId) => (
-    selectedId.startsWith(`${id}:`)
+    selectedId.startsWith(`${id}:`) || id.startsWith(`${selectedId}:`)
   ));
 }
 
 function selectedWidgetLimitIds(limits, selectedIds) {
-  return limits
-    .filter((limit) => isWidgetLimitSelected(limit, selectedIds))
-    .map((limit) => String(limit.id));
+  return groupWidgetLimits(limits)
+    .filter((plan) => plan.windows.some((limit) => isWidgetLimitSelected(limit, selectedIds)))
+    .flatMap((plan) => plan.windows.map((limit) => String(limit.id)));
 }
 
 function WidgetTablePagination() {
@@ -1130,7 +1167,6 @@ function WindowsProjectManager({ onOpenSettings }) {
   const [refreshingPlans, setRefreshingPlans] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
   const [dismissedProjectIds, setDismissedProjectIds] = useState([]);
-  const [dismissedLimitIds, setDismissedLimitIds] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
   const [recentRange, setRecentRange] = useState("7d");
@@ -1146,9 +1182,15 @@ function WindowsProjectManager({ onOpenSettings }) {
     void Promise.all([prefsPromise, getDesktopWidgetViewModel("all")])
       .then(([savedPrefs, nextModel]) => {
         if (!mounted) return;
-        const sessions = Array.isArray(nextModel?.projectStatus?.recentProjects)
+        const detectedSessions = Array.isArray(nextModel?.projectStatus?.recentProjects)
           ? nextModel.projectStatus.recentProjects
           : [];
+        const detectedSessionIds = new Set(detectedSessions.map((session) => String(session?.id || "")));
+        const sessions = [
+          ...detectedSessions,
+          ...(Array.isArray(savedPrefs?.selectedProjects) ? savedPrefs.selectedProjects : [])
+            .filter((project) => !detectedSessionIds.has(String(project?.id || ""))),
+        ];
         const projects = groupWidgetProjectSessions(sessions);
         const limits = Array.isArray(nextModel?.limits) ? nextModel.limits : [];
         const fallbackPrefs = {
@@ -1181,11 +1223,18 @@ function WindowsProjectManager({ onOpenSettings }) {
     };
   }, []);
 
-  const sessions = Array.isArray(model?.projectStatus?.recentProjects)
+  const detectedSessions = Array.isArray(model?.projectStatus?.recentProjects)
     ? model.projectStatus.recentProjects
     : [];
+  const detectedSessionIds = new Set(detectedSessions.map((session) => String(session?.id || "")));
+  const sessions = [
+    ...detectedSessions,
+    ...(Array.isArray(prefs?.selectedProjects) ? prefs.selectedProjects : [])
+      .filter((project) => !detectedSessionIds.has(String(project?.id || ""))),
+  ];
   const projects = groupWidgetProjectSessions(sessions);
   const limits = Array.isArray(model?.limits) ? model.limits : [];
+  const limitPlans = groupWidgetLimits(limits);
   const selectedProjectIds = Array.isArray(prefs?.selectedProjectIds) ? prefs.selectedProjectIds : [];
   const storedSelectedLimitIds = Array.isArray(prefs?.selectedLimitIds) ? prefs.selectedLimitIds : [];
   const selectedLimitIds = selectedWidgetLimitIds(limits, storedSelectedLimitIds);
@@ -1201,7 +1250,10 @@ function WindowsProjectManager({ onOpenSettings }) {
       if (sortOrder !== "recent") return 0;
       return Date.parse(right.project.updatedAt || "") - Date.parse(left.project.updatedAt || "");
     });
-  const displayedLimits = limits.filter((limit) => !dismissedLimitIds.includes(String(limit.id)));
+  const displayedLimits = limitPlans;
+  const selectedLimitPlanCount = limitPlans.filter((plan) => (
+    widgetLimitGroupSelected(plan, selectedLimitIds)
+  )).length;
 
   const persist = async (next) => {
     setPrefs(next);
@@ -1225,12 +1277,13 @@ function WindowsProjectManager({ onOpenSettings }) {
     });
   };
 
-  const toggleLimit = (limit) => {
+  const toggleLimit = (plan) => {
     if (!prefs) return;
-    const id = String(limit.id);
-    const nextIds = selectedLimitIds.includes(id)
-      ? selectedLimitIds.filter((value) => value !== id)
-      : [...selectedLimitIds, id];
+    const planIds = plan.windows.map((limit) => String(limit.id));
+    const selected = planIds.some((id) => selectedLimitIds.includes(id));
+    const nextIds = selected
+      ? selectedLimitIds.filter((value) => !planIds.includes(value))
+      : [...selectedLimitIds, ...planIds.filter((id) => !selectedLimitIds.includes(id))];
     void persist({ ...prefs, selectedLimitIds: nextIds });
   };
 
@@ -1255,14 +1308,6 @@ function WindowsProjectManager({ onOpenSettings }) {
         ? current.filter((id) => id !== project.groupId)
         : [...current, project.groupId]
     ));
-  };
-
-  const removeLimitFromWidget = (limit) => {
-    if (!prefs) return;
-    const id = String(limit.id);
-    setDismissedLimitIds((current) => [...current, id]);
-    setOpenMenu(null);
-    void persist({ ...prefs, selectedLimitIds: selectedLimitIds.filter((value) => value !== id) });
   };
 
   const activeProjects = projects.filter((project) => {
@@ -1307,12 +1352,12 @@ function WindowsProjectManager({ onOpenSettings }) {
         </article>
         <article data-tone="violet" className="tt-pressable">
           <span className="tt-widget-summary-icon"><Package aria-hidden /></span>
-          <div><span>{copy("widgets.reference.plan_usage")}</span><strong>{selectedLimitIds.length} / {limits.length}</strong><small>{copy("widgets.reference.plan_usage_detail")}</small></div>
-          <aside className="tt-widget-summary-ring-wrap"><span className="tt-widget-summary-ring" style={{ "--widget-progress": `${limits.length ? Math.round((selectedLimitIds.length / limits.length) * 100) : 0}%` }}><b>{limits.length ? Math.round((selectedLimitIds.length / limits.length) * 100) : 0}%</b></span><small>{copy("widgets.reference.all_plans_enabled")}</small></aside>
+          <div><span>{copy("widgets.reference.plan_usage")}</span><strong>{selectedLimitPlanCount} / {limitPlans.length}</strong><small>{copy("widgets.reference.plan_usage_detail")}</small></div>
+          <aside className="tt-widget-summary-ring-wrap"><span className="tt-widget-summary-ring" style={{ "--widget-progress": `${limitPlans.length ? Math.round((selectedLimitPlanCount / limitPlans.length) * 100) : 0}%` }}><b>{limitPlans.length ? Math.round((selectedLimitPlanCount / limitPlans.length) * 100) : 0}%</b></span><small>{copy("widgets.reference.all_plans_enabled")}</small></aside>
         </article>
       </section>
 
-      <section className="tt-widget-projects" data-testid="widget-projects">
+      <section className="tt-widget-projects tt-pressable-group" data-testid="widget-projects">
         <header>
           <div className="tt-widget-section-title">
             <span><FolderKanban aria-hidden /></span>
@@ -1409,31 +1454,74 @@ function WindowsProjectManager({ onOpenSettings }) {
       </section>
 
       <div className="tt-widget-bottom-grid">
-        <section className="tt-widget-limits" data-testid="widget-limits">
-          <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitIds.length, total: limits.length })}</small></div></div><button type="button" className="tt-raised-control tt-pressable" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button></header>
-          <div className="tt-widget-limit-table">
-            <div className="tt-widget-limit-head"><span>{copy("widgets.reference.plan_name")}</span><span>{copy("widgets.reference.provider")}</span><span>{copy("widgets.reference.usage_rate")}</span><span>{copy("widgets.reference.reset_cycle_quota")}</span><span>{copy("widgets.reference.next_reset")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.action")}</span></div>
-            {displayedLimits.map((limit, index) => {
-              const selected = selectedLimitIds.includes(String(limit.id));
-              const used = Number(limit.usedPercent || 0);
-              const agent = String(limit.agent || limit.provider || "").toLowerCase();
-              const planName = [limit.accountLabel, limit.window].filter(Boolean).join(" · ") || limit.provider;
-              const planBadge = widgetPlanBadge(limit, index, displayedLimits.length);
-              return <div className="tt-widget-limit-row" key={limit.id}>
-                <GripVertical aria-hidden />
-                <button type="button" className={cn("tt-widget-check", selected && "is-checked")} onClick={() => toggleLimit(limit)}>{selected ? <Check aria-hidden /> : null}</button>
-                <span className="tt-widget-limit-name"><ProviderIcon provider={agent} size={22} className={`tt-widget-agent-logo is-${agent}`} />{planName}{planBadge ? <i>{planBadge}</i> : null}</span>
-                <span>{limit.provider || agent}</span>
-                <span className="tt-widget-limit-usage"><i><b style={{ width: `${used}%` }} /></i>{copy("widgets.reference.used_of_quota", { used, quota: 100 })}</span>
-                <span className="tt-widget-limit-cycle">{formatLimitWindow(limit)}</span>
-                <span className="tt-widget-limit-reset">{formatLimitResetAt(limit)}</span>
-                <span className={cn("tt-widget-limit-status", used >= 100 ? "is-max" : used >= 90 ? "is-warning" : "is-normal")}>{used >= 100 ? "已达上限" : used >= 90 ? "接近上限" : "正常"}</span>
-                <div className="tt-widget-row-actions">
-                  <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `limit:${limit.id}`} onClick={() => setOpenMenu((current) => current === `limit:${limit.id}` ? null : `limit:${limit.id}`)}><Ellipsis aria-hidden /></button>
-                  {openMenu === `limit:${limit.id}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeLimitFromWidget(limit)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
-                </div>
-              </div>;
-            })}
+        <section className="tt-widget-limits tt-pressable-group" data-testid="widget-limits">
+          <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitPlanCount, total: limitPlans.length })}</small></div></div><button type="button" className="tt-raised-control tt-pressable" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button></header>
+          <div className="tt-widget-plan-list">
+            <div className="tt-token-plan-grid">
+              {displayedLimits.map((plan) => {
+                const selected = widgetLimitGroupSelected(plan, selectedLimitIds);
+                const agent = String(plan.agent || plan.provider || "").toLowerCase();
+                const planName = plan.planLabel || plan.provider;
+                return <article
+                  className="tt-widget-plan-card tt-token-plan-card tt-token-plan-card--reference"
+                  data-testid="widget-limit-plan-card"
+                  data-plan-id={plan.id}
+                  data-card-layout="cost-settings-token-plan"
+                  key={plan.id}
+                >
+                  <div className="tt-widget-plan-card__top">
+                    <GripVertical aria-hidden className="tt-widget-plan-card__drag" />
+                    <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${agent}`)}>
+                      <ProviderIcon provider={agent} size={14} className={`tt-widget-agent-logo is-${agent}`} />
+                    </span>
+                    <span className="tt-token-plan-copy">
+                      <span className="tt-token-plan-full">
+                        <span className="tt-token-plan-full-text"><span>{plan.provider || agent}</span>{` / ${planName}`}</span>
+                      </span>
+                      <span className="tt-token-plan-card-identity-meta">
+                        <span className="tt-token-plan-card-account">{maskWidgetPlanEmail(plan.accountLabel) || "—"}</span>
+                        <span className="tt-token-plan-card-cost">{widgetPlanSubscriptionSummary(plan)}</span>
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      aria-label={`${plan.provider || agent} - ${planName}`}
+                      className={cn("tt-widget-check", "tt-widget-plan-card__check", selected && "is-checked")}
+                      onClick={() => toggleLimit(plan)}
+                    >
+                      {selected ? <Check aria-hidden /> : null}
+                    </button>
+                  </div>
+                  <div className="tt-token-plan-card-detail">
+                    <div className="tt-token-plan-quota-windows">
+                      <div>
+                        {plan.windows.map((limit) => {
+                          const windowUsed = Number(limit.usedPercent || 0);
+                          const tone = windowUsed >= 100 ? "danger" : windowUsed >= 90 ? "warning" : "normal";
+                          return <div className="tt-token-plan-quota-window" data-testid="widget-limit-quota-window" data-kind={limit.kind} key={limit.id}>
+                            <div className="tt-token-plan-quota-window-head">
+                              <strong>{limit.kind === "total" ? null : <Clock3 aria-hidden />}{limit.window}</strong>
+                              <span className="tt-token-plan-quota-window-percent">{windowUsed}%</span>
+                            </div>
+                            <span className="tt-token-plan-progress" data-tone={tone}>
+                              <i style={{ width: `${Math.max(0, Math.min(100, windowUsed))}%` }} />
+                            </span>
+                            <small>{formatLimitResetAt(limit)}</small>
+                          </div>;
+                        })}
+                      </div>
+                    </div>
+                    {plan.expiresAt ? <div className="tt-token-plan-card-summary">
+                      <span className="tt-token-plan-summary-expiry">
+                        <CalendarDays aria-hidden />
+                        <span>{formatWidgetPlanValidity(plan.expiresAt)}</span>
+                      </span>
+                    </div> : null}
+                  </div>
+                </article>;
+              })}
+            </div>
             <footer><span className="tt-widget-table-count">{copy("widgets.reference.plan_count", { count: displayedLimits.length })}</span><WidgetTablePagination /></footer>
           </div>
         </section>

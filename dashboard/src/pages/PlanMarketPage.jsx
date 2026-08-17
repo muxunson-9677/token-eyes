@@ -103,12 +103,6 @@ function planBadgeLabel(badge) {
   }
 }
 
-function providerSummary(provider) {
-  const names = provider.plans.map((plan) => plan.display_name).join(" / ");
-  const detail = provider.plans.flatMap((plan) => plan.highlights || [])[0] || provider.vendor;
-  return copy("plan_market.summary", { plans: names, count: provider.plans.length, detail });
-}
-
 function startingPrice(provider) {
   return provider.plans.reduce((lowest, plan) => {
     if (!Number.isFinite(Number(plan.price?.amount))) return lowest;
@@ -195,7 +189,6 @@ function ProviderCard({ provider, expanded, onToggle }) {
             {!expanded ? (
               <span className="tt-plan-market-compact-details" data-testid={`plan-market-compact-details-${provider.id}`}>
                 <span className="tt-plan-market-verified">{copy("plan_market.last_verified_label")} <time dateTime={provider.last_verified}>{provider.last_verified}</time></span>
-                <span className="tt-plan-market-provider-description" data-testid={`plan-market-provider-description-${provider.id}`}>{providerSummary(provider)}</span>
                 <span className="tt-plan-market-provider-access" data-testid={`plan-market-provider-access-${provider.id}`}>
                   <span className={`tt-plan-market-access tt-plan-market-access--${access}`}><Wifi aria-hidden />{accessLabel(access)}</span>
                   {access === "vpn" ? (
@@ -266,6 +259,17 @@ export function PlanMarketPage() {
     return [...filtered].sort((left, right) => left.plans.length - right.plans.length || left.display_name.localeCompare(right.display_name));
   }, [providerFilter, providers, sort]);
   const totalPlans = providers.reduce((count, provider) => count + provider.plans.length, 0);
+  const plans = providers.flatMap((provider) => provider.plans);
+  const providersWithOfficialSources = providers.filter((provider) => provider.sources?.length);
+  const officialProviderCount = providersWithOfficialSources.length;
+  const customProviderCount = providers.length - officialProviderCount;
+  const recentProviders = providers.filter((provider) => provider.is_recent);
+  const recentPlanCount = recentProviders.flatMap((provider) => provider.plans).length;
+  const freePlanCount = plans.filter((plan) => Number(plan.price?.amount) === 0).length;
+  const paidPlanCount = plans.filter((plan) => Number(plan.price?.amount) > 0 || plan.price?.display).length;
+  const officialSourcePlanCount = providersWithOfficialSources.flatMap((provider) => provider.plans).length;
+  const noSourcePlanCount = totalPlans - officialSourcePlanCount;
+  const officialSourceCoverage = totalPlans > 0 ? Math.round((officialSourcePlanCount / totalPlans) * 100) : 0;
   const latestProviderCount = providers.filter((provider) => provider.is_recent).length
     || providers.filter((provider) => provider.last_verified === latestVerification).length;
   const toggleProvider = (providerId) => setExpandedProviderIds((current) => {
@@ -303,10 +307,22 @@ export function PlanMarketPage() {
             </div>
           </header>
           <section data-testid="plan-market-overview" data-layout-stable="true" className="tt-plan-market-overview" aria-label={copy("nav.spend.plans")}>
-            <MarketStat icon={Store} tone="blue" label={copy("plan_market.stat.providers")} value={copy("plan_market.stat.providers_value", { count: providers.length })} note={copy("plan_market.stat.providers_note")} />
-            <MarketStat icon={CalendarDays} tone="green" label={copy("plan_market.stat.recent")} value={copy("plan_market.stat.providers_value", { count: latestProviderCount })} note={copy("plan_market.stat.recent_note", { date: latestVerification })} />
-            <MarketStat icon={Tags} tone="violet" label={copy("plan_market.stat.plans")} value={copy("plan_market.stat.plans_value", { count: totalPlans })} note={copy("plan_market.stat.plans_note")} />
-            <MarketStat icon={ShieldCheck} tone="orange" label={copy("plan_market.stat.coverage")} value={copy("plan_market.stat.coverage_value")} note={copy("plan_market.stat.coverage_note")} />
+            <MarketStat icon={Store} tone="blue" label={copy("plan_market.stat.providers")} value={copy("plan_market.stat.providers_value", { count: providers.length })} note={copy("plan_market.stat.providers_note")} metrics={[
+              { id: "catalog-official", label: copy("plan_market.stat.catalog_official"), value: officialProviderCount },
+              { id: "catalog-custom", label: copy("plan_market.stat.catalog_custom"), value: customProviderCount },
+            ]} />
+            <MarketStat icon={CalendarDays} tone="green" label={copy("plan_market.stat.recent")} value={copy("plan_market.stat.providers_value", { count: latestProviderCount })} note={copy("plan_market.stat.recent_note", { date: latestVerification })} metrics={[
+              { id: "recent-vendors", label: copy("plan_market.stat.recent_vendors"), value: recentProviders.length },
+              { id: "recent-plans", label: copy("plan_market.stat.recent_plans"), value: recentPlanCount },
+            ]} />
+            <MarketStat icon={Tags} tone="violet" label={copy("plan_market.stat.plans")} value={copy("plan_market.stat.plans_value", { count: totalPlans })} note={copy("plan_market.stat.plans_note")} metrics={[
+              { id: "paid-plans", label: copy("plan_market.stat.paid_plans"), value: paidPlanCount },
+              { id: "free-plans", label: copy("plan_market.stat.free_plans"), value: freePlanCount },
+            ]} />
+            <MarketStat icon={ShieldCheck} tone="orange" label={copy("plan_market.stat.coverage")} value={`${officialSourceCoverage}%`} note={copy("plan_market.stat.coverage_note")} metrics={[
+              { id: "official-source-plans", label: copy("plan_market.stat.official_source_plans"), value: officialSourcePlanCount },
+              { id: "no-source-plans", label: copy("plan_market.stat.no_source_plans"), value: noSourcePlanCount },
+            ]} />
           </section>
           <div className="tt-plan-market-provider-list">
             {visibleProviders.map((provider) => (
@@ -319,11 +335,21 @@ export function PlanMarketPage() {
   );
 }
 
-function MarketStat({ icon: Icon, tone, label, value, note }) {
+function MarketStat({ icon: Icon, tone, label, value, note, metrics = [] }) {
   return (
     <div data-testid="plan-market-stat" className="tt-plan-market-stat">
-      <span className={`tt-plan-market-stat-icon tt-plan-market-stat-icon--${tone}`}><Icon aria-hidden /></span>
-      <span><span className="tt-plan-market-stat-label">{label}</span><strong>{value}</strong><small>{note}</small></span>
+      <div className="tt-plan-market-stat-main">
+        <span className={`tt-plan-market-stat-icon tt-plan-market-stat-icon--${tone}`}><Icon aria-hidden /></span>
+        <span><span className="tt-plan-market-stat-label">{label}</span><strong>{value}</strong><small>{note}</small></span>
+      </div>
+      <div className="tt-plan-market-stat-details">
+        {metrics.map((metric) => (
+          <span key={metric.id} data-testid={`plan-market-stat-${metric.id}`}>
+            <small>{metric.label}</small>
+            <strong>{metric.value}</strong>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

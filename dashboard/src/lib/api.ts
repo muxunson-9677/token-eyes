@@ -95,7 +95,26 @@ export interface CodexResetEventsResponse {
   history: CodexResetHistoryEvent[];
 }
 
-export type DesktopWidgetAgent = "all" | "claude" | "codex" | "cursor" | "hermes";
+export type DesktopWidgetAgent =
+  | "all"
+  | "claude"
+  | "codex"
+  | "cursor"
+  | "trae"
+  | "codebuddy"
+  | "gemini"
+  | "hermes"
+  | "openclaw"
+  | "opencode"
+  | "antigravity"
+  | "zed"
+  | "workbuddy"
+  | "kimi"
+  | "kimi-code"
+  | "pi"
+  | "grok"
+  | "copilot"
+  | "deepseek-harness";
 export type DesktopWidgetMode = "projects" | "limits" | "models";
 export type DesktopWidgetMaterial = "frost" | "graphite" | "ocean" | "sand";
 export type DesktopWidgetActiveSessionWindow = "1h" | "3h" | "5h" | "1d" | "3d";
@@ -157,12 +176,18 @@ export interface DesktopWidgetViewModel {
   };
   limits: Array<{
     id: string;
+    planId: string;
     agent: string;
     provider: string;
+    planLabel: string;
     accountLabel: string;
+    subscriptionAmount: number;
+    subscriptionCurrency: string;
+    kind: string;
     window: string;
     usedPercent: number | null;
     resetAt: string | null;
+    expiresAt: string | null;
     notes: string | null;
     error: string | null;
   }>;

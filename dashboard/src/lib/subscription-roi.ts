@@ -6,7 +6,7 @@
 // dashboard). Unknown inputs return null — the UI must never fake a 0.
 
 export interface SubscriptionRoiInput {
-  monthApiCostUsd: number | null | undefined;
+  monthApiEquivalentUsd: number | null | undefined;
   monthSubscriptionCostUsd: number | null | undefined;
 }
 
@@ -19,11 +19,11 @@ export interface SubscriptionRoiResult {
 export function computeSubscriptionRoi(
   input: SubscriptionRoiInput,
 ): SubscriptionRoiResult | null {
-  const usageValueUsd = Number(input.monthApiCostUsd);
+  const usageValueUsd = Number(input.monthApiEquivalentUsd);
   const subscriptionCostUsd = Number(input.monthSubscriptionCostUsd);
   if (
-    input.monthApiCostUsd === null ||
-    input.monthApiCostUsd === undefined ||
+    input.monthApiEquivalentUsd === null ||
+    input.monthApiEquivalentUsd === undefined ||
     Number.isNaN(usageValueUsd) ||
     usageValueUsd < 0
   ) {

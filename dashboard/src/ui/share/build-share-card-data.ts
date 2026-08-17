@@ -27,6 +27,7 @@ interface ShareCardHeatmapCell {
 export interface ShareCardWeeklyBill {
   weekCostUsd: number | null;
   prevWeekCostUsd: number | null;
+  monthApiEquivalentUsd?: number | null;
   monthApiCostUsd: number | null;
   monthSubscriptionCostUsd: number | null;
 }

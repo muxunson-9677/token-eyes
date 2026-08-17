@@ -439,7 +439,7 @@ export function UsageTrendChart({
   return (
     <div
       className={cn(
-        "tt-surface relative flex h-full min-w-0 flex-col rounded-[var(--tt-card-radius)] p-4",
+        "tt-surface tt-pressable-group relative flex h-full min-w-0 flex-col rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
     >

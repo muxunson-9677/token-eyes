@@ -11,7 +11,7 @@ function formatCny(value) {
 
 function OverviewCard({ id, tone, icon: Icon, title, badge, value, subtitle, rows }) {
   return (
-    <article className="tt-cost-overview-card" data-tone={tone} data-testid={`cost-overview-card-${id}`}>
+    <article className="tt-cost-overview-card tt-pressable" data-tone={tone} data-testid={`cost-overview-card-${id}`}>
       <header className="tt-cost-overview-card-header">
         <span className="tt-cost-overview-card-icon"><Icon aria-hidden="true" /></span>
         <div className="tt-cost-overview-card-heading">

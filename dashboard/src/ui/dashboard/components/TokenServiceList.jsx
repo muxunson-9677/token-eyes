@@ -326,7 +326,7 @@ export function TokenServiceList({
         "flex h-full min-w-0 flex-col",
         embedded
           ? "tt-token-service-list--embedded"
-          : "tt-surface min-h-[220px] rounded-[var(--tt-card-radius)] p-4",
+          : "tt-surface tt-pressable-group min-h-[220px] rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
     >
@@ -365,7 +365,7 @@ export function TokenServiceList({
               <li
                 key={service.id}
                 data-testid="token-service-row"
-                className="tt-surface-nested tt-token-service-card min-w-0 rounded-lg border p-2"
+                className="tt-surface-nested tt-token-service-card tt-pressable min-w-0 rounded-lg border p-2"
               >
                 <div className="flex min-w-0 items-start gap-1.5">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-oai-gray-100 text-[11px] font-semibold tabular-nums text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400">

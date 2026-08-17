@@ -191,8 +191,8 @@ test("TrendMonitor root does not force full height", () => {
   );
   assert.ok(src.includes("export function TrendMonitor"), "expected TrendMonitor component");
   assert.ok(
-    src.includes('"tt-surface rounded-[var(--tt-card-radius)] p-5"'),
-    "expected TrendMonitor to use the shared surface without forcing full height",
+    src.includes('"tt-surface tt-pressable-group rounded-[var(--tt-card-radius)] p-5"'),
+    "expected TrendMonitor to use the shared pressable surface without forcing full height",
   );
   assert.ok(
     src.includes('isZoom && "flex h-full flex-col"'),

@@ -47,7 +47,7 @@ it("reuses confirmed data when the cost page is entered again in the same window
   await waitFor(() => expect(getUsageModelBreakdown).toHaveBeenCalledTimes(1));
   first.unmount();
 
-  render(<AgentPricingSection />);
+  render(React.createElement(AgentPricingSection));
   expect(screen.getByText("模型定价表")).toBeInTheDocument();
   expect(getLocalSettings).toHaveBeenCalledTimes(1);
   expect(getUsageModelBreakdown).toHaveBeenCalledTimes(1);

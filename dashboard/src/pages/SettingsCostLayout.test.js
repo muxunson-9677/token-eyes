@@ -33,4 +33,11 @@ describe("cost settings responsive layout contract", () => {
     expect(css).toMatch(/\.dark \.tt-settings-cost-page \.tt-token-plan-grid \.tt-token-plan-card\s*\{[\s\S]*?background:\s*linear-gradient/);
     expect(css).toMatch(/\.dark \.tt-settings-cost-page \.tt-token-plan-summary-expiry\s*\{[\s\S]*?background:[^;]+;[\s\S]*?color:[^;]+;/);
   });
+
+  it("aligns summaries with actions and never flashes action buttons white on hover", () => {
+    expect(css).toMatch(/\.tt-settings-cost-page \.tt-section-card-header\s*\{[^}]*align-items:\s*center;/s);
+    expect(css).toMatch(/\.tt-settings-cost-page \.tt-section-header-main\s*\{[^}]*align-items:\s*center;[^}]*flex-wrap:\s*nowrap;/s);
+    expect(css).toMatch(/\.tt-settings-cost-page \.tt-cost-header-action:hover:not\(:disabled\)\s*\{[^}]*background:\s*var\(--tt-cost-accent-soft\);/s);
+    expect(css).toMatch(/\.tt-settings-cost-page \.tt-cost-header-action-primary:hover:not\(:disabled\)\s*\{[^}]*background:\s*[^;]+;[^}]*color:\s*[^;]+;/s);
+  });
 });

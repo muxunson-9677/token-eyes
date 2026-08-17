@@ -28,6 +28,7 @@ export const LIMIT_PROVIDER_IDS = [
   "pi",
   "grok",
   "copilot",
+  "deepseek-harness",
 ];
 
 /** Keys for ProviderIcon; mono logos use inline SVG and colored logos use /brand-logos/. */
@@ -49,6 +50,7 @@ export const LIMIT_PROVIDER_ICON_KEYS = {
   pi: "PI",
   grok: "GROK",
   copilot: "COPILOT",
+  "deepseek-harness": "DEEPSEEK-HARNESS",
 };
 
 export function limitProviderIconKey(id) {
@@ -73,6 +75,7 @@ const LIMIT_PROVIDER_NAME_KEYS = {
   pi: "limits.provider.pi",
   grok: "limits.provider.grok",
   copilot: "limits.provider.copilot",
+  "deepseek-harness": "limits.provider.deepseek_harness",
 };
 
 export function limitProviderName(id) {

@@ -155,6 +155,16 @@ beforeEach(() => {
   }));
 });
 
+it("shows each active Token plan detail immediately without a nested accordion", async () => {
+  render(<TokenPlanSection />);
+
+  const card = await screen.findByTestId("token-plan-card");
+  expect(card).toHaveAttribute("data-expanded", "true");
+  expect(screen.getByTestId("token-plan-detail-plan-1")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /^展开 / })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^折叠 / })).not.toBeInTheDocument();
+});
+
 it("loads, edits, and saves manual token plan records", async () => {
   const user = userEvent.setup();
   render(<TokenPlanSection />);
@@ -394,6 +404,7 @@ it("new plan Agent source options follow visible limits display preferences", as
     "pi",
     "grok",
     "copilot",
+    "deepseek-harness",
   ]);
 });
 

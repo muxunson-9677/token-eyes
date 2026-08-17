@@ -77,7 +77,7 @@ spend.cost.summary.estimated_usage,spend,SpendCostPage,CostSummaryCards,estimate
 spend.cost.summary.estimated_usage_suffix,spend,SpendCostPage,CostSummaryCards,estimated_usage_suffix,"estimated usage cost",,active
 spend.cost.summary.actual_subscription,spend,SpendCostPage,CostSummaryCards,actual_subscription,"Recorded subscription fees",,active
 spend.cost.summary.actual_subscription_suffix,spend,SpendCostPage,CostSummaryCards,actual_subscription_suffix,"recorded subscription fees",,active
-spend.cost.summary.scope_note,spend,SpendCostPage,CostSummaryCards,scope_note,"Estimated usage cost values recorded Tokens at catalog API prices. Subscription fees are recorded actual payments. They are shown side by side and are not combined because coverage may overlap.",,active
+spend.cost.summary.scope_note,spend,SpendCostPage,CostSummaryCards,scope_note,"Actual cash spend includes recorded subscriptions, official Billing/API amounts, and custom spend. API list-price equivalent is estimated from recorded Tokens and official model prices and is never added to actual cash spend.",,active
 spend.cost.error.title,spend,SpendCostPage,CostAccumulation,error_title,"Cost data could not be refreshed",,active
 spend.cost.error.stale,spend,SpendCostPage,CostAccumulation,error_stale,"Showing the last successful cost totals. Some sections may be incomplete.",,active
 spend.cost.error.unavailable,spend,SpendCostPage,CostAccumulation,error_unavailable,"No cost totals are available yet.",,active
@@ -551,6 +551,11 @@ dashboard.daily.yesterday_change,dashboard,DashboardPage,DataDetails,column_labe
 dashboard.daily.page_size_label,dashboard,DashboardPage,DataDetails,page_size_label,"每页",,active
 dashboard.daily.page_size_aria,dashboard,DashboardPage,DataDetails,page_size_aria,"每页记录数",,active
 dashboard.daily.page_size_value,dashboard,DashboardPage,DataDetails,page_size_value,"{{count}} 条",,active
+dashboard.daily.overlay_title,dashboard,DashboardPage,DataDetails,overlay_title,"当日 Agent / 模型明细",,active
+dashboard.daily.overlay_close,dashboard,DashboardPage,DataDetails,aria_label,"关闭当日明细",,active
+dashboard.daily.overlay_loading,dashboard,DashboardPage,DataDetails,loading_state,"正在读取当日明细…",,active
+dashboard.daily.overlay_empty,dashboard,DashboardPage,DataDetails,empty_state,"当日暂无可分解的 Agent 或模型数据",,active
+dashboard.daily.overlay_error,dashboard,DashboardPage,DataDetails,error_state,"当日明细暂时无法读取，请稍后重试",,active
 dashboard.projects.count,dashboard,DashboardPage,ProjectUsagePanel,count,"Projects",,active
 dashboard.projects.total_tokens,dashboard,DashboardPage,ProjectUsagePanel,total_tokens,"Total Tokens",,active
 dashboard.projects.total_cost,dashboard,DashboardPage,ProjectUsagePanel,total_cost,"Total cost",,active
@@ -867,6 +872,7 @@ limits.provider.kimi,ui,LimitsPage,UsageLimitsPanel,provider_kimi,"Kimi",,active
 limits.provider.kiro,ui,LimitsPage,UsageLimitsPanel,provider_kiro,"Kiro",,active
 limits.provider.grok,ui,LimitsPage,UsageLimitsPanel,provider_grok,"Grok Build",,active
 limits.provider.copilot,ui,LimitsPage,UsageLimitsPanel,provider_copilot,"GitHub Copilot",,active
+limits.provider.deepseek_harness,ui,LimitsPage,UsageLimitsPanel,provider_deepseek_harness,"DeepSeek Harness",,active
 limits.provider.antigravity,ui,LimitsPage,UsageLimitsPanel,provider_antigravity,"Antigravity",,active
 limits.provider.zed,ui,LimitsPage,UsageLimitsPanel,provider_zed,"Zed",,active
 limits.label.claude_5h,ui,LimitsPage,UsageLimitsPanel,claude_5h,"5h",,active
@@ -1559,6 +1565,7 @@ usage.request_log.metric.requests,ui,DashboardPage,RequestUsageLog,metric_reques
 usage.request_log.metric.requests_detail,ui,DashboardPage,RequestUsageLog,metric_requests_detail,"{{count}} requests recorded",,active
 usage.request_log.metric.success_rate,ui,DashboardPage,RequestUsageLog,metric_success_rate,"Success rate",,active
 usage.request_log.metric.success_detail,ui,DashboardPage,RequestUsageLog,metric_success_detail,"{{success}} succeeded / {{failed}} failed",,active
+usage.request_log.metric.success_detail_with_interrupted,ui,DashboardPage,RequestUsageLog,metric_success_detail_with_interrupted,"{{success}} succeeded / {{interrupted}} interrupted / {{failed}} failed",,active
 usage.request_log.metric.avg_latency,ui,DashboardPage,RequestUsageLog,metric_avg_latency,"Average latency",,active
 usage.request_log.metric.latency_detail,ui,DashboardPage,RequestUsageLog,metric_latency_detail,"Based on recorded requests",,active
 spend.usage.metric.not_collected,dashboard,SpendPage,UsageTables,metric_not_collected,"Not collected",,active
@@ -1698,6 +1705,7 @@ ticket04.request.loading,dashboard,SpendPage,RequestUsageLog,loading,"Loading re
 ticket04.request.retry,dashboard,SpendPage,RequestUsageLog,retry,"Retry",,active
 ticket04.request.title,dashboard,SpendPage,RequestUsageLog,title,"Request Log",,active
 ticket04.request.subtitle,dashboard,SpendPage,RequestUsageLog,subtitle,"Per-request token usage (no prompt content)",,active
+ticket04.request.pricing_source_note,dashboard,SpendPage,RequestUsageLog,caption,"计费统计来源于模型官方标价",,active
 ticket04.provider.column.provider,dashboard,SpendPage,ProviderUsageTable,column_provider,"Provider",,active
 ticket04.provider.column.requests,dashboard,SpendPage,ProviderUsageTable,column_requests,"Requests",,active
 ticket04.provider.column.tokens,dashboard,SpendPage,ProviderUsageTable,column_tokens,"Tokens",,active
@@ -2016,6 +2024,14 @@ plan_market.stat.coverage_note,dashboard,PlanMarketPage,PlanMarketPage,stat_cove
 plan_market.stat.providers_value,dashboard,PlanMarketPage,PlanMarketPage,stat_providers_value,"{{count}} 家",,active
 plan_market.stat.plans_value,dashboard,PlanMarketPage,PlanMarketPage,stat_plans_value,"{{count}} 个",,active
 plan_market.stat.coverage_value,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage_value,"100%",,active
+plan_market.stat.catalog_official,dashboard,PlanMarketPage,PlanMarketPage,stat_catalog_official,"官方定价目录",,active
+plan_market.stat.catalog_custom,dashboard,PlanMarketPage,PlanMarketPage,stat_catalog_custom,"自定义定价",,active
+plan_market.stat.recent_vendors,dashboard,PlanMarketPage,PlanMarketPage,stat_recent_vendors,"新增厂商",,active
+plan_market.stat.recent_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_recent_plans,"更新套餐",,active
+plan_market.stat.paid_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_paid_plans,"付费套餐",,active
+plan_market.stat.free_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_free_plans,"免费套餐",,active
+plan_market.stat.official_source_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_official_source_plans,"官方来源套餐",,active
+plan_market.stat.no_source_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_no_source_plans,"无来源套餐",,active
 plan_market.official,dashboard,PlanMarketPage,PlanMarketPage,official,"官方",,active
 plan_market.plan_count,dashboard,PlanMarketPage,PlanMarketPage,plan_count,"{{count}} 个套餐",,active
 plan_market.starting_from,dashboard,PlanMarketPage,PlanMarketPage,starting_from,"起",,active
@@ -2573,3 +2589,21 @@ share.card.weekly_bill.top_model,share,DashboardPage,WeeklyBillCard,top_model,"T
 share.card.weekly_bill.roi_label,share,DashboardPage,WeeklyBillCard,roi_label,"Subscription ROI",,active
 share.card.weekly_bill.roi_value,share,DashboardPage,WeeklyBillCard,roi_value,"{{multiplier}}×",,active
 share.card.weekly_bill.roi_empty,share,DashboardPage,WeeklyBillCard,roi_empty,"Add a subscription cost to see ROI",,active
+spend.cost.summary.actual_cash,spend,SpendCostPage,CostSummaryCards,actual_cash,"Actual cash spend",,active
+spend.cost.summary.actual_cash_suffix,spend,SpendCostPage,CostSummaryCards,actual_cash_suffix,"actual cash spend",,active
+spend.cost.summary.actual_cash_source,spend,SpendCostPage,CostSummaryCards,actual_cash_source,"Recorded payments and official billing",,active
+spend.cost.summary.actual_cash_partial_detail,spend,SpendCostPage,CostSummaryCards,actual_cash_partial_detail,"Only recorded payments are included; missing official billing is not guessed as zero.",,active
+spend.cost.summary.api_equivalent,spend,SpendCostPage,CostSummaryCards,api_equivalent,"API list-price equivalent",,active
+spend.cost.summary.api_equivalent_suffix,spend,SpendCostPage,CostSummaryCards,api_equivalent_suffix,"API list-price equivalent",,active
+spend.cost.summary.subscription_cash,spend,SpendCostPage,CostSummaryCards,subscription_cash,"Subscription payments",,active
+spend.cost.summary.official_api_cash,spend,SpendCostPage,CostSummaryCards,official_api_cash,"Official API billing",,active
+spend.cost.summary.custom_cash,spend,SpendCostPage,CostSummaryCards,custom_cash,"Custom spend",,active
+spend.cost.summary.coverage,spend,SpendCostPage,CostSummaryCards,coverage,"Coverage",,active
+spend.cost.accuracy.exact,spend,SpendCostPage,CostSummaryCards,accuracy_exact,"Exact",,active
+spend.cost.accuracy.partial,spend,SpendCostPage,CostSummaryCards,accuracy_partial,"Partial",,active
+spend.cost.accuracy.estimated,spend,SpendCostPage,CostSummaryCards,accuracy_estimated,"Estimated",,active
+spend.cost.accuracy.equivalent,spend,SpendCostPage,CostSummaryCards,accuracy_equivalent,"Equivalent",,active
+spend.cost.accuracy.unknown,spend,SpendCostPage,CostSummaryCards,accuracy_unknown,"Unknown",,active
+widget.limit.reset_at,ui,DesktopWidgetPage,ExpandedLimits,reset_at,"Resets {{time}}",,active
+widget.limit.expires_at,ui,DesktopWidgetPage,ExpandedLimits,expires_at,"Expires {{time}}",,active
+widget.limit.time_unknown,ui,DesktopWidgetPage,ExpandedLimits,time_unknown,"Time unavailable",,active

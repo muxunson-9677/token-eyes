@@ -947,7 +947,7 @@ html.native-windows-app .tt-reference-route-spend-cost .tt-main-work-surface mai
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > p {
-  display: none;
+  display: flex;
 }
 
 .tt-reference-route-spend-cost [data-testid="cost-summary-region"] > div:last-child > div {
@@ -2955,19 +2955,19 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-stat {
   border-color: var(--tt-page-border);
   background: linear-gradient(155deg, #272c34, #1d2128);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 0 #12151a, 0 10px 22px rgba(0, 0, 0, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.24), 0 9px 22px rgba(0, 0, 0, 0.2);
 }
 
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-provider {
   border-color: var(--tt-page-border);
   background: linear-gradient(155deg, #272c34, #1d2128);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 0 #12151a, 0 10px 22px rgba(0, 0, 0, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.24), 0 9px 22px rgba(0, 0, 0, 0.2);
 }
 
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-card {
   border-color: var(--tt-page-border);
   background: linear-gradient(155deg, #272c34, #1d2128);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 0 #12151a, 0 10px 22px rgba(0, 0, 0, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.24), 0 9px 22px rgba(0, 0, 0, 0.2);
 }
 
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-summary:hover,
@@ -2998,15 +2998,14 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-stat-label,
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-stat small,
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-verified,
-:root.dark .tt-reference-route-spend-plans .tt-plan-market-provider-description,
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-alt-prices,
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-grid ul,
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-sources { color: var(--tt-page-muted); }
 
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-select-wrap select { color: var(--tt-page-ink); }
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-metadata-separator {
-  background: linear-gradient(180deg, #718096, #4b5563);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: rgba(176, 190, 209, 0.28);
+  box-shadow: none;
 }
 
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-announcement { border-color: #514574; background: #29243a; color: #c4b5fd; }
@@ -3265,36 +3264,61 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
 .tt-widget-row-actions [role="menuitem"]:hover { background: #fef2f2; }
 .tt-widget-row-actions [role="menuitem"] svg { width: 13px; height: 13px; }
 
-.tt-widget-bottom-grid { display: grid; width: 100%; height: 286px; grid-template-columns: minmax(0, 1fr); margin-left: 0; }
-.tt-widget-limits { overflow: hidden; border: 1px solid #e2e8ef; border-radius: 14px; background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(246, 249, 252, 0.88)); box-shadow: 0 18px 36px -20px rgba(31, 43, 56, 0.42), 0 3px 9px rgba(31, 43, 56, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
+.tt-widget-bottom-grid { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); margin-left: 0; }
+.tt-widget-limits { overflow: visible; border: 1px solid #e2e8ef; border-radius: 14px; background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(246, 249, 252, 0.88)); box-shadow: 0 18px 36px -20px rgba(31, 43, 56, 0.42), 0 3px 9px rgba(31, 43, 56, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
 .tt-widget-limits > header { display: flex; height: 68px; align-items: center; justify-content: space-between; padding: 0 16px; }
 .tt-widget-limits > header button { display: inline-flex; height: 34px; align-items: center; gap: 7px; border: 1px solid #d9e0e7; border-radius: 8px; padding: 0 14px; background: #fff; color: #334155; font-size: 12px; font-weight: 600; }
 .tt-widget-limits > header button:disabled { opacity: 0.6; }
 .tt-widget-limits > header button svg { width: 14px; height: 14px; }
-.tt-widget-limit-table { margin: 0 14px; overflow: visible; border: 1px solid #e3e8ee; border-radius: 8px; }
-.tt-widget-limit-head { display: grid; height: 31px; grid-template-columns: 1.18fr .52fr 1.18fr .82fr .94fr .52fr 44px; align-items: center; padding-left: 61px; background: #fafbfc; color: #687486; font-size: 11px; }
-.tt-widget-limit-row { display: grid; height: 45px; grid-template-columns: 24px 28px 1.18fr .52fr 1.18fr .82fr .94fr .52fr 44px; align-items: center; border-top: 1px solid #e8ecf1; padding: 0 9px; font-size: 11px; }
-.tt-widget-limit-row > svg { width: 15px; color: #526071; }
-.tt-widget-limit-name { display: flex; align-items: center; gap: 10px; font-weight: 600; }
-.tt-widget-limit-name > i { border-radius: 4px; padding: 3px 6px; background: #f4edff; color: #8a57dc; font-size: 10px; font-style: normal; white-space: nowrap; }
-.tt-widget-limit-name > img,
-.tt-widget-limit-name > svg { flex: none; }
+.tt-widget-plan-list { display: grid; gap: 10px; margin: 0 14px 14px; }
+.tt-widget-plan-list > .tt-token-plan-grid { display: grid; grid-template-columns: repeat(auto-fill, 264px); grid-auto-rows: 306px; align-items: stretch; justify-content: start; gap: 12px; }
+.tt-widget-plan-card { position: relative; display: flex; min-width: 0; height: 100%; flex-direction: column; overflow: hidden; border: 1px solid rgba(198, 211, 226, 0.95); border-radius: 8px; outline: none; padding: 8px; background: linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(244, 247, 251, 0.96)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 8px 18px -12px rgba(33, 48, 67, 0.26), 0 2px 6px rgba(33, 48, 67, 0.05); }
+.tt-widget-plan-card__top { position: relative; display: grid; min-width: 0; grid-template-columns: 16px 30px minmax(0, 1fr) 20px; align-items: start; gap: 6px; }
+.tt-widget-plan-card__drag { width: 15px; align-self: center; color: #8b96a5; }
+.tt-widget-plan-card .tt-widget-check { width: 20px; height: 20px; align-self: start; justify-self: end; }
+.tt-widget-plan-card .tt-token-provider-mark { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid #e4e9ef; border-radius: 8px; background: #fff; box-shadow: 0 3px 8px rgba(15, 23, 42, 0.07), inset 0 1px 0 #fff; }
+.tt-widget-plan-card .tt-token-plan-copy { display: grid; min-width: 0; gap: 2px; }
+.tt-widget-plan-card .tt-token-plan-full { min-width: 0; color: #1f2937; font-size: 12px; font-weight: 650; line-height: 1.25; }
+.tt-widget-plan-card .tt-token-plan-full-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-widget-plan-card .tt-token-plan-card-identity-meta { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; color: #7a8594; font-size: 9px; line-height: 1.25; }
+.tt-widget-plan-card .tt-token-plan-card-account { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-widget-plan-card .tt-token-plan-card-cost { color: #079f6d; font-weight: 700; }
+.tt-widget-plan-card .tt-token-plan-card-detail { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #edf0f4; }
+.tt-widget-plan-card .tt-token-plan-quota-windows > div { display: grid; grid-template-columns: 1fr; gap: 0; }
+.tt-widget-plan-card .tt-token-plan-quota-window { display: grid; min-width: 0; gap: 4px; padding: 8px 0; }
+.tt-widget-plan-card .tt-token-plan-quota-window:first-child { padding-top: 0; }
+.tt-widget-plan-card .tt-token-plan-quota-window:last-child { padding-bottom: 0; }
+.tt-widget-plan-card .tt-token-plan-quota-window + .tt-token-plan-quota-window { border-top: 1px solid #edf0f4; }
+.tt-widget-plan-card .tt-token-plan-quota-window-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.tt-widget-plan-card .tt-token-plan-quota-window-head strong { display: inline-flex; min-width: 0; align-items: center; gap: 4px; color: #344054; font-size: 11px; line-height: 1.2; }
+.tt-widget-plan-card .tt-token-plan-quota-window-head strong svg { width: 11px; height: 11px; color: #7b8796; }
+.tt-widget-plan-card .tt-token-plan-quota-window-percent { color: #263344; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tt-widget-plan-card .tt-token-plan-progress { display: block; height: 4px; overflow: hidden; border-radius: 999px; background: #e8edf2; }
+.tt-widget-plan-card .tt-token-plan-progress i { display: block; height: 100%; border-radius: inherit; background: #10b981; }
+.tt-widget-plan-card .tt-token-plan-progress[data-tone="warning"] i { background: #ff8a00; }
+.tt-widget-plan-card .tt-token-plan-progress[data-tone="danger"] i { background: #f43f5e; }
+.tt-widget-plan-card .tt-token-plan-quota-window small { overflow: hidden; color: #7b8796; font-size: 9px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.tt-widget-plan-card .tt-token-plan-card-summary { margin-top: auto; padding-top: 8px; border-top: 1px solid #edf0f4; }
+.tt-widget-plan-card .tt-token-plan-summary-expiry { display: flex; align-items: center; gap: 4px; border: 1px solid #c9f2e2; border-radius: 8px; padding: 5px 6px; background: #ecfdf5; color: #07875f; font-size: 9px; font-weight: 650; }
+.tt-widget-plan-card .tt-token-plan-summary-expiry svg { width: 10px; height: 10px; }
 .tt-widget-agent-logo.is-codex { color: #111827; }
 .tt-widget-agent-logo.is-claude { color: #d97706; }
 .tt-widget-agent-logo.is-cursor { color: #111827; }
 .tt-widget-agent-logo.is-gemini { color: #4285f4; }
 .tt-widget-agent-logo.is-trae { color: #0f9d58; }
-.tt-widget-limit-usage { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-.tt-widget-limit-usage i { display: block; width: min(130px, 55%); height: 5px; overflow: hidden; border-radius: 999px; background: #e8edf2; }
-.tt-widget-limit-usage b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #16ad7d, #58cfa6); }
 .tt-widget-limit-status { justify-self: start; border-radius: 5px; padding: 3px 10px; background: #e6f7f1; color: #0a9f73; }
 .tt-widget-limit-status.is-max { background: #fff0dd; color: #f07818; }
 .tt-widget-limit-status.is-warning { background: #fff0dd; color: #ef8a1b; }
-.tt-widget-limit-cycle,
-.tt-widget-limit-reset { color: #6d7787; white-space: nowrap; }
-.tt-widget-limit-table footer { display: flex; height: 45px; align-items: center; gap: 18px; padding: 0 15px; color: #697586; font-size: 11px; }
-.tt-widget-limit-table footer .tt-widget-table-count { margin-left: 0; }
-.tt-widget-limit-table footer .tt-widget-table-pagination { margin-left: auto; }
+.tt-widget-plan-list > footer { display: flex; height: 38px; align-items: center; gap: 18px; padding: 0 2px; color: #697586; font-size: 11px; }
+.tt-widget-plan-list > footer .tt-widget-table-count { margin-left: 0; }
+.tt-widget-plan-list > footer .tt-widget-table-pagination { margin-left: auto; }
+.dark .tt-widget-plan-card { border-color: rgba(100, 116, 139, 0.38); background: linear-gradient(145deg, rgba(30, 41, 59, 0.96), rgba(17, 24, 39, 0.94)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.dark .tt-widget-plan-card .tt-token-provider-mark { border-color: rgba(100, 116, 139, 0.42); background: rgba(255, 255, 255, 0.05); }
+.dark .tt-widget-plan-card .tt-token-plan-full,
+.dark .tt-widget-plan-card .tt-token-plan-quota-window-head strong,
+.dark .tt-widget-plan-card .tt-token-plan-quota-window-percent { color: #f1f5f9; }
+.dark .tt-widget-plan-card .tt-token-plan-card-detail,
+.dark .tt-widget-plan-card .tt-token-plan-quota-window + .tt-token-plan-quota-window { border-color: rgba(100, 116, 139, 0.3); }
 
 @media (max-width: 1180px) {
   .tt-widget-project-toolbar { height: auto; min-height: 56px; flex-wrap: wrap; padding: 5px 0; }
@@ -3818,7 +3842,7 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
 }
 
 .tt-reference-route-settings-data [data-testid="data-source-summary"] {
-  height: 423px;
+  height: auto;
   grid-column: 1 / -1;
   margin-bottom: 0;
   border-radius: 12px;
@@ -3838,22 +3862,23 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
 }
 
 .tt-reference-route-settings-data [data-testid^="data-source-"]:not([data-testid="data-source-summary"]) {
-  height: 114px;
+  height: auto;
+  min-height: 104px;
   border: 1px solid #e3e8ee;
   border-radius: 10px;
-  padding: 14px 18px;
+  padding: 10px 12px;
 }
 
 .tt-reference-route-settings-data .tt-data-source-name {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   font-size: 14px;
 }
 
 .tt-reference-route-settings-data [data-testid^="data-source-"] dl {
-  margin-top: 6px;
-  margin-left: 42px;
+  margin-top: 4px;
+  margin-left: 0;
   font-size: 11px;
 }
 
@@ -3868,10 +3893,15 @@ html.native-windows-app .tt-reference-route-settings-data .tt-main-work-surface 
 
 .tt-reference-route-settings-data [data-testid="data-ledger-diagnostics"],
 .tt-reference-route-settings-data [data-testid="data-privacy-boundary"] {
-  height: 288px;
+  height: auto;
+  min-height: 288px;
   margin-bottom: 0;
   border-radius: 12px;
   padding: 20px;
+}
+
+.tt-reference-route-settings-data .tt-data-ledger-overflow-copy {
+  overflow-wrap: anywhere;
 }
 
 .tt-reference-route-settings-data [data-testid="data-ledger-diagnostics"] {
@@ -4311,7 +4341,12 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
 }
 
 .tt-settings-cost-page .tt-section-header-main {
-  flex-wrap: wrap;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.tt-settings-cost-page .tt-section-card-header {
+  align-items: center;
 }
 
 .tt-settings-cost-page .tt-section-header-summary {
@@ -4362,8 +4397,9 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
 }
 
 .tt-settings-cost-page .tt-cost-header-action:hover:not(:disabled) {
-  border-color: #b7c0ce;
-  background: #f8fafc;
+  border-color: #9edfc4;
+  background: var(--tt-cost-accent-soft);
+  color: #079f6d;
 }
 
 .tt-settings-cost-page .tt-cost-header-action:active:not(:disabled) {
@@ -4378,6 +4414,12 @@ html.native-windows-app[data-reference-scenario="12-settings-cost-3"] .tt-refere
 .tt-settings-cost-page .tt-cost-header-action-primary {
   border-color: var(--tt-cost-accent);
   background: var(--tt-cost-accent);
+  color: #fff;
+}
+
+.tt-settings-cost-page .tt-cost-header-action-primary:hover:not(:disabled) {
+  border-color: #079f6d;
+  background: #079f6d;
   color: #fff;
 }
 
@@ -7067,6 +7109,38 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
   transform: none;
 }
 
+.tt-pressable-group {
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.tt-pressable-group:hover:not(:has(.tt-pressable:hover)) {
+  transform: translateY(-1px);
+}
+
+.tt-pressable-group:active:not(:has(.tt-pressable:active)) {
+  transform: translateY(1px);
+  box-shadow: inset 0 4px 9px rgba(24, 44, 62, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* Whole-card feedback for requested surfaces that contain their own controls. */
+.tt-pressable-parent {
+  transform: translateY(0);
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.tt-pressable-parent:hover {
+  transform: translateY(-1px);
+}
+
+.tt-pressable-parent:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 4px 9px rgba(24, 44, 62, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.tt-pressable-parent:active .tt-pressable:active {
+  transform: none !important;
+}
+
 /* Item-2 (V4 round 1): the usage-detail and cost-settings pages promote the
    widget-manager press feedback to every action control. Scoping by page root
    keeps the ~80 raw <button>/<select> nodes there consistent without editing
@@ -7120,10 +7194,22 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
     transition: none;
   }
 
+  .tt-pressable-group,
+  .tt-pressable-parent {
+    transition: none;
+  }
+
   .tt-pressable:not(:disabled):not([aria-disabled="true"]):hover,
   .tt-pressable:not(:disabled):not([aria-disabled="true"]):active,
   .tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-pressed="true"],
   .tt-pressable:not(:disabled):not([aria-disabled="true"])[aria-current="page"] {
+    transform: none;
+  }
+
+  .tt-pressable-group:hover,
+  .tt-pressable-group:active,
+  .tt-pressable-parent:hover,
+  .tt-pressable-parent:active {
     transform: none;
   }
 
@@ -9282,63 +9368,102 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-stat {
-  display: flex;
-  align-items: center;
-  min-height: 96px;
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid #e5e8ee;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.96), 0 3px 0 #e8ecf2, 0 10px 20px rgb(16 24 40 / 0.055);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  align-items: stretch;
+  min-height: 176px;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid rgba(31, 43, 56, 0.12);
+  border-color: rgba(31, 43, 56, 0.12);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 1), rgba(246, 248, 251, 0.98));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.98), inset 0 -1px rgba(31, 43, 56, 0.035), 0 1px 2px rgba(31, 43, 56, 0.09), 0 9px 22px rgba(31, 43, 56, 0.085);
   cursor: default;
   transform: translateY(0);
   transition: transform 150ms cubic-bezier(.2,.8,.2,1), box-shadow 150ms ease-out, background 150ms ease-out;
 }
 
-.tt-reference-route-spend-plans .tt-plan-market-stat:hover { background: #fbfcfe; transform: translateY(-1px); }
-.tt-reference-route-spend-plans .tt-plan-market-stat:active { transform: translateY(2px) scale(.992); box-shadow: inset 0 2px 6px rgb(16 24 40 / .1), 0 1px 0 #e8ecf2; transition-duration: 60ms; }
+.tt-reference-route-spend-plans .tt-plan-market-stat:hover { background: linear-gradient(145deg, #fff, #f8fafc); transform: translateY(-1px); }
+.tt-reference-route-spend-plans .tt-plan-market-stat:active { transform: translateY(2px) scale(.992); box-shadow: inset 0 2px 6px rgb(16 24 40 / .1), 0 1px 2px rgb(31 43 56 / .08); transition-duration: 60ms; }
 
-.tt-reference-route-spend-plans .tt-plan-market-stat > span:last-child {
+.tt-reference-route-spend-plans .tt-plan-market-stat-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-main > span:last-child {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-stat-icon {
   display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
   place-items: center;
   border-radius: 10px;
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 8px 16px rgb(16 24 40 / 0.12);
+  box-shadow: none;
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-stat-icon svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   stroke-width: 2.25;
 }
 
-.tt-reference-route-spend-plans .tt-plan-market-stat-icon--blue { background: #2675f6; }
-.tt-reference-route-spend-plans .tt-plan-market-stat-icon--green { background: #19b849; }
-.tt-reference-route-spend-plans .tt-plan-market-stat-icon--violet { background: #7557da; }
-.tt-reference-route-spend-plans .tt-plan-market-stat-icon--orange { background: #ff944c; }
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon--blue { color: #2675f6; background: #eaf2ff; }
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon--green { color: #16a34a; background: #e9f9ef; }
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon--violet { color: #7557da; background: #f1edff; }
+.tt-reference-route-spend-plans .tt-plan-market-stat-icon--orange { color: #f47b2a; background: #fff1e7; }
 
 .tt-reference-route-spend-plans .tt-plan-market-stat-label,
-.tt-reference-route-spend-plans .tt-plan-market-stat small {
+.tt-reference-route-spend-plans .tt-plan-market-stat-main small {
   color: #788295;
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.25;
 }
 
-.tt-reference-route-spend-plans .tt-plan-market-stat strong {
+.tt-reference-route-spend-plans .tt-plan-market-stat-main strong {
   color: #121826;
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 650;
   letter-spacing: -0.03em;
   line-height: 1.1;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  border-top: 1px solid rgba(125, 139, 158, 0.22);
+  padding-top: 10px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-details > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-details > span + span {
+  border-left: 1px solid rgba(125, 139, 158, 0.22);
+  padding-left: 12px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-details small {
+  color: #7d8798;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-stat-details strong {
+  color: #293344;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-list {
@@ -9348,10 +9473,11 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider {
   overflow: visible;
-  border: 1px solid #e3e7ed;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.96), 0 3px 0 #e8ecf2, 0 8px 18px rgb(16 24 40 / 0.05);
+  border: 1px solid rgba(31, 43, 56, 0.12);
+  border-color: rgba(31, 43, 56, 0.12);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 1), rgba(246, 248, 251, 0.98));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.98), inset 0 -1px rgba(31, 43, 56, 0.035), 0 1px 2px rgba(31, 43, 56, 0.09), 0 9px 22px rgba(31, 43, 56, 0.085);
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-summary {
@@ -9374,7 +9500,7 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-summary:hover {
-  background: #fbfcfe;
+  background: rgba(255, 255, 255, 0.42);
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-summary:active { transform: translateY(2px) scale(0.998); background: #f6f9fd; box-shadow: inset 0 2px 5px rgb(16 24 40 / 0.06); transition-duration: 70ms; }
@@ -9397,20 +9523,22 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
   height: 36px;
   flex: 0 0 36px;
   place-items: center;
+  border-radius: 10px;
   color: #111827;
+  background: rgba(238, 243, 249, 0.86);
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-icon img {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-name {
   margin: 0;
   color: #151b2a;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 600;
   letter-spacing: -0.018em;
   line-height: 1.25;
   white-space: nowrap;
@@ -9419,12 +9547,12 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 .tt-reference-route-spend-plans .tt-plan-market-official {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 2px 6px;
   border: 1px solid #d7e8ff;
   border-radius: 7px;
   color: #3785e8;
   background: #f2f8ff;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 1;
 }
@@ -9442,20 +9570,6 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
   align-items: center;
   gap: 8px;
   margin-top: 3px;
-}
-
-.tt-reference-route-spend-plans .tt-plan-market-provider-description {
-  display: inline-block;
-  min-width: 0;
-  max-width: 500px;
-  flex: 1 1 auto;
-  margin: 0;
-  overflow: hidden;
-  color: #5f6877;
-  font-size: 13px;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-access {
@@ -9484,21 +9598,21 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 
 .tt-reference-route-spend-plans .tt-plan-market-metadata-separator {
   display: block;
-  width: 3px;
-  height: 34px;
-  flex: 0 0 3px;
+  width: 1px;
+  height: 32px;
+  flex: 0 0 1px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #74889f 0%, #a4b3c3 100%);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.96), 1px 0 4px rgba(41, 58, 80, 0.2);
+  background: rgba(125, 139, 158, 0.28);
+  box-shadow: none;
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-tag {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: 2px 6px;
   border: 1px solid;
-  border-radius: 9px;
-  font-size: 13px;
+  border-radius: 7px;
+  font-size: 10px;
   font-weight: 650;
   line-height: 1;
 }
@@ -9523,7 +9637,7 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 
 .tt-reference-route-spend-plans .tt-plan-market-provider-pricing {
   display: grid;
-  grid-template-columns: minmax(98px, auto) 2px minmax(126px, auto);
+  grid-template-columns: minmax(98px, auto) 1px minmax(126px, auto);
   align-items: center;
   justify-content: end;
   gap: 11px;
@@ -9532,13 +9646,13 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 
 .tt-reference-route-spend-plans .tt-plan-market-plan-count,
 .tt-reference-route-spend-plans .tt-plan-market-starting-price {
-  font-size: 19px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-starting-price {
   min-width: 126px;
-  font-size: 23px;
+  font-size: 16px;
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-starting-price small {
@@ -9597,17 +9711,18 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  border: 1px solid #e0e5ec;
+  border: 1px solid rgba(31, 43, 56, 0.12);
+  border-color: rgba(31, 43, 56, 0.12);
   border-radius: 8px;
-  background: linear-gradient(155deg, #fff, #fbfcfe);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.96), 0 3px 0 #e8ecf2, 0 10px 18px rgb(16 24 40 / 0.055);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 1), rgba(246, 248, 251, 0.98));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.98), inset 0 -1px rgba(31, 43, 56, 0.035), 0 1px 2px rgba(31, 43, 56, 0.09), 0 9px 22px rgba(31, 43, 56, 0.085);
   overflow: visible;
   transform: translateY(0);
   transition: transform 150ms cubic-bezier(.2,.8,.2,1), box-shadow 150ms ease-out, background 150ms ease-out;
 }
 
-.tt-reference-route-spend-plans .tt-plan-market-plan-card:hover { background: #fff; transform: translateY(-1px); }
-.tt-reference-route-spend-plans .tt-plan-market-plan-card:active { transform: translateY(2px) scale(.994); box-shadow: inset 0 2px 6px rgb(16 24 40 / .09), 0 1px 0 #e8ecf2; transition-duration: 60ms; }
+.tt-reference-route-spend-plans .tt-plan-market-plan-card:hover { background: linear-gradient(145deg, #fff, #f8fafc); transform: translateY(-1px); }
+.tt-reference-route-spend-plans .tt-plan-market-plan-card:active { transform: translateY(2px) scale(.994); box-shadow: inset 0 2px 6px rgb(16 24 40 / .09), 0 1px 2px rgb(31 43 56 / .08); transition-duration: 60ms; }
 
 .tt-reference-route-spend-plans .tt-plan-market-plan-card-heading {
   display: flex;
@@ -9640,9 +9755,9 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 .tt-reference-route-spend-plans .tt-plan-market-plan-quota { color: #374151; font-size: 14px; line-height: 1.6; }
 .tt-reference-route-spend-plans .tt-plan-market-plan-quota > span { color: #788295; }
 .tt-reference-route-spend-plans .tt-plan-market-access,
-.tt-reference-route-spend-plans .tt-plan-market-risk { display: inline-flex; align-items: center; gap: 5px; border: 1px solid; border-radius: 999px; padding: 5px 8px; font-size: 12px; font-weight: 600; line-height: 1; }
+.tt-reference-route-spend-plans .tt-plan-market-risk { display: inline-flex; align-items: center; gap: 3px; border: 1px solid; border-radius: 999px; padding: 3px 5px; font-size: 10px; font-weight: 600; line-height: 1; }
 .tt-reference-route-spend-plans .tt-plan-market-access svg,
-.tt-reference-route-spend-plans .tt-plan-market-risk svg { width: 13px; height: 13px; }
+.tt-reference-route-spend-plans .tt-plan-market-risk svg { width: 10px; height: 10px; }
 .tt-reference-route-spend-plans .tt-plan-market-access--direct { color: #168747; border-color: #a7e4bf; background: #effcf3; }
 .tt-reference-route-spend-plans .tt-plan-market-access--vpn { color: #9a5d00; border-color: #f2ce89; background: #fff8e7; }
 .tt-reference-route-spend-plans .tt-plan-market-risk--low { color: #168747; border-color: #a7e4bf; background: #effcf3; }
@@ -9714,11 +9829,11 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-summary { gap: 14px; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-metadata { gap: 10px; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-tags { gap: 6px; }
-  .tt-reference-route-spend-plans .tt-plan-market-provider-tag { padding: 3px 8px; font-size: 12px; }
-  .tt-reference-route-spend-plans .tt-plan-market-metadata-separator { width: 2px; height: 30px; flex-basis: 2px; }
-  .tt-reference-route-spend-plans .tt-plan-market-provider-pricing { grid-template-columns: auto 2px auto; gap: 8px; }
-  .tt-reference-route-spend-plans .tt-plan-market-plan-count { font-size: 18px; }
-  .tt-reference-route-spend-plans .tt-plan-market-starting-price { min-width: 0; font-size: 21px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-tag { padding: 2px 6px; font-size: 10px; }
+  .tt-reference-route-spend-plans .tt-plan-market-metadata-separator { width: 1px; height: 30px; flex-basis: 1px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-pricing { grid-template-columns: auto 1px auto; gap: 8px; }
+  .tt-reference-route-spend-plans .tt-plan-market-plan-count { font-size: 14px; }
+  .tt-reference-route-spend-plans .tt-plan-market-starting-price { min-width: 0; font-size: 16px; }
 }
 
 @media (max-width: 960px) {
@@ -9740,20 +9855,19 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
   .tt-reference-route-spend-plans .tt-plan-market-select-wrap { min-width: 142px; }
   .tt-reference-route-spend-plans .tt-plan-market-overview { grid-template-columns: 1fr; gap: 12px; }
   .tt-reference-route-spend-plans .tt-plan-market-stat { min-height: 88px; padding: 14px; }
-  .tt-reference-route-spend-plans .tt-plan-market-stat-icon { width: 44px; height: 44px; flex-basis: 44px; border-radius: 10px; }
-  .tt-reference-route-spend-plans .tt-plan-market-stat-icon svg { width: 22px; height: 22px; }
+  .tt-reference-route-spend-plans .tt-plan-market-stat-icon { width: 42px; height: 42px; flex-basis: 42px; border-radius: 10px; }
+  .tt-reference-route-spend-plans .tt-plan-market-stat-icon svg { width: 20px; height: 20px; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-summary { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-identity { gap: 12px; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-icon { width: 36px; height: 36px; flex-basis: 36px; }
-  .tt-reference-route-spend-plans .tt-plan-market-provider-icon img { width: 31px; height: 31px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-icon img { width: 30px; height: 30px; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-name { font-size: 16px; }
-  .tt-reference-route-spend-plans .tt-plan-market-provider-description { max-width: 220px; font-size: 12px; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-metadata { width: 100%; flex-wrap: nowrap; justify-content: flex-end; gap: 10px; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-tags { gap: 8px; }
-  .tt-reference-route-spend-plans .tt-plan-market-provider-tag { padding: 4px 8px; font-size: 12px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-tag { padding: 2px 6px; font-size: 10px; }
   .tt-reference-route-spend-plans .tt-plan-market-metadata-separator { height: 36px; }
-  .tt-reference-route-spend-plans .tt-plan-market-provider-pricing { grid-template-columns: auto 3px auto; margin-left: 0; gap: 10px; }
-  .tt-reference-route-spend-plans .tt-plan-market-plan-count { font-size: 16px; }
+  .tt-reference-route-spend-plans .tt-plan-market-provider-pricing { grid-template-columns: auto 1px auto; margin-left: 0; gap: 10px; }
+  .tt-reference-route-spend-plans .tt-plan-market-plan-count { font-size: 14px; }
   .tt-reference-route-spend-plans .tt-plan-market-starting-price { min-width: 0; font-size: 16px; }
   .tt-reference-route-spend-plans .tt-plan-market-plan-price { margin-left: 0; }
   .tt-reference-route-spend-plans .tt-plan-market-provider-details { padding: 0 16px 16px; }
@@ -9811,4 +9925,76 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 
 :root.dark .tt-reference-route-settings-basic #settings-limits .tt-section-card-body > * {
   border-color: rgba(255, 255, 255, 0.09) !important;
+}
+
+/* Daily detail rows open a floating inspection layer. The layer belongs to
+   the scroll viewport, not the table flow, so later dates never move. */
+.tt-daily-row-trigger {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  color: inherit;
+}
+
+.tt-daily-row-trigger svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.5;
+  transition: transform 160ms ease;
+}
+
+.tt-daily-row-trigger[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+.tt-daily-breakdown-overlay {
+  position: absolute;
+  z-index: 30;
+  right: 14px;
+  left: 14px;
+  max-height: 228px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--tt-page-border-strong) 80%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--tt-page-surface) 94%, transparent);
+  box-shadow: 0 18px 42px rgba(31, 41, 55, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px) saturate(135%);
+}
+
+.tt-daily-breakdown-overlay > header,
+.tt-daily-breakdown-agent,
+.tt-daily-breakdown-models > div {
+  display: grid;
+  align-items: center;
+}
+
+.tt-daily-breakdown-overlay > header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  grid-template-columns: 1fr auto;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--tt-page-border);
+  background: inherit;
+}
+
+.tt-daily-breakdown-overlay > header div { display: flex; align-items: baseline; gap: 9px; }
+.tt-daily-breakdown-overlay > header strong { font-size: 13px; }
+.tt-daily-breakdown-overlay > header span { font-size: 11px; color: var(--tt-page-muted); }
+.tt-daily-breakdown-overlay > header button { width: 26px; height: 26px; border-radius: 8px; color: var(--tt-page-muted); }
+.tt-daily-breakdown-list { padding: 6px 10px 10px; }
+.tt-daily-breakdown-list article + article { border-top: 1px solid var(--tt-page-border); }
+.tt-daily-breakdown-agent { grid-template-columns: 22px minmax(110px, 1fr) auto 52px; gap: 8px; padding: 8px 4px 5px; font-size: 12px; }
+.tt-daily-breakdown-agent > span,
+.tt-daily-breakdown-agent > b { text-align: right; font-variant-numeric: tabular-nums; }
+.tt-daily-breakdown-models { margin-left: 30px; }
+.tt-daily-breakdown-models > div { grid-template-columns: minmax(120px, 1fr) auto 52px; gap: 8px; padding: 4px 4px; color: var(--tt-page-muted); font-size: 11px; }
+.tt-daily-breakdown-models b,
+.tt-daily-breakdown-models span:nth-child(n+2) { text-align: right; font-variant-numeric: tabular-nums; }
+.tt-daily-breakdown-state { display: flex; min-height: 86px; align-items: center; justify-content: center; gap: 8px; color: var(--tt-page-muted); font-size: 12px; }
+.tt-daily-breakdown-state svg { width: 16px; height: 16px; }
+.tt-daily-breakdown-state--error { color: #dc2626; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-daily-row-trigger svg { transition: none; }
 }

@@ -73,6 +73,8 @@ const EMPTY_TOTALS: MergedTotals = {
   cost_usd: 0,
   request_count: 0,
   success_count: null,
+  interrupted_count: 0,
+  failure_count: 0,
   success_rate: null,
   avg_latency_ms: null,
   cache_hit_rate: 0,
@@ -296,6 +298,8 @@ export function useRequestUsageRecords({
         mergedTotals.status_sample_count = safeNum(totals.status_sample_count);
         mergedTotals.latency_sample_count = safeNum(totals.latency_sample_count);
         mergedTotals.success_count = totals.success_count ?? null;
+        mergedTotals.interrupted_count = safeNum(totals.interrupted_count);
+        mergedTotals.failure_count = safeNum(totals.failure_count);
         mergedTotals.success_rate = totals.success_rate ?? null;
         mergedTotals.avg_latency_ms = totals.avg_latency_ms ?? null;
         mergedTotals.cache_hit_rate = safeNum(totals.cache_hit_rate);

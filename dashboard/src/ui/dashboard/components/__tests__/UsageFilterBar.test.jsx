@@ -53,6 +53,15 @@ describe("UsageFilterBar", () => {
     );
   });
 
+  it("renders DeepSeek Harness when it is enabled by Limits Display", () => {
+    renderBar({ visibleProviderIds: ["deepseek-harness"] });
+
+    expect(
+      screen.getByRole("button", { name: /DeepSeek Harness/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Codex/ })).not.toBeInTheDocument();
+  });
+
   it("left-aligns the Agent cards and separates the model controls on the right", () => {
     renderBar();
 
@@ -71,6 +80,7 @@ describe("UsageFilterBar", () => {
     const toolbar = screen.getByRole("toolbar");
     expect(toolbar).toHaveClass(
       "tt-surface",
+      "tt-pressable-parent",
       "[&_button]:rounded-[var(--tt-control-radius)]",
       "[&_button:active:not(:disabled)]:translate-y-px",
       "[&_button[aria-pressed=true]]:shadow-inner",

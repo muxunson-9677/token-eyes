@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 30_000;
 const PREFS_CHANGED_EVENT = "token-eyes:desktop-widget-prefs-changed";
 
 const DEFAULT_PREFS: DesktopWidgetPrefs = {
-  version: 7,
+  version: 11,
   visible: true,
   x: null,
   y: null,

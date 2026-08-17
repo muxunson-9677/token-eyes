@@ -193,6 +193,7 @@
   "limits.provider.kiro": "Kiro",
   "limits.provider.grok": "Grok Build",
   "limits.provider.copilot": "GitHub Copilot",
+  "limits.provider.deepseek_harness": "DeepSeek Harness",
   "limits.provider.antigravity": "Antigravity",
   "limits.provider.zed": "Zed",
   "limits.label.claude_5h": "5h",

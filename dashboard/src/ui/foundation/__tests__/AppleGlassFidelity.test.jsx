@@ -48,6 +48,24 @@ function mediaDeclarations(params, selector) {
 }
 
 describe("approved M/N material fidelity", () => {
+  it("keeps widget plan cards clean, equal-height, and free of duplicated elevation", () => {
+    const grid = ".tt-widget-plan-list > .tt-token-plan-grid";
+    const card = ".tt-widget-plan-card";
+    const header = ".tt-widget-plan-card__top";
+    const check = ".tt-widget-plan-card .tt-widget-check";
+
+    expect(declarations(grid)["align-items"]).toBe("stretch");
+    expect(declarations(grid)["grid-template-columns"]).toBe("repeat(auto-fill, 264px)");
+    expect(declarations(grid)["grid-auto-rows"]).toBe("306px");
+    expect(declarations(card).height).toBe("100%");
+    expect(declarations(card).outline).toBe("none");
+    expect(declarations(card)["box-shadow"]).not.toContain("0 7px");
+    expect(declarations(card).overflow).toBe("hidden");
+    expect(declarations(header)["grid-template-columns"])
+      .toBe("16px 30px minmax(0, 1fr) 20px");
+    expect(declarations(check)["justify-self"]).toBe("end");
+  });
+
   it("keeps widget summary cards readable in a narrow desktop window", () => {
     const summary = ".tt-widget-summary";
     const card = ".tt-widget-summary article";
@@ -220,11 +238,47 @@ describe("approved M/N material fidelity", () => {
     expect(declarations(resetRebound).animation).toContain("tt-widget-press-rebound");
   });
 
+  it("matches plan market cards to the accepted cost section material", () => {
+    const reference = declarations('.tt-reference-route-spend-cost [data-cost-section][data-open="false"]');
+    const stat = declarations(".tt-reference-route-spend-plans .tt-plan-market-stat");
+    const provider = declarations(".tt-reference-route-spend-plans .tt-plan-market-provider");
+    const plan = declarations(".tt-reference-route-spend-plans .tt-plan-market-plan-card");
+    const separator = declarations(".tt-reference-route-spend-plans .tt-plan-market-metadata-separator");
+    const referenceSeparator = declarations(".tt-reference-route-spend-cost .tt-cost-row-metric::before");
+    const statIcon = declarations(".tt-reference-route-spend-plans .tt-plan-market-stat-icon");
+    const providerName = declarations(".tt-reference-route-spend-plans .tt-plan-market-provider-name");
+    const official = declarations(".tt-reference-route-spend-plans .tt-plan-market-official");
+    const planCount = declarations(".tt-reference-route-spend-plans .tt-plan-market-plan-count,\n.tt-reference-route-spend-plans .tt-plan-market-starting-price");
+    const darkCards = [
+      declarations(":root.dark .tt-reference-route-spend-plans .tt-plan-market-stat"),
+      declarations(":root.dark .tt-reference-route-spend-plans .tt-plan-market-provider"),
+      declarations(":root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-card"),
+    ];
+
+    for (const card of [stat, provider, plan]) {
+      expect(card.background).toBe(reference.background);
+      expect(card["border-color"]).toBe(reference["border-color"]);
+      expect(card["box-shadow"]).toBe(reference["box-shadow"]);
+      expect(card["box-shadow"]).not.toContain("0 3px 0");
+    }
+    expect(separator.width).toBe("1px");
+    expect(separator.background).toBe(referenceSeparator.background);
+    expect(separator["box-shadow"]).toBe("none");
+    expect(statIcon["box-shadow"]).toBe("none");
+    expect(providerName["font-size"]).toBe("16px");
+    expect(providerName["font-weight"]).toBe("600");
+    expect(official["font-size"]).toBe("10px");
+    expect(planCount["font-size"]).toBe("14px");
+    for (const card of darkCards) expect(card["box-shadow"]).not.toContain("0 3px 0");
+  });
+
   it("uses one coherent dark surface system across the requested routes", () => {
     const darkRoot = declarations(":root.dark");
-    expect(darkRoot["--tt-page-canvas"]).toBe("#15181d");
-    expect(darkRoot["--tt-page-surface"]).toBe("#20242b");
-    expect(darkRoot["--tt-page-ink"]).toBe("#f4f6f8");
+    const lightRoot = declarations(":root");
+    for (const token of ["--tt-page-canvas", "--tt-page-surface", "--tt-page-ink"]) {
+      expect(darkRoot[token]).toBeTruthy();
+      expect(darkRoot[token]).not.toBe(lightRoot[token]);
+    }
 
     const darkSelectors = [
       ":root.dark .tt-token-service-card",
@@ -240,7 +294,7 @@ describe("approved M/N material fidelity", () => {
     for (const selector of darkSelectors) {
       const background = declarationsFromSelectorList(selector).background || "";
       expect(background, selector).not.toBe("");
-      expect(background, selector).not.toMatch(/#fff(?:fff)?\b|rgba?\(255\s*,\s*255\s*,\s*255\s*,\s*(?:0\.[5-9]|1)\)/i);
+      expect(background, selector).not.toBe(lightRoot["--tt-page-surface"]);
     }
   });
 

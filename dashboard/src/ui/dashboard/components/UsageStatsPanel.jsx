@@ -311,7 +311,7 @@ export function UsageStatsPanel({
   }
 
   return (
-    <Card className={cn("tt-usage-stats-card mb-6", className)} bodyClassName="p-4 sm:p-6">
+    <Card className={cn("tt-usage-stats-card tt-pressable-group mb-6", className)} bodyClassName="p-4 sm:p-6">
       {error ? (
         <div
           role="status"
@@ -429,7 +429,7 @@ export function UsageStatsPanel({
               return (
                 <div
                   key={card.key}
-                  className="tt-surface-nested tt-usage-dimension min-w-0 rounded-lg p-2.5"
+                  className="tt-surface-nested tt-usage-dimension tt-pressable min-w-0 rounded-lg p-2.5"
                   data-dimension={card.key}
                   data-testid="usage-dimension-card"
                 >
@@ -487,7 +487,7 @@ export function UsageStatsPanel({
                   <div
                     key={card.labelKey}
                     data-testid="usage-cost-card"
-                    className="tt-surface-nested tt-usage-cost-card min-w-0 rounded-lg px-2.5 py-2"
+                    className="tt-surface-nested tt-usage-cost-card tt-pressable min-w-0 rounded-lg px-2.5 py-2"
                   >
                     <div className="flex items-start gap-1.5 text-[10px] leading-tight text-oai-gray-500 dark:text-oai-gray-400">
                       <CostIcon className={cn("mt-px h-3 w-3 shrink-0", card.iconClass)} aria-hidden="true" />
@@ -537,7 +537,7 @@ export function UsageStatsPanel({
         >
           {requestCount !== null ? (
           <div
-            className="tt-surface-nested tt-usage-summary-card min-w-0 flex-1 rounded-lg px-3 py-2"
+            className="tt-surface-nested tt-usage-summary-card tt-pressable min-w-0 flex-1 rounded-lg px-3 py-2"
             data-layout-row="headline"
             data-testid="usage-request-summary"
           >
@@ -559,7 +559,7 @@ export function UsageStatsPanel({
 
           {costProvided ? (
             <div
-              className="tt-surface-nested tt-usage-summary-card min-w-0 flex-1 rounded-lg px-3 py-2"
+              className="tt-surface-nested tt-usage-summary-card tt-pressable min-w-0 flex-1 rounded-lg px-3 py-2"
               data-layout-row="tokens"
               data-testid="usage-total-cost-summary"
             >
@@ -586,7 +586,7 @@ export function UsageStatsPanel({
 
           {hitRateProvided ? (
           <div
-            className="tt-surface-nested tt-usage-summary-card min-w-0 flex-1 rounded-lg px-3 py-2"
+            className="tt-surface-nested tt-usage-summary-card tt-pressable min-w-0 flex-1 rounded-lg px-3 py-2"
             data-layout-row="costs"
             data-testid="usage-cache-hit-summary"
           >

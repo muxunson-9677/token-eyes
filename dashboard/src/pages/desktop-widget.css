@@ -311,6 +311,12 @@
   font-size: 11px;
 }
 
+.widget-limit-summary__identity {
+  grid-column: 1;
+  grid-row: 1;
+  color: rgba(255, 255, 255, 0.58);
+}
+
 .widget-limit-summary__window {
   grid-column: 1;
   grid-row: 1;
@@ -492,6 +498,23 @@
   gap: 7px;
 }
 
+.widget-limit-plan {
+  display: grid;
+  gap: 2px;
+}
+
+.widget-limit-plan + .widget-limit-plan {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(174, 211, 250, 0.12);
+}
+
+.widget-limit-plan__title {
+  padding: 0 2px;
+  color: rgba(241, 248, 255, 0.9);
+  font-size: 11px;
+}
+
 .widget-limit-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -652,7 +675,6 @@
 .widget-mode-rail .pill-nav__item[aria-pressed="true"] {
   color: #fff;
   border-color: rgba(255, 255, 255, 0.36);
-  transform: translateX(-2px);
 }
 
 .widget-mode-rail .pill-nav__indicator {
@@ -694,6 +716,13 @@
   background: transparent;
   text-align: left;
   font-size: 12px;
+}
+
+.widget-menu__items {
+  max-height: 240px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 10px;
 }
 
 .widget-project-option {
@@ -1282,7 +1311,11 @@
 }
 
 .desktop-widget-root.has-celebration {
-  padding: var(--widget-effect-halo, 140px);
+  padding:
+    calc(var(--widget-effect-halo, 140px) + 3px)
+    var(--widget-effect-halo, 140px)
+    calc(var(--widget-effect-halo, 140px) + 3px)
+    var(--widget-effect-halo, 140px);
 }
 
 .desktop-widget-root.has-celebration .desktop-widget-card,
@@ -1410,8 +1443,8 @@
 
 .widget-reset-celebration__dismiss {
   position: absolute;
-  top: 8px;
-  right: 10px;
+  top: calc(var(--widget-effect-halo, 140px) + 8px);
+  right: calc(var(--widget-effect-halo, 140px) + 10px);
   display: grid;
   width: 30px;
   height: 30px;
@@ -1483,7 +1516,6 @@
 .widget-mode-rail--reference-dock .pill-nav__item:nth-child(3) { background: linear-gradient(135deg, rgba(143, 93, 205, 0.94), rgba(96, 63, 150, 0.86)); }
 
 .widget-mode-rail--reference-dock .pill-nav__item[aria-pressed="true"] {
-  transform: translateX(-2px);
   box-shadow:
     0 0 13px rgba(138, 198, 255, 0.52),
     0 6px 13px rgba(3, 12, 29, 0.48),
@@ -1610,7 +1642,7 @@
 .widget-menu[data-menu-kind="agent"]::before {
   position: absolute;
   top: -6px;
-  left: 44px;
+  left: var(--widget-menu-pointer-left, 44px);
   width: 12px;
   height: 12px;
   transform: rotate(45deg);
@@ -1623,27 +1655,55 @@
 .widget-menu[data-menu-kind="agent"] {
   min-width: 176px;
   padding: 8px;
+  border: 1px solid rgba(172, 220, 255, 0.46);
   border-radius: 16px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(99, 164, 255, 0.24), transparent 42%),
+    linear-gradient(145deg, rgba(57, 88, 129, 0.96), rgba(10, 22, 42, 0.98) 66%),
+    rgba(9, 20, 38, 0.98);
+  box-shadow:
+    0 24px 42px rgba(1, 7, 18, 0.58),
+    0 8px 18px rgba(28, 89, 162, 0.26),
+    0 0 0 1px rgba(87, 153, 225, 0.18),
+    inset 0 1px 0 rgba(235, 249, 255, 0.34),
+    inset 0 -18px 30px rgba(1, 8, 22, 0.28);
+  backdrop-filter: blur(26px) saturate(138%);
+}
+
+.widget-menu[data-menu-kind="agent"]::after {
+  position: absolute;
+  z-index: 0;
+  inset: 3px;
+  border: 1px solid rgba(198, 229, 255, 0.12);
+  border-radius: 13px;
+  pointer-events: none;
+  content: "";
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(60, 124, 205, 0.18);
+}
+
+.widget-menu[data-menu-kind="agent"] .widget-menu__items {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.widget-menu[data-menu-kind="agent"] .widget-menu__items::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .widget-menu[data-menu-kind="agent"] button[role="menuitemradio"] {
+  width: 100%;
+  box-sizing: border-box;
   min-height: 36px;
   border-radius: 10px;
-}
-
-.widget-codex-mark {
-  display: inline-grid;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid rgba(184, 204, 255, 0.46);
-  border-radius: 40% 52% 44% 56%;
-  color: #173e9a;
-  background:
-    radial-gradient(circle at 28% 18%, #d0c0ff 0, #a5a4ff 27%, transparent 48%),
-    radial-gradient(circle at 72% 75%, #376cff 0, #243fff 52%, #1a2c87 100%);
-  box-shadow:
-    0 3px 8px rgba(46, 89, 255, 0.62),
-    inset 0 1px 1px rgba(255, 255, 255, 0.6);
 }
 
 .desktop-widget-card--reference-dock .widget-project__empty {

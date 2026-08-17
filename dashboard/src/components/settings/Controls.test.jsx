@@ -163,6 +163,7 @@ describe("SectionCard visual identity", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Limits" }).closest(".tt-surface")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Limits" }).closest(".tt-surface")).toHaveClass("tt-pressable-group");
     expect(screen.getByRole("button", { name: "Limits" })).toHaveClass(
       "tt-product-focusable",
     );
