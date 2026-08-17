@@ -61,8 +61,8 @@ const prefs = {
   version: 11,
   visible: true,
   width: 352,
-  height: 72,
-  collapsedHeight: 72,
+  height: 76,
+  collapsedHeight: 76,
   expandedHeight: 360,
   scaleFactor: 1,
   selectedAgent: "codex",
@@ -360,6 +360,49 @@ describe("DesktopWidgetPage", () => {
     expect(widgetStyles).toContain(".widget-mode-rail .pill-nav__item::before");
   });
 
+  it("tucks the external mode rail behind the capsule edge without a visible bridge plate", () => {
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-card--reference-dock\s*\{[^}]*z-index:\s*2/u,
+    );
+    expect(widgetStyles).toMatch(
+      /\.widget-mode-rail--reference-dock\s*\{[^}]*z-index:\s*1[^}]*margin-left:\s*-6px/u,
+    );
+    expect(widgetStyles).not.toMatch(/\.widget-mode-rail--reference-dock::before\s*\{/u);
+  });
+
+  it("keeps the collapsed toolbar geometry fixed when detail content expands", () => {
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-root\.has-popover \.desktop-widget-card:not\(\.is-expanded\)\s*\{[^}]*height:\s*66px/u,
+    );
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-card--reference-dock \.widget-toolbar\s*\{[^}]*height:\s*65px/u,
+    );
+    expect(widgetStyles).not.toMatch(
+      /\.desktop-widget-card--reference-dock:not\(\.is-expanded\) \.widget-toolbar\s*\{/u,
+    );
+  });
+
+  it("removes the rectangular projection below the agent menu", () => {
+    const agentMenuRule = widgetStyles.match(
+      /\.widget-menu\[data-menu-kind="agent"\]\s*\{([^}]*)\}/u,
+    )?.[1] ?? "";
+    expect(agentMenuRule).toContain("box-shadow:");
+    expect(agentMenuRule).not.toMatch(/\n\s*0 (?:8|24)px (?:18|42)px/u);
+    expect(agentMenuRule).toMatch(/\n\s*0 0 0 1px/u);
+  });
+
+  it("keeps the side rail shadow tight", () => {
+    expect(widgetStyles).toMatch(
+      /\.widget-mode-rail--reference-dock \.pill-nav__item\s*\{[^}]*box-shadow:\s*\n\s*0 1px 3px/u,
+    );
+    expect(widgetStyles).toMatch(
+      /\.widget-mode-rail--reference-dock \.pill-nav__item\[aria-pressed="true"\]\s*\{[^}]*box-shadow:\s*\n\s*0 0 4px/u,
+    );
+    expect(widgetStyles).not.toMatch(
+      /\.widget-mode-rail--reference-dock \.pill-nav__item(?:\[aria-pressed="true"\])?\s*\{[^}]*(?:0 4px 8px|13px)/u,
+    );
+  });
+
   it("keeps model usage as a divided list inside the expanded content layer", () => {
     expect(widgetStyles).toContain(".widget-model-row {\n  padding: 7px 0;");
     expect(widgetStyles).toContain(".widget-model-row + .widget-model-row {");
@@ -377,6 +420,28 @@ describe("DesktopWidgetPage", () => {
       target: screen.getByRole("button", { name: "copy:widget.mode.limits" }),
     }));
     expect(startDragging).not.toHaveBeenCalled();
+  });
+
+  it("dismisses an open agent menu from blank space without starting a native drag", async () => {
+    const user = userEvent.setup();
+    render(<DesktopWidgetPage />);
+
+    await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
+    expect(screen.getByRole("menu", { name: "copy:widget.agent_menu" })).toBeInTheDocument();
+    expect(widget.setPopoverOpen).toHaveBeenLastCalledWith(true);
+
+    startDragging.mockClear();
+    widget.setPopoverOpen.mockClear();
+    await act(async () => user.pointer({
+      keys: "[MouseLeft>]",
+      target: screen.getByTestId("desktop-widget-card"),
+    }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "copy:widget.agent_menu" })).not.toBeInTheDocument();
+    });
+    expect(startDragging).not.toHaveBeenCalled();
+    expect(widget.setPopoverOpen).toHaveBeenLastCalledWith(false);
   });
 
   it("keeps project selection out of the desktop capsule", () => {
@@ -562,7 +627,8 @@ describe("DesktopWidgetPage", () => {
       .getByText("DeepSeek Harness")).toBeInTheDocument();
   });
 
-  it("shows reset and expiry as separate facts for every limit window", () => {
+  it("shows compact reset and plan expiry as separate facts", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-17T11:33:00.000Z"));
     widget.value = {
       ...widget.value,
       prefs: { ...prefs, expanded: true, mode: "limits" },
@@ -570,15 +636,29 @@ describe("DesktopWidgetPage", () => {
         ...viewModel,
         limits: [{
           ...viewModel.limits[0],
-          resetAt: "2026-08-20T11:33:00.000Z",
-          expiresAt: "2026-08-30T22:24:00.000Z",
+          resetAt: "2026-08-20T03:33:00.000Z",
+          expiresAt: "2026-08-30T14:24:00.000Z",
         }],
       },
     };
 
     render(<DesktopWidgetPage />);
-    expect(screen.getByText(/copy:widget\.limit\.reset_at/)).toBeInTheDocument();
-    expect(screen.getByText(/copy:widget\.limit\.expires_at/)).toBeInTheDocument();
+    expect(screen.getByText("2d 16h（08/20 11:33）")).toBeInTheDocument();
+    expect(screen.getByText("有效期 14 天")).toBeInTheDocument();
+    now.mockRestore();
+  });
+
+  it("keeps an open agent menu mounted while the main card changes expansion state", async () => {
+    const user = userEvent.setup();
+    render(<DesktopWidgetPage />);
+
+    await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
+    expect(screen.getByRole("menu", { name: "copy:widget.agent_menu" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "copy:widget.expand" }));
+    expect(widget.updatePrefs).toHaveBeenCalledWith({ expanded: true });
+    expect(screen.getByRole("menu", { name: "copy:widget.agent_menu" })).toBeInTheDocument();
+    expect(widget.setPopoverOpen).toHaveBeenLastCalledWith(true);
   });
 
   it("falls back to all agents when the current agent is hidden in Limits Display", async () => {
@@ -658,15 +738,19 @@ describe("DesktopWidgetPage", () => {
   });
 
   it("groups one plan's quota windows and keeps details out of the collapsed capsule", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-17T11:33:00.000Z"));
     const cursorLimit = {
       ...viewModel.limits[0],
       id: "cursor:pro:7d",
       planId: "cursor:pro",
       agent: "cursor",
       provider: "Cursor",
-      accountLabel: "Pro",
+      planLabel: "Pro",
+      accountLabel: "ezequielhuelsxw@outlook.com",
       window: "7d",
       usedPercent: 100,
+      resetAt: "2026-08-20T03:33:00.000Z",
+      expiresAt: "2026-08-30T14:24:00.000Z",
       notes: "Cursor 周额度",
     };
     widget.value = {
@@ -693,13 +777,21 @@ describe("DesktopWidgetPage", () => {
       prefs: { ...widget.value.prefs, expanded: true },
     };
     rerender(<DesktopWidgetPage />);
-    expect(screen.getByText(/Cursor · Pro/u)).toBeInTheDocument();
-    expect(screen.getAllByText("1w")).not.toHaveLength(0);
+    const planCards = screen.getAllByTestId("widget-expanded-limit-plan");
+    expect(planCards).toHaveLength(2);
+    const cursorCard = planCards.find((card) => within(card).queryByText("Cursor · Pro"));
+    expect(cursorCard).toBeDefined();
+    expect(within(cursorCard!).getByText("ezequielhuelsxw@outlook.com")).toBeInTheDocument();
+    expect(within(cursorCard!).getByText("Weekly")).toBeInTheDocument();
+    expect(within(cursorCard!).getByText("2d 16h（08/20 11:33）")).toBeInTheDocument();
+    expect(within(cursorCard!).getByText("有效期 14 天")).toBeInTheDocument();
+    expect(screen.queryAllByText("1w")).toHaveLength(0);
     expect(screen.getAllByText("5h")).not.toHaveLength(0);
-    expect(screen.getAllByText("备用周额度")).not.toHaveLength(0);
-    expect(screen.getAllByText("主力开发账号")).not.toHaveLength(0);
+    expect(screen.queryByText("备用周额度")).not.toBeInTheDocument();
+    expect(screen.queryByText("主力开发账号")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(4);
     expect(screen.queryAllByTestId("widget-traffic-light")).toHaveLength(0);
+    now.mockRestore();
   });
 
   it("keeps each mode's collapsed summary unchanged when the detail panel expands", () => {

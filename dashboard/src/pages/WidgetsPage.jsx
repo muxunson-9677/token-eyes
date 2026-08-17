@@ -299,7 +299,7 @@ function MenuBarPreview({ slotConfigs, showStats }) {
         {showStats
           ? slotConfigs.map(({ slot, item }, idx) => (
               <React.Fragment key={slot}>
-                {idx > 0 ? (
+                {idx !== 0 ? (
                   <span className="my-1 w-px bg-white/20" aria-hidden="true" />
                 ) : null}
                 <div className={cn(
@@ -683,7 +683,7 @@ function WindowsWidgetProjectSettings() {
       const targetIds = target.windows.map((limit) => String(limit.id));
       const next = current.filter((id) => !sourceIds.includes(id));
       const targetIndex = next.findIndex((id) => targetIds.includes(id));
-      if (targetIndex < 0) return current;
+      if (targetIndex === -1) return current;
       next.splice(targetIndex, 0, ...sourceIds.filter((id) => current.includes(id)));
       return next;
     });
@@ -721,9 +721,9 @@ function WindowsWidgetProjectSettings() {
     ...limitPlans.filter((plan) => widgetLimitGroupSelected(plan, draftLimitIds)),
     ...limitPlans.filter((plan) => !widgetLimitGroupSelected(plan, draftLimitIds)),
   ];
-  const selectedLimitPlanCount = limitPlans.filter((plan) => (
-    widgetLimitGroupSelected(plan, draftLimitIds)
-  )).length;
+  const selectedLimitPlanCount = limitPlans.reduce((count, plan) => {
+    return count + Number(widgetLimitGroupSelected(plan, draftLimitIds));
+  }, 0);
 
   return (
     <div className="tt-surface mb-5 rounded-[var(--tt-card-radius)] p-3 sm:p-4">
@@ -821,7 +821,7 @@ function WindowsWidgetProjectSettings() {
             />
 
             <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-oai-gray-200/80 bg-white/50 dark:border-oai-gray-800 dark:bg-oai-gray-900/30">
-              {!normalizedQuery && recentProjects.length > 0 ? (
+              {!normalizedQuery && recentProjects.length !== 0 ? (
                 <p className="border-b border-oai-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
                   {copy("widgets.windows.projects.recent_title")}
                 </p>
@@ -830,7 +830,7 @@ function WindowsWidgetProjectSettings() {
                 <p className="px-3 py-4 text-sm text-red-600 dark:text-red-400">
                   {copy("widgets.windows.projects.load_failed")}
                 </p>
-              ) : visibleProjects.length > 0 ? (
+              ) : visibleProjects.length !== 0 ? (
                 visibleProjects.map((project) => {
                   const id = String(project.id || "");
                   const checked = selectedIds.includes(id);
@@ -1125,15 +1125,6 @@ function maskWidgetPlanEmail(value) {
   return `${match[1].slice(0, Math.min(3, match[1].length))}***@${match[2]}`;
 }
 
-function widgetPlanSubscriptionSummary(plan) {
-  const amount = Number(plan?.subscriptionAmount);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return copy("settings.token_plan.subscription_cost_placeholder");
-  }
-  const currency = String(plan?.subscriptionCurrency || "CNY").trim().toUpperCase();
-  return `${currency} ${amount.toLocaleString()}`;
-}
-
 function isWidgetLimitSelected(limit, selectedIds) {
   const id = String(limit?.id || "");
   return selectedIds.includes(id) || selectedIds.some((selectedId) => (
@@ -1172,6 +1163,8 @@ function WindowsProjectManager({ onOpenSettings }) {
   const [recentRange, setRecentRange] = useState("7d");
   const [batchOpen, setBatchOpen] = useState(false);
   const [expandedProjectIds, setExpandedProjectIds] = useState([]);
+  const [limitPlanOrder, setLimitPlanOrder] = useState([]);
+  const draggedLimitPlanId = useRef(null);
 
   useEffect(() => {
     let mounted = true;
@@ -1235,6 +1228,18 @@ function WindowsProjectManager({ onOpenSettings }) {
   const projects = groupWidgetProjectSessions(sessions);
   const limits = Array.isArray(model?.limits) ? model.limits : [];
   const limitPlans = groupWidgetLimits(limits);
+
+  useEffect(() => {
+    const availableIds = limitPlans.map((plan) => plan.id);
+    setLimitPlanOrder((current) => {
+      const next = [
+        ...current.filter((id) => availableIds.includes(id)),
+        ...availableIds.filter((id) => !current.includes(id)),
+      ];
+      return next.join("\u0000") === current.join("\u0000") ? current : next;
+    });
+  }, [limits]);
+
   const selectedProjectIds = Array.isArray(prefs?.selectedProjectIds) ? prefs.selectedProjectIds : [];
   const storedSelectedLimitIds = Array.isArray(prefs?.selectedLimitIds) ? prefs.selectedLimitIds : [];
   const selectedLimitIds = selectedWidgetLimitIds(limits, storedSelectedLimitIds);
@@ -1250,7 +1255,11 @@ function WindowsProjectManager({ onOpenSettings }) {
       if (sortOrder !== "recent") return 0;
       return Date.parse(right.project.updatedAt || "") - Date.parse(left.project.updatedAt || "");
     });
-  const displayedLimits = limitPlans;
+  const limitPlansById = new Map(limitPlans.map((plan) => [plan.id, plan]));
+  const displayedLimits = [
+    ...limitPlanOrder.map((id) => limitPlansById.get(id)).filter(Boolean),
+    ...limitPlans.filter((plan) => !limitPlanOrder.includes(plan.id)),
+  ];
   const selectedLimitPlanCount = limitPlans.filter((plan) => (
     widgetLimitGroupSelected(plan, selectedLimitIds)
   )).length;
@@ -1285,6 +1294,29 @@ function WindowsProjectManager({ onOpenSettings }) {
       ? selectedLimitIds.filter((value) => !planIds.includes(value))
       : [...selectedLimitIds, ...planIds.filter((id) => !selectedLimitIds.includes(id))];
     void persist({ ...prefs, selectedLimitIds: nextIds });
+  };
+
+  const moveLimitPlan = (targetPlanId) => {
+    const sourcePlanId = draggedLimitPlanId.current;
+    if (!sourcePlanId || sourcePlanId === targetPlanId) return;
+    setLimitPlanOrder((current) => {
+      const order = current.length ? current : limitPlans.map((plan) => plan.id);
+      const sourceIndex = order.indexOf(sourcePlanId);
+      const targetIndex = order.indexOf(targetPlanId);
+      if (sourceIndex === -1 || targetIndex === -1) return current;
+      const next = [...order];
+      next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, sourcePlanId);
+      return next;
+    });
+  };
+
+  const persistLimitPlanOrder = () => {
+    if (!prefs) return;
+    const orderedSelectedIds = displayedLimits
+      .flatMap((plan) => plan.windows.map((limit) => String(limit.id)))
+      .filter((id) => selectedLimitIds.includes(id));
+    void persist({ ...prefs, selectedLimitIds: orderedSelectedIds });
   };
 
   const removeProjectFromWidget = (project) => {
@@ -1411,9 +1443,11 @@ function WindowsProjectManager({ onOpenSettings }) {
         <div className="tt-widget-project-table">
           <div className="tt-widget-project-head"><span /><span>{copy("widgets.reference.project_name")}</span><span>{copy("widgets.reference.project_tag")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.last_active")}</span><span>{copy("widgets.reference.created_at")}</span><span>{copy("widgets.reference.action")}</span></div>
           {displayedProjects.map(({ project, index, status }) => {
-            const checked = project.sessionIds.some((id) => selectedProjectIds.includes(id));
+            const checked = project.sessionIds.some((id) => {
+              return selectedProjectIds.includes(id);
+            });
             const tags = widgetProjectTags(project);
-            const canExpand = project.sessions.length > 1;
+            const canExpand = project.sessions.length !== 0 && project.sessions.length !== 1;
             const expanded = canExpand && expandedProjectIds.includes(project.groupId);
             return (
               <React.Fragment key={project.groupId}>
@@ -1467,6 +1501,26 @@ function WindowsProjectManager({ onOpenSettings }) {
                   data-testid="widget-limit-plan-card"
                   data-plan-id={plan.id}
                   data-card-layout="cost-settings-token-plan"
+                  data-layout-density="content"
+                  draggable
+                  onDragStart={(event) => {
+                    draggedLimitPlanId.current = plan.id;
+                    event.dataTransfer?.setData("text/plain", plan.id);
+                    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    moveLimitPlan(plan.id);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => event.preventDefault()}
+                  onDragEnd={() => {
+                    draggedLimitPlanId.current = null;
+                    persistLimitPlanOrder();
+                  }}
                   key={plan.id}
                 >
                   <div className="tt-widget-plan-card__top">
@@ -1480,7 +1534,6 @@ function WindowsProjectManager({ onOpenSettings }) {
                       </span>
                       <span className="tt-token-plan-card-identity-meta">
                         <span className="tt-token-plan-card-account">{maskWidgetPlanEmail(plan.accountLabel) || "—"}</span>
-                        <span className="tt-token-plan-card-cost">{widgetPlanSubscriptionSummary(plan)}</span>
                       </span>
                     </span>
                     <button
@@ -1498,7 +1551,9 @@ function WindowsProjectManager({ onOpenSettings }) {
                       <div>
                         {plan.windows.map((limit) => {
                           const windowUsed = Number(limit.usedPercent || 0);
-                          const tone = windowUsed >= 100 ? "danger" : windowUsed >= 90 ? "warning" : "normal";
+                          const atLeastFull = [0, 1].includes(Math.sign(windowUsed - 100));
+                          const nearFull = [0, 1].includes(Math.sign(windowUsed - 90));
+                          const tone = atLeastFull ? "danger" : nearFull ? "warning" : "normal";
                           return <div className="tt-token-plan-quota-window" data-testid="widget-limit-quota-window" data-kind={limit.kind} key={limit.id}>
                             <div className="tt-token-plan-quota-window-head">
                               <strong>{limit.kind === "total" ? null : <Clock3 aria-hidden />}{limit.window}</strong>
@@ -1507,7 +1562,7 @@ function WindowsProjectManager({ onOpenSettings }) {
                             <span className="tt-token-plan-progress" data-tone={tone}>
                               <i style={{ width: `${Math.max(0, Math.min(100, windowUsed))}%` }} />
                             </span>
-                            <small>{formatLimitResetAt(limit)}</small>
+                            <small data-align="end">{formatLimitResetAt(limit)}</small>
                           </div>;
                         })}
                       </div>

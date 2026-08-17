@@ -48,7 +48,7 @@ function mediaDeclarations(params, selector) {
 }
 
 describe("approved M/N material fidelity", () => {
-  it("keeps widget plan cards clean, equal-height, and free of duplicated elevation", () => {
+  it("keeps widget plan cards clean, content-height, equal within a row, and free of duplicated elevation", () => {
     const grid = ".tt-widget-plan-list > .tt-token-plan-grid";
     const card = ".tt-widget-plan-card";
     const header = ".tt-widget-plan-card__top";
@@ -56,7 +56,7 @@ describe("approved M/N material fidelity", () => {
 
     expect(declarations(grid)["align-items"]).toBe("stretch");
     expect(declarations(grid)["grid-template-columns"]).toBe("repeat(auto-fill, 264px)");
-    expect(declarations(grid)["grid-auto-rows"]).toBe("306px");
+    expect(declarations(grid)["grid-auto-rows"]).toBe("auto");
     expect(declarations(card).height).toBe("100%");
     expect(declarations(card).outline).toBe("none");
     expect(declarations(card)["box-shadow"]).not.toContain("0 7px");

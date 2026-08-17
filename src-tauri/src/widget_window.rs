@@ -10,7 +10,7 @@ use tauri::{
 pub const WIDGET_LABEL: &str = "desktop-widget";
 const PREFS_VERSION: u8 = 11;
 const DEFAULT_WIDTH: u32 = 352;
-const DEFAULT_HEIGHT: u32 = 72;
+const DEFAULT_HEIGHT: u32 = 76;
 const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
 const MIN_WIDTH: u32 = DEFAULT_WIDTH;
 const MIN_HEIGHT: u32 = DEFAULT_HEIGHT;
@@ -231,6 +231,18 @@ fn physical_size(width: u32, height: u32, scale_factor: f64) -> PhysicalSize<u32
     )
 }
 
+fn resize_geometry_preserving_origin(
+    mut geometry: Geometry,
+    width: u32,
+    height: u32,
+    scale_factor: f64,
+) -> Geometry {
+    let size = physical_size(width, height, scale_factor);
+    geometry.width = size.width;
+    geometry.height = size.height;
+    geometry
+}
+
 fn transition_height(current: &WidgetPrefs, requested: &WidgetPrefs) -> Option<u32> {
     if current.expanded == requested.expanded {
         return None;
@@ -348,6 +360,18 @@ fn resolved_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) -> Geometry {
     )
 }
 
+fn resolved_visual_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) -> Geometry {
+    let mut anchor_prefs = prefs.clone();
+    anchor_prefs.height = DEFAULT_HEIGHT;
+    let anchor = resolved_geometry(window, &anchor_prefs);
+    resize_geometry_preserving_origin(
+        anchor,
+        prefs.width,
+        prefs.height,
+        window.scale_factor().unwrap_or(1.0),
+    )
+}
+
 fn transient_geometry(
     mut geometry: Geometry,
     scale_factor: f64,
@@ -375,12 +399,12 @@ fn set_window_geometry(window: &WebviewWindow, geometry: Geometry) {
 }
 
 fn apply_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
-    set_window_geometry(window, resolved_geometry(window, prefs));
+    set_window_geometry(window, resolved_visual_geometry(window, prefs));
 }
 
 fn apply_transient_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
     let geometry = transient_geometry(
-        resolved_geometry(window, prefs),
+        resolved_visual_geometry(window, prefs),
         window.scale_factor().unwrap_or(1.0),
         TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed),
         TRANSIENT_CELEBRATION_OPEN.load(Ordering::Relaxed),
@@ -537,7 +561,13 @@ pub fn set_desktop_widget_prefs(app: AppHandle, prefs: WidgetPrefs) -> Result<Wi
         let _ = window.set_always_on_top(prefs.always_on_top);
         let _ = window.set_resizable(false);
         if next_height.is_some() {
-            apply_geometry(&window, &prefs);
+            if TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed)
+                || TRANSIENT_CELEBRATION_OPEN.load(Ordering::Relaxed)
+            {
+                apply_transient_geometry(&window, &prefs);
+            } else {
+                apply_geometry(&window, &prefs);
+            }
             persist_geometry(&window);
             prefs = load(&app);
         }
@@ -597,8 +627,8 @@ mod tests {
     #[test]
     fn defaults_to_the_compact_fixed_glass_capsule() {
         let prefs = WidgetPrefs::default();
-        assert_eq!((prefs.width, prefs.height), (352, 72));
-        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
+        assert_eq!((prefs.width, prefs.height), (352, 76));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (76, 360));
         assert!(prefs.always_on_top);
         assert_eq!(prefs.material, "frost");
         assert_eq!(prefs.opacity, 0.72);
@@ -639,8 +669,8 @@ mod tests {
         });
 
         assert_eq!(prefs.version, 11);
-        assert_eq!((prefs.width, prefs.height), (352, 72));
-        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
+        assert_eq!((prefs.width, prefs.height), (352, 76));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (76, 360));
         assert_eq!(prefs.selected_agent, "codex");
         assert_eq!(prefs.mode, "models");
     }
@@ -701,7 +731,7 @@ mod tests {
             ..WidgetPrefs::default()
         });
         assert_eq!(prefs.version, 11);
-        assert_eq!((prefs.width, prefs.height), (352, 72));
+        assert_eq!((prefs.width, prefs.height), (352, 76));
         assert_eq!(prefs.opacity, 0.4);
         assert_eq!(prefs.selected_agent, "all");
         assert_eq!(prefs.mode, "projects");
@@ -791,8 +821,8 @@ mod tests {
 
     #[test]
     fn logical_size_round_trips_across_dpi_changes() {
-        assert_eq!(logical_size(PhysicalSize::new(528, 108), 1.5), (352, 72));
-        assert_eq!(physical_size(352, 72, 2.0), PhysicalSize::new(704, 144));
+        assert_eq!(logical_size(PhysicalSize::new(528, 114), 1.5), (352, 76));
+        assert_eq!(physical_size(352, 76, 2.0), PhysicalSize::new(704, 152));
     }
 
     #[test]
@@ -817,7 +847,7 @@ mod tests {
             ..compact
         };
         let requested_collapsed = WidgetPrefs { expanded: false, ..expanded.clone() };
-        assert_eq!(transition_height(&expanded, &requested_collapsed), Some(72));
+        assert_eq!(transition_height(&expanded, &requested_collapsed), Some(76));
         assert_eq!(transition_height(&expanded, &expanded), None);
 
         let requested_models = WidgetPrefs {
@@ -840,7 +870,7 @@ mod tests {
         });
 
         assert_eq!(prefs.version, 11);
-        assert_eq!((prefs.width, prefs.height, prefs.collapsed_height), (352, 72, 72));
+        assert_eq!((prefs.width, prefs.height, prefs.collapsed_height), (352, 76, 76));
         assert_eq!(prefs.expanded_height, 360);
         assert_eq!(prefs.selected_agent, "deepseek-harness");
     }
@@ -861,7 +891,7 @@ mod tests {
 
         assert_eq!(prefs.version, 11);
         assert_eq!((prefs.width, prefs.height), (352, 360));
-        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (76, 360));
         assert_eq!(prefs.selected_agent, "deepseek-harness");
         assert_eq!(prefs.mode, "limits");
     }
@@ -872,7 +902,7 @@ mod tests {
             x: 500,
             y: 300,
             width: 352,
-            height: 72,
+            height: 76,
         };
         assert_eq!(
             transient_geometry(base, 1.0, false, true),
@@ -880,16 +910,22 @@ mod tests {
                 x: 360,
                 y: 160,
                 width: 632,
-                height: 352
+                height: 356
             },
         );
+        let scaled_size = physical_size(DEFAULT_WIDTH, DEFAULT_HEIGHT, 1.5);
+        let scaled_base = Geometry {
+            width: scaled_size.width,
+            height: scaled_size.height,
+            ..base
+        };
         assert_eq!(
-            transient_geometry(base, 1.5, true, true),
+            transient_geometry(scaled_base, 1.5, true, true),
             Geometry {
                 x: 290,
                 y: 90,
-                width: 772,
-                height: 930
+                width: 948,
+                height: 840
             },
         );
     }
@@ -900,7 +936,7 @@ mod tests {
             x: 500,
             y: 300,
             width: 352,
-            height: 72,
+            height: 76,
         };
 
         assert_eq!(
@@ -908,6 +944,31 @@ mod tests {
             Geometry {
                 x: 500,
                 y: 300,
+                width: 352,
+                height: POPOVER_HEIGHT,
+            },
+        );
+    }
+
+    #[test]
+    fn expand_and_collapse_keep_the_capsule_origin_fixed() {
+        let collapsed = Geometry {
+            x: 500,
+            y: 900,
+            width: 352,
+            height: 76,
+        };
+
+        assert_eq!(
+            resize_geometry_preserving_origin(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.0,
+            ),
+            Geometry {
+                x: 500,
+                y: 900,
                 width: 352,
                 height: 360,
             },

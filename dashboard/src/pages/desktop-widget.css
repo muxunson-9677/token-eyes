@@ -71,7 +71,7 @@
 }
 
 .desktop-widget-root.has-popover .desktop-widget-card:not(.is-expanded) {
-  height: 62px;
+  height: 66px;
 }
 
 .desktop-widget-card--graphite { --widget-tint: 22, 23, 27; }
@@ -500,59 +500,79 @@
 
 .widget-limit-plan {
   display: grid;
-  gap: 2px;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(145, 198, 246, 0.17);
+  border-radius: 11px;
+  background: linear-gradient(145deg, rgba(51, 82, 119, 0.24), rgba(7, 19, 36, 0.36));
+  box-shadow: inset 0 1px 0 rgba(227, 246, 255, 0.08);
 }
 
-.widget-limit-plan + .widget-limit-plan {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(174, 211, 250, 0.12);
+.widget-limit-plan__identity {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  padding: 0 2px 4px;
 }
 
 .widget-limit-plan__title {
-  padding: 0 2px;
   color: rgba(241, 248, 255, 0.9);
-  font-size: 11px;
+  font-size: 12px;
+}
+
+.widget-limit-plan__account {
+  color: rgba(216, 231, 247, 0.48);
+  font-size: 9px;
 }
 
 .widget-limit-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  padding: 6px 2px;
+  border-top: 1px solid rgba(174, 211, 250, 0.1);
+}
+
+.widget-limit-row__head {
+  display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 4px 8px;
-  padding: 3px 2px;
-  font-size: 11px;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(241, 248, 255, 0.86);
+  font-size: 10px;
 }
 
-.widget-limit-row > .widget-limit-progress-bar {
-  grid-column: 1 / -1;
-  grid-row: 2;
+.widget-limit-row__head strong:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.widget-limit-row__identity {
-  grid-column: 1;
-  grid-row: 1;
+.widget-limit-row__head strong:last-child {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
 }
 
-.widget-limit-row > strong {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.widget-limit-row__identity strong,
-.widget-limit-row__identity small {
-  display: block;
-}
-
-.widget-limit-row__identity .widget-limit-row__note {
-  color: rgba(255, 255, 255, 0.62);
+.widget-limit-row__reset,
+.widget-limit-row__error {
+  color: rgba(216, 231, 247, 0.46);
   font-size: 9px;
+  text-align: right;
 }
 
-.widget-limit-row__identity small {
+.widget-limit-row__error {
+  color: #ff9ca3;
+}
+
+.widget-limit-plan__validity {
   margin-top: 2px;
-  color: rgba(255, 255, 255, 0.45);
-  font-weight: 400;
+  border: 1px solid rgba(89, 218, 164, 0.18);
+  border-radius: 8px;
+  padding: 5px 7px;
+  color: #75dfb2;
+  background: rgba(22, 138, 98, 0.1);
+  font-size: 9px;
+  font-weight: 650;
 }
 
 .widget-model-row {
@@ -1153,6 +1173,7 @@
 }
 
 .desktop-widget-card--reference-dock {
+  z-index: 2;
   border-color: rgba(184, 225, 255, 0.7);
   border-radius: 19px;
   background:
@@ -1193,7 +1214,7 @@
 .desktop-widget-card--reference-dock .widget-toolbar {
   grid-template-columns: 58px minmax(0, 1fr) 58px;
   column-gap: 7px;
-  height: 61px;
+  height: 65px;
   padding: 5px 10px;
 }
 
@@ -1487,9 +1508,11 @@
 }
 
 .widget-mode-rail--reference-dock {
+  position: relative;
+  z-index: 1;
   align-self: start;
   margin-top: 4px;
-  margin-left: -5px;
+  margin-left: -6px;
 }
 
 .widget-mode-rail--reference-dock .pill-nav {
@@ -1506,9 +1529,9 @@
   border-color: rgba(185, 227, 255, 0.58);
   border-radius: 0 9px 9px 0;
   box-shadow:
-    0 5px 11px rgba(4, 14, 32, 0.36),
+    0 1px 3px rgba(4, 14, 32, 0.24),
     inset 0 1px 0 rgba(242, 252, 255, 0.32),
-    inset 0 -2px 5px rgba(3, 12, 28, 0.34);
+    inset 0 -1px 3px rgba(3, 12, 28, 0.3);
 }
 
 .widget-mode-rail--reference-dock .pill-nav__item:nth-child(1) { background: linear-gradient(135deg, rgba(69, 121, 202, 0.94), rgba(64, 91, 173, 0.86)); }
@@ -1517,8 +1540,8 @@
 
 .widget-mode-rail--reference-dock .pill-nav__item[aria-pressed="true"] {
   box-shadow:
-    0 0 13px rgba(138, 198, 255, 0.52),
-    0 6px 13px rgba(3, 12, 29, 0.48),
+    0 0 4px rgba(138, 198, 255, 0.34),
+    0 1px 3px rgba(3, 12, 29, 0.26),
     inset 0 1px 0 rgba(255, 255, 255, 0.52);
 }
 
@@ -1578,16 +1601,12 @@
 }
 
 .desktop-widget-card--reference-dock .widget-limit-row {
-  gap: 3px 9px;
-  padding: 7px 6px 8px;
+  gap: 4px;
+  padding: 6px 2px;
 }
 
-.desktop-widget-card--reference-dock .widget-limit-row__identity strong {
-  font-size: 12px;
-}
-
-.desktop-widget-card--reference-dock .widget-limit-row > strong {
-  font-size: 16px;
+.desktop-widget-card--reference-dock .widget-limit-row__head {
+  font-size: 11px;
 }
 
 .desktop-widget-card--reference-dock .widget-limit-progress-bar {
@@ -1662,8 +1681,6 @@
     linear-gradient(145deg, rgba(57, 88, 129, 0.96), rgba(10, 22, 42, 0.98) 66%),
     rgba(9, 20, 38, 0.98);
   box-shadow:
-    0 24px 42px rgba(1, 7, 18, 0.58),
-    0 8px 18px rgba(28, 89, 162, 0.26),
     0 0 0 1px rgba(87, 153, 225, 0.18),
     inset 0 1px 0 rgba(235, 249, 255, 0.34),
     inset 0 -18px 30px rgba(1, 8, 22, 0.28);

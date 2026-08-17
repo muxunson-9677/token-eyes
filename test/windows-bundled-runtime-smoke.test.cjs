@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { test } = require("node:test");
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -66,7 +66,10 @@ test("Windows bundled runtime includes its shared registry and starts the local 
   let stderr = "";
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => { stderr += chunk; });
-  t.after(() => { if (child.exitCode === null) child.kill(); });
+  t.after(() => {
+    if (child.exitCode !== null) return;
+    spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+  });
 
   const response = await waitForLocalAuth(port, child).catch((error) => { throw new Error(`${error.message}\nBundled backend stderr:\n${stderr}`); });
   const payload = JSON.parse(response.body);

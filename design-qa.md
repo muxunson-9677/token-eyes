@@ -154,6 +154,72 @@ passed
 
 ---
 
+# 悬浮小组件侧边按钮阴影与底边余量复核（2026-08-17）
+
+## 第一审：修改结果与调整意见逐项匹配
+
+| 调整意见 | 修改结果 | 可验证结果 |
+| --- | --- | --- |
+| 去掉三按钮底部的大范围扩散阴影，只保留紧贴体积感 | 普通按钮外阴影由 `0 4px 8px` 收紧为 `0 1px 3px`；选中按钮由 `13px` 光晕和 `0 6px 13px` 下投影收紧为 `4px` 微光与 `0 1px 3px` 贴边阴影 | CSS 失败断言先红后绿；原生折叠态底部不再出现大块扩散阴影 |
+| 最下方紫色按钮不能超出深色主体 | 原生折叠窗高由 72px 增至 76px；扣除上下 5px 内边距后，深色主体由 62px 增至 66px，宽度保持不变 | 原生几何：主体 `y=5, h=66`，按钮组 `y=9, h=59`；主体在按钮组下方保留 3px 深色余量 |
+| 不影响其他尺寸和内容 | 只为非展开态工具栏增加 4px 高度，Agent、摘要、按钮本身尺寸及展开态内容均未改动 | 原生折叠、Agent 菜单与套餐展开三种状态截图 |
+
+## 第二审：原生用户真实体验效果核对
+
+1. 在 Tauri/WebView2 原生窗口中确认偏好状态实际为 `height=76`、`collapsedHeight=76`，而非仅修改 CSS 或测试夹具。
+2. 原生折叠态实测视口为 353×76，深色主体 326.14×66，右侧按钮组 28×59；紫色按钮底部位于主体底边之上，没有再越出深色区域。
+3. 直接查看原生截图，按钮下方仅保留贴边微阴影，没有上一版明显向下扩散的阴影带。
+4. 将设计稿参考与新原生折叠态放入同一张对照图，复核按钮仍藏在主体后方，同时上下深色包裹余量更完整。
+
+## 证据
+
+- 原生折叠态：`.artifacts/widget-audit-20260817/current-round/13-side-rail-shadow-height-collapsed.png`
+- 原生 Agent 菜单态：`.artifacts/widget-audit-20260817/current-round/14-side-rail-shadow-height-agent-menu.png`
+- 原生套餐展开态：`.artifacts/widget-audit-20260817/current-round/15-side-rail-shadow-height-expanded.png`
+- 参考图与原生实机同图对照：`.artifacts/widget-audit-20260817/current-round/16-side-rail-shadow-height-comparison.png`
+
+本轮未提交、未推送、未合并、未封装安装包。
+
+passed
+
+---
+
+# 悬浮小组件折叠态固定与 Agent 菜单投影复核（2026-08-17）
+
+## 第一审：调整结果与本轮要求逐项匹配
+
+| 本轮要求 | 调整结果 | 核对证据 |
+| --- | --- | --- |
+| 展开、折叠时顶部折叠态不能发生尺寸或位置跳动 | 原生窗口以折叠态尺寸计算固定锚点，展开时只改变窗口高度；顶部工具栏统一固定为 65px，不再按折叠/展开状态使用两套高度 | Rust 几何回归测试、CSS 契约测试、原生窗口矩形与 DOM 矩形 |
+| 删除 Agent 展开卡片下方的矩形投影 | 删除 Agent 菜单的两层外扩散阴影，仅保留 1px 贴边轮廓和内部玻璃层次；实际计算样式不再含向下扩散投影 | `.artifacts/widget-audit-20260817/current-fix/02-agent-menu.png` 与菜单计算样式 |
+
+## 第二审：真实用户体验效果核对
+
+1. 使用本轮生产前端重新构建的 Tauri/WebView2 原生程序，依次完成“折叠态 → Agent 菜单 → 折叠态 → 内容展开态 → 折叠态”的完整交互，不以测试通过代替实机呈现。
+2. 原生窗口在四个关键状态中的左上角始终为 `X=134、Y=1466`；折叠态和复原后的窗口均为 `616 × 133` 物理像素，Agent 菜单与内容展开只增加下方高度，没有移动顶部胶囊。
+3. DOM 中折叠、Agent 菜单、内容展开、再次折叠四个状态的顶部工具栏始终为 `x=5.57、y=5.57、宽 325、高 65`；Agent 控件、摘要区和右侧三按钮的矩形也完全一致。
+4. Agent 菜单实际计算阴影为 `1px` 外轮廓和两层内阴影，不含向下扩散阴影；原生截图中菜单外沿干净，没有本轮标注的矩形投影。
+5. 首次折叠与再次折叠两张原生截图的 SHA-256 均为 `0BCBB2FC9050B909D7F0AE3C29E7304315D53869D751EF7A94F6B0E102D3797B`，证明复原后的实际画面逐字节一致。
+6. 原生实机证据：
+   - 折叠态：`.artifacts/widget-audit-20260817/current-fix/01-collapsed.png`
+   - Agent 菜单态：`.artifacts/widget-audit-20260817/current-fix/02-agent-menu.png`
+   - 内容展开态：`.artifacts/widget-audit-20260817/current-fix/03-expanded.png`
+   - 再次折叠态：`.artifacts/widget-audit-20260817/current-fix/04-recollapsed.png`
+
+## 验证记录
+
+- `DesktopWidgetPage.test.tsx`：38 项通过；保留既有 React `act` 与 jsdom Canvas 警告，无失败。
+- Windows 小组件契约测试：16 项通过。
+- Rust 新增折叠/展开固定原点测试：1 项通过。
+- Dashboard 类型检查、生产构建、`git diff --check`：通过。
+- 根目录完整测试：1854 项中 1845 项通过、8 项跳过、1 项失败。失败项为既有 `init-uninstall.test.js` 的 Codex notify 恢复测试，断言“init 应触发 sync 并写 cursors”；本轮未修改该初始化/卸载逻辑，因此不把完整测试误报为全绿。
+
+本轮未提交、未推送、未合并、未封装安装包。
+
+passed
+
+---
+
 # 小组件用量套餐字段与卡片终审（2026-08-17）
 
 本节为现行终审记录，覆盖上方阶段性记录中“Cursor 含 4 个窗口”的旧结论。当前真实数据契约为：Codex 2 条用量，Cursor 3 条用量；Cursor 不存在 `7d`、`monthly` 或第 4 条用量。
@@ -365,5 +431,42 @@ passed
 # 全文最终有效结论（2026-08-17）
 
 小组件用量套餐的最终原生结果是：Codex 2 条用量，Cursor 3 条用量。Cursor 的 3 条依次为 `Total Usage`、`Auto + Composer Usage`、`API Usage`，不存在 `7d`、`monthly` 或第 4 条。以 `.artifacts/widget-audit-20260817/final-plan-card-audit/widgets-native-final.png` 和 `.artifacts/widget-audit-20260817/final-plan-card-audit/reference-vs-native-final.png` 为最终用户可见证据；本文较早阶段记录中的 Cursor 4 条结论不再有效。
+
+passed
+
+---
+
+# 悬浮小组件右侧三按钮衔接复刻核对（2026-08-17）
+
+## 视觉真源与实机证据
+
+- 用户标注参考：`C:\Users\admin\AppData\Local\Temp\codex-clipboard-c84e3ccf-783e-4867-b325-75667fe68eda.png`
+- 原生折叠态：`.artifacts/widget-audit-20260817/current-round/09-side-rail-native-collapsed.png`
+- 原生 Agent 菜单态：`.artifacts/widget-audit-20260817/current-round/10-side-rail-native-agent-menu.png`
+- 原生套餐展开态：`.artifacts/widget-audit-20260817/current-round/12-side-rail-native-expanded.png`
+- 参考图与原生实机同图对照：`.artifacts/widget-audit-20260817/current-round/11-side-rail-reference-vs-native.png`
+
+## 第一审：修改结果与调整意见逐项匹配
+
+| 调整意见 | 修改结果 | 核对证据 |
+| --- | --- | --- |
+| 三个彩色按钮应像参考图一样藏在主体后方 | 主体卡片层级高于按钮轨道；轨道向左与主体重叠 6px，按钮左侧直边被主体遮住，只露出右侧圆角外沿 | CSS 契约测试与原生折叠态截图 |
+| 不应出现生硬的矩形连接片 | 删除轨道原有的伪元素连接板，不再额外绘制可见桥接层 | CSS 契约测试与同图对照 |
+| 保持当前主体尺寸 | 未修改主卡宽高、Agent 区、摘要区或展开内容尺寸，只调整按钮轨道的层级和重叠关系 | 三种原生状态的边界矩形 |
+
+## 第二审：真实用户体验效果核对
+
+1. 在 Tauri/WebView2 原生悬浮小组件中分别截图折叠态、Agent 菜单态和套餐展开态，不以单元测试或浏览器静态页面代替真实效果。
+2. 三种状态中主体卡片均为 `x=5`、宽 `326.14px`，按钮轨道均为 `x=325.14`、宽 `28px`；重叠关系和按钮位置在状态切换后保持不变。
+3. 将用户参考与原生折叠态放入同一张对照图后复核：按钮左端被主体遮挡、右侧圆角外露，未再看到原有矩形桥接板或直角硬接缝。
+
+## 验证记录
+
+- `DesktopWidgetPage.test.tsx`：34 项通过。
+- Windows 小组件契约测试：16 项通过。
+- Dashboard 类型检查与生产构建：通过。
+- 原生折叠、Agent 菜单、套餐展开三种状态：已重新截图核对。
+
+本轮未提交、未推送、未合并、未封装安装包。
 
 passed

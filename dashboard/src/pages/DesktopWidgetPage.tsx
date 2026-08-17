@@ -183,11 +183,14 @@ function LimitsSummary({ model }: { model: DesktopWidgetViewModel }) {
     return React.createElement("span", { className: "widget-empty" }, copy("widget.empty"));
   }
   const plan = plans[0];
+  const planIdentity = plan.planLabel
+    ? `${plan.provider} · ${plan.planLabel}`
+    : `${plan.provider} · ${plan.accountLabel}`;
   return (
     <div className="widget-limit-summary">
       <span className="widget-limit-summary__item" key={plan.id}>
         <span className="widget-limit-summary__identity widget-truncate">
-          {plan.provider} · {plan.accountLabel}
+          {planIdentity}
         </span>
         <LimitProgress value={plan.usedPercent} />
         <strong>{plan.usedPercent == null ? "—" : `${plan.usedPercent}%`}</strong>
@@ -306,7 +309,9 @@ function filteredProjectStatus(
       const label = project.label.trim().toLocaleLowerCase();
       if (label) liveByLabel.set(label, [...(liveByLabel.get(label) ?? []), project]);
     });
-    const selectedById = new Map(selectedProjects.map((project) => [project.id, project]));
+    const selectedById = new Map(selectedProjects.map((project) => {
+      return [project.id, project] as const;
+    }));
     const seen = new Set<string>();
     projects = selectedProjectIds.map((id) => {
       const saved = selectedById.get(id);
@@ -395,16 +400,39 @@ function formatSessionTime(value: string | null) {
   }).format(new Date(timestamp));
 }
 
-function formatLimitTime(value: string | null) {
+function formatCompactLimitTime(value: string | null) {
   const timestamp = Date.parse(value || "");
   if (!Number.isFinite(timestamp)) return copy("widget.limit.time_unknown");
-  return new Intl.DateTimeFormat(getCopyLocale(), {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp));
+  const date = new Date(timestamp);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatCompactRemainingTime(value: string | null) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.limit.time_unknown");
+  const totalHours = Math.max(0, Math.floor((timestamp - Date.now()) / (60 * 60 * 1000)));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return `${days}d ${hours}h`;
+}
+
+function formatCompactReset(value: string | null) {
+  return `${formatCompactRemainingTime(value)}（${formatCompactLimitTime(value)}）`;
+}
+
+function formatCompactValidity(value: string | null) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.limit.time_unknown");
+  const days = Math.max(0, Math.ceil((timestamp - Date.now()) / (24 * 60 * 60 * 1000)));
+  return `有效期 ${days} 天`;
+}
+
+function formatCompactLimitWindow(value: string | null) {
+  const label = String(value || "").trim();
+  const normalized = label.toLocaleLowerCase().replace(/\s+/g, "");
+  if (["1w", "7d", "7天", "weekly", "week"].includes(normalized)) return "Weekly";
+  return label;
 }
 
 function shortSessionId(value: string) {
@@ -484,30 +512,33 @@ function ExpandedLimits({ model }: { model: DesktopWidgetViewModel }) {
   }
   return (
     <div className="widget-limit-list">
-      {plans.map((plan) => (
-        <div className="widget-limit-plan" key={plan.id}>
-          <strong className="widget-limit-plan__title widget-truncate">
-            {plan.provider} · {plan.accountLabel}
-          </strong>
+      {plans.map((plan) => {
+        const planName = plan.planLabel || plan.accountLabel || plan.provider;
+        const planIdentity = `${plan.provider} · ${planName}`;
+        const accountLabel = plan.accountLabel && plan.accountLabel !== planName
+          ? plan.accountLabel
+          : null;
+        return (
+        <div className="widget-limit-plan" data-testid="widget-expanded-limit-plan" key={plan.id}>
+          <span className="widget-limit-plan__identity">
+            <strong className="widget-limit-plan__title widget-truncate">{planIdentity}</strong>
+            {accountLabel ? <small className="widget-limit-plan__account widget-truncate">{accountLabel}</small> : null}
+          </span>
           {plan.windows.map((limit) => (
             <div className="widget-limit-row" key={limit.id}>
-              <LimitProgress value={limit.usedPercent} />
-              <span className="widget-limit-row__identity">
-                <small>{limit.window}</small>
-                {limit.resetAt ? (
-                  <small>{copy("widget.limit.reset_at", { time: formatLimitTime(limit.resetAt) })}</small>
-                ) : null}
-                {limit.expiresAt ? (
-                  <small>{copy("widget.limit.expires_at", { time: formatLimitTime(limit.expiresAt) })}</small>
-                ) : null}
-                {limit.notes ? <small className="widget-limit-row__note">{limit.notes}</small> : null}
-                {limit.error ? <small className="widget-limit-row__error">{copy("widget.refresh_failed")}</small> : null}
+              <span className="widget-limit-row__head">
+                <strong>{formatCompactLimitWindow(limit.window)}</strong>
+                <strong>{limit.usedPercent == null ? "—" : `${limit.usedPercent}%`}</strong>
               </span>
-              <strong>{limit.usedPercent == null ? "—" : `${limit.usedPercent}%`}</strong>
+              <LimitProgress value={limit.usedPercent} />
+              {limit.resetAt ? <small className="widget-limit-row__reset">{formatCompactReset(limit.resetAt)}</small> : null}
+              {limit.error ? <small className="widget-limit-row__error">{copy("widget.refresh_failed")}</small> : null}
             </div>
           ))}
+          {plan.expiresAt ? <small className="widget-limit-plan__validity">{formatCompactValidity(plan.expiresAt)}</small> : null}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -782,6 +813,7 @@ export function DesktopWidgetPage() {
   };
   const handleDragStart = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
+    if (openMenu || appearanceOpen) return;
     const target = event.target as HTMLElement;
     if (target.closest("button, input, label, a, select, textarea, [role='menu'], [role='slider'], .widget-scroll-region")) {
       return;

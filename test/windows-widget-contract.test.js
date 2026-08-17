@@ -108,6 +108,7 @@ test("desktop widget grants native dragging and starts it only from non-interact
   assert.match(widget, /startDragging/u);
   assert.match(widget, /closest\(/u);
   assert.match(widget, /button|input|menu|slider/u);
+  assert.match(widget, /if \(openMenu \|\| appearanceOpen\) return;/u);
 });
 
 test("widget preferences keep project, active-session, usage-plan, and current geometry contracts", () => {
@@ -123,7 +124,7 @@ test("widget preferences keep project, active-session, usage-plan, and current g
   assert.match(widgetWindow, /selected_limit_ids/u);
   assert.match(widgetWindow, /PREFS_VERSION:\s*u8\s*=\s*11/u);
   assert.match(widgetWindow, /DEFAULT_WIDTH:\s*u32\s*=\s*352/u);
-  assert.match(widgetWindow, /DEFAULT_HEIGHT:\s*u32\s*=\s*72/u);
+  assert.match(widgetWindow, /DEFAULT_HEIGHT:\s*u32\s*=\s*76/u);
   assert.match(widgetWindow, /DEFAULT_EXPANDED_HEIGHT:\s*u32\s*=\s*360/u);
   assert.match(widgetWindow, /POPOVER_HEIGHT:\s*u32\s*=\s*280/u);
 });

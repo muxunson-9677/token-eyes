@@ -957,8 +957,11 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(within(planCard).getByText("7 天")).toBeInTheDocument();
     expect(within(planCard).getByText("GPT 5.3 Codex Spark")).toBeInTheDocument();
     expect(within(planCard).getByText("mux***@gmail.com")).toBeInTheDocument();
-    expect(within(planCard).getByText("USD 20")).toBeInTheDocument();
+    expect(planCard.querySelector(".tt-token-plan-card-cost")).toBeNull();
+    expect(planCard).toHaveAttribute("draggable", "true");
+    expect(planCard).toHaveAttribute("data-layout-density", "content");
     expect(within(planCard).getAllByText(/重置时间:/u)).toHaveLength(2);
+    expect(planCard.querySelectorAll('[data-align="end"]')).toHaveLength(2);
     expect(within(planCard).getByText(/2026\/08\/30/u)).toBeInTheDocument();
     expect(within(planCard).queryByText("2026-08-30T14:24:24.000Z")).not.toBeInTheDocument();
     expect(within(planCard).queryByText("主力开发账号")).not.toBeInTheDocument();
@@ -978,6 +981,12 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(cursorCard.querySelector('[data-kind="total"] strong svg')).toBeNull();
     expect(cursorCard.querySelectorAll('[data-kind="auto_composer"] strong svg')).toHaveLength(1);
     expect(cursorCard.querySelectorAll('[data-kind="api"] strong svg')).toHaveLength(1);
+
+    fireEvent.dragStart(planCard);
+    fireEvent.dragEnter(cursorCard);
+    expect(screen.getAllByTestId("widget-limit-plan-card").map((card) => card.dataset.planId))
+      .toEqual(["cursor:pro", "codex:plus"]);
+    fireEvent.dragEnd(planCard);
 
     await user.click(plan);
     expect(plan).not.toBeChecked();

@@ -813,13 +813,16 @@ async function collectCodexRolloutQueueRows({
   const files = await listCodexRolloutFilesFromHomes(homes);
   if (files.length === 0) return [];
 
-  const cacheKey = [
+  const scanScopeKey = [
     "codex-rollout-queue-v1",
     homes.join("\u0001"),
     from || "",
     to || "",
     timeZoneContext?.timeZone || "",
     Number.isFinite(timeZoneContext?.offsetMinutes) ? timeZoneContext.offsetMinutes : "",
+  ].join("|");
+  const cacheKey = [
+    scanScopeKey,
     files.length,
     maxFileMtimeMs(files),
   ].join("|");
@@ -827,7 +830,7 @@ async function collectCodexRolloutQueueRows({
   if (cached && Date.now() - cached.at < CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS) {
     return cached.rows.map((row) => ({ ...row }));
   }
-  const existingScan = CODEX_ROLLOUT_QUEUE_INFLIGHT.get(cacheKey);
+  const existingScan = CODEX_ROLLOUT_QUEUE_INFLIGHT.get(scanScopeKey);
   if (existingScan) {
     const rows = await existingScan;
     return rows.map((row) => ({ ...row }));
@@ -933,13 +936,13 @@ async function collectCodexRolloutQueueRows({
     CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, { at: Date.now(), rows });
     return rows;
   })();
-  CODEX_ROLLOUT_QUEUE_INFLIGHT.set(cacheKey, scan);
+  CODEX_ROLLOUT_QUEUE_INFLIGHT.set(scanScopeKey, scan);
   try {
     const rows = await scan;
     return rows.map((row) => ({ ...row }));
   } finally {
-    if (CODEX_ROLLOUT_QUEUE_INFLIGHT.get(cacheKey) === scan) {
-      CODEX_ROLLOUT_QUEUE_INFLIGHT.delete(cacheKey);
+    if (CODEX_ROLLOUT_QUEUE_INFLIGHT.get(scanScopeKey) === scan) {
+      CODEX_ROLLOUT_QUEUE_INFLIGHT.delete(scanScopeKey);
     }
   }
 }
