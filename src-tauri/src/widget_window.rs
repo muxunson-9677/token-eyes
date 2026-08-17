@@ -19,9 +19,25 @@ const CELEBRATION_PADDING: u32 = 140;
 static TRANSIENT_POPOVER_OPEN: AtomicBool = AtomicBool::new(false);
 static TRANSIENT_CELEBRATION_OPEN: AtomicBool = AtomicBool::new(false);
 const WIDGET_AGENT_IDS: &[&str] = &[
-    "all", "claude", "codex", "cursor", "trae", "codebuddy", "gemini", "hermes",
-    "openclaw", "opencode", "antigravity", "zed", "workbuddy", "kimi", "kimi-code",
-    "pi", "grok", "copilot", "deepseek-harness",
+    "all",
+    "claude",
+    "codex",
+    "cursor",
+    "trae",
+    "codebuddy",
+    "gemini",
+    "hermes",
+    "openclaw",
+    "opencode",
+    "antigravity",
+    "zed",
+    "workbuddy",
+    "kimi",
+    "kimi-code",
+    "pi",
+    "grok",
+    "copilot",
+    "deepseek-harness",
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -243,6 +259,20 @@ fn resize_geometry_preserving_origin(
     geometry
 }
 
+fn resize_geometry_within_monitors(
+    geometry: Geometry,
+    width: u32,
+    height: u32,
+    scale_factor: f64,
+    monitors: &[MonitorBounds],
+) -> Geometry {
+    clamp_geometry_for_anchor(
+        resize_geometry_preserving_origin(geometry, width, height, scale_factor),
+        geometry,
+        monitors,
+    )
+}
+
 fn transition_height(current: &WidgetPrefs, requested: &WidgetPrefs) -> Option<u32> {
     if current.expanded == requested.expanded {
         return None;
@@ -262,14 +292,60 @@ fn intersection_area(geometry: Geometry, monitor: MonitorBounds) -> i64 {
     i64::from((right - left).max(0)) * i64::from((bottom - top).max(0))
 }
 
-fn clamp_geometry(mut geometry: Geometry, monitors: &[MonitorBounds]) -> Geometry {
-    let Some(monitor) = monitors
-        .iter()
-        .copied()
-        .max_by_key(|monitor| intersection_area(geometry, *monitor))
-    else {
-        return geometry;
-    };
+fn geometry_center_twice(geometry: Geometry) -> (i128, i128) {
+    (
+        i128::from(geometry.x) * 2 + i128::from(geometry.width),
+        i128::from(geometry.y) * 2 + i128::from(geometry.height),
+    )
+}
+
+fn monitor_center_twice(monitor: MonitorBounds) -> (i128, i128) {
+    (
+        i128::from(monitor.x) * 2 + i128::from(monitor.width),
+        i128::from(monitor.y) * 2 + i128::from(monitor.height),
+    )
+}
+
+fn monitor_contains_geometry_center(monitor: MonitorBounds, geometry: Geometry) -> bool {
+    let (center_x, center_y) = geometry_center_twice(geometry);
+    let left = i128::from(monitor.x) * 2;
+    let top = i128::from(monitor.y) * 2;
+    center_x >= left
+        && center_x < left + i128::from(monitor.width) * 2
+        && center_y >= top
+        && center_y < top + i128::from(monitor.height) * 2
+}
+
+fn monitor_center_distance_squared(monitor: MonitorBounds, geometry: Geometry) -> i128 {
+    let (geometry_x, geometry_y) = geometry_center_twice(geometry);
+    let (monitor_x, monitor_y) = monitor_center_twice(monitor);
+    let dx = geometry_x - monitor_x;
+    let dy = geometry_y - monitor_y;
+    dx * dx + dy * dy
+}
+
+fn compare_monitors_for_anchor(
+    left: MonitorBounds,
+    right: MonitorBounds,
+    anchor: Geometry,
+) -> std::cmp::Ordering {
+    intersection_area(anchor, left)
+        .cmp(&intersection_area(anchor, right))
+        .then_with(|| {
+            monitor_contains_geometry_center(left, anchor)
+                .cmp(&monitor_contains_geometry_center(right, anchor))
+        })
+        .then_with(|| {
+            monitor_center_distance_squared(right, anchor)
+                .cmp(&monitor_center_distance_squared(left, anchor))
+        })
+        .then_with(|| right.x.cmp(&left.x))
+        .then_with(|| right.y.cmp(&left.y))
+        .then_with(|| right.width.cmp(&left.width))
+        .then_with(|| right.height.cmp(&left.height))
+}
+
+fn clamp_geometry_to_monitor(mut geometry: Geometry, monitor: MonitorBounds) -> Geometry {
     geometry.width = geometry
         .width
         .min(monitor.width)
@@ -283,6 +359,25 @@ fn clamp_geometry(mut geometry: Geometry, monitors: &[MonitorBounds]) -> Geometr
     geometry.x = geometry.x.clamp(monitor.x, max_x);
     geometry.y = geometry.y.clamp(monitor.y, max_y);
     geometry
+}
+
+fn clamp_geometry_for_anchor(
+    geometry: Geometry,
+    anchor: Geometry,
+    monitors: &[MonitorBounds],
+) -> Geometry {
+    let Some(monitor) = monitors
+        .iter()
+        .copied()
+        .max_by(|left, right| compare_monitors_for_anchor(*left, *right, anchor))
+    else {
+        return geometry;
+    };
+    clamp_geometry_to_monitor(geometry, monitor)
+}
+
+fn clamp_geometry(geometry: Geometry, monitors: &[MonitorBounds]) -> Geometry {
+    clamp_geometry_for_anchor(geometry, geometry, monitors)
 }
 
 fn prefs_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -364,11 +459,12 @@ fn resolved_visual_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) -> Geom
     let mut anchor_prefs = prefs.clone();
     anchor_prefs.height = DEFAULT_HEIGHT;
     let anchor = resolved_geometry(window, &anchor_prefs);
-    resize_geometry_preserving_origin(
+    resize_geometry_within_monitors(
         anchor,
         prefs.width,
         prefs.height,
         window.scale_factor().unwrap_or(1.0),
+        &monitor_bounds(window),
     )
 }
 
@@ -393,6 +489,22 @@ fn transient_geometry(
     geometry
 }
 
+fn transient_geometry_within_monitors(
+    anchor: Geometry,
+    scale_factor: f64,
+    popover_open: bool,
+    celebration_open: bool,
+    monitors: &[MonitorBounds],
+) -> Geometry {
+    let popover_geometry = transient_geometry(anchor, scale_factor, popover_open, false);
+    let visible_geometry = if popover_open {
+        clamp_geometry_for_anchor(popover_geometry, anchor, monitors)
+    } else {
+        anchor
+    };
+    transient_geometry(visible_geometry, scale_factor, false, celebration_open)
+}
+
 fn set_window_geometry(window: &WebviewWindow, geometry: Geometry) {
     let _ = window.set_size(PhysicalSize::new(geometry.width, geometry.height));
     let _ = window.set_position(PhysicalPosition::new(geometry.x, geometry.y));
@@ -403,15 +515,14 @@ fn apply_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
 }
 
 fn apply_transient_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
-    let geometry = transient_geometry(
-        resolved_visual_geometry(window, prefs),
+    let anchor = resolved_visual_geometry(window, prefs);
+    let geometry = transient_geometry_within_monitors(
+        anchor,
         window.scale_factor().unwrap_or(1.0),
         TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed),
         TRANSIENT_CELEBRATION_OPEN.load(Ordering::Relaxed),
+        &monitor_bounds(window),
     );
-    // Keep the saved capsule origin visually fixed. Clamping the enlarged
-    // transient window shifts the padded card near a monitor edge, which makes
-    // the widget jump when an effect is opened or dismissed.
     set_window_geometry(window, geometry);
 }
 
@@ -624,6 +735,29 @@ pub fn set_desktop_widget_celebration(app: AppHandle, open: bool) -> Result<(), 
 mod tests {
     use super::*;
 
+    fn card_screen_geometry(
+        window: Geometry,
+        scale_factor: f64,
+        celebration_open: bool,
+    ) -> Geometry {
+        let frame = physical_size(5, 5, scale_factor).width;
+        let rail = physical_size(22, 22, scale_factor).width;
+        let halo = if celebration_open {
+            physical_size(CELEBRATION_PADDING, CELEBRATION_PADDING, scale_factor).width
+        } else {
+            0
+        };
+        let horizontal_inset = halo + frame;
+        let right_inset = if celebration_open { halo } else { 0 };
+        let vertical_inset = halo + frame;
+        Geometry {
+            x: window.x + horizontal_inset as i32,
+            y: window.y + vertical_inset as i32,
+            width: window.width - horizontal_inset - right_inset - rail,
+            height: window.height - vertical_inset * 2,
+        }
+    }
+
     #[test]
     fn defaults_to_the_compact_fixed_glass_capsule() {
         let prefs = WidgetPrefs::default();
@@ -652,7 +786,10 @@ mod tests {
         };
 
         assert_eq!(transient_geometry(collapsed, 1.0, true, false).height, 280);
-        assert_eq!(transient_geometry(expanded, 1.0, true, false).height, DEFAULT_EXPANDED_HEIGHT);
+        assert_eq!(
+            transient_geometry(expanded, 1.0, true, false).height,
+            DEFAULT_EXPANDED_HEIGHT
+        );
     }
 
     #[test]
@@ -846,7 +983,10 @@ mod tests {
             expanded: true,
             ..compact
         };
-        let requested_collapsed = WidgetPrefs { expanded: false, ..expanded.clone() };
+        let requested_collapsed = WidgetPrefs {
+            expanded: false,
+            ..expanded.clone()
+        };
         assert_eq!(transition_height(&expanded, &requested_collapsed), Some(76));
         assert_eq!(transition_height(&expanded, &expanded), None);
 
@@ -870,7 +1010,10 @@ mod tests {
         });
 
         assert_eq!(prefs.version, 11);
-        assert_eq!((prefs.width, prefs.height, prefs.collapsed_height), (352, 76, 76));
+        assert_eq!(
+            (prefs.width, prefs.height, prefs.collapsed_height),
+            (352, 76, 76)
+        );
         assert_eq!(prefs.expanded_height, 360);
         assert_eq!(prefs.selected_agent, "deepseek-harness");
     }
@@ -951,27 +1094,356 @@ mod tests {
     }
 
     #[test]
-    fn expand_and_collapse_keep_the_capsule_origin_fixed() {
+    fn expand_and_collapse_keep_the_capsule_origin_fixed_when_the_footprint_fits() {
         let collapsed = Geometry {
             x: 500,
-            y: 900,
+            y: 300,
             width: 352,
             height: 76,
         };
+        let monitors = [MonitorBounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        }];
 
         assert_eq!(
-            resize_geometry_preserving_origin(
+            resize_geometry_within_monitors(
                 collapsed,
                 DEFAULT_WIDTH,
                 DEFAULT_EXPANDED_HEIGHT,
                 1.0,
+                &monitors,
             ),
             Geometry {
                 x: 500,
-                y: 900,
+                y: 300,
                 width: 352,
                 height: 360,
             },
+        );
+    }
+
+    #[test]
+    fn expanded_and_popover_geometry_stays_visible_at_the_monitor_bottom_edge() {
+        let collapsed = Geometry {
+            x: 500,
+            y: 1004,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [MonitorBounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        }];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.0,
+                &monitors,
+            ),
+            Geometry {
+                x: 500,
+                y: 720,
+                width: 352,
+                height: 360,
+            },
+        );
+        assert_eq!(
+            clamp_geometry(transient_geometry(collapsed, 1.0, true, false), &monitors),
+            Geometry {
+                x: 500,
+                y: 800,
+                width: 352,
+                height: POPOVER_HEIGHT,
+            },
+        );
+    }
+
+    #[test]
+    fn expansion_stays_on_the_capsules_monitor_when_the_larger_footprint_overlaps_another() {
+        let collapsed = Geometry {
+            x: 500,
+            y: 1004,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [
+            MonitorBounds {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            },
+            MonitorBounds {
+                x: 0,
+                y: 1080,
+                width: 1920,
+                height: 1080,
+            },
+        ];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.0,
+                &monitors,
+            ),
+            Geometry {
+                x: 500,
+                y: 720,
+                width: 352,
+                height: 360,
+            },
+        );
+    }
+
+    #[test]
+    fn popover_geometry_stays_on_the_capsules_monitor() {
+        let collapsed = Geometry {
+            x: 500,
+            y: 1004,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [
+            MonitorBounds {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            },
+            MonitorBounds {
+                x: 0,
+                y: 1080,
+                width: 1920,
+                height: 1080,
+            },
+        ];
+
+        assert_eq!(
+            transient_geometry_within_monitors(collapsed, 1.0, true, false, &monitors),
+            Geometry {
+                x: 500,
+                y: 800,
+                width: 352,
+                height: 280,
+            },
+        );
+    }
+
+    #[test]
+    fn celebration_keeps_the_card_screen_geometry_stable_at_scaled_negative_edges() {
+        let scale_factor = 1.5;
+        let collapsed = Geometry {
+            x: -528,
+            y: 1126,
+            width: 528,
+            height: 114,
+        };
+        let monitors = [MonitorBounds {
+            x: -2560,
+            y: -200,
+            width: 2560,
+            height: 1440,
+        }];
+        let before = card_screen_geometry(collapsed, scale_factor, false);
+        let opened =
+            transient_geometry_within_monitors(collapsed, scale_factor, false, true, &monitors);
+        let closed =
+            transient_geometry_within_monitors(collapsed, scale_factor, false, false, &monitors);
+
+        assert_eq!(card_screen_geometry(opened, scale_factor, true), before);
+        assert_eq!(card_screen_geometry(closed, scale_factor, false), before);
+        assert!(opened.x < monitors[0].x || opened.y + opened.height as i32 > 1240);
+    }
+
+    #[test]
+    fn scaled_expansion_clamps_inside_a_negative_origin_monitor() {
+        let collapsed = Geometry {
+            x: -600,
+            y: 1126,
+            width: 528,
+            height: 114,
+        };
+        let monitors = [MonitorBounds {
+            x: -2560,
+            y: -200,
+            width: 2560,
+            height: 1440,
+        }];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.5,
+                &monitors,
+            ),
+            Geometry {
+                x: -600,
+                y: 700,
+                width: 528,
+                height: 540,
+            },
+        );
+    }
+
+    #[test]
+    fn geometry_larger_than_a_monitor_is_reduced_to_its_bounds() {
+        let collapsed = Geometry {
+            x: -100,
+            y: -50,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [MonitorBounds {
+            x: -100,
+            y: -50,
+            width: 300,
+            height: 60,
+        }];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.0,
+                &monitors,
+            ),
+            Geometry {
+                x: -100,
+                y: -50,
+                width: 300,
+                height: 60,
+            },
+        );
+    }
+
+    #[test]
+    fn monitor_selection_is_order_independent_when_equal_overlap_contains_the_anchor_center() {
+        let anchor = Geometry {
+            x: -50,
+            y: 10,
+            width: 100,
+            height: 20,
+        };
+        let geometry = Geometry {
+            x: -40,
+            y: 10,
+            width: 80,
+            height: 20,
+        };
+        let left = MonitorBounds {
+            x: -100,
+            y: 0,
+            width: 100,
+            height: 100,
+        };
+        let right = MonitorBounds {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 100,
+        };
+        let expected = Geometry {
+            x: 0,
+            y: 10,
+            width: 100,
+            height: 76,
+        };
+
+        assert_eq!(
+            clamp_geometry_for_anchor(geometry, anchor, &[left, right]),
+            expected
+        );
+        assert_eq!(
+            clamp_geometry_for_anchor(geometry, anchor, &[right, left]),
+            expected
+        );
+    }
+
+    #[test]
+    fn zero_overlap_selects_the_nearest_monitor_independent_of_order() {
+        let anchor = Geometry {
+            x: -10,
+            y: -10,
+            width: 20,
+            height: 20,
+        };
+        let far = MonitorBounds {
+            x: -1000,
+            y: -100,
+            width: 200,
+            height: 200,
+        };
+        let near = MonitorBounds {
+            x: 100,
+            y: -100,
+            width: 200,
+            height: 200,
+        };
+        let expected = Geometry {
+            x: 100,
+            y: -10,
+            width: 200,
+            height: 76,
+        };
+
+        assert_eq!(
+            clamp_geometry_for_anchor(anchor, anchor, &[far, near]),
+            expected
+        );
+        assert_eq!(
+            clamp_geometry_for_anchor(anchor, anchor, &[near, far]),
+            expected
+        );
+    }
+
+    #[test]
+    fn equal_distance_zero_overlap_uses_stable_monitor_coordinates() {
+        let anchor = Geometry {
+            x: -10,
+            y: -10,
+            width: 20,
+            height: 20,
+        };
+        let left = MonitorBounds {
+            x: -300,
+            y: -100,
+            width: 100,
+            height: 200,
+        };
+        let right = MonitorBounds {
+            x: 200,
+            y: -100,
+            width: 100,
+            height: 200,
+        };
+        let expected = Geometry {
+            x: -300,
+            y: -10,
+            width: 100,
+            height: 76,
+        };
+
+        assert_eq!(
+            clamp_geometry_for_anchor(anchor, anchor, &[left, right]),
+            expected
+        );
+        assert_eq!(
+            clamp_geometry_for_anchor(anchor, anchor, &[right, left]),
+            expected
         );
     }
 

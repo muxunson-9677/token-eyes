@@ -22,14 +22,14 @@ const server = await createServer(createTemporaryDashboardServerConfig({
 }));
 
 const basePrefs = {
-  version: 10,
+  version: 11,
   visible: true,
   x: null,
   y: null,
-  width: 632,
-  height: 144,
-  collapsedHeight: 144,
-  expandedHeight: 356,
+  width: 352,
+  height: 76,
+  collapsedHeight: 76,
+  expandedHeight: 360,
   scaleFactor: 1,
   selectedAgent: "codex",
   mode: "projects",
@@ -44,31 +44,47 @@ const basePrefs = {
 };
 
 const scenarios = [
-  { name: "01-compact", prefs: basePrefs, height: 144 },
-  { name: "02-agent-menu", prefs: basePrefs, height: 472, openAgentMenu: true },
-  { name: "03-projects", prefs: { ...basePrefs, expanded: true, expandedHeight: 356 }, height: 356 },
-  { name: "04-limits", prefs: { ...basePrefs, expanded: true, mode: "limits", expandedHeight: 426 }, height: 426 },
-  { name: "05-models", prefs: { ...basePrefs, expanded: true, mode: "models", expandedHeight: 412 }, height: 412 },
-  { name: "06-celebration", prefs: basePrefs, width: 912, height: 424, openCelebration: true },
+  { name: "01-compact", prefs: basePrefs, height: 76, expectedCardHeight: 66 },
+  { name: "02-agent-menu", prefs: basePrefs, height: 280, expectedCardHeight: 66, openAgentMenu: true },
+  { name: "03-projects", prefs: { ...basePrefs, expanded: true }, height: 360, expectedCardHeight: 350 },
+  { name: "04-limits", prefs: { ...basePrefs, expanded: true, mode: "limits" }, height: 360, expectedCardHeight: 350 },
+  { name: "05-models", prefs: { ...basePrefs, expanded: true, mode: "models" }, height: 360, expectedCardHeight: 350 },
+  { name: "06-celebration", prefs: basePrefs, width: 632, height: 356, expectedCardHeight: 66, openCelebration: true },
 ];
 
 const viewModel = {
-  agents: ["all", "claude", "codex", "cursor", "hermes"],
+  agents: ["all", "claude", "codex", "cursor", "hermes", "deepseek-harness", "workbuddy"],
   selectedAgent: "codex",
   projectStatus: {
     red: 0,
-    yellow: 0,
-    green: 8,
+    yellow: 2,
+    green: 6,
     unknown: 0,
     projects: [
-      { id: "token-eyes", label: "010-Token eye", red: 0, yellow: 0, green: 6, unknown: 0, sessions: [{ id: "token-eyes-active", label: "Token Eyes UI", status: "green", state: "active", updatedAt: "2026-08-17T06:00:00.000Z" }] },
+      {
+        id: "token-eyes",
+        label: "010-Token eye",
+        red: 0,
+        yellow: 2,
+        green: 4,
+        unknown: 0,
+        sessions: [
+          { id: "token-eyes-active", label: "Token Eyes UI", status: "yellow", state: "running", updatedAt: "2026-08-17T06:00:00.000Z" },
+          { id: "token-eyes-review", label: "Merge review", status: "yellow", state: "running", updatedAt: "2026-08-17T05:30:00.000Z" },
+          { id: "token-eyes-tests", label: "Widget tests", status: "green", state: "completed", updatedAt: "2026-08-17T05:00:00.000Z" },
+          { id: "token-eyes-visual", label: "Visual audit", status: "green", state: "completed", updatedAt: "2026-08-17T04:30:00.000Z" },
+          { id: "token-eyes-runtime", label: "Runtime smoke", status: "green", state: "completed", updatedAt: "2026-08-17T04:00:00.000Z" },
+          { id: "token-eyes-build", label: "Production build", status: "green", state: "completed", updatedAt: "2026-08-17T03:30:00.000Z" },
+          { id: "token-eyes-handoff", label: "Release handoff", status: "green", state: "completed", updatedAt: "2026-08-17T03:00:00.000Z" },
+        ],
+      },
       { id: "text", label: "text", red: 0, yellow: 0, green: 2, unknown: 0, sessions: [{ id: "text-active", label: "Codex settings", status: "green", state: "active", updatedAt: "2026-08-17T06:00:00.000Z" }] },
     ],
   },
   limits: [
-    { id: "codex:alfalfa:5h", agent: "codex", provider: "Codex", accountLabel: "Plus", window: "5h", usedPercent: 67, resetAt: null, error: null, notes: "alfalfa" },
-    { id: "codex:twiddly:5h", agent: "codex", provider: "Codex", accountLabel: "Plus", window: "5h", usedPercent: 100, resetAt: null, error: null, notes: "twiddly" },
-    { id: "codex:quantum:5h", agent: "codex", provider: "Codex", accountLabel: "Plus", window: "5h", usedPercent: 98, resetAt: null, error: null, notes: "quantum" },
+    { id: "codex:pro-20x:5h", planId: "codex:pro-20x", agent: "codex", provider: "Codex", planLabel: "Pro 20x", accountLabel: "mux***@gmail.com", window: "5h", usedPercent: 67, resetAt: "2026-08-20T11:33:00.000Z", expiresAt: "2026-08-30T22:24:00.000Z", error: null, notes: null },
+    { id: "codex:pro-20x:weekly", planId: "codex:pro-20x", agent: "codex", provider: "Codex", planLabel: "Pro 20x", accountLabel: "mux***@gmail.com", window: "1w", usedPercent: 56, resetAt: "2026-08-20T12:03:00.000Z", expiresAt: "2026-08-30T22:24:00.000Z", error: null, notes: null },
+    { id: "codex:pro-20x:spark", planId: "codex:pro-20x", agent: "codex", provider: "Codex", planLabel: "Pro 20x", accountLabel: "mux***@gmail.com", window: "GPT 5.3 Codex Spark Weekly", usedPercent: 42, resetAt: "2026-08-20T12:03:00.000Z", expiresAt: "2026-08-30T22:24:00.000Z", error: null, notes: null },
   ],
   totals: {
     tokens: 7_237_147_164,
@@ -80,7 +96,10 @@ const viewModel = {
       { name: "gpt-5.4", tokens: 425_202_349, share: 5.9, costUsd: 1_120 },
       { name: "codex-auto-review", tokens: 45_282_649, share: 0.6, costUsd: 180 },
       { name: "gpt-5.4-mini", tokens: 40_098_352, share: 0.6, costUsd: 86.9 },
-      { name: "gpt-5.6-luna", tokens: 364_977, share: 0, costUsd: 0 },
+      { name: "gpt-5.6-luna", tokens: 100_000, share: 0, costUsd: 0 },
+      { name: "gpt-5.3-codex-spark", tokens: 120_000, share: 0, costUsd: 0 },
+      { name: "gpt-5.3-codex", tokens: 100_000, share: 0, costUsd: 0 },
+      { name: "gpt-4.1-mini", tokens: 44_977, share: 0, costUsd: 0 },
     ],
   },
   pendingReset: null,
@@ -88,6 +107,32 @@ const viewModel = {
 
 function jsonResponse(body) {
   return { status: 200, contentType: "application/json", body: JSON.stringify(body) };
+}
+
+async function wheelToEnd(page, locator) {
+  const scrollMetricsBefore = await locator.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  const scrollTopBefore = await locator.evaluate((element) => element.scrollTop);
+  await locator.hover();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await page.mouse.wheel(0, 240);
+    await page.waitForTimeout(20);
+    const reachedEnd = await locator.evaluate(
+      (element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
+    );
+    if (reachedEnd) break;
+  }
+  const scrollTopAfter = await locator.evaluate((element) => element.scrollTop);
+  const scrollable = scrollMetricsBefore.scrollHeight > scrollMetricsBefore.clientHeight + 1;
+  if (!scrollable) {
+    throw new Error(`wheel audit fixture did not overflow: ${JSON.stringify(scrollMetricsBefore)}`);
+  }
+  if (!(scrollTopAfter > scrollTopBefore)) {
+    throw new Error(`wheel input did not scroll content: ${scrollTopBefore} -> ${scrollTopAfter}`);
+  }
+  return { ...scrollMetricsBefore, scrollable, scrollTopBefore, scrollTopAfter };
 }
 
 async function installFixture(page, prefs) {
@@ -111,13 +156,13 @@ async function installFixture(page, prefs) {
         opencode: false,
         antigravity: false,
         zed: false,
-        workbuddy: false,
+        workbuddy: true,
         kimi: false,
         "kimi-code": false,
         pi: false,
         grok: false,
         copilot: false,
-        "deepseek-harness": false,
+        "deepseek-harness": true,
       }),
     );
     window.__TAURI__ = {
@@ -147,6 +192,96 @@ async function installFixture(page, prefs) {
   });
 }
 
+async function cardRect(page) {
+  return page.getByTestId("desktop-widget-card").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
+}
+
+async function runInteractionAudit(browser, baseUrl) {
+  const context = await browser.newContext({
+    viewport: { width: 352, height: 76 },
+    deviceScaleFactor: 1,
+    colorScheme: "dark",
+  });
+  const page = await context.newPage();
+  try {
+    await installFixture(page, basePrefs);
+    await page.goto(`${baseUrl}/desktop-widget`, { waitUntil: "domcontentloaded" });
+    await page.getByText("6", { exact: true }).first().waitFor({ state: "visible" });
+
+    const arrow = page.locator(".widget-agent-arrow");
+    const blankSurface = page.getByTestId("widget-drag-surface");
+    await arrow.click();
+    await page.getByRole("menu").waitFor({ state: "visible" });
+    await blankSurface.click();
+    await page.getByRole("menu").waitFor({ state: "hidden" });
+    await arrow.click();
+    await page.getByRole("menu").waitFor({ state: "visible" });
+    await arrow.click();
+    await page.getByRole("menu").waitFor({ state: "hidden" });
+
+    await arrow.click();
+    await page.getByRole("menu").waitFor({ state: "visible" });
+    const modeButtons = page.locator(".pill-nav__item");
+    await modeButtons.nth(0).click();
+    await page.getByRole("menu").waitFor({ state: "hidden" });
+    for (let index = 0; index < 3; index += 1) {
+      await modeButtons.nth(index).click();
+      await page.waitForFunction((buttonIndex) => (
+        document.querySelectorAll(".pill-nav__item")[buttonIndex]?.getAttribute("aria-pressed") === "true"
+      ), index);
+    }
+
+    const expandButton = page.locator(".widget-agent-main");
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expandButton.click();
+      await page.setViewportSize({ width: 352, height: 360 });
+      await page.waitForFunction(() => document.querySelector("[data-testid='desktop-widget-card']")?.classList.contains("is-expanded"));
+      await expandButton.click();
+      await page.setViewportSize({ width: 352, height: 76 });
+      await page.waitForFunction(() => !document.querySelector("[data-testid='desktop-widget-card']")?.classList.contains("is-expanded"));
+    }
+
+    const beforeCelebration = await cardRect(page);
+    await page.setViewportSize({ width: 632, height: 356 });
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("token-eyes:desktop-widget-celebration", {
+        detail: { eventId: "interaction-audit-reset", effectId: "meteors" },
+      }));
+    });
+    await page.getByTestId("widget-reset-celebration").waitFor({ state: "visible" });
+    const duringCelebration = await cardRect(page);
+    if (
+      Math.abs(duringCelebration.x - beforeCelebration.x - 140) > 1
+      || Math.abs(duringCelebration.y - beforeCelebration.y - 140) > 1
+      || Math.abs(duringCelebration.width - beforeCelebration.width) > 1
+      || Math.abs(duringCelebration.height - beforeCelebration.height) > 1
+    ) {
+      throw new Error(`celebration changed the capsule geometry: ${JSON.stringify({ beforeCelebration, duringCelebration })}`);
+    }
+    await page.locator(".widget-reset-celebration__dismiss").click();
+    await page.getByTestId("widget-reset-celebration").waitFor({ state: "hidden" });
+    await page.setViewportSize({ width: 352, height: 76 });
+    const afterCelebration = await cardRect(page);
+    if (JSON.stringify(afterCelebration) !== JSON.stringify(beforeCelebration)) {
+      throw new Error(`celebration dismissal moved the capsule: ${JSON.stringify({ beforeCelebration, afterCelebration })}`);
+    }
+
+    return {
+      agentMenuBlankDismissed: true,
+      agentMenuRepeatedToggle: true,
+      menuClosedOnModeChange: true,
+      modeSwitches: 3,
+      expandCollapseCycles: 2,
+      celebrationDismissedWithoutCapsuleJump: true,
+    };
+  } finally {
+    await context.close();
+  }
+}
+
 let browser;
 const results = [];
 try {
@@ -158,7 +293,7 @@ try {
   for (const scale of [1, 1.25, 1.5, 2]) {
     for (const scenario of scenarios) {
       const context = await browser.newContext({
-        viewport: { width: scenario.width ?? 632, height: scenario.height },
+        viewport: { width: scenario.width ?? 352, height: scenario.height },
         deviceScaleFactor: scale,
         colorScheme: "dark",
       });
@@ -174,7 +309,7 @@ try {
       await page.getByTestId("desktop-widget-card").waitFor({ state: "visible" });
       const readyText = scenario.prefs.mode === "limits"
         ? "67%"
-        : scenario.prefs.mode === "models" ? "gpt-5.6-sol" : "8";
+        : scenario.prefs.mode === "models" ? "gpt-5.6-sol" : "6";
       try {
         await page.getByText(readyText, { exact: true }).first().waitFor({ state: "visible", timeout: 8_000 });
       } catch {
@@ -191,6 +326,10 @@ try {
       if (scenario.openAgentMenu) {
         await page.locator(".widget-agent-arrow").click();
         await page.getByRole("menu").waitFor({ state: "visible" });
+      }
+      if (scenario.name === "03-projects") {
+        await page.locator(".widget-project__button").first().click();
+        await page.locator(".widget-project__button").first().waitFor({ state: "visible" });
       }
       await page.waitForTimeout(150);
 
@@ -213,26 +352,36 @@ try {
       if (geometry.overflowX > 1 || geometry.overflowY > 1) {
         throw new Error(`${scenario.name}@${scale}: overflow ${JSON.stringify(geometry)}`);
       }
-      const expectedCardHeight = ["01-compact", "02-agent-menu", "06-celebration"].includes(scenario.name)
-        ? 138
-        : scenario.height - 6;
-      if (Math.abs(geometry.card.height - expectedCardHeight) > 1) {
+      if (Math.abs(geometry.card.height - scenario.expectedCardHeight) > 1) {
         throw new Error(`${scenario.name}@${scale}: wrong card height ${JSON.stringify(geometry)}`);
       }
-      const viewportWidth = scenario.width ?? 632;
+      if (Math.abs(geometry.card.width - 325) > 1) {
+        throw new Error(`${scenario.name}@${scale}: wrong card width ${JSON.stringify(geometry)}`);
+      }
+      const viewportWidth = scenario.width ?? 352;
       if (geometry.card.x < 0 || geometry.card.right > viewportWidth || geometry.rail.right > viewportWidth) {
         throw new Error(`${scenario.name}@${scale}: clipped ${JSON.stringify(geometry)}`);
+      }
+      let wheelAudit = null;
+      if (["03-projects", "04-limits", "05-models"].includes(scenario.name)) {
+        wheelAudit = await wheelToEnd(page, page.locator("[data-widget-scroll-region]"));
+      }
+      if (scenario.name === "02-agent-menu") {
+        wheelAudit = await wheelToEnd(page, page.locator(".widget-menu__items"));
       }
       const stateAudit = await page.evaluate((scenarioName) => {
         const scroll = document.querySelector("[data-widget-scroll-region]");
         const rows = scenarioName === "03-projects"
-          ? [...document.querySelectorAll(".widget-project")]
+          ? [...document.querySelectorAll(".widget-project, .widget-session")]
           : scenarioName === "04-limits"
             ? [...document.querySelectorAll(".widget-limit-row")]
             : scenarioName === "05-models"
               ? [...document.querySelectorAll(".widget-model-row")]
               : [];
         const menu = scenarioName === "02-agent-menu" ? document.querySelector("[role='menu']") : null;
+        const menuScroll = menu?.querySelector(".widget-menu__items") ?? null;
+        const menuItems = menu ? [...menu.querySelectorAll("[role='menuitemradio']")] : [];
+        const lastMenuItem = menuItems.at(-1);
         const dismiss = scenarioName === "06-celebration"
           ? document.querySelector(".widget-reset-celebration__dismiss")
           : null;
@@ -242,15 +391,21 @@ try {
         const last = rows.at(-1);
         return {
           rowCount: rows.length,
+          planCount: scenarioName === "04-limits"
+            ? document.querySelectorAll("[data-testid='widget-expanded-limit-plan']").length
+            : 0,
           lastRowVisible: !last || !scroll
             ? true
             : last.getBoundingClientRect().bottom <= scroll.getBoundingClientRect().bottom + 1,
-          menuItemCount: menu?.querySelectorAll("[role='menuitemradio']").length ?? 0,
+          menuItemCount: menuItems.length,
           menuVisible: !menu || menu.getBoundingClientRect().bottom <= window.innerHeight + 1,
+          lastMenuItemVisible: !menuScroll || !lastMenuItem
+            ? true
+            : lastMenuItem.getBoundingClientRect().bottom <= menuScroll.getBoundingClientRect().bottom + 1,
           celebrationDismissVisible: !dismiss || (
             dismissRect.width > 0
             && dismissRect.height > 0
-            && Math.abs(dismissRect.left - stateCardRect.right) <= 6
+            && Math.abs(dismissRect.right - stateCardRect.right) <= 14
             && Math.abs(dismissRect.top - stateCardRect.top) <= 12
           ),
           celebrationGeometry: dismissRect && stateCardRect ? {
@@ -259,13 +414,20 @@ try {
           } : null,
         };
       }, scenario.name);
-      const expectedRows = scenario.name === "03-projects" ? 2
+      const expectedRows = scenario.name === "03-projects" ? 9
         : scenario.name === "04-limits" ? 3
-          : scenario.name === "05-models" ? 7 : 0;
+          : scenario.name === "05-models" ? 10 : 0;
       if (expectedRows && (stateAudit.rowCount !== expectedRows || !stateAudit.lastRowVisible)) {
         throw new Error(`${scenario.name}@${scale}: incomplete expanded content ${JSON.stringify(stateAudit)}`);
       }
-      if (scenario.name === "02-agent-menu" && (stateAudit.menuItemCount !== 5 || !stateAudit.menuVisible)) {
+      if (scenario.name === "04-limits" && stateAudit.planCount !== 1) {
+        throw new Error(`${scenario.name}@${scale}: quota windows were not grouped by plan ${JSON.stringify(stateAudit)}`);
+      }
+      if (scenario.name === "02-agent-menu" && (
+        stateAudit.menuItemCount !== 7
+        || !stateAudit.menuVisible
+        || !stateAudit.lastMenuItemVisible
+      )) {
         throw new Error(`${scenario.name}@${scale}: incomplete agent menu ${JSON.stringify(stateAudit)}`);
       }
       if (scenario.name === "06-celebration" && !stateAudit.celebrationDismissVisible) {
@@ -282,12 +444,15 @@ try {
         await page.getByTestId("widget-reset-celebration").waitFor({ state: "hidden" });
         celebrationDismissed = true;
       }
-      results.push({ name: scenario.name, scale, screenshotPath, geometry, stateAudit, celebrationDismissed });
+      results.push({ name: scenario.name, scale, screenshotPath, geometry, wheelAudit, stateAudit, celebrationDismissed });
       await context.close();
     }
   }
 
-  console.log(JSON.stringify({ status: "PASS", outputDir, scenarioCount: results.length, results }, null, 2));
+  const interactionAudit = await runInteractionAudit(browser, baseUrl);
+  console.log(JSON.stringify({ status: "PASS", outputDir, scenarioCount: results.length, interactionAudit, results }, null, 2));
+  console.log("WIDGET_INTERACTION_AUDIT=PASS");
+  console.log("WIDGET_VISUAL_AUDIT=PASS_24_SCENARIOS");
 } finally {
   await browser?.close();
   await server.close();

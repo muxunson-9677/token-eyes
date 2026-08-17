@@ -964,8 +964,8 @@ describe("DesktopWidgetPage", () => {
       expect(readFileSync("src/pages/DesktopWidgetPage.tsx", "utf8")).not.toContain("surroundMeteors");
       expect(screen.getByRole("button", { name: "copy:widget.reset.acknowledge" }))
         .toHaveClass("widget-reset-celebration__dismiss");
-      expect(widgetStyles).toContain("top: calc(var(--widget-effect-halo, 140px) + 8px);");
-      expect(widgetStyles).toContain("right: calc(var(--widget-effect-halo, 140px) + 10px);");
+      expect(widgetStyles).toContain("top: calc(var(--widget-effect-halo, 140px) + 10px);");
+      expect(widgetStyles).toContain("right: calc(var(--widget-effect-halo, 140px) + 15px);");
       expect(widgetStyles).toContain(".widget-reset-celebration__dismiss svg { width: 16px; height: 16px; }");
       expect(widget.acknowledgePendingReset).not.toHaveBeenCalled();
 

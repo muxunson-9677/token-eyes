@@ -725,10 +725,60 @@ const CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS = 30_000;
 const CODEX_ROLLOUT_FILES_CACHE = new Map();
 const CODEX_ROLLOUT_FILES_CACHE_TTL_MS = 60_000;
 
-async function listCodexRolloutFilesFromHomes(codexHomes) {
+function createCodexRolloutScanGeneration(runScan) {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { runScan, promise, resolve, reject, next: null };
+}
+
+function finishCodexRolloutScanGeneration(scanScopeKey, state, generation) {
+  if (generation.next) {
+    state.current = generation.next;
+    startCodexRolloutScanGeneration(scanScopeKey, state, generation.next);
+  } else if (CODEX_ROLLOUT_QUEUE_INFLIGHT.get(scanScopeKey) === state) {
+    CODEX_ROLLOUT_QUEUE_INFLIGHT.delete(scanScopeKey);
+  }
+}
+
+function startCodexRolloutScanGeneration(scanScopeKey, state, generation) {
+  Promise.resolve()
+    .then(generation.runScan)
+    .then(
+      (rows) => {
+        finishCodexRolloutScanGeneration(scanScopeKey, state, generation);
+        generation.resolve(rows);
+      },
+      (error) => {
+        finishCodexRolloutScanGeneration(scanScopeKey, state, generation);
+        generation.reject(error);
+      },
+    );
+}
+
+function enqueueCodexRolloutScan(scanScopeKey, runScan) {
+  const existingState = CODEX_ROLLOUT_QUEUE_INFLIGHT.get(scanScopeKey);
+  if (existingState) {
+    if (!existingState.current.next) {
+      existingState.current.next = createCodexRolloutScanGeneration(runScan);
+    }
+    return existingState.current.next.promise;
+  }
+
+  const current = createCodexRolloutScanGeneration(runScan);
+  const state = { current };
+  CODEX_ROLLOUT_QUEUE_INFLIGHT.set(scanScopeKey, state);
+  startCodexRolloutScanGeneration(scanScopeKey, state, current);
+  return current.promise;
+}
+
+async function listCodexRolloutFilesFromHomes(codexHomes, { forceRefresh = false } = {}) {
   const homes = Array.isArray(codexHomes) ? codexHomes : [codexHomes];
   const cacheKey = homes.map((home) => String(home || "").trim().toLowerCase()).filter(Boolean).join("\u0001");
-  if (cacheKey) {
+  if (!forceRefresh && cacheKey) {
     const cached = CODEX_ROLLOUT_FILES_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.at < CODEX_ROLLOUT_FILES_CACHE_TTL_MS) {
       return cached.files.slice();
@@ -774,17 +824,20 @@ async function listCodexRolloutFilesFromHome(codexHome) {
   return files;
 }
 
-function maxFileMtimeMs(files) {
-  let max = 0;
+async function codexRolloutFilesSignature(files) {
+  const hash = crypto.createHash("sha256");
   for (const filePath of files || []) {
+    hash.update(String(filePath));
+    hash.update("\u0000");
     try {
-      const stat = fs.statSync(filePath);
-      if (stat.mtimeMs > max) max = stat.mtimeMs;
+      const stat = await fs.promises.stat(filePath);
+      hash.update(`${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`);
     } catch {
-      // File disappeared during refresh; ignore this scan entry.
+      hash.update("missing");
     }
+    hash.update("\u0000");
   }
-  return max;
+  return hash.digest("hex");
 }
 
 function shiftDayKey(dayKey, deltaDays) {
@@ -810,9 +863,6 @@ async function collectCodexRolloutQueueRows({
   const homes = Array.isArray(codexHomes) && codexHomes.length > 0
     ? codexHomes
     : (codexHome ? [codexHome] : []);
-  const files = await listCodexRolloutFilesFromHomes(homes);
-  if (files.length === 0) return [];
-
   const scanScopeKey = [
     "codex-rollout-queue-v1",
     homes.join("\u0001"),
@@ -821,31 +871,30 @@ async function collectCodexRolloutQueueRows({
     timeZoneContext?.timeZone || "",
     Number.isFinite(timeZoneContext?.offsetMinutes) ? timeZoneContext.offsetMinutes : "",
   ].join("|");
-  const cacheKey = [
-    scanScopeKey,
-    files.length,
-    maxFileMtimeMs(files),
-  ].join("|");
-  const cached = CODEX_ROLLOUT_QUEUE_CACHE.get(cacheKey);
-  if (cached && Date.now() - cached.at < CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS) {
-    return cached.rows.map((row) => ({ ...row }));
-  }
-  const existingScan = CODEX_ROLLOUT_QUEUE_INFLIGHT.get(scanScopeKey);
-  if (existingScan) {
-    const rows = await existingScan;
-    return rows.map((row) => ({ ...row }));
-  }
-
-  const scan = (async () => {
-    const buckets = new Map();
+  const rows = await enqueueCodexRolloutScan(scanScopeKey, async () => {
+    const files = await listCodexRolloutFilesFromHomes(homes, {
+      forceRefresh: true,
+    });
     const minFileDay = from ? shiftDayKey(from, -1) : null;
     const maxFileDay = to ? shiftDayKey(to, 1) : null;
-
-    for (const filePath of files) {
+    const relevantFiles = files.filter((filePath) => {
       const fileDay = codexRolloutFileDay(filePath);
-      if (fileDay && minFileDay && fileDay < minFileDay) continue;
-      if (fileDay && maxFileDay && fileDay > maxFileDay) continue;
+      if (fileDay && minFileDay && fileDay < minFileDay) return false;
+      if (fileDay && maxFileDay && fileDay > maxFileDay) return false;
+      return true;
+    });
+    if (relevantFiles.length === 0) return [];
+    const cacheKey = [
+      scanScopeKey,
+      await codexRolloutFilesSignature(relevantFiles),
+    ].join("|");
+    const cached = CODEX_ROLLOUT_QUEUE_CACHE.get(cacheKey);
+    if (cached && Date.now() - cached.at < CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS) {
+      return cached.rows;
+    }
+    const buckets = new Map();
 
+    for (const filePath of relevantFiles) {
       const stat = await fs.promises.stat(filePath).catch(() => null);
       if (!stat || !stat.isFile()) continue;
 
@@ -935,16 +984,8 @@ async function collectCodexRolloutQueueRows({
     });
     CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, { at: Date.now(), rows });
     return rows;
-  })();
-  CODEX_ROLLOUT_QUEUE_INFLIGHT.set(scanScopeKey, scan);
-  try {
-    const rows = await scan;
-    return rows.map((row) => ({ ...row }));
-  } finally {
-    if (CODEX_ROLLOUT_QUEUE_INFLIGHT.get(scanScopeKey) === scan) {
-      CODEX_ROLLOUT_QUEUE_INFLIGHT.delete(scanScopeKey);
-    }
-  }
+  });
+  return rows.map((row) => ({ ...row }));
 }
 
 // ---------------------------------------------------------------------------
@@ -2214,11 +2255,13 @@ function createLocalApiHandler({
   codexLifecycleProvider,
   limitAccountsProvider,
   tokenOnlyDirectoryStatesProvider,
+  dataDirectoryPathsResolver,
   now: nowProvider = () => new Date(),
 } = {}) {
   const qp = queuePath || resolveQueuePath();
   const detectDataDirectories = detectDataDirectoriesOverride || detectDataDirectoryPaths;
   const detectAgentEnvironmentForRequest = detectAgentEnvironmentOverride || detectAgentEnvironment;
+  const resolveHandlerDataDirectoryPaths = dataDirectoryPathsResolver || resolveDataDirectoryPaths;
 
   // Server-side cookie relay: captures auth cookies from InsForge cloud responses
   // so that both browser and WKWebView share the same login session via the proxy.
@@ -2301,7 +2344,7 @@ function createLocalApiHandler({
   const codexResetMonitorService = injectedCodexResetMonitorService
     || createCodexResetMonitorService({
       getCodexUsageLimits: () => {
-        const dataDirectoryPaths = resolveDataDirectoryPaths({
+        const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
           env: process.env,
           home: os.homedir(),
@@ -2321,7 +2364,7 @@ function createLocalApiHandler({
       saveState: codexResetMonitorStore.save,
       collectCodexResetSnapshots,
       getCodexHomes: () => {
-        const dataDirectoryPaths = resolveDataDirectoryPaths({
+        const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
           env: process.env,
           home: os.homedir(),
@@ -2573,7 +2616,7 @@ function createLocalApiHandler({
     const configuredCodexHome = normalizeDataDirectories(config.dataDirectories).codex;
     const usesDefaultQueue = path.resolve(qp).toLowerCase() === path.resolve(resolveQueuePath()).toLowerCase();
     if (!configuredCodexHome && !usesDefaultQueue) return rows;
-    const dataDirectoryPaths = resolveDataDirectoryPaths({
+    const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
       config,
       env: process.env,
       home: os.homedir(),
@@ -5159,7 +5202,7 @@ function createLocalApiHandler({
         const loadUsageLimits = typeof usageLimitsProvider === "function"
           ? usageLimitsProvider
           : require("./usage-limits").getUsageLimits;
-        const dataDirectoryPaths = resolveDataDirectoryPaths({
+        const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
           env: process.env,
           home: os.homedir(),

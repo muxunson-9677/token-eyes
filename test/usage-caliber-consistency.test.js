@@ -255,6 +255,272 @@ test("Codex real rollout logs feed usage-summary, spend-timeseries, provider-sta
   }
 });
 
+test("concurrent and subsequent Codex rollout scans refresh when the file set changes", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-refresh-"));
+  const originalCreateReadStream = fs.createReadStream;
+  const originalStat = fs.promises.stat;
+  const openedPaths = [];
+  let rolloutStatCalls = 0;
+  let resolverCalls = 0;
+  let releaseFirstScan;
+  let firstScanBlocked;
+  let releaseSecondScan;
+  let secondScanBlocked;
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const trackerDataDir = path.join(tmp, "tracker");
+    const codexHome = path.join(tmp, ".codex");
+    const sessionsDir = path.join(codexHome, "sessions", "2026", "05", "09");
+    await fs.promises.mkdir(trackerDataDir, { recursive: true });
+    await fs.promises.mkdir(sessionsDir, { recursive: true });
+    await writeQueue(queuePath, []);
+    await fs.promises.writeFile(
+      path.join(trackerDataDir, "config.json"),
+      JSON.stringify({ dataDirectories: { codex: codexHome } }, null, 2) + "\n",
+      "utf8",
+    );
+
+    const firstRolloutPath = path.join(sessionsDir, "rollout-2026-05-09T10-00-00-000Z.jsonl");
+    await fs.promises.writeFile(
+      firstRolloutPath,
+      [
+        buildCodexTurnContextLine({ model: "gpt-4o" }),
+        buildCodexTokenCountLine({
+          ts: "2026-05-09T10:05:00.000Z",
+          last: { input_tokens: 80, output_tokens: 20, total_tokens: 100 },
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    fs.createReadStream = function recordRolloutPath(filePath, ...args) {
+      openedPaths.push(path.resolve(String(filePath)));
+      return originalCreateReadStream.call(this, filePath, ...args);
+    };
+    let markFirstScanBlocked;
+    let markSecondScanBlocked;
+    firstScanBlocked = new Promise((resolve) => { markFirstScanBlocked = resolve; });
+    secondScanBlocked = new Promise((resolve) => { markSecondScanBlocked = resolve; });
+    fs.promises.stat = async function gateScanGenerations(filePath, ...args) {
+      if (String(filePath).endsWith(".jsonl")) {
+        rolloutStatCalls += 1;
+        if (rolloutStatCalls === 2) {
+          await new Promise((release) => {
+            releaseFirstScan = release;
+            markFirstScanBlocked();
+          });
+        } else if (rolloutStatCalls === 3) {
+          await new Promise((release) => {
+            releaseSecondScan = release;
+            markSecondScanBlocked();
+          });
+        }
+      }
+      return originalStat.call(this, filePath, ...args);
+    };
+
+    const handlerOptions = {
+      queuePath,
+      trackerDataDir,
+      dataDirectoryPathsResolver: () => {
+        resolverCalls += 1;
+        return { codexHome, codexHomes: [codexHome] };
+      },
+    };
+    const handler = createLocalApiHandler(handlerOptions);
+    const endpoint = "/functions/tokentracker-usage-summary?from=2026-05-09&to=2026-05-09&tz=UTC&sources=codex";
+    const firstRequest = callHandler(handler, endpoint);
+    await firstScanBlocked;
+
+    const secondRolloutPath = path.join(sessionsDir, "rollout-2026-05-09T11-00-00-000Z.jsonl");
+    await fs.promises.writeFile(
+      secondRolloutPath,
+      [
+        buildCodexTurnContextLine({ model: "gpt-5" }),
+        buildCodexTokenCountLine({
+          ts: "2026-05-09T11:05:00.000Z",
+          last: { input_tokens: 150, output_tokens: 50, total_tokens: 200 },
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+    const waiterRequests = [1, 2, 3, 4].map((probe) => callHandler(handler, `${endpoint}&probe=${probe}`));
+    releaseFirstScan();
+    await secondScanBlocked;
+
+    const thirdRolloutPath = path.join(sessionsDir, "rollout-2026-05-09T12-00-00-000Z.jsonl");
+    await fs.promises.writeFile(
+      thirdRolloutPath,
+      [
+        buildCodexTurnContextLine({ model: "gpt-5.6-sol" }),
+        buildCodexTokenCountLine({
+          ts: "2026-05-09T12:05:00.000Z",
+          last: { input_tokens: 40, output_tokens: 10, total_tokens: 50 },
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+    const lateWaiterRequests = [5, 6, 7, 8].map((probe) => callHandler(handler, `${endpoint}&probe=${probe}`));
+    releaseSecondScan();
+
+    const [first, ...waiters] = await Promise.all([
+      firstRequest,
+      ...waiterRequests,
+      ...lateWaiterRequests,
+    ]);
+    assert.equal(first.totals.total_tokens, 100);
+    assert.deepEqual(
+      waiters.map((result) => result.totals.total_tokens),
+      [300, 300, 300, 300, 350, 350, 350, 350],
+    );
+    assert.equal(rolloutStatCalls, 12, "each waiter cohort must share exactly one follow-up scan");
+    assert.ok(resolverCalls > 0);
+    assert.ok(openedPaths.length >= 2);
+    assert.ok(openedPaths.every((filePath) => filePath.startsWith(path.resolve(codexHome) + path.sep)));
+  } finally {
+    releaseFirstScan?.();
+    releaseSecondScan?.();
+    fs.createReadStream = originalCreateReadStream;
+    fs.promises.stat = originalStat;
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("Codex rollout scans recover after an owner generation rejects", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-recovery-"));
+  const originalCreateReadStream = fs.createReadStream;
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const trackerDataDir = path.join(tmp, "tracker");
+    const codexHome = path.join(tmp, ".codex");
+    const sessionsDir = path.join(codexHome, "sessions", "2026", "05", "09");
+    await fs.promises.mkdir(trackerDataDir, { recursive: true });
+    await fs.promises.mkdir(sessionsDir, { recursive: true });
+    await writeQueue(queuePath, []);
+    await fs.promises.writeFile(
+      path.join(trackerDataDir, "config.json"),
+      JSON.stringify({ dataDirectories: { codex: codexHome } }, null, 2) + "\n",
+      "utf8",
+    );
+    await fs.promises.writeFile(
+      path.join(sessionsDir, "rollout-2026-05-09T10-00-00-000Z.jsonl"),
+      [
+        buildCodexTurnContextLine({ model: "gpt-5" }),
+        buildCodexTokenCountLine({
+          ts: "2026-05-09T10:05:00.000Z",
+          last: { input_tokens: 80, output_tokens: 20, total_tokens: 100 },
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    let rejectNextStream = true;
+    fs.createReadStream = function rejectFirstRollout(filePath, ...args) {
+      if (rejectNextStream && String(filePath).endsWith(".jsonl")) {
+        rejectNextStream = false;
+        throw new Error("injected rollout scan failure");
+      }
+      return originalCreateReadStream.call(this, filePath, ...args);
+    };
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir,
+      dataDirectoryPathsResolver: () => ({ codexHome, codexHomes: [codexHome] }),
+    });
+    const endpoint = "/functions/tokentracker-usage-summary?from=2026-05-09&to=2026-05-09&tz=UTC&sources=codex";
+    await assert.rejects(() => callHandler(handler, endpoint), /injected rollout scan failure/u);
+
+    const recovered = await callHandler(handler, endpoint);
+    assert.equal(recovered.totals.total_tokens, 100);
+  } finally {
+    fs.createReadStream = originalCreateReadStream;
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("Codex rollout cache refreshes when a non-newest file changes", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-signature-"));
+  const originalCreateReadStream = fs.createReadStream;
+  const openedPaths = [];
+  let resolverCalls = 0;
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const trackerDataDir = path.join(tmp, "tracker");
+    const codexHome = path.join(tmp, ".codex");
+    const sessionsDir = path.join(codexHome, "sessions", "2026", "05", "09");
+    await fs.promises.mkdir(trackerDataDir, { recursive: true });
+    await fs.promises.mkdir(sessionsDir, { recursive: true });
+    await writeQueue(queuePath, []);
+    await fs.promises.writeFile(
+      path.join(trackerDataDir, "config.json"),
+      JSON.stringify({ dataDirectories: { codex: codexHome } }, null, 2) + "\n",
+      "utf8",
+    );
+
+    const olderRolloutPath = path.join(sessionsDir, "rollout-2026-05-09T10-00-00-000Z.jsonl");
+    const newestRolloutPath = path.join(sessionsDir, "rollout-2026-05-09T11-00-00-000Z.jsonl");
+    const writeRollout = (filePath, model, ts, totalTokens) => fs.promises.writeFile(
+      filePath,
+      [
+        buildCodexTurnContextLine({ model }),
+        buildCodexTokenCountLine({
+          ts,
+          last: { input_tokens: totalTokens, output_tokens: 0, total_tokens: totalTokens },
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+    await writeRollout(olderRolloutPath, "gpt-4o", "2026-05-09T10:05:00.000Z", 100);
+    await writeRollout(newestRolloutPath, "gpt-5", "2026-05-09T11:05:00.000Z", 200);
+    const olderMtime = new Date("2026-05-09T10:30:00.000Z");
+    const newestMtime = new Date("2026-05-09T11:30:00.000Z");
+    await fs.promises.utimes(olderRolloutPath, olderMtime, olderMtime);
+    await fs.promises.utimes(newestRolloutPath, newestMtime, newestMtime);
+
+    fs.createReadStream = function recordRolloutPath(filePath, ...args) {
+      openedPaths.push(path.resolve(String(filePath)));
+      return originalCreateReadStream.call(this, filePath, ...args);
+    };
+
+    const handlerOptions = {
+      queuePath,
+      trackerDataDir,
+      dataDirectoryPathsResolver: () => {
+        resolverCalls += 1;
+        return { codexHome, codexHomes: [codexHome] };
+      },
+    };
+    const handler = createLocalApiHandler(handlerOptions);
+    const endpoint = "/functions/tokentracker-usage-summary?from=2026-05-09&to=2026-05-09&tz=UTC&sources=codex";
+    const first = await callHandler(handler, endpoint);
+    assert.equal(first.totals.total_tokens, 300);
+
+    await writeRollout(olderRolloutPath, "gpt-4o", "2026-05-09T10:05:00.000Z", 150);
+    const modifiedOlderMtime = new Date("2026-05-09T11:00:00.000Z");
+    await fs.promises.utimes(olderRolloutPath, modifiedOlderMtime, modifiedOlderMtime);
+
+    const secondHandler = createLocalApiHandler(handlerOptions);
+    const second = await callHandler(secondHandler, endpoint);
+    assert.equal(second.totals.total_tokens, 350);
+    assert.ok(resolverCalls >= 2);
+    assert.ok(openedPaths.length >= 4);
+    assert.ok(openedPaths.every((filePath) => filePath.startsWith(path.resolve(codexHome) + path.sep)));
+  } finally {
+    fs.createReadStream = originalCreateReadStream;
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("Codex rollout signatures avoid synchronous filesystem stats", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "local-api.js"), "utf8");
+  const signature = source.match(
+    /async function codexRolloutFilesSignature\(files\)\s*\{[\s\S]*?\n\}/u,
+  )?.[0];
+  assert.ok(signature, "async Codex rollout signature helper must exist");
+  assert.doesNotMatch(signature, /statSync/u);
+  assert.match(signature, /await fs\.promises\.stat\(filePath\)/u);
+});
+
 test("aggregate views prefer synced Codex queue rows over redundant rollout rescans", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-snapshot-"));
   try {

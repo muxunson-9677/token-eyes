@@ -167,6 +167,33 @@ test("widget celebration reserves a full transparent halo around the capsule", (
   assert.match(widgetWindow, /CELEBRATION_PADDING:\s*u32\s*=\s*140/u);
   assert.match(
     css,
-    /\.desktop-widget-root\.has-celebration\s*\{\s*padding:\s*calc\(var\(--widget-effect-halo,\s*140px\)\s*\+\s*3px\)\s+var\(--widget-effect-halo,\s*140px\)\s+calc\(var\(--widget-effect-halo,\s*140px\)\s*\+\s*3px\)\s+var\(--widget-effect-halo,\s*140px\);/u,
+    /\.desktop-widget-root\.has-celebration\s*\{\s*padding:\s*calc\(var\(--widget-effect-halo,\s*140px\)\s*\+\s*5px\)\s+var\(--widget-effect-halo,\s*140px\)\s+calc\(var\(--widget-effect-halo,\s*140px\)\s*\+\s*5px\)\s+calc\(var\(--widget-effect-halo,\s*140px\)\s*\+\s*5px\);/u,
   );
+});
+
+test("bundled runtime smoke owns a unique temporary home", () => {
+  const smoke = read("test/windows-bundled-runtime-smoke.test.cjs");
+  assert.match(smoke, /fs\.mkdirSync\(smokeTarget,\s*\{\s*recursive:\s*true\s*\}\)/u);
+  assert.match(
+    smoke,
+    /const smokeHome\s*=\s*fs\.mkdtempSync\(path\.join\(smokeTarget,\s*"runtime-smoke-"\)\)/u,
+  );
+  assert.doesNotMatch(smoke, /runtime-smoke-\$\{process\.pid\}/u);
+  assert.match(smoke, /fs\.rmSync\(smokeHome,\s*\{\s*recursive:\s*true,\s*force:\s*true\s*\}\)/u);
+  const cleanupIndex = smoke.indexOf("t.after(() =>");
+  const spawnIndex = smoke.indexOf("spawn(nodeExe");
+  assert.ok(
+    cleanupIndex >= 0 && spawnIndex >= 0 && cleanupIndex < spawnIndex,
+    "cleanup must be registered before spawning the bundled runtime",
+  );
+});
+
+test("widget visual verification uses real wheel input for scrollable content", () => {
+  const visual = read("dashboard/scripts/verify-token-eyes-widget-ui.mjs");
+  assert.match(visual, /page\.mouse\.wheel\(0,\s*240\)/u);
+  assert.match(visual, /scrollTopAfter\s*>\s*scrollTopBefore/u);
+  assert.match(visual, /\["03-projects",\s*"04-limits",\s*"05-models"\]\.includes\(scenario\.name\)/u);
+  assert.match(visual, /WIDGET_INTERACTION_AUDIT=PASS/u);
+  assert.match(visual, /WIDGET_VISUAL_AUDIT=PASS_24_SCENARIOS/u);
+  assert.doesNotMatch(visual, /element\.scrollTop\s*=\s*element\.scrollHeight/u);
 });

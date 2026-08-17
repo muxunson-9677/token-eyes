@@ -1333,10 +1333,10 @@
 
 .desktop-widget-root.has-celebration {
   padding:
-    calc(var(--widget-effect-halo, 140px) + 3px)
+    calc(var(--widget-effect-halo, 140px) + 5px)
     var(--widget-effect-halo, 140px)
-    calc(var(--widget-effect-halo, 140px) + 3px)
-    var(--widget-effect-halo, 140px);
+    calc(var(--widget-effect-halo, 140px) + 5px)
+    calc(var(--widget-effect-halo, 140px) + 5px);
 }
 
 .desktop-widget-root.has-celebration .desktop-widget-card,
@@ -1464,8 +1464,8 @@
 
 .widget-reset-celebration__dismiss {
   position: absolute;
-  top: calc(var(--widget-effect-halo, 140px) + 8px);
-  right: calc(var(--widget-effect-halo, 140px) + 10px);
+  top: calc(var(--widget-effect-halo, 140px) + 10px);
+  right: calc(var(--widget-effect-halo, 140px) + 15px);
   display: grid;
   width: 30px;
   height: 30px;

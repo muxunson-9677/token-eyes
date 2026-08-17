@@ -59,17 +59,24 @@ test("Windows bundled runtime includes its shared registry and starts the local 
   assert.ok(fs.existsSync(providerRegistry), "bundled shared provider registry must exist");
 
   const port = await findFreePort();
-  const smokeHome = path.join(repoRoot, "src-tauri", "target", `runtime-smoke-${process.pid}`);
-  fs.mkdirSync(smokeHome, { recursive: true });
+  const smokeTarget = path.join(repoRoot, "src-tauri", "target");
+  fs.mkdirSync(smokeTarget, { recursive: true });
+  const smokeHome = fs.mkdtempSync(path.join(smokeTarget, "runtime-smoke-"));
+  let child;
+  t.after(() => {
+    try {
+      if (child?.pid && child.exitCode === null) {
+        spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+      }
+    } finally {
+      fs.rmSync(smokeHome, { recursive: true, force: true });
+    }
+  });
   const env = { ...process.env, USERPROFILE: smokeHome, HOME: smokeHome, APPDATA: path.join(smokeHome, "AppData", "Roaming"), LOCALAPPDATA: path.join(smokeHome, "AppData", "Local") };
-  const child = spawn(nodeExe, ["bin\\tracker.js", "serve", "--no-open", "--no-sync", "--port", String(port)], { cwd: trackerRoot, env, stdio: "pipe", windowsHide: true });
+  child = spawn(nodeExe, ["bin\\tracker.js", "serve", "--no-open", "--no-sync", "--port", String(port)], { cwd: trackerRoot, env, stdio: "pipe", windowsHide: true });
   let stderr = "";
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => { stderr += chunk; });
-  t.after(() => {
-    if (child.exitCode !== null) return;
-    spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
-  });
 
   const response = await waitForLocalAuth(port, child).catch((error) => { throw new Error(`${error.message}\nBundled backend stderr:\n${stderr}`); });
   const payload = JSON.parse(response.body);
