@@ -278,6 +278,27 @@ test("acknowledgement hides unread event but retains bounded history", () => {
   assert.equal(state.acknowledgedEventIds.length, 200);
 });
 
+test("acknowledgement compacts history against the caller clock", () => {
+  const previous = {
+    id: "official:previous",
+    type: "official_reset_announcement",
+    createdAt: new Date(BASE - 24 * 60 * MINUTE).toISOString(),
+    acknowledgedChannels: [],
+  };
+  const latest = {
+    ...previous,
+    id: "official:latest",
+    createdAt: new Date(BASE).toISOString(),
+  };
+
+  const state = acknowledgeCodexResetEvent({
+    events: [previous, latest],
+    acknowledgedEventIds: [],
+  }, latest.id, { nowMs: BASE });
+
+  assert.deepEqual(state.events.map((event) => event.id), [previous.id, latest.id]);
+});
+
 test("reset history retains local and official resets from the last 30 days in occurrence order", () => {
   const completed = Array.from({ length: 6 }, (_, index) => ({
     id: `completed-${index}`,

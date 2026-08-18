@@ -36,8 +36,12 @@ function emptyState() {
   };
 }
 
-function materializeOfficialFeedEvents(events, announcements) {
-  const compactedEvents = compactCodexResetEvents(events);
+function materializeOfficialFeedEvents(
+  events,
+  announcements,
+  { nowMs = Date.now() } = {},
+) {
+  const compactedEvents = compactCodexResetEvents(events, { nowMs });
   if (!Array.isArray(announcements)) return compactedEvents;
   const previousById = new Map(compactedEvents.map((event) => [event.id, event]));
   const localEvents = compactedEvents.filter(
@@ -57,10 +61,10 @@ function materializeOfficialFeedEvents(events, announcements) {
         : [],
     };
   });
-  return compactCodexResetEvents([...localEvents, ...officialEvents]);
+  return compactCodexResetEvents([...localEvents, ...officialEvents], { nowMs });
 }
 
-function initializeState(value) {
+function initializeState(value, { nowMs = Date.now() } = {}) {
   const base = emptyState();
   if (!value || typeof value !== "object" || Array.isArray(value)) return base;
   const feed = value.feed && typeof value.feed === "object" ? value.feed : null;
@@ -77,7 +81,7 @@ function initializeState(value) {
       value.restoreCandidates && typeof value.restoreCandidates === "object"
         ? value.restoreCandidates
         : {},
-    events: materializeOfficialFeedEvents(value.events, feed?.announcements),
+    events: materializeOfficialFeedEvents(value.events, feed?.announcements, { nowMs }),
     acknowledgedEventIds: Array.isArray(value.acknowledgedEventIds)
       ? value.acknowledgedEventIds
       : [],
@@ -139,7 +143,7 @@ function createCodexResetMonitorService({
     throw new TypeError("getCodexUsageLimits is required");
   }
 
-  let state = initializeState(loadState?.());
+  let state = initializeState(loadState?.(), { nowMs: now() });
   let timer = null;
   let feedTimer = null;
   let inFlight = null;
@@ -324,6 +328,7 @@ function createCodexResetMonitorService({
             events: materializeOfficialFeedEvents(
               state.events,
               state.feed.announcements,
+              { nowMs: now() },
             ),
             feed: {
               ...state.feed,
@@ -356,7 +361,7 @@ function createCodexResetMonitorService({
       const announcements = payload.announcements.map((item) => ({ ...item }));
       const nextState = {
         ...state,
-        events: materializeOfficialFeedEvents(state.events, announcements),
+        events: materializeOfficialFeedEvents(state.events, announcements, { nowMs: now() }),
         feed: {
           fetchedAt: new Date(now()).toISOString(),
           etag: safeHeader(response.headers?.get?.("etag")),
@@ -461,7 +466,10 @@ function createCodexResetMonitorService({
   }
 
   function acknowledge(eventId, options) {
-    persist(acknowledgeCodexResetEvent(state, eventId, options));
+    persist(acknowledgeCodexResetEvent(state, eventId, {
+      ...options,
+      nowMs: now(),
+    }));
   }
 
   return {
