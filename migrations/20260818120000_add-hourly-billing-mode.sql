@@ -83,7 +83,7 @@ begin
     language sql
     stable
     security definer
-    set search_path = public
+    set search_path = pg_catalog, public
     as $body$
       with filtered as (
         select
@@ -185,5 +185,12 @@ begin
       from grouped
     $body$
   $function$;
+
+  revoke all on function public.account_usage_grouped_v2(
+    text, text[], timestamptz, timestamptz, text, text, integer
+  ) from public, anon, authenticated;
+  grant execute on function public.account_usage_grouped_v2(
+    text, text[], timestamptz, timestamptz, text, text, integer
+  ) to service_role;
 end
 $$;

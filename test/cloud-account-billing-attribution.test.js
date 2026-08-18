@@ -49,11 +49,28 @@ test("all six account APIs request billing-aware grouped rows and expose mode to
   assert.match(migration, /partition by[^\n]+source[^\n]+model[^\n]+hour_start[^\n]+billing_mode/iu);
   assert.match(migration, /where f\.source = 'cursor'/iu);
   assert.match(migration, /device_id::text = any/iu);
+  assert.match(migration, /set search_path = pg_catalog, public/iu);
+  const compactMigration = migration.replace(/\s+/gu, " ");
+  const signature = String.raw`public\.account_usage_grouped_v2\(\s*text, text\[\], timestamptz, timestamptz, text, text, integer\s*\)`;
+  assert.match(
+    compactMigration,
+    new RegExp(`revoke all on function ${signature} from public, anon, authenticated`, "iu"),
+  );
+  assert.match(
+    compactMigration,
+    new RegExp(`grant execute on function ${signature} to service_role`, "iu"),
+  );
+  assert.doesNotMatch(
+    compactMigration,
+    new RegExp(`grant execute on function ${signature} to (?:public|anon|authenticated)`, "iu"),
+  );
   for (const name of EDGE_NAMES) {
     const source = await fs.readFile(path.join(root, "dashboard", "edge-patches", `tokentracker-account-${name}.ts`), "utf8");
     assert.match(source, /rpc\("account_usage_grouped_v2"/u, name);
     assert.match(source, /billing_mode:\s*string\s*\|\s*null/u, name);
     assert.match(source, /billing_mode_token_totals/u, name);
+    assert.match(source, /INSFORGE_SERVICE_ROLE_KEY/u, name);
+    assert.match(source, /edgeFunctionToken:\s*serviceRoleKey/u, name);
   }
 });
 
