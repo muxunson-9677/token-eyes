@@ -1935,8 +1935,11 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
       break;
     }
     if (sawMigrationRows && !rowMigrationId) {
-      offset = lineStartOffset;
-      break;
+      // An ordinary record terminates an incomplete migration fragment. Keep
+      // the ordinary record uploadable and let a later index-zero replay form
+      // a fresh transaction on the next page.
+      sawMigrationRows = false;
+      migrationFrame = null;
     }
     // Apply the same legacy-row corrections every local reader applies
     // (local-api readQueueData / project queue / wrapped aggregator). Without

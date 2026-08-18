@@ -1454,6 +1454,23 @@ function serializeUsageQueueRecord(record, evidence) {
   });
 }
 
+async function appendJsonlLines(filePath, lines) {
+  if (!Array.isArray(lines) || lines.length === 0) return;
+  const handle = await fs.open(filePath, "a+");
+  try {
+    const stat = await handle.stat();
+    let separator = "";
+    if (stat.size > 0) {
+      const lastByte = Buffer.allocUnsafe(1);
+      await handle.read(lastByte, 0, 1, stat.size - 1);
+      if (lastByte[0] !== 0x0a && lastByte[0] !== 0x0d) separator = "\n";
+    }
+    await handle.appendFile(`${separator}${lines.join("\n")}\n`, "utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
 async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets }) {
   if (!touchedBuckets || touchedBuckets.size === 0) return 0;
 
@@ -1746,7 +1763,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
   hourlyState.groupQueued = groupQueued;
 
   if (toAppend.length > 0) {
-    await fs.appendFile(queuePath, toAppend.join("\n") + "\n", "utf8");
+    await appendJsonlLines(queuePath, toAppend);
   }
 
   return toAppend.length;
@@ -1804,7 +1821,7 @@ async function enqueueTouchedProjectBuckets({
   }
 
   if (toAppend.length > 0) {
-    await fs.appendFile(projectQueuePath, toAppend.join("\n") + "\n", "utf8");
+    await appendJsonlLines(projectQueuePath, toAppend);
   }
 
   return toAppend.length;
@@ -6290,7 +6307,7 @@ async function appendDeepSeekHarnessMigrationBatch(queuePath, rows) {
   }
   const existingRows = new Set(existing.split(/\r?\n/).filter(Boolean));
   if (markedRows.every((row) => existingRows.has(row))) return 0;
-  await fs.appendFile(queuePath, `${markedRows.join("\n")}\n`, "utf8");
+  await appendJsonlLines(queuePath, markedRows);
   return markedRows.length;
 }
 

@@ -13,6 +13,7 @@ const {
   parseDeepSeekHarnessIncremental,
   resolveDeepSeekHarnessHome,
 } = require("../src/lib/rollout");
+const { readQueueBatch } = require("../src/commands/sync");
 
 function fixtureEvents({
   sessionId = "session-dsh-1",
@@ -739,6 +740,22 @@ test("replays a completed billing migration after queue append but before cursor
     sessionFiles: [sessionFile], cursors: partialRestartCursors, queuePath,
   });
   assert.deepEqual(replayedAgain, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+
+  fs.writeFileSync(queuePath, `${modeRows.map(JSON.stringify).join("\n")}\n{"unterminated":`);
+  const tornTailCursors = structuredClone(oldCursors);
+  const tornTailReplay = await parseDeepSeekHarnessIncremental({
+    sessionFiles: [sessionFile], cursors: tornTailCursors, queuePath,
+  });
+  assert.equal(tornTailReplay.bucketsQueued, 4);
+  assert.match(fs.readFileSync(queuePath, "utf8"), /\{"unterminated":\r?\n\{/u);
+  const ordinaryBatch = await readQueueBatch(queuePath, 0, 20);
+  const cloudBatch = await readQueueBatch(queuePath, ordinaryBatch.nextOffset, 20);
+  assert.deepEqual(
+    cloudBatch.buckets.filter((row) => !row.billing_mode_compat_summary)
+      .map((row) => [row.billing_mode, row.total_tokens]).sort(),
+    [["api_key", 11], ["token_plan", 22]],
+  );
+  assert.equal(cloudBatch.buckets.find((row) => row.billing_mode_compat_summary)?.total_tokens, 33);
 });
 
 test("reparses unchanged pre-fix DeepSeek Harness files once to correct totals", async (t) => {

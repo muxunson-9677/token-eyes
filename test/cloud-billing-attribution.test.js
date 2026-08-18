@@ -268,6 +268,56 @@ test("migration parser keeps consecutive complete transactions separate", async 
   }
 });
 
+test("migration parser abandons a partial prefix before ordinary rows and reaches the replay", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-partial-before-ordinary-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const rebuilt = [row("api_key", 0), row("token_plan", 0), row("api_key", 11), row("token_plan", 22)];
+    const frame = rebuilt.map((bucket, index) => ({
+      ...bucket,
+      dsh_bucket_migration_id: "migration-after-ordinary",
+      dsh_bucket_migration_index: index,
+      dsh_bucket_migration_count: rebuilt.length,
+    }));
+    const ordinary = [
+      { ...row("unknown", 5), model: "ordinary-a" },
+      { ...row("api_key", 6), model: "ordinary-b" },
+    ];
+    const physicalRows = [frame[0], ...ordinary, ...frame];
+    await fs.writeFile(queuePath, `${physicalRows.map(JSON.stringify).join("\n")}\n`);
+
+    const context = await syncCommand.createCloudQueueReadContext(queuePath, 0);
+    const first = await syncCommand.readQueueBatch(queuePath, 0, 4, null, context);
+    assert.deepEqual(
+      first.buckets.filter((bucket) => !bucket.billing_mode_compat_summary)
+        .map((bucket) => [bucket.model, bucket.total_tokens]).sort(),
+      [["ordinary-a", 5]],
+    );
+    assert.ok(first.nextOffset > 0, "ordinary rows must advance past the abandoned prefix");
+
+    const crashContext = await syncCommand.createCloudQueueReadContext(queuePath, 0);
+    const crashReplay = await syncCommand.readQueueBatch(queuePath, 0, 4, null, crashContext);
+    assert.deepEqual(crashReplay, first, "a crash before cursor persistence must replay ordinary rows exactly");
+
+    const middle = await syncCommand.readQueueBatch(queuePath, first.nextOffset, 4, null, context);
+    assert.deepEqual(
+      middle.buckets.filter((bucket) => !bucket.billing_mode_compat_summary)
+        .map((bucket) => [bucket.model, bucket.total_tokens]),
+      [["ordinary-b", 6]],
+    );
+    const second = await syncCommand.readQueueBatch(queuePath, middle.nextOffset, 20, null, context);
+    assert.deepEqual(
+      second.buckets.filter((bucket) => !bucket.billing_mode_compat_summary)
+        .map((bucket) => [bucket.billing_mode, bucket.total_tokens]).sort(),
+      [["api_key", 11], ["token_plan", 22]],
+    );
+    assert.equal(second.buckets.find((bucket) => bucket.billing_mode_compat_summary)?.total_tokens, 33);
+    assert.equal(context.rowsParsed, physicalRows.length, "one drain must parse each physical row once");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("large migration transactions page by whole base bucket and resume deterministically", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-large-migration-"));
   try {
