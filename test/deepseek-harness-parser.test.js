@@ -494,6 +494,56 @@ test("keeps rebuilt usage unknown when historical billing-mode slices do not exa
   assert.equal([...latest.values()].reduce((sum, row) => sum + row.total_tokens, 0), 33);
 });
 
+test("does not revive billing modes superseded by formal unmarked zero rows", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-formal-zero-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const model = "deepseek-v4-flash";
+  const hourStart = "2026-08-16T10:00:00.000Z";
+  const sessionFile = await writeSession(root, "formal-zero", [
+    { type: "request/context", seq: 1, time: hourStart, data: { model } },
+    usageEvent({ turn: 1, time: "2026-08-16T10:05:00.000Z", usage: { inputTokens: 10, outputTokens: 1 } }),
+    usageEvent({ turn: 2, time: "2026-08-16T10:15:00.000Z", usage: { inputTokens: 20, outputTokens: 2 } }),
+  ], false);
+  const queuePath = path.join(root, "queue.jsonl");
+  const positiveRows = [
+    { billing_mode: "api_key", input_tokens: 10, output_tokens: 1, total_tokens: 11, billable_total_tokens: 11, conversation_count: 1 },
+    { billing_mode: "token_plan", input_tokens: 20, output_tokens: 2, total_tokens: 22, billable_total_tokens: 22, conversation_count: 1 },
+  ].map((row) => ({
+    source: "deepseek-harness", model, hour_start: hourStart,
+    cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0,
+    billing_mode_confidence: "provider_receipt", ...row,
+  }));
+  const zeroRows = positiveRows.map((row) => ({
+    ...row,
+    input_tokens: 0, output_tokens: 0, total_tokens: 0,
+    billable_total_tokens: 0, conversation_count: 0,
+  }));
+  fs.writeFileSync(queuePath, `${[...positiveRows, ...zeroRows].map(JSON.stringify).join("\n")}\n`);
+  const aggregate = {
+    input_tokens: 30, cached_input_tokens: 0, cache_creation_input_tokens: 0,
+    output_tokens: 3, reasoning_output_tokens: 0, total_tokens: 33,
+    billable_total_tokens: 33, conversation_count: 2,
+  };
+  const cursors = {
+    deepseekHarness: { normalizationVersion: 2, files: {} },
+    hourly: {
+      version: 3,
+      buckets: {
+        [`deepseek-harness|${model}|${hourStart}`]: { totals: aggregate, queuedKey: serializedTotalsKey(aggregate) },
+      },
+      groupQueued: {}, attributionMigrationVersion: 1, pendingAttributionRetractions: {},
+    },
+  };
+
+  await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+
+  const latest = new Map(readQueue(queuePath).map((row) => [row.billing_mode, row]));
+  assert.equal(latest.get("api_key").total_tokens, 0);
+  assert.equal(latest.get("token_plan").total_tokens, 0);
+  assert.equal(latest.get("unknown").total_tokens, 33);
+  assert.equal([...latest.values()].reduce((sum, row) => sum + row.total_tokens, 0), 33);
+});
+
 test("retracts restored billing modes when a reasoning turn moves across buckets", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-mode-move-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

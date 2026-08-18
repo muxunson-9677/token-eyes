@@ -6109,7 +6109,6 @@ async function collectDeepSeekHarnessRetractions(queuePath, hourlyState) {
     const attribution = normalizeUsageAttribution(row);
     queuedBuckets.add(bucketKey("deepseek-harness", model, hourStart));
     const identity = `${model}${BUCKET_SEPARATOR}${hourStart}${BUCKET_SEPARATOR}${attribution.billing_mode}`;
-    if (Number(row?.total_tokens || 0) <= 0 && identities.has(identity)) continue;
     identities.set(identity, {
       model,
       hourStart,
