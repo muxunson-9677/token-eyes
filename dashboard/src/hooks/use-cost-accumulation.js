@@ -3,6 +3,18 @@ import { getTokenPlans, getSpendRecords, getSpendTimeseries, getApiBillingAccoun
 import { OTHER_AI_SPEND_SOURCE } from "../lib/cost-sources.js";
 import { getCostMonthRanges } from "../lib/date-range";
 
+function getUtcMonthPeriod(monthKey) {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(monthKey || ""));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  return {
+    monthKey: match[0],
+    billingPeriodStart: new Date(Date.UTC(year, monthIndex, 1)).toISOString(),
+    billingPeriodEnd: new Date(Date.UTC(year, monthIndex + 1, 1)).toISOString(),
+  };
+}
+
 /**
  * Cost Accumulation data hook (03-cost-billing).
  *
@@ -56,7 +68,10 @@ export function useCostAccumulation({
       // Fetch token plans and API billing always. Each request is settled
       // independently so one unavailable source cannot erase still-valid data.
       const plansPromise = settle(getTokenPlans(), "token plans");
-      const billingPromise = settle(getApiBillingAccounts(), "API billing accounts");
+      const billingPromise = settle(getApiBillingAccounts({
+        month: monthRanges.selectedMonth,
+        timeZone: "UTC",
+      }), "API billing accounts");
 
       // Fetch spend records and timeseries only when there are visible sources
       const recordsPromise = hasSources
@@ -140,12 +155,20 @@ export function useCostAccumulation({
     // fields instead of masking with `?? 0`. The card renders "—" for null
     // and "0.00" for a real 0, so the user can distinguish "no data yet"
     // from "genuinely zero cost this period".
+    const selectedPeriod = getUtcMonthPeriod(selectedMonth);
     return apiBillingAccounts.map((account, index) => {
       const hasLegacyBillingSource = account.billingSource === "official_api";
-      const spendAuthority = ["official_invoice", "local_list_price_estimate", "unavailable"]
+      const declaredAuthority = ["official_invoice", "local_list_price_estimate", "unavailable"]
         .includes(account.spendAuthority)
         ? account.spendAuthority
         : "unavailable";
+      const hasExactOfficialPeriod = declaredAuthority !== "official_invoice" || Boolean(
+        selectedPeriod
+        && account.monthKey === selectedPeriod.monthKey
+        && account.billingPeriodStart === selectedPeriod.billingPeriodStart
+        && account.billingPeriodEnd === selectedPeriod.billingPeriodEnd
+      );
+      const spendAuthority = hasExactOfficialPeriod ? declaredAuthority : "unavailable";
       return {
         id: account.id || `${account.provider}-${index}`,
         provider: account.provider,
@@ -156,9 +179,12 @@ export function useCostAccumulation({
         lifetimeCostUsd: account.lifetimeCostUsd ?? null,
         status: account.status || "not-connected",
         lastSyncedAt: account.lastSyncedAt || null,
+        monthKey: account.monthKey || null,
+        billingPeriodStart: account.billingPeriodStart || null,
+        billingPeriodEnd: account.billingPeriodEnd || null,
       };
     });
-  }, [apiBillingAccounts]);
+  }, [apiBillingAccounts, selectedMonth]);
 
   // Filter spend records by sources
   const filteredSpendRecords = useMemo(() => {

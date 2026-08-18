@@ -7,7 +7,7 @@ const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
-const { deriveOfficialInvoiceSpend, SPEND_AUTHORITIES } = require("../src/lib/api-billing");
+const { fetchOpenAiCostsInvoice, SPEND_AUTHORITIES } = require("../src/lib/api-billing");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -88,14 +88,68 @@ test("api billing accounts endpoint returns accounts array when no spend records
   }
 });
 
-test("official provider month spend reaches the API billing cash contract", async () => {
-  const { server, url } = await startMockServer((_req, res) => {
+test("selected billing months require an explicit UTC boundary contract", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-time-zone-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const missingTimeZone = await call(handler, "/functions/tokentracker-api-billing-accounts?month=2026-01");
+    const localTimeZone = await call(handler, "/functions/tokentracker-api-billing-accounts?month=2026-01&time_zone=Asia%2FShanghai");
+    assert.equal(missingTimeZone.statusCode, 400);
+    assert.equal(localTimeZone.statusCode, 400);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("canonical OpenAI Costs pages reach the selected UTC month cash contract", async () => {
+  const requests = [];
+  const januaryStart = Date.parse("2026-01-01T00:00:00.000Z") / 1000;
+  const februaryStart = Date.parse("2026-02-01T00:00:00.000Z") / 1000;
+  const { server, url } = await startMockServer((req, res) => {
+    const requestUrl = new URL(req.url, "http://127.0.0.1");
+    requests.push({
+      pathname: requestUrl.pathname,
+      search: Object.fromEntries(requestUrl.searchParams),
+      authorization: req.headers.authorization,
+    });
+    const isSecondPage = requestUrl.searchParams.get("page") === "page-2";
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
-      data: { balance: 92, month_spend: 8, lifetime_spend: 48, currency: "USD" },
+      object: "page",
+      data: isSecondPage ? [{
+        object: "bucket",
+        start_time: januaryStart + 86400,
+        end_time: januaryStart + 172800,
+        results: [
+          { object: "organization.costs.result", amount: { value: 2, currency: "usd" } },
+          { object: "organization.costs.result", amount: { value: 4, currency: "usd" } },
+        ],
+      }] : [{
+        object: "bucket",
+        start_time: januaryStart,
+        end_time: januaryStart + 86400,
+        results: [
+          { object: "organization.costs.result", amount: { value: 1.25, currency: "usd" } },
+          { object: "organization.costs.result", amount: { value: 0.75, currency: "usd" } },
+        ],
+      }],
+      has_more: !isSecondPage,
+      next_page: isSecondPage ? null : "page-2",
     }));
   });
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-official-"));
+  const originalHomedir = os.homedir;
+  const originalCodexHome = process.env.CODEX_HOME;
+  const originalAgentData = process.env.AGENTDATA;
+  const originalAgentDataRoots = process.env.TOKENTRACKER_AGENTDATA_ROOTS;
+  os.homedir = () => tmp;
+  process.env.CODEX_HOME = path.join(tmp, ".codex");
+  delete process.env.AGENTDATA;
+  delete process.env.TOKENTRACKER_AGENTDATA_ROOTS;
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
     const handler = createLocalApiHandler({
@@ -116,13 +170,13 @@ test("official provider month spend reaches the API billing cash contract", asyn
       body: JSON.stringify({
         providerId: "openai",
         label: "OpenAI Billing",
-        requestUrl: `${url}/costs`,
+        requestUrl: `${url}/v1/organization/costs`,
         requestMethod: "GET",
         authType: "bearer",
-        balancePath: "data.balance",
-        monthSpendPath: "data.month_spend",
-        lifetimeSpendPath: "data.lifetime_spend",
-        currencyPath: "data.currency",
+        balancePath: "data",
+        monthSpendPath: "",
+        lifetimeSpendPath: "",
+        currencyPath: "",
         refreshIntervalSeconds: 300,
         enabled: true,
       }),
@@ -132,45 +186,126 @@ test("official provider month spend reaches the API billing cash contract", asyn
       headers,
       body: JSON.stringify({ configId: created.id, secret: "sk-official-test" }),
     });
-    const refresh = readJsonResponse(await call(
+    const body = readJsonResponse(await call(
       handler,
-      `/functions/tokentracker-provider-api-refresh?id=${created.id}`,
-      { method: "POST", headers },
+      "/functions/tokentracker-api-billing-accounts?month=2026-01&time_zone=UTC",
     ));
-    assert.equal(refresh.balance.status, "synced");
-
-    const body = readJsonResponse(await call(handler, "/functions/tokentracker-api-billing-accounts"));
     const account = body.accounts.find((item) => item.provider === "openai");
     assert.ok(account);
     assert.equal(account.billingSource, "api");
     assert.equal(account.spendAuthority, "official_invoice");
     assert.equal(account.monthCostUsd, 8);
-    assert.equal(account.lifetimeCostUsd, 48);
+    assert.equal(account.lifetimeCostUsd, null);
+    assert.equal(account.monthKey, "2026-01");
+    assert.equal(account.billingPeriodStart, "2026-01-01T00:00:00.000Z");
+    assert.equal(account.billingPeriodEnd, "2026-02-01T00:00:00.000Z");
+    assert.deepEqual(requests.map((request) => request.search), [{
+      start_time: String(januaryStart),
+      end_time: String(februaryStart),
+      bucket_width: "1d",
+      limit: "180",
+    }, {
+      start_time: String(januaryStart),
+      end_time: String(februaryStart),
+      bucket_width: "1d",
+      limit: "180",
+      page: "page-2",
+    }]);
+    assert.deepEqual(requests.map((request) => request.pathname), [
+      "/v1/organization/costs",
+      "/v1/organization/costs",
+    ]);
+    assert.ok(requests.every((request) => request.authorization === "Bearer sk-official-test"));
   } finally {
+    os.homedir = originalHomedir;
+    if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalCodexHome;
+    if (originalAgentData === undefined) delete process.env.AGENTDATA;
+    else process.env.AGENTDATA = originalAgentData;
+    if (originalAgentDataRoots === undefined) delete process.env.TOKENTRACKER_AGENTDATA_ROOTS;
+    else process.env.TOKENTRACKER_AGENTDATA_ROOTS = originalAgentDataRoots;
     server.close();
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
 
-test("official invoice evidence rejects unverified hosts, console, stale, non-USD, and invalid month spend", () => {
-  const validConfig = {
-    providerId: "openai",
-    requestUrl: "https://api.openai.com/v1/organization/costs",
-    authType: "bearer",
-    monthSpendPath: "data.month_spend",
+test("OpenAI Costs rejects malformed, partial, non-USD, wrong-object, and incomplete pagination responses", async () => {
+  const start = Date.parse("2026-01-01T00:00:00.000Z") / 1000;
+  const validBucket = {
+    object: "bucket",
+    start_time: start,
+    end_time: start + 86400,
+    results: [{
+      object: "organization.costs.result",
+      amount: { value: 8, currency: "usd" },
+    }],
   };
-  const validBalance = { status: "synced", monthSpend: 8, lifetimeSpend: 48, currency: "USD" };
-  assert.deepEqual(deriveOfficialInvoiceSpend(validConfig, validBalance), {
-    monthCostUsd: 8,
-    lifetimeCostUsd: 48,
-    lastSyncedAt: null,
+  const validPage = { object: "page", data: [validBucket], has_more: false, next_page: null };
+  const cases = [
+    { name: "wrong page object", pages: [{ ...validPage, object: "list" }] },
+    { name: "wrong bucket object", pages: [{ ...validPage, data: [{ ...validBucket, object: "day" }] }] },
+    { name: "wrong result object", pages: [{ ...validPage, data: [{ ...validBucket, results: [{ ...validBucket.results[0], object: "cost" }] }] }] },
+    { name: "missing amount", pages: [{ ...validPage, data: [{ ...validBucket, results: [{ object: "organization.costs.result" }] }] }] },
+    { name: "non USD", pages: [{ ...validPage, data: [{ ...validBucket, results: [{ ...validBucket.results[0], amount: { value: 8, currency: "eur" } }] }] }] },
+    { name: "negative amount", pages: [{ ...validPage, data: [{ ...validBucket, results: [{ ...validBucket.results[0], amount: { value: -1, currency: "usd" } }] }] }] },
+    { name: "bucket outside period", pages: [{ ...validPage, data: [{ ...validBucket, start_time: start - 86400, end_time: start }] }] },
+    { name: "has more without cursor", pages: [{ ...validPage, has_more: true, next_page: null }] },
+    { name: "terminal page with cursor", pages: [{ ...validPage, next_page: "unexpected" }] },
+    { name: "partial pagination failure", pages: [{ ...validPage, has_more: true, next_page: "page-2" }, { ok: false }] },
+  ];
+
+  for (const testCase of cases) {
+    const pages = [...testCase.pages];
+    const result = await fetchOpenAiCostsInvoice({
+      config: {
+        providerId: "openai",
+        requestUrl: "https://api.openai.com/v1/organization/costs",
+        authType: "bearer",
+      },
+      secret: "sk-redacted-test",
+      monthKey: "2026-01",
+      executeRequest: async () => {
+        const page = pages.shift();
+        return page?.ok === false ? { ok: false, error_code: "provider_unavailable" } : { ok: true, data: page };
+      },
+    });
+    assert.equal(result.ok, false, testCase.name);
+  }
+});
+
+test("generic custom monthSpend paths can never become official invoices", async () => {
+  const result = await fetchOpenAiCostsInvoice({
+    config: {
+      providerId: "openai",
+      requestUrl: "https://billing.example.com/costs",
+      authType: "bearer",
+      monthSpendPath: "data.month_spend",
+    },
+    secret: "sk-redacted-test",
+    monthKey: "2026-01",
+    executeRequest: async () => ({
+      ok: true,
+      data: { data: { month_spend: 8, currency: "USD" } },
+    }),
   });
-  assert.equal(deriveOfficialInvoiceSpend({ ...validConfig, authType: "official_console" }, validBalance), null);
-  assert.equal(deriveOfficialInvoiceSpend(validConfig, { ...validBalance, status: "stale" }), null);
-  assert.equal(deriveOfficialInvoiceSpend(validConfig, { ...validBalance, currency: "CNY" }), null);
-  assert.equal(deriveOfficialInvoiceSpend(validConfig, { ...validBalance, monthSpend: -1 }), null);
-  assert.equal(deriveOfficialInvoiceSpend({ ...validConfig, requestUrl: "https://api.openai.com/v1/dashboard/billing/credit_grants" }, validBalance), null);
-  assert.equal(deriveOfficialInvoiceSpend({ ...validConfig, requestUrl: "https://billing.example.com/costs" }, validBalance), null);
+  assert.equal(result.ok, false);
+});
+
+test("OpenAI Costs transport failures stay unavailable without exposing credential text", async () => {
+  const result = await fetchOpenAiCostsInvoice({
+    config: {
+      providerId: "openai",
+      requestUrl: "https://api.openai.com/v1/organization/costs",
+      authType: "bearer",
+    },
+    secret: "sk-sensitive-transport-test",
+    monthKey: "2026-01",
+    executeRequest: async () => {
+      throw new Error("upstream included sk-sensitive-transport-test");
+    },
+  });
+  assert.deepEqual(result, { ok: false, errorCode: "official_invoice_unavailable" });
+  assert.ok(!JSON.stringify(result).includes("sk-sensitive-transport-test"));
 });
 
 test("api billing accounts endpoint derives accounts from spend records (identity only, costs are null)", async () => {

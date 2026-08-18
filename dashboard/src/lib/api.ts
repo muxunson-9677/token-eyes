@@ -547,8 +547,11 @@ export async function getTokenPlans() {
   return fetchLocalJson(PATHS.tokenPlans);
 }
 
-export async function getApiBillingAccounts() {
-  return fetchLocalJson(PATHS.apiBillingAccounts);
+export async function getApiBillingAccounts({ month, timeZone }: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.apiBillingAccounts, {
+    month,
+    time_zone: timeZone,
+  });
 }
 
 export async function saveTokenPlan(record: AnyRecord = {}, options: { notify?: boolean } = {}) {

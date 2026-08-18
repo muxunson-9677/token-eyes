@@ -350,7 +350,12 @@ const tokenPlanRefresh = require("./token-plan-refresh");
 const { getPlanById, listProviderOptions, getProviderCatalog } = require("./token-plan-catalog");
 const { getPlanMarketCatalog } = require("./plan-market");
 const { getAgentAdapter, listAgentAdapters } = require("./agent-adapters");
-const { collectApiBillingAccounts, deriveOfficialInvoiceSpend } = require("./api-billing");
+const {
+  collectApiBillingAccounts,
+  fetchOpenAiCostsInvoice,
+  getUtcMonthPeriod,
+  isOpenAiCostsConfig,
+} = require("./api-billing");
 
 // 02-ia-api-balance: provider API balance/spend backend (financial query only)
 const providerApiConfigs = require("./provider-api-configs");
@@ -7299,6 +7304,15 @@ function createLocalApiHandler({
         return true;
       }
       try {
+        const billingMonth = String(url.searchParams.get("month") || "").trim();
+        const billingTimeZone = String(url.searchParams.get("time_zone") || "").trim();
+        if (
+          (billingMonth && (!getUtcMonthPeriod(billingMonth) || billingTimeZone !== "UTC"))
+          || (billingTimeZone && billingTimeZone !== "UTC")
+        ) {
+          json(res, { ok: false, error: "API billing requires a valid month and UTC time zone", accounts: [] }, 400);
+          return true;
+        }
         const spendResult = readSpendRecords();
         const accounts = await collectApiBillingAccounts({
           spendRecords: spendResult.records || [],
@@ -7311,19 +7325,27 @@ function createLocalApiHandler({
         // they must NOT be summed (different semantics).
         const config = readTrackerConfig();
         const providerConfigs = providerApiConfigs.readProviderApiConfigs(config);
-        for (const providerConfig of providerConfigs.filter((item) => item.enabled)) {
-          const cached = providerApiBalanceManager.getCachedBalance(providerConfig.id);
-          const officialInvoice = deriveOfficialInvoiceSpend(providerConfig, cached, {
+        for (const providerConfig of providerConfigs.filter((item) => (
+          item.enabled && billingMonth && isOpenAiCostsConfig(item, { allowTestEndpoint: providerApiTestMode })
+        ))) {
+          const secret = providerApiCredStore.isAvailable()
+            ? providerApiCredStore.readSecret(String(providerConfig.apiKeyRef || ""))
+            : null;
+          const officialResult = await fetchOpenAiCostsInvoice({
+            config: providerConfig,
+            secret,
+            monthKey: billingMonth,
             allowTestEndpoint: providerApiTestMode,
           });
-          if (!officialInvoice) continue;
+          if (!officialResult.ok) continue;
+          const officialInvoice = officialResult.invoice;
           let account = accounts.find((item) => item.provider === providerConfig.providerId);
           if (!account) {
             account = {
               provider: providerConfig.providerId,
               accountName: providerConfig.label || providerConfig.providerId,
               providerApiConfigured: true,
-              providerApiBalance: cached,
+              providerApiBalance: null,
             };
             accounts.push(account);
           }
@@ -7331,6 +7353,9 @@ function createLocalApiHandler({
           account.spendAuthority = "official_invoice";
           account.monthCostUsd = officialInvoice.monthCostUsd;
           account.lifetimeCostUsd = officialInvoice.lifetimeCostUsd;
+          account.monthKey = officialInvoice.monthKey;
+          account.billingPeriodStart = officialInvoice.billingPeriodStart;
+          account.billingPeriodEnd = officialInvoice.billingPeriodEnd;
           account.status = "synced";
           account.lastSyncedAt = officialInvoice.lastSyncedAt;
         }

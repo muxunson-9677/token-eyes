@@ -34,6 +34,15 @@ function deferred() {
   return { promise, resolve };
 }
 
+function officialPeriod(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return {
+    monthKey,
+    billingPeriodStart: new Date(Date.UTC(year, month - 1, 1)).toISOString(),
+    billingPeriodEnd: new Date(Date.UTC(year, month, 1)).toISOString(),
+  };
+}
+
 const OTHER_AI_SOURCES = ["other_ai"];
 const COST_SOURCES = ["codex", "other_ai"];
 
@@ -79,6 +88,10 @@ describe("useCostAccumulation selected month", () => {
     expect(getSpendRecords).toHaveBeenCalledWith(expect.objectContaining({
       summary_month: "2025-06",
     }));
+    expect(getApiBillingAccounts).toHaveBeenCalledWith({
+      month: "2025-06",
+      timeZone: "UTC",
+    });
     expect(result.current.costSummary).toEqual(expect.objectContaining({
       monthApiCostUsd: 10,
       monthSubscriptionCostUsd: 20,
@@ -111,6 +124,7 @@ describe("useCostAccumulation selected month", () => {
         spendAuthority: "official_invoice",
         monthCostUsd: 8,
         status: "connected",
+        ...officialPeriod("2025-06"),
       }],
     });
 
@@ -185,6 +199,7 @@ describe("useCostAccumulation selected month", () => {
         billingSource: "api",
         spendAuthority: "official_invoice",
         monthCostUsd: 8,
+        ...officialPeriod("2025-06"),
       }, {
         provider: "anthropic",
         billingSource: "api",
@@ -262,6 +277,7 @@ describe("useCostAccumulation selected month", () => {
         billingSource: "api",
         spendAuthority: "official_invoice",
         monthCostUsd: -8,
+        ...officialPeriod("2025-06"),
       }],
     });
 
@@ -303,6 +319,37 @@ describe("useCostAccumulation selected month", () => {
       monthTotalCostUsd: null,
     }));
     expect(result.current.error).toContain("selected month unavailable");
+  });
+
+  it("never reuses a January official invoice for the February selection", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals());
+    getApiBillingAccounts.mockResolvedValue({
+      accounts: [{
+        provider: "openai",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 8,
+        ...officialPeriod("2025-01"),
+      }],
+    });
+
+    const { result, rerender } = renderHook(
+      ({ selectedMonth }) => useCostAccumulation({
+        selectedMonth,
+        timeZone: "Asia/Shanghai",
+        sources: COST_SOURCES,
+      }),
+      { initialProps: { selectedMonth: "2025-01" } },
+    );
+
+    await waitFor(() => expect(result.current.costSummary.monthOfficialApiSpendUsd).toBe(8));
+    rerender({ selectedMonth: "2025-02" });
+    await waitFor(() => expect(getApiBillingAccounts).toHaveBeenLastCalledWith({
+      month: "2025-02",
+      timeZone: "UTC",
+    }));
+    await waitFor(() => expect(result.current.costSummary.monthOfficialApiSpendUsd).toBeNull());
   });
 
   it("keeps the last successful financial totals and reports them stale when refresh fails", async () => {

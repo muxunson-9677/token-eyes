@@ -21,6 +21,7 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 const cp = require("child_process");
+const { executeFinancialRequest } = require("./provider-api-executor");
 
 // Sync status constants (same as token-plan-refresh.js)
 const SYNC_STATUSES = {
@@ -41,10 +42,7 @@ const SPEND_AUTHORITIES = Object.freeze({
   UNAVAILABLE: "unavailable",
 });
 
-const OFFICIAL_INVOICE_ENDPOINTS = Object.freeze({
-  openai: { hostname: "api.openai.com", pathname: /^\/v1\/organization\/costs\/?$/ },
-  codex: { hostname: "api.openai.com", pathname: /^\/v1\/organization\/costs\/?$/ },
-});
+const OPENAI_COSTS_PATH = "/v1/organization/costs";
 
 // Provider display names
 const PROVIDER_NAMES = {
@@ -326,36 +324,134 @@ function calculateUsageCosts(queueRows) {
   return costsBySource;
 }
 
-function deriveOfficialInvoiceSpend(config, balance, { allowTestEndpoint = false } = {}) {
-  if (String(config?.authType || "").toLowerCase() === "official_console") return null;
-  if (!String(config?.monthSpendPath || "").trim()) return null;
-  if (!allowTestEndpoint) {
-    const providerId = String(config?.providerId || "").trim().toLowerCase();
-    const officialEndpoint = OFFICIAL_INVOICE_ENDPOINTS[providerId];
-    let requestUrl;
-    try {
-      requestUrl = new URL(String(config?.requestUrl || ""));
-    } catch {
-      return null;
-    }
-    if (
-      requestUrl.protocol !== "https:"
-      || requestUrl.hostname.toLowerCase() !== officialEndpoint?.hostname
-      || !officialEndpoint.pathname.test(requestUrl.pathname)
-    ) return null;
-  }
-  if (balance?.status !== SYNC_STATUSES.SYNCED) return null;
-  if (String(balance?.currency || "").toUpperCase() !== "USD") return null;
-
-  const monthCostUsd = Number(balance?.monthSpend);
-  if (!Number.isFinite(monthCostUsd) || monthCostUsd < 0) return null;
-  const lifetimeCostRaw = Number(balance?.lifetimeSpend);
+function getUtcMonthPeriod(monthKey) {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(monthKey || ""));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const startSeconds = Date.UTC(year, monthIndex, 1) / 1000;
+  const endSeconds = Date.UTC(year, monthIndex + 1, 1) / 1000;
   return {
-    monthCostUsd,
-    lifetimeCostUsd: Number.isFinite(lifetimeCostRaw) && lifetimeCostRaw >= 0
-      ? lifetimeCostRaw
-      : null,
-    lastSyncedAt: balance?.lastSyncedAt || null,
+    monthKey: match[0],
+    startSeconds,
+    endSeconds,
+    billingPeriodStart: new Date(startSeconds * 1000).toISOString(),
+    billingPeriodEnd: new Date(endSeconds * 1000).toISOString(),
+  };
+}
+
+function isOpenAiCostsConfig(config, { allowTestEndpoint = false } = {}) {
+  const providerId = String(config?.providerId || "").trim().toLowerCase();
+  if (providerId !== "openai" && providerId !== "codex") return false;
+  if (String(config?.authType || "bearer").trim().toLowerCase() !== "bearer") return false;
+  if (String(config?.requestMethod || "GET").trim().toUpperCase() !== "GET") return false;
+  try {
+    const requestUrl = new URL(String(config?.requestUrl || ""));
+    if (requestUrl.pathname.replace(/\/$/, "") !== OPENAI_COSTS_PATH) return false;
+    return allowTestEndpoint
+      ? requestUrl.protocol === "http:" || requestUrl.protocol === "https:"
+      : requestUrl.protocol === "https:" && requestUrl.hostname.toLowerCase() === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
+function parseOpenAiCostsPage(page, period, seenBuckets) {
+  if (!page || page.object !== "page" || !Array.isArray(page.data)) return null;
+  if (typeof page.has_more !== "boolean") return null;
+  if (page.has_more) {
+    if (typeof page.next_page !== "string" || !page.next_page.trim()) return null;
+  } else if (page.next_page !== null) {
+    return null;
+  }
+
+  let totalUsd = 0;
+  for (const bucket of page.data) {
+    if (!bucket || bucket.object !== "bucket" || !Array.isArray(bucket.results)) return null;
+    if (!Number.isInteger(bucket.start_time) || !Number.isInteger(bucket.end_time)) return null;
+    if (
+      bucket.start_time < period.startSeconds
+      || bucket.end_time > period.endSeconds
+      || bucket.end_time - bucket.start_time !== 86400
+    ) return null;
+    const bucketKey = `${bucket.start_time}:${bucket.end_time}`;
+    if (seenBuckets.has(bucketKey)) return null;
+    seenBuckets.add(bucketKey);
+
+    for (const result of bucket.results) {
+      if (!result || result.object !== "organization.costs.result") return null;
+      if (!result.amount || result.amount.currency !== "usd") return null;
+      if (typeof result.amount.value !== "number" || !Number.isFinite(result.amount.value) || result.amount.value < 0) return null;
+      totalUsd += result.amount.value;
+    }
+  }
+
+  return {
+    totalUsd,
+    hasMore: page.has_more,
+    nextPage: page.next_page,
+  };
+}
+
+async function fetchOpenAiCostsInvoice({
+  config,
+  secret,
+  monthKey,
+  allowTestEndpoint = false,
+  executeRequest = executeFinancialRequest,
+} = {}) {
+  const period = getUtcMonthPeriod(monthKey);
+  if (!period || !secret || !isOpenAiCostsConfig(config, { allowTestEndpoint })) {
+    return { ok: false, errorCode: "official_invoice_unavailable" };
+  }
+
+  const seenPages = new Set();
+  const seenBuckets = new Set();
+  let cursor = null;
+  let totalUsd = 0;
+  for (;;) {
+    const requestUrl = new URL(String(config.requestUrl));
+    requestUrl.search = "";
+    requestUrl.searchParams.set("start_time", String(period.startSeconds));
+    requestUrl.searchParams.set("end_time", String(period.endSeconds));
+    requestUrl.searchParams.set("bucket_width", "1d");
+    requestUrl.searchParams.set("limit", "180");
+    if (cursor) requestUrl.searchParams.set("page", cursor);
+
+    let response;
+    try {
+      response = await executeRequest({
+        ...config,
+        requestUrl: requestUrl.toString(),
+        requestMethod: "GET",
+        authType: "bearer",
+      }, secret, { testMode: allowTestEndpoint });
+    } catch {
+      return { ok: false, errorCode: "official_invoice_unavailable" };
+    }
+    if (!response?.ok) return { ok: false, errorCode: "official_invoice_unavailable" };
+
+    const parsed = parseOpenAiCostsPage(response.data, period, seenBuckets);
+    if (!parsed) return { ok: false, errorCode: "official_invoice_invalid" };
+    totalUsd += parsed.totalUsd;
+    if (!parsed.hasMore) break;
+    if (seenPages.has(parsed.nextPage)) return { ok: false, errorCode: "official_invoice_invalid" };
+    seenPages.add(parsed.nextPage);
+    cursor = parsed.nextPage;
+  }
+
+  return {
+    ok: true,
+    invoice: {
+      billingSource: BILLING_SOURCES.API,
+      spendAuthority: SPEND_AUTHORITIES.OFFICIAL_INVOICE,
+      monthCostUsd: Math.round(totalUsd * 1e6) / 1e6,
+      lifetimeCostUsd: null,
+      monthKey: period.monthKey,
+      billingPeriodStart: period.billingPeriodStart,
+      billingPeriodEnd: period.billingPeriodEnd,
+      lastSyncedAt: new Date().toISOString(),
+    },
   };
 }
 
@@ -479,7 +575,9 @@ module.exports = {
   collectBillingFromSpendRecords,
   detectCredentialsFromAuthFiles,
   detectCredentialsFromKeychain,
-  deriveOfficialInvoiceSpend,
+  fetchOpenAiCostsInvoice,
+  getUtcMonthPeriod,
+  isOpenAiCostsConfig,
   mergeBillingAccounts,
   normalizeBillingSource,
   normalizeSyncStatus,

@@ -882,7 +882,7 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
 // API Billing Section (existing — local usage cost aggregation)
 // ---------------------------------------------------------------------------
 
-function ApiBillingSection({ accounts, loading, sectionsInitiallyOpen }) {
+function ApiBillingSection({ accounts, loading, estimatedTotalUsd = null, sectionsInitiallyOpen }) {
   const officialMonthValues = accounts
     .filter((account) => account.spendAuthority === "official_invoice")
     .map((account) => account.monthCostUsd)
@@ -894,7 +894,13 @@ function ApiBillingSection({ accounts, loading, sectionsInitiallyOpen }) {
     .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)) && Number(value) >= 0)
     .map(Number);
   const officialMonthUsd = officialMonthValues.reduce((sum, value) => sum + value, 0);
-  const estimatedMonthUsd = estimatedMonthValues.reduce((sum, value) => sum + value, 0);
+  const hasEstimatedTotal = estimatedTotalUsd !== null
+    && estimatedTotalUsd !== undefined
+    && Number.isFinite(Number(estimatedTotalUsd))
+    && Number(estimatedTotalUsd) >= 0;
+  const estimatedMonthUsd = hasEstimatedTotal
+    ? Number(estimatedTotalUsd)
+    : estimatedMonthValues.reduce((sum, value) => sum + value, 0);
   const unavailableAccounts = accounts.filter((account) => account.spendAuthority === "unavailable").length;
   const unavailable = copy("spend.cost.row.unavailable");
   return (
@@ -908,7 +914,7 @@ function ApiBillingSection({ accounts, loading, sectionsInitiallyOpen }) {
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
         { label: copy("spend.cost.summary.official_api_cash"), value: officialMonthValues.length > 0 ? officialMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "green" },
-        { label: copy("spend.cost.row.month_estimate"), value: estimatedMonthValues.length > 0 ? estimatedMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "orange" },
+        { label: copy("spend.cost.row.month_estimate"), value: hasEstimatedTotal || estimatedMonthValues.length > 0 ? estimatedMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "orange" },
         { label: copy("spend.cost.api_billing.summary.unavailable_accounts"), value: unavailableAccounts.toLocaleString() },
         { label: copy("spend.cost.design.error_rate"), value: unavailable, tone: "green" },
       ]}

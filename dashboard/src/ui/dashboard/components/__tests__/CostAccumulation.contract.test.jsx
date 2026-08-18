@@ -763,16 +763,6 @@ it("keeps official API cash separate from local list-price estimates in the API 
           status: "synced",
         },
         {
-          id: "local-estimate",
-          provider: "anthropic",
-          accountName: "Anthropic Usage",
-          billingSource: "api",
-          spendAuthority: "local_list_price_estimate",
-          monthCostUsd: 30,
-          lifetimeCostUsd: 90,
-          status: "synced",
-        },
-        {
           id: "unavailable",
           provider: "google",
           accountName: "Google Billing",
