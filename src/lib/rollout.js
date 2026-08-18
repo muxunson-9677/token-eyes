@@ -7,6 +7,7 @@ const readline = require("node:readline");
 const crypto = require("node:crypto");
 const { ensureDir } = require("./fs");
 const { readSqliteJsonRows } = require("./sqlite-reader");
+const { normalizeUsageAttribution } = require("./usage-attribution");
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
@@ -1026,6 +1027,7 @@ async function parseRolloutFile({
     }
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
+    mergeBucketUsageAttribution(bucket, info);
     addTotals(bucket.totals, delta);
     touchedBuckets.add(bucketKey(source, model, bucketStart));
     if (currentProjectKey && projectState && projectTouchedBuckets) {
@@ -1038,6 +1040,7 @@ async function parseRolloutFile({
         currentRepoRoot,
         model,
       );
+      mergeBucketUsageAttribution(projectBucket, info);
       addTotals(projectBucket.totals, delta);
       projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, bucketStart, model));
     }
@@ -1355,6 +1358,33 @@ async function parseOpencodeMessageFile({
   return { messageKey, lastTotals: currentTotals, eventsAggregated: 1, shouldUpdate: true };
 }
 
+function mergeBucketUsageAttribution(bucket, evidence) {
+  if (!bucket || typeof bucket !== "object") return;
+  const incoming = normalizeUsageAttribution(evidence);
+  const current = normalizeUsageAttribution(bucket.attribution);
+  const incomingTrusted = incoming.billing_mode !== "unknown";
+  const currentTrusted = current.billing_mode !== "unknown";
+
+  if (bucket.attributionConflict) return;
+  if (!incomingTrusted) {
+    if (!bucket.attribution) bucket.attribution = incoming;
+    return;
+  }
+  if (currentTrusted && current.billing_mode !== incoming.billing_mode) {
+    bucket.attribution = normalizeUsageAttribution({ billing_mode: "mixed" });
+    bucket.attributionConflict = true;
+    return;
+  }
+  bucket.attribution = incoming;
+}
+
+function serializeUsageQueueRecord(record, evidence) {
+  return JSON.stringify({
+    ...record,
+    ...normalizeUsageAttribution(evidence),
+  });
+}
+
 async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets }) {
   if (!touchedBuckets || touchedBuckets.size === 0) return 0;
 
@@ -1461,7 +1491,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     if (dominantModel) {
       if (alignedModel && !group.buckets.has(alignedModel)) {
         toAppend.push(
-          JSON.stringify({
+          serializeUsageQueueRecord({
             source: group.source,
             model: alignedModel,
             hour_start: group.hourStart,
@@ -1484,7 +1514,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       ) {
         if (unknownBucket.retractedUnknownKey !== zeroKey) {
           toAppend.push(
-            JSON.stringify({
+            serializeUsageQueueRecord({
               source: group.source,
               model: DEFAULT_MODEL,
               hour_start: group.hourStart,
@@ -1511,7 +1541,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         const key = totalsKey(totals);
         if (bucket.queuedKey === key) continue;
         toAppend.push(
-          JSON.stringify({
+          serializeUsageQueueRecord({
             source: group.source,
             model,
             hour_start: group.hourStart,
@@ -1523,7 +1553,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             total_tokens: totals.total_tokens,
             billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
             conversation_count: totals.conversation_count,
-          }),
+          }, bucket.attribution),
         );
         bucket.queuedKey = key;
       }
@@ -1539,7 +1569,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     const nextAligned = outputModel !== DEFAULT_MODEL ? outputModel : null;
     if (alignedModel && alignedModel !== nextAligned) {
       toAppend.push(
-        JSON.stringify({
+        serializeUsageQueueRecord({
           source: group.source,
           model: alignedModel,
           hour_start: group.hourStart,
@@ -1561,7 +1591,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     ) {
       if (unknownBucket.retractedUnknownKey !== zeroKey) {
         toAppend.push(
-          JSON.stringify({
+          serializeUsageQueueRecord({
             source: group.source,
             model: DEFAULT_MODEL,
             hour_start: group.hourStart,
@@ -1583,7 +1613,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     const outputKey = outputModel === DEFAULT_MODEL ? key : `${key}|${outputModel}`;
     if (unknownBucket.queuedKey === outputKey) continue;
     toAppend.push(
-      JSON.stringify({
+      serializeUsageQueueRecord({
         source: group.source,
         model: outputModel,
         hour_start: group.hourStart,
@@ -1595,7 +1625,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         total_tokens: unknownBucket.totals.total_tokens,
         billable_total_tokens: unknownBucket.totals.billable_total_tokens ?? unknownBucket.totals.total_tokens,
         conversation_count: unknownBucket.totals.conversation_count,
-      }),
+      }, unknownBucket.attribution),
     );
     unknownBucket.queuedKey = outputKey;
   }
@@ -1630,7 +1660,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       const groupKey = groupBucketKey(group.source, group.hourStart);
       if (groupQueued[groupKey] === key) continue;
       toAppend.push(
-        JSON.stringify({
+        serializeUsageQueueRecord({
           source: group.source,
           model,
           hour_start: group.hourStart,
@@ -1684,7 +1714,7 @@ async function enqueueTouchedProjectBuckets({
     if (!projectRef || !projectKey) continue;
 
     toAppend.push(
-      JSON.stringify({
+      serializeUsageQueueRecord({
         project_ref: projectRef,
         project_key: projectKey,
         repo_root: bucket.repo_root,
@@ -1699,7 +1729,7 @@ async function enqueueTouchedProjectBuckets({
         total_tokens: totals.total_tokens,
         billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
         conversation_count: totals.conversation_count,
-      }),
+      }, bucket.attribution),
     );
     bucket.queuedKey = queuedKey;
   }

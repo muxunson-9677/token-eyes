@@ -46,6 +46,10 @@ const {
   flattenUsageLimitsPayload,
 } = require("./widget-view-model");
 const { getCodexUsageLimits } = require("./usage-limits");
+const {
+  normalizeBillingMode,
+  normalizeUsageAttribution,
+} = require("./usage-attribution");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
@@ -2948,142 +2952,19 @@ function createLocalApiHandler({
   }
 
   // ---------------------------------------------------------------------------
-  // Q02: billing_mode derivation helpers.
-  //
-  // We do NOT trust queue rows to carry a `billing_mode` field today (Hermes
-  // schema has it but TokenTracker doesn't forward it). Until parser support
-  // lands, we infer the mode at read time using:
-  //   1) explicit row field (preferred, in case the field ever appears),
-  //   2) Token 濂楅 records: `plan_label` keywords matching the model name,
-  //   3) source-level plan match for non-mixed sources,
-  //   4) model-keyword heuristic,
-  //   5) `unknown` (NEVER default to api_key).
+  // billing_mode is trusted evidence from a queue/runtime row. Model names,
+  // sources, and locally configured plan records are not billing evidence.
   // ---------------------------------------------------------------------------
-
-  // Sources where the same source can carry both API Key and Token Plan
-  // traffic; per the spec, these skip the source-level Token Plan fallback so
-  // a single plan record for the source can't force every model into token_plan.
-  const MIXED_BILLING_SOURCES = new Set(["hermes"]);
-
-  const TOKEN_PLAN_MODEL_KEYWORDS = [
-    "mimo",
-    "token plan",
-    "subscription",
-    "pro plan",
-    "max plan",
-    "plus plan",
-  ];
-  const API_KEY_MODEL_KEYWORDS = [
-    "deepseek",
-    "openrouter",
-    "api key",
-    "payg",
-    "pay-as-you-go",
-    "custom api",
-  ];
-
-  function tokenizeForKeywordMatch(value) {
-    if (typeof value !== "string") return [];
-    const lower = value.toLowerCase();
-    // Split on any non-alphanumeric, keep latin/digit chunks.
-    const parts = lower.split(/[^a-z0-9]+/g).filter(Boolean);
-    // Spec: length < 3 ignored.
-    return parts.filter((part) => part.length >= 3);
-  }
-
-  function tokensContainAny(tokens, keywords) {
-    if (!Array.isArray(tokens) || !tokens.length) return false;
-    const tokenSet = new Set(tokens);
-    const joinedTokens = tokens.join(" ");
-    for (const keyword of keywords) {
-      const keywordTokens = tokenizeForKeywordMatch(String(keyword || ""));
-      if (!keywordTokens.length) continue;
-      if (keywordTokens.length === 1 && tokenSet.has(keywordTokens[0])) return true;
-      if (joinedTokens.includes(keywordTokens.join(" "))) return true;
-    }
-    return false;
-  }
-
   function normalizeBillingModeRaw(value) {
-    if (value == null) return null;
-    const raw = String(value).trim().toLowerCase();
-    if (!raw) return null;
-    if (raw === "api_key" || raw === "api-key" || raw === "api key") return "api_key";
-    if (
-      raw === "payg" ||
-      raw === "pay_as_you_go" ||
-      raw === "pay-as-you-go"
-    ) {
-      return "api_key";
-    }
-    if (raw === "token_plan" || raw === "token-plan" || raw === "token plan") {
-      return "token_plan";
-    }
-    if (raw === "subscription" || raw === "plan") return "token_plan";
-    if (raw === "unknown" || raw === "mixed") return raw;
-    return null;
+    return normalizeBillingMode(value);
   }
 
-  function planLabelMatchesModel(planLabel, model) {
-    const labelTokens = tokenizeForKeywordMatch(planLabel);
-    const modelTokens = tokenizeForKeywordMatch(model);
-    if (!labelTokens.length || !modelTokens.length) return false;
-    // Spec: contains relationship after lowercasing + de-symbolization +
-    // tokenization. Each side's tokens must intersect on at least one
-    // chunk of length >= 3.
-    const modelSet = new Set(modelTokens);
-    for (const tok of labelTokens) {
-      if (modelSet.has(tok)) return true;
-    }
-    return false;
-  }
-
-  function deriveModelBillingMode({ row, model, source, planRecords }) {
-    // 1) Explicit row field 鈥?`billing_mode` / `billingMode`.
-    const explicitRaw =
-      row?.billing_mode ?? row?.billingMode ?? null;
-    const explicit = normalizeBillingModeRaw(explicitRaw);
-    if (explicit && explicit !== "mixed") {
-      return { mode: explicit, confidence: "explicit_row" };
-    }
-
-    const safeModel = String(model || "").trim();
-    const safeSource = String(source || "").trim().toLowerCase();
-    const records = Array.isArray(planRecords) ? planRecords : [];
-    const sourceRecords = records.filter(
-      (r) => String(r?.source || "").trim().toLowerCase() === safeSource,
-    );
-
-    // 2) Token plan label match 鈥?`record.source` == source AND plan_label
-    //    keywords intersect the model tokens.
-    if (safeSource) {
-      for (const record of sourceRecords) {
-        if (planLabelMatchesModel(record?.plan_label, safeModel)) {
-          return { mode: "token_plan", confidence: "token_plan_label_match" };
-        }
-      }
-    }
-
-    // 3) Source-level plan match 鈥?only for sources that are NOT known to mix
-    //    api_key and token_plan traffic. Hermes is the canonical example.
-    if (safeSource && !MIXED_BILLING_SOURCES.has(safeSource) && sourceRecords.length > 0) {
-      return { mode: "token_plan", confidence: "source_token_plan_match" };
-    }
-
-    // 4) Heuristic model keyword match. Token Plan keywords win over
-    //    API Key keywords when both are present.
-    const modelTokens = tokenizeForKeywordMatch(safeModel);
-    if (modelTokens.length) {
-      if (tokensContainAny(modelTokens, TOKEN_PLAN_MODEL_KEYWORDS)) {
-        return { mode: "token_plan", confidence: "heuristic_model_keyword" };
-      }
-      if (tokensContainAny(modelTokens, API_KEY_MODEL_KEYWORDS)) {
-        return { mode: "api_key", confidence: "heuristic_model_keyword" };
-      }
-    }
-
-    // 5) Fallback 鈥?never default to api_key.
-    return { mode: "unknown", confidence: "fallback_unknown" };
+  function deriveModelBillingMode({ row }) {
+    const attribution = normalizeUsageAttribution(row);
+    return {
+      mode: attribution.billing_mode,
+      confidence: attribution.billing_mode_confidence,
+    };
   }
 
   const SOURCE_BILLING_MODE_ORDER = ["api_key", "token_plan", "unknown"];
@@ -3091,6 +2972,11 @@ function createLocalApiHandler({
   function summarizeSourceBillingMode(modelResults) {
     const modes = new Set();
     for (const r of Array.isArray(modelResults) ? modelResults : []) {
+      if (r?.mode === "mixed") {
+        modes.add("api_key");
+        modes.add("token_plan");
+        continue;
+      }
       if (r && (r.mode === "api_key" || r.mode === "token_plan" || r.mode === "unknown")) {
         modes.add(r.mode);
       }
@@ -6488,12 +6374,8 @@ function createLocalApiHandler({
         return d >= from && d <= to;
       });
 
-      // Q02: derive billing_mode from local Token 濂楅 records + queue rows.
-      // We do this BEFORE the per-model cost pass so each model carries the
-      // (mode, confidence) pair it was attributed with, and the source-level
-      // summary can aggregate from the per-model set.
-      const planRecords = readTokenPlanRecords();
-
+      // Derive billing_mode only from normalized queue evidence. Do this before
+      // the per-model cost pass so source summaries aggregate the same modes.
       const bySource = new Map();
       for (const row of rows) {
         const src = row.source || "unknown";
@@ -6529,21 +6411,18 @@ function createLocalApiHandler({
               model: m.model,
               source: s.source,
             }, pricingOptions);
-            // Q02: per-model billing_mode derivation. We use the first row
-            // seen for this (source, model) pair to honor the explicit
-            // field if any row carries it; queue rows are append-only and
-            // carry the same (source, model, hour_start) key.
-            const sampleRow = rows.find(
+            const modelRows = rows.filter(
               (r) =>
                 (r.source || "unknown") === s.source &&
                 (r.model || "unknown") === m.model,
             );
-            const derived = deriveModelBillingMode({
-              row: sampleRow,
-              model: m.model,
-              source: s.source,
-              planRecords,
-            });
+            const explicitRows = modelRows
+              .map((row) => deriveModelBillingMode({ row }))
+              .filter((result) => result.mode !== "unknown");
+            const explicitModes = new Set(explicitRows.map((result) => result.mode));
+            const derived = explicitModes.size > 1
+              ? { mode: "mixed", confidence: "unavailable" }
+              : explicitRows[0] || { mode: "unknown", confidence: "unavailable" };
             modelResults.push(derived);
             return {
               ...m,
@@ -8493,7 +8372,6 @@ function createLocalApiHandler({
   handleLocalApi.deriveModelBillingMode = deriveModelBillingMode;
   handleLocalApi.summarizeSourceBillingMode = summarizeSourceBillingMode;
   handleLocalApi.normalizeBillingModeRaw = normalizeBillingModeRaw;
-  handleLocalApi.planLabelMatchesModel = planLabelMatchesModel;
 
   return handleLocalApi;
 }
