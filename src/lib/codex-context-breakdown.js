@@ -152,6 +152,10 @@ async function computeCodexContextBreakdown({
   top = 20,
   timeZoneContext = null,
 } = {}) {
+  const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VITEST === "true";
+  if (isTestRunner && !codexDir) {
+    throw new Error("computeCodexContextBreakdown requires an explicit codexDir in tests");
+  }
   let fromKey = from;
   let toKey = to;
   if ((!fromKey && !toKey) && normalizePeriod(period)) {

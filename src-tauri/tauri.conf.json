@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Token Eyes",
-  "version": "0.54.40",
+  "version": "0.54.43",
   "identifier": "com.tokeneyes.desktop",
   "build": {
     "frontendDist": "../dashboard/dist",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:5174",
     "beforeDevCommand": "npm --prefix dashboard run dev -- --host 127.0.0.1",
     "beforeBuildCommand": "npm run dashboard:build && npm run tauri:prepare-runtime"
   },
@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "Token Eyes",
-        "width": 1200,
-        "height": 800,
+        "width": 1586,
+        "height": 932,
         "minWidth": 900,
         "minHeight": 600,
         "resizable": true,
@@ -41,7 +41,7 @@
       "icons/token-eyes-orange/icon.ico"
     ],
     "resources": [
-      "EmbeddedServer-0.54.40/**/*"
+      "EmbeddedServer-0.54.43/**/*"
     ],
     "windows": {
       "nsis": {

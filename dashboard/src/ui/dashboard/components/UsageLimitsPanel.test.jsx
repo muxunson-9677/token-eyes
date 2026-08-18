@@ -197,6 +197,52 @@ describe("UsageLimitsPanel", () => {
     expectLimitRow("Spark 7d", "18%");
   });
 
+  it("shows a burn-rate ETA line with local-estimate provenance, and an em-dash when insufficient", () => {
+    const resetAt = new Date(Date.now() + (2 * 60 + 13) * 60_000 + 30_000).toISOString();
+    const { rerender } = render(
+      <UsageLimitsPanel
+        claude={{
+          configured: true,
+          error: null,
+          five_hour: { utilization: 60, resets_at: resetAt },
+          burn_rate: {
+            basis: "local_estimate",
+            percent_per_min: 0.4,
+            eta_exhaust_at: new Date(Date.now() + 100 * 60_000).toISOString(),
+            tokens_last_60m: 2000,
+            tokens_last_120m: 4000,
+          },
+        }}
+        order={["claude"]}
+      />,
+    );
+
+    const line = screen.getByTestId("limits-burn-line");
+    expect(line.textContent).toContain(copy("limits.burn.local_estimate"));
+    expect(line.textContent).toMatch(/\d{1,2}:\d{2}/);
+    expect(line.textContent).toMatch(/2h 1[23]m/);
+
+    rerender(
+      <UsageLimitsPanel
+        claude={{
+          configured: true,
+          error: null,
+          five_hour: { utilization: 60, resets_at: resetAt },
+          burn_rate: {
+            basis: "local_estimate",
+            percent_per_min: null,
+            eta_exhaust_at: null,
+            tokens_last_60m: 0,
+            tokens_last_120m: 0,
+          },
+        }}
+        order={["claude"]}
+      />,
+    );
+
+    expect(screen.getByTestId("limits-burn-line").textContent).toContain("—");
+  });
+
   it("keeps distinct privacy-safe accounts and per-account failures in the existing list", () => {
     render(
       <UsageLimitsPanel

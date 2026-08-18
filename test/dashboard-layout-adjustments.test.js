@@ -191,8 +191,8 @@ test("TrendMonitor root does not force full height", () => {
   );
   assert.ok(src.includes("export function TrendMonitor"), "expected TrendMonitor component");
   assert.ok(
-    src.includes('"tt-surface rounded-[var(--tt-card-radius)] p-5"'),
-    "expected TrendMonitor to use the shared surface without forcing full height",
+    src.includes('"tt-surface tt-pressable-group rounded-[var(--tt-card-radius)] p-5"'),
+    "expected TrendMonitor to use the shared pressable surface without forcing full height",
   );
   assert.ok(
     src.includes('isZoom && "flex h-full flex-col"'),
@@ -211,13 +211,14 @@ test("overview does not duplicate the request log from usage statistics", () => 
   assert.ok(!src.includes("RequestUsageLog"), "expected request log to exist only in usage statistics");
 });
 
-test("usage trend expands beside the readable 17rem Token service column", () => {
+test("usage trend uses the approved 3:1 layout beside Token services", () => {
   const src = readFile(spendPath);
   assert.ok(
-    src.includes("lg:grid-cols-[minmax(0,1fr)_17rem]"),
-    "expected lower usage grid to reserve a readable 17rem Token service column",
+    src.includes("lg:grid-cols-4"),
+    "expected lower usage grid to use four equal tracks for the approved 3:1 layout",
   );
-  assert.ok(!src.includes("lg:grid-cols-[minmax(0,1fr)_13rem]"), "expected the cramped 13rem Token service column removed");
+  assert.ok(src.includes("lg:col-span-3"), "expected usage trend to span three tracks");
+  assert.ok(src.includes("lg:col-span-1"), "expected Token services to occupy one track");
 });
 
 test("overview preserves approved analysis and dedicated next-step actions", () => {
@@ -255,6 +256,18 @@ test("custom spend group cards wrap names and preserve readable responsive amoun
   assert.ok(section.includes("break-words text-sm"), "expected group names to wrap at a readable size");
   assert.ok(section.includes("text-xs text-oai-gray-500"), "expected USD/CNY amounts to stay readable");
   assert.ok(!section.includes('<h4 className="truncate'), "group names must not use ellipsis truncation");
+});
+
+test("cost section summaries stay visible and header geometry stays fixed while details expand", () => {
+  const src = readFile(costAccumulationPath);
+  const css = readFile(appleGlassPath);
+
+  assert.ok(src.includes("{summaryMetrics.length > 0 ? ("), "expected metrics in both collapsed and expanded states");
+  assert.ok(!src.includes("{!open && summaryMetrics.length > 0 ? ("), "expanded sections must not remove summary metrics");
+  assert.ok(!css.includes('body:has(.tt-reference-route-spend-cost [data-cost-section][data-open="true"])'), "one expanded section must not hide sibling summaries");
+  assert.ok(css.includes('[data-cost-section][data-open="false"] > div:first-child'), "expected a closed-state margin override without moving the header content");
+  assert.ok(css.includes("transform: none;"), "collapsed and expanded headers must keep the same vertical origin");
+  assert.ok(css.includes('[data-cost-section] > div:first-child > button:hover'), "section toggles must not shift their labels on hover");
 });
 
 test("cost page can exercise 1280, 1440, and 1920 content widths without a fixed max-width cap", () => {

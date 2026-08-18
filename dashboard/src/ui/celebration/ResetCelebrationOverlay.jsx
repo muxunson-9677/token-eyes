@@ -1,5 +1,5 @@
-import React, { Component, lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { useTheme } from "../../hooks/useTheme.js";
+import React, { Component, lazy, Suspense, useCallback, useContext, useEffect, useState } from "react";
+import { ThemeContext } from "../foundation/ThemeProvider.jsx";
 import { copy } from "../../lib/copy";
 import { normalizeResetCelebrationEffect } from "./reset-celebration-preference.js";
 import "./reset-celebration.css";
@@ -77,8 +77,10 @@ function CelebrationGiftIcon() {
   );
 }
 
-export function ResetCelebrationOverlay({ event, durationMs, effectId = "meteors" }) {
-  const { resolvedTheme } = useTheme();
+export function ResetCelebrationOverlay({ event, durationMs, effectId = "meteors", showNotice = true, fitToHost = false }) {
+  // Optional read: the desktop-widget window renders this overlay outside the
+  // main app's ThemeProvider, so fall back to light instead of throwing.
+  const resolvedTheme = useContext(ThemeContext)?.resolvedTheme ?? "light";
   const reducedMotion = useReducedMotionPreference();
   const normalizedEffect = normalizeResetCelebrationEffect(effectId);
   const [rendererFailed, setRendererFailed] = useState(false);
@@ -109,22 +111,24 @@ export function ResetCelebrationOverlay({ event, durationMs, effectId = "meteors
       {useCanvas ? (
         <RendererErrorBoundary key={event.eventId} onFallback={handleFallback}>
           <Suspense fallback={null}>
-            <Renderer onFallback={handleFallback} />
+            <Renderer onFallback={handleFallback} fitParent={fitToHost} />
           </Suspense>
         </RendererErrorBoundary>
       ) : null}
-      <div
-        className="tt-reset-celebration__notice"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        <CelebrationGiftIcon />
-        <span className="tt-reset-celebration__notice-copy">
-          <strong>{copy("official_reset_celebration.title")}</strong>
-          <span>{copy("official_reset_celebration.summary")}</span>
-        </span>
-      </div>
+      {showNotice ? (
+        <div
+          className="tt-reset-celebration__notice"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <CelebrationGiftIcon />
+          <span className="tt-reset-celebration__notice-copy">
+            <strong>{copy("official_reset_celebration.title")}</strong>
+            <span>{copy("official_reset_celebration.summary")}</span>
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -8,7 +8,6 @@ import {
   Pin,
   PinOff,
   Sparkles,
-  Terminal,
   X,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -21,6 +20,11 @@ import {
   type DesktopWidgetViewModel,
 } from "../lib/api";
 import { copy, getCopyLocale } from "../lib/copy";
+import { DASHBOARD_AGENTS } from "../lib/agent-adapters-dashboard";
+import { groupWidgetLimits } from "../lib/widget-limit-groups.js";
+// The shared preference hook is a legacy JSX-facing module without declarations.
+// @ts-expect-error stable runtime contract is narrowed by LimitsDisplaySnapshot below
+import { LIMITS_DISPLAY_CHANGE_EVENT, readLimitsDisplaySnapshot } from "../hooks/use-limits-display-prefs";
 import {
   readResetCelebrationEffect,
   RESET_CELEBRATION_EFFECT_CHANGE_EVENT,
@@ -28,8 +32,11 @@ import {
   type ResetCelebrationEffectId,
 } from "../ui/celebration/reset-celebration-preference.js";
 // ResetCelebrationProvider is a JSX module with no declaration file.
-// @ts-expect-error importing a named constant from an untyped JSX module
-import { DESKTOP_WIDGET_CELEBRATION_EVENT } from "../ui/celebration/ResetCelebrationProvider.jsx";
+// @ts-expect-error importing named constants from an untyped JSX module
+import { DESKTOP_WIDGET_CELEBRATION_EVENT, RESET_CELEBRATION_DURATION_MS } from "../ui/celebration/ResetCelebrationProvider.jsx";
+// The widget reuses the same canvas celebration as the reset page.
+// @ts-expect-error importing an untyped JSX component
+import { ResetCelebrationOverlay } from "../ui/celebration/ResetCelebrationOverlay.jsx";
 // PillNav is a JSX module with a stable prop contract but no declaration file.
 // @ts-expect-error importing an untyped JSX component
 import { PillNav } from "../ui/components/PillNav";
@@ -38,13 +45,24 @@ import { PillNav } from "../ui/components/PillNav";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon";
 import "./desktop-widget.css";
 
-const AGENT_LABELS: Record<DesktopWidgetAgent, string> = {
+const AGENT_LABELS: Partial<Record<DesktopWidgetAgent, string>> = {
   all: "Token Eyes",
   claude: "Claude",
   codex: "Codex",
   cursor: "Cursor",
   hermes: "Hermes",
 };
+
+const DASHBOARD_AGENT_LABELS = new Map(DASHBOARD_AGENTS.map((agent) => [agent.id, agent.displayName]));
+
+type LimitsDisplaySnapshot = {
+  providerOrder: string[];
+  providerVisibility: Record<string, boolean>;
+};
+
+function agentLabel(agent: DesktopWidgetAgent) {
+  return AGENT_LABELS[agent] || DASHBOARD_AGENT_LABELS.get(agent) || agent;
+}
 
 const MODE_KEYS: Record<DesktopWidgetMode, string> = {
   projects: "widget.mode.projects",
@@ -62,13 +80,6 @@ const MATERIAL_KEYS: Record<DesktopWidgetMaterial, string> = {
 function AgentIcon({ agent, size = 24 }: { agent: DesktopWidgetAgent | string; size?: number }) {
   if (agent === "all") {
     return <img src="/app-icon.png" alt="" width={size} height={size} aria-hidden />;
-  }
-  if (agent === "codex") {
-    return (
-      <span className="widget-codex-mark" style={{ width: size, height: size }} aria-hidden>
-        <Terminal size={Math.max(10, Math.round(size * 0.56))} strokeWidth={2.5} />
-      </span>
-    );
   }
   return <ProviderIcon provider={agent} size={size} />;
 }
@@ -106,10 +117,18 @@ export function orderedWidgetLimits(
   selectedIds: string[] | null | undefined,
 ) {
   if (selectedIds == null) return limits;
-  const byId = new Map(limits.map((limit) => [limit.id, limit]));
-  return selectedIds
-    .map((id) => byId.get(id))
-    .filter((limit): limit is DesktopWidgetLimit => Boolean(limit));
+  const selected = new Set<string>();
+  return selectedIds.flatMap((id) => {
+    return limits.filter((candidate) => (
+      candidate.id === id
+      || candidate.id.startsWith(`${id}:`)
+      || id.startsWith(`${candidate.id}:`)
+    )).filter((candidate) => {
+      if (selected.has(candidate.id)) return false;
+      selected.add(candidate.id);
+      return true;
+    });
+  });
 }
 
 export function activeWidgetModels(models: DesktopWidgetModelUsage[]) {
@@ -159,24 +178,23 @@ function LimitProgress({ value }: { value: number | null }) {
 }
 
 function LimitsSummary({ model }: { model: DesktopWidgetViewModel }) {
-  const limits = model.limits.slice(0, 1);
-  if (!limits.length) {
+  const plans = groupWidgetLimits(model.limits);
+  if (!plans.length) {
     return React.createElement("span", { className: "widget-empty" }, copy("widget.empty"));
   }
+  const plan = plans[0];
+  const planIdentity = plan.planLabel
+    ? `${plan.provider} · ${plan.planLabel}`
+    : `${plan.provider} · ${plan.accountLabel}`;
   return (
     <div className="widget-limit-summary">
-      {limits.map((limit) => (
-        <span className="widget-limit-summary__item" key={limit.id}>
-          <LimitProgress value={limit.usedPercent} />
-          <span className="widget-limit-summary__window">{limit.window}</span>
-          <strong>{limit.usedPercent == null ? "—" : `${limit.usedPercent}%`}</strong>
-          {limit.notes ? (
-            <small className="widget-limit-summary__note widget-truncate" title={limit.notes}>
-              {limit.notes}
-            </small>
-          ) : null}
+      <span className="widget-limit-summary__item" key={plan.id}>
+        <span className="widget-limit-summary__identity widget-truncate">
+          {planIdentity}
         </span>
-      ))}
+        <LimitProgress value={plan.usedPercent} />
+        <strong>{plan.usedPercent == null ? "—" : `${plan.usedPercent}%`}</strong>
+      </span>
     </div>
   );
 }
@@ -208,6 +226,15 @@ function WidgetResetCelebration({
   const [effectId, setEffectId] = useState<ResetCelebrationEffectId>(
     preferredEffectId ?? readResetCelebrationEffect,
   );
+  const [cycle, setCycle] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setCycle((value) => value + 1),
+      RESET_CELEBRATION_DURATION_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [resetId, effectId]);
 
   useEffect(() => {
     const syncEffect = (event?: Event) => {
@@ -235,14 +262,14 @@ function WidgetResetCelebration({
       data-testid="widget-reset-celebration"
       data-effect-id={effectId}
     >
-      <span className="widget-reset-celebration__veil" />
-      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--one" />
-      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--two" />
-      <span className="widget-reset-celebration__meteor widget-reset-celebration__meteor--three" />
-      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--one" />
-      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--two" />
-      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--three" />
-      <span className="widget-reset-celebration__firework widget-reset-celebration__firework--four" />
+      <ResetCelebrationOverlay
+        key={`${resetId}:${effectId}:${cycle}`}
+        event={{ eventId: `${resetId}:${cycle}` }}
+        effectId={effectId}
+        durationMs={RESET_CELEBRATION_DURATION_MS}
+        showNotice={false}
+        fitToHost
+      />
       <button
         type="button"
         aria-label={copy("widget.reset.acknowledge")}
@@ -258,14 +285,12 @@ function WidgetResetCelebration({
 function CompactSummary({
   mode,
   model,
-  expanded,
 }: {
   mode: DesktopWidgetMode;
   model: DesktopWidgetViewModel;
-  expanded: boolean;
 }) {
   if (mode === "models") return React.createElement(ModelsSummary, { model });
-  if (mode === "limits" && !expanded) return React.createElement(LimitsSummary, { model });
+  if (mode === "limits") return React.createElement(LimitsSummary, { model });
   return React.createElement(TrafficLights, { status: model.projectStatus });
 }
 
@@ -276,15 +301,33 @@ function filteredProjectStatus(
 ) {
   let projects = status.projects;
   if (selectedProjectIds.length > 0) {
-    const selected = new Set(selectedProjectIds);
-    projects = projects.filter((project) => selected.has(project.id));
-    const liveById = new Map(projects.map((project) => [project.id, project]));
-    const selectedById = new Map(selectedProjects.map((project) => [project.id, project]));
+    const liveById = new Map();
+    const liveByLabel = new Map<string, DesktopWidgetViewModel["projectStatus"]["projects"]>();
+    status.projects.forEach((project) => {
+      liveById.set(project.id, project);
+      project.sessions.forEach((session) => liveById.set(session.id, project));
+      const label = project.label.trim().toLocaleLowerCase();
+      if (label) liveByLabel.set(label, [...(liveByLabel.get(label) ?? []), project]);
+    });
+    const selectedById = new Map(selectedProjects.map((project) => {
+      return [project.id, project] as const;
+    }));
+    const seen = new Set<string>();
     projects = selectedProjectIds.map((id) => {
-      const live = liveById.get(id);
-      if (live) return live;
       const saved = selectedById.get(id);
-      return saved ? {
+      const savedLabel = saved?.label.trim().toLocaleLowerCase();
+      const exactLive = liveById.get(id);
+      const live = exactLive || (savedLabel
+        ? liveByLabel.get(savedLabel)?.find((project) => !seen.has(project.id))
+        : null);
+      if (live) {
+        if (seen.has(live.id)) return null;
+        seen.add(live.id);
+        return live;
+      }
+      if (saved && !seen.has(id)) {
+        seen.add(id);
+        return {
         id,
         label: saved.label,
         red: 0,
@@ -292,10 +335,35 @@ function filteredProjectStatus(
         green: 0,
         unknown: 0,
         sessions: [],
-      } : null;
+        };
+      }
+      return null;
     }).filter(Boolean) as DesktopWidgetViewModel["projectStatus"]["projects"];
   }
-  return projects.reduce((result, project) => ({
+  const groupedProjects = Array.from(projects.reduce((groups, project) => {
+    const key = project.label.trim().toLocaleLowerCase() || project.id;
+    const current = groups.get(key);
+    if (!current) {
+      groups.set(key, { ...project, sessions: [...project.sessions] });
+      return groups;
+    }
+    const sessionIds = new Set(current.sessions.map((session) => session.id));
+    const sessions = [
+      ...current.sessions,
+      ...project.sessions.filter((session) => !sessionIds.has(session.id)),
+    ];
+    groups.set(key, {
+      ...current,
+      red: current.red + project.red,
+      yellow: current.yellow + project.yellow,
+      green: current.green + project.green,
+      unknown: current.unknown + project.unknown,
+      sessions,
+    });
+    return groups;
+  }, new Map<string, DesktopWidgetViewModel["projectStatus"]["projects"][number]>()).values());
+
+  return groupedProjects.reduce((result, project) => ({
     red: result.red + project.red,
     yellow: result.yellow + project.yellow,
     green: result.green + project.green,
@@ -330,6 +398,48 @@ function formatSessionTime(value: string | null) {
     minute: "2-digit",
     hour12: false,
   }).format(new Date(timestamp));
+}
+
+function formatCompactLimitTime(value: string | null) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.limit.time_unknown");
+  const date = new Date(timestamp);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatCompactRemainingTime(value: string | null) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.limit.time_unknown");
+  const totalHours = Math.max(0, Math.floor((timestamp - Date.now()) / (60 * 60 * 1000)));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return `${days}d ${hours}h`;
+}
+
+export function formatCompactReset(value: string | null) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.limit.reset_unavailable");
+  return copy("widget.limit.reset_at", {
+    time: `${formatCompactRemainingTime(value)}（${formatCompactLimitTime(value)}）`,
+  });
+}
+
+export function formatCompactValidity(value: string | null) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.limit.time_unknown");
+  const days = Math.max(0, Math.ceil((timestamp - Date.now()) / (24 * 60 * 60 * 1000)));
+  return copy("widget.limit.expires_at", {
+    days: String(days),
+    absolute: formatCompactLimitTime(value),
+  });
+}
+
+function formatCompactLimitWindow(value: string | null) {
+  const label = String(value || "").trim();
+  const normalized = label.toLocaleLowerCase().replace(/\s+/g, "");
+  if (["1w", "7d", "7天", "weekly", "week"].includes(normalized)) return "Weekly";
+  return label;
 }
 
 function shortSessionId(value: string) {
@@ -403,26 +513,43 @@ function ExpandedProjects({ status }: {
 }
 
 function ExpandedLimits({ model }: { model: DesktopWidgetViewModel }) {
-  if (!model.limits.length) {
+  const plans = groupWidgetLimits(model.limits);
+  if (!plans.length) {
     return <div className="widget-detail-empty">{copy("widget.empty")}</div>;
   }
   return (
     <div className="widget-limit-list">
-      {model.limits.map((limit) => (
-        <div className="widget-limit-row" key={limit.id}>
-          <LimitProgress value={limit.usedPercent} />
-          <span className="widget-limit-row__identity">
-            <strong className="widget-truncate">{limit.provider} · {limit.accountLabel}</strong>
-            <small>{limit.window}{limit.error ? ` · ${copy("widget.refresh_failed")}` : ""}</small>
-            {limit.notes ? (
-              <small className="widget-limit-row__note widget-truncate" title={limit.notes}>
-                {limit.notes}
-              </small>
-            ) : null}
+      {plans.map((plan) => {
+        const planName = plan.planLabel || plan.accountLabel || plan.provider;
+        const planIdentity = `${plan.provider} · ${planName}`;
+        const accountLabel = plan.accountLabel && plan.accountLabel !== planName
+          ? plan.accountLabel
+          : null;
+        return (
+        <div className="widget-limit-plan" data-testid="widget-expanded-limit-plan" key={plan.id}>
+          <span className="widget-limit-plan__identity">
+            <strong className="widget-limit-plan__title widget-truncate">{planIdentity}</strong>
+            {accountLabel ? <small className="widget-limit-plan__account widget-truncate">{accountLabel}</small> : null}
           </span>
-          <strong>{limit.usedPercent == null ? "—" : `${limit.usedPercent}%`}</strong>
+          {plan.windows.map((limit) => (
+            <div className="widget-limit-row" key={limit.id}>
+              <span className="widget-limit-row__head">
+                <strong>{formatCompactLimitWindow(limit.window)}</strong>
+                <strong>{limit.usedPercent == null ? "—" : `${limit.usedPercent}%`}</strong>
+              </span>
+              <LimitProgress value={limit.usedPercent} />
+              <small className="widget-limit-row__reset">
+                {limit.resetAt
+                  ? formatCompactReset(limit.resetAt)
+                  : copy("widget.limit.reset_unavailable")}
+              </small>
+              {limit.error ? <small className="widget-limit-row__error">{copy("widget.refresh_failed")}</small> : null}
+            </div>
+          ))}
+          {plan.expiresAt ? <small className="widget-limit-plan__validity">{formatCompactValidity(plan.expiresAt)}</small> : null}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -441,7 +568,7 @@ function ExpandedModels({ model }: { model: DesktopWidgetViewModel }) {
               <i className="widget-model-row__tone" data-testid="widget-model-tone" data-tone={String(index % 7)} />
               {item.name}
             </strong>
-            <span>{formatCompactTokenCount(item.tokens)} · {item.share}%</span>
+            <span>{new Intl.NumberFormat("en-US").format(item.tokens)} · {item.share}%</span>
           </div>
           <div className="widget-model-row__bar">
             <span data-tone={String(index % 7)} style={{ width: `${Math.max(0, Math.min(100, item.share))}%` }} />
@@ -471,12 +598,15 @@ function PortalMenu({
       aria-label={label}
       data-menu-kind={kind}
       data-menu-layout="vertical"
+      data-menu-depth={kind === "agent" ? "reference-glass" : undefined}
+      data-menu-scrollbar={kind === "agent" ? "hidden" : undefined}
       style={{
         top: Math.max(8, (rect?.bottom ?? 8) + 5),
-        left: Math.max(8, Math.min(rect?.left ?? 8, window.innerWidth - 190)),
-      }}
+        left: Math.max(8, Math.min(rect?.left ?? 8, window.innerWidth - 290)),
+        "--widget-menu-pointer-left": `${Math.max(22, Math.min(258, (rect?.left ?? 8) + (rect?.width ?? 44) / 2 - Math.max(8, Math.min(rect?.left ?? 8, window.innerWidth - 290))))}px`,
+      } as React.CSSProperties}
     >
-      {children}
+      <div className="widget-menu__items">{children}</div>
     </div>,
     document.body,
   );
@@ -560,16 +690,37 @@ export function DesktopWidgetPage() {
   } = useDesktopWidget();
   const [openMenu, setOpenMenu] = useState(null as "agent" | null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
-  const [previewCelebration, setPreviewCelebration] = useState(null as {
+  const browserPreviewEffect = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).has("preview")
+    ? new URLSearchParams(window.location.search).get("celebration")
+    : null;
+  const [previewCelebration, setPreviewCelebration] = useState<{
     eventId: string;
     effectId: ResetCelebrationEffectId;
-  } | null);
+  } | null>(() => browserPreviewEffect === "meteors" || browserPreviewEffect === "fireworks"
+    ? { eventId: `browser-preview:${browserPreviewEffect}`, effectId: browserPreviewEffect }
+    : null);
   const [dismissedResetId, setDismissedResetId] = useState(null as string | null);
-  const agentMenuAnchor = useRef(null as HTMLButtonElement | null);
+  const [limitsDisplay, setLimitsDisplay] = useState<LimitsDisplaySnapshot>(
+    () => readLimitsDisplaySnapshot() as LimitsDisplaySnapshot,
+  );
+  const agentMenuAnchor = useRef(null as HTMLDivElement | null);
   const appearanceAnchor = useRef(null as HTMLButtonElement | null);
   const isBrowserPreview = typeof window !== "undefined"
     && new URLSearchParams(window.location.search).has("preview");
   const browserPreviewClassName = isBrowserPreview ? " desktop-widget-root--browser-preview" : "";
+
+  useEffect(() => {
+    const refreshLimitsDisplay = () => setLimitsDisplay(
+      readLimitsDisplaySnapshot() as LimitsDisplaySnapshot,
+    );
+    window.addEventListener(LIMITS_DISPLAY_CHANGE_EVENT, refreshLimitsDisplay);
+    window.addEventListener("storage", refreshLimitsDisplay);
+    return () => {
+      window.removeEventListener(LIMITS_DISPLAY_CHANGE_EVENT, refreshLimitsDisplay);
+      window.removeEventListener("storage", refreshLimitsDisplay);
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.add("desktop-widget-document");
@@ -626,6 +777,18 @@ export function DesktopWidgetPage() {
   }, []);
 
   const model = viewModel;
+  const visibleAgentOptions = [
+    "all",
+    ...limitsDisplay.providerOrder.filter((agent: string) => (
+      limitsDisplay.providerVisibility[agent] !== false
+    )),
+  ].filter((agent, index, options) => options.indexOf(agent) === index) as DesktopWidgetAgent[];
+  const selectedAgentVisible = prefs.selectedAgent === "all"
+    || visibleAgentOptions.includes(prefs.selectedAgent);
+
+  useEffect(() => {
+    if (!selectedAgentVisible) void updatePrefs({ selectedAgent: "all" });
+  }, [prefs.selectedAgent, selectedAgentVisible, updatePrefs]);
   const selectedProjectIds = prefs.selectedProjectIds ?? [];
   const visibleLimits = model
     ? orderedWidgetLimits(model.limits, prefs.selectedLimitIds)
@@ -656,10 +819,12 @@ export function DesktopWidgetPage() {
     "--widget-preview-height": `${prefs.expanded ? prefs.expandedHeight : prefs.collapsedHeight}px`,
   } as React.CSSProperties;
   const setMode = (mode: string) => {
-    void updatePrefs({ mode: mode as DesktopWidgetMode });
+    const nextMode = mode as DesktopWidgetMode;
+    void updatePrefs({ mode: nextMode });
   };
   const handleDragStart = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
+    if (openMenu || appearanceOpen) return;
     const target = event.target as HTMLElement;
     if (target.closest("button, input, label, a, select, textarea, [role='menu'], [role='slider'], .widget-scroll-region")) {
       return;
@@ -674,8 +839,8 @@ export function DesktopWidgetPage() {
     };
   }, [activeCelebrationId, setCelebrationOpen]);
 
-  const dismissCelebration = () => {
-    void setCelebrationOpen(false);
+  const dismissCelebration = async () => {
+    await setCelebrationOpen(false);
     if (activePendingResetId) {
       setDismissedResetId(activePendingResetId);
       void acknowledgePendingReset();
@@ -701,17 +866,19 @@ export function DesktopWidgetPage() {
         onPointerDown={handleDragStart}
       >
         <div className="widget-toolbar">
-          <div className="widget-agent-control">
+          <div ref={agentMenuAnchor} className="widget-agent-control">
             <button
               type="button"
               className="widget-agent-main"
               aria-label={copy(prefs.expanded ? "widget.collapse" : "widget.expand")}
-              onClick={() => void updatePrefs({ expanded: !prefs.expanded })}
+              onClick={() => {
+                const expanded = !prefs.expanded;
+                void updatePrefs({ expanded });
+              }}
             >
               <AgentIcon agent={prefs.selectedAgent} size={27} />
             </button>
             <button
-              ref={agentMenuAnchor}
               type="button"
               className="widget-agent-arrow"
               aria-label={copy("widget.agent_menu")}
@@ -727,7 +894,7 @@ export function DesktopWidgetPage() {
 
           <div className="widget-summary" data-testid="widget-drag-surface">
             {visibleModel ? (
-              <CompactSummary mode={prefs.mode} model={visibleModel} expanded={prefs.expanded} />
+              <CompactSummary mode={prefs.mode} model={visibleModel} />
             ) : (
               <span className="widget-empty">
                 {loading ? copy("widget.loading") : error ? copy("widget.unavailable") : copy("widget.empty")}
@@ -785,7 +952,7 @@ export function DesktopWidgetPage() {
 
       {openMenu === "agent" ? (
         <PortalMenu anchor={agentMenuAnchor} label={copy("widget.agent_menu")} kind="agent">
-          {(model?.agents ?? ["all", "claude", "codex", "cursor", "hermes"]).map((agent) => (
+          {visibleAgentOptions.map((agent) => (
             <button
               type="button"
               role="menuitemradio"
@@ -796,8 +963,8 @@ export function DesktopWidgetPage() {
                 void updatePrefs({ selectedAgent: agent });
               }}
             >
-              <AgentIcon agent={agent} size={17} />
-              <span>{AGENT_LABELS[agent]}</span>
+              <AgentIcon agent={agent} size={30} />
+              <span>{agentLabel(agent)}</span>
               {prefs.selectedAgent === agent ? <Check size={14} aria-hidden /> : null}
             </button>
           ))}

@@ -39,7 +39,10 @@ function freshHandler(queuePath) {
   // resolved at construction reflect the temp HOME.
   delete require.cache[require.resolve("../src/lib/local-api")];
   const { createLocalApiHandler } = require("../src/lib/local-api");
-  return createLocalApiHandler({ queuePath });
+  return createLocalApiHandler({
+    queuePath,
+    trackerDataDir: path.join(process.env.HOME, ".tokentracker", "tracker"),
+  });
 }
 
 function makeReq({ method = "GET", urlObj, headers = {}, body } = {}) {

@@ -323,12 +323,17 @@ interface Totals {
   cache_creation_input_tokens: number;
   reasoning_output_tokens: number;
   total_cost_usd: string;
+  billing_mode_token_totals: BillingModeTokenTotals;
+  billing_mode_usage_totals: BillingModeUsageTotals;
+  billing_mode_usage_complete: boolean;
 }
 
 interface GroupedRow {
   bucket: string;
   source: string;
   model: string;
+  billing_mode_token_totals: BillingModeTokenTotals | null;
+  billing_mode_usage_totals: BillingModeUsageTotals | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -338,9 +343,86 @@ interface GroupedRow {
   conversations: number | null;
 }
 
+type BillingModeTokenTotals = { api_key: number; token_plan: number; unknown: number };
+type UsageComponents = {
+  input_tokens: number;
+  output_tokens: number;
+  cached_input_tokens: number;
+  cache_creation_input_tokens: number;
+  reasoning_output_tokens: number;
+  total_tokens: number;
+  billable_total_tokens: number;
+};
+type BillingModeUsageTotals = { api_key: UsageComponents; token_plan: UsageComponents; unknown: UsageComponents };
+type BillingModeCostTotals = { api_key: number; token_plan: number; unknown: number };
+
+function newBillingModeTokenTotals(): BillingModeTokenTotals {
+  return { api_key: 0, token_plan: 0, unknown: 0 };
+}
+
+function newUsageComponents(): UsageComponents {
+  return {
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    reasoning_output_tokens: 0,
+    total_tokens: 0,
+    billable_total_tokens: 0,
+  };
+}
+
+function newBillingModeUsageTotals(): BillingModeUsageTotals {
+  return { api_key: newUsageComponents(), token_plan: newUsageComponents(), unknown: newUsageComponents() };
+}
+
+function addBillingModeTokens(target: BillingModeTokenTotals, row: GroupedRow) {
+  const modes = row.billing_mode_token_totals;
+  if (!modes) target.unknown += Number(row.total_tokens) || 0;
+  else for (const mode of ["api_key", "token_plan", "unknown"] as const) target[mode] += Number(modes[mode]) || 0;
+}
+
+function addBillingModeUsage(target: BillingModeUsageTotals, row: GroupedRow) {
+  const modes = row.billing_mode_usage_totals;
+  if (!modes) return false;
+  for (const mode of ["api_key", "token_plan", "unknown"] as const) {
+    const source = modes[mode];
+    if (!source) return false;
+    for (const field of Object.keys(target[mode]) as Array<keyof UsageComponents>) {
+      target[mode][field] += Number(source[field]) || 0;
+    }
+  }
+  return true;
+}
+
+function computeUsageCost(source: string, model: string, usage: UsageComponents) {
+  const pricing = getModelPricing(model);
+  const reasoningIncludedInOutput = source === "codex" || source === "every-code";
+  return (
+    usage.input_tokens * (pricing.input || 0)
+    + usage.output_tokens * (pricing.output || 0)
+    + usage.cached_input_tokens * (pricing.cache_read || 0)
+    + usage.cache_creation_input_tokens * (pricing.cache_write ?? 0)
+    + (reasoningIncludedInOutput ? 0 : usage.reasoning_output_tokens * (pricing.output || 0))
+  ) / 1_000_000;
+}
+
+function computeBillingModeCosts(source: string, model: string, usage: BillingModeUsageTotals): BillingModeCostTotals {
+  return {
+    api_key: computeUsageCost(source, model, usage.api_key),
+    token_plan: computeUsageCost(source, model, usage.token_plan),
+    unknown: computeUsageCost(source, model, usage.unknown),
+  };
+}
+
+function summarizeBillingModes(totals: BillingModeTokenTotals) {
+  const billing_modes = (["api_key", "token_plan", "unknown"] as const).filter((mode) => totals[mode] > 0);
+  return { billing_mode: billing_modes.length > 1 ? "mixed" : billing_modes[0] || "unknown", billing_modes };
+}
+
 /**
  * Server-side aggregation. One RPC replaces the old N paginated 1000-row raw
- * fetches: account_usage_grouped() GROUPs BY (tz-local day, source, model) in
+ * fetches: account_usage_grouped_v2() GROUPs BY (tz-local day, source, model) in
  * Postgres and returns a single JSONB array. We still filter to local days in
  * [from, to] and collapse to (source, model) in-edge — SUM across the user's
  * active devices is byte-identical; tz-local day bucketing uses `AT TIME ZONE`
@@ -357,7 +439,7 @@ async function fetchGroupedRows(
   tzOffsetMinutes: number | null,
 ): Promise<GroupedRow[]> {
   if (activeDeviceIds.length === 0) return [];
-  const { data, error } = await client.database.rpc("account_usage_grouped", {
+  const { data, error } = await client.database.rpc("account_usage_grouped_v2", {
     p_user_id: userId,
     p_device_ids: activeDeviceIds,
     p_from: fromIso,
@@ -382,6 +464,12 @@ export default async function (req: Request): Promise<Response> {
   const tz = url.searchParams.get("tz") || null;
   const tzOffsetRaw = url.searchParams.get("tz_offset_minutes");
   const tzOffsetMinutes = tzOffsetRaw != null && tzOffsetRaw !== "" ? Number(tzOffsetRaw) : null;
+  const requestedSources = new Set(
+    url.searchParams.getAll("source")
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
 
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")!;
   const incomingApiKey =
@@ -429,7 +517,11 @@ export default async function (req: Request): Promise<Response> {
   // Keep only the tz-local days in [from, to]. The RPC already bucketed each
   // row to its local day (honoring tz / tz_offset_minutes), so this compares
   // the bucket directly — same inclusive [from, to] semantics as before.
-  const filtered = rows.filter((r) => r.bucket >= from && r.bucket <= to);
+  const filtered = rows.filter((r) => {
+    if (r.bucket < from || r.bucket > to) return false;
+    const source = String(r.source || "unknown").trim().toLowerCase();
+    return requestedSources.size === 0 || requestedSources.has(source);
+  });
 
   interface ModelAgg {
     model: string;
@@ -451,6 +543,9 @@ export default async function (req: Request): Promise<Response> {
     cache_creation_input_tokens: 0,
     reasoning_output_tokens: 0,
     total_cost_usd: "0",
+    billing_mode_token_totals: newBillingModeTokenTotals(),
+    billing_mode_usage_totals: newBillingModeUsageTotals(),
+    billing_mode_usage_complete: true,
   });
 
   const bySource = new Map<string, SourceAgg>();
@@ -463,6 +558,9 @@ export default async function (req: Request): Promise<Response> {
       bySource.set(src, sa);
     }
     const tt = Number(row.total_tokens) || 0;
+    addBillingModeTokens(sa.totals.billing_mode_token_totals, row);
+    sa.totals.billing_mode_usage_complete = addBillingModeUsage(sa.totals.billing_mode_usage_totals, row)
+      && sa.totals.billing_mode_usage_complete;
     sa.totals.total_tokens += tt;
     sa.totals.billable_total_tokens += tt;
     sa.totals.input_tokens += Number(row.input_tokens) || 0;
@@ -477,6 +575,9 @@ export default async function (req: Request): Promise<Response> {
       sa.models.set(mdl, ma);
     }
     ma.totals.total_tokens += tt;
+    addBillingModeTokens(ma.totals.billing_mode_token_totals, row);
+    ma.totals.billing_mode_usage_complete = addBillingModeUsage(ma.totals.billing_mode_usage_totals, row)
+      && ma.totals.billing_mode_usage_complete;
     ma.totals.billable_total_tokens += tt;
     ma.totals.input_tokens += Number(row.input_tokens) || 0;
     ma.totals.output_tokens += Number(row.output_tokens) || 0;
@@ -489,28 +590,61 @@ export default async function (req: Request): Promise<Response> {
     const models = Array.from(s.models.values())
       .map((m) => {
         const p = getModelPricing(m.model);
+        const {
+          billing_mode_token_totals: modeTotals,
+          billing_mode_usage_totals: modeUsageTotals,
+          billing_mode_usage_complete: modeUsageComplete,
+          ...usageTotals
+        } = m.totals;
         // Codex / every-code fold reasoning into output_tokens (OpenAI
         // convention), so charging reasoning again double-counts. Mirror the
         // guard in src/lib/pricing/index.js + tokentracker-leaderboard-refresh.ts.
         const reasoningIncludedInOutput = s.source === "codex" || s.source === "every-code";
-        const cost =
+        const fallbackCost =
           ((m.totals.input_tokens || 0) * (p.input || 0) +
             (m.totals.output_tokens || 0) * (p.output || 0) +
             (m.totals.cached_input_tokens || 0) * (p.cache_read || 0) +
             (m.totals.cache_creation_input_tokens || 0) * ((p.cache_write ?? 0)) +
             (reasoningIncludedInOutput ? 0 : (m.totals.reasoning_output_tokens || 0) * (p.output || 0))) /
           1_000_000;
+        const modeCostTotals = modeUsageComplete
+          ? computeBillingModeCosts(s.source, m.model, modeUsageTotals)
+          : null;
+        const cost = modeCostTotals
+          ? Object.values(modeCostTotals).reduce((sum, value) => sum + value, 0)
+          : fallbackCost;
         return {
           model: m.model,
           model_id: m.model_id,
-          totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
+          totals: { ...usageTotals, total_cost_usd: cost.toFixed(6) },
+          ...summarizeBillingModes(modeTotals),
+          billing_mode_confidence: "unavailable",
+          billing_mode_token_totals: modeTotals,
+          ...(modeCostTotals ? { billing_mode_cost_totals: modeCostTotals } : {}),
         };
       })
       .sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
     const sourceCost = models.reduce((sum, m) => sum + Number(m.totals.total_cost_usd), 0);
+    const {
+      billing_mode_token_totals: modeTotals,
+      billing_mode_usage_totals: _modeUsageTotals,
+      billing_mode_usage_complete: _modeUsageComplete,
+      ...usageTotals
+    } = s.totals;
+    const sourceModeCosts = models.every((model) => model.billing_mode_cost_totals)
+      ? models.reduce<BillingModeCostTotals>((totals, model) => {
+          for (const mode of ["api_key", "token_plan", "unknown"] as const) {
+            totals[mode] += Number(model.billing_mode_cost_totals?.[mode]) || 0;
+          }
+          return totals;
+        }, { api_key: 0, token_plan: 0, unknown: 0 })
+      : null;
     return {
       source: s.source,
-      totals: { ...s.totals, total_cost_usd: sourceCost.toFixed(6) },
+      totals: { ...usageTotals, total_cost_usd: sourceCost.toFixed(6) },
+      ...summarizeBillingModes(modeTotals),
+      billing_mode_token_totals: modeTotals,
+      ...(sourceModeCosts ? { billing_mode_cost_totals: sourceModeCosts } : {}),
       models,
     };
   });

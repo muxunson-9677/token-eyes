@@ -58,10 +58,41 @@ function resolveNativeSessionRef(plan, sessions) {
   return (Array.isArray(sessions) ? sessions : []).find((session) => session?.id === bindingId)?.session_ref || "";
 }
 
+export function attachOfficialSessionLabels(plans, sessions = []) {
+  const sessionsById = new Map();
+  const sessionsByRef = new Map();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const displayName = String(session?.display_name || "").trim();
+    if (!displayName) continue;
+    if (session?.id) sessionsById.set(String(session.id), displayName);
+    if (session?.session_ref) sessionsByRef.set(String(session.session_ref), displayName);
+  }
+
+  return (Array.isArray(plans) ? plans : []).map((plan) => {
+    if (plan?.detection_method !== "official_account") return plan;
+    const official = plan?.detection_config?.official_account || {};
+    if (String(official.display_name || "").trim()) return plan;
+    const displayName = sessionsById.get(String(official.account_binding_id || ""))
+      || sessionsByRef.get(String(official.session_ref || ""));
+    if (!displayName) return plan;
+    return {
+      ...plan,
+      detection_config: {
+        ...plan.detection_config,
+        official_account: { ...official, display_name: displayName },
+      },
+    };
+  });
+}
+
 function applyNativeQuotaToPlan(plan, status) {
   const now = new Date().toISOString();
   return {
     ...plan,
+    expires_at: status.quota.subscription_expires_at
+      || status.quota.expires_at
+      || plan.expires_at
+      || "",
     total_quota: Number(status.quota.total_quota || plan.total_quota || 0),
     used_quota: Number(status.quota.used_quota || 0),
     remaining_quota: Number(status.quota.remaining_quota || 0),
@@ -86,6 +117,9 @@ function applyNativeQuotaToPlan(plan, status) {
           || "",
         plan_name: status.quota.plan_name
           || plan.detection_config?.official_account?.plan_name
+          || "",
+        display_name: status.quota.account_label
+          || plan.detection_config?.official_account?.display_name
           || "",
       },
     },
@@ -128,7 +162,10 @@ export async function refreshConnectedCodexPlans(plans, sessions = []) {
   const codexPlans = (Array.isArray(plans) ? plans : []).filter((plan) => (
     String(plan?.provider_id || "").toLowerCase() === "codex"
     && plan?.detection_method === "official_account"
-    && plan?.detection_config?.official_account?.account_binding_id
+    && (
+      plan?.detection_config?.official_account?.session_ref
+      || plan?.detection_config?.official_account?.account_binding_id
+    )
   ));
   await Promise.allSettled(codexPlans.map(async (plan) => {
     const sessionRef = resolveNativeSessionRef(plan, sessions);
@@ -211,14 +248,30 @@ export function useTokenServicePlans(refreshRevision = 0, { enabled = true } = {
           setState({ plans: initialPlans, loading: false, error: null });
         }
 
+        const hasConnectedPlans = hasConnectedNativePlans(initialPlans);
+        const sessionsPromise = hasConnectedPlans
+          ? getConsoleSessions().catch(() => ({ sessions: [] }))
+          : null;
+        if (sessionsPromise) {
+          void sessionsPromise.then((sessionResult) => {
+            if (cancelled) return;
+            const sessions = Array.isArray(sessionResult?.sessions) ? sessionResult.sessions : [];
+            setState((current) => {
+              const plansWithAccountLabels = attachOfficialSessionLabels(current.plans, sessions);
+              writePlansCache(plansWithAccountLabels);
+              return { ...current, plans: plansWithAccountLabels };
+            });
+          });
+        }
+
         const cached = readPlansCache();
         const shouldRefreshConnected = forceConnectedRefresh
           || Date.now() - Number(cached?.lastConnectedRefreshAt || 0) >= CONNECTED_PLAN_REFRESH_TTL_MS;
-        if (!shouldRefreshConnected || !hasConnectedNativePlans(initialPlans)) return;
+        if (!shouldRefreshConnected || !hasConnectedPlans || !sessionsPromise) return;
 
         const connectedRefreshStartedAt = Date.now();
         writePlansCache(initialPlans, connectedRefreshStartedAt);
-        const sessionResult = await getConsoleSessions().catch(() => ({ sessions: [] }));
+        const sessionResult = await sessionsPromise;
         const sessions = Array.isArray(sessionResult?.sessions) ? sessionResult.sessions : [];
         await Promise.all([
           refreshConnectedCodexPlans(initialPlans, sessions),
@@ -227,7 +280,10 @@ export function useTokenServicePlans(refreshRevision = 0, { enabled = true } = {
         ]);
         const refreshed = await getTokenPlans();
         if (cancelled) return;
-        const refreshedPlans = Array.isArray(refreshed?.records) ? refreshed.records : initialPlans;
+        const refreshedPlans = attachOfficialSessionLabels(
+          Array.isArray(refreshed?.records) ? refreshed.records : initialPlans,
+          sessions,
+        );
         writePlansCache(refreshedPlans, connectedRefreshStartedAt);
         setState({
           plans: refreshedPlans,

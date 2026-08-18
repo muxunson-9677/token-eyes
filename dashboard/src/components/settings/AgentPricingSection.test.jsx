@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { AgentPricingSection } from "./AgentPricingSection.jsx";
 import { getLocalSettings, getUsageModelBreakdown, setLocalSettings, verifyOfficialModelPricing } from "../../lib/api";
+import { clearCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 
 vi.mock("../../lib/api", () => ({
   getLocalSettings: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 beforeEach(() => {
+  clearCostSettingsSessionCache();
   vi.clearAllMocks();
   window.localStorage.setItem(
     "token-eyes.settings.disclosure.cost.agent-pricing.v1",
@@ -37,6 +39,18 @@ beforeEach(() => {
     status: "manual_required",
     error: "未能自动核价",
   });
+});
+
+it("reuses confirmed data when the cost page is entered again in the same window", async () => {
+  const first = render(<AgentPricingSection />);
+  expect(await screen.findByText("模型定价表")).toBeInTheDocument();
+  await waitFor(() => expect(getUsageModelBreakdown).toHaveBeenCalledTimes(1));
+  first.unmount();
+
+  render(React.createElement(AgentPricingSection));
+  expect(screen.getByText("模型定价表")).toBeInTheDocument();
+  expect(getLocalSettings).toHaveBeenCalledTimes(1);
+  expect(getUsageModelBreakdown).toHaveBeenCalledTimes(1);
 });
 
 it("removes default fallback price inputs and keeps user-defined rules", async () => {
@@ -68,7 +82,7 @@ it("renders the verified public model price table with official sources", async 
   expect(screen.getByText("价格核验于 2026-07-14")).toBeInTheDocument();
 });
 
-it("keeps the pricing help action outside the disclosure and stable across collapsed and expanded states", async () => {
+it("collects pricing help and automatic comparison inside one accessible tools button", async () => {
   const user = userEvent.setup();
   window.localStorage.setItem(
     "token-eyes.settings.disclosure.cost.agent-pricing.v1",
@@ -78,10 +92,16 @@ it("keeps the pricing help action outside the disclosure and stable across colla
 
   const disclosure = screen.getByRole("button", { name: "模型定价表" });
   expect(disclosure).toHaveAttribute("aria-expanded", "false");
-  expect(screen.queryByRole("link", { name: "如何定价?" })).toBeNull();
+  const tools = screen.getByRole("button", { name: "定价工具" });
+  expect(screen.queryByRole("link", { name: "如何定价?" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("switch", { name: "自动比价" })).not.toBeInTheDocument();
+  await user.click(tools);
+  const dialog = screen.getByRole("dialog", { name: "定价工具" });
+  const help = within(dialog).getByRole("link", { name: "如何定价?" });
+  expect(within(dialog).getByRole("switch", { name: "自动比价" })).toBeInTheDocument();
+  expect(disclosure).not.toContainElement(dialog);
 
   await user.click(disclosure);
-  const help = await screen.findByRole("link", { name: "如何定价?" });
   expect(disclosure).toHaveAttribute("aria-expanded", "true");
   expect(disclosure).not.toContainElement(help);
 
@@ -90,6 +110,10 @@ it("keeps the pricing help action outside the disclosure and stable across colla
   await user.click(help);
   expect(catalog.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   expect(disclosure).toHaveAttribute("aria-expanded", "true");
+
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog", { name: "定价工具" })).not.toBeInTheDocument();
+  expect(tools).toHaveFocus();
 });
 
 it("covers the requested model catalog and flags newly observed models", async () => {

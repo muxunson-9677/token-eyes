@@ -19,6 +19,7 @@ vi.mock("../../../../lib/copy", () => ({
     const map = {
       "ticket04.request.title": "Request Token Detail",
       "ticket04.request.subtitle": "Request-level token usage",
+      "ticket04.request.pricing_source_note": "Billing statistics use official model list prices",
       "ticket04.request.loading": "Loading request records",
       "ticket04.request.empty": "No request records",
       "ticket04.request.error": "Failed to load",
@@ -60,6 +61,7 @@ vi.mock("../../../../lib/copy", () => ({
       "usage.request_log.metric.avg_latency": "Average latency",
       "usage.request_log.metric.requests_detail": `${vars.count} requests recorded`,
       "usage.request_log.metric.success_detail": `${vars.success} succeeded / ${vars.failed} failed`,
+      "usage.request_log.metric.success_detail_with_interrupted": `${vars.success} succeeded / ${vars.interrupted} interrupted / ${vars.failed} failed`,
       "usage.request_log.metric.latency_detail": "Based on recorded requests",
       "usage.request_log.source_filter_aria": "Select source",
     };
@@ -113,6 +115,12 @@ const HOOK_DEFAULTS = {
 };
 
 describe("RequestUsageLog", () => {
+  it("shows the official list-price source note in the request-log heading", () => {
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByText("Billing statistics use official model list prices")).toBeInTheDocument();
+  });
+
   it("uses nested glass metric summaries without changing the request data", () => {
     useRequestUsageRecords.mockReturnValue({
       ...HOOK_DEFAULTS,
@@ -129,6 +137,7 @@ describe("RequestUsageLog", () => {
     for (const metric of Array.from(metrics.children)) {
       expect(metric).toHaveClass("tt-surface-nested");
       expect(metric).toHaveClass("tt-request-log-metric");
+      expect(metric).toHaveClass("tt-request-log-metric--raised");
       expect(within(metric).getByTestId("request-log-metric-icon")).toBeInTheDocument();
     }
     expect(within(metrics).getByText("7")).toBeInTheDocument();
@@ -289,6 +298,48 @@ describe("RequestUsageLog", () => {
     expect(screen.getByTestId("request-log-metric-requests")).toHaveTextContent("25 requests recorded");
     expect(screen.getByTestId("request-log-metric-success-rate")).toHaveTextContent("24 succeeded / 1 failed");
     expect(screen.getByTestId("request-log-metric-avg-latency")).toHaveTextContent("Based on recorded requests");
+  });
+
+  it("does not count records without a measured status as failed requests", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord()],
+      totals: {
+        request_count: 1_000,
+        status_sample_count: 19,
+        success_count: 18,
+        success_rate: 94.74,
+        avg_latency_ms: null,
+      },
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByTestId("request-log-metric-success-rate"))
+      .toHaveTextContent("18 succeeded / 1 failed");
+    expect(screen.getByTestId("request-log-metric-success-rate"))
+      .not.toHaveTextContent("982 failed");
+  });
+
+  it("reports interrupted Codex turns separately from provider failures", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({ status: 499 })],
+      totals: {
+        request_count: 1_000,
+        status_sample_count: 20,
+        success_count: 19,
+        interrupted_count: 1,
+        failure_count: 0,
+        success_rate: 100,
+        avg_latency_ms: null,
+      },
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(screen.getByTestId("request-log-metric-success-rate"))
+      .toHaveTextContent("19 succeeded / 1 interrupted / 0 failed");
   });
 
   it("uses reference chips, row emphasis, total band, and a truthful record-count fallback", () => {
@@ -549,5 +600,61 @@ describe("RequestUsageLog", () => {
     );
     expect(screen.getByText("claude-model")).toBeInTheDocument();
     expect(screen.queryByText("codex-model")).not.toBeInTheDocument();
+  });
+});
+
+// V2-W3: per-message granularity honesty — every row is labeled as a true
+// request/message event or a half-hour aggregate, and a toggle narrows the
+// server query to request events only.
+describe("RequestUsageLog record granularity (V2-W3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useRequestUsageRecords.mockReturnValue(HOOK_DEFAULTS);
+  });
+
+  it("labels request-event and aggregate rows with granularity badges", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [
+        makeRecord({ id: "r1", record_kind: "request_event" }),
+        makeRecord({
+          id: "r2",
+          source: "claude",
+          source_display_name: "Claude",
+          record_kind: "aggregate_bucket",
+          request_source: "queue_aggregate",
+        }),
+      ],
+      total: 2,
+    });
+    render(
+      <RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex", "claude"]} />,
+    );
+    expect(screen.getByText("ticket04.request.kind.request_event")).toBeInTheDocument();
+    expect(screen.getByText("ticket04.request.kind.aggregate")).toBeInTheDocument();
+  });
+
+  it("treats records without record_kind as request events (server heuristic)", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({ id: "r1" })],
+      total: 1,
+    });
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+    expect(screen.getByText("ticket04.request.kind.request_event")).toBeInTheDocument();
+    expect(screen.queryByText("ticket04.request.kind.aggregate")).not.toBeInTheDocument();
+  });
+
+  it("toggling the request-event filter refetches with recordKind and resets the page", () => {
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+    const toggle = screen.getByRole("checkbox", { name: "ticket04.request.kind_filter" });
+    fireEvent.click(toggle);
+    expect(useRequestUsageRecords).toHaveBeenLastCalledWith(
+      expect.objectContaining({ recordKind: "request_event", page: 1 }),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "ticket04.request.kind_filter" }));
+    expect(useRequestUsageRecords).toHaveBeenLastCalledWith(
+      expect.objectContaining({ recordKind: "" }),
+    );
   });
 });

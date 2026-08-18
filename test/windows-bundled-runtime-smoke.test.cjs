@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { test } = require("node:test");
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -59,14 +59,65 @@ test("Windows bundled runtime includes its shared registry and starts the local 
   assert.ok(fs.existsSync(providerRegistry), "bundled shared provider registry must exist");
 
   const port = await findFreePort();
-  const smokeHome = path.join(repoRoot, "src-tauri", "target", `runtime-smoke-${process.pid}`);
-  fs.mkdirSync(smokeHome, { recursive: true });
-  const env = { ...process.env, USERPROFILE: smokeHome, HOME: smokeHome, APPDATA: path.join(smokeHome, "AppData", "Roaming"), LOCALAPPDATA: path.join(smokeHome, "AppData", "Local") };
-  const child = spawn(nodeExe, ["bin\\tracker.js", "serve", "--no-open", "--no-sync", "--port", String(port)], { cwd: trackerRoot, env, stdio: "pipe", windowsHide: true });
+  const smokeTarget = path.join(repoRoot, "src-tauri", "target");
+  fs.mkdirSync(smokeTarget, { recursive: true });
+  const smokeHome = fs.mkdtempSync(path.join(smokeTarget, "runtime-smoke-"));
+  const trackerDataDir = path.join(smokeHome, ".tokentracker", "tracker");
+  fs.mkdirSync(trackerDataDir, { recursive: true });
+  fs.writeFileSync(path.join(trackerDataDir, "cursors.json"), "{}\n", "utf8");
+  let child;
+  t.after(() => {
+    try {
+      if (child?.pid && child.exitCode === null) {
+        spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+      }
+    } finally {
+      fs.rmSync(smokeHome, { recursive: true, force: true });
+    }
+  });
+  const env = Object.fromEntries(
+    ["COMSPEC", "OS", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE", "SystemRoot", "WINDIR"]
+      .filter((name) => process.env[name] !== undefined)
+      .map((name) => [name, process.env[name]]),
+  );
+  Object.assign(env, {
+    USERPROFILE: smokeHome,
+    HOME: smokeHome,
+    APPDATA: path.join(smokeHome, "AppData", "Roaming"),
+    LOCALAPPDATA: path.join(smokeHome, "AppData", "Local"),
+    TEMP: smokeHome,
+    TMP: smokeHome,
+  });
+  delete env.NODE_TEST_CONTEXT;
+  delete env.VITEST;
+  delete env.AGENTDATA;
+  delete env.ANTIGRAVITY_HOME;
+  delete env.CLAUDE_HOME;
+  delete env.CODE_HOME;
+  delete env.CODEBUDDY_HOME;
+  delete env.CODEX_HOME;
+  delete env.COPILOT_OTEL_FILE_EXPORTER_PATH;
+  delete env.CURSOR_HOME;
+  delete env.GEMINI_HOME;
+  delete env.GROK_HOME;
+  delete env.KIMI_CODE_HOME;
+  delete env.KIMI_HOME;
+  delete env.OPENCLAW_CONFIG_PATH;
+  delete env.OPENCLAW_HOME;
+  delete env.OPENCLAW_STATE_DIR;
+  delete env.OPENCODE_HOME;
+  delete env.TOKENTRACKER_AGENTDATA_ROOTS;
+  delete env.TOKENTRACKER_GROK_HOME;
+  delete env.TOKENTRACKER_HERMES_HOME;
+  delete env.TOKENTRACKER_OPENCLAW_HOME;
+  delete env.TRAE_HOME;
+  delete env.WORKBUDDY_HOME;
+  delete env.XDG_CONFIG_HOME;
+  delete env.XDG_DATA_HOME;
+  child = spawn(nodeExe, ["bin\\tracker.js", "serve", "--no-open", "--no-sync", "--port", String(port)], { cwd: trackerRoot, env, stdio: "pipe", windowsHide: true });
   let stderr = "";
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => { stderr += chunk; });
-  t.after(() => { if (child.exitCode === null) child.kill(); });
 
   const response = await waitForLocalAuth(port, child).catch((error) => { throw new Error(`${error.message}\nBundled backend stderr:\n${stderr}`); });
   const payload = JSON.parse(response.body);

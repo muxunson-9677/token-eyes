@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
+import { calculateCollapseScrollReserve, CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
 
 // 02 work order contract tests for CostAccumulation.
 //
@@ -52,6 +52,80 @@ const BASE_SUMMARY = {
   usdToCny: 7.2,
 };
 
+it("reserves only the missing scroll range when collapsing a tall section", () => {
+  expect(calculateCollapseScrollReserve({
+    scrollTop: 120,
+    scrollHeight: 1114,
+    clientHeight: 975,
+    removedHeight: 220,
+  })).toBe(120);
+  expect(calculateCollapseScrollReserve({
+    scrollTop: 40,
+    scrollHeight: 1400,
+    clientHeight: 900,
+    removedHeight: 200,
+  })).toBe(0);
+});
+
+it("shows ten usable token plans per cost-page view and keeps expired plans out", () => {
+  window.localStorage.removeItem("token-eyes:cost-section:token-packages");
+  const tokenPackages = [
+    ...Array.from({ length: 11 }, (_, index) => ({
+      id: `active-${index + 1}`,
+      source: `active-${index + 1}`,
+      provider_id: "custom",
+      plan_label: `Plan ${index + 1}`,
+      total_quota: 100,
+      used_quota: 90 - index,
+      remaining_quota: 10 + index,
+      expires_at: "2099-12-31",
+    })),
+    {
+      id: "expired",
+      source: "expired",
+      provider_id: "custom",
+      plan_label: "Expired plan",
+      total_quota: 100,
+      used_quota: 99,
+      remaining_quota: 1,
+      expires_at: "2020-01-01",
+    },
+  ];
+
+  render(<CostAccumulation costSummary={{ ...BASE_SUMMARY }} tokenPackages={tokenPackages} />);
+
+  expect(screen.getAllByTestId("token-service-row")).toHaveLength(10);
+  expect(screen.queryByText("Expired plan")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "spend.usage.token_services.next" }));
+  expect(screen.getAllByTestId("token-service-row")).toHaveLength(1);
+});
+
+it("shows expired token-plan subscriptions as read-only history", () => {
+  window.localStorage.removeItem("token-eyes:cost-section:subscriptions");
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      subscriptionRecords={[{
+        id: "token-plan-cost:expired",
+        name: "Expired Plus",
+        provider: "codex",
+        cycle: "monthly",
+        amount: 20,
+        currency: "USD",
+        renewsAt: "2025-01-01",
+        status: "expired",
+        origin: "token_plan",
+        readOnly: true,
+      }]}
+    />,
+  );
+
+  expect(screen.getByText("Expired Plus")).toBeInTheDocument();
+  expect(screen.getByText("spend.cost.subscription.status.expired")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "spend.cost.subscription.edit" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "spend.cost.subscription.delete" })).not.toBeInTheDocument();
+});
+
 it("renders asynchronously loaded Other AI groups without changing the hook order", () => {
   const props = {
     costSummary: { ...BASE_SUMMARY },
@@ -100,14 +174,41 @@ it("keeps the stale provider status on one line inside the collapsed action row"
   expect(staleStatus.parentElement).toHaveClass("whitespace-nowrap");
 });
 
-it("keeps estimated usage cost and actual subscription spend separate without a combined total", () => {
+it("shows a stale account as stale while retaining its last successful amount", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      providerApiBalances={[{
+        configId: "provider-1",
+        providerId: "deepseek",
+        accountLabel: "DeepSeek",
+        status: "stale",
+        balance: 86.06,
+        currency: "CNY",
+      }]}
+      onRefreshOneProviderApi={() => {}}
+    />,
+  );
+
+  const section = screen.getByTestId("provider-api-account-section");
+  expect(within(section).getByText("spend.cost.provider_account.status.stale")).toBeInTheDocument();
+  expect(within(section).getAllByText(/CNY 86\.06/).length).toBeGreaterThanOrEqual(2);
+  expect(within(section).getByText("spend.cost.provider_account.refresh_failed")).toBeInTheDocument();
+});
+
+it("keeps actual cash spend separate from the API list-price equivalent without double counting", () => {
   render(
     <CostAccumulation
       costSummary={{
         ...BASE_SUMMARY,
         monthApiCostUsd: 120,
+        monthApiEquivalentUsd: 120,
         previousMonthApiCostUsd: 100,
         monthSubscriptionCostUsd: 80,
+        monthOfficialApiSpendUsd: null,
+        monthOtherAiCostUsd: 0,
+        monthActualCashSpendUsd: 80,
+        actualCashCoverage: "partial",
         previousMonthSubscriptionCostUsd: 100,
         monthTotalCostUsd: 200,
         previousMonthTotalCostUsd: 200,
@@ -115,30 +216,28 @@ it("keeps estimated usage cost and actual subscription spend separate without a 
     />,
   );
 
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toBeInTheDocument();
-  expect(screen.getByTestId("monthly-cost-comparison-subscription")).toBeInTheDocument();
+  expect(screen.getByTestId("monthly-cost-comparison-api-equivalent")).toBeInTheDocument();
+  expect(screen.queryByTestId("monthly-cost-comparison-actual-cash")).not.toBeInTheDocument();
   expect(screen.queryByTestId("monthly-cost-comparison-total")).not.toBeInTheDocument();
-  for (const testId of ["api", "subscription"]) {
-    const comparison = screen.getByTestId(`monthly-cost-comparison-${testId}`);
-    expect(comparison.parentElement).toHaveTextContent("CNY");
-    expect(comparison.parentElement).toHaveClass("justify-between");
-    expect(comparison.querySelector("svg")).toBeNull();
-  }
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveTextContent(
+  const comparison = screen.getByTestId("monthly-cost-comparison-api-equivalent");
+  expect(comparison.parentElement).toHaveTextContent("CNY");
+  expect(comparison.parentElement).toHaveClass("justify-between");
+  expect(comparison.querySelector("svg")).toBeNull();
+  expect(comparison).toHaveTextContent(
     "spend.monthly_change.increase:20.0%",
   );
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveTextContent("USD 20.00");
-  expect(screen.getByTestId("monthly-cost-comparison-api")).toHaveClass("text-orange-600");
-  expect(screen.getByTestId("monthly-cost-comparison-subscription")).toHaveClass("text-emerald-600");
+  expect(comparison).toHaveTextContent("USD 20.00");
+  expect(comparison).toHaveClass("text-orange-600");
   expect(screen.getByText("spend.cost.summary.scope_note")).toBeInTheDocument();
-  expect(screen.getByTestId("cost-confidence-estimated")).toHaveAttribute(
+  expect(screen.getByTestId("cost-confidence-api-equivalent")).toHaveAttribute(
     "data-confidence-state",
     "estimated",
   );
-  expect(screen.getByTestId("cost-confidence-subscription")).toHaveAttribute(
+  expect(screen.getByTestId("cost-confidence-actual-cash")).toHaveAttribute(
     "data-confidence-state",
-    "exact",
+    "partial",
   );
+  expect(screen.getByText("spend.cost.accuracy.partial")).toBeInTheDocument();
 });
 
 it("starts the cost-page groups collapsed when requested and expands their full content without clipping", () => {
@@ -171,7 +270,42 @@ it("starts the cost-page groups collapsed when requested and expands their full 
 
   expect(section).toHaveAttribute("data-open", "true");
   expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(within(section).getByTestId("cost-row-metrics")).toHaveAttribute("data-align", "right");
   expect(within(section).getByText("Codex Pro")).toBeVisible();
+});
+
+it("shows the same complete Token service details on the cost page", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      tokenPackages={[{
+        id: "plan-codex",
+        plan_label: "Pro 20x",
+        provider_id: "codex",
+        detection_method: "official_account",
+        detection_config: {
+          official_account: { display_name: "work@example.com" },
+        },
+        quota_unit: "percent",
+        quota_windows: [
+          { kind: "rolling_5_hour", total: 100, used: 12, percentage: 12, resets_at: "2026-08-15T12:00:00.000Z" },
+          { kind: "rolling_weekly", total: 100, used: 34, percentage: 34, resets_at: "2026-08-20T12:00:00.000Z" },
+        ],
+        subscription_end_date: "2026-09-15T12:00:00.000Z",
+        sync_status: "success",
+      }]}
+      now={new Date("2026-08-15T10:00:00.000Z")}
+    />,
+  );
+
+  const section = document.querySelector('[data-cost-section="token-packages"]');
+  expect(within(section).getByText("Codex")).toBeInTheDocument();
+  expect(within(section).getByText("Pro 20x")).toBeInTheDocument();
+  expect(within(section).getByText("work@example.com")).toBeInTheDocument();
+  expect(within(section).getByTestId("token-service-window-rolling_5_hour")).toHaveTextContent("12%");
+  expect(within(section).getByTestId("token-service-window-rolling_weekly")).toHaveTextContent("34%");
+  expect(within(section).getByTestId("token-service-reset-rolling_5_hour")).toBeInTheDocument();
+  expect(within(section).getByTestId("token-service-validity")).toBeInTheDocument();
 });
 
 it("uses the reference-style expanded layouts for custom groups, token packages, and provider accounts", () => {
@@ -232,11 +366,11 @@ it("marks retained cost totals stale after a financial refresh failure", () => {
     />,
   );
 
-  expect(screen.getByTestId("cost-confidence-estimated")).toHaveAttribute(
+  expect(screen.getByTestId("cost-confidence-api-equivalent")).toHaveAttribute(
     "data-confidence-state",
     "stale",
   );
-  expect(screen.getByTestId("cost-confidence-subscription")).toHaveAttribute(
+  expect(screen.getByTestId("cost-confidence-actual-cash")).toHaveAttribute(
     "data-confidence-state",
     "stale",
   );
@@ -290,18 +424,18 @@ it("visually separates the summary and each existing management section without 
     expect(card).toHaveClass("flex", "h-full", "items-start", "text-left");
     expect(card).not.toHaveClass("tt-surface");
   }
-  expect(screen.getByTestId("cost-confidence-estimated")).toHaveClass("justify-start", "text-left");
-  expect(screen.getByTestId("cost-confidence-subscription")).toHaveClass("justify-start", "text-left");
+  expect(screen.getByTestId("cost-confidence-api-equivalent")).toHaveClass("justify-start", "text-left");
+  expect(screen.getByTestId("cost-confidence-actual-cash")).toHaveClass("justify-start", "text-left");
   expect(screen.queryByTestId("cost-summary-icon-total")).not.toBeInTheDocument();
   expect(screen.getAllByTestId("cost-summary-icon")).toHaveLength(2);
-  expect(screen.getByTestId("cost-summary-icon-api")).toHaveAttribute("data-tone", "blue");
-  expect(screen.getByTestId("cost-summary-icon-subscription")).toHaveAttribute("data-tone", "violet");
+  expect(screen.getByTestId("cost-summary-icon-api-equivalent")).toHaveAttribute("data-tone", "blue");
+  expect(screen.getByTestId("cost-summary-icon-actual-cash")).toHaveAttribute("data-tone", "violet");
   const sectionIds = ["other-ai", "token-packages", "provider-api", "api-billing", "subscriptions"];
   expect(document.querySelectorAll("[data-cost-section]")).toHaveLength(5);
   expect([summary, ...document.querySelectorAll("[data-cost-section]")]).toHaveLength(6);
   for (const id of sectionIds) {
     const section = document.querySelector(`[data-cost-section="${id}"]`);
-    expect(section).toHaveClass("tt-surface-nested", "rounded-[var(--tt-card-radius)]");
+    expect(section).toHaveClass("tt-surface-nested", "tt-pressable-parent", "rounded-[var(--tt-card-radius)]");
     expect(section).not.toHaveClass("tt-surface");
     expect(within(section).getByTestId("cost-section-icon")).toBeInTheDocument();
     const toggle = within(section).getByRole("button", { expanded: true });
@@ -320,6 +454,11 @@ it("visually separates the summary and each existing management section without 
     expect(section.querySelector(".tt-cost-row-actions")).toBeNull();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const expandedMetrics = within(section).queryByTestId("cost-row-metrics");
+    if (expandedMetrics) {
+      expect(expandedMetrics).toHaveClass("tt-cost-row-metrics--right");
+      expect(expandedMetrics).toHaveAttribute("data-align", "right");
+    }
   }
   expect(screen.queryByText("settings.cost.other_ai.edit_group")).not.toBeInTheDocument();
   expect(screen.queryByText("spend.cost.provider_account.refresh_all")).not.toBeInTheDocument();
@@ -356,8 +495,8 @@ it("lets the user browse historical cost months without advancing into the futur
   expect(picker).toHaveValue("2025-06");
   expect(picker).toHaveAttribute("max", "2026-07");
   expect(screen.getByTestId("cost-month-display")).toHaveTextContent("2025年6月");
-  expect(screen.getByText("2025年6月 spend.cost.summary.estimated_usage_suffix")).toBeInTheDocument();
-  expect(screen.getByText("2025年6月 spend.cost.summary.actual_subscription_suffix")).toBeInTheDocument();
+  expect(screen.getByText("2025年6月 spend.cost.summary.api_equivalent_suffix")).toBeInTheDocument();
+  expect(screen.getByText("2025年6月 spend.cost.summary.actual_cash_suffix")).toBeInTheDocument();
   expect(screen.queryByText("2025年6月 spend.cost.summary.total_suffix")).not.toBeInTheDocument();
   expect(screen.getAllByText("2025年6月").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("2025年截至6月")).toBeInTheDocument();
@@ -548,6 +687,146 @@ it("Task-10: API billing card shows 'USD 0.00' for a synced account with real 0 
   expect(lifetimeCostLine.textContent).toContain("USD 0.00");
 });
 
+it("labels official API invoice amounts as official billing", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      apiBillingAccounts={[{
+        id: "official-invoice",
+        provider: "openai",
+        accountName: "OpenAI Billing",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 8,
+        lifetimeCostUsd: 48,
+        status: "synced",
+      }]}
+    />,
+  );
+  expect(screen.getByText("spend.cost.api_billing.authority.official_invoice")).toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.api_billing.authority.local_list_price_estimate")).not.toBeInTheDocument();
+});
+
+it("labels local list-price costs as estimates", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      apiBillingAccounts={[{
+        id: "local-estimate",
+        provider: "openai",
+        accountName: "OpenAI Usage",
+        billingSource: "api",
+        spendAuthority: "local_list_price_estimate",
+        monthCostUsd: 8,
+        lifetimeCostUsd: 48,
+        status: "synced",
+      }]}
+    />,
+  );
+  expect(screen.getByText("spend.cost.api_billing.authority.local_list_price_estimate")).toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.api_billing.authority.official_invoice")).not.toBeInTheDocument();
+});
+
+it("labels unavailable API billing without displaying a cash amount", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      apiBillingAccounts={[{
+        id: "unavailable",
+        provider: "openai",
+        accountName: "OpenAI",
+        billingSource: "api",
+        spendAuthority: "unavailable",
+        monthCostUsd: null,
+        lifetimeCostUsd: null,
+        status: "not-connected",
+      }]}
+    />,
+  );
+  expect(screen.getByText("spend.cost.api_billing.authority.unavailable")).toBeInTheDocument();
+  expect(screen.queryByText(/spend\.cost\.api_billing\.month_cost:/)).not.toBeInTheDocument();
+});
+
+it("shows a compact action for ambiguous official invoice configs", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, actualCashCoverage: "partial" }}
+      apiBillingAccounts={[{
+        id: "ambiguous",
+        provider: "openai",
+        accountName: "OpenAI 官方账单",
+        billingSource: "api",
+        spendAuthority: "unavailable",
+        monthCostUsd: null,
+        status: "ambiguous",
+        errorCode: "official_invoice_ambiguous",
+        candidateCount: 2,
+      }]}
+    />,
+  );
+  expect(screen.getByText("spend.cost.api_billing.ambiguous_config", { exact: false })).toBeInTheDocument();
+});
+
+it("keeps the last official amount visible when its billing refresh is stale", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, monthOfficialApiSpendUsd: 8, actualCashCoverage: "partial" }}
+      apiBillingAccounts={[{
+        id: "stale-official",
+        provider: "openai",
+        accountName: "OpenAI Billing",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 8,
+        lifetimeCostUsd: null,
+        status: "synced",
+        stale: true,
+      }]}
+    />,
+  );
+  expect(screen.getByText(/spend\.cost\.api_billing\.month_cost: USD 8\.00/)).toBeInTheDocument();
+  expect(screen.getByText("spend.cost.api_billing.refresh_failed_stale")).toBeInTheDocument();
+});
+
+it("keeps official API cash separate from local list-price estimates in the API summary", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, monthApiCostUsd: 30 }}
+      apiBillingAccounts={[
+        {
+          id: "official-invoice",
+          provider: "openai",
+          accountName: "OpenAI Billing",
+          billingSource: "api",
+          spendAuthority: "official_invoice",
+          monthCostUsd: 8,
+          lifetimeCostUsd: 48,
+          status: "synced",
+        },
+        {
+          id: "unavailable",
+          provider: "google",
+          accountName: "Google Billing",
+          billingSource: "api",
+          spendAuthority: "unavailable",
+          monthCostUsd: null,
+          lifetimeCostUsd: null,
+          status: "not-connected",
+        },
+      ]}
+    />,
+  );
+  const section = screen.getByText("spend.cost.api_billing.section").closest("section");
+  expect(section).not.toBeNull();
+  const officialLabel = within(section).getByText("spend.cost.summary.official_api_cash");
+  const estimateLabel = within(section).getByText("spend.cost.row.month_estimate");
+  const unavailableLabel = within(section).getByText("spend.cost.api_billing.summary.unavailable_accounts");
+  expect(officialLabel.parentElement?.textContent).toContain("8.00");
+  expect(estimateLabel.parentElement?.textContent).toContain("30.00");
+  expect(unavailableLabel.parentElement?.textContent).toContain("1");
+  expect(section.textContent).not.toContain("38.00");
+});
+
 it("Task-10: API billing card hides costs when not connected", () => {
   render(
     <CostAccumulation
@@ -581,6 +860,7 @@ it("uses compact CNY and the confirmed percentage-only comparison in the monthly
       costSummary={{
         ...BASE_SUMMARY,
         monthApiCostUsd: 13548.56,
+        monthApiEquivalentUsd: 13548.56,
         previousMonthApiCostUsd: 100,
         monthSubscriptionCostUsd: 0,
         previousMonthSubscriptionCostUsd: 0,
@@ -593,7 +873,7 @@ it("uses compact CNY and the confirmed percentage-only comparison in the monthly
   );
 
   expect(screen.getAllByText("CNY 9.75万").length).toBeGreaterThanOrEqual(1);
-  const comparison = screen.getByTestId("monthly-cost-comparison-api");
+  const comparison = screen.getByTestId("monthly-cost-comparison-api-equivalent");
   expect(comparison.querySelector("svg")).toBeNull();
   expect(comparison).toHaveTextContent("spend.monthly_change.increase:13448.6%");
   expect(comparison).toHaveTextContent("USD 13,448.56");

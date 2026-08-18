@@ -17,7 +17,11 @@ async function writeQueue(queuePath, rows) {
 }
 
 async function callEndpoint(queuePath, endpoint, handlerOptions = {}) {
-  const handler = createLocalApiHandler({ queuePath, ...handlerOptions });
+  const handler = createLocalApiHandler({
+    queuePath,
+    trackerDataDir: path.dirname(queuePath),
+    ...handlerOptions,
+  });
   const url = new URL(`http://localhost${endpoint}`);
   const req = {
     method: "GET",
@@ -87,6 +91,7 @@ test("usage-limits appends Trae, CodeBuddy and OpenCode token-only totals", asyn
     ]), {
       trae: { configured: true, error: null, token_only: true, total_tokens: 180 },
       codebuddy: { configured: true, error: null, token_only: true, total_tokens: 300 },
+      workbuddy: { configured: false, error: null, token_only: true, total_tokens: 0 },
       opencode: { configured: true, error: null, token_only: true, total_tokens: 420 },
     });
 
@@ -379,6 +384,46 @@ test("usage-model-breakdown defaults to all scope and can explicitly exclude acc
     const cursor = all.sources.find((entry) => entry.source === "cursor");
     assert.ok(cursor, "scope=all should include Cursor");
     assert.equal(cursor.source_scope, "account");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("usage-model-breakdown filters repeated canonical source params before aggregation", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-localapi-breakdown-sources-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await writeQueue(queuePath, [
+      { source: "codex", model: "gpt-5", hour_start: "2026-08-18T10:00:00.000Z", total_tokens: 10 },
+      { source: "claude", model: "opus", hour_start: "2026-08-18T11:00:00.000Z", total_tokens: 20 },
+      { source: "gemini", model: "pro", hour_start: "2026-08-18T12:00:00.000Z", total_tokens: 30 },
+    ]);
+
+    const multiple = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-usage-model-breakdown?from=2026-08-18&to=2026-08-18&tz=UTC&source=%20CoDeX%20&source=CLAUDE&source=codex",
+    );
+    assert.deepEqual(multiple.sources.map((entry) => entry.source).sort(), ["claude", "codex"]);
+
+    const singular = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-usage-model-breakdown?from=2026-08-18&to=2026-08-18&tz=UTC&source=gemini",
+    );
+    assert.deepEqual(singular.sources.map((entry) => entry.source), ["gemini"]);
+
+    const missing = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-usage-model-breakdown?from=2026-08-18&to=2026-08-18&tz=UTC&source=missing",
+    );
+    assert.deepEqual(missing.sources, []);
+
+    for (const suffix of ["", "&source="]) {
+      const all = await callEndpoint(
+        queuePath,
+        `/functions/tokentracker-usage-model-breakdown?from=2026-08-18&to=2026-08-18&tz=UTC${suffix}`,
+      );
+      assert.deepEqual(all.sources.map((entry) => entry.source).sort(), ["claude", "codex", "gemini"]);
+    }
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

@@ -143,6 +143,7 @@ export default function LightRays({
   mouseInfluence = 0.1,
   noiseAmount = 0.0,
   distortion = 0.0,
+  reducedMotion = false,
   className = '',
 }) {
   const containerRef = useRef(null);
@@ -177,7 +178,7 @@ export default function LightRays({
   }, []);
 
   useEffect(() => {
-    if (!isVisible || !containerRef.current) return;
+    if (reducedMotion || !isVisible || !containerRef.current) return;
 
     if (cleanupFunctionRef.current) {
       cleanupFunctionRef.current();
@@ -309,6 +310,7 @@ export default function LightRays({
     };
   }, [
     isVisible,
+    reducedMotion,
     raysOrigin,
     raysColor,
     raysSpeed,

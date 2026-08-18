@@ -879,6 +879,231 @@ test("parseRolloutIncremental migrates v1 hourly buckets without resetting total
   }
 });
 
+test("parseRolloutIncremental migrates queued v1 totals into an unknown attribution slice", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-attribution-v1-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-test.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const hourStart = "2025-12-17T00:00:00.000Z";
+    const legacyTotals = {
+      input_tokens: 4,
+      cached_input_tokens: 0,
+      output_tokens: 3,
+      reasoning_output_tokens: 0,
+      total_tokens: 7,
+    };
+    const cursors = {
+      version: 1,
+      files: {},
+      hourly: {
+        version: 1,
+        buckets: {
+          [`codex|${hourStart}`]: {
+            totals: legacyTotals,
+            queuedKey: "legacy-seven",
+          },
+        },
+      },
+    };
+    await fs.writeFile(
+      queuePath,
+      `${JSON.stringify({
+        source: "codex",
+        model: "unknown",
+        hour_start: hourStart,
+        ...legacyTotals,
+        billing_mode: "unknown",
+        billing_mode_confidence: "unavailable",
+      })}\n`,
+    );
+    const apiGrowth = { input_tokens: 3, output_tokens: 0, total_tokens: 3 };
+    const planGrowth = { input_tokens: 2, output_tokens: 0, total_tokens: 2 };
+    const cumulative = { input_tokens: 5, output_tokens: 0, total_tokens: 5 };
+    await fs.writeFile(
+      rolloutPath,
+      [
+        buildTokenCountLine({
+          ts: "2025-12-17T00:10:00.000Z",
+          last: apiGrowth,
+          total: apiGrowth,
+          billingMode: "api_key",
+        }),
+        buildTokenCountLine({
+          ts: "2025-12-17T00:11:00.000Z",
+          last: planGrowth,
+          total: cumulative,
+          billingMode: "token_plan",
+        }),
+      ].join("\n") + "\n",
+    );
+
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    const afterFirstSync = await readJsonLines(queuePath);
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    const afterSecondSync = await readJsonLines(queuePath);
+    assert.equal(afterSecondSync.length, afterFirstSync.length, "unchanged second sync is idempotent");
+
+    const latest = new Map();
+    for (const row of afterSecondSync) {
+      latest.set(`${row.source}|${row.model}|${row.hour_start}|${row.billing_mode}`, row);
+    }
+    assert.deepEqual(
+      [...latest.values()].map((row) => [row.billing_mode, row.total_tokens]).sort(),
+      [["api_key", 3], ["token_plan", 2], ["unknown", 7]],
+    );
+    assert.equal(
+      [...latest.values()].reduce((sum, row) => sum + row.total_tokens, 0),
+      12,
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseRolloutIncremental migrates persisted v3 groupQueued attribution exactly once", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-attribution-v3-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-test.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const hourStart = "2025-12-17T00:00:00.000Z";
+    const legacyTotals = {
+      input_tokens: 7,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 7,
+      billable_total_tokens: 7,
+      conversation_count: 1,
+    };
+    const cursors = {
+      version: 1,
+      files: {},
+      hourly: {
+        version: 3,
+        buckets: {
+          [`codex|unknown|${hourStart}`]: {
+            totals: legacyTotals,
+            queuedKey: "legacy-seven",
+          },
+        },
+        groupQueued: {
+          [`codex|${hourStart}`]: "legacy-seven",
+        },
+      },
+    };
+    await fs.writeFile(
+      queuePath,
+      `${JSON.stringify({
+        source: "codex",
+        model: "unknown",
+        hour_start: hourStart,
+        ...legacyTotals,
+        billing_mode: "unknown",
+        billing_mode_confidence: "unavailable",
+      })}\n`,
+    );
+    const apiGrowth = { input_tokens: 3, output_tokens: 0, total_tokens: 3 };
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({
+        ts: "2025-12-17T00:10:00.000Z",
+        last: apiGrowth,
+        total: apiGrowth,
+        billingMode: "api_key",
+      })}\n`,
+    );
+
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    const afterFirstSync = await readJsonLines(queuePath);
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    const afterSecondSync = await readJsonLines(queuePath);
+    assert.equal(afterSecondSync.length, afterFirstSync.length, "migration does not replay on sync two");
+
+    const latest = new Map();
+    for (const row of afterSecondSync) {
+      latest.set(`${row.source}|${row.model}|${row.hour_start}|${row.billing_mode}`, row);
+    }
+    assert.deepEqual(
+      [...latest.values()].map((row) => [row.billing_mode, row.total_tokens]).sort(),
+      [["api_key", 3], ["unknown", 7]],
+    );
+    assert.equal([...latest.values()].reduce((sum, row) => sum + row.total_tokens, 0), 10);
+    assert.equal(cursors.hourly.attributionMigrationVersion, 1);
+    assert.deepEqual(cursors.hourly.groupQueued, {});
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseRolloutIncremental retracts a persisted multi-model groupQueued aggregate", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-attribution-v3-multi-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-test.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const hourStart = "2025-12-17T00:00:00.000Z";
+    const totals = (count) => ({
+      input_tokens: count,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: count,
+      billable_total_tokens: count,
+      conversation_count: 1,
+    });
+    const cursors = {
+      version: 1,
+      files: {},
+      hourly: {
+        version: 3,
+        buckets: {
+          [`codex|model-a|${hourStart}`]: { totals: totals(7), queuedKey: "legacy-twelve" },
+          [`codex|model-b|${hourStart}`]: { totals: totals(5), queuedKey: "legacy-twelve" },
+        },
+        groupQueued: { [`codex|${hourStart}`]: "legacy-twelve" },
+      },
+    };
+    await fs.writeFile(
+      queuePath,
+      `${JSON.stringify({
+        source: "codex",
+        model: "unknown",
+        hour_start: hourStart,
+        ...totals(12),
+        billing_mode: "unknown",
+        billing_mode_confidence: "unavailable",
+      })}\n`,
+    );
+    const growth = { input_tokens: 1, output_tokens: 0, total_tokens: 1 };
+    await fs.writeFile(
+      rolloutPath,
+      `${JSON.stringify({ type: "session_meta", payload: { model: "model-a" } })}\n${buildTokenCountLine({
+        ts: "2025-12-17T00:10:00.000Z",
+        last: growth,
+        total: growth,
+      })}\n`,
+    );
+
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    const afterFirstSync = await readJsonLines(queuePath);
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    const afterSecondSync = await readJsonLines(queuePath);
+    assert.equal(afterSecondSync.length, afterFirstSync.length, "sync two must not replay migration rows");
+
+    const latest = new Map();
+    for (const row of afterSecondSync) {
+      latest.set(`${row.source}|${row.model}|${row.hour_start}|${row.billing_mode}`, row);
+    }
+    assert.equal(latest.get(`codex|unknown|${hourStart}|unknown`)?.total_tokens, 0);
+    assert.equal(latest.get(`codex|model-a|${hourStart}|unknown`)?.total_tokens, 8);
+    assert.equal(latest.get(`codex|model-b|${hourStart}|unknown`)?.total_tokens, 5);
+    assert.equal([...latest.values()].reduce((sum, row) => sum + row.total_tokens, 0), 13);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseRolloutIncremental handles total_token_usage reset by counting last_token_usage", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-"));
   try {
@@ -2804,7 +3029,7 @@ function buildSessionMetaLine({ model, cwd, forkedFromId }) {
   });
 }
 
-function buildTokenCountLine({ ts, last, total }) {
+function buildTokenCountLine({ ts, last, total, billingMode }) {
   return JSON.stringify({
     type: "event_msg",
     timestamp: ts,
@@ -2813,6 +3038,7 @@ function buildTokenCountLine({ ts, last, total }) {
       info: {
         last_token_usage: last,
         total_token_usage: total,
+        ...(billingMode ? { billing_mode: billingMode } : {}),
       },
     },
   });

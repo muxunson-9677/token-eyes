@@ -1,6 +1,6 @@
 [package]
 name = "token-eyes"
-version = "0.54.40"
+version = "0.54.43"
 description = "Token Eyes - AI Token Usage Tracker Desktop"
 authors = ["Muxunson"]
 license = "MIT"
@@ -30,6 +30,7 @@ rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
 ring = "0.17"
+chrono = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

@@ -12,6 +12,7 @@ import {
   updateSpendRecord,
 } from "../../lib/api";
 import { OtherAiSpendSection, resolveNoteTagTone, resolveSpendRecordDrop } from "./OtherAiSpendSection.jsx";
+import { clearCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 
 vi.mock("../../lib/api", () => ({
   createSpendRecord: vi.fn(),
@@ -52,6 +53,7 @@ const OTHER_AI_RECORD = {
 
 describe("OtherAiSpendSection", () => {
   beforeEach(() => {
+    clearCostSettingsSessionCache();
     vi.clearAllMocks();
     [
       createSpendRecord,
@@ -71,6 +73,17 @@ describe("OtherAiSpendSection", () => {
     reorderOtherAiSpendGroups.mockResolvedValue({ ok: true });
     reorderOtherAiSpendRecords.mockResolvedValue({ ok: true });
     saveOtherAiSpendGroup.mockResolvedValue({ ok: true });
+  });
+
+  it("reuses confirmed spend records when the cost page is entered again", async () => {
+    getSpendRecords.mockResolvedValue({ records: [OTHER_AI_RECORD], other_ai_groups: [] });
+    const first = render(<OtherAiSpendSection />);
+    expect(await screen.findByText("被封账号历史充值")).toBeInTheDocument();
+    first.unmount();
+
+    render(React.createElement(OtherAiSpendSection));
+    expect(screen.getByText("被封账号历史充值")).toBeInTheDocument();
+    expect(getSpendRecords).toHaveBeenCalledTimes(1);
   });
 
   it("loads only the reserved other_ai source and renders saved notes", async () => {
@@ -112,6 +125,7 @@ describe("OtherAiSpendSection", () => {
     expect(new Set([noteA, noteB, noteC].map((node) => node.getAttribute("data-tone"))).size).toBeGreaterThan(1);
     const main = noteA.closest(".tt-other-ai-row-main");
     expect(main).toBeTruthy();
+    expect(main).toHaveClass("tt-pressable", "tt-product-focusable");
     expect(main.querySelector(".tt-other-ai-row-title")).toHaveTextContent("EqualVPN");
     expect(main.querySelector(".tt-other-ai-row-primary")).toBeTruthy();
     expect(noteA.compareDocumentPosition(main.querySelector(".tt-other-ai-row-title")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();

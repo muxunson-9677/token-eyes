@@ -97,15 +97,23 @@ describe("ResetHistoryPage", () => {
   });
 
   it("shows deterministic preview records when the local desktop API is unavailable", () => {
-    window.history.replaceState({}, "", "/reset-history");
-    resetContext.value.available = false;
-    resetContext.value.history = [];
+    // The preview dataset uses fixed July 2026 dates and the page filters by a
+    // rolling recency window, so freeze the clock to keep the count stable.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
+    try {
+      window.history.replaceState({}, "", "/reset-history");
+      resetContext.value.available = false;
+      resetContext.value.history = [];
 
-    render(<ResetHistoryPage />);
+      render(<ResetHistoryPage />);
 
-    expect(screen.getAllByTestId("reset-history-item")).toHaveLength(10);
-    expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
-    expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
+      expect(screen.getAllByTestId("reset-history-item")).toHaveLength(10);
+      expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
+      expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the heatmap and summary figures in one right-side divided group", () => {
@@ -147,6 +155,29 @@ describe("ResetHistoryPage", () => {
     );
   });
 
+  it("expands the announcement title, details, and quoted post from the card or chevron", async () => {
+    const user = userEvent.setup();
+    resetContext.value.history = [
+      officialReset("today", new Date(2026, 6, 26, 14, 32)),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    const item = screen.getByTestId("reset-history-item");
+    expect(screen.queryByTestId("reset-history-detail")).not.toBeInTheDocument();
+    expect(item).not.toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
+
+    expect(item).toHaveClass("tt-pressable");
+    await user.click(screen.getByTestId("reset-history-expand"));
+
+    const detail = screen.getByTestId("reset-history-detail");
+    expect(detail).toHaveTextContent("Codex official extra reset");
+    expect(detail).toHaveTextContent("copy:reset_history.detail_content");
+    expect(detail).toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
+    expect(detail).toHaveTextContent("copy:reset_history.quoted_tweet");
+    expect(item).toHaveAttribute("data-expanded", "true");
+  });
+
   it("shows all retained records in descending occurrence order instead of capping at three", () => {
     resetContext.value.history = Array.from({ length: 5 }, (_, index) =>
       officialReset(
@@ -171,7 +202,7 @@ describe("ResetHistoryPage", () => {
   it("reveals the remaining official announcements from the history control", async () => {
     const user = userEvent.setup();
     resetContext.value.history = Array.from({ length: 13 }, (_, index) =>
-      officialReset(`record-${index}`, new Date(2026, 6, 29 - index, 8, index)));
+      officialReset(`record-${index}`, new Date(2026, 7, 13 - index, 8, index)));
 
     render(<ResetHistoryPage />);
 
@@ -299,4 +330,3 @@ describe("ResetHistoryPage", () => {
     }
   });
 });
-

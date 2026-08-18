@@ -46,6 +46,12 @@ const {
   flattenUsageLimitsPayload,
 } = require("./widget-view-model");
 const { getCodexUsageLimits } = require("./usage-limits");
+const {
+  accumulateBillingModeAttribution,
+  normalizeBillingMode,
+  normalizeUsageAttribution,
+  queueUsageIdentity,
+} = require("./usage-attribution");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
@@ -188,6 +194,8 @@ function readTrackerConfigAt(trackerDataDir) {
 async function buildRequestUsageRecordsList({
   qp,
   trackerDataDir,
+  home = os.homedir(),
+  env = process.env,
   effectiveSources,
   from,
   to,
@@ -210,6 +218,11 @@ async function buildRequestUsageRecordsList({
   const toKeyRur = toPartsRur ? formatPartsDayKey(toPartsRur) : null;
 
   const wantsCodex = !effectiveSources || effectiveSources.includes("codex");
+  // V2 Task 6 (W3): Claude gets true message-level events from its session
+  // jsonl logs. When events exist for the range they REPLACE the half-hour
+  // aggregate rows (same data source, so keeping both would double count);
+  // when the logs are absent we fall back to aggregates.
+  const wantsClaude = !effectiveSources || effectiveSources.includes("claude");
   const nonCodexSources = effectiveSources
     ? effectiveSources.filter((s) => s !== "codex")
     : null;
@@ -219,6 +232,37 @@ async function buildRequestUsageRecordsList({
   } else if (!effectiveSources) {
     const queueSources = [...new Set(allRows.map(r => normalizeSource(r.source)).filter(Boolean))];
     aggregateOnlySources = queueSources.filter(s => s !== "codex");
+  }
+
+  const dataDirectoryPaths = (wantsCodex || wantsClaude)
+    ? resolveDataDirectoryPaths({
+        config: readTrackerConfigAt(trackerDataDir),
+        env,
+        home,
+      })
+    : null;
+
+  let claudeEventRecords = [];
+  if (wantsClaude && dataDirectoryPaths?.claudeProjectsDir) {
+    try {
+      const claudeFiles = await listClaudeProjectFiles(dataDirectoryPaths.claudeProjectsDir);
+      if (claudeFiles.length > 0) {
+        const claudeResult = await collectClaudeRequestUsageRecords({
+          claudeProjectFiles: claudeFiles,
+          from: from || undefined,
+          to: to || undefined,
+          timeZoneContext,
+          limit,
+          pricingOptions,
+        });
+        claudeEventRecords = claudeResult.records || [];
+      }
+    } catch (e) {
+      console.error("[LocalAPI] request-usage-records claude branch error:", e?.message || e);
+    }
+  }
+  if (claudeEventRecords.length > 0) {
+    aggregateOnlySources = aggregateOnlySources.filter((s) => s !== "claude");
   }
 
   const aggregateRecords = buildAggregateUsageRecords(allRows, {
@@ -231,13 +275,13 @@ async function buildRequestUsageRecordsList({
   });
   allRecords.push(...aggregateRecords);
 
+  for (const record of claudeEventRecords) {
+    record.source_display_name = getSourceDisplayName("claude");
+    allRecords.push(record);
+  }
+
   if (wantsCodex) {
     try {
-      const dataDirectoryPaths = resolveDataDirectoryPaths({
-        config: readTrackerConfigAt(trackerDataDir),
-        env: process.env,
-        home: os.homedir(),
-      });
       const rolloutFiles = await listCodexRolloutFilesFromHomes(
         dataDirectoryPaths.codexHomes?.length ? dataDirectoryPaths.codexHomes : [dataDirectoryPaths.codexHome],
       );
@@ -306,8 +350,14 @@ const { computeCodexContextBreakdown } = require("./codex-context-breakdown");
 
 const tokenPlanRefresh = require("./token-plan-refresh");
 const { getPlanById, listProviderOptions, getProviderCatalog } = require("./token-plan-catalog");
+const { getPlanMarketCatalog } = require("./plan-market");
 const { getAgentAdapter, listAgentAdapters } = require("./agent-adapters");
-const { collectApiBillingAccounts } = require("./api-billing");
+const {
+  collectApiBillingAccounts,
+  fetchOpenAiCostsInvoice,
+  getUtcMonthPeriod,
+  isOpenAiCostsConfig,
+} = require("./api-billing");
 
 // 02-ia-api-balance: provider API balance/spend backend (financial query only)
 const providerApiConfigs = require("./provider-api-configs");
@@ -320,7 +370,11 @@ const providerApiExecutor = require("./provider-api-executor");
 const {
   listRolloutFilesDeep,
   collectRolloutRequestUsageRecords,
+  listClaudeProjectFiles,
 } = require("./rollout");
+
+// V2 Task 6 (W3): message-level usage events parsed from Claude session logs.
+const { collectClaudeRequestUsageRecords } = require("./claude-request-usage");
 
 const {
   extractTokenCount: extractCodexTokenCount,
@@ -365,7 +419,8 @@ function readProjectQueueData(projectQueuePath, mainQueuePath = resolveQueuePath
   for (const line of lines) {
     try {
       const row = JSON.parse(line);
-      const key = `${row.project_key || ""}|${row.source || ""}|${row.hour_start || ""}`;
+      const billingMode = normalizeUsageAttribution(row).billing_mode;
+      const key = `${row.project_key || ""}|${row.source || ""}|${row.hour_start || ""}|${billingMode}`;
       seen.set(key, normalizeQueueRow(row));
     } catch {
       // skip malformed
@@ -490,7 +545,7 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     );
   }
   // Deduplicate: each sync appends cumulative totals per bucket, so for
-  // each (source, model, hour_start) keep only the latest (last) entry.
+  // each (source, model, hour_start, billing_mode) keep only the latest entry.
   const seen = new Map();
   for (const row of parsed) {
     // A pre-release OpenClaw smoke check accidentally wrote this exact
@@ -498,8 +553,8 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     // genuine OpenClaw history remains untouched.
     if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
     const key = dedupeMode === "dimensions"
-      ? `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}|${queueRowDimensionsKey(row)}`
-      : `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
+      ? queueUsageIdentity(row, { dimensionsKey: queueRowDimensionsKey(row) })
+      : queueUsageIdentity(row);
     seen.set(key, normalizeQueueRow(row));
   }
   const rows = Array.from(seen.values());
@@ -577,7 +632,7 @@ function clearQueueDataCacheForTests() {
 }
 
 function summarizeTokenOnlyUsage(rows, directoryStates = {}) {
-  const totals = { trae: 0, codebuddy: 0, opencode: 0 };
+  const totals = { trae: 0, codebuddy: 0, workbuddy: 0, opencode: 0 };
   for (const row of Array.isArray(rows) ? rows : []) {
     const source = normalizeSource(row?.source);
     if (!Object.prototype.hasOwnProperty.call(totals, source)) continue;
@@ -614,6 +669,7 @@ function resolveTokenOnlyDirectoryStates(settings, options = {}) {
   return {
     trae: inspectDataDirectory("trae", resolved.traeHome, options),
     codebuddy: inspectDataDirectory("codebuddy", resolved.codebuddyHome, options),
+    workbuddy: inspectDataDirectory("workbuddy", resolved.workbuddyHome, options),
     opencode: inspectDataDirectory("opencode", resolved.opencodeHome, options),
   };
 }
@@ -621,7 +677,7 @@ function resolveTokenOnlyDirectoryStates(settings, options = {}) {
 function appendDetectedTokenOnlyProviders(providers, directoryStates = {}, sources = null) {
   const result = Array.isArray(providers) ? providers.slice() : [];
   const existing = new Set(result.map((provider) => normalizeSource(provider?.source)));
-  for (const source of ["trae", "codebuddy", "opencode"]) {
+  for (const source of ["trae", "codebuddy", "workbuddy", "opencode"]) {
     if (sources && !sources.includes(source)) continue;
     if (existing.has(source)) continue;
     const state = directoryStates?.[source];
@@ -683,10 +739,60 @@ const CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS = 30_000;
 const CODEX_ROLLOUT_FILES_CACHE = new Map();
 const CODEX_ROLLOUT_FILES_CACHE_TTL_MS = 60_000;
 
-async function listCodexRolloutFilesFromHomes(codexHomes) {
+function createCodexRolloutScanGeneration(runScan) {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { runScan, promise, resolve, reject, next: null };
+}
+
+function finishCodexRolloutScanGeneration(scanScopeKey, state, generation) {
+  if (generation.next) {
+    state.current = generation.next;
+    startCodexRolloutScanGeneration(scanScopeKey, state, generation.next);
+  } else if (CODEX_ROLLOUT_QUEUE_INFLIGHT.get(scanScopeKey) === state) {
+    CODEX_ROLLOUT_QUEUE_INFLIGHT.delete(scanScopeKey);
+  }
+}
+
+function startCodexRolloutScanGeneration(scanScopeKey, state, generation) {
+  Promise.resolve()
+    .then(generation.runScan)
+    .then(
+      (rows) => {
+        finishCodexRolloutScanGeneration(scanScopeKey, state, generation);
+        generation.resolve(rows);
+      },
+      (error) => {
+        finishCodexRolloutScanGeneration(scanScopeKey, state, generation);
+        generation.reject(error);
+      },
+    );
+}
+
+function enqueueCodexRolloutScan(scanScopeKey, runScan) {
+  const existingState = CODEX_ROLLOUT_QUEUE_INFLIGHT.get(scanScopeKey);
+  if (existingState) {
+    if (!existingState.current.next) {
+      existingState.current.next = createCodexRolloutScanGeneration(runScan);
+    }
+    return existingState.current.next.promise;
+  }
+
+  const current = createCodexRolloutScanGeneration(runScan);
+  const state = { current };
+  CODEX_ROLLOUT_QUEUE_INFLIGHT.set(scanScopeKey, state);
+  startCodexRolloutScanGeneration(scanScopeKey, state, current);
+  return current.promise;
+}
+
+async function listCodexRolloutFilesFromHomes(codexHomes, { forceRefresh = false } = {}) {
   const homes = Array.isArray(codexHomes) ? codexHomes : [codexHomes];
   const cacheKey = homes.map((home) => String(home || "").trim().toLowerCase()).filter(Boolean).join("\u0001");
-  if (cacheKey) {
+  if (!forceRefresh && cacheKey) {
     const cached = CODEX_ROLLOUT_FILES_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.at < CODEX_ROLLOUT_FILES_CACHE_TTL_MS) {
       return cached.files.slice();
@@ -732,17 +838,20 @@ async function listCodexRolloutFilesFromHome(codexHome) {
   return files;
 }
 
-function maxFileMtimeMs(files) {
-  let max = 0;
+async function codexRolloutFilesSignature(files) {
+  const hash = crypto.createHash("sha256");
   for (const filePath of files || []) {
+    hash.update(String(filePath));
+    hash.update("\u0000");
     try {
-      const stat = fs.statSync(filePath);
-      if (stat.mtimeMs > max) max = stat.mtimeMs;
+      const stat = await fs.promises.stat(filePath);
+      hash.update(`${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`);
     } catch {
-      // File disappeared during refresh; ignore this scan entry.
+      hash.update("missing");
     }
+    hash.update("\u0000");
   }
-  return max;
+  return hash.digest("hex");
 }
 
 function shiftDayKey(dayKey, deltaDays) {
@@ -768,39 +877,38 @@ async function collectCodexRolloutQueueRows({
   const homes = Array.isArray(codexHomes) && codexHomes.length > 0
     ? codexHomes
     : (codexHome ? [codexHome] : []);
-  const files = await listCodexRolloutFilesFromHomes(homes);
-  if (files.length === 0) return [];
-
-  const cacheKey = [
+  const scanScopeKey = [
     "codex-rollout-queue-v1",
     homes.join("\u0001"),
     from || "",
     to || "",
     timeZoneContext?.timeZone || "",
     Number.isFinite(timeZoneContext?.offsetMinutes) ? timeZoneContext.offsetMinutes : "",
-    files.length,
-    maxFileMtimeMs(files),
   ].join("|");
-  const cached = CODEX_ROLLOUT_QUEUE_CACHE.get(cacheKey);
-  if (cached && Date.now() - cached.at < CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS) {
-    return cached.rows.map((row) => ({ ...row }));
-  }
-  const existingScan = CODEX_ROLLOUT_QUEUE_INFLIGHT.get(cacheKey);
-  if (existingScan) {
-    const rows = await existingScan;
-    return rows.map((row) => ({ ...row }));
-  }
-
-  const scan = (async () => {
-    const buckets = new Map();
+  const rows = await enqueueCodexRolloutScan(scanScopeKey, async () => {
+    const files = await listCodexRolloutFilesFromHomes(homes, {
+      forceRefresh: true,
+    });
     const minFileDay = from ? shiftDayKey(from, -1) : null;
     const maxFileDay = to ? shiftDayKey(to, 1) : null;
-
-    for (const filePath of files) {
+    const relevantFiles = files.filter((filePath) => {
       const fileDay = codexRolloutFileDay(filePath);
-      if (fileDay && minFileDay && fileDay < minFileDay) continue;
-      if (fileDay && maxFileDay && fileDay > maxFileDay) continue;
+      if (fileDay && minFileDay && fileDay < minFileDay) return false;
+      if (fileDay && maxFileDay && fileDay > maxFileDay) return false;
+      return true;
+    });
+    if (relevantFiles.length === 0) return [];
+    const cacheKey = [
+      scanScopeKey,
+      await codexRolloutFilesSignature(relevantFiles),
+    ].join("|");
+    const cached = CODEX_ROLLOUT_QUEUE_CACHE.get(cacheKey);
+    if (cached && Date.now() - cached.at < CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS) {
+      return cached.rows;
+    }
+    const buckets = new Map();
 
+    for (const filePath of relevantFiles) {
       const stat = await fs.promises.stat(filePath).catch(() => null);
       if (!stat || !stat.isFile()) continue;
 
@@ -890,16 +998,8 @@ async function collectCodexRolloutQueueRows({
     });
     CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, { at: Date.now(), rows });
     return rows;
-  })();
-  CODEX_ROLLOUT_QUEUE_INFLIGHT.set(cacheKey, scan);
-  try {
-    const rows = await scan;
-    return rows.map((row) => ({ ...row }));
-  } finally {
-    if (CODEX_ROLLOUT_QUEUE_INFLIGHT.get(cacheKey) === scan) {
-      CODEX_ROLLOUT_QUEUE_INFLIGHT.delete(cacheKey);
-    }
-  }
+  });
+  return rows.map((row) => ({ ...row }));
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,6 +1255,8 @@ function computeRecordTotals(records) {
     cost_usd: 0,
     request_count: 0,
     success_count: null,
+    interrupted_count: 0,
+    failure_count: 0,
     success_rate: null,
     avg_latency_ms: null,
     cache_hit_rate: 0,
@@ -1168,6 +1270,8 @@ function computeRecordTotals(records) {
   let measuredStatusCount = 0;
   let measuredLatencyCount = 0;
   let successCount = 0;
+  let interruptedCount = 0;
+  let failureCount = 0;
   for (const r of records) {
     const aggregateCount = Number(r.conversation_count || 0);
     totals.request_count += r.record_kind === "aggregate_bucket"
@@ -1184,7 +1288,10 @@ function computeRecordTotals(records) {
     totals.unpriced_tokens += Number(r.unpriced_tokens || r.total_tokens || 0) - Number(r.priced_tokens || 0);
     if (r.status !== null && r.status !== undefined) {
       measuredStatusCount++;
-      if (Number(r.status) >= 200 && Number(r.status) < 300) successCount++;
+      const status = Number(r.status);
+      if (status >= 200 && status < 300) successCount++;
+      else if (status === 499) interruptedCount++;
+      else failureCount++;
     }
     if (r.latency_ms !== null && r.latency_ms !== undefined) {
       measuredLatencyCount++;
@@ -1192,10 +1299,13 @@ function computeRecordTotals(records) {
     }
   }
   totals.status_sample_count = measuredStatusCount;
+  totals.interrupted_count = interruptedCount;
+  totals.failure_count = failureCount;
   totals.latency_sample_count = measuredLatencyCount;
-  if (measuredStatusCount > 0) {
+  const completedStatusCount = successCount + failureCount;
+  if (completedStatusCount > 0) {
     totals.success_count = successCount;
-    totals.success_rate = Number(((successCount / measuredStatusCount) * 100).toFixed(2));
+    totals.success_rate = Number(((successCount / completedStatusCount) * 100).toFixed(2));
   }
   if (measuredLatencyCount > 0) {
     totals.avg_latency_ms = Math.round(latencySum / measuredLatencyCount);
@@ -2146,9 +2256,103 @@ function buildProxyHeaders(headers) {
 // Main handler factory
 // ---------------------------------------------------------------------------
 
+function canonicalizePathForContainment(inputPath) {
+  const suffix = [];
+  let existingAncestor = path.resolve(inputPath);
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor);
+    if (parent === existingAncestor) break;
+    suffix.unshift(path.basename(existingAncestor));
+    existingAncestor = parent;
+  }
+  const realpath = fs.realpathSync.native || fs.realpathSync;
+  return path.resolve(realpath(existingAncestor), ...suffix);
+}
+
+function isPathContainedBy(rootPath, candidatePath, { allowRoot = true } = {}) {
+  const relative = path.relative(rootPath, candidatePath);
+  if (!relative) return allowRoot;
+  return !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function validateLocalApiTestPaths(
+  { trackerDataDir, queuePath, machineIdSeedPath },
+  { context = "createLocalApiHandler" } = {},
+) {
+  // Cookie, config, cloud-preference, credential, and project-queue paths are
+  // derived from trackerDataDir or queuePath. The purge-surviving machine-id
+  // seed is the only other independently configurable persistence path.
+  if (!trackerDataDir) {
+    throw new Error(`${context} requires an explicit trackerDataDir`);
+  }
+  if (!path.isAbsolute(trackerDataDir)) {
+    throw new Error(`${context} trackerDataDir must be an absolute path under the OS temporary directory`);
+  }
+  const canonicalTempDir = canonicalizePathForContainment(os.tmpdir());
+  const canonicalTrackerDataDir = canonicalizePathForContainment(trackerDataDir);
+  if (!isPathContainedBy(canonicalTempDir, canonicalTrackerDataDir, { allowRoot: false })) {
+    throw new Error(`${context} trackerDataDir must resolve inside the OS temporary directory`);
+  }
+
+  const effectiveQueuePath = queuePath || path.join(trackerDataDir, "queue.jsonl");
+  if (!path.isAbsolute(effectiveQueuePath)) {
+    throw new Error(`${context} queuePath must be an absolute path under the OS temporary directory`);
+  }
+  const canonicalQueuePath = canonicalizePathForContainment(effectiveQueuePath);
+  if (!isPathContainedBy(canonicalTempDir, canonicalQueuePath)) {
+    throw new Error(`${context} queuePath must resolve inside the OS temporary directory`);
+  }
+
+  const effectiveMachineIdSeedPath = machineIdSeedPath
+    || path.join(canonicalTrackerDataDir, "machine-id");
+  if (!path.isAbsolute(effectiveMachineIdSeedPath)) {
+    throw new Error(`${context} machineIdSeedPath must be an absolute path under trackerDataDir`);
+  }
+  const canonicalMachineIdSeedPath = canonicalizePathForContainment(effectiveMachineIdSeedPath);
+  if (!isPathContainedBy(canonicalTrackerDataDir, canonicalMachineIdSeedPath, { allowRoot: false })) {
+    throw new Error(`${context} machineIdSeedPath must resolve inside trackerDataDir`);
+  }
+
+  return {
+    machineIdSeedPath: canonicalMachineIdSeedPath,
+    queuePath: canonicalQueuePath,
+    trackerDataDir: canonicalTrackerDataDir,
+  };
+}
+
+function createIsolatedHandlerEnvironment(sourceEnv, handlerHome) {
+  const env = {
+    HOME: handlerHome,
+    USERPROFILE: handlerHome,
+    APPDATA: path.join(handlerHome, "AppData", "Roaming"),
+    LOCALAPPDATA: path.join(handlerHome, "AppData", "Local"),
+  };
+  for (const name of [
+    "CI",
+    "COMSPEC",
+    "NODE_TEST_CONTEXT",
+    "NUMBER_OF_PROCESSORS",
+    "OS",
+    "PATH",
+    "PATHEXT",
+    "PROCESSOR_ARCHITECTURE",
+    "SystemRoot",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "TZ",
+    "VITEST",
+    "WINDIR",
+  ]) {
+    if (sourceEnv[name] !== undefined) env[name] = sourceEnv[name];
+  }
+  return env;
+}
+
 function createLocalApiHandler({
   queuePath,
   trackerDataDir: trackerDataDirOverride,
+  machineIdSeedPath: machineIdSeedPathOverride,
   credentialStore: injectedCredentialStore,
   detectDataDirectories: detectDataDirectoriesOverride,
   detectAgentEnvironment: detectAgentEnvironmentOverride,
@@ -2159,11 +2363,34 @@ function createLocalApiHandler({
   codexLifecycleProvider,
   limitAccountsProvider,
   tokenOnlyDirectoryStatesProvider,
+  dataDirectoryPathsResolver,
   now: nowProvider = () => new Date(),
 } = {}) {
-  const qp = queuePath || resolveQueuePath();
+  const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VITEST === "true";
+  let trackerDataDir = trackerDataDirOverride || path.join(os.homedir(), ".tokentracker", "tracker");
+  let qp = queuePath || (isTestRunner ? path.join(trackerDataDir, "queue.jsonl") : resolveQueuePath());
+  let machineIdSeedPath = machineIdSeedPathOverride;
+  if (isTestRunner) {
+    const validatedPaths = validateLocalApiTestPaths({
+      trackerDataDir: trackerDataDirOverride,
+      queuePath,
+      machineIdSeedPath: machineIdSeedPathOverride,
+    });
+    trackerDataDir = validatedPaths.trackerDataDir;
+    qp = validatedPaths.queuePath;
+    machineIdSeedPath = validatedPaths.machineIdSeedPath;
+  }
+  const handlerHome = isTestRunner ? trackerDataDir : os.homedir();
+  const handlerEnv = isTestRunner
+    ? createIsolatedHandlerEnvironment(process.env, handlerHome)
+    : process.env;
+  const getHandlerMachineId = (queuePathForMachineId = qp) => getOrCreateMachineId(
+    queuePathForMachineId,
+    machineIdSeedPath ? { seedPath: machineIdSeedPath } : undefined,
+  );
   const detectDataDirectories = detectDataDirectoriesOverride || detectDataDirectoryPaths;
   const detectAgentEnvironmentForRequest = detectAgentEnvironmentOverride || detectAgentEnvironment;
+  const resolveHandlerDataDirectoryPaths = dataDirectoryPathsResolver || resolveDataDirectoryPaths;
 
   // Server-side cookie relay: captures auth cookies from InsForge cloud responses
   // so that both browser and WKWebView share the same login session via the proxy.
@@ -2174,9 +2401,12 @@ function createLocalApiHandler({
   // Provider API). Legacy in-memory map kept only for same-process migration.
   const tokenPlanSecretStore = new Map();
   const localAuthToken = crypto.randomBytes(24).toString("hex");
-  const trackerDataDir = trackerDataDirOverride || path.join(os.homedir(), ".tokentracker", "tracker");
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
   const usageAggregateResponseCache = new Map();
+  // WorkBuddy credit quota — cache the codebuddy.cn billing response so the
+  // dashboard can poll freely without hammering the remote API.
+  const WORKBUDDY_QUOTA_CACHE_MS = 5 * 60 * 1000;
+  const workbuddyQuotaCache = { payload: null, fetchedAtMs: 0 };
 
   function prepareUsageAggregateResponseCache(req, res, url) {
     if (String(req.method || "GET").toUpperCase() !== "GET") return false;
@@ -2242,19 +2472,19 @@ function createLocalApiHandler({
   const codexResetMonitorService = injectedCodexResetMonitorService
     || createCodexResetMonitorService({
       getCodexUsageLimits: () => {
-        const dataDirectoryPaths = resolveDataDirectoryPaths({
+        const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
-          env: process.env,
-          home: os.homedir(),
+          env: handlerEnv,
+          home: handlerHome,
           platform: process.platform,
         });
         const codexHome = dataDirectoryPaths.codexHomes?.[0]
           || dataDirectoryPaths.codexHome;
         return getCodexUsageLimits({
-          home: os.homedir(),
+          home: handlerHome,
           env: codexHome
-            ? { ...process.env, CODEX_HOME: codexHome }
-            : process.env,
+            ? { ...handlerEnv, CODEX_HOME: codexHome }
+            : handlerEnv,
           platform: process.platform,
         });
       },
@@ -2262,10 +2492,10 @@ function createLocalApiHandler({
       saveState: codexResetMonitorStore.save,
       collectCodexResetSnapshots,
       getCodexHomes: () => {
-        const dataDirectoryPaths = resolveDataDirectoryPaths({
+        const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
-          env: process.env,
-          home: os.homedir(),
+          env: handlerEnv,
+          home: handlerHome,
           platform: process.platform,
         });
         return [...new Set(
@@ -2305,12 +2535,9 @@ function createLocalApiHandler({
       const content = fs.readFileSync(cookiePath, "utf8");
       const saved = JSON.parse(content);
       if (saved && typeof saved === "object") {
-        let count = 0;
         for (const [k, v] of Object.entries(saved)) {
           relayCookies.set(k, v);
-          count++;
         }
-        if (count > 0) console.log(`[LocalAPI] Loaded ${count} relay cookies from ${cookiePath}`);
       }
     }
   } catch (e) {
@@ -2514,10 +2741,10 @@ function createLocalApiHandler({
     const configuredCodexHome = normalizeDataDirectories(config.dataDirectories).codex;
     const usesDefaultQueue = path.resolve(qp).toLowerCase() === path.resolve(resolveQueuePath()).toLowerCase();
     if (!configuredCodexHome && !usesDefaultQueue) return rows;
-    const dataDirectoryPaths = resolveDataDirectoryPaths({
+    const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
       config,
-      env: process.env,
-      home: os.homedir(),
+      env: handlerEnv,
+      home: handlerHome,
     });
     const codexRows = await collectCodexRolloutQueueRows({
       codexHomes: dataDirectoryPaths.codexHomes?.length
@@ -2846,142 +3073,19 @@ function createLocalApiHandler({
   }
 
   // ---------------------------------------------------------------------------
-  // Q02: billing_mode derivation helpers.
-  //
-  // We do NOT trust queue rows to carry a `billing_mode` field today (Hermes
-  // schema has it but TokenTracker doesn't forward it). Until parser support
-  // lands, we infer the mode at read time using:
-  //   1) explicit row field (preferred, in case the field ever appears),
-  //   2) Token 濂楅 records: `plan_label` keywords matching the model name,
-  //   3) source-level plan match for non-mixed sources,
-  //   4) model-keyword heuristic,
-  //   5) `unknown` (NEVER default to api_key).
+  // billing_mode is trusted evidence from a queue/runtime row. Model names,
+  // sources, and locally configured plan records are not billing evidence.
   // ---------------------------------------------------------------------------
-
-  // Sources where the same source can carry both API Key and Token Plan
-  // traffic; per the spec, these skip the source-level Token Plan fallback so
-  // a single plan record for the source can't force every model into token_plan.
-  const MIXED_BILLING_SOURCES = new Set(["hermes"]);
-
-  const TOKEN_PLAN_MODEL_KEYWORDS = [
-    "mimo",
-    "token plan",
-    "subscription",
-    "pro plan",
-    "max plan",
-    "plus plan",
-  ];
-  const API_KEY_MODEL_KEYWORDS = [
-    "deepseek",
-    "openrouter",
-    "api key",
-    "payg",
-    "pay-as-you-go",
-    "custom api",
-  ];
-
-  function tokenizeForKeywordMatch(value) {
-    if (typeof value !== "string") return [];
-    const lower = value.toLowerCase();
-    // Split on any non-alphanumeric, keep latin/digit chunks.
-    const parts = lower.split(/[^a-z0-9]+/g).filter(Boolean);
-    // Spec: length < 3 ignored.
-    return parts.filter((part) => part.length >= 3);
-  }
-
-  function tokensContainAny(tokens, keywords) {
-    if (!Array.isArray(tokens) || !tokens.length) return false;
-    const tokenSet = new Set(tokens);
-    const joinedTokens = tokens.join(" ");
-    for (const keyword of keywords) {
-      const keywordTokens = tokenizeForKeywordMatch(String(keyword || ""));
-      if (!keywordTokens.length) continue;
-      if (keywordTokens.length === 1 && tokenSet.has(keywordTokens[0])) return true;
-      if (joinedTokens.includes(keywordTokens.join(" "))) return true;
-    }
-    return false;
-  }
-
   function normalizeBillingModeRaw(value) {
-    if (value == null) return null;
-    const raw = String(value).trim().toLowerCase();
-    if (!raw) return null;
-    if (raw === "api_key" || raw === "api-key" || raw === "api key") return "api_key";
-    if (
-      raw === "payg" ||
-      raw === "pay_as_you_go" ||
-      raw === "pay-as-you-go"
-    ) {
-      return "api_key";
-    }
-    if (raw === "token_plan" || raw === "token-plan" || raw === "token plan") {
-      return "token_plan";
-    }
-    if (raw === "subscription" || raw === "plan") return "token_plan";
-    if (raw === "unknown" || raw === "mixed") return raw;
-    return null;
+    return normalizeBillingMode(value);
   }
 
-  function planLabelMatchesModel(planLabel, model) {
-    const labelTokens = tokenizeForKeywordMatch(planLabel);
-    const modelTokens = tokenizeForKeywordMatch(model);
-    if (!labelTokens.length || !modelTokens.length) return false;
-    // Spec: contains relationship after lowercasing + de-symbolization +
-    // tokenization. Each side's tokens must intersect on at least one
-    // chunk of length >= 3.
-    const modelSet = new Set(modelTokens);
-    for (const tok of labelTokens) {
-      if (modelSet.has(tok)) return true;
-    }
-    return false;
-  }
-
-  function deriveModelBillingMode({ row, model, source, planRecords }) {
-    // 1) Explicit row field 鈥?`billing_mode` / `billingMode`.
-    const explicitRaw =
-      row?.billing_mode ?? row?.billingMode ?? null;
-    const explicit = normalizeBillingModeRaw(explicitRaw);
-    if (explicit && explicit !== "mixed") {
-      return { mode: explicit, confidence: "explicit_row" };
-    }
-
-    const safeModel = String(model || "").trim();
-    const safeSource = String(source || "").trim().toLowerCase();
-    const records = Array.isArray(planRecords) ? planRecords : [];
-    const sourceRecords = records.filter(
-      (r) => String(r?.source || "").trim().toLowerCase() === safeSource,
-    );
-
-    // 2) Token plan label match 鈥?`record.source` == source AND plan_label
-    //    keywords intersect the model tokens.
-    if (safeSource) {
-      for (const record of sourceRecords) {
-        if (planLabelMatchesModel(record?.plan_label, safeModel)) {
-          return { mode: "token_plan", confidence: "token_plan_label_match" };
-        }
-      }
-    }
-
-    // 3) Source-level plan match 鈥?only for sources that are NOT known to mix
-    //    api_key and token_plan traffic. Hermes is the canonical example.
-    if (safeSource && !MIXED_BILLING_SOURCES.has(safeSource) && sourceRecords.length > 0) {
-      return { mode: "token_plan", confidence: "source_token_plan_match" };
-    }
-
-    // 4) Heuristic model keyword match. Token Plan keywords win over
-    //    API Key keywords when both are present.
-    const modelTokens = tokenizeForKeywordMatch(safeModel);
-    if (modelTokens.length) {
-      if (tokensContainAny(modelTokens, TOKEN_PLAN_MODEL_KEYWORDS)) {
-        return { mode: "token_plan", confidence: "heuristic_model_keyword" };
-      }
-      if (tokensContainAny(modelTokens, API_KEY_MODEL_KEYWORDS)) {
-        return { mode: "api_key", confidence: "heuristic_model_keyword" };
-      }
-    }
-
-    // 5) Fallback 鈥?never default to api_key.
-    return { mode: "unknown", confidence: "fallback_unknown" };
+  function deriveModelBillingMode({ row }) {
+    const attribution = normalizeUsageAttribution(row);
+    return {
+      mode: attribution.billing_mode,
+      confidence: attribution.billing_mode_confidence,
+    };
   }
 
   const SOURCE_BILLING_MODE_ORDER = ["api_key", "token_plan", "unknown"];
@@ -2989,6 +3093,11 @@ function createLocalApiHandler({
   function summarizeSourceBillingMode(modelResults) {
     const modes = new Set();
     for (const r of Array.isArray(modelResults) ? modelResults : []) {
+      if (r?.mode === "mixed") {
+        modes.add("api_key");
+        modes.add("token_plan");
+        continue;
+      }
       if (r && (r.mode === "api_key" || r.mode === "token_plan" || r.mode === "unknown")) {
         modes.add(r.mode);
       }
@@ -3307,14 +3416,26 @@ function createLocalApiHandler({
   function resolveOfficialConsoleBalance(providerConfig) {
     const providerId = String(providerConfig?.providerId || "").trim();
     if (!providerId) return null;
-    const connected = readConsoleSessions()
+    const sessions = readConsoleSessions()
       .filter((session) => (
         session.provider_id === providerId
-        && session.status === "connected"
+        && session.status !== "revoked"
         && session.balance
       ))
-      .sort((left, right) => String(right.last_verified_at || "").localeCompare(String(left.last_verified_at || "")));
-    return connected[0]?.balance || null;
+      .sort((left, right) => {
+        const leftProviderAccount = String(left.session_ref || "").startsWith("provider-api/") ? 1 : 0;
+        const rightProviderAccount = String(right.session_ref || "").startsWith("provider-api/") ? 1 : 0;
+        if (leftProviderAccount !== rightProviderAccount) return rightProviderAccount - leftProviderAccount;
+        return String(right.last_verified_at || "").localeCompare(String(left.last_verified_at || ""));
+      });
+    const session = sessions[0];
+    if (!session) return null;
+    return {
+      ...session.balance,
+      stale: session.status !== "connected",
+      error_code: session.last_error_code,
+      error_message: session.last_error_message,
+    };
   }
 
   function normalizeConsoleBalance(input) {
@@ -4349,10 +4470,30 @@ function createLocalApiHandler({
           input_tokens: 0, output_tokens: 0, cached_input_tokens: 0,
           cache_creation_input_tokens: 0, reasoning_output_tokens: 0,
           total_tokens: 0, cost_usd: 0,
+          billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+          billing_mode_cost_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+          billing_provider_token_totals: new Map(),
           models: new Map(),
         });
       }
       const entry = bySourceBucket.get(key);
+      const attribution = normalizeUsageAttribution(row);
+      const billingMode = attribution.billing_mode === "api_key" || attribution.billing_mode === "token_plan"
+        ? attribution.billing_mode
+        : "unknown";
+      const attributedTokens = Math.max(0, Number(row.total_tokens || 0));
+      entry.billing_mode_token_totals[billingMode] += attributedTokens;
+      entry.billing_mode_cost_totals[billingMode] += costUsd;
+      const billingProvider = attribution.provider_id || "unknown";
+      if (!entry.billing_provider_token_totals.has(billingProvider)) {
+        entry.billing_provider_token_totals.set(billingProvider, {
+          provider_id: billingProvider,
+          api_key: 0,
+          token_plan: 0,
+          unknown: 0,
+        });
+      }
+      entry.billing_provider_token_totals.get(billingProvider)[billingMode] += attributedTokens;
       entry.api_cost_usd += costUsd;
       entry.cost_usd += costUsd;
       entry.input_tokens += Number(row.input_tokens || 0);
@@ -4619,6 +4760,9 @@ function createLocalApiHandler({
           reasoning_output_tokens: 0,
           total_tokens: 0,
           cost_usd: 0,
+          billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+          billing_mode_cost_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+          billing_provider_token_totals: [],
           // Per-model breakdown (API cost only; subscription is source-level).
           models: [],
         });
@@ -4637,6 +4781,13 @@ function createLocalApiHandler({
         seriesEntry.reasoning_output_tokens = entry.reasoning_output_tokens;
         seriesEntry.total_tokens = entry.total_tokens;
         seriesEntry.cost_usd = entry.cost_usd;
+        seriesEntry.billing_mode_token_totals = { ...entry.billing_mode_token_totals };
+        seriesEntry.billing_mode_cost_totals = Object.fromEntries(
+          Object.entries(entry.billing_mode_cost_totals)
+            .map(([mode, total]) => [mode, Number(total.toFixed(6))]),
+        );
+        seriesEntry.billing_provider_token_totals = Array.from(entry.billing_provider_token_totals.values())
+          .sort((a, b) => a.provider_id.localeCompare(b.provider_id));
         seriesEntry.models = Array.from(entry.models.values()).map((m) => ({
           model: m.model,
           input_tokens: m.input_tokens,
@@ -4681,6 +4832,7 @@ function createLocalApiHandler({
       other_ai_cost_cny: 0,
       combined_usd: 0,
       combined_cny: 0,
+      billing_mode_cost_totals: { api_key: 0, token_plan: 0, unknown: 0 },
     };
 
     for (const entry of series) {
@@ -4692,10 +4844,17 @@ function createLocalApiHandler({
       totals.other_ai_cost_cny += entry.other_ai_cost_cny;
       totals.combined_usd += entry.combined_usd;
       totals.combined_cny += entry.combined_cny;
+      for (const mode of ["api_key", "token_plan", "unknown"]) {
+        totals.billing_mode_cost_totals[mode] += Number(entry.billing_mode_cost_totals?.[mode] || 0);
+      }
     }
 
     for (const key of Object.keys(totals)) {
-      totals[key] = round6(totals[key]);
+      if (key === "billing_mode_cost_totals") {
+        for (const mode of Object.keys(totals[key])) totals[key][mode] = round6(totals[key][mode]);
+      } else {
+        totals[key] = round6(totals[key]);
+      }
     }
 
     // 04-独立贝叶斯验收 fix (B6-7): Add backward-compatible field aliases and
@@ -4763,6 +4922,9 @@ function createLocalApiHandler({
         reasoning_output_tokens: 0,
         total_tokens: 0,
         cost_usd: 0,
+        billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+        billing_mode_cost_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+        billing_provider_token_totals: new Map(),
       });
     }
 
@@ -4783,6 +4945,24 @@ function createLocalApiHandler({
       sa.reasoning_output_tokens += entry.reasoning_output_tokens;
       sa.total_tokens += entry.total_tokens;
       sa.cost_usd += entry.cost_usd;
+      for (const mode of ["api_key", "token_plan", "unknown"]) {
+        sa.billing_mode_token_totals[mode] += Number(entry.billing_mode_token_totals?.[mode] || 0);
+        sa.billing_mode_cost_totals[mode] += Number(entry.billing_mode_cost_totals?.[mode] || 0);
+      }
+      for (const providerTotals of entry.billing_provider_token_totals || []) {
+        if (!sa.billing_provider_token_totals.has(providerTotals.provider_id)) {
+          sa.billing_provider_token_totals.set(providerTotals.provider_id, {
+            provider_id: providerTotals.provider_id,
+            api_key: 0,
+            token_plan: 0,
+            unknown: 0,
+          });
+        }
+        const target = sa.billing_provider_token_totals.get(providerTotals.provider_id);
+        for (const mode of ["api_key", "token_plan", "unknown"]) {
+          target[mode] += Number(providerTotals[mode] || 0);
+        }
+      }
     }
 
     for (const sa of bySourceMap.values()) {
@@ -4795,6 +4975,11 @@ function createLocalApiHandler({
       sa.combined_usd = round6(sa.combined_usd);
       sa.combined_cny = round6(sa.combined_cny);
       sa.cost_usd = round6(sa.cost_usd);
+      for (const mode of ["api_key", "token_plan", "unknown"]) {
+        sa.billing_mode_cost_totals[mode] = round6(sa.billing_mode_cost_totals[mode]);
+      }
+      sa.billing_provider_token_totals = Array.from(sa.billing_provider_token_totals.values())
+        .sort((a, b) => a.provider_id.localeCompare(b.provider_id));
     }
 
     for (const entry of series) {
@@ -4939,7 +5124,7 @@ function createLocalApiHandler({
     if (minted.refreshToken) setRelayRefreshToken(minted.refreshToken);
     if (minted.csrfToken) setRelayCsrfToken(minted.csrfToken);
 
-    const machineId = getOrCreateMachineId(queuePathForMachineId);
+    const machineId = getHandlerMachineId(queuePathForMachineId);
     if (!machineId) return null;
 
     const root = String(baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
@@ -5088,10 +5273,10 @@ function createLocalApiHandler({
         const loadUsageLimits = typeof usageLimitsProvider === "function"
           ? usageLimitsProvider
           : require("./usage-limits").getUsageLimits;
-        const dataDirectoryPaths = resolveDataDirectoryPaths({
+        const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
-          env: process.env,
-          home: os.homedir(),
+          env: handlerEnv,
+          home: handlerHome,
           platform: process.platform,
         });
         const codexHomes = [...new Set(
@@ -5104,8 +5289,8 @@ function createLocalApiHandler({
         const widgetNow = nowProvider();
         const [usageLimits, sessions] = await Promise.all([
           loadUsageLimits({
-            home: os.homedir(),
-            env: process.env,
+            home: handlerHome,
+            env: handlerEnv,
             platform: process.platform,
           }),
           typeof codexLifecycleProvider === "function"
@@ -5248,7 +5433,7 @@ function createLocalApiHandler({
       }
       try {
         const state = buildLeaderboardDeviceState(readQueueData(qp), {
-          deviceId: getOrCreateMachineId(qp),
+          deviceId: getHandlerMachineId(qp),
           capturedAt: new Date(),
         });
         assertCompactStateSize(state);
@@ -6157,8 +6342,8 @@ function createLocalApiHandler({
         sources: effectiveSources,
       });
       const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
-        ? tokenOnlyDirectoryStatesProvider(readLocalSettings())
-        : resolveTokenOnlyDirectoryStates(readLocalSettings());
+        ? tokenOnlyDirectoryStatesProvider(readLocalSettings(), { home: handlerHome })
+        : resolveTokenOnlyDirectoryStates(readLocalSettings(), { home: handlerHome });
       const providers = appendDetectedTokenOnlyProviders(aggregateBySource(scopedRows, {
         fromKey: from || null,
         toKey: to || null,
@@ -6368,24 +6553,28 @@ function createLocalApiHandler({
       const timeZoneContext = getTimeZoneContext(url);
       const { rows: scopedRows, scope, excludedSources } = scopedQueueRows(qp, url);
       const pricingOptions = getPricingOptions();
+      const requestedSources = new Set(
+        url.searchParams.getAll("source")
+          .flatMap((value) => value.split(","))
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean),
+      );
       const rows = scopedRows.filter((r) => {
         if (!r.hour_start) return false;
+        const source = String(r.source || "unknown").trim().toLowerCase();
+        if (requestedSources.size > 0 && !requestedSources.has(source)) return false;
         const d = rowDayKey(r, timeZoneContext);
         return d >= from && d <= to;
       });
 
-      // Q02: derive billing_mode from local Token 濂楅 records + queue rows.
-      // We do this BEFORE the per-model cost pass so each model carries the
-      // (mode, confidence) pair it was attributed with, and the source-level
-      // summary can aggregate from the per-model set.
-      const planRecords = readTokenPlanRecords();
-
+      // Derive billing_mode only from normalized queue evidence. Do this before
+      // the per-model cost pass so source summaries aggregate the same modes.
       const bySource = new Map();
       for (const row of rows) {
         const src = row.source || "unknown";
         const mdl = row.model || "unknown";
         if (!bySource.has(src))
-          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, models: new Map() });
+          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeCostTotals: { api_key: 0, token_plan: 0, unknown: 0 }, models: new Map() });
         const sa = bySource.get(src);
         sa.totals.total_tokens += row.total_tokens || 0;
         sa.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -6395,7 +6584,7 @@ function createLocalApiHandler({
         sa.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         sa.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
         if (!sa.models.has(mdl))
-          bySource.get(src).models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" } });
+          bySource.get(src).models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeCostTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeConfidences: {} });
         const ma = sa.models.get(mdl);
         ma.totals.total_tokens += row.total_tokens || 0;
         ma.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -6404,10 +6593,17 @@ function createLocalApiHandler({
         ma.totals.cached_input_tokens += row.cached_input_tokens || 0;
         ma.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         ma.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
+        const { mode: billingMode } = accumulateBillingModeAttribution([
+          { tokenTotals: sa.billingModeTokenTotals },
+          { tokenTotals: ma.billingModeTokenTotals, confidences: ma.billingModeConfidences },
+        ], row);
+        const rowCost = computeRowCost(row, pricingOptions);
+        sa.billingModeCostTotals[billingMode] += rowCost;
+        ma.billingModeCostTotals[billingMode] += rowCost;
       }
 
       const sources = Array.from(bySource.values()).map((s) => {
-        const modelResults = [];
+        const sourceBillingTotals = s.billingModeTokenTotals;
         s.models = Array.from(s.models.values())
           .map((m) => {
             const cost = computeRowCost({
@@ -6415,35 +6611,45 @@ function createLocalApiHandler({
               model: m.model,
               source: s.source,
             }, pricingOptions);
-            // Q02: per-model billing_mode derivation. We use the first row
-            // seen for this (source, model) pair to honor the explicit
-            // field if any row carries it; queue rows are append-only and
-            // carry the same (source, model, hour_start) key.
-            const sampleRow = rows.find(
-              (r) =>
-                (r.source || "unknown") === s.source &&
-                (r.model || "unknown") === m.model,
+            const billingModeTokenTotals = m.billingModeTokenTotals;
+            const billingModeCostTotals = Object.fromEntries(
+              Object.entries(m.billingModeCostTotals)
+                .map(([mode, total]) => [mode, Number(total.toFixed(6))]),
             );
-            const derived = deriveModelBillingMode({
-              row: sampleRow,
-              model: m.model,
-              source: s.source,
-              planRecords,
-            });
-            modelResults.push(derived);
+            const activeModes = Object.entries(billingModeTokenTotals)
+              .filter(([, total]) => total > 0)
+              .map(([mode]) => mode);
+            const mode = activeModes.length > 1 ? "mixed" : activeModes[0] || "unknown";
+            const confidence = activeModes.length === 1
+              ? m.billingModeConfidences[mode] || "unavailable"
+              : "unavailable";
+            const { billingModeConfidences: _confidences, billingModeTokenTotals: _totals, billingModeCostTotals: _costs, ...model } = m;
             return {
-              ...m,
+              ...model,
               totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
-              billing_mode: derived.mode,
-              billing_mode_confidence: derived.confidence,
+              billing_mode: mode,
+              billing_mode_confidence: confidence,
+              billing_mode_token_totals: billingModeTokenTotals,
+              billing_mode_cost_totals: billingModeCostTotals,
             };
           })
           .sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
         const sourceCost = s.models.reduce((sum, m) => sum + Number(m.totals.total_cost_usd), 0);
         s.totals.total_cost_usd = sourceCost.toFixed(6);
-        const summary = summarizeSourceBillingMode(modelResults);
+        const summary = summarizeSourceBillingMode(
+          Object.entries(sourceBillingTotals)
+            .filter(([, total]) => total > 0)
+            .map(([mode]) => ({ mode })),
+        );
         s.billing_mode = summary.mode;
         s.billing_modes = summary.billing_modes;
+        s.billing_mode_token_totals = sourceBillingTotals;
+        s.billing_mode_cost_totals = Object.fromEntries(
+          Object.entries(s.billingModeCostTotals)
+            .map(([mode, total]) => [mode, Number(total.toFixed(6))]),
+        );
+        delete s.billingModeTokenTotals;
+        delete s.billingModeCostTotals;
         return s;
       });
 
@@ -6465,7 +6671,17 @@ function createLocalApiHandler({
       const requestedSource = (url.searchParams.get("source") || "claude").trim().toLowerCase();
       if (requestedSource === "claude") {
         try {
-          const result = await computeClaudeCategoryBreakdown({ from, to, projectDir: process.cwd() });
+          const result = await computeClaudeCategoryBreakdown({
+            from,
+            to,
+            rootDir: path.join(handlerHome, ".claude", "projects"),
+            projectDir: isTestRunner ? handlerHome : process.cwd(),
+            homeDir: handlerHome,
+            projectSearchBoundary: isTestRunner ? handlerHome : null,
+            cacheDir: isTestRunner
+              ? path.join(trackerDataDir, "cache", "claude-categorizer")
+              : path.join(handlerHome, ".tokentracker", "cache", "claude-categorizer"),
+          });
           json(res, { from, to, ...result });
         } catch (e) {
           console.error("[LocalAPI] usage-category-breakdown:", e?.message || e);
@@ -6480,6 +6696,7 @@ function createLocalApiHandler({
           const result = await computeCodexContextBreakdown({
             from,
             to,
+            codexDir: path.join(handlerHome, ".codex", "sessions"),
             top: 50,
             timeZoneContext,
           });
@@ -6910,6 +7127,14 @@ function createLocalApiHandler({
         const agentIds = parseMultiParam(url, "agent_ids");
         const models = parseMultiParam(url, "models");
         const effectiveSources = mergeSourceFilters(singleSource, sourcesParam, agentIds);
+        // V2-W3: optional record_kind filter ("request_event" | "aggregate_bucket").
+        // Applied BEFORE pagination and totals so "仅看消息级" never mixes
+        // aggregate tokens into a request-event view.
+        const recordKindParam = String(url.searchParams.get("record_kind") || "").trim();
+        const recordKindFilter =
+          recordKindParam === "request_event" || recordKindParam === "aggregate_bucket"
+            ? recordKindParam
+            : null;
 
         const timeZoneContext = {
           timeZone: tz || null,
@@ -6947,6 +7172,8 @@ function createLocalApiHandler({
             const built = await buildRequestUsageRecordsList({
               qp,
               trackerDataDir,
+              home: handlerHome,
+              env: handlerEnv,
               effectiveSources,
               from,
               to,
@@ -6969,13 +7196,22 @@ function createLocalApiHandler({
             });
           }
 
-          const totalCount = allRecords.length;
+          // V2-W3: anything that is not an aggregate bucket counts as a
+          // request event (matches the granularity heuristic below).
+          const filteredRecords = recordKindFilter
+            ? allRecords.filter((r) => {
+                const kind = r.record_kind === "aggregate_bucket" ? "aggregate_bucket" : "request_event";
+                return kind === recordKindFilter;
+              })
+            : allRecords;
+
+          const totalCount = filteredRecords.length;
           const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
           const currentPage = Math.min(page, totalPages);
           const startIdx = (currentPage - 1) * pageSize;
-          const pagedRecords = allRecords.slice(startIdx, startIdx + pageSize);
+          const pagedRecords = filteredRecords.slice(startIdx, startIdx + pageSize);
 
-          const totals = computeRecordTotals(allRecords);
+          const totals = computeRecordTotals(filteredRecords);
 
           const queueBaselineTotals = computeQueueTotals(allRows, {
             fromKey: fromKeyRur,
@@ -7231,6 +7467,17 @@ function createLocalApiHandler({
       json(res, { providers });
       return true;
     }
+    // --- plan market (V2-W1: 供应商套餐行情快照，只读，含来源链接) ---
+    if (p === "/functions/tokentracker-plan-market") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method !== "GET") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const catalog = getPlanMarketCatalog();
+      json(res, { updated_at: catalog.updated_at, providers: catalog.providers });
+      return true;
+    }
     // --- token plans refresh (F03: 鎵嬪姩瑙﹀彂鍗曚釜 plan 鐨勫埛鏂? ---
     if (p === "/functions/tokentracker-token-plans-refresh") {
       const method = String(req.method || "GET").toUpperCase();
@@ -7268,10 +7515,26 @@ function createLocalApiHandler({
         return true;
       }
       try {
+        const billingMonth = String(url.searchParams.get("month") || "").trim();
+        const billingTimeZone = String(url.searchParams.get("time_zone") || "").trim();
+        if (
+          (billingMonth && (!getUtcMonthPeriod(billingMonth) || billingTimeZone !== "UTC"))
+          || (billingTimeZone && billingTimeZone !== "UTC")
+        ) {
+          json(res, { ok: false, error: "API billing requires a valid month and UTC time zone", accounts: [] }, 400);
+          return true;
+        }
         const spendResult = readSpendRecords();
         const accounts = await collectApiBillingAccounts({
           spendRecords: spendResult.records || [],
           queuePath: qp,
+          monthKey: billingMonth || null,
+          options: {
+            home: handlerHome,
+            env: handlerEnv,
+            platform: process.platform,
+            securityRunner: isTestRunner ? () => ({ status: 1, stdout: "" }) : undefined,
+          },
         });
 
         // 02-ia-api-balance: Augment accounts with provider API config info.
@@ -7280,14 +7543,69 @@ function createLocalApiHandler({
         // they must NOT be summed (different semantics).
         const config = readTrackerConfig();
         const providerConfigs = providerApiConfigs.readProviderApiConfigs(config);
+        const officialCostsConfigs = providerConfigs.filter((item) => (
+          item.enabled && billingMonth && isOpenAiCostsConfig(item, { allowTestEndpoint: providerApiTestMode })
+        ));
+        if (officialCostsConfigs.length > 1) {
+          let account = accounts.find((item) => item.provider === "openai");
+          if (!account) {
+            account = { provider: "openai" };
+            accounts.push(account);
+          }
+          Object.assign(account, {
+            accountName: "OpenAI 官方账单",
+            billingSource: "api",
+            spendAuthority: "unavailable",
+            monthCostUsd: null,
+            lifetimeCostUsd: null,
+            status: "ambiguous",
+            errorCode: "official_invoice_ambiguous",
+            candidateCount: officialCostsConfigs.length,
+            providerApiConfigured: true,
+            providerApiBalance: null,
+          });
+        }
+        for (const providerConfig of officialCostsConfigs.length === 1 ? officialCostsConfigs : []) {
+          const secret = providerApiCredStore.isAvailable()
+            ? providerApiCredStore.readSecret(String(providerConfig.apiKeyRef || ""))
+            : null;
+          const officialResult = await fetchOpenAiCostsInvoice({
+            config: providerConfig,
+            secret,
+            monthKey: billingMonth,
+            allowTestEndpoint: providerApiTestMode,
+          });
+          if (!officialResult.ok) continue;
+          const officialInvoice = officialResult.invoice;
+          let account = accounts.find((item) => item.provider === providerConfig.providerId);
+          if (!account) {
+            account = {
+              provider: providerConfig.providerId,
+              accountName: providerConfig.label || providerConfig.providerId,
+              providerApiConfigured: true,
+              providerApiBalance: null,
+            };
+            accounts.push(account);
+          }
+          account.billingSource = "api";
+          account.spendAuthority = "official_invoice";
+          account.monthCostUsd = officialInvoice.monthCostUsd;
+          account.lifetimeCostUsd = officialInvoice.lifetimeCostUsd;
+          account.monthKey = officialInvoice.monthKey;
+          account.billingPeriodStart = officialInvoice.billingPeriodStart;
+          account.billingPeriodEnd = officialInvoice.billingPeriodEnd;
+          account.status = "synced";
+          account.lastSyncedAt = officialInvoice.lastSyncedAt;
+        }
         for (const account of accounts) {
           // Find matching provider API config by providerId
           const matchingConfig = providerConfigs.find(
             (c) => c.providerId === account.provider && c.enabled,
           );
-          account.providerApiConfigured = Boolean(matchingConfig);
+          const hasAmbiguousOfficialInvoice = account.errorCode === "official_invoice_ambiguous";
+          account.providerApiConfigured = Boolean(matchingConfig) || hasAmbiguousOfficialInvoice;
           // Include cached balance if available (no network call on list)
-          if (matchingConfig) {
+          if (matchingConfig && !hasAmbiguousOfficialInvoice) {
             const cached = providerApiBalanceManager.getCachedBalance(matchingConfig.id);
             // Provider financial data is in a SEPARATE field — never mixed into monthCostUsd
             account.providerApiBalance = cached || null;
@@ -7620,6 +7938,7 @@ function createLocalApiHandler({
           json(res, { ok: false, error: "配置不存在", error_code: "invalid_config" }, 404);
           return true;
         }
+        providerApiBalanceManager.clearCache(configId);
         const balance = await providerApiBalanceManager.refreshBalance(existing);
         json(res, { balance });
       } catch (e) {
@@ -7656,11 +7975,13 @@ function createLocalApiHandler({
             const snapshot = resolveOfficialConsoleBalance(c);
             if (snapshot) {
               return providerApiBalance.makeBalance(c, {
-                status: providerApiBalance.STATUS_SYNCED,
+                status: snapshot.stale ? providerApiBalance.STATUS_STALE : providerApiBalance.STATUS_SYNCED,
                 balance: Number(snapshot.available_balance ?? snapshot.balance),
                 monthSpend: null,
                 lifetimeSpend: null,
                 currency: String(snapshot.currency || "CNY"),
+                errorCode: snapshot.stale ? String(snapshot.error_code || providerApiBalance.ERROR_CODES.PROVIDER_UNAVAILABLE) : undefined,
+                errorMessage: snapshot.stale ? String(snapshot.error_message || "刷新失败，当前显示的是上次成功余额。") : undefined,
                 lastSyncedAt: String(snapshot.provider_reported_at || new Date().toISOString()),
               });
             }
@@ -7883,7 +8204,12 @@ function createLocalApiHandler({
         const settings = readLocalSettings();
         json(res, {
           ok: true,
-          ...detectDataDirectories({ config: { dataDirectories: settings?.dataDirectories || {} } }),
+          ...detectDataDirectories({
+            config: { dataDirectories: settings?.dataDirectories || {} },
+            env: handlerEnv,
+            home: handlerHome,
+            platform: process.platform,
+          }),
         });
         return true;
       }
@@ -7917,10 +8243,18 @@ function createLocalApiHandler({
           if (draftPath != null) {
             config.dataDirectories = { ...config.dataDirectories, [agentId]: draftPath };
           }
-          const result = detectAgentEnvironmentForRequest(agentId, config);
+          const result = detectAgentEnvironmentForRequest(agentId, config, {
+            env: handlerEnv,
+            home: handlerHome,
+            platform: process.platform,
+          });
           json(res, { ok: true, result });
         } else {
-          const results = detectAllAgentEnvironments(config);
+          const results = detectAllAgentEnvironments(config, {
+            env: handlerEnv,
+            home: handlerHome,
+            platform: process.platform,
+          });
           json(res, { ok: true, results });
         }
         return true;
@@ -7972,7 +8306,7 @@ function createLocalApiHandler({
     // device_name keys on the MACHINE, not the browser 鈥?see
     // getOrCreateMachineId above and dashboard/src/lib/cloud-sync.ts.
     if (p === "/functions/tokentracker-machine-id") {
-      json(res, { machineId: getOrCreateMachineId(qp) });
+      json(res, { machineId: getHandlerMachineId(qp) });
       return true;
     }
 
@@ -8216,17 +8550,45 @@ function createLocalApiHandler({
           ? usageLimitsProvider
           : usageLimitsModule.getUsageLimits;
         const data = await loadUsageLimits({
-          home: os.homedir(),
-          env: process.env,
+          home: handlerHome,
+          env: handlerEnv,
           platform: process.platform,
         });
         const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
-          ? tokenOnlyDirectoryStatesProvider(readLocalSettings())
-          : resolveTokenOnlyDirectoryStates(readLocalSettings());
-        json(res, {
+          ? tokenOnlyDirectoryStatesProvider(readLocalSettings(), { home: handlerHome })
+          : resolveTokenOnlyDirectoryStates(readLocalSettings(), { home: handlerHome });
+        const { attachBurnRates } = require("./burn-rate");
+        const queueRows = readQueueData(qp);
+        json(res, attachBurnRates({
           ...data,
-          ...summarizeTokenOnlyUsage(readQueueData(qp), directoryStates),
+          ...summarizeTokenOnlyUsage(queueRows, directoryStates),
+        }, queueRows, { nowMs: nowProvider().getTime() }));
+      } catch (e) {
+        json(res, { error: e?.message || "Unknown error" }, 500);
+      }
+      return true;
+    }
+
+    // --- workbuddy-quota (read-only credit packages from codebuddy.cn) ---
+    if (p === "/functions/tokentracker-workbuddy-quota") {
+      const { fetchWorkbuddyQuota } = require("./workbuddy-quota");
+      try {
+        const forceRefresh = url.searchParams.get("refresh");
+        const nowMs = nowProvider().getTime();
+        const cached = workbuddyQuotaCache.payload;
+        const fresh = cached && nowMs - workbuddyQuotaCache.fetchedAtMs < WORKBUDDY_QUOTA_CACHE_MS;
+        if (fresh && forceRefresh !== "1" && forceRefresh !== "true") {
+          json(res, cached);
+          return true;
+        }
+        const data = await fetchWorkbuddyQuota({
+          env: handlerEnv,
+          home: handlerHome,
+          platform: process.platform,
         });
+        workbuddyQuotaCache.payload = data;
+        workbuddyQuotaCache.fetchedAtMs = nowMs;
+        json(res, data);
       } catch (e) {
         json(res, { error: e?.message || "Unknown error" }, 500);
       }
@@ -8242,8 +8604,8 @@ function createLocalApiHandler({
           ? await limitAccountsProvider({ refresh: forceRefresh === "1" || forceRefresh === "true" })
           : await handleLimitAccountsRequest({
             refresh: forceRefresh === "1" || forceRefresh === "true",
-            home: os.homedir(),
-            env: process.env,
+            home: handlerHome,
+            env: handlerEnv,
             platform: process.platform,
           });
         json(res, data);
@@ -8287,8 +8649,8 @@ function createLocalApiHandler({
         const data = typeof limitAccountsProvider === "function"
           ? await limitAccountsProvider({ refresh: false })
           : await handleLimitAccountsRequest({
-            home: os.homedir(),
-            env: process.env,
+            home: handlerHome,
+            env: handlerEnv,
             platform: process.platform,
           });
         const density = Object.values(TRAY_DENSITY).includes(url.searchParams.get("density"))
@@ -8320,7 +8682,6 @@ function createLocalApiHandler({
   handleLocalApi.deriveModelBillingMode = deriveModelBillingMode;
   handleLocalApi.summarizeSourceBillingMode = summarizeSourceBillingMode;
   handleLocalApi.normalizeBillingModeRaw = normalizeBillingModeRaw;
-  handleLocalApi.planLabelMatchesModel = planLabelMatchesModel;
 
   return handleLocalApi;
 }
@@ -8328,6 +8689,7 @@ function createLocalApiHandler({
 module.exports = {
   appendDetectedTokenOnlyProviders,
   createLocalApiHandler,
+  validateLocalApiTestPaths,
   resolveAllowedInsforgeBaseUrl,
   resolveQueuePath,
   // Exported for cross-consumer tests (pricing + native contract lock).
@@ -8349,4 +8711,5 @@ module.exports = {
   summarizeTokenOnlyUsage,
   clearQueueDataCacheForTests,
   clearRequestUsageRecordsListCacheForTests,
+  computeRecordTotals,
 };

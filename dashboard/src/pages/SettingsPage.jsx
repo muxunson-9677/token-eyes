@@ -1,8 +1,9 @@
-import React, { lazy, Suspense } from "react";
+import React, { lazy, Suspense, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CircleCheck, Download, Shield, Upload } from "lucide-react";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
 import { AgentPricingSection } from "../components/settings/AgentPricingSection.jsx";
+import { CostSettingsOverview } from "../components/settings/CostSettingsOverview.jsx";
 import { AppearanceSection } from "../components/settings/AppearanceSection.jsx";
 import { SectionCard } from "../components/settings/Controls.jsx";
 import { DataDirectoriesSection } from "../components/settings/DataDirectoriesSection.jsx";
@@ -38,7 +39,8 @@ function SettingsCostFallback() {
 // entries. Neither sub-page duplicates the other's sections.
 
 function LimitsDisplayModeControl({ prefs }) {
-  const displayedProviders = prefs.order.slice(0, 6);
+  // V4 item-3a: count every registered channel — the list is no longer capped at 6.
+  const displayedProviders = prefs.order;
   const enabledCount = displayedProviders.filter((id) => prefs.visibility[id] !== false).length;
   return (
     <div className="tt-limits-header-actions">
@@ -105,6 +107,11 @@ export function SettingsBasicPage() {
 
 export function SettingsCostPage() {
   const navigate = useNavigate();
+  const [overview, setOverview] = useState({ pricing: {}, plans: {}, providers: {}, other: {} });
+  const updatePricingSummary = useCallback((pricing) => setOverview((current) => ({ ...current, pricing })), []);
+  const updatePlanSummary = useCallback((plans) => setOverview((current) => ({ ...current, plans })), []);
+  const updateProviderSummary = useCallback((providers) => setOverview((current) => ({ ...current, providers })), []);
+  const updateOtherSummary = useCallback((other) => setOverview((current) => ({ ...current, other })), []);
 
   return (
     <div
@@ -129,11 +136,13 @@ export function SettingsCostPage() {
             </div>
           </div>
 
+          <CostSettingsOverview summary={overview} />
+
           <Suspense fallback={<SettingsCostFallback />}>
             <div className="tt-settings-cost-sections space-y-4">
-              <AgentPricingSection />
+              <AgentPricingSection onSummaryChange={updatePricingSummary} />
               <div id="codex-quota">
-                <TokenPlanSection listOnly onNavigate={navigate} />
+                <TokenPlanSection listOnly onNavigate={navigate} onSummaryChange={updatePlanSummary} />
               </div>
             {/*
               v2.0 IA — work order 03 wires ProviderApiConfigSection here.
@@ -143,9 +152,9 @@ export function SettingsCostPage() {
               ONLY here — never on /spend/cost.
             */}
               <div data-provider-api-config-anchor>
-                <ProviderApiConfigSection />
+                <ProviderApiConfigSection onSummaryChange={updateProviderSummary} />
               </div>
-              <OtherAiSpendSection />
+              <OtherAiSpendSection onSummaryChange={updateOtherSummary} />
             </div>
           </Suspense>
         </div>

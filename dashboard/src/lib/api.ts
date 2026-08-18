@@ -95,7 +95,26 @@ export interface CodexResetEventsResponse {
   history: CodexResetHistoryEvent[];
 }
 
-export type DesktopWidgetAgent = "all" | "claude" | "codex" | "cursor" | "hermes";
+export type DesktopWidgetAgent =
+  | "all"
+  | "claude"
+  | "codex"
+  | "cursor"
+  | "trae"
+  | "codebuddy"
+  | "gemini"
+  | "hermes"
+  | "openclaw"
+  | "opencode"
+  | "antigravity"
+  | "zed"
+  | "workbuddy"
+  | "kimi"
+  | "kimi-code"
+  | "pi"
+  | "grok"
+  | "copilot"
+  | "deepseek-harness";
 export type DesktopWidgetMode = "projects" | "limits" | "models";
 export type DesktopWidgetMaterial = "frost" | "graphite" | "ocean" | "sand";
 export type DesktopWidgetActiveSessionWindow = "1h" | "3h" | "5h" | "1d" | "3d";
@@ -157,12 +176,18 @@ export interface DesktopWidgetViewModel {
   };
   limits: Array<{
     id: string;
+    planId: string;
     agent: string;
     provider: string;
+    planLabel: string;
     accountLabel: string;
+    subscriptionAmount: number;
+    subscriptionCurrency: string;
+    kind: string;
     window: string;
     usedPercent: number | null;
     resetAt: string | null;
+    expiresAt: string | null;
     notes: string | null;
     error: string | null;
   }>;
@@ -200,6 +225,7 @@ const PATHS = {
   localSync: "tokentracker-local-sync",
   usageLimits: "tokentracker-usage-limits",
   limitAccounts: "tokentracker-limit-accounts",
+  workbuddyQuota: "tokentracker-workbuddy-quota",
   codexResetEvents: "tokentracker-codex-reset-events",
   desktopWidget: "tokentracker-desktop-widget",
   localSettings: "tokentracker-local-settings",
@@ -263,15 +289,27 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw signal.reason || new DOMException("The operation was aborted", "AbortError");
+}
+
 async function fetchLocalApi(url: string, init: RequestInit) {
   const attempts = isTauriRuntime() ? 10 : 1;
   let lastError: unknown = null;
   for (let i = 0; i < attempts; i += 1) {
+    throwIfAborted(init.signal || undefined);
     try {
-      return await fetch(url, init);
+      const response = await fetch(url, init);
+      throwIfAborted(init.signal || undefined);
+      return response;
     } catch (err) {
+      throwIfAborted(init.signal || undefined);
       lastError = err;
-      if (i < attempts - 1) await sleep(250);
+      if (i < attempts - 1) {
+        await sleep(250);
+        throwIfAborted(init.signal || undefined);
+      }
     }
   }
   throw lastError;
@@ -323,9 +361,21 @@ function isLocalhostHost() {
   );
 }
 
+function appendSearchParams(url: URL, params?: AnyRecord) {
+  if (!params) return;
+  for (const [key, value] of Object.entries(params)) {
+    const values = Array.isArray(value) ? value : [value];
+    for (const item of values) {
+      if (item != null && item !== "") url.searchParams.append(key, String(item));
+    }
+  }
+}
+
 async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRecord) {
   const accessToken = options?.accessToken as string | undefined;
+  const signal = options?.signal as AbortSignal | undefined;
   const accountSlug = USAGE_TO_ACCOUNT_SLUG[slug];
+  throwIfAborted(signal);
 
   // Deployed web (e.g. tokentracker.cc): there's no local CLI behind
   // window.location.origin, so usage-* calls would 404. When the visitor is
@@ -335,38 +385,37 @@ async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRec
   if (!isTauriRuntime() && !isLocalhostHost() && accessToken && accountSlug) {
     const base = getInsforgeRemoteUrl().replace(/\/$/, "");
     const url = new URL(`${base}/functions/${accountSlug}`);
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        if (value != null && value !== "") url.searchParams.set(key, String(value));
-      }
-    }
+    appendSearchParams(url, params);
     const headers: Record<string, string> = { Accept: "application/json" };
     const anonKey = getInsforgeAnonKey();
     if (anonKey) headers.apikey = anonKey;
     if (isValidJwtShape(accessToken)) headers.Authorization = `Bearer ${accessToken}`;
-    const response = await fetch(url.toString(), { headers, cache: "no-store" });
+    const response = await fetch(url.toString(), { headers, cache: "no-store", signal });
+    throwIfAborted(signal);
     if (!response.ok) {
       throw await buildErrorFromResponse(response);
     }
-    return response.json();
+    const payload = await response.json();
+    throwIfAborted(signal);
+    return payload;
   }
 
   const url = new URL(await buildLocalApiUrl(`/functions/${slug}`));
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
-    }
-  }
+  throwIfAborted(signal);
+  appendSearchParams(url, params);
   const { accessToken: _omit, ...fetchOptions } = options || {};
   const response = await fetchLocalApi(url.toString(), {
     headers: { Accept: "application/json" },
     cache: "no-store",
     ...fetchOptions,
   });
+  throwIfAborted(signal);
   if (!response.ok) {
     throw await buildErrorFromResponse(response);
   }
-  return readJsonResponse(response);
+  const payload = await readJsonResponse(response);
+  throwIfAborted(signal);
+  return payload;
 }
 
 function buildTimeZoneParams({ timeZone, tzOffsetMinutes }: AnyRecord = {}) {
@@ -386,6 +435,18 @@ function buildFilterParams({ source, model }: AnyRecord = {}) {
   const normalizedModel = typeof model === "string" ? model.trim() : "";
   if (normalizedModel) params.model = normalizedModel;
   return params;
+}
+
+function buildModelBreakdownSourceParams({ source, sources }: AnyRecord = {}) {
+  const candidates = Array.isArray(sources)
+    ? sources
+    : sources === null
+      ? []
+      : [source];
+  const normalized = [...new Set(
+    candidates.map((value) => typeof value === "string" ? value.trim().toLowerCase() : "").filter(Boolean),
+  )].sort();
+  return normalized.length > 0 ? { source: normalized } : {};
 }
 
 /** Build multi-value filter params (sources / models / agent_ids) for the
@@ -521,8 +582,11 @@ export async function getTokenPlans() {
   return fetchLocalJson(PATHS.tokenPlans);
 }
 
-export async function getApiBillingAccounts() {
-  return fetchLocalJson(PATHS.apiBillingAccounts);
+export async function getApiBillingAccounts({ month, timeZone }: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.apiBillingAccounts, {
+    month,
+    time_zone: timeZone,
+  });
 }
 
 export async function saveTokenPlan(record: AnyRecord = {}, options: { notify?: boolean } = {}) {
@@ -601,6 +665,7 @@ export async function getRequestUsageRecords({
   limit,
   page,
   pageSize,
+  recordKind,
   accessToken,
 }: AnyRecord = {}) {
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
@@ -612,6 +677,8 @@ export async function getRequestUsageRecords({
   if (limit != null) params.limit = String(limit);
   if (page != null) params.page = String(page);
   if (pageSize != null) params.pageSize = String(pageSize);
+  // V2-W3: server-side granularity filter ("request_event" | "aggregate_bucket").
+  if (recordKind) params.record_kind = String(recordKind);
   return fetchLocalJson(PATHS.requestUsageRecords, params, { accessToken });
 }
 
@@ -1552,16 +1619,18 @@ export async function getUsageModelBreakdown({
   from,
   to,
   source,
+  sources,
   timeZone,
   tzOffsetMinutes,
   accessToken,
+  signal,
 }: AnyRecord = {}) {
   if (isMockEnabled()) {
     return getMockUsageModelBreakdown({ from, to, seed: accessToken });
   }
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
-  const filterParams = buildFilterParams({ source });
-  return fetchLocalJson(PATHS.usageModelBreakdown, { from, to, ...filterParams, ...tzParams }, { accessToken });
+  const filterParams = buildModelBreakdownSourceParams({ source, sources });
+  return fetchLocalJson(PATHS.usageModelBreakdown, { from, to, ...filterParams, ...tzParams }, { accessToken, signal });
 }
 
 /** TICKET-01 A4: provider stats (per-source aggregate leaderboard). */
@@ -1707,6 +1776,31 @@ export async function getLimitAccounts(opts: { refresh?: boolean } = {}) {
   return fetchLocalJson(PATHS.limitAccounts, opts?.refresh ? { refresh: "1" } : undefined);
 }
 
+export interface WorkbuddyQuotaGroup {
+  id: "base" | "activity" | "extra" | "other";
+  items: number;
+  total: number;
+  remain: number;
+  used: number;
+  used_percent: number;
+}
+
+export interface WorkbuddyQuotaResponse {
+  signed_in: boolean;
+  account?: { nickname: string; phone_masked: string; type: string };
+  plan?: string | null;
+  groups?: WorkbuddyQuotaGroup[];
+  fetched_at: string;
+  error?: string | null;
+}
+
+export async function getWorkbuddyQuota(opts: { refresh?: boolean } = {}): Promise<WorkbuddyQuotaResponse> {
+  return fetchLocalJson(
+    PATHS.workbuddyQuota,
+    opts?.refresh ? { refresh: "1" } : undefined,
+  ) as Promise<WorkbuddyQuotaResponse>;
+}
+
 export async function getCodexResetEvents(): Promise<CodexResetEventsResponse> {
   return fetchLocalJson(PATHS.codexResetEvents) as Promise<CodexResetEventsResponse>;
 }
@@ -1819,7 +1913,9 @@ async function fetchAccountFunction(
   slug: string,
   params: AnyRecord | undefined,
   accessToken: string,
+  options: { signal?: AbortSignal } = {},
 ) {
+  throwIfAborted(options.signal);
   if (!accessToken || !isValidJwtShape(accessToken)) {
     const err: any = new Error("Account view requires a signed-in user");
     err.status = 401;
@@ -1833,11 +1929,7 @@ async function fetchAccountFunction(
   }
   const root = baseUrl.replace(/\/$/, "");
   const url = new URL(`${root}/functions/${slug}`);
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
-    }
-  }
+  appendSearchParams(url, params);
   const headers: Record<string, string> = {
     Accept: "application/json",
     Authorization: `Bearer ${accessToken}`,
@@ -1848,13 +1940,17 @@ async function fetchAccountFunction(
     method: "GET",
     headers,
     cache: "no-store",
+    signal: options.signal,
   });
+  throwIfAborted(options.signal);
   if (!response.ok) {
     const err: any = new Error(`Request failed with HTTP ${response.status}`);
     err.status = response.status;
     throw err;
   }
-  return response.json();
+  const payload = await response.json();
+  throwIfAborted(options.signal);
+  return payload;
 }
 
 export async function fetchCloudUsageSummary({
@@ -1961,16 +2057,19 @@ export async function fetchCloudUsageModelBreakdown({
   from,
   to,
   source,
+  sources,
   timeZone,
   tzOffsetMinutes,
   accessToken,
+  signal,
 }: AnyRecord = {}) {
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
-  const filterParams = buildFilterParams({ source });
+  const filterParams = buildModelBreakdownSourceParams({ source, sources });
   return fetchAccountFunction(
     ACCOUNT_PATHS.modelBreakdown,
     { from, to, ...filterParams, ...tzParams },
     accessToken,
+    { signal },
   );
 }
 
@@ -2166,6 +2265,14 @@ export async function verifyGlmConsoleSession(sessionRef: string): Promise<GlmSe
   return invoke("verify_glm_console_session", { sessionRef });
 }
 
+export async function refreshGlmConsoleSession(sessionRef: string): Promise<GlmSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    throw new Error("Tauri runtime not available");
+  }
+  return invoke("refresh_glm_console_session", { sessionRef });
+}
+
 export async function deleteGlmConsoleSession(sessionRef: string): Promise<void> {
   const invoke = getTauriInvoke();
   if (!invoke) {
@@ -2196,11 +2303,45 @@ export async function deleteMiniMaxConsoleSession(sessionRef: string): Promise<v
   return invoke("delete_minimax_console_session", { sessionRef });
 }
 
+/**
+ * Re-check a connected provider console in the native desktop runtime and
+ * persist the new balance snapshot before the financial API reads it.
+ */
+export async function refreshOfficialConsoleProviderBalance(providerId: string): Promise<NativeSessionResult> {
+  const normalizedProvider = String(providerId || "").trim().toLowerCase();
+  const sessions = (await getConsoleSessions()).sessions || [];
+  const session = sessions
+    .filter((item) => (
+      String(item.provider_id || "").trim().toLowerCase() === normalizedProvider
+      && item.session_ref
+    ))
+    .sort((left, right) => {
+      const leftProviderAccount = String(left.session_ref).startsWith("provider-api/") ? 1 : 0;
+      const rightProviderAccount = String(right.session_ref).startsWith("provider-api/") ? 1 : 0;
+      if (leftProviderAccount !== rightProviderAccount) return rightProviderAccount - leftProviderAccount;
+      return String(right.last_verified_at || "").localeCompare(String(left.last_verified_at || ""));
+    })[0];
+  if (!session) throw new Error("No connected official console session");
+
+  const verifiers: Record<string, (sessionRef: string) => Promise<NativeSessionResult>> = {
+    xiaomi_mimo: verifyXiaomiMimoConsoleSession,
+    glm: refreshGlmConsoleSession,
+    minimax: verifyMiniMaxConsoleSession,
+  };
+  const verify = verifiers[normalizedProvider];
+  if (!verify) throw new Error("Unsupported official console provider");
+
+  const nativeResult = await verify(session.session_ref);
+  await verifyConsoleSession(session.id, nativeResult);
+  return nativeResult;
+}
+
 export interface CodexQuotaSnapshot {
   total_quota: number;
   used_quota: number;
   remaining_quota: number;
   provider_reported_at: string;
+  subscription_expires_at?: string;
   quota_windows?: Array<{
     kind: string;
     unit: string;
@@ -2304,6 +2445,7 @@ export interface CursorQuotaSnapshot {
   auto_composer_percent?: number | null;
   api_usage_percent?: number | null;
   reset_at?: string | null;
+  subscription_expires_at?: string | null;
   fetched_at?: string;
   total_quota: number;
   used_quota: number;

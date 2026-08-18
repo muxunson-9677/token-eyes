@@ -1,11 +1,15 @@
 const assert = require("node:assert/strict");
+const fsSync = require("node:fs");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { Readable } = require("node:stream");
-const { test } = require("node:test");
+const { after, test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
+
+const isolatedTrackerDir = fsSync.mkdtempSync(path.join(os.tmpdir(), "tt-local-settings-api-"));
+after(() => fsSync.rmSync(isolatedTrackerDir, { recursive: true, force: true }));
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -54,6 +58,7 @@ test("data directory detection API returns machine-local discovery evidence", as
     missing: ["codex", "hermes", "cursor", "openclaw"],
   };
   const handler = createLocalApiHandler({
+    trackerDataDir: isolatedTrackerDir,
     detectDataDirectories: () => detectedResult,
   });
 
@@ -66,6 +71,7 @@ test("data directory detection API returns machine-local discovery evidence", as
 test("agent environment API validates the current draft path instead of stale saved settings", async () => {
   let receivedConfig = null;
   const handler = createLocalApiHandler({
+    trackerDataDir: isolatedTrackerDir,
     detectAgentEnvironment: (_agentId, config) => {
       receivedConfig = config;
       return { agent: "claude", status: "ready", trackingReady: true };
@@ -132,6 +138,7 @@ test("local settings API saves machine-only data directory and pricing overrides
       openclaw: "",
       hermes: "",
       codebuddy: "",
+      workbuddy: "",
       antigravity: "",
     });
     assert.deepEqual(readJsonResponse(initial).agentDefaultPricing, {
@@ -162,6 +169,7 @@ test("local settings API saves machine-only data directory and pricing overrides
       opencode: "C:\\Users\\admin\\AppData\\Local\\opencode",
       openclaw: "D:\\OpenClaw",
       codebuddy: "C:\\Users\\admin\\.codebuddy",
+      workbuddy: "",
       antigravity: "C:\\Users\\admin\\.gemini",
     };
     const saved = await call(handler, "/functions/tokentracker-local-settings", {

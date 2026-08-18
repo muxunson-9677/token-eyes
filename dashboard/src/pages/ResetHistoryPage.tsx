@@ -76,6 +76,7 @@ const PREVIEW_RESET_HISTORY: CodexResetHistoryEvent[] = PREVIEW_RESET_DATES.map(
     reset_kind: index === 4 ? "unknown" : index >= 8 ? "banked" : "hard",
     reset_scope: index % 3 === 0 ? "all_codex_work_users" : "all_paid_users",
     title: "Codex official extra reset",
+    summary: "OpenAI issued an extra Codex usage reset for paid users.",
   }),
 );
 
@@ -214,7 +215,17 @@ function ResetStatisticsSummary({
     {
       label: copy("reset_history.stats.count"),
       value: copy("reset_history.stats.count_value", { count: statistics.count }),
-      detail: copy("reset_history.stats.count_detail"),
+      detail: statistics.countChangePercent !== null
+        ? copy("reset_history.stats.count_change", {
+          change: formatCountChange(statistics.countChangePercent) ?? "",
+          days: statistics.periodDays,
+        })
+        : statistics.count > 0 && statistics.previousCount === 0
+          ? copy("reset_history.stats.count_change_new", {
+            count: statistics.count,
+            days: statistics.periodDays,
+          })
+          : copy("reset_history.stats.count_detail"),
       Icon: RotateCcw,
       tone: "emerald" as const,
     },
@@ -261,75 +272,115 @@ function ResetStatisticsSummary({
           data-testid="reset-history-stat"
           data-tone={item.tone}
           data-empty={item.value === null || isLoading ? "true" : undefined}
-          className="tt-surface-nested min-w-0 rounded-2xl border border-oai-gray-200/80 px-4 py-4 dark:border-oai-gray-800"
+          className="tt-reset-stat-card tt-surface-nested tt-pressable min-w-0 rounded-2xl border border-oai-gray-200/80 px-4 py-4 dark:border-oai-gray-800"
         >
           <span
             data-testid="reset-history-stat-icon"
-            className={`flex h-9 w-9 items-center justify-center rounded-xl ${STAT_TONE_CLASSES[item.tone]}`}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${STAT_TONE_CLASSES[item.tone]}`}
             aria-hidden
           >
             <Icon className="h-4 w-4" />
           </span>
-          <dt className="mt-4 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
-            {item.label}
-          </dt>
-          <dd className="mt-1 text-lg font-semibold tabular-nums">
-            {isLoading ? copy("reset_history.loading") : item.value ?? unavailableValue}
-          </dd>
-          <p className="tt-reset-stat-detail">
-            {isLoading ? copy("reset_history.loading_detail") : item.detail}
-          </p>
+          <div className="tt-reset-stat-copy min-w-0 flex-1">
+            <dt className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
+              {item.label}
+            </dt>
+            <dd className="mt-1 text-lg font-semibold tabular-nums">
+              {isLoading ? copy("reset_history.loading") : item.value ?? unavailableValue}
+            </dd>
+            <p className="tt-reset-stat-detail">
+              {isLoading ? copy("reset_history.loading_detail") : item.detail}
+            </p>
+          </div>
         </div>
       ))}
     </dl>
   );
 }
 
+function formatCountChange(percent: number | null) {
+  if (percent === null || !Number.isFinite(percent)) return null;
+  const rounded = Math.round(Math.abs(percent) * 10) / 10;
+  if (rounded === 0) return "±0%";
+  return `${percent > 0 ? "+" : "-"}${rounded.toFixed(1)}%`;
+}
+
 function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[]; statistics: ResetStatistics }) {
   const zh = getCopyLocale().toLowerCase().startsWith("zh");
-  const newest = events[0] ? new Date(events[0].occurred_at) : new Date();
+  // V4 item-9a: the 7-day window is anchored to TODAY (it used to anchor to
+  // the newest event, so the whole panel looked frozen on that date), and all
+  // counts are real — no minimum-2 floor, no force-lit heatmap cells.
+  const today = new Date();
   const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(newest);
-    date.setDate(newest.getDate() - (6 - index));
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
     const key = date.toISOString().slice(0, 10);
     const count = events.filter((event) => event.occurred_at.slice(0, 10) === key).length;
-    return { key, count, label: `${date.getMonth() + 1}/${date.getDate()}` };
+    return { key, count, label: `${date.getMonth() + 1}/${date.getDate()}`, offset: 6 - index };
   });
-  const peak = days.reduce((best, day) => day.count >= best.count ? day : best, days[0]);
+  const peak = days.reduce((best, day) => day.count > best.count ? day : best, days[0]);
+  const hasRecentActivity = peak.count > 0;
+  const peakDayLabel = (() => {
+    if (peak.offset === 0) return copy("reset_history.activity.day_today");
+    if (peak.offset === 1) return copy("reset_history.activity.day_yesterday");
+    return peak.label;
+  })();
+  // V4 item-9a: prior window empty → percent is undefined, but the user still
+  // deserves a period-over-period cue, so fall back to the absolute delta.
+  const countChange = statistics.countChangePercent !== null
+    ? formatCountChange(statistics.countChangePercent)
+    : statistics.count > 0 && statistics.previousCount === 0
+      ? (zh ? `+${statistics.count} 次` : `+${statistics.count}`)
+      : null;
 
   return (
-    <section className="tt-reset-activity" data-testid="reset-history-activity">
+    <section className="tt-reset-activity tt-pressable" data-testid="reset-history-activity">
       <div className="tt-reset-activity-copy">
         <span className="tt-reset-activity-icon"><Sparkles aria-hidden /></span>
         <div>
           <h2>{zh ? "重置节奏洞察" : "Reset rhythm insight"}</h2>
           <p>{zh ? "最近 7 天重置活跃度" : "Reset activity over the last 7 days"}</p>
-          <strong>{zh ? `昨日达到高峰（${Math.max(2, peak.count)} 次）` : `Peak day (${Math.max(2, peak.count)} times)`}</strong>
+          <strong data-testid="reset-activity-peak-line">
+            {hasRecentActivity
+              ? (zh ? `${peakDayLabel}达到高峰（${peak.count} 次）` : `Peak on ${peakDayLabel} (${peak.count}x)`)
+              : (zh ? "近 7 天暂无官方重置" : "No official resets in the last 7 days")}
+          </strong>
         </div>
       </div>
       <div className="tt-reset-activity-data tt-reset-activity-data--right-aligned">
         <div className="tt-reset-heatmap" aria-label={zh ? "最近七天重置热力图" : "Seven-day reset heatmap"}>
-          {days.map((day, dayIndex) => (
+          {days.map((day) => (
             <div className="tt-reset-heatmap-day" key={day.key}>
               <div className="tt-reset-heatmap-cells">
                 {Array.from({ length: 9 }, (_, cellIndex) => (
                   <span
                     key={cellIndex}
-                    data-level={cellIndex < day.count * 2 || (dayIndex === 6 && cellIndex < 5) ? Math.min(3, day.count + 1) : 0}
+                    data-level={cellIndex < Math.min(9, day.count * 2) ? Math.min(3, day.count + 1) : 0}
                   />
                 ))}
               </div>
-              <span className="tt-reset-heatmap-label">{day.label}</span>
+              <span className="tt-reset-heatmap-label" data-today={day.offset === 0 ? "true" : undefined}>{day.label}</span>
             </div>
           ))}
         </div>
         <div className="tt-reset-activity-stat">
-          <span>{zh ? "本月累计（截至今日）" : "This month"}</span>
-          <strong>{statistics.count} 次</strong>
+          <span>
+            {zh ? `近 ${statistics.periodDays} 天累计` : `Last ${statistics.periodDays} days`}
+            {countChange ? (
+              <em className="tt-reset-activity-change" data-positive={statistics.countChangePercent == null || statistics.countChangePercent >= 0 ? "true" : "false"} data-testid="reset-activity-count-change">
+                {countChange}
+              </em>
+            ) : null}
+          </span>
+          <strong>{zh ? `${statistics.count} 次` : `${statistics.count}x`}</strong>
         </div>
         <div className="tt-reset-activity-stat tt-reset-activity-stat--divided tt-reset-activity-peak">
           <span>{zh ? "高峰日" : "Peak day"}</span>
-          <strong>{peak.label}（{Math.max(2, peak.count)} 次）</strong>
+          <strong>
+            {hasRecentActivity
+              ? (zh ? `${peak.label}（${peak.count} 次）` : `${peak.label} (${peak.count}x)`)
+              : (zh ? "近 7 天无重置" : "None in 7 days")}
+          </strong>
         </div>
       </div>
     </section>
@@ -337,6 +388,7 @@ function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[];
 }
 
 function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLatest?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
   const sourceLabel = getSourceLabel(event);
   const resetKind = event.reset_kind && event.reset_kind in RESET_KIND_VISUALS
     ? event.reset_kind as keyof typeof RESET_KIND_VISUALS
@@ -344,11 +396,24 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
   const kindLabel = copy(`reset_history.kind.${resetKind}`);
   const scopeLabel = copy(`reset_history.scope.${event.reset_scope || "unknown"}`);
   const { Icon, tone, className } = RESET_KIND_VISUALS[resetKind];
+  const quotedAuthor = event.source_author === "thsottiaux"
+    ? copy("reset_history.source.tibo")
+    : event.source_author === "OpenAI"
+      ? copy("reset_history.source.openai")
+      : event.source_author;
+  const hasDetail = Boolean(event.title || event.summary || event.source_url);
+
+  const toggleExpanded = () => {
+    if (!hasDetail) return;
+    setExpanded((current) => !current);
+  };
 
   return (
     <li
       data-testid="reset-history-item"
-      className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 py-2 sm:grid-cols-[1.75rem_minmax(0,1fr)_auto]"
+      data-expanded={expanded ? "true" : "false"}
+      className="tt-reset-history-card tt-pressable grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 sm:grid-cols-[1.75rem_minmax(0,1fr)_auto]"
+      onClick={toggleExpanded}
     >
       <span className="relative flex justify-center pt-0.5" aria-hidden>
         <span
@@ -360,7 +425,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
           <Icon data-kind={resetKind} className="h-3.5 w-3.5" />
         </span>
       </span>
-      <p className="min-w-0 text-sm leading-6 text-oai-gray-700 dark:text-oai-gray-200">
+      <p className="tt-reset-history-headline min-w-0 text-sm leading-6 text-oai-gray-700 dark:text-oai-gray-200">
         <span className="font-medium text-oai-black dark:text-white">{sourceLabel}</span>
         <span aria-hidden> · </span>
         {kindLabel}
@@ -376,6 +441,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
               rel="noopener noreferrer"
               className="font-medium text-emerald-700 hover:underline dark:text-emerald-300"
               aria-label={`${copy("codex_reset.action.view_official")} ${event.sourceIndex}`}
+              onClick={(event) => event.stopPropagation()}
             >
               [{event.sourceIndex}]
             </a>
@@ -388,8 +454,48 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
       >
         {isLatest ? <span className="tt-reset-latest-badge">{copy("reset_history.latest")}</span> : null}
         {formatResetDateTime(event.occurred_at)}
-        <ChevronRight className="tt-reset-row-chevron" aria-hidden />
+        <button
+          type="button"
+          className="tt-reset-row-chevron-button"
+          data-testid="reset-history-expand"
+          aria-label={expanded ? copy("reset_history.collapse_aria") : copy("reset_history.expand_aria")}
+          aria-expanded={expanded}
+          onClick={(event) => {
+            event.stopPropagation();
+            toggleExpanded();
+          }}
+        >
+          <ChevronRight className={`tt-reset-row-chevron${expanded ? " is-expanded" : ""}`} aria-hidden />
+        </button>
       </time>
+      {expanded && hasDetail ? (
+        <div className="tt-reset-history-detail" data-testid="reset-history-detail">
+          {event.title ? <h3>{event.title}</h3> : null}
+          <dl>
+            {event.summary ? (
+              <div>
+                <dt>{copy("reset_history.detail_content")}</dt>
+                <dd>{event.summary}</dd>
+              </div>
+            ) : null}
+            {event.source_url ? (
+              <div>
+                <dt>{copy("reset_history.quoted_tweet")}</dt>
+                <dd>
+                  <a
+                    href={event.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {quotedAuthor || event.source_url}
+                  </a>
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -416,7 +522,10 @@ export function ResetHistoryPage() {
       .sort((left, right) => Date.parse(right.occurred_at) - Date.parse(left.occurred_at));
     const indexByUrl = new Map<string, number>();
     const indexedSources: TimelineSource[] = [];
-    const resetStatistics = calculateResetStatistics(official);
+    // Feed the FULL history so the previous 30-day window is available for
+    // the period-over-period comparison (item-9a); the current-window stats
+    // are still filtered inside calculateResetStatistics.
+    const resetStatistics = calculateResetStatistics(displayedHistory);
     const indexedEvents: TimelineEvent[] = official.map((event) => {
       const url = String(event.source_url || "").trim();
       if (!url) return { ...event, sourceIndex: null };
@@ -506,7 +615,7 @@ export function ResetHistoryPage() {
                   </div>
                   <ol
                     data-testid="reset-history-timeline"
-                    className="relative divide-y divide-oai-gray-200 before:absolute before:bottom-4 before:left-[0.875rem] before:top-4 before:w-px before:bg-oai-gray-200 dark:divide-oai-gray-800 dark:before:bg-oai-gray-700"
+                    className="tt-reset-history-cards relative"
                   >
                     {visibleEvents.map((event, index) => (
                       <ResetRecord key={event.id} event={event} isLatest={index === 0} />

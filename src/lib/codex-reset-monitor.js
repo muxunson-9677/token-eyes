@@ -415,7 +415,11 @@ function mergeCodexResetSnapshots(
   return capState(next, { nowMs });
 }
 
-function acknowledgeCodexResetEvent(state, eventId, { channels = null } = {}) {
+function acknowledgeCodexResetEvent(
+  state,
+  eventId,
+  { channels = null, nowMs = Date.now() } = {},
+) {
   const next = normalizeState(state);
   const eventIndex = next.events.findIndex((event) => event.id === eventId);
   if (
@@ -439,7 +443,7 @@ function acknowledgeCodexResetEvent(state, eventId, { channels = null } = {}) {
       next.acknowledgedEventIds.push(eventId);
     }
   }
-  return capState(next);
+  return capState(next, { nowMs });
 }
 
 function listUnreadCodexResetEvents(state, { channel = "banner" } = {}) {

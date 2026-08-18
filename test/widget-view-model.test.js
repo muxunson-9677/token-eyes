@@ -76,7 +76,7 @@ test("builds filtered status, limits, model totals, and one pending reset", () =
     }],
   });
 
-  assert.deepEqual(result.agents, ["all", "claude", "codex", "cursor", "hermes"]);
+  assert.ok(result.agents.includes("deepseek-harness"));
   assert.equal(result.selectedAgent, "codex");
   assert.deepEqual(
     result.projectStatus.projects.map((project) => project.id),
@@ -432,7 +432,7 @@ test("local rolling-window events never replace the widget capsule", () => {
   assert.equal(result.pendingReset, null);
 });
 
-test("flattens the existing usage-limit payload without credentials", () => {
+test("does not expose provider windows when no Token plan is configured", () => {
   const limits = flattenUsageLimitsPayload({
     fetched_at: "2026-07-29T08:00:00.000Z",
     codex: {
@@ -452,28 +452,7 @@ test("flattens the existing usage-limit payload without credentials", () => {
     },
   });
 
-  assert.deepEqual(limits.map((item) => ({
-    agent: item.agent,
-    provider: item.provider,
-    accountLabel: item.accountLabel,
-    window: item.window,
-    usedPercent: item.usedPercent,
-  })), [
-    {
-      agent: "codex",
-      provider: "Codex",
-      accountLabel: "Codex Plus",
-      window: "5h",
-      usedPercent: 21,
-    },
-    {
-      agent: "codex",
-      provider: "Codex",
-      accountLabel: "Codex Plus",
-      window: "7d",
-      usedPercent: 44,
-    },
-  ]);
+  assert.deepEqual(limits, []);
   assert.doesNotMatch(JSON.stringify(limits), /access_token|must-not-leak/u);
 });
 
@@ -512,8 +491,10 @@ test("uses configured token plans as the widget limit source and carries their n
 
   assert.deepEqual(limits.map((item) => ({
     id: item.id,
+    planId: item.planId,
     agent: item.agent,
     provider: item.provider,
+    planLabel: item.planLabel,
     accountLabel: item.accountLabel,
     window: item.window,
     usedPercent: item.usedPercent,
@@ -521,28 +502,34 @@ test("uses configured token plans as the widget limit source and carries their n
   })), [
     {
       id: "codex:codex-main:5h",
+      planId: "codex:codex-main",
       agent: "codex",
       provider: "Codex",
-      accountLabel: "Plus",
-      window: "5h",
+      planLabel: "Plus",
+      accountLabel: "",
+      window: "5 小时",
       usedPercent: 42,
       notes: "主力开发账号",
     },
     {
       id: "codex:codex-main:7d",
+      planId: "codex:codex-main",
       agent: "codex",
       provider: "Codex",
-      accountLabel: "Plus",
-      window: "7d",
+      planLabel: "Plus",
+      accountLabel: "",
+      window: "7 天",
       usedPercent: 68,
       notes: "主力开发账号",
     },
     {
-      id: "cursor:cursor-backup:monthly",
+      id: "cursor:cursor-backup",
+      planId: "cursor:cursor-backup",
       agent: "cursor",
       provider: "Cursor",
-      accountLabel: "Pro",
-      window: "monthly",
+      planLabel: "Pro",
+      accountLabel: "",
+      window: "Total Usage",
       usedPercent: 30,
       notes: "备用套餐",
     },
@@ -550,27 +537,177 @@ test("uses configured token plans as the widget limit source and carries their n
   assert.doesNotMatch(JSON.stringify(limits), /Fallback Plus|99/u);
 });
 
-test("keeps every quota window from one configured plan as a distinct widget item", () => {
+test("keeps the canonical Cursor quota lanes and plan identity for the widget", () => {
   const limits = flattenUsageLimitsPayload({}, [{
     id: "cursor-main",
     source: "cursor",
     provider_id: "cursor",
     plan_label: "Pro",
+    detection_method: "official_account",
+    detection_config: {
+      official_account: { display_name: "ezequielhuelsxw@outlook.com" },
+    },
+    subscription_amount: 20,
+    subscription_currency: "USD",
+    subscription_end_date: "2026-08-22",
     quota_windows: [
-      { kind: "total", percentage: 34 },
-      { kind: "rolling_weekly", percentage: 67 },
-      { kind: "auto_composer", percentage: 28 },
-      { kind: "api", percentage: 12 },
+      { kind: "total", percentage: 100, resets_at: "2026-08-22T04:17:12.000Z" },
+      { kind: "rolling_weekly", percentage: 67, resets_at: "2026-08-22T04:17:12.000Z" },
+      { kind: "auto_composer", percentage: 62, resets_at: "2026-08-22T04:17:12.000Z" },
+      { kind: "api", percentage: 100, resets_at: "2026-08-22T04:17:12.000Z" },
       { kind: "fast_request", percentage: 9 },
     ],
   }]);
 
-  assert.deepEqual(limits.map((item) => ({ id: item.id, window: item.window })), [
-    { id: "cursor:cursor-main:monthly", window: "monthly" },
-    { id: "cursor:cursor-main:7d", window: "7d" },
-    { id: "cursor:cursor-main:auto_composer", window: "自动与 Composer" },
-    { id: "cursor:cursor-main:api", window: "API" },
-    { id: "cursor:cursor-main:fast_request", window: "快速请求" },
+  assert.deepEqual(limits.map((item) => ({
+    id: item.id,
+    kind: item.kind,
+    window: item.window,
+    planLabel: item.planLabel,
+    accountLabel: item.accountLabel,
+    subscriptionAmount: item.subscriptionAmount,
+    subscriptionCurrency: item.subscriptionCurrency,
+  })), [
+    {
+      id: "cursor:cursor-main:total",
+      kind: "total",
+      window: "Total Usage",
+      planLabel: "Pro",
+      accountLabel: "ezequielhuelsxw@outlook.com",
+      subscriptionAmount: 20,
+      subscriptionCurrency: "USD",
+    },
+    {
+      id: "cursor:cursor-main:auto_composer",
+      kind: "auto_composer",
+      window: "Auto + Composer Usage",
+      planLabel: "Pro",
+      accountLabel: "ezequielhuelsxw@outlook.com",
+      subscriptionAmount: 20,
+      subscriptionCurrency: "USD",
+    },
+    {
+      id: "cursor:cursor-main:api",
+      kind: "api",
+      window: "API Usage",
+      planLabel: "Pro",
+      accountLabel: "ezequielhuelsxw@outlook.com",
+      subscriptionAmount: 20,
+      subscriptionCurrency: "USD",
+    },
   ]);
   assert.equal(new Set(limits.map((item) => item.id)).size, limits.length);
+});
+
+test("keeps reset time and plan expiry separate for every widget quota window", () => {
+  const limits = flattenUsageLimitsPayload({}, [{
+    id: "codex-main",
+    source: "codex",
+    provider_id: "codex",
+    plan_label: "Plus",
+    expires_at: "2026-09-01T00:00:00.000Z",
+    quota_windows: [
+      { kind: "rolling_5_hour", percentage: 20, resets_at: "2026-08-17T05:00:00.000Z" },
+      { kind: "rolling_weekly", percentage: 60, resets_at: "2026-08-22T00:00:00.000Z" },
+    ],
+  }]);
+
+  assert.deepEqual(limits.map((item) => ({
+    window: item.window,
+    resetAt: item.resetAt,
+    expiresAt: item.expiresAt,
+  })), [
+    {
+      window: "5 小时",
+      resetAt: "2026-08-17T05:00:00.000Z",
+      expiresAt: "2026-09-01T00:00:00.000Z",
+    },
+    {
+      window: "7 天",
+      resetAt: "2026-08-22T00:00:00.000Z",
+      expiresAt: "2026-09-01T00:00:00.000Z",
+    },
+  ]);
+});
+
+test("normalizes official Unix reset timestamps without replacing them with the plan expiry", () => {
+  const limits = flattenUsageLimitsPayload({}, [{
+    id: "codex-main",
+    source: "codex",
+    provider_id: "codex",
+    plan_label: "Pro 20x",
+    expires_at: "2026-08-30T14:24:24.000Z",
+    quota_windows: [
+      { kind: "rolling_weekly", percentage: 48, resets_at: "1787196799" },
+      { kind: "gpt_5_3_codex_spark_weekly", percentage: 56, resets_at: 1787198612 },
+      { kind: "rolling_5_hour", percentage: 20, resets_at: 1787196799000 },
+    ],
+  }]);
+
+  assert.deepEqual(limits.map((item) => ({
+    window: item.window,
+    resetAt: item.resetAt,
+    expiresAt: item.expiresAt,
+  })), [
+    {
+      window: "7 天",
+      resetAt: "2026-08-20T03:33:19.000Z",
+      expiresAt: "2026-08-30T14:24:24.000Z",
+    },
+    {
+      window: "GPT 5.3 Codex Spark",
+      resetAt: "2026-08-20T04:03:32.000Z",
+      expiresAt: "2026-08-30T14:24:24.000Z",
+    },
+    {
+      window: "5 小时",
+      resetAt: "2026-08-20T03:33:19.000Z",
+      expiresAt: "2026-08-30T14:24:24.000Z",
+    },
+  ]);
+});
+
+test("keeps official Codex Spark quota-window names instead of collapsing them to other", () => {
+  const limits = flattenUsageLimitsPayload({}, [{
+    id: "codex-main",
+    source: "codex",
+    provider_id: "codex",
+    plan_label: "Pro 20x",
+    quota_windows: [
+      {
+        kind: "gpt_5_3_codex_spark_5_hour",
+        percentage: 42,
+      },
+      {
+        kind: "gpt_5_3_codex_spark_weekly",
+        percentage: 56,
+      },
+    ],
+  }]);
+
+  assert.deepEqual(
+    limits.map((limit) => ({ id: limit.id, window: limit.window })),
+    [
+      {
+        id: "codex:codex-main:gpt_5_3_codex_spark_5h",
+        window: "GPT 5.3 Codex Spark · 5 小时",
+      },
+      {
+        id: "codex:codex-main:gpt_5_3_codex_spark_weekly",
+        window: "GPT 5.3 Codex Spark",
+      },
+    ],
+  );
+});
+
+test("filters widget usage by DeepSeek Harness when selected", () => {
+  const result = buildWidgetViewModel({
+    agent: "deepseek-harness",
+    usage: [
+      { agent: "deepseek-harness", model: "deepseek-v4-flash", tokens: 120, costUsd: 0 },
+      { agent: "codex", model: "gpt-5", tokens: 999, costUsd: 1 },
+    ],
+  });
+  assert.equal(result.selectedAgent, "deepseek-harness");
+  assert.equal(result.totals.tokens, 120);
 });

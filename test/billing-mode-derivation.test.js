@@ -6,196 +6,114 @@ const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
+const {
+  accumulateBillingModeAttribution,
+  normalizeBillingMode,
+  normalizeUsageAttribution,
+} = require("../src/lib/usage-attribution");
+
+function deriveRowBillingMode(row) {
+  const attribution = normalizeUsageAttribution(row);
+  return { mode: attribution.billing_mode, confidence: attribution.billing_mode_confidence };
+}
+
+test("billing attribution exposes a reusable pure accumulator", () => {
+  assert.equal(typeof accumulateBillingModeAttribution, "function");
+});
 
 // Q02 unit-level coverage of the derivation helpers exported on the handler.
 // These rules are documented in docs/dev-notes/billing-mode-display-spec.md
 // and pinned here so refactors can't silently change the precedence order.
 test("deriveModelBillingMode honors explicit row.billing_mode=api_key", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const result = handler.deriveModelBillingMode({
-    row: { billing_mode: "api_key" },
-    model: "gpt-4o",
-    source: "codex",
-    planRecords: [],
-  });
+  const result = deriveRowBillingMode({ billing_mode: "api_key" });
   assert.equal(result.mode, "api_key");
-  assert.equal(result.confidence, "explicit_row");
+  assert.equal(result.confidence, "explicit_runtime");
 });
 
 test("deriveModelBillingMode honors explicit row.billing_mode=token_plan", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const result = handler.deriveModelBillingMode({
-    row: { billing_mode: "token_plan" },
-    model: "gpt-4o",
-    source: "codex",
-    planRecords: [],
-  });
+  const result = deriveRowBillingMode({ billing_mode: "token_plan" });
   assert.equal(result.mode, "token_plan");
-  assert.equal(result.confidence, "explicit_row");
+  assert.equal(result.confidence, "explicit_runtime");
 });
 
-test("deriveModelBillingMode normalizes 'pay-as-you-go' and 'subscription' to api_key/token_plan", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const payg = handler.deriveModelBillingMode({
-    row: { billing_mode: "pay-as-you-go" },
-    model: "gpt-4o",
-    source: "codex",
-    planRecords: [],
-  });
-  assert.equal(payg.mode, "api_key");
-  assert.equal(payg.confidence, "explicit_row");
-  const sub = handler.deriveModelBillingMode({
-    row: { billing_mode: "subscription" },
-    model: "gpt-4o",
-    source: "codex",
-    planRecords: [],
-  });
-  assert.equal(sub.mode, "token_plan");
-  assert.equal(sub.confidence, "explicit_row");
+test("deriveModelBillingMode rejects non-canonical aliases as trusted evidence", () => {
+  for (const billingMode of ["pay-as-you-go", "payg", "subscription", "plan"]) {
+    const result = deriveRowBillingMode({ billing_mode: billingMode });
+    assert.equal(result.mode, "unknown");
+    assert.equal(result.confidence, "unavailable");
+  }
 });
 
-test("deriveModelBillingMode recognizes pay-as-you-go model keyword as api_key", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const result = handler.deriveModelBillingMode({
-    row: {},
-    model: "pay-as-you-go-model",
-    source: "custom",
-    planRecords: [],
-  });
-  assert.equal(result.mode, "api_key");
-  assert.equal(result.confidence, "heuristic_model_keyword");
+test("deriveModelBillingMode does not infer api_key from a model keyword", () => {
+  const result = deriveRowBillingMode({ model: "pay-as-you-go-model" });
+  assert.equal(result.mode, "unknown");
+  assert.equal(result.confidence, "unavailable");
 });
 
 test("deriveModelBillingMode falls back to unknown when no rule matches", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const result = handler.deriveModelBillingMode({
-    row: {},
-    model: "totally-unrecognized-model",
-    source: "codex",
-    planRecords: [],
-  });
+  const result = deriveRowBillingMode({});
   assert.equal(result.mode, "unknown");
-  assert.equal(result.confidence, "fallback_unknown");
+  assert.equal(result.confidence, "unavailable");
 });
 
-test("Token plan label match maps mimo-v2.5-pro to token_plan via Xiaomi MiMo Token Plan", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const planRecords = [
-    {
-      id: "plan-1",
-      source: "hermes",
-      plan_label: "Xiaomi MiMo Token Plan",
-      total_quota: 0,
-      used_quota: 0,
-      remaining_quota: 0,
-      expires_at: "",
-    },
-  ];
-  const result = handler.deriveModelBillingMode({
-    row: {},
-    model: "mimo-v2.5-pro",
-    source: "hermes",
-    planRecords,
-  });
-  assert.equal(result.mode, "token_plan");
-  assert.equal(result.confidence, "token_plan_label_match");
+test("Token plan label and model keywords alone do not change unknown", () => {
+  const result = deriveRowBillingMode({ model: "mimo-v2.5-pro" });
+  assert.equal(result.mode, "unknown");
+  assert.equal(result.confidence, "unavailable");
 });
 
-test("Hermes is treated as a mixed source: deepseek-v4-pro stays unknown despite plan record for the same source", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const planRecords = [
-    {
-      id: "plan-1",
-      source: "hermes",
-      plan_label: "Xiaomi MiMo Token Plan",
-      total_quota: 0,
-      used_quota: 0,
-      remaining_quota: 0,
-      expires_at: "",
-    },
-  ];
-  const result = handler.deriveModelBillingMode({
-    row: {},
-    model: "deepseek-v4-pro",
-    source: "hermes",
-    planRecords,
-  });
-  // No label match (mimo vs deepseek) and Hermes is in MIXED_BILLING_SOURCES,
-  // so the source-level plan fallback must NOT fire. Heuristic model keyword
-  // for "deepseek" → api_key (heuristic_model_keyword).
-  assert.equal(result.mode, "api_key");
-  assert.equal(result.confidence, "heuristic_model_keyword");
+test("source plan record and API-looking model stay unknown without explicit evidence", () => {
+  const result = deriveRowBillingMode({ model: "deepseek-v4-pro" });
+  assert.equal(result.mode, "unknown");
+  assert.equal(result.confidence, "unavailable");
 });
 
-test("Non-mixed source with plan record → source_token_plan_match for unmatched model", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const planRecords = [
-    {
-      id: "plan-1",
-      source: "codex",
-      plan_label: "Codex Pro Plan",
-      total_quota: 0,
-      used_quota: 0,
-      remaining_quota: 0,
-      expires_at: "",
-    },
-  ];
-  const result = handler.deriveModelBillingMode({
-    row: {},
-    model: "gpt-5.4",
-    source: "codex",
-    planRecords,
-  });
-  assert.equal(result.mode, "token_plan");
-  assert.equal(result.confidence, "source_token_plan_match");
+test("source plan record alone does not change unknown", () => {
+  const result = deriveRowBillingMode({});
+  assert.equal(result.mode, "unknown");
+  assert.equal(result.confidence, "unavailable");
 });
 
-test("summarizeSourceBillingMode collapses all-same to single mode, mixed to 'mixed'", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  const allApiKey = handler.summarizeSourceBillingMode([
-    { mode: "api_key" },
-    { mode: "api_key" },
-  ]);
-  assert.deepEqual(allApiKey, { mode: "api_key", billing_modes: ["api_key"] });
+test("summarizeSourceBillingMode collapses all-same to single mode, mixed to 'mixed'", async () => {
+  const trackerDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "tt-billing-summary-"));
+  try {
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDataDir, "queue.jsonl"),
+      trackerDataDir,
+    });
+    const allApiKey = handler.summarizeSourceBillingMode([
+      { mode: "api_key" },
+      { mode: "api_key" },
+    ]);
+    assert.deepEqual(allApiKey, { mode: "api_key", billing_modes: ["api_key"] });
 
-  const allTokenPlan = handler.summarizeSourceBillingMode([
-    { mode: "token_plan" },
-  ]);
-  assert.deepEqual(allTokenPlan, { mode: "token_plan", billing_modes: ["token_plan"] });
+    const allTokenPlan = handler.summarizeSourceBillingMode([
+      { mode: "token_plan" },
+    ]);
+    assert.deepEqual(allTokenPlan, { mode: "token_plan", billing_modes: ["token_plan"] });
 
-  const mixed = handler.summarizeSourceBillingMode([
-    { mode: "api_key" },
-    { mode: "token_plan" },
-  ]);
-  assert.deepEqual(mixed, { mode: "mixed", billing_modes: ["api_key", "token_plan"] });
+    const mixed = handler.summarizeSourceBillingMode([
+      { mode: "api_key" },
+      { mode: "token_plan" },
+    ]);
+    assert.deepEqual(mixed, { mode: "mixed", billing_modes: ["api_key", "token_plan"] });
 
-  const allUnknown = handler.summarizeSourceBillingMode([{ mode: "unknown" }]);
-  assert.deepEqual(allUnknown, { mode: "unknown", billing_modes: ["unknown"] });
-
-  // Empty input → unknown.
-  const empty = handler.summarizeSourceBillingMode([]);
-  assert.deepEqual(empty, { mode: "unknown", billing_modes: [] });
+    const allUnknown = handler.summarizeSourceBillingMode([{ mode: "unknown" }]);
+    assert.deepEqual(allUnknown, { mode: "unknown", billing_modes: ["unknown"] });
+    assert.deepEqual(handler.summarizeSourceBillingMode([]), { mode: "unknown", billing_modes: [] });
+  } finally {
+    await fs.rm(trackerDataDir, { recursive: true, force: true });
+  }
 });
 
-test("normalizeBillingModeRaw maps common aliases", () => {
-  const handler = createLocalApiHandler({ queuePath: "/tmp/none.jsonl" });
-  assert.equal(handler.normalizeBillingModeRaw("api_key"), "api_key");
-  assert.equal(handler.normalizeBillingModeRaw("API-Key"), "api_key");
-  assert.equal(handler.normalizeBillingModeRaw("api key"), "api_key");
-  assert.equal(handler.normalizeBillingModeRaw("PAYG"), "api_key");
-  assert.equal(handler.normalizeBillingModeRaw("pay_as_you_go"), "api_key");
-  assert.equal(handler.normalizeBillingModeRaw("pay-as-you-go"), "api_key");
-  assert.equal(handler.normalizeBillingModeRaw("token-plan"), "token_plan");
-  assert.equal(handler.normalizeBillingModeRaw("token plan"), "token_plan");
-  assert.equal(handler.normalizeBillingModeRaw("subscription"), "token_plan");
-  assert.equal(handler.normalizeBillingModeRaw("plan"), "token_plan");
-  // unknown / mixed pass through.
-  assert.equal(handler.normalizeBillingModeRaw("unknown"), "unknown");
-  assert.equal(handler.normalizeBillingModeRaw("MIXED"), "mixed");
-  // Bogus values collapse to null (caller treats as no match).
-  assert.equal(handler.normalizeBillingModeRaw("definitely-not-a-mode"), null);
-  assert.equal(handler.normalizeBillingModeRaw(""), null);
-  assert.equal(handler.normalizeBillingModeRaw(null), null);
+test("normalizeBillingMode accepts only canonical trusted values", () => {
+  assert.equal(normalizeBillingMode("api_key"), "api_key");
+  assert.equal(normalizeBillingMode("token_plan"), "token_plan");
+  assert.equal(normalizeBillingMode("unknown"), "unknown");
+  for (const value of ["API-Key", "api key", "PAYG", "subscription", "plan", "MIXED", ""]) {
+    assert.equal(normalizeBillingMode(value), null);
+  }
+  assert.equal(normalizeBillingMode(null), null);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -268,13 +186,80 @@ test("usage-model-breakdown: explicit billing_mode=api_key flows through to mode
     assert.deepEqual(src.billing_modes, ["api_key"]);
     const model = src.models.find((m) => m.model === "gpt-4o");
     assert.equal(model.billing_mode, "api_key");
-    assert.equal(model.billing_mode_confidence, "explicit_row");
+    assert.equal(model.billing_mode_confidence, "explicit_runtime");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
 
-test("usage-model-breakdown: Hermes with Xiaomi MiMo plan tags mimo=token_plan and deepseek=api_key; source=混合", async () => {
+test("usage-model-breakdown: an explicit row remains authoritative across model aggregation", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-billing-aggregate-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
+    const base = {
+      source: "codex",
+      model: "mimo-coding-plan",
+      input_tokens: 500,
+      output_tokens: 100,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 600,
+      conversation_count: 1,
+    };
+    await fs.writeFile(
+      queuePath,
+      [
+        { ...base, hour_start: "2026-06-20T00:00:00.000Z" },
+        {
+          ...base,
+          hour_start: "2026-06-20T00:00:00.000Z",
+          billing_mode: "api_key",
+        },
+      ].map((row) => JSON.stringify(row)).join("\n") + "\n",
+    );
+
+    const body = await call(
+      handler,
+      "/functions/tokentracker-usage-model-breakdown?from=2026-06-20&to=2026-06-20&tz=UTC",
+    );
+    const src = body.sources.find((entry) => entry.source === "codex");
+    const model = src.models.find((entry) => entry.model === "mimo-coding-plan");
+    assert.equal(model.billing_mode, "mixed");
+    assert.deepEqual(model.billing_mode_token_totals, {
+      api_key: 600,
+      token_plan: 0,
+      unknown: 600,
+    });
+    assert.equal(
+      Object.values(model.billing_mode_cost_totals).reduce((sum, value) => sum + value, 0),
+      Number(model.totals.total_cost_usd),
+    );
+    assert.equal(model.totals.total_tokens, 1200);
+    assert.equal(
+      Object.values(model.billing_mode_token_totals).reduce((sum, value) => sum + value, 0),
+      model.totals.total_tokens,
+    );
+    assert.deepEqual(src.billing_mode_token_totals, {
+      api_key: 600,
+      token_plan: 0,
+      unknown: 600,
+    });
+    assert.equal(
+      Object.values(src.billing_mode_cost_totals).reduce((sum, value) => sum + value, 0),
+      Number(src.totals.total_cost_usd),
+    );
+    assert.equal(src.billing_mode, "mixed");
+    assert.deepEqual(src.billing_modes, ["api_key", "unknown"]);
+    assert.equal(src.totals.total_tokens, 1200);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("usage-model-breakdown: plan records and model keywords remain unknown and preserve totals", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-billing-hermes-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
@@ -339,18 +324,19 @@ test("usage-model-breakdown: Hermes with Xiaomi MiMo plan tags mimo=token_plan a
     );
     const src = body.sources.find((s) => s.source === "hermes");
     assert.ok(src, "hermes source must exist");
-    assert.equal(src.billing_mode, "mixed");
-    assert.deepEqual(src.billing_modes, ["api_key", "token_plan"]);
+    assert.equal(src.billing_mode, "unknown");
+    assert.deepEqual(src.billing_modes, ["unknown"]);
+    assert.equal(src.totals.total_tokens, 1800);
 
     const mimo = src.models.find((m) => m.model === "mimo-v2.5-pro");
-    assert.equal(mimo.billing_mode, "token_plan");
-    assert.equal(mimo.billing_mode_confidence, "token_plan_label_match");
+    assert.equal(mimo.billing_mode, "unknown");
+    assert.equal(mimo.billing_mode_confidence, "unavailable");
+    assert.equal(mimo.totals.total_tokens, 1200);
 
     const deepseek = src.models.find((m) => m.model === "deepseek-v4-pro");
-    // deepseek keyword → heuristic_model_keyword / api_key (Hermes mixed
-    // source fallback is suppressed).
-    assert.equal(deepseek.billing_mode, "api_key");
-    assert.equal(deepseek.billing_mode_confidence, "heuristic_model_keyword");
+    assert.equal(deepseek.billing_mode, "unknown");
+    assert.equal(deepseek.billing_mode_confidence, "unavailable");
+    assert.equal(deepseek.totals.total_tokens, 600);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -386,8 +372,36 @@ test("usage-model-breakdown: no plan, no explicit, no keyword → source=unknown
     assert.deepEqual(src.billing_modes, ["unknown"]);
     const model = src.models.find((m) => m.model === "totally-unrecognized-model");
     assert.equal(model.billing_mode, "unknown");
-    assert.equal(model.billing_mode_confidence, "fallback_unknown");
+    assert.equal(model.billing_mode_confidence, "unavailable");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
+});
+
+test("billing attribution evaluates each row once while conserving per-mode totals", () => {
+  const source = {
+    tokenTotals: { api_key: 0, token_plan: 0, unknown: 0 },
+    confidences: {},
+  };
+  const model = {
+    tokenTotals: { api_key: 0, token_plan: 0, unknown: 0 },
+    confidences: {},
+  };
+  const rows = [
+    { billing_mode: "unknown", total_tokens: 10 },
+    { billing_mode: "api_key", total_tokens: 20 },
+    { billing_mode: "token_plan", total_tokens: 5 },
+  ];
+  let evaluations = 0;
+  for (const row of rows) {
+    accumulateBillingModeAttribution([source, model], row, (input) => {
+      evaluations += 1;
+      return normalizeUsageAttribution(input);
+    });
+  }
+
+  assert.equal(evaluations, rows.length);
+  assert.deepEqual(source.tokenTotals, { api_key: 20, token_plan: 5, unknown: 10 });
+  assert.deepEqual(model.tokenTotals, source.tokenTotals);
+  assert.equal(Object.values(source.tokenTotals).reduce((sum, value) => sum + value, 0), 35);
 });

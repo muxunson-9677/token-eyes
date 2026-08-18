@@ -88,6 +88,9 @@ const SpendUsagePage = lazy(() =>
 const SpendCostPage = lazy(() =>
   import("./pages/SpendPage.jsx").then((m) => ({ default: m.SpendCostPage })),
 );
+const PlanMarketPage = lazy(() =>
+  import("./pages/PlanMarketPage.jsx").then((m) => ({ default: m.PlanMarketPage })),
+);
 const SkillsPage = lazy(() =>
   import("./pages/SkillsPage.jsx").then((m) => ({ default: m.SkillsPage })),
 );
@@ -252,8 +255,11 @@ export default function App() {
     isSettingsBasicPath || isSettingsCostPath || isSettingsDataPath || isTokenPlanEditorPath || isSettingsRootPath;
   const isSpendUsagePath = normalizedPath === "/spend/usage";
   const isSpendCostPath = normalizedPath === "/spend/cost";
+  // V2-W1: curated provider plan market lives under the spend group.
+  const isSpendPlansPath = normalizedPath === "/spend/plans";
   const isSpendRootPath = normalizedPath === "/spend";
-  const isSpendSubPath = isSpendUsagePath || isSpendCostPath || isSpendRootPath;
+  const isSpendSubPath =
+    isSpendUsagePath || isSpendCostPath || isSpendPlansPath || isSpendRootPath;
   const isSkillsPath = normalizedPath === "/skills";
   const isWidgetsPath = normalizedPath === "/widgets";
   const isIpCheckPath = normalizedPath === "/ip-check";
@@ -324,6 +330,8 @@ export default function App() {
     PageComponent = SpendUsagePage;
   } else if (isSpendCostPath) {
     PageComponent = SpendCostPage;
+  } else if (isSpendPlansPath) {
+    PageComponent = PlanMarketPage;
   } else if (isSkillsPath) {
     PageComponent = SkillsPage;
   } else if (isWidgetsPath) {

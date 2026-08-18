@@ -35,6 +35,19 @@ describe("AgentSwitcher", () => {
       expect(screen.getByRole("button", { name: "仅显示 Hermes Agent 的数据" })).toBeInTheDocument();
     });
 
+    it("renders every visible Agent as a labelled selectable card", () => {
+      renderSwitcher({ visibleProviderIds: ["claude", "codex"] });
+
+      expect(screen.getByRole("button", { name: "仅显示 Claude Code 的数据" }))
+        .toHaveClass("tt-agent-switcher-card");
+      expect(screen.getByRole("button", { name: "仅显示 Claude Code 的数据" })).toHaveStyle({
+        height: "34px",
+        fontSize: "10px",
+      });
+      expect(screen.getByRole("button", { name: "仅显示 Codex 的数据" }))
+        .toHaveTextContent("Codex");
+    });
+
     it("renders providers in visibleProviderIds order (not alphabetical)", () => {
       renderSwitcher({ visibleProviderIds: ["hermes", "claude"] });
 

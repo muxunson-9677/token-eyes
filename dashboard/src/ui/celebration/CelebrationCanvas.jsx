@@ -13,7 +13,7 @@ function chooseRenderScale() {
   return clamp(scale, 0.56, 1);
 }
 
-export function CelebrationCanvas({ createScene, effectId, onFallback }) {
+export function CelebrationCanvas({ createScene, effectId, onFallback, fitParent = false }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -50,8 +50,9 @@ export function CelebrationCanvas({ createScene, effectId, onFallback }) {
 
     const resize = () => {
       const renderScale = chooseRenderScale();
-      surface.width = Math.max(1, window.innerWidth);
-      surface.height = Math.max(1, window.innerHeight);
+      const parentBox = fitParent ? canvas.parentElement?.getBoundingClientRect() : null;
+      surface.width = Math.max(1, parentBox ? parentBox.width : window.innerWidth);
+      surface.height = Math.max(1, parentBox ? parentBox.height : window.innerHeight);
       surface.scale = clamp(
         Math.sqrt((surface.width * surface.height) / (1920 * 1080)),
         0.55,
@@ -103,10 +104,15 @@ export function CelebrationCanvas({ createScene, effectId, onFallback }) {
       if (!frameId && !failed) frameId = requestAnimationFrame(drawFrame);
     };
 
+    let parentObserver = null;
     try {
       scene = createScene(surface);
       resize();
       window.addEventListener("resize", resize, { passive: true });
+      parentObserver = fitParent && typeof ResizeObserver === "function"
+        ? new ResizeObserver(resize)
+        : null;
+      if (parentObserver && canvas.parentElement) parentObserver.observe(canvas.parentElement);
       document.addEventListener("visibilitychange", handleVisibility);
       if (!document.hidden) frameId = requestAnimationFrame(drawFrame);
     } catch {
@@ -116,11 +122,12 @@ export function CelebrationCanvas({ createScene, effectId, onFallback }) {
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
       window.removeEventListener("resize", resize);
+      parentObserver?.disconnect();
       document.removeEventListener("visibilitychange", handleVisibility);
       scene?.destroy?.();
       context.clearRect(0, 0, surface.width, surface.height);
     };
-  }, [createScene, onFallback]);
+  }, [createScene, onFallback, fitParent]);
 
   return (
     <canvas

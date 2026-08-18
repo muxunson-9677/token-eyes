@@ -2,7 +2,7 @@ import React from "react";
 // Vitest provides Node at runtime; this project intentionally omits Node type declarations.
 // @ts-expect-error node:fs is available in the Vitest runtime
 import { readFileSync } from "node:fs";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,6 +27,10 @@ vi.mock("../lib/copy", () => ({
     if (key === "widget.session.details") {
       return `${params?.status} · ${params?.time} · ${params?.id}`;
     }
+    if (key === "widget.limit.time_unknown") return "reset unavailable";
+    if (key === "widget.limit.reset_at") return `reset: ${params?.time}`;
+    if (key === "widget.limit.reset_unavailable") return "reset time unavailable";
+    if (key === "widget.limit.expires_at") return `expiry: ${params?.days}d · ${params?.absolute}`;
     return `copy:${key}`;
   },
 }));
@@ -50,17 +54,22 @@ vi.mock("motion/react", () => ({
 
 import {
   DesktopWidgetPage,
+  formatCompactReset,
+  formatCompactValidity,
   formatWidgetCompactCost,
   formatWidgetCompactTokenCount,
+  orderedWidgetLimits,
 } from "./DesktopWidgetPage";
 
 const widgetStyles = readFileSync("src/pages/desktop-widget.css", "utf8");
 
 const prefs = {
-  version: 1,
+  version: 11,
   visible: true,
-  width: 322,
-  height: 160,
+  width: 352,
+  height: 76,
+  collapsedHeight: 76,
+  expandedHeight: 360,
   scaleFactor: 1,
   selectedAgent: "codex",
   mode: "projects",
@@ -97,17 +106,20 @@ const viewModel = {
   limits: [
     {
       id: "codex:default:5h",
+      planId: "codex:default",
       agent: "codex",
       provider: "Codex",
       accountLabel: "Plus",
       window: "5h",
       usedPercent: 42,
       resetAt: null,
+      expiresAt: null,
       error: null,
       notes: "主力开发账号",
     },
     {
       id: "codex:default:weekly",
+      planId: "codex:default",
       agent: "codex",
       provider: "Codex",
       accountLabel: "Plus",
@@ -149,6 +161,34 @@ describe("DesktopWidgetPage", () => {
     };
   });
 
+  it("keeps plan selections attached to every configured quota window", () => {
+    const weekly = {
+      id: "cursor:pro-plan:7d",
+      planId: "cursor:pro-plan",
+      agent: "cursor",
+      provider: "Cursor",
+      planLabel: "Pro",
+      accountLabel: "Pro",
+      subscriptionAmount: 0,
+      subscriptionCurrency: "USD",
+      kind: "total",
+      window: "7d",
+      usedPercent: 42,
+      resetAt: null,
+      expiresAt: null,
+      error: null,
+      notes: null,
+    };
+    const auto = {
+      ...weekly,
+      id: "cursor:pro-plan:auto_composer",
+      kind: "auto_composer",
+      window: "自动与 Composer",
+    };
+
+    expect(orderedWidgetLimits([weekly, auto], ["cursor:pro-plan"])).toEqual([weekly, auto]);
+  });
+
   it("formats widget totals with Chinese compact units", () => {
     expect(formatWidgetCompactTokenCount(13_857_521_151)).toBe("138.6亿");
     expect(formatWidgetCompactCost(35_508.35)).toBe("$3.6万");
@@ -169,6 +209,19 @@ describe("DesktopWidgetPage", () => {
     }
   });
 
+  it("shows a requested celebration directly in the browser-only preview", () => {
+    window.history.pushState({}, "", "/desktop-widget?preview=1&celebration=fireworks");
+    const { unmount } = render(<DesktopWidgetPage />);
+
+    try {
+      expect(screen.getByTestId("widget-reset-celebration"))
+        .toHaveAttribute("data-effect-id", "fireworks");
+    } finally {
+      unmount();
+      window.history.pushState({}, "", "/desktop-widget");
+    }
+  });
+
   it("keeps one card, separates expand and agent controls, and portals the agent menu", async () => {
     const user = userEvent.setup();
     render(<DesktopWidgetPage />);
@@ -183,7 +236,13 @@ describe("DesktopWidgetPage", () => {
     const agentMenu = screen.getByRole("menu", { name: "copy:widget.agent_menu" });
     expect(agentMenu.parentElement).toBe(document.body);
     expect(agentMenu).toHaveAttribute("data-menu-layout", "vertical");
-    expect(within(agentMenu).getAllByRole("menuitemradio")).toHaveLength(5);
+    expect(agentMenu).toHaveAttribute("data-menu-depth", "reference-glass");
+    expect(agentMenu).toHaveAttribute("data-menu-scrollbar", "hidden");
+    expect(within(agentMenu).getAllByRole("menuitemradio").length).toBeGreaterThanOrEqual(5);
+    expect(widgetStyles).toMatch(/\.widget-menu\[data-menu-kind="agent"\]\s+\.widget-menu__items\s*\{[^}]*max-height:\s*180px/s);
+    expect(widgetStyles).toMatch(/\.widget-menu\[data-menu-kind="agent"\]\s+\.widget-menu__items\s*\{[^}]*scrollbar-width:\s*none/s);
+    expect(widgetStyles).toMatch(/\.widget-menu\[data-menu-kind="agent"\]\s+button\[role="menuitemradio"\]\s*\{[^}]*width:\s*100%/s);
+    expect(widgetStyles).toMatch(/\.widget-menu\[data-menu-kind="agent"\]::after\s*\{/s);
     expect(widget.setPopoverOpen).toHaveBeenCalledWith(true);
 
     expect(screen.queryByRole("menu", { name: "copy:widget.mode_menu" })).not.toBeInTheDocument();
@@ -222,9 +281,15 @@ describe("DesktopWidgetPage", () => {
     expect(
       within(expandedNav).getByRole("button", { name: "copy:widget.mode.limits" }),
     ).toHaveAttribute("aria-pressed", "true");
+
+    widget.updatePrefs.mockClear();
+    await act(async () => user.click(
+      within(expandedNav).getByRole("button", { name: "copy:widget.mode.models" }),
+    ));
+    expect(widget.updatePrefs).toHaveBeenCalledWith({ mode: "models" });
   });
 
-  it("keeps the external mode rail beside the card in both widget states", () => {
+  it("keeps the 0.54.40 external mode rail beside the card in both widget states", () => {
     const { rerender } = render(<DesktopWidgetPage />);
     const card = screen.getByTestId("desktop-widget-card");
     const rail = screen.getByTestId("widget-mode-rail");
@@ -236,7 +301,9 @@ describe("DesktopWidgetPage", () => {
     rerender(<DesktopWidgetPage />);
     expect(screen.getByTestId("widget-mode-rail").parentElement)
       .toBe(screen.getByTestId("desktop-widget-card").parentElement);
-    expect(widgetStyles).toContain(".widget-mode-rail--reference-dock {\n  align-self: start;\n  margin-top: 4px;");
+    expect(widgetStyles).toContain("grid-template-columns: minmax(0, 1fr) 22px");
+    expect(widgetStyles).not.toContain("min-height: 138px");
+    expect(widgetStyles).not.toContain("height: 128px");
   });
 
   it("uses the reference dock chrome while keeping the real model totals available", () => {
@@ -299,6 +366,49 @@ describe("DesktopWidgetPage", () => {
     expect(widgetStyles).toContain(".widget-mode-rail .pill-nav__item::before");
   });
 
+  it("tucks the external mode rail behind the capsule edge without a visible bridge plate", () => {
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-card--reference-dock\s*\{[^}]*z-index:\s*2/u,
+    );
+    expect(widgetStyles).toMatch(
+      /\.widget-mode-rail--reference-dock\s*\{[^}]*z-index:\s*1[^}]*margin-left:\s*-6px/u,
+    );
+    expect(widgetStyles).not.toMatch(/\.widget-mode-rail--reference-dock::before\s*\{/u);
+  });
+
+  it("keeps the collapsed toolbar geometry fixed when detail content expands", () => {
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-root\.has-popover \.desktop-widget-card:not\(\.is-expanded\)\s*\{[^}]*height:\s*66px/u,
+    );
+    expect(widgetStyles).toMatch(
+      /\.desktop-widget-card--reference-dock \.widget-toolbar\s*\{[^}]*height:\s*65px/u,
+    );
+    expect(widgetStyles).not.toMatch(
+      /\.desktop-widget-card--reference-dock:not\(\.is-expanded\) \.widget-toolbar\s*\{/u,
+    );
+  });
+
+  it("removes the rectangular projection below the agent menu", () => {
+    const agentMenuRule = widgetStyles.match(
+      /\.widget-menu\[data-menu-kind="agent"\]\s*\{([^}]*)\}/u,
+    )?.[1] ?? "";
+    expect(agentMenuRule).toContain("box-shadow:");
+    expect(agentMenuRule).not.toMatch(/\n\s*0 (?:8|24)px (?:18|42)px/u);
+    expect(agentMenuRule).toMatch(/\n\s*0 0 0 1px/u);
+  });
+
+  it("keeps the side rail shadow tight", () => {
+    expect(widgetStyles).toMatch(
+      /\.widget-mode-rail--reference-dock \.pill-nav__item\s*\{[^}]*box-shadow:\s*\n\s*0 1px 3px/u,
+    );
+    expect(widgetStyles).toMatch(
+      /\.widget-mode-rail--reference-dock \.pill-nav__item\[aria-pressed="true"\]\s*\{[^}]*box-shadow:\s*\n\s*0 0 4px/u,
+    );
+    expect(widgetStyles).not.toMatch(
+      /\.widget-mode-rail--reference-dock \.pill-nav__item(?:\[aria-pressed="true"\])?\s*\{[^}]*(?:0 4px 8px|13px)/u,
+    );
+  });
+
   it("keeps model usage as a divided list inside the expanded content layer", () => {
     expect(widgetStyles).toContain(".widget-model-row {\n  padding: 7px 0;");
     expect(widgetStyles).toContain(".widget-model-row + .widget-model-row {");
@@ -318,6 +428,28 @@ describe("DesktopWidgetPage", () => {
     expect(startDragging).not.toHaveBeenCalled();
   });
 
+  it("dismisses an open agent menu from blank space without starting a native drag", async () => {
+    const user = userEvent.setup();
+    render(<DesktopWidgetPage />);
+
+    await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
+    expect(screen.getByRole("menu", { name: "copy:widget.agent_menu" })).toBeInTheDocument();
+    expect(widget.setPopoverOpen).toHaveBeenLastCalledWith(true);
+
+    startDragging.mockClear();
+    widget.setPopoverOpen.mockClear();
+    await act(async () => user.pointer({
+      keys: "[MouseLeft>]",
+      target: screen.getByTestId("desktop-widget-card"),
+    }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "copy:widget.agent_menu" })).not.toBeInTheDocument();
+    });
+    expect(startDragging).not.toHaveBeenCalled();
+    expect(widget.setPopoverOpen).toHaveBeenLastCalledWith(false);
+  });
+
   it("keeps project selection out of the desktop capsule", () => {
     render(<DesktopWidgetPage />);
     expect(
@@ -328,7 +460,7 @@ describe("DesktopWidgetPage", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps selected project folders visible with an empty state when no session is active", () => {
+  it("keeps selected project folders visible even when they have no active sessions", () => {
     widget.value = {
       ...widget.value,
       prefs: {
@@ -356,6 +488,239 @@ describe("DesktopWidgetPage", () => {
     render(<DesktopWidgetPage />);
     expect(screen.getByText("012-EDU-lite")).toBeInTheDocument();
     expect(screen.getByText("copy:widget.projects.no_active")).toBeInTheDocument();
+  });
+
+  it("maps a legacy selected session id back to its live project instead of showing a false inactive fallback", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: {
+        ...prefs,
+        expanded: true,
+        selectedProjectIds: ["session-a"],
+        selectedProjects: [{
+          id: "session-a",
+          label: "Token Eyes",
+          path: "D:\\Work\\Token Eyes",
+        }],
+      },
+    };
+
+    render(<DesktopWidgetPage />);
+    expect(screen.getByText("Token Eyes")).toBeInTheDocument();
+    expect(screen.queryByText("copy:widget.projects.no_active")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("widget-traffic-light")[1]).toHaveTextContent("2");
+  });
+
+  it("reconnects a saved folder to the live project when its generated id changed", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: {
+        ...prefs,
+        expanded: true,
+        selectedProjectIds: ["project-saved-folder"],
+        selectedProjects: [{
+          id: "project-saved-folder",
+          label: "Token Eyes",
+          path: "D:\\Work\\Token Eyes",
+        }],
+      },
+    };
+
+    render(<DesktopWidgetPage />);
+    expect(screen.getByText("Token Eyes")).toBeInTheDocument();
+    expect(screen.queryByText("copy:widget.projects.no_active")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("widget-traffic-light")[1]).toHaveTextContent("2");
+  });
+
+  it("shows one project folder and merges the sessions from repeated live worktrees", async () => {
+    const user = userEvent.setup();
+    widget.value = {
+      ...widget.value,
+      prefs: {
+        ...prefs,
+        expanded: true,
+        selectedProjectIds: ["project-saved-a", "project-saved-b"],
+        selectedProjects: [
+          { id: "project-saved-a", label: "Token Eyes", path: "D:\\Work\\Token Eyes A" },
+          { id: "project-saved-b", label: "Token Eyes", path: "D:\\Work\\Token Eyes B" },
+        ],
+      },
+      viewModel: {
+        ...viewModel,
+        projectStatus: {
+          red: 0,
+          yellow: 1,
+          green: 1,
+          unknown: 0,
+          recentProjects: [],
+          projects: [
+            viewModel.projectStatus.projects[0],
+            {
+              ...viewModel.projectStatus.projects[0],
+              id: "project-b",
+              green: 1,
+              yellow: 0,
+              sessions: [{
+                ...viewModel.projectStatus.projects[0].sessions[0],
+                id: "session-b",
+                label: "session-b",
+                status: "green",
+                state: "completed",
+              }],
+            },
+          ],
+        },
+      },
+    };
+
+    render(<DesktopWidgetPage />);
+    expect(screen.getAllByText("Token Eyes")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: /Token Eyes/u }));
+    expect(screen.getByText("session-a")).toBeInTheDocument();
+    expect(screen.getByText("session-b")).toBeInTheDocument();
+    expect(screen.getAllByTestId("widget-traffic-light")[1]).toHaveTextContent("2");
+    expect(screen.getAllByTestId("widget-traffic-light")[2]).toHaveTextContent("1");
+  });
+
+  it("uses the Limits Display visibility order for the agent switcher", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "tt.limits.providerOrder",
+      JSON.stringify(["workbuddy", "deepseek-harness", "codex", "claude"]),
+    );
+    window.localStorage.setItem(
+      "tt.limits.providerVisibility",
+      JSON.stringify({ workbuddy: true, "deepseek-harness": true, codex: true, claude: false }),
+    );
+    widget.value = {
+      ...widget.value,
+      viewModel: {
+        ...viewModel,
+        agents: ["all", "claude", "codex", "workbuddy", "deepseek-harness"],
+      },
+    };
+
+    render(<DesktopWidgetPage />);
+    await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
+    const menu = screen.getByRole("menu", { name: "copy:widget.agent_menu" });
+    expect(within(menu).getByText("WorkBuddy")).toBeInTheDocument();
+    expect(within(menu).getByText("DeepSeek Harness")).toBeInTheDocument();
+    expect(within(menu).getByText("Codex")).toBeInTheDocument();
+    expect(within(menu).queryByText("Claude")).not.toBeInTheDocument();
+  });
+
+  it("uses Limits Display as the source of visible agents even before usage data exists", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "tt.limits.providerOrder",
+      JSON.stringify(["deepseek-harness", "codex"]),
+    );
+    window.localStorage.setItem(
+      "tt.limits.providerVisibility",
+      JSON.stringify({ "deepseek-harness": true, codex: true }),
+    );
+    widget.value = {
+      ...widget.value,
+      viewModel: {
+        ...viewModel,
+        agents: ["all", "codex"],
+      },
+    };
+
+    render(<DesktopWidgetPage />);
+    await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
+    expect(within(screen.getByRole("menu", { name: "copy:widget.agent_menu" }))
+      .getByText("DeepSeek Harness")).toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      name: "both reset and expiry",
+      resetAt: "2026-08-20T03:33:00.000Z",
+      expiresAt: "2026-08-30T14:24:00.000Z",
+      resetText: "2026-08-20T03:33:00.000Z",
+      expiryText: "2026-08-30T14:24:00.000Z",
+    },
+    {
+      name: "reset only",
+      resetAt: "2026-08-20T03:33:00.000Z",
+      expiresAt: null,
+      resetText: "2026-08-20T03:33:00.000Z",
+      expiryText: null,
+    },
+    {
+      name: "expiry only",
+      resetAt: null,
+      expiresAt: "2026-08-30T14:24:00.000Z",
+      resetText: null,
+      expiryText: "2026-08-30T14:24:00.000Z",
+    },
+    {
+      name: "neither reset nor expiry",
+      resetAt: null,
+      expiresAt: null,
+      resetText: null,
+      expiryText: null,
+    },
+  ])("shows $name as independent facts", ({ resetAt, expiresAt, resetText, expiryText }) => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-17T11:33:00.000Z"));
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, expanded: true, mode: "limits" },
+      viewModel: {
+        ...viewModel,
+        limits: [{
+          ...viewModel.limits[0],
+          resetAt,
+          expiresAt,
+        }],
+      },
+    };
+
+    render(<DesktopWidgetPage />);
+    expect(screen.getByText(resetText ? formatCompactReset(resetText) : "reset time unavailable"))
+      .toBeInTheDocument();
+    if (expiryText) {
+      expect(screen.getByText(formatCompactValidity(expiryText))).toBeInTheDocument();
+    } else {
+      expect(screen.queryByText(/^expiry:/)).not.toBeInTheDocument();
+    }
+    now.mockRestore();
+  });
+
+  it("keeps an open agent menu mounted while the main card changes expansion state", async () => {
+    const user = userEvent.setup();
+    render(<DesktopWidgetPage />);
+
+    await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
+    expect(screen.getByRole("menu", { name: "copy:widget.agent_menu" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "copy:widget.expand" }));
+    expect(widget.updatePrefs).toHaveBeenCalledWith({ expanded: true });
+    expect(screen.getByRole("menu", { name: "copy:widget.agent_menu" })).toBeInTheDocument();
+    expect(widget.setPopoverOpen).toHaveBeenLastCalledWith(true);
+  });
+
+  it("falls back to all agents when the current agent is hidden in Limits Display", async () => {
+    window.localStorage.setItem(
+      "tt.limits.providerOrder",
+      JSON.stringify(["codex", "claude"]),
+    );
+    window.localStorage.setItem(
+      "tt.limits.providerVisibility",
+      JSON.stringify({ codex: true, claude: false }),
+    );
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, selectedAgent: "claude" },
+      viewModel: { ...viewModel, agents: ["all", "claude", "codex"] },
+    };
+
+    render(<DesktopWidgetPage />);
+
+    await waitFor(() => {
+      expect(widget.updatePrefs).toHaveBeenCalledWith({ selectedAgent: "all" });
+    });
   });
 
   it("shows the official task title, exact stopped state, and a readable fallback instead of UUIDs", async () => {
@@ -412,34 +777,130 @@ describe("DesktopWidgetPage", () => {
     expect(screen.getByText(new RegExp("\u7684\u4f1a\u8bdd$", "u"))).toBeInTheDocument();
   });
 
-  it("shows only the first selected limit while collapsed and keeps the reference status lights above all expanded limits", () => {
+  it("groups one plan's quota windows and keeps details out of the collapsed capsule", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-17T11:33:00.000Z"));
+    const cursorLimit = {
+      ...viewModel.limits[0],
+      id: "cursor:pro:7d",
+      planId: "cursor:pro",
+      agent: "cursor",
+      provider: "Cursor",
+      planLabel: "Pro",
+      accountLabel: "ezequielhuelsxw@outlook.com",
+      window: "7d",
+      usedPercent: 100,
+      resetAt: "2026-08-20T03:33:00.000Z",
+      expiresAt: "2026-08-30T14:24:00.000Z",
+      notes: "Cursor 周额度",
+    };
     widget.value = {
       ...widget.value,
       prefs: {
         ...prefs,
         mode: "limits",
-        selectedLimitIds: ["codex:default:weekly", "codex:default:5h"],
+        selectedLimitIds: ["codex:default:weekly", "codex:default:5h", "cursor:pro:7d"],
       },
+      viewModel: { ...viewModel, limits: [...viewModel.limits, cursorLimit] },
     };
     const { rerender } = render(<DesktopWidgetPage />);
-    expect(screen.getByText("1w")).toBeInTheDocument();
-    expect(screen.getByText("备用周额度")).toBeInTheDocument();
+    expect(screen.getByText(/Codex · Plus/u)).toBeInTheDocument();
+    expect(screen.queryByText(/Cursor · Pro/u)).not.toBeInTheDocument();
+    expect(screen.queryByText("1w")).not.toBeInTheDocument();
+    expect(screen.queryByText("备用周额度")).not.toBeInTheDocument();
     expect(screen.queryByText("主力开发账号")).not.toBeInTheDocument();
     expect(screen.queryByText("5h")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(1);
-    expect(screen.getByTestId("widget-limit-progress")).toHaveClass("widget-limit-progress-bar");
+    expect(screen.getAllByTestId("widget-limit-progress")[0]).toHaveClass("widget-limit-progress-bar");
 
     widget.value = {
       ...widget.value,
       prefs: { ...widget.value.prefs, expanded: true },
     };
     rerender(<DesktopWidgetPage />);
-    expect(screen.getAllByText("1w")).not.toHaveLength(0);
+    const planCards = screen.getAllByTestId("widget-expanded-limit-plan");
+    expect(planCards).toHaveLength(2);
+    const cursorCard = planCards.find((card) => within(card).queryByText("Cursor · Pro"));
+    expect(cursorCard).toBeDefined();
+    expect(within(cursorCard!).getByText("ezequielhuelsxw@outlook.com")).toBeInTheDocument();
+    expect(within(cursorCard!).getByText("Weekly")).toBeInTheDocument();
+    expect(within(cursorCard!).getByText(formatCompactReset("2026-08-20T03:33:00.000Z")))
+      .toBeInTheDocument();
+    expect(within(cursorCard!).getByText(formatCompactValidity("2026-08-30T14:24:00.000Z")))
+      .toBeInTheDocument();
+    expect(screen.queryAllByText("1w")).toHaveLength(0);
     expect(screen.getAllByText("5h")).not.toHaveLength(0);
-    expect(screen.getAllByText("备用周额度")).not.toHaveLength(0);
-    expect(screen.getAllByText("主力开发账号")).not.toHaveLength(0);
-    expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(2);
-    expect(screen.getAllByTestId("widget-traffic-light")).toHaveLength(3);
+    expect(screen.queryByText("备用周额度")).not.toBeInTheDocument();
+    expect(screen.queryByText("主力开发账号")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("widget-limit-progress")).toHaveLength(4);
+    expect(screen.queryAllByTestId("widget-traffic-light")).toHaveLength(0);
+    now.mockRestore();
+  });
+
+  it("keeps all ten three-window plans reachable through the expanded scroll region", () => {
+    const denseLimits = Array.from({ length: 10 }, (_, planIndex) => (
+      ["5h", "1w", "API Usage"].map((window, windowIndex) => ({
+        ...viewModel.limits[0],
+        id: `codex:plan-${planIndex}:window-${windowIndex}`,
+        planId: `codex:plan-${planIndex}`,
+        planLabel: `Plan ${planIndex + 1}`,
+        accountLabel: `account-${planIndex + 1}`,
+        window,
+        usedPercent: planIndex * 10 + windowIndex,
+      }))
+    )).flat();
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, expanded: false, mode: "limits", selectedLimitIds: null },
+      viewModel: { ...viewModel, limits: denseLimits },
+    };
+
+    const { rerender } = render(<DesktopWidgetPage />);
+    expect(screen.queryByText("Codex · Plan 10")).not.toBeInTheDocument();
+
+    widget.value = {
+      ...widget.value,
+      prefs: { ...widget.value.prefs, expanded: true },
+    };
+    rerender(<DesktopWidgetPage />);
+
+    const scrollRegion = document.querySelector("[data-widget-scroll-region]");
+    const plans = screen.getAllByTestId("widget-expanded-limit-plan");
+    expect(plans).toHaveLength(10);
+    expect(plans.every((plan) => within(plan).getAllByTestId("widget-limit-progress").length === 3)).toBe(true);
+    expect(within(plans.at(-1)!).getByText("Codex · Plan 10")).toBeInTheDocument();
+    expect(scrollRegion).toContainElement(plans.at(-1)!);
+    expect(widgetStyles).toMatch(/\.widget-scroll-region\s*\{[^}]*overflow-y:\s*auto/s);
+  });
+
+  it("keeps each mode's collapsed summary unchanged when the detail panel expands", () => {
+    const summaryText = () => screen.getByTestId("widget-drag-surface").textContent;
+    const cases = ["projects", "limits", "models"] as const;
+
+    for (const mode of cases) {
+      widget.value = { ...widget.value, prefs: { ...prefs, mode, expanded: false } };
+      const { rerender, unmount } = render(<DesktopWidgetPage />);
+      const collapsed = summaryText();
+
+      widget.value = { ...widget.value, prefs: { ...prefs, mode, expanded: true } };
+      rerender(<DesktopWidgetPage />);
+      expect(summaryText()).toBe(collapsed);
+      unmount();
+    }
+  });
+
+  it("keeps the agent icon geometry stable across collapse and expand", () => {
+    const { rerender } = render(<DesktopWidgetPage />);
+    const collapsedIcon = screen.getByRole("button", { name: "copy:widget.expand" })
+      .querySelector("img");
+    expect(collapsedIcon).toHaveAttribute("width", "27");
+    expect(collapsedIcon).toHaveAttribute("height", "27");
+
+    widget.value = { ...widget.value, prefs: { ...prefs, expanded: true } };
+    rerender(<DesktopWidgetPage />);
+    const expandedIcon = screen.getByRole("button", { name: "copy:widget.collapse" })
+      .querySelector("img");
+    expect(expandedIcon).toHaveAttribute("width", "27");
+    expect(expandedIcon).toHaveAttribute("height", "27");
   });
 
   it("treats a missing limit selection as all plans and an empty selection as none", () => {
@@ -448,7 +909,8 @@ describe("DesktopWidgetPage", () => {
       prefs: { ...prefs, mode: "limits", selectedLimitIds: null },
     };
     const { rerender } = render(<DesktopWidgetPage />);
-    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByText(/Codex · Plus/u)).toBeInTheDocument();
+    expect(screen.queryByText("5h")).not.toBeInTheDocument();
 
     widget.value = {
       ...widget.value,
@@ -466,6 +928,7 @@ describe("DesktopWidgetPage", () => {
     };
     render(<DesktopWidgetPage />);
     expect(screen.getByText("gpt-5-codex")).toBeInTheDocument();
+    expect(screen.getByText("12,345 · 100%")).toBeInTheDocument();
     expect(screen.getByTestId("widget-model-tone")).toHaveAttribute("data-tone", "0");
     expect(screen.queryByText("inactive-model")).not.toBeInTheDocument();
   });
@@ -575,8 +1038,13 @@ describe("DesktopWidgetPage", () => {
       });
       expect(screen.getByTestId("widget-reset-celebration"))
         .toHaveAttribute("data-effect-id", "meteors");
+      expect(readFileSync("src/pages/DesktopWidgetPage.tsx", "utf8")).toContain("fitToHost");
+      expect(readFileSync("src/pages/DesktopWidgetPage.tsx", "utf8")).not.toContain("surroundMeteors");
       expect(screen.getByRole("button", { name: "copy:widget.reset.acknowledge" }))
         .toHaveClass("widget-reset-celebration__dismiss");
+      expect(widgetStyles).toContain("top: calc(var(--widget-effect-halo, 140px) + 10px);");
+      expect(widgetStyles).toContain("right: calc(var(--widget-effect-halo, 140px) + 15px);");
+      expect(widgetStyles).toContain(".widget-reset-celebration__dismiss svg { width: 16px; height: 16px; }");
       expect(widget.acknowledgePendingReset).not.toHaveBeenCalled();
 
       await act(async () => {

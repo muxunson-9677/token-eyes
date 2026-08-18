@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const fssync = require("node:fs");
 const cp = require("node:child_process");
 const readline = require("node:readline");
+const { normalizeUsageAttribution, queueUsageIdentity } = require("../lib/usage-attribution");
 
 const { ensureDir, readJson, writeJson, openLock } = require("../lib/fs");
 const {
@@ -45,6 +46,8 @@ const {
   parseAntigravityIncremental,
   resolveCodebuddyProjectFiles,
   parseCodebuddyIncremental,
+  resolveWorkbuddyProjectFiles,
+  parseWorkbuddyIncremental,
   resolveKiroCliSessionFiles,
   resolveKiroCliDbPath,
   parseKiroCliIncremental,
@@ -52,6 +55,9 @@ const {
   parseKilocodeIncremental,
   resolveRoocodeTaskFiles,
   parseRoocodeIncremental,
+  resolveDeepSeekHarnessHome,
+  listDeepSeekHarnessSessionFiles,
+  parseDeepSeekHarnessIncremental,
   parseTraeIncremental,
   resolveZedDbPath,
   parseZedIncremental,
@@ -205,6 +211,7 @@ async function cmdSync(argv) {
     const geminiHome = dataDirectoryPaths.geminiHome;
     const antigravityHome = dataDirectoryPaths.antigravityHome;
     const codebuddyEnv = { ...process.env, CODEBUDDY_HOME: dataDirectoryPaths.codebuddyHome };
+    const workbuddyEnv = { ...process.env, WORKBUDDY_HOME: dataDirectoryPaths.workbuddyHome };
     const geminiTmpDir = path.join(geminiHome, "tmp");
     const xdgDataHome = process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
     const opencodeHome = dataDirectoryPaths.opencodeHome;
@@ -657,6 +664,46 @@ async function cmdSync(argv) {
       }
     }
 
+    // ── DeepSeek Harness — passive DSH_HOME/~/.dsh JSONL(.zstd) sessions ──
+    const deepSeekHarnessHome = resolveDeepSeekHarnessHome(process.env, home);
+    const deepSeekHarnessSessionFiles = await listDeepSeekHarnessSessionFiles(
+      deepSeekHarnessHome,
+    );
+    let deepSeekHarnessResult = {
+      filesProcessed: 0,
+      eventsAggregated: 0,
+      bucketsQueued: 0,
+    };
+    if (deepSeekHarnessSessionFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(
+          `Parsing DeepSeek Harness ${renderBar(0)} 0/${formatNumber(
+            deepSeekHarnessSessionFiles.length,
+          )} sessions | buckets 0`,
+        );
+      }
+      try {
+        deepSeekHarnessResult = await parseDeepSeekHarnessIncremental({
+          sessionFiles: deepSeekHarnessSessionFiles,
+          cursors,
+          queuePath,
+          onProgress: (p) => {
+            if (!progress?.enabled) return;
+            const pct = p.total > 0 ? p.index / p.total : 1;
+            progress.update(
+              `Parsing DeepSeek Harness ${renderBar(pct)} ${formatNumber(
+                p.index,
+              )}/${formatNumber(p.total)} sessions | buckets ${formatNumber(
+                p.bucketsQueued,
+              )}`,
+            );
+          },
+        });
+      } catch (err) {
+        warnProviderParseFailure("DeepSeek Harness", err, opts);
+      }
+    }
+
     // ── Cursor (API-based) ──
     // One-time migration: earlier CLI versions mis-parsed the Cursor CSV after
     // Cursor inserted new "Cloud Agent ID"/"Automation ID" columns, writing
@@ -905,6 +952,34 @@ async function cmdSync(argv) {
         });
       } catch (err) {
         warnProviderParseFailure("CodeBuddy", err, opts);
+      }
+    }
+
+    // ── WorkBuddy CLI (passive ~/.workbuddy/projects/**/*.jsonl reader) ──
+    // The CodeBuddy CLI rebrand; identical per-turn JSONL, separate home +
+    // queue source so both installs coexist without double counting.
+    let workbuddyResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const workbuddyFiles = resolveWorkbuddyProjectFiles(workbuddyEnv);
+    if (workbuddyFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing WorkBuddy ${renderBar(0)} | buckets 0`);
+      }
+      try {
+        workbuddyResult = await parseWorkbuddyIncremental({
+          projectFiles: workbuddyFiles,
+          cursors,
+          queuePath,
+          env: workbuddyEnv,
+          onProgress: (p) => {
+            if (!progress?.enabled) return;
+            const pct = p.total > 0 ? p.index / p.total : 1;
+            progress.update(
+              `Parsing WorkBuddy ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+            );
+          },
+        });
+      } catch (err) {
+        warnProviderParseFailure("WorkBuddy", err, opts);
       }
     }
 
@@ -1205,6 +1280,7 @@ async function cmdSync(argv) {
         kimiResult.recordsProcessed +
         kimiCodeResult.recordsProcessed +
         codebuddyResult.recordsProcessed +
+        workbuddyResult.recordsProcessed +
         ompResult.recordsProcessed +
         piResult.recordsProcessed +
         craftResult.recordsProcessed +
@@ -1213,6 +1289,7 @@ async function cmdSync(argv) {
         kiloResult.messagesProcessed +
         kilocodeResult.recordsProcessed +
         roocodeResult.recordsProcessed +
+        deepSeekHarnessResult.filesProcessed +
         zedResult.recordsProcessed +
         gooseResult.recordsProcessed +
         droidResult.recordsProcessed;
@@ -1231,6 +1308,7 @@ async function cmdSync(argv) {
         kimiResult.bucketsQueued +
         kimiCodeResult.bucketsQueued +
         codebuddyResult.bucketsQueued +
+        workbuddyResult.bucketsQueued +
         ompResult.bucketsQueued +
         piResult.bucketsQueued +
         craftResult.bucketsQueued +
@@ -1239,6 +1317,7 @@ async function cmdSync(argv) {
         kiloResult.bucketsQueued +
         kilocodeResult.bucketsQueued +
         roocodeResult.bucketsQueued +
+        deepSeekHarnessResult.bucketsQueued +
         zedResult.bucketsQueued +
         gooseResult.bucketsQueued +
         droidResult.bucketsQueued;
@@ -1296,6 +1375,9 @@ module.exports = {
   reincludeClaudeMemObserverFiles,
   repairGrokQueueFromSessionSnapshots,
   applyCloudConversationsBackfill,
+  readQueueBatch,
+  createCloudQueueReadContext,
+  drainQueueToCloud,
   CURSOR_UNKNOWN_MIGRATION_KEY,
   ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY,
   CODEX_RESCAN_DEDUP_REPAIR_KEY,
@@ -1607,19 +1689,221 @@ const AUTO_RETRY_MAX_DELAY_MS = 2 * 60 * 60 * 1000;
 
 const INGEST_SLUG = "tokentracker-ingest";
 const MAX_INGEST_BUCKETS = 500;
+const CLOUD_QUEUE_INDEX_VERSION = 2;
+const CLOUD_QUEUE_INDEX_BASE_LIMIT = 512;
+const BILLING_MODE_COMPAT_SUMMARY = "base_total_v1";
+const COMPAT_SUMMARY_FIELDS = [
+  "input_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "output_tokens",
+  "reasoning_output_tokens",
+  "total_tokens",
+  "billable_total_tokens",
+  "total_cost_usd",
+];
+
+function cloudBaseBucketIdentity(bucket) {
+  return `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
+}
+
+function cloudUsageWireRow(bucket) {
+  const row = {
+    source: bucket.source,
+    model: bucket.model,
+    hour_start: bucket.hour_start,
+    billing_mode: bucket.billing_mode === "api_key" || bucket.billing_mode === "token_plan"
+      ? bucket.billing_mode
+      : "unknown",
+  };
+  for (const field of COMPAT_SUMMARY_FIELDS) row[field] = Number(bucket[field]) || 0;
+  row.conversation_count = Number(bucket.conversation_count ?? bucket.conversations) || 0;
+  return row;
+}
+
+function withBillingModeCompatSummaries(buckets, priorBuckets = []) {
+  const groups = new Map();
+  for (const bucket of buckets) {
+    const key = cloudBaseBucketIdentity(bucket);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(bucket);
+  }
+  const result = [];
+  for (const group of groups.values()) {
+    result.push(...group.map(cloudUsageWireRow));
+    const baseKey = cloudBaseBucketIdentity(group[0]);
+    const latestModes = new Map();
+    for (const bucket of priorBuckets) {
+      if (cloudBaseBucketIdentity(bucket) === baseKey) latestModes.set(queueUsageIdentity(bucket), bucket);
+    }
+    for (const bucket of group) latestModes.set(queueUsageIdentity(bucket), bucket);
+    const summaryRows = Array.from(latestModes.values());
+    const summary = {
+      source: group[0].source,
+      model: group[0].model,
+      hour_start: group[0].hour_start,
+      billing_mode: "unknown",
+      billing_mode_compat_summary: BILLING_MODE_COMPAT_SUMMARY,
+    };
+    for (const field of COMPAT_SUMMARY_FIELDS) {
+      summary[field] = summaryRows.reduce((sum, bucket) => sum + (Number(bucket[field]) || 0), 0);
+    }
+    summary.billing_mode_compat_slices = {};
+    for (const bucket of summaryRows) {
+      const slice = {};
+      for (const field of COMPAT_SUMMARY_FIELDS) slice[field] = Number(bucket[field]) || 0;
+      slice.conversation_count = Number(bucket.conversation_count ?? bucket.conversations) || 0;
+      summary.billing_mode_compat_slices[bucket.billing_mode] = slice;
+    }
+    summary.conversation_count = summaryRows.reduce(
+      (sum, bucket) => sum + (Number(bucket.conversation_count ?? bucket.conversations) || 0),
+      0,
+    );
+    delete summary.conversations;
+    result.push(summary);
+  }
+  return result;
+}
+
+function normalizeCloudQueueBucket(bucket) {
+  const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
+  if (!hourStart) return null;
+  bucket.source = (typeof bucket?.source === "string" ? bucket.source.trim().toLowerCase() : "") || "codex";
+  bucket.model = (typeof bucket?.model === "string" ? bucket.model.trim() : "") || "unknown";
+  bucket = require("../lib/local-api").normalizeQueueRow(bucket);
+  bucket.billing_mode = normalizeUsageAttribution(bucket).billing_mode;
+  return bucket;
+}
+
+function updateCloudQueueReadContext(context, bucket) {
+  context.latestByIdentity.set(queueUsageIdentity(bucket), bucket);
+  const baseKey = cloudBaseBucketIdentity(bucket);
+  context.indexedBaseKeys?.add(baseKey);
+  if (context.recentBaseKeys) {
+    context.recentBaseKeys.delete(baseKey);
+    context.recentBaseKeys.set(baseKey, true);
+  }
+}
+
+async function createCloudQueueReadContext(queuePath, endOffset) {
+  const context = {
+    queuePath,
+    latestByIdentity: new Map(),
+    migrationTransactions: new Map(),
+    migrationTransactionsByOffset: new Map(),
+    indexedBaseKeys: new Set(),
+    recentBaseKeys: new Map(),
+    historyComplete: true,
+    rowsParsed: 0,
+  };
+  if (endOffset <= 0) return context;
+  const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: 0, end: endOffset - 1 });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    let bucket;
+    try { bucket = normalizeCloudQueueBucket(JSON.parse(line)); } catch (_e) { continue; }
+    if (!bucket) continue;
+    context.rowsParsed += 1;
+    updateCloudQueueReadContext(context, bucket);
+  }
+  rl.close();
+  stream.close?.();
+  return context;
+}
+
+function restoreCloudQueueReadContext(queuePath, state, offset) {
+  if (state?.cloudQueueIndexVersion !== CLOUD_QUEUE_INDEX_VERSION
+    || Number(state?.cloudQueueIndexOffset) !== offset
+    || !Array.isArray(state?.cloudQueueIndexRows)) return null;
+  const context = {
+    queuePath,
+    latestByIdentity: new Map(),
+    migrationTransactions: new Map(),
+    migrationTransactionsByOffset: new Map(),
+    indexedBaseKeys: new Set(),
+    recentBaseKeys: new Map(),
+    historyComplete: false,
+    rowsParsed: 0,
+  };
+  for (const rawRow of state.cloudQueueIndexRows) {
+    const bucket = normalizeCloudQueueBucket({ ...rawRow });
+    if (!bucket) return null;
+    updateCloudQueueReadContext(context, bucket);
+  }
+  return context;
+}
+
+function checkpointCloudQueueReadContext(state, context, offset) {
+  const retainedBaseKeys = Array.from(context.recentBaseKeys.keys()).slice(-CLOUD_QUEUE_INDEX_BASE_LIMIT);
+  const rowsByBase = new Map(retainedBaseKeys.map((baseKey) => [baseKey, []]));
+  for (const bucket of context.latestByIdentity.values()) {
+    rowsByBase.get(cloudBaseBucketIdentity(bucket))?.push(bucket);
+  }
+  state.cloudQueueIndexVersion = CLOUD_QUEUE_INDEX_VERSION;
+  state.cloudQueueIndexOffset = offset;
+  state.cloudQueueIndexRows = retainedBaseKeys.flatMap(
+    (baseKey) => rowsByBase.get(baseKey).map(cloudUsageWireRow),
+  );
+}
+
+function clearCloudQueueCheckpoint(state) {
+  delete state.cloudQueueIndexVersion;
+  delete state.cloudQueueIndexOffset;
+  delete state.cloudQueueIndexRows;
+}
+
+function pageCloudMigration(transaction, limit, migrationCursor) {
+  const { groups, migrationId, startOffset, nextOffset } = transaction;
+  const cursorMatches = migrationCursor?.id === migrationId
+    && Number(migrationCursor?.startOffset) === startOffset;
+  const firstGroup = cursorMatches
+    ? Math.max(0, Math.floor(Number(migrationCursor.groupIndex) || 0))
+    : 0;
+  const buckets = [];
+  let nextGroup = firstGroup;
+  while (nextGroup < groups.length) {
+    const wireGroup = withBillingModeCompatSummaries(groups[nextGroup]);
+    if (wireGroup.length > limit) {
+      throw new Error(`Migration base bucket exceeds cloud batch limit (${wireGroup.length} > ${limit})`);
+    }
+    if (buckets.length > 0 && buckets.length + wireGroup.length > limit) break;
+    buckets.push(...wireGroup);
+    nextGroup += 1;
+  }
+  if (nextGroup < groups.length) {
+    return {
+      buckets,
+      nextOffset: startOffset,
+      migrationCursor: { id: migrationId, startOffset, groupIndex: nextGroup },
+    };
+  }
+  return { buckets, nextOffset, migrationCursor: null };
+}
+
+async function readPriorCloudQueueRows(queuePath, endOffset, baseKeys) {
+  if (endOffset <= 0 || baseKeys.size === 0) return [];
+  const context = await createCloudQueueReadContext(queuePath, endOffset);
+  return Array.from(context.latestByIdentity.values())
+    .filter((bucket) => baseKeys.has(cloudBaseBucketIdentity(bucket)));
+}
 
 async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePath, maxBatches = 5, batchSize = 200 }) {
   const state = (await readJson(queueStatePath)) || { offset: 0 };
   let offset = Number(state.offset || 0);
   let inserted = 0;
   let skipped = 0;
+  let stateChanged = false;
 
   const queueSize = await safeStatSize(queuePath);
+  if (offset >= queueSize) return { inserted, skipped };
   const limit = Math.min(Math.max(1, Math.floor(Number(batchSize || 200))), MAX_INGEST_BUCKETS);
+  const readContext = restoreCloudQueueReadContext(queuePath, state, offset)
+    || await createCloudQueueReadContext(queuePath, offset);
 
   for (let batch = 0; batch < maxBatches; batch++) {
     if (offset >= queueSize) break;
-    const result = await readQueueBatch(queuePath, offset, limit);
+    const result = await readQueueBatch(queuePath, offset, limit, state.migrationCursor || null, readContext);
     if (result.buckets.length === 0) break;
 
     const root = baseUrl.replace(/\/$/, "");
@@ -1653,6 +1937,18 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
 
     offset = result.nextOffset;
     state.offset = offset;
+    stateChanged = true;
+    clearCloudQueueCheckpoint(state);
+    if (result.migrationCursor) state.migrationCursor = result.migrationCursor;
+    else {
+      delete state.migrationCursor;
+    }
+    state.updatedAt = new Date().toISOString();
+    await writeJson(queueStatePath, state);
+  }
+
+  if (stateChanged && !state.migrationCursor) {
+    checkpointCloudQueueReadContext(state, readContext, offset);
     state.updatedAt = new Date().toISOString();
     await writeJson(queueStatePath, state);
   }
@@ -1660,18 +1956,32 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
   return { inserted, skipped };
 }
 
-async function readQueueBatch(queuePath, startOffset, maxBuckets) {
+async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCursor = null, readContext = null) {
   const st = await fs.stat(queuePath).catch(() => null);
   if (!st || !st.isFile()) return { buckets: [], nextOffset: startOffset };
   if (startOffset >= st.size) return { buckets: [], nextOffset: startOffset };
+
+  const limit = Math.min(Math.max(1, Math.floor(Number(maxBuckets) || 1)), MAX_INGEST_BUCKETS);
+  const cachedMigration = readContext
+    ? migrationCursor?.id
+      ? readContext.migrationTransactions.get(`${startOffset}|${migrationCursor.id}`)
+      : readContext.migrationTransactionsByOffset.get(startOffset)
+    : null;
+  if (cachedMigration) return pageCloudMigration(cachedMigration, limit, migrationCursor);
 
   const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: startOffset });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   const bucketMap = new Map();
+  const baseBucketKeys = new Set();
   let offset = startOffset;
   let linesRead = 0;
+  let migrationId = null;
+  let migrationFrame = null;
+  let migrationRows = [];
+  let sawMigrationRows = false;
   for await (const line of rl) {
+    const lineStartOffset = offset;
     const bytes = Buffer.byteLength(line, "utf8") + 1;
     offset += bytes;
     if (!line.trim()) continue;
@@ -1683,24 +1993,126 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
     }
     const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
     if (!hourStart) continue;
-    const source = (typeof bucket?.source === "string" ? bucket.source.trim().toLowerCase() : "") || "codex";
-    const model = (typeof bucket?.model === "string" ? bucket.model.trim() : "") || "unknown";
-    bucket.source = source;
-    bucket.model = model;
+    const rowMigrationId = typeof bucket?.dsh_bucket_migration_id === "string"
+      ? bucket.dsh_bucket_migration_id
+      : null;
+    if (!sawMigrationRows && rowMigrationId && linesRead > 0) {
+      offset = lineStartOffset;
+      break;
+    }
+    if (sawMigrationRows && !rowMigrationId) {
+      // An ordinary record terminates an incomplete migration fragment. Keep
+      // the ordinary record uploadable and let a later index-zero replay form
+      // a fresh transaction on the next page.
+      sawMigrationRows = false;
+      migrationFrame = null;
+    }
     // Apply the same legacy-row corrections every local reader applies
     // (local-api readQueueData / project queue / wrapped aggregator). Without
     // this the cloud permanently kept the RAW legacy values — e.g. old Codex
     // rows whose input_tokens still include cached tokens (6-7x inflated) —
     // while the local dashboard showed corrected numbers.
-    bucket = require("../lib/local-api").normalizeQueueRow(bucket);
-    bucketMap.set(`${source}|${model}|${hourStart}`, bucket);
+    bucket = normalizeCloudQueueBucket(bucket);
+    if (rowMigrationId) {
+      sawMigrationRows = true;
+      const count = Number(bucket.dsh_bucket_migration_count);
+      const index = Number(bucket.dsh_bucket_migration_index);
+      const validPosition = Number.isInteger(count) && count > 0
+        && Number.isInteger(index) && index >= 0 && index < count;
+      if (!validPosition) {
+        migrationFrame = null;
+      } else if (index === 0) {
+        // A replay can append a new full transaction after a partial prefix.
+        // Treat every index zero as the only authoritative frame boundary.
+        migrationFrame = { id: rowMigrationId, count, nextIndex: 1, rows: [bucket] };
+      } else if (
+        migrationFrame
+        && migrationFrame.id === rowMigrationId
+        && migrationFrame.count === count
+        && migrationFrame.nextIndex === index
+      ) {
+        migrationFrame.rows.push(bucket);
+        migrationFrame.nextIndex += 1;
+      } else {
+        migrationFrame = null;
+      }
+      if (readContext) readContext.rowsParsed += 1;
+      linesRead += 1;
+      if (migrationFrame && migrationFrame.nextIndex === migrationFrame.count) {
+        migrationId = migrationFrame.id;
+        migrationRows = migrationFrame.rows;
+        break;
+      }
+      continue;
+    } else {
+      const baseKey = cloudBaseBucketIdentity(bucket);
+      if (!baseBucketKeys.has(baseKey)) {
+        // A base can contain three canonical modes plus its compatibility
+        // summary. Reserve the whole group before consuming its first line so
+        // a request boundary can never split that identity.
+        if (baseBucketKeys.size > 0 && (baseBucketKeys.size + 1) * 4 > limit) {
+          offset = lineStartOffset;
+          break;
+        }
+        if (baseBucketKeys.size === 0 && limit < 4) {
+          throw new Error(`Cloud batch limit must be at least 4 for an atomic billing bucket (${limit})`);
+        }
+        baseBucketKeys.add(baseKey);
+      }
+      bucketMap.set(queueUsageIdentity(bucket), bucket);
+    }
+    if (readContext) readContext.rowsParsed += 1;
     linesRead += 1;
-    if (linesRead >= maxBuckets) break;
   }
 
   rl.close();
   stream.close?.();
-  return { buckets: Array.from(bucketMap.values()), nextOffset: offset };
+  if (migrationRows.length > 0) {
+    const latestByIdentity = new Map();
+    for (const bucket of migrationRows) latestByIdentity.set(queueUsageIdentity(bucket), bucket);
+    if (readContext) {
+      for (const bucket of latestByIdentity.values()) updateCloudQueueReadContext(readContext, bucket);
+    }
+    const rowsByBaseBucket = new Map();
+    for (const bucket of latestByIdentity.values()) {
+      const baseKey = `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
+      if (!rowsByBaseBucket.has(baseKey)) rowsByBaseBucket.set(baseKey, []);
+      rowsByBaseBucket.get(baseKey).push(bucket);
+    }
+    const transaction = {
+      groups: Array.from(rowsByBaseBucket.values()),
+      migrationId,
+      startOffset,
+      nextOffset: offset,
+    };
+    if (readContext) {
+      readContext.migrationTransactions.set(`${startOffset}|${migrationId}`, transaction);
+      readContext.migrationTransactionsByOffset.set(startOffset, transaction);
+    }
+    return pageCloudMigration(transaction, limit, migrationCursor);
+  }
+  if (sawMigrationRows) return { buckets: [], nextOffset: startOffset };
+  const buckets = Array.from(bucketMap.values());
+  let priorBuckets;
+  if (readContext) {
+    priorBuckets = Array.from(readContext.latestByIdentity.values())
+      .filter((bucket) => baseBucketKeys.has(cloudBaseBucketIdentity(bucket)));
+    if (!readContext.historyComplete) {
+      const missingBaseKeys = new Set(
+        Array.from(baseBucketKeys).filter((baseKey) => !readContext.indexedBaseKeys.has(baseKey)),
+      );
+      const fallbackBuckets = await readPriorCloudQueueRows(queuePath, startOffset, missingBaseKeys);
+      for (const bucket of fallbackBuckets) updateCloudQueueReadContext(readContext, bucket);
+      priorBuckets.push(...fallbackBuckets);
+    }
+  } else {
+    priorBuckets = await readPriorCloudQueueRows(queuePath, startOffset, baseBucketKeys);
+  }
+  const wireBuckets = withBillingModeCompatSummaries(buckets, priorBuckets);
+  if (readContext) {
+    for (const bucket of buckets) updateCloudQueueReadContext(readContext, bucket);
+  }
+  return { buckets: wireBuckets, nextOffset: offset };
 }
 
 function normalizeGrokRepairSource(value) {
@@ -2788,4 +3200,3 @@ async function collectClaudeMessageHashes(filePaths) {
   }
   return hashes;
 }
-

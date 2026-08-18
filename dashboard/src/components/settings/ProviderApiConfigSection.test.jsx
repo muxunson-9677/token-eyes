@@ -45,6 +45,7 @@ vi.mock("../../lib/api", () => ({
   deleteProviderApiSecret: vi.fn(),
   testProviderApiConfig: vi.fn(),
   refreshProviderApiBalance: vi.fn(),
+  refreshOfficialConsoleProviderBalance: vi.fn(),
   createConsoleSession: vi.fn(),
   deleteConsoleSession: vi.fn(),
   verifyConsoleSession: vi.fn(),
@@ -136,6 +137,61 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(trigger.firstElementChild).toHaveClass("lucide-chevron-down");
     expect(trigger.children[1]).toHaveAttribute("data-testid", "settings-section-icon");
     expect(screen.queryByText("settings.cost.provider_api.empty")).not.toBeInTheDocument();
+  });
+
+  it("keeps connected, disconnected, and balance indicators in the collapsed header", async () => {
+    window.localStorage.removeItem("token-eyes.settings.disclosure.cost.provider-api.v1");
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [BASE_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: { balances: [{ configId: BASE_CONFIG.id, status: "synced", balance: 18.5, currency: "CNY" }] },
+    });
+
+    render(<ProviderApiConfigSection />);
+
+    const summary = await screen.findByTestId("provider-api-collapsed-summary");
+    expect(summary).toHaveTextContent("settings.cost.provider_api.summary.connected");
+    expect(summary).toHaveTextContent("● 1");
+    expect(summary).toHaveTextContent("18.50");
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.section" }))
+      .toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps the CNY header total isolated from balances in other currencies", async () => {
+    window.localStorage.removeItem("token-eyes.settings.disclosure.cost.provider-api.v1");
+    const usdConfig = { ...BASE_CONFIG, id: "cfg-usd", label: "USD account" };
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [BASE_CONFIG, usdConfig] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: {
+        balances: [
+          { configId: BASE_CONFIG.id, status: "synced", balance: 18.5, currency: "CNY" },
+          { configId: usdConfig.id, status: "synced", balance: 50, currency: "USD" },
+        ],
+      },
+    });
+
+    render(<ProviderApiConfigSection />);
+
+    const summary = await screen.findByTestId("provider-api-collapsed-summary");
+    expect(summary).toHaveTextContent("18.50");
+    expect(summary).not.toHaveTextContent("68.50");
+  });
+
+  it("does not repeat the provider summary inside the expanded content", async () => {
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [BASE_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: { balances: [{ configId: BASE_CONFIG.id, status: "synced", balance: 18.5, currency: "CNY" }] },
+    });
+
+    render(<ProviderApiConfigSection />);
+
+    await screen.findByText("OpenAI 主账户");
+    expect(screen.getByTestId("provider-api-config-section").querySelectorAll(".tt-provider-api-summary"))
+      .toHaveLength(1);
+    expect(screen.getByRole("button", { name: "settings.cost.provider_api.refresh_all" }))
+      .toBeInTheDocument();
   });
 
   it("keeps verified provider presets in UI parity with the backend contract", () => {
@@ -981,6 +1037,32 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(screen.queryByTestId("provider-api-card-month-spend-cfg-1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("provider-api-card-lifetime-spend-cfg-1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("provider-api-card-currency-cfg-1")).not.toBeInTheDocument();
+  });
+
+  it("keeps the last confirmed financial fields visible when the account is stale", async () => {
+    const staleConfig = { ...BASE_CONFIG, apiKeyRef: "" };
+    const staleBalance = {
+      configId: "cfg-1",
+      providerId: "openai",
+      accountLabel: "OpenAI 主账户",
+      balance: 75,
+      monthSpend: 12,
+      lifetimeSpend: 240,
+      currency: "USD",
+      status: "stale",
+      errorCode: "request_timeout",
+      errorMessage: "refresh failed",
+      lastSyncedAt: "2026-07-01T00:00:00.000Z",
+    };
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [staleConfig] } });
+    getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [staleBalance] } });
+
+    render(<ProviderApiConfigSection />);
+    await screen.findByText("OpenAI 主账户");
+
+    expect(screen.getByTestId("provider-api-card-balance-cfg-1")).toHaveTextContent("USD 75.00");
+    expect(screen.getByTestId("provider-api-card-month-spend-cfg-1")).toHaveTextContent("USD 12.00");
+    expect(screen.getAllByText("settings.cost.provider_api.stale").length).toBeGreaterThan(0);
   });
 
   it("F4 verification: manual refresh calls refreshProviderApiBalance for that config", async () => {

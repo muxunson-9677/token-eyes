@@ -225,6 +225,8 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(refresh).not.toBeNull();
     fireEvent.pointerDown(refresh, { button: 0 });
     expect(refresh).toHaveClass("tt-widget-click-bounce");
+    expect(screen.getByTestId("widget-projects")).toHaveClass("tt-pressable-group");
+    expect(screen.getByTestId("widget-limits")).toHaveClass("tt-pressable-group");
   });
 
   it("keeps aligned work-surface gutters in a Windows browser preview", async () => {
@@ -248,6 +250,9 @@ describe("WidgetsPage Windows desktop widget", () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     );
+    // Relative timestamps: the "active" bucket is a rolling 3-day window, so
+    // fixed dates rot as the calendar moves on.
+    const hoursAgo = (hours) => new Date(Date.now() - hours * 3600_000).toISOString();
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       text: async () => JSON.stringify({
@@ -255,10 +260,10 @@ describe("WidgetsPage Windows desktop widget", () => {
           green: 8,
           yellow: 2,
           recentProjects: [
-            { id: "project-a", label: "Token Eyes", updatedAt: "2026-08-10T12:00:00.000Z" },
-            { id: "project-b", label: "Website", updatedAt: "2026-08-10T11:00:00.000Z" },
-            { id: "project-c", label: "Token Eyes", updatedAt: "2026-08-10T10:00:00.000Z" },
-            { id: "project-d", label: "Token Eyes", updatedAt: "2026-08-10T09:00:00.000Z" },
+            { id: "project-a", label: "Token Eyes", updatedAt: hoursAgo(2) },
+            { id: "project-b", label: "Website", updatedAt: hoursAgo(3) },
+            { id: "project-c", label: "Token Eyes", updatedAt: hoursAgo(26) },
+            { id: "project-d", label: "Token Eyes", updatedAt: hoursAgo(50) },
           ],
         },
         limits: [],
@@ -282,15 +287,16 @@ describe("WidgetsPage Windows desktop widget", () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     );
+    const hoursAgo = (hours) => new Date(Date.now() - hours * 3600_000).toISOString();
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       text: async () => JSON.stringify({
         projectStatus: {
           recentProjects: [
-            { id: "project-a", label: "Token Eyes", updatedAt: "2026-08-10T12:00:00.000Z" },
-            { id: "project-b", label: "Website", updatedAt: "2026-08-10T11:00:00.000Z" },
-            { id: "project-c", label: "Token Eyes", updatedAt: "2026-08-10T10:00:00.000Z" },
-            { id: "project-d", label: "Token Eyes", updatedAt: "2026-08-10T09:00:00.000Z" },
+            { id: "project-a", label: "Token Eyes", updatedAt: hoursAgo(2) },
+            { id: "project-b", label: "Website", updatedAt: hoursAgo(3) },
+            { id: "project-c", label: "Token Eyes", updatedAt: hoursAgo(26) },
+            { id: "project-d", label: "Token Eyes", updatedAt: hoursAgo(50) },
           ],
         },
         limits: [],
@@ -325,6 +331,79 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(toggle).toBeEnabled();
   });
 
+  it("migrates two legacy quota-window selections into two configured widget plans", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    window.__TAURI__ = {
+      core: {
+        invoke: vi.fn(async (command) => {
+          if (command === "local_server_status") {
+            return { running: true, url: "http://127.0.0.1:7681" };
+          }
+          if (command === "get_desktop_widget_prefs") {
+            return {
+              visible: true,
+              selectedLimitIds: [
+                "codex:main:5h",
+                "cursor:pro:7d",
+              ],
+            };
+          }
+          return undefined;
+        }),
+      },
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const body = String(url).includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : {
+          projectStatus: { recentProjects: [] },
+          limits: [
+            { id: "codex:main:5h", planId: "codex:main", provider: "Codex", accountLabel: "Pro 20x", window: "5h", usedPercent: 2 },
+            { id: "cursor:pro:7d", planId: "cursor:pro", provider: "Cursor", accountLabel: "Pro", window: "7d", usedPercent: 100 },
+            { id: "cursor:pro:monthly", planId: "cursor:pro", provider: "Cursor", accountLabel: "Pro", window: "monthly", usedPercent: 100 },
+            { id: "cursor:pro:auto_composer", planId: "cursor:pro", provider: "Cursor", accountLabel: "Pro", window: "自动与 Composer", usedPercent: 61 },
+            { id: "cursor:pro:api", planId: "cursor:pro", provider: "Cursor", accountLabel: "Pro", window: "API", usedPercent: 100 },
+          ],
+        };
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+
+    await screen.findByTestId("widget-manager");
+    await waitFor(() => {
+      expect(screen.getAllByTestId("widget-limit-plan-card")).toHaveLength(2);
+      expect(document.querySelector(".tt-widget-summary article[data-tone='violet']"))
+        .toHaveTextContent("2 / 2");
+    });
+    const cursorPlan = screen.getAllByTestId("widget-limit-plan-card")
+      .find((card) => card.getAttribute("data-plan-id") === "cursor:pro");
+    expect(cursorPlan).toBeDefined();
+    expect(within(cursorPlan).getAllByTestId("widget-limit-quota-window")).toHaveLength(4);
+    expect(within(cursorPlan).getAllByText("Cursor")).toHaveLength(1);
+    expect(window.__TAURI__.core.invoke).toHaveBeenCalledWith(
+      "set_desktop_widget_prefs",
+      expect.objectContaining({
+        prefs: expect.objectContaining({
+          selectedLimitIds: [
+            "codex:main:5h",
+            "cursor:pro:7d",
+            "cursor:pro:monthly",
+            "cursor:pro:auto_composer",
+            "cursor:pro:api",
+          ],
+        }),
+      }),
+    );
+  });
+
   it("keeps real project and plan settings available in the final manager", async () => {
     const user = userEvent.setup();
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
@@ -355,6 +434,7 @@ describe("WidgetsPage Windows desktop widget", () => {
           },
           limits: [{
             id: "codex:plus:5h",
+            planId: "codex:plus",
             agent: "codex",
             provider: "Codex",
             accountLabel: "Plus",
@@ -385,7 +465,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     })).toBeInTheDocument();
     await expandWindowsWidgetSection(user, "widgets.windows.limits.title");
     expect(await screen.findByRole("checkbox", {
-      name: "Codex - Plus - 5h",
+      name: "Codex - Plus",
     })).toBeChecked();
     expect(document.querySelector(".tt-widget-agent-logo.is-codex")).toBeInTheDocument();
     expect(document.querySelector(".tt-widget-advanced-settings")).not.toBeInTheDocument();
@@ -454,6 +534,7 @@ describe("WidgetsPage Windows desktop widget", () => {
           projectStatus: { projects: [{ id: "project-a", label: "Token Eyes" }] },
           limits: [{
             id: "codex:plus:5h",
+            planId: "codex:plus",
             provider: "Codex",
             accountLabel: "Plus",
             window: "5h",
@@ -483,7 +564,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(screen.queryByRole("searchbox", {
       name: copy("widgets.windows.projects.search"),
     })).not.toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: "Codex - Plus - 5h" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Codex - Plus" })).not.toBeInTheDocument();
 
     await user.click(projects);
     expect(projects).toHaveAttribute("aria-expanded", "true");
@@ -494,7 +575,7 @@ describe("WidgetsPage Windows desktop widget", () => {
 
     await user.click(limits);
     expect(limits).toHaveAttribute("aria-expanded", "true");
-    expect(await screen.findByRole("checkbox", { name: "Codex - Plus - 5h" })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "Codex - Plus" })).toBeInTheDocument();
   });
 
   it("configures visible projects on the Widgets page instead of inside the capsule", async () => {
@@ -747,7 +828,7 @@ describe("WidgetsPage Windows desktop widget", () => {
       );
     });
   });
-  it("selects and drag-orders usage plans before saving the widget preferences", async () => {
+  it("treats one plan's quota windows as one selectable widget plan", async () => {
     const user = userEvent.setup();
     const invoke = vi.fn(async (command, payload) => {
       if (command === "local_server_status") {
@@ -773,18 +854,71 @@ describe("WidgetsPage Windows desktop widget", () => {
           limits: [
             {
               id: "codex:plus:5h",
+              planId: "codex:plus",
+              kind: "rolling_weekly",
               provider: "Codex",
-              accountLabel: "Plus",
-              window: "5h",
+              planLabel: "Pro 20x",
+              accountLabel: "muxunson@gmail.com",
+              subscriptionAmount: 20,
+              subscriptionCurrency: "USD",
+              window: "7 天",
               usedPercent: 42,
+              resetAt: "2026-08-20T03:33:19.000Z",
               notes: "主力开发账号",
+              expiresAt: "2026-08-30T14:24:24.000Z",
             },
             {
               id: "codex:plus:weekly",
+              planId: "codex:plus",
+              kind: "gpt_5_3_codex_spark_weekly",
               provider: "Codex",
-              accountLabel: "Plus",
-              window: "weekly",
-              usedPercent: 68,
+              planLabel: "Pro 20x",
+              accountLabel: "muxunson@gmail.com",
+              subscriptionAmount: 20,
+              subscriptionCurrency: "USD",
+              window: "GPT 5.3 Codex Spark",
+              usedPercent: 56,
+              resetAt: "2026-08-20T04:03:32.000Z",
+            },
+            {
+              id: "cursor:pro:total",
+              planId: "cursor:pro",
+              kind: "total",
+              provider: "Cursor",
+              planLabel: "Pro",
+              accountLabel: "ezequielhuelsxw@outlook.com",
+              subscriptionAmount: 20,
+              subscriptionCurrency: "USD",
+              window: "Total Usage",
+              usedPercent: 100,
+              resetAt: "2026-08-22T04:17:12.000Z",
+              expiresAt: "2026-08-22T04:17:12.000Z",
+            },
+            {
+              id: "cursor:pro:auto_composer",
+              planId: "cursor:pro",
+              kind: "auto_composer",
+              provider: "Cursor",
+              planLabel: "Pro",
+              accountLabel: "ezequielhuelsxw@outlook.com",
+              subscriptionAmount: 20,
+              subscriptionCurrency: "USD",
+              window: "Auto + Composer Usage",
+              usedPercent: 62,
+              resetAt: "2026-08-22T04:17:12.000Z",
+            },
+            {
+              id: "cursor:pro:api",
+              planId: "cursor:pro",
+              kind: "api",
+              provider: "Cursor",
+              planLabel: "Pro",
+              accountLabel: "ezequielhuelsxw@outlook.com",
+              subscriptionAmount: 20,
+              subscriptionCurrency: "USD",
+              window: "API Usage",
+              usedPercent: 100,
+              resetAt: "2026-08-22T04:17:12.000Z",
             },
           ],
         };
@@ -798,20 +932,66 @@ describe("WidgetsPage Windows desktop widget", () => {
 
     render(<WidgetsPage />);
     await expandWindowsWidgetSection(user, "widgets.windows.limits.title");
-    const weekly = await screen.findByRole("checkbox", { name: "Codex - Plus - weekly" });
-    const fiveHour = screen.getByRole("checkbox", { name: "Codex - Plus - 5h" });
-    expect(screen.getAllByText("主力开发账号")).not.toHaveLength(0);
+    const plan = await screen.findByRole("checkbox", { name: "Codex - Pro 20x" });
+    const planCards = screen.getAllByTestId("widget-limit-plan-card");
+    expect(planCards).toHaveLength(2);
+    const [planCard] = planCards;
+    expect(planCard).toHaveAttribute("data-plan-id", "codex:plus");
+    expect(planCard).toHaveAttribute("data-card-layout", "cost-settings-token-plan");
+    expect(planCard).toHaveClass(
+      "tt-token-plan-card",
+      "tt-token-plan-card--reference",
+    );
+    expect(planCard).not.toHaveClass("tt-surface-nested");
+    expect(planCard).not.toHaveClass("tt-token-service-card");
+    expect(planCard.closest(".tt-token-plan-grid")).not.toBeNull();
+    const planHeader = planCard.querySelector(".tt-widget-plan-card__top");
+    const planCheck = planCard.querySelector(".tt-widget-plan-card__check");
+    expect(planHeader).not.toBeNull();
+    expect(planCheck).not.toBeNull();
+    expect(planHeader.lastElementChild).toBe(planCheck);
+    expect(planCheck).toHaveAttribute("aria-pressed", "true");
+    expect(planCard.querySelector(".tt-token-plan-status")).toBeNull();
+    expect(planCard.querySelector(".tt-token-plan-card-detail")).not.toBeNull();
+    expect(within(planCard).getAllByTestId("widget-limit-quota-window")).toHaveLength(2);
+    expect(within(planCard).getByText("7 天")).toBeInTheDocument();
+    expect(within(planCard).getByText("GPT 5.3 Codex Spark")).toBeInTheDocument();
+    expect(within(planCard).getByText("mux***@gmail.com")).toBeInTheDocument();
+    expect(planCard.querySelector(".tt-token-plan-card-cost")).toBeNull();
+    expect(planCard).toHaveAttribute("draggable", "true");
+    expect(planCard).toHaveAttribute("data-layout-density", "content");
+    expect(within(planCard).getAllByText(/重置时间:/u)).toHaveLength(2);
+    expect(planCard.querySelectorAll('[data-align="end"]')).toHaveLength(2);
+    expect(within(planCard).getByText(/2026\/08\/30/u)).toBeInTheDocument();
+    expect(within(planCard).queryByText("2026-08-30T14:24:24.000Z")).not.toBeInTheDocument();
+    expect(within(planCard).queryByText("主力开发账号")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("主力开发账号")).not.toBeInTheDocument();
-    expect(weekly).toBeChecked();
-    expect(fiveHour).not.toBeChecked();
-    expect(weekly.closest("[draggable='true']")).toBeInTheDocument();
+    expect(plan).toBeChecked();
+    expect(screen.getAllByRole("checkbox", { name: "Codex - Pro 20x" })).toHaveLength(1);
 
-    await user.click(fiveHour);
-    const weeklyRow = weekly.closest("[draggable='true']");
-    const fiveHourRow = fiveHour.closest("[draggable='true']");
-    fireEvent.dragStart(weeklyRow);
-    fireEvent.dragOver(fiveHourRow);
-    fireEvent.drop(fiveHourRow);
+    const cursorCard = planCards[1];
+    expect(within(cursorCard).getAllByTestId("widget-limit-quota-window")).toHaveLength(3);
+    expect(within(cursorCard).getByText("Total Usage")).toBeInTheDocument();
+    expect(within(cursorCard).getByText("Auto + Composer Usage")).toBeInTheDocument();
+    expect(within(cursorCard).getByText("API Usage")).toBeInTheDocument();
+    expect(within(cursorCard).queryByText("7d")).not.toBeInTheDocument();
+    expect(within(cursorCard).queryByText("monthly")).not.toBeInTheDocument();
+    expect(within(cursorCard).getByText("eze***@outlook.com")).toBeInTheDocument();
+    expect(within(cursorCard).getAllByText(/重置时间:/u)).toHaveLength(3);
+    expect(cursorCard.querySelector('[data-kind="total"] strong svg')).toBeNull();
+    expect(cursorCard.querySelectorAll('[data-kind="auto_composer"] strong svg')).toHaveLength(1);
+    expect(cursorCard.querySelectorAll('[data-kind="api"] strong svg')).toHaveLength(1);
+
+    fireEvent.dragStart(planCard);
+    fireEvent.dragEnter(cursorCard);
+    expect(screen.getAllByTestId("widget-limit-plan-card").map((card) => card.dataset.planId))
+      .toEqual(["cursor:pro", "codex:plus"]);
+    fireEvent.dragEnd(planCard);
+
+    await user.click(plan);
+    expect(plan).not.toBeChecked();
+    await user.click(plan);
+    expect(plan).toBeChecked();
 
     await user.click(screen.getByRole("button", {
       name: copy("widgets.windows.projects.save"),

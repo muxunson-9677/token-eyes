@@ -112,6 +112,14 @@ export const PROVIDER_LIMIT_SPECS = {
       ];
     },
   },
+  zed: {
+    windows(data) {
+      return [
+        { key: "spend", labelKey: "limits.label.zed_spend", window: data.primary_window },
+        { key: "predictions", labelKey: "limits.label.zed_predictions", window: data.secondary_window },
+      ];
+    },
+  },
 };
 
 /** Static copy() anchors for validate:copy — labels resolve at runtime via spec.labelKey. */
@@ -142,5 +150,7 @@ export function usageLimitsLabelCopyAnchor() {
     copy("limits.label.antigravity_flash"),
     copy("limits.label.copilot_premium"),
     copy("limits.label.copilot_chat"),
+    copy("limits.label.zed_spend"),
+    copy("limits.label.zed_predictions"),
   ];
 }

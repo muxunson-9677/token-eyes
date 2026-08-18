@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ThemeContext } from "../../../foundation/ThemeProvider.jsx";
 import { ActivityHeatmap } from "../ActivityHeatmap.jsx";
@@ -68,5 +68,19 @@ describe("ActivityHeatmap", () => {
     expect(container.querySelector("[role='tablist']")).toBeNull();
     // The embedded instance must not clobber the dashboard's persisted choice.
     expect(window.localStorage.getItem("tt:heatmap-view")).toBe("3d");
+  });
+
+  it("makes the clickable 3D card keyboard-operable with shared press feedback", () => {
+    window.localStorage.setItem("tt:heatmap-view", "3d");
+    const { container } = renderHeatmap();
+    const card = container.querySelector('[data-testid="activity-heatmap-3d-card"]');
+
+    expect(card).toHaveAttribute("role", "button");
+    expect(card).toHaveAttribute("tabindex", "0");
+    expect(card).toHaveClass("tt-pressable", "tt-product-focusable");
+
+    fireEvent.keyDown(card, { key: "Enter" });
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

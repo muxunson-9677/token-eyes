@@ -166,8 +166,9 @@ function detectAgentEnvironment(agentId, config = {}, options = {}) {
 
   const dataDirPaths = resolveDataDirectoryPaths({
     config,
-    env: process.env,
-    home: os.homedir(),
+    env: options.env || process.env,
+    home: options.home || os.homedir(),
+    platform: options.platform || process.platform,
   });
 
   const detectedPath = agentId === "claude"

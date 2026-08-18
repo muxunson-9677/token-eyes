@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Code2, CreditCard, Package, Globe, Info, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Code2, CreditCard, Package, Globe, Info, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings, TrendingUp } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 import { formatChineseTokenCount } from "../../../lib/format";
 import { deriveDataConfidence } from "../../../lib/data-confidence";
 import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
-import { ProviderIcon } from "./ProviderIcon.jsx";
+import { TokenServiceList } from "./TokenServiceList.jsx";
+import { computeSubscriptionRoi } from "../../../lib/subscription-roi";
 
 const COST_ICON_TONES = {
   blue: "bg-blue-50 text-blue-600 dark:bg-blue-950/45 dark:text-blue-300",
@@ -15,6 +16,21 @@ const COST_ICON_TONES = {
   orange: "bg-orange-50 text-orange-600 dark:bg-orange-950/45 dark:text-orange-300",
   rose: "bg-rose-50 text-rose-600 dark:bg-rose-950/45 dark:text-rose-300",
 };
+
+export function calculateCollapseScrollReserve({ scrollTop, scrollHeight, clientHeight, removedHeight }) {
+  const futureMaxScroll = Math.max(0, Number(scrollHeight) - Number(removedHeight) - Number(clientHeight));
+  return Math.max(0, Number(scrollTop) - futureMaxScroll);
+}
+
+function findVerticalScrollContainer(node) {
+  let current = node?.parentElement;
+  while (current) {
+    const overflowY = window.getComputedStyle(current).overflowY;
+    if (["auto", "scroll"].includes(overflowY)) return current;
+    current = current.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
 
 /**
  * CostAccumulation component (03-cost-billing).
@@ -125,33 +141,10 @@ function formatDualAmount(usd, cny, comparison = null, { compactCny = false } = 
   );
 }
 
-function formatQuotaDisplay(quota) {
-  if (!hasDisplayValue(quota)) return null;
-  return quota;
-}
-
-function parseQuotaNumber(value) {
-  if (!hasDisplayValue(value)) return null;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const match = String(value).replaceAll(",", "").trim().match(/^(-?\d+(?:\.\d+)?)\s*([kmbt])?/i);
-  if (!match) return null;
-  const multiplier = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 }[String(match[2] || "").toLowerCase()] || 1;
-  const parsed = Number(match[1]) * multiplier;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function formatFinancialValue(value, currency, formatter = formatAmount) {
   if (value === null || value === undefined) return null;
   if (!Number.isFinite(Number(value))) return null;
   return formatter(value, currency);
-}
-
-function hasDisplayValue(value) {
-  return value !== null
-    && value !== undefined
-    && value !== ""
-    && value !== "-"
-    && value !== "—";
 }
 
 function formatSelectedMonth(monthKey) {
@@ -234,7 +227,6 @@ function CostSummaryCards({
   selectedMonth,
   stale = false,
   lastSuccessfulAt = null,
-  subscriptionRecords = [],
 }) {
   if (loading) {
     return (
@@ -257,23 +249,28 @@ function CostSummaryCards({
   const label = (suffixKey, fallbackKey) => monthLabel
     ? `${monthLabel} ${copy(suffixKey)}`
     : copy(fallbackKey);
-  const confidence = (metric, value, accuracy, sourceLabel, method = null) => deriveDataConfidence({
+  const confidence = (metric, value, accuracy, sourceLabel, method = null, options = {}) => deriveDataConfidence({
     metric,
     hasValue: value !== null && value !== undefined,
     availability: value !== null && value !== undefined ? "available" : "unavailable",
     accuracy,
-    coverage: value !== null && value !== undefined ? "complete" : "unavailable",
+    coverage: options.coverage ?? (value !== null && value !== undefined ? "complete" : "unavailable"),
     sourceKind: "local",
     sourceLabel,
     observedAt: lastSuccessfulAt,
     lastSuccessAt: lastSuccessfulAt,
     isStale: stale,
     estimationMethod: method,
-    reason: null,
+    reason: options.reason ?? null,
   });
-  const hasApiCost = Number.isFinite(Number(summary.monthApiCostUsd))
-    && summary.monthApiCostUsd !== null
-    && summary.monthApiCostUsd !== undefined;
+  const apiEquivalentUsd = summary.monthApiEquivalentUsd ?? summary.monthApiCostUsd;
+  const actualCashSpendUsd = summary.monthActualCashSpendUsd ?? summary.monthSubscriptionCostUsd;
+  const hasApiEquivalent = Number.isFinite(Number(apiEquivalentUsd))
+    && apiEquivalentUsd !== null
+    && apiEquivalentUsd !== undefined;
+  const hasActualCash = Number.isFinite(Number(actualCashSpendUsd))
+    && actualCashSpendUsd !== null
+    && actualCashSpendUsd !== undefined;
   const hasSubscriptionCost = Number.isFinite(Number(summary.monthSubscriptionCostUsd))
     && summary.monthSubscriptionCostUsd !== null
     && summary.monthSubscriptionCostUsd !== undefined;
@@ -284,38 +281,80 @@ function CostSummaryCards({
       ? now.getDate()
       : new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate())
     : null;
-  const dailyAverage = hasApiCost && elapsedDays ? Number(summary.monthApiCostUsd) / elapsedDays : null;
+  const dailyAverage = hasApiEquivalent && elapsedDays ? Number(apiEquivalentUsd) / elapsedDays : null;
   const unavailable = copy("spend.cost.row.unavailable");
-  const activeSubscriptions = subscriptionRecords.filter((record) => record.status === "active").length;
-  const renewingSubscriptions = subscriptionRecords.filter((record) => record.status === "active" && record.renewsAt).length;
+  const roi = computeSubscriptionRoi({
+    monthApiEquivalentUsd: summary.monthTokenPlanEquivalentUsd,
+    monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
+  });
+  const actualCoverageKey = summary.actualCashCoverage === "exact"
+    ? "spend.cost.accuracy.exact"
+    : summary.actualCashCoverage === "partial"
+      ? "spend.cost.accuracy.partial"
+      : "spend.cost.accuracy.unknown";
 
   return (
     <div>
-      <p className="mb-3 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">
+      <p
+        data-testid="cost-summary-scope-note"
+        className="mb-3 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400"
+      >
         <Info className="mr-3 h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
         {copy("spend.cost.summary.scope_note")}
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
-      {hasApiCost ? <SummaryCard
-        id="api"
+      {hasActualCash ? <SummaryCard
+        id="actual-cash"
+        icon={Package}
+        iconTone="violet"
+        label={label("spend.cost.summary.actual_cash_suffix", "spend.cost.summary.actual_cash")}
+        value={formatDualAmount(
+          actualCashSpendUsd,
+          Number.isFinite(Number(summary.usdToCny)) ? actualCashSpendUsd * summary.usdToCny : null,
+          null,
+          { compactCny: true },
+        )}
+        confidence={confidence(
+          "actual-spend",
+          actualCashSpendUsd,
+          "exact",
+          copy("spend.cost.summary.actual_cash_source"),
+          null,
+          {
+            coverage: summary.actualCashCoverage === "exact" ? "complete" : "partial",
+            reason: summary.actualCashCoverage === "exact"
+              ? null
+              : copy("spend.cost.summary.actual_cash_partial_detail"),
+          },
+        )}
+        confidenceTestId="cost-confidence-actual-cash"
+        metrics={[
+          { label: copy("spend.cost.summary.subscription_cash"), value: hasSubscriptionCost ? formatAmount(summary.monthSubscriptionCostUsd) : unavailable },
+          { label: copy("spend.cost.summary.official_api_cash"), value: summary.monthOfficialApiSpendUsd == null ? unavailable : formatAmount(summary.monthOfficialApiSpendUsd) },
+          { label: copy("spend.cost.summary.custom_cash"), value: summary.monthOtherAiCostUsd == null ? unavailable : formatAmount(summary.monthOtherAiCostUsd) },
+          { label: copy("spend.cost.summary.coverage"), value: copy(actualCoverageKey) },
+        ]}
+      /> : null}
+      {hasApiEquivalent ? <SummaryCard
+        id="api-equivalent"
         icon={BarChart3}
         iconTone="blue"
-        label={label("spend.cost.summary.estimated_usage_suffix", "spend.cost.summary.estimated_usage")}
+        label={label("spend.cost.summary.api_equivalent_suffix", "spend.cost.summary.api_equivalent")}
         value={formatDualAmount(
-          summary.monthApiCostUsd,
-          Number.isFinite(Number(summary.usdToCny)) ? summary.monthApiCostUsd * summary.usdToCny : null,
-          comparison("api", summary.monthApiCostUsd, summary.previousMonthApiCostUsd),
+          apiEquivalentUsd,
+          Number.isFinite(Number(summary.usdToCny)) ? apiEquivalentUsd * summary.usdToCny : null,
+          comparison("api-equivalent", apiEquivalentUsd, summary.previousMonthApiCostUsd),
           { compactCny: true },
         )}
         confidence={confidence(
           "cost",
-          summary.monthApiCostUsd,
+          apiEquivalentUsd,
           "estimated",
           copy("data.confidence.source.pricing"),
           copy("data.confidence.method.api_pricing"),
         )}
-        confidenceTestId="cost-confidence-estimated"
-        comparison={comparison("api", summary.monthApiCostUsd, summary.previousMonthApiCostUsd)}
+        confidenceTestId="cost-confidence-api-equivalent"
+        comparison={comparison("api-equivalent", apiEquivalentUsd, summary.previousMonthApiCostUsd)}
         metrics={[
           { label: copy("spend.cost.design.daily_average"), value: dailyAverage === null ? unavailable : formatAmount(dailyAverage) },
           { label: copy("spend.cost.design.month_usage"), value: summary.monthTotalTokens == null ? unavailable : formatChineseTokenCount(summary.monthTotalTokens) },
@@ -323,32 +362,58 @@ function CostSummaryCards({
           { label: copy("spend.cost.design.month_daily_average"), value: dailyAverage === null ? unavailable : formatAmount(dailyAverage) },
         ]}
       /> : null}
-      {hasSubscriptionCost ? <SummaryCard
-        id="subscription"
-        icon={Package}
-        iconTone="violet"
-        label={label("spend.cost.summary.actual_subscription_suffix", "spend.cost.summary.actual_subscription")}
-        value={formatDualAmount(
-          summary.monthSubscriptionCostUsd,
-          Number.isFinite(Number(summary.usdToCny)) ? summary.monthSubscriptionCostUsd * summary.usdToCny : null,
-          comparison("subscription", summary.monthSubscriptionCostUsd, summary.previousMonthSubscriptionCostUsd),
-          { compactCny: true },
-        )}
-        confidence={confidence(
-          "actual-spend",
-          summary.monthSubscriptionCostUsd,
-          "exact",
-          copy("spend.cost.subscription.section"),
-        )}
-        confidenceTestId="cost-confidence-subscription"
-        comparison={comparison("subscription", summary.monthSubscriptionCostUsd, summary.previousMonthSubscriptionCostUsd)}
-        metrics={[
-          { label: copy("spend.cost.design.subscription_count"), value: subscriptionRecords.length.toLocaleString() },
-          { label: copy("spend.cost.design.subscription_added"), value: unavailable },
-          { label: copy("spend.cost.design.subscription_changed"), value: unavailable },
-          { label: copy("spend.cost.design.subscription_renewing"), value: renewingSubscriptions || activeSubscriptions ? renewingSubscriptions.toLocaleString() : "0" },
-        ]}
-      /> : null}
+      </div>
+      {!roi ? (
+        <p
+          data-testid="subscription-roi-empty-note"
+          className="mt-2 text-xs leading-5 text-oai-gray-400 dark:text-oai-gray-500"
+        >
+          {copy("spend.cost.roi.empty")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Subscription ROI card (V2-W2 回本倍数)
+// ---------------------------------------------------------------------------
+
+// multiplier = token-plan API-equivalent usage value / month subscription spend.
+// No subscription recorded → guidance state; multiplier < 1 → neutral framing
+// (percentage of the subscription fee), never a shaming tone.
+function SubscriptionRoiCard({ summary, loading }) {
+  if (loading) return null;
+  const roi = computeSubscriptionRoi({
+    monthApiEquivalentUsd: summary.monthTokenPlanEquivalentUsd,
+    monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
+  });
+  if (!roi) {
+    return null;
+  }
+  const belowOne = roi.multiplier < 1;
+  const multiplierLabel = `${roi.multiplier.toFixed(1)}×`;
+  const detailText = belowOne
+    ? copy("spend.cost.roi.below_one", {
+        percent: (roi.multiplier * 100).toFixed(0),
+      })
+    : copy("spend.cost.roi.subtitle", { value: roi.multiplier.toFixed(1) });
+  return (
+    <div className="rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 p-4 flex flex-wrap items-center gap-x-8 gap-y-2">
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          <TrendingUp className="h-3.5 w-3.5" aria-hidden />
+          {copy("spend.cost.roi.title")}
+        </span>
+        <span className="text-3xl font-semibold tracking-tight tabular-nums text-oai-black dark:text-white">
+          {multiplierLabel}
+        </span>
+      </div>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm text-oai-gray-700 dark:text-oai-gray-300">{detailText}</span>
+        <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("spend.cost.roi.formula")}
+        </span>
       </div>
     </div>
   );
@@ -371,7 +436,7 @@ function SummaryCard({
       data-testid="cost-summary-card"
       data-cost-summary-card={id}
       className={cn(
-        "tt-surface-nested tt-cost-summary-card flex h-full flex-col items-start rounded-lg p-3 text-left",
+        "tt-surface-nested tt-cost-summary-card tt-pressable flex h-full flex-col items-start rounded-lg p-3 text-left",
         highlight ? "tt-cost-summary-total" : "",
       )}
     >
@@ -421,15 +486,45 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
       return initiallyOpen;
     }
   });
-  const toggle = () => setOpen((value) => {
-    const next = !value;
+  const [scrollReserve, setScrollReserve] = useState(0);
+  const sectionRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer || scrollReserve <= 0) return undefined;
+    const releaseReserve = () => {
+      const naturalMaxScroll = Math.max(0, scrollContainer.scrollHeight - scrollReserve - scrollContainer.clientHeight);
+      if (scrollContainer.scrollTop <= naturalMaxScroll + 1) setScrollReserve(0);
+    };
+    scrollContainer.addEventListener("scroll", releaseReserve, { passive: true });
+    return () => scrollContainer.removeEventListener("scroll", releaseReserve);
+  }, [scrollReserve]);
+
+  const toggle = () => {
+    const next = !open;
+    if (open && sectionRef.current) {
+      const scrollContainer = findVerticalScrollContainer(sectionRef.current);
+      const removedHeight = Math.max(0, sectionRef.current.offsetHeight - 72);
+      scrollContainerRef.current = scrollContainer;
+      setScrollReserve(calculateCollapseScrollReserve({
+        scrollTop: scrollContainer.scrollTop,
+        scrollHeight: scrollContainer.scrollHeight,
+        clientHeight: scrollContainer.clientHeight,
+        removedHeight,
+      }));
+    } else {
+      setScrollReserve(0);
+    }
     try { window.localStorage.setItem(storageKey, next ? "open" : "closed"); } catch { /* local preference only */ }
-    return next;
-  });
+    setOpen(next);
+  };
   return (
+    <>
     <section
+      ref={sectionRef}
       className={cn(
-        "tt-surface-nested rounded-[var(--tt-card-radius)] p-4",
+        "tt-surface-nested tt-pressable-parent rounded-[var(--tt-card-radius)] p-4",
         className,
       )}
       data-cost-section={id}
@@ -446,7 +541,7 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
           <SectionHeader icon={icon} iconTone={iconTone} title={title} description={description} count={count} />
           {open ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
         </button>
-        {!open && summaryMetrics.length > 0 ? (
+        {summaryMetrics.length > 0 ? (
           <div className="tt-cost-row-metrics tt-cost-row-metrics--right" data-testid="cost-row-metrics" data-align="right">
             {summaryMetrics.map((metric) => (
               <div key={metric.label} className="tt-cost-row-metric" data-tone={metric.tone || "neutral"}>
@@ -459,6 +554,14 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
       </div>
       {open ? children : null}
     </section>
+    {scrollReserve > 0 ? (
+      <div
+        aria-hidden="true"
+        data-testid={`cost-scroll-reserve-${id}`}
+        style={{ height: `${scrollReserve}px` }}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -473,29 +576,6 @@ function getOtherAiGroupVisual(group, index) {
     { icon: CreditCard, tone: "orange" },
     { icon: Package, tone: "violet" },
   ][index % 4];
-}
-
-function getTokenProviderMeta(provider) {
-  const key = String(provider || "").toLowerCase();
-  const catalogSource = copy("settings.token_plan.quota_source_catalog");
-  const entries = {
-    xiaomi_mimo: { label: "Xiaomi MiMo", source: catalogSource },
-    cursor: { label: "Cursor", source: catalogSource },
-    codex: { label: "Codex", source: catalogSource },
-    trae: { label: "Trae", source: catalogSource },
-  };
-  return entries[key] || { label: provider || "—", source: catalogSource };
-}
-
-function TokenProviderMark({ provider }) {
-  const key = String(provider || "custom").toLowerCase();
-  return (
-    <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${key}`)} aria-hidden="true">
-      {key === "xiaomi_mimo"
-        ? <svg viewBox="0 0 24 24"><path d="M8 6H5v12h3M16 6h3v12h-3M9 9h6v6H9z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        : <ProviderIcon provider={provider} size={22} />}
-    </span>
-  );
 }
 
 function OtherAiGroupCostSection({ groups = [], selectedMonth, estimatedTotalUsd = 0, subscriptionUsd = 0, sectionsInitiallyOpen }) {
@@ -563,7 +643,7 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth, estimatedTotalUsd
 // Token Package Section
 // ---------------------------------------------------------------------------
 
-function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, sectionsInitiallyOpen, onRefresh }) {
+function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, sectionsInitiallyOpen, onRefresh, now }) {
   const monthUsd = packages.reduce((sum, item) => sum + Number(item.monthCostUsd || 0), 0);
   const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
   const quota = packages.find((item) => item.availableQuotaDisplay)?.availableQuotaDisplay || copy("spend.cost.row.unavailable");
@@ -589,59 +669,23 @@ function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, section
         <EmptyState message={copy("spend.cost.token_package.empty")} />
       ) : (
         <div data-testid="token-package-table" className="tt-token-package-table">
-          <div className="tt-token-package-table-head" aria-hidden="true">
-            <span>{copy("settings.token_plan.plan")}</span>
-            <span>{copy("settings.token_plan.provider")} / {copy("settings.token_plan.source")}</span>
-            <span>{copy("settings.token_plan.total_quota")}</span>
-            <span>{copy("settings.token_plan.used_quota")}</span>
-            <span>{copy("settings.token_plan.used_quota")}</span>
-            <span>{copy("settings.token_plan.remaining")}</span>
-            <span>{copy("spend.cost.provider_account.status")}</span>
-          </div>
-          {packages.map((pkg) => <TokenPackageCard key={pkg.id} package={pkg} />)}
+          <TokenServiceList
+            plans={packages.map((pkg) => ({
+              ...pkg,
+              plan_label: pkg.plan_label || pkg.name,
+              provider_id: pkg.provider_id || pkg.provider,
+              sync_status: pkg.sync_status || pkg.syncStatus,
+              expires_at: pkg.expires_at || pkg.expiresAt,
+            }))}
+            loading={loading}
+            now={now}
+            embedded
+            hideHeader
+            pageSize={10}
+          />
         </div>
       )}
     </FoldableSection>
-  );
-}
-
-function TokenPackageCard({ package: pkg }) {
-  const syncStatusColor = {
-    synced: "text-green-600 dark:text-green-400",
-    success: "text-green-600 dark:text-green-400",
-    not_configured: "text-oai-gray-400",
-    auth_required: "text-yellow-600 dark:text-yellow-400",
-    syncing: "text-blue-600 dark:text-blue-400",
-    failed: "text-red-600 dark:text-red-400",
-    error: "text-red-600 dark:text-red-400",
-    reauth_required: "text-orange-600 dark:text-orange-400",
-    unsupported: "text-oai-gray-400",
-  };
-  const hasQuotaValue = [pkg.quota, pkg.used, pkg.remaining].some(hasDisplayValue);
-  const connectedWithoutQuota = ["synced", "success"].includes(pkg.syncStatus) && !hasQuotaValue;
-  const quotaNumber = parseQuotaNumber(pkg.quota);
-  const usedNumber = parseQuotaNumber(pkg.used);
-  const usagePercent = quotaNumber && usedNumber !== null ? Math.min(100, Math.max(0, (usedNumber / quotaNumber) * 100)) : 0;
-  const providerMeta = getTokenProviderMeta(pkg.provider);
-  const usedText = hasDisplayValue(pkg.used) ? formatQuotaDisplay(pkg.used) : "—";
-  const remainingText = hasDisplayValue(pkg.remaining) ? formatQuotaDisplay(pkg.remaining) : "—";
-
-  return (
-    <div className="tt-token-package-row">
-      <div><strong>{pkg.name}</strong><small>{pkg.id}</small></div>
-      <div className="tt-token-provider-cell">
-        <TokenProviderMark provider={pkg.provider} />
-        <span>
-          <strong>{providerMeta.label}</strong>
-          <small>{pkg.expiresAt ? `${copy("spend.cost.token_package.expires_at")}: ${pkg.expiresAt}` : providerMeta.source}</small>
-        </span>
-      </div>
-      <div>{hasDisplayValue(pkg.quota) ? formatQuotaDisplay(pkg.quota) : "—"}</div>
-      <div className="tt-token-package-usage"><small>{usagePercent ? `${usagePercent.toFixed(0)}%` : "—"}</small><span className="tt-token-package-progress"><span style={{ width: `${usagePercent}%` }} /></span></div>
-      <div>{usedText}</div>
-      <div>{remainingText}</div>
-      <div className={cn("font-medium", connectedWithoutQuota ? "text-amber-700 dark:text-amber-300" : syncStatusColor[pkg.syncStatus] || "text-oai-gray-400")}>{connectedWithoutQuota ? copy("spend.cost.token_package.connected_no_quota") : pkg.syncStatusLabel}</div>
-    </div>
   );
 }
 
@@ -651,6 +695,7 @@ function TokenPackageCard({ package: pkg }) {
 
 function statusBadgeKey(status) {
   if (status === "synced") return "spend.cost.provider_account.status.synced";
+  if (status === "stale") return "spend.cost.provider_account.status.stale";
   if (status === "not-connected") return "spend.cost.provider_account.status.not_connected";
   if (status === "unsupported") return "spend.cost.provider_account.status.unsupported";
   return "spend.cost.provider_account.status.error";
@@ -662,6 +707,9 @@ function statusBadgeClass(status) {
   }
   if (status === "unsupported") {
     return "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400";
+  }
+  if (status === "stale") {
+    return "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300";
   }
   if (status === "not-connected") {
     return "bg-oai-gray-50 text-oai-gray-500 dark:bg-oai-gray-900/20 dark:text-oai-gray-400";
@@ -684,6 +732,21 @@ function ProviderAccountMark({ providerId, label }) {
   return <span className={cn("tt-provider-account-mark", `tt-provider-account-mark--${id}`)} aria-hidden="true">{mark}</span>;
 }
 
+function formatProviderCurrencyTotals(balances, field) {
+  const totals = new Map();
+  for (const item of balances || []) {
+    if (!item || !["synced", "stale"].includes(item.status)) continue;
+    const value = Number(item[field]);
+    if (!Number.isFinite(value)) continue;
+    const currency = String(item.currency || "USD").toUpperCase();
+    totals.set(currency, (totals.get(currency) || 0) + value);
+  }
+  if (totals.size === 0) return copy("spend.cost.row.unavailable");
+  return [...totals.entries()]
+    .map(([currency, value]) => formatAmount(value, currency))
+    .join(copy("limits.panel.mode_separator"));
+}
+
 function ProviderApiAccountSection({
   balances,
   refreshing,
@@ -692,14 +755,10 @@ function ProviderApiAccountSection({
   lastUpdatedAt,
   onRefreshAll,
   onRefreshOne,
-  estimatedTotalUsd = 0,
   sectionsInitiallyOpen,
 }) {
   const navigate = useNavigate();
-  const hasBalances = Array.isArray(balances) && balances.length > 0;
-  const monthSpend = (balances || []).reduce((sum, item) => sum + Number(item.monthSpend || 0), 0);
-  const available = (balances || []).reduce((sum, item) => sum + Number(item.balance || 0), 0);
-  const share = estimatedTotalUsd > 0 ? (monthSpend / estimatedTotalUsd) * 100 : 0;
+  const hasBalances = Boolean(balances?.length);
 
   return (
     <FoldableSection
@@ -714,8 +773,8 @@ function ProviderApiAccountSection({
       testId="provider-api-account-section"
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={hasBalances ? [
-        { label: copy("spend.cost.design.month_spend"), value: monthSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "blue" },
-        { label: copy("spend.cost.row.available_balance"), value: available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "blue" },
+        { label: copy("spend.cost.provider_account.month_spend"), value: formatProviderCurrencyTotals(balances, "monthSpend"), tone: "blue" },
+        { label: copy("spend.cost.provider_account.balance"), value: formatProviderCurrencyTotals(balances, "balance"), tone: "blue" },
         { label: copy("spend.cost.design.account_count"), value: balances.length.toLocaleString() },
         { label: copy("spend.cost.design.balance_health"), value: balances.every((item) => item.status === "synced") ? copy("spend.cost.design.health_good") : copy("spend.cost.row.unavailable"), tone: "green" },
       ] : []}
@@ -753,7 +812,7 @@ function ProviderApiAccountSection({
 
 function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
   const status = balance?.status || "not-connected";
-  const isSynced = status === "synced";
+  const isSynced = status === "synced" || status === "stale";
   const balanceValue = isSynced ? formatFinancialValue(balance?.balance, balance?.currency) : null;
   const monthSpendValue = isSynced ? formatFinancialValue(balance?.monthSpend, balance?.currency) : null;
   const lifetimeSpendValue = isSynced ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : null;
@@ -798,9 +857,9 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
             )}
           </div>
           {/* Error message line — shows actionable reason for error status. */}
-          {status === "error" && balance?.errorMessage && (
+          {(status === "error" || status === "stale") && (
             <div className="mt-1 text-xs text-red-600 dark:text-red-400">
-              {balance.errorMessage}
+              {balance?.errorMessage || copy("spend.cost.provider_account.refresh_failed")}
             </div>
           )}
           </div>
@@ -810,7 +869,7 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
           onClick={onRefresh}
           disabled={refreshing || !balance?.configId}
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-oai-gray-200 text-xs text-oai-gray-700 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
-          aria-label={copy("spend.cost.provider_account.refresh_all")}
+          aria-label={copy("spend.cost.provider_account.refresh_one")}
         >
           <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} aria-hidden="true" />
         </button>
@@ -823,10 +882,30 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
 // API Billing Section (existing — local usage cost aggregation)
 // ---------------------------------------------------------------------------
 
-function ApiBillingSection({ accounts, loading, estimatedTotalUsd = 0, sectionsInitiallyOpen }) {
-  const monthUsd = accounts.reduce((sum, account) => sum + Number(account.monthCostUsd || 0), 0);
-  const lifetimeUsd = accounts.reduce((sum, account) => sum + Number(account.lifetimeCostUsd || 0), 0);
-  const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
+function ApiBillingSection({ accounts, loading, estimatedTotalUsd = null, sectionsInitiallyOpen }) {
+  const officialMonthValues = accounts
+    .filter((account) => account.spendAuthority === "official_invoice")
+    .map((account) => account.monthCostUsd)
+    .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)) && Number(value) >= 0)
+    .map(Number);
+  const estimatedMonthValues = accounts
+    .filter((account) => account.spendAuthority === "local_list_price_estimate")
+    .map((account) => account.monthCostUsd)
+    .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)) && Number(value) >= 0)
+    .map(Number);
+  const officialMonthUsd = officialMonthValues.reduce((sum, value) => sum + value, 0);
+  const hasEstimatedTotal = estimatedTotalUsd !== null
+    && estimatedTotalUsd !== undefined
+    && Number.isFinite(Number(estimatedTotalUsd))
+    && Number(estimatedTotalUsd) >= 0;
+  const estimatedMonthUsd = hasEstimatedTotal
+    ? Number(estimatedTotalUsd)
+    : estimatedMonthValues.reduce((sum, value) => sum + value, 0);
+  let unavailableAccounts = 0;
+  for (const account of accounts) {
+    if (account.spendAuthority === "unavailable") unavailableAccounts += 1;
+  }
+  const unavailable = copy("spend.cost.row.unavailable");
   return (
     <FoldableSection
       id="api-billing"
@@ -837,10 +916,10 @@ function ApiBillingSection({ accounts, loading, estimatedTotalUsd = 0, sectionsI
       count={accounts.length}
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
-        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "orange" },
-        { label: copy("spend.cost.design.success_calls"), value: copy("spend.cost.row.unavailable") },
-        { label: copy("spend.cost.design.error_rate"), value: copy("spend.cost.row.unavailable"), tone: "green" },
-        { label: copy("spend.cost.row.unbilled_usd"), value: lifetimeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.summary.official_api_cash"), value: officialMonthValues.length > 0 ? officialMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "green" },
+        { label: copy("spend.cost.row.month_estimate"), value: hasEstimatedTotal || estimatedMonthValues.length > 0 ? estimatedMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "orange" },
+        { label: copy("spend.cost.api_billing.summary.unavailable_accounts"), value: unavailableAccounts.toLocaleString() },
+        { label: copy("spend.cost.design.error_rate"), value: unavailable, tone: "green" },
       ]}
     >
       {loading ? (
@@ -867,7 +946,7 @@ function ApiBillingCard({ account }) {
 
   const status = statusConfig[account.status] || statusConfig["not-connected"];
   const StatusIcon = status.icon;
-  const hasCostData = account.status === "synced";
+  const hasCostData = (account.status === "synced" || account.stale) && account.spendAuthority !== "unavailable";
   const monthCost = hasCostData ? formatAmount(account.monthCostUsd) : null;
   const lifetimeCost = hasCostData ? formatAmount(account.lifetimeCostUsd) : null;
 
@@ -883,7 +962,7 @@ function ApiBillingCard({ account }) {
               {account.provider}
             </span>
             <span className="shrink-0 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-400">
-              {getBillingSourceLabel(account.billingSource)}
+              {getSpendAuthorityLabel(account.spendAuthority)}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
@@ -893,6 +972,16 @@ function ApiBillingCard({ account }) {
               <span>{copy("spend.cost.api_billing.last_synced")}: {account.lastSyncedAt}</span>
             )}
           </div>
+          {account.errorCode === "official_invoice_ambiguous" ? (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              {copy("spend.cost.api_billing.ambiguous_config", { count: account.candidateCount || 2 })}
+            </p>
+          ) : null}
+          {account.stale ? (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              {copy("spend.cost.api_billing.refresh_failed_stale")}
+            </p>
+          ) : null}
         </div>
         <div className={cn("shrink-0 rounded-full p-1", status.bg)}>
           <StatusIcon className={cn("h-4 w-4", status.color)} />
@@ -902,13 +991,11 @@ function ApiBillingCard({ account }) {
   );
 }
 
-function getBillingSourceLabel(source) {
-  const labels = {
-    api: copy("spend.cost.api_billing.source.api"),
-    console: copy("spend.cost.api_billing.source.console"),
-    manual: copy("spend.cost.api_billing.source.manual"),
-  };
-  return labels[source] || copy("spend.cost.api_billing.source.unknown");
+function getSpendAuthorityLabel(authority) {
+  const normalized = ["official_invoice", "local_list_price_estimate", "unavailable"].includes(authority)
+    ? authority
+    : "unavailable";
+  return copy(`spend.cost.api_billing.authority.${normalized}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1011,24 +1098,28 @@ function SubscriptionCard({ record, onEdit, onDelete }) {
           <div className={cn("text-xs font-medium", status.color)}>
             {status.label}
           </div>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex min-h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
-            aria-label={copy("spend.cost.subscription.edit")}
-          >
-            <Pencil className="h-3 w-3" aria-hidden="true" />
-            {copy("spend.cost.subscription.edit")}
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="inline-flex min-h-10 items-center gap-1 rounded-md border border-red-200 px-2.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20"
-            aria-label={copy("spend.cost.subscription.delete")}
-          >
-            <Trash2 className="h-3 w-3" aria-hidden="true" />
-            {copy("spend.cost.subscription.delete")}
-          </button>
+          {!record.readOnly ? (
+            <>
+              <button
+                type="button"
+                onClick={onEdit}
+                className="inline-flex min-h-10 items-center gap-1 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+                aria-label={copy("spend.cost.subscription.edit")}
+              >
+                <Pencil className="h-3 w-3" aria-hidden="true" />
+                {copy("spend.cost.subscription.edit")}
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="inline-flex min-h-10 items-center gap-1 rounded-md border border-red-200 px-2.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20"
+                aria-label={copy("spend.cost.subscription.delete")}
+              >
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+                {copy("spend.cost.subscription.delete")}
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1243,6 +1334,11 @@ export function CostAccumulation({
   subscriptionRecords = [],
   costSummary = {
     monthApiCostUsd: 0,
+    monthApiEquivalentUsd: 0,
+    monthOfficialApiSpendUsd: null,
+    monthActualCashSpendUsd: 0,
+    actualCashCoverage: "unknown",
+    monthOtherAiCostUsd: 0,
     monthSubscriptionCostUsd: 0,
     monthTotalCostUsd: 0,
     lifetimeTotalCostUsd: 0,
@@ -1277,6 +1373,7 @@ export function CostAccumulation({
   onDeleteSubscription,
   onCancelSubscriptionForm,
   sectionsInitiallyOpen = true,
+  now = new Date(),
 }) {
   const navigate = useNavigate();
   return (
@@ -1284,7 +1381,7 @@ export function CostAccumulation({
       {/* Cost Summary */}
       <div
         data-testid="cost-summary-region"
-        className="tt-surface rounded-[var(--tt-card-radius)] p-4"
+        className="tt-surface tt-pressable-group rounded-[var(--tt-card-radius)] p-4"
       >
         {showMonthPicker ? <CostMonthPicker
           selectedMonth={selectedMonth}
@@ -1297,7 +1394,6 @@ export function CostAccumulation({
           selectedMonth={selectedMonth}
           stale={costSummaryStale}
           lastSuccessfulAt={costLastSuccessfulAt}
-          subscriptionRecords={subscriptionRecords}
         />
       </div>
       <OtherAiGroupCostSection
@@ -1307,6 +1403,9 @@ export function CostAccumulation({
         subscriptionUsd={costSummary.monthSubscriptionCostUsd}
         sectionsInitiallyOpen={sectionsInitiallyOpen}
       />
+
+      {/* Subscription ROI (V2-W2 回本倍数) */}
+      <SubscriptionRoiCard summary={costSummary} loading={loading} />
 
       {/* Error state */}
       {error && (
@@ -1346,7 +1445,7 @@ export function CostAccumulation({
       )}
 
       {/* Token Packages */}
-      <TokenPackageSection packages={tokenPackages} loading={loading} estimatedTotalUsd={costSummary.monthApiCostUsd} sectionsInitiallyOpen={sectionsInitiallyOpen} onRefresh={onRefreshTokenPackages} />
+      <TokenPackageSection packages={tokenPackages} loading={loading} estimatedTotalUsd={costSummary.monthApiCostUsd} sectionsInitiallyOpen={sectionsInitiallyOpen} onRefresh={onRefreshTokenPackages} now={now} />
 
       {/* Provider API Accounts (NEW — 03 work order, data from 02 endpoints) */}
       <ProviderApiAccountSection
@@ -1357,7 +1456,6 @@ export function CostAccumulation({
         lastUpdatedAt={providerApiLastUpdatedAt}
         onRefreshAll={onRefreshAllProviderApis}
         onRefreshOne={onRefreshOneProviderApi}
-        estimatedTotalUsd={costSummary.monthApiCostUsd}
         sectionsInitiallyOpen={sectionsInitiallyOpen}
       />
 

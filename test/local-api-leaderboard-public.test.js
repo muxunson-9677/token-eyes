@@ -1,8 +1,14 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { Readable } = require("node:stream");
-const { afterEach, test } = require("node:test");
+const { after, afterEach, test } = require("node:test");
+
+const trackerDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tt-leaderboard-public-"));
+after(() => fs.rmSync(trackerDataDir, { recursive: true, force: true }));
 
 const previousFetch = global.fetch;
 
@@ -58,7 +64,7 @@ test("preserves the rolling 30-day public leaderboard period without credentials
     });
   };
   const { createLocalApiHandler } = require("../src/lib/local-api");
-  const handler = createLocalApiHandler({ queuePath: "" });
+  const handler = createLocalApiHandler({ queuePath: "", trackerDataDir });
 
   const res = await call(handler, "?period=30d&metric=tokens&source=all&limit=20&offset=0");
 
@@ -90,7 +96,7 @@ test("serves a repeated public leaderboard request from the local cache", async 
     });
   };
   const { createLocalApiHandler } = require("../src/lib/local-api");
-  const handler = createLocalApiHandler({ queuePath: "" });
+  const handler = createLocalApiHandler({ queuePath: "", trackerDataDir });
 
   const first = await call(handler, "?period=total&metric=tokens&source=all&limit=20&offset=0");
   const second = await call(handler, "?period=total&metric=tokens&source=all&limit=20&offset=0");
@@ -131,7 +137,7 @@ test("falls back to the public snapshot table when the edge function is slow or 
     });
   };
   const { createLocalApiHandler } = require("../src/lib/local-api");
-  const handler = createLocalApiHandler({ queuePath: "" });
+  const handler = createLocalApiHandler({ queuePath: "", trackerDataDir });
 
   const res = await call(handler, "?period=total&metric=tokens&source=all&limit=20&offset=0");
 

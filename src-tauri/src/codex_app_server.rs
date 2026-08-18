@@ -129,51 +129,75 @@ pub fn parse_account_authorized(message: &Value) -> bool {
 }
 
 pub fn parse_rate_limits_response(message: &Value) -> Result<SanitizedRateLimits, String> {
-    let limits = message
+    let primary_limits = message
         .pointer("/result/rateLimits")
-        .and_then(Value::as_object)
-        .or_else(|| {
-            message
-                .pointer("/result/rateLimitsByLimitId/codex")
-                .and_then(Value::as_object)
-        })
-        .or_else(|| {
-            message
-                .pointer("/result/rateLimitsByLimitId")
-                .and_then(Value::as_object)
-                .and_then(|buckets| {
-                    buckets.values().find_map(|bucket| {
-                        let object = bucket.as_object()?;
-                        (object.get("limitId").and_then(Value::as_str) == Some("codex"))
-                            .then_some(object)
-                    })
-                })
-        })
-        .ok_or_else(|| "Codex rate-limit response is missing rateLimits".to_string())?;
+        .and_then(Value::as_object);
+    let buckets = message
+        .pointer("/result/rateLimitsByLimitId")
+        .and_then(Value::as_object);
     let mut windows = Vec::new();
-    for name in ["primary", "secondary"] {
-        let Some(window) = limits.get(name).and_then(Value::as_object) else {
-            continue;
-        };
-        let Some(duration) = window.get("windowDurationMins").and_then(Value::as_i64) else {
-            continue;
-        };
-        let kind = match duration {
-            300 => "rolling_5_hour",
-            10_080 => "rolling_weekly",
-            _ => continue,
-        };
-        let Some(used_percent) = window.get("usedPercent").and_then(Value::as_f64) else {
-            continue;
-        };
-        if !used_percent.is_finite() {
-            continue;
+    let mut collect = |limit_id: &str, limits: &serde_json::Map<String, Value>| {
+        for name in ["primary", "secondary"] {
+            let Some(window) = limits.get(name).and_then(Value::as_object) else {
+                continue;
+            };
+            let Some(duration) = window.get("windowDurationMins").and_then(Value::as_i64) else {
+                continue;
+            };
+            let kind = if limit_id == "codex" {
+                match duration {
+                    300 => "rolling_5_hour".to_string(),
+                    10_080 => "rolling_weekly".to_string(),
+                    _ => continue,
+                }
+            } else {
+                let normalized = limit_id
+                    .chars()
+                    .map(|character| {
+                        if character.is_ascii_alphanumeric() {
+                            character.to_ascii_lowercase()
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect::<String>();
+                let suffix = match duration {
+                    300 => "5_hour",
+                    10_080 => "weekly",
+                    _ => "limit",
+                };
+                format!("{normalized}_{suffix}")
+            };
+            if windows
+                .iter()
+                .any(|existing: &SanitizedRateLimitWindow| existing.kind == kind)
+            {
+                continue;
+            }
+            let Some(used_percent) = window.get("usedPercent").and_then(Value::as_f64) else {
+                continue;
+            };
+            if !used_percent.is_finite() {
+                continue;
+            }
+            windows.push(SanitizedRateLimitWindow {
+                kind,
+                used_percent: used_percent.clamp(0.0, 100.0),
+                resets_at: window.get("resetsAt").and_then(Value::as_i64).unwrap_or(0),
+            });
         }
-        windows.push(SanitizedRateLimitWindow {
-            kind: kind.to_string(),
-            used_percent: used_percent.clamp(0.0, 100.0),
-            resets_at: window.get("resetsAt").and_then(Value::as_i64).unwrap_or(0),
-        });
+    };
+    if let Some(limits) = primary_limits {
+        collect("codex", limits);
+    }
+    if let Some(buckets) = buckets {
+        for (key, bucket) in buckets {
+            let Some(limits) = bucket.as_object() else {
+                continue;
+            };
+            let limit_id = limits.get("limitId").and_then(Value::as_str).unwrap_or(key);
+            collect(limit_id, limits);
+        }
     }
     if windows.is_empty() {
         return Err("Codex returned no supported rate-limit windows".to_string());
@@ -585,14 +609,23 @@ mod tests {
                             "windowDurationMins": 10080,
                             "resetsAt": 1784505600
                         }
+                    },
+                    "gpt-5.3-codex-spark": {
+                        "limitId": "gpt-5.3-codex-spark",
+                        "primary": {
+                            "usedPercent": 44,
+                            "windowDurationMins": 10080,
+                            "resetsAt": 1784505600
+                        }
                     }
                 }
             }
         });
         let quota = parse_rate_limits_response(&message).expect("Codex bucket should parse");
-        assert_eq!(quota.windows.len(), 2);
+        assert_eq!(quota.windows.len(), 3);
         assert_eq!(quota.windows[0].kind, "rolling_5_hour");
         assert_eq!(quota.windows[1].kind, "rolling_weekly");
+        assert_eq!(quota.windows[2].kind, "gpt_5_3_codex_spark_weekly");
     }
 
     #[test]

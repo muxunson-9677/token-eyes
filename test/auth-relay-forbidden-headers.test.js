@@ -87,6 +87,7 @@ test("POST /api/auth/* strips Content-Length before forwarding to fetch", async 
   const local = http.createServer(async (req, res) => {
     const handler = createLocalApiHandler({
       queuePath: path.join(tempHome, "queue.jsonl"),
+      trackerDataDir: tempHome,
     });
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const handled = await handler(req, res, url);

@@ -51,6 +51,43 @@ test("Token Eyes Windows main window uses native system window controls", () => 
   assert.equal(mainWindow.visible, true);
 });
 
+test("Token Eyes desktop shell starts at the reference size with the formal icon family", () => {
+  const config = JSON.parse(read("src-tauri/tauri.conf.json"));
+  const windowsConfig = JSON.parse(read("src-tauri/tauri.windows.conf.json"));
+  const mainWindow = config.app.windows.find((window) => window.label === "main");
+  const windowsMainWindow = windowsConfig.app.windows.find(
+    (window) => window.label === "main",
+  );
+
+  for (const windowConfig of [mainWindow, windowsMainWindow]) {
+    assert.equal(windowConfig.width, 1586);
+    assert.equal(windowConfig.height, 932);
+    assert.equal(windowConfig.minWidth, 900);
+    assert.equal(windowConfig.minHeight, 600);
+    assert.equal(windowConfig.resizable, true);
+  }
+
+  const formalIconPrefix = "icons/token-eyes-orange/";
+  assert.ok(config.bundle.icon.length > 0);
+  for (const iconPath of config.bundle.icon) {
+    assert.ok(iconPath.startsWith(formalIconPrefix));
+    assert.ok(fs.existsSync(path.join(ROOT, "src-tauri", iconPath)));
+  }
+  assert.equal(
+    config.bundle.windows.nsis.installerIcon,
+    `${formalIconPrefix}icon.ico`,
+  );
+  assert.equal(
+    config.bundle.windows.nsis.uninstallerIcon,
+    `${formalIconPrefix}icon.ico`,
+  );
+  assert.ok(
+    fs.existsSync(
+      path.join(ROOT, "src-tauri", formalIconPrefix, "source-original.png"),
+    ),
+  );
+});
+
 test("reference screenshot verification can isolate one image during the required per-image loop", () => {
   const verifier = read("dashboard/scripts/verify-p0-desktop-ux.mjs");
 

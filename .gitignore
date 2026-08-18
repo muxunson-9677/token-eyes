@@ -147,3 +147,6 @@ skills-lock.json
 
 # Local InsForge project credentials
 .insforge/
+
+# parity check scratch space (scripts/parity-ccusage.mjs)
+.parity-tmp/

@@ -201,6 +201,8 @@ describe("restoration copy contract", () => {
     expect(copy("reset_history.effect.fireworks")).toBe("Fireworks");
     expect(copy("reset_history.preview_celebration_aria")).toBe("Preview surprise effect");
     expect(copy("shared.data.unattributed")).toBe("Unattributed");
+    expect(copy("widget.limit.expires_at", { days: "14", absolute: "08/30 22:24" }))
+      .toBe("Expires in 14d · 08/30 22:24");
 
     setCopyLocale("zh-CN");
     expect(copy("nav.settings.data")).toBe("数据与诊断");
@@ -209,5 +211,7 @@ describe("restoration copy contract", () => {
     expect(copy("reset_history.effect.fireworks")).toBe("烟花");
     expect(copy("reset_history.preview_celebration_aria")).toBe("预览惊喜效果");
     expect(copy("shared.data.unattributed")).toBe("未归因");
+    expect(copy("widget.limit.expires_at", { days: "14", absolute: "08/30 22:24" }))
+      .toBe("有效期 14 天 · 08/30 22:24");
   });
 });

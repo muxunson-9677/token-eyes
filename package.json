@@ -1,6 +1,6 @@
 {
   "name": "tokentracker-cli",
-  "version": "0.54.40",
+  "version": "0.54.43",
   "description": "Token usage tracker for AI agent CLIs (Claude Code, Codex, Cursor, Gemini, Kiro, OpenCode, OpenClaw, Every Code, Hermes, GitHub Copilot, Kimi Code, CodeBuddy, Grok Build, oh-my-pi, pi, Craft Agents, Kilo CLI, Kilo Code, Roo Code, Zed Agent, Goose)",
   "main": "src/cli.js",
   "bin": {
@@ -21,7 +21,7 @@
     "access": "public"
   },
   "scripts": {
-    "ci:local": "npm --prefix dashboard run build && npm --prefix dashboard run verify:data-display-policy && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js",
+    "ci:local": "npm --prefix dashboard run typecheck && npm --prefix dashboard run build && npm --prefix dashboard run verify:data-display-policy && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js",
     "copy:pull": "node scripts/copy-sync.cjs pull",
     "copy:push": "node scripts/copy-sync.cjs push",
     "dashboard:build": "npm --prefix dashboard run build",
@@ -81,6 +81,10 @@
   "license": "MIT",
   "engines": {
     "node": ">=20"
+  },
+  "allowScripts": {
+    "@mongodb-js/zstd@2.0.1": true,
+    "esbuild@0.28.1": true
   }
 }
 

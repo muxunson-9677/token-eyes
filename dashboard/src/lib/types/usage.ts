@@ -123,6 +123,8 @@ export type RequestUsageRecord = UsageRecord;
 export interface RequestUsageRecordsTotals extends TokenTotals, PricingCoverageFields {
   request_count: number;
   success_count: number | null;
+  interrupted_count: number;
+  failure_count: number;
   success_rate: number | null;
   avg_latency_ms: number | null;
   cache_hit_rate: number;

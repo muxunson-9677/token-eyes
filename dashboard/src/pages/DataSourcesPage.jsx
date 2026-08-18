@@ -271,7 +271,7 @@ export function DataSourcesPage() {
               { key: "unavailable", icon: CircleAlert, label: copy("data_sources.summary.unavailable_label"), count: counts.unavailable, share: sourceTotal ? Math.round((counts.unavailable / sourceTotal) * 100) : 0, tone: "text-oai-gray-700 bg-oai-gray-100 dark:bg-oai-gray-800 dark:text-oai-gray-300" },
               { key: "recent", icon: Clock3, label: copy("data_sources.summary.recent_scan"), count: lastCheckedAt ? formatTime(lastCheckedAt) : copy("data_sources.never"), tone: "text-blue-700 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300" },
             ].map(({ key, icon: Icon, label, count, share, tone }) => (
-              <div key={key} data-testid={`data-health-summary-${key}`} className="tt-surface-nested flex min-h-[68px] items-center gap-3 rounded-xl border border-oai-gray-200/80 bg-white/70 px-4 py-2 shadow-sm dark:border-oai-gray-700/80 dark:bg-oai-gray-900/50">
+              <div key={key} data-testid={`data-health-summary-${key}`} className="tt-surface-nested tt-pressable flex min-h-[68px] items-center gap-3 rounded-xl border border-oai-gray-200/80 bg-white/70 px-4 py-2 shadow-sm dark:border-oai-gray-700/80 dark:bg-oai-gray-900/50">
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon className="h-5 w-5" aria-hidden /></span>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">{label}</p>
@@ -282,7 +282,7 @@ export function DataSourcesPage() {
             ))}
           </section>
 
-          <section data-testid="data-source-summary" style={sourceView === "list" ? { height: "auto" } : undefined} className="tt-surface mb-4 rounded-[var(--tt-card-radius)] p-2">
+          <section data-testid="data-source-summary" style={sourceView === "list" ? { height: "auto" } : undefined} className="tt-surface tt-pressable-group mb-4 rounded-[var(--tt-card-radius)] p-2">
             <div data-testid="data-health-toolbar" className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-oai-gray-100 pb-2 dark:border-oai-gray-800">
               <div className="flex flex-wrap gap-1.5" role="group" aria-label={copy("data_sources.title")}>
                 {[
@@ -334,7 +334,7 @@ export function DataSourcesPage() {
                   const noticeKey = evidenceNoticeKey(source);
                   const noticeId = noticeKey ? `data-health-${source.agent}-notice` : undefined;
                   return (
-                    <article key={source.agent} data-testid={`data-source-${source.agent}`} data-health={state} style={sourceView === "list" ? { height: "auto", padding: "8px 12px" } : undefined} className={sourceView === "grid" ? "tt-surface-nested min-h-[88px] min-w-0 rounded-xl border border-oai-gray-200/90 bg-white/70 p-2.5 shadow-sm transition-shadow hover:shadow-md dark:border-oai-gray-700/90 dark:bg-oai-gray-900/50" : "tt-surface-nested grid min-h-[76px] grid-cols-[minmax(170px,1.3fr)_repeat(3,minmax(0,1fr))] items-center gap-4 rounded-xl border border-oai-gray-200/90 bg-white/70 px-3 py-2 shadow-sm dark:border-oai-gray-700/90 dark:bg-oai-gray-900/50"}>
+                    <article key={source.agent} data-testid={`data-source-${source.agent}`} data-health={state} style={sourceView === "list" ? { height: "auto", padding: "8px 12px" } : undefined} className={sourceView === "grid" ? "tt-surface-nested tt-pressable min-h-[88px] min-w-0 rounded-xl border border-oai-gray-200/90 bg-white/70 p-2.5 shadow-sm hover:shadow-md dark:border-oai-gray-700/90 dark:bg-oai-gray-900/50" : "tt-surface-nested tt-pressable grid min-h-[76px] grid-cols-[minmax(170px,1.3fr)_repeat(3,minmax(0,1fr))] items-center gap-4 rounded-xl border border-oai-gray-200/90 bg-white/70 px-3 py-2 shadow-sm dark:border-oai-gray-700/90 dark:bg-oai-gray-900/50"}>
                       <div className="flex h-6 items-center justify-between gap-2">
                         <h3 className="tt-data-source-name flex min-w-0 items-center gap-2 text-[13px] font-semibold leading-5"><ProviderIcon provider={source.agent} size={20} />{source.agent_name || source.agent}</h3>
                         <span title={noticeKey ? copy(noticeKey) : undefined} tabIndex={noticeKey ? 0 : undefined} aria-describedby={noticeId} className={state === "ready" ? "shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300" : state === "no-logs" ? "shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/70 dark:text-amber-300" : "shrink-0 rounded-full bg-oai-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300"}>
@@ -342,18 +342,18 @@ export function DataSourcesPage() {
                         </span>
                         {noticeKey ? <span id={noticeId} className="sr-only">{copy(noticeKey)}</span> : null}
                       </div>
-                      <dl className={sourceView === "grid" ? "mt-2 grid grid-cols-3 gap-2 border-t border-oai-gray-100 pt-2 text-[10px] leading-3 dark:border-oai-gray-800" : "contents text-xs dark:border-oai-gray-800"}>
-                        <div>
+                      <dl className={sourceView === "grid" ? "mt-2 grid grid-cols-1 gap-1.5 border-t border-oai-gray-100 pt-2 text-[10px] leading-3 dark:border-oai-gray-800" : "contents text-xs dark:border-oai-gray-800"}>
+                        <div className={sourceView === "grid" ? "grid grid-cols-[5rem_minmax(0,1fr)] items-baseline gap-2" : undefined}>
                           <dt className="text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.evidence")}</dt>
                           <dd className="mt-0.5 font-semibold tabular-nums text-oai-gray-800 dark:text-oai-gray-100">{Number(source.evidenceCount) || 0}</dd>
                         </div>
-                        <div>
+                        <div className={sourceView === "grid" ? "grid grid-cols-[5rem_minmax(0,1fr)] items-baseline gap-2" : undefined}>
                           <dt className="text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.last_activity")}</dt>
-                          <dd className="mt-0.5 truncate font-medium text-oai-gray-700 dark:text-oai-gray-200" title={formatActivityTime(source.latestActivityAt)}>{formatActivityTime(source.latestActivityAt)}</dd>
+                          <dd className="mt-0.5 min-w-0 break-words font-medium text-oai-gray-700 dark:text-oai-gray-200" title={formatActivityTime(source.latestActivityAt)}>{formatActivityTime(source.latestActivityAt)}</dd>
                         </div>
-                        <div>
+                        <div className={sourceView === "grid" ? "grid grid-cols-[5rem_minmax(0,1fr)] items-baseline gap-2" : undefined}>
                           <dt className="text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.environment")}</dt>
-                          <dd className="mt-0.5 truncate font-medium text-oai-gray-700 dark:text-oai-gray-200" title={source.environment || copy("data_sources.unknown")}>{source.environment || copy("data_sources.unknown")}</dd>
+                          <dd className="mt-0.5 min-w-0 break-words font-medium text-oai-gray-700 dark:text-oai-gray-200" title={source.environment || copy("data_sources.unknown")}>{source.environment || copy("data_sources.unknown")}</dd>
                         </div>
                       </dl>
                     </article>
@@ -364,7 +364,7 @@ export function DataSourcesPage() {
           </section>
 
           <div className="tt-data-bottom-grid col-span-full mb-5 grid items-stretch gap-5 lg:grid-cols-[430px_minmax(0,1fr)] xl:grid-cols-[500px_minmax(0,1fr)]">
-          <section data-testid="data-ledger-diagnostics" className="tt-surface h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
+          <section data-testid="data-ledger-diagnostics" className="tt-surface tt-pressable-group h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -409,7 +409,7 @@ export function DataSourcesPage() {
               </div>
             ) : null}
             {unpricedPercent || unattributedPercent ? (
-              <div className="mt-3 border-t border-oai-gray-100 pt-3 text-xs leading-5 text-oai-gray-600 dark:border-oai-gray-800 dark:text-oai-gray-300">
+              <div className="tt-data-ledger-overflow-copy mt-3 border-t border-oai-gray-100 pt-3 text-xs leading-5 text-oai-gray-600 dark:border-oai-gray-800 dark:text-oai-gray-300">
                 {unpricedPercent ? <p>{copy("data_sources.ledger.unpriced", {
                   count: Number(unpricedTokens).toLocaleString(getCopyLocale()),
                   percent: unpricedPercent,
@@ -422,7 +422,7 @@ export function DataSourcesPage() {
             ) : null}
           </section>
 
-          <section id="privacy-data" data-testid="data-privacy-boundary" className="tt-surface h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
+          <section id="privacy-data" data-testid="data-privacy-boundary" className="tt-surface tt-pressable-group h-full rounded-[var(--tt-card-radius)] p-4 sm:p-5">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
               <div className="min-w-0 flex-1">

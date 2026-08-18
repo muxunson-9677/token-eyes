@@ -20,6 +20,17 @@ function declarations(selector) {
   );
 }
 
+function declarationsFromSelectorList(selector) {
+  const rule = stylesheet.nodes.find(
+    (node) => node.type === "rule" && node.selector?.includes(selector),
+  );
+  return Object.fromEntries(
+    (rule?.nodes || [])
+      .filter((node) => node.type === "decl")
+      .map((node) => [node.prop, node.value]),
+  );
+}
+
 function mediaDeclarations(params, selector) {
   let result = {};
   stylesheet.walkAtRules("media", (rule) => {
@@ -37,6 +48,24 @@ function mediaDeclarations(params, selector) {
 }
 
 describe("approved M/N material fidelity", () => {
+  it("keeps widget plan cards clean, content-height, equal within a row, and free of duplicated elevation", () => {
+    const grid = ".tt-widget-plan-list > .tt-token-plan-grid";
+    const card = ".tt-widget-plan-card";
+    const header = ".tt-widget-plan-card__top";
+    const check = ".tt-widget-plan-card .tt-widget-check";
+
+    expect(declarations(grid)["align-items"]).toBe("stretch");
+    expect(declarations(grid)["grid-template-columns"]).toBe("repeat(auto-fill, 264px)");
+    expect(declarations(grid)["grid-auto-rows"]).toBe("auto");
+    expect(declarations(card).height).toBe("100%");
+    expect(declarations(card).outline).toBe("none");
+    expect(declarations(card)["box-shadow"]).not.toContain("0 7px");
+    expect(declarations(card).overflow).toBe("hidden");
+    expect(declarations(header)["grid-template-columns"])
+      .toBe("16px 30px minmax(0, 1fr) 20px");
+    expect(declarations(check)["justify-self"]).toBe("end");
+  });
+
   it("keeps widget summary cards readable in a narrow desktop window", () => {
     const summary = ".tt-widget-summary";
     const card = ".tt-widget-summary article";
@@ -170,8 +199,10 @@ describe("approved M/N material fidelity", () => {
     expect(declarations(metrics)["column-gap"]).toBe("35px");
     expect(declarations(metric).width).toBe("min(94px, 100%)");
     expect(declarations(provider).height).toBe("auto");
+    // V4 item-4: auto-fill keeps card width identical across billing filter
+    // tabs (auto-fit stretched the last sparse row's cards wider).
     expect(declarations(providerGrid)["grid-template-columns"])
-      .toBe("repeat(auto-fit, minmax(122px, 1fr))");
+      .toBe("repeat(auto-fill, minmax(122px, 1fr))");
     expect(mediaDeclarations("(min-width: 1200px)", alignedStack)["grid-template-rows"])
       .toBe("minmax(0, 620px) minmax(257px, auto)");
     expect(Object.keys(mediaDeclarations("(min-width: 1081px) and (max-width: 1199px)", providerGrid)))
@@ -187,7 +218,11 @@ describe("approved M/N material fidelity", () => {
     const widgetRebound = ".tt-reference-route-widgets .tt-widget-click-bounce";
 
     expect(declarations(resetData)["justify-self"]).toBe("end");
-    expect(declarations(resetData).width).toBe("fit-content");
+    expect(declarations(resetData).width).toBe("100%");
+    expect(declarations(resetData)["max-width"]).toBe("100%");
+    expect(declarations(resetData)["min-width"]).toBe("0");
+    expect(declarations(`${resetData} .tt-reset-heatmap`)["justify-content"]).toBe("flex-end");
+    expect(declarations(`${resetData} .tt-reset-heatmap`)["max-width"]).toBe("100%");
     expect(declarations(widgetPress).transform).toBe("translateY(2px) scale(0.94)");
     expect(declarations(widgetRebound).animation).toContain("tt-widget-press-rebound");
     expect(declarations(widgetRebound).animation).toContain("300ms");
@@ -201,6 +236,66 @@ describe("approved M/N material fidelity", () => {
 
     expect(declarations(resetControl)["box-shadow"]).toContain("inset 0 1px 0");
     expect(declarations(resetRebound).animation).toContain("tt-widget-press-rebound");
+  });
+
+  it("matches plan market cards to the accepted cost section material", () => {
+    const reference = declarations('.tt-reference-route-spend-cost [data-cost-section][data-open="false"]');
+    const stat = declarations(".tt-reference-route-spend-plans .tt-plan-market-stat");
+    const provider = declarations(".tt-reference-route-spend-plans .tt-plan-market-provider");
+    const plan = declarations(".tt-reference-route-spend-plans .tt-plan-market-plan-card");
+    const separator = declarations(".tt-reference-route-spend-plans .tt-plan-market-metadata-separator");
+    const referenceSeparator = declarations(".tt-reference-route-spend-cost .tt-cost-row-metric::before");
+    const statIcon = declarations(".tt-reference-route-spend-plans .tt-plan-market-stat-icon");
+    const providerName = declarations(".tt-reference-route-spend-plans .tt-plan-market-provider-name");
+    const official = declarations(".tt-reference-route-spend-plans .tt-plan-market-official");
+    const planCount = declarations(".tt-reference-route-spend-plans .tt-plan-market-plan-count,\n.tt-reference-route-spend-plans .tt-plan-market-starting-price");
+    const darkCards = [
+      declarations(":root.dark .tt-reference-route-spend-plans .tt-plan-market-stat"),
+      declarations(":root.dark .tt-reference-route-spend-plans .tt-plan-market-provider"),
+      declarations(":root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-card"),
+    ];
+
+    for (const card of [stat, provider, plan]) {
+      expect(card.background).toBe(reference.background);
+      expect(card["border-color"]).toBe(reference["border-color"]);
+      expect(card["box-shadow"]).toBe(reference["box-shadow"]);
+      expect(card["box-shadow"]).not.toContain("0 3px 0");
+    }
+    expect(separator.width).toBe("1px");
+    expect(separator.background).toBe(referenceSeparator.background);
+    expect(separator["box-shadow"]).toBe("none");
+    expect(statIcon["box-shadow"]).toBe("none");
+    expect(providerName["font-size"]).toBe("16px");
+    expect(providerName["font-weight"]).toBe("600");
+    expect(official["font-size"]).toBe("10px");
+    expect(planCount["font-size"]).toBe("14px");
+    for (const card of darkCards) expect(card["box-shadow"]).not.toContain("0 3px 0");
+  });
+
+  it("uses one coherent dark surface system across the requested routes", () => {
+    const darkRoot = declarations(":root.dark");
+    const lightRoot = declarations(":root");
+    for (const token of ["--tt-page-canvas", "--tt-page-surface", "--tt-page-ink"]) {
+      expect(darkRoot[token]).toBeTruthy();
+      expect(darkRoot[token]).not.toBe(lightRoot[token]);
+    }
+
+    const darkSelectors = [
+      ":root.dark .tt-token-service-card",
+      ":root.dark.tt-reference-route-reset-history .tt-reset-activity",
+      ":root.dark.tt-reference-route-reset-history .tt-reset-stat-card",
+      ":root.dark.tt-reference-route-reset-history .tt-reset-history-card",
+      ":root.dark.tt-reference-route-reset-history .tt-reset-history-empty",
+      ":root.dark .tt-reference-route-spend-plans .tt-plan-market-provider",
+      ":root.dark .tt-reference-route-spend-plans .tt-plan-market-plan-card",
+      ":root.dark .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero",
+      ":root.dark .tt-reference-route-dashboard .tt-overview-locked .tt-overview-mini-metric",
+    ];
+    for (const selector of darkSelectors) {
+      const background = declarationsFromSelectorList(selector).background || "";
+      expect(background, selector).not.toBe("");
+      expect(background, selector).not.toBe(lightRoot["--tt-page-surface"]);
+    }
   });
 
   it("renders provider details as a floating overlay without growing the stack", () => {
@@ -257,7 +352,7 @@ describe("approved M/N material fidelity", () => {
     expect(declarations('.tt-usage-dimension[data-dimension="cache_hit"]')?.background)
       .toBe("var(--tt-metric-hit-surface)");
     expect(declarations(".tt-token-service-card").background)
-      .toBe("var(--tt-service-surface)");
+      .toContain("linear-gradient");
     expect(declarations(".tt-provider-card").background)
       .toBe("var(--tt-service-surface)");
     expect(declarations(".tt-theme-trigger").background)

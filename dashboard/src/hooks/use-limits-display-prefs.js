@@ -31,6 +31,7 @@ const DISPLAY_MODE_KEY = "tt.limits.displayMode";
 const UPDATED_AT_KEY = "tt.limits.updatedAt";
 const NATIVE_PREFERENCES_KEY = "limitsPreferences";
 const NATIVE_DISPLAY_MODE_KEY = "limitsDisplayMode";
+export const LIMITS_DISPLAY_CHANGE_EVENT = "token-eyes:limits-display-change";
 
 export const LIMIT_DISPLAY_MODES = Object.freeze({
   USED: "used",
@@ -167,6 +168,10 @@ function readLocalSnapshot() {
   });
 }
 
+export function readLimitsDisplaySnapshot() {
+  return readLocalSnapshot();
+}
+
 function writeLocalSnapshot(snapshot) {
   if (typeof window === "undefined") return;
   const normalized = normalizeSnapshot(snapshot);
@@ -185,6 +190,7 @@ function writeLocalSnapshot(snapshot) {
     } else {
       window.localStorage.setItem(UPDATED_AT_KEY, String(normalized.updatedAt));
     }
+    window.dispatchEvent(new CustomEvent(LIMITS_DISPLAY_CHANGE_EVENT, { detail: normalized }));
   } catch (error) {
     console.warn("[tokentracker] limits preferences localStorage write failed:", error);
   }

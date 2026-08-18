@@ -346,6 +346,7 @@ pub struct CursorQuotaDto {
     pub auto_composer_percent: Option<f64>,
     pub api_usage_percent: Option<f64>,
     pub reset_at: Option<String>,
+    pub subscription_expires_at: Option<String>,
     pub fetched_at: String,
     pub total_quota: f64,
     pub used_quota: f64,
@@ -532,16 +533,8 @@ fn save_account_meta(dir: &Path, meta: &CursorAccountMeta) -> Result<(), String>
     fs::write(meta_path(dir), raw).map_err(|_| "Unable to save Cursor account metadata".to_string())
 }
 
-fn redact_email(email: &str) -> String {
-    let email = email.trim();
-    if email.is_empty() {
-        return String::new();
-    }
-    let Some((local, domain)) = email.split_once('@') else {
-        return format!("{}***", email.chars().take(3).collect::<String>());
-    };
-    let prefix: String = local.chars().take(3).collect();
-    format!("{prefix}***@{domain}")
+fn cursor_account_display_name(email: &str) -> String {
+    email.trim().to_string()
 }
 
 fn decode_cursor_access_token_payload(access_token: &str) -> Option<serde_json::Value> {
@@ -771,6 +764,10 @@ pub fn map_quota_fetch_result_to_status(
                     .first()
                     .map(|window| window.resets_at.clone())
                     .filter(|value| !value.is_empty()),
+                subscription_expires_at: quota_windows
+                    .first()
+                    .map(|window| window.resets_at.clone())
+                    .filter(|value| !value.is_empty()),
                 fetched_at: result.provider_reported_at.clone().unwrap_or_default(),
                 total_quota,
                 used_quota,
@@ -936,6 +933,7 @@ fn quota_dto_from_snapshot(snapshot: CursorQuotaSnapshot) -> CursorQuotaDto {
         auto_composer_percent: snapshot.auto_composer_percent,
         api_usage_percent: snapshot.api_usage_percent,
         reset_at: snapshot.reset_at.clone(),
+        subscription_expires_at: snapshot.reset_at.clone(),
         fetched_at: snapshot.fetched_at.clone(),
         total_quota: PERCENT_SCALE,
         used_quota: used,
@@ -1216,7 +1214,7 @@ async fn refresh_cursor_auth_bundle(
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
         {
-            display_name = redact_email(&email);
+            display_name = cursor_account_display_name(&email);
         }
         if account_id.is_empty() {
             if let Some(workos_id) = meta
@@ -1737,8 +1735,10 @@ mod tests {
     #[test]
     fn forced_cursor_retry_exchanges_an_unexpired_access_token() {
         let now = 1_800_000_000_i64;
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(format!(r#"{{"sub":"auth0|user_example","exp":{}}}"#, now + 3600));
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
+            r#"{{"sub":"auth0|user_example","exp":{}}}"#,
+            now + 3600
+        ));
         let token = format!("header.{payload}.signature");
 
         assert!(!should_exchange_refresh_token_at(&token, false, true, now));
@@ -2197,6 +2197,25 @@ mod tests {
     }
 
     #[test]
+    fn exposes_billing_cycle_end_as_subscription_validity() {
+        let payload = serde_json::json!({
+            "membershipType": "pro",
+            "billingCycleEnd": "2026-08-22T04:17:12Z",
+            "individualUsage": {
+                "plan": { "totalPercentUsed": 60 }
+            }
+        });
+        let snapshot = parse_cursor_quota_snapshot(&payload, "auth0|user_validity")
+            .expect("snapshot");
+        let quota = quota_dto_from_snapshot(snapshot);
+
+        assert_eq!(
+            quota.subscription_expires_at.as_deref(),
+            Some("2026-08-22T04:17:12Z")
+        );
+    }
+
+    #[test]
     fn does_not_prefer_plan_used_limit_ratio_over_explicit_total_percent() {
         // Live Cursor responses can have used==limit (cents/units at ceiling)
         // while totalPercentUsed remains the Cockpit Total Usage value.
@@ -2245,5 +2264,13 @@ mod tests {
         assert_eq!(decoded.display_name, meta.display_name);
         assert!(!encoded.contains("access_token"));
         assert!(!encoded.contains("refresh_token"));
+    }
+
+    #[test]
+    fn cursor_account_email_stays_complete_for_the_user_visibility_toggle() {
+        assert_eq!(
+            cursor_account_display_name("  authorized.cursor@example.com  "),
+            "authorized.cursor@example.com",
+        );
     }
 }

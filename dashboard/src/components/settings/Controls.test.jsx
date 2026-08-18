@@ -99,6 +99,54 @@ describe("SectionCard visual identity", () => {
     expect(screen.queryByText(hiddenBody)).not.toBeInTheDocument();
   });
 
+  it("keeps header actions and the live summary visible while a section is collapsed", () => {
+    const actionLabel = "How pricing works?";
+    const detailsText = "expanded-only details";
+    render(
+      <SectionCard
+        title="Model pricing"
+        collapsible
+        defaultOpen={false}
+        collapsedSummary="3 configured"
+        action={<button type="button">{actionLabel}</button>}
+      >
+        <div>{detailsText}</div>
+      </SectionCard>,
+    );
+
+    expect(screen.getByRole("button", { name: actionLabel })).toBeVisible();
+    expect(screen.getByTestId("settings-section-collapsed-summary")).toHaveTextContent("3 configured");
+    expect(screen.getByTestId("settings-section-collapsed-summary"))
+      .toBe(screen.getByTestId("settings-section-summary-slot").firstElementChild);
+    expect(screen.getByRole("button", { name: actionLabel }).closest("[data-testid='settings-section-action-slot']"))
+      .not.toBeNull();
+    expect(screen.queryByText(detailsText)).not.toBeInTheDocument();
+  });
+
+  it("keeps the exact same header action and summary while section details open", async () => {
+    const user = userEvent.setup();
+    const actionLabel = "How pricing works?";
+    const detailsText = ["expanded", "only", "details"].join("-");
+    render(
+      <SectionCard
+        title="Model pricing"
+        collapsible
+        defaultOpen={false}
+        collapsedSummary="3 configured"
+        action={<button type="button">{actionLabel}</button>}
+      >
+        <div>{detailsText}</div>
+      </SectionCard>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Model pricing" }));
+
+    expect(screen.getByRole("button", { name: actionLabel })).toBeVisible();
+    expect(screen.getByTestId("settings-section-collapsed-summary")).toHaveTextContent("3 configured");
+    expect(screen.getByText(detailsText)).toBeVisible();
+    expect(screen.getByText(detailsText).parentElement).toHaveClass("tt-section-card-body");
+  });
+
   it("uses the shared glass hierarchy and visible keyboard focus for settings controls", () => {
     render(
       <SectionCard title="Limits" collapsible>
@@ -115,6 +163,7 @@ describe("SectionCard visual identity", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Limits" }).closest(".tt-surface")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Limits" }).closest(".tt-surface")).toHaveClass("tt-pressable-group");
     expect(screen.getByRole("button", { name: "Limits" })).toHaveClass(
       "tt-product-focusable",
     );

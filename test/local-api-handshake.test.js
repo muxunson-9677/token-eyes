@@ -1,10 +1,16 @@
 const assert = require("node:assert");
-const { describe, it } = require("node:test");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { after, describe, it } = require("node:test");
 const { createLocalApiHandler } = require("../src/lib/local-api");
+
+const trackerDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tt-local-api-handshake-"));
+after(() => fs.rmSync(trackerDataDir, { recursive: true, force: true }));
 
 describe("local-api handshake", () => {
   it("returns protocol_version and capabilities in local-auth response", async () => {
-    const handler = createLocalApiHandler({ queuePath: "" });
+    const handler = createLocalApiHandler({ queuePath: "", trackerDataDir });
     
     let responseBody = null;
     let statusCode = null;

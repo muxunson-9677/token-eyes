@@ -1,11 +1,13 @@
 const fs = require("node:fs/promises");
 const fssync = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
 
 const crypto = require("node:crypto");
 const { ensureDir } = require("./fs");
 const { readSqliteJsonRows } = require("./sqlite-reader");
+const { normalizeUsageAttribution } = require("./usage-attribution");
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
@@ -150,6 +152,13 @@ async function parseRolloutIncremental({
     const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
     const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
     const lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
+    // Fork-replay flags are positional: they describe the scan up to prev.offset,
+    // so they only carry over when resuming that exact byte range. An inode
+    // change re-scans from 0 and the tracker re-derives them from the stream.
+    const forkedState =
+      prev && prev.inode === inode
+        ? { forked: prev.forked === true, replayDone: prev.replayDone === true }
+        : null;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -168,6 +177,7 @@ async function parseRolloutIncremental({
       startOffset,
       lastTotal,
       lastModel,
+      forkedState,
       hourlyState,
       touchedBuckets,
       source: fileSource,
@@ -187,6 +197,8 @@ async function parseRolloutIncremental({
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      forked: result.forked === true,
+      replayDone: result.replayDone === true,
       updatedAt: new Date().toISOString(),
     };
 
@@ -772,11 +784,102 @@ function codexSessionIdFromPath(filePath) {
   return m ? m[1] : null;
 }
 
+/**
+ * Millisecond timestamp prefix of a UUIDv7 id (Codex mints session ids and
+ * turn ids as v7 ULIDs, so their first 48 bits order by creation time).
+ * Returns null for anything that is not a full v7 UUID — v4 ids have random
+ * bits where v7 stores the timestamp and must never participate in
+ * fork-replay ordering decisions.
+ */
+function uuidV7TimestampMs(id) {
+  if (typeof id !== "string") return null;
+  const m = id
+    .trim()
+    .match(/^([0-9a-fA-F]{8})-([0-9a-fA-F]{4})-7[0-9a-fA-F]{3}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
+  if (!m) return null;
+  return Number.parseInt(m[1] + m[2], 16);
+}
+
+/**
+ * Tracks whether a rollout scan is inside the REPLAYED prefix of a forked
+ * Codex rollout, so replayed usage is never counted twice.
+ *
+ * Forked rollouts (Codex Desktop subagent fan-out, `codex fork`) start by
+ * re-serializing the parent session's ENTIRE history — including token_count
+ * events — into the new file. The replayed events carry FRESH timestamps (the
+ * fork moment) and the file has a fresh session UUID, so the
+ * sessionUUID:timestamp dedup cannot catch them, and the old date-only guard
+ * (`current_date < rollout date`) missed every same-day replay (measured
+ * +52.6% vs ccusage on a heavy fork day, 2026-08-10).
+ *
+ * Boundary detection: replayed turn_context.turn_id ULIDs were minted BEFORE
+ * the fork file's own session UUID, while the first live turn mints a fresh
+ * id at/after it. Comparing the UUIDv7 millisecond prefixes cleanly separates
+ * replay from live without any cross-file state.
+ *
+ * When the file's own session UUID is v7 (every observed fork), the v7
+ * comparison is the ONLY boundary: replayed histories also contain
+ * UUIDv4-turn sub-turns (auto-review/compact style) whose ids carry no
+ * timestamp, and their current_date is the fork-day date — any date fallback
+ * would fail open mid-replay (measured +11.8% on 2026-07-30). Live regions
+ * always open with a v7 user/task turn (verified across all 138 real fork
+ * files: v7-only boundary reproduces ccusage session totals exactly), so
+ * ignoring non-v7 ids cannot drop live usage. The date heuristic (replayed
+ * contexts carry original dates older than the file's date; unknown dates
+ * fail open like the previous guard) remains only for hypothetical legacy
+ * files whose own session id is not v7.
+ *
+ * States: "plain" (not a fork — count everything), "replay" (forked, before
+ * the live boundary — skip usage), "live" (forked, boundary crossed — count).
+ * The flip to "live" is one-way: replays only ever occur once, at the head of
+ * the file (verified against real multi-day sessions whose mid-file "reopen"
+ * session_meta markers never re-replay history).
+ */
+function createForkReplayTracker({ sessionId, rolloutDate, forked = false, replayDone = false }) {
+  let baselineMs = uuidV7TimestampMs(sessionId);
+  let sawFirstMeta = false;
+  let state = forked ? (replayDone ? "live" : "replay") : "plain";
+
+  return {
+    onSessionMeta(payload) {
+      if (!sawFirstMeta) {
+        sawFirstMeta = true;
+        // The first session_meta is always the file's own; replayed parent
+        // metas (whose id differs from the filename UUID) come later.
+        if (baselineMs === null) baselineMs = uuidV7TimestampMs(payload?.id);
+      }
+      const forkedFrom =
+        typeof payload?.forked_from_id === "string" ? payload.forked_from_id.trim() : "";
+      if (forkedFrom && state === "plain") state = "replay";
+    },
+    onTurnContext(payload) {
+      if (state !== "replay") return;
+      if (baselineMs !== null) {
+        const turnMs = uuidV7TimestampMs(payload?.turn_id);
+        if (turnMs !== null && turnMs >= baselineMs) state = "live";
+        return;
+      }
+      const currentDate = normalizeIsoDate(payload?.current_date);
+      if (!currentDate || !rolloutDate || currentDate >= rolloutDate) state = "live";
+    },
+    get replaying() {
+      return state === "replay";
+    },
+    get forked() {
+      return state !== "plain";
+    },
+    get replayDone() {
+      return state === "live";
+    },
+  };
+}
+
 async function parseRolloutFile({
   filePath,
   startOffset,
   lastTotal,
   lastModel,
+  forkedState,
   hourlyState,
   touchedBuckets,
   source,
@@ -790,10 +893,23 @@ async function parseRolloutFile({
   seenCodexEvents,
   sessionId,
 }) {
+  const forkTracker = createForkReplayTracker({
+    sessionId,
+    rolloutDate: rolloutDateFromPath(filePath),
+    forked: forkedState?.forked === true,
+    replayDone: forkedState?.replayDone === true,
+  });
   const st = await fs.stat(filePath);
   const endOffset = st.size;
   if (startOffset >= endOffset) {
-    return { endOffset, lastTotal, lastModel, eventsAggregated: 0 };
+    return {
+      endOffset,
+      lastTotal,
+      lastModel,
+      eventsAggregated: 0,
+      forked: forkTracker.forked,
+      replayDone: forkTracker.replayDone,
+    };
   }
 
   const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
@@ -802,9 +918,6 @@ async function parseRolloutFile({
   let model = typeof lastModel === "string" ? lastModel : null;
   let totals = lastTotal && typeof lastTotal === "object" ? lastTotal : null;
   let currentCwd = null;
-  let currentDate = null;
-  let isForkedRollout = false;
-  const rolloutDate = rolloutDateFromPath(filePath);
   let currentProjectRef = projectRef || null;
   let currentProjectKey = projectKey || null;
   let currentRepoRoot = null;
@@ -819,6 +932,7 @@ async function parseRolloutFile({
       (line.includes('"model"') ||
         line.includes('"cwd"') ||
         line.includes('"current_date"') ||
+        line.includes('"turn_id"') ||
         line.includes('"forked_from_id"'));
     if (!maybeTokenCount && !maybeTurnContext) continue;
 
@@ -834,11 +948,11 @@ async function parseRolloutFile({
       obj?.payload &&
       typeof obj.payload === "object"
     ) {
-      if (obj.type === "session_meta" && typeof obj.payload.forked_from_id === "string") {
-        isForkedRollout = obj.payload.forked_from_id.trim().length > 0;
+      if (obj.type === "session_meta") {
+        forkTracker.onSessionMeta(obj.payload);
       }
-      if (obj.type === "turn_context" && typeof obj.payload.current_date === "string") {
-        currentDate = normalizeIsoDate(obj.payload.current_date);
+      if (obj.type === "turn_context") {
+        forkTracker.onTurnContext(obj.payload);
       }
       if (typeof obj.payload.model === "string") {
         model = obj.payload.model;
@@ -882,8 +996,10 @@ async function parseRolloutFile({
       totals = totalUsage;
     }
 
-    // date matching is conservative; same-day fork replays are still counted.
-    if (isForkedReplayToken({ isForkedRollout, rolloutDate, currentDate })) continue;
+    // Replayed fork history is a serialization copy of usage already counted
+    // in the parent file — skip it, but keep `totals` advanced (above) so the
+    // cumulative-delta chain lands on the right baseline for live turns.
+    if (forkTracker.replaying) continue;
 
     const bucketStart = toUtcHalfHourStart(tokenTimestamp);
     if (!bucketStart) continue;
@@ -911,7 +1027,7 @@ async function parseRolloutFile({
     }
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
-    addTotals(bucket.totals, delta);
+    addAttributedTotals(bucket, delta, info);
     touchedBuckets.add(bucketKey(source, model, bucketStart));
     if (currentProjectKey && projectState && projectTouchedBuckets) {
       const projectBucket = getProjectBucket(
@@ -923,13 +1039,20 @@ async function parseRolloutFile({
         currentRepoRoot,
         model,
       );
-      addTotals(projectBucket.totals, delta);
+      addAttributedTotals(projectBucket, delta, info);
       projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, bucketStart, model));
     }
     eventsAggregated += 1;
   }
 
-  return { endOffset, lastTotal: totals, lastModel: model, eventsAggregated };
+  return {
+    endOffset,
+    lastTotal: totals,
+    lastModel: model,
+    eventsAggregated,
+    forked: forkTracker.forked,
+    replayDone: forkTracker.replayDone,
+  };
 }
 
 async function parseClaudeFile({
@@ -1233,6 +1356,154 @@ async function parseOpencodeMessageFile({
   return { messageKey, lastTotals: currentTotals, eventsAggregated: 1, shouldUpdate: true };
 }
 
+function addAttributedTotals(bucket, delta, evidence) {
+  const attribution = normalizeUsageAttribution(evidence);
+  const mode = attribution.billing_mode;
+  if (!bucket.attributionBuckets || typeof bucket.attributionBuckets !== "object") {
+    bucket.attributionBuckets = {};
+    if (bucket.totals && totalsKey(bucket.totals) !== totalsKey(initTotals())) {
+      bucket.attributionBuckets.unknown = {
+        totals: cloneTotals(bucket.totals),
+        attribution: normalizeUsageAttribution(null),
+        providerAttributionAmbiguous: true,
+      };
+    }
+  }
+  if (!bucket.attributionBuckets[mode]) {
+    bucket.attributionBuckets[mode] = {
+      totals: initTotals(),
+      attribution,
+      providerAttributionAmbiguous: !attribution.provider_id,
+    };
+  }
+  const attributedBucket = bucket.attributionBuckets[mode];
+  mergeProviderAttribution(attributedBucket, attribution);
+  addTotals(attributedBucket.totals, delta);
+  addTotals(bucket.totals, delta);
+}
+
+function mergeProviderAttribution(target, nextAttribution, nextAmbiguous = false) {
+  const previous = normalizeUsageAttribution(target.attribution);
+  const next = normalizeUsageAttribution(nextAttribution);
+  const previousProvider = previous.provider_id || null;
+  const nextProvider = next.provider_id || null;
+  const ambiguous = Boolean(
+    target.providerAttributionAmbiguous
+    || nextAmbiguous
+    || !previousProvider
+    || !nextProvider
+    || previousProvider !== nextProvider
+  );
+  target.attribution = next;
+  target.providerAttributionAmbiguous = ambiguous;
+  if (ambiguous) delete target.attribution.provider_id;
+}
+
+function attributionSlices(bucket) {
+  const entries = Object.values(bucket?.attributionBuckets || {}).filter(
+    (entry) => entry?.totals,
+  );
+  if (entries.length > 0) return entries;
+  return [{ totals: bucket.totals, attribution: normalizeUsageAttribution(bucket.attribution) }];
+}
+
+function mergeAttributionSlices(...buckets) {
+  const merged = new Map();
+  for (const bucket of buckets.filter(Boolean)) {
+    for (const slice of attributionSlices(bucket)) {
+      const mode = slice.attribution.billing_mode;
+      if (!merged.has(mode)) {
+        const attribution = normalizeUsageAttribution(slice.attribution);
+        const providerAttributionAmbiguous = Boolean(
+          slice.providerAttributionAmbiguous || !attribution.provider_id
+        );
+        if (providerAttributionAmbiguous) delete attribution.provider_id;
+        merged.set(mode, { totals: initTotals(), attribution, providerAttributionAmbiguous });
+      } else {
+        mergeProviderAttribution(
+          merged.get(mode),
+          slice.attribution,
+          slice.providerAttributionAmbiguous,
+        );
+      }
+      addTotals(merged.get(mode).totals, slice.totals);
+    }
+  }
+  return [...merged.values()];
+}
+
+function attributionQueuedKey(bucket, outputModel, slice) {
+  const mode = slice.attribution.billing_mode;
+  const key = `${totalsKey(slice.totals)}|${outputModel}|${mode}`;
+  if (!bucket.attributionQueuedKeys || typeof bucket.attributionQueuedKeys !== "object") {
+    bucket.attributionQueuedKeys = {};
+  }
+  if (bucket.attributionQueuedKeys[mode] === key) return null;
+  bucket.attributionQueuedKeys[mode] = key;
+  if (bucket.retractedAttributionKeys) {
+    delete bucket.retractedAttributionKeys[`${outputModel}|${mode}`];
+  }
+  return key;
+}
+
+function appendAttributionRetractions(toAppend, {
+  source,
+  model,
+  hourStart,
+  bucket,
+  zeroTotals,
+}) {
+  if (!bucket) return;
+  if (!bucket.retractedAttributionKeys || typeof bucket.retractedAttributionKeys !== "object") {
+    bucket.retractedAttributionKeys = {};
+  }
+  for (const slice of attributionSlices(bucket)) {
+    const mode = slice.attribution.billing_mode;
+    const identity = `${model}|${mode}`;
+    if (bucket.retractedAttributionKeys[identity] === totalsKey(zeroTotals)) continue;
+    toAppend.push(
+      serializeUsageQueueRecord({
+        source,
+        model,
+        hour_start: hourStart,
+        input_tokens: zeroTotals.input_tokens,
+        cached_input_tokens: zeroTotals.cached_input_tokens,
+        cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
+        output_tokens: zeroTotals.output_tokens,
+        reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
+        total_tokens: zeroTotals.total_tokens,
+        billable_total_tokens: zeroTotals.billable_total_tokens,
+        conversation_count: zeroTotals.conversation_count,
+      }, slice.attribution),
+    );
+    bucket.retractedAttributionKeys[identity] = totalsKey(zeroTotals);
+  }
+}
+
+function serializeUsageQueueRecord(record, evidence) {
+  return JSON.stringify({
+    ...record,
+    ...normalizeUsageAttribution(evidence),
+  });
+}
+
+async function appendJsonlLines(filePath, lines) {
+  if (!Array.isArray(lines) || lines.length === 0) return;
+  const handle = await fs.open(filePath, "a+");
+  try {
+    const stat = await handle.stat();
+    let separator = "";
+    if (stat.size > 0) {
+      const lastByte = Buffer.allocUnsafe(1);
+      await handle.read(lastByte, 0, 1, stat.size - 1);
+      if (lastByte[0] !== 0x0a && lastByte[0] !== 0x0d) separator = "\n";
+    }
+    await handle.appendFile(`${separator}${lines.join("\n")}\n`, "utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
 async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets }) {
   if (!touchedBuckets || touchedBuckets.size === 0) return 0;
 
@@ -1325,6 +1596,33 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
   const codexDominants = collectCodexDominantModels(hourlyState);
 
   const toAppend = [];
+  const pendingAttributionRetractions =
+    hourlyState.pendingAttributionRetractions &&
+    typeof hourlyState.pendingAttributionRetractions === "object"
+      ? hourlyState.pendingAttributionRetractions
+      : {};
+  for (const groupKey of touchedGroups) {
+    const pending = pendingAttributionRetractions[groupKey];
+    if (!pending) continue;
+    const zeroTotals = initTotals();
+    toAppend.push(
+      serializeUsageQueueRecord({
+        source: pending.source,
+        model: DEFAULT_MODEL,
+        hour_start: pending.hourStart,
+        input_tokens: zeroTotals.input_tokens,
+        cached_input_tokens: zeroTotals.cached_input_tokens,
+        cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
+        output_tokens: zeroTotals.output_tokens,
+        reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
+        total_tokens: zeroTotals.total_tokens,
+        billable_total_tokens: zeroTotals.billable_total_tokens,
+        conversation_count: zeroTotals.conversation_count,
+      }),
+    );
+    delete pendingAttributionRetractions[groupKey];
+  }
+  hourlyState.pendingAttributionRetractions = pendingAttributionRetractions;
   for (const group of groupedBuckets.values()) {
     const unknownBucket = group.buckets.get(DEFAULT_MODEL) || null;
     const dominantModel = pickDominantModel(group.buckets);
@@ -1338,21 +1636,13 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
 
     if (dominantModel) {
       if (alignedModel && !group.buckets.has(alignedModel)) {
-        toAppend.push(
-          JSON.stringify({
-            source: group.source,
-            model: alignedModel,
-            hour_start: group.hourStart,
-            input_tokens: zeroTotals.input_tokens,
-            cached_input_tokens: zeroTotals.cached_input_tokens,
-            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
-            output_tokens: zeroTotals.output_tokens,
-            reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-            total_tokens: zeroTotals.total_tokens,
-            billable_total_tokens: zeroTotals.billable_total_tokens,
-            conversation_count: zeroTotals.conversation_count,
-          }),
-        );
+        appendAttributionRetractions(toAppend, {
+          source: group.source,
+          model: alignedModel,
+          hourStart: group.hourStart,
+          bucket: unknownBucket,
+          zeroTotals,
+        });
       }
       if (
         unknownBucket &&
@@ -1360,50 +1650,41 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         unknownBucket.queuedKey &&
         unknownBucket.queuedKey !== zeroKey
       ) {
-        if (unknownBucket.retractedUnknownKey !== zeroKey) {
-          toAppend.push(
-            JSON.stringify({
-              source: group.source,
-              model: DEFAULT_MODEL,
-              hour_start: group.hourStart,
-              input_tokens: zeroTotals.input_tokens,
-              cached_input_tokens: zeroTotals.cached_input_tokens,
-              output_tokens: zeroTotals.output_tokens,
-              reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-              total_tokens: zeroTotals.total_tokens,
-              billable_total_tokens: zeroTotals.billable_total_tokens,
-              conversation_count: zeroTotals.conversation_count,
-            }),
-          );
-          unknownBucket.retractedUnknownKey = zeroKey;
-        }
+        appendAttributionRetractions(toAppend, {
+          source: group.source,
+          model: DEFAULT_MODEL,
+          hourStart: group.hourStart,
+          bucket: unknownBucket,
+          zeroTotals,
+        });
+        unknownBucket.retractedUnknownKey = zeroKey;
       }
       if (unknownBucket) unknownBucket.alignedModel = null;
       for (const [model, bucket] of group.buckets.entries()) {
         if (model === DEFAULT_MODEL) continue;
-        let totals = bucket.totals;
-        if (model === dominantModel && unknownBucket?.totals) {
-          totals = cloneTotals(bucket.totals);
-          addTotals(totals, unknownBucket.totals);
+        const slices = model === dominantModel && unknownBucket?.totals
+          ? mergeAttributionSlices(bucket, unknownBucket)
+          : attributionSlices(bucket);
+        for (const slice of slices) {
+          if (!attributionQueuedKey(bucket, model, slice)) continue;
+          const totals = slice.totals;
+          toAppend.push(
+            serializeUsageQueueRecord({
+              source: group.source,
+              model,
+              hour_start: group.hourStart,
+              input_tokens: totals.input_tokens,
+              cached_input_tokens: totals.cached_input_tokens,
+              cache_creation_input_tokens: totals.cache_creation_input_tokens,
+              output_tokens: totals.output_tokens,
+              reasoning_output_tokens: totals.reasoning_output_tokens,
+              total_tokens: totals.total_tokens,
+              billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
+              conversation_count: totals.conversation_count,
+            }, slice.attribution),
+          );
         }
-        const key = totalsKey(totals);
-        if (bucket.queuedKey === key) continue;
-        toAppend.push(
-          JSON.stringify({
-            source: group.source,
-            model,
-            hour_start: group.hourStart,
-            input_tokens: totals.input_tokens,
-            cached_input_tokens: totals.cached_input_tokens,
-            cache_creation_input_tokens: totals.cache_creation_input_tokens,
-            output_tokens: totals.output_tokens,
-            reasoning_output_tokens: totals.reasoning_output_tokens,
-            total_tokens: totals.total_tokens,
-            billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
-            conversation_count: totals.conversation_count,
-          }),
-        );
-        bucket.queuedKey = key;
+        bucket.queuedKey = totalsKey(bucket.totals);
       }
       continue;
     }
@@ -1416,20 +1697,13 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     }
     const nextAligned = outputModel !== DEFAULT_MODEL ? outputModel : null;
     if (alignedModel && alignedModel !== nextAligned) {
-      toAppend.push(
-        JSON.stringify({
-          source: group.source,
-          model: alignedModel,
-          hour_start: group.hourStart,
-          input_tokens: zeroTotals.input_tokens,
-          cached_input_tokens: zeroTotals.cached_input_tokens,
-          output_tokens: zeroTotals.output_tokens,
-          reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-          total_tokens: zeroTotals.total_tokens,
-          billable_total_tokens: zeroTotals.billable_total_tokens,
-          conversation_count: zeroTotals.conversation_count,
-        }),
-      );
+      appendAttributionRetractions(toAppend, {
+        source: group.source,
+        model: alignedModel,
+        hourStart: group.hourStart,
+        bucket: unknownBucket,
+        zeroTotals,
+      });
     }
     if (
       !alignedModel &&
@@ -1437,45 +1711,38 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       unknownBucket.queuedKey &&
       unknownBucket.queuedKey !== zeroKey
     ) {
-      if (unknownBucket.retractedUnknownKey !== zeroKey) {
-        toAppend.push(
-          JSON.stringify({
-            source: group.source,
-            model: DEFAULT_MODEL,
-            hour_start: group.hourStart,
-            input_tokens: zeroTotals.input_tokens,
-            cached_input_tokens: zeroTotals.cached_input_tokens,
-            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
-            output_tokens: zeroTotals.output_tokens,
-            reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-            total_tokens: zeroTotals.total_tokens,
-            billable_total_tokens: zeroTotals.billable_total_tokens,
-            conversation_count: zeroTotals.conversation_count,
-          }),
-        );
-        unknownBucket.retractedUnknownKey = zeroKey;
-      }
+      appendAttributionRetractions(toAppend, {
+        source: group.source,
+        model: DEFAULT_MODEL,
+        hourStart: group.hourStart,
+        bucket: unknownBucket,
+        zeroTotals,
+      });
+      unknownBucket.retractedUnknownKey = zeroKey;
     }
     if (unknownBucket) unknownBucket.alignedModel = nextAligned;
-    const key = totalsKey(unknownBucket.totals);
-    const outputKey = outputModel === DEFAULT_MODEL ? key : `${key}|${outputModel}`;
-    if (unknownBucket.queuedKey === outputKey) continue;
-    toAppend.push(
-      JSON.stringify({
-        source: group.source,
-        model: outputModel,
-        hour_start: group.hourStart,
-        input_tokens: unknownBucket.totals.input_tokens,
-        cached_input_tokens: unknownBucket.totals.cached_input_tokens,
-        cache_creation_input_tokens: unknownBucket.totals.cache_creation_input_tokens,
-        output_tokens: unknownBucket.totals.output_tokens,
-        reasoning_output_tokens: unknownBucket.totals.reasoning_output_tokens,
-        total_tokens: unknownBucket.totals.total_tokens,
-        billable_total_tokens: unknownBucket.totals.billable_total_tokens ?? unknownBucket.totals.total_tokens,
-        conversation_count: unknownBucket.totals.conversation_count,
-      }),
-    );
-    unknownBucket.queuedKey = outputKey;
+    for (const slice of attributionSlices(unknownBucket)) {
+      if (!attributionQueuedKey(unknownBucket, outputModel, slice)) continue;
+      const totals = slice.totals;
+      toAppend.push(
+        serializeUsageQueueRecord({
+          source: group.source,
+          model: outputModel,
+          hour_start: group.hourStart,
+          input_tokens: totals.input_tokens,
+          cached_input_tokens: totals.cached_input_tokens,
+          cache_creation_input_tokens: totals.cache_creation_input_tokens,
+          output_tokens: totals.output_tokens,
+          reasoning_output_tokens: totals.reasoning_output_tokens,
+          total_tokens: totals.total_tokens,
+          billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
+          conversation_count: totals.conversation_count,
+        }, slice.attribution),
+      );
+    }
+    unknownBucket.queuedKey = outputModel === DEFAULT_MODEL
+      ? totalsKey(unknownBucket.totals)
+      : `${totalsKey(unknownBucket.totals)}|${outputModel}`;
   }
 
   if (legacyGroups.size > 0) {
@@ -1508,7 +1775,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       const groupKey = groupBucketKey(group.source, group.hourStart);
       if (groupQueued[groupKey] === key) continue;
       toAppend.push(
-        JSON.stringify({
+        serializeUsageQueueRecord({
           source: group.source,
           model,
           hour_start: group.hourStart,
@@ -1529,7 +1796,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
   hourlyState.groupQueued = groupQueued;
 
   if (toAppend.length > 0) {
-    await fs.appendFile(queuePath, toAppend.join("\n") + "\n", "utf8");
+    await appendJsonlLines(queuePath, toAppend);
   }
 
   return toAppend.length;
@@ -1556,34 +1823,38 @@ async function enqueueTouchedProjectBuckets({
     if (!bucket || !bucket.totals) continue;
     const totals = bucket.totals;
     const queuedKey = totalsKey(totals);
-    if (bucket.queuedKey === queuedKey) continue;
     const projectRef = typeof bucket.project_ref === "string" ? bucket.project_ref : null;
     const projectKey = typeof bucket.project_key === "string" ? bucket.project_key : null;
     if (!projectRef || !projectKey) continue;
 
-    toAppend.push(
-      JSON.stringify({
-        project_ref: projectRef,
-        project_key: projectKey,
-        repo_root: bucket.repo_root,
-        source: bucket.source,
-        model: bucket.model || DEFAULT_MODEL,
-        hour_start: bucket.hour_start,
-        input_tokens: totals.input_tokens,
-        cached_input_tokens: totals.cached_input_tokens,
-        cache_creation_input_tokens: totals.cache_creation_input_tokens,
-        output_tokens: totals.output_tokens,
-        reasoning_output_tokens: totals.reasoning_output_tokens,
-        total_tokens: totals.total_tokens,
-        billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
-        conversation_count: totals.conversation_count,
-      }),
-    );
+    for (const slice of attributionSlices(bucket)) {
+      const outputModel = bucket.model || DEFAULT_MODEL;
+      if (!attributionQueuedKey(bucket, outputModel, slice)) continue;
+      const sliceTotals = slice.totals;
+      toAppend.push(
+        serializeUsageQueueRecord({
+          project_ref: projectRef,
+          project_key: projectKey,
+          repo_root: bucket.repo_root,
+          source: bucket.source,
+          model: outputModel,
+          hour_start: bucket.hour_start,
+          input_tokens: sliceTotals.input_tokens,
+          cached_input_tokens: sliceTotals.cached_input_tokens,
+          cache_creation_input_tokens: sliceTotals.cache_creation_input_tokens,
+          output_tokens: sliceTotals.output_tokens,
+          reasoning_output_tokens: sliceTotals.reasoning_output_tokens,
+          total_tokens: sliceTotals.total_tokens,
+          billable_total_tokens: sliceTotals.billable_total_tokens ?? sliceTotals.total_tokens,
+          conversation_count: sliceTotals.conversation_count,
+        }, slice.attribution),
+      );
+    }
     bucket.queuedKey = queuedKey;
   }
 
   if (toAppend.length > 0) {
-    await fs.appendFile(projectQueuePath, toAppend.join("\n") + "\n", "utf8");
+    await appendJsonlLines(projectQueuePath, toAppend);
   }
 
   return toAppend.length;
@@ -1677,6 +1948,7 @@ function findNearestCodexModel(hourStart, dominants) {
 function normalizeHourlyState(raw) {
   const state = raw && typeof raw === "object" ? raw : {};
   const version = Number(state.version || 1);
+  const attributionMigrationVersion = Number(state.attributionMigrationVersion || 0);
   const rawBuckets = state.buckets && typeof state.buckets === "object" ? state.buckets : {};
   const buckets = {};
   const groupQueued = {};
@@ -1689,14 +1961,27 @@ function normalizeHourlyState(raw) {
       const source = normalizeSourceInput(parsed.source) || DEFAULT_SOURCE;
       const normalizedKey = bucketKey(source, DEFAULT_MODEL, hourStart);
       buckets[normalizedKey] = value;
-      if (value?.queuedKey) {
-        groupQueued[groupBucketKey(source, hourStart)] = value.queuedKey;
+      if (value?.totals && !value.attributionBuckets) {
+        value.attributionBuckets = {
+          unknown: {
+            totals: cloneTotals(value.totals),
+            attribution: normalizeUsageAttribution(null),
+          },
+        };
+      }
+      if (value?.queuedKey && value?.totals) {
+        value.attributionQueuedKeys = {
+          ...(value.attributionQueuedKeys || {}),
+          unknown: `${totalsKey(value.totals)}|${DEFAULT_MODEL}|unknown`,
+        };
       }
     }
     return {
       version: 3,
       buckets,
       groupQueued,
+      attributionMigrationVersion: 1,
+      pendingAttributionRetractions: {},
       updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
     };
   }
@@ -1711,11 +1996,56 @@ function normalizeHourlyState(raw) {
 
   const existingGroupQueued =
     state.groupQueued && typeof state.groupQueued === "object" ? state.groupQueued : {};
+  const existingPendingAttributionRetractions =
+    state.pendingAttributionRetractions && typeof state.pendingAttributionRetractions === "object"
+      ? state.pendingAttributionRetractions
+      : {};
+
+  let normalizedGroupQueued = version >= 3 ? existingGroupQueued : {};
+  const pendingAttributionRetractions = { ...existingPendingAttributionRetractions };
+  if (attributionMigrationVersion < 1) {
+    const legacyBucketsByGroup = new Map();
+    for (const [key, bucket] of Object.entries(buckets)) {
+      if (!bucket?.totals) continue;
+      const parsed = parseBucketKey(key);
+      const hourStart = parsed.hourStart;
+      if (!hourStart) continue;
+      const groupKey = groupBucketKey(parsed.source, hourStart);
+      if (!Object.prototype.hasOwnProperty.call(normalizedGroupQueued, groupKey)) continue;
+      if (!legacyBucketsByGroup.has(groupKey)) legacyBucketsByGroup.set(groupKey, []);
+      legacyBucketsByGroup.get(groupKey).push({ bucket, parsed, hourStart });
+      if (!bucket.attributionBuckets || typeof bucket.attributionBuckets !== "object") {
+        bucket.attributionBuckets = {
+          unknown: {
+            totals: cloneTotals(bucket.totals),
+            attribution: normalizeUsageAttribution(null),
+          },
+        };
+      }
+    }
+    for (const [groupKey, entries] of legacyBucketsByGroup) {
+      if (entries.length === 1) {
+        const [{ bucket, parsed }] = entries;
+        bucket.attributionQueuedKeys = {
+          ...(bucket.attributionQueuedKeys || {}),
+          unknown: `${totalsKey(bucket.totals)}|${parsed.model || DEFAULT_MODEL}|unknown`,
+        };
+      } else if (entries.length > 1) {
+        pendingAttributionRetractions[groupKey] = {
+          source: normalizeSourceInput(entries[0].parsed.source) || DEFAULT_SOURCE,
+          hourStart: entries[0].hourStart,
+        };
+      }
+    }
+    normalizedGroupQueued = {};
+  }
 
   return {
     version: 3,
     buckets,
-    groupQueued: version >= 3 ? existingGroupQueued : {},
+    groupQueued: normalizedGroupQueued,
+    attributionMigrationVersion: 1,
+    pendingAttributionRetractions,
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
   };
 }
@@ -1893,10 +2223,6 @@ function normalizeIsoDate(value) {
   const raw = typeof value === "string" ? value.trim() : "";
   const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
   return match ? match[1] : null;
-}
-
-function isForkedReplayToken({ isForkedRollout, rolloutDate, currentDate }) {
-  return Boolean(isForkedRollout && rolloutDate && currentDate && currentDate < rolloutDate);
 }
 
 function normalizeNonNegativeNumber(value) {
@@ -3227,7 +3553,7 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
   // in-progress (ended_at IS NULL), OR sessions that were previously observed
   // unfinished.  Hermes updates token counts in real-time, including a final
   // delta when an active session later gets ended_at set.
-  const sql = `SELECT id, model, started_at, ended_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, message_count FROM sessions WHERE (started_at >= ${since} OR ended_at IS NULL${forceIncludeSql}) AND (input_tokens > 0 OR output_tokens > 0 OR cache_read_tokens > 0 OR cache_write_tokens > 0 OR reasoning_tokens > 0) ORDER BY started_at ASC`;
+  const sql = `SELECT id, model, started_at, ended_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, message_count, billing_provider, billing_base_url, billing_mode FROM sessions WHERE (started_at >= ${since} OR ended_at IS NULL${forceIncludeSql}) AND (input_tokens > 0 OR output_tokens > 0 OR cache_read_tokens > 0 OR cache_write_tokens > 0 OR reasoning_tokens > 0) ORDER BY started_at ASC`;
 
   let snapshot = null;
   let effectiveDbPath = dbPath;
@@ -3380,7 +3706,12 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
       };
 
       const bucket = getHourlyBucket(hourlyState, "hermes", model, bucketStart);
-      addTotals(bucket.totals, delta);
+      addAttributedTotals(bucket, delta, {
+        billing_mode: row.billing_mode,
+        billing_mode_confidence: "provider_receipt",
+        provider_id: row.billing_provider,
+        endpoint: row.billing_base_url,
+      });
       touchedBuckets.add(bucketKey("hermes", model, bucketStart));
       eventsAggregated++;
 
@@ -4707,35 +5038,47 @@ async function parseKimiCodeIncremental({ wireFiles, cursors, queuePath, onProgr
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CodeBuddy CLI — passive JSONL reader (~/.codebuddy/projects/<cwd>/<sid>.jsonl)
+// CodeBuddy / WorkBuddy CLI — passive JSONL readers
 //
 // Tencent's CodeBuddy CLI is structurally cloned from Claude Code:
 //   ~/.codebuddy/projects/<encoded-cwd>/<sessionId>.jsonl  — conversation log
 //   ~/.codebuddy/sessions/<pid>.json                       — session metadata
 //   ~/.codebuddy/settings.json                             — `{"model": "..."}`
 //
-// CodeBuddy ships NO hook system — we incrementally tail the JSONL files on
+// The CLI was rebranded to WorkBuddy; newer installs write the exact same
+// per-turn JSONL under ~/.workbuddy/projects/** instead. Token Eyes tracks
+// them as two sources (codebuddy / workbuddy) sharing one parser core.
+//
+// Neither ships a hook system — we incrementally tail the JSONL files on
 // each sync (passive scan only, same shape as Kimi's wire.jsonl reader).
 //
 // Per-line record types: message, reasoning, topic, file-history-snapshot.
-// Only `type=="message" && role=="assistant"` carry token usage. The shape:
+// Only `type=="message" && role=="assistant"` carry token usage. The shape
+// (verified against a live ~/.workbuddy corpus, 2026-08):
 //
 //   providerData.rawUsage = {
-//     prompt_tokens: 22223,           // OpenAI-style — INCLUDES cached
-//     completion_tokens: 250,
-//     prompt_tokens_details: { cached_tokens: 512, reasoning_tokens?: number },
+//     prompt_tokens: 44199,           // OpenAI-style — INCLUDES cached
+//     completion_tokens: 1298,        // INCLUDES reasoning
+//     prompt_tokens_details:     { cached_tokens: 41984 },
+//     completion_tokens_details: { reasoning_tokens: 682 },
+//     prompt_cache_hit_tokens: 41984, // Tencent mirror of cached_tokens
+//     prompt_cache_miss_tokens: 2215, //   = prompt_tokens - cache hits
 //     cache_read_input_tokens: 0,     // Anthropic-style mirror (often 0)
 //     cache_creation_input_tokens: 0,
+//     prompt_cache_write_tokens: 0,   // Tencent mirror of cache_creation
 //   }
 //
 // Token math (matches the repo's queue convention; do NOT pass prompt_tokens
-// through unchanged — that double-counts cached input):
-//   input_tokens               = prompt_tokens - prompt_tokens_details.cached_tokens
-//   cached_input_tokens        = prompt_tokens_details.cached_tokens
-//   cache_creation_input_tokens = cache_creation_input_tokens (often 0)
-//   output_tokens              = completion_tokens
-//   reasoning_output_tokens    = prompt_tokens_details.reasoning_tokens || 0
-//   total_tokens               = sum of the above
+// or completion_tokens through unchanged — that double-counts cached input
+// and reasoning output):
+//   cached_input_tokens         = max(cached_tokens, cache_read_input_tokens,
+//                                     prompt_cache_hit_tokens)
+//   input_tokens                = prompt_tokens - cached_input_tokens
+//   cache_creation_input_tokens = max(cache_creation_input_tokens,
+//                                     prompt_cache_write_tokens)
+//   reasoning_output_tokens     = completion_tokens_details.reasoning_tokens
+//   output_tokens               = completion_tokens - reasoning_output_tokens
+//   total_tokens                = sum of the above
 // ─────────────────────────────────────────────────────────────────────────────
 
 function resolveCodebuddyHome(env = process.env) {
@@ -4743,10 +5086,14 @@ function resolveCodebuddyHome(env = process.env) {
   return env.CODEBUDDY_HOME || path.join(home, ".codebuddy");
 }
 
-function resolveCodebuddyDefaultModel(env = process.env) {
-  const fallback = "codebuddy-unknown";
+function resolveWorkbuddyHome(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  return env.WORKBUDDY_HOME || path.join(home, ".workbuddy");
+}
+
+function resolveCodebuddyFamilyDefaultModel(home, fallback) {
   try {
-    const settingsPath = path.join(resolveCodebuddyHome(env), "settings.json");
+    const settingsPath = path.join(home, "settings.json");
     const raw = fssync.readFileSync(settingsPath, "utf8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && typeof parsed.model === "string" && parsed.model.trim()) {
@@ -4758,8 +5105,16 @@ function resolveCodebuddyDefaultModel(env = process.env) {
   return fallback;
 }
 
-function resolveCodebuddyProjectFiles(env = process.env) {
-  const projectsDir = path.join(resolveCodebuddyHome(env), "projects");
+function resolveCodebuddyDefaultModel(env = process.env) {
+  return resolveCodebuddyFamilyDefaultModel(resolveCodebuddyHome(env), "codebuddy-unknown");
+}
+
+function resolveWorkbuddyDefaultModel(env = process.env) {
+  return resolveCodebuddyFamilyDefaultModel(resolveWorkbuddyHome(env), "workbuddy-unknown");
+}
+
+function resolveCodebuddyFamilyProjectFiles(home) {
+  const projectsDir = path.join(home, "projects");
   if (!fssync.existsSync(projectsDir)) return [];
   const files = [];
   try {
@@ -4782,33 +5137,45 @@ function resolveCodebuddyProjectFiles(env = process.env) {
   return files;
 }
 
-async function parseCodebuddyIncremental({
+function resolveCodebuddyProjectFiles(env = process.env) {
+  return resolveCodebuddyFamilyProjectFiles(resolveCodebuddyHome(env));
+}
+
+function resolveWorkbuddyProjectFiles(env = process.env) {
+  return resolveCodebuddyFamilyProjectFiles(resolveWorkbuddyHome(env));
+}
+
+async function parseCodebuddyFamilyIncremental({
+  source,
+  cursorKey,
   projectFiles,
   cursors,
   queuePath,
   onProgress,
   env,
   defaultModel,
+  resolveFiles,
+  resolveDefaultModel,
 } = {}) {
   await ensureDir(path.dirname(queuePath));
-  const codebuddyState =
-    cursors.codebuddy && typeof cursors.codebuddy === "object" ? cursors.codebuddy : {};
+  const parserState =
+    cursors[cursorKey] && typeof cursors[cursorKey] === "object" ? cursors[cursorKey] : {};
   const seenIds = new Set(
-    Array.isArray(codebuddyState.seenIds) ? codebuddyState.seenIds : [],
+    Array.isArray(parserState.seenIds) ? parserState.seenIds : [],
   );
   const fileOffsets =
-    codebuddyState.fileOffsets && typeof codebuddyState.fileOffsets === "object"
-      ? { ...codebuddyState.fileOffsets }
+    parserState.fileOffsets && typeof parserState.fileOffsets === "object"
+      ? { ...parserState.fileOffsets }
       : {};
 
   const files = Array.isArray(projectFiles)
     ? projectFiles
-    : resolveCodebuddyProjectFiles(env || process.env);
-  const fallbackModel = defaultModel || resolveCodebuddyDefaultModel(env || process.env);
+    : resolveFiles(env || process.env);
+  const fallbackModel = defaultModel || resolveDefaultModel(env || process.env);
 
   if (files.length === 0) {
-    cursors.codebuddy = {
-      ...codebuddyState,
+    cursors[cursorKey] = {
+      ...parserState,
       seenIds: Array.from(seenIds),
       fileOffsets,
       updatedAt: new Date().toISOString(),
@@ -4882,25 +5249,36 @@ async function parseCodebuddyIncremental({
 
       const promptTokens = toNonNegativeInt(rawUsage.prompt_tokens);
       const completionTokens = toNonNegativeInt(rawUsage.completion_tokens);
-      const details =
+      const promptDetails =
         rawUsage.prompt_tokens_details && typeof rawUsage.prompt_tokens_details === "object"
           ? rawUsage.prompt_tokens_details
           : {};
-      const cachedTokens = toNonNegativeInt(details.cached_tokens);
-      // Anthropic-style mirror; CodeBuddy emits these too even if usually 0.
+      const completionDetails =
+        rawUsage.completion_tokens_details && typeof rawUsage.completion_tokens_details === "object"
+          ? rawUsage.completion_tokens_details
+          : {};
+      const cachedTokens = toNonNegativeInt(promptDetails.cached_tokens);
+      // Anthropic-style + Tencent mirrors; the CLI populates one of the three
+      // depending on upstream provider, so take the largest.
       const cacheReadAlt = toNonNegativeInt(rawUsage.cache_read_input_tokens);
-      const cacheCreation = toNonNegativeInt(rawUsage.cache_creation_input_tokens);
-      const reasoningTokens = toNonNegativeInt(details.reasoning_tokens);
+      const cacheHitAlt = toNonNegativeInt(rawUsage.prompt_cache_hit_tokens);
+      const cacheCreation = Math.max(
+        toNonNegativeInt(rawUsage.cache_creation_input_tokens),
+        toNonNegativeInt(rawUsage.prompt_cache_write_tokens),
+      );
+      // Reasoning lives in completion_tokens_details (OpenAI convention) —
+      // NOT prompt_tokens_details. Reading the wrong side silently dropped
+      // all reasoning tokens.
+      const reasoningTokens = toNonNegativeInt(completionDetails.reasoning_tokens);
 
-      // CRITICAL: prompt_tokens is OpenAI-style and INCLUDES cached.
-      // Subtract cached so input_tokens is pure non-cached input — matches
-      // the repo's normalization convention (see CLAUDE.md "Token
-      // Normalization Convention"). cache_read takes the larger of the two
-      // mirrored fields (rawUsage.cache_read_input_tokens vs
-      // prompt_tokens_details.cached_tokens) since CodeBuddy populates one
-      // or the other depending on upstream provider.
-      const cacheRead = Math.max(cachedTokens, cacheReadAlt);
+      // CRITICAL: prompt_tokens is OpenAI-style and INCLUDES cached, and
+      // completion_tokens INCLUDES reasoning. Subtract both so each queue
+      // column is disjoint — matches the repo's normalization convention
+      // (see CLAUDE.md "Token Normalization Convention"); total_tokens then
+      // reconstructs rawUsage.total_tokens exactly.
+      const cacheRead = Math.max(cachedTokens, cacheReadAlt, cacheHitAlt);
       const inputTokens = Math.max(0, promptTokens - cacheRead);
+      const outputTokens = Math.max(0, completionTokens - reasoningTokens);
 
       if (
         inputTokens === 0 &&
@@ -4929,16 +5307,16 @@ async function parseCodebuddyIncremental({
         input_tokens: inputTokens,
         cached_input_tokens: cacheRead,
         cache_creation_input_tokens: cacheCreation,
-        output_tokens: completionTokens,
+        output_tokens: outputTokens,
         reasoning_output_tokens: reasoningTokens,
         total_tokens:
-          inputTokens + completionTokens + cacheRead + cacheCreation + reasoningTokens,
+          inputTokens + outputTokens + cacheRead + cacheCreation + reasoningTokens,
         conversation_count: 1,
       };
 
-      const bucket = getHourlyBucket(hourlyState, "codebuddy", model, bucketStart);
+      const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
       addTotals(bucket.totals, delta);
-      touchedBuckets.add(bucketKey("codebuddy", model, bucketStart));
+      touchedBuckets.add(bucketKey(source, model, bucketStart));
       seenIds.add(messageId);
       eventsAggregated++;
 
@@ -4976,14 +5354,34 @@ async function parseCodebuddyIncremental({
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
-  cursors.codebuddy = {
-    ...codebuddyState,
+  cursors[cursorKey] = {
+    ...parserState,
     seenIds: cappedSeen,
     fileOffsets,
     updatedAt,
   };
 
   return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+async function parseCodebuddyIncremental(options = {}) {
+  return parseCodebuddyFamilyIncremental({
+    ...options,
+    source: "codebuddy",
+    cursorKey: "codebuddy",
+    resolveFiles: resolveCodebuddyProjectFiles,
+    resolveDefaultModel: resolveCodebuddyDefaultModel,
+  });
+}
+
+async function parseWorkbuddyIncremental(options = {}) {
+  return parseCodebuddyFamilyIncremental({
+    ...options,
+    source: "workbuddy",
+    cursorKey: "workbuddy",
+    resolveFiles: resolveWorkbuddyProjectFiles,
+    resolveDefaultModel: resolveWorkbuddyDefaultModel,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5609,6 +6007,498 @@ async function parseRoocodeIncremental({
   cursors.roocode = { ...roocodeState, seenIds: cappedSeen, fileOffsets, updatedAt };
 
   return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+function resolveDeepSeekHarnessHome(env = process.env, homeDir = os.homedir()) {
+  const configured = env?.TOKENTRACKER_DSH_HOME || env?.DSH_HOME;
+  return configured ? path.resolve(configured) : path.join(homeDir, ".dsh");
+}
+
+async function listDeepSeekHarnessSessionFiles(dshHome = resolveDeepSeekHarnessHome()) {
+  const out = [];
+  async function walk(dir) {
+    const entries = await safeReadDir(dir);
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (
+        entry.isFile() &&
+        (entry.name === "session.jsonl" || entry.name === "session.jsonl.zstd")
+      ) {
+        out.push(fullPath);
+      }
+    }
+  }
+  await walk(path.join(dshHome, "sessions"));
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+const DEEPSEEK_HARNESS_NORMALIZATION_VERSION = 2;
+const DEEPSEEK_HARNESS_BUCKET_STATE_VERSION = 3;
+
+function normalizeDeepSeekHarnessUsage(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const input = toNonNegativeInt(raw.inputTokens);
+  const cacheRead = toNonNegativeInt(raw.cacheReadTokens);
+  const cacheWrite = toNonNegativeInt(raw.cacheWriteTokens);
+  const output = toNonNegativeInt(raw.outputTokens);
+  const reasoning = toNonNegativeInt(raw.reasoningTokens);
+  const total = input + cacheRead + cacheWrite + output + reasoning;
+  if (total <= 0) return null;
+  return {
+    input_tokens: input,
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+    conversation_count: 1,
+  };
+}
+
+async function readDeepSeekHarnessSession(filePath) {
+  const raw = await fs.readFile(filePath);
+  if (!filePath.endsWith(".zstd")) return raw.toString("utf8");
+  // Live Harness sessions append one zstd frame per flush. Node's native
+  // zstdDecompressSync stops after the first frame, while this decoder reads
+  // the concatenated frame stream as a single JSONL payload.
+  const decoded = Buffer.from(await require("@mongodb-js/zstd").decompress(raw));
+  return decoded.toString("utf8");
+}
+
+function extractDeepSeekHarnessFileTotals(text, fallbackTimestamp) {
+  let currentModel = DEFAULT_MODEL;
+  const samples = new Map();
+  for (const line of String(text || "").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event?.type === "request/context") {
+      currentModel = normalizeModelInput(event?.data?.model) || DEFAULT_MODEL;
+      continue;
+    }
+    const turn = event?.data?.turn;
+    const step = event?.data?.step;
+    if (turn == null || step == null) continue;
+    const key = `${turn}|${step}`;
+    const eventTimeMs =
+      typeof event.time === "string" ? Date.parse(event.time) : coerceEpochMs(event.time);
+    const timestamp = Number.isFinite(eventTimeMs) && eventTimeMs > 0
+      ? new Date(eventTimeMs).toISOString()
+      : fallbackTimestamp;
+    if (event.type === "assistant/chunk" && event?.data?.chunk?.type === "usage") {
+      const usage = normalizeDeepSeekHarnessUsage(event.data.chunk.usage);
+      if (usage) samples.set(key, { model: currentModel, timestamp, usage, final: false });
+      continue;
+    }
+    if (event.type === "assistant/message") {
+      const usage = normalizeDeepSeekHarnessUsage(event?.data?.usage);
+      if (usage) samples.set(key, { model: currentModel, timestamp, usage, final: true });
+    }
+  }
+
+  const byBucket = {};
+  for (const sample of samples.values()) {
+    const model = normalizeModelInput(sample.model) || DEFAULT_MODEL;
+    const bucketStart = toUtcHalfHourStart(sample.timestamp || fallbackTimestamp);
+    if (!bucketStart) continue;
+    const key = bucketKey("deepseek-harness", model, bucketStart);
+    if (!byBucket[key]) byBucket[key] = { model, bucketStart, totals: initTotals() };
+    addTotals(byBucket[key].totals, sample.usage);
+  }
+  return byBucket;
+}
+
+function diffDeepSeekHarnessTotals(current, previous) {
+  const delta = {};
+  for (const key of [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+    "conversation_count",
+  ]) {
+    const value = Number(current?.[key] || 0);
+    const prior = Number(previous?.[key] || 0);
+    delta[key] = value - prior;
+  }
+  delta.billable_total_tokens = delta.total_tokens;
+  return delta;
+}
+
+async function collectDeepSeekHarnessRetractions(queuePath, hourlyState) {
+  const identities = new Map();
+  const queuedBuckets = new Set();
+  let raw = "";
+  try {
+    raw = await fs.readFile(queuePath, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let row;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (normalizeSourceInput(row?.source) !== "deepseek-harness") continue;
+    if (typeof row?.dsh_bucket_migration_id === "string") continue;
+    const model = normalizeModelInput(row?.model) || DEFAULT_MODEL;
+    const hourStart = typeof row?.hour_start === "string" ? row.hour_start : "";
+    if (!hourStart) continue;
+    const attribution = normalizeUsageAttribution(row);
+    queuedBuckets.add(bucketKey("deepseek-harness", model, hourStart));
+    const identity = `${model}${BUCKET_SEPARATOR}${hourStart}${BUCKET_SEPARATOR}${attribution.billing_mode}`;
+    identities.set(identity, {
+      model,
+      hourStart,
+      attribution,
+      active: Number(row?.total_tokens || 0) > 0,
+      totals: deepSeekHarnessRecordTotals(row),
+      trusted: true,
+    });
+  }
+
+  for (const [key, bucket] of Object.entries(hourlyState.buckets || {})) {
+    const parsed = parseBucketKey(key);
+    if (normalizeSourceInput(parsed.source) !== "deepseek-harness" || !parsed.hourStart) continue;
+    const model = normalizeModelInput(parsed.model) || DEFAULT_MODEL;
+    if (queuedBuckets.has(bucketKey("deepseek-harness", model, parsed.hourStart))) continue;
+    for (const slice of attributionSlices(bucket)) {
+      const attribution = normalizeUsageAttribution(slice.attribution);
+      const identity = `${model}${BUCKET_SEPARATOR}${parsed.hourStart}${BUCKET_SEPARATOR}${attribution.billing_mode}`;
+      if (!identities.has(identity)) {
+        identities.set(identity, {
+          model,
+          hourStart: parsed.hourStart,
+          attribution,
+          active: true,
+          totals: cloneTotals(slice.totals),
+          trusted: false,
+        });
+      }
+    }
+  }
+  return [...identities.values()].filter((entry) => entry.active);
+}
+
+function addDeepSeekHarnessBucketDelta(bucket, delta) {
+  const slices = bucket.attributionBuckets && typeof bucket.attributionBuckets === "object"
+    ? bucket.attributionBuckets
+    : null;
+  addTotals(bucket.totals, delta);
+  for (const totalsField of Object.keys(initTotals())) {
+    bucket.totals[totalsField] = Math.max(0, Number(bucket.totals[totalsField] || 0));
+  }
+  const hasNegativeDelta = Object.keys(initTotals()).some(
+    (key) => Number(delta?.[key] || 0) < 0,
+  );
+  if (!slices) return;
+  if (!slices.unknown) {
+    slices.unknown = { totals: initTotals(), attribution: normalizeUsageAttribution(null) };
+  }
+  if (hasNegativeDelta) {
+    for (const slice of Object.values(slices)) slice.totals = initTotals();
+    slices.unknown.totals = cloneTotals(bucket.totals);
+    return;
+  }
+  addTotals(slices.unknown.totals, delta);
+}
+
+function deepSeekHarnessRecordTotals(record) {
+  const totals = initTotals();
+  for (const key of [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+    "conversation_count",
+  ]) {
+    totals[key] = toNonNegativeInt(record?.[key]);
+  }
+  totals.billable_total_tokens = toNonNegativeInt(
+    record?.billable_total_tokens ?? record?.total_tokens,
+  );
+  return totals;
+}
+
+function restoreDeepSeekHarnessMigrationAttribution(hourlyState, evidence) {
+  const byBucket = new Map();
+  for (const entry of Array.isArray(evidence) ? evidence : []) {
+    if (!entry?.trusted || !entry?.active || !entry?.totals) continue;
+    const key = bucketKey("deepseek-harness", entry.model, entry.hourStart);
+    if (!byBucket.has(key)) byBucket.set(key, []);
+    byBucket.get(key).push(entry);
+  }
+  for (const [key, entries] of byBucket) {
+    const bucket = hourlyState.buckets?.[key];
+    if (!bucket?.totals) continue;
+    const trustedTotals = initTotals();
+    for (const entry of entries) addTotals(trustedTotals, entry.totals);
+    if (totalsKey(trustedTotals) !== totalsKey(bucket.totals)) continue;
+    bucket.attributionBuckets = Object.fromEntries(entries.map((entry) => [
+      entry.attribution.billing_mode,
+      { totals: cloneTotals(entry.totals), attribution: entry.attribution },
+    ]));
+  }
+}
+
+function resetDeepSeekHarnessHourlyState(hourlyState) {
+  for (const key of Object.keys(hourlyState.buckets || {})) {
+    if (normalizeSourceInput(parseBucketKey(key).source) === "deepseek-harness") {
+      delete hourlyState.buckets[key];
+    }
+  }
+  for (const key of Object.keys(hourlyState.groupQueued || {})) {
+    if (key.startsWith(`deepseek-harness${BUCKET_SEPARATOR}`)) delete hourlyState.groupQueued[key];
+  }
+  for (const [key, pending] of Object.entries(hourlyState.pendingAttributionRetractions || {})) {
+    if (
+      normalizeSourceInput(pending?.source) === "deepseek-harness"
+      || key.startsWith(`deepseek-harness${BUCKET_SEPARATOR}`)
+    ) {
+      delete hourlyState.pendingAttributionRetractions[key];
+    }
+  }
+}
+
+function buildDeepSeekHarnessMigrationRows(hourlyState, identities) {
+  const zeroTotals = initTotals();
+  const rows = [];
+  const sortedIdentities = [...identities].sort((left, right) =>
+    `${left.model}|${left.hourStart}|${left.attribution?.billing_mode}`.localeCompare(
+      `${right.model}|${right.hourStart}|${right.attribution?.billing_mode}`,
+    ),
+  );
+  for (const { model, hourStart, attribution } of sortedIdentities) {
+    rows.push(serializeUsageQueueRecord({
+      source: "deepseek-harness",
+      model,
+      hour_start: hourStart,
+      ...zeroTotals,
+    }, attribution));
+  }
+
+  for (const key of Object.keys(hourlyState.buckets || {}).sort()) {
+    const parsed = parseBucketKey(key);
+    if (normalizeSourceInput(parsed.source) !== "deepseek-harness" || !parsed.hourStart) continue;
+    const bucket = hourlyState.buckets[key];
+    const model = normalizeModelInput(parsed.model) || DEFAULT_MODEL;
+    const slices = attributionSlices(bucket).sort((left, right) =>
+      left.attribution.billing_mode.localeCompare(right.attribution.billing_mode),
+    );
+    bucket.attributionQueuedKeys = {};
+    for (const slice of slices) {
+      const totals = slice.totals;
+      rows.push(serializeUsageQueueRecord({
+        source: "deepseek-harness",
+        model,
+        hour_start: parsed.hourStart,
+        input_tokens: totals.input_tokens,
+        cached_input_tokens: totals.cached_input_tokens,
+        cache_creation_input_tokens: totals.cache_creation_input_tokens,
+        output_tokens: totals.output_tokens,
+        reasoning_output_tokens: totals.reasoning_output_tokens,
+        total_tokens: totals.total_tokens,
+        billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
+        conversation_count: totals.conversation_count,
+      }, slice.attribution));
+      const mode = slice.attribution.billing_mode;
+      bucket.attributionQueuedKeys[mode] = `${totalsKey(totals)}|${model}|${mode}`;
+    }
+    bucket.queuedKey = totalsKey(bucket.totals);
+  }
+  return rows;
+}
+
+async function appendDeepSeekHarnessMigrationBatch(queuePath, rows) {
+  if (!rows.length) return 0;
+  const migrationId = crypto.createHash("sha256").update(rows.join("\n")).digest("hex");
+  const markedRows = rows.map((row, index) => JSON.stringify({
+    ...JSON.parse(row),
+    dsh_bucket_migration_id: migrationId,
+    dsh_bucket_migration_index: index,
+    dsh_bucket_migration_count: rows.length,
+  }));
+  let existing = "";
+  try {
+    existing = await fs.readFile(queuePath, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  const existingRows = new Set(existing.split(/\r?\n/).filter(Boolean));
+  if (markedRows.every((row) => existingRows.has(row))) return 0;
+  await appendJsonlLines(queuePath, markedRows);
+  return markedRows.length;
+}
+
+async function parseDeepSeekHarnessIncremental({
+  sessionFiles,
+  dshHome,
+  cursors,
+  queuePath,
+  onProgress,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const files = Array.isArray(sessionFiles)
+    ? sessionFiles
+    : await listDeepSeekHarnessSessionFiles(dshHome || resolveDeepSeekHarnessHome());
+  const priorState =
+    cursors?.deepseekHarness && typeof cursors.deepseekHarness === "object"
+      ? cursors.deepseekHarness
+      : {};
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const startsBucketMigration =
+    Number(priorState.bucketStateVersion || 0) < DEEPSEEK_HARNESS_BUCKET_STATE_VERSION;
+  const bucketMigrationPending = startsBucketMigration || priorState.bucketMigrationComplete === false;
+  let fileState =
+    priorState.files && typeof priorState.files === "object" ? { ...priorState.files } : {};
+  let migrationAttributionEvidence = Array.isArray(priorState.bucketMigrationAttribution)
+    ? priorState.bucketMigrationAttribution
+    : [];
+  if (startsBucketMigration) {
+    const identities = await collectDeepSeekHarnessRetractions(queuePath, hourlyState);
+    migrationAttributionEvidence = identities;
+    resetDeepSeekHarnessHourlyState(hourlyState);
+    fileState = {};
+  }
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let filesProcessed = 0;
+  let eventsAggregated = 0;
+  let migrationFilesPending = 0;
+
+  for (let index = 0; index < files.length; index++) {
+    const filePath = files[index];
+    let stat;
+    try {
+      stat = await fs.stat(filePath);
+    } catch {
+      if (bucketMigrationPending) migrationFilesPending += 1;
+      continue;
+    }
+    const signature = `${stat.size}:${stat.mtimeMs}`;
+    const previousFile = fileState[filePath];
+    const fileNormalizationVersion = Number(previousFile?.normalizationVersion) || 1;
+    if (
+      Number(previousFile?.bucketStateVersion || 0) >= DEEPSEEK_HARNESS_BUCKET_STATE_VERSION
+      && fileNormalizationVersion >= DEEPSEEK_HARNESS_NORMALIZATION_VERSION
+      && previousFile?.signature === signature
+    ) continue;
+
+    let text;
+    try {
+      text = await readDeepSeekHarnessSession(filePath);
+    } catch {
+      if (bucketMigrationPending) migrationFilesPending += 1;
+      continue;
+    }
+    filesProcessed += 1;
+    const fallbackTimestamp = new Date(stat.mtimeMs).toISOString();
+    const currentByBucket = extractDeepSeekHarnessFileTotals(text, fallbackTimestamp);
+    const previousByBucket =
+      previousFile?.byBucket && typeof previousFile.byBucket === "object"
+        ? previousFile.byBucket
+        : {};
+
+    const fileBucketKeys = new Set([
+      ...Object.keys(previousByBucket),
+      ...Object.keys(currentByBucket),
+    ]);
+    for (const key of fileBucketKeys) {
+      const currentEntry = currentByBucket[key];
+      const previousEntry = previousByBucket[key];
+      if (totalsKey(currentEntry?.totals || initTotals()) === totalsKey(previousEntry?.totals || initTotals())) {
+        continue;
+      }
+      const delta = diffDeepSeekHarnessTotals(
+        currentEntry?.totals,
+        previousEntry?.totals,
+      );
+      const { model, bucketStart } = currentEntry || previousEntry;
+      const bucket = getHourlyBucket(
+        hourlyState,
+        "deepseek-harness",
+        model,
+        bucketStart,
+      );
+      addDeepSeekHarnessBucketDelta(bucket, delta);
+      for (const totalsField of Object.keys(initTotals())) {
+        bucket.totals[totalsField] = Math.max(0, Number(bucket.totals[totalsField] || 0));
+      }
+      for (const slice of Object.values(bucket.attributionBuckets || {})) {
+        for (const totalsField of Object.keys(initTotals())) {
+          slice.totals[totalsField] = Math.max(0, Number(slice.totals[totalsField] || 0));
+        }
+      }
+      touchedBuckets.add(bucketKey("deepseek-harness", model, bucketStart));
+      eventsAggregated += 1;
+    }
+
+    fileState[filePath] = {
+      signature,
+      normalizationVersion: DEEPSEEK_HARNESS_NORMALIZATION_VERSION,
+      bucketStateVersion: DEEPSEEK_HARNESS_BUCKET_STATE_VERSION,
+      byBucket: currentByBucket,
+    };
+    if (cb) {
+      cb({
+        index: index + 1,
+        total: files.length,
+        filesProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const migrationComplete = !bucketMigrationPending || migrationFilesPending === 0;
+  if (bucketMigrationPending && migrationComplete) {
+    restoreDeepSeekHarnessMigrationAttribution(hourlyState, migrationAttributionEvidence);
+    for (const key of Object.keys(hourlyState.buckets || {})) {
+      if (normalizeSourceInput(parseBucketKey(key).source) === "deepseek-harness") {
+        touchedBuckets.add(key);
+      }
+    }
+  }
+  let bucketsQueued;
+  if (bucketMigrationPending) {
+    const migrationRows = migrationComplete
+      ? buildDeepSeekHarnessMigrationRows(hourlyState, migrationAttributionEvidence)
+      : [];
+    bucketsQueued = migrationComplete
+      ? await appendDeepSeekHarnessMigrationBatch(queuePath, migrationRows)
+      : 0;
+  } else {
+    bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  }
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  const nextDeepSeekHarnessState = {
+    ...priorState,
+    normalizationVersion: DEEPSEEK_HARNESS_NORMALIZATION_VERSION,
+    bucketStateVersion: DEEPSEEK_HARNESS_BUCKET_STATE_VERSION,
+    bucketMigrationComplete: migrationComplete,
+    bucketMigrationAttribution: migrationAttributionEvidence,
+    files: fileState,
+    updatedAt,
+  };
+  if (migrationComplete) delete nextDeepSeekHarnessState.bucketMigrationAttribution;
+  cursors.deepseekHarness = nextDeepSeekHarnessState;
+  return { filesProcessed, eventsAggregated, bucketsQueued };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8922,6 +9812,10 @@ async function collectRolloutRequestUsageRecords(options) {
     if (!st || !st.isFile()) continue;
 
     const sessionId = codexSessionIdFromPath(filePath) || path.basename(filePath);
+    const forkTracker = createForkReplayTracker({
+      sessionId: codexSessionIdFromPath(filePath),
+      rolloutDate: rolloutDateFromPath(filePath),
+    });
 
     const stream = fssync.createReadStream(filePath, { encoding: "utf8" });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -8943,7 +9837,9 @@ async function collectRolloutRequestUsageRecords(options) {
         const maybeTurnContext =
           !maybeTokenCount &&
           (line.includes('"turn_context"') || line.includes('"session_meta"')) &&
-          line.includes('"model"');
+          (line.includes('"model"') ||
+            line.includes('"turn_id"') ||
+            line.includes('"forked_from_id"'));
 
         if (!maybeTokenCount && !maybeTurnContext && !maybeLifecycle) continue;
 
@@ -8959,11 +9855,22 @@ async function collectRolloutRequestUsageRecords(options) {
           obj?.payload &&
           typeof obj.payload === "object"
         ) {
+          if (obj.type === "session_meta") {
+            forkTracker.onSessionMeta(obj.payload);
+          }
+          if (obj.type === "turn_context") {
+            forkTracker.onTurnContext(obj.payload);
+          }
           if (typeof obj.payload.model === "string") {
             model = obj.payload.model;
           }
           continue;
         }
+
+        // Replayed fork history: both its token_count events (usage already
+        // recorded in the parent session) and its lifecycle events (stale
+        // task_started/task_complete copies) must not produce records.
+        if (forkTracker.replaying) continue;
 
         const lifecycleType = String(obj?.payload?.type || "");
         if (lifecycleType === "task_started") {
@@ -9193,6 +10100,10 @@ module.exports = {
   resolveCodebuddyProjectFiles,
   resolveCodebuddyDefaultModel,
   parseCodebuddyIncremental,
+  resolveWorkbuddyHome,
+  resolveWorkbuddyProjectFiles,
+  resolveWorkbuddyDefaultModel,
+  parseWorkbuddyIncremental,
   resolveKiroCliSessionFiles,
   resolveKiroCliDbPath,
   parseKiroCliIncremental,
@@ -9213,6 +10124,9 @@ module.exports = {
   readRoocodeTaskModel,
   normalizeRoocodeModel,
   parseRoocodeIncremental,
+  resolveDeepSeekHarnessHome,
+  listDeepSeekHarnessSessionFiles,
+  parseDeepSeekHarnessIncremental,
   resolveZedDbPath,
   decodeZedThreadBlob,
   extractZedTotals,
@@ -9256,6 +10170,12 @@ module.exports = {
   bucketKey,
   totalsKey,
   claudeMessageDedupKey,
+  // Shared with src/lib/claude-request-usage.js so the message-level
+  // collector normalizes usage and boundaries exactly like the parser.
+  normalizeClaudeUsage,
+  toUtcHalfHourStart,
+  parseRequestUsageBoundary,
+  normalizeModelInput,
   groupBucketKey,
   // Exposed for regression tests covering nested-group remote URLs.
   canonicalizeProjectRef,

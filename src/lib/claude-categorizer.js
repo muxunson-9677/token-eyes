@@ -570,15 +570,14 @@ function dayKeyToIsoBounds(from, to) {
 const CACHE = new Map();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 const CACHE_SCHEMA_VERSION = "skills-exec-v3";
-const DISK_CACHE_DIR = path.join(os.homedir(), ".tokentracker", "cache", "claude-categorizer");
 
 function cacheKeyHash(key) {
   return crypto.createHash("sha1").update(key).digest("hex").slice(0, 32);
 }
 
-function readDiskCache(key) {
+function readDiskCache(key, cacheDir) {
   try {
-    const fp = path.join(DISK_CACHE_DIR, `${cacheKeyHash(key)}.json`);
+    const fp = path.join(cacheDir, `${cacheKeyHash(key)}.json`);
     const raw = fssync.readFileSync(fp, "utf8");
     const obj = JSON.parse(raw);
     if (!obj || obj.schemaVersion !== CACHE_SCHEMA_VERSION) return null;
@@ -589,18 +588,18 @@ function readDiskCache(key) {
   }
 }
 
-function writeDiskCache(key, value) {
+function writeDiskCache(key, value, cacheDir) {
   try {
-    fssync.mkdirSync(DISK_CACHE_DIR, { recursive: true });
-    const fp = path.join(DISK_CACHE_DIR, `${cacheKeyHash(key)}.json`);
+    fssync.mkdirSync(cacheDir, { recursive: true });
+    const fp = path.join(cacheDir, `${cacheKeyHash(key)}.json`);
     const payload = { schemaVersion: CACHE_SCHEMA_VERSION, at: Date.now(), value };
     fssync.writeFileSync(fp, JSON.stringify(payload));
     // Bound on-disk size; categorizer is cheap to recompute when miss.
     try {
-      const entries = fssync.readdirSync(DISK_CACHE_DIR)
+      const entries = fssync.readdirSync(cacheDir)
         .filter((n) => n.endsWith(".json"))
         .map((n) => {
-          const p = path.join(DISK_CACHE_DIR, n);
+          const p = path.join(cacheDir, n);
           let mtime = 0;
           try { mtime = fssync.statSync(p).mtimeMs; } catch (_e) {}
           return { p, mtime };
@@ -624,8 +623,23 @@ function maxMtimeMs(files) {
   return max;
 }
 
-async function computeClaudeCategoryBreakdown({ from = null, to = null, rootDir = null, projectDir = null } = {}) {
-  const root = rootDir || defaultClaudeProjectsDir();
+async function computeClaudeCategoryBreakdown({
+  from = null,
+  to = null,
+  rootDir = null,
+  projectDir = null,
+  homeDir = null,
+  cacheDir = null,
+  projectSearchBoundary = null,
+} = {}) {
+  const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VITEST === "true";
+  if (isTestRunner && (!rootDir || !homeDir)) {
+    throw new Error("computeClaudeCategoryBreakdown requires explicit rootDir and homeDir in tests");
+  }
+  const home = homeDir || os.homedir();
+  const root = rootDir || path.join(home, ".claude", "projects");
+  const diskCacheDir = cacheDir
+    || (isTestRunner ? null : path.join(home, ".tokentracker", "cache", "claude-categorizer"));
   let files = [];
   try {
     files = listSessionFiles(root);
@@ -649,7 +663,7 @@ async function computeClaudeCategoryBreakdown({ from = null, to = null, rootDir 
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.value;
   }
-  const onDisk = readDiskCache(cacheKey);
+  const onDisk = diskCacheDir ? readDiskCache(cacheKey, diskCacheDir) : null;
   if (onDisk) {
     CACHE.set(cacheKey, { at: Date.now(), value: onDisk });
     return onDisk;
@@ -719,11 +733,11 @@ async function computeClaudeCategoryBreakdown({ from = null, to = null, rootDir 
     tool_calls_breakdown: buildToolCallsBreakdown(toolLedger),
     skills_breakdown: buildSkillsBreakdown(skillLedger),
     exec_command_breakdown: buildExecCommandBreakdown(execLedger),
-    configured_resources: getConfiguredResources({ projectDir }),
+    configured_resources: getConfiguredResources({ projectDir, homeDir: home, projectSearchBoundary }),
   };
 
   CACHE.set(cacheKey, { at: Date.now(), value: result });
-  writeDiskCache(cacheKey, result);
+  if (diskCacheDir) writeDiskCache(cacheKey, result, diskCacheDir);
   // Bound cache size — categorizer is cheap to recompute, no point hoarding.
   while (CACHE.size > 32) {
     const oldest = [...CACHE.entries()].sort((a, b) => a[1].at - b[1].at)[0];
@@ -952,27 +966,70 @@ function safeReadJson(fp) {
   }
 }
 
+function isPathContainedBy(rootPath, candidatePath) {
+  const relative = path.relative(rootPath, candidatePath);
+  return !relative || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function resolvePathWithinBoundary(inputPath, boundaryPath) {
+  const resolvedInput = path.resolve(inputPath);
+  if (!boundaryPath) return resolvedInput;
+  const resolvedBoundary = path.resolve(boundaryPath);
+  if (!isPathContainedBy(resolvedBoundary, resolvedInput)) return null;
+
+  let canonicalBoundary;
+  try {
+    canonicalBoundary = fssync.realpathSync.native(resolvedBoundary);
+  } catch (_e) {
+    return null;
+  }
+  const segments = path.relative(resolvedBoundary, resolvedInput).split(path.sep).filter(Boolean);
+  let current = canonicalBoundary;
+  for (let index = 0; index < segments.length; index += 1) {
+    const next = path.join(current, segments[index]);
+    try {
+      fssync.lstatSync(next);
+    } catch (_e) {
+      const unresolved = path.resolve(current, ...segments.slice(index));
+      return isPathContainedBy(canonicalBoundary, unresolved) ? unresolved : null;
+    }
+    let canonicalNext;
+    try {
+      canonicalNext = fssync.realpathSync.native(next);
+    } catch (_e) {
+      return null;
+    }
+    if (!isPathContainedBy(canonicalBoundary, canonicalNext)) return null;
+    current = canonicalNext;
+  }
+  return current;
+}
+
 // Walk @./path imports recursively. Claude Code expands @file references
 // inside CLAUDE.md into separate memory entries; /context counts them.
-function collectMemoryImports(filePath, seen) {
-  if (!filePath || seen.has(filePath)) return;
-  seen.add(filePath);
+function collectMemoryImports(filePath, seen, homeDir, boundaryPath = null) {
+  const safeFilePath = filePath && resolvePathWithinBoundary(filePath, boundaryPath);
+  if (!safeFilePath || seen.has(safeFilePath)) return;
   let raw;
   try {
-    raw = fssync.readFileSync(filePath, "utf8");
+    raw = fssync.readFileSync(safeFilePath, "utf8");
   } catch (_e) {
     return;
   }
-  const dir = path.dirname(filePath);
+  seen.add(safeFilePath);
+  const dir = path.dirname(safeFilePath);
   // Match `@path/to/file.md` (CC's import syntax), but skip `@user@host` and
   // `email@host` patterns by requiring a path-like suffix.
-  const re = /(?:^|\s)@([./~][^\s)]+\.md)\b/g;
+  const re = /(?:^|\s)@((?:[./~]|[A-Za-z]:[\\/])[^\s)]*\.md)\b/g;
   let m;
   while ((m = re.exec(raw)) !== null) {
     let target = m[1];
-    if (target.startsWith("~")) target = path.join(os.homedir(), target.slice(1).replace(/^\//, ""));
+    if (target.startsWith("~")) target = path.join(homeDir, target.slice(1).replace(/^\//, ""));
     else if (!path.isAbsolute(target)) target = path.resolve(dir, target);
-    if (fileExists(target)) collectMemoryImports(target, seen);
+    const safeTarget = resolvePathWithinBoundary(target, boundaryPath);
+    if (safeTarget && fileExists(safeTarget)) {
+      collectMemoryImports(safeTarget, seen, homeDir, boundaryPath);
+    }
   }
 }
 
@@ -1037,8 +1094,7 @@ function countAgentMarkdowns(rootDir) {
   return count;
 }
 
-function listEnabledPlugins() {
-  const home = os.homedir();
+function listEnabledPlugins(home) {
   // settings.local.json overrides settings.json (CC's normal precedence).
   const baseMap = safeReadJson(path.join(home, ".claude", "settings.json"))?.enabledPlugins || {};
   const localMap = safeReadJson(path.join(home, ".claude", "settings.local.json"))?.enabledPlugins || {};
@@ -1048,8 +1104,8 @@ function listEnabledPlugins() {
     .map(([key]) => key);
 }
 
-function getConfiguredResources({ projectDir = null } = {}) {
-  const home = os.homedir();
+function getConfiguredResources({ projectDir = null, homeDir = null, projectSearchBoundary = null } = {}) {
+  const home = homeDir || os.homedir();
   const claudeRoot = path.join(home, ".claude");
   const cacheRoot = path.join(claudeRoot, "plugins", "cache");
 
@@ -1083,7 +1139,7 @@ function getConfiguredResources({ projectDir = null } = {}) {
   // --- Plugin contributions (enabled plugins only) -----------------------
   // Plugin caches live at ~/.claude/plugins/cache/<owner>/<plugin>/<version>/
   // and contribute skills, agents, and mcpServers (declared in plugin.json).
-  for (const pluginKey of listEnabledPlugins()) {
+  for (const pluginKey of listEnabledPlugins(home)) {
     // pluginKey is "name@marketplace" (e.g., "claude-mem@thedotmack").
     const [name, marketplace] = pluginKey.split("@");
     if (!name || !marketplace) continue;
@@ -1102,18 +1158,26 @@ function getConfiguredResources({ projectDir = null } = {}) {
   const memorySeen = new Set();
   const userMd = path.join(claudeRoot, "CLAUDE.md");
   const homeMd = path.join(home, "CLAUDE.md");
-  if (fileExists(userMd)) collectMemoryImports(userMd, memorySeen);
-  if (fileExists(homeMd) && fssync.statSync(homeMd).size > 0) collectMemoryImports(homeMd, memorySeen);
+  const safeUserMd = resolvePathWithinBoundary(userMd, projectSearchBoundary);
+  const safeHomeMd = resolvePathWithinBoundary(homeMd, projectSearchBoundary);
+  if (safeUserMd && fileExists(safeUserMd)) {
+    collectMemoryImports(safeUserMd, memorySeen, home, projectSearchBoundary);
+  }
+  if (safeHomeMd && fileExists(safeHomeMd) && fssync.statSync(safeHomeMd).size > 0) {
+    collectMemoryImports(safeHomeMd, memorySeen, home, projectSearchBoundary);
+  }
   // Walk up from projectDir to find the closest CLAUDE.md (CC walks up too).
   // Handles dev servers running from a subdir (e.g. vite from dashboard/).
   if (projectDir) {
     let cursor = projectDir;
     for (let i = 0; i < 8; i++) {
       const candidate = path.join(cursor, "CLAUDE.md");
-      if (fileExists(candidate)) {
-        collectMemoryImports(candidate, memorySeen);
+      const safeCandidate = resolvePathWithinBoundary(candidate, projectSearchBoundary);
+      if (safeCandidate && fileExists(safeCandidate)) {
+        collectMemoryImports(safeCandidate, memorySeen, home, projectSearchBoundary);
         break;
       }
+      if (projectSearchBoundary && path.resolve(cursor) === path.resolve(projectSearchBoundary)) break;
       const parent = path.dirname(cursor);
       if (parent === cursor) break;
       cursor = parent;

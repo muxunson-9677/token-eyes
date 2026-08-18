@@ -50,6 +50,7 @@ const SYNC_SOURCES = [
   "craft",
   "grok",
   "copilot",
+  "deepseek-harness",
 ];
 
 // ---------------------------------------------------------------------------
@@ -183,7 +184,7 @@ test("listDataDirectoryAdapterKeys returns every configurable desktop source", (
 });
 
 test("DATA_DIRECTORY_KEYS equals the registry-backed configurable directory keys", () => {
-  const expected = ["claude", "codex", "cursor", "trae", "codebuddy", "gemini", "hermes", "openclaw", "opencode", "antigravity"];
+  const expected = ["claude", "codex", "cursor", "trae", "codebuddy", "workbuddy", "gemini", "hermes", "openclaw", "opencode", "antigravity"];
   assert.deepEqual(
     DATA_DIRECTORY_KEYS.sort(),
     expected.sort(),
@@ -213,7 +214,19 @@ test("listUsageLimitAdapterIds matches the supported limits display sources", ()
     "openclaw",
     "opencode",
     "antigravity",
+    "deepseek-harness",
   ]);
+});
+
+test("DeepSeek Harness is a real passive-log adapter", () => {
+  const adapter = getAgentAdapter("deepseek-harness");
+  assert.ok(adapter);
+  assert.equal(adapter.displayName, "DeepSeek Harness");
+  assert.equal(adapter.queueSource, "deepseek-harness");
+  assert.equal(adapter.collectionMode, "passive_log");
+  assert.equal(adapter.parserExport, "parseDeepSeekHarnessIncremental");
+  assert.deepEqual(adapter.resolverExports, ["resolveDeepSeekHarnessHome", "listDeepSeekHarnessSessionFiles"]);
+  assert.equal(adapter.usageLimitsSurface, true);
 });
 
 // ---------------------------------------------------------------------------

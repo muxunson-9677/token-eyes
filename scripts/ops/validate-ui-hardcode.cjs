@@ -34,14 +34,16 @@ function scanAll() {
   const files = walk(SRC_ROOT);
   const results = {};
   let totalColors = 0;
+  let totalRadii = 0;
   let totalRawText = 0;
 
   for (const file of files) {
     const rel = path.relative(ROOT, file).replace(/\\/g, "/");
     const counts = scanFile(file);
-    if (counts.colors || counts.rawText) {
+    if (counts.colors || counts.radii || counts.rawText) {
       results[rel] = counts;
       totalColors += counts.colors;
+      totalRadii += counts.radii;
       totalRawText += counts.rawText;
     }
   }
@@ -51,9 +53,10 @@ function scanAll() {
     root: "dashboard/src",
     rules: {
       colors: "hex/rgb(a) literals",
+      radii: "hardcoded px border-radius (Tailwind arbitrary or inline style)",
       rawText: "JSX text nodes containing letters or digits",
     },
-    totals: { colors: totalColors, rawText: totalRawText },
+    totals: { colors: totalColors, radii: totalRadii, rawText: totalRawText },
     files: results,
   };
 }
@@ -65,7 +68,9 @@ function main() {
   if (update) {
     fs.writeFileSync(BASELINE_PATH, `${JSON.stringify(snapshot, null, 2)}\n`);
     console.log(`Baseline written: ${BASELINE_PATH}`);
-    console.log(`Totals: colors=${snapshot.totals.colors}, rawText=${snapshot.totals.rawText}`);
+    console.log(
+      `Totals: colors=${snapshot.totals.colors}, radii=${snapshot.totals.radii}, rawText=${snapshot.totals.rawText}`,
+    );
     return;
   }
 
@@ -85,7 +90,7 @@ function main() {
   }
 
   console.log(
-    `UI hardcode guardrails ok: colors=${snapshot.totals.colors}, rawText=${snapshot.totals.rawText}`,
+    `UI hardcode guardrails ok: colors=${snapshot.totals.colors}, radii=${snapshot.totals.radii}, rawText=${snapshot.totals.rawText}`,
   );
 }
 

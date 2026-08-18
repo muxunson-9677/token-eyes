@@ -48,7 +48,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
     return (
       <Card
         variant="nested"
-        className={`h-full ${className}`}
+        className={`tt-pressable-parent h-full ${className}`}
         bodyClassName="flex min-h-48 h-full flex-col"
       >
         <div>
@@ -90,7 +90,7 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
   return (
     <Card
       variant="nested"
-      className={`h-full ${className}`}
+      className={`tt-pressable-parent h-full ${className}`}
       bodyClassName="flex h-full flex-col"
     >
       <div className="tt-overview-model-usage-header mb-3 grid items-end gap-3 sm:grid-cols-[minmax(0,.8fr)_minmax(0,1.8fr)]">

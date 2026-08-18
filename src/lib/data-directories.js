@@ -149,6 +149,12 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     home,
     platform,
   });
+  const configuredWorkbuddyHome = dataDirectories.workbuddy || normalizePathValue(env.WORKBUDDY_HOME) || path.join(home, ".workbuddy");
+  const workbuddyHomes = listDetectedWorkBuddyHomes({
+    configured: dataDirectories.workbuddy,
+    env,
+    home,
+  });
   const antigravityHome = dataDirectories.antigravity || normalizePathValue(env.ANTIGRAVITY_HOME) || geminiHome;
 
   return {
@@ -167,6 +173,8 @@ function resolveDataDirectoryPaths({ config = {}, env = process.env, home = os.h
     geminiHome,
     codebuddyHome: codebuddyHomes[0] || configuredCodebuddyHome,
     codebuddyHomes,
+    workbuddyHome: workbuddyHomes[0] || configuredWorkbuddyHome,
+    workbuddyHomes,
     antigravityHome,
   };
 }
@@ -374,6 +382,18 @@ function inspectDataDirectory(agentId, directoryPath, options = {}) {
       latestMs: Math.max(projectLogs.latestMs, sessionDb?.mtimeMs || 0, stateDb?.mtimeMs || 0),
     };
     evidence = result.count > 0 ? "token_logs" : sessionDb || stateDb ? "session_database" : "projects_directory";
+  } else if (agentId === "workbuddy") {
+    // WorkBuddy = rebranded CodeBuddy CLI; same projects/**/*.jsonl layout
+    // under ~/.workbuddy, plus a plaintext workbuddy.db session gauge.
+    const projectsDir = path.join(normalizedPath, "projects");
+    const sessionDb = fileStat(path.join(normalizedPath, "workbuddy.db"));
+    recognized = isDirectory(projectsDir) || Boolean(sessionDb);
+    const projectLogs = findEvidenceFiles(projectsDir, { extension: ".jsonl", maxDepth: 3 });
+    result = {
+      count: projectLogs.count,
+      latestMs: Math.max(projectLogs.latestMs, sessionDb?.mtimeMs || 0),
+    };
+    evidence = result.count > 0 ? "token_logs" : sessionDb ? "session_database" : "projects_directory";
   } else if (agentId === "antigravity") {
     result = findEvidenceFiles(normalizedPath, { fileName: "transcript.jsonl", maxDepth: 8 });
     const directoryName = path.basename(normalizedPath).toLowerCase();
@@ -430,6 +450,7 @@ const AGENT_COMMANDS = Object.freeze({
   cursor: "cursor",
   trae: "trae",
   codebuddy: "codebuddy",
+  workbuddy: "workbuddy",
   gemini: "gemini",
   opencode: "opencode",
   openclaw: "openclaw",
@@ -579,6 +600,26 @@ function listCodeBuddyHomeCandidates({ configured, env = process.env, home = os.
   ]);
 }
 
+function listWorkBuddyHomeCandidates({ configured, env = process.env, home = os.homedir() } = {}) {
+  return uniquePaths([
+    configured,
+    normalizePathValue(env.WORKBUDDY_HOME),
+    path.join(home, ".workbuddy"),
+  ]);
+}
+
+function listDetectedWorkBuddyHomes(options = {}) {
+  return uniquePaths(listWorkBuddyHomeCandidates(options)
+    .map((candidate) => inspectDataDirectory("workbuddy", candidate, options))
+    .filter((candidate) => candidate.status !== "not-detected")
+    .sort((a, b) => {
+      const readiness = Number(b.trackingReady) - Number(a.trackingReady);
+      if (readiness !== 0) return readiness;
+      return Date.parse(b.latestActivityAt || 0) - Date.parse(a.latestActivityAt || 0);
+    })
+    .map((candidate) => candidate.path));
+}
+
 function listDetectedCodeBuddyHomes(options = {}) {
   return uniquePaths(listCodeBuddyHomeCandidates(options)
     .map((candidate) => inspectDataDirectory("codebuddy", candidate, options))
@@ -637,6 +678,11 @@ function detectDataDirectoryPaths({
       path.join(home, ".codebuddy"),
       ...defaultCodeBuddyAppDirs({ env, home, platform }),
     ],
+    workbuddy: [
+      configured.workbuddy,
+      normalizePathValue(env.WORKBUDDY_HOME),
+      path.join(home, ".workbuddy"),
+    ],
     antigravity: [
       configured.antigravity,
       normalizePathValue(env.ANTIGRAVITY_HOME),
@@ -665,6 +711,7 @@ function detectDataDirectoryPaths({
       candidates.trae.push(path.join(wslHome, ".config", "Trae CN"));
       candidates.gemini.push(path.join(wslHome, ".gemini"));
       candidates.codebuddy.push(path.join(wslHome, ".codebuddy"));
+      candidates.workbuddy.push(path.join(wslHome, ".workbuddy"));
       candidates.antigravity.push(path.join(wslHome, ".gemini"));
       candidates.opencode.push(path.join(wslHome, ".local", "share", "opencode"));
       candidates.openclaw.push(path.join(wslHome, ".openclaw"));
@@ -730,6 +777,8 @@ module.exports = {
   listTrackingReadyTraeHomes,
   listCodeBuddyHomeCandidates,
   listDetectedCodeBuddyHomes,
+  listWorkBuddyHomeCandidates,
+  listDetectedWorkBuddyHomes,
   normalizeDataDirectories,
   pickBestCodexHome,
   resolveDataDirectoryPaths,

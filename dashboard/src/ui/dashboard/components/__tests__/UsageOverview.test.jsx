@@ -232,13 +232,13 @@ describe("UsageOverview", () => {
     // "计费方式" in the default zh-CN locale.
     const tablist = screen.getByRole("tablist", { name: "计费方式" });
     expect(tablist).toBeInTheDocument();
-    // Four tabs: 全部 / API Key / 套餐 / 未配置计费.
+    // Four tabs: 全部 / API Key / 套餐 / 归属未知.
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.textContent)).toEqual([
       "全部",
       "API Key",
-      "直连",
-      "未配置计费",
+      "套餐",
+      "归属未知",
     ]);
     // 'all' is the default.
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
@@ -295,7 +295,7 @@ describe("UsageOverview", () => {
 
   it("shows the empty state when the active filter has no matches", async () => {
     const user = userEvent.setup();
-    // Fleet with only api_key models → selecting 未配置计费 should drop them all.
+    // Fleet with only api_key models → selecting 归属未知 should drop them all.
     const apiKeyOnlyFleet = [
       {
         source: "codex",
@@ -324,7 +324,7 @@ describe("UsageOverview", () => {
     );
 
     await act(async () => {
-      await user.click(screen.getByRole("tab", { name: "未配置计费" }));
+      await user.click(screen.getByRole("tab", { name: "归属未知" }));
     });
     // The card disappears AND the empty-state copy is rendered.
     expect(screen.queryByRole("button", { name: /CODEX/i })).not.toBeInTheDocument();
@@ -359,7 +359,7 @@ describe("UsageOverview", () => {
     // adds 1 "API Key" badge (gpt-4o) and 1 "套餐" badge (gpt-5-pro). So we
     // expect at least 2 of each.
     expect(apiKeyBadges.length).toBeGreaterThanOrEqual(2);
-    expect(tokenPlanBadges.length).toBeGreaterThanOrEqual(1);
+    expect(tokenPlanBadges.length).toBeGreaterThanOrEqual(2);
   });
 
   it("keeps Token and cost evidence inside one centered summary card", () => {

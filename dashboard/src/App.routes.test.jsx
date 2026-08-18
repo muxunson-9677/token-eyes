@@ -17,6 +17,7 @@ const TEXT = {
   dashboard: "Dashboard page",
   spendUsage: "Spend usage page",
   spendCost: "Spend cost page",
+  planMarket: "Plan market page",
   settingsBasic: "Settings basic page",
   settingsCost: "Settings cost page",
   tokenPlanEditor: "Token plan editor page",
@@ -148,6 +149,9 @@ vi.mock("./pages/SpendPage.jsx", () => ({
   SpendUsagePage: () => <main>{TEXT.spendUsage}</main>,
   SpendCostPage: () => <main>{TEXT.spendCost}</main>,
 }));
+vi.mock("./pages/PlanMarketPage.jsx", () => ({
+  PlanMarketPage: () => <main>{TEXT.planMarket}</main>,
+}));
 
 // SettingsPage.jsx must export SettingsBasicPage and SettingsCostPage.
 vi.mock("./pages/SettingsPage.jsx", () => ({
@@ -201,6 +205,12 @@ describe("App routes (v2.0 IA refactor)", () => {
     renderApp("/spend/cost");
     expect(await screen.findByText(TEXT.spendCost)).toBeInTheDocument();
     expect(screen.getByText(TEXT.sidebarShell)).toBeInTheDocument();
+  });
+
+  it("/spend/plans renders the plan market inside the persistent navigation shell", async () => {
+    renderApp("/spend/plans");
+    expect(await screen.findByText(TEXT.planMarket)).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-shell")).toBeInTheDocument();
   });
 
   it("/settings/basic renders SettingsBasicPage with sidebar", async () => {

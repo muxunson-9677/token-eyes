@@ -77,7 +77,7 @@ spend.cost.summary.estimated_usage,spend,SpendCostPage,CostSummaryCards,estimate
 spend.cost.summary.estimated_usage_suffix,spend,SpendCostPage,CostSummaryCards,estimated_usage_suffix,"estimated usage cost",,active
 spend.cost.summary.actual_subscription,spend,SpendCostPage,CostSummaryCards,actual_subscription,"Recorded subscription fees",,active
 spend.cost.summary.actual_subscription_suffix,spend,SpendCostPage,CostSummaryCards,actual_subscription_suffix,"recorded subscription fees",,active
-spend.cost.summary.scope_note,spend,SpendCostPage,CostSummaryCards,scope_note,"Estimated usage cost values recorded Tokens at catalog API prices. Subscription fees are recorded actual payments. They are shown side by side and are not combined because coverage may overlap.",,active
+spend.cost.summary.scope_note,spend,SpendCostPage,CostSummaryCards,scope_note,"Actual cash spend uses the complete financial ledger and includes recorded subscriptions, official Billing/API amounts, and custom spend. API list-price equivalent follows the visible usage scope and is never added to actual cash spend.",,active
 spend.cost.error.title,spend,SpendCostPage,CostAccumulation,error_title,"Cost data could not be refreshed",,active
 spend.cost.error.stale,spend,SpendCostPage,CostAccumulation,error_stale,"Showing the last successful cost totals. Some sections may be incomplete.",,active
 spend.cost.error.unavailable,spend,SpendCostPage,CostAccumulation,error_unavailable,"No cost totals are available yet.",,active
@@ -155,6 +155,9 @@ settings.token_plan.subscription_cycle.yearly,ui,SettingsPage,TokenPlanSection,s
 settings.token_plan.subscription_cycle.one_time,ui,SettingsPage,TokenPlanSection,subscription_cycle_one_time,"一次性",,active
 settings.token_plan.subscription_start,ui,SettingsPage,TokenPlanSection,subscription_start,"订阅开始",,active
 settings.token_plan.subscription_end,ui,SettingsPage,TokenPlanSection,subscription_end,"订阅结束",,active
+settings.token_plan.account,ui,SettingsPage,TokenPlanSection,account,"账户",,active
+settings.token_plan.quota_windows,ui,SettingsPage,TokenPlanSection,quota_windows,"额度窗口",,active
+settings.token_plan.quota_window_reset,ui,SettingsPage,TokenPlanSection,quota_window_reset,"重置时间",,active
 settings.token_plan.recorded_at,ui,SettingsPage,TokenPlanSection,recorded_at,"记录时间",,active
 login_modal.leaderboard_participation,ui,*,LoginModal,leaderboard_participation,"Signing in automatically joins the leaderboard and uploads aggregated Token statistics.",,active
 login_modal.upload_boundary,ui,*,LoginModal,upload_boundary,"Code, conversations, projects, paths, Skills, MCP data and files are never uploaded.",,active
@@ -346,8 +349,11 @@ dashboard.projects.limit_aria,ui,ProjectUsagePanel,ProjectUsagePanel,limit_aria,
 dashboard.projects.limit_top_3,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_3,"TOP 3",,active
 dashboard.projects.limit_top_6,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_6,"TOP 6",,active
 dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_10,"TOP 10",,active
+dashboard.projects.limit_all,ui,ProjectUsagePanel,ProjectUsagePanel,limit_all,"All",,active
+dashboard.projects.remove,ui,ProjectUsagePanel,ProjectUsagePanel,remove,"Remove {{name}}",,active
 dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,"No project usage data",,active
 dashboard.projects.cost_label,ui,ProjectUsagePanel,ProjectUsagePanel,cost_label,"Cost",,active
+dashboard.projects.cost_unavailable,ui,ProjectUsagePanel,ProjectUsagePanel,cost_unavailable,"—",,active
 dashboard.projects.requests_label,ui,ProjectUsagePanel,ProjectUsagePanel,requests_label,"Requests",,active
 dashboard.projects.last_active_label,ui,ProjectUsagePanel,ProjectUsagePanel,last_active_label,"Last active",,active
 dashboard.projects.copy_path,ui,ProjectUsagePanel,ProjectUsagePanel,copy_path,"Copy path",,active
@@ -464,6 +470,8 @@ leaderboard.period.yesterday,dashboard,LeaderboardPage,LeaderboardPage,period_ye
 leaderboard.period.7d,dashboard,LeaderboardPage,LeaderboardPage,period_7d,"Last 7 days",,active
 leaderboard.period.30d,dashboard,LeaderboardPage,LeaderboardPage,period_30d,"Last 30 days",,active
 leaderboard.period.total,dashboard,LeaderboardPage,LeaderboardPage,period_total,"All time",,active
+leaderboard.period.label,dashboard,LeaderboardPage,LeaderboardPage,period_label,"Time range",,active
+leaderboard.metric.label,dashboard,LeaderboardPage,LeaderboardPage,metric_label,"Ranking metric",,active
 leaderboard.agent.all,dashboard,LeaderboardPage,LeaderboardPage,agent_all,"Overall",,active
 leaderboard.agent.more,dashboard,LeaderboardPage,LeaderboardPage,agent_more,"More Agents",,active
 leaderboard.back_overview,dashboard,LeaderboardPage,LeaderboardPage,back_overview,"Back to overview",,active
@@ -543,6 +551,11 @@ dashboard.daily.yesterday_change,dashboard,DashboardPage,DataDetails,column_labe
 dashboard.daily.page_size_label,dashboard,DashboardPage,DataDetails,page_size_label,"每页",,active
 dashboard.daily.page_size_aria,dashboard,DashboardPage,DataDetails,page_size_aria,"每页记录数",,active
 dashboard.daily.page_size_value,dashboard,DashboardPage,DataDetails,page_size_value,"{{count}} 条",,active
+dashboard.daily.overlay_title,dashboard,DashboardPage,DataDetails,overlay_title,"当日 Agent / 模型明细",,active
+dashboard.daily.overlay_close,dashboard,DashboardPage,DataDetails,aria_label,"关闭当日明细",,active
+dashboard.daily.overlay_loading,dashboard,DashboardPage,DataDetails,loading_state,"正在读取当日明细…",,active
+dashboard.daily.overlay_empty,dashboard,DashboardPage,DataDetails,empty_state,"当日暂无可分解的 Agent 或模型数据",,active
+dashboard.daily.overlay_error,dashboard,DashboardPage,DataDetails,error_state,"当日明细暂时无法读取，请稍后重试",,active
 dashboard.projects.count,dashboard,DashboardPage,ProjectUsagePanel,count,"Projects",,active
 dashboard.projects.total_tokens,dashboard,DashboardPage,ProjectUsagePanel,total_tokens,"Total Tokens",,active
 dashboard.projects.total_cost,dashboard,DashboardPage,ProjectUsagePanel,total_cost,"Total cost",,active
@@ -577,6 +590,7 @@ nav.aside_label,shared,*,Sidebar,aside_label,"Main navigation",,active
 nav.nav_label,shared,*,Sidebar,nav_label,"Primary",,active
 limits.page.subtitle,ui,LimitsPage,LimitsPage,subtitle,"Rate limits and quota usage across your AI tools.",,active
 limits.settings.toggle_visible,ui,LimitsPage,LimitsSettingsPanel,toggle_visible,"Toggle visibility",,active
+limits.settings.drag_handle,ui,LimitsPage,LimitsSettingsPanel,drag_handle,"Reorder {{provider}}",,active
 limits.settings.display_mode_label,ui,LimitsPage,LimitsSettingsPanel,display_mode_label,"Usage",,active
 limits.settings.display_mode_used,ui,LimitsPage,LimitsSettingsPanel,display_mode_used,"Used",,active
 limits.settings.display_mode_remaining,ui,LimitsPage,LimitsSettingsPanel,display_mode_remaining,"Remaining",,active
@@ -828,22 +842,39 @@ limits.explain.remaining,ui,LimitsPage,UsageLimitsPanel,explain_remaining,"{{lab
 limits.explain.on_track_remaining,ui,LimitsPage,UsageLimitsPanel,explain_on_track_remaining,"{{label}}: on track, ~{{pct}}% left by reset",,active
 limits.explain.ahead_pct_remaining,ui,LimitsPage,UsageLimitsPanel,explain_ahead_pct_remaining,"{{label}}: ahead of pace, ~{{pct}}% left by reset",,active
 limits.explain.body_remaining,ui,LimitsPage,UsageLimitsPanel,explain_body_remaining,"The mark is the even-pace point; fill short of it means you're ahead.",,active
+limits.burn.eta,ui,LimitsPage,UsageLimitsPanel,burn_eta,"Est. limit hit {{time}}",,active
+limits.burn.reset_in,ui,LimitsPage,UsageLimitsPanel,burn_reset_in,"resets in {{reset}}",,active
+limits.burn.local_estimate,ui,LimitsPage,UsageLimitsPanel,burn_local_estimate,"local estimate",,active
+limits.burn.eta_placeholder,ui,LimitsPage,UsageLimitsPanel,burn_eta_placeholder,"—",,active
 limits.label.copilot_premium,ui,LimitsPage,UsageLimitsPanel,copilot_premium,"Premium",,active
 limits.label.copilot_chat,ui,LimitsPage,UsageLimitsPanel,copilot_chat,"Chat",,active
 limits.label.grok_month,ui,LimitsPage,UsageLimitsPanel,grok_month,"Month",,active
 limits.label.grok_ondemand,ui,LimitsPage,UsageLimitsPanel,grok_ondemand,"On-demand",,active
+limits.label.zed_spend,ui,LimitsPage,UsageLimitsPanel,zed_spend,"Token spend",,active
+limits.label.zed_predictions,ui,LimitsPage,UsageLimitsPanel,zed_predictions,"Edit predictions",,active
 limits.provider.claude,ui,LimitsPage,UsageLimitsPanel,provider_claude,"Claude",,active
 limits.provider.codex,ui,LimitsPage,UsageLimitsPanel,provider_codex,"Codex",,active
 limits.provider.cursor,ui,LimitsPage,UsageLimitsPanel,provider_cursor,"Cursor",,active
 usage.provider.connected_no_precise_tokens,ui,ProviderUsageTable,ProviderUsageTable,connected_no_precise_tokens,"已连接，当前日志未提供精确 Token 字段",,active
 limits.provider.trae,ui,LimitsPage,UsageLimitsPanel,provider_trae,"Trae",,active
 limits.provider.codebuddy,ui,LimitsPage,UsageLimitsPanel,provider_codebuddy,"CodeBuddy",,active
+limits.provider.workbuddy,ui,LimitsPage,UsageLimitsPanel,provider_workbuddy,"WorkBuddy",,active
+limits.workbuddy.group_base,ui,LimitsPage,UsageLimitsPanel,workbuddy_group_base,"Base package",,active
+limits.workbuddy.group_activity,ui,LimitsPage,UsageLimitsPanel,workbuddy_group_activity,"Gift packages",,active
+limits.workbuddy.group_extra,ui,LimitsPage,UsageLimitsPanel,workbuddy_group_extra,"Booster packs",,active
+limits.workbuddy.group_other,ui,LimitsPage,UsageLimitsPanel,workbuddy_group_other,"Other packages",,active
+limits.workbuddy.credits_used,ui,LimitsPage,UsageLimitsPanel,workbuddy_credits_used,"{{used}} / {{total}} credits",,active
+limits.workbuddy.credits_remaining,ui,LimitsPage,UsageLimitsPanel,workbuddy_credits_remaining,"{{remain}} / {{total}} credits left",,active
+limits.workbuddy.error_unauthorized,ui,LimitsPage,UsageLimitsPanel,workbuddy_error_unauthorized,"Session expired — sign in again in the WorkBuddy client",,active
+limits.workbuddy.error_fetch,ui,LimitsPage,UsageLimitsPanel,workbuddy_error_fetch,"Couldn't load credit packages — check network and retry",,active
 limits.provider.gemini,ui,LimitsPage,UsageLimitsPanel,provider_gemini,"Gemini",,active
 limits.provider.kimi,ui,LimitsPage,UsageLimitsPanel,provider_kimi,"Kimi",,active
 limits.provider.kiro,ui,LimitsPage,UsageLimitsPanel,provider_kiro,"Kiro",,active
 limits.provider.grok,ui,LimitsPage,UsageLimitsPanel,provider_grok,"Grok Build",,active
 limits.provider.copilot,ui,LimitsPage,UsageLimitsPanel,provider_copilot,"GitHub Copilot",,active
+limits.provider.deepseek_harness,ui,LimitsPage,UsageLimitsPanel,provider_deepseek_harness,"DeepSeek Harness",,active
 limits.provider.antigravity,ui,LimitsPage,UsageLimitsPanel,provider_antigravity,"Antigravity",,active
+limits.provider.zed,ui,LimitsPage,UsageLimitsPanel,provider_zed,"Zed",,active
 limits.label.claude_5h,ui,LimitsPage,UsageLimitsPanel,claude_5h,"5h",,active
 limits.label.claude_7d,ui,LimitsPage,UsageLimitsPanel,claude_7d,"7d",,active
 limits.label.claude_opus,ui,LimitsPage,UsageLimitsPanel,claude_opus,"Opus",,active
@@ -1439,6 +1470,8 @@ settings.data_dirs.saved_button,ui,SettingsPage,DataDirectoriesSection,saved_but
 settings.data_dirs.syncing,ui,SettingsPage,DataDirectoriesSection,syncing,"路径已保存，正在同步 Token 数据。",,active
 settings.data_dirs.sync_error,ui,SettingsPage,DataDirectoriesSection,sync_error,"路径已保存，但 Token 同步失败，请稍后重试。",,active
 settings.data_dirs.installed_no_data,ui,SettingsPage,DataDirectoriesSection,installed_no_data,"已连接，当前日志未查到明确 Token 字段",,active
+usage.provider.trae_encrypted_db,ui,UsageOverview,UsageOverview,trae_encrypted_db,"已连接，用量存储在加密数据库中，暂无法读取",,active
+usage.provider.codebuddy_no_local_logs,ui,UsageOverview,UsageOverview,codebuddy_no_local_logs,"已连接，本地日志无 Token 字段；CLI 用量请见 WorkBuddy",,active
 settings.data_dirs.not_detected,ui,SettingsPage,DataDirectoriesSection,not_detected,"未检测到",,active
 settings.data_dirs.not_detected_reason,ui,SettingsPage,DataDirectoriesSection,not_detected_reason,"路径不存在或未配置",,active
 settings.data_dirs.env.win,ui,SettingsPage,DataDirectoriesSection,env_win,"Win",,active
@@ -1473,7 +1506,7 @@ settings.token_plan.codex_quota.title,ui,SettingsPage,TokenPlanSection,codex_quo
 settings.token_plan.codex_quota.5h,ui,SettingsPage,TokenPlanSection,codex_quota_5h,"5 小时",,active
 settings.token_plan.codex_quota.7d,ui,SettingsPage,TokenPlanSection,codex_quota_7d,"7 天",,active
 settings.token_plan.codex_quota.spark_5h,ui,SettingsPage,TokenPlanSection,codex_quota_spark_5h,"Spark 5 小时",,active
-settings.token_plan.codex_quota.spark_7d,ui,SettingsPage,TokenPlanSection,codex_quota_spark_7d,"Spark 7 天",,active
+settings.token_plan.codex_quota.spark_7d,ui,SettingsPage,TokenPlanSection,codex_quota_spark_7d,"GPT 5.3 Codex Spark",,active
 settings.token_plan.codex_quota.remaining,ui,SettingsPage,TokenPlanSection,codex_quota_remaining,"剩余",,active
 settings.token_plan.codex_quota.reset,ui,SettingsPage,TokenPlanSection,codex_quota_reset,"重置",,active
 settings.token_plan.codex_quota.unconfigured,ui,SettingsPage,TokenPlanSection,codex_quota_unconfigured,"Codex 未连接，无法读取实时额度",,active
@@ -1514,11 +1547,11 @@ usage.billing_filter.label,ui,DashboardPage,UsageOverview,billing_filter_label,"
 usage.billing_filter.all,ui,DashboardPage,UsageOverview,billing_filter_all,"All",,active
 usage.billing_filter.api_key,ui,DashboardPage,UsageOverview,billing_filter_api_key,"API Key",,active
 usage.billing_filter.token_plan,ui,DashboardPage,UsageOverview,billing_filter_token_plan,"Plan",,active
-usage.billing_filter.unknown,ui,DashboardPage,UsageOverview,billing_filter_unknown,"Unconfigured billing",,active
+usage.billing_filter.unknown,ui,DashboardPage,UsageOverview,billing_filter_unknown,"Unknown attribution",,active
 usage.billing_filter.empty,ui,DashboardPage,UsageOverview,billing_filter_empty,"当前计费方式下暂无数据",,active
 usage.billing_mode.api_key,ui,DashboardPage,UsageOverview,billing_mode_api_key,"API Key",,active
 usage.billing_mode.token_plan,ui,DashboardPage,UsageOverview,billing_mode_token_plan,"Plan",,active
-usage.billing_mode.unknown,ui,DashboardPage,UsageOverview,billing_mode_unknown,"Unconfigured billing",,active
+usage.billing_mode.unknown,ui,DashboardPage,UsageOverview,billing_mode_unknown,"Unknown attribution",,active
 usage.billing_mode.mixed,ui,DashboardPage,UsageOverview,billing_mode_mixed,"混合",,active
 usage.request_log.tab,ui,DashboardPage,RequestUsageLog,tab_label,"请求日志",,active
 usage.request_log.title,ui,DashboardPage,RequestUsageLog,title,"请求级 Token 明细",,active
@@ -1532,6 +1565,7 @@ usage.request_log.metric.requests,ui,DashboardPage,RequestUsageLog,metric_reques
 usage.request_log.metric.requests_detail,ui,DashboardPage,RequestUsageLog,metric_requests_detail,"{{count}} requests recorded",,active
 usage.request_log.metric.success_rate,ui,DashboardPage,RequestUsageLog,metric_success_rate,"Success rate",,active
 usage.request_log.metric.success_detail,ui,DashboardPage,RequestUsageLog,metric_success_detail,"{{success}} succeeded / {{failed}} failed",,active
+usage.request_log.metric.success_detail_with_interrupted,ui,DashboardPage,RequestUsageLog,metric_success_detail_with_interrupted,"{{success}} succeeded / {{interrupted}} interrupted / {{failed}} failed",,active
 usage.request_log.metric.avg_latency,ui,DashboardPage,RequestUsageLog,metric_avg_latency,"Average latency",,active
 usage.request_log.metric.latency_detail,ui,DashboardPage,RequestUsageLog,metric_latency_detail,"Based on recorded requests",,active
 spend.usage.metric.not_collected,dashboard,SpendPage,UsageTables,metric_not_collected,"Not collected",,active
@@ -1553,6 +1587,17 @@ usage.request_log.column.origin,ui,DashboardPage,RequestUsageLog,column_origin,"
 limits.provider.hermes,ui,LimitsPage,UsageLimitsPanel,provider_hermes,"Hermes",,active
 limits.provider.openclaw,ui,LimitsPage,UsageLimitsPanel,provider_openclaw,"OpenClaw",,active
 limits.provider.opencode,ui,LimitsPage,UsageLimitsPanel,provider_opencode,"OpenCode",,active
+limits.provider.every_code,ui,LimitsPage,UsageLimitsPanel,provider_every_code,"Every Code",,active
+limits.provider.kilo_cli,ui,LimitsPage,UsageLimitsPanel,provider_kilo_cli,"Kilo CLI",,active
+limits.provider.kilocode,ui,LimitsPage,UsageLimitsPanel,provider_kilocode,"Kilo Code",,active
+limits.provider.roocode,ui,LimitsPage,UsageLimitsPanel,provider_roocode,"Roo Code",,active
+limits.provider.kiro_cli,ui,LimitsPage,UsageLimitsPanel,provider_kiro_cli,"Kiro CLI",,active
+limits.provider.kimi_code,ui,LimitsPage,UsageLimitsPanel,provider_kimi_code,"Kimi Code",,active
+limits.provider.omp,ui,LimitsPage,UsageLimitsPanel,provider_omp,"oh-my-pi",,active
+limits.provider.pi,ui,LimitsPage,UsageLimitsPanel,provider_pi,"pi",,active
+limits.provider.craft,ui,LimitsPage,UsageLimitsPanel,provider_craft,"Craft Agents",,active
+limits.provider.goose,ui,LimitsPage,UsageLimitsPanel,provider_goose,"Goose",,active
+limits.provider.droid,ui,LimitsPage,UsageLimitsPanel,provider_droid,"Droid",,active
 spend.usage.title,dashboard,SpendPage,UsageStatsPanel,title,"Usage statistics",,active
 spend.usage.subtitle,dashboard,SpendPage,UsageStatsPanel,subtitle,"Review AI model usage and estimated cost.",,active
 spend.usage.real_tokens,dashboard,SpendPage,UsageStatsPanel,real_tokens,"Recorded Tokens",,active
@@ -1640,6 +1685,11 @@ ticket04.request.column.source,dashboard,SpendPage,RequestUsageLog,column_source
 ticket04.request.cache_read_prefix,dashboard,SpendPage,RequestUsageLog,cache_read_prefix,"R",,active
 ticket04.request.latency_none,dashboard,SpendPage,RequestUsageLog,latency_none,"-",,active
 ticket04.request.all_sources,dashboard,SpendPage,RequestUsageLog,all_sources,"All",,active
+ticket04.request.kind_filter,dashboard,SpendPage,RequestUsageLog,kind_filter,"Per-message only",,active
+ticket04.request.kind.request_event,dashboard,SpendPage,RequestUsageLog,kind_request_event,"Per-message",,active
+ticket04.request.kind.aggregate,dashboard,SpendPage,RequestUsageLog,kind_aggregate,"30-min aggregate",,active
+ticket04.request.kind.request_event_title,dashboard,SpendPage,RequestUsageLog,kind_request_event_title,"Real usage of a single request/message",,active
+ticket04.request.kind.aggregate_title,dashboard,SpendPage,RequestUsageLog,kind_aggregate_title,"This provider's logs are aggregated into half-hour buckets; per-message detail is not available yet",,active
 ticket04.request.load_more,dashboard,SpendPage,RequestUsageLog,load_more,"Load more",,active
 ticket04.request.showing,dashboard,SpendPage,RequestUsageLog,showing,"Showing {{count}} of {{total}} records",,active
 ticket04.request.page_loading,dashboard,SpendPage,RequestUsageLog,page_loading,"正在加载第 {{page}} 页…",,active
@@ -1655,6 +1705,7 @@ ticket04.request.loading,dashboard,SpendPage,RequestUsageLog,loading,"Loading re
 ticket04.request.retry,dashboard,SpendPage,RequestUsageLog,retry,"Retry",,active
 ticket04.request.title,dashboard,SpendPage,RequestUsageLog,title,"Request Log",,active
 ticket04.request.subtitle,dashboard,SpendPage,RequestUsageLog,subtitle,"Per-request token usage (no prompt content)",,active
+ticket04.request.pricing_source_note,dashboard,SpendPage,RequestUsageLog,caption,"计费统计来源于模型官方标价",,active
 ticket04.provider.column.provider,dashboard,SpendPage,ProviderUsageTable,column_provider,"Provider",,active
 ticket04.provider.column.requests,dashboard,SpendPage,ProviderUsageTable,column_requests,"Requests",,active
 ticket04.provider.column.tokens,dashboard,SpendPage,ProviderUsageTable,column_tokens,"Tokens",,active
@@ -1902,6 +1953,13 @@ spend.usage.token_services.window.auto_composer,dashboard,SpendPage,TokenService
 spend.usage.token_services.window.api,dashboard,SpendPage,TokenServiceList,token_services_window_api,"API Usage",,active
 spend.usage.token_services.reset_at,dashboard,SpendPage,TokenServiceList,token_services_reset_at,"Resets {{value}}",,active
 spend.usage.token_services.expires_at,dashboard,SpendPage,TokenServiceList,token_services_expires_at,"Expires {{value}}",,active
+spend.usage.token_services.reset_countdown,dashboard,SpendPage,TokenServiceList,token_services_reset_countdown,"{{remaining}} left · resets {{value}}",,active
+spend.usage.token_services.validity,dashboard,SpendPage,TokenServiceList,token_services_validity,"Validity: {{remaining}} · {{value}}",,active
+spend.usage.token_services.validity_unknown,dashboard,SpendPage,TokenServiceList,token_services_validity_unknown,"Validity not configured",,active
+spend.usage.token_services.duration.days_hours,dashboard,SpendPage,TokenServiceList,token_services_duration_days_hours,"{{days}}d {{hours}}h",,active
+spend.usage.token_services.duration.hours_minutes,dashboard,SpendPage,TokenServiceList,token_services_duration_hours_minutes,"{{hours}}h {{minutes}}m",,active
+spend.usage.token_services.duration.minutes,dashboard,SpendPage,TokenServiceList,token_services_duration_minutes,"{{minutes}}m",,active
+spend.usage.token_services.duration.elapsed,dashboard,SpendPage,TokenServiceList,token_services_duration_elapsed,"due now",,active
 app.boot.loading,ui,App,AppBootSplash,app_boot_loading,"正在启动本地仪表盘…",,active
 app.boot.loading_aria,ui,App,AppBootSplash,app_boot_loading_aria,"Token Eyes 正在启动",,active
 settings.cost.loading,ui,SettingsPage,SettingsCostFallback,settings_cost_loading,"正在加载成本设置…",,active
@@ -1943,6 +2001,64 @@ spend.cost.design.refunds_credit,dashboard,SpendPage,CostAccumulation,design_ref
 leaderboard.table.rank,dashboard,LeaderboardPage,LeaderboardPage,table_rank,"Rank",,active
 leaderboard.table.user_share,dashboard,LeaderboardPage,LeaderboardPage,table_user_share,"User / model usage share",,active
 leaderboard.table.token_cost,dashboard,LeaderboardPage,LeaderboardPage,table_token_cost,"Token total / estimated spend",,active
+spend.cost.roi.title,dashboard,SpendPage,CostAccumulation,roi_title,"回本倍数",,active
+spend.cost.roi.subtitle,dashboard,SpendPage,CostAccumulation,roi_subtitle,"订阅的每 1 元，本月套餐用量已产生 {{value}} 元的 API 等价价值",,active
+spend.cost.roi.below_one,dashboard,SpendPage,CostAccumulation,roi_below_one,"本月套餐用量的 API 等价价值为订阅费的 {{percent}}%",,active
+spend.cost.roi.empty,dashboard,SpendPage,CostAccumulation,roi_empty,"添加订阅记录后，这里会显示订阅回本倍数（套餐用量的 API 等价价值 ÷ 订阅支出）。",,active
+spend.cost.roi.formula,dashboard,SpendPage,CostAccumulation,roi_formula,"本月套餐用量的 API 等价价值 ÷ 本月订阅支出（USD 口径，汇率与定价引擎一致）",,active
+nav.spend.plans,ui,Sidebar,Sidebar,nav_spend_plans,"套餐行情",,active
+plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接，助您明智选择。",,active
+plan_market.filter.all,dashboard,PlanMarketPage,PlanMarketPage,filter_all,"全部厂商",,active
+plan_market.filter.label,dashboard,PlanMarketPage,PlanMarketPage,filter_label,"筛选厂商",,active
+plan_market.sort.default,dashboard,PlanMarketPage,PlanMarketPage,sort_default,"默认排序",,active
+plan_market.sort.plan_count_asc,dashboard,PlanMarketPage,PlanMarketPage,sort_plan_count_asc,"套餐数从少到多",,active
+plan_market.sort.label,dashboard,PlanMarketPage,PlanMarketPage,sort_label,"排序方式",,active
+plan_market.stat.providers,dashboard,PlanMarketPage,PlanMarketPage,stat_providers,"已收录厂商",,active
+plan_market.stat.providers_note,dashboard,PlanMarketPage,PlanMarketPage,stat_providers_note,"持续更新中",,active
+plan_market.stat.recent,dashboard,PlanMarketPage,PlanMarketPage,stat_recent,"最近更新厂商",,active
+plan_market.stat.recent_note,dashboard,PlanMarketPage,PlanMarketPage,stat_recent_note,"今日更新",,active
+plan_market.stat.plans,dashboard,PlanMarketPage,PlanMarketPage,stat_plans,"当前收录套餐",,active
+plan_market.stat.plans_note,dashboard,PlanMarketPage,PlanMarketPage,stat_plans_note,"含免费、付费与组织方案",,active
+plan_market.stat.coverage,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage,"官方来源覆盖",,active
+plan_market.stat.coverage_note,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage_note,"可信来源链接",,active
+plan_market.stat.providers_value,dashboard,PlanMarketPage,PlanMarketPage,stat_providers_value,"{{count}} 家",,active
+plan_market.stat.plans_value,dashboard,PlanMarketPage,PlanMarketPage,stat_plans_value,"{{count}} 个",,active
+plan_market.stat.coverage_value,dashboard,PlanMarketPage,PlanMarketPage,stat_coverage_value,"100%",,active
+plan_market.stat.catalog_official,dashboard,PlanMarketPage,PlanMarketPage,stat_catalog_official,"官方定价目录",,active
+plan_market.stat.catalog_custom,dashboard,PlanMarketPage,PlanMarketPage,stat_catalog_custom,"自定义定价",,active
+plan_market.stat.recent_vendors,dashboard,PlanMarketPage,PlanMarketPage,stat_recent_vendors,"新增厂商",,active
+plan_market.stat.recent_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_recent_plans,"更新套餐",,active
+plan_market.stat.paid_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_paid_plans,"付费套餐",,active
+plan_market.stat.free_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_free_plans,"免费套餐",,active
+plan_market.stat.official_source_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_official_source_plans,"官方来源套餐",,active
+plan_market.stat.no_source_plans,dashboard,PlanMarketPage,PlanMarketPage,stat_no_source_plans,"无来源套餐",,active
+plan_market.official,dashboard,PlanMarketPage,PlanMarketPage,official,"官方",,active
+plan_market.plan_count,dashboard,PlanMarketPage,PlanMarketPage,plan_count,"{{count}} 个套餐",,active
+plan_market.starting_from,dashboard,PlanMarketPage,PlanMarketPage,starting_from,"起",,active
+plan_market.summary,dashboard,PlanMarketPage,PlanMarketPage,summary,"覆盖 {{plans}} 等 {{count}} 个套餐，{{detail}}",,active
+plan_market.quota_separator,dashboard,PlanMarketPage,PlanMarketPage,quota_separator," · ",,active
+plan_market.last_verified_label,dashboard,PlanMarketPage,PlanMarketPage,last_verified_label,"更新于",,active
+plan_market.tag.hot,dashboard,PlanMarketPage,PlanMarketPage,tag_hot,"热门",,active
+plan_market.tag.discount,dashboard,PlanMarketPage,PlanMarketPage,tag_discount,"折扣",,active
+plan_market.tag.new,dashboard,PlanMarketPage,PlanMarketPage,tag_new,"新上架",,active
+plan_market.plan_badge.entry,dashboard,PlanMarketPage,PlanMarketPage,plan_badge_entry,"入门",,active
+plan_market.plan_badge.recommended,dashboard,PlanMarketPage,PlanMarketPage,plan_badge_recommended,"推荐",,active
+plan_market.plan_badge.premium,dashboard,PlanMarketPage,PlanMarketPage,plan_badge_premium,"高配",,active
+plan_market.sources_label,dashboard,PlanMarketPage,PlanMarketPage,sources_label,"来源",,active
+plan_market.status.discontinued,dashboard,PlanMarketPage,PlanMarketPage,status_discontinued,"已停售",,active
+plan_market.quota_label,dashboard,PlanMarketPage,PlanMarketPage,quota_label,"额度",,active
+plan_market.cycle.monthly,dashboard,PlanMarketPage,PlanMarketPage,cycle_monthly,"/月",,active
+plan_market.cycle.quarterly,dashboard,PlanMarketPage,PlanMarketPage,cycle_quarterly,"/季",,active
+plan_market.cycle.yearly,dashboard,PlanMarketPage,PlanMarketPage,cycle_yearly,"/年",,active
+plan_market.cycle.one_time,dashboard,PlanMarketPage,PlanMarketPage,cycle_one_time,"一次性",,active
+plan_market.global_price_comparison,dashboard,PlanMarketPage,PlanMarketPage,global_price_comparison,"全球不同地区订阅费比价",,active
+plan_market.access.direct,dashboard,PlanMarketPage,PlanMarketPage,access_direct,"国内直连",,active
+plan_market.access.vpn,dashboard,PlanMarketPage,PlanMarketPage,access_vpn,"需要 VPN",,active
+plan_market.risk_label,dashboard,PlanMarketPage,PlanMarketPage,risk_label,"风控风险",,active
+plan_market.risk.low,dashboard,PlanMarketPage,PlanMarketPage,risk_low,"低",,active
+plan_market.risk.medium,dashboard,PlanMarketPage,PlanMarketPage,risk_medium,"中",,active
+plan_market.risk.high,dashboard,PlanMarketPage,PlanMarketPage,risk_high,"高",,active
+plan_market.risk.extreme,dashboard,PlanMarketPage,PlanMarketPage,risk_extreme,"极高",,active
 settings.basic.page.title,ui,SettingsPage,SettingsPage,basic_page_title,"基础设置",,active
 settings.basic.page.subtitle,ui,SettingsPage,SettingsPage,basic_page_subtitle,"Manage appearance, menu bar, account, and display preferences.",,active
 settings.cost.page.title,ui,SettingsPage,SettingsPage,cost_page_title,"Cost settings",,active
@@ -2039,6 +2155,9 @@ spend.cost.provider_account.currency,dashboard,SpendPage,CostAccumulation,provid
 spend.cost.provider_account.status,dashboard,SpendPage,CostAccumulation,provider_account_status,"Status",,active
 spend.cost.provider_account.last_synced,dashboard,SpendPage,CostAccumulation,provider_account_last_synced,"Last synced",,active
 spend.cost.provider_account.refresh_all,dashboard,SpendPage,CostAccumulation,provider_account_refresh_all,"Refresh all",,active
+spend.cost.provider_account.refresh_one,dashboard,SpendPage,CostAccumulation,provider_account_refresh_one,"刷新此账户余额",,active
+spend.cost.provider_account.refresh_failed,dashboard,SpendPage,CostAccumulation,provider_account_refresh_failed,"刷新失败，当前显示的是上次成功余额。",,active
+spend.cost.provider_account.status.stale,dashboard,SpendPage,CostAccumulation,provider_account_status_stale,"数据过期",,active
 spend.cost.provider_account.refreshing,dashboard,SpendPage,CostAccumulation,provider_account_refreshing,"Refreshing…",,active
 spend.cost.provider_account.config_link,dashboard,SpendPage,CostAccumulation,provider_account_config_link,"Configure in cost settings",,active
 spend.cost.provider_account.stale,dashboard,SpendPage,CostAccumulation,provider_account_stale,"Data may be stale",,active
@@ -2139,6 +2258,8 @@ reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
 reset_history.completed,ui,ResetHistoryPage,ResetRecord,completed,"Quota reset completed",,active
 reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored early",,active
 reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active
+reset_history.activity.day_today,ui,ResetHistoryPage,ResetHistoryPage,activity_day_today,"Today",,active
+reset_history.activity.day_yesterday,ui,ResetHistoryPage,ResetHistoryPage,activity_day_yesterday,"Yesterday",,active
 reset_history.source.tibo,ui,ResetHistoryPage,ResetRecord,source_tibo,"Tibo @thsottiaux · X",,active
 reset_history.source.openai,ui,ResetHistoryPage,ResetRecord,source_openai,"OpenAI official source",,active
 reset_history.kind.hard,ui,ResetHistoryPage,ResetRecord,kind_hard,"Usage-limit reset",,active
@@ -2155,6 +2276,8 @@ reset_history.stats.period_detail,ui,ResetHistoryPage,ResetStatisticsSummary,per
 reset_history.stats.count,ui,ResetHistoryPage,ResetStatisticsSummary,count,"Resets",,active
 reset_history.stats.count_value,ui,ResetHistoryPage,ResetStatisticsSummary,count_value,"{{count}} times",,active
 reset_history.stats.count_detail,ui,ResetHistoryPage,ResetStatisticsSummary,count_detail,"Official announcements in the last 30 days",,active
+reset_history.stats.count_change,ui,ResetHistoryPage,ResetStatisticsSummary,count_change,"{{change}} vs previous {{days}} days",,active
+reset_history.stats.count_change_new,ui,ResetHistoryPage,ResetStatisticsSummary,count_change_new,"+{{count}} vs previous {{days}} days (none before)",,active
 reset_history.stats.average,ui,ResetHistoryPage,ResetStatisticsSummary,average,"Average interval",,active
 reset_history.stats.average_detail,ui,ResetHistoryPage,ResetStatisticsSummary,average_detail,"Calculated from {{count}} adjacent intervals",,active
 reset_history.stats.shortest,ui,ResetHistoryPage,ResetStatisticsSummary,shortest,"Shortest interval",,active
@@ -2271,7 +2394,7 @@ limits.accounts.refreshing_short,ui,LimitsPage,LimitsHeader,refreshing_short,"Re
 official_reset_celebration.title,ui,ResetCelebrationOverlay,Notice,title,"Official extra reset",,active
 official_reset_celebration.summary,ui,ResetCelebrationOverlay,Notice,summary,"Your Codex usage received an official extra reset.",,active
 widgets.windows.limits.title,ui,WidgetsPage,WindowsWidgetProjectSettings,title,"Widget usage plans",,active
-widgets.windows.limits.hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"Choose plans to show and drag to reorder them. Collapsed mode shows only the first plan.",,active
+widgets.windows.limits.hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"Choose plans to show and drag to reorder them.",,active
 widgets.windows.limits.empty,ui,WidgetsPage,WindowsWidgetProjectSettings,empty,"No usage plans detected",,active
 widgets.windows.limits.unavailable,ui,WidgetsPage,WindowsWidgetProjectSettings,value,"--",,active
 native.window.status.label,ui,AppLayout,NativeWindowBar,status_label,"System status",,active
@@ -2290,6 +2413,7 @@ settings.agent_pricing.reference_subtitle,ui,SettingsPage,AgentPricingSection,ex
 settings.agent_pricing.how_pricing,ui,SettingsPage,AgentPricingSection,help,"How is pricing calculated?",,active
 settings.agent_pricing.source_directory,ui,SettingsPage,AgentPricingSection,source_directory,"Pricing sources",,active
 settings.agent_pricing.auto_compare,ui,SettingsPage,AgentPricingSection,auto_compare,"Auto compare",,active
+settings.agent_pricing.tools,ui,SettingsPage,AgentPricingSection,tools,"Pricing tools",,active
 settings.data_dirs.change_directory,ui,SettingsPage,DataDirectoriesSection,change_directory,"Change directory",,active
 settings.cost.other_ai.month_spend,ui,SettingsPage,OtherAiSpendSection,month_spend,"This month",,active
 settings.cost.other_ai.lifetime_spend,ui,SettingsPage,OtherAiSpendSection,lifetime_spend,"Lifetime spend",,active
@@ -2298,17 +2422,24 @@ settings.cost.provider_api.summary.connected,ui,SettingsPage,ProviderApiConfigSe
 settings.cost.provider_api.summary.disconnected,ui,SettingsPage,ProviderApiConfigSection,summary_disconnected,"Disconnected",,active
 settings.cost.provider_api.summary.balance_cny,ui,SettingsPage,ProviderApiConfigSection,summary_balance,"Total balance (CNY)",,active
 settings.token_plan.batch_refresh,ui,SettingsPage,TokenPlanSection,batch_refresh,"Refresh all",,active
+settings.token_plan.email.show_full,ui,SettingsPage,TokenPlanSection,email_show_full,"Show full email",,active
+settings.token_plan.email.hide,ui,SettingsPage,TokenPlanSection,email_hide,"Hide email",,active
 data_sources.reference.local_only,data_sources,DataSourcesPage,Privacy,local_only,"Local-only access",,active
 data_sources.reference.local_only_detail,data_sources,DataSourcesPage,Privacy,local_only_detail,"All scanning and parsing happens locally",,active
 data_sources.reference.privacy_first,data_sources,DataSourcesPage,Privacy,privacy_first,"Privacy first",,active
 data_sources.reference.privacy_first_detail,data_sources,DataSourcesPage,Privacy,privacy_first_detail,"Sensitive requests are never uploaded or stored",,active
 data_sources.reference.optional_cloud,data_sources,DataSourcesPage,Privacy,optional_cloud,"Optional cloud features",,active
 data_sources.reference.optional_cloud_detail,data_sources,DataSourcesPage,Privacy,optional_cloud_detail,"Used only when you explicitly enable them",,active
-shared.footer.version,ui,Shared,Footer,version,"Version 2.1.0",,active
+shared.footer.version,ui,Shared,Footer,version,"Version {{version}}",,active
+shared.footer.github_private,ui,Shared,Footer,github_private,"Unlisted",,active
 shared.footer.privacy,ui,Shared,Footer,privacy,"Privacy Policy",,active
 shared.footer.terms,ui,Shared,Footer,terms,"Terms of Use",,active
 shared.footer.local_data,ui,Shared,Footer,local_data,"All data is stored only on this device",,active
 reset_history.latest,ui,ResetHistoryPage,ResetEventCard,latest,"Latest",,active
+reset_history.detail_content,ui,ResetHistoryPage,ResetRecord,detail_content,"Details",,active
+reset_history.quoted_tweet,ui,ResetHistoryPage,ResetRecord,quoted_tweet,"Quoted post",,active
+reset_history.expand_aria,ui,ResetHistoryPage,ResetRecord,expand_aria,"Expand announcement details",,active
+reset_history.collapse_aria,ui,ResetHistoryPage,ResetRecord,collapse_aria,"Collapse announcement details",,active
 settings.reference.reset_default,ui,SettingsPage,SettingsToolbar,reset_default,"Reset to defaults",,active
 settings.reference.import,ui,SettingsPage,SettingsToolbar,import,"Import configuration",,active
 settings.reference.export,ui,SettingsPage,SettingsToolbar,export,"Export configuration",,active
@@ -2402,7 +2533,84 @@ settings.agent_pricing.save_changes,ui,SettingsPage,AgentPricingSection,save_cha
 settings.token_plan.collapsed_summary,ui,SettingsPage,TokenPlanSection,collapsed_summary,"{{count}} 个套餐",,active
 settings.token_plan.count_active,ui,SettingsPage,TokenPlanSection,count_active,"已激活 {{count}} 个",,active
 settings.token_plan.count_watch,ui,SettingsPage,TokenPlanSection,count_watch,"需关注 {{count}} 个",,active
-settings.token_plan.live_quota_aria,ui,SettingsPage,TokenPlanSection,live_quota_aria,"套餐实时额度",,active
-settings.cost.provider_api.collapsed_summary,ui,SettingsPage,ProviderApiConfigSection,collapsed_summary,"{{count}} 个供应商",,active
+settings.token_plan.expired_group,ui,SettingsPage,TokenPlanSection,expired_group,"已过期套餐",,active
+settings.token_plan.status_expired,ui,SettingsPage,TokenPlanSection,status_expired,"已过期",,active
+settings.token_plan.status_active,ui,SettingsPage,TokenPlanSection,status_active,"已激活",,active
+settings.token_plan.status_attention,ui,SettingsPage,TokenPlanSection,status_attention,"需关注",,active
+settings.token_plan.pagination.previous,ui,SettingsPage,TokenPlanSection,pagination_previous,"上一页",,active
+settings.token_plan.pagination.next,ui,SettingsPage,TokenPlanSection,pagination_next,"下一页",,active
+settings.token_plan.pagination.status,ui,SettingsPage,TokenPlanSection,pagination_status,"第 {{current}} / {{total}} 页",,active
+settings.token_plan.expired_at,ui,SettingsPage,TokenPlanSection,expired_at,"到期",,active
+settings.cost.provider_api.summary.aria_label,ui,SettingsPage,ProviderApiConfigSection,summary_aria_label,"供应商连接概览",,active
 settings.cost.other_ai.collapsed_summary,ui,SettingsPage,OtherAiSpendSection,collapsed_summary,"{{count}} 个分组",,active
 settings.cost.other_ai.summary_counts,ui,SettingsPage,OtherAiSpendSection,summary_counts,"共 {{groups}} 个分组 · {{records}} 笔花销",,active
+settings.cost.overview.aria_label,ui,SettingsPage,CostSettingsOverview,aria_label,"Cost settings overview",,active
+settings.cost.overview.unit,ui,SettingsPage,CostSettingsOverview,unit,"items",,active
+settings.cost.overview.item,ui,SettingsPage,CostSettingsOverview,item,"items",,active
+settings.cost.overview.record,ui,SettingsPage,CostSettingsOverview,record,"records",,active
+settings.cost.overview.normal,ui,SettingsPage,CostSettingsOverview,normal,"Normal",,active
+settings.cost.overview.pricing.title,ui,SettingsPage,CostSettingsOverview,pricing_title,"Model pricing",,active
+settings.cost.overview.pricing.badge,ui,SettingsPage,CostSettingsOverview,pricing_badge,"Configured",,active
+settings.cost.overview.pricing.subtitle,ui,SettingsPage,CostSettingsOverview,pricing_subtitle,"Configured model prices",,active
+settings.cost.overview.pricing.catalog,ui,SettingsPage,CostSettingsOverview,pricing_catalog,"Official catalog",,active
+settings.cost.overview.pricing.custom,ui,SettingsPage,CostSettingsOverview,pricing_custom,"Custom pricing",,active
+settings.cost.overview.plans.title,ui,SettingsPage,CostSettingsOverview,plans_title,"Plans and quotas",,active
+settings.cost.overview.plans.attention,ui,SettingsPage,CostSettingsOverview,plans_attention,"{{count}} need attention",,active
+settings.cost.overview.plans.subtitle,ui,SettingsPage,CostSettingsOverview,plans_subtitle,"Active plans",,active
+settings.cost.overview.plans.watch,ui,SettingsPage,CostSettingsOverview,plans_watch,"Plans to review",,active
+settings.cost.overview.plans.cost,ui,SettingsPage,CostSettingsOverview,plans_cost,"Current plan cost",,active
+settings.cost.overview.providers.title,ui,SettingsPage,CostSettingsOverview,providers_title,"Provider connections",,active
+settings.cost.overview.providers.attention,ui,SettingsPage,CostSettingsOverview,providers_attention,"Needs attention",,active
+settings.cost.overview.providers.normal,ui,SettingsPage,CostSettingsOverview,providers_normal,"Connected",,active
+settings.cost.overview.providers.subtitle,ui,SettingsPage,CostSettingsOverview,providers_subtitle,"Connected / disconnected",,active
+settings.cost.overview.providers.total,ui,SettingsPage,CostSettingsOverview,providers_total,"Providers",,active
+settings.cost.overview.providers.balance,ui,SettingsPage,CostSettingsOverview,providers_balance,"Balance (CNY)",,active
+settings.cost.overview.other.title,ui,SettingsPage,CostSettingsOverview,other_title,"Other AI spend groups",,active
+settings.cost.overview.other.subtitle,ui,SettingsPage,CostSettingsOverview,other_subtitle,"Spend groups",,active
+settings.cost.overview.other.month,ui,SettingsPage,CostSettingsOverview,other_month,"This month",,active
+settings.cost.overview.other.records,ui,SettingsPage,CostSettingsOverview,other_records,"Manual records",,active
+settings.token_plan.subscription_cost_cny,ui,SettingsPage,TokenPlanSection,subscription_cost_cny,"CNY {{amount}}",,active
+settings.token_plan.subscription_cost_usd,ui,SettingsPage,TokenPlanSection,subscription_cost_usd,"USD {{amount}}",,active
+settings.token_plan.subscription_cost_placeholder,ui,SettingsPage,TokenPlanSection,subscription_cost_placeholder,"xx CNY",,active
+settings.token_plan.validity_unset,ui,SettingsPage,TokenPlanSection,validity_unset,"Validity: not set",,active
+settings.token_plan.validity_days_hours,ui,SettingsPage,TokenPlanSection,validity_days_hours,"{{days}}d {{hours}}h",,active
+settings.token_plan.validity_hours_minutes,ui,SettingsPage,TokenPlanSection,validity_hours_minutes,"{{hours}}h {{minutes}}m",,active
+settings.token_plan.validity_minutes,ui,SettingsPage,TokenPlanSection,validity_minutes,"{{minutes}}m",,active
+settings.token_plan.validity_summary,ui,SettingsPage,TokenPlanSection,validity_summary,"Validity: {{remaining}} · {{date}}",,active
+settings.token_plan.failure_reason,ui,SettingsPage,TokenPlanSection,failure_reason,"Sync issue: {{reason}}",,active
+settings.token_plan.failure_reason_unavailable,ui,SettingsPage,TokenPlanSection,failure_reason_unavailable,"Official quota sync is temporarily unavailable. Try again later.",,active
+settings.token_plan.value_unavailable,ui,SettingsPage,TokenPlanSection,value_unavailable,"—",,active
+settings.token_plan.reset_unavailable,ui,SettingsPage,TokenPlanSection,reset_unavailable,"Official source unavailable",,active
+share.variant.weekly_bill,share,DashboardPage,ShareModal,variant_weekly_bill,"Weekly Bill",,active
+share.card.weekly_bill.title,share,DashboardPage,WeeklyBillCard,title,"AI Weekly Bill",,active
+share.card.weekly_bill.week_spend,share,DashboardPage,WeeklyBillCard,week_spend,"This week's spend",,active
+share.card.weekly_bill.wow_label,share,DashboardPage,WeeklyBillCard,wow_label,"vs last week",,active
+share.card.weekly_bill.top_model,share,DashboardPage,WeeklyBillCard,top_model,"Top model",,active
+share.card.weekly_bill.roi_label,share,DashboardPage,WeeklyBillCard,roi_label,"Subscription ROI",,active
+share.card.weekly_bill.roi_value,share,DashboardPage,WeeklyBillCard,roi_value,"{{multiplier}}×",,active
+share.card.weekly_bill.roi_empty,share,DashboardPage,WeeklyBillCard,roi_empty,"Add a subscription cost to see ROI",,active
+spend.cost.summary.actual_cash,spend,SpendCostPage,CostSummaryCards,actual_cash,"Actual cash spend",,active
+spend.cost.summary.actual_cash_suffix,spend,SpendCostPage,CostSummaryCards,actual_cash_suffix,"actual cash spend",,active
+spend.cost.summary.actual_cash_source,spend,SpendCostPage,CostSummaryCards,actual_cash_source,"Recorded payments and official billing",,active
+spend.cost.summary.actual_cash_partial_detail,spend,SpendCostPage,CostSummaryCards,actual_cash_partial_detail,"Only recorded payments are included; missing official billing is not guessed as zero.",,active
+spend.cost.summary.api_equivalent,spend,SpendCostPage,CostSummaryCards,api_equivalent,"API list-price equivalent",,active
+spend.cost.summary.api_equivalent_suffix,spend,SpendCostPage,CostSummaryCards,api_equivalent_suffix,"API list-price equivalent",,active
+spend.cost.summary.subscription_cash,spend,SpendCostPage,CostSummaryCards,subscription_cash,"Subscription payments",,active
+spend.cost.summary.official_api_cash,spend,SpendCostPage,CostSummaryCards,official_api_cash,"Official API billing",,active
+spend.cost.api_billing.authority.official_invoice,spend,SpendCostPage,ApiBillingCard,authority_official_invoice,"Official bill",,active
+spend.cost.api_billing.authority.local_list_price_estimate,spend,SpendCostPage,ApiBillingCard,authority_local_list_price_estimate,"List-price estimate",,active
+spend.cost.api_billing.authority.unavailable,spend,SpendCostPage,ApiBillingCard,authority_unavailable,"Billing unavailable",,active
+spend.cost.api_billing.ambiguous_config,spend,SpendCostPage,ApiBillingCard,ambiguous_config,"Detected {{count}} official billing configs. Disable duplicates.",,active
+spend.cost.api_billing.refresh_failed_stale,spend,SpendCostPage,ApiBillingCard,refresh_failed_stale,"Billing refresh failed; showing the last successful value.",,active
+spend.cost.api_billing.summary.unavailable_accounts,spend,SpendCostPage,ApiBillingSection,unavailable_accounts,"Unavailable accounts",,active
+spend.cost.summary.custom_cash,spend,SpendCostPage,CostSummaryCards,custom_cash,"Custom spend",,active
+spend.cost.summary.coverage,spend,SpendCostPage,CostSummaryCards,coverage,"Coverage",,active
+spend.cost.accuracy.exact,spend,SpendCostPage,CostSummaryCards,accuracy_exact,"Exact",,active
+spend.cost.accuracy.partial,spend,SpendCostPage,CostSummaryCards,accuracy_partial,"Partial",,active
+spend.cost.accuracy.estimated,spend,SpendCostPage,CostSummaryCards,accuracy_estimated,"Estimated",,active
+spend.cost.accuracy.equivalent,spend,SpendCostPage,CostSummaryCards,accuracy_equivalent,"Equivalent",,active
+spend.cost.accuracy.unknown,spend,SpendCostPage,CostSummaryCards,accuracy_unknown,"Unknown",,active
+widget.limit.reset_at,ui,DesktopWidgetPage,ExpandedLimits,reset_at,"Resets {{time}}",,active
+widget.limit.reset_unavailable,ui,DesktopWidgetPage,ExpandedLimits,reset_unavailable,"Reset time unavailable",,active
+widget.limit.expires_at,ui,DesktopWidgetPage,ExpandedLimits,expires_at,"Expires in {{days}}d · {{absolute}}",,active
+widget.limit.time_unknown,ui,DesktopWidgetPage,ExpandedLimits,time_unknown,"Time unavailable",,active

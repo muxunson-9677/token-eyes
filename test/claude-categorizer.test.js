@@ -179,7 +179,7 @@ test("computeClaudeCategoryBreakdown: end-to-end on synthetic project dir, total
       },
     ]);
 
-    const result = await computeClaudeCategoryBreakdown({ rootDir: dir });
+    const result = await computeClaudeCategoryBreakdown({ rootDir: dir, homeDir: dir });
 
     assert.equal(result.scope, "supported");
     assert.equal(result.session_count, 2);
@@ -265,7 +265,7 @@ test("computeClaudeCategoryBreakdown: deduplicates by msgId+requestId", async ()
     };
     await writeJsonl(file, [dup, dup, dup]);
 
-    const result = await computeClaudeCategoryBreakdown({ rootDir: dir });
+    const result = await computeClaudeCategoryBreakdown({ rootDir: dir, homeDir: dir });
     assert.equal(result.message_count, 1);
     const sys = result.categories.find((c) => c.key === "system_prefix").totals;
     assert.equal(sys.cache_creation_input_tokens, 1000);
@@ -363,7 +363,7 @@ test("computeClaudeCategoryBreakdown: exposes explicit Skill tool calls", async 
       },
     ]);
 
-    const result = await computeClaudeCategoryBreakdown({ rootDir: dir });
+    const result = await computeClaudeCategoryBreakdown({ rootDir: dir, homeDir: dir });
     assert.equal(result.skills_breakdown.total_calls, 1);
     assert.equal(result.skills_breakdown.skills[0].name, "frontend-design");
     assert.equal(result.skills_breakdown.skills[0].totals.total_tokens, 1175);
@@ -394,7 +394,7 @@ test("computeClaudeCategoryBreakdown: groups Bash commands for execution drill-d
       },
     ]);
 
-    const result = await computeClaudeCategoryBreakdown({ rootDir: dir });
+    const result = await computeClaudeCategoryBreakdown({ rootDir: dir, homeDir: dir });
     assert.equal(result.exec_command_breakdown.total_calls, 1);
     assert.equal(result.exec_command_breakdown.by_type[0].name, "test");
     assert.equal(result.exec_command_breakdown.by_executable[0].name, "npm");

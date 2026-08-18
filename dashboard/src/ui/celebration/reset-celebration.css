@@ -43,6 +43,18 @@
   filter: saturate(1.42) brightness(1.27) contrast(1.05);
 }
 
+.widget-reset-celebration .tt-reset-celebration__edge,
+.widget-reset-celebration .tt-reset-celebration__veil {
+  display: none;
+}
+
+.widget-reset-celebration .tt-reset-celebration {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  background: transparent;
+}
+
 .tt-reset-celebration__edge {
   z-index: 2;
   opacity: 0;

@@ -29,12 +29,20 @@ export function AgentSwitcher({ visibleProviderIds = [] }) {
   const selectedAgentId =
     state.agentIds && state.agentIds.length === 1 ? state.agentIds[0] : null;
   const isAll = state.agentIds === null || state.agentIds.length === 0;
+  const compactCardStyle = {
+    height: "34px",
+    minHeight: "34px",
+    minWidth: 0,
+    padding: "0 10px",
+    fontSize: "10px",
+  };
+  const compactLabelStyle = { display: "inline", fontSize: "10px", lineHeight: 1 };
 
   return (
     <div
       role="group"
       aria-label={copy("ticket02.agent.aria")}
-      className="inline-flex flex-wrap items-center gap-1 rounded-lg bg-oai-gray-100 p-1 dark:bg-oai-gray-900"
+      className="inline-flex flex-wrap items-center gap-2"
     >
       <button
         type="button"
@@ -43,14 +51,15 @@ export function AgentSwitcher({ visibleProviderIds = [] }) {
         aria-label={copy("ticket02.agent.aria_all")}
         title={copy("ticket02.agent.all")}
         className={cn(
-          "inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors",
+          "tt-agent-switcher-card tt-pressable inline-flex items-center gap-1 rounded-md border text-left transition-[background-color,border-color,box-shadow,transform]",
           isAll
-            ? "bg-white text-oai-black shadow-sm ring-2 ring-oai-gray-400 dark:bg-oai-gray-800 dark:text-white dark:ring-oai-gray-500"
-            : "text-oai-gray-500 hover:bg-oai-gray-200 hover:text-oai-black dark:text-oai-gray-400 dark:hover:bg-oai-gray-800 dark:hover:text-white",
+            ? "border-oai-brand bg-oai-brand-50 text-oai-brand shadow-[0_8px_20px_rgb(20_91_177_/_0.16)] dark:bg-oai-brand-500/10"
+            : "border-oai-gray-200 bg-white text-oai-gray-600 shadow-[0_3px_8px_rgb(31_43_56_/_0.08)] hover:-translate-y-0.5 hover:border-oai-gray-300 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-300",
         )}
+        style={compactCardStyle}
       >
-        <LayoutGrid className="h-4 w-4" aria-hidden="true" />
-        <span className="tt-agent-switcher-text">{copy("ticket02.agent.all")}</span>
+        <LayoutGrid className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="tt-agent-switcher-text whitespace-nowrap" style={compactLabelStyle}>{copy("ticket02.agent.all")}</span>
       </button>
 
       {visibleAgents.map((agent) => {
@@ -65,20 +74,22 @@ export function AgentSwitcher({ visibleProviderIds = [] }) {
             aria-label={copy("ticket02.agent.aria_one", { name: agent.displayName })}
             title={agent.displayName}
             className={cn(
-              "inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors",
+              "tt-agent-switcher-card tt-pressable inline-flex items-center gap-1 rounded-md border text-left transition-[background-color,border-color,box-shadow,transform]",
               selected
-                ? "bg-white shadow-sm dark:bg-oai-gray-800"
-                : "text-oai-gray-500 hover:bg-oai-gray-200 hover:text-oai-black dark:text-oai-gray-400 dark:hover:bg-oai-gray-800 dark:hover:text-white",
+                ? "border-oai-brand bg-oai-brand-50 text-oai-brand shadow-[0_8px_20px_rgb(20_91_177_/_0.16)] dark:bg-oai-brand-500/10"
+                : "border-oai-gray-200 bg-white text-oai-gray-600 shadow-[0_3px_8px_rgb(31_43_56_/_0.08)] hover:-translate-y-0.5 hover:border-oai-gray-300 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-300",
             )}
-            style={selected ? { boxShadow: `inset 0 0 0 2px ${brandColor}` } : undefined}
+            style={selected
+              ? { ...compactCardStyle, boxShadow: `inset 0 0 0 2px ${brandColor}, 0 8px 20px rgb(20 91 177 / 16%)` }
+              : compactCardStyle}
           >
             <ProviderIcon
               provider={agent.queueSource.toUpperCase()}
-              size={16}
+              size={14}
               className="shrink-0"
               color={selected ? brandColor : undefined}
             />
-            <span className="tt-agent-switcher-text">{agent.displayName}</span>
+            <span className="tt-agent-switcher-text whitespace-nowrap" style={compactLabelStyle}>{agent.displayName}</span>
           </button>
         );
       })}

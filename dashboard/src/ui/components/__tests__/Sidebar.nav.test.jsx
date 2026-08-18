@@ -112,7 +112,7 @@ describe("getNavGroups structure (v2.0 IA)", () => {
     expect(spend).toBeDefined();
     expect(spend.children).toBeDefined();
     const spendChildTos = spend.children.map((c) => c.to);
-    expect(spendChildTos).toEqual(["/spend/usage", "/spend/cost"]);
+    expect(spendChildTos).toEqual(["/spend/usage", "/spend/cost", "/spend/plans"]);
     expect(spend.defaultChildTo).toBe("/spend/usage");
 
     const settings = groups.find((g) => g.id === "settings");

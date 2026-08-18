@@ -73,6 +73,7 @@ vi.mock("../lib/api", () => ({
   getProviderApiConfigs: vi.fn(),
   getProviderApiBalances: vi.fn(),
   refreshProviderApiBalance: vi.fn(),
+  refreshOfficialConsoleProviderBalance: vi.fn(),
   saveProviderApiConfig: vi.fn(),
   updateProviderApiConfig: vi.fn(),
   deleteProviderApiConfig: vi.fn(),
@@ -630,7 +631,9 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(within(layout).getByText("Token 服务列表")).toBeInTheDocument();
     expect(await within(layout).findAllByTestId("token-service-row")).toHaveLength(5);
     expect(layout).toHaveClass("lg:items-stretch");
-    expect(layout).toHaveClass("lg:grid-cols-[minmax(0,1fr)_17rem]");
+    expect(layout).toHaveClass("lg:grid-cols-4");
+    expect((await within(layout).findByTestId("usage-trend-plot")).parentElement).toHaveClass("lg:col-span-3");
+    expect(within(layout).getByTestId("token-service-list")).toHaveClass("lg:col-span-1");
     expect(within(layout).getByTestId("token-service-list")).toHaveClass("h-full");
     expect(await within(layout).findByTestId("usage-trend-plot")).toHaveClass("flex-1");
     expect(getTokenPlans).toHaveBeenCalledTimes(1);
@@ -736,19 +739,24 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     return section;
   }
 
-  it("uses local month boundaries across the complete financial ledger", async () => {
+  it("uses local boundaries for visible usage and UTC boundaries for the global financial ledger", async () => {
     render(
       <MemoryRouter>
         <SpendCostPage />
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(2));
-    for (const [params] of getSpendTimeseries.mock.calls) {
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(3));
+    for (const [params] of getSpendTimeseries.mock.calls.slice(0, 2)) {
       expect(params).toHaveProperty("timeZone");
       expect(params).toHaveProperty("tzOffsetMinutes");
       expect(params).toHaveProperty("sources", ["claude", "codex", "hermes", "other_ai"]);
     }
+    expect(getSpendTimeseries.mock.calls[2][0]).toEqual(expect.objectContaining({
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+    }));
+    expect(getSpendTimeseries.mock.calls[2][0]).not.toHaveProperty("sources");
   });
 
   it("changes only the independent cost month and reloads the selected historical ledger", async () => {
@@ -759,17 +767,23 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     );
 
     const picker = await screen.findByLabelText("选择成本月份");
-    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(3));
     fireEvent.change(picker, { target: { value: "2025-06" } });
 
-    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(4));
-    expect(getSpendTimeseries).toHaveBeenNthCalledWith(3, expect.objectContaining({
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(6));
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(4, expect.objectContaining({
       from: "2025-06-01",
       to: "2025-06-30",
     }));
-    expect(getSpendTimeseries).toHaveBeenNthCalledWith(4, expect.objectContaining({
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(5, expect.objectContaining({
       from: "2025-05-01",
       to: "2025-05-31",
+    }));
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(6, expect.objectContaining({
+      from: "2025-06-01",
+      to: "2025-06-30",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
     }));
     expect(getSpendRecords).toHaveBeenLastCalledWith(expect.objectContaining({
       summary_month: "2025-06",
@@ -949,9 +963,51 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     const providerSection = await expandCostSection("provider-api");
     // Balance card shows provider + financial data from 02 endpoints.
     expect(await within(providerSection).findByText("OpenAI 主账户")).toBeInTheDocument();
-    expect(within(providerSection).getByText(/125\.50/)).toBeInTheDocument();
+    expect(within(providerSection).getAllByText(/125\.50/)).toHaveLength(2);
     // mount triggers an immediate refresh of enabled+keyed configs.
     await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledWith("cfg-1"));
+  });
+
+  it("updates the account row and currency-aware section total after an individual refresh", async () => {
+    getProviderApiConfigs.mockResolvedValue({
+      ok: true,
+      data: { configs: [{ id: "cfg-1", providerId: "deepseek", label: "DeepSeek", enabled: true, apiKeyRef: "ref-1", refreshIntervalSeconds: 300 }] },
+    });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: { balances: [{
+        configId: "cfg-1",
+        providerId: "deepseek",
+        accountLabel: "DeepSeek",
+        balance: 86.06,
+        monthSpend: 1.5,
+        currency: "CNY",
+        status: "synced",
+      }] },
+    });
+    refreshProviderApiBalance
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { balance: { configId: "cfg-1", providerId: "deepseek", accountLabel: "DeepSeek", balance: 86.06, monthSpend: 1.5, currency: "CNY", status: "synced" } },
+      })
+      .mockResolvedValue({
+        ok: true,
+        data: { balance: { configId: "cfg-1", providerId: "deepseek", accountLabel: "DeepSeek", balance: 73.25, monthSpend: 2.25, currency: "CNY", status: "synced" } },
+      });
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <SpendCostPage />
+      </MemoryRouter>,
+    );
+    const providerSection = await expandCostSection("provider-api");
+    await waitFor(() => expect(within(providerSection).getAllByText(/CNY 86\.06/).length).toBeGreaterThan(0));
+
+    await user.click(within(providerSection).getByRole("button", { name: "刷新此账户余额" }));
+
+    await waitFor(() => expect(within(providerSection).getAllByText(/CNY 73\.25/).length).toBeGreaterThanOrEqual(2));
+    expect(within(providerSection).queryByText(/USD 73\.25/)).not.toBeInTheDocument();
   });
 
   it("shows an explicit unavailable state for balance and spend fields when status is not-connected", async () => {

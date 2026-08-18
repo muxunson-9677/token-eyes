@@ -6,8 +6,9 @@
 
 use crate::codex_app_server::{AppServerClient, LoginCompletion, SanitizedRateLimits};
 use crate::codex_oauth::{
-    complete_oauth, fetch_usage, load_tokens, save_tokens, start_oauth_listener, CodexUsageWindow,
-    PendingCodexOAuth,
+    account_label_from_id_token, complete_oauth, ensure_app_server_auth_envelope, fetch_usage,
+    load_tokens, save_tokens, start_oauth_listener, subscription_expires_at_from_id_token,
+    CodexUsageWindow, PendingCodexOAuth,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -63,6 +64,10 @@ pub struct CodexQuotaDto {
     pub remaining_quota: f64,
     pub quota_windows: Vec<CodexQuotaWindowDto>,
     pub provider_reported_at: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub account_label: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub subscription_expires_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -185,9 +190,7 @@ pub fn map_rate_limits_to_quota(
 ) -> Result<CodexQuotaDto, String> {
     let mut quota_windows = Vec::new();
     for window in &rate_limits.windows {
-        if !matches!(window.kind.as_str(), "rolling_5_hour" | "rolling_weekly")
-            || !window.used_percent.is_finite()
-        {
+        if !window.used_percent.is_finite() {
             continue;
         }
         let used = window.used_percent.clamp(0.0, PERCENT_SCALE);
@@ -219,7 +222,60 @@ pub fn map_rate_limits_to_quota(
         remaining_quota: primary.remaining,
         quota_windows,
         provider_reported_at: String::new(),
+        account_label: String::new(),
+        subscription_expires_at: String::new(),
     })
+}
+
+fn merge_codex_quotas(
+    app_server: CodexQuotaDto,
+    oauth: CodexQuotaDto,
+) -> Result<CodexQuotaDto, String> {
+    let mut quota_windows = app_server.quota_windows;
+    for window in oauth.quota_windows {
+        if quota_windows
+            .iter()
+            .any(|existing| existing.kind == window.kind)
+        {
+            continue;
+        }
+        quota_windows.push(window);
+    }
+    if quota_windows.is_empty() {
+        return Err("Codex returned no quota windows".to_string());
+    }
+    let primary = quota_windows
+        .iter()
+        .find(|window| window.kind == "rolling_weekly")
+        .or_else(|| quota_windows.first())
+        .expect("quota windows checked above");
+    Ok(CodexQuotaDto {
+        total_quota: primary.total,
+        used_quota: primary.used,
+        remaining_quota: primary.remaining,
+        quota_windows,
+        provider_reported_at: if app_server.provider_reported_at.is_empty() {
+            oauth.provider_reported_at
+        } else {
+            app_server.provider_reported_at
+        },
+        account_label: if oauth.account_label.is_empty() {
+            app_server.account_label
+        } else {
+            oauth.account_label
+        },
+        subscription_expires_at: if oauth.subscription_expires_at.is_empty() {
+            app_server.subscription_expires_at
+        } else {
+            oauth.subscription_expires_at
+        },
+    })
+}
+
+fn enrich_quota_from_id_token(quota: &mut CodexQuotaDto, id_token: &str) {
+    quota.account_label = account_label_from_id_token(id_token).unwrap_or_default();
+    quota.subscription_expires_at =
+        subscription_expires_at_from_id_token(id_token).unwrap_or_default();
 }
 
 fn authorized_status(session_ref: &str) -> CodexSessionStatus {
@@ -270,10 +326,9 @@ async fn stored_oauth_quota(
         return Ok(None);
     };
     let windows = fetch_usage(&tokens).await?;
-    Ok(Some(quota_status(
-        session_ref,
-        oauth_windows_to_quota(&windows)?,
-    )))
+    let mut quota = oauth_windows_to_quota(&windows)?;
+    enrich_quota_from_id_token(&mut quota, &tokens.id_token);
+    Ok(Some(quota_status(session_ref, quota)))
 }
 
 fn quota_error_status(session_ref: &str) -> CodexSessionStatus {
@@ -460,7 +515,12 @@ fn sync_quota_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionSta
         .expect("client initialized above")
         .read_rate_limits();
     match rate_limits.and_then(|limits| map_rate_limits_to_quota(&limits)) {
-        Ok(quota) => Ok(quota_status(session_ref, quota)),
+        Ok(mut quota) => {
+            if let Ok(Some(tokens)) = load_tokens(&storage) {
+                enrich_quota_from_id_token(&mut quota, &tokens.id_token);
+            }
+            Ok(quota_status(session_ref, quota))
+        }
         Err(_) => {
             if matches!(
                 state
@@ -602,7 +662,11 @@ async fn verify_direct_oauth(
         Ok(Some(tokens)) => {
             save_tokens(&storage, &tokens)?;
             match fetch_usage(&tokens).await {
-                Ok(windows) => Ok(quota_status(session_ref, oauth_windows_to_quota(&windows)?)),
+                Ok(windows) => {
+                    let mut quota = oauth_windows_to_quota(&windows)?;
+                    enrich_quota_from_id_token(&mut quota, &tokens.id_token);
+                    Ok(quota_status(session_ref, quota))
+                }
                 Err(_) => Ok(quota_error_status(session_ref)),
             }
         }
@@ -620,10 +684,35 @@ async fn sync_direct_oauth(
     session_ref: &str,
 ) -> Result<CodexSessionStatus, String> {
     let storage = account_dir(app, session_ref)?;
-    match stored_oauth_quota(&storage, session_ref).await {
-        Ok(Some(status)) => Ok(status),
-        Ok(None) => Ok(reauth_status(session_ref)),
-        Err(error) => Ok(basic_status(
+    let oauth_status = stored_oauth_quota(&storage, session_ref).await;
+    // Existing plan bindings were created before Token Eyes wrote the same
+    // envelope required by Codex app-server. Upgrade only that local binding
+    // before asking app-server for the extra model-specific buckets.
+    let _ = ensure_app_server_auth_envelope(&storage);
+    let app_handle = app.clone();
+    let app_server_session_ref = session_ref.to_string();
+    let app_server_status = tauri::async_runtime::spawn_blocking(move || {
+        sync_quota_flow(&app_handle, &app_server_session_ref)
+    })
+    .await
+    .map_err(|_| "Codex rate-limit sync task failed".to_string())?;
+
+    match (app_server_status, oauth_status) {
+        (Ok(app_server), Ok(Some(oauth))) => {
+            match (app_server.quota.clone(), oauth.quota.clone()) {
+                (Some(app_server_quota), Some(oauth_quota)) => Ok(quota_status(
+                    session_ref,
+                    merge_codex_quotas(app_server_quota, oauth_quota)?,
+                )),
+                (Some(_), None) => Ok(app_server),
+                (None, Some(_)) => Ok(oauth),
+                (None, None) => Ok(app_server),
+            }
+        }
+        (Ok(app_server), _) if app_server.quota.is_some() => Ok(app_server),
+        (_, Ok(Some(oauth))) => Ok(oauth),
+        (_, Ok(None)) => Ok(reauth_status(session_ref)),
+        (_, Err(error)) => Ok(basic_status(
             session_ref,
             SessionStateCode::ReauthRequired,
             "QUOTA_SYNC_FAILED",
@@ -757,6 +846,62 @@ mod tests {
         assert_eq!(quota.total_quota, 100.0);
         assert_eq!(quota.used_quota, 50.0);
         assert_eq!(quota.remaining_quota, 50.0);
+    }
+
+    #[test]
+    fn merges_app_server_special_limit_with_oauth_weekly_limit() {
+        let app_server = CodexQuotaDto {
+            total_quota: 100.0,
+            used_quota: 4.0,
+            remaining_quota: 96.0,
+            quota_windows: vec![CodexQuotaWindowDto {
+                kind: "gpt_5_3_codex_spark_weekly".to_string(),
+                unit: "tokens".to_string(),
+                total: 100.0,
+                used: 44.0,
+                remaining: 56.0,
+                percentage: 44.0,
+                resets_at: "1784505600".to_string(),
+            }],
+            provider_reported_at: "".to_string(),
+            account_label: "".to_string(),
+            subscription_expires_at: "".to_string(),
+        };
+        let oauth = CodexQuotaDto {
+            total_quota: 100.0,
+            used_quota: 56.0,
+            remaining_quota: 44.0,
+            quota_windows: vec![
+                CodexQuotaWindowDto {
+                    kind: "rolling_5_hour".to_string(),
+                    unit: "tokens".to_string(),
+                    total: 100.0,
+                    used: 4.0,
+                    remaining: 96.0,
+                    percentage: 4.0,
+                    resets_at: "1784000000".to_string(),
+                },
+                CodexQuotaWindowDto {
+                    kind: "rolling_weekly".to_string(),
+                    unit: "tokens".to_string(),
+                    total: 100.0,
+                    used: 56.0,
+                    remaining: 44.0,
+                    percentage: 56.0,
+                    resets_at: "1784505600".to_string(),
+                },
+            ],
+            provider_reported_at: "".to_string(),
+            account_label: "muxunson@gmail.com".to_string(),
+            subscription_expires_at: "2026-08-30T14:24:24Z".to_string(),
+        };
+
+        let merged = merge_codex_quotas(app_server, oauth).expect("quota should merge");
+        assert_eq!(merged.account_label, "muxunson@gmail.com");
+        assert_eq!(merged.quota_windows.len(), 3);
+        assert_eq!(merged.quota_windows[0].kind, "gpt_5_3_codex_spark_weekly");
+        assert_eq!(merged.quota_windows[1].kind, "rolling_5_hour");
+        assert_eq!(merged.quota_windows[2].kind, "rolling_weekly");
     }
 
     #[test]

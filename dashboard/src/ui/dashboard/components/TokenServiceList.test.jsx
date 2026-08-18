@@ -87,6 +87,34 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
   });
 
+  it("supports a ten-card cost-page window while still filtering expired plans", async () => {
+    const user = userEvent.setup();
+    const plans = [
+      ...Array.from({ length: 11 }, (_, index) => plan(`active-${index + 1}`, 900 - index * 10)),
+      plan("expired-cost-plan", 950, 1_000, { expires_at: "2020-01-01" }),
+    ];
+
+    render(
+      <TokenServiceList
+        plans={plans}
+        pageSize={10}
+        now={new Date("2026-07-13T00:00:00Z")}
+      />,
+    );
+
+    expect(screen.getAllByTestId("token-service-row")).toHaveLength(10);
+    expect(screen.queryByText("Service expired-cost-plan")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "下一页" }));
+    });
+
+    const secondPageRows = screen.getAllByTestId("token-service-row");
+    expect(secondPageRows).toHaveLength(1);
+    expect(within(secondPageRows[0]).getByText("11")).toBeInTheDocument();
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+  });
+
   it("renders five compact independent cards without hiding multi-lane quota values", () => {
     const sharedReset = "2026-08-06T14:31:29.000Z";
     const cursor = plan("cursor-live", 0, 0, {
@@ -122,7 +150,72 @@ describe("TokenServiceList", () => {
     expect(within(cursorRow).getByTestId("token-service-window-total")).toHaveTextContent("33.522");
     expect(within(cursorRow).getByTestId("token-service-window-auto_composer")).toHaveTextContent("27.82");
     expect(within(cursorRow).getByTestId("token-service-window-api")).toHaveTextContent("71.533");
-    expect(within(cursorRow).getAllByTestId("token-service-shared-reset")).toHaveLength(1);
+    expect(within(cursorRow).getAllByTestId(/^token-service-reset-/)).toHaveLength(3);
+  });
+
+  it("hides the successful sync badge but keeps actionable sync states visible", () => {
+    render(
+      <TokenServiceList
+        plans={[
+          plan("healthy", 20, 100, {
+            provider_id: "codex",
+            plan_label: "Pro",
+            detection_method: "official_account",
+            sync_status: "success",
+          }),
+          plan("failed", 30, 100, {
+            provider_id: "kimi",
+            plan_label: "Moderato",
+            detection_method: "official_account",
+            sync_status: "failed",
+          }),
+        ]}
+      />,
+    );
+
+    const healthyRow = screen.getByText("Pro").closest("li");
+    const failedRow = screen.getByText("Moderato").closest("li");
+    expect(within(healthyRow).queryByText("同步成功")).not.toBeInTheDocument();
+    expect(within(failedRow).getByText("同步失败")).toBeInTheDocument();
+  });
+
+  it("uses the official model label for each quota lane", () => {
+    render(
+      <TokenServiceList
+        plans={[plan("models", 0, 0, {
+          provider_id: "codex",
+          detection_method: "official_account",
+          sync_status: "success",
+          quota_windows: [
+            { kind: "rolling_5_hour", model_label: "GPT 5.3 Codex · 5h", total: 100, used: 12, percentage: 12 },
+            { kind: "rolling_weekly", model_label: "GPT 5.3 Codex · 7d", total: 100, used: 44, percentage: 44 },
+          ],
+        })]}
+      />,
+    );
+
+    const row = screen.getByTestId("token-service-row");
+    expect(row).toHaveTextContent("GPT 5.3 Codex · 5h");
+    expect(row).toHaveTextContent("GPT 5.3 Codex · 7d");
+    expect(within(row).getAllByTestId(/^token-service-reset-/)).toHaveLength(2);
+    expect(within(row).getAllByText(/官方未提供/)).toHaveLength(2);
+  });
+
+  it("shows the account label attached to an official Codex authorization", () => {
+    render(
+      <TokenServiceList
+        plans={[plan("codex-official", 3, 100, {
+          provider_id: "codex",
+          detection_method: "official_account",
+          detection_config: {
+            official_account: { display_name: "muxunson@gmail.com" },
+          },
+        })]}
+        now={new Date("2026-08-01T00:00:00Z")}
+      />,
+    );
+
+    expect(screen.getByTestId("token-service-row")).toHaveTextContent("muxunson@gmail.com");
   });
 
   it("shows every live quota window when a rolling plan has no fixed total", () => {
@@ -147,6 +240,72 @@ describe("TokenServiceList", () => {
     expect(within(row).getByTestId("token-service-window-rolling_5_hour")).toHaveTextContent("20%");
     expect(within(row).getByTestId("token-service-window-rolling_weekly")).toHaveTextContent("每周");
     expect(row).toHaveTextContent("45%");
+  });
+
+  it("keeps the official GPT 5.3 Codex Spark weekly window alongside the standard Codex limits", () => {
+    render(
+      <TokenServiceList
+        now={new Date("2026-07-13T00:00:00Z")}
+        plans={[plan("codex-pro-20x", 0, 0, {
+          provider_id: "codex",
+          plan_label: "Pro 20x",
+          detection_method: "official_account",
+          detection_config: {
+            official_account: { display_name: "muxunson@gmail.com" },
+          },
+          quota_windows: [
+            { kind: "rolling_5_hour", total: 100, used: 3, percentage: 3 },
+            { kind: "rolling_weekly", total: 100, used: 97, percentage: 97 },
+            { kind: "gpt_5_3_codex_spark_weekly", total: 100, used: 44, percentage: 44 },
+          ],
+        })]}
+      />,
+    );
+
+    const row = screen.getByTestId("token-service-row");
+    expect(row).toHaveTextContent("muxunson@gmail.com");
+    expect(within(row).getByTestId("token-service-window-gpt_5_3_codex_spark_weekly"))
+      .toHaveTextContent("GPT 5.3 Codex Spark Weekly");
+    expect(row).toHaveTextContent("44%");
+  });
+
+  it("shows independent reset countdowns and a separate subscription validity for Codex", () => {
+    render(
+      <TokenServiceList
+        now={new Date("2026-08-14T00:00:00Z")}
+        plans={[plan("codex-pro-20x", 0, 0, {
+          provider_id: "codex",
+          plan_label: "Pro 20x",
+          expires_at: "2026-08-30T14:24:24Z",
+          detection_method: "official_account",
+          sync_status: "success",
+          quota_windows: [
+            { kind: "rolling_weekly", unit: "percent", total: 100, used: 4, percentage: 4, resets_at: "2026-08-20T00:00:00Z" },
+            { kind: "gpt_5_3_codex_spark_weekly", unit: "percent", total: 100, used: 56, percentage: 56, resets_at: "2026-08-25T00:00:00Z" },
+          ],
+        })]}
+      />,
+    );
+
+    const row = screen.getByTestId("token-service-row");
+    expect(within(row).getByTestId("token-service-reset-rolling_weekly"))
+      .toHaveTextContent("还剩 6天 0小时");
+    expect(within(row).getByTestId("token-service-reset-gpt_5_3_codex_spark_weekly"))
+      .toHaveTextContent("还剩 11天 0小时");
+    expect(within(row).getByTestId("token-service-validity")).toHaveTextContent("有效期：16天 14小时");
+    expect(within(row).getByTestId("token-service-validity")).toHaveTextContent("2026/08/30 22:24");
+    expect(within(row).getByTestId("token-service-validity")).not.toHaveTextContent("到期");
+  });
+
+  it("shows an explicit validity state for a plan without a subscription expiry", () => {
+    render(
+      <TokenServiceList
+        now={new Date("2026-08-14T00:00:00Z")}
+        plans={[plan("manual-no-expiry", 10, 100, { expires_at: "" })]}
+      />,
+    );
+
+    expect(screen.getByTestId("token-service-validity")).toHaveTextContent("有效期未设置");
   });
 
   it("renders TRAE fast-request usage, percentage, and reset time", () => {
@@ -182,7 +341,7 @@ describe("TokenServiceList", () => {
     expect(metric).toHaveTextContent("已用 25 requests");
     expect(metric).toHaveTextContent("总量 100 requests");
     expect(metric).toHaveTextContent("25%");
-    expect(within(row).getByTestId("token-service-shared-reset")).toBeInTheDocument();
+    expect(within(row).getByTestId("token-service-reset-fast_request")).toBeInTheDocument();
   });
 
   it("hides a rolling service after its only official reset/validity timestamp has passed", () => {
@@ -300,7 +459,9 @@ describe("TokenServiceList", () => {
       "https://cdn.cnbj1.fds.api.mi-img.com/aife/mimo-blog-fe/doc_build/mimo.ico",
     );
     expect(within(xiaomiRow).getByText("Standard")).toHaveClass("text-oai-gray-400");
-    expect(within(xiaomiRow).getByText("有效期至 2099/12/31")).toBeInTheDocument();
+    expect(within(xiaomiRow).getByTestId("token-service-validity")).toHaveTextContent("有效期：");
+    expect(within(xiaomiRow).getByTestId("token-service-validity")).toHaveTextContent("2099/12/31 08:00");
+    expect(within(xiaomiRow).getByTestId("token-service-validity")).not.toHaveTextContent("到期");
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Plus")).toHaveClass("text-oai-gray-400");
     expect(screen.getByText("manual")).toBeInTheDocument();

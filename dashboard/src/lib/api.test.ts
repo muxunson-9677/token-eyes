@@ -5,8 +5,12 @@ import {
   getSpendTimeseries,
   getUsageBounds,
   getUsageAttribution,
+  getUsageModelBreakdown,
+  fetchCloudUsageModelBreakdown,
   getTokenPlans,
   openXiaomiMimoConsoleLogin,
+  refreshGlmConsoleSession,
+  refreshOfficialConsoleProviderBalance,
   reorderTokenPlans,
   triggerLocalSync,
   verifyOfficialModelPricing,
@@ -110,6 +114,101 @@ it("requests local-only usage attribution with the active source and model filte
     "http://127.0.0.1:17680/functions/tokentracker-usage-attribution?from=2026-07-01&to=2026-07-27&group_by=environment&sources=codex&models=gpt-5&tz=Asia%2FShanghai&tz_offset_minutes=480",
     expect.any(Object),
   );
+});
+
+it("passes the daily model breakdown abort signal to the local native fetch", async () => {
+  setTauriRuntime(true);
+  const controller = new AbortController();
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ sources: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getUsageModelBreakdown({
+    from: "2026-08-07",
+    to: "2026-08-07",
+    sources: [" Codex ", "CLAUDE", "codex"],
+    signal: controller.signal,
+  });
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("tokentracker-usage-model-breakdown"),
+    expect.objectContaining({ signal: controller.signal }),
+  );
+  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.getAll("source")).toEqual(["claude", "codex"]);
+});
+
+it("passes the daily model breakdown abort signal through the cloud account fetch", async () => {
+  const controller = new AbortController();
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ sources: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await fetchCloudUsageModelBreakdown({
+    from: "2026-08-07",
+    to: "2026-08-07",
+    accessToken: "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ1In0.",
+    sources: [" CoDeX ", "CLAUDE", "codex"],
+    signal: controller.signal,
+  });
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("tokentracker-account-model-breakdown"),
+    expect.objectContaining({ signal: controller.signal }),
+  );
+  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.getAll("source")).toEqual(["claude", "codex"]);
+});
+
+it.each([
+  ["legacy singular", { source: " CoDeX " }, ["codex"]],
+  ["null means all", { sources: null }, []],
+  ["empty means all", { sources: [] }, []],
+])("keeps daily model breakdown source URL compatibility for %s", async (_label, filters, expectedSources) => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ sources: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getUsageModelBreakdown({
+    from: "2026-08-07",
+    to: "2026-08-07",
+    ...filters,
+  });
+
+  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.getAll("source")).toEqual(expectedSources);
+});
+
+it("does not start the local model breakdown fetch when aborted while resolving the native URL", async () => {
+  let resolveStatus: (value: { running: boolean; url: string }) => void = () => {};
+  const statusPromise = new Promise<{ running: boolean; url: string }>((resolve) => {
+    resolveStatus = resolve;
+  });
+  Object.defineProperty(window, "__TAURI__", {
+    configurable: true,
+    value: { core: { invoke: vi.fn(() => statusPromise) } },
+  });
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ sources: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  const controller = new AbortController();
+
+  const request = getUsageModelBreakdown({
+    from: "2026-08-07",
+    to: "2026-08-07",
+    signal: controller.signal,
+  });
+  controller.abort();
+  resolveStatus({ running: true, url: "http://127.0.0.1:17680" });
+
+  await expect(request).rejects.toMatchObject({ name: "AbortError" });
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 it("requests redacted JSON and CSV exports only through the Tauri loopback API", async () => {
@@ -267,4 +366,69 @@ it("invokes the Xiaomi MiMo native commands with camelCase arguments", async () 
   expect(invoke).toHaveBeenNthCalledWith(2, "verify_xiaomi_mimo_console_session", {
     sessionRef: "session-ref",
   });
+});
+
+it("invokes the GLM silent refresh command with the persisted session reference", async () => {
+  const invoke = vi.fn().mockResolvedValue({
+    connected: true,
+    state_code: "connected",
+    balance: { balance: 475.5, available_balance: 475.5, credit_balance: 0, currency: "CNY" },
+  });
+  Object.defineProperty(window, "__TAURI__", {
+    configurable: true,
+    value: { core: { invoke } },
+  });
+
+  const status = await refreshGlmConsoleSession("session-ref");
+
+  expect(status.balance?.balance).toBe(475.5);
+  expect(invoke).toHaveBeenCalledWith("refresh_glm_console_session", {
+    sessionRef: "session-ref",
+  });
+});
+
+it("persists an expired official-console refresh so restart cannot report it synced", async () => {
+  const nativeFailure = {
+    connected: false,
+    session_ref: "provider-api/glm/session/ref",
+    state_code: "session_not_found",
+    error_code: "SESSION_NOT_FOUND",
+    error_message: "请重新连接",
+  };
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "local_server_status") return { running: true, url: "http://127.0.0.1:17680" };
+    if (command === "refresh_glm_console_session") return nativeFailure;
+    throw new Error(`unexpected native command: ${command}`);
+  });
+  Object.defineProperty(window, "__TAURI__", {
+    configurable: true,
+    value: { core: { invoke } },
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/api/local-auth")) {
+      return new Response(JSON.stringify({ token: "local-token" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("tokentracker-token-plan-console-sessions/provider-session/verify")) {
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("tokentracker-token-plan-console-sessions")) {
+      return new Response(JSON.stringify({ sessions: [{
+        id: "provider-session",
+        provider_id: "glm",
+        session_ref: "provider-api/glm/session/ref",
+        status: "connected",
+      }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(refreshOfficialConsoleProviderBalance("glm")).resolves.toEqual(nativeFailure);
+
+  const verifyCall = fetchMock.mock.calls.find(([input]) => String(input).includes("/provider-session/verify"));
+  expect(verifyCall?.[1]).toEqual(expect.objectContaining({
+    method: "POST",
+    body: JSON.stringify({ native_result: nativeFailure }),
+  }));
 });

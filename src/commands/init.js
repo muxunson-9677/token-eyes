@@ -69,6 +69,7 @@ const {
   createSpinner,
 } = require("../lib/cli-ui");
 const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require("../lib/init-flow");
+const { queueUsageIdentity } = require("../lib/usage-attribution");
 
 const ASCII_LOGO = [
   "████████╗ ██████╗ ██╗  ██╗███████╗███╗   ██╗",
@@ -1018,7 +1019,7 @@ function isRunnableCommand(command) {
 `;
 }
 
-module.exports = { cmdInit, buildNotifyHandler, installLocalTrackerApp };
+module.exports = { cmdInit, buildNotifyHandler, installLocalTrackerApp, readFirstSyncTotals };
 
 async function probeFile(p) {
   try {
@@ -1153,7 +1154,7 @@ function readFirstSyncTotals(trackerDir) {
   }
   let totalTokens = 0;
   const sources = new Set();
-  // Each sync appends cumulative totals per (source, model, hour_start); keep
+  // Each sync appends cumulative totals per (source, model, hour_start, billing_mode); keep
   // the last entry per bucket to match what the dashboard shows.
   const latest = new Map();
   for (const line of raw.split("\n")) {
@@ -1161,7 +1162,7 @@ function readFirstSyncTotals(trackerDir) {
     if (!trimmed) continue;
     try {
       const row = JSON.parse(trimmed);
-      const key = `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
+      const key = queueUsageIdentity(row);
       latest.set(key, row);
     } catch {
       // skip malformed

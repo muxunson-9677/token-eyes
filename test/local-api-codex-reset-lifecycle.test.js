@@ -16,7 +16,7 @@ test("local API exposes the injected Codex reset monitor lifecycle", () => {
     stop: () => calls.push("stop"),
   };
   const handler = createLocalApiHandler({
-    queuePath: "missing-queue.jsonl",
+    queuePath: path.join(root, "missing-queue.jsonl"),
     trackerDataDir: root,
     codexResetMonitorService: service,
   });

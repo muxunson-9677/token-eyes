@@ -213,7 +213,7 @@ export function StatsPanel({
               <div
                 key={card.key}
                 data-testid="overview-stat-card"
-                className="tt-overview-stat-card tt-surface-nested flex min-w-0 flex-col rounded-[var(--tt-card-radius)] px-4 py-4"
+                className="tt-overview-stat-card tt-surface-nested tt-pressable flex min-w-0 flex-col rounded-[var(--tt-card-radius)] px-4 py-4"
               >
                 <div className="flex items-center gap-3 text-sm text-oai-gray-500 dark:text-oai-gray-300">
                   <span data-testid="overview-stat-icon" className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${card.tone}`}>
@@ -263,7 +263,7 @@ export function StatsPanel({
         {hasMeasuredModels ? (
           <section
             data-testid="overview-model-ranking"
-            className={`tt-overview-model-ranking tt-surface-nested flex min-h-0 flex-col ${hasRollingCards ? "mt-3" : ""}`}
+            className={`tt-overview-model-ranking tt-surface-nested tt-pressable-group flex min-h-0 flex-col ${hasRollingCards ? "mt-3" : ""}`}
           >
             <header className="flex items-center justify-between px-4 pb-2 pt-4">
               <h2 className="text-base font-semibold text-oai-black dark:text-white">{copy("stats.model_ranking")}</h2>
@@ -285,7 +285,7 @@ export function StatsPanel({
                   <div
                     key={row.id || name}
                     data-testid="overview-model-row"
-                    className="flex items-center gap-2 rounded-lg border border-oai-gray-200/80 bg-white/70 px-2.5 py-2 shadow-sm dark:border-oai-gray-700 dark:bg-oai-gray-900/55"
+                    className="tt-pressable flex items-center gap-2 rounded-lg border border-oai-gray-200/80 bg-white/70 px-2.5 py-2 shadow-sm dark:border-oai-gray-700 dark:bg-oai-gray-900/55"
                   >
                     <span
                       data-testid="overview-model-rank"

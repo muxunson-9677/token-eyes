@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2, Package } from "lucide-react";
+import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2, Package, CalendarDays, Eye, EyeOff } from "lucide-react";
 import {
   getTokenPlans,
   deleteTokenPlan,
@@ -42,6 +42,7 @@ import {
 } from "../../lib/api";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
+import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 import { limitProviderName, useLimitsDisplayPrefs } from "../../hooks/use-limits-display-prefs.js";
 import { ProviderIcon } from "../../ui/dashboard/components/ProviderIcon.jsx";
 import { SectionCard } from "./Controls.jsx";
@@ -68,6 +69,125 @@ function formatCodexReset(isoOrUnix) {
 function formatQuota(value) {
   const n = Number(value || 0);
   return new Intl.NumberFormat().format(Number.isFinite(n) ? n : 0);
+}
+
+const TOKEN_PLAN_FULL_EMAIL_KEY = "token-eyes.settings.token-plan.show-full-email.v1";
+
+function readTokenPlanFullEmailPreference() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(TOKEN_PLAN_FULL_EMAIL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function authorizedTokenPlanAccount(record) {
+  const official = record?.detection_config?.official_account || {};
+  if (record?.detection_method === "official_account") {
+    return official.display_name || official.account_label || official.account_id
+      || record.account_label || record.account_name || "";
+  }
+  return record?.account_label || record?.account_name || "";
+}
+
+function maskTokenPlanEmail(value) {
+  const normalized = String(value || "").trim();
+  const match = /^([^@]+)@(.+)$/.exec(normalized);
+  if (!match || match[1].includes("*")) return normalized;
+  return `${match[1].slice(0, Math.min(3, match[1].length))}***@${match[2]}`;
+}
+
+export function tokenPlanExpiryTimestamp(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (dateOnly) {
+    return new Date(
+      Number(dateOnly[1]),
+      Number(dateOnly[2]) - 1,
+      Number(dateOnly[3]),
+      23,
+      59,
+      59,
+      999,
+    ).getTime();
+  }
+  const timestamp = Date.parse(raw);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function isTokenPlanExpired(record, now = new Date()) {
+  const timestamp = tokenPlanExpiryTimestamp(record?.subscription_end_date || record?.expires_at);
+  return timestamp !== null && timestamp < now.getTime();
+}
+
+function isUsableTokenPlan(record) {
+  return !isTokenPlanExpired(record);
+}
+
+function isExpiredTokenPlanRecord(record) {
+  return isTokenPlanExpired(record);
+}
+
+const TOKEN_PLAN_PAGE_SIZE = 10;
+const TOKEN_PLAN_ATTENTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const TOKEN_PLAN_SYNC_FAILURE_STATES = new Set(["error", "failed", "reauth_required", "unsupported"]);
+
+function tokenPlanHasSyncFailure(record) {
+  return [record?.sync_status, record?.last_refresh_status]
+    .some((status) => TOKEN_PLAN_SYNC_FAILURE_STATES.has(String(status || "").toLowerCase()));
+}
+
+export function tokenPlanDisplayStatus(record, now = new Date()) {
+  if (isTokenPlanExpired(record, now)) return { kind: "expired", reasons: ["expired"] };
+
+  const reasons = [];
+  const expiresAt = tokenPlanExpiryTimestamp(record?.subscription_end_date || record?.expires_at);
+  if (expiresAt !== null && expiresAt - now.getTime() <= TOKEN_PLAN_ATTENTION_WINDOW_MS) reasons.push("expiring");
+
+  const quotaWindows = Array.isArray(record?.quota_windows) ? record.quota_windows : [];
+  const quotaWindowNeedsAttention = quotaWindows.some((window) => {
+    const { usedPercent } = quotaWindowNumbers(window);
+    return Number.isFinite(usedPercent) && usedPercent >= 80;
+  });
+  const total = Number(record?.total_quota || 0);
+  const used = Number(record?.used_quota || 0);
+  const totalNeedsAttention = Number.isFinite(total) && total > 0 && Number.isFinite(used) && used / total >= 0.8;
+  if (quotaWindowNeedsAttention || totalNeedsAttention) reasons.push("usage");
+
+  if (tokenPlanHasSyncFailure(record)) reasons.push("sync");
+
+  return reasons.length ? { kind: "attention", reasons } : { kind: "active", reasons: [] };
+}
+
+export function paginateTokenPlans(records, requestedPage = 0, pageSize = TOKEN_PLAN_PAGE_SIZE) {
+  const list = Array.isArray(records) ? records : [];
+  const safePageSize = Math.max(1, Number(pageSize) || TOKEN_PLAN_PAGE_SIZE);
+  const pageCount = Math.max(1, Math.ceil(list.length / safePageSize));
+  const page = Math.min(Math.max(0, Number(requestedPage) || 0), pageCount - 1);
+  const start = page * safePageSize;
+  return { page, pageCount, records: list.slice(start, start + safePageSize) };
+}
+
+function tokenPlanStatusLabel(kind) {
+  if (kind === "attention") return copy("settings.token_plan.status_attention");
+  if (kind === "expired") return copy("settings.token_plan.status_expired");
+  return copy("settings.token_plan.status_active");
+}
+
+function countAttentionTokenPlans(records) {
+  let count = 0;
+  for (const record of records) {
+    if (tokenPlanDisplayStatus(record).kind === "attention") count += 1;
+  }
+  return count;
+}
+
+function tokenPlanQuotaProgressTone(percent) {
+  if (percent >= 80) return "danger";
+  if (percent >= 60) return "warning";
+  return "success";
 }
 
 const EMPTY_FORM = {
@@ -557,69 +677,67 @@ function normalizeCatalog(value) {
 
 function SortableTokenPlanCard({
   record,
-  expanded,
-  onToggle,
-  onRefresh,
   onEdit,
-  onSaveNotes,
-  onKeyboardMove,
+  onRefresh,
   onDelete,
+  onKeyboardMove,
   refreshing,
   saving,
-  catalog,
   usageLimits,
   loadingUsageLimits,
+  showFullEmail,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
   const planLabel = record.plan_label || record.id;
+  const detailId = `token-plan-detail-${record.id}`;
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const totalQuota = Number(record.total_quota || 0);
-  const remainingQuota = Number(record.remaining_quota || 0);
-  const usedQuota = Number(record.used_quota || Math.max(0, totalQuota - remainingQuota));
-  const usagePercent = totalQuota > 0 ? Math.max(0, Math.min(100, (usedQuota / totalQuota) * 100)) : 0;
-  const remainingPercent = Number.isFinite(Number(record.remaining_percent))
-    ? Number(record.remaining_percent)
-    : totalQuota > 0
-      ? Math.max(-100, Math.min(100, (remainingQuota / totalQuota) * 100))
-      : 0;
-  const progressPercent = remainingQuota < 0 || Math.abs(remainingPercent) < 1
-    ? usagePercent
-    : Math.max(0, Math.min(100, remainingPercent));
   const providerKey = String(record.provider_id || record.source || "").toLowerCase();
-  const liveQuotaLabel = providerKey === "cursor"
-    ? `${formatQuota(usedQuota)} / 账户周期用量`
+  const quotaWindows = Array.isArray(record.quota_windows) ? record.quota_windows : [];
+  const headlineWindow = providerKey === "cursor"
+    ? quotaWindows.find((window) => window.kind === "total") || quotaWindows.find((window) => window.kind === "rolling_weekly")
     : providerKey === "codex"
-      ? `${formatQuota(usedQuota)} / 官方动态额度`
-      : providerKey === "trae"
-        ? `${formatQuota(usedQuota)} / 官方账户订阅额度`
-        : `${formatQuota(usedQuota)} / ${formatQuota(totalQuota)}`;
-  const liveQuotaSubline = providerKey === "cursor"
-    ? "(官方自动均)"
-    : providerKey === "codex"
-      ? "(5 小时与 7 天窗口)"
-      : providerKey === "trae"
-        ? `(${record.quota_unit || "requests"})`
-        : record.quota_unit && record.quota_unit !== "tokens"
-          ? `(${totalQuota >= 1_000_000_000 ? `${Math.round(totalQuota / 1_000_000_000)}B` : formatQuota(totalQuota)}) ${record.quota_unit}`
-          : "";
-  const inferredQuotaStatus = remainingQuota < 0
-    ? { label: "已超额", tone: "danger" }
-    : usagePercent >= 80
-      ? { label: "接近上限", tone: "warning" }
-      : record.sync_status === "error"
-        ? { label: "待刷新", tone: "muted" }
-        : { label: "正常", tone: "success" };
-  const quotaStatus = record.ui_status_label
-    ? { label: record.ui_status_label, tone: record.ui_status_tone || inferredQuotaStatus.tone }
-    : inferredQuotaStatus;
+      ? quotaWindows.find((window) => window.kind === "rolling_5_hour") || quotaWindows.find((window) => window.kind === "rolling_weekly")
+      : null;
+  const headlineTotal = Number(headlineWindow?.total);
+  const headlineRemaining = Number(headlineWindow?.remaining);
+  const headlineUsed = Number(headlineWindow?.used);
+  const totalQuota = Number.isFinite(headlineTotal) ? headlineTotal : Number(record.total_quota || 0);
+  const remainingQuota = Number.isFinite(headlineRemaining) ? headlineRemaining : Number(record.remaining_quota || 0);
+  const usedQuota = Number.isFinite(headlineUsed)
+    ? headlineUsed
+    : Number(record.used_quota || Math.max(0, totalQuota - remainingQuota));
+  const displayStatus = tokenPlanDisplayStatus(record);
+  const detailWindows = quotaWindows.length
+    ? quotaWindows
+    : totalQuota > 0
+      ? [{ kind: "total", total: totalQuota, used: usedQuota, remaining: remainingQuota }]
+      : [];
+  const accountLabel = authorizedTokenPlanAccount(record);
+  const displayedAccountLabel = showFullEmail ? accountLabel : maskTokenPlanEmail(accountLabel);
+  const subscriptionCurrency = String(record.subscription_currency || "CNY").toUpperCase();
+  const subscriptionAmount = Number(record.subscription_amount).toLocaleString();
+  const subscriptionSummary = record.subscription_amount > 0
+    ? subscriptionCurrency === "CNY"
+      ? copy("settings.token_plan.subscription_cost_cny", { amount: subscriptionAmount })
+      : subscriptionCurrency === "USD"
+        ? copy("settings.token_plan.subscription_cost_usd", { amount: subscriptionAmount })
+        : `${subscriptionCurrency} ${subscriptionAmount}`
+    : copy("settings.token_plan.subscription_cost_placeholder");
+  const expiryValue = record.subscription_end_date || record.expires_at;
+  const [validitySummary, validityDate] = formatTokenPlanValidity(expiryValue).split(" · ");
+  const providerTitle = record.provider_id && record.provider_id !== "custom"
+    && String(record.provider_id).toLowerCase() !== String(record.source).toLowerCase()
+    ? `${record.source} / ${record.provider_id}`
+    : record.source;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       data-testid="token-plan-card"
+      data-expanded="true"
       className={cn(
-        "tt-token-plan-card rounded-md border border-oai-gray-200 px-3 py-2 dark:border-oai-gray-800",
+        "tt-token-plan-card tt-token-plan-card--reference tt-token-service-card tt-surface-nested rounded-lg border p-2",
         isDragging && "relative z-10 bg-white shadow-lg dark:bg-oai-gray-900",
       )}
     >
@@ -641,127 +759,279 @@ function SortableTokenPlanCard({
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
-        <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${record.provider_id || record.source || "custom"}`)} aria-hidden="true">
-          {providerKey === "xiaomi_mimo"
-            ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6H5v12h3M16 6h3v12h-3M9 9h6v6H9z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            : ["codex", "cursor", "trae"].includes(providerKey)
-            ? <ProviderIcon provider={record.provider_id || record.source} size={24} />
-            : String(record.provider_id || record.source || "T").slice(0, 1).toUpperCase()}
-        </span>
-        <div className="tt-token-plan-copy min-w-0">
-          <div
-            className="tt-token-plan-full"
-            data-provider-label={record.provider_id && record.provider_id !== "custom" ? `${record.source} / ${record.provider_id}` : record.source}
-            data-plan-label={record.plan_label}
+        <div className="tt-token-plan-card-toggle flex min-w-0 flex-1 items-center gap-2 text-left">
+          <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${record.provider_id || record.source || "custom"}`)} aria-hidden="true">
+            <ProviderIcon provider={record.provider_id || record.source} size={14} />
+          </span>
+          <span data-testid="token-plan-card-copy" className="tt-token-plan-copy min-w-0">
+            <span
+              className="tt-token-plan-full"
+              data-provider-label={record.provider_id && record.provider_id !== "custom" ? `${record.source} / ${record.provider_id}` : record.source}
+              data-plan-label={record.plan_label}
+            >
+              <span className="tt-token-plan-full-text">
+                {`${providerTitle} / ${record.plan_label}`}
+              </span>
+            </span>
+            <span data-testid="token-plan-card-identity-meta" className="tt-token-plan-card-identity-meta">
+              <span
+                className={cn("tt-token-plan-card-account", showFullEmail && "tt-token-plan-card-account--full")}
+                title={displayedAccountLabel}
+              >
+                {displayedAccountLabel || copy("settings.token_plan.value_unavailable")}
+              </span>
+              <span className="tt-token-plan-card-cost">{subscriptionSummary}</span>
+            </span>
+          </span>
+          <span
+            data-testid="token-plan-status"
+            data-status={displayStatus.kind}
+            title={tokenPlanStatusLabel(displayStatus.kind)}
+            className={cn("tt-token-plan-status", "tt-token-plan-status--corner", `tt-token-plan-status--${displayStatus.kind}`)}
           >
-            <span className="tt-token-plan-full-text">
-              {record.provider_id && record.provider_id !== "custom"
-                ? `${record.source} / ${record.provider_id} / ${record.plan_label}`
-                : `${record.source} / ${record.plan_label}`}
-            </span>
-          </div>
+            <span className="sr-only">{tokenPlanStatusLabel(displayStatus.kind)}</span>
+          </span>
         </div>
-        <div className="tt-token-plan-live" aria-label={copy("settings.token_plan.live_quota_aria")}>
-          <div className="tt-token-plan-account">{record.account_label || record.account_name || ""}</div>
-          <div className="tt-token-plan-quota">
-            <span>
-              <span className="tt-token-plan-quota-label">{liveQuotaLabel}</span>
-              {liveQuotaSubline ? <span className="tt-token-plan-quota-sub">{liveQuotaSubline}</span> : null}
-            </span>
-            <span className="tt-token-plan-progress" data-tone={quotaStatus.tone}><i style={{ width: `${progressPercent}%` }} /></span>
-          </div>
-          <div className="tt-token-plan-remaining">
-            <span className="tt-token-plan-remaining-label">{copy("settings.token_plan.remaining")}</span>
-            <span className="tt-token-plan-remaining-value">
-              {formatQuota(remainingQuota)}
-              <small>({remainingPercent.toFixed(Math.abs(remainingPercent) < 1 ? 2 : 1)}%)</small>
-            </span>
-          </div>
-          <div className="tt-token-plan-updated">
-            <span className="tt-token-plan-updated-time" title={record.last_refreshed_at || record.updated_at || undefined}>
-              {String(record.last_refreshed_at || record.updated_at || "—").replace("T", " ").slice(0, 16)}
-            </span>
-            <small data-tone={quotaStatus.tone}>{quotaStatus.label}</small>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => onEdit(record)}
-          className="tt-token-plan-edit shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark"
-        >
-          {copy("settings.token_plan.edit")}
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggle(record.id)}
-          aria-expanded={expanded}
-          aria-label={copy(expanded ? "settings.token_plan.collapse" : "settings.token_plan.expand", { plan: planLabel })}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-oai-gray-500 hover:bg-oai-gray-100 dark:text-oai-gray-400 dark:hover:bg-oai-gray-800"
-        >
-          {expanded ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
-        </button>
       </div>
 
-      {expanded && (
-        <div className="ml-9 mt-2 border-t border-oai-gray-100 pt-2 dark:border-oai-gray-800">
-          <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
-            {record.quota_source
-              ? (record.quota_source === "catalog"
-                ? copy("settings.token_plan.quota_source_catalog")
-                : record.quota_source === "custom_api"
-                ? copy("settings.token_plan.quota_source_custom_api")
-                : copy("settings.token_plan.quota_source_manual"))
-              : ""}
-            {record.expires_at ? ` · ${copy("settings.token_plan.expires_at")} ${record.expires_at}` : ""}
-          </div>
-          <div className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            {record.subscription_amount > 0
-              ? `${copy("settings.token_plan.subscription_cost")}: ${record.subscription_currency} ${Number(record.subscription_amount).toLocaleString()} · ${copy(`settings.token_plan.subscription_cycle.${record.subscription_cycle}`)}`
-              : `${copy("settings.token_plan.subscription_cost")}: ${copy("settings.token_plan.cost_not_set")}`}
-            {record.subscription_start_date ? ` · ${copy("settings.token_plan.subscription_start")} ${record.subscription_start_date}` : ""}
-          </div>
-          <div className="mt-1 text-[11px] text-oai-gray-400 dark:text-oai-gray-500">
-            {record.created_at ? `${copy("settings.token_plan.recorded_at")}: ${new Date(record.created_at).toLocaleString()}` : ""}
-          </div>
-          <RecordNotesEditor record={record} onSave={onSaveNotes} disabled={saving} />
-          <RecordSyncStatus record={record} />
-          <div className="mt-2 flex justify-end gap-3">
-            <button
-              type="button"
-              aria-label={copy("settings.token_plan.delete", { plan: planLabel })}
-              onClick={() => onDelete(record)}
-              disabled={saving}
-              className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300"
-            >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-              {copy("settings.token_plan.delete_short")}
-            </button>
-            <button
-              type="button"
-              title={copy("settings.token_plan.refresh")}
-              onClick={() => onRefresh(record.id)}
-              disabled={refreshing}
-              className="inline-flex items-center gap-1 text-xs font-medium text-oai-gray-600 hover:text-oai-brand disabled:opacity-50 dark:text-oai-gray-300"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
-              {copy("settings.token_plan.refresh")}
-            </button>
-          </div>
-          {isCodexSource(record.source) && (
-            <CodexQuotaBlock codexData={usageLimits?.codex} loading={loadingUsageLimits} />
-          )}
+      <div id={detailId} data-testid={detailId} className="tt-token-plan-card-detail">
+        <TokenPlanQuotaWindows providerId={providerKey} windows={detailWindows} />
+        {isCodexSource(record.source) && !quotaWindows.length ? <CodexQuotaBlock codexData={usageLimits?.codex} loading={loadingUsageLimits} /> : null}
+        <div data-testid="active-token-plan-summary" className="tt-token-plan-card-summary">
+          <span data-testid="token-plan-validity" className="tt-token-plan-summary-expiry tt-token-plan-summary-expiry--single-line">
+            <CalendarDays aria-hidden="true" />
+            <span>{validitySummary}</span>
+            {validityDate ? <span className="tt-token-plan-validity-date">· {validityDate}</span> : null}
+          </span>
         </div>
-      )}
+        {tokenPlanHasSyncFailure(record) ? (
+          <div data-testid="token-plan-failure-reason" className="tt-token-plan-failure-reason" role="status">
+            <ShieldAlert aria-hidden="true" />
+            <span>{copy("settings.token_plan.failure_reason", {
+              reason: record.last_error_message || record.last_refresh_error || copy("settings.token_plan.failure_reason_unavailable"),
+            })}</span>
+          </div>
+        ) : null}
+        <div className="tt-token-plan-card-actions">
+          <button type="button" onClick={() => onEdit(record)} disabled={saving}>
+            {copy("settings.token_plan.edit")}
+          </button>
+          <button
+            type="button"
+            title={copy("settings.token_plan.refresh")}
+            aria-label={copy("settings.token_plan.refresh")}
+            onClick={() => onRefresh(record.id)}
+            disabled={refreshing || saving}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
+            {copy("settings.token_plan.refresh")}
+          </button>
+          <button type="button" aria-label={copy("settings.token_plan.delete", { plan: planLabel })} onClick={() => onDelete(record)} disabled={saving}>
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            {copy("settings.token_plan.delete_short")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNavigate = () => {} }) {
+function tokenPlanQuotaWindowLabel(providerId, window) {
+  const kind = window?.kind;
+  const officialLabel = String(window?.model_label || window?.model_name || window?.model || "").trim();
+  if (officialLabel) return officialLabel;
+  if (providerId === "cursor") {
+    if (kind === "total") return copy("settings.token_plan.cursor.total_usage");
+    if (kind === "auto_composer") return copy("settings.token_plan.cursor.auto_composer_usage");
+    if (kind === "api") return copy("settings.token_plan.cursor.api_usage");
+  }
+  if (providerId === "codex") {
+    if (kind === "rolling_5_hour") return copy("settings.token_plan.codex_quota.5h");
+    if (kind === "rolling_weekly") return copy("settings.token_plan.codex_quota.7d");
+    if (kind === "gpt_5_3_codex_spark_5_hour") return copy("settings.token_plan.codex_quota.spark_5h");
+    if (kind === "gpt_5_3_codex_spark_weekly") return copy("settings.token_plan.codex_quota.spark_7d");
+  }
+  return kind === "rolling_5_hour"
+    ? copy("settings.token_plan.glm.window_5h")
+    : copy("settings.token_plan.glm.window_weekly");
+}
+
+function formatQuotaWindowReset(value) {
+  const raw = String(value ?? "").trim();
+  const timestamp = /^\d+$/.test(raw) ? Number(raw) * 1000 : Date.parse(raw);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString()
+    : copy("settings.token_plan.reset_unavailable");
+}
+
+function formatTokenPlanValidity(value, now = new Date()) {
+  const timestamp = tokenPlanExpiryTimestamp(value);
+  if (timestamp === null) return copy("settings.token_plan.validity_unset");
+
+  const totalMinutes = Math.max(0, Math.floor((timestamp - now.getTime()) / 60_000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  const remaining = days > 0
+    ? copy("settings.token_plan.validity_days_hours", { days, hours })
+    : hours > 0
+      ? copy("settings.token_plan.validity_hours_minutes", { hours, minutes })
+      : copy("settings.token_plan.validity_minutes", { minutes });
+  const date = new Date(timestamp);
+  const pad = (part) => String(part).padStart(2, "0");
+  const dateTime = `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return copy("settings.token_plan.validity_summary", { remaining, date: dateTime });
+}
+
+function normalizeTokenPlanQuotaWindows(providerId, windows) {
+  const items = Array.isArray(windows) ? windows : [];
+  if (providerId !== "cursor") return items;
+  const priority = ["total", "rolling_weekly", "auto_composer", "api"];
+  const seen = new Set();
+  return [...items]
+    .sort((left, right) => priority.indexOf(left.kind) - priority.indexOf(right.kind))
+    .reduce((result, window) => {
+      const normalizedKind = window.kind === "rolling_weekly" ? "total" : window.kind;
+      if (seen.has(normalizedKind)) return result;
+      seen.add(normalizedKind);
+      result.push(normalizedKind === window.kind ? window : { ...window, kind: normalizedKind });
+      return result;
+    }, []);
+}
+
+function quotaWindowNumbers(window) {
+  const total = Number(window?.total);
+  const percentage = Number(window?.percentage);
+  const reportedUsed = Number(window?.used);
+  const reportedRemaining = Number(window?.remaining);
+  const used = Number.isFinite(reportedUsed)
+    ? reportedUsed
+    : Number.isFinite(total) && Number.isFinite(percentage)
+      ? total * percentage / 100
+      : Number.isFinite(total) && Number.isFinite(reportedRemaining)
+        ? total - reportedRemaining
+        : null;
+  const remaining = Number.isFinite(reportedRemaining)
+    ? reportedRemaining
+    : Number.isFinite(total) && Number.isFinite(used)
+      ? total - used
+      : null;
+  const usedPercent = Number.isFinite(percentage)
+    ? percentage
+    : Number.isFinite(total) && total > 0 && Number.isFinite(used)
+      ? used / total * 100
+      : null;
+  return { total: Number.isFinite(total) ? total : null, used, remaining, usedPercent };
+}
+
+function TokenPlanQuotaWindows({ providerId, windows }) {
+  const items = normalizeTokenPlanQuotaWindows(providerId, windows);
+  if (!items.length) return null;
+  return (
+    <div className="tt-token-plan-quota-windows">
+      <span>{copy("settings.token_plan.quota_windows")}</span>
+      <div>
+        {items.map((window, index) => {
+          const values = quotaWindowNumbers(window);
+          const progressPercent = values.usedPercent === null ? 0 : Math.max(0, Math.min(100, values.usedPercent));
+          const progressTone = tokenPlanQuotaProgressTone(progressPercent);
+          return (
+          <div key={`${window.kind || "window"}-${index}`} data-testid="token-plan-quota-window" className="tt-token-plan-quota-window">
+            <div className="tt-token-plan-quota-window-head">
+              <strong>
+                {window.kind === "total" ? null : <Clock aria-hidden="true" />}
+                {tokenPlanQuotaWindowLabel(providerId, window)}
+              </strong>
+              <span data-testid="token-plan-quota-window-percent" className="tt-token-plan-quota-window-percent">
+                {Math.round(progressPercent)}%
+              </span>
+            </div>
+            <span
+              className="tt-token-plan-progress"
+              data-tone={progressTone}
+              role="progressbar"
+              aria-label={tokenPlanQuotaWindowLabel(providerId, window)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progressPercent)}
+            ><i style={{ width: `${progressPercent}%` }} /></span>
+            <small data-testid="token-plan-quota-window-reset">
+              {copy("settings.token_plan.quota_window_reset")}: {window.resets_at
+                ? formatQuotaWindowReset(window.resets_at)
+                : copy("settings.token_plan.reset_unavailable")}
+            </small>
+          </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ExpiredTokenPlanRow({ record, onEdit }) {
+  const providerKey = String(record.provider_id || record.source || "custom").toLowerCase();
+  const endedAt = record.subscription_end_date || record.expires_at || "—";
+  const subscriptionCost = Number(record.subscription_amount) > 0
+    ? ` · ${record.subscription_currency || "USD"} ${Number(record.subscription_amount).toLocaleString()}`
+    : "";
+  return (
+    <div data-testid="expired-token-plan-row" className="flex items-center gap-3 rounded-md border border-oai-gray-200 px-3 py-2 dark:border-oai-gray-800">
+      <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${providerKey}`)} aria-hidden="true">
+        {["codex", "cursor", "trae"].includes(providerKey)
+          ? <ProviderIcon provider={providerKey} size={22} />
+          : String(record.source || "T").slice(0, 1).toUpperCase()}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-oai-gray-800 dark:text-oai-gray-200">
+          {record.source} / {record.plan_label || record.id}
+        </div>
+        <div className="mt-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("settings.token_plan.expired_at")} {endedAt}
+          {subscriptionCost}
+        </div>
+      </div>
+      <span className="shrink-0 rounded bg-oai-gray-100 px-2 py-1 text-xs font-medium text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400">
+        {copy("settings.token_plan.status_expired")}
+      </span>
+      <button type="button" onClick={() => onEdit(record)} className="shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark">
+        {copy("settings.token_plan.edit")}
+      </button>
+    </div>
+  );
+}
+
+function TokenPlanPagination({ pagination, onPageChange, testId }) {
+  if (pagination.pageCount <= 1) return null;
+  return (
+    <nav data-testid={testId} className="tt-token-plan-pagination" aria-label={copy("settings.token_plan.pagination.status", { current: pagination.page + 1, total: pagination.pageCount })}>
+      <button
+        type="button"
+        disabled={pagination.page === 0}
+        onClick={() => onPageChange(pagination.page - 1)}
+      >
+        {copy("settings.token_plan.pagination.previous")}
+      </button>
+      <span>{copy("settings.token_plan.pagination.status", { current: pagination.page + 1, total: pagination.pageCount })}</span>
+      <button
+        type="button"
+        disabled={pagination.page >= pagination.pageCount - 1}
+        onClick={() => onPageChange(pagination.page + 1)}
+      >
+        {copy("settings.token_plan.pagination.next")}
+      </button>
+    </nav>
+  );
+}
+
+export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNavigate = () => {}, onSummaryChange }) {
   const { visibleOrdered: visibleLimitProviders } = useLimitsDisplayPrefs();
-  const [records, setRecords] = useState([]);
+  const cachedPlanData = useRef(
+    listOnly && !editorPlanId ? readCostSettingsSessionCache("token-plans") : null,
+  ).current;
+  const [records, setRecords] = useState(cachedPlanData?.records || []);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formOpen, setFormOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedPlanData);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
   const [refreshingId, setRefreshingId] = useState("");
@@ -769,7 +1039,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const [savedNotice, setSavedNotice] = useState(false);
   const [usageLimits, setUsageLimits] = useState(null);
   const [loadingUsageLimits, setLoadingUsageLimits] = useState(false);
-  const [catalog, setCatalog] = useState([]);
+  const [catalog, setCatalog] = useState(cachedPlanData?.catalog || []);
   const [catalogError, setCatalogError] = useState("");
   const [loadingCatalog, setLoadingCatalog] = useState(false);
 
@@ -784,13 +1054,17 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   // endpoint which returns an api_key_ref, and the ref is what gets saved.
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [planRefreshTargetId, setPlanRefreshTargetId] = useState("");
-  const [expandedPlanIds, setExpandedPlanIds] = useState(() => new Set());
+  const [expiredPlansOpen, setExpiredPlansOpen] = useState(false);
+  const [activePage, setActivePage] = useState(0);
+  const [expiredPage, setExpiredPage] = useState(0);
+  const [showFullEmail, setShowFullEmail] = useState(readTokenPlanFullEmailPreference);
   const [editorInitialized, setEditorInitialized] = useState(false);
   const [editorMissing, setEditorMissing] = useState(false);
   const recordsRef = useRef(records);
   const consoleSessionsRef = useRef(consoleSessions);
   const refreshRef = useRef(null);
   const refreshingPlanIdsRef = useRef(new Set());
+  const fullEmailRefreshAttemptedIdsRef = useRef(new Set());
   const autoCodexRefreshBusyRef = useRef(false);
   recordsRef.current = records;
   consoleSessionsRef.current = consoleSessions;
@@ -800,6 +1074,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   );
 
   useEffect(() => {
+    if (cachedPlanData) return undefined;
     let cancelled = false;
     setLoading(true);
     setLoadingCatalog(true);
@@ -810,8 +1085,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       .then(([plansResult, catalogResult]) => {
         if (cancelled) return;
         const cat = normalizeCatalog(catalogResult);
+        const nextRecords = normalizeRecords(plansResult?.records).map((r) => enrichRecordWithCatalog(r, cat));
         setCatalog(cat);
-        setRecords(normalizeRecords(plansResult?.records).map((r) => enrichRecordWithCatalog(r, cat)));
+        setRecords(nextRecords);
+        writeCostSettingsSessionCache("token-plans", { records: nextRecords, catalog: cat });
         setError("");
       })
       .catch((err) => {
@@ -827,7 +1104,11 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [cachedPlanData]);
+
+  useEffect(() => {
+    if (!loading) writeCostSettingsSessionCache("token-plans", { records, catalog });
+  }, [catalog, loading, records]);
 
   useEffect(() => {
     const hasCodexRecord = records.some((r) => isCodexSource(r.source));
@@ -1917,19 +2198,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     setSavedNotice(false);
   };
 
-  const saveRecordNotes = async (record, notes) => {
-    setError("");
-    try {
-      const result = await saveTokenPlan({
-        ...record,
-        notes: String(notes || "").trim().slice(0, 200),
-      });
-      setRecords(normalizeRecords(result?.records));
-    } catch (err) {
-      setError(err?.message || copy("settings.token_plan.save_error"));
-    }
-  };
-
   // W03-R3B: detection method selector
   const updateDetectionMethod = (event) => {
     const value = event.target.value;
@@ -2652,6 +2920,23 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   refreshRef.current = refresh;
 
   useEffect(() => {
+    if (!showFullEmail) {
+      fullEmailRefreshAttemptedIdsRef.current.clear();
+      return;
+    }
+    if (loading) return;
+    recordsRef.current
+      .filter((record) => record.provider_id === "cursor"
+        && record.detection_method === "official_account"
+        && authorizedTokenPlanAccount(record).includes("*"))
+      .forEach((record) => {
+        if (!record.id || fullEmailRefreshAttemptedIdsRef.current.has(record.id)) return;
+        fullEmailRefreshAttemptedIdsRef.current.add(record.id);
+        void refreshRef.current?.(record.id);
+      });
+  }, [loading, records, showFullEmail]);
+
+  useEffect(() => {
     if (loading) return undefined;
     let cancelled = false;
     const run = async () => {
@@ -2889,15 +3174,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     setEditorInitialized(true);
   }, [editorInitialized, editorPlanId, loading, records]);
 
-  const togglePlanDetails = (id) => {
-    setExpandedPlanIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const handlePlanDragEnd = async ({ active, over }) => {
     if (!over || active.id === over.id) return;
     const previous = records;
@@ -2944,11 +3220,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     try {
       const result = await deleteTokenPlan(record.id);
       setRecords(normalizeRecords(result?.records));
-      setExpandedPlanIds((current) => {
-        const next = new Set(current);
-        next.delete(record.id);
-        return next;
-      });
     } catch (err) {
       setError(err?.message || copy("settings.token_plan.delete_error"));
     } finally {
@@ -2974,6 +3245,20 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     return formatQuota(form.total_quota);
   }, [isCatalogPlan, selectedPlan, form.quota_kind, form.total_quota]);
 
+  const activeRecords = records.filter(isUsableTokenPlan);
+  const expiredRecords = records.filter(isExpiredTokenPlanRecord);
+  const hasExpiredRecords = Boolean(expiredRecords.length);
+  const activePagination = paginateTokenPlans(activeRecords, activePage);
+  const expiredPagination = paginateTokenPlans(expiredRecords, expiredPage);
+  const attentionCount = countAttentionTokenPlans(activeRecords);
+  const activeCostCny = activeRecords.reduce((total, record) => (
+    String(record.subscription_currency || "CNY").toUpperCase() === "CNY"
+      ? total + Number(record.subscription_amount || 0)
+      : total
+  ), 0);
+  useEffect(() => {
+    onSummaryChange?.({ activeCount: activeRecords.length, attentionCount, costCny: activeCostCny });
+  }, [activeCostCny, activeRecords.length, attentionCount, onSummaryChange]);
   return (
     <SectionCard
       title={copy("settings.section.token_plan")}
@@ -2983,19 +3268,53 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       collapsible={!editorPlanId}
       defaultOpen={false}
       storageKey={!editorPlanId ? "cost.token-plans" : null}
-      collapsedSummary={copy("settings.token_plan.collapsed_summary", { count: records.length })}
+      collapsedSummaryContent={(
+        <span className="tt-token-plan-summary-labels">
+          <span
+            className="tt-collapsed-summary"
+            data-testid="settings-section-collapsed-summary"
+            data-tone="violet"
+            data-summary={copy("settings.token_plan.collapsed_summary", { count: records.length })}
+          >
+            {copy("settings.token_plan.collapsed_summary", { count: records.length })}
+          </span>
+          <span className="tt-token-plan-count tt-token-plan-count--active">
+            {copy("settings.token_plan.count_active", { count: activeRecords.length })}
+          </span>
+          <span className="tt-token-plan-count tt-token-plan-count--watch">
+            {copy("settings.token_plan.count_watch", { count: attentionCount })}
+          </span>
+        </span>
+      )}
       collapsedSummaryTone="violet"
       action={!editorPlanId ? (
         <div className="tt-token-plan-actions flex items-center gap-2">
-          <span className="tt-token-plan-count tt-token-plan-count--active">
-            {copy("settings.token_plan.count_active", { count: records.length })}
-          </span>
-          <span className="tt-token-plan-count tt-token-plan-count--watch">
-            {copy("settings.token_plan.count_watch", {
-              count: records.filter((record) => Number(record.remaining_quota || 0) <= 0 || Number(record.used_quota || 0) / Math.max(1, Number(record.total_quota || 0)) >= 0.8).length,
-            })}
-          </span>
-          <button type="button" onClick={() => records.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-300">
+          <button
+            type="button"
+            data-testid="token-plan-email-visibility"
+            aria-label={copy(showFullEmail
+              ? "settings.token_plan.email.hide"
+              : "settings.token_plan.email.show_full")}
+            title={copy(showFullEmail
+              ? "settings.token_plan.email.hide"
+              : "settings.token_plan.email.show_full")}
+            onClick={() => {
+              const next = !showFullEmail;
+              setShowFullEmail(next);
+              try {
+                window.localStorage.setItem(TOKEN_PLAN_FULL_EMAIL_KEY, next ? "1" : "0");
+              } catch {
+                // The preference remains active for this session when storage is unavailable.
+              }
+            }}
+            className="tt-cost-header-action"
+          >
+            {showFullEmail ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
+            {copy(showFullEmail
+              ? "settings.token_plan.email.hide"
+              : "settings.token_plan.email.show_full")}
+          </button>
+          <button type="button" onClick={() => activeRecords.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="tt-cost-header-action">
             <RefreshCw className={cn("h-3.5 w-3.5", refreshingId && "animate-spin")} aria-hidden />
             {copy("settings.token_plan.batch_refresh")}
           </button>
@@ -3003,11 +3322,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             type="button"
             onClick={openNewForm}
             disabled={loading || saving}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-            )}
+            className="tt-cost-header-action tt-cost-header-action-primary"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
             {copy("settings.token_plan.add")}
@@ -3021,30 +3336,58 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             {copy("settings.token_plan.empty")}
           </div>
         ) : (
+          <>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePlanDragEnd}>
-            <SortableContext items={records.map((record) => record.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {records.map((record) => (
+            <SortableContext items={activePagination.records.map((record) => record.id)} strategy={rectSortingStrategy}>
+              <div
+                data-testid="active-token-plan-grid"
+                className="tt-token-plan-grid"
+                style={{ "--tt-token-plan-columns": 5 }}
+              >
+                {activePagination.records.map((record) => (
                   <SortableTokenPlanCard
                     key={record.id}
                     record={record}
-                    expanded={expandedPlanIds.has(record.id)}
-                    onToggle={togglePlanDetails}
-                    onRefresh={refresh}
                     onEdit={openRecordEditor}
-                    onSaveNotes={saveRecordNotes}
-                    onKeyboardMove={handlePlanKeyboardMove}
+                    onRefresh={refresh}
                     onDelete={removeRecord}
+                    onKeyboardMove={handlePlanKeyboardMove}
                     refreshing={refreshingId === record.id}
                     saving={saving || deletingId === record.id}
-                    catalog={catalog}
                     usageLimits={usageLimits}
                     loadingUsageLimits={loadingUsageLimits}
+                    showFullEmail={showFullEmail}
                   />
                 ))}
               </div>
             </SortableContext>
           </DndContext>
+          <TokenPlanPagination pagination={activePagination} onPageChange={setActivePage} testId="active-token-plan-pagination" />
+          {hasExpiredRecords && (
+            <section data-testid="expired-token-plans" className="mt-3 rounded-md border border-oai-gray-200 dark:border-oai-gray-800">
+              <button
+                type="button"
+                onClick={() => setExpiredPlansOpen((open) => !open)}
+                aria-expanded={expiredPlansOpen}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+              >
+                <span>
+                  <strong className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">{copy("settings.token_plan.expired_group")}</strong>
+                  <small className="ml-2 text-xs text-oai-gray-400">{expiredRecords.length}</small>
+                </span>
+                {expiredPlansOpen ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
+              </button>
+              {expiredPlansOpen ? (
+                <div className="border-t border-oai-gray-100 p-2 dark:border-oai-gray-800">
+                  <div className="tt-token-plan-grid tt-token-plan-grid--expired">
+                    {expiredPagination.records.map((record) => <ExpiredTokenPlanRow key={record.id} record={record} onEdit={openRecordEditor} />)}
+                  </div>
+                  <TokenPlanPagination pagination={expiredPagination} onPageChange={setExpiredPage} testId="expired-token-plan-pagination" />
+                </div>
+              ) : null}
+            </section>
+          )}
+          </>
         )}
       </div>}
 
@@ -4122,150 +4465,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   );
 }
 
-function maskCursorAccountId(value) {
-  const normalized = String(value || "").trim();
-  if (normalized.length <= 24) return normalized;
-  return `${normalized.slice(0, 24)}…`;
-}
-
-function formatCursorTimestamp(value) {
-  if (!value) return "--";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "--" : parsed.toLocaleString();
-}
-
-function CursorQuotaDetails({ record }) {
-  const official = record?.detection_config?.official_account || {};
-  const windows = Array.isArray(record?.quota_windows) ? record.quota_windows : [];
-  const total = windows.find((window) => window.kind === "total")
-    || windows.find((window) => window.kind === "rolling_weekly");
-  const auto = windows.find((window) => window.kind === "auto_composer");
-  const api = windows.find((window) => window.kind === "api");
-  const resetAt = total?.resets_at || auto?.resets_at || api?.resets_at || "";
-  const displayName = String(official.display_name || "").trim();
-  const accountId = maskCursorAccountId(official.account_id);
-  const planName = String(official.plan_name || record?.plan_label || "").trim();
-
-  return (
-    <div className="mt-1 space-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400" data-testid="cursor-live-quota-details">
-      {displayName && <div>{copy("settings.token_plan.cursor.account")}: {displayName}</div>}
-      {accountId && <div>{copy("settings.token_plan.cursor.auth_id")}: {accountId}</div>}
-      {planName && <div>{copy("settings.token_plan.cursor.plan_name")}: {planName}</div>}
-      {total && <div>{copy("settings.token_plan.cursor.total_usage")}: {Number(total.percentage ?? total.used).toLocaleString()}%</div>}
-      {auto && <div>{copy("settings.token_plan.cursor.auto_composer_usage")}: {Number(auto.percentage ?? auto.used).toLocaleString()}%</div>}
-      {api && <div>{copy("settings.token_plan.cursor.api_usage")}: {Number(api.percentage ?? api.used).toLocaleString()}%</div>}
-      {resetAt && <div>{copy("settings.token_plan.cursor.reset_at")}: {formatCursorTimestamp(resetAt)}</div>}
-    </div>
-  );
-}
-
-// W03-R3D: Unified sync status display for both detection methods
-function RecordSyncStatus({ record }) {
-  if (!record) return null;
-
-  const hasDetection = record.detection_method && record.detection_method !== "not_configured";
-  const syncStatus = (() => {
-    const raw = record.sync_status || "not_configured";
-    if (raw === "reauth_required" && record.last_error_code === "GLM_API_KEY_MISSING") {
-      return "not_configured";
-    }
-    if (raw === "reauth_required" && record.last_error_code === "CODEX_CONSOLE_SYNC_REQUIRED") {
-      return "not_configured";
-    }
-    if (raw === "reauth_required" && String(record.last_error_message || "").includes("run `codex`")) {
-      return "not_configured";
-    }
-    return raw;
-  })();
-
-  // No detection method selected: prompt user
-  if (!hasDetection) {
-    return (
-      <div className="mt-1 flex items-center gap-1.5 text-xs text-oai-gray-400 dark:text-oai-gray-500">
-        <Clock className="h-3 w-3" aria-hidden />
-        <span>{copy("settings.token_plan.no_detection_prompt")}</span>
-      </div>
-    );
-  }
-
-  // Build status display
-  const statusLabel = copy(`settings.token_plan.sync_status.${syncStatus}`) || syncStatus;
-  const detectionLabel = record.detection_method === "official_account"
-    ? copy("settings.token_plan.detection_method.official_account")
-    : copy("settings.token_plan.detection_method.custom_api");
-
-  const isSuccess = syncStatus === "success";
-  const isFailed = syncStatus === "failed" || syncStatus === "reauth_required" || syncStatus === "unsupported";
-  const isSyncing = syncStatus === "syncing";
-  const isPending = syncStatus === "auth_required" || syncStatus === "not_configured";
-
-  const lastSynced = record.last_synced_at
-    ? new Date(record.last_synced_at).toLocaleString()
-    : null;
-  const lastAttempt = record.last_sync_attempt_at
-    ? new Date(record.last_sync_attempt_at).toLocaleString()
-    : null;
-  const errorMsg = record.last_error_message || "";
-  const errorCode = record.last_error_code || "";
-
-  return (
-    <div className="mt-1 space-y-0.5">
-      <div className="flex items-center gap-1.5 text-xs">
-        <span className="text-oai-gray-400 dark:text-oai-gray-500">
-          {copy("settings.token_plan.detection_method_label")}: {detectionLabel}
-        </span>
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded px-1 py-px font-medium",
-            isSuccess && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-            isFailed && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-            isSyncing && "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-            isPending && "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-          )}
-        >
-          {isSuccess && <CheckCircle2 className="h-3 w-3" aria-hidden />}
-          {isFailed && <ShieldAlert className="h-3 w-3" aria-hidden />}
-          {isSyncing && <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />}
-          {isPending && <AlertCircle className="h-3 w-3" aria-hidden />}
-          {copy("settings.token_plan.sync_status_label")}: {statusLabel}
-        </span>
-      </div>
-      {/* Last sync time */}
-      {(lastSynced || lastAttempt) && (
-        <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
-          {lastSynced && (
-            <span>{copy("settings.token_plan.last_synced_at")}: {lastSynced}</span>
-          )}
-          {!lastSynced && lastAttempt && (
-            <span>{copy("settings.token_plan.last_synced_at")}: --</span>
-          )}
-        </div>
-      )}
-      {/* Error info for failed/reauth_required/unsupported */}
-      {isFailed && errorMsg && (
-        <div className="text-xs text-red-600 dark:text-red-400">
-          {errorCode ? `${errorCode}: ` : ""}{errorMsg}
-        </div>
-      )}
-      {record.provider_id === "cursor" && Array.isArray(record.quota_windows) && record.quota_windows.length > 0 && (
-        <CursorQuotaDetails record={record} />
-      )}
-      {record.provider_id !== "cursor" && Array.isArray(record.quota_windows) && record.quota_windows.length > 0 && (
-        <div className="mt-1 space-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-          {record.quota_windows.map((window) => (
-            <div key={window.kind}>
-              {window.kind === "rolling_5_hour"
-                ? copy("settings.token_plan.glm.window_5h")
-                : copy("settings.token_plan.glm.window_weekly")}
-              : {Number(window.remaining || 0).toLocaleString()} / {Number(window.total || 0).toLocaleString()}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SummaryMetric({ label, value }) {
   return (
     <div>
@@ -4400,49 +4599,6 @@ function TextInput({ label, value, onChange, disabled, placeholder, hint, maxLen
         <span className="mt-1 block text-xs text-oai-gray-400 dark:text-oai-gray-500">{hint}</span>
       ) : null}
     </label>
-  );
-}
-
-function RecordNotesEditor({ record, onSave, disabled, hidden }) {
-  const [value, setValue] = useState(String(record?.notes || ""));
-  const [savingNotes, setSavingNotes] = useState(false);
-  const id = React.useId();
-
-  useEffect(() => {
-    setValue(String(record?.notes || ""));
-  }, [record?.id, record?.notes]);
-
-  if (hidden) return null;
-
-  const commit = async () => {
-    const trimmed = String(value || "").trim().slice(0, 200);
-    if (trimmed === String(record?.notes || "").trim()) return;
-    setSavingNotes(true);
-    try {
-      await onSave(record, trimmed);
-    } finally {
-      setSavingNotes(false);
-    }
-  };
-
-  return (
-    <div className="mt-1.5">
-      <label className="block text-xs text-oai-gray-500 dark:text-oai-gray-400" htmlFor={id}>
-        {copy("settings.token_plan.notes")}
-        <input
-          id={id}
-          type="text"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          onBlur={() => { void commit(); }}
-          disabled={disabled || savingNotes}
-          maxLength={200}
-          placeholder={copy("settings.token_plan.notes_placeholder")}
-          data-testid={`token-plan-notes-${record.id}`}
-          className="mt-0.5 h-8 w-full rounded-md border border-oai-gray-200 bg-white px-2 text-xs text-oai-gray-900 dark:border-oai-gray-800 dark:bg-oai-gray-950 dark:text-oai-gray-100"
-        />
-      </label>
-    </div>
   );
 }
 

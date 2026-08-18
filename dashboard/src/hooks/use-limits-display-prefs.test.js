@@ -99,7 +99,7 @@ describe("useLimitsDisplayPrefs", () => {
   });
 
   it("matches the provider list used for visibility/order keys", () => {
-    // Must match Swift LimitsSettingsStore.allProviders (see limits-providers.js).
+    // The limits panel exposes only the providers retained for display.
     expect(LIMIT_PROVIDER_IDS).toEqual([
       "claude",
       "codex",
@@ -111,10 +111,15 @@ describe("useLimitsDisplayPrefs", () => {
       "openclaw",
       "opencode",
       "antigravity",
+      "zed",
+      "workbuddy",
+      "kimi",
+      "kimi-code",
+      "pi",
+      "grok",
+      "copilot",
+      "deepseek-harness",
     ]);
-    expect(LIMIT_PROVIDER_IDS).not.toEqual(
-      expect.arrayContaining(["kimi", "kiro", "grok", "copilot"]),
-    );
   });
 
   it("reads and normalizes the existing localStorage keys", () => {

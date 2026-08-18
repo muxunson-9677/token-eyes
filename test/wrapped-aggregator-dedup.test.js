@@ -39,3 +39,16 @@ test("different buckets are not deduped against each other", () => {
   ]);
   assert.equal(w.totals.tokens, 350);
 });
+
+test("same bucket retains independent billing-mode cumulative rows", () => {
+  const shared = {
+    source: "codex",
+    model: "gpt-5.4",
+    hour_start: "2026-04-01T10:00:00.000Z",
+  };
+  const w = aggregateWrapped([
+    { ...row({ ...shared, total: 10 }), billing_mode: "unknown" },
+    { ...row({ ...shared, total: 20 }), billing_mode: "api_key" },
+  ]);
+  assert.equal(w.totals.tokens, 30);
+});

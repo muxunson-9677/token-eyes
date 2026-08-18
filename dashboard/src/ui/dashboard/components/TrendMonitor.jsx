@@ -516,7 +516,7 @@ export function TrendMonitor({
       className={cn(
         "relative",
         !embedded &&
-          "tt-surface rounded-[var(--tt-card-radius)] p-5",
+          "tt-surface tt-pressable-group rounded-[var(--tt-card-radius)] p-5",
         isZoom && "flex h-full flex-col",
         className,
       )}

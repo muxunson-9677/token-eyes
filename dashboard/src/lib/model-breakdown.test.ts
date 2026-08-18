@@ -211,6 +211,18 @@ describe("filterFleetByBillingMode", () => {
     expect(hermes.totalPercent).toBe("100.0");
   });
 
+  it("conserves all usage across api_key, token_plan, and unknown filters", () => {
+    const fleet = makeFleet();
+    const totalUsage = fleet.reduce((sum, source) => sum + source.usage, 0);
+    const filteredUsage = ["api_key", "token_plan", "unknown"].map((mode) => (
+      filterFleetByBillingMode(fleet, mode)
+        .reduce((sum: number, source: any) => sum + source.usage, 0)
+    ));
+
+    expect(filteredUsage).toEqual([400, 400, 200]);
+    expect(filteredUsage.reduce((sum, usage) => sum + usage, 0)).toBe(totalUsage);
+  });
+
   it("recomputes model share within the filtered source so survivors stay proportional", () => {
     const fleet = [
       {
@@ -353,6 +365,52 @@ describe("buildFleetData preserves billing metadata", () => {
     expect(fleet[0].billingModes).toEqual(["api_key", "token_plan"]);
     expect(fleet[0].models[0].billingMode).toBe("api_key");
     expect(fleet[0].models[1].billingMode).toBe("token_plan");
+  });
+
+  it("preserves and filters mixed-model token slices without dropping either billing mode", () => {
+    const fleet = buildFleetData({
+      sources: [{
+        source: "codex",
+        billing_mode: "mixed",
+        billing_modes: ["api_key", "token_plan"],
+        totals: { total_tokens: 100, total_cost_usd: 10 },
+        models: [{
+          model: "gpt-5",
+          billing_mode: "mixed",
+          billing_mode_token_totals: { api_key: 30, token_plan: 70, unknown: 0 },
+          billing_mode_cost_totals: { api_key: 4, token_plan: 6, unknown: 0 },
+          totals: { total_tokens: 100, total_cost_usd: 10 },
+        }],
+      }],
+    });
+
+    expect(fleet[0].models[0].billingModeTokenTotals).toEqual({
+      api_key: 30,
+      token_plan: 70,
+      unknown: 0,
+    });
+    const apiFleet = filterFleetByBillingMode(fleet, "api_key");
+    const planFleet = filterFleetByBillingMode(fleet, "token_plan");
+    expect(apiFleet[0]).toEqual(expect.objectContaining({ usage: 30, usd: 4 }));
+    expect(apiFleet[0].models[0]).toEqual(expect.objectContaining({ usage: 30, cost: 4 }));
+    expect(planFleet[0]).toEqual(expect.objectContaining({ usage: 70, usd: 6 }));
+    expect(planFleet[0].models[0]).toEqual(expect.objectContaining({ usage: 70, cost: 6 }));
+
+    const cloudFleet = buildFleetData({
+      sources: [{
+        source: "codex",
+        totals: { total_tokens: 100, total_cost_usd: 10 },
+        models: [{
+          model: "gpt-5",
+          billing_mode: "mixed",
+          billing_mode_token_totals: { api_key: 30, token_plan: 70, unknown: 0 },
+          totals: { total_tokens: 100, total_cost_usd: 10 },
+        }],
+      }],
+    });
+    const cloudApiFleet = filterFleetByBillingMode(cloudFleet, "api_key");
+    expect(cloudApiFleet[0].usd).toBeNull();
+    expect(cloudApiFleet[0].models[0].cost).toBeNull();
   });
 
   it("defaults missing billing metadata to 'unknown' / 'fallback_unknown'", () => {

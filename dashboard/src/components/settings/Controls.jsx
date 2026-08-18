@@ -72,6 +72,7 @@ export function SectionCard({
   iconTone = "blue",
   iconTestId = null,
   collapsedSummary = "",
+  collapsedSummaryContent = null,
   collapsedSummaryTone = "",
   className = "",
 }) {
@@ -104,22 +105,37 @@ export function SectionCard({
     });
   };
   const summaryTone = collapsedSummaryTone || iconTone;
-  const sectionIcon = Icon ? (
+  const summary = collapsedSummaryContent || (collapsedSummary ? (
     <span
-      data-testid="settings-section-icon"
-      data-tone={iconTone}
-      className={cn(
+      className="tt-collapsed-summary"
+      data-testid="settings-section-collapsed-summary"
+      data-tone={summaryTone}
+      data-summary={collapsedSummary}
+    >
+      {collapsedSummary}
+    </span>
+  ) : null);
+  const sectionIcon = Icon ? React.createElement(
+    "span",
+    {
+      "data-testid": "settings-section-icon",
+      "data-tone": iconTone,
+      className: cn(
         "grid h-7 w-7 shrink-0 place-items-center rounded-lg",
         SECTION_ICON_TONES[iconTone] || SECTION_ICON_TONES.blue,
-      )}
-    >
-      <Icon data-testid={iconTestId || undefined} className="h-3.5 w-3.5" aria-hidden="true" />
-    </span>
+      ),
+    },
+    React.createElement(Icon, {
+      "data-testid": iconTestId || undefined,
+      className: "h-3.5 w-3.5",
+      "aria-hidden": "true",
+    }),
   ) : null;
   return (
-    <Card className={className}>
-      <div className={cn("tt-section-card-header flex items-start justify-between gap-4", expanded && "mb-3")}>
-        {collapsible ? (
+    <Card className={cn("tt-pressable-group", className)}>
+      <div className="tt-section-card-header mb-3 flex items-center justify-between gap-4">
+        <div className="tt-section-header-main flex min-w-0 flex-1 items-center gap-3">
+          {collapsible ? (
           <button
             type="button"
             aria-label={title}
@@ -146,7 +162,7 @@ export function SectionCard({
               ) : null}
             </span>
           </button>
-        ) : (
+          ) : (
           <div className="tt-section-card-heading flex min-w-0 flex-1 items-start gap-2">
             {sectionIcon}
             <div className="tt-section-card-title-block min-w-0 flex-1">
@@ -160,24 +176,21 @@ export function SectionCard({
               ) : null}
             </div>
           </div>
-        )}
-        {action || collapsedSummary ? (
-          <div className="tt-section-header-aside shrink-0">
-            {expanded ? (action || null) : collapsedSummary ? (
-              <span
-                className="tt-collapsed-summary"
-                data-testid="settings-section-collapsed-summary"
-                data-tone={summaryTone}
-                data-summary={collapsedSummary}
-              >
-                {collapsedSummary}
-              </span>
-            ) : null}
+          )}
+          {summary ? (
+            <div className="tt-section-header-summary shrink-0" data-testid="settings-section-summary-slot">
+              {summary}
+            </div>
+          ) : null}
+        </div>
+        {action ? (
+          <div className="tt-section-header-aside tt-section-action-slot shrink-0" data-testid="settings-section-action-slot">
+            {action}
           </div>
         ) : null}
       </div>
       {expanded ? (
-        <div className="-mb-3 divide-y divide-oai-gray-200/60 dark:divide-oai-gray-800/60">
+        <div className="tt-section-card-body -mb-3 divide-y divide-oai-gray-200/60 dark:divide-oai-gray-800/60">
           {children}
         </div>
       ) : null}
@@ -197,7 +210,7 @@ export function SegmentedControl({ options, value, onChange, className = "" }) {
             onClick={() => onChange(optionValue)}
             aria-pressed={active}
             className={cn(
-              "tt-pressable tt-product-focusable inline-flex min-h-10 items-center gap-1.5 rounded-[8px] border border-transparent px-3 py-1.5 text-xs font-medium transition-[color,background-color,box-shadow,transform]",
+              "tt-pressable tt-product-focusable inline-flex min-h-10 items-center gap-1.5 rounded-[var(--radius-md)] border border-transparent px-3 py-1.5 text-xs font-medium transition-[color,background-color,box-shadow,transform]",
               active
                 ? "translate-y-px border-white/90 bg-white text-oai-black shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(15,23,42,0.1),0_1px_2px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-oai-gray-800 dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(0,0,0,0.4),0_1px_2px_rgba(0,0,0,0.35)]"
                 : "text-oai-gray-500 hover:text-oai-gray-700 dark:text-oai-gray-500 dark:hover:text-oai-gray-300",

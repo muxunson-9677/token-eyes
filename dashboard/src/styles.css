@@ -178,6 +178,13 @@ body {
   height: 100%;
 }
 
+/* Reserve the main pane's scrollbar gutter before details overflow, so an
+   expand/collapse never shifts the toolbar or the rest of the page sideways. */
+.tt-main-scroll-region {
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+}
+
 body {
   margin: 0;
   background: var(--tt-canvas);

@@ -203,9 +203,22 @@ function TraeIcon({ size = 16, className = "" }) {
   );
 }
 
+function ZedIcon({ size = 16, className = "" }) {
+  // Mono rendition of Zed's angular "Z" mark.
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M4 5h13" />
+      <path d="M17 5 7 19" />
+      <path d="M7 19h13" />
+    </svg>
+  );
+}
+
 const PROVIDER_ICON_MAP = {
   CLAUDE: ClaudeIcon,
   CODEBUDDY: CodeBuddyIcon,
+  // WorkBuddy is the CodeBuddy CLI rebrand — same brand mark family.
+  WORKBUDDY: CodeBuddyIcon,
   CODEX: CodexIcon,
   COPILOT: CopilotIcon,
   CRAFT: CraftIcon,
@@ -221,6 +234,7 @@ const PROVIDER_ICON_MAP = {
   OMP: OmpIcon,
   PI: PiIcon,
   TRAE: TraeIcon,
+  ZED: ZedIcon,
 };
 
 // Multi-color brand SVG assets in /public/brand-logos/. Only logos that have
@@ -231,9 +245,13 @@ const PROVIDER_LOGO_MAP = {
   ALIYUN_BAILIAN: "https://img.alicdn.com/tfs/TB1_ZXuNcfpK1RjSZFOXXa6nFXa-32-32.ico",
   ANTIGRAVITY: "/brand-logos/antigravity.svg",
   CLAUDE: "/brand-logos/claude-code.svg",
+  CODEX: "/brand-logos/codex.svg",
   CODEBUDDY: "/brand-logos/codebuddy.svg",
+  WORKBUDDY: "/brand-logos/codebuddy.svg",
   HERMES: "/brand-logos/hermes.svg",
   CURSOR: "/brand-logos/cursor.svg",
+  DEEPSEEK: "/brand-logos/deepseek.png",
+  "DEEPSEEK-HARNESS": "/brand-logos/deepseek-harness.svg",
   GEMINI: "/brand-logos/gemini.svg",
   GLM: "https://static.bigmodel.cn/wd-paas-front/static/images/favicon.png",
   "KILO-CLI": "/brand-logos/kilo.svg",
@@ -244,6 +262,8 @@ const PROVIDER_LOGO_MAP = {
   OPENCODE: "/brand-logos/opencode.svg",
   TRAE: "/brand-logos/trae.svg",
   XIAOMI_MIMO: "https://cdn.cnbj1.fds.api.mi-img.com/aife/mimo-blog-fe/doc_build/mimo.ico",
+  // ZCode is Zhipu's coding CLI — reuse the BigModel brand favicon.
+  ZCODE: "https://static.bigmodel.cn/wd-paas-front/static/images/favicon.png",
 };
 
 function PlaceholderIcon({ size = 16, className = "" }) {

@@ -7,36 +7,55 @@ import {
   drawLine,
   fadeTransparentSurface,
   hsla,
+  lifecycleFade,
   pickRandom,
   randomBetween,
 } from "./celebration-canvas-drawing.js";
 
 const METEOR_HUES = [186, 198, 210, 225, 250, 282, 34];
 
+export function selectMeteorLane(initial, random = Math.random) {
+  return random() < (initial ? 0.38 : 0.28) ? "front" : initial ? "rear" : "entry";
+}
+
 export function createMeteorScene(surface) {
   let meteors = [];
   let stars = [];
   let embers = [];
-
   const makeMeteor = (initial = false, giant = false) => {
     const depth = giant ? 1 : Math.pow(Math.random(), 1.6);
-    const speed = (giant ? 1_700 : 470 + depth * 1_450) * surface.scale;
+    const speed = (giant ? 900 : 340 + depth * 720) * surface.scale;
     const angle = randomBetween(2.25, 2.44);
+    const lane = selectMeteorLane(initial);
+    const entersFromTop = initial || Math.random() < 0.62;
+    const x = lane === "front"
+      ? randomBetween(surface.width * 0.08, surface.width * 0.38)
+      : lane === "rear"
+        ? randomBetween(surface.width * 0.42, surface.width * 0.68)
+        : entersFromTop
+        ? randomBetween(surface.width * 0.54, surface.width * 0.84)
+        : randomBetween(surface.width * 0.66, surface.width * 0.86);
+    const y = lane === "front"
+      ? randomBetween(surface.height * 0.4, surface.height * 0.78)
+      : lane === "rear"
+        ? randomBetween(surface.height * 0.52, surface.height * 0.94)
+        : entersFromTop
+        ? randomBetween(surface.height * 0.26, surface.height * 0.52)
+        : randomBetween(surface.height * 0.24, surface.height * 0.78);
     return {
-      x: initial
-        ? randomBetween(-surface.width * 0.2, surface.width * 1.2)
-        : randomBetween(surface.width * 0.48, surface.width * 1.25),
-      y: initial
-        ? randomBetween(-surface.height * 0.35, surface.height * 1.05)
-        : randomBetween(-surface.height * 0.38, surface.height * 0.08),
+      x,
+      y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       depth,
-      length: (giant ? 950 : 95 + depth * 540) * surface.scale,
+      length: (giant ? 240 : 58 + depth * 170) * surface.scale,
       width: (giant ? 7 : 1 + depth * 5) * surface.scale,
       hue: pickRandom(METEOR_HUES),
-      life: randomBetween(0.7, 2.25),
-      age: initial ? randomBetween(0, 0.8) : 0,
+      life: randomBetween(0.46, 0.96),
+      age: initial ? randomBetween(0, 0.3) : 0,
+      appearAt: randomBetween(0.02, 0.14),
+      vanishAt: randomBetween(0.56, 0.86),
+      edgeMargin: randomBetween(28, 84) * surface.scale,
     };
   };
 
@@ -76,6 +95,22 @@ export function createMeteorScene(surface) {
       const speed = Math.hypot(meteor.vx, meteor.vy);
       const tailX = meteor.x - (meteor.vx / speed) * meteor.length;
       const tailY = meteor.y - (meteor.vy / speed) * meteor.length;
+      const nearestLineEdge = Math.min(
+        meteor.x,
+        tailX,
+        width - meteor.x,
+        width - tailX,
+        meteor.y,
+        tailY,
+        height - meteor.y,
+        height - tailY,
+      );
+      const edgeFade = clamp(nearestLineEdge / meteor.edgeMargin, 0, 1);
+      const fade = edgeFade * lifecycleFade(
+        meteor.age / meteor.life,
+        meteor.appearAt,
+        meteor.vanishAt,
+      );
       drawLine(
         context,
         tailX,
@@ -84,7 +119,7 @@ export function createMeteorScene(surface) {
         meteor.y,
         hsla(meteor.hue, 100, 60),
         meteor.width * 3.2,
-        0.2 + 0.25 * meteor.depth,
+        (0.2 + 0.25 * meteor.depth) * fade,
       );
       drawLine(
         context,
@@ -94,10 +129,10 @@ export function createMeteorScene(surface) {
         meteor.y,
         "rgba(245,252,255,1)",
         Math.max(0.7, meteor.width * 0.52),
-        0.96,
+        0.96 * fade,
       );
       if (meteor.depth > 0.6) {
-        drawGlow(context, meteor.x, meteor.y, 7 + meteor.width * 3.4, meteor.hue, 0.72);
+        drawGlow(context, meteor.x, meteor.y, 7 + meteor.width * 3.4, meteor.hue, 0.72 * fade);
       }
       if (meteor.depth > 0.72 && Math.random() < delta * 14 && embers.length < 260) {
         embers.push({
@@ -111,11 +146,8 @@ export function createMeteorScene(surface) {
           radius: randomBetween(0.7, 2.1),
         });
       }
-      if (
-        meteor.x < -width * 0.45
-        || meteor.y > height * 1.45
-        || meteor.age > meteor.life
-      ) {
+      const offCanvas = meteor.x < -width * 0.16 || meteor.y > height * 1.16;
+      if (meteor.age > meteor.life || offCanvas) {
         meteors[index] = makeMeteor(false, Math.random() < 0.014);
       }
     }
@@ -141,12 +173,13 @@ export function createMeteorScene(surface) {
   return { render, resize: reset };
 }
 
-export default function MeteorCelebrationCanvas({ onFallback }) {
+export default function MeteorCelebrationCanvas({ onFallback, fitParent = false }) {
   return (
     <CelebrationCanvas
       effectId="meteors"
       createScene={createMeteorScene}
       onFallback={onFallback}
+      fitParent={fitParent}
     />
   );
 }

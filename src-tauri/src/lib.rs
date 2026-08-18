@@ -95,6 +95,7 @@ pub fn run() {
             cursor_session::delete_cursor_console_session,
             glm_session::open_glm_console_login,
             glm_session::verify_glm_console_session,
+            glm_session::refresh_glm_console_session,
             glm_session::delete_glm_console_session,
             kimi_session::open_kimi_console_login,
             kimi_session::verify_kimi_console_session,

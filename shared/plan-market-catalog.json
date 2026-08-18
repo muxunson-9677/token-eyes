@@ -1,0 +1,625 @@
+{
+  "_meta": {
+    "version": 1,
+    "updated_at": "2026-08-15 06:00",
+    "note": "Curated provider subscription plan market snapshot. Every provider entry must cite official sources and carry last_verified. Prices are marketing-page list prices, not user-billed amounts."
+  },
+  "providers": [
+    {
+      "id": "glm",
+      "display_name": "智谱 GLM",
+      "vendor": "Zhipu AI",
+      "region": "CN",
+      "last_verified": "2026-08-13",
+      "is_recent": true,
+      "tags": ["hot"],
+      "announcement": "2026-07-30 套餐改版为透明积分制；周末全天按非高峰 0.5 倍抵扣；2026-08-15 前订阅包年享 7 折、包季享 8 折",
+      "sources": [
+        { "label": "官方订阅页", "url": "https://bigmodel.cn/glm-coding" },
+        { "label": "官方套餐说明", "url": "https://docs.bigmodel.cn/cn/coding-plan/overview" },
+        { "label": "改版公告", "url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision" }
+      ],
+      "plans": [
+        {
+          "plan_id": "lite",
+          "display_name": "Lite",
+          "badges": ["entry"],
+          "price": { "amount": 118, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [
+            { "amount": 94.4, "currency": "CNY", "cycle": "monthly", "note": "连续包季（8 折，限时）" }
+          ],
+          "quota_summary": "每 5 小时 2,000 积分；每周 10,000 积分（约 0.43–0.87 亿 tokens/周，GLM-5.2 口径）",
+          "highlights": ["支持 ZCode、Claude Code 等 20+ 编程工具", "非高峰时段按 0.5 倍积分抵扣"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro",
+          "display_name": "Pro",
+          "badges": ["hot", "recommended"],
+          "price": { "amount": 538, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [
+            { "amount": 430.4, "currency": "CNY", "cycle": "monthly", "note": "连续包季（8 折，限时）" }
+          ],
+          "quota_summary": "每 5 小时 12,000 积分；每周 60,000 积分（6 倍 Lite 用量）",
+          "highlights": ["优先体验最新旗舰模型", "覆盖多款精选 MCP 工具", "更快生成速度"],
+          "status": "available"
+        },
+        {
+          "plan_id": "max",
+          "display_name": "Max",
+          "badges": ["premium"],
+          "price": { "amount": 1078, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [
+            { "amount": 862.4, "currency": "CNY", "cycle": "monthly", "note": "连续包季（8 折，限时）" }
+          ],
+          "quota_summary": "每 5 小时 28,000 积分；每周 140,000 积分（14 倍 Lite 用量）",
+          "highlights": ["首发接入最新旗舰模型及功能", "高峰期专属资源优先保障"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "aliyun-bailian",
+      "display_name": "阿里云百炼",
+      "vendor": "Alibaba Cloud",
+      "region": "CN",
+      "last_verified": "2026-08-15",
+      "is_recent": true,
+      "tags": ["hot", "discount"],
+      "announcement": "百炼控制台当前公开 TokenPlan 个人版三档：Lite ¥39/月、Standard ¥139/月、Pro ¥499/月；页面同时列出原价与相应的 5 小时、7 天额度。",
+      "sources": [
+        { "label": "百炼控制台 TokenPlan 个人版", "url": "https://bailian.console.aliyun.com/" },
+        { "label": "官方帮助中心（中国站）", "url": "https://help.aliyun.com/zh/model-studio/coding-plan" },
+        { "label": "国际版文档", "url": "https://docs.qwencloud.com/coding-plan/overview" }
+      ],
+      "plans": [
+        {
+          "plan_id": "lite",
+          "display_name": "Lite 套餐",
+          "price": { "amount": 39, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [{ "amount": 60, "currency": "CNY", "cycle": "monthly", "note": "页面标注原价" }],
+          "quota_summary": "每 5 小时 700 Credits；每 7 天 2,500 Credits；适用于原型验证或轻度单任务。",
+          "highlights": [
+            "文本、视觉等多模态模型",
+            "联网搜索等 Harness 工具",
+            "适配主流工具并持续扩展",
+            "支持 1–2 个 Agent 并发运行"
+          ],
+          "status": "available"
+        },
+        {
+          "plan_id": "standard",
+          "display_name": "Standard 套餐",
+          "badges": ["recommended"],
+          "price": { "amount": 139, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [{ "amount": 180, "currency": "CNY", "cycle": "monthly", "note": "页面标注原价" }],
+          "quota_summary": "每 5 小时 3,000 Credits；每 7 天 10,000 Credits；适用于高频调用与多 Agent 协作。",
+          "highlights": ["包含 Lite 套餐全部权益", "4 倍 Lite 套餐用量", "支持 3–4 个 Agent 并发运行"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro",
+          "display_name": "Pro 套餐",
+          "price": { "amount": 499, "currency": "CNY", "cycle": "monthly" },
+          "alt_prices": [{ "amount": 600, "currency": "CNY", "cycle": "monthly", "note": "页面标注原价" }],
+          "quota_summary": "每 5 小时 12,000 Credits；每 7 天 40,000 Credits；适用于高并发与海量调用。",
+          "highlights": ["包含 Standard 套餐全部权益", "16 倍 Lite 套餐用量", "支持 6–8 个 Agent 并发运行"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "claude",
+      "display_name": "Anthropic Claude（含 Claude Code）",
+      "vendor": "Anthropic",
+      "region": "GLOBAL",
+      "risk": "extreme",
+      "last_verified": "2026-08-13",
+      "is_recent": true,
+      "tags": ["hot", "discount"],
+      "announcement": "订阅额度为 5 小时滚动窗口 + 每周活跃上限双重限制，额度在 Claude Code、Claude.ai、Cowork 间共享",
+      "sources": [
+        { "label": "官方定价页", "url": "https://claude.com/pricing" },
+        { "label": "官方 Max 套餐说明", "url": "https://support.claude.com/en/articles/11049741-what-is-the-max-plan" },
+        { "label": "官方 Claude Code 套餐说明", "url": "https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan" }
+      ],
+      "plans": [
+        {
+          "plan_id": "free",
+          "display_name": "Free",
+          "price": { "amount": 0, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "基础用量；用量会按任务长度、模型和功能动态限制。",
+          "highlights": ["网页、iOS、Android 与桌面端聊天", "代码生成与数据可视化", "网页搜索、跨会话记忆与文件执行", "桌面扩展、Slack 和 Google Workspace 连接器", "远程 MCP 连接器与复杂任务的扩展思考"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro",
+          "display_name": "Pro",
+          "price": { "amount": 20, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "滚动 5 小时会话额度与每周额度共同生效；各 Claude 产品共享用量池。",
+          "highlights": ["包含 Free 的全部能力", "更多用量与更多 Claude 模型", "Claude Code、Cowork、Design、Science", "无限 Projects、Research 与 Claude for Microsoft 365", "月付 $20；年付 $200（$17/月折算）"],
+          "status": "available"
+        },
+        {
+          "plan_id": "max-5x",
+          "display_name": "Max 5x",
+          "price": { "amount": 100, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "每个 5 小时会话容量为 Pro 的 5 倍，并受每周总模型/ Sonnet 模型额度限制。",
+          "highlights": ["包含 Pro 的全部能力", "所有任务更高输出上限", "新功能优先体验", "高峰期优先访问", "仅月付；Claude Code 与聊天共享额度"],
+          "status": "available"
+        },
+        {
+          "plan_id": "max-20x",
+          "display_name": "Max 20x",
+          "price": { "amount": 200, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "每个 5 小时会话容量为 Pro 的 20 倍，并受每周总模型/ Sonnet 模型额度限制。",
+          "highlights": ["包含 Pro 的全部能力", "所有任务更高输出上限", "新功能优先体验", "高峰期优先访问", "仅月付；Claude Code 与聊天共享额度"],
+          "status": "available"
+        },
+        {
+          "plan_id": "team-standard",
+          "display_name": "Team Standard seat",
+          "price": { "amount": 25, "currency": "USD", "cycle": "monthly" },
+          "alt_prices": [{ "amount": 20, "currency": "USD", "cycle": "monthly", "note": "年付每席" }],
+          "quota_summary": "适用于 2–150 人团队；比 Pro 更多用量。",
+          "highlights": ["Claude Code、Cowork、Design、Science", "Microsoft 365 与 @Claude 连接", "组织级企业搜索", "集中账单与管理", "SSO、连接器管理员控制与桌面端企业部署", "默认不使用内容训练模型"],
+          "status": "available"
+        },
+        {
+          "plan_id": "team-premium",
+          "display_name": "Team Premium seat",
+          "price": { "amount": 125, "currency": "USD", "cycle": "monthly" },
+          "alt_prices": [{ "amount": 100, "currency": "USD", "cycle": "monthly", "note": "年付每席" }],
+          "quota_summary": "适用于 2–150 人团队；提供 Standard seat 的 5 倍用量。",
+          "highlights": ["包含 Team Standard 的全部能力", "5 倍 Standard 用量", "可与 Standard seat 混合配置", "集中账单、SSO 与管理员控制", "默认不使用内容训练模型"],
+          "status": "available"
+        },
+        {
+          "plan_id": "enterprise",
+          "display_name": "Enterprise",
+          "price": { "display": "$20/席起 + 按量计费" },
+          "quota_summary": "官网公开基础席位为 $20/席；模型和任务的实际使用量按 API 费率计费，复杂合同可联系销售。",
+          "highlights": ["包含 Team 的全部能力", "管理员可设个人/组织支出上限", "RBAC、SCIM、审计日志与 Compliance API", "自定义数据保留、网络访问控制与 IP 白名单", "HIPAA-ready 方案与 Claude Security（beta）"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "display_name": "Codex / OpenAI",
+      "vendor": "OpenAI",
+      "region": "GLOBAL",
+      "last_verified": "2026-08-13",
+      "tags": ["hot", "discount"],
+      "announcement": "Codex 用量包含在 ChatGPT 订阅内，不同档位配额不同",
+      "sources": [
+        { "label": "官方定价页", "url": "https://openai.com/chatgpt/pricing" },
+        { "label": "官方 Go 公告", "url": "https://openai.com/index/introducing-chatgpt-go/" }
+      ],
+      "plans": [
+        {
+          "plan_id": "free",
+          "display_name": "Free",
+          "price": { "amount": 0, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "基础访问；消息、上传、数据分析、图像、语音、深度研究和 Codex 均有使用上限。",
+          "highlights": ["GPT-4.1 mini", "网页搜索与聊天历史", "有限 GPT-4o、o4-mini 与 deep research", "有限文件上传、数据分析、图像生成和语音", "可使用自定义 GPT 与 macOS 桌面端代码编辑"],
+          "status": "available"
+        },
+        {
+          "plan_id": "go",
+          "display_name": "Go",
+          "price": { "amount": 8, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "官方全球发布价 $8/月（部分地区价格不同）；相较 Free 提供更多即时模型消息、上传和图像生成。",
+          "highlights": ["10 倍 Free 的消息、文件上传和图像生成额度", "更长记忆与上下文", "适用于 GPT-5.2 Instant", "广告版可能因地区而异"],
+          "status": "available"
+        },
+        {
+          "plan_id": "plus",
+          "display_name": "Plus",
+          "price": { "amount": 20, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "付费个人订阅；具体模型和 Codex 配额按产品限额管理。",
+          "highlights": ["包含 Go/Free 的能力", "扩展消息、上传、数据分析与图像生成额度", "标准及高级语音（含视频/屏幕共享）", "深度研究、推理模型与 Projects/Tasks/自定义 GPT", "可使用 Codex 编码代理"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro",
+          "display_name": "Pro",
+          "price": { "amount": 200, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "最高个人订阅层级；无限能力仍受滥用防护规则约束。",
+          "highlights": ["包含 Plus 的全部能力", "推理模型与 GPT-4o 的无限访问（受防滥用规则限制）", "o3-pro、扩展 deep research 与 Sora", "高级语音具有更高视频/屏幕共享限额", "Codex 编码代理研究预览"],
+          "status": "available"
+        },
+        {
+          "plan_id": "business",
+          "display_name": "Business",
+          "price": { "amount": 30, "currency": "USD", "cycle": "monthly" },
+          "alt_prices": [{ "amount": 25, "currency": "USD", "cycle": "monthly", "note": "年付每用户" }],
+          "quota_summary": "月付 $30/用户/月；年付折算 $25/用户/月。官网已将 Team 更名为 Business。",
+          "highlights": ["团队工作区与集中账单", "团队数据默认不用于训练", "管理控制和共享协作", "适合组织部署的 ChatGPT 与 Codex"],
+          "status": "available"
+        },
+        {
+          "plan_id": "enterprise",
+          "display_name": "Enterprise",
+          "price": { "display": "联系销售" },
+          "quota_summary": "大型组织定制方案；价格、用量和条款以销售合同为准。",
+          "highlights": ["包含 Business 的能力", "SCIM、用户分析、域验证与功能访问控制", "自定义数据保留、传输/静态加密与默认不训练", "七个区域的数据驻留", "24/7 优先支持、SLA、定制法律条款与规模折扣"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "cursor",
+      "display_name": "Cursor",
+      "vendor": "Cursor",
+      "region": "GLOBAL",
+      "last_verified": "2026-08-15",
+      "tags": ["hot", "discount"],
+      "sources": [
+        { "label": "官方定价页", "url": "https://www.cursor.com/pricing" }
+      ],
+      "plans": [
+        {
+          "plan_id": "hobby",
+          "display_name": "Hobby",
+          "price": { "amount": 0, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "个人免费档；Agent 请求和 Tab 补全均为有限额度。",
+          "highlights": ["无需信用卡", "有限 Agent 请求", "有限 Tab completions", "可试用 Pro"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro",
+          "display_name": "Pro",
+          "price": { "amount": 20, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "个人档；官方模型页列明包含 $20 API Agent 使用额度和额外奖励用量。",
+          "highlights": ["无限 Tab completions", "扩展 Agent 使用上限与前沿模型", "MCP、skills、hooks", "Cloud agents", "Bugbot 按用量计费", "超出内含额度可按成本购买或升级"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro-plus",
+          "display_name": "Pro+",
+          "price": { "amount": 60, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "个人加强档；官方模型页列明包含 $70 API Agent 使用额度和额外奖励用量。",
+          "highlights": ["包含 Pro 的全部能力", "约 3 倍 Pro Agent 用量", "无限 Tab completions", "MCP、skills、hooks、Cloud agents 与 Bugbot 按用量计费", "价格按官方结账页和地区显示"],
+          "status": "available"
+        },
+        {
+          "plan_id": "ultra",
+          "display_name": "Ultra",
+          "price": { "amount": 200, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "个人高用量档；官方模型页列明包含 $400 API Agent 使用额度和额外奖励用量。",
+          "highlights": ["包含 Pro 的全部能力", "约 20 倍 Pro 用量", "前沿模型、MCP、skills、hooks 与 Cloud agents", "新功能优先访问", "Bugbot 按用量计费"],
+          "status": "available"
+        },
+        {
+          "plan_id": "teams-standard",
+          "display_name": "Teams Standard",
+          "price": { "amount": 40, "currency": "USD", "cycle": "monthly" },
+          "alt_prices": [{ "amount": 32, "currency": "USD", "cycle": "monthly", "note": "年付每席" }],
+          "quota_summary": "团队 Standard 席位；月付 $40/席/月，年付折算 $32/席/月。",
+          "highlights": ["集中账单与管理", "团队内部 rules、skills、plugins 市场", "Bugbot 代码审查与 Cloud agents", "共享团队上下文与使用分析", "团队隐私模式与 SAML/OIDC SSO"],
+          "status": "available"
+        },
+        {
+          "plan_id": "teams-premium",
+          "display_name": "Teams Premium",
+          "price": { "amount": 120, "currency": "USD", "cycle": "monthly" },
+          "alt_prices": [{ "amount": 96, "currency": "USD", "cycle": "monthly", "note": "年付每席" }],
+          "quota_summary": "团队 Premium 席位；月付 $120/席/月，年付折算 $96/席/月，提供 Standard 的 5 倍 Agent 用量。",
+          "highlights": ["包含 Teams Standard 的全部能力", "5 倍 Standard Agent 用量", "集中账单与管理", "团队内部 rules、skills、plugins 市场", "Bugbot 代码审查与 Cloud agents", "团队隐私模式与 SAML/OIDC SSO"],
+          "status": "available"
+        },
+        {
+          "plan_id": "enterprise",
+          "display_name": "Enterprise",
+          "price": { "display": "联系销售" },
+          "quota_summary": "企业定制价格；官方说明支持订单、共享用量与高级安全控制。",
+          "highlights": ["包含 Teams 的能力", "共享用量、发票/采购订单和 SCIM", "仓库、模型和 MCP 访问控制", "Auto-run、浏览器与网络控制", "审计日志、服务账号、AI 代码跟踪 API 与优先支持"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "kimi",
+      "display_name": "月之暗面 Kimi",
+      "vendor": "Moonshot AI",
+      "region": "CN",
+      "access": "direct",
+      "last_verified": "2026-08-15",
+      "is_recent": true,
+      "tags": ["discount", "new"],
+      "announcement": "Kimi 当前公开的会员档位均使用共享额度池；会话入口 K2.6 免费，Kimi Code 另有 5 小时/周限制。",
+      "sources": [
+        { "label": "Kimi 官方会员价格与权益", "url": "https://www.kimi.com/zh-cn/help/membership/membership-pricing" },
+        { "label": "Kimi 官方会员体系", "url": "https://www.kimi.com/zh-cn/help/membership/membership-overview" }
+      ],
+      "plans": [
+        {
+          "plan_id": "andante",
+          "display_name": "Andante",
+          "price": { "amount": 49, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "Agent 约 30 个；共享会员额度池；Kimi Code 1 倍额度。",
+          "highlights": ["Agent 优先生成队列（4 倍速）", "Office 文件处理、深度研究、网站部署", "Kimi Code 1 倍额度", "专业数据库 1,000 次调用"],
+          "status": "available"
+        },
+        {
+          "plan_id": "moderato",
+          "display_name": "Moderato",
+          "price": { "amount": 99, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "Agent 约 60 个；可并行 2 个任务；Kimi Code 4 倍额度。",
+          "highlights": ["Agent 优先生成队列（4 倍速）", "Office 文件处理、深度研究、网站部署", "Agent 任务并行 2 个", "Agent 集群可用 25 次（2 个子任务并行）", "Kimi Code 4 倍额度", "专业数据库 2,000 次调用"],
+          "status": "available"
+        },
+        {
+          "plan_id": "allegretto",
+          "display_name": "Allegretto",
+          "price": { "amount": 199, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "Agent 约 150 个；可并行 2 个任务；Kimi Code 20 倍额度。",
+          "highlights": ["Agent 优先生成队列（4 倍速）", "Office 文件处理、深度研究、网站部署", "Agent 任务并行 2 个", "Agent 集群可用 50 次（4 个子任务并行）", "Kimi Code 20 倍额度", "一键部署 Kimi Claw / Kimi Claw Android", "专业数据库 5,000 次调用"],
+          "status": "available"
+        },
+        {
+          "plan_id": "allegro",
+          "display_name": "Allegro",
+          "price": { "amount": 699, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "Agent 约 360 个；可并行 4 个任务；Kimi Code 60 倍额度。",
+          "highlights": ["Agent 优先生成队列（4 倍速）", "Office 文件处理、深度研究、网站部署", "Agent 任务并行 4 个", "Agent 集群可用 120 次（4 个子任务并行）", "Kimi Code 60 倍额度", "一键部署 Kimi Claw / Kimi Claw Android", "专业数据库 12,000 次调用"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "copilot",
+      "display_name": "Microsoft Copilot",
+      "vendor": "Microsoft",
+      "region": "GLOBAL",
+      "last_verified": "2026-08-11",
+      "tags": ["discount", "hot"],
+      "sources": [
+        { "label": "官方定价页", "url": "https://www.microsoft.com/microsoft-copilot/for-individuals" }
+      ],
+      "plans": [
+        {
+          "plan_id": "copilot-pro",
+          "display_name": "Copilot Pro",
+          "price": { "amount": 20, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "个人 Copilot 的优先体验与增强能力",
+          "highlights": ["覆盖 Copilot Pro / Microsoft 365 Copilot 等 2 个套餐"],
+          "status": "available"
+        },
+        {
+          "plan_id": "microsoft-365-copilot",
+          "display_name": "Microsoft 365 Copilot",
+          "price": { "amount": 30, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "面向组织的 Microsoft 365 AI 协作能力",
+          "highlights": ["集成 Microsoft 365 工作流"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "volcengine-doubao",
+      "display_name": "火山引擎 / 豆包",
+      "vendor": "Volcengine",
+      "region": "CN",
+      "access": "direct",
+      "last_verified": "2026-08-15",
+      "is_recent": true,
+      "tags": ["new", "discount"],
+      "announcement": "以下为火山引擎官方活动页展示的限时资源套餐；活动与价格会变化，请在下单前打开官方页核实。",
+      "sources": [
+        { "label": "火山引擎官方活动页", "url": "https://www.volcengine.com/activity/newyear-referral" }
+      ],
+      "plans": [
+        {
+          "plan_id": "doubao-1-8-savings",
+          "display_name": "豆包大模型 1.8 节省计划",
+          "badges": ["hot"],
+          "price": { "amount": 19, "currency": "CNY", "cycle": "one_time" },
+          "quota_summary": "约 1 亿 tokens；有效期 2 个月；订阅 1 个月，当月抵扣 ¥50。",
+          "highlights": ["官方页标注为首购专享，每位用户限购 1 个", "属于模型资源节省计划，不等同于豆包 App 会员"],
+          "status": "available"
+        },
+        {
+          "plan_id": "doubao-video-1-5-savings",
+          "display_name": "豆包视频生成模型 1.5 节省计划",
+          "price": { "amount": 19, "currency": "CNY", "cycle": "one_time" },
+          "quota_summary": "约 62 个视频；有效期 2 个月；订阅 1 个月，当月抵扣 ¥50。",
+          "highlights": ["官方页标注为首购专享，每位用户限购 1 个", "具体生成时长与规格以控制台下单页为准"],
+          "status": "available"
+        },
+        {
+          "plan_id": "doubao-image-4-5-savings",
+          "display_name": "豆包图像创作模型 4.5 节省计划",
+          "price": { "amount": 19, "currency": "CNY", "cycle": "one_time" },
+          "quota_summary": "约 200 张图片；有效期 2 个月；订阅 1 个月，当月抵扣 ¥50。",
+          "highlights": ["官方页标注为首购专享，每位用户限购 1 个", "4K 超清与实际可用规格请以控制台为准"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "xiaomi-mimo",
+      "display_name": "小米 MiMo",
+      "vendor": "Xiaomi",
+      "region": "CN",
+      "access": "direct",
+      "last_verified": "2026-08-15",
+      "is_recent": true,
+      "tags": ["new", "discount"],
+      "announcement": "MiMo Token Plan 覆盖 V2.5 全系列，按 Credit 折算；首购与连续包年有 88 折，夜间 0:00–8:00（北京时间）按 0.8 倍 Credit 消耗。",
+      "sources": [
+        { "label": "MiMo 官方 Token Plan", "url": "https://mimo.mi.com/docs/zh-CN/price/tokenplan/subscription" },
+        { "label": "MiMo 官方套餐发布说明", "url": "https://mimo.mi.com/docs/zh-CN/news/latest/token-plan-release" }
+      ],
+      "plans": [
+        {
+          "plan_id": "lite",
+          "display_name": "Lite",
+          "price": { "amount": 39, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "每月固定 4,100,000,000 Credits（4.1B）。",
+          "highlights": ["支持 mimo-v2.5-pro、mimo-v2.5、mimo-v2.5-asr", "支持 mimo-v2.5-tts-voiceclone、mimo-v2.5-tts-voicedesign、mimo-v2.5-tts", "兼容 OpenCode、OpenClaw、Claude Code 等工具链", "首购与连续包年 88 折；夜间 0.8 倍 Credit 消耗"],
+          "status": "available"
+        },
+        {
+          "plan_id": "standard",
+          "display_name": "Standard",
+          "price": { "amount": 99, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "每月固定 11,000,000,000 Credits（11B）。",
+          "highlights": ["支持 mimo-v2.5-pro、mimo-v2.5、mimo-v2.5-asr", "支持 mimo-v2.5-tts-voiceclone、mimo-v2.5-tts-voicedesign、mimo-v2.5-tts", "兼容 OpenCode、OpenClaw、Claude Code 等工具链", "首购与连续包年 88 折；夜间 0.8 倍 Credit 消耗"],
+          "status": "available"
+        },
+        {
+          "plan_id": "pro",
+          "display_name": "Pro",
+          "price": { "amount": 329, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "每月固定 38,000,000,000 Credits（38B）。",
+          "highlights": ["支持 mimo-v2.5-pro、mimo-v2.5、mimo-v2.5-asr", "支持 mimo-v2.5-tts-voiceclone、mimo-v2.5-tts-voicedesign、mimo-v2.5-tts", "兼容 OpenCode、OpenClaw、Claude Code 等工具链", "首购与连续包年 88 折；夜间 0.8 倍 Credit 消耗"],
+          "status": "available"
+        },
+        {
+          "plan_id": "max",
+          "display_name": "Max",
+          "price": { "amount": 659, "currency": "CNY", "cycle": "monthly" },
+          "quota_summary": "每月固定 82,000,000,000 Credits（82B）。",
+          "highlights": ["支持 mimo-v2.5-pro、mimo-v2.5、mimo-v2.5-asr", "支持 mimo-v2.5-tts-voiceclone、mimo-v2.5-tts-voicedesign、mimo-v2.5-tts", "兼容 OpenCode、OpenClaw、Claude Code 等工具链", "首购与连续包年 88 折；夜间 0.8 倍 Credit 消耗"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "grok",
+      "display_name": "xAI Grok",
+      "vendor": "xAI",
+      "region": "GLOBAL",
+      "access": "vpn",
+      "risk": "high",
+      "last_verified": "2026-08-15",
+      "is_recent": true,
+      "tags": ["new", "hot"],
+      "announcement": "Grok 的个人与团队档位采用月度公开价；SuperGrok 付费方案使用跨产品共享的滚动周用量池。Enterprise 为销售定制报价。",
+      "sources": [
+        { "label": "xAI 官方套餐页", "url": "https://x.ai/pricing" },
+        { "label": "Grok 官方订阅 FAQ", "url": "https://docs.x.ai/grok/faq" }
+      ],
+      "plans": [
+        {
+          "plan_id": "free",
+          "display_name": "Free",
+          "price": { "amount": 0, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "免费基础用量；官方表格中网页/X 搜索为 Limited。",
+          "highlights": ["Grok 网页、iOS、Android", "实时网页和 X 搜索", "语音模式", "SOC 2 Type I/II", "Connectors"],
+          "status": "available"
+        },
+        {
+          "plan_id": "supergrok-lite",
+          "display_name": "SuperGrok Lite",
+          "price": { "amount": 10, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "个人基础付费档；价格按月显示，地区、税费和支付方式可能不同。",
+          "highlights": ["高于 Free 的模型和功能配额", "Grok 4.6、Imagine 图像和视频生成资格以官方比较表为准", "共享周用量池与地区可购性限制"],
+          "status": "available"
+        },
+        {
+          "plan_id": "supergrok",
+          "display_name": "SuperGrok",
+          "badges": ["hot"],
+          "price": { "amount": 30, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "较高限额；付费套餐使用跨产品共享的滚动周用量池。",
+          "highlights": ["Grok 4.6", "Grok Build、实时网页和 X 搜索、Expert", "Connectors", "Imagine 图像与视频生成", "SOC 2 Type I/II", "$30/月；地区、税费和支付方式可能不同"],
+          "status": "available"
+        },
+        {
+          "plan_id": "supergrok-plus",
+          "display_name": "SuperGrok Plus",
+          "price": { "amount": 100, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "官方公开价 $100/月；相较 SuperGrok 提供显著更高的 Chat、Imagine、Voice 与 Build 用量。",
+          "highlights": ["包含 SuperGrok 的全部能力", "1080p 视频创作", "Chat、Imagine、Voice 与 Build 显著更高用量", "更快响应", "高峰期优先访问", "新功能抢先体验"],
+          "status": "available"
+        },
+        {
+          "plan_id": "supergrok-heavy",
+          "display_name": "SuperGrok Heavy",
+          "price": { "amount": 300, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "最高个人档；价格按月显示，地区、税费和支付方式可能不同。",
+          "highlights": ["包含 SuperGrok 的能力", "更高模型、图像、视频与 Build 访问层级", "共享周用量池", "官方 FAQ 提示可能存在 Heavy 年付订阅"],
+          "status": "available"
+        },
+        {
+          "plan_id": "business",
+          "display_name": "Business",
+          "price": { "amount": 30, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "团队方案，$30/用户/月；官方比较表含团队席位管理与合并账单。",
+          "highlights": ["团队席位管理与合并账单", "角色权限、域验证和用户分析", "不用于训练与自定义数据保留", "SSO、SCIM 与优先支持"],
+          "status": "available"
+        },
+        {
+          "plan_id": "enterprise",
+          "display_name": "Enterprise",
+          "price": { "display": "联系销售（定制报价）" },
+          "quota_summary": "企业定制方案；速率、专属基础设施与价格由销售确认。",
+          "highlights": ["包含 Business 的能力", "自定义 RBAC、审计控制与客户管理加密密钥", "专用数据平面与数据驻留", "专属上线支持和账户团队", "定制速率、基础设施和容量"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "antigravity",
+      "display_name": "Google Antigravity",
+      "vendor": "Google",
+      "region": "GLOBAL",
+      "access": "vpn",
+      "risk": "high",
+      "last_verified": "2026-08-15",
+      "tags": ["new"],
+      "announcement": "Antigravity 的个人套餐通过 Google AI 计划提供；官网说明限额会随套餐、地区与可用模型动态变化。",
+      "sources": [
+        { "label": "Antigravity 官方定价页", "url": "https://antigravity.google/pricing" },
+        { "label": "Google AI 计划官方页", "url": "https://one.google.com/about/google-ai-plans/" },
+        { "label": "官方套餐变更说明", "url": "https://antigravity.google/blog/changes-to-antigravity-plans" }
+      ],
+      "plans": [
+        {
+          "plan_id": "individual",
+          "display_name": "Individual",
+          "price": { "amount": 0, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "无需订阅；基础每周速率上限。",
+          "highlights": ["Gemini 3.5 Flash、Gemini 3.1 Pro、Gemini 3 Flash、Claude Sonnet/Opus 4.6、gpt-oss-120b 的 Agent model 访问", "无限 Tab completions", "无限 Command requests", "基础每周 rate limits"],
+          "status": "available"
+        },
+        {
+          "plan_id": "google-ai-pro",
+          "display_name": "Google AI Pro",
+          "price": { "amount": 20, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "个人 Pro 订阅；Antigravity 使用较免费档更宽松的速率上限与可灵活使用的 AI credit pool。",
+          "highlights": ["包含 Individual 的能力", "更宽松的 Agent rate limits", "灵活 AI credit pool", "Google AI 官方页列为 Antigravity Expanded limits", "5 TB Google 存储与其他 Google AI 权益因地区而异"],
+          "status": "available"
+        },
+        {
+          "plan_id": "google-ai-ultra-100",
+          "display_name": "Google AI Ultra（$100 档）",
+          "price": { "amount": 100, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "官方变更公告所列新增个人档，面向常规开发使用。",
+          "highlights": ["包含 Google AI Pro 的能力", "比 Pro 更高 Antigravity 使用配额", "灵活 AI credit pool", "价格和可用性以地区结账页为准"],
+          "status": "available"
+        },
+        {
+          "plan_id": "google-ai-ultra-200",
+          "display_name": "Google AI Ultra（最高档）",
+          "badges": ["premium"],
+          "price": { "amount": 200, "currency": "USD", "cycle": "monthly" },
+          "quota_summary": "官方变更公告所列的最高个人档；Antigravity 享有最高速率上限。",
+          "highlights": ["包含 Google AI Pro 的能力", "最高 Antigravity Agent rate limits", "灵活 AI credit pool", "Google AI 计划含最高 AI Studio、Jules 与 Gemini 配额", "20 TB 起 Google 存储与额外权益因地区而异"],
+          "status": "available"
+        },
+        {
+          "plan_id": "organization",
+          "display_name": "Organization（Google Cloud）",
+          "price": { "display": "按量计费" },
+          "quota_summary": "通过 Gemini Enterprise Agent Platform 供 Google Cloud 客户使用；按消耗型 API 定价。",
+          "highlights": ["Antigravity 2.0 与 CLI", "Google Cloud Terms of Service", "Google Cloud Project Integration", "Consumption-Based API Pricing"],
+          "status": "available"
+        }
+      ]
+    }
+  ]
+}

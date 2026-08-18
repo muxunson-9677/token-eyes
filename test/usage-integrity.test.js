@@ -63,7 +63,7 @@ test("usage summary reports ledger provenance, deduplication and reconciliation"
     );
 
     const payload = await call(
-      createLocalApiHandler({ queuePath }),
+      createLocalApiHandler({ queuePath, trackerDataDir: tmp }),
       "/functions/tokentracker-usage-summary?from=2026-07-29&to=2026-07-29&tz=UTC&sources=claude",
     );
 
@@ -112,7 +112,7 @@ test("usage summary flags totals whose token components do not reconcile", async
     })}\n`, "utf8");
 
     const payload = await call(
-      createLocalApiHandler({ queuePath }),
+      createLocalApiHandler({ queuePath, trackerDataDir: tmp }),
       "/functions/tokentracker-usage-summary?from=2026-06-02&to=2026-06-02&tz=UTC&sources=codex",
     );
 

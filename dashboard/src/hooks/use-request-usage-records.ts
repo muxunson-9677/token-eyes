@@ -39,6 +39,8 @@ interface UseRequestUsageRecordsParams {
   page?: number;
   /** 每页记录数。 */
   pageSize?: number;
+  /** V2-W3: 记录粒度过滤（"request_event" 仅消息级 | "aggregate_bucket" 仅聚合）。 */
+  recordKind?: "request_event" | "aggregate_bucket" | "";
 }
 
 type RequestUsageRecordsSource = "edge" | "cache" | "mock";
@@ -71,6 +73,8 @@ const EMPTY_TOTALS: MergedTotals = {
   cost_usd: 0,
   request_count: 0,
   success_count: null,
+  interrupted_count: 0,
+  failure_count: 0,
   success_rate: null,
   avg_latency_ms: null,
   cache_hit_rate: 0,
@@ -109,6 +113,7 @@ export function useRequestUsageRecords({
   limit = 100,
   page = 1,
   pageSize = 10,
+  recordKind = "",
 }: UseRequestUsageRecordsParams = {}): UseRequestUsageRecordsReturn {
   const mockEnabled = isMockEnabled();
   const tokenReady = isAccessTokenReady(accessToken);
@@ -167,8 +172,8 @@ export function useRequestUsageRecords({
     if (!cacheKey) return null;
     const host = safeHost(baseUrl) || "default";
     const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
-    return `tokentracker.requestUsageRecords.${cacheKey}.${host}.${from}.${to}.${tzKey}.${filterCacheKey}.${visibleKey}.${limit}.p${page}.s${pageSize}`;
-  }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, filterCacheKey, visibleKey, limit, page, pageSize]);
+    return `tokentracker.requestUsageRecords.${cacheKey}.${host}.${from}.${to}.${tzKey}.${filterCacheKey}.${visibleKey}.${limit}.p${page}.s${pageSize}.k${recordKind || "all"}`;
+  }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, filterCacheKey, visibleKey, limit, page, pageSize, recordKind]);
 
   const readCache = useCallback((): { records: UsageRecord[]; totals: MergedTotals; pageMeta: { page: number; totalPages: number; total: number } } | null => {
     if (!storageKey || typeof window === "undefined") return null;
@@ -262,6 +267,7 @@ export function useRequestUsageRecords({
         limit,
         page,
         pageSize,
+        recordKind: recordKind || undefined,
         models: filterParams.models,
         agentIds: filterParams.agentIds,
         baseUrl,
@@ -292,6 +298,8 @@ export function useRequestUsageRecords({
         mergedTotals.status_sample_count = safeNum(totals.status_sample_count);
         mergedTotals.latency_sample_count = safeNum(totals.latency_sample_count);
         mergedTotals.success_count = totals.success_count ?? null;
+        mergedTotals.interrupted_count = safeNum(totals.interrupted_count);
+        mergedTotals.failure_count = safeNum(totals.failure_count);
         mergedTotals.success_rate = totals.success_rate ?? null;
         mergedTotals.avg_latency_ms = totals.avg_latency_ms ?? null;
         mergedTotals.cache_hit_rate = safeNum(totals.cache_hit_rate);
@@ -346,6 +354,7 @@ export function useRequestUsageRecords({
     limit,
     page,
     pageSize,
+    recordKind,
     fetchEnabled,
   ]);
 

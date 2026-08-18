@@ -548,7 +548,7 @@ function SpendUsagePageInner({
                   {/* Usage Trend Chart */}
                   <div
                     data-testid="usage-chart-token-services-layout"
-                    className="mb-6 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-stretch"
+                    className="mb-6 grid min-w-0 gap-4 lg:grid-cols-4 lg:items-stretch"
                   >
                     <UsageTrendChartCard
                       from={from}
@@ -561,13 +561,13 @@ function SpendUsagePageInner({
                       tzOffsetMinutes={tzOffsetMinutes}
                       allowedSources={visibleProviderIds}
                       onSettled={handleInitialTrendSettled}
-                      className="min-w-0"
+                      className="min-w-0 lg:col-span-3"
                     />
                     <TokenServiceList
                       plans={tokenServices.plans}
                       loading={!secondaryUsageEnabled || tokenServices.loading}
                       error={tokenServices.error}
-                      className="min-w-0"
+                      className="min-w-0 lg:col-span-1"
                     />
                   </div>
 

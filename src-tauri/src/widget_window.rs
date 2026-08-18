@@ -8,16 +8,37 @@ use tauri::{
 };
 
 pub const WIDGET_LABEL: &str = "desktop-widget";
-const PREFS_VERSION: u8 = 6;
+const PREFS_VERSION: u8 = 11;
 const DEFAULT_WIDTH: u32 = 352;
-const DEFAULT_HEIGHT: u32 = 72;
+const DEFAULT_HEIGHT: u32 = 76;
 const DEFAULT_EXPANDED_HEIGHT: u32 = 360;
-const MIN_WIDTH: u32 = 352;
-const MIN_HEIGHT: u32 = 72;
-const POPOVER_HEIGHT: u32 = 260;
-const CELEBRATION_PADDING: u32 = 42;
+const MIN_WIDTH: u32 = DEFAULT_WIDTH;
+const MIN_HEIGHT: u32 = DEFAULT_HEIGHT;
+const POPOVER_HEIGHT: u32 = 280;
+const CELEBRATION_PADDING: u32 = 140;
 static TRANSIENT_POPOVER_OPEN: AtomicBool = AtomicBool::new(false);
 static TRANSIENT_CELEBRATION_OPEN: AtomicBool = AtomicBool::new(false);
+const WIDGET_AGENT_IDS: &[&str] = &[
+    "all",
+    "claude",
+    "codex",
+    "cursor",
+    "trae",
+    "codebuddy",
+    "gemini",
+    "hermes",
+    "openclaw",
+    "opencode",
+    "antigravity",
+    "zed",
+    "workbuddy",
+    "kimi",
+    "kimi-code",
+    "pi",
+    "grok",
+    "copilot",
+    "deepseek-harness",
+];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -104,24 +125,21 @@ struct MonitorBounds {
 }
 
 fn normalize_prefs(mut prefs: WidgetPrefs) -> WidgetPrefs {
-    if prefs.version < 2 {
-        if prefs.expanded {
-            prefs.expanded_height = prefs.height.max(DEFAULT_EXPANDED_HEIGHT);
-        } else {
-            prefs.collapsed_height = prefs.height.max(DEFAULT_HEIGHT);
-        }
-    }
     prefs.version = PREFS_VERSION;
-    prefs.width = prefs.width.max(MIN_WIDTH);
-    prefs.height = prefs.height.max(MIN_HEIGHT);
-    prefs.collapsed_height = prefs.collapsed_height.max(DEFAULT_HEIGHT);
-    prefs.expanded_height = prefs.expanded_height.max(DEFAULT_EXPANDED_HEIGHT);
+    prefs.width = DEFAULT_WIDTH;
+    prefs.collapsed_height = DEFAULT_HEIGHT;
+    prefs.expanded_height = DEFAULT_EXPANDED_HEIGHT;
+    prefs.height = if prefs.expanded {
+        DEFAULT_EXPANDED_HEIGHT
+    } else {
+        DEFAULT_HEIGHT
+    };
     prefs.scale_factor = if prefs.scale_factor.is_finite() && prefs.scale_factor > 0.0 {
         prefs.scale_factor
     } else {
         1.0
     };
-    if !["all", "claude", "codex", "cursor", "hermes"].contains(&prefs.selected_agent.as_str()) {
+    if !WIDGET_AGENT_IDS.contains(&prefs.selected_agent.as_str()) {
         prefs.selected_agent = "all".into();
     }
     if !["projects", "limits", "models"].contains(&prefs.mode.as_str()) {
@@ -229,14 +247,40 @@ fn physical_size(width: u32, height: u32, scale_factor: f64) -> PhysicalSize<u32
     )
 }
 
-fn transition_height(current: &WidgetPrefs, requested_expanded: bool) -> Option<u32> {
-    if current.expanded == requested_expanded {
+fn resize_geometry_preserving_origin(
+    mut geometry: Geometry,
+    width: u32,
+    height: u32,
+    scale_factor: f64,
+) -> Geometry {
+    let size = physical_size(width, height, scale_factor);
+    geometry.width = size.width;
+    geometry.height = size.height;
+    geometry
+}
+
+fn resize_geometry_within_monitors(
+    geometry: Geometry,
+    width: u32,
+    height: u32,
+    scale_factor: f64,
+    monitors: &[MonitorBounds],
+) -> Geometry {
+    clamp_geometry_for_anchor(
+        resize_geometry_preserving_origin(geometry, width, height, scale_factor),
+        geometry,
+        monitors,
+    )
+}
+
+fn transition_height(current: &WidgetPrefs, requested: &WidgetPrefs) -> Option<u32> {
+    if current.expanded == requested.expanded {
         return None;
     }
-    Some(if requested_expanded {
-        current.expanded_height
+    Some(if requested.expanded {
+        DEFAULT_EXPANDED_HEIGHT
     } else {
-        current.collapsed_height
+        DEFAULT_HEIGHT
     })
 }
 
@@ -248,14 +292,60 @@ fn intersection_area(geometry: Geometry, monitor: MonitorBounds) -> i64 {
     i64::from((right - left).max(0)) * i64::from((bottom - top).max(0))
 }
 
-fn clamp_geometry(mut geometry: Geometry, monitors: &[MonitorBounds]) -> Geometry {
-    let Some(monitor) = monitors
-        .iter()
-        .copied()
-        .max_by_key(|monitor| intersection_area(geometry, *monitor))
-    else {
-        return geometry;
-    };
+fn geometry_center_twice(geometry: Geometry) -> (i128, i128) {
+    (
+        i128::from(geometry.x) * 2 + i128::from(geometry.width),
+        i128::from(geometry.y) * 2 + i128::from(geometry.height),
+    )
+}
+
+fn monitor_center_twice(monitor: MonitorBounds) -> (i128, i128) {
+    (
+        i128::from(monitor.x) * 2 + i128::from(monitor.width),
+        i128::from(monitor.y) * 2 + i128::from(monitor.height),
+    )
+}
+
+fn monitor_contains_geometry_center(monitor: MonitorBounds, geometry: Geometry) -> bool {
+    let (center_x, center_y) = geometry_center_twice(geometry);
+    let left = i128::from(monitor.x) * 2;
+    let top = i128::from(monitor.y) * 2;
+    center_x >= left
+        && center_x < left + i128::from(monitor.width) * 2
+        && center_y >= top
+        && center_y < top + i128::from(monitor.height) * 2
+}
+
+fn monitor_center_distance_squared(monitor: MonitorBounds, geometry: Geometry) -> i128 {
+    let (geometry_x, geometry_y) = geometry_center_twice(geometry);
+    let (monitor_x, monitor_y) = monitor_center_twice(monitor);
+    let dx = geometry_x - monitor_x;
+    let dy = geometry_y - monitor_y;
+    dx * dx + dy * dy
+}
+
+fn compare_monitors_for_anchor(
+    left: MonitorBounds,
+    right: MonitorBounds,
+    anchor: Geometry,
+) -> std::cmp::Ordering {
+    intersection_area(anchor, left)
+        .cmp(&intersection_area(anchor, right))
+        .then_with(|| {
+            monitor_contains_geometry_center(left, anchor)
+                .cmp(&monitor_contains_geometry_center(right, anchor))
+        })
+        .then_with(|| {
+            monitor_center_distance_squared(right, anchor)
+                .cmp(&monitor_center_distance_squared(left, anchor))
+        })
+        .then_with(|| right.x.cmp(&left.x))
+        .then_with(|| right.y.cmp(&left.y))
+        .then_with(|| right.width.cmp(&left.width))
+        .then_with(|| right.height.cmp(&left.height))
+}
+
+fn clamp_geometry_to_monitor(mut geometry: Geometry, monitor: MonitorBounds) -> Geometry {
     geometry.width = geometry
         .width
         .min(monitor.width)
@@ -269,6 +359,25 @@ fn clamp_geometry(mut geometry: Geometry, monitors: &[MonitorBounds]) -> Geometr
     geometry.x = geometry.x.clamp(monitor.x, max_x);
     geometry.y = geometry.y.clamp(monitor.y, max_y);
     geometry
+}
+
+fn clamp_geometry_for_anchor(
+    geometry: Geometry,
+    anchor: Geometry,
+    monitors: &[MonitorBounds],
+) -> Geometry {
+    let Some(monitor) = monitors
+        .iter()
+        .copied()
+        .max_by(|left, right| compare_monitors_for_anchor(*left, *right, anchor))
+    else {
+        return geometry;
+    };
+    clamp_geometry_to_monitor(geometry, monitor)
+}
+
+fn clamp_geometry(geometry: Geometry, monitors: &[MonitorBounds]) -> Geometry {
+    clamp_geometry_for_anchor(geometry, geometry, monitors)
 }
 
 fn prefs_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -346,6 +455,19 @@ fn resolved_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) -> Geometry {
     )
 }
 
+fn resolved_visual_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) -> Geometry {
+    let mut anchor_prefs = prefs.clone();
+    anchor_prefs.height = DEFAULT_HEIGHT;
+    let anchor = resolved_geometry(window, &anchor_prefs);
+    resize_geometry_within_monitors(
+        anchor,
+        prefs.width,
+        prefs.height,
+        window.scale_factor().unwrap_or(1.0),
+        &monitor_bounds(window),
+    )
+}
+
 fn transient_geometry(
     mut geometry: Geometry,
     scale_factor: f64,
@@ -367,23 +489,41 @@ fn transient_geometry(
     geometry
 }
 
+fn transient_geometry_within_monitors(
+    anchor: Geometry,
+    scale_factor: f64,
+    popover_open: bool,
+    celebration_open: bool,
+    monitors: &[MonitorBounds],
+) -> Geometry {
+    let popover_geometry = transient_geometry(anchor, scale_factor, popover_open, false);
+    let visible_geometry = if popover_open {
+        clamp_geometry_for_anchor(popover_geometry, anchor, monitors)
+    } else {
+        anchor
+    };
+    transient_geometry(visible_geometry, scale_factor, false, celebration_open)
+}
+
 fn set_window_geometry(window: &WebviewWindow, geometry: Geometry) {
     let _ = window.set_size(PhysicalSize::new(geometry.width, geometry.height));
     let _ = window.set_position(PhysicalPosition::new(geometry.x, geometry.y));
 }
 
 fn apply_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
-    set_window_geometry(window, resolved_geometry(window, prefs));
+    set_window_geometry(window, resolved_visual_geometry(window, prefs));
 }
 
 fn apply_transient_geometry(window: &WebviewWindow, prefs: &WidgetPrefs) {
-    let geometry = transient_geometry(
-        resolved_geometry(window, prefs),
+    let anchor = resolved_visual_geometry(window, prefs);
+    let geometry = transient_geometry_within_monitors(
+        anchor,
         window.scale_factor().unwrap_or(1.0),
         TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed),
         TRANSIENT_CELEBRATION_OPEN.load(Ordering::Relaxed),
+        &monitor_bounds(window),
     );
-    set_window_geometry(window, clamp_geometry(geometry, &monitor_bounds(window)));
+    set_window_geometry(window, geometry);
 }
 
 fn create_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, String> {
@@ -392,7 +532,7 @@ fn create_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, 
             .title("Token Eyes Widget")
             .inner_size(prefs.width as f64, prefs.height as f64)
             .min_inner_size(MIN_WIDTH as f64, MIN_HEIGHT as f64)
-            .resizable(true)
+            .resizable(false)
             .decorations(false)
             .transparent(true)
             .shadow(false)
@@ -412,6 +552,23 @@ fn widget_window(app: &AppHandle, prefs: &WidgetPrefs) -> Result<WebviewWindow, 
     }
 }
 
+fn with_persisted_window_position(
+    mut prefs: WidgetPrefs,
+    position: Option<(i32, i32)>,
+    scale_factor: f64,
+) -> WidgetPrefs {
+    if let Some((x, y)) = position {
+        prefs.x = Some(x);
+        prefs.y = Some(y);
+    }
+    prefs.scale_factor = if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        prefs.scale_factor
+    };
+    normalize_prefs(prefs)
+}
+
 pub fn is_widget_window(label: &str) -> bool {
     label == WIDGET_LABEL
 }
@@ -425,21 +582,12 @@ pub fn persist_geometry(window: &WebviewWindow) {
     {
         return;
     }
-    let mut prefs = load(window.app_handle());
-    if let Ok(position) = window.outer_position() {
-        prefs.x = Some(position.x);
-        prefs.y = Some(position.y);
-    }
-    if let Ok(size) = window.inner_size() {
-        let scale_factor = window.scale_factor().unwrap_or(1.0);
-        (prefs.width, prefs.height) = logical_size(size, scale_factor);
-        if prefs.expanded {
-            prefs.expanded_height = prefs.height;
-        } else {
-            prefs.collapsed_height = prefs.height;
-        }
-        prefs.scale_factor = scale_factor;
-    }
+    let position = window.outer_position().ok().map(|value| (value.x, value.y));
+    let prefs = with_persisted_window_position(
+        load(window.app_handle()),
+        position,
+        window.scale_factor().unwrap_or(1.0),
+    );
     let _ = save(window.app_handle(), &prefs);
 }
 
@@ -447,7 +595,11 @@ pub fn restore_if_visible(app: &AppHandle) {
     let prefs = load(app);
     if let Ok(window) = widget_window(app, &prefs) {
         if prefs.visible {
+            let _ = window.set_resizable(false);
+            apply_geometry(&window, &prefs);
+            let _ = window.unminimize();
             let _ = window.show();
+            let _ = window.set_focus();
         }
     }
 }
@@ -471,8 +623,11 @@ pub fn show_desktop_widget(app: AppHandle) -> Result<WidgetPrefs, String> {
     let mut prefs = load(&app);
     let window = widget_window(&app, &prefs)?;
     let _ = window.set_always_on_top(prefs.always_on_top);
+    let _ = window.set_resizable(false);
     apply_geometry(&window, &prefs);
+    let _ = window.unminimize();
     window.show().map_err(|error| error.to_string())?;
+    let _ = window.set_focus();
     prefs.visible = true;
     save(&app, &prefs)?;
     Ok(prefs)
@@ -507,7 +662,7 @@ pub fn set_desktop_widget_prefs(app: AppHandle, prefs: WidgetPrefs) -> Result<Wi
         persist_geometry(&window);
     }
     let current = load(&app);
-    let next_height = transition_height(&current, prefs.expanded);
+    let next_height = transition_height(&current, &prefs);
     let mut prefs = merge_display_prefs(current, prefs);
     if let Some(height) = next_height {
         prefs.height = height;
@@ -515,8 +670,15 @@ pub fn set_desktop_widget_prefs(app: AppHandle, prefs: WidgetPrefs) -> Result<Wi
     save(&app, &prefs)?;
     if let Some(window) = app.get_webview_window(WIDGET_LABEL) {
         let _ = window.set_always_on_top(prefs.always_on_top);
+        let _ = window.set_resizable(false);
         if next_height.is_some() {
-            apply_geometry(&window, &prefs);
+            if TRANSIENT_POPOVER_OPEN.load(Ordering::Relaxed)
+                || TRANSIENT_CELEBRATION_OPEN.load(Ordering::Relaxed)
+            {
+                apply_transient_geometry(&window, &prefs);
+            } else {
+                apply_geometry(&window, &prefs);
+            }
             persist_geometry(&window);
             prefs = load(&app);
         }
@@ -573,11 +735,34 @@ pub fn set_desktop_widget_celebration(app: AppHandle, open: bool) -> Result<(), 
 mod tests {
     use super::*;
 
+    fn card_screen_geometry(
+        window: Geometry,
+        scale_factor: f64,
+        celebration_open: bool,
+    ) -> Geometry {
+        let frame = physical_size(5, 5, scale_factor).width;
+        let rail = physical_size(22, 22, scale_factor).width;
+        let halo = if celebration_open {
+            physical_size(CELEBRATION_PADDING, CELEBRATION_PADDING, scale_factor).width
+        } else {
+            0
+        };
+        let horizontal_inset = halo + frame;
+        let right_inset = if celebration_open { halo } else { 0 };
+        let vertical_inset = halo + frame;
+        Geometry {
+            x: window.x + horizontal_inset as i32,
+            y: window.y + vertical_inset as i32,
+            width: window.width - horizontal_inset - right_inset - rail,
+            height: window.height - vertical_inset * 2,
+        }
+    }
+
     #[test]
-    fn defaults_to_the_compact_resizable_glass_capsule() {
+    fn defaults_to_the_compact_fixed_glass_capsule() {
         let prefs = WidgetPrefs::default();
-        assert_eq!((prefs.width, prefs.height), (352, 72));
-        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (72, 360));
+        assert_eq!((prefs.width, prefs.height), (352, 76));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (76, 360));
         assert!(prefs.always_on_top);
         assert_eq!(prefs.material, "frost");
         assert_eq!(prefs.opacity, 0.72);
@@ -585,6 +770,46 @@ mod tests {
         assert_eq!(prefs.mode, "projects");
         assert_eq!(prefs.active_session_window, "1h");
         assert_eq!(prefs.selected_limit_ids, None);
+    }
+
+    #[test]
+    fn agent_menu_uses_a_bounded_scroll_viewport_without_shrinking_expanded_state() {
+        let collapsed = Geometry {
+            x: 24,
+            y: 24,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+        };
+        let expanded = Geometry {
+            height: DEFAULT_EXPANDED_HEIGHT,
+            ..collapsed
+        };
+
+        assert_eq!(transient_geometry(collapsed, 1.0, true, false).height, 280);
+        assert_eq!(
+            transient_geometry(expanded, 1.0, true, false).height,
+            DEFAULT_EXPANDED_HEIGHT
+        );
+    }
+
+    #[test]
+    fn migrates_the_v4_large_panel_geometry_back_to_the_05440_capsule() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            version: 6,
+            width: 632,
+            height: 342,
+            collapsed_height: 342,
+            expanded_height: 640,
+            selected_agent: "codex".into(),
+            mode: "models".into(),
+            ..WidgetPrefs::default()
+        });
+
+        assert_eq!(prefs.version, 11);
+        assert_eq!((prefs.width, prefs.height), (352, 76));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (76, 360));
+        assert_eq!(prefs.selected_agent, "codex");
+        assert_eq!(prefs.mode, "models");
     }
 
     #[test]
@@ -613,6 +838,23 @@ mod tests {
     }
 
     #[test]
+    fn celebration_geometry_preserves_the_capsules_screen_position() {
+        let base = Geometry {
+            x: 1_500,
+            y: 820,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+        };
+        let expanded = transient_geometry(base, 1.0, false, true);
+
+        assert_eq!(expanded.x + CELEBRATION_PADDING as i32, base.x);
+        assert_eq!(expanded.y + CELEBRATION_PADDING as i32, base.y);
+        assert_eq!(expanded.width, base.width + CELEBRATION_PADDING * 2);
+        assert_eq!(expanded.height, base.height + CELEBRATION_PADDING * 2);
+        assert_eq!(transient_geometry(base, 1.0, false, false), base);
+    }
+
+    #[test]
     fn migrates_invalid_or_legacy_preferences_to_safe_values() {
         let prefs = normalize_prefs(WidgetPrefs {
             version: 0,
@@ -625,8 +867,8 @@ mod tests {
             active_session_window: "30m".into(),
             ..WidgetPrefs::default()
         });
-        assert_eq!(prefs.version, 6);
-        assert_eq!((prefs.width, prefs.height), (352, 72));
+        assert_eq!(prefs.version, 11);
+        assert_eq!((prefs.width, prefs.height), (352, 76));
         assert_eq!(prefs.opacity, 0.4);
         assert_eq!(prefs.selected_agent, "all");
         assert_eq!(prefs.mode, "projects");
@@ -640,8 +882,9 @@ mod tests {
             visible: true,
             x: Some(410),
             y: Some(220),
-            width: 488,
-            height: 256,
+            width: 700,
+            height: 500,
+            expanded: true,
             scale_factor: 1.5,
             ..WidgetPrefs::default()
         };
@@ -656,24 +899,10 @@ mod tests {
             ..WidgetPrefs::default()
         };
         let merged = merge_display_prefs(current.clone(), requested);
-        assert_eq!(
-            (
-                merged.visible,
-                merged.x,
-                merged.y,
-                merged.width,
-                merged.height,
-                merged.scale_factor,
-            ),
-            (
-                current.visible,
-                current.x,
-                current.y,
-                current.width,
-                current.height,
-                current.scale_factor,
-            ),
-        );
+        assert_eq!(merged.visible, current.visible);
+        assert_eq!((merged.x, merged.y), (current.x, current.y));
+        assert_eq!((merged.width, merged.height), (352, 360));
+        assert_eq!(merged.scale_factor, current.scale_factor);
         assert_eq!(merged.selected_agent, "codex");
         assert_eq!(merged.mode, "limits");
         assert!(merged.expanded);
@@ -729,8 +958,8 @@ mod tests {
 
     #[test]
     fn logical_size_round_trips_across_dpi_changes() {
-        assert_eq!(logical_size(PhysicalSize::new(483, 216), 1.5), (352, 144));
-        assert_eq!(physical_size(322, 144, 2.0), PhysicalSize::new(644, 288));
+        assert_eq!(logical_size(PhysicalSize::new(528, 114), 1.5), (352, 76));
+        assert_eq!(physical_size(352, 76, 2.0), PhysicalSize::new(704, 152));
     }
 
     #[test]
@@ -742,15 +971,72 @@ mod tests {
             expanded: false,
             ..WidgetPrefs::default()
         };
-        assert_eq!(transition_height(&compact, true), Some(520));
+        let requested_expanded = WidgetPrefs {
+            expanded: true,
+            expanded_height: 520,
+            ..compact.clone()
+        };
+        assert_eq!(transition_height(&compact, &requested_expanded), Some(360));
 
         let expanded = WidgetPrefs {
             height: 520,
             expanded: true,
             ..compact
         };
-        assert_eq!(transition_height(&expanded, false), Some(200));
-        assert_eq!(transition_height(&expanded, true), None);
+        let requested_collapsed = WidgetPrefs {
+            expanded: false,
+            ..expanded.clone()
+        };
+        assert_eq!(transition_height(&expanded, &requested_collapsed), Some(76));
+        assert_eq!(transition_height(&expanded, &expanded), None);
+
+        let requested_models = WidgetPrefs {
+            mode: "models".into(),
+            ..expanded.clone()
+        };
+        assert_eq!(transition_height(&expanded, &requested_models), None);
+    }
+
+    #[test]
+    fn repairs_polluted_v7_collapsed_geometry_and_keeps_deepseek_selection() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            version: 7,
+            height: 260,
+            collapsed_height: 260,
+            expanded_height: 520,
+            selected_agent: "deepseek-harness".into(),
+            expanded: false,
+            ..WidgetPrefs::default()
+        });
+
+        assert_eq!(prefs.version, 11);
+        assert_eq!(
+            (prefs.width, prefs.height, prefs.collapsed_height),
+            (352, 76, 76)
+        );
+        assert_eq!(prefs.expanded_height, 360);
+        assert_eq!(prefs.selected_agent, "deepseek-harness");
+    }
+
+    #[test]
+    fn migrates_v8_default_geometry_without_clobbering_widget_selection() {
+        let prefs = normalize_prefs(WidgetPrefs {
+            version: 8,
+            width: 352,
+            height: 360,
+            collapsed_height: 72,
+            expanded_height: 360,
+            selected_agent: "deepseek-harness".into(),
+            mode: "limits".into(),
+            expanded: true,
+            ..WidgetPrefs::default()
+        });
+
+        assert_eq!(prefs.version, 11);
+        assert_eq!((prefs.width, prefs.height), (352, 360));
+        assert_eq!((prefs.collapsed_height, prefs.expanded_height), (76, 360));
+        assert_eq!(prefs.selected_agent, "deepseek-harness");
+        assert_eq!(prefs.mode, "limits");
     }
 
     #[test]
@@ -759,25 +1045,422 @@ mod tests {
             x: 500,
             y: 300,
             width: 352,
-            height: 72,
+            height: 76,
         };
         assert_eq!(
             transient_geometry(base, 1.0, false, true),
             Geometry {
-                x: 458,
-                y: 258,
-                width: 436,
-                height: 156
+                x: 360,
+                y: 160,
+                width: 632,
+                height: 356
+            },
+        );
+        let scaled_size = physical_size(DEFAULT_WIDTH, DEFAULT_HEIGHT, 1.5);
+        let scaled_base = Geometry {
+            width: scaled_size.width,
+            height: scaled_size.height,
+            ..base
+        };
+        assert_eq!(
+            transient_geometry(scaled_base, 1.5, true, true),
+            Geometry {
+                x: 290,
+                y: 90,
+                width: 948,
+                height: 840
+            },
+        );
+    }
+
+    #[test]
+    fn agent_menu_transient_height_keeps_the_rounded_menu_bottom_visible() {
+        let base = Geometry {
+            x: 500,
+            y: 300,
+            width: 352,
+            height: 76,
+        };
+
+        assert_eq!(
+            transient_geometry(base, 1.0, true, false),
+            Geometry {
+                x: 500,
+                y: 300,
+                width: 352,
+                height: POPOVER_HEIGHT,
+            },
+        );
+    }
+
+    #[test]
+    fn expand_and_collapse_keep_the_capsule_origin_fixed_when_the_footprint_fits() {
+        let collapsed = Geometry {
+            x: 500,
+            y: 300,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [MonitorBounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        }];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.0,
+                &monitors,
+            ),
+            Geometry {
+                x: 500,
+                y: 300,
+                width: 352,
+                height: 360,
+            },
+        );
+    }
+
+    #[test]
+    fn expanded_and_popover_geometry_stays_visible_at_the_monitor_bottom_edge() {
+        let collapsed = Geometry {
+            x: 500,
+            y: 1004,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [MonitorBounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        }];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.0,
+                &monitors,
+            ),
+            Geometry {
+                x: 500,
+                y: 720,
+                width: 352,
+                height: 360,
             },
         );
         assert_eq!(
-            transient_geometry(base, 1.5, true, true),
+            clamp_geometry(transient_geometry(collapsed, 1.0, true, false), &monitors),
             Geometry {
-                x: 437,
-                y: 237,
-                width: 478,
-                height: 516
+                x: 500,
+                y: 800,
+                width: 352,
+                height: POPOVER_HEIGHT,
             },
         );
+    }
+
+    #[test]
+    fn expansion_stays_on_the_capsules_monitor_when_the_larger_footprint_overlaps_another() {
+        let collapsed = Geometry {
+            x: 500,
+            y: 1004,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [
+            MonitorBounds {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            },
+            MonitorBounds {
+                x: 0,
+                y: 1080,
+                width: 1920,
+                height: 1080,
+            },
+        ];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.0,
+                &monitors,
+            ),
+            Geometry {
+                x: 500,
+                y: 720,
+                width: 352,
+                height: 360,
+            },
+        );
+    }
+
+    #[test]
+    fn popover_geometry_stays_on_the_capsules_monitor() {
+        let collapsed = Geometry {
+            x: 500,
+            y: 1004,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [
+            MonitorBounds {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            },
+            MonitorBounds {
+                x: 0,
+                y: 1080,
+                width: 1920,
+                height: 1080,
+            },
+        ];
+
+        assert_eq!(
+            transient_geometry_within_monitors(collapsed, 1.0, true, false, &monitors),
+            Geometry {
+                x: 500,
+                y: 800,
+                width: 352,
+                height: 280,
+            },
+        );
+    }
+
+    #[test]
+    fn celebration_keeps_the_card_screen_geometry_stable_at_scaled_negative_edges() {
+        let scale_factor = 1.5;
+        let collapsed = Geometry {
+            x: -528,
+            y: 1126,
+            width: 528,
+            height: 114,
+        };
+        let monitors = [MonitorBounds {
+            x: -2560,
+            y: -200,
+            width: 2560,
+            height: 1440,
+        }];
+        let before = card_screen_geometry(collapsed, scale_factor, false);
+        let opened =
+            transient_geometry_within_monitors(collapsed, scale_factor, false, true, &monitors);
+        let closed =
+            transient_geometry_within_monitors(collapsed, scale_factor, false, false, &monitors);
+
+        assert_eq!(card_screen_geometry(opened, scale_factor, true), before);
+        assert_eq!(card_screen_geometry(closed, scale_factor, false), before);
+        assert!(opened.x < monitors[0].x || opened.y + opened.height as i32 > 1240);
+    }
+
+    #[test]
+    fn scaled_expansion_clamps_inside_a_negative_origin_monitor() {
+        let collapsed = Geometry {
+            x: -600,
+            y: 1126,
+            width: 528,
+            height: 114,
+        };
+        let monitors = [MonitorBounds {
+            x: -2560,
+            y: -200,
+            width: 2560,
+            height: 1440,
+        }];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.5,
+                &monitors,
+            ),
+            Geometry {
+                x: -600,
+                y: 700,
+                width: 528,
+                height: 540,
+            },
+        );
+    }
+
+    #[test]
+    fn geometry_larger_than_a_monitor_is_reduced_to_its_bounds() {
+        let collapsed = Geometry {
+            x: -100,
+            y: -50,
+            width: 352,
+            height: 76,
+        };
+        let monitors = [MonitorBounds {
+            x: -100,
+            y: -50,
+            width: 300,
+            height: 60,
+        }];
+
+        assert_eq!(
+            resize_geometry_within_monitors(
+                collapsed,
+                DEFAULT_WIDTH,
+                DEFAULT_EXPANDED_HEIGHT,
+                1.0,
+                &monitors,
+            ),
+            Geometry {
+                x: -100,
+                y: -50,
+                width: 300,
+                height: 60,
+            },
+        );
+    }
+
+    #[test]
+    fn monitor_selection_is_order_independent_when_equal_overlap_contains_the_anchor_center() {
+        let anchor = Geometry {
+            x: -50,
+            y: 10,
+            width: 100,
+            height: 20,
+        };
+        let geometry = Geometry {
+            x: -40,
+            y: 10,
+            width: 80,
+            height: 20,
+        };
+        let left = MonitorBounds {
+            x: -100,
+            y: 0,
+            width: 100,
+            height: 100,
+        };
+        let right = MonitorBounds {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 100,
+        };
+        let expected = Geometry {
+            x: 0,
+            y: 10,
+            width: 100,
+            height: 76,
+        };
+
+        assert_eq!(
+            clamp_geometry_for_anchor(geometry, anchor, &[left, right]),
+            expected
+        );
+        assert_eq!(
+            clamp_geometry_for_anchor(geometry, anchor, &[right, left]),
+            expected
+        );
+    }
+
+    #[test]
+    fn zero_overlap_selects_the_nearest_monitor_independent_of_order() {
+        let anchor = Geometry {
+            x: -10,
+            y: -10,
+            width: 20,
+            height: 20,
+        };
+        let far = MonitorBounds {
+            x: -1000,
+            y: -100,
+            width: 200,
+            height: 200,
+        };
+        let near = MonitorBounds {
+            x: 100,
+            y: -100,
+            width: 200,
+            height: 200,
+        };
+        let expected = Geometry {
+            x: 100,
+            y: -10,
+            width: 200,
+            height: 76,
+        };
+
+        assert_eq!(
+            clamp_geometry_for_anchor(anchor, anchor, &[far, near]),
+            expected
+        );
+        assert_eq!(
+            clamp_geometry_for_anchor(anchor, anchor, &[near, far]),
+            expected
+        );
+    }
+
+    #[test]
+    fn equal_distance_zero_overlap_uses_stable_monitor_coordinates() {
+        let anchor = Geometry {
+            x: -10,
+            y: -10,
+            width: 20,
+            height: 20,
+        };
+        let left = MonitorBounds {
+            x: -300,
+            y: -100,
+            width: 100,
+            height: 200,
+        };
+        let right = MonitorBounds {
+            x: 200,
+            y: -100,
+            width: 100,
+            height: 200,
+        };
+        let expected = Geometry {
+            x: -300,
+            y: -10,
+            width: 100,
+            height: 76,
+        };
+
+        assert_eq!(
+            clamp_geometry_for_anchor(anchor, anchor, &[left, right]),
+            expected
+        );
+        assert_eq!(
+            clamp_geometry_for_anchor(anchor, anchor, &[right, left]),
+            expected
+        );
+    }
+
+    #[test]
+    fn persisting_position_cannot_overwrite_the_fixed_expanded_geometry() {
+        let prefs = WidgetPrefs {
+            expanded: true,
+            height: DEFAULT_EXPANDED_HEIGHT,
+            ..WidgetPrefs::default()
+        };
+
+        let persisted = with_persisted_window_position(prefs, Some((91, 133)), 1.75);
+
+        assert_eq!((persisted.x, persisted.y), (Some(91), Some(133)));
+        assert_eq!(persisted.width, DEFAULT_WIDTH);
+        assert_eq!(persisted.height, DEFAULT_EXPANDED_HEIGHT);
+        assert_eq!(persisted.expanded_height, DEFAULT_EXPANDED_HEIGHT);
+        assert!(persisted.expanded);
     }
 }

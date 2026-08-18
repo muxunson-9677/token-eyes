@@ -1,8 +1,8 @@
 //! Minimal Token Eyes system tray: show main window / quit.
 
 use crate::commands;
-use crate::window_control::{restore_main_window, APP_DISPLAY_NAME};
 use crate::widget_window;
+use crate::window_control::{restore_main_window, APP_DISPLAY_NAME};
 use serde::Deserialize;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -70,7 +70,10 @@ pub fn refresh_compact_quota_status(app: &AppHandle) {
         .and_then(Result::ok);
 
         let Some(base_url) = base_url else {
-            set_compact_quota_labels(&app, compact_quota_labels("\u{6682}\u{65f6}\u{4e0d}\u{53ef}\u{7528}", &[]));
+            set_compact_quota_labels(
+                &app,
+                compact_quota_labels("\u{6682}\u{65f6}\u{4e0d}\u{53ef}\u{7528}", &[]),
+            );
             return;
         };
         let url = format!("{base_url}/functions/tokentracker-tray-compact?density=full");
@@ -84,8 +87,13 @@ pub fn refresh_compact_quota_status(app: &AppHandle) {
             Err(error) => Err(error),
         };
         match response {
-            Ok(view) => set_compact_quota_labels(&app, compact_quota_labels(&view.title, &view.lines)),
-            Err(_) => set_compact_quota_labels(&app, compact_quota_labels("\u{6682}\u{65f6}\u{4e0d}\u{53ef}\u{7528}", &[])),
+            Ok(view) => {
+                set_compact_quota_labels(&app, compact_quota_labels(&view.title, &view.lines))
+            }
+            Err(_) => set_compact_quota_labels(
+                &app,
+                compact_quota_labels("\u{6682}\u{65f6}\u{4e0d}\u{53ef}\u{7528}", &[]),
+            ),
         }
     });
 }
@@ -132,11 +140,30 @@ pub fn set_codex_reset_tray_status(
 }
 
 pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
-    let quota_status = MenuItem::with_id(app, "quota-status", "\u{989d}\u{5ea6}: \u{8bfb}\u{53d6}\u{4e2d}", false, None::<&str>)?;
-    let quota_five_hour = MenuItem::with_id(app, "quota-5h", "5\u{5c0f}\u{65f6}: —", false, None::<&str>)?;
+    let quota_status = MenuItem::with_id(
+        app,
+        "quota-status",
+        "\u{989d}\u{5ea6}: \u{8bfb}\u{53d6}\u{4e2d}",
+        false,
+        None::<&str>,
+    )?;
+    let quota_five_hour =
+        MenuItem::with_id(app, "quota-5h", "5\u{5c0f}\u{65f6}: —", false, None::<&str>)?;
     let quota_seven_day = MenuItem::with_id(app, "quota-7d", "7\u{5929}: —", false, None::<&str>)?;
-    let quota_month = MenuItem::with_id(app, "quota-month", "\u{6708}\u{5ea6}: —", false, None::<&str>)?;
-    let refresh_quota = MenuItem::with_id(app, "refresh-quota-status", "\u{5237}\u{65b0}\u{989d}\u{5ea6}", true, None::<&str>)?;
+    let quota_month = MenuItem::with_id(
+        app,
+        "quota-month",
+        "\u{6708}\u{5ea6}: —",
+        false,
+        None::<&str>,
+    )?;
+    let refresh_quota = MenuItem::with_id(
+        app,
+        "refresh-quota-status",
+        "\u{5237}\u{65b0}\u{989d}\u{5ea6}",
+        true,
+        None::<&str>,
+    )?;
     let codex_status = MenuItem::with_id(
         app,
         "codex-reset-status",
@@ -153,7 +180,20 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let menu = Menu::with_items(app, &[&quota_status, &quota_five_hour, &quota_seven_day, &quota_month, &refresh_quota, &codex_status, &show, &widget, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &quota_status,
+            &quota_five_hour,
+            &quota_seven_day,
+            &quota_month,
+            &refresh_quota,
+            &codex_status,
+            &show,
+            &widget,
+            &quit,
+        ],
+    )?;
     app.manage(CodexTrayState {
         status_item: codex_status,
     });

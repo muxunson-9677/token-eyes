@@ -73,7 +73,7 @@ async function writeQueue(queuePath, rows) {
 }
 
 async function callEndpoint(queuePath, endpoint) {
-  const handler = createLocalApiHandler({ queuePath });
+  const handler = createLocalApiHandler({ queuePath, trackerDataDir: path.dirname(queuePath) });
   const url = new URL(`http://localhost${endpoint}`);
   const req = {
     method: "GET",

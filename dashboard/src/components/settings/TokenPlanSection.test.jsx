@@ -80,15 +80,12 @@ it("keeps TRAE polling for the official 600-second OAuth lifetime", () => {
 });
 
 async function expandAllPlans() {
-  const user = userEvent.setup();
   await waitFor(() => {
-    expect(screen.getAllByRole("button", { name: /^展开 / }).length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("token-plan-card").length).toBeGreaterThan(0);
   });
-  const expandButtons = screen.getAllByRole("button", { name: /^展开 / });
-  for (const button of expandButtons) {
-    await act(async () => {
-      await user.click(button);
-    });
+  const user = userEvent.setup();
+  for (const toggle of screen.queryAllByRole("button", { name: /^展开 / })) {
+    await user.click(toggle);
   }
 }
 
@@ -156,6 +153,16 @@ beforeEach(() => {
       status: nativeResult.connected ? "connected" : "awaiting_verification",
     }),
   }));
+});
+
+it("shows each active Token plan detail immediately without a nested accordion", async () => {
+  render(<TokenPlanSection />);
+
+  const card = await screen.findByTestId("token-plan-card");
+  expect(card).toHaveAttribute("data-expanded", "true");
+  expect(screen.getByTestId("token-plan-detail-plan-1")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /^展开 / })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^折叠 / })).not.toBeInTheDocument();
 });
 
 it("loads, edits, and saves manual token plan records", async () => {
@@ -345,26 +352,9 @@ it("new plan Agent source options mirror the limits display providers", async ()
     .map((option) => option.value)
     .filter(Boolean);
 
+  // V4 item-3a: the registry now covers every implemented channel, so the
+  // Agent dropdown mirrors it 1:1 — no extra filtering on top.
   expect(optionValues).toEqual(LIMIT_PROVIDER_IDS);
-  expect(optionValues).not.toEqual(expect.arrayContaining([
-    "every-code",
-    "kilo-cli",
-    "kilocode",
-    "roocode",
-    "kiro",
-    "kiro-cli",
-    "kimi",
-    "kimi-code",
-    "codebuddy",
-    "omp",
-    "pi",
-    "craft",
-    "grok",
-    "copilot",
-    "zed",
-    "goose",
-    "droid",
-  ]));
 });
 
 it("new plan Agent source options follow visible limits display preferences", async () => {
@@ -400,7 +390,22 @@ it("new plan Agent source options follow visible limits display preferences", as
     .map((option) => option.value)
     .filter(Boolean);
 
-  expect(optionValues).toEqual(["hermes", "claude", "codebuddy"]);
+  // Providers removed from the limits-display registry must not leak back
+  // into the new-plan Agent selector. Remaining visible providers preserve
+  // the stored custom order, followed by the current registry order.
+  expect(optionValues).toEqual([
+    "hermes",
+    "claude",
+    "codebuddy",
+    "zed",
+    "workbuddy",
+    "kimi",
+    "kimi-code",
+    "pi",
+    "grok",
+    "copilot",
+    "deepseek-harness",
+  ]);
 });
 
 it("new plan provider choices render as separated card options", async () => {
@@ -1510,7 +1515,7 @@ it("R3D saveTokenPlanSecret failure shows error and does not save plan", async (
 // W03-R3D: Unified detection/sync status display tests
 // ---------------------------------------------------------------------------
 
-it("R3D record without detection_method shows no-detection prompt", async () => {
+it("R3D record without detection_method keeps the plan card free of detection prompts", async () => {
   getTokenPlans.mockResolvedValue({
     records: [{
       ...BASE_RECORD,
@@ -1523,10 +1528,10 @@ it("R3D record without detection_method shows no-detection prompt", async () => 
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
   await expandAllPlans();
-  expect(await screen.findByText("请选择检测方式以同步套餐状态")).toBeInTheDocument();
+  expect(screen.queryByText("请选择检测方式以同步套餐状态")).not.toBeInTheDocument();
 });
 
-it("R3D record with official_account detection shows unsupported status and preserves quota", async () => {
+it("R3D record with official_account detection preserves quota while hiding diagnostic metadata", async () => {
   getTokenPlans.mockResolvedValue({
     records: [{
       ...BASE_RECORD,
@@ -1558,23 +1563,18 @@ it("R3D record with official_account detection shows unsupported status and pres
   await screen.findByText("Token 套餐");
   await expandAllPlans();
 
-  // Quota is displayed (used_quota appears in both SummaryMetric and record card summary line)
-  expect(screen.getAllByText(/5,000,000,000/).length).toBeGreaterThanOrEqual(1);
-  expect(screen.getAllByText(/11,000,000,000/).length).toBeGreaterThanOrEqual(1);
-  expect(screen.getAllByText(/6,000,000,000/).length).toBeGreaterThanOrEqual(1);
-  expect(screen.getByText(/2026-12-31/)).toBeInTheDocument();
-
-  // Detection method label is shown (text may be embedded in a span with other content)
-  expect(screen.getByText(/官网账号登录检测/)).toBeInTheDocument();
-
-  // Status is unsupported (not success)
-  expect(screen.getByText(/不支持同步/)).toBeInTheDocument();
-
-  // Error message is shown
-  expect(screen.getByText(/PROVIDER_UNSUPPORTED/)).toBeInTheDocument();
+  // Quota remains represented by the progress bar without the redundant numeric detail row.
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "45");
+  expect(screen.queryByText(/5,000,000,000/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/11,000,000,000/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/6,000,000,000/)).not.toBeInTheDocument();
+  expect(screen.getAllByText(/2026\/12\/31/).length).toBeGreaterThanOrEqual(1);
+  expect(screen.queryByText(/官网账号登录检测/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/不支持同步/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/PROVIDER_UNSUPPORTED/)).not.toBeInTheDocument();
 });
 
-it("R3D record with custom_api detection shows success status and quota_source custom_api", async () => {
+it("R3D record with custom_api detection omits detection, sync, and quota-source metadata from the card", async () => {
   getTokenPlans.mockResolvedValue({
     records: [{
       ...BASE_RECORD,
@@ -1585,7 +1585,7 @@ it("R3D record with custom_api detection shows success status and quota_source c
       total_quota: 11000000000,
       used_quota: 3200000000,
       remaining_quota: 7800000000,
-      expires_at: "2026-07-25",
+      expires_at: "2099-07-25",
       quota_source: "custom_api",
       detection_method: "custom_api",
       sync_status: "success",
@@ -1599,18 +1599,12 @@ it("R3D record with custom_api detection shows success status and quota_source c
   await screen.findByText("Token 套餐");
   await expandAllPlans();
 
-  // Detection method label
-  expect(screen.getByText(/自定义 API 检测/)).toBeInTheDocument();
-
-  // Status is success
-  expect(screen.getByText(/同步成功/)).toBeInTheDocument();
-
-  // quota_source shown as 自定义 API (use getAllByText since detection_method also contains this substring)
-  const customApiLabels = screen.getAllByText(/自定义 API/);
-  expect(customApiLabels.length).toBeGreaterThanOrEqual(2); // detection label + quota source
+  expect(screen.queryByText(/自定义 API 检测/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/同步成功/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/额度来源/)).not.toBeInTheDocument();
 });
 
-it("R3D failed record shows last successful quota and error reason", async () => {
+it("R3D failed record keeps the last successful quota and shows a compact failure reason", async () => {
   getTokenPlans.mockResolvedValue({
     records: [{
       ...BASE_RECORD,
@@ -1621,7 +1615,7 @@ it("R3D failed record shows last successful quota and error reason", async () =>
       total_quota: 11000000000,
       used_quota: 2000000000,
       remaining_quota: 9000000000,
-      expires_at: "2026-07-01",
+      expires_at: "2099-07-01",
       quota_source: "custom_api",
       detection_method: "custom_api",
       sync_status: "failed",
@@ -1637,23 +1631,18 @@ it("R3D failed record shows last successful quota and error reason", async () =>
   await screen.findByText("Token 套餐");
   await expandAllPlans();
 
-  // Quota from last success is still displayed
-  expect(screen.getAllByText(/11,000,000,000/).length).toBeGreaterThanOrEqual(1);
-  expect(screen.getAllByText(/2,000,000,000/).length).toBeGreaterThanOrEqual(1);
-  expect(screen.getAllByText(/9,000,000,000/).length).toBeGreaterThanOrEqual(1);
+  // Last successful quota remains represented by the progress bar without the numeric detail row.
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "18");
+  expect(screen.queryByText(/11,000,000,000/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/2,000,000,000/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/9,000,000,000/)).not.toBeInTheDocument();
 
-  // Status is failed
-  expect(screen.getByText(/同步失败/)).toBeInTheDocument();
-
-  // Error code and message are shown
-  expect(screen.getByText(/CUSTOM_API_MAPPING_MISSING/)).toBeInTheDocument();
-  expect(screen.getByText(/自定义 API 响应中未找到有效额度数值/)).toBeInTheDocument();
-
-  // Last sync time is shown
-  expect(screen.getByText(/最后同步时间/)).toBeInTheDocument();
+  expect(screen.getByTestId("token-plan-failure-reason")).toHaveTextContent("自定义 API 响应中未找到有效额度数值");
+  expect(screen.queryByText(/CUSTOM_API_MAPPING_MISSING/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/最后同步时间/)).not.toBeInTheDocument();
 });
 
-it("R3D both detection methods use the same status labels", async () => {
+it("R3D both detection methods omit the old sync-status block", async () => {
   // Create two records: one official_account failed, one custom_api failed
   getTokenPlans.mockResolvedValue({
     records: [
@@ -1694,13 +1683,11 @@ it("R3D both detection methods use the same status labels", async () => {
   await screen.findByText("Token 套餐");
   await expandAllPlans();
 
-  // Both records should show "同步状态" label (same status label for both methods)
-  const statusLabels = screen.getAllByText(/同步状态/);
-  expect(statusLabels.length).toBeGreaterThanOrEqual(2);
-
-  // Status labels use the same copy path regardless of detection method
-  expect(screen.getByText(/不支持同步/)).toBeInTheDocument();
-  expect(screen.getByText(/同步失败/)).toBeInTheDocument();
+  expect(screen.queryByTestId("token-plan-sync-badge")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("token-plan-sync-status")).not.toBeInTheDocument();
+  expect(screen.getAllByTestId("token-plan-failure-reason")).toHaveLength(2);
+  expect(screen.getByText(/当前没有可复现官方额度查询能力/)).toBeInTheDocument();
+  expect(screen.getByText(/自定义 API 请求失败/)).toBeInTheDocument();
 });
 
 it("R3D API Key must NOT appear in record card or list view", async () => {
@@ -1788,6 +1775,7 @@ it("R3D manual quota entry is disabled when detection method is configured", asy
 
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
+  await expandAllPlans();
 
   // Open edit form for the existing plan
   const editBtn = screen.getByRole("button", { name: "编辑" });
@@ -1834,7 +1822,7 @@ it("R3D P1 editing existing custom_api record with new key replaces api_key_ref"
       total_quota: 11000000000,
       used_quota: 2000000000,
       remaining_quota: 9000000000,
-      expires_at: "2026-07-01",
+      expires_at: "2099-07-01",
       quota_source: "custom_api",
       detection_method: "custom_api",
       detection_config: {
@@ -1867,6 +1855,7 @@ it("R3D P1 editing existing custom_api record with new key replaces api_key_ref"
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
   await screen.findByText(/Standard（月付）/i);
+  await expandAllPlans();
 
   // 1. Open edit form for the existing record
   await act(async () => {
@@ -1928,7 +1917,7 @@ it("R3D P1 editing existing custom_api record with EMPTY key field keeps old ref
       total_quota: 11000000000,
       used_quota: 2000000000,
       remaining_quota: 9000000000,
-      expires_at: "2026-07-01",
+      expires_at: "2099-07-01",
       quota_source: "custom_api",
       detection_method: "custom_api",
       detection_config: {
@@ -1953,6 +1942,7 @@ it("R3D P1 editing existing custom_api record with EMPTY key field keeps old ref
   render(<TokenPlanSection />);
   await screen.findByText("Token 套餐");
   await screen.findByText(/Standard（月付）/i);
+  await expandAllPlans();
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
@@ -2018,6 +2008,7 @@ it("R3E editing a legacy refresh_method=cookie_scrape record opens the form with
 
   render(<TokenPlanSection />);
   await screen.findByText(/Legacy Cookie Plan/i);
+  await expandAllPlans();
 
   // Opening edit must not crash
   await act(async () => {
@@ -2052,6 +2043,7 @@ it("R3E saving an edited legacy cookie_scrape record does not write cookie_scrap
 
   render(<TokenPlanSection />);
   await screen.findByText(/Legacy Cookie Save/i);
+  await expandAllPlans();
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
@@ -2089,6 +2081,7 @@ it("saves notes field capped at 200 characters", async () => {
   const user = userEvent.setup();
   render(<TokenPlanSection />);
   await screen.findByText(/claude \/ Max/i);
+  await expandAllPlans();
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
@@ -2249,7 +2242,7 @@ it("lets a connected Codex plan start a separate account record", async () => {
   const user = userEvent.setup();
 
   render(<TokenPlanSection />);
-  await screen.findByText(/codex \/ codex \/ Pro 5x/i);
+  await screen.findByText(/codex \/ Pro 5x/i);
   await expandAllPlans();
   await act(async () => {
     await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
@@ -2262,7 +2255,7 @@ it("lets a connected Codex plan start a separate account record", async () => {
 
   expect(await screen.findByTestId("detection-connect-codex")).toBeInTheDocument();
   expect(screen.getByTestId("token-plan-form-notes")).toHaveValue("");
-  expect(screen.getByText(/codex \/ codex \/ Pro 5x/i)).toBeInTheDocument();
+  expect(screen.getByText(/codex \/ Pro 5x/i)).toBeInTheDocument();
 });
 
 it("never aliases an unbound Codex plan to another account session", () => {
@@ -2473,6 +2466,7 @@ it("Codex system browser completes authorization even when quota sync fails", as
 
   render(<TokenPlanSection />);
   await screen.findByText(/codex \/ Pro 5x/i);
+  await expandAllPlans();
   await act(async () => {
     await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
   });
@@ -2565,7 +2559,7 @@ it("Codex connected refresh keeps quota and never falls back to the legacy adapt
   const user = userEvent.setup();
 
   render(<TokenPlanSection />);
-  await screen.findByText(/codex \/ codex \/ Pro 5x/i);
+  await screen.findByText(/codex \/ Pro 5x/i);
   await expandAllPlans();
   await act(async () => {
     await user.click(screen.getByTitle(copy("settings.token_plan.refresh")));
@@ -2623,7 +2617,7 @@ it("Cursor refresh treats a missing native session as reauthorization instead of
   const user = userEvent.setup();
 
   render(<TokenPlanSection />);
-  await screen.findByText(/cursor \/ cursor \/ Pro/i);
+  await screen.findByText(/cursor \/ Pro/i);
   await expandAllPlans();
   await act(async () => {
     await user.click(screen.getByTitle(copy("settings.token_plan.refresh")));
@@ -2641,7 +2635,7 @@ it("Cursor refresh treats a missing native session as reauthorization instead of
   expect(refreshTokenPlan).not.toHaveBeenCalled();
 });
 
-it("shows Cursor plan, bound account, Total, Auto + Composer, API, reset, and last sync separately", async () => {
+it("shows Cursor account under the title and keeps all quota lanes without account diagnostics", async () => {
   const record = {
     ...BASE_RECORD,
     id: "cursor-live-plan",
@@ -2681,17 +2675,22 @@ it("shows Cursor plan, bound account, Total, Auto + Composer, API, reset, and la
   });
 
   render(<TokenPlanSection />);
-  await screen.findByText(/cursor \/ cursor \/ Pro/i);
+  await screen.findByText(/cursor \/ Pro/i);
   await expandAllPlans();
 
-  expect(screen.getByText(/eve\*\*\*@hotmail\.com/i)).toBeInTheDocument();
-  expect(screen.getByText(/Auth ID: auth0\|user_01KWTPZG4VW30…/i)).toBeInTheDocument();
-  expect(screen.getByText(/套餐: pro/i)).toBeInTheDocument();
-  expect(screen.getByText(/Total Usage: 27%/i)).toBeInTheDocument();
-  expect(screen.getByText(/Auto \+ Composer Usage: 20%/i)).toBeInTheDocument();
-  expect(screen.getByText(/API Usage: 72%/i)).toBeInTheDocument();
-  expect(screen.getByText(/重置时间:/i)).toBeInTheDocument();
-  expect(screen.getByText(/最后同步时间:/i)).toBeInTheDocument();
+  expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("eve***@hotmail.com");
+  expect(screen.queryByText(/Auth ID:/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/套餐: pro/i)).not.toBeInTheDocument();
+  const detail = screen.getByTestId("token-plan-detail-cursor-live-plan");
+  expect(detail).toHaveTextContent("Total Usage");
+  expect(detail).not.toHaveTextContent("27 / 100 · 73");
+  expect(detail).toHaveTextContent("Auto + Composer Usage");
+  expect(detail).not.toHaveTextContent("20 / 100 · 80");
+  expect(detail).toHaveTextContent("API Usage");
+  expect(detail).not.toHaveTextContent("72 / 100 · 28");
+  expect([...detail.querySelectorAll('[data-testid="token-plan-quota-window-percent"]')].map((node) => node.textContent)).toEqual(["27%", "20%", "72%"]);
+  expect(detail).toHaveTextContent("重置时间:");
+  expect(screen.queryByText(/最后同步时间:/i)).not.toBeInTheDocument();
 });
 
 it("formats Codex reset timestamps returned as Unix-second strings", async () => {
@@ -2713,4 +2712,48 @@ it("formats Codex reset timestamps returned as Unix-second strings", async () =>
 
   expect(screen.getByText(/重置 \d+m|重置 \d+h/)).toBeInTheDocument();
   expect(screen.queryByText(/重置 --/)).not.toBeInTheDocument();
+});
+
+it("shows usable plans with full summary and keeps expired plans in a collapsed compact group", async () => {
+  const user = userEvent.setup();
+  getTokenPlans.mockResolvedValue({
+    records: [
+      {
+        ...BASE_RECORD,
+        id: "active-plan",
+        plan_label: "Active Max",
+        expires_at: "2099-12-31",
+        subscription_amount: 100,
+        subscription_currency: "USD",
+        subscription_cycle: "monthly",
+        subscription_start_date: "2026-01-01",
+      },
+      {
+        ...BASE_RECORD,
+        id: "expired-plan",
+        plan_label: "Expired Max",
+        expires_at: "2025-12-31",
+        subscription_amount: 80,
+        subscription_currency: "USD",
+      },
+    ],
+  });
+
+  render(<TokenPlanSection />);
+
+  expect(await screen.findByText(/claude \/ Active Max/i)).toBeInTheDocument();
+  await expandAllPlans();
+  expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("USD 100");
+  expect(screen.getByTestId("active-token-plan-summary")).not.toHaveTextContent("USD 100");
+  expect(screen.queryByText(/claude \/ Expired Max/i)).not.toBeInTheDocument();
+
+  const expiredGroup = screen.getByTestId("expired-token-plans");
+  expect(expiredGroup).toHaveTextContent("已过期套餐");
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: /已过期套餐/ }));
+  });
+
+  expect(screen.getByText(/claude \/ Expired Max/i)).toBeInTheDocument();
+  expect(screen.getByTestId("expired-token-plan-row")).toHaveTextContent("已过期");
+  expect(screen.getAllByTestId("active-token-plan-summary")).toHaveLength(1);
 });

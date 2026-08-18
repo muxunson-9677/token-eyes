@@ -8,8 +8,11 @@
         "titleBarStyle": "Visible",
         "decorations": true,
         "visible": true,
+        "width": 1586,
+        "height": 932,
         "minWidth": 900,
-        "minHeight": 600
+        "minHeight": 600,
+        "resizable": true
       }
     ]
   },

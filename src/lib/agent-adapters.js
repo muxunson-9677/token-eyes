@@ -286,6 +286,21 @@ const AGENT_ADAPTERS = [
     notes: "Tencent CodeBuddy CLI; passive ~/.codebuddy/projects/**/*.jsonl reader.",
   },
   {
+    id: "workbuddy",
+    displayName: "WorkBuddy",
+    queueSource: "workbuddy",
+    family: "tencent",
+    collectionMode: "passive_log",
+    parserExport: "parseWorkbuddyIncremental",
+    resolverExports: ["resolveWorkbuddyProjectFiles"],
+    statusSurface: true,
+    diagnosticsSurface: false,
+    usageLimitsSurface: false,
+    pathOverrideKey: "workbuddy",
+    accountLevel: false,
+    notes: "Tencent WorkBuddy CLI (CodeBuddy CLI rebrand); passive ~/.workbuddy/projects/**/*.jsonl reader + read-only credit quota via codebuddy.cn billing API.",
+  },
+  {
     id: "omp",
     displayName: "oh-my-pi",
     queueSource: "omp",
@@ -420,6 +435,21 @@ const AGENT_ADAPTERS = [
     accountLevel: false,
     notes: "Antigravity passive transcript reader.",
   },
+  {
+    id: "deepseek-harness",
+    displayName: "DeepSeek Harness",
+    queueSource: "deepseek-harness",
+    family: "deepseek",
+    collectionMode: "passive_log",
+    parserExport: "parseDeepSeekHarnessIncremental",
+    resolverExports: ["resolveDeepSeekHarnessHome", "listDeepSeekHarnessSessionFiles"],
+    statusSurface: true,
+    diagnosticsSurface: true,
+    usageLimitsSurface: true,
+    pathOverrideKey: null,
+    accountLevel: false,
+    notes: "DeepSeek Harness sessions under DSH_HOME or ~/.dsh/sessions/.",
+  },
 ];
 
 /**
@@ -465,6 +495,7 @@ function listUsageLimitAdapterIds() {
     "openclaw",
     "opencode",
     "antigravity",
+    "deepseek-harness",
   ].filter((id) => getAgentAdapter(id)?.usageLimitsSurface);
 }
 

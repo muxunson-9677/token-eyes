@@ -47,13 +47,31 @@ describe("UsageFilterBar", () => {
     expect(screen.getByRole("button", { name: "筛选模型" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新间隔" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "时间范围" })).toBeInTheDocument();
+    expect(screen.queryByText(copy("spend.source"))).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选模型" }).parentElement).toHaveClass(
+      "tt-usage-filter-controls--raised",
+    );
   });
 
-  it("right-aligns the complete filter group while preserving wrapping", () => {
+  it("renders DeepSeek Harness when it is enabled by Limits Display", () => {
+    renderBar({ visibleProviderIds: ["deepseek-harness"] });
+
+    expect(
+      screen.getByRole("button", { name: /DeepSeek Harness/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Codex/ })).not.toBeInTheDocument();
+  });
+
+  it("left-aligns the Agent cards and separates the model controls on the right", () => {
     renderBar();
 
     const toolbar = screen.getByRole("toolbar");
-    expect(toolbar).toHaveClass("justify-end", "flex-wrap");
+    expect(toolbar).toHaveClass("justify-start", "flex-wrap");
+    expect(toolbar).toHaveClass("tt-usage-filter-inline-row");
+    expect(screen.getByRole("button", { name: "显示全部 Agent 的数据" }).parentElement?.parentElement)
+      .toHaveClass("tt-usage-source-switcher--left");
+    expect(screen.getByRole("button", { name: "筛选模型" }).parentElement)
+      .toHaveClass("tt-usage-filter-controls--separated");
   });
 
   it("uses one glass toolbar and gives every filter control restrained press and focus feedback", () => {
@@ -62,6 +80,7 @@ describe("UsageFilterBar", () => {
     const toolbar = screen.getByRole("toolbar");
     expect(toolbar).toHaveClass(
       "tt-surface",
+      "tt-pressable-parent",
       "[&_button]:rounded-[var(--tt-control-radius)]",
       "[&_button:active:not(:disabled)]:translate-y-px",
       "[&_button[aria-pressed=true]]:shadow-inner",

@@ -227,6 +227,7 @@ describe("getDefaultAdapters", () => {
       "grok",
       "kimi",
       "kiro",
+      "zed",
     ]);
     for (const id of providerIds) {
       assert.equal(typeof adapters[id], "function", `${id} adapter must be a function`);
