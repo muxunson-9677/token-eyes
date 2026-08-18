@@ -5,6 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
+const { buildWidgetViewModel } = require("../src/lib/widget-view-model");
+
 const ROOT = path.resolve(__dirname, "..");
 
 function read(relativePath) {
@@ -34,6 +36,44 @@ test("widget implementation keeps a single vertical content scroll region", () =
   const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
   const regions = widget.match(/data-widget-scroll-region/g) || [];
   assert.equal(regions.length, 1);
+});
+
+test("widget view model preserves complete quota plans without truncating or splitting windows", () => {
+  const limits = Array.from({ length: 11 }, (_, planIndex) => (
+    ["7 天", "API Usage", "5 小时"].map((window, windowIndex) => ({
+      id: `codex:plan-${String(planIndex).padStart(2, "0")}:window-${windowIndex}`,
+      planId: `codex:plan-${String(planIndex).padStart(2, "0")}`,
+      agent: "codex",
+      provider: "Codex",
+      planLabel: `Plan ${String(planIndex).padStart(2, "0")}`,
+      accountLabel: `account-${String(planIndex).padStart(2, "0")}`,
+      window,
+      usedPercent: planIndex,
+    }))
+  )).flat();
+
+  const dense = buildWidgetViewModel({ limits });
+  assert.equal(dense.limits.length, 33, "more than 30 real windows must remain reachable");
+  assert.deepEqual(
+    dense.limits.map((limit) => `${limit.planId}:${limit.window}`),
+    Array.from({ length: 11 }, (_, planIndex) => {
+      const planId = `codex:plan-${String(planIndex).padStart(2, "0")}`;
+      return ["5 小时", "7 天", "API Usage"].map((window) => `${planId}:${window}`);
+    }).flat(),
+    "each plan must remain an adjacent, deterministically ordered three-window group",
+  );
+
+  assert.deepEqual(buildWidgetViewModel({ limits: [] }).limits, []);
+  assert.equal(
+    buildWidgetViewModel({ agent: "cursor", limits: limits.slice(0, 2) }).limits.length,
+    0,
+    "disabled agents must not leak quota windows into the selected agent",
+  );
+  assert.equal(
+    buildWidgetViewModel({ limits: limits.slice(0, 2) }).limits.length,
+    2,
+    "small plans must not be padded or dropped",
+  );
 });
 
 test("compact widget menus temporarily expand the native window and stay vertical", () => {
@@ -193,6 +233,9 @@ test("widget visual verification uses real wheel input for scrollable content", 
   assert.match(visual, /page\.mouse\.wheel\(0,\s*240\)/u);
   assert.match(visual, /scrollTopAfter\s*>\s*scrollTopBefore/u);
   assert.match(visual, /\["03-projects",\s*"04-limits",\s*"05-models"\]\.includes\(scenario\.name\)/u);
+  assert.match(visual, /scenario\.name === "04-limits" \? 30/u);
+  assert.match(visual, /stateAudit\.planCount !== 10/u);
+  assert.match(visual, /lastRowVisible/u);
   assert.match(visual, /WIDGET_INTERACTION_AUDIT=PASS/u);
   assert.match(visual, /WIDGET_VISUAL_AUDIT=PASS_24_SCENARIOS/u);
   assert.doesNotMatch(visual, /element\.scrollTop\s*=\s*element\.scrollHeight/u);

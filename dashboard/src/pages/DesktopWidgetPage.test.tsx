@@ -794,6 +794,42 @@ describe("DesktopWidgetPage", () => {
     now.mockRestore();
   });
 
+  it("keeps all ten three-window plans reachable through the expanded scroll region", () => {
+    const denseLimits = Array.from({ length: 10 }, (_, planIndex) => (
+      ["5h", "1w", "API Usage"].map((window, windowIndex) => ({
+        ...viewModel.limits[0],
+        id: `codex:plan-${planIndex}:window-${windowIndex}`,
+        planId: `codex:plan-${planIndex}`,
+        planLabel: `Plan ${planIndex + 1}`,
+        accountLabel: `account-${planIndex + 1}`,
+        window,
+        usedPercent: planIndex * 10 + windowIndex,
+      }))
+    )).flat();
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, expanded: false, mode: "limits", selectedLimitIds: null },
+      viewModel: { ...viewModel, limits: denseLimits },
+    };
+
+    const { rerender } = render(<DesktopWidgetPage />);
+    expect(screen.queryByText("Codex · Plan 10")).not.toBeInTheDocument();
+
+    widget.value = {
+      ...widget.value,
+      prefs: { ...widget.value.prefs, expanded: true },
+    };
+    rerender(<DesktopWidgetPage />);
+
+    const scrollRegion = document.querySelector("[data-widget-scroll-region]");
+    const plans = screen.getAllByTestId("widget-expanded-limit-plan");
+    expect(plans).toHaveLength(10);
+    expect(plans.every((plan) => within(plan).getAllByTestId("widget-limit-progress").length === 3)).toBe(true);
+    expect(within(plans.at(-1)!).getByText("Codex · Plan 10")).toBeInTheDocument();
+    expect(scrollRegion).toContainElement(plans.at(-1)!);
+    expect(widgetStyles).toMatch(/\.widget-scroll-region\s*\{[^}]*overflow-y:\s*auto/s);
+  });
+
   it("keeps each mode's collapsed summary unchanged when the detail panel expands", () => {
     const summaryText = () => screen.getByTestId("widget-drag-surface").textContent;
     const cases = ["projects", "limits", "models"] as const;

@@ -81,11 +81,22 @@ const viewModel = {
       { id: "text", label: "text", red: 0, yellow: 0, green: 2, unknown: 0, sessions: [{ id: "text-active", label: "Codex settings", status: "green", state: "active", updatedAt: "2026-08-17T06:00:00.000Z" }] },
     ],
   },
-  limits: [
-    { id: "codex:pro-20x:5h", planId: "codex:pro-20x", agent: "codex", provider: "Codex", planLabel: "Pro 20x", accountLabel: "mux***@gmail.com", window: "5h", usedPercent: 67, resetAt: "2026-08-20T11:33:00.000Z", expiresAt: "2026-08-30T22:24:00.000Z", error: null, notes: null },
-    { id: "codex:pro-20x:weekly", planId: "codex:pro-20x", agent: "codex", provider: "Codex", planLabel: "Pro 20x", accountLabel: "mux***@gmail.com", window: "1w", usedPercent: 56, resetAt: "2026-08-20T12:03:00.000Z", expiresAt: "2026-08-30T22:24:00.000Z", error: null, notes: null },
-    { id: "codex:pro-20x:spark", planId: "codex:pro-20x", agent: "codex", provider: "Codex", planLabel: "Pro 20x", accountLabel: "mux***@gmail.com", window: "GPT 5.3 Codex Spark Weekly", usedPercent: 42, resetAt: "2026-08-20T12:03:00.000Z", expiresAt: "2026-08-30T22:24:00.000Z", error: null, notes: null },
-  ],
+  limits: Array.from({ length: 10 }, (_, planIndex) => (
+    ["5h", "1w", "GPT 5.3 Codex Spark Weekly"].map((window, windowIndex) => ({
+      id: `codex:pro-${planIndex + 1}:window-${windowIndex}`,
+      planId: `codex:pro-${planIndex + 1}`,
+      agent: "codex",
+      provider: "Codex",
+      planLabel: `Pro ${planIndex + 1}`,
+      accountLabel: `account-${planIndex + 1}@example.com`,
+      window,
+      usedPercent: 42 + planIndex + windowIndex,
+      resetAt: "2026-08-20T12:03:00.000Z",
+      expiresAt: "2026-08-30T22:24:00.000Z",
+      error: null,
+      notes: null,
+    }))
+  )).flat(),
   totals: {
     tokens: 7_237_147_164,
     costUsd: 24_866.9,
@@ -415,12 +426,12 @@ try {
         };
       }, scenario.name);
       const expectedRows = scenario.name === "03-projects" ? 9
-        : scenario.name === "04-limits" ? 3
+        : scenario.name === "04-limits" ? 30
           : scenario.name === "05-models" ? 10 : 0;
       if (expectedRows && (stateAudit.rowCount !== expectedRows || !stateAudit.lastRowVisible)) {
         throw new Error(`${scenario.name}@${scale}: incomplete expanded content ${JSON.stringify(stateAudit)}`);
       }
-      if (scenario.name === "04-limits" && stateAudit.planCount !== 1) {
+      if (scenario.name === "04-limits" && stateAudit.planCount !== 10) {
         throw new Error(`${scenario.name}@${scale}: quota windows were not grouped by plan ${JSON.stringify(stateAudit)}`);
       }
       if (scenario.name === "02-agent-menu" && (

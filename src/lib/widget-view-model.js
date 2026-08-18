@@ -240,11 +240,14 @@ function buildLimits(limits, selectedAgent) {
       error: typeof item?.error === "string" ? safeLabel(item.error, "").slice(0, 120) : null,
     }))
     .sort((left, right) => (
-      (WINDOW_ORDER[left.window] ?? 99) - (WINDOW_ORDER[right.window] ?? 99)
-      || left.provider.localeCompare(right.provider)
+      left.provider.localeCompare(right.provider)
       || left.accountLabel.localeCompare(right.accountLabel)
-    ))
-    .slice(0, 24);
+      || left.planLabel.localeCompare(right.planLabel)
+      || left.planId.localeCompare(right.planId)
+      || (WINDOW_ORDER[left.window] ?? 99) - (WINDOW_ORDER[right.window] ?? 99)
+      || left.kind.localeCompare(right.kind)
+      || left.id.localeCompare(right.id)
+    ));
 }
 
 function buildTotals(usage, selectedAgent) {
