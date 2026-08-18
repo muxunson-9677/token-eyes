@@ -690,6 +690,150 @@ it("clears a partial-load error after a later complete load succeeds", async () 
   expect(result.current.stale).toBe(false);
 });
 
+it("clears only a balance-list load error after every account in the latest config set refreshes successfully", async () => {
+  const configs = [
+    { ...SAMPLE_CONFIG, id: "cfg-a" },
+    { ...SAMPLE_CONFIG, id: "cfg-b", providerId: "anthropic" },
+  ];
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs } });
+  getProviderApiBalances.mockResolvedValue({ ok: false, error: "balance list unavailable" });
+  refreshProviderApiBalance.mockImplementation(async (configId) => ({
+    ok: true,
+    data: { balance: { ...SAMPLE_BALANCE, configId, status: "synced" } },
+  }));
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(result.current.balances).toHaveLength(2));
+  expect(result.current.balances).toHaveLength(2);
+  expect(result.current.error).toBeNull();
+  expect(result.current.stale).toBe(false);
+});
+
+it("clears a balance-list load error when the only required account succeeds on retry", async () => {
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [SAMPLE_CONFIG] } });
+  getProviderApiBalances.mockResolvedValue({ ok: false, error: "balance list unavailable" });
+  refreshProviderApiBalance
+    .mockResolvedValueOnce({ ok: false, error: "account unavailable", data: { balance: null } })
+    .mockResolvedValueOnce({ ok: true, data: { balance: SAMPLE_BALANCE } });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+  await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(result.current.error).toMatch(/balance list unavailable/i));
+
+  await act(async () => {
+    await result.current.refreshOne(SAMPLE_CONFIG.id);
+  });
+
+  expect(result.current.error).toBeNull();
+  expect(result.current.stale).toBe(false);
+});
+
+it("keeps a balance-list load error when any account in the latest config set fails refresh", async () => {
+  const configs = [
+    { ...SAMPLE_CONFIG, id: "cfg-a" },
+    { ...SAMPLE_CONFIG, id: "cfg-b", providerId: "anthropic" },
+  ];
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs } });
+  getProviderApiBalances.mockResolvedValue({ ok: false, error: "balance list unavailable" });
+  refreshProviderApiBalance.mockImplementation(async (configId) => (configId === "cfg-a"
+    ? { ok: true, data: { balance: { ...SAMPLE_BALANCE, configId, status: "synced" } } }
+    : { ok: false, error: "account unavailable", data: { balance: null } }));
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(result.current.error).toMatch(/balance list unavailable/i));
+  expect(result.current.stale).toBe(true);
+});
+
+it("does not clear a config-list load error after account refresh succeeds", async () => {
+  writeCostSettingsSessionCache("provider-api-balances", {
+    configs: [SAMPLE_CONFIG],
+    balances: [SAMPLE_BALANCE],
+    stale: false,
+    lastUpdatedAt: "2026-07-01T00:00:00.000Z",
+  });
+  getProviderApiConfigs.mockResolvedValue({ ok: false, error: "config list unavailable" });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [SAMPLE_BALANCE] } });
+  refreshProviderApiBalance.mockResolvedValue({ ok: true, data: { balance: SAMPLE_BALANCE } });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(result.current.error).toMatch(/config list unavailable/i));
+  expect(result.current.stale).toBe(true);
+});
+
+it("uses a successful config list as authority to remove deleted cached balances when balance loading fails", async () => {
+  const currentConfig = { ...SAMPLE_CONFIG, apiKeyRef: "" };
+  writeCostSettingsSessionCache("provider-api-balances", {
+    configs: [currentConfig, { ...SAMPLE_CONFIG, id: "cfg-deleted", apiKeyRef: "" }],
+    balances: [SAMPLE_BALANCE, { ...SAMPLE_BALANCE, configId: "cfg-deleted" }],
+    stale: false,
+    lastUpdatedAt: "2026-07-01T00:00:00.000Z",
+  });
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [currentConfig] } });
+  getProviderApiBalances.mockResolvedValue({ ok: false, error: "balance list unavailable" });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(result.current.error).toMatch(/balance list unavailable/i));
+  expect(result.current.configs).toEqual([currentConfig]);
+  expect(result.current.balances).toEqual([SAMPLE_BALANCE]);
+  expect(result.current.balances.some((balance) => balance.configId === "cfg-deleted")).toBe(false);
+});
+
+it("restores cached stale and load-error state synchronously, then clears both after a complete load", async () => {
+  const keylessConfig = { ...SAMPLE_CONFIG, apiKeyRef: "" };
+  writeCostSettingsSessionCache("provider-api-balances", {
+    configs: [keylessConfig],
+    balances: [SAMPLE_BALANCE],
+    stale: true,
+    loadErrors: { balances: "cached balance list unavailable" },
+    lastUpdatedAt: "2026-07-01T00:00:00.000Z",
+  });
+  const configsRequest = deferred();
+  const balancesRequest = deferred();
+  getProviderApiConfigs.mockReturnValue(configsRequest.promise);
+  getProviderApiBalances.mockReturnValue(balancesRequest.promise);
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  expect(result.current.stale).toBe(true);
+  expect(result.current.error).toMatch(/cached balance list unavailable/i);
+
+  await act(async () => {
+    configsRequest.resolve({ ok: true, data: { configs: [keylessConfig] } });
+    balancesRequest.resolve({ ok: true, data: { balances: [SAMPLE_BALANCE] } });
+  });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.error).toBeNull();
+  expect(result.current.stale).toBe(false);
+});
+
+it("clears cached stale after every cached required account refreshes while list loading is still pending", async () => {
+  writeCostSettingsSessionCache("provider-api-balances", {
+    configs: [SAMPLE_CONFIG],
+    balances: [{ ...SAMPLE_BALANCE, status: "stale" }],
+    stale: true,
+    lastUpdatedAt: "2026-07-01T00:00:00.000Z",
+  });
+  getProviderApiConfigs.mockReturnValue(new Promise(() => {}));
+  getProviderApiBalances.mockReturnValue(new Promise(() => {}));
+  refreshProviderApiBalance.mockResolvedValue({ ok: true, data: { balance: SAMPLE_BALANCE } });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+  expect(result.current.stale).toBe(true);
+
+  await act(async () => {
+    await result.current.refreshOne(SAMPLE_CONFIG.id);
+  });
+
+  expect(result.current.stale).toBe(false);
+});
+
 // Polling-interval contract: spy on window.setInterval to verify the clamped
 // minimum is exactly 60_000ms (30s → clamped UP to 60s, not bumped to 300s).
 // We filter out testing-library's internal 50ms polling intervals by only
