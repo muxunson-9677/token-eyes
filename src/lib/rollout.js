@@ -6086,6 +6086,7 @@ function diffDeepSeekHarnessTotals(current, previous) {
 
 async function collectDeepSeekHarnessRetractions(queuePath, hourlyState) {
   const identities = new Map();
+  const queuedBuckets = new Set();
   let raw = "";
   try {
     raw = await fs.readFile(queuePath, "utf8");
@@ -6105,11 +6106,14 @@ async function collectDeepSeekHarnessRetractions(queuePath, hourlyState) {
     const hourStart = typeof row?.hour_start === "string" ? row.hour_start : "";
     if (!hourStart) continue;
     const attribution = normalizeUsageAttribution(row);
+    queuedBuckets.add(bucketKey("deepseek-harness", model, hourStart));
     identities.set(`${model}${BUCKET_SEPARATOR}${hourStart}${BUCKET_SEPARATOR}${attribution.billing_mode}`, {
       model,
       hourStart,
       attribution,
       active: Number(row?.total_tokens || 0) > 0,
+      totals: deepSeekHarnessRecordTotals(row),
+      trusted: true,
     });
   }
 
@@ -6117,15 +6121,76 @@ async function collectDeepSeekHarnessRetractions(queuePath, hourlyState) {
     const parsed = parseBucketKey(key);
     if (normalizeSourceInput(parsed.source) !== "deepseek-harness" || !parsed.hourStart) continue;
     const model = normalizeModelInput(parsed.model) || DEFAULT_MODEL;
+    if (queuedBuckets.has(bucketKey("deepseek-harness", model, parsed.hourStart))) continue;
     for (const slice of attributionSlices(bucket)) {
       const attribution = normalizeUsageAttribution(slice.attribution);
       const identity = `${model}${BUCKET_SEPARATOR}${parsed.hourStart}${BUCKET_SEPARATOR}${attribution.billing_mode}`;
       if (!identities.has(identity)) {
-        identities.set(identity, { model, hourStart: parsed.hourStart, attribution, active: true });
+        identities.set(identity, {
+          model,
+          hourStart: parsed.hourStart,
+          attribution,
+          active: true,
+          totals: cloneTotals(slice.totals),
+          trusted: false,
+        });
       }
     }
   }
   return [...identities.values()].filter((entry) => entry.active);
+}
+
+function addDeepSeekHarnessBucketDelta(bucket, delta) {
+  const slices = bucket.attributionBuckets && typeof bucket.attributionBuckets === "object"
+    ? bucket.attributionBuckets
+    : null;
+  if (slices) {
+    if (!slices.unknown) {
+      slices.unknown = { totals: initTotals(), attribution: normalizeUsageAttribution(null) };
+    }
+    addTotals(slices.unknown.totals, delta);
+  }
+  addTotals(bucket.totals, delta);
+}
+
+function deepSeekHarnessRecordTotals(record) {
+  const totals = initTotals();
+  for (const key of [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+    "conversation_count",
+  ]) {
+    totals[key] = toNonNegativeInt(record?.[key]);
+  }
+  totals.billable_total_tokens = toNonNegativeInt(
+    record?.billable_total_tokens ?? record?.total_tokens,
+  );
+  return totals;
+}
+
+function restoreDeepSeekHarnessMigrationAttribution(hourlyState, evidence) {
+  const byBucket = new Map();
+  for (const entry of Array.isArray(evidence) ? evidence : []) {
+    if (!entry?.trusted || !entry?.active || !entry?.totals) continue;
+    const key = bucketKey("deepseek-harness", entry.model, entry.hourStart);
+    if (!byBucket.has(key)) byBucket.set(key, []);
+    byBucket.get(key).push(entry);
+  }
+  for (const [key, entries] of byBucket) {
+    const bucket = hourlyState.buckets?.[key];
+    if (!bucket?.totals) continue;
+    const trustedTotals = initTotals();
+    for (const entry of entries) addTotals(trustedTotals, entry.totals);
+    if (totalsKey(trustedTotals) !== totalsKey(bucket.totals)) continue;
+    bucket.attributionBuckets = Object.fromEntries(entries.map((entry) => [
+      entry.attribution.billing_mode,
+      { totals: cloneTotals(entry.totals), attribution: entry.attribution },
+    ]));
+  }
 }
 
 function resetDeepSeekHarnessHourlyState(hourlyState) {
@@ -6184,8 +6249,12 @@ async function parseDeepSeekHarnessIncremental({
   let fileState =
     priorState.files && typeof priorState.files === "object" ? { ...priorState.files } : {};
   let migrationRetractionsQueued = 0;
+  let migrationAttributionEvidence = Array.isArray(priorState.bucketMigrationAttribution)
+    ? priorState.bucketMigrationAttribution
+    : [];
   if (startsBucketMigration) {
     const identities = await collectDeepSeekHarnessRetractions(queuePath, hourlyState);
+    migrationAttributionEvidence = identities;
     resetDeepSeekHarnessHourlyState(hourlyState);
     fileState = {};
     migrationRetractionsQueued = await enqueueDeepSeekHarnessRetractions(queuePath, identities);
@@ -6250,9 +6319,14 @@ async function parseDeepSeekHarnessIncremental({
         model,
         bucketStart,
       );
-      addTotals(bucket.totals, delta);
+      addDeepSeekHarnessBucketDelta(bucket, delta);
       for (const totalsField of Object.keys(initTotals())) {
         bucket.totals[totalsField] = Math.max(0, Number(bucket.totals[totalsField] || 0));
+      }
+      for (const slice of Object.values(bucket.attributionBuckets || {})) {
+        for (const totalsField of Object.keys(initTotals())) {
+          slice.totals[totalsField] = Math.max(0, Number(slice.totals[totalsField] || 0));
+        }
       }
       touchedBuckets.add(bucketKey("deepseek-harness", model, bucketStart));
       eventsAggregated += 1;
@@ -6275,21 +6349,33 @@ async function parseDeepSeekHarnessIncremental({
     }
   }
 
-  const rebuiltBucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const migrationComplete = !bucketMigrationPending || migrationFilesPending === 0;
+  if (bucketMigrationPending && migrationComplete) {
+    restoreDeepSeekHarnessMigrationAttribution(hourlyState, migrationAttributionEvidence);
+    for (const key of Object.keys(hourlyState.buckets || {})) {
+      if (normalizeSourceInput(parseBucketKey(key).source) === "deepseek-harness") {
+        touchedBuckets.add(key);
+      }
+    }
+  }
+  const rebuiltBucketsQueued = bucketMigrationPending && !migrationComplete
+    ? 0
+    : await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
   const bucketsQueued = migrationRetractionsQueued + rebuiltBucketsQueued;
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
-  cursors.deepseekHarness = {
+  const nextDeepSeekHarnessState = {
     ...priorState,
     normalizationVersion: DEEPSEEK_HARNESS_NORMALIZATION_VERSION,
     bucketStateVersion: DEEPSEEK_HARNESS_BUCKET_STATE_VERSION,
-    bucketMigrationComplete: bucketMigrationPending
-      ? migrationFilesPending === 0
-      : priorState.bucketMigrationComplete !== false,
+    bucketMigrationComplete: migrationComplete,
+    bucketMigrationAttribution: migrationAttributionEvidence,
     files: fileState,
     updatedAt,
   };
+  if (migrationComplete) delete nextDeepSeekHarnessState.bucketMigrationAttribution;
+  cursors.deepseekHarness = nextDeepSeekHarnessState;
   return { filesProcessed, eventsAggregated, bucketsQueued };
 }
 

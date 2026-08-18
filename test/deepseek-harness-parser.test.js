@@ -382,6 +382,115 @@ test("rebuilds old DeepSeek Harness bucket state while preserving other sources"
   assert.equal(readQueue(queuePath).length, rows.length);
 });
 
+test("preserves exact api_key and token_plan slices when the rebuilt bucket matches trusted history", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-mode-upgrade-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const model = "deepseek-v4-flash";
+  const hourStart = "2026-08-16T10:00:00.000Z";
+  const events = [
+    { type: "request/context", seq: 1, time: hourStart, data: { model } },
+    usageEvent({ turn: 1, time: "2026-08-16T10:05:00.000Z", usage: { inputTokens: 10, outputTokens: 1 } }),
+    usageEvent({ turn: 2, time: "2026-08-16T10:15:00.000Z", usage: { inputTokens: 20, outputTokens: 2 } }),
+  ];
+  const sessionFile = await writeSession(root, "mode-migration", events, false);
+  const queuePath = path.join(root, "queue.jsonl");
+  const modeRows = [
+    { billing_mode: "api_key", billing_mode_confidence: "provider_receipt", input_tokens: 10, output_tokens: 1, total_tokens: 11, billable_total_tokens: 11, conversation_count: 1 },
+    { billing_mode: "token_plan", billing_mode_confidence: "provider_receipt", input_tokens: 20, output_tokens: 2, total_tokens: 22, billable_total_tokens: 22, conversation_count: 1 },
+  ].map((row) => ({
+    source: "deepseek-harness", model, hour_start: hourStart,
+    cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0,
+    ...row,
+  }));
+  const otherRow = {
+    source: "claude", model: "claude-sonnet-4", hour_start: hourStart,
+    input_tokens: 90, cached_input_tokens: 0, cache_creation_input_tokens: 0,
+    output_tokens: 9, reasoning_output_tokens: 0, total_tokens: 99,
+    billable_total_tokens: 99, conversation_count: 1,
+    billing_mode: "api_key", billing_mode_confidence: "provider_receipt",
+  };
+  fs.writeFileSync(queuePath, `${[...modeRows, otherRow].map(JSON.stringify).join("\n")}\n`);
+  const aggregate = modeRows.reduce((totals, row) => {
+    for (const key of Object.keys(totals)) totals[key] += Number(row[key] || 0);
+    return totals;
+  }, {
+    input_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0,
+    output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 0,
+    billable_total_tokens: 0, conversation_count: 0,
+  });
+  const cursors = {
+    deepseekHarness: { normalizationVersion: 2, files: {} },
+    hourly: {
+      version: 3,
+      buckets: {
+        [`deepseek-harness|${model}|${hourStart}`]: { totals: aggregate, queuedKey: serializedTotalsKey(aggregate) },
+        [`claude|${otherRow.model}|${hourStart}`]: { totals: { ...otherRow }, queuedKey: serializedTotalsKey(otherRow) },
+      },
+      groupQueued: {}, attributionMigrationVersion: 1, pendingAttributionRetractions: {},
+    },
+  };
+
+  const rebuilt = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.equal(rebuilt.filesProcessed, 1);
+  const rows = readQueue(queuePath);
+  const latest = new Map(rows.map((row) => [`${row.source}|${row.model}|${row.hour_start}|${row.billing_mode}`, row]));
+  assert.equal(latest.get(`deepseek-harness|${model}|${hourStart}|api_key`).total_tokens, 11);
+  assert.equal(latest.get(`deepseek-harness|${model}|${hourStart}|token_plan`).total_tokens, 22);
+  assert.equal(latest.has(`deepseek-harness|${model}|${hourStart}|unknown`), false);
+  assert.equal([...latest.values()].filter((row) => row.source === "deepseek-harness").reduce((sum, row) => sum + row.total_tokens, 0), 33);
+  assert.deepEqual(latest.get(`claude|${otherRow.model}|${hourStart}|api_key`), otherRow);
+
+  const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.equal(readQueue(queuePath).length, rows.length);
+});
+
+test("keeps rebuilt usage unknown when historical billing-mode slices do not exactly reconcile", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-mode-mismatch-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const model = "deepseek-v4-flash";
+  const hourStart = "2026-08-16T10:00:00.000Z";
+  const sessionFile = await writeSession(root, "mode-mismatch", [
+    { type: "request/context", seq: 1, time: hourStart, data: { model } },
+    usageEvent({ turn: 1, time: "2026-08-16T10:05:00.000Z", usage: { inputTokens: 10, outputTokens: 1 } }),
+    usageEvent({ turn: 2, time: "2026-08-16T10:15:00.000Z", usage: { inputTokens: 20, outputTokens: 2 } }),
+  ], false);
+  const queuePath = path.join(root, "queue.jsonl");
+  const historicalRows = [
+    { billing_mode: "api_key", input_tokens: 10, output_tokens: 1, total_tokens: 11 },
+    { billing_mode: "token_plan", input_tokens: 30, output_tokens: 3, total_tokens: 33 },
+  ].map((row) => ({
+    source: "deepseek-harness", model, hour_start: hourStart,
+    cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0,
+    billable_total_tokens: row.total_tokens, conversation_count: 1,
+    billing_mode_confidence: "provider_receipt", ...row,
+  }));
+  fs.writeFileSync(queuePath, `${historicalRows.map(JSON.stringify).join("\n")}\n`);
+  const aggregate = {
+    input_tokens: 40, cached_input_tokens: 0, cache_creation_input_tokens: 0,
+    output_tokens: 4, reasoning_output_tokens: 0, total_tokens: 44,
+    billable_total_tokens: 44, conversation_count: 2,
+  };
+  const cursors = {
+    deepseekHarness: { normalizationVersion: 2, files: {} },
+    hourly: {
+      version: 3,
+      buckets: {
+        [`deepseek-harness|${model}|${hourStart}`]: { totals: aggregate, queuedKey: serializedTotalsKey(aggregate) },
+      },
+      groupQueued: {}, attributionMigrationVersion: 1, pendingAttributionRetractions: {},
+    },
+  };
+
+  await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+
+  const latest = new Map(readQueue(queuePath).map((row) => [row.billing_mode, row]));
+  assert.equal(latest.get("api_key").total_tokens, 0);
+  assert.equal(latest.get("token_plan").total_tokens, 0);
+  assert.equal(latest.get("unknown").total_tokens, 33);
+  assert.equal([...latest.values()].reduce((sum, row) => sum + row.total_tokens, 0), 33);
+});
+
 test("keeps an unreadable bucket migration pending without replaying successful files", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-bucket-retry-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -400,17 +509,21 @@ test("keeps an unreadable bucket migration pending without replaying successful 
   } finally {
     fsPromises.readFile = originalReadFile;
   }
-  assert.deepEqual(partial, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  assert.deepEqual(partial, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 0 });
   assert.equal(cursors.deepseekHarness.bucketStateVersion, 3);
   assert.equal(cursors.deepseekHarness.bucketMigrationComplete, false);
-  const partialRows = readQueue(queuePath);
+  assert.equal(fs.existsSync(queuePath), false);
 
   const retried = await parseDeepSeekHarnessIncremental({ sessionFiles: [successfulFile, pendingFile], cursors, queuePath });
-  assert.deepEqual(retried, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  assert.deepEqual(retried, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 2 });
   assert.equal(cursors.deepseekHarness.bucketMigrationComplete, true);
   const rows = readQueue(queuePath);
   assert.equal(rows.filter((row) => row.model === "deepseek-v4-flash").length, 1);
-  assert.equal(rows.length, partialRows.length + 1);
+  assert.equal(rows.length, 2);
+
+  const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [successfulFile, pendingFile], cursors, queuePath });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.equal(readQueue(queuePath).length, rows.length);
 });
 
 test("reparses unchanged pre-fix DeepSeek Harness files once to correct totals", async (t) => {
