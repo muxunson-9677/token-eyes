@@ -291,6 +291,12 @@ describe("useCostAccumulation selected month", () => {
       expected: "partial",
     },
     {
+      name: "keeps an ambiguous cumulative provider bucket partial",
+      source: "hermes",
+      providers: [{ provider_id: "unknown", api_key: 10, token_plan: 0, unknown: 0 }],
+      expected: "partial",
+    },
+    {
       name: "keeps one source with covered and uncovered providers partial",
       source: "codex",
       providers: [

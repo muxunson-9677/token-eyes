@@ -1365,16 +1365,38 @@ function addAttributedTotals(bucket, delta, evidence) {
       bucket.attributionBuckets.unknown = {
         totals: cloneTotals(bucket.totals),
         attribution: normalizeUsageAttribution(null),
+        providerAttributionAmbiguous: true,
       };
     }
   }
   if (!bucket.attributionBuckets[mode]) {
-    bucket.attributionBuckets[mode] = { totals: initTotals(), attribution };
+    bucket.attributionBuckets[mode] = {
+      totals: initTotals(),
+      attribution,
+      providerAttributionAmbiguous: !attribution.provider_id,
+    };
   }
   const attributedBucket = bucket.attributionBuckets[mode];
-  attributedBucket.attribution = attribution;
+  mergeProviderAttribution(attributedBucket, attribution);
   addTotals(attributedBucket.totals, delta);
   addTotals(bucket.totals, delta);
+}
+
+function mergeProviderAttribution(target, nextAttribution, nextAmbiguous = false) {
+  const previous = normalizeUsageAttribution(target.attribution);
+  const next = normalizeUsageAttribution(nextAttribution);
+  const previousProvider = previous.provider_id || null;
+  const nextProvider = next.provider_id || null;
+  const ambiguous = Boolean(
+    target.providerAttributionAmbiguous
+    || nextAmbiguous
+    || !previousProvider
+    || !nextProvider
+    || previousProvider !== nextProvider
+  );
+  target.attribution = next;
+  target.providerAttributionAmbiguous = ambiguous;
+  if (ambiguous) delete target.attribution.provider_id;
 }
 
 function attributionSlices(bucket) {
@@ -1391,7 +1413,18 @@ function mergeAttributionSlices(...buckets) {
     for (const slice of attributionSlices(bucket)) {
       const mode = slice.attribution.billing_mode;
       if (!merged.has(mode)) {
-        merged.set(mode, { totals: initTotals(), attribution: slice.attribution });
+        const attribution = normalizeUsageAttribution(slice.attribution);
+        const providerAttributionAmbiguous = Boolean(
+          slice.providerAttributionAmbiguous || !attribution.provider_id
+        );
+        if (providerAttributionAmbiguous) delete attribution.provider_id;
+        merged.set(mode, { totals: initTotals(), attribution, providerAttributionAmbiguous });
+      } else {
+        mergeProviderAttribution(
+          merged.get(mode),
+          slice.attribution,
+          slice.providerAttributionAmbiguous,
+        );
       }
       addTotals(merged.get(mode).totals, slice.totals);
     }

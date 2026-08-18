@@ -206,6 +206,51 @@ test("rollout queue records retain explicit attribution and redact endpoint deta
   }
 });
 
+test("Codex cumulative buckets omit conflicting trusted providers in either order", async () => {
+  for (const providers of [["deepseek", "openai"], ["openai", "deepseek"]]) {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-codex-provider-conflict-"));
+    try {
+      const rolloutPath = path.join(tmp, "rollout.jsonl");
+      const queuePath = path.join(tmp, "queue.jsonl");
+      const usage = (total) => ({
+        input_tokens: total,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: total,
+      });
+      const lines = providers.map((providerId, index) => JSON.stringify({
+        type: "event_msg",
+        timestamp: `2026-08-18T00:0${index}:00.000Z`,
+        payload: {
+          type: "token_count",
+          info: {
+            last_token_usage: usage(10),
+            total_token_usage: usage((index + 1) * 10),
+            billing_mode: "api_key",
+            provider_id: providerId,
+          },
+        },
+      }));
+      await fs.writeFile(rolloutPath, `${lines.join("\n")}\n`);
+
+      await parseRolloutIncremental({
+        rolloutFiles: [rolloutPath],
+        cursors: { version: 1, files: {} },
+        queuePath,
+        source: "codex",
+      });
+
+      const queued = JSON.parse((await fs.readFile(queuePath, "utf8")).trim());
+      assert.equal(queued.billing_mode, "api_key");
+      assert.equal(queued.total_tokens, 20);
+      assert.equal(queued.provider_id, undefined);
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  }
+});
+
 test("rollout queue keeps unknown and explicit deltas in separate records", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-attribution-split-"));
   try {
@@ -299,6 +344,65 @@ test("Hermes parser retains explicit billing evidence and sanitizes its endpoint
     assert.equal(JSON.stringify(queued).includes("password"), false);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("Hermes provider attribution degrades conservatively within one cumulative bucket", async () => {
+  const cases = [
+    { name: "deepseek then openai", providers: ["deepseek", "openai"], expectedProvider: undefined },
+    { name: "openai then deepseek", providers: ["openai", "deepseek"], expectedProvider: undefined },
+    { name: "single openai", providers: ["openai"], expectedProvider: "openai" },
+    { name: "same openai repeated", providers: ["openai", "openai"], expectedProvider: "openai" },
+    { name: "missing then openai", providers: [null, "openai"], expectedProvider: undefined },
+    { name: "openai then missing", providers: ["openai", null], expectedProvider: undefined },
+  ];
+
+  for (const testCase of cases) {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-provider-merge-"));
+    try {
+      const dbPath = path.join(tmp, "state.db");
+      const queuePath = path.join(tmp, "queue.jsonl");
+      const inserts = testCase.providers.map((provider, index) => `
+        INSERT INTO sessions VALUES (
+          'session-${index}', 'shared-model', ${1787011200 + index * 60}, ${1787011230 + index * 60},
+          10, 1, 0, 0, 0, 1,
+          ${provider == null ? "NULL" : `'${provider}'`}, NULL, 'api_key'
+        );
+      `).join("\n");
+      execSqlScript(dbPath, `
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY,
+          model TEXT,
+          started_at INTEGER,
+          ended_at INTEGER,
+          input_tokens INTEGER,
+          output_tokens INTEGER,
+          cache_read_tokens INTEGER,
+          cache_write_tokens INTEGER,
+          reasoning_tokens INTEGER,
+          message_count INTEGER,
+          billing_provider TEXT,
+          billing_base_url TEXT,
+          billing_mode TEXT
+        );
+        ${inserts}
+      `);
+
+      const cursors = {};
+      await parseHermesIncremental({ dbPath, cursors, queuePath });
+      const queuedText = (await fs.readFile(queuePath, "utf8")).trim();
+      const queued = JSON.parse(queuedText);
+      assert.equal(queued.billing_mode, "api_key", testCase.name);
+      assert.equal(queued.total_tokens, testCase.providers.length * 11, testCase.name);
+      assert.equal(queued.provider_id, testCase.expectedProvider, testCase.name);
+      assert.equal(Object.hasOwn(queued, "providerAttributionAmbiguous"), false, testCase.name);
+
+      const repeated = await parseHermesIncremental({ dbPath, cursors, queuePath });
+      assert.equal(repeated.bucketsQueued, 0, `${testCase.name} must remain idempotent`);
+      assert.equal((await fs.readFile(queuePath, "utf8")).trim(), queuedText, testCase.name);
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
   }
 });
 
