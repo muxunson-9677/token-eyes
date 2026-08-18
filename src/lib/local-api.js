@@ -2270,6 +2270,9 @@ function createLocalApiHandler({
   dataDirectoryPathsResolver,
   now: nowProvider = () => new Date(),
 } = {}) {
+  if (!trackerDataDirOverride && (process.env.NODE_TEST_CONTEXT || process.env.NODE_ENV === "test")) {
+    throw new Error("createLocalApiHandler requires an explicit trackerDataDir in tests");
+  }
   const qp = queuePath || resolveQueuePath();
   const detectDataDirectories = detectDataDirectoriesOverride || detectDataDirectoryPaths;
   const detectAgentEnvironmentForRequest = detectAgentEnvironmentOverride || detectAgentEnvironment;
@@ -2419,12 +2422,9 @@ function createLocalApiHandler({
       const content = fs.readFileSync(cookiePath, "utf8");
       const saved = JSON.parse(content);
       if (saved && typeof saved === "object") {
-        let count = 0;
         for (const [k, v] of Object.entries(saved)) {
           relayCookies.set(k, v);
-          count++;
         }
-        if (count > 0) console.log(`[LocalAPI] Loaded ${count} relay cookies from ${cookiePath}`);
       }
     }
   } catch (e) {

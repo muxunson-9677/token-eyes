@@ -121,6 +121,7 @@ test("usage-limits endpoint attaches burn_rate to providers but not token-only s
 
     const handler = createLocalApiHandler({
       queuePath,
+      trackerDataDir: tmp,
       now: () => new Date(NOW),
       usageLimitsProvider: async () => ({
         fetched_at: "2026-05-09T12:00:00.000Z",

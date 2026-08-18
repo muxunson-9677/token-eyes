@@ -3,9 +3,15 @@
  * scheduler hooks so that serve.js can call startTokenPlanScheduler /
  * stopTokenPlanScheduler / runTokenPlanDueRefresh without a TypeError.
  */
-const { describe, it } = require("node:test");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { after, describe, it } = require("node:test");
 const assert = require("node:assert");
 const { createLocalApiHandler } = require("../src/lib/local-api");
+
+const trackerDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tt-token-plan-scheduler-"));
+after(() => fs.rmSync(trackerDataDir, { recursive: true, force: true }));
 
 describe("serve startup token plan scheduler hooks", () => {
   let handler;
@@ -13,6 +19,7 @@ describe("serve startup token plan scheduler hooks", () => {
   // Create a real handler with defaults that won't touch the filesystem.
   it("createLocalApiHandler returns a handler object with scheduler hooks", () => {
     handler = createLocalApiHandler({
+      trackerDataDir,
       dataDir: undefined,          // won't try to mkdir
       trackerConfigPath: undefined,
       tokenTrackerDir: undefined,

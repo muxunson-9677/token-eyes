@@ -16,7 +16,10 @@ const { createLocalApiHandler } = require("../src/lib/local-api");
 
 const queuePath = path.join(sandboxHome, "queue.jsonl");
 fs.writeFileSync(queuePath, "");
-const handler = createLocalApiHandler({ queuePath });
+const handler = createLocalApiHandler({
+  queuePath,
+  trackerDataDir: path.join(sandboxHome, ".tokentracker", "tracker"),
+});
 
 function writeLocalSkill(targetDir, directory, body = "---\nname: Local Skill\ndescription: Test skill\n---\n") {
   const dir = path.join(sandboxHome, targetDir, directory);

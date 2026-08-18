@@ -294,7 +294,10 @@ test("request usage records pagination reuses cached list across pages", async (
     await writeQueue(queuePath, rows);
     clearRequestUsageRecordsListCacheForTests();
 
-    const handler = createLocalApiHandler({ queuePath });
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: path.dirname(queuePath),
+    });
     const base = `/functions/tokentracker-request-usage-records?from=${FIXED_DAY}&to=${FIXED_DAY}&sources=claude&tz=UTC&limit=1000&pageSize=5`;
 
     const page1 = await callEndpointWithHandler(handler, `${base}&page=1`);

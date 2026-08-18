@@ -58,6 +58,14 @@ function getCookiePath(home) {
   return path.join(home, ".tokentracker", "tracker", "relay-cookies.json");
 }
 
+function createIsolatedHandler(home) {
+  const trackerDataDir = path.dirname(getCookiePath(home));
+  return createLocalApiHandler({
+    queuePath: path.join(home, "queue.jsonl"),
+    trackerDataDir,
+  });
+}
+
 test("auth proxy loads persisted relay cookies into outbound requests", async () => {
   await withTempHome(async (home) => {
     const cookiePath = getCookiePath(home);
@@ -76,7 +84,16 @@ test("auth proxy loads persisted relay cookies into outbound requests", async ()
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     };
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const loadLogs = [];
+    const originalLog = console.log;
+    let handler;
+    try {
+      console.log = (...args) => loadLogs.push(args.join(" "));
+      handler = createIsolatedHandler(home);
+    } finally {
+      console.log = originalLog;
+    }
+    assert.ok(loadLogs.every((line) => !line.includes("Loaded") || !line.includes("relay cookies")));
     const req = createRequest({ headers: {} });
     const res = createResponse();
 
@@ -101,7 +118,7 @@ test("auth proxy captures set-cookie headers and persists them under an isolated
         },
       });
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({ headers: {} });
     const res = createResponse();
 
@@ -130,7 +147,7 @@ test("empty in-memory relay cookies do not wipe an existing on-disk session file
         },
       });
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({ headers: {} });
     const res = createResponse();
 
@@ -172,7 +189,7 @@ test("refresh requests without browser auth context use the persisted refresh to
       );
     };
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({ method: "POST", headers: {} });
     const res = createResponse();
 
@@ -207,7 +224,7 @@ test("refresh requests with csrf context still receive persisted relay cookies",
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     };
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({
       method: "POST",
       headers: {
@@ -245,7 +262,7 @@ test("refresh requests prefer persisted relay auth over stale client cookies", a
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     };
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({
       method: "POST",
       headers: {
@@ -298,7 +315,7 @@ test("cookie-less refresh takes the mobile fallback even when a relay csrf token
       );
     };
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({ method: "POST", headers: {} });
     const res = createResponse();
 
@@ -357,7 +374,7 @@ test("403 invalid csrf on the cookie path is rescued via the mobile flow", async
       );
     };
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({
       method: "POST",
       headers: {
@@ -402,7 +419,7 @@ test("deletion set-cookies on error responses do not destroy the persisted relay
         },
       });
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({
       method: "POST",
       headers: { cookie: "some_cookie=1" },
@@ -436,7 +453,7 @@ test("stale refresh csrf errors do not clear relay cookies when no relay cookies
         headers: { "content-type": "application/json" },
       });
 
-    const handler = createLocalApiHandler({ queuePath: path.join(home, "queue.jsonl") });
+    const handler = createIsolatedHandler(home);
     const req = createRequest({ method: "POST", headers: {} });
     const res = createResponse();
 

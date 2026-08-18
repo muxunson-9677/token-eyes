@@ -1248,13 +1248,17 @@ const DEV_LOCAL_DATA_FALLBACK_PATHS = new Set([
 ]);
 
 function localDataApiPlugin() {
-  const { createLocalApiHandler, resolveQueuePath } = __viteRequire(
-    path.resolve(REPO_ROOT, "src", "lib", "local-api.js"),
-  );
-  const localDataHandler = createLocalApiHandler({ queuePath: resolveQueuePath() });
   return {
     name: "tokentracker-local-data-api",
     configureServer(server) {
+      const { createLocalApiHandler, resolveQueuePath } = __viteRequire(
+        path.resolve(REPO_ROOT, "src", "lib", "local-api.js"),
+      );
+      const queuePath = resolveQueuePath();
+      const localDataHandler = createLocalApiHandler({
+        queuePath,
+        trackerDataDir: path.dirname(queuePath),
+      });
       // 添加中间件到最前面，拦截所有请求
       server.middlewares.use((req, res, next) => {
         if (

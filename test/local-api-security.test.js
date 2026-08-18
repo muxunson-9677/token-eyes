@@ -3,7 +3,10 @@ const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { test } = require("node:test");
+const { after, test } = require("node:test");
+
+const isolatedTrackerDir = fs.mkdtempSync(path.join(os.tmpdir(), "tt-local-api-security-"));
+after(() => fs.rmSync(isolatedTrackerDir, { recursive: true, force: true }));
 
 function createRequest({ method = "GET", headers = {}, body } = {}) {
   const req = new EventEmitter();
@@ -83,7 +86,7 @@ test("local sync rejects arbitrary insforgeBaseUrl overrides", async () => {
   const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
 
   try {
-    const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
+    const handler = mod.createLocalApiHandler({ queuePath: path.join(isolatedTrackerDir, "queue.jsonl"), trackerDataDir: isolatedTrackerDir });
     const localAuthToken = await getLocalAuthToken(handler);
     const req = createRequest({
       method: "POST",
@@ -123,7 +126,7 @@ test("local sync accepts the configured insforgeBaseUrl override", async () => {
   const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
 
   try {
-    const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
+    const handler = mod.createLocalApiHandler({ queuePath: path.join(isolatedTrackerDir, "queue.jsonl"), trackerDataDir: isolatedTrackerDir });
     const localAuthToken = await getLocalAuthToken(handler);
     const req = createRequest({
       method: "POST",
@@ -162,7 +165,7 @@ test("local sync drain request runs sync with --drain", async () => {
   const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
 
   try {
-    const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
+    const handler = mod.createLocalApiHandler({ queuePath: path.join(isolatedTrackerDir, "queue.jsonl"), trackerDataDir: isolatedTrackerDir });
     const localAuthToken = await getLocalAuthToken(handler);
     const req = createRequest({
       method: "POST",
@@ -204,7 +207,7 @@ test("local sync only treats boolean true as drain", async () => {
     const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
 
     try {
-      const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
+      const handler = mod.createLocalApiHandler({ queuePath: path.join(isolatedTrackerDir, "queue.jsonl"), trackerDataDir: isolatedTrackerDir });
       const localAuthToken = await getLocalAuthToken(handler);
       const req = createRequest({
         method: "POST",
@@ -288,6 +291,7 @@ test("local sync drain request mints a device token from relayed login when none
   try {
     const handler = mod.createLocalApiHandler({
       queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
     });
     const localAuthToken = await getLocalAuthToken(handler);
     const req = createRequest({
@@ -364,6 +368,7 @@ test("local sync drain request fails when relayed device token cannot be issued"
   try {
     const handler = mod.createLocalApiHandler({
       queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
     });
     const localAuthToken = await getLocalAuthToken(handler);
     const req = createRequest({
@@ -406,7 +411,7 @@ test("local sync rejects requests without the local auth token", async () => {
   const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
 
   try {
-    const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
+    const handler = mod.createLocalApiHandler({ queuePath: path.join(isolatedTrackerDir, "queue.jsonl"), trackerDataDir: isolatedTrackerDir });
     const req = createRequest({
       method: "POST",
       body: JSON.stringify({ deviceToken: "device-token" }),
@@ -435,7 +440,7 @@ test("auth bridge mutation requires the local auth token", async () => {
   const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn([]));
 
   try {
-    const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
+    const handler = mod.createLocalApiHandler({ queuePath: path.join(isolatedTrackerDir, "queue.jsonl"), trackerDataDir: isolatedTrackerDir });
     const req = createRequest({
       method: "PUT",
       body: JSON.stringify({ native: true }),

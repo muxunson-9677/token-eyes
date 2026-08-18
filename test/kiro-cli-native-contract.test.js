@@ -20,7 +20,10 @@ const { test } = require("node:test");
 const localApi = require("../src/lib/local-api");
 
 async function callModelBreakdown(queuePath) {
-  const handler = localApi.createLocalApiHandler({ queuePath });
+  const handler = localApi.createLocalApiHandler({
+    queuePath,
+    trackerDataDir: path.dirname(queuePath),
+  });
   const urlString =
     "http://localhost/functions/tokentracker-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC";
   const url = new URL(urlString);

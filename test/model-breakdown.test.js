@@ -337,7 +337,10 @@ async function writeQueue(queuePath, rows) {
 }
 
 async function callModelBreakdown(queuePath, from, to) {
-  const handler = localApi.createLocalApiHandler({ queuePath });
+  const handler = localApi.createLocalApiHandler({
+    queuePath,
+    trackerDataDir: path.dirname(queuePath),
+  });
   const chunks = [];
   let statusCode = null;
   const urlString = `http://localhost/functions/tokentracker-usage-model-breakdown?from=${from}&to=${to}&tz=UTC`;
