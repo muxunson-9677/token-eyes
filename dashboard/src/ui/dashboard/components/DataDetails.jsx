@@ -9,6 +9,7 @@ import { ProjectUsagePanel } from "./ProjectUsagePanel.jsx";
 import { ProviderIcon } from "./ProviderIcon.jsx";
 import { limitProviderName } from "../../../lib/limits-providers.js";
 import { resolveDisplayTokens } from "../../../lib/model-breakdown";
+import { canonicalizeDailyBreakdownSources } from "../../../lib/daily-model-breakdown.js";
 
 const DAILY_USAGE_KEYS = [
   "total_tokens",
@@ -28,9 +29,7 @@ const SELECTED_FOLDERS_KEY = "tt.projects.selectedFolders";
 const HIDDEN_PROJECTS_KEY = "tt.projects.hiddenKeys";
 
 export function buildDailyOverlayCacheKey(day, scope = {}) {
-  const sources = !Array.isArray(scope.sources)
-    ? null
-    : [...new Set(scope.sources.map(String))].sort();
+  const sources = canonicalizeDailyBreakdownSources(scope.sources);
   return JSON.stringify({
     day: String(day || ""),
     accountId: String(scope.accountId || "local"),
@@ -110,12 +109,14 @@ export function DataDetails({
   const [dailyOverlay, setDailyOverlay] = useState(null);
   const dailyOverlayCacheRef = useRef(new Map());
   const dailyOverlayRequestRef = useRef({ generation: 0, controller: null });
+  const dailyOverlayLoaderRef = useRef(onLoadDailyModelBreakdown);
   const dailyTableRef = useRef(null);
   const dailyOverlayScopeKey = useMemo(
     () => buildDailyOverlayCacheKey("", dailyBreakdownScope),
     [dailyBreakdownScope],
   );
   const visibleDailyOverlay = dailyOverlay?.scopeKey === dailyOverlayScopeKey
+    && dailyOverlay?.loader === onLoadDailyModelBreakdown
     ? dailyOverlay
     : null;
   useEffect(() => {
@@ -123,12 +124,16 @@ export function DataDetails({
     request.generation += 1;
     request.controller?.abort();
     request.controller = null;
+    if (dailyOverlayLoaderRef.current !== onLoadDailyModelBreakdown) {
+      dailyOverlayCacheRef.current.clear();
+      dailyOverlayLoaderRef.current = onLoadDailyModelBreakdown;
+    }
     return () => {
       request.generation += 1;
       request.controller?.abort();
       request.controller = null;
     };
-  }, [dailyOverlayScopeKey]);
+  }, [dailyOverlayScopeKey, onLoadDailyModelBreakdown]);
   const visibleDailyRows = useMemo(() => {
     if (!Array.isArray(dailyBreakdownRows)) return [];
     return dailyBreakdownRows.filter(hasRecordedDailyUsage);
@@ -254,25 +259,25 @@ export function DataDetails({
     request.controller = null;
     const cached = dailyOverlayCacheRef.current.get(cacheKey);
     if (cached) {
-      setDailyOverlay({ day, top, cacheKey, scopeKey: dailyOverlayScopeKey, loading: false, error: null, breakdown: cached });
+      setDailyOverlay({ day, top, cacheKey, scopeKey: dailyOverlayScopeKey, loader: onLoadDailyModelBreakdown, loading: false, error: null, breakdown: cached });
       return;
     }
     const controller = new AbortController();
     request.controller = controller;
     const generation = request.generation;
-    setDailyOverlay({ day, top, cacheKey, scopeKey: dailyOverlayScopeKey, loading: true, error: null, breakdown: null });
+    setDailyOverlay({ day, top, cacheKey, scopeKey: dailyOverlayScopeKey, loader: onLoadDailyModelBreakdown, loading: true, error: null, breakdown: null });
     try {
       const breakdown = await onLoadDailyModelBreakdown(day, { signal: controller.signal });
       if (controller.signal.aborted || request.generation !== generation) return;
       const normalizedBreakdown = breakdown || { sources: [] };
       dailyOverlayCacheRef.current.set(cacheKey, normalizedBreakdown);
       setDailyOverlay((current) => current?.cacheKey === cacheKey
-        ? { day, top, cacheKey, scopeKey: dailyOverlayScopeKey, loading: false, error: null, breakdown: normalizedBreakdown }
+        ? { day, top, cacheKey, scopeKey: dailyOverlayScopeKey, loader: onLoadDailyModelBreakdown, loading: false, error: null, breakdown: normalizedBreakdown }
         : current);
     } catch (error) {
       if (controller.signal.aborted || request.generation !== generation) return;
       setDailyOverlay((current) => current?.cacheKey === cacheKey
-        ? { day, top, cacheKey, scopeKey: dailyOverlayScopeKey, loading: false, error: error?.message || String(error), breakdown: null }
+        ? { day, top, cacheKey, scopeKey: dailyOverlayScopeKey, loader: onLoadDailyModelBreakdown, loading: false, error: error?.message || String(error), breakdown: null }
         : current);
     } finally {
       if (request.generation === generation) request.controller = null;

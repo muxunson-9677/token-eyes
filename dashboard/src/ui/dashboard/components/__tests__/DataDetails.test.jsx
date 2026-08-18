@@ -12,7 +12,7 @@ async function clickProjectsTab() {
   const user = userEvent.setup();
   const label = copy("dashboard.projects.title");
   const tab = screen.getByRole("tab", { name: label });
-  await user.click(tab);
+  await act(async () => user.click(tab));
 }
 
 // Integration test for the PRODUCTION component tree (DataDetails projects tab).
@@ -96,7 +96,7 @@ function dailyScope(overrides = {}) {
 }
 
 async function openDailyOverlay(user) {
-  await user.click(within(screen.getByRole("table")).getByText("2026-08-07"));
+  await act(async () => user.click(within(screen.getByRole("table")).getByText("2026-08-07")));
 }
 
 describe("DataDetails projects tab (production component tree)", () => {
@@ -311,7 +311,7 @@ describe("DataDetails daily rows", () => {
     const base = dailyScope();
     const canonical = buildDailyOverlayCacheKey("2026-08-07", base);
 
-    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: ["claude", "codex"] })).toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: [" CLAUDE ", "Codex", "codex"] })).toBe(canonical);
     expect(buildDailyOverlayCacheKey("2026-08-08", base)).not.toBe(canonical);
     expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, accountId: "account-b" })).not.toBe(canonical);
     expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, mode: "cloud" })).not.toBe(canonical);
@@ -319,9 +319,60 @@ describe("DataDetails daily rows", () => {
     expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, timeZone: "Asia/Shanghai" })).not.toBe(canonical);
     expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, tzOffsetMinutes: 480 })).not.toBe(canonical);
     expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: ["codex"] })).not.toBe(canonical);
-    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: null })).not.toBe(
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: null })).toBe(
       buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: [] }),
     );
+  });
+
+  it("invalidates an in-flight request when the loader identity changes inside the same scope", async () => {
+    const user = userEvent.setup();
+    const oldRequest = deferred();
+    const newRequest = deferred();
+    let oldSignal;
+    const oldLoader = vi.fn((_day, options) => {
+      oldSignal = options.signal;
+      return oldRequest.promise;
+    });
+    const newLoader = vi.fn(() => newRequest.promise);
+    const scope = dailyScope();
+    const { rerender } = render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        dailyBreakdownScope={scope}
+        onLoadDailyModelBreakdown={oldLoader}
+      />,
+    );
+
+    await openDailyOverlay(user);
+    rerender(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        dailyBreakdownScope={scope}
+        onLoadDailyModelBreakdown={newLoader}
+      />,
+    );
+
+    expect(oldSignal.aborted).toBe(true);
+    expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
+    await openDailyOverlay(user);
+
+    await act(async () => {
+      newRequest.resolve({ sources: [{ source: "claude", totals: { total_tokens: 120 }, models: [] }] });
+      await newRequest.promise;
+    });
+    await act(async () => {
+      oldRequest.resolve({ sources: [{ source: "codex", totals: { total_tokens: 120 }, models: [] }] });
+      await oldRequest.promise;
+    });
+
+    expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Claude");
+    expect(screen.getByTestId("daily-breakdown-overlay")).not.toHaveTextContent("Codex");
   });
 
   it("isolates same-day cache entries by scope and ignores reverse-order stale completions", async () => {
@@ -411,17 +462,17 @@ describe("DataDetails daily rows", () => {
       />,
     );
 
-    await user.click(within(screen.getByRole("table")).getByText("2026-08-06"));
+    await act(async () => user.click(within(screen.getByRole("table")).getByText("2026-08-06")));
     await act(async () => {
       second.resolve({ sources: [{ source: "claude", totals: { total_tokens: 80 }, models: [] }] });
       await second.promise;
     });
     expect(await screen.findByTestId("daily-breakdown-overlay")).toHaveTextContent("2026-08-06");
     expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Claude");
-    await user.click(within(screen.getByRole("table")).getByText("2026-08-06"));
+    await act(async () => user.click(within(screen.getByRole("table")).getByText("2026-08-06")));
 
-    await user.click(within(screen.getByRole("table")).getByText("2026-08-07"));
-    await user.click(within(screen.getByRole("table")).getByText("2026-08-06"));
+    await act(async () => user.click(within(screen.getByRole("table")).getByText("2026-08-07")));
+    await act(async () => user.click(within(screen.getByRole("table")).getByText("2026-08-06")));
     expect(firstSignal.aborted).toBe(true);
     expect(loader.mock.calls.filter(([day]) => day === "2026-08-06")).toHaveLength(1);
     expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Claude");
@@ -584,7 +635,7 @@ describe("DataDetails daily rows", () => {
     expect(screen.getByTestId("daily-pagination")).toHaveClass("tt-overview-pagination");
     expect(screen.getByText("2026-08-11")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "2" }));
+    await act(async () => user.click(screen.getByRole("button", { name: "2" })));
 
     expect(screen.getByText("2026-08-01")).toBeInTheDocument();
     expect(screen.queryByText("2026-08-11")).not.toBeInTheDocument();
@@ -660,7 +711,7 @@ describe("DataDetails daily rows", () => {
     const targetRow = table.querySelector("tbody > tr");
     expect(targetRow).not.toBeNull();
     const totalCell = within(targetRow).getByText("120");
-    await user.click(totalCell);
+    await act(async () => user.click(totalCell));
 
     expect(onLoadDailyModelBreakdown).toHaveBeenCalledWith(
       "2026-08-07",
@@ -673,7 +724,7 @@ describe("DataDetails daily rows", () => {
     expect(overlay).toHaveTextContent("75.0%");
     expect(table.querySelectorAll("tbody > tr")).toHaveLength(originalRows);
 
-    await user.click(totalCell);
+    await act(async () => user.click(totalCell));
     expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
   });
 });

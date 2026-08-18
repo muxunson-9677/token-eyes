@@ -289,15 +289,27 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw signal.reason || new DOMException("The operation was aborted", "AbortError");
+}
+
 async function fetchLocalApi(url: string, init: RequestInit) {
   const attempts = isTauriRuntime() ? 10 : 1;
   let lastError: unknown = null;
   for (let i = 0; i < attempts; i += 1) {
+    throwIfAborted(init.signal || undefined);
     try {
-      return await fetch(url, init);
+      const response = await fetch(url, init);
+      throwIfAborted(init.signal || undefined);
+      return response;
     } catch (err) {
+      throwIfAborted(init.signal || undefined);
       lastError = err;
-      if (i < attempts - 1) await sleep(250);
+      if (i < attempts - 1) {
+        await sleep(250);
+        throwIfAborted(init.signal || undefined);
+      }
     }
   }
   throw lastError;
@@ -351,7 +363,9 @@ function isLocalhostHost() {
 
 async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRecord) {
   const accessToken = options?.accessToken as string | undefined;
+  const signal = options?.signal as AbortSignal | undefined;
   const accountSlug = USAGE_TO_ACCOUNT_SLUG[slug];
+  throwIfAborted(signal);
 
   // Deployed web (e.g. tokentracker.cc): there's no local CLI behind
   // window.location.origin, so usage-* calls would 404. When the visitor is
@@ -370,14 +384,18 @@ async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRec
     const anonKey = getInsforgeAnonKey();
     if (anonKey) headers.apikey = anonKey;
     if (isValidJwtShape(accessToken)) headers.Authorization = `Bearer ${accessToken}`;
-    const response = await fetch(url.toString(), { headers, cache: "no-store" });
+    const response = await fetch(url.toString(), { headers, cache: "no-store", signal });
+    throwIfAborted(signal);
     if (!response.ok) {
       throw await buildErrorFromResponse(response);
     }
-    return response.json();
+    const payload = await response.json();
+    throwIfAborted(signal);
+    return payload;
   }
 
   const url = new URL(await buildLocalApiUrl(`/functions/${slug}`));
+  throwIfAborted(signal);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
       if (value != null && value !== "") url.searchParams.set(key, String(value));
@@ -389,10 +407,13 @@ async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRec
     cache: "no-store",
     ...fetchOptions,
   });
+  throwIfAborted(signal);
   if (!response.ok) {
     throw await buildErrorFromResponse(response);
   }
-  return readJsonResponse(response);
+  const payload = await readJsonResponse(response);
+  throwIfAborted(signal);
+  return payload;
 }
 
 function buildTimeZoneParams({ timeZone, tzOffsetMinutes }: AnyRecord = {}) {
@@ -1587,13 +1608,14 @@ export async function getUsageModelBreakdown({
   timeZone,
   tzOffsetMinutes,
   accessToken,
+  signal,
 }: AnyRecord = {}) {
   if (isMockEnabled()) {
     return getMockUsageModelBreakdown({ from, to, seed: accessToken });
   }
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildFilterParams({ source });
-  return fetchLocalJson(PATHS.usageModelBreakdown, { from, to, ...filterParams, ...tzParams }, { accessToken });
+  return fetchLocalJson(PATHS.usageModelBreakdown, { from, to, ...filterParams, ...tzParams }, { accessToken, signal });
 }
 
 /** TICKET-01 A4: provider stats (per-source aggregate leaderboard). */
@@ -1876,7 +1898,9 @@ async function fetchAccountFunction(
   slug: string,
   params: AnyRecord | undefined,
   accessToken: string,
+  options: { signal?: AbortSignal } = {},
 ) {
+  throwIfAborted(options.signal);
   if (!accessToken || !isValidJwtShape(accessToken)) {
     const err: any = new Error("Account view requires a signed-in user");
     err.status = 401;
@@ -1905,13 +1929,17 @@ async function fetchAccountFunction(
     method: "GET",
     headers,
     cache: "no-store",
+    signal: options.signal,
   });
+  throwIfAborted(options.signal);
   if (!response.ok) {
     const err: any = new Error(`Request failed with HTTP ${response.status}`);
     err.status = response.status;
     throw err;
   }
-  return response.json();
+  const payload = await response.json();
+  throwIfAborted(options.signal);
+  return payload;
 }
 
 export async function fetchCloudUsageSummary({
@@ -2021,6 +2049,7 @@ export async function fetchCloudUsageModelBreakdown({
   timeZone,
   tzOffsetMinutes,
   accessToken,
+  signal,
 }: AnyRecord = {}) {
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildFilterParams({ source });
@@ -2028,6 +2057,7 @@ export async function fetchCloudUsageModelBreakdown({
     ACCOUNT_PATHS.modelBreakdown,
     { from, to, ...filterParams, ...tzParams },
     accessToken,
+    { signal },
   );
 }
 

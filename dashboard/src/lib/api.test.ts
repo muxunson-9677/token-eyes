@@ -5,6 +5,8 @@ import {
   getSpendTimeseries,
   getUsageBounds,
   getUsageAttribution,
+  getUsageModelBreakdown,
+  fetchCloudUsageModelBreakdown,
   getTokenPlans,
   openXiaomiMimoConsoleLogin,
   refreshGlmConsoleSession,
@@ -112,6 +114,80 @@ it("requests local-only usage attribution with the active source and model filte
     "http://127.0.0.1:17680/functions/tokentracker-usage-attribution?from=2026-07-01&to=2026-07-27&group_by=environment&sources=codex&models=gpt-5&tz=Asia%2FShanghai&tz_offset_minutes=480",
     expect.any(Object),
   );
+});
+
+it("passes the daily model breakdown abort signal to the local native fetch", async () => {
+  setTauriRuntime(true);
+  const controller = new AbortController();
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ sources: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getUsageModelBreakdown({
+    from: "2026-08-07",
+    to: "2026-08-07",
+    source: " Codex ",
+    signal: controller.signal,
+  });
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("tokentracker-usage-model-breakdown"),
+    expect.objectContaining({ signal: controller.signal }),
+  );
+  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("source")).toBe("codex");
+});
+
+it("passes the daily model breakdown abort signal through the cloud account fetch", async () => {
+  const controller = new AbortController();
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ sources: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await fetchCloudUsageModelBreakdown({
+    from: "2026-08-07",
+    to: "2026-08-07",
+    accessToken: "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ1In0.",
+    source: " CoDeX ",
+    signal: controller.signal,
+  });
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("tokentracker-account-model-breakdown"),
+    expect.objectContaining({ signal: controller.signal }),
+  );
+  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("source")).toBe("codex");
+});
+
+it("does not start the local model breakdown fetch when aborted while resolving the native URL", async () => {
+  let resolveStatus: (value: { running: boolean; url: string }) => void = () => {};
+  const statusPromise = new Promise<{ running: boolean; url: string }>((resolve) => {
+    resolveStatus = resolve;
+  });
+  Object.defineProperty(window, "__TAURI__", {
+    configurable: true,
+    value: { core: { invoke: vi.fn(() => statusPromise) } },
+  });
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ sources: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  const controller = new AbortController();
+
+  const request = getUsageModelBreakdown({
+    from: "2026-08-07",
+    to: "2026-08-07",
+    signal: controller.signal,
+  });
+  controller.abort();
+  resolveStatus({ running: true, url: "http://127.0.0.1:17680" });
+
+  await expect(request).rejects.toMatchObject({ name: "AbortError" });
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 it("requests redacted JSON and CSV exports only through the Tauri loopback API", async () => {

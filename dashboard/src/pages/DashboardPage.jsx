@@ -37,6 +37,10 @@ import { publishUsageLimitsPreloadState } from "../lib/dashboard-preload.js";
 import { resolveSummaryCostUsd } from "../lib/usage-summary-cost";
 import { deriveDataConfidence } from "../lib/data-confidence";
 import {
+  canonicalizeDailyBreakdownSources,
+  fetchDailyModelBreakdown,
+} from "../lib/daily-model-breakdown.js";
+import {
   appendConnectedTokenOnlySources,
   buildFleetData,
   buildModelUsageDistribution,
@@ -54,8 +58,6 @@ import {
 } from "../lib/timezone";
 import {
   getUserStatus,
-  fetchCloudUsageModelBreakdown,
-  getUsageModelBreakdown,
   getLocalSettings,
   setLocalSettings,
   triggerLocalSync,
@@ -387,14 +389,21 @@ export function DashboardPage({
   const usageDateBounds = useUsageDateBounds({ timeZone, tzOffsetMinutes });
   const mockNow = useMemo(() => getMockNow(), []);
   const cacheKey = publicMode ? null : auth?.userId || auth?.email || "default";
+  const dailyBreakdownSources = useMemo(
+    () => canonicalizeDailyBreakdownSources(usageFilterState.sources),
+    [usageFilterState.sources],
+  );
+  const dailyBreakdownSource = dailyBreakdownSources?.length === 1
+    ? dailyBreakdownSources[0]
+    : undefined;
   const dailyBreakdownScope = useMemo(() => ({
     accountId: accountView ? cacheKey || "account" : "local",
     mode: accountView ? "cloud" : "local",
     baseUrl,
     timeZone,
     tzOffsetMinutes,
-    sources: usageFilterState.sources,
-  }), [accountView, baseUrl, cacheKey, timeZone, tzOffsetMinutes, usageFilterState.sources]);
+    sources: dailyBreakdownSources,
+  }), [accountView, baseUrl, cacheKey, dailyBreakdownSources, timeZone, tzOffsetMinutes]);
   const [selectedPeriod, setSelectedPeriod] = useState("total");
   const [customFrom, setCustomFrom] = useState(null);
   const [customTo, setCustomTo] = useState(null);
@@ -700,20 +709,20 @@ export function DashboardPage({
     () => sortDailyRows(dailyBreakdownRows, dailyBreakdownSort),
     [dailyBreakdownRows, dailyBreakdownSort],
   );
-  const loadDailyModelBreakdown = useCallback(async (day) => {
+  const loadDailyModelBreakdown = useCallback(async (day, { signal } = {}) => {
     const useCloud = Boolean(accountView && accountAccessToken);
-    const resolvedToken = await resolveAuthAccessToken(useCloud ? accountAccessToken : accessToken);
-    const fetcher = useCloud ? fetchCloudUsageModelBreakdown : getUsageModelBreakdown;
-    return fetcher({
+    return fetchDailyModelBreakdown({
+      day,
+      useCloud,
+      accountAccessToken,
+      accessToken,
       baseUrl,
-      accessToken: resolvedToken,
-      from: day,
-      to: day,
-      source: usageFilterState.sources?.length === 1 ? usageFilterState.sources[0] : undefined,
+      source: dailyBreakdownSource,
       timeZone,
       tzOffsetMinutes,
+      signal,
     });
-  }, [accountAccessToken, accountView, accessToken, baseUrl, timeZone, tzOffsetMinutes, usageFilterState.sources]);
+  }, [accountAccessToken, accountView, accessToken, baseUrl, dailyBreakdownSource, timeZone, tzOffsetMinutes]);
   const trendRowsForDisplay = useMemo(() => {
     const source = useDailyTrend
       ? daily
