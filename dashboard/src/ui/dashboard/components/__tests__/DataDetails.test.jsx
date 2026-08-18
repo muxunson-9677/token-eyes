@@ -1,10 +1,10 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { copy } from "../../../../lib/copy";
 import { render } from "../../../../test/test-utils";
-import { DataDetails } from "../DataDetails.jsx";
+import { buildDailyOverlayCacheKey, DataDetails } from "../DataDetails.jsx";
 
 // Locale-independent tab finder: DataDetails renders the projects tab label
 // via copy("dashboard.projects.title"), so we match on the same value.
@@ -69,6 +69,35 @@ const dailyProps = {
   detailsPage: 0,
   setDetailsPage: () => {},
 };
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+const dailyRowsWithUsage = [{ day: "2026-08-07", total_tokens: 120 }];
+const dailyColumns = [{ key: "day", label: "Date" }];
+
+function dailyScope(overrides = {}) {
+  return {
+    accountId: "account-a",
+    mode: "local",
+    baseUrl: "http://127.0.0.1:7680",
+    timeZone: "UTC",
+    tzOffsetMinutes: 0,
+    sources: ["codex", "claude"],
+    ...overrides,
+  };
+}
+
+async function openDailyOverlay(user) {
+  await user.click(within(screen.getByRole("table")).getByText("2026-08-07"));
+}
 
 describe("DataDetails projects tab (production component tree)", () => {
   it("uses one permanently reserved scroll viewport for project disclosure", async () => {
@@ -278,6 +307,205 @@ describe("DataDetails projects tab (production component tree)", () => {
 });
 
 describe("DataDetails daily rows", () => {
+  it("builds a canonical daily overlay cache key from every observable request input", () => {
+    const base = dailyScope();
+    const canonical = buildDailyOverlayCacheKey("2026-08-07", base);
+
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: ["claude", "codex"] })).toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-08", base)).not.toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, accountId: "account-b" })).not.toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, mode: "cloud" })).not.toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, baseUrl: "https://usage.example.test" })).not.toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, timeZone: "Asia/Shanghai" })).not.toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, tzOffsetMinutes: 480 })).not.toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: ["codex"] })).not.toBe(canonical);
+    expect(buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: null })).not.toBe(
+      buildDailyOverlayCacheKey("2026-08-07", { ...base, sources: [] }),
+    );
+  });
+
+  it("isolates same-day cache entries by scope and ignores reverse-order stale completions", async () => {
+    const user = userEvent.setup();
+    const accountA = deferred();
+    const accountB = deferred();
+    const loadA = vi.fn(() => accountA.promise);
+    const loadB = vi.fn(() => accountB.promise);
+    const { rerender } = render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        dailyBreakdownScope={dailyScope()}
+        onLoadDailyModelBreakdown={loadA}
+      />,
+    );
+
+    await openDailyOverlay(user);
+    expect(loadA).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        dailyBreakdownScope={dailyScope({
+          accountId: "account-b",
+          mode: "cloud",
+          baseUrl: "https://usage.example.test",
+          timeZone: "Asia/Shanghai",
+          tzOffsetMinutes: 480,
+          sources: ["gemini"],
+        })}
+        onLoadDailyModelBreakdown={loadB}
+      />,
+    );
+
+    expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
+    await openDailyOverlay(user);
+    expect(loadB).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      accountB.resolve({ sources: [{ source: "gemini", totals: { total_tokens: 120 }, models: [] }] });
+      await accountB.promise;
+    });
+    expect(await screen.findByTestId("daily-breakdown-overlay")).toHaveTextContent("Gemini");
+
+    await act(async () => {
+      accountA.resolve({ sources: [{ source: "codex", totals: { total_tokens: 120 }, models: [] }] });
+      await accountA.promise;
+    });
+    expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Gemini");
+    expect(screen.getByTestId("daily-breakdown-overlay")).not.toHaveTextContent("Codex");
+
+    await openDailyOverlay(user);
+    await openDailyOverlay(user);
+    expect(loadB).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Gemini");
+  });
+
+  it("cancels the old day when a different day is opened before it completes", async () => {
+    const user = userEvent.setup();
+    const first = deferred();
+    const second = deferred();
+    let firstSignal;
+    const loader = vi.fn((day, options) => {
+      if (day === "2026-08-07") {
+        firstSignal = options.signal;
+        return first.promise;
+      }
+      return second.promise;
+    });
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={[
+          { day: "2026-08-07", total_tokens: 120 },
+          { day: "2026-08-06", total_tokens: 80 },
+        ]}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        dailyBreakdownScope={dailyScope()}
+        onLoadDailyModelBreakdown={loader}
+      />,
+    );
+
+    await user.click(within(screen.getByRole("table")).getByText("2026-08-06"));
+    await act(async () => {
+      second.resolve({ sources: [{ source: "claude", totals: { total_tokens: 80 }, models: [] }] });
+      await second.promise;
+    });
+    expect(await screen.findByTestId("daily-breakdown-overlay")).toHaveTextContent("2026-08-06");
+    expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Claude");
+    await user.click(within(screen.getByRole("table")).getByText("2026-08-06"));
+
+    await user.click(within(screen.getByRole("table")).getByText("2026-08-07"));
+    await user.click(within(screen.getByRole("table")).getByText("2026-08-06"));
+    expect(firstSignal.aborted).toBe(true);
+    expect(loader.mock.calls.filter(([day]) => day === "2026-08-06")).toHaveLength(1);
+    expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Claude");
+
+    await act(async () => {
+      first.resolve({ sources: [{ source: "codex", totals: { total_tokens: 120 }, models: [] }] });
+      await first.promise;
+    });
+    expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Claude");
+    expect(screen.getByTestId("daily-breakdown-overlay")).not.toHaveTextContent("Codex");
+  });
+
+  it("keeps a newer success when an older request fails and aborts work on scope change or unmount", async () => {
+    const user = userEvent.setup();
+    const oldRequest = deferred();
+    const newRequest = deferred();
+    let oldSignal;
+    let newSignal;
+    const loadOld = vi.fn((_day, options) => {
+      oldSignal = options.signal;
+      return oldRequest.promise;
+    });
+    const loadNew = vi.fn((_day, options) => {
+      newSignal = options.signal;
+      return newRequest.promise;
+    });
+    const { rerender, unmount } = render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        dailyBreakdownScope={dailyScope()}
+        onLoadDailyModelBreakdown={loadOld}
+      />,
+    );
+
+    await openDailyOverlay(user);
+    rerender(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        dailyBreakdownScope={dailyScope({ timeZone: "Asia/Shanghai", tzOffsetMinutes: 480 })}
+        onLoadDailyModelBreakdown={loadNew}
+      />,
+    );
+    expect(oldSignal.aborted).toBe(true);
+
+    await openDailyOverlay(user);
+    await act(async () => {
+      newRequest.resolve({ sources: [{ source: "claude", totals: { total_tokens: 120 }, models: [] }] });
+      await newRequest.promise;
+    });
+    expect(await screen.findByTestId("daily-breakdown-overlay")).toHaveTextContent("Claude");
+
+    await act(async () => {
+      oldRequest.reject(new Error("old request failed"));
+      try { await oldRequest.promise; } catch { /* expected */ }
+    });
+    expect(screen.getByTestId("daily-breakdown-overlay")).toHaveTextContent("Claude");
+    expect(screen.getByTestId("daily-breakdown-overlay")).not.toHaveTextContent(copy("dashboard.daily.overlay_error"));
+
+    const pendingAtUnmount = deferred();
+    let unmountSignal;
+    rerender(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        dailyBreakdownScope={dailyScope({ baseUrl: "http://127.0.0.1:9000" })}
+        onLoadDailyModelBreakdown={vi.fn((_day, options) => {
+          unmountSignal = options.signal;
+          return pendingAtUnmount.promise;
+        })}
+      />,
+    );
+    await openDailyOverlay(user);
+    unmount();
+    expect(unmountSignal.aborted).toBe(true);
+  });
+
   it("shows a plain empty state without an initialization or sync command card", () => {
     const { container } = render(
       <DataDetails
@@ -434,7 +662,10 @@ describe("DataDetails daily rows", () => {
     const totalCell = within(targetRow).getByText("120");
     await user.click(totalCell);
 
-    expect(onLoadDailyModelBreakdown).toHaveBeenCalledWith("2026-08-07");
+    expect(onLoadDailyModelBreakdown).toHaveBeenCalledWith(
+      "2026-08-07",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     const overlay = await screen.findByTestId("daily-breakdown-overlay");
     expect(overlay).toHaveAttribute("data-overlay-layout", "cover");
     expect(overlay).toHaveTextContent("Codex");

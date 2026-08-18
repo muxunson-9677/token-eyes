@@ -6,6 +6,7 @@ import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
 import { useTrendData } from "../hooks/use-trend-data.js";
 import { useUsageData } from "../hooks/use-usage-data.js";
 import { useUsageLimits } from "../hooks/use-usage-limits.js";
+import { useUsageFilters } from "../hooks/use-usage-filters";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { LIMIT_PROVIDER_IDS } from "../lib/limits-providers.js";
 import { getAgentIdByQueueSource } from "../lib/agent-adapters-dashboard";
@@ -191,6 +192,7 @@ export function DashboardPage({
   // hooks hold a loading state instead of painting local data that would be
   // wiped on the flip to cloud (the local鈫抍loud "double flash").
   const accountViewResolving = accountResolvingBase && !publicMode;
+  const { state: usageFilterState } = useUsageFilters();
 
 
   useEffect(() => {
@@ -385,6 +387,14 @@ export function DashboardPage({
   const usageDateBounds = useUsageDateBounds({ timeZone, tzOffsetMinutes });
   const mockNow = useMemo(() => getMockNow(), []);
   const cacheKey = publicMode ? null : auth?.userId || auth?.email || "default";
+  const dailyBreakdownScope = useMemo(() => ({
+    accountId: accountView ? cacheKey || "account" : "local",
+    mode: accountView ? "cloud" : "local",
+    baseUrl,
+    timeZone,
+    tzOffsetMinutes,
+    sources: usageFilterState.sources,
+  }), [accountView, baseUrl, cacheKey, timeZone, tzOffsetMinutes, usageFilterState.sources]);
   const [selectedPeriod, setSelectedPeriod] = useState("total");
   const [customFrom, setCustomFrom] = useState(null);
   const [customTo, setCustomTo] = useState(null);
@@ -699,10 +709,11 @@ export function DashboardPage({
       accessToken: resolvedToken,
       from: day,
       to: day,
+      source: usageFilterState.sources?.length === 1 ? usageFilterState.sources[0] : undefined,
       timeZone,
       tzOffsetMinutes,
     });
-  }, [accountAccessToken, accountView, accessToken, baseUrl, timeZone, tzOffsetMinutes]);
+  }, [accountAccessToken, accountView, accessToken, baseUrl, timeZone, tzOffsetMinutes, usageFilterState.sources]);
   const trendRowsForDisplay = useMemo(() => {
     const source = useDailyTrend
       ? daily
@@ -1474,6 +1485,7 @@ export function DashboardPage({
       detailsPageCount={detailsPageCount}
       detailsPage={detailsPage}
       setDetailsPage={setDetailsPage}
+      dailyBreakdownScope={dailyBreakdownScope}
       onLoadDailyModelBreakdown={loadDailyModelBreakdown}
       costModalOpen={costModalOpen}
       closeCostModal={closeCostModal}

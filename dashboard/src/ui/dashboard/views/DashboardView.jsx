@@ -223,6 +223,7 @@ export function DashboardView(props) {
     detailsPageCount,
     detailsPage,
     setDetailsPage,
+    dailyBreakdownScope,
     onLoadDailyModelBreakdown,
     refreshInterval,
     onRefreshIntervalChange,
@@ -471,6 +472,7 @@ export function DashboardView(props) {
                         detailsPageCount={detailsPageCount}
                         detailsPage={detailsPage}
                         setDetailsPage={setDetailsPage}
+                        dailyBreakdownScope={dailyBreakdownScope}
                         onLoadDailyModelBreakdown={onLoadDailyModelBreakdown}
                       />
                     </div>
