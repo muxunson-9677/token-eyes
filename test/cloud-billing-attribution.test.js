@@ -177,6 +177,97 @@ test("batch boundaries preserve zero/rebuild slices, idempotence, and legacy unk
   }
 });
 
+test("migration parser ignores partial prefixes and publishes only the final complete frame", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-replayed-migration-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const rebuilt = [row("api_key", 0), row("token_plan", 0), row("api_key", 11), row("token_plan", 22)];
+    const frame = rebuilt.map((bucket, index) => ({
+      ...bucket,
+      dsh_bucket_migration_id: "migration-replayed",
+      dsh_bucket_migration_index: index,
+      dsh_bucket_migration_count: rebuilt.length,
+    }));
+    await fs.writeFile(queuePath, `${[frame[0], ...frame].map(JSON.stringify).join("\n")}\n`);
+
+    const context = await syncCommand.createCloudQueueReadContext(queuePath, 0);
+    const result = await syncCommand.readQueueBatch(queuePath, 0, 20, null, context);
+    const replay = await syncCommand.readQueueBatch(queuePath, 0, 20, null, context);
+    assert.deepEqual(replay, result, "crash replay must reuse the one complete transaction");
+    assert.deepEqual(
+      result.buckets.filter((bucket) => !bucket.billing_mode_compat_summary)
+        .map((bucket) => [bucket.billing_mode, bucket.total_tokens]).sort(),
+      [["api_key", 11], ["token_plan", 22]],
+    );
+    assert.equal(result.buckets.find((bucket) => bucket.billing_mode_compat_summary)?.total_tokens, 33);
+    assert.equal(context.rowsParsed, 5, "each physical migration row must be parsed once");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("migration parser rejects duplicate, out-of-order, and truncated frames", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-malformed-migration-"));
+  try {
+    const makeFrame = (id) => [row("api_key", 0), row("token_plan", 0), row("api_key", 11), row("token_plan", 22)]
+      .map((bucket, index, rows) => ({
+        ...bucket,
+        dsh_bucket_migration_id: id,
+        dsh_bucket_migration_index: index,
+        dsh_bucket_migration_count: rows.length,
+      }));
+    const frame = makeFrame("migration-malformed");
+    const otherFrame = makeFrame("migration-other-partial");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await fs.writeFile(
+      queuePath,
+      `${[
+        frame[0], frame[0], frame[2],
+        otherFrame[0], otherFrame[1],
+        frame[0], frame[1], frame[2], frame[3],
+      ].map(JSON.stringify).join("\n")}\n`,
+    );
+    const result = await syncCommand.readQueueBatch(queuePath, 0, 20);
+    assert.equal(result.buckets.find((bucket) => bucket.billing_mode_compat_summary)?.total_tokens, 33);
+
+    const truncatedPath = path.join(tmp, "truncated.jsonl");
+    await fs.writeFile(truncatedPath, `${frame.slice(0, 2).map(JSON.stringify).join("\n")}\n`);
+    const truncated = await syncCommand.readQueueBatch(truncatedPath, 0, 20);
+    assert.deepEqual(truncated.buckets, []);
+    assert.equal(truncated.nextOffset, 0, "an incomplete tail must remain available for a later append");
+    await fs.appendFile(truncatedPath, `${frame.slice(2).map(JSON.stringify).join("\n")}\n`);
+    const completed = await syncCommand.readQueueBatch(truncatedPath, truncated.nextOffset, 20);
+    assert.equal(completed.buckets.find((bucket) => bucket.billing_mode_compat_summary)?.total_tokens, 33);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("migration parser keeps consecutive complete transactions separate", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-consecutive-migrations-"));
+  try {
+    const makeFrame = (id, total) => [row("api_key", 0), row("api_key", total)].map((bucket, index, rows) => ({
+      ...bucket,
+      dsh_bucket_migration_id: id,
+      dsh_bucket_migration_index: index,
+      dsh_bucket_migration_count: rows.length,
+    }));
+    const firstFrame = makeFrame("migration-first", 11);
+    const secondFrame = makeFrame("migration-second", 19);
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await fs.writeFile(queuePath, `${[...firstFrame, ...secondFrame].map(JSON.stringify).join("\n")}\n`);
+
+    const context = await syncCommand.createCloudQueueReadContext(queuePath, 0);
+    const first = await syncCommand.readQueueBatch(queuePath, 0, 20, null, context);
+    const second = await syncCommand.readQueueBatch(queuePath, first.nextOffset, 20, null, context);
+    assert.equal(first.buckets.find((bucket) => bucket.billing_mode === "api_key")?.total_tokens, 11);
+    assert.equal(second.buckets.find((bucket) => bucket.billing_mode === "api_key")?.total_tokens, 19);
+    assert.equal(context.rowsParsed, 4);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("large migration transactions page by whole base bucket and resume deterministically", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-large-migration-"));
   try {

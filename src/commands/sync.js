@@ -1911,8 +1911,9 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
   let offset = startOffset;
   let linesRead = 0;
   let migrationId = null;
-  let migrationRowsRemaining = 0;
-  const migrationRows = [];
+  let migrationFrame = null;
+  let migrationRows = [];
+  let sawMigrationRows = false;
   for await (const line of rl) {
     const lineStartOffset = offset;
     const bytes = Buffer.byteLength(line, "utf8") + 1;
@@ -1929,16 +1930,11 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
     const rowMigrationId = typeof bucket?.dsh_bucket_migration_id === "string"
       ? bucket.dsh_bucket_migration_id
       : null;
-    if (!migrationId && rowMigrationId && linesRead > 0) {
+    if (!sawMigrationRows && rowMigrationId && linesRead > 0) {
       offset = lineStartOffset;
       break;
     }
-    if (!migrationId && rowMigrationId) {
-      const count = Math.max(1, Math.floor(Number(bucket.dsh_bucket_migration_count) || 1));
-      const index = Math.max(0, Math.floor(Number(bucket.dsh_bucket_migration_index) || 0));
-      migrationId = rowMigrationId;
-      migrationRowsRemaining = Math.max(1, count - index);
-    } else if (migrationId && rowMigrationId !== migrationId) {
+    if (sawMigrationRows && !rowMigrationId) {
       offset = lineStartOffset;
       break;
     }
@@ -1948,8 +1944,38 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
     // rows whose input_tokens still include cached tokens (6-7x inflated) —
     // while the local dashboard showed corrected numbers.
     bucket = normalizeCloudQueueBucket(bucket);
-    if (migrationId) migrationRows.push(bucket);
-    else {
+    if (rowMigrationId) {
+      sawMigrationRows = true;
+      const count = Number(bucket.dsh_bucket_migration_count);
+      const index = Number(bucket.dsh_bucket_migration_index);
+      const validPosition = Number.isInteger(count) && count > 0
+        && Number.isInteger(index) && index >= 0 && index < count;
+      if (!validPosition) {
+        migrationFrame = null;
+      } else if (index === 0) {
+        // A replay can append a new full transaction after a partial prefix.
+        // Treat every index zero as the only authoritative frame boundary.
+        migrationFrame = { id: rowMigrationId, count, nextIndex: 1, rows: [bucket] };
+      } else if (
+        migrationFrame
+        && migrationFrame.id === rowMigrationId
+        && migrationFrame.count === count
+        && migrationFrame.nextIndex === index
+      ) {
+        migrationFrame.rows.push(bucket);
+        migrationFrame.nextIndex += 1;
+      } else {
+        migrationFrame = null;
+      }
+      if (readContext) readContext.rowsParsed += 1;
+      linesRead += 1;
+      if (migrationFrame && migrationFrame.nextIndex === migrationFrame.count) {
+        migrationId = migrationFrame.id;
+        migrationRows = migrationFrame.rows;
+        break;
+      }
+      continue;
+    } else {
       const baseKey = cloudBaseBucketIdentity(bucket);
       if (!baseBucketKeys.has(baseKey)) {
         // A base can contain three canonical modes plus its compatibility
@@ -1968,11 +1994,6 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
     }
     if (readContext) readContext.rowsParsed += 1;
     linesRead += 1;
-    if (migrationId) {
-      migrationRowsRemaining -= 1;
-      if (migrationRowsRemaining <= 0) break;
-      continue;
-    }
   }
 
   rl.close();
@@ -2001,6 +2022,7 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
     }
     return pageCloudMigration(transaction, limit, migrationCursor);
   }
+  if (sawMigrationRows) return { buckets: [], nextOffset: startOffset };
   const buckets = Array.from(bucketMap.values());
   const priorBuckets = readContext
     ? Array.from(readContext.latestByIdentity.values()).filter((bucket) => baseBucketKeys.has(cloudBaseBucketIdentity(bucket)))
