@@ -46,6 +46,16 @@ function row(billingMode, totalTokens) {
   };
 }
 
+function applyLegacyFiveKeyEdge(cloud, buckets) {
+  const requestRows = new Map();
+  for (const bucket of buckets) {
+    const key = `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
+    const previous = requestRows.get(key);
+    if (!previous || Number(bucket.total_tokens) > Number(previous.total_tokens)) requestRows.set(key, bucket);
+  }
+  for (const [key, bucket] of requestRows) cloud.set(key, bucket);
+}
+
 test("queue batches retain api_key and token_plan slices in the same bucket", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-"));
   try {
@@ -55,11 +65,24 @@ test("queue batches retain api_key and token_plan slices in the same bucket", as
       [row("api_key", 11), row("token_plan", 22)].map(JSON.stringify).join("\n") + "\n",
     );
     const result = await syncCommand.readQueueBatch(queuePath, 0, 10);
+    const modeBuckets = result.buckets.filter((bucket) => !bucket.billing_mode_compat_summary);
+    const compat = result.buckets.filter((bucket) => bucket.billing_mode_compat_summary === "base_total_v1");
     assert.deepEqual(
-      result.buckets.map((bucket) => [bucket.billing_mode, bucket.total_tokens]).sort(),
+      modeBuckets.map((bucket) => [bucket.billing_mode, bucket.total_tokens]).sort(),
       [["api_key", 11], ["token_plan", 22]],
     );
-    assert.equal(result.buckets.reduce((sum, bucket) => sum + bucket.total_tokens, 0), 33);
+    assert.equal(modeBuckets.reduce((sum, bucket) => sum + bucket.total_tokens, 0), 33);
+    assert.equal(compat.length, 1);
+    assert.equal(compat[0].total_tokens, 33);
+    assert.equal(compat[0].billing_mode_compat_slices.api_key.total_tokens, 11);
+    assert.equal(compat[0].billing_mode_compat_slices.token_plan.total_tokens, 22);
+
+    // Exact behavior of the already-deployed five-key Edge: MAX wins after
+    // billing_mode is discarded. The compatibility row must therefore win.
+    const legacy = new Map();
+    applyLegacyFiveKeyEdge(legacy, result.buckets);
+    applyLegacyFiveKeyEdge(legacy, result.buckets);
+    assert.equal(legacy.values().next().value.total_tokens, 33);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -81,9 +104,10 @@ test("batch boundaries preserve zero/rebuild slices, idempotence, and legacy unk
     const rows = [...migrationRows, legacy];
     await fs.writeFile(queuePath, rows.map(JSON.stringify).join("\n") + "\n");
 
-    const firstBatch = await syncCommand.readQueueBatch(queuePath, 0, 2);
+    const firstBatch = await syncCommand.readQueueBatch(queuePath, 0, 4);
     assert.deepEqual(
-      firstBatch.buckets.map((bucket) => [bucket.billing_mode, bucket.total_tokens]).sort(),
+      firstBatch.buckets.filter((bucket) => !bucket.billing_mode_compat_summary)
+        .map((bucket) => [bucket.billing_mode, bucket.total_tokens]).sort(),
       [["api_key", 11], ["token_plan", 22]],
     );
 
@@ -91,9 +115,9 @@ test("batch boundaries preserve zero/rebuild slices, idempotence, and legacy unk
     const uploadFrom = async (startOffset) => {
       let offset = startOffset;
       while (true) {
-        const batch = await syncCommand.readQueueBatch(queuePath, offset, 2);
+        const batch = await syncCommand.readQueueBatch(queuePath, offset, 4);
         if (batch.buckets.length === 0) break;
-        for (const bucket of batch.buckets) {
+        for (const bucket of batch.buckets.filter((row) => !row.billing_mode_compat_summary)) {
           const key = `${bucket.source}|${bucket.model}|${bucket.hour_start}|${bucket.billing_mode}`;
           cloud.set(key, bucket);
         }
@@ -148,7 +172,7 @@ test("large migration transactions page by whole base bucket and resume determin
         assert.deepEqual(replay, result, "crash before cursor persistence must replay idempotently");
       }
       const bases = new Set();
-      for (const bucket of result.buckets) {
+      for (const bucket of result.buckets.filter((row) => !row.billing_mode_compat_summary)) {
         const base = `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
         bases.add(base);
         cloud.set(`${base}|${bucket.billing_mode}`, bucket);
@@ -176,6 +200,70 @@ test("large migration transactions page by whole base bucket and resume determin
   }
 });
 
+test("normal queue paging counts compatibility summaries without splitting base buckets", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-normal-pages-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const rows = Array.from({ length: 300 }, (_value, index) => ({
+      ...row("api_key", index + 1),
+      model: `model-${String(index).padStart(3, "0")}`,
+    }));
+    await fs.writeFile(queuePath, `${rows.map(JSON.stringify).join("\n")}\n`);
+
+    let offset = 0;
+    const seen = new Set();
+    while (true) {
+      const batch = await syncCommand.readQueueBatch(queuePath, offset, 200);
+      if (batch.buckets.length === 0) break;
+      assert.ok(batch.buckets.length <= 200);
+      const byBase = new Map();
+      for (const bucket of batch.buckets) {
+        const key = `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
+        if (!byBase.has(key)) byBase.set(key, []);
+        byBase.get(key).push(bucket);
+      }
+      for (const [key, group] of byBase) {
+        assert.equal(seen.has(key), false, `base bucket split across normal requests: ${key}`);
+        assert.equal(group.length, 2);
+        assert.equal(group.filter((item) => item.billing_mode_compat_summary === "base_total_v1").length, 1);
+        seen.add(key);
+      }
+      assert.ok(batch.nextOffset > offset);
+      offset = batch.nextOffset;
+    }
+    assert.equal(seen.size, 300);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("compatibility summaries carry prior mode slices across normal batch boundaries", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-prior-slices-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const first = { ...row("api_key", 11), model: "shared-model" };
+    const fillers = Array.from({ length: 55 }, (_value, index) => ({
+      ...row("api_key", 1), model: `filler-${String(index).padStart(2, "0")}`,
+    }));
+    const later = { ...row("token_plan", 22), model: "shared-model" };
+    await fs.writeFile(queuePath, `${[first, ...fillers, later].map(JSON.stringify).join("\n")}\n`);
+
+    const legacy = new Map();
+    let offset = 0;
+    while (true) {
+      const batch = await syncCommand.readQueueBatch(queuePath, offset, 200);
+      if (batch.buckets.length === 0) break;
+      applyLegacyFiveKeyEdge(legacy, batch.buckets);
+      offset = batch.nextOffset;
+    }
+    const shared = legacy.get("deepseek-harness|shared-model|2026-08-18T00:00:00.000Z");
+    assert.equal(shared.billing_mode_compat_summary, "base_total_v1");
+    assert.equal(shared.total_tokens, 33);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("cloud schema keeps the legacy base identity and adds rolling-safe attribution", async () => {
   const root = path.join(__dirname, "..");
   const [migration, ingest, profile, badge, vite] = await Promise.all([
@@ -192,6 +280,15 @@ test("cloud schema keeps the legacy base identity and adds rolling-safe attribut
   assert.match(ingest, /rpc\("tokentracker_hourly_ingest_v2"/u);
   assert.match(migration, /revoke all on function public\.tokentracker_hourly_ingest_v2\(text,text,jsonb\) from public,anon,authenticated/iu);
   assert.match(migration, /grant execute on function public\.tokentracker_hourly_ingest_v2\(text,text,jsonb\) to service_role/iu);
+  assert.match(migration, /pg_advisory_xact_lock/iu);
+  assert.match(migration, /hashtextextended/iu);
+  const lockAt = migration.indexOf("pg_advisory_xact_lock");
+  const firstReadAt = migration.indexOf("select h.billing_mode_slices");
+  assert.ok(lockAt >= 0 && lockAt < firstReadAt, "missing-row identities must lock before SELECT FOR UPDATE");
+  assert.match(
+    migration,
+    /concat_ws\(E'\\x1f',p_user_id,p_device_id,extract\(epoch from r\.hour_start\)::text,r\.source,r\.model\)/iu,
+  );
   assert.match(ingest, /onConflict:\s*"user_id,device_id,hour_start,source,model"/u);
   for (const consumer of [profile, badge]) {
     assert.doesNotMatch(consumer, /\.order\("billing_mode"/u);
@@ -249,6 +346,42 @@ test("edge-first deployment falls back to one legacy base row without losing api
   assert.equal(fallbackRows[0].total_tokens, 33);
   assert.equal("billing_mode" in fallbackRows[0], false);
   assert.equal("billing_mode_slices" in fallbackRows[0], false);
+});
+
+test("new Edge excludes compatibility summaries while preserving exact mode slices", async (t) => {
+  let rpcRows = null;
+  globalThis.Deno = { env: { get: (key) => ({
+    TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED: "true",
+    INSFORGE_BASE_URL: "https://cloud.example",
+    INSFORGE_SERVICE_ROLE_KEY: "service-role",
+  })[key] } };
+  globalThis.__billingIngestCreateClient = () => ({
+    database: {
+      from() {
+        const chain = { select: () => chain, eq: () => chain, is: () => chain,
+          maybeSingle: async () => ({ data: { user_id: "user-1", device_id: "device-1" }, error: null }) };
+        return chain;
+      },
+      async rpc(_name, args) { rpcRows = args.p_rows; return { data: 2, error: null }; },
+    },
+  });
+  t.after(() => { delete globalThis.Deno; delete globalThis.__billingIngestCreateClient; });
+  const edge = await importIngestEdge();
+  const compat = {
+    ...row("unknown", 35),
+    billing_mode_compat_summary: "base_total_v1",
+    billing_mode_compat_slices: {
+      api_key: { input_tokens: 11, total_tokens: 11 },
+      token_plan: { input_tokens: 24, total_tokens: 24 },
+    },
+  };
+  const response = await edge.default(new Request("https://cloud.example/functions/tokentracker-ingest", {
+    method: "POST", headers: { Authorization: "Bearer device-token", "Content-Type": "application/json" },
+    body: JSON.stringify({ buckets: [{ ...row("token_plan", 24) }, compat] }),
+  }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(rpcRows.map((item) => [item.billing_mode, item.total_tokens]).sort(), [["api_key", 11], ["token_plan", 24]]);
+  assert.equal(rpcRows.reduce((sum, item) => sum + item.total_tokens, 0), 35);
 });
 
 test("rolling migration preserves old writes and downgrades stale attribution to unknown", async () => {

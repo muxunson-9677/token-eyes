@@ -122,7 +122,28 @@ export default async function (req: Request): Promise<Response> {
   const normalizeBillingMode = (value: unknown): "api_key" | "token_plan" | "unknown" =>
     value === "api_key" || value === "token_plan" ? value : "unknown";
 
-  const mappedRows = buckets.map((b: Record<string, unknown>) => ({
+  const expandedBuckets: Record<string, unknown>[] = [];
+  for (const bucket of buckets as Record<string, unknown>[]) {
+    if (bucket.billing_mode_compat_summary !== "base_total_v1") {
+      expandedBuckets.push(bucket);
+      continue;
+    }
+    const slices = bucket.billing_mode_compat_slices;
+    if (!slices || typeof slices !== "object" || Array.isArray(slices)) continue;
+    for (const [billingMode, slice] of Object.entries(slices as Record<string, unknown>)) {
+      if (!slice || typeof slice !== "object" || Array.isArray(slice)) continue;
+      expandedBuckets.push({
+        ...bucket,
+        ...(slice as Record<string, unknown>),
+        billing_mode: billingMode,
+        billing_mode_compat_summary: undefined,
+        billing_mode_compat_slices: undefined,
+      });
+    }
+  }
+
+  const mappedRows = expandedBuckets
+    .map((b: Record<string, unknown>) => ({
     user_id: userId,
     device_id: deviceId,
     hour_start: b.hour_start,

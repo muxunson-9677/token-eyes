@@ -27,6 +27,11 @@ begin
         output_tokens bigint, reasoning_output_tokens bigint, total_tokens bigint,
         billable_total_tokens bigint, total_cost_usd numeric, conversations bigint)
       loop
+        -- SELECT FOR UPDATE cannot lock a row that does not exist yet. Lock
+        -- the stable five-column identity first so concurrent first api/plan
+        -- writes serialize instead of replacing each other's JSON slices.
+        perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+          concat_ws(E'\x1f',p_user_id,p_device_id,extract(epoch from r.hour_start)::text,r.source,r.model),0));
         select h.billing_mode_slices, jsonb_build_object(
           'input_tokens', coalesce(h.input_tokens,0), 'cached_input_tokens', coalesce(h.cached_input_tokens,0),
           'cache_creation_input_tokens', coalesce(h.cache_creation_input_tokens,0), 'output_tokens', coalesce(h.output_tokens,0),

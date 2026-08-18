@@ -1687,6 +1687,90 @@ const AUTO_RETRY_MAX_DELAY_MS = 2 * 60 * 60 * 1000;
 
 const INGEST_SLUG = "tokentracker-ingest";
 const MAX_INGEST_BUCKETS = 500;
+const BILLING_MODE_COMPAT_SUMMARY = "base_total_v1";
+const COMPAT_SUMMARY_FIELDS = [
+  "input_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "output_tokens",
+  "reasoning_output_tokens",
+  "total_tokens",
+  "billable_total_tokens",
+  "total_cost_usd",
+];
+
+function cloudBaseBucketIdentity(bucket) {
+  return `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
+}
+
+function withBillingModeCompatSummaries(buckets, priorBuckets = []) {
+  const groups = new Map();
+  for (const bucket of buckets) {
+    const key = cloudBaseBucketIdentity(bucket);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(bucket);
+  }
+  const result = [];
+  for (const group of groups.values()) {
+    result.push(...group);
+    const baseKey = cloudBaseBucketIdentity(group[0]);
+    const latestModes = new Map();
+    for (const bucket of priorBuckets) {
+      if (cloudBaseBucketIdentity(bucket) === baseKey) latestModes.set(queueUsageIdentity(bucket), bucket);
+    }
+    for (const bucket of group) latestModes.set(queueUsageIdentity(bucket), bucket);
+    const summaryRows = Array.from(latestModes.values());
+    const summary = {
+      ...group[0],
+      billing_mode: "unknown",
+      billing_mode_compat_summary: BILLING_MODE_COMPAT_SUMMARY,
+    };
+    for (const field of COMPAT_SUMMARY_FIELDS) {
+      summary[field] = summaryRows.reduce((sum, bucket) => sum + (Number(bucket[field]) || 0), 0);
+    }
+    summary.billing_mode_compat_slices = {};
+    for (const bucket of summaryRows) {
+      const slice = {};
+      for (const field of COMPAT_SUMMARY_FIELDS) slice[field] = Number(bucket[field]) || 0;
+      slice.conversation_count = Number(bucket.conversation_count ?? bucket.conversations) || 0;
+      summary.billing_mode_compat_slices[bucket.billing_mode] = slice;
+    }
+    summary.conversation_count = summaryRows.reduce(
+      (sum, bucket) => sum + (Number(bucket.conversation_count ?? bucket.conversations) || 0),
+      0,
+    );
+    delete summary.conversations;
+    result.push(summary);
+  }
+  return result;
+}
+
+function normalizeCloudQueueBucket(bucket) {
+  const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
+  if (!hourStart) return null;
+  bucket.source = (typeof bucket?.source === "string" ? bucket.source.trim().toLowerCase() : "") || "codex";
+  bucket.model = (typeof bucket?.model === "string" ? bucket.model.trim() : "") || "unknown";
+  bucket = require("../lib/local-api").normalizeQueueRow(bucket);
+  bucket.billing_mode = normalizeUsageAttribution(bucket).billing_mode;
+  return bucket;
+}
+
+async function readPriorCloudQueueRows(queuePath, endOffset, baseKeys) {
+  if (endOffset <= 0 || baseKeys.size === 0) return [];
+  const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: 0, end: endOffset - 1 });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  const latest = new Map();
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    let bucket;
+    try { bucket = normalizeCloudQueueBucket(JSON.parse(line)); } catch (_e) { continue; }
+    if (!bucket || !baseKeys.has(cloudBaseBucketIdentity(bucket))) continue;
+    latest.set(queueUsageIdentity(bucket), bucket);
+  }
+  rl.close();
+  stream.close?.();
+  return Array.from(latest.values());
+}
 
 async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePath, maxBatches = 5, batchSize = 200 }) {
   const state = (await readJson(queueStatePath)) || { offset: 0 };
@@ -1751,6 +1835,8 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   const bucketMap = new Map();
+  const baseBucketKeys = new Set();
+  const limit = Math.min(Math.max(1, Math.floor(Number(maxBuckets) || 1)), MAX_INGEST_BUCKETS);
   let offset = startOffset;
   let linesRead = 0;
   let migrationId = null;
@@ -1769,8 +1855,6 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
     }
     const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
     if (!hourStart) continue;
-    const source = (typeof bucket?.source === "string" ? bucket.source.trim().toLowerCase() : "") || "codex";
-    const model = (typeof bucket?.model === "string" ? bucket.model.trim() : "") || "unknown";
     const rowMigrationId = typeof bucket?.dsh_bucket_migration_id === "string"
       ? bucket.dsh_bucket_migration_id
       : null;
@@ -1787,24 +1871,36 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
       offset = lineStartOffset;
       break;
     }
-    bucket.source = source;
-    bucket.model = model;
     // Apply the same legacy-row corrections every local reader applies
     // (local-api readQueueData / project queue / wrapped aggregator). Without
     // this the cloud permanently kept the RAW legacy values — e.g. old Codex
     // rows whose input_tokens still include cached tokens (6-7x inflated) —
     // while the local dashboard showed corrected numbers.
-    bucket = require("../lib/local-api").normalizeQueueRow(bucket);
-    bucket.billing_mode = normalizeUsageAttribution(bucket).billing_mode;
+    bucket = normalizeCloudQueueBucket(bucket);
     if (migrationId) migrationRows.push(bucket);
-    else bucketMap.set(queueUsageIdentity(bucket), bucket);
+    else {
+      const baseKey = cloudBaseBucketIdentity(bucket);
+      if (!baseBucketKeys.has(baseKey)) {
+        // A base can contain three canonical modes plus its compatibility
+        // summary. Reserve the whole group before consuming its first line so
+        // a request boundary can never split that identity.
+        if (baseBucketKeys.size > 0 && (baseBucketKeys.size + 1) * 4 > limit) {
+          offset = lineStartOffset;
+          break;
+        }
+        if (baseBucketKeys.size === 0 && limit < 4) {
+          throw new Error(`Cloud batch limit must be at least 4 for an atomic billing bucket (${limit})`);
+        }
+        baseBucketKeys.add(baseKey);
+      }
+      bucketMap.set(queueUsageIdentity(bucket), bucket);
+    }
     linesRead += 1;
     if (migrationId) {
       migrationRowsRemaining -= 1;
       if (migrationRowsRemaining <= 0) break;
       continue;
     }
-    if (linesRead >= maxBuckets) break;
   }
 
   rl.close();
@@ -1824,16 +1920,16 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
     const firstGroup = cursorMatches
       ? Math.max(0, Math.floor(Number(migrationCursor.groupIndex) || 0))
       : 0;
-    const limit = Math.min(Math.max(1, Math.floor(Number(maxBuckets) || 1)), MAX_INGEST_BUCKETS);
     const buckets = [];
     let nextGroup = firstGroup;
     while (nextGroup < groups.length) {
       const group = groups[nextGroup];
-      if (group.length > limit) {
-        throw new Error(`Migration base bucket exceeds cloud batch limit (${group.length} > ${limit})`);
+      const wireGroup = withBillingModeCompatSummaries(group);
+      if (wireGroup.length > limit) {
+        throw new Error(`Migration base bucket exceeds cloud batch limit (${wireGroup.length} > ${limit})`);
       }
-      if (buckets.length > 0 && buckets.length + group.length > limit) break;
-      buckets.push(...group);
+      if (buckets.length > 0 && buckets.length + wireGroup.length > limit) break;
+      buckets.push(...wireGroup);
       nextGroup += 1;
     }
     if (nextGroup < groups.length) {
@@ -1845,7 +1941,9 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
     }
     return { buckets, nextOffset: offset, migrationCursor: null };
   }
-  return { buckets: Array.from(bucketMap.values()), nextOffset: offset };
+  const buckets = Array.from(bucketMap.values());
+  const priorBuckets = await readPriorCloudQueueRows(queuePath, startOffset, baseBucketKeys);
+  return { buckets: withBillingModeCompatSummaries(buckets, priorBuckets), nextOffset: offset };
 }
 
 function normalizeGrokRepairSource(value) {
