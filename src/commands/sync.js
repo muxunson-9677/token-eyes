@@ -1703,6 +1703,20 @@ function cloudBaseBucketIdentity(bucket) {
   return `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
 }
 
+function cloudUsageWireRow(bucket) {
+  const row = {
+    source: bucket.source,
+    model: bucket.model,
+    hour_start: bucket.hour_start,
+    billing_mode: bucket.billing_mode === "api_key" || bucket.billing_mode === "token_plan"
+      ? bucket.billing_mode
+      : "unknown",
+  };
+  for (const field of COMPAT_SUMMARY_FIELDS) row[field] = Number(bucket[field]) || 0;
+  row.conversation_count = Number(bucket.conversation_count ?? bucket.conversations) || 0;
+  return row;
+}
+
 function withBillingModeCompatSummaries(buckets, priorBuckets = []) {
   const groups = new Map();
   for (const bucket of buckets) {
@@ -1712,7 +1726,7 @@ function withBillingModeCompatSummaries(buckets, priorBuckets = []) {
   }
   const result = [];
   for (const group of groups.values()) {
-    result.push(...group);
+    result.push(...group.map(cloudUsageWireRow));
     const baseKey = cloudBaseBucketIdentity(group[0]);
     const latestModes = new Map();
     for (const bucket of priorBuckets) {
@@ -1721,7 +1735,9 @@ function withBillingModeCompatSummaries(buckets, priorBuckets = []) {
     for (const bucket of group) latestModes.set(queueUsageIdentity(bucket), bucket);
     const summaryRows = Array.from(latestModes.values());
     const summary = {
-      ...group[0],
+      source: group[0].source,
+      model: group[0].model,
+      hour_start: group[0].hour_start,
       billing_mode: "unknown",
       billing_mode_compat_summary: BILLING_MODE_COMPAT_SUMMARY,
     };

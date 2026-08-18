@@ -88,6 +88,45 @@ test("queue batches retain api_key and token_plan slices in the same bucket", as
   }
 });
 
+test("cloud wire rows and compatibility summaries use a strict non-secret allowlist", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-secrets-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const secretRow = {
+      ...row("api_key", 11),
+      authorization: "Bearer cloud-secret-value",
+      cookie: "session=cloud-cookie-value",
+      credential_ref: "ghp_cloud_secret_value",
+      endpoint: "https://api.example/v1/chat?api_key=query-secret-value",
+      api_key: "plaintext-api-secret-value",
+      arbitrary: { token: "nested-secret-value" },
+    };
+    await fs.writeFile(queuePath, `${JSON.stringify(secretRow)}\n`);
+    const result = await syncCommand.readQueueBatch(queuePath, 0, 10);
+    const serialized = JSON.stringify(result.buckets);
+    for (const forbidden of [
+      "cloud-secret-value",
+      "cloud-cookie-value",
+      "ghp_cloud_secret_value",
+      "query-secret-value",
+      "plaintext-api-secret-value",
+      "nested-secret-value",
+      "authorization",
+      "cookie",
+      "credential_ref",
+      "endpoint",
+      "arbitrary",
+    ]) {
+      assert.equal(serialized.includes(forbidden), false, `cloud payload leaked ${forbidden}`);
+    }
+    assert.equal(result.buckets.some((bucket) => Object.hasOwn(bucket, "api_key")), false);
+    assert.equal(result.buckets[0].total_tokens, 11);
+    assert.equal(result.buckets[1].billing_mode_compat_summary, "base_total_v1");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("batch boundaries preserve zero/rebuild slices, idempotence, and legacy unknown", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-batches-"));
   try {
