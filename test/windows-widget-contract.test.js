@@ -236,6 +236,8 @@ test("widget visual verification uses real wheel input for scrollable content", 
   assert.match(visual, /scenario\.name === "04-limits" \? 30/u);
   assert.match(visual, /stateAudit\.planCount !== 10/u);
   assert.match(visual, /lastRowVisible/u);
+  assert.match(visual, /page\.waitForFunction\([\s\S]*widget-expanded-limit-plan[\s\S]*widget-limit-row/u);
+  assert.doesNotMatch(visual, /readyText[\s\S]*67%/u);
   assert.match(visual, /WIDGET_INTERACTION_AUDIT=PASS/u);
   assert.match(visual, /WIDGET_VISUAL_AUDIT=PASS_24_SCENARIOS/u);
   assert.doesNotMatch(visual, /element\.scrollTop\s*=\s*element\.scrollHeight/u);

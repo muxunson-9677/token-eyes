@@ -318,11 +318,16 @@ try {
       await installFixture(page, { ...scenario.prefs, height: scenario.height, scaleFactor: scale });
       await page.goto(`${baseUrl}/desktop-widget${scenario.query ?? ""}`, { waitUntil: "domcontentloaded" });
       await page.getByTestId("desktop-widget-card").waitFor({ state: "visible" });
-      const readyText = scenario.prefs.mode === "limits"
-        ? "67%"
-        : scenario.prefs.mode === "models" ? "gpt-5.6-sol" : "6";
       try {
-        await page.getByText(readyText, { exact: true }).first().waitFor({ state: "visible", timeout: 8_000 });
+        if (scenario.prefs.mode === "limits") {
+          await page.waitForFunction(({ planCount, rowCount }) => (
+            document.querySelectorAll("[data-testid='widget-expanded-limit-plan']").length === planCount
+            && document.querySelectorAll(".widget-limit-row").length === rowCount
+          ), { planCount: 10, rowCount: 30 }, { timeout: 8_000 });
+        } else {
+          const readyText = scenario.prefs.mode === "models" ? "gpt-5.6-sol" : "6";
+          await page.getByText(readyText, { exact: true }).first().waitFor({ state: "visible", timeout: 8_000 });
+        }
       } catch {
         throw new Error(`${scenario.name}@${scale}: widget data did not load; requests=${JSON.stringify(widgetRequests)} text=${await page.locator("body").innerText()}`);
       }
