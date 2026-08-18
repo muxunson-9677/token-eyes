@@ -6103,9 +6103,6 @@ async function parseDeepSeekHarnessIncremental({
     cursors?.deepseekHarness && typeof cursors.deepseekHarness === "object"
       ? cursors.deepseekHarness
       : {};
-  const priorNormalizationVersion = Number(priorState.normalizationVersion) || 1;
-  const normalizationUpgrade =
-    priorNormalizationVersion < DEEPSEEK_HARNESS_NORMALIZATION_VERSION;
   const fileState =
     priorState.files && typeof priorState.files === "object" ? { ...priorState.files } : {};
   const hourlyState = normalizeHourlyState(cursors?.hourly);
@@ -6124,7 +6121,11 @@ async function parseDeepSeekHarnessIncremental({
     }
     const signature = `${stat.size}:${stat.mtimeMs}`;
     const previousFile = fileState[filePath];
-    if (!normalizationUpgrade && previousFile?.signature === signature) continue;
+    const fileNormalizationVersion = Number(previousFile?.normalizationVersion) || 1;
+    if (
+      fileNormalizationVersion >= DEEPSEEK_HARNESS_NORMALIZATION_VERSION
+      && previousFile?.signature === signature
+    ) continue;
 
     let text;
     try {
@@ -6159,7 +6160,11 @@ async function parseDeepSeekHarnessIncremental({
       eventsAggregated += 1;
     }
 
-    fileState[filePath] = { signature, byModel: currentByModel };
+    fileState[filePath] = {
+      signature,
+      normalizationVersion: DEEPSEEK_HARNESS_NORMALIZATION_VERSION,
+      byModel: currentByModel,
+    };
     if (cb) {
       cb({
         index: index + 1,
@@ -6177,7 +6182,6 @@ async function parseDeepSeekHarnessIncremental({
   cursors.hourly = hourlyState;
   cursors.deepseekHarness = {
     ...priorState,
-    normalizationVersion: DEEPSEEK_HARNESS_NORMALIZATION_VERSION,
     files: fileState,
     updatedAt,
   };
