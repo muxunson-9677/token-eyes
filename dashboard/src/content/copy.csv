@@ -2611,5 +2611,6 @@ spend.cost.accuracy.estimated,spend,SpendCostPage,CostSummaryCards,accuracy_esti
 spend.cost.accuracy.equivalent,spend,SpendCostPage,CostSummaryCards,accuracy_equivalent,"Equivalent",,active
 spend.cost.accuracy.unknown,spend,SpendCostPage,CostSummaryCards,accuracy_unknown,"Unknown",,active
 widget.limit.reset_at,ui,DesktopWidgetPage,ExpandedLimits,reset_at,"Resets {{time}}",,active
+widget.limit.reset_unavailable,ui,DesktopWidgetPage,ExpandedLimits,reset_unavailable,"Reset time unavailable",,active
 widget.limit.expires_at,ui,DesktopWidgetPage,ExpandedLimits,expires_at,"Expires {{time}}",,active
 widget.limit.time_unknown,ui,DesktopWidgetPage,ExpandedLimits,time_unknown,"Time unavailable",,active

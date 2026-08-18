@@ -113,6 +113,59 @@ test("widget view model keeps quota reset and plan expiry as independent facts",
   );
 });
 
+test("widget view model rejects ambiguous dates and normalizes offset ISO timestamps", () => {
+  const [offset, numeric, invalid, empty] = flattenUsageLimitsPayload(null, [
+    {
+      id: "offset",
+      source: "codex",
+      expires_at: "2026-09-01T08:00:00+08:00",
+      quota_windows: [{ kind: "rolling_5_hour", reset_at: "2026-08-20T11:33:00+08:00" }],
+    },
+    {
+      id: "numeric",
+      source: "codex",
+      expires_at: "0",
+      quota_windows: [{ kind: "rolling_5_hour", reset_at: "0" }],
+    },
+    {
+      id: "invalid",
+      source: "codex",
+      expires_at: "not-a-date",
+      quota_windows: [{ kind: "rolling_5_hour", reset_at: "not-a-date" }],
+    },
+    {
+      id: "empty",
+      source: "codex",
+      expires_at: "",
+      quota_windows: [{ kind: "rolling_5_hour", reset_at: "" }],
+    },
+  ]);
+
+  assert.deepEqual(
+    { resetAt: offset.resetAt, expiresAt: offset.expiresAt },
+    {
+      resetAt: "2026-08-20T03:33:00.000Z",
+      expiresAt: "2026-09-01T00:00:00.000Z",
+    },
+  );
+  for (const limit of [numeric, invalid, empty]) {
+    assert.equal(limit.resetAt, null);
+    assert.equal(limit.expiresAt, null);
+  }
+  assert.deepEqual(
+    buildWidgetViewModel({
+      limits: [{
+        id: "ambiguous",
+        planId: "codex:ambiguous",
+        agent: "codex",
+        resetAt: "0",
+        expiresAt: "0",
+      }],
+    }).limits.map(({ resetAt, expiresAt }) => ({ resetAt, expiresAt })),
+    [{ resetAt: null, expiresAt: null }],
+  );
+});
+
 test("compact widget menus temporarily expand the native window and stay vertical", () => {
   const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
   const css = read("dashboard/src/pages/desktop-widget.css");
@@ -273,6 +326,12 @@ test("widget visual verification uses real wheel input for scrollable content", 
   assert.match(visual, /scenario\.name === "04-limits" \? 30/u);
   assert.match(visual, /stateAudit\.planCount !== 10/u);
   assert.match(visual, /lastRowVisible/u);
+  assert.match(visual, /planIndex >= 8/u);
+  assert.match(visual, /planIndex === 9/u);
+  assert.match(visual, /重置时间不可用/u);
+  assert.match(visual, /missingResetCount !== 6/u);
+  assert.match(visual, /expiryOnlyFactsValid/u);
+  assert.match(visual, /neitherFactsValid/u);
   assert.match(visual, /page\.waitForFunction\([\s\S]*widget-expanded-limit-plan[\s\S]*widget-limit-row/u);
   assert.doesNotMatch(visual, /readyText[\s\S]*67%/u);
   assert.match(visual, /WIDGET_INTERACTION_AUDIT=PASS/u);

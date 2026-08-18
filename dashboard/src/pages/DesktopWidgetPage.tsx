@@ -417,8 +417,12 @@ function formatCompactRemainingTime(value: string | null) {
   return `${days}d ${hours}h`;
 }
 
-function formatCompactReset(value: string | null) {
-  return `${formatCompactRemainingTime(value)}（${formatCompactLimitTime(value)}）`;
+export function formatCompactReset(value: string | null) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.limit.reset_unavailable");
+  return copy("widget.limit.reset_at", {
+    time: `${formatCompactRemainingTime(value)}（${formatCompactLimitTime(value)}）`,
+  });
 }
 
 function formatCompactValidity(value: string | null) {
@@ -534,7 +538,7 @@ function ExpandedLimits({ model }: { model: DesktopWidgetViewModel }) {
               <small className="widget-limit-row__reset">
                 {limit.resetAt
                   ? formatCompactReset(limit.resetAt)
-                  : copy("widget.limit.reset_at", { time: copy("widget.limit.time_unknown") })}
+                  : copy("widget.limit.reset_unavailable")}
               </small>
               {limit.error ? <small className="widget-limit-row__error">{copy("widget.refresh_failed")}</small> : null}
             </div>

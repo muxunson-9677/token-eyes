@@ -95,7 +95,9 @@ function usedPercent(value) {
 }
 
 function safeIso(value) {
-  const time = Date.parse(String(value || ""));
+  const raw = String(value ?? "").trim();
+  if (!raw || /^[+-]?\d+(?:\.\d+)?$/.test(raw)) return null;
+  const time = Date.parse(raw);
   return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 

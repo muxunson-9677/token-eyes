@@ -91,8 +91,8 @@ const viewModel = {
       accountLabel: `account-${planIndex + 1}@example.com`,
       window,
       usedPercent: 42 + planIndex + windowIndex,
-      resetAt: "2026-08-20T12:03:00.000Z",
-      expiresAt: "2026-08-30T22:24:00.000Z",
+      resetAt: planIndex >= 8 ? null : "2026-08-20T12:03:00.000Z",
+      expiresAt: planIndex === 9 ? null : "2026-08-30T22:24:00.000Z",
       error: null,
       notes: null,
     }))
@@ -149,6 +149,7 @@ async function wheelToEnd(page, locator) {
 async function installFixture(page, prefs) {
   await page.addInitScript((initialPrefs) => {
     window.__TOKEN_EYES_WIDGET_PREFS__ = initialPrefs;
+    window.localStorage.setItem("tokentracker-locale", "zh-CN");
     window.localStorage.setItem(
       "tt.limits.providerOrder",
       JSON.stringify(["claude", "codex", "cursor", "hermes"]),
@@ -324,6 +325,8 @@ try {
             document.querySelectorAll("[data-testid='widget-expanded-limit-plan']").length === planCount
             && document.querySelectorAll(".widget-limit-row").length === rowCount
           ), { planCount: 10, rowCount: 30 }, { timeout: 8_000 });
+          await page.getByText("重置时间不可用", { exact: true }).first()
+            .waitFor({ state: "visible", timeout: 8_000 });
         } else {
           const readyText = scenario.prefs.mode === "models" ? "gpt-5.6-sol" : "6";
           await page.getByText(readyText, { exact: true }).first().waitFor({ state: "visible", timeout: 8_000 });
@@ -405,11 +408,34 @@ try {
         const dismissRect = dismiss?.getBoundingClientRect();
         const stateCardRect = card?.getBoundingClientRect();
         const last = rows.at(-1);
+        const limitPlans = scenarioName === "04-limits"
+          ? [...document.querySelectorAll("[data-testid='widget-expanded-limit-plan']")]
+          : [];
+        const missingResetText = "重置时间不可用";
+        const missingResetCount = limitPlans.reduce((count, plan) => (
+          count + [...plan.querySelectorAll(".widget-limit-row__reset")]
+            .filter((label) => label.textContent?.trim() === missingResetText).length
+        ), 0);
+        const expiryOnlyPlan = limitPlans.at(8);
+        const neitherPlan = limitPlans.at(9);
         return {
           rowCount: rows.length,
           planCount: scenarioName === "04-limits"
             ? document.querySelectorAll("[data-testid='widget-expanded-limit-plan']").length
             : 0,
+          missingResetCount,
+          expiryOnlyFactsValid: !expiryOnlyPlan || (
+            expiryOnlyPlan.querySelectorAll(".widget-limit-row__reset").length === 3
+            && [...expiryOnlyPlan.querySelectorAll(".widget-limit-row__reset")]
+              .every((label) => label.textContent?.trim() === missingResetText)
+            && Boolean(expiryOnlyPlan.querySelector(".widget-limit-plan__validity"))
+          ),
+          neitherFactsValid: !neitherPlan || (
+            neitherPlan.querySelectorAll(".widget-limit-row__reset").length === 3
+            && [...neitherPlan.querySelectorAll(".widget-limit-row__reset")]
+              .every((label) => label.textContent?.trim() === missingResetText)
+            && !neitherPlan.querySelector(".widget-limit-plan__validity")
+          ),
           lastRowVisible: !last || !scroll
             ? true
             : last.getBoundingClientRect().bottom <= scroll.getBoundingClientRect().bottom + 1,
@@ -436,8 +462,13 @@ try {
       if (expectedRows && (stateAudit.rowCount !== expectedRows || !stateAudit.lastRowVisible)) {
         throw new Error(`${scenario.name}@${scale}: incomplete expanded content ${JSON.stringify(stateAudit)}`);
       }
-      if (scenario.name === "04-limits" && stateAudit.planCount !== 10) {
-        throw new Error(`${scenario.name}@${scale}: quota windows were not grouped by plan ${JSON.stringify(stateAudit)}`);
+      if (scenario.name === "04-limits" && (
+        stateAudit.planCount !== 10
+        || stateAudit.missingResetCount !== 6
+        || !stateAudit.expiryOnlyFactsValid
+        || !stateAudit.neitherFactsValid
+      )) {
+        throw new Error(`${scenario.name}@${scale}: quota facts were incomplete or misgrouped ${JSON.stringify(stateAudit)}`);
       }
       if (scenario.name === "02-agent-menu" && (
         stateAudit.menuItemCount !== 7

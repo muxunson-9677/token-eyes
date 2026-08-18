@@ -29,6 +29,7 @@ vi.mock("../lib/copy", () => ({
     }
     if (key === "widget.limit.time_unknown") return "reset unavailable";
     if (key === "widget.limit.reset_at") return `reset: ${params?.time}`;
+    if (key === "widget.limit.reset_unavailable") return "reset time unavailable";
     return `copy:${key}`;
   },
 }));
@@ -52,6 +53,7 @@ vi.mock("motion/react", () => ({
 
 import {
   DesktopWidgetPage,
+  formatCompactReset,
   formatWidgetCompactCost,
   formatWidgetCompactTokenCount,
   orderedWidgetLimits,
@@ -634,28 +636,28 @@ describe("DesktopWidgetPage", () => {
       name: "both reset and expiry",
       resetAt: "2026-08-20T03:33:00.000Z",
       expiresAt: "2026-08-30T14:24:00.000Z",
-      resetText: "2d 16h（08/20 11:33）",
+      resetText: "2026-08-20T03:33:00.000Z",
       expiryText: "有效期 14 天",
     },
     {
       name: "reset only",
       resetAt: "2026-08-20T03:33:00.000Z",
       expiresAt: null,
-      resetText: "2d 16h（08/20 11:33）",
+      resetText: "2026-08-20T03:33:00.000Z",
       expiryText: null,
     },
     {
       name: "expiry only",
       resetAt: null,
       expiresAt: "2026-08-30T14:24:00.000Z",
-      resetText: "reset: reset unavailable",
+      resetText: null,
       expiryText: "有效期 14 天",
     },
     {
       name: "neither reset nor expiry",
       resetAt: null,
       expiresAt: null,
-      resetText: "reset: reset unavailable",
+      resetText: null,
       expiryText: null,
     },
   ])("shows $name as independent facts", ({ resetAt, expiresAt, resetText, expiryText }) => {
@@ -674,7 +676,8 @@ describe("DesktopWidgetPage", () => {
     };
 
     render(<DesktopWidgetPage />);
-    expect(screen.getByText(resetText)).toBeInTheDocument();
+    expect(screen.getByText(resetText ? formatCompactReset(resetText) : "reset time unavailable"))
+      .toBeInTheDocument();
     if (expiryText) {
       expect(screen.getByText(expiryText)).toBeInTheDocument();
     } else {
@@ -818,7 +821,8 @@ describe("DesktopWidgetPage", () => {
     expect(cursorCard).toBeDefined();
     expect(within(cursorCard!).getByText("ezequielhuelsxw@outlook.com")).toBeInTheDocument();
     expect(within(cursorCard!).getByText("Weekly")).toBeInTheDocument();
-    expect(within(cursorCard!).getByText("2d 16h（08/20 11:33）")).toBeInTheDocument();
+    expect(within(cursorCard!).getByText(formatCompactReset("2026-08-20T03:33:00.000Z")))
+      .toBeInTheDocument();
     expect(within(cursorCard!).getByText("有效期 14 天")).toBeInTheDocument();
     expect(screen.queryAllByText("1w")).toHaveLength(0);
     expect(screen.getAllByText("5h")).not.toHaveLength(0);
