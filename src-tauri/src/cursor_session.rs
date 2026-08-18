@@ -2205,8 +2205,8 @@ mod tests {
                 "plan": { "totalPercentUsed": 60 }
             }
         });
-        let snapshot = parse_cursor_quota_snapshot(&payload, "auth0|user_validity")
-            .expect("snapshot");
+        let snapshot =
+            parse_cursor_quota_snapshot(&payload, "auth0|user_validity").expect("snapshot");
         let quota = quota_dto_from_snapshot(snapshot);
 
         assert_eq!(
