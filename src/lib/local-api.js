@@ -194,6 +194,7 @@ function readTrackerConfigAt(trackerDataDir) {
 async function buildRequestUsageRecordsList({
   qp,
   trackerDataDir,
+  home = os.homedir(),
   effectiveSources,
   from,
   to,
@@ -236,7 +237,7 @@ async function buildRequestUsageRecordsList({
     ? resolveDataDirectoryPaths({
         config: readTrackerConfigAt(trackerDataDir),
         env: process.env,
-        home: os.homedir(),
+        home,
       })
     : null;
 
@@ -2274,13 +2275,12 @@ function isPathContainedBy(rootPath, candidatePath, { allowRoot = true } = {}) {
 }
 
 function validateLocalApiTestPaths(
-  { trackerDataDir, queuePath },
+  { trackerDataDir, queuePath, machineIdSeedPath },
   { context = "createLocalApiHandler" } = {},
 ) {
-  // queuePath is the only independently configurable file path. Cookie,
-  // config, cloud-preference, credential, and project-queue paths are derived
-  // from trackerDataDir or queuePath, so validating these two roots covers all
-  // handler persistence in test runners.
+  // Cookie, config, cloud-preference, credential, and project-queue paths are
+  // derived from trackerDataDir or queuePath. The purge-surviving machine-id
+  // seed is the only other independently configurable persistence path.
   if (!trackerDataDir) {
     throw new Error(`${context} requires an explicit trackerDataDir`);
   }
@@ -2302,7 +2302,18 @@ function validateLocalApiTestPaths(
     throw new Error(`${context} queuePath must resolve inside the OS temporary directory`);
   }
 
+  const effectiveMachineIdSeedPath = machineIdSeedPath
+    || path.join(canonicalTrackerDataDir, "machine-id");
+  if (!path.isAbsolute(effectiveMachineIdSeedPath)) {
+    throw new Error(`${context} machineIdSeedPath must be an absolute path under trackerDataDir`);
+  }
+  const canonicalMachineIdSeedPath = canonicalizePathForContainment(effectiveMachineIdSeedPath);
+  if (!isPathContainedBy(canonicalTrackerDataDir, canonicalMachineIdSeedPath, { allowRoot: false })) {
+    throw new Error(`${context} machineIdSeedPath must resolve inside trackerDataDir`);
+  }
+
   return {
+    machineIdSeedPath: canonicalMachineIdSeedPath,
     queuePath: canonicalQueuePath,
     trackerDataDir: canonicalTrackerDataDir,
   };
@@ -2311,6 +2322,7 @@ function validateLocalApiTestPaths(
 function createLocalApiHandler({
   queuePath,
   trackerDataDir: trackerDataDirOverride,
+  machineIdSeedPath: machineIdSeedPathOverride,
   credentialStore: injectedCredentialStore,
   detectDataDirectories: detectDataDirectoriesOverride,
   detectAgentEnvironment: detectAgentEnvironmentOverride,
@@ -2327,11 +2339,22 @@ function createLocalApiHandler({
   const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VITEST === "true";
   let trackerDataDir = trackerDataDirOverride || path.join(os.homedir(), ".tokentracker", "tracker");
   let qp = queuePath || (isTestRunner ? path.join(trackerDataDir, "queue.jsonl") : resolveQueuePath());
+  let machineIdSeedPath = machineIdSeedPathOverride;
   if (isTestRunner) {
-    const validatedPaths = validateLocalApiTestPaths({ trackerDataDir: trackerDataDirOverride, queuePath });
+    const validatedPaths = validateLocalApiTestPaths({
+      trackerDataDir: trackerDataDirOverride,
+      queuePath,
+      machineIdSeedPath: machineIdSeedPathOverride,
+    });
     trackerDataDir = validatedPaths.trackerDataDir;
     qp = validatedPaths.queuePath;
+    machineIdSeedPath = validatedPaths.machineIdSeedPath;
   }
+  const handlerHome = isTestRunner ? trackerDataDir : os.homedir();
+  const getHandlerMachineId = (queuePathForMachineId = qp) => getOrCreateMachineId(
+    queuePathForMachineId,
+    machineIdSeedPath ? { seedPath: machineIdSeedPath } : undefined,
+  );
   const detectDataDirectories = detectDataDirectoriesOverride || detectDataDirectoryPaths;
   const detectAgentEnvironmentForRequest = detectAgentEnvironmentOverride || detectAgentEnvironment;
   const resolveHandlerDataDirectoryPaths = dataDirectoryPathsResolver || resolveDataDirectoryPaths;
@@ -2419,13 +2442,13 @@ function createLocalApiHandler({
         const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
           env: process.env,
-          home: os.homedir(),
+          home: handlerHome,
           platform: process.platform,
         });
         const codexHome = dataDirectoryPaths.codexHomes?.[0]
           || dataDirectoryPaths.codexHome;
         return getCodexUsageLimits({
-          home: os.homedir(),
+          home: handlerHome,
           env: codexHome
             ? { ...process.env, CODEX_HOME: codexHome }
             : process.env,
@@ -2439,7 +2462,7 @@ function createLocalApiHandler({
         const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
           env: process.env,
-          home: os.homedir(),
+          home: handlerHome,
           platform: process.platform,
         });
         return [...new Set(
@@ -2688,7 +2711,7 @@ function createLocalApiHandler({
     const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
       config,
       env: process.env,
-      home: os.homedir(),
+      home: handlerHome,
     });
     const codexRows = await collectCodexRolloutQueueRows({
       codexHomes: dataDirectoryPaths.codexHomes?.length
@@ -5048,7 +5071,7 @@ function createLocalApiHandler({
     if (minted.refreshToken) setRelayRefreshToken(minted.refreshToken);
     if (minted.csrfToken) setRelayCsrfToken(minted.csrfToken);
 
-    const machineId = getOrCreateMachineId(queuePathForMachineId);
+    const machineId = getHandlerMachineId(queuePathForMachineId);
     if (!machineId) return null;
 
     const root = String(baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
@@ -5200,7 +5223,7 @@ function createLocalApiHandler({
         const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
           env: process.env,
-          home: os.homedir(),
+          home: handlerHome,
           platform: process.platform,
         });
         const codexHomes = [...new Set(
@@ -5213,7 +5236,7 @@ function createLocalApiHandler({
         const widgetNow = nowProvider();
         const [usageLimits, sessions] = await Promise.all([
           loadUsageLimits({
-            home: os.homedir(),
+            home: handlerHome,
             env: process.env,
             platform: process.platform,
           }),
@@ -5357,7 +5380,7 @@ function createLocalApiHandler({
       }
       try {
         const state = buildLeaderboardDeviceState(readQueueData(qp), {
-          deviceId: getOrCreateMachineId(qp),
+          deviceId: getHandlerMachineId(qp),
           capturedAt: new Date(),
         });
         assertCompactStateSize(state);
@@ -6266,8 +6289,8 @@ function createLocalApiHandler({
         sources: effectiveSources,
       });
       const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
-        ? tokenOnlyDirectoryStatesProvider(readLocalSettings())
-        : resolveTokenOnlyDirectoryStates(readLocalSettings());
+        ? tokenOnlyDirectoryStatesProvider(readLocalSettings(), { home: handlerHome })
+        : resolveTokenOnlyDirectoryStates(readLocalSettings(), { home: handlerHome });
       const providers = appendDetectedTokenOnlyProviders(aggregateBySource(scopedRows, {
         fromKey: from || null,
         toKey: to || null,
@@ -7064,6 +7087,7 @@ function createLocalApiHandler({
             const built = await buildRequestUsageRecordsList({
               qp,
               trackerDataDir,
+              home: handlerHome,
               effectiveSources,
               from,
               to,
@@ -8176,7 +8200,7 @@ function createLocalApiHandler({
     // device_name keys on the MACHINE, not the browser 鈥?see
     // getOrCreateMachineId above and dashboard/src/lib/cloud-sync.ts.
     if (p === "/functions/tokentracker-machine-id") {
-      json(res, { machineId: getOrCreateMachineId(qp) });
+      json(res, { machineId: getHandlerMachineId(qp) });
       return true;
     }
 
@@ -8420,13 +8444,13 @@ function createLocalApiHandler({
           ? usageLimitsProvider
           : usageLimitsModule.getUsageLimits;
         const data = await loadUsageLimits({
-          home: os.homedir(),
+          home: handlerHome,
           env: process.env,
           platform: process.platform,
         });
         const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
-          ? tokenOnlyDirectoryStatesProvider(readLocalSettings())
-          : resolveTokenOnlyDirectoryStates(readLocalSettings());
+          ? tokenOnlyDirectoryStatesProvider(readLocalSettings(), { home: handlerHome })
+          : resolveTokenOnlyDirectoryStates(readLocalSettings(), { home: handlerHome });
         const { attachBurnRates } = require("./burn-rate");
         const queueRows = readQueueData(qp);
         json(res, attachBurnRates({
@@ -8453,7 +8477,7 @@ function createLocalApiHandler({
         }
         const data = await fetchWorkbuddyQuota({
           env: process.env,
-          home: os.homedir(),
+          home: handlerHome,
           platform: process.platform,
         });
         workbuddyQuotaCache.payload = data;
@@ -8474,7 +8498,7 @@ function createLocalApiHandler({
           ? await limitAccountsProvider({ refresh: forceRefresh === "1" || forceRefresh === "true" })
           : await handleLimitAccountsRequest({
             refresh: forceRefresh === "1" || forceRefresh === "true",
-            home: os.homedir(),
+            home: handlerHome,
             env: process.env,
             platform: process.platform,
           });
@@ -8519,7 +8543,7 @@ function createLocalApiHandler({
         const data = typeof limitAccountsProvider === "function"
           ? await limitAccountsProvider({ refresh: false })
           : await handleLimitAccountsRequest({
-            home: os.homedir(),
+            home: handlerHome,
             env: process.env,
             platform: process.platform,
           });

@@ -75,6 +75,96 @@ test("canonical test path validation rejects a temporary junction into the repos
     }),
     /trackerDataDir must resolve inside the OS temporary directory/u,
   );
+
+  const trackerDataDir = path.join(tmp, "tracker");
+  await fs.promises.mkdir(trackerDataDir);
+  assert.throws(
+    () => localApi.validateLocalApiTestPaths({
+      queuePath: path.join(trackerDataDir, "queue.jsonl"),
+      trackerDataDir,
+      machineIdSeedPath: path.join(linkedTrackerDir, "machine-id"),
+    }),
+    /machineIdSeedPath must resolve inside trackerDataDir/u,
+  );
+});
+
+test("machine-id route confines every persistence access to trackerDataDir in test runners", async (t) => {
+  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-machine-route-scope-"));
+  t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
+  const queuePath = path.join(trackerDataDir, "queue.jsonl");
+  await fs.promises.writeFile(
+    path.join(trackerDataDir, "config.json"),
+    JSON.stringify({ machineId: "stable-machine-id" }),
+    "utf8",
+  );
+  const handler = localApi.createLocalApiHandler({ queuePath, trackerDataDir });
+  const accesses = [];
+  const originals = new Map();
+  for (const name of ["readFileSync", "writeFileSync", "mkdirSync", "renameSync"]) {
+    const original = fs[name];
+    originals.set(name, original);
+    fs[name] = function scopedFsProbe(filePath, ...args) {
+      if (typeof filePath === "string") accesses.push(path.resolve(filePath));
+      return original.call(this, filePath, ...args);
+    };
+  }
+  t.after(() => {
+    for (const [name, original] of originals) fs[name] = original;
+  });
+
+  const url = new URL("/functions/tokentracker-machine-id", "http://localhost:7680");
+  const body = await new Promise((resolve, reject) => {
+    const req = { method: "GET", headers: {}, url };
+    req[Symbol.for("tokentracker.test.localApiSecurityBypass")] = true;
+    const res = {
+      writeHead() {},
+      end(payload) {
+        try {
+          resolve(JSON.parse(payload));
+        } catch (error) {
+          reject(error);
+        }
+      },
+    };
+    Promise.resolve(handler(req, res, url)).catch(reject);
+  });
+
+  assert.equal(body.machineId, "stable-machine-id");
+  assert.ok(accesses.length > 0);
+  assert.ok(
+    accesses.every((entry) => {
+      const relative = path.relative(trackerDataDir, entry);
+      return !relative.startsWith("..") && !path.isAbsolute(relative);
+    }),
+    `machine-id route escaped trackerDataDir: ${accesses.join(", ")}`,
+  );
+});
+
+test("test-runner routes inject trackerDataDir as their isolated home", async (t) => {
+  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-route-home-scope-"));
+  t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
+  let receivedHome = null;
+  let receivedDirectoryHome = null;
+  const handler = localApi.createLocalApiHandler({
+    trackerDataDir,
+    usageLimitsProvider: async ({ home }) => {
+      receivedHome = home;
+      return {};
+    },
+    tokenOnlyDirectoryStatesProvider: (_settings, { home }) => {
+      receivedDirectoryHome = home;
+      return {};
+    },
+  });
+  const url = new URL("/functions/tokentracker-usage-limits", "http://localhost:7680");
+  await new Promise((resolve, reject) => {
+    const req = { method: "GET", headers: {}, url };
+    req[Symbol.for("tokentracker.test.localApiSecurityBypass")] = true;
+    const res = { writeHead() {}, end: resolve };
+    Promise.resolve(handler(req, res, url)).catch(reject);
+  });
+  assert.equal(receivedHome, trackerDataDir);
+  assert.equal(receivedDirectoryHome, trackerDataDir);
 });
 
 test("NODE_ENV=test alone keeps ordinary CLI fallback inside its isolated home", async () => {
