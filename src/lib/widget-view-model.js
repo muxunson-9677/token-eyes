@@ -435,7 +435,7 @@ function flattenTokenPlanRecords(records) {
         usedPercent: Number.isFinite(total) && total > 0 && Number.isFinite(used) && used >= 0
           ? usedPercent((used / total) * 100)
           : null,
-        resetAt: expiresAt,
+        resetAt: null,
         expiresAt,
         notes,
         error: null,

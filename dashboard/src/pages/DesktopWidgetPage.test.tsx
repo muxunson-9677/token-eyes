@@ -27,6 +27,8 @@ vi.mock("../lib/copy", () => ({
     if (key === "widget.session.details") {
       return `${params?.status} · ${params?.time} · ${params?.id}`;
     }
+    if (key === "widget.limit.time_unknown") return "reset unavailable";
+    if (key === "widget.limit.reset_at") return `reset: ${params?.time}`;
     return `copy:${key}`;
   },
 }));
@@ -627,7 +629,36 @@ describe("DesktopWidgetPage", () => {
       .getByText("DeepSeek Harness")).toBeInTheDocument();
   });
 
-  it("shows compact reset and plan expiry as separate facts", () => {
+  it.each([
+    {
+      name: "both reset and expiry",
+      resetAt: "2026-08-20T03:33:00.000Z",
+      expiresAt: "2026-08-30T14:24:00.000Z",
+      resetText: "2d 16h（08/20 11:33）",
+      expiryText: "有效期 14 天",
+    },
+    {
+      name: "reset only",
+      resetAt: "2026-08-20T03:33:00.000Z",
+      expiresAt: null,
+      resetText: "2d 16h（08/20 11:33）",
+      expiryText: null,
+    },
+    {
+      name: "expiry only",
+      resetAt: null,
+      expiresAt: "2026-08-30T14:24:00.000Z",
+      resetText: "reset: reset unavailable",
+      expiryText: "有效期 14 天",
+    },
+    {
+      name: "neither reset nor expiry",
+      resetAt: null,
+      expiresAt: null,
+      resetText: "reset: reset unavailable",
+      expiryText: null,
+    },
+  ])("shows $name as independent facts", ({ resetAt, expiresAt, resetText, expiryText }) => {
     const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-17T11:33:00.000Z"));
     widget.value = {
       ...widget.value,
@@ -636,15 +667,19 @@ describe("DesktopWidgetPage", () => {
         ...viewModel,
         limits: [{
           ...viewModel.limits[0],
-          resetAt: "2026-08-20T03:33:00.000Z",
-          expiresAt: "2026-08-30T14:24:00.000Z",
+          resetAt,
+          expiresAt,
         }],
       },
     };
 
     render(<DesktopWidgetPage />);
-    expect(screen.getByText("2d 16h（08/20 11:33）")).toBeInTheDocument();
-    expect(screen.getByText("有效期 14 天")).toBeInTheDocument();
+    expect(screen.getByText(resetText)).toBeInTheDocument();
+    if (expiryText) {
+      expect(screen.getByText(expiryText)).toBeInTheDocument();
+    } else {
+      expect(screen.queryByText(/^有效期 /)).not.toBeInTheDocument();
+    }
     now.mockRestore();
   });
 

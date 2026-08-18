@@ -531,7 +531,11 @@ function ExpandedLimits({ model }: { model: DesktopWidgetViewModel }) {
                 <strong>{limit.usedPercent == null ? "—" : `${limit.usedPercent}%`}</strong>
               </span>
               <LimitProgress value={limit.usedPercent} />
-              {limit.resetAt ? <small className="widget-limit-row__reset">{formatCompactReset(limit.resetAt)}</small> : null}
+              <small className="widget-limit-row__reset">
+                {limit.resetAt
+                  ? formatCompactReset(limit.resetAt)
+                  : copy("widget.limit.reset_at", { time: copy("widget.limit.time_unknown") })}
+              </small>
               {limit.error ? <small className="widget-limit-row__error">{copy("widget.refresh_failed")}</small> : null}
             </div>
           ))}

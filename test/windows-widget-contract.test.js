@@ -5,7 +5,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const { buildWidgetViewModel } = require("../src/lib/widget-view-model");
+const {
+  buildWidgetViewModel,
+  flattenUsageLimitsPayload,
+} = require("../src/lib/widget-view-model");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -73,6 +76,40 @@ test("widget view model preserves complete quota plans without truncating or spl
     buildWidgetViewModel({ limits: limits.slice(0, 2) }).limits.length,
     2,
     "small plans must not be padded or dropped",
+  );
+});
+
+test("widget view model keeps quota reset and plan expiry as independent facts", () => {
+  const resetAt = "2026-08-20T03:33:00.000Z";
+  const expiresAt = "2026-09-01T00:00:00.000Z";
+  const plans = [
+    {
+      id: "both",
+      source: "codex",
+      expires_at: expiresAt,
+      quota_windows: [{ kind: "rolling_5_hour", reset_at: resetAt }],
+    },
+    {
+      id: "reset-only",
+      source: "codex",
+      quota_windows: [{ kind: "rolling_5_hour", reset_at: resetAt }],
+    },
+    { id: "expires-only", source: "codex", expires_at: expiresAt },
+    { id: "neither", source: "codex" },
+  ];
+
+  const limits = flattenUsageLimitsPayload(null, plans);
+  assert.deepEqual(
+    Object.fromEntries(limits.map((limit) => [limit.planId, {
+      resetAt: limit.resetAt,
+      expiresAt: limit.expiresAt,
+    }])),
+    {
+      "codex:both": { resetAt, expiresAt },
+      "codex:reset-only": { resetAt, expiresAt: null },
+      "codex:expires-only": { resetAt: null, expiresAt },
+      "codex:neither": { resetAt: null, expiresAt: null },
+    },
   );
 });
 
