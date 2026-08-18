@@ -173,7 +173,10 @@ test("cloud checkpoint stays bounded and late buckets use a targeted history fal
       ...row("api_key", 11),
       model: `deepseek-history-${index}`,
     }));
-    await fs.writeFile(queuePath, `${historical.map(JSON.stringify).join("\n")}\n`);
+    await fs.writeFile(queuePath, `${[
+      ...historical,
+      { ...row("api_key", 12), model: "deepseek-history-0" },
+    ].map(JSON.stringify).join("\n")}\n`);
     global.fetch = async (_url, options) => {
       requests.push(JSON.parse(options.body));
       return {
@@ -194,6 +197,7 @@ test("cloud checkpoint stays bounded and late buckets use a targeted history fal
     });
     const checkpoint = JSON.parse(await fs.readFile(queueStatePath, "utf8"));
     assert.ok(checkpoint.cloudQueueIndexRows.length <= 512);
+    assert.equal(checkpoint.cloudQueueIndexRows.at(-1).model, "deepseek-history-0");
 
     await fs.appendFile(queuePath, `${JSON.stringify({
       ...row("token_plan", 22),
@@ -209,8 +213,8 @@ test("cloud checkpoint stays bounded and late buckets use a targeted history fal
     const compat = requests.at(-1).hourly.find((item) => (
       item.model === "deepseek-history-0" && item.billing_mode_compat_summary === "base_total_v1"
     ));
-    assert.equal(compat.total_tokens, 33);
-    assert.equal(compat.billing_mode_compat_slices.api_key.total_tokens, 11);
+    assert.equal(compat.total_tokens, 34);
+    assert.equal(compat.billing_mode_compat_slices.api_key.total_tokens, 12);
     assert.equal(compat.billing_mode_compat_slices.token_plan.total_tokens, 22);
   } finally {
     global.fetch = originalFetch;
@@ -782,7 +786,8 @@ test("rolling migration preserves old writes and downgrades stale attribution to
   );
   assert.match(migration, /add column if not exists billing_mode_slices jsonb/iu);
   assert.match(migration, /billing_mode_slices is null[\s\S]+<> total_tokens[\s\S]+<> input_tokens[\s\S]+<> output_tokens/iu);
-  assert.match(migration, /then jsonb_build_object\('api_key',0,'token_plan',0,'unknown',total_tokens\)/iu);
+  assert.match(migration, /billing_mode_usage_totals/iu);
+  assert.match(migration, /then jsonb_build_object\('api_key','\{\}'::jsonb,'token_plan','\{\}'::jsonb,'unknown',jsonb_build_object\([\s\S]+?'total_tokens',total_tokens/iu);
   assert.doesNotMatch(migration, /drop constraint if exists tokentracker_hourly.*(?:user_id|billing_mode)/iu);
 
   const classify = (baseTotal, slices) => {

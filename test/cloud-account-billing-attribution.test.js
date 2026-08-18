@@ -47,6 +47,7 @@ test("all six account APIs request billing-aware grouped rows and expose mode to
   const migration = await fs.readFile(path.join(root, "migrations", "20260818120000_add-hourly-billing-mode.sql"), "utf8");
   assert.match(migration, /account_usage_grouped_v2/iu);
   assert.match(migration, /billing_mode_slices/iu);
+  assert.match(migration, /billing_mode_usage_totals/iu);
   assert.match(migration, /group by bucket,source,model/iu);
   assert.match(migration, /source='cursor'/iu);
   assert.match(migration, /h\.device_id=any\(v_device_ids\)/iu);
@@ -129,10 +130,15 @@ test("account daily conserves api and plan slices in its cloud response", async 
 test("account model breakdown preserves mixed attribution through buildFleetData", async (t) => {
   const secret = "account-model-billing-test-secret";
   const groupedRows = [{
-    bucket: "2026-08-18", source: "deepseek-harness", model: "deepseek-v4",
-    total_tokens: 33, input_tokens: 33, output_tokens: 0, cached_input_tokens: 0,
+    bucket: "2026-08-18", source: "codex", model: "gpt-5",
+    total_tokens: 1_000_000, input_tokens: 1_000_000, output_tokens: 0, cached_input_tokens: 0,
     cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversations: 1,
-    billing_mode_token_totals: { api_key: 11, token_plan: 22, unknown: 0 },
+    billing_mode_token_totals: { api_key: 400_000, token_plan: 600_000, unknown: 0 },
+    billing_mode_usage_totals: {
+      api_key: { input_tokens: 400_000, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_tokens: 400_000, billable_total_tokens: 400_000 },
+      token_plan: { input_tokens: 600_000, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_tokens: 600_000, billable_total_tokens: 600_000 },
+      unknown: { input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_tokens: 0, billable_total_tokens: 0 },
+    },
   }];
   globalThis.Deno = { env: { get: (key) => ({
     INSFORGE_BASE_URL: "https://cloud.example",
@@ -168,18 +174,22 @@ test("account model breakdown preserves mixed attribution through buildFleetData
   const body = await response.json();
   assert.equal(body.sources[0].billing_mode, "mixed");
   assert.deepEqual(body.sources[0].billing_modes, ["api_key", "token_plan"]);
-  assert.deepEqual(body.sources[0].billing_mode_token_totals, { api_key: 11, token_plan: 22, unknown: 0 });
+  assert.deepEqual(body.sources[0].billing_mode_token_totals, { api_key: 400_000, token_plan: 600_000, unknown: 0 });
+  assert.deepEqual(body.sources[0].billing_mode_cost_totals, { api_key: 0.5, token_plan: 0.75, unknown: 0 });
   assert.equal(body.sources[0].totals.billing_mode_token_totals, undefined);
   assert.equal(body.sources[0].models[0].billing_mode, "mixed");
   assert.equal(body.sources[0].models[0].billing_mode_confidence, "unavailable");
-  assert.deepEqual(body.sources[0].models[0].billing_mode_token_totals, { api_key: 11, token_plan: 22, unknown: 0 });
+  assert.deepEqual(body.sources[0].models[0].billing_mode_token_totals, { api_key: 400_000, token_plan: 600_000, unknown: 0 });
+  assert.deepEqual(body.sources[0].models[0].billing_mode_cost_totals, { api_key: 0.5, token_plan: 0.75, unknown: 0 });
   assert.equal(body.sources[0].models[0].totals.billing_mode_token_totals, undefined);
 
-  const { buildFleetData } = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
+  const { buildFleetData, filterFleetByBillingMode } = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
   const fleet = buildFleetData(body);
   assert.equal(fleet[0].billingMode, "mixed");
   assert.equal(fleet[0].models[0].billingMode, "mixed");
   assert.equal(fleet[0].models[0].billingModeConfidence, "unavailable");
+  assert.equal(filterFleetByBillingMode(fleet, "api_key")[0].models[0].cost, 0.5);
+  assert.equal(filterFleetByBillingMode(fleet, "token_plan")[0].models[0].cost, 0.75);
 });
 
 test("account model breakdown filters repeated canonical source params before edge aggregation", async (t) => {
@@ -226,6 +236,8 @@ test("account model breakdown filters repeated canonical source params before ed
 
   const multiple = await request("&source=%20CoDeX%20&source=CLAUDE&source=codex");
   assert.deepEqual(multiple.sources.map((entry) => entry.source).sort(), ["claude", "codex"]);
+  assert.equal(multiple.sources[0].billing_mode_cost_totals, undefined);
+  assert.equal(multiple.sources[0].models[0].billing_mode_cost_totals, undefined);
   assert.deepEqual((await request("&source=gemini")).sources.map((entry) => entry.source), ["gemini"]);
   assert.deepEqual((await request("&source=missing")).sources, []);
   assert.deepEqual((await request("")).sources.map((entry) => entry.source).sort(), ["claude", "codex", "gemini"]);

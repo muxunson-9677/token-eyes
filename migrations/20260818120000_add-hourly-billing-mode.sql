@@ -181,10 +181,13 @@ begin
           or coalesce(st.reasoning_output_tokens,0) <> reasoning_output_tokens
           or coalesce(st.total_cost_usd,0) <> total_cost_usd
           or coalesce(st.conversations,0) <> conversations
-          then jsonb_build_object('api_key',0,'token_plan',0,'unknown',total_tokens)
-          else jsonb_build_object('api_key',coalesce((billing_mode_slices->'api_key'->>'total_tokens')::bigint,0),
-            'token_plan',coalesce((billing_mode_slices->'token_plan'->>'total_tokens')::bigint,0),
-            'unknown',coalesce((billing_mode_slices->'unknown'->>'total_tokens')::bigint,0)) end mt
+          then jsonb_build_object('api_key','{}'::jsonb,'token_plan','{}'::jsonb,'unknown',jsonb_build_object(
+            'input_tokens',input_tokens,'output_tokens',output_tokens,'cached_input_tokens',cached_input_tokens,
+            'cache_creation_input_tokens',cache_creation_input_tokens,'reasoning_output_tokens',reasoning_output_tokens,
+            'total_tokens',total_tokens,'billable_total_tokens',billable_total_tokens,'conversations',conversations))
+          else jsonb_build_object('api_key',coalesce(billing_mode_slices->'api_key','{}'::jsonb),
+            'token_plan',coalesce(billing_mode_slices->'token_plan','{}'::jsonb),
+            'unknown',coalesce(billing_mode_slices->'unknown','{}'::jsonb)) end mu
         from (select c.*,case when nullif(p_tz,'') is not null then c.hour_start at time zone p_tz
           else (c.hour_start at time zone 'UTC')+make_interval(mins=>coalesce(p_offset_min,0)) end lt from canonical c)c
         left join lateral (select sum(coalesce((v->>'total_tokens')::bigint,0)) total_tokens,
@@ -196,11 +199,25 @@ begin
           sum(coalesce((v->>'total_cost_usd')::numeric,0)) total_cost_usd,
           sum(coalesce((v->>'conversations')::bigint,0)) conversations
           from jsonb_each(c.billing_mode_slices)e(k,v))st on true),
+      ma as (select bucket,source,model,e.key mode,
+        sum(coalesce((e.value->>'input_tokens')::bigint,0)) input_tokens,
+        sum(coalesce((e.value->>'output_tokens')::bigint,0)) output_tokens,
+        sum(coalesce((e.value->>'cached_input_tokens')::bigint,0)) cached_input_tokens,
+        sum(coalesce((e.value->>'cache_creation_input_tokens')::bigint,0)) cache_creation_input_tokens,
+        sum(coalesce((e.value->>'reasoning_output_tokens')::bigint,0)) reasoning_output_tokens,
+        sum(coalesce((e.value->>'total_tokens')::bigint,0)) total_tokens,
+        sum(coalesce((e.value->>'billable_total_tokens')::bigint,0)) billable_total_tokens,
+        sum(coalesce((e.value->>'conversations')::bigint,0)) conversations
+        from b cross join lateral jsonb_each(b.mu)e group by bucket,source,model,e.key),
       g as (select bucket,source,model,sum(total_tokens) total_tokens,sum(input_tokens) input_tokens,sum(output_tokens) output_tokens,
         sum(cached_input_tokens) cached_input_tokens,sum(cache_creation_input_tokens) cache_creation_input_tokens,
         sum(reasoning_output_tokens) reasoning_output_tokens,sum(conversations) conversations,
-        jsonb_build_object('api_key',sum((mt->>'api_key')::bigint),'token_plan',sum((mt->>'token_plan')::bigint),
-          'unknown',sum((mt->>'unknown')::bigint)) billing_mode_token_totals from b group by bucket,source,model)
+        jsonb_object_agg(mode,total_tokens) billing_mode_token_totals,
+        jsonb_object_agg(mode,jsonb_build_object('input_tokens',input_tokens,'output_tokens',output_tokens,
+          'cached_input_tokens',cached_input_tokens,'cache_creation_input_tokens',cache_creation_input_tokens,
+          'reasoning_output_tokens',reasoning_output_tokens,'total_tokens',total_tokens,
+          'billable_total_tokens',billable_total_tokens)) billing_mode_usage_totals
+        from ma group by bucket,source,model)
       select coalesce(jsonb_agg(to_jsonb(g) order by bucket,source,model),'[]'::jsonb) into result from g;
       return result;
     end;

@@ -1835,14 +1835,16 @@ function restoreCloudQueueReadContext(queuePath, state, offset) {
 }
 
 function checkpointCloudQueueReadContext(state, context, offset) {
-  const retainedBaseKeys = new Set(
-    Array.from(context.recentBaseKeys.keys()).slice(-CLOUD_QUEUE_INDEX_BASE_LIMIT),
-  );
+  const retainedBaseKeys = Array.from(context.recentBaseKeys.keys()).slice(-CLOUD_QUEUE_INDEX_BASE_LIMIT);
+  const rowsByBase = new Map(retainedBaseKeys.map((baseKey) => [baseKey, []]));
+  for (const bucket of context.latestByIdentity.values()) {
+    rowsByBase.get(cloudBaseBucketIdentity(bucket))?.push(bucket);
+  }
   state.cloudQueueIndexVersion = CLOUD_QUEUE_INDEX_VERSION;
   state.cloudQueueIndexOffset = offset;
-  state.cloudQueueIndexRows = Array.from(context.latestByIdentity.values())
-    .filter((bucket) => retainedBaseKeys.has(cloudBaseBucketIdentity(bucket)))
-    .map(cloudUsageWireRow);
+  state.cloudQueueIndexRows = retainedBaseKeys.flatMap(
+    (baseKey) => rowsByBase.get(baseKey).map(cloudUsageWireRow),
+  );
 }
 
 function clearCloudQueueCheckpoint(state) {
