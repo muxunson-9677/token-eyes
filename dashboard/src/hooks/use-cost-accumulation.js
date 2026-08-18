@@ -229,23 +229,34 @@ export function useCostAccumulation({
           .map((account) => normalizeInvoiceProvider(account.provider)));
         const sourceRows = Array.isArray(spendTimeseries.by_source) ? spendTimeseries.by_source : [];
         const hasAmbiguousInvoice = apiAccounts.some((account) => account.errorCode === "official_invoice_ambiguous");
-        const hasUncoveredApiSpend = billingStale || hasAmbiguousInvoice || (sourceRows.length > 0
-          ? sourceRows.some((sourceRow) => {
-              const modes = sourceRow?.billing_mode_token_totals;
-              const hasModeTotals = modes && typeof modes === "object";
-              const unknownTokens = hasModeTotals ? Number(modes.unknown || 0) : 0;
-              if (unknownTokens > 0) return true;
-              const requiresInvoice = hasModeTotals
-                ? Number(modes.api_key || 0) > 0
-                : Number(sourceRow?.api_cost_usd ?? sourceRow?.api_usd ?? 0) > 0;
-              if (!requiresInvoice) return false;
-              const provider = normalizeInvoiceProvider(sourceRow?.source);
-              return provider === "unknown" || !officialProviders.has(provider);
-            })
-          : Number(totals.api_usd || 0) > 0 && (
+        const sourceRequirements = sourceRows.map((sourceRow) => {
+          const modes = sourceRow?.billing_mode_token_totals;
+          const hasModeTotals = modes && typeof modes === "object";
+          const hasUnknownUsage = hasModeTotals && Number(modes.unknown || 0) > 0;
+          return {
+            provider: normalizeInvoiceProvider(sourceRow?.source),
+            hasUnknownUsage,
+            requiresInvoice: hasModeTotals
+              ? Number(modes.api_key || 0) > 0 || hasUnknownUsage
+              : Number(sourceRow?.api_cost_usd ?? sourceRow?.api_usd ?? 0) > 0,
+          };
+        });
+        const requiresOfficialInvoice = sourceRows.length > 0
+          ? sourceRequirements.some((requirement) => requirement.requiresInvoice)
+          : Number(totals.api_usd || 0) > 0;
+        const hasUnmatchedRequiredSource = sourceRows.length > 0
+          ? sourceRequirements.some((requirement) => requirement.requiresInvoice && (
+              requirement.hasUnknownUsage
+              || requirement.provider === "unknown"
+              || !officialProviders.has(requirement.provider)
+            ))
+          : requiresOfficialInvoice && (
               officialProviders.size === 0
               || apiAccounts.some((account) => account.spendAuthority === "unavailable")
-            ));
+            );
+        const hasUncoveredApiSpend = requiresOfficialInvoice && (
+          billingStale || hasAmbiguousInvoice || hasUnmatchedRequiredSource
+        );
         const subscriptionUsd = totals.subscription_usd ?? null;
         const otherAiUsd = totals.other_ai_usd ?? null;
         const recordedCashBase = [subscriptionUsd, otherAiUsd]

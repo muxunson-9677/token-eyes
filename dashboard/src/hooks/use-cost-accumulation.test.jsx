@@ -490,6 +490,17 @@ describe("useCostAccumulation selected month", () => {
     await waitFor(() => expect(result.current.billingStale).toBe(false));
     expect(result.current.costSummary.actualCashCoverage).toBe("exact");
     expect(result.current.billingError).toBeNull();
+
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals({ api_usd: 30 }, [{
+      source: "codex",
+      api_cost_usd: 30,
+      billing_mode_token_totals: { api_key: 0, token_plan: 100, unknown: 0 },
+    }]));
+    getApiBillingAccounts.mockRejectedValueOnce(new Error("billing refresh failed again"));
+    rerender({ refreshRevision: 3 });
+    await waitFor(() => expect(result.current.billingStale).toBe(true));
+    expect(result.current.costSummary.actualCashCoverage).toBe("exact");
   });
 
   it("preserves ambiguous billing metadata and ignores a slower old billing response", async () => {
@@ -519,6 +530,7 @@ describe("useCostAccumulation selected month", () => {
       errorCode: "official_invoice_ambiguous",
       candidateCount: 2,
     })));
+    expect(result.current.costSummary.actualCashCoverage).toBe("partial");
     await act(async () => {
       oldBilling.resolve({ accounts: [{
         provider: "openai",
@@ -532,6 +544,36 @@ describe("useCostAccumulation selected month", () => {
       status: "ambiguous",
       candidateCount: 2,
     }));
+  });
+
+  it("keeps pure token-plan cash coverage exact while showing ambiguous billing diagnostics", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals({ api_usd: 30 }, [{
+      source: "codex",
+      api_cost_usd: 30,
+      billing_mode_token_totals: { api_key: 0, token_plan: 100, unknown: 0 },
+    }]));
+    getApiBillingAccounts.mockResolvedValue({ accounts: [{
+      provider: "openai",
+      accountName: "OpenAI 官方账单",
+      billingSource: "api",
+      spendAuthority: "unavailable",
+      status: "ambiguous",
+      errorCode: "official_invoice_ambiguous",
+      candidateCount: 2,
+    }] });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "UTC",
+      sources: COST_SOURCES,
+    }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.apiBillingAccounts[0]).toEqual(expect.objectContaining({
+      errorCode: "official_invoice_ambiguous",
+      candidateCount: 2,
+    }));
+    expect(result.current.costSummary.actualCashCoverage).toBe("exact");
   });
 
   it("preserves explicit real zero totals", async () => {
