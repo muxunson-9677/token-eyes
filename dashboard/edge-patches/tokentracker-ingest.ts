@@ -136,6 +136,7 @@ export default async function (req: Request): Promise<Response> {
         ...bucket,
         ...(slice as Record<string, unknown>),
         billing_mode: billingMode,
+        billing_mode_snapshot: true,
         billing_mode_compat_summary: undefined,
         billing_mode_compat_slices: undefined,
       });
@@ -150,6 +151,7 @@ export default async function (req: Request): Promise<Response> {
     source: b.source || "unknown",
     model: b.model || "unknown",
     billing_mode: normalizeBillingMode(b.billing_mode),
+    billing_mode_snapshot: b.billing_mode_snapshot === true,
     input_tokens: b.input_tokens || 0,
     cached_input_tokens: b.cached_input_tokens || 0,
     cache_creation_input_tokens: b.cache_creation_input_tokens || 0,
@@ -173,21 +175,21 @@ export default async function (req: Request): Promise<Response> {
   }
   const modeRows = Array.from(dedupedMap.values());
 
-  const { error: mergeErr } = await client.database.rpc("tokentracker_hourly_ingest_v2", {
+  const { error: mergeErr } = await client.database.rpc("tokentracker_hourly_ingest_v3", {
     p_user_id: userId,
     p_device_id: deviceId,
     p_rows: modeRows,
   });
   if (!mergeErr) return json({ ok: true, inserted: modeRows.length, skipped: 0 });
   const mergeMessage = String(mergeErr.message || mergeErr);
-  const missingCapability = /tokentracker_hourly_ingest_v2/iu.test(mergeMessage)
+  const missingCapability = /tokentracker_hourly_ingest_v3/iu.test(mergeMessage)
     && /(?:not found|does not exist|schema cache|pgrst202)/iu.test(mergeMessage);
   if (!missingCapability) return json({ error: mergeErr.message }, 500);
 
   // Edge-first rollout fallback: collapse modes into the legacy five-column
   // base row and omit the extension column entirely.
   const fallbackMap = new Map<string, Omit<typeof modeRows[number], "billing_mode">>();
-  for (const { billing_mode: _mode, ...r } of modeRows) {
+  for (const { billing_mode: _mode, billing_mode_snapshot: _snapshot, ...r } of modeRows) {
     const key = `${r.hour_start}|${r.source}|${r.model}`;
     const base = fallbackMap.get(key);
     if (!base) fallbackMap.set(key, { ...r });

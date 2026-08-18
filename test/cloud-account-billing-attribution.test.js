@@ -49,7 +49,10 @@ test("all six account APIs request billing-aware grouped rows and expose mode to
   assert.match(migration, /billing_mode_slices/iu);
   assert.match(migration, /group by bucket,source,model/iu);
   assert.match(migration, /source='cursor'/iu);
-  assert.match(migration, /device_id::text=any/iu);
+  assert.match(migration, /h\.device_id=any\(v_device_ids\)/iu);
+  assert.match(migration, /v_device_ids := coalesce\(p_device_ids,array\[\]::text\[\]\)::uuid\[\]/iu);
+  assert.doesNotMatch(migration, /h\.user_id::text\s*=\s*p_user_id/iu);
+  assert.doesNotMatch(migration, /h\.device_id::text\s*=\s*any/iu);
   assert.match(migration, /set search_path = pg_catalog, public/iu);
   const compactMigration = migration.replace(/\s+/gu, " ");
   const signature = String.raw`public\.account_usage_grouped_v2\(\s*text\s*,\s*text\[\]\s*,\s*timestamptz\s*,\s*timestamptz\s*,\s*text\s*,\s*text\s*,\s*integer\s*\)`;

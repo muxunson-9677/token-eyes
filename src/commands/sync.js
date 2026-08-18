@@ -1376,6 +1376,7 @@ module.exports = {
   repairGrokQueueFromSessionSnapshots,
   applyCloudConversationsBackfill,
   readQueueBatch,
+  createCloudQueueReadContext,
   CURSOR_UNKNOWN_MIGRATION_KEY,
   ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY,
   CODEX_RESCAN_DEDUP_REPAIR_KEY,
@@ -1771,21 +1772,67 @@ function normalizeCloudQueueBucket(bucket) {
   return bucket;
 }
 
-async function readPriorCloudQueueRows(queuePath, endOffset, baseKeys) {
-  if (endOffset <= 0 || baseKeys.size === 0) return [];
+function updateCloudQueueReadContext(context, bucket) {
+  context.latestByIdentity.set(queueUsageIdentity(bucket), bucket);
+}
+
+async function createCloudQueueReadContext(queuePath, endOffset) {
+  const context = {
+    queuePath,
+    latestByIdentity: new Map(),
+    migrationTransactions: new Map(),
+    migrationTransactionsByOffset: new Map(),
+    rowsParsed: 0,
+  };
+  if (endOffset <= 0) return context;
   const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: 0, end: endOffset - 1 });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-  const latest = new Map();
   for await (const line of rl) {
     if (!line.trim()) continue;
     let bucket;
     try { bucket = normalizeCloudQueueBucket(JSON.parse(line)); } catch (_e) { continue; }
-    if (!bucket || !baseKeys.has(cloudBaseBucketIdentity(bucket))) continue;
-    latest.set(queueUsageIdentity(bucket), bucket);
+    if (!bucket) continue;
+    context.rowsParsed += 1;
+    updateCloudQueueReadContext(context, bucket);
   }
   rl.close();
   stream.close?.();
-  return Array.from(latest.values());
+  return context;
+}
+
+function pageCloudMigration(transaction, limit, migrationCursor) {
+  const { groups, migrationId, startOffset, nextOffset } = transaction;
+  const cursorMatches = migrationCursor?.id === migrationId
+    && Number(migrationCursor?.startOffset) === startOffset;
+  const firstGroup = cursorMatches
+    ? Math.max(0, Math.floor(Number(migrationCursor.groupIndex) || 0))
+    : 0;
+  const buckets = [];
+  let nextGroup = firstGroup;
+  while (nextGroup < groups.length) {
+    const wireGroup = withBillingModeCompatSummaries(groups[nextGroup]);
+    if (wireGroup.length > limit) {
+      throw new Error(`Migration base bucket exceeds cloud batch limit (${wireGroup.length} > ${limit})`);
+    }
+    if (buckets.length > 0 && buckets.length + wireGroup.length > limit) break;
+    buckets.push(...wireGroup);
+    nextGroup += 1;
+  }
+  if (nextGroup < groups.length) {
+    return {
+      buckets,
+      nextOffset: startOffset,
+      migrationCursor: { id: migrationId, startOffset, groupIndex: nextGroup },
+    };
+  }
+  return { buckets, nextOffset, migrationCursor: null };
+}
+
+async function readPriorCloudQueueRows(queuePath, endOffset, baseKeys) {
+  if (endOffset <= 0 || baseKeys.size === 0) return [];
+  const context = await createCloudQueueReadContext(queuePath, endOffset);
+  return Array.from(context.latestByIdentity.values())
+    .filter((bucket) => baseKeys.has(cloudBaseBucketIdentity(bucket)));
 }
 
 async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePath, maxBatches = 5, batchSize = 200 }) {
@@ -1796,10 +1843,11 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
 
   const queueSize = await safeStatSize(queuePath);
   const limit = Math.min(Math.max(1, Math.floor(Number(batchSize || 200))), MAX_INGEST_BUCKETS);
+  const readContext = await createCloudQueueReadContext(queuePath, offset);
 
   for (let batch = 0; batch < maxBatches; batch++) {
     if (offset >= queueSize) break;
-    const result = await readQueueBatch(queuePath, offset, limit, state.migrationCursor || null);
+    const result = await readQueueBatch(queuePath, offset, limit, state.migrationCursor || null, readContext);
     if (result.buckets.length === 0) break;
 
     const root = baseUrl.replace(/\/$/, "");
@@ -1842,17 +1890,24 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
   return { inserted, skipped };
 }
 
-async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCursor = null) {
+async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCursor = null, readContext = null) {
   const st = await fs.stat(queuePath).catch(() => null);
   if (!st || !st.isFile()) return { buckets: [], nextOffset: startOffset };
   if (startOffset >= st.size) return { buckets: [], nextOffset: startOffset };
+
+  const limit = Math.min(Math.max(1, Math.floor(Number(maxBuckets) || 1)), MAX_INGEST_BUCKETS);
+  const cachedMigration = readContext
+    ? migrationCursor?.id
+      ? readContext.migrationTransactions.get(`${startOffset}|${migrationCursor.id}`)
+      : readContext.migrationTransactionsByOffset.get(startOffset)
+    : null;
+  if (cachedMigration) return pageCloudMigration(cachedMigration, limit, migrationCursor);
 
   const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: startOffset });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   const bucketMap = new Map();
   const baseBucketKeys = new Set();
-  const limit = Math.min(Math.max(1, Math.floor(Number(maxBuckets) || 1)), MAX_INGEST_BUCKETS);
   let offset = startOffset;
   let linesRead = 0;
   let migrationId = null;
@@ -1911,6 +1966,7 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
       }
       bucketMap.set(queueUsageIdentity(bucket), bucket);
     }
+    if (readContext) readContext.rowsParsed += 1;
     linesRead += 1;
     if (migrationId) {
       migrationRowsRemaining -= 1;
@@ -1924,42 +1980,36 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
   if (migrationRows.length > 0) {
     const latestByIdentity = new Map();
     for (const bucket of migrationRows) latestByIdentity.set(queueUsageIdentity(bucket), bucket);
+    if (readContext) {
+      for (const bucket of latestByIdentity.values()) updateCloudQueueReadContext(readContext, bucket);
+    }
     const rowsByBaseBucket = new Map();
     for (const bucket of latestByIdentity.values()) {
       const baseKey = `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
       if (!rowsByBaseBucket.has(baseKey)) rowsByBaseBucket.set(baseKey, []);
       rowsByBaseBucket.get(baseKey).push(bucket);
     }
-    const groups = Array.from(rowsByBaseBucket.values());
-    const cursorMatches = migrationCursor?.id === migrationId
-      && Number(migrationCursor?.startOffset) === startOffset;
-    const firstGroup = cursorMatches
-      ? Math.max(0, Math.floor(Number(migrationCursor.groupIndex) || 0))
-      : 0;
-    const buckets = [];
-    let nextGroup = firstGroup;
-    while (nextGroup < groups.length) {
-      const group = groups[nextGroup];
-      const wireGroup = withBillingModeCompatSummaries(group);
-      if (wireGroup.length > limit) {
-        throw new Error(`Migration base bucket exceeds cloud batch limit (${wireGroup.length} > ${limit})`);
-      }
-      if (buckets.length > 0 && buckets.length + wireGroup.length > limit) break;
-      buckets.push(...wireGroup);
-      nextGroup += 1;
+    const transaction = {
+      groups: Array.from(rowsByBaseBucket.values()),
+      migrationId,
+      startOffset,
+      nextOffset: offset,
+    };
+    if (readContext) {
+      readContext.migrationTransactions.set(`${startOffset}|${migrationId}`, transaction);
+      readContext.migrationTransactionsByOffset.set(startOffset, transaction);
     }
-    if (nextGroup < groups.length) {
-      return {
-        buckets,
-        nextOffset: startOffset,
-        migrationCursor: { id: migrationId, startOffset, groupIndex: nextGroup },
-      };
-    }
-    return { buckets, nextOffset: offset, migrationCursor: null };
+    return pageCloudMigration(transaction, limit, migrationCursor);
   }
   const buckets = Array.from(bucketMap.values());
-  const priorBuckets = await readPriorCloudQueueRows(queuePath, startOffset, baseBucketKeys);
-  return { buckets: withBillingModeCompatSummaries(buckets, priorBuckets), nextOffset: offset };
+  const priorBuckets = readContext
+    ? Array.from(readContext.latestByIdentity.values()).filter((bucket) => baseBucketKeys.has(cloudBaseBucketIdentity(bucket)))
+    : await readPriorCloudQueueRows(queuePath, startOffset, baseBucketKeys);
+  const wireBuckets = withBillingModeCompatSummaries(buckets, priorBuckets);
+  if (readContext) {
+    for (const bucket of buckets) updateCloudQueueReadContext(readContext, bucket);
+  }
+  return { buckets: wireBuckets, nextOffset: offset };
 }
 
 function normalizeGrokRepairSource(value) {

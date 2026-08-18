@@ -32,6 +32,7 @@ async function importIngestEdge() {
 
 test("sync exposes its queue batch reader for cloud identity coverage", () => {
   assert.equal(typeof syncCommand.readQueueBatch, "function");
+  assert.equal(typeof syncCommand.createCloudQueueReadContext, "function");
 });
 
 function row(billingMode, totalTokens) {
@@ -201,13 +202,14 @@ test("large migration transactions page by whole base bucket and resume determin
     let offset = 0;
     let migrationCursor = null;
     let batchNumber = 0;
+    const context = await syncCommand.createCloudQueueReadContext(queuePath, offset);
     while (true) {
       const inputCursor = migrationCursor;
-      const result = await syncCommand.readQueueBatch(queuePath, offset, 200, inputCursor);
+      const result = await syncCommand.readQueueBatch(queuePath, offset, 200, inputCursor, context);
       if (result.buckets.length === 0) break;
       assert.ok(result.buckets.length <= 200);
       if (batchNumber === 0) {
-        const replay = await syncCommand.readQueueBatch(queuePath, offset, 200, inputCursor);
+        const replay = await syncCommand.readQueueBatch(queuePath, offset, 200, inputCursor, context);
         assert.deepEqual(replay, result, "crash before cursor persistence must replay idempotently");
       }
       const bases = new Set();
@@ -234,6 +236,7 @@ test("large migration transactions page by whole base bucket and resume determin
     assert.equal(cloud.size, 1001);
     assert.equal(cloud.get("deepseek-harness|deepseek-199|2026-08-18T00:00:00.000Z|api_key")?.total_tokens, 200);
     assert.equal(cloud.get("deepseek-harness|deepseek-199|2026-08-18T00:00:00.000Z|token_plan")?.total_tokens, 22);
+    assert.equal(context.rowsParsed, migrationRows.length, "migration paging must parse its transaction once");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -250,9 +253,10 @@ test("normal queue paging counts compatibility summaries without splitting base 
     await fs.writeFile(queuePath, `${rows.map(JSON.stringify).join("\n")}\n`);
 
     let offset = 0;
+    const context = await syncCommand.createCloudQueueReadContext(queuePath, offset);
     const seen = new Set();
     while (true) {
-      const batch = await syncCommand.readQueueBatch(queuePath, offset, 200);
+      const batch = await syncCommand.readQueueBatch(queuePath, offset, 200, null, context);
       if (batch.buckets.length === 0) break;
       assert.ok(batch.buckets.length <= 200);
       const byBase = new Map();
@@ -271,6 +275,7 @@ test("normal queue paging counts compatibility summaries without splitting base 
       offset = batch.nextOffset;
     }
     assert.equal(seen.size, 300);
+    assert.equal(context.rowsParsed, 300, "a multi-page drain must parse each queue row exactly once");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -316,18 +321,23 @@ test("cloud schema keeps the legacy base identity and adds rolling-safe attribut
   assert.doesNotMatch(migration, /drop constraint[^;]+user_id/iu);
   assert.doesNotMatch(migration, /unique[^;]+billing_mode/iu);
   assert.match(ingest, /billing_mode:\s*normalizeBillingMode/u);
-  assert.match(ingest, /rpc\("tokentracker_hourly_ingest_v2"/u);
-  assert.match(migration, /revoke all on function public\.tokentracker_hourly_ingest_v2\(text,text,jsonb\) from public,anon,authenticated/iu);
-  assert.match(migration, /grant execute on function public\.tokentracker_hourly_ingest_v2\(text,text,jsonb\) to service_role/iu);
+  assert.match(ingest, /rpc\("tokentracker_hourly_ingest_v3"/u);
+  assert.match(migration, /revoke all on function public\.tokentracker_hourly_ingest_v3\(text,text,jsonb\) from public,anon,authenticated/iu);
+  assert.match(migration, /grant execute on function public\.tokentracker_hourly_ingest_v3\(text,text,jsonb\) to service_role/iu);
   assert.match(migration, /pg_advisory_xact_lock/iu);
   assert.match(migration, /hashtextextended/iu);
+  assert.match(migration, /billing_mode_snapshot/iu);
+  assert.match(migration, /processed_snapshots/iu);
+  assert.match(migration, /v_user_id uuid/iu);
+  assert.match(migration, /v_device_id uuid/iu);
+  assert.match(migration, /h\.user_id=v_user_id/iu);
+  assert.match(migration, /h\.device_id=v_device_id/iu);
+  assert.match(migration, /invalid token tracker uuid/iu);
   const lockAt = migration.indexOf("pg_advisory_xact_lock");
   const firstReadAt = migration.indexOf("select h.billing_mode_slices");
   assert.ok(lockAt >= 0 && lockAt < firstReadAt, "missing-row identities must lock before SELECT FOR UPDATE");
-  assert.match(
-    migration,
-    /concat_ws\(E'\\x1f',p_user_id,p_device_id,extract\(epoch from r\.hour_start\)::text,r\.source,r\.model\)/iu,
-  );
+  assert.match(migration, /select distinct[\s\S]+order by lock_key/iu);
+  assert.match(migration, /concat_ws\(E'\\x1f',v_user_id::text,v_device_id::text,[\s\S]+extract\(epoch from x\.hour_start\)::text/iu);
   assert.match(ingest, /onConflict:\s*"user_id,device_id,hour_start,source,model"/u);
   for (const consumer of [profile, badge]) {
     assert.doesNotMatch(consumer, /\.order\("billing_mode"/u);
@@ -364,7 +374,7 @@ test("edge-first deployment falls back to one legacy base row without losing api
         };
       },
       async rpc() {
-        return { data: null, error: { message: "function tokentracker_hourly_ingest_v2 does not exist" } };
+        return { data: null, error: { message: "function tokentracker_hourly_ingest_v3 does not exist" } };
       },
     },
   });
@@ -384,6 +394,7 @@ test("edge-first deployment falls back to one legacy base row without losing api
   assert.equal(fallbackRows.length, 1);
   assert.equal(fallbackRows[0].total_tokens, 33);
   assert.equal("billing_mode" in fallbackRows[0], false);
+  assert.equal("billing_mode_snapshot" in fallbackRows[0], false);
   assert.equal("billing_mode_slices" in fallbackRows[0], false);
 });
 
@@ -420,7 +431,24 @@ test("new Edge excludes compatibility summaries while preserving exact mode slic
   }));
   assert.equal(response.status, 200);
   assert.deepEqual(rpcRows.map((item) => [item.billing_mode, item.total_tokens]).sort(), [["api_key", 11], ["token_plan", 24]]);
+  assert.equal(rpcRows.every((item) => item.billing_mode_snapshot === true), true);
   assert.equal(rpcRows.reduce((sum, item) => sum + item.total_tokens, 0), 35);
+});
+
+test("authoritative snapshots replace legacy and stale base totals idempotently", async () => {
+  const migration = await fs.readFile(
+    path.join(__dirname, "..", "migrations", "20260818120000_add-hourly-billing-mode.sql"),
+    "utf8",
+  );
+  assert.match(migration, /if coalesce\(r\.billing_mode_snapshot,false\) then[\s\S]+jsonb_object_agg[\s\S]+else[\s\S]+select h\.billing_mode_slices/iu);
+  const applySnapshot = (_existing, snapshot) => ({ ...snapshot });
+  let slices = { unknown: 100 };
+  slices = applySnapshot(slices, { api_key: 120 });
+  assert.deepEqual(slices, { api_key: 120 });
+  slices = applySnapshot(slices, { api_key: 40, token_plan: 80 });
+  assert.deepEqual(slices, { api_key: 40, token_plan: 80 });
+  slices = applySnapshot(slices, { api_key: 40, token_plan: 80 });
+  assert.equal(Object.values(slices).reduce((sum, value) => sum + value, 0), 120);
 });
 
 test("rolling migration preserves old writes and downgrades stale attribution to unknown", async () => {

@@ -16,30 +16,60 @@ begin
   end if;
 
   execute $fn$
-    create or replace function public.tokentracker_hourly_ingest_v2(
+    create or replace function public.tokentracker_hourly_ingest_v3(
       p_user_id text, p_device_id text, p_rows jsonb
     ) returns integer language plpgsql security definer set search_path = pg_catalog, public as $body$
-    declare r record; slices jsonb; legacy jsonb; t record; incoming record; affected integer := 0;
+    declare r record; lock_row record; slices jsonb; legacy jsonb; t record; incoming record;
+      base_key text; processed_snapshots text[] := array[]::text[];
+      v_user_id uuid; v_device_id uuid; affected integer := 0;
     begin
+      begin
+        v_user_id := p_user_id::uuid;
+        v_device_id := p_device_id::uuid;
+      exception when invalid_text_representation then
+        raise exception 'invalid token tracker uuid' using errcode = '22023';
+      end;
+      -- Acquire every base lock in one deterministic order. Opposite row
+      -- orders in concurrent batches therefore cannot deadlock.
+      for lock_row in
+        select distinct concat_ws(E'\x1f',v_user_id::text,v_device_id::text,
+          extract(epoch from x.hour_start)::text,coalesce(x.source,'unknown'),coalesce(x.model,'unknown')) lock_key
+        from jsonb_to_recordset(coalesce(p_rows,'[]'::jsonb)) as x(hour_start timestamptz,source text,model text)
+        order by lock_key
+      loop
+        perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(lock_row.lock_key,0));
+      end loop;
       for r in select * from jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb)) as x(
-        hour_start timestamptz, source text, model text, billing_mode text,
+        hour_start timestamptz, source text, model text, billing_mode text, billing_mode_snapshot boolean,
         input_tokens bigint, cached_input_tokens bigint, cache_creation_input_tokens bigint,
         output_tokens bigint, reasoning_output_tokens bigint, total_tokens bigint,
         billable_total_tokens bigint, total_cost_usd numeric, conversations bigint)
       loop
-        -- SELECT FOR UPDATE cannot lock a row that does not exist yet. Lock
-        -- the stable five-column identity first so concurrent first api/plan
-        -- writes serialize instead of replacing each other's JSON slices.
-        perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
-          concat_ws(E'\x1f',p_user_id,p_device_id,extract(epoch from r.hour_start)::text,r.source,r.model),0));
-        select h.billing_mode_slices, jsonb_build_object(
+        base_key := concat_ws(E'\x1f',extract(epoch from r.hour_start)::text,r.source,r.model);
+        if coalesce(r.billing_mode_snapshot,false) then
+          if base_key=any(processed_snapshots) then continue; end if;
+          processed_snapshots := array_append(processed_snapshots,base_key);
+          select jsonb_object_agg(case when x.billing_mode in ('api_key','token_plan') then x.billing_mode else 'unknown' end,
+            jsonb_build_object('input_tokens',coalesce(x.input_tokens,0),'cached_input_tokens',coalesce(x.cached_input_tokens,0),
+              'cache_creation_input_tokens',coalesce(x.cache_creation_input_tokens,0),'output_tokens',coalesce(x.output_tokens,0),
+              'reasoning_output_tokens',coalesce(x.reasoning_output_tokens,0),'total_tokens',coalesce(x.total_tokens,0),
+              'billable_total_tokens',coalesce(x.billable_total_tokens,x.total_tokens,0),'total_cost_usd',coalesce(x.total_cost_usd,0),
+              'conversations',coalesce(x.conversations,0))) into slices
+          from jsonb_to_recordset(coalesce(p_rows,'[]'::jsonb)) as x(hour_start timestamptz,source text,model text,
+            billing_mode text,billing_mode_snapshot boolean,input_tokens bigint,cached_input_tokens bigint,
+            cache_creation_input_tokens bigint,output_tokens bigint,reasoning_output_tokens bigint,total_tokens bigint,
+            billable_total_tokens bigint,total_cost_usd numeric,conversations bigint)
+          where coalesce(x.billing_mode_snapshot,false) and x.hour_start=r.hour_start
+            and coalesce(x.source,'unknown')=r.source and coalesce(x.model,'unknown')=r.model;
+        else
+          select h.billing_mode_slices, jsonb_build_object(
           'input_tokens', coalesce(h.input_tokens,0), 'cached_input_tokens', coalesce(h.cached_input_tokens,0),
           'cache_creation_input_tokens', coalesce(h.cache_creation_input_tokens,0), 'output_tokens', coalesce(h.output_tokens,0),
           'reasoning_output_tokens', coalesce(h.reasoning_output_tokens,0), 'total_tokens', coalesce(h.total_tokens,0),
           'billable_total_tokens', coalesce(h.billable_total_tokens,h.total_tokens,0),
           'total_cost_usd', coalesce(h.total_cost_usd,0), 'conversations', coalesce(h.conversations,0))
-        into slices, legacy from public.tokentracker_hourly h
-        where h.user_id::text=p_user_id and h.device_id::text=p_device_id and h.hour_start=r.hour_start
+          into slices, legacy from public.tokentracker_hourly h
+        where h.user_id=v_user_id and h.device_id=v_device_id and h.hour_start=r.hour_start
           and h.source=r.source and h.model=r.model for update;
         if slices is not null then
           select sum(coalesce((v->>'input_tokens')::bigint,0)) input_tokens,
@@ -68,10 +98,11 @@ begin
             sum(coalesce(x.reasoning_output_tokens,0)) reasoning_output_tokens,sum(coalesce(x.total_tokens,0)) total_tokens,
             sum(coalesce(x.billable_total_tokens,x.total_tokens,0)) billable_total_tokens,
             sum(coalesce(x.total_cost_usd,0)) total_cost_usd,sum(coalesce(x.conversations,0)) conversations into incoming
-          from jsonb_to_recordset(coalesce(p_rows,'[]'::jsonb)) as x(hour_start timestamptz,source text,model text,
+          from jsonb_to_recordset(coalesce(p_rows,'[]'::jsonb)) as x(hour_start timestamptz,source text,model text,billing_mode_snapshot boolean,
             input_tokens bigint,cached_input_tokens bigint,cache_creation_input_tokens bigint,output_tokens bigint,
             reasoning_output_tokens bigint,total_tokens bigint,billable_total_tokens bigint,total_cost_usd numeric,conversations bigint)
-          where x.hour_start=r.hour_start and coalesce(x.source,'unknown')=r.source and coalesce(x.model,'unknown')=r.model;
+          where not coalesce(x.billing_mode_snapshot,false) and x.hour_start=r.hour_start
+            and coalesce(x.source,'unknown')=r.source and coalesce(x.model,'unknown')=r.model;
           slices := case when legacy is null then '{}'::jsonb
             when coalesce(incoming.input_tokens,0)=coalesce((legacy->>'input_tokens')::bigint,0)
               and coalesce(incoming.cached_input_tokens,0)=coalesce((legacy->>'cached_input_tokens')::bigint,0)
@@ -90,6 +121,7 @@ begin
             'reasoning_output_tokens',coalesce(r.reasoning_output_tokens,0),'total_tokens',coalesce(r.total_tokens,0),
             'billable_total_tokens',coalesce(r.billable_total_tokens,r.total_tokens,0),'total_cost_usd',coalesce(r.total_cost_usd,0),
             'conversations',coalesce(r.conversations,0)));
+        end if;
         select sum(coalesce((v->>'input_tokens')::bigint,0)) input_tokens,
           sum(coalesce((v->>'cached_input_tokens')::bigint,0)) cached_input_tokens,
           sum(coalesce((v->>'cache_creation_input_tokens')::bigint,0)) cache_creation_input_tokens,
@@ -101,7 +133,7 @@ begin
           sum(coalesce((v->>'conversations')::bigint,0)) conversations into t from jsonb_each(slices) e(k,v);
         insert into public.tokentracker_hourly(user_id,device_id,hour_start,source,model,input_tokens,cached_input_tokens,
           cache_creation_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,billable_total_tokens,total_cost_usd,conversations,billing_mode_slices)
-        values(p_user_id::uuid,p_device_id::uuid,r.hour_start,r.source,r.model,t.input_tokens,t.cached_input_tokens,
+        values(v_user_id,v_device_id,r.hour_start,r.source,r.model,t.input_tokens,t.cached_input_tokens,
           t.cache_creation_input_tokens,t.output_tokens,t.reasoning_output_tokens,t.total_tokens,t.billable_total_tokens,t.total_cost_usd,t.conversations,slices)
         on conflict (user_id,device_id,hour_start,source,model) do update set
           input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,
@@ -117,15 +149,23 @@ begin
   execute $fn$
     create or replace function public.account_usage_grouped_v2(p_user_id text,p_device_ids text[],p_from timestamptz,
       p_to timestamptz,p_trunc text,p_tz text,p_offset_min integer) returns jsonb
-    language sql stable security definer set search_path = pg_catalog, public as $body$
+    language plpgsql stable security definer set search_path = pg_catalog, public as $body$
+    declare v_user_id uuid; v_device_ids uuid[]; result jsonb;
+    begin
+      begin
+        v_user_id := p_user_id::uuid;
+        v_device_ids := coalesce(p_device_ids,array[]::text[])::uuid[];
+      exception when invalid_text_representation then
+        raise exception 'invalid token tracker uuid' using errcode = '22023';
+      end;
       with f as (select h.device_id::text device_id,h.hour_start,coalesce(h.source,'unknown') source,coalesce(h.model,'unknown') model,
         h.billing_mode_slices,coalesce(h.total_tokens,0) total_tokens,coalesce(h.billable_total_tokens,h.total_tokens,0) billable_total_tokens,
         coalesce(h.total_cost_usd,0) total_cost_usd,coalesce(h.input_tokens,0) input_tokens,
         coalesce(h.output_tokens,0) output_tokens,coalesce(h.cached_input_tokens,0) cached_input_tokens,
         coalesce(h.cache_creation_input_tokens,0) cache_creation_input_tokens,
         coalesce(h.reasoning_output_tokens,0) reasoning_output_tokens,coalesce(h.conversations,0) conversations
-        from public.tokentracker_hourly h where h.user_id::text=p_user_id and h.hour_start>=p_from and h.hour_start<p_to
-          and (h.source='cursor' or h.device_id::text=any(coalesce(p_device_ids,array[]::text[])))),
+        from public.tokentracker_hourly h where h.user_id=v_user_id and h.hour_start>=p_from and h.hour_start<p_to
+          and (h.source='cursor' or h.device_id=any(v_device_ids))),
       ranked as (select f.*,row_number() over(partition by source,model,hour_start order by total_tokens desc,device_id) rn from f where source='cursor'),
       canonical as (select * from ranked where rn=1 union all select f.*,1 rn from f where source<>'cursor'),
       b as (select case p_trunc when 'hour' then to_char(date_trunc('hour',lt),'YYYY-MM-DD"T"HH24:00:00')
@@ -161,12 +201,14 @@ begin
         sum(reasoning_output_tokens) reasoning_output_tokens,sum(conversations) conversations,
         jsonb_build_object('api_key',sum((mt->>'api_key')::bigint),'token_plan',sum((mt->>'token_plan')::bigint),
           'unknown',sum((mt->>'unknown')::bigint)) billing_mode_token_totals from b group by bucket,source,model)
-      select coalesce(jsonb_agg(to_jsonb(g) order by bucket,source,model),'[]'::jsonb) from g
+      select coalesce(jsonb_agg(to_jsonb(g) order by bucket,source,model),'[]'::jsonb) into result from g;
+      return result;
+    end;
     $body$
   $fn$;
 
-  revoke all on function public.tokentracker_hourly_ingest_v2(text,text,jsonb) from public,anon,authenticated;
-  grant execute on function public.tokentracker_hourly_ingest_v2(text,text,jsonb) to service_role;
+  revoke all on function public.tokentracker_hourly_ingest_v3(text,text,jsonb) from public,anon,authenticated;
+  grant execute on function public.tokentracker_hourly_ingest_v3(text,text,jsonb) to service_role;
   revoke all on function public.account_usage_grouped_v2(text,text[],timestamptz,timestamptz,text,text,integer) from public,anon,authenticated;
   grant execute on function public.account_usage_grouped_v2(text,text[],timestamptz,timestamptz,text,text,integer) to service_role;
 end $$;
