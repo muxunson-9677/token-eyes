@@ -62,6 +62,9 @@ test("Windows bundled runtime includes its shared registry and starts the local 
   const smokeTarget = path.join(repoRoot, "src-tauri", "target");
   fs.mkdirSync(smokeTarget, { recursive: true });
   const smokeHome = fs.mkdtempSync(path.join(smokeTarget, "runtime-smoke-"));
+  const trackerDataDir = path.join(smokeHome, ".tokentracker", "tracker");
+  fs.mkdirSync(trackerDataDir, { recursive: true });
+  fs.writeFileSync(path.join(trackerDataDir, "cursors.json"), "{}\n", "utf8");
   let child;
   t.after(() => {
     try {
