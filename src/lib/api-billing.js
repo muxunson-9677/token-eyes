@@ -41,6 +41,11 @@ const SPEND_AUTHORITIES = Object.freeze({
   UNAVAILABLE: "unavailable",
 });
 
+const OFFICIAL_INVOICE_ENDPOINTS = Object.freeze({
+  openai: { hostname: "api.openai.com", pathname: /^\/v1\/organization\/costs\/?$/ },
+  codex: { hostname: "api.openai.com", pathname: /^\/v1\/organization\/costs\/?$/ },
+});
+
 // Provider display names
 const PROVIDER_NAMES = {
   openai: "OpenAI",
@@ -321,6 +326,39 @@ function calculateUsageCosts(queueRows) {
   return costsBySource;
 }
 
+function deriveOfficialInvoiceSpend(config, balance, { allowTestEndpoint = false } = {}) {
+  if (String(config?.authType || "").toLowerCase() === "official_console") return null;
+  if (!String(config?.monthSpendPath || "").trim()) return null;
+  if (!allowTestEndpoint) {
+    const providerId = String(config?.providerId || "").trim().toLowerCase();
+    const officialEndpoint = OFFICIAL_INVOICE_ENDPOINTS[providerId];
+    let requestUrl;
+    try {
+      requestUrl = new URL(String(config?.requestUrl || ""));
+    } catch {
+      return null;
+    }
+    if (
+      requestUrl.protocol !== "https:"
+      || requestUrl.hostname.toLowerCase() !== officialEndpoint?.hostname
+      || !officialEndpoint.pathname.test(requestUrl.pathname)
+    ) return null;
+  }
+  if (balance?.status !== SYNC_STATUSES.SYNCED) return null;
+  if (String(balance?.currency || "").toUpperCase() !== "USD") return null;
+
+  const monthCostUsd = Number(balance?.monthSpend);
+  if (!Number.isFinite(monthCostUsd) || monthCostUsd < 0) return null;
+  const lifetimeCostRaw = Number(balance?.lifetimeSpend);
+  return {
+    monthCostUsd,
+    lifetimeCostUsd: Number.isFinite(lifetimeCostRaw) && lifetimeCostRaw >= 0
+      ? lifetimeCostRaw
+      : null,
+    lastSyncedAt: balance?.lastSyncedAt || null,
+  };
+}
+
 /**
  * Main function to collect API billing accounts.
  *
@@ -441,6 +479,7 @@ module.exports = {
   collectBillingFromSpendRecords,
   detectCredentialsFromAuthFiles,
   detectCredentialsFromKeychain,
+  deriveOfficialInvoiceSpend,
   mergeBillingAccounts,
   normalizeBillingSource,
   normalizeSyncStatus,

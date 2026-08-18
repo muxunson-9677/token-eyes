@@ -350,7 +350,7 @@ const tokenPlanRefresh = require("./token-plan-refresh");
 const { getPlanById, listProviderOptions, getProviderCatalog } = require("./token-plan-catalog");
 const { getPlanMarketCatalog } = require("./plan-market");
 const { getAgentAdapter, listAgentAdapters } = require("./agent-adapters");
-const { collectApiBillingAccounts } = require("./api-billing");
+const { collectApiBillingAccounts, deriveOfficialInvoiceSpend } = require("./api-billing");
 
 // 02-ia-api-balance: provider API balance/spend backend (financial query only)
 const providerApiConfigs = require("./provider-api-configs");
@@ -7311,6 +7311,29 @@ function createLocalApiHandler({
         // they must NOT be summed (different semantics).
         const config = readTrackerConfig();
         const providerConfigs = providerApiConfigs.readProviderApiConfigs(config);
+        for (const providerConfig of providerConfigs.filter((item) => item.enabled)) {
+          const cached = providerApiBalanceManager.getCachedBalance(providerConfig.id);
+          const officialInvoice = deriveOfficialInvoiceSpend(providerConfig, cached, {
+            allowTestEndpoint: providerApiTestMode,
+          });
+          if (!officialInvoice) continue;
+          let account = accounts.find((item) => item.provider === providerConfig.providerId);
+          if (!account) {
+            account = {
+              provider: providerConfig.providerId,
+              accountName: providerConfig.label || providerConfig.providerId,
+              providerApiConfigured: true,
+              providerApiBalance: cached,
+            };
+            accounts.push(account);
+          }
+          account.billingSource = "api";
+          account.spendAuthority = "official_invoice";
+          account.monthCostUsd = officialInvoice.monthCostUsd;
+          account.lifetimeCostUsd = officialInvoice.lifetimeCostUsd;
+          account.status = "synced";
+          account.lastSyncedAt = officialInvoice.lastSyncedAt;
+        }
         for (const account of accounts) {
           // Find matching provider API config by providerId
           const matchingConfig = providerConfigs.find(

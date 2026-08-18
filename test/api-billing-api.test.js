@@ -1,12 +1,13 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
+const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
-const { SPEND_AUTHORITIES } = require("../src/lib/api-billing");
+const { deriveOfficialInvoiceSpend, SPEND_AUTHORITIES } = require("../src/lib/api-billing");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -42,6 +43,28 @@ async function call(handler, pathName, options) {
   return res;
 }
 
+function startMockServer(handler) {
+  return new Promise((resolve) => {
+    const server = http.createServer(handler);
+    server.listen(0, "127.0.0.1", () => {
+      resolve({ server, url: `http://127.0.0.1:${server.address().port}` });
+    });
+  });
+}
+
+function createTestCredentialStore() {
+  const secrets = new Map();
+  return {
+    isAvailable: () => true,
+    saveSecret(ref, value) {
+      secrets.set(ref, String(value));
+      return { ok: true, masked: "••••test" };
+    },
+    readSecret: (ref) => secrets.get(ref) || null,
+    deleteSecret: (ref) => secrets.delete(ref),
+  };
+}
+
 test("api billing accounts endpoint returns accounts array when no spend records", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-"));
   try {
@@ -63,6 +86,91 @@ test("api billing accounts endpoint returns accounts array when no spend records
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
+});
+
+test("official provider month spend reaches the API billing cash contract", async () => {
+  const { server, url } = await startMockServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      data: { balance: 92, month_spend: 8, lifetime_spend: 48, currency: "USD" },
+    }));
+  });
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-official-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      credentialStore: createTestCredentialStore(),
+      providerApiTestMode: true,
+    });
+    const auth = readJsonResponse(await call(handler, "/api/local-auth"));
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": auth.token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const created = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-configs", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        providerId: "openai",
+        label: "OpenAI Billing",
+        requestUrl: `${url}/costs`,
+        requestMethod: "GET",
+        authType: "bearer",
+        balancePath: "data.balance",
+        monthSpendPath: "data.month_spend",
+        lifetimeSpendPath: "data.lifetime_spend",
+        currencyPath: "data.currency",
+        refreshIntervalSeconds: 300,
+        enabled: true,
+      }),
+    })).config;
+    await call(handler, "/functions/tokentracker-provider-api-secrets", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ configId: created.id, secret: "sk-official-test" }),
+    });
+    const refresh = readJsonResponse(await call(
+      handler,
+      `/functions/tokentracker-provider-api-refresh?id=${created.id}`,
+      { method: "POST", headers },
+    ));
+    assert.equal(refresh.balance.status, "synced");
+
+    const body = readJsonResponse(await call(handler, "/functions/tokentracker-api-billing-accounts"));
+    const account = body.accounts.find((item) => item.provider === "openai");
+    assert.ok(account);
+    assert.equal(account.billingSource, "api");
+    assert.equal(account.spendAuthority, "official_invoice");
+    assert.equal(account.monthCostUsd, 8);
+    assert.equal(account.lifetimeCostUsd, 48);
+  } finally {
+    server.close();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("official invoice evidence rejects unverified hosts, console, stale, non-USD, and invalid month spend", () => {
+  const validConfig = {
+    providerId: "openai",
+    requestUrl: "https://api.openai.com/v1/organization/costs",
+    authType: "bearer",
+    monthSpendPath: "data.month_spend",
+  };
+  const validBalance = { status: "synced", monthSpend: 8, lifetimeSpend: 48, currency: "USD" };
+  assert.deepEqual(deriveOfficialInvoiceSpend(validConfig, validBalance), {
+    monthCostUsd: 8,
+    lifetimeCostUsd: 48,
+    lastSyncedAt: null,
+  });
+  assert.equal(deriveOfficialInvoiceSpend({ ...validConfig, authType: "official_console" }, validBalance), null);
+  assert.equal(deriveOfficialInvoiceSpend(validConfig, { ...validBalance, status: "stale" }), null);
+  assert.equal(deriveOfficialInvoiceSpend(validConfig, { ...validBalance, currency: "CNY" }), null);
+  assert.equal(deriveOfficialInvoiceSpend(validConfig, { ...validBalance, monthSpend: -1 }), null);
+  assert.equal(deriveOfficialInvoiceSpend({ ...validConfig, requestUrl: "https://api.openai.com/v1/dashboard/billing/credit_grants" }, validBalance), null);
+  assert.equal(deriveOfficialInvoiceSpend({ ...validConfig, requestUrl: "https://billing.example.com/costs" }, validBalance), null);
 });
 
 test("api billing accounts endpoint derives accounts from spend records (identity only, costs are null)", async () => {

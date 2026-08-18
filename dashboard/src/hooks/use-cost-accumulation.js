@@ -141,18 +141,16 @@ export function useCostAccumulation({
     // and "0.00" for a real 0, so the user can distinguish "no data yet"
     // from "genuinely zero cost this period".
     return apiBillingAccounts.map((account, index) => {
-      const isLegacyOfficialInvoice = account.billingSource === "official_api";
+      const hasLegacyBillingSource = account.billingSource === "official_api";
       const spendAuthority = ["official_invoice", "local_list_price_estimate", "unavailable"]
         .includes(account.spendAuthority)
         ? account.spendAuthority
-        : isLegacyOfficialInvoice
-          ? "official_invoice"
-          : "unavailable";
+        : "unavailable";
       return {
         id: account.id || `${account.provider}-${index}`,
         provider: account.provider,
         accountName: account.accountName,
-        billingSource: isLegacyOfficialInvoice ? "api" : account.billingSource,
+        billingSource: hasLegacyBillingSource ? "api" : account.billingSource,
         spendAuthority,
         monthCostUsd: account.monthCostUsd ?? null,
         lifetimeCostUsd: account.lifetimeCostUsd ?? null,

@@ -207,7 +207,7 @@ describe("useCostAccumulation selected month", () => {
     }));
   });
 
-  it("treats legacy official_api DTOs as official invoices at the normalization boundary", async () => {
+  it("normalizes legacy official_api DTOs without inventing invoice authority", async () => {
     getApiBillingAccounts.mockResolvedValue({
       accounts: [{
         provider: "openai",
@@ -225,9 +225,10 @@ describe("useCostAccumulation selected month", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.apiBillingAccounts).toContainEqual(expect.objectContaining({
       billingSource: "api",
-      spendAuthority: "official_invoice",
+      spendAuthority: "unavailable",
     }));
-    expect(result.current.costSummary.monthOfficialApiSpendUsd).toBe(7);
+    expect(result.current.costSummary.monthOfficialApiSpendUsd).toBeNull();
+    expect(result.current.costSummary.actualCashCoverage).toBe("partial");
   });
 
   it("does not promote a legacy API DTO without spend authority to actual cash", async () => {

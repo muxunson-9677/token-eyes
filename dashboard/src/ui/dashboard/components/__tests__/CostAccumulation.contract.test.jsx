@@ -687,6 +687,115 @@ it("Task-10: API billing card shows 'USD 0.00' for a synced account with real 0 
   expect(lifetimeCostLine.textContent).toContain("USD 0.00");
 });
 
+it("labels official API invoice amounts as official billing", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      apiBillingAccounts={[{
+        id: "official-invoice",
+        provider: "openai",
+        accountName: "OpenAI Billing",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 8,
+        lifetimeCostUsd: 48,
+        status: "synced",
+      }]}
+    />,
+  );
+  expect(screen.getByText("spend.cost.api_billing.authority.official_invoice")).toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.api_billing.authority.local_list_price_estimate")).not.toBeInTheDocument();
+});
+
+it("labels local list-price costs as estimates", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      apiBillingAccounts={[{
+        id: "local-estimate",
+        provider: "openai",
+        accountName: "OpenAI Usage",
+        billingSource: "api",
+        spendAuthority: "local_list_price_estimate",
+        monthCostUsd: 8,
+        lifetimeCostUsd: 48,
+        status: "synced",
+      }]}
+    />,
+  );
+  expect(screen.getByText("spend.cost.api_billing.authority.local_list_price_estimate")).toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.api_billing.authority.official_invoice")).not.toBeInTheDocument();
+});
+
+it("labels unavailable API billing without displaying a cash amount", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY }}
+      apiBillingAccounts={[{
+        id: "unavailable",
+        provider: "openai",
+        accountName: "OpenAI",
+        billingSource: "api",
+        spendAuthority: "unavailable",
+        monthCostUsd: null,
+        lifetimeCostUsd: null,
+        status: "not-connected",
+      }]}
+    />,
+  );
+  expect(screen.getByText("spend.cost.api_billing.authority.unavailable")).toBeInTheDocument();
+  expect(screen.queryByText(/spend\.cost\.api_billing\.month_cost:/)).not.toBeInTheDocument();
+});
+
+it("keeps official API cash separate from local list-price estimates in the API summary", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, monthApiCostUsd: 30 }}
+      apiBillingAccounts={[
+        {
+          id: "official-invoice",
+          provider: "openai",
+          accountName: "OpenAI Billing",
+          billingSource: "api",
+          spendAuthority: "official_invoice",
+          monthCostUsd: 8,
+          lifetimeCostUsd: 48,
+          status: "synced",
+        },
+        {
+          id: "local-estimate",
+          provider: "anthropic",
+          accountName: "Anthropic Usage",
+          billingSource: "api",
+          spendAuthority: "local_list_price_estimate",
+          monthCostUsd: 30,
+          lifetimeCostUsd: 90,
+          status: "synced",
+        },
+        {
+          id: "unavailable",
+          provider: "google",
+          accountName: "Google Billing",
+          billingSource: "api",
+          spendAuthority: "unavailable",
+          monthCostUsd: null,
+          lifetimeCostUsd: null,
+          status: "not-connected",
+        },
+      ]}
+    />,
+  );
+  const section = screen.getByText("spend.cost.api_billing.section").closest("section");
+  expect(section).not.toBeNull();
+  const officialLabel = within(section).getByText("spend.cost.summary.official_api_cash");
+  const estimateLabel = within(section).getByText("spend.cost.row.month_estimate");
+  const unavailableLabel = within(section).getByText("spend.cost.api_billing.summary.unavailable_accounts");
+  expect(officialLabel.parentElement?.textContent).toContain("8.00");
+  expect(estimateLabel.parentElement?.textContent).toContain("30.00");
+  expect(unavailableLabel.parentElement?.textContent).toContain("1");
+  expect(section.textContent).not.toContain("38.00");
+});
+
 it("Task-10: API billing card hides costs when not connected", () => {
   render(
     <CostAccumulation

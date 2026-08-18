@@ -882,10 +882,21 @@ function ProviderApiAccountCard({ balance, refreshing, onRefresh }) {
 // API Billing Section (existing — local usage cost aggregation)
 // ---------------------------------------------------------------------------
 
-function ApiBillingSection({ accounts, loading, estimatedTotalUsd = 0, sectionsInitiallyOpen }) {
-  const monthUsd = accounts.reduce((sum, account) => sum + Number(account.monthCostUsd || 0), 0);
-  const lifetimeUsd = accounts.reduce((sum, account) => sum + Number(account.lifetimeCostUsd || 0), 0);
-  const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
+function ApiBillingSection({ accounts, loading, sectionsInitiallyOpen }) {
+  const officialMonthValues = accounts
+    .filter((account) => account.spendAuthority === "official_invoice")
+    .map((account) => account.monthCostUsd)
+    .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)) && Number(value) >= 0)
+    .map(Number);
+  const estimatedMonthValues = accounts
+    .filter((account) => account.spendAuthority === "local_list_price_estimate")
+    .map((account) => account.monthCostUsd)
+    .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)) && Number(value) >= 0)
+    .map(Number);
+  const officialMonthUsd = officialMonthValues.reduce((sum, value) => sum + value, 0);
+  const estimatedMonthUsd = estimatedMonthValues.reduce((sum, value) => sum + value, 0);
+  const unavailableAccounts = accounts.filter((account) => account.spendAuthority === "unavailable").length;
+  const unavailable = copy("spend.cost.row.unavailable");
   return (
     <FoldableSection
       id="api-billing"
@@ -896,10 +907,10 @@ function ApiBillingSection({ accounts, loading, estimatedTotalUsd = 0, sectionsI
       count={accounts.length}
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
-        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "orange" },
-        { label: copy("spend.cost.design.success_calls"), value: copy("spend.cost.row.unavailable") },
-        { label: copy("spend.cost.design.error_rate"), value: copy("spend.cost.row.unavailable"), tone: "green" },
-        { label: copy("spend.cost.row.unbilled_usd"), value: lifetimeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.summary.official_api_cash"), value: officialMonthValues.length > 0 ? officialMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "green" },
+        { label: copy("spend.cost.row.month_estimate"), value: estimatedMonthValues.length > 0 ? estimatedMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "orange" },
+        { label: copy("spend.cost.api_billing.summary.unavailable_accounts"), value: unavailableAccounts.toLocaleString() },
+        { label: copy("spend.cost.design.error_rate"), value: unavailable, tone: "green" },
       ]}
     >
       {loading ? (
@@ -926,7 +937,7 @@ function ApiBillingCard({ account }) {
 
   const status = statusConfig[account.status] || statusConfig["not-connected"];
   const StatusIcon = status.icon;
-  const hasCostData = account.status === "synced";
+  const hasCostData = account.status === "synced" && account.spendAuthority !== "unavailable";
   const monthCost = hasCostData ? formatAmount(account.monthCostUsd) : null;
   const lifetimeCost = hasCostData ? formatAmount(account.lifetimeCostUsd) : null;
 
@@ -942,7 +953,7 @@ function ApiBillingCard({ account }) {
               {account.provider}
             </span>
             <span className="shrink-0 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-400">
-              {getBillingSourceLabel(account.billingSource)}
+              {getSpendAuthorityLabel(account.spendAuthority)}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
@@ -961,13 +972,11 @@ function ApiBillingCard({ account }) {
   );
 }
 
-function getBillingSourceLabel(source) {
-  const labels = {
-    api: copy("spend.cost.api_billing.source.api"),
-    console: copy("spend.cost.api_billing.source.console"),
-    manual: copy("spend.cost.api_billing.source.manual"),
-  };
-  return labels[source] || copy("spend.cost.api_billing.source.unknown");
+function getSpendAuthorityLabel(authority) {
+  const normalized = ["official_invoice", "local_list_price_estimate", "unavailable"].includes(authority)
+    ? authority
+    : "unavailable";
+  return copy(`spend.cost.api_billing.authority.${normalized}`);
 }
 
 // ---------------------------------------------------------------------------
