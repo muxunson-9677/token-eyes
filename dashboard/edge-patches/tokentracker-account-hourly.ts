@@ -94,7 +94,7 @@ interface GroupedRow {
   bucket: string;
   source: string | null;
   model: string | null;
-  billing_mode: string | null;
+  billing_mode_token_totals: BillingModeTokenTotals | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -110,16 +110,15 @@ function newBillingModeTokenTotals(): BillingModeTokenTotals {
   return { api_key: 0, token_plan: 0, unknown: 0 };
 }
 
-function addBillingModeTokens(target: BillingModeTokenTotals, row: GroupedRow, tokens: number) {
-  const mode = row.billing_mode === "api_key" || row.billing_mode === "token_plan"
-    ? row.billing_mode
-    : "unknown";
-  target[mode] += tokens;
+function addBillingModeTokens(target: BillingModeTokenTotals, row: GroupedRow) {
+  const modes = row.billing_mode_token_totals;
+  if (!modes) target.unknown += Number(row.total_tokens) || 0;
+  else for (const mode of ["api_key", "token_plan", "unknown"] as const) target[mode] += Number(modes[mode]) || 0;
 }
 
 /**
  * Server-side aggregation. One RPC replaces the old N paginated 1000-row raw
- * fetches: account_usage_grouped_v2() GROUPs BY (tz-local bucket, source, model, billing_mode)
+ * fetches: account_usage_grouped_v2() GROUPs BY (tz-local bucket, source, model)
  * in Postgres and returns a single JSONB array. SUM across the user's active
  * devices is byte-identical to the old in-edge aggregation; tz-local bucketing
  * uses `AT TIME ZONE` (same IANA database as the old JS Intl path, incl. DST).
@@ -310,7 +309,7 @@ export default async function (req: Request): Promise<Response> {
       byHour.set(hourKey, bucket);
     }
     const tt = Number(row.total_tokens) || 0;
-    addBillingModeTokens(bucket.billing_mode_token_totals, row, tt);
+    addBillingModeTokens(bucket.billing_mode_token_totals, row);
     bucket.total_tokens += tt;
     bucket.billable_total_tokens += tt;
     bucket.input_tokens += Number(row.input_tokens) || 0;

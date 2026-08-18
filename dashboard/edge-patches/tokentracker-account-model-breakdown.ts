@@ -330,7 +330,7 @@ interface GroupedRow {
   bucket: string;
   source: string;
   model: string;
-  billing_mode: string | null;
+  billing_mode_token_totals: BillingModeTokenTotals | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -346,16 +346,20 @@ function newBillingModeTokenTotals(): BillingModeTokenTotals {
   return { api_key: 0, token_plan: 0, unknown: 0 };
 }
 
-function addBillingModeTokens(target: BillingModeTokenTotals, row: GroupedRow, tokens: number) {
-  const mode = row.billing_mode === "api_key" || row.billing_mode === "token_plan"
-    ? row.billing_mode
-    : "unknown";
-  target[mode] += tokens;
+function addBillingModeTokens(target: BillingModeTokenTotals, row: GroupedRow) {
+  const modes = row.billing_mode_token_totals;
+  if (!modes) target.unknown += Number(row.total_tokens) || 0;
+  else for (const mode of ["api_key", "token_plan", "unknown"] as const) target[mode] += Number(modes[mode]) || 0;
+}
+
+function summarizeBillingModes(totals: BillingModeTokenTotals) {
+  const billing_modes = (["api_key", "token_plan", "unknown"] as const).filter((mode) => totals[mode] > 0);
+  return { billing_mode: billing_modes.length > 1 ? "mixed" : billing_modes[0] || "unknown", billing_modes };
 }
 
 /**
  * Server-side aggregation. One RPC replaces the old N paginated 1000-row raw
- * fetches: account_usage_grouped_v2() GROUPs BY (tz-local day, source, model, billing_mode) in
+ * fetches: account_usage_grouped_v2() GROUPs BY (tz-local day, source, model) in
  * Postgres and returns a single JSONB array. We still filter to local days in
  * [from, to] and collapse to (source, model) in-edge — SUM across the user's
  * active devices is byte-identical; tz-local day bucketing uses `AT TIME ZONE`
@@ -479,7 +483,7 @@ export default async function (req: Request): Promise<Response> {
       bySource.set(src, sa);
     }
     const tt = Number(row.total_tokens) || 0;
-    addBillingModeTokens(sa.totals.billing_mode_token_totals, row, tt);
+    addBillingModeTokens(sa.totals.billing_mode_token_totals, row);
     sa.totals.total_tokens += tt;
     sa.totals.billable_total_tokens += tt;
     sa.totals.input_tokens += Number(row.input_tokens) || 0;
@@ -494,7 +498,7 @@ export default async function (req: Request): Promise<Response> {
       sa.models.set(mdl, ma);
     }
     ma.totals.total_tokens += tt;
-    addBillingModeTokens(ma.totals.billing_mode_token_totals, row, tt);
+    addBillingModeTokens(ma.totals.billing_mode_token_totals, row);
     ma.totals.billable_total_tokens += tt;
     ma.totals.input_tokens += Number(row.input_tokens) || 0;
     ma.totals.output_tokens += Number(row.output_tokens) || 0;
@@ -507,6 +511,7 @@ export default async function (req: Request): Promise<Response> {
     const models = Array.from(s.models.values())
       .map((m) => {
         const p = getModelPricing(m.model);
+        const { billing_mode_token_totals: modeTotals, ...usageTotals } = m.totals;
         // Codex / every-code fold reasoning into output_tokens (OpenAI
         // convention), so charging reasoning again double-counts. Mirror the
         // guard in src/lib/pricing/index.js + tokentracker-leaderboard-refresh.ts.
@@ -521,14 +526,20 @@ export default async function (req: Request): Promise<Response> {
         return {
           model: m.model,
           model_id: m.model_id,
-          totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
+          totals: { ...usageTotals, total_cost_usd: cost.toFixed(6) },
+          ...summarizeBillingModes(modeTotals),
+          billing_mode_confidence: "unavailable",
+          billing_mode_token_totals: modeTotals,
         };
       })
       .sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
     const sourceCost = models.reduce((sum, m) => sum + Number(m.totals.total_cost_usd), 0);
+    const { billing_mode_token_totals: modeTotals, ...usageTotals } = s.totals;
     return {
       source: s.source,
-      totals: { ...s.totals, total_cost_usd: sourceCost.toFixed(6) },
+      totals: { ...usageTotals, total_cost_usd: sourceCost.toFixed(6) },
+      ...summarizeBillingModes(modeTotals),
+      billing_mode_token_totals: modeTotals,
       models,
     };
   });

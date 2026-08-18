@@ -143,27 +143,45 @@ export default async function (req: Request): Promise<Response> {
     conversations: b.conversation_count ?? b.conversations ?? 0,
   }));
 
-  // Dedupe within the batch by (hour_start, source, model, billing_mode), keeping the row
-  // with the largest total_tokens. The CLI's queue.jsonl is append-only and
-  // re-emits the same logical bucket multiple times as a session fills out
-  // (each emission carries the cumulative running total, so MAX wins). Two
-  // rows sharing the conflict key in one upsert make Postgres throw
-  // "ON CONFLICT DO UPDATE command cannot affect row a second time" and
-  // reject the entire batch — which stalled all clients until this dedupe.
+  // Latest cumulative value wins per mode identity. Retraction zeros are
+  // authoritative, so MAX would resurrect stale usage.
   const dedupedMap = new Map<string, typeof mappedRows[number]>();
   for (const r of mappedRows) {
     const key = `${r.hour_start}|${r.source}|${r.model}|${r.billing_mode}`;
-    const prev = dedupedMap.get(key);
-    if (!prev || (Number(r.total_tokens) || 0) > (Number(prev.total_tokens) || 0)) {
-      dedupedMap.set(key, r);
+    dedupedMap.set(key, r);
+  }
+  const modeRows = Array.from(dedupedMap.values());
+
+  const { error: mergeErr } = await client.database.rpc("tokentracker_hourly_ingest_v2", {
+    p_user_id: userId,
+    p_device_id: deviceId,
+    p_rows: modeRows,
+  });
+  if (!mergeErr) return json({ ok: true, inserted: modeRows.length, skipped: 0 });
+  const mergeMessage = String(mergeErr.message || mergeErr);
+  const missingCapability = /tokentracker_hourly_ingest_v2/iu.test(mergeMessage)
+    && /(?:not found|does not exist|schema cache|pgrst202)/iu.test(mergeMessage);
+  if (!missingCapability) return json({ error: mergeErr.message }, 500);
+
+  // Edge-first rollout fallback: collapse modes into the legacy five-column
+  // base row and omit the extension column entirely.
+  const fallbackMap = new Map<string, Omit<typeof modeRows[number], "billing_mode">>();
+  for (const { billing_mode: _mode, ...r } of modeRows) {
+    const key = `${r.hour_start}|${r.source}|${r.model}`;
+    const base = fallbackMap.get(key);
+    if (!base) fallbackMap.set(key, { ...r });
+    else {
+      for (const field of ["input_tokens", "cached_input_tokens", "cache_creation_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens", "billable_total_tokens", "total_cost_usd", "conversations"] as const) {
+        base[field] = Number(base[field] || 0) + Number(r[field] || 0);
+      }
     }
   }
-  const rows = Array.from(dedupedMap.values());
+  const rows = Array.from(fallbackMap.values());
 
   const { error: upsertErr } = await client.database
     .from("tokentracker_hourly")
     .upsert(rows, {
-      onConflict: "user_id,device_id,hour_start,source,model,billing_mode",
+      onConflict: "user_id,device_id,hour_start,source,model",
     });
 
   if (upsertErr) return json({ error: upsertErr.message }, 500);

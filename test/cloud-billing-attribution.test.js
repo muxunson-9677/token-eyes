@@ -5,8 +5,30 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
+const esbuild = require("esbuild");
 
 const syncCommand = require("../src/commands/sync");
+
+async function importIngestEdge() {
+  const result = await esbuild.build({
+    entryPoints: [path.resolve(__dirname, "../dashboard/edge-patches/tokentracker-ingest.ts")],
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "browser",
+    plugins: [{
+      name: "mock-insforge",
+      setup(build) {
+        build.onResolve({ filter: /^npm:@insforge\/sdk$/ }, () => ({ path: "insforge", namespace: "mock" }));
+        build.onLoad({ filter: /.*/, namespace: "mock" }, () => ({
+          contents: "export const createClient = (...args) => globalThis.__billingIngestCreateClient(...args);",
+          loader: "js",
+        }));
+      },
+    }],
+  });
+  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+}
 
 test("sync exposes its queue batch reader for cloud identity coverage", () => {
   assert.equal(typeof syncCommand.readQueueBatch, "function");
@@ -154,7 +176,7 @@ test("large migration transactions page by whole base bucket and resume determin
   }
 });
 
-test("cloud schema, ingest, and all queue/hourly consumers use billing-mode identity", async () => {
+test("cloud schema keeps the legacy base identity and adds rolling-safe attribution", async () => {
   const root = path.join(__dirname, "..");
   const [migration, ingest, profile, badge, vite] = await Promise.all([
     fs.readFile(path.join(root, "migrations", "20260818120000_add-hourly-billing-mode.sql"), "utf8"),
@@ -163,13 +185,89 @@ test("cloud schema, ingest, and all queue/hourly consumers use billing-mode iden
     fs.readFile(path.join(root, "dashboard", "edge-patches", "tokentracker-badge.ts"), "utf8"),
     fs.readFile(path.join(root, "dashboard", "vite.config.js"), "utf8"),
   ]);
-  assert.match(migration, /add column if not exists billing_mode[^;]+default 'unknown'/iu);
-  assert.match(migration, /user_id[^\n]+device_id[^\n]+hour_start[^\n]+source[^\n]+model[^\n]+billing_mode/iu);
+  assert.match(migration, /add column if not exists billing_mode_slices jsonb/iu);
+  assert.doesNotMatch(migration, /drop constraint[^;]+user_id/iu);
+  assert.doesNotMatch(migration, /unique[^;]+billing_mode/iu);
   assert.match(ingest, /billing_mode:\s*normalizeBillingMode/u);
-  assert.match(ingest, /onConflict:\s*"user_id,device_id,hour_start,source,model,billing_mode"/u);
+  assert.match(ingest, /rpc\("tokentracker_hourly_ingest_v2"/u);
+  assert.match(migration, /revoke all on function public\.tokentracker_hourly_ingest_v2\(text,text,jsonb\) from public,anon,authenticated/iu);
+  assert.match(migration, /grant execute on function public\.tokentracker_hourly_ingest_v2\(text,text,jsonb\) to service_role/iu);
+  assert.match(ingest, /onConflict:\s*"user_id,device_id,hour_start,source,model"/u);
   for (const consumer of [profile, badge]) {
-    assert.match(consumer, /billing_mode/u);
-    assert.match(consumer, /row\.source[^\n]+row\.model[^\n]+row\.hour_start[^\n]+row\.billing_mode/u);
+    assert.doesNotMatch(consumer, /\.order\("billing_mode"/u);
   }
   assert.match(vite, /queueUsageIdentity\(row\)/u);
+});
+
+test("edge-first deployment falls back to one legacy base row without losing api and plan totals", async (t) => {
+  let fallbackRows = null;
+  let fallbackConflict = null;
+  globalThis.Deno = { env: { get: (key) => ({
+    TOKENTRACKER_LEGACY_HOURLY_INGEST_ENABLED: "true",
+    INSFORGE_BASE_URL: "https://cloud.example",
+    INSFORGE_SERVICE_ROLE_KEY: "service-role",
+  })[key] } };
+  globalThis.__billingIngestCreateClient = () => ({
+    database: {
+      from(table) {
+        if (table === "tokentracker_device_tokens") {
+          const chain = {
+            select: () => chain,
+            eq: () => chain,
+            is: () => chain,
+            maybeSingle: async () => ({ data: { user_id: "user-1", device_id: "device-1" }, error: null }),
+          };
+          return chain;
+        }
+        return {
+          async upsert(rows, options) {
+            fallbackRows = rows;
+            fallbackConflict = options.onConflict;
+            return { error: null };
+          },
+        };
+      },
+      async rpc() {
+        return { data: null, error: { message: "function tokentracker_hourly_ingest_v2 does not exist" } };
+      },
+    },
+  });
+  t.after(() => {
+    delete globalThis.Deno;
+    delete globalThis.__billingIngestCreateClient;
+  });
+
+  const edge = await importIngestEdge();
+  const response = await edge.default(new Request("https://cloud.example/functions/tokentracker-ingest", {
+    method: "POST",
+    headers: { Authorization: "Bearer device-token", "Content-Type": "application/json" },
+    body: JSON.stringify({ buckets: [row("api_key", 11), row("token_plan", 22)] }),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(fallbackConflict, "user_id,device_id,hour_start,source,model");
+  assert.equal(fallbackRows.length, 1);
+  assert.equal(fallbackRows[0].total_tokens, 33);
+  assert.equal("billing_mode" in fallbackRows[0], false);
+  assert.equal("billing_mode_slices" in fallbackRows[0], false);
+});
+
+test("rolling migration preserves old writes and downgrades stale attribution to unknown", async () => {
+  const migration = await fs.readFile(
+    path.join(__dirname, "..", "migrations", "20260818120000_add-hourly-billing-mode.sql"),
+    "utf8",
+  );
+  assert.match(migration, /add column if not exists billing_mode_slices jsonb/iu);
+  assert.match(migration, /billing_mode_slices is null[\s\S]+<> total_tokens[\s\S]+<> input_tokens[\s\S]+<> output_tokens/iu);
+  assert.match(migration, /then jsonb_build_object\('api_key',0,'token_plan',0,'unknown',total_tokens\)/iu);
+  assert.doesNotMatch(migration, /drop constraint if exists tokentracker_hourly.*(?:user_id|billing_mode)/iu);
+
+  const classify = (baseTotal, slices) => {
+    const sliceTotal = slices && Object.values(slices).reduce((sum, value) => sum + value, 0);
+    return !slices || sliceTotal !== baseTotal
+      ? { api_key: 0, token_plan: 0, unknown: baseTotal }
+      : slices;
+  };
+  assert.deepEqual(classify(33, null), { api_key: 0, token_plan: 0, unknown: 33 });
+  assert.deepEqual(classify(33, { api_key: 11, token_plan: 22, unknown: 0 }), { api_key: 11, token_plan: 22, unknown: 0 });
+  assert.deepEqual(classify(44, { api_key: 11, token_plan: 22, unknown: 0 }), { api_key: 0, token_plan: 0, unknown: 44 });
 });

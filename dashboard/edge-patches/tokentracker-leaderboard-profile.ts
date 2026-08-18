@@ -260,7 +260,6 @@ interface HourlyRow {
   source: string;
   model: string;
   hour_start: string;
-  billing_mode: string | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -399,24 +398,23 @@ async function scanHourlyForUser(client: any, userId: string, rangeStartIso: str
   while (true) {
     const { data: rows, error } = await client.database
       .from("tokentracker_hourly")
-      .select("device_id, source, model, hour_start, billing_mode, total_tokens, input_tokens, output_tokens, cached_input_tokens, cache_creation_input_tokens, reasoning_output_tokens")
+      .select("device_id, source, model, hour_start, total_tokens, input_tokens, output_tokens, cached_input_tokens, cache_creation_input_tokens, reasoning_output_tokens")
       .eq("user_id", userId)
       .gte("hour_start", rangeStartIso)
       .lt("hour_start", rangeEndIso)
       // hour_start alone is NOT unique (one row per device×source×model), and
       // PostgREST pagination over a non-unique sort can skip/duplicate rows
       // at page boundaries. The trailing keys make the order total — the
-      // six columns together are the table's upsert conflict key.
+      // five columns together are the table's upsert conflict key.
       .order("hour_start", { ascending: true })
       .order("device_id", { ascending: true })
       .order("source", { ascending: true })
       .order("model", { ascending: true })
-      .order("billing_mode", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) throw new Error(error.message);
     if (!rows || rows.length === 0) break;
     for (const row of rows as HourlyRow[]) {
-      const key = `${row.source}|${row.model}|${row.hour_start}|${row.billing_mode || "unknown"}`;
+      const key = `${row.source}|${row.model}|${row.hour_start}`;
       if (ACCOUNT_LEVEL_SOURCES.has(row.source)) {
         const existing = accountMap.get(key);
         if (!existing || (Number(row.total_tokens) || 0) > (Number(existing.total_tokens) || 0)) {

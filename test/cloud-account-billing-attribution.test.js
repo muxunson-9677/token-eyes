@@ -6,6 +6,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const esbuild = require("esbuild");
+const { loadDashboardModule } = require("./helpers/load-dashboard-module");
 
 const EDGE_NAMES = ["summary", "daily", "hourly", "monthly", "heatmap", "model-breakdown"];
 
@@ -45,16 +46,16 @@ test("all six account APIs request billing-aware grouped rows and expose mode to
   const root = path.resolve(__dirname, "..");
   const migration = await fs.readFile(path.join(root, "migrations", "20260818120000_add-hourly-billing-mode.sql"), "utf8");
   assert.match(migration, /account_usage_grouped_v2/iu);
-  assert.match(migration, /group by[^;]+billing_mode/isu);
-  assert.match(migration, /partition by[^\n]+source[^\n]+model[^\n]+hour_start[^\n]+billing_mode/iu);
-  assert.match(migration, /where f\.source = 'cursor'/iu);
-  assert.match(migration, /device_id::text = any/iu);
+  assert.match(migration, /billing_mode_slices/iu);
+  assert.match(migration, /group by bucket,source,model/iu);
+  assert.match(migration, /source='cursor'/iu);
+  assert.match(migration, /device_id::text=any/iu);
   assert.match(migration, /set search_path = pg_catalog, public/iu);
   const compactMigration = migration.replace(/\s+/gu, " ");
-  const signature = String.raw`public\.account_usage_grouped_v2\(\s*text, text\[\], timestamptz, timestamptz, text, text, integer\s*\)`;
+  const signature = String.raw`public\.account_usage_grouped_v2\(\s*text\s*,\s*text\[\]\s*,\s*timestamptz\s*,\s*timestamptz\s*,\s*text\s*,\s*text\s*,\s*integer\s*\)`;
   assert.match(
     compactMigration,
-    new RegExp(`revoke all on function ${signature} from public, anon, authenticated`, "iu"),
+    new RegExp(`revoke all on function ${signature} from public\s*,\s*anon\s*,\s*authenticated`, "iu"),
   );
   assert.match(
     compactMigration,
@@ -67,7 +68,7 @@ test("all six account APIs request billing-aware grouped rows and expose mode to
   for (const name of EDGE_NAMES) {
     const source = await fs.readFile(path.join(root, "dashboard", "edge-patches", `tokentracker-account-${name}.ts`), "utf8");
     assert.match(source, /rpc\("account_usage_grouped_v2"/u, name);
-    assert.match(source, /billing_mode:\s*string\s*\|\s*null/u, name);
+    assert.match(source, /billing_mode_token_totals:\s*BillingModeTokenTotals\s*\|\s*null/u, name);
     assert.match(source, /billing_mode_token_totals/u, name);
     assert.match(source, /INSFORGE_SERVICE_ROLE_KEY/u, name);
     assert.match(source, /edgeFunctionToken:\s*serviceRoleKey/u, name);
@@ -76,10 +77,10 @@ test("all six account APIs request billing-aware grouped rows and expose mode to
 
 test("account daily conserves api and plan slices in its cloud response", async (t) => {
   const secret = "account-billing-test-secret";
-  const groupedRows = [
-    { bucket: "2026-08-18", source: "deepseek-harness", model: "deepseek-v4", billing_mode: "api_key", total_tokens: 11 },
-    { bucket: "2026-08-18", source: "deepseek-harness", model: "deepseek-v4", billing_mode: "token_plan", total_tokens: 22 },
-  ];
+  const groupedRows = [{
+    bucket: "2026-08-18", source: "deepseek-harness", model: "deepseek-v4", total_tokens: 33,
+    billing_mode_token_totals: { api_key: 11, token_plan: 22, unknown: 0 },
+  }];
   let rpcName = null;
   globalThis.Deno = { env: { get: (key) => ({
     INSFORGE_BASE_URL: "https://cloud.example",
@@ -120,4 +121,60 @@ test("account daily conserves api and plan slices in its cloud response", async 
   assert.equal(body.data[0].total_tokens, 33);
   assert.deepEqual(body.data[0].billing_mode_token_totals, { api_key: 11, token_plan: 22, unknown: 0 });
   assert.equal(Object.values(body.data[0].billing_mode_token_totals).reduce((sum, value) => sum + value, 0), 33);
+});
+
+test("account model breakdown preserves mixed attribution through buildFleetData", async (t) => {
+  const secret = "account-model-billing-test-secret";
+  const groupedRows = [{
+    bucket: "2026-08-18", source: "deepseek-harness", model: "deepseek-v4",
+    total_tokens: 33, input_tokens: 33, output_tokens: 0, cached_input_tokens: 0,
+    cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversations: 1,
+    billing_mode_token_totals: { api_key: 11, token_plan: 22, unknown: 0 },
+  }];
+  globalThis.Deno = { env: { get: (key) => ({
+    INSFORGE_BASE_URL: "https://cloud.example",
+    INSFORGE_SERVICE_ROLE_KEY: "service-role",
+    JWT_SECRET: secret,
+  })[key] } };
+  globalThis.__accountBillingCreateClient = () => ({
+    database: {
+      from() {
+        const result = { data: [{ id: "device-1" }], error: null };
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          is: () => chain,
+          then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
+        };
+        return chain;
+      },
+      async rpc() { return { data: groupedRows, error: null }; },
+    },
+  });
+  t.after(() => {
+    delete globalThis.Deno;
+    delete globalThis.__accountBillingCreateClient;
+  });
+
+  const edge = await importEdge("model-breakdown");
+  const response = await edge.default(new Request(
+    "https://cloud.example/functions/tokentracker-account-model-breakdown?from=2026-08-18&to=2026-08-18&tz=UTC",
+    { headers: { Authorization: `Bearer ${signedJwt(secret)}` } },
+  ));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.sources[0].billing_mode, "mixed");
+  assert.deepEqual(body.sources[0].billing_modes, ["api_key", "token_plan"]);
+  assert.deepEqual(body.sources[0].billing_mode_token_totals, { api_key: 11, token_plan: 22, unknown: 0 });
+  assert.equal(body.sources[0].totals.billing_mode_token_totals, undefined);
+  assert.equal(body.sources[0].models[0].billing_mode, "mixed");
+  assert.equal(body.sources[0].models[0].billing_mode_confidence, "unavailable");
+  assert.deepEqual(body.sources[0].models[0].billing_mode_token_totals, { api_key: 11, token_plan: 22, unknown: 0 });
+  assert.equal(body.sources[0].models[0].totals.billing_mode_token_totals, undefined);
+
+  const { buildFleetData } = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
+  const fleet = buildFleetData(body);
+  assert.equal(fleet[0].billingMode, "mixed");
+  assert.equal(fleet[0].models[0].billingMode, "mixed");
+  assert.equal(fleet[0].models[0].billingModeConfidence, "unavailable");
 });

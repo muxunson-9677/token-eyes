@@ -129,8 +129,10 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
               : entry.totalCost > 0 && entry.totalTokens > 0
                 ? (modelTokens / entry.totalTokens) * entry.totalCost
                 : null;
-          const modelBillingMode: BillingMode =
-            normalizeBillingModeValue(model?.billing_mode) || "unknown";
+          const modelBillingMode: SourceBillingMode =
+            model?.billing_mode === "mixed"
+              ? "mixed"
+              : normalizeBillingModeValue(model?.billing_mode) || "unknown";
           return {
             id,
             name,
