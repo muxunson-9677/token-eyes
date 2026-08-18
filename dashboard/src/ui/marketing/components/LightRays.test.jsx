@@ -66,9 +66,9 @@ describe("LightRays reduced-motion behavior", () => {
   });
 
   it("cancels pending initialization when reduced motion is enabled", async () => {
-    const { rerender } = render(<LightRays />);
+    const { rerender } = render(React.createElement(LightRays));
 
-    rerender(<LightRays reducedMotion />);
+    rerender(React.createElement(LightRays, { reducedMotion: true }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20);
     });
