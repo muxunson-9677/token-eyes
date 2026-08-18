@@ -28,6 +28,22 @@ test("workflow triggers on push to main", () => {
   );
 });
 
+test("workflow exposes an explicit opt-in manual npm publish input", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("workflow_dispatch:"), "should support manual dispatch");
+  assert.match(content, /publish_npm:\s*[\s\S]*?type:\s*boolean/u);
+  assert.match(content, /publish_npm:\s*[\s\S]*?default:\s*false/u);
+});
+
+test("ordinary main pushes can run tests but can never enter the publish job", () => {
+  const content = loadWorkflow();
+  const publishIdx = content.indexOf("\n  publish:");
+  assert.ok(publishIdx > 0, "should have a publish job");
+  const publishHeader = content.slice(publishIdx, content.indexOf("\n    runs-on:", publishIdx));
+  assert.match(publishHeader, /github\.event_name\s*==\s*'workflow_dispatch'/u);
+  assert.match(publishHeader, /inputs\.publish_npm\s*==\s*true/u);
+});
+
 test("publish job builds/publishes on Node.js 20 to match the engines floor", () => {
   const content = loadWorkflow();
   const publishIdx = content.indexOf("\n  publish:");
@@ -54,6 +70,14 @@ test("tests gate the publish on a supported Node", () => {
     "test job should run on Node 24"
   );
   assert.ok(testSection.includes("npm test"), "test job should run the suite");
+  assert.ok(
+    testSection.includes("npm --prefix dashboard run test"),
+    "test job should invoke the dashboard's existing vitest run script",
+  );
+  assert.ok(
+    !testSection.includes("npm --prefix dashboard test -- --run"),
+    "test job must not pass the invalid --run flag through npm",
+  );
 });
 
 test("workflow sets npm registry URL", () => {

@@ -3,6 +3,13 @@ name: npm Publish
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish_npm:
+        description: Publish the current package version to npm
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
   group: npm-publish
@@ -32,7 +39,7 @@ jobs:
       - run: npm test
       - run: npm --prefix dashboard run typecheck
       - run: npm --prefix dashboard run lint
-      - run: npm --prefix dashboard test -- --run
+      - run: npm --prefix dashboard run test
       - run: cargo test --manifest-path src-tauri/Cargo.toml
         env:
           # Unit tests do not package the Windows runtime. The release build
@@ -45,6 +52,7 @@ jobs:
 
   publish:
     needs: test
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_npm == true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
