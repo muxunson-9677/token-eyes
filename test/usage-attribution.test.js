@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
+const { AGENT_ADAPTERS } = require("../src/lib/agent-adapters");
 const {
   normalizeUsageAttribution,
 } = require("../src/lib/usage-attribution");
@@ -101,6 +102,7 @@ test("secret-like reference values are omitted", () => {
   ]) {
     const result = normalizeUsageAttribution({
       billing_mode: "api_key",
+      provider_id: unsafe,
       credential_ref: unsafe,
       account_ref: unsafe,
       plan_ref: unsafe,
@@ -109,6 +111,35 @@ test("secret-like reference values are omitted", () => {
       billing_mode: "api_key",
       billing_mode_confidence: "explicit_runtime",
     });
+  }
+});
+
+test("known attribution provider ids remain available", () => {
+  const adapterProviderIds = new Set(
+    AGENT_ADAPTERS.flatMap(({ id, queueSource, family }) => [id, queueSource, family])
+      .filter((value) => value && value !== "unknown"),
+  );
+  const providerApiIds = [
+    "aliyun_bss",
+    "deepseek",
+    "glm",
+    "minimax",
+    "moonshot",
+    "volcengine_billing",
+    "xiaomi_mimo",
+  ];
+
+  for (const providerId of [...adapterProviderIds, ...providerApiIds]) {
+    assert.equal(
+      normalizeUsageAttribution({ provider_id: providerId }).provider_id,
+      providerId,
+    );
+  }
+  for (const providerId of ["openai", "anthropic", "deepseek", "hermes"]) {
+    assert.equal(
+      normalizeUsageAttribution({ provider_id: providerId }).provider_id,
+      providerId,
+    );
   }
 });
 

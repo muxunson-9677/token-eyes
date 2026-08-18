@@ -1,3 +1,5 @@
+const { AGENT_ADAPTERS } = require("./agent-adapters");
+
 const TOKEN_FIELDS = [
   "input_tokens",
   "cached_input_tokens",
@@ -112,12 +114,31 @@ const CREDENTIAL_STORE_REFS = new Set([
   "claude_credentials_json",
 ]);
 
+const KNOWN_ATTRIBUTION_PROVIDER_IDS = new Set(
+  AGENT_ADAPTERS.flatMap(({ id, queueSource, family }) => [id, queueSource, family])
+    .filter((value) => value && value !== "unknown"),
+);
+
+// Provider API-only ids mirror KNOWN_PROVIDER_PRESETS in provider-api-configs.js.
+// The parity assertion lives in test/usage-attribution.test.js.
+for (const providerId of [
+  "aliyun_bss",
+  "deepseek",
+  "glm",
+  "minimax",
+  "moonshot",
+  "volcengine_billing",
+  "xiaomi_mimo",
+]) {
+  KNOWN_ATTRIBUTION_PROVIDER_IDS.add(providerId);
+}
+
 function isAllowedEvidenceReference(field, value) {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();
   if (!trimmed) return false;
   if (field === "provider_id") {
-    return /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(trimmed);
+    return KNOWN_ATTRIBUTION_PROVIDER_IDS.has(trimmed);
   }
   if (field === "credential_ref" && CREDENTIAL_STORE_REFS.has(trimmed)) return true;
   return /^(provider-api|token-plan|account|plan)(\/[a-z0-9][a-z0-9._-]{0,127}){1,4}$/i.test(trimmed);
