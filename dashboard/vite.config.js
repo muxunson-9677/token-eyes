@@ -859,7 +859,15 @@ async function handleLocalApi(req, res, url) {
         res.end(JSON.stringify({ from, to, ...unsupportedSourcePayload(requestedSource) }));
         return true;
       }
-      const result = await computeClaudeCategoryBreakdown({ from, to, projectDir: process.cwd() });
+      const homeDir = os.homedir();
+      const result = await computeClaudeCategoryBreakdown({
+        from,
+        to,
+        rootDir: path.join(homeDir, ".claude", "projects"),
+        projectDir: process.cwd(),
+        homeDir,
+        cacheDir: path.join(homeDir, ".tokentracker", "cache", "claude-categorizer"),
+      });
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ from, to, ...result }));
     } catch (e) {

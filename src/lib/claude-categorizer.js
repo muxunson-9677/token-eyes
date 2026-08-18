@@ -633,7 +633,10 @@ async function computeClaudeCategoryBreakdown({
   projectSearchBoundary = null,
 } = {}) {
   const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VITEST === "true";
-  const home = homeDir || (isTestRunner && rootDir ? path.resolve(rootDir) : os.homedir());
+  if (isTestRunner && (!rootDir || !homeDir)) {
+    throw new Error("computeClaudeCategoryBreakdown requires explicit rootDir and homeDir in tests");
+  }
+  const home = homeDir || os.homedir();
   const root = rootDir || path.join(home, ".claude", "projects");
   const diskCacheDir = cacheDir
     || (isTestRunner ? null : path.join(home, ".tokentracker", "cache", "claude-categorizer"));
@@ -963,27 +966,70 @@ function safeReadJson(fp) {
   }
 }
 
+function isPathContainedBy(rootPath, candidatePath) {
+  const relative = path.relative(rootPath, candidatePath);
+  return !relative || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function resolvePathWithinBoundary(inputPath, boundaryPath) {
+  const resolvedInput = path.resolve(inputPath);
+  if (!boundaryPath) return resolvedInput;
+  const resolvedBoundary = path.resolve(boundaryPath);
+  if (!isPathContainedBy(resolvedBoundary, resolvedInput)) return null;
+
+  let canonicalBoundary;
+  try {
+    canonicalBoundary = fssync.realpathSync.native(resolvedBoundary);
+  } catch (_e) {
+    return null;
+  }
+  const segments = path.relative(resolvedBoundary, resolvedInput).split(path.sep).filter(Boolean);
+  let current = canonicalBoundary;
+  for (let index = 0; index < segments.length; index += 1) {
+    const next = path.join(current, segments[index]);
+    try {
+      fssync.lstatSync(next);
+    } catch (_e) {
+      const unresolved = path.resolve(current, ...segments.slice(index));
+      return isPathContainedBy(canonicalBoundary, unresolved) ? unresolved : null;
+    }
+    let canonicalNext;
+    try {
+      canonicalNext = fssync.realpathSync.native(next);
+    } catch (_e) {
+      return null;
+    }
+    if (!isPathContainedBy(canonicalBoundary, canonicalNext)) return null;
+    current = canonicalNext;
+  }
+  return current;
+}
+
 // Walk @./path imports recursively. Claude Code expands @file references
 // inside CLAUDE.md into separate memory entries; /context counts them.
-function collectMemoryImports(filePath, seen, homeDir) {
-  if (!filePath || seen.has(filePath)) return;
-  seen.add(filePath);
+function collectMemoryImports(filePath, seen, homeDir, boundaryPath = null) {
+  const safeFilePath = filePath && resolvePathWithinBoundary(filePath, boundaryPath);
+  if (!safeFilePath || seen.has(safeFilePath)) return;
   let raw;
   try {
-    raw = fssync.readFileSync(filePath, "utf8");
+    raw = fssync.readFileSync(safeFilePath, "utf8");
   } catch (_e) {
     return;
   }
-  const dir = path.dirname(filePath);
+  seen.add(safeFilePath);
+  const dir = path.dirname(safeFilePath);
   // Match `@path/to/file.md` (CC's import syntax), but skip `@user@host` and
   // `email@host` patterns by requiring a path-like suffix.
-  const re = /(?:^|\s)@([./~][^\s)]+\.md)\b/g;
+  const re = /(?:^|\s)@((?:[./~]|[A-Za-z]:[\\/])[^\s)]*\.md)\b/g;
   let m;
   while ((m = re.exec(raw)) !== null) {
     let target = m[1];
     if (target.startsWith("~")) target = path.join(homeDir, target.slice(1).replace(/^\//, ""));
     else if (!path.isAbsolute(target)) target = path.resolve(dir, target);
-    if (fileExists(target)) collectMemoryImports(target, seen, homeDir);
+    const safeTarget = resolvePathWithinBoundary(target, boundaryPath);
+    if (safeTarget && fileExists(safeTarget)) {
+      collectMemoryImports(safeTarget, seen, homeDir, boundaryPath);
+    }
   }
 }
 
@@ -1112,16 +1158,23 @@ function getConfiguredResources({ projectDir = null, homeDir = null, projectSear
   const memorySeen = new Set();
   const userMd = path.join(claudeRoot, "CLAUDE.md");
   const homeMd = path.join(home, "CLAUDE.md");
-  if (fileExists(userMd)) collectMemoryImports(userMd, memorySeen, home);
-  if (fileExists(homeMd) && fssync.statSync(homeMd).size > 0) collectMemoryImports(homeMd, memorySeen, home);
+  const safeUserMd = resolvePathWithinBoundary(userMd, projectSearchBoundary);
+  const safeHomeMd = resolvePathWithinBoundary(homeMd, projectSearchBoundary);
+  if (safeUserMd && fileExists(safeUserMd)) {
+    collectMemoryImports(safeUserMd, memorySeen, home, projectSearchBoundary);
+  }
+  if (safeHomeMd && fileExists(safeHomeMd) && fssync.statSync(safeHomeMd).size > 0) {
+    collectMemoryImports(safeHomeMd, memorySeen, home, projectSearchBoundary);
+  }
   // Walk up from projectDir to find the closest CLAUDE.md (CC walks up too).
   // Handles dev servers running from a subdir (e.g. vite from dashboard/).
   if (projectDir) {
     let cursor = projectDir;
     for (let i = 0; i < 8; i++) {
       const candidate = path.join(cursor, "CLAUDE.md");
-      if (fileExists(candidate)) {
-        collectMemoryImports(candidate, memorySeen, home);
+      const safeCandidate = resolvePathWithinBoundary(candidate, projectSearchBoundary);
+      if (safeCandidate && fileExists(safeCandidate)) {
+        collectMemoryImports(safeCandidate, memorySeen, home, projectSearchBoundary);
         break;
       }
       if (projectSearchBoundary && path.resolve(cursor) === path.resolve(projectSearchBoundary)) break;

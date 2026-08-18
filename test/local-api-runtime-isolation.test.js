@@ -225,13 +225,44 @@ test("test-runner routes inject trackerDataDir as their isolated home", async (t
 
 test("Claude category route confines projects, resources, and disk cache to trackerDataDir", async (t) => {
   const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-claude-category-scope-"));
+  const outsideDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-claude-category-outside-"));
   t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
+  t.after(() => fs.promises.rm(outsideDir, { recursive: true, force: true }));
   const claudeProjectsDir = path.join(trackerDataDir, ".claude", "projects", "fixture");
   await fs.promises.mkdir(claudeProjectsDir, { recursive: true });
   await fs.promises.mkdir(path.join(trackerDataDir, ".claude", "skills", "fixture"), { recursive: true });
   await fs.promises.mkdir(path.join(trackerDataDir, ".claude", "agents"), { recursive: true });
   await fs.promises.writeFile(path.join(trackerDataDir, ".claude", "skills", "fixture", "SKILL.md"), "fixture", "utf8");
   await fs.promises.writeFile(path.join(trackerDataDir, ".claude", "agents", "fixture.md"), "fixture", "utf8");
+  const outsideFile = path.join(outsideDir, "outside.md");
+  const absoluteInsideFile = path.join(trackerDataDir, "absolute-inside.md");
+  await fs.promises.writeFile(outsideFile, "outside sentinel", "utf8");
+  await fs.promises.writeFile(absoluteInsideFile, "inside sentinel", "utf8");
+  await fs.promises.writeFile(
+    path.join(trackerDataDir, "inside.md"),
+    `@./CLAUDE.md\n@../${path.basename(outsideDir)}/outside.md\n`,
+    "utf8",
+  );
+  const escapeLink = path.join(trackerDataDir, "escape-link");
+  try {
+    await fs.promises.symlink(outsideDir, escapeLink, "junction");
+  } catch (error) {
+    if (!["EPERM", "EACCES", "ENOTSUP"].includes(error?.code)) throw error;
+    t.skip(`junction unavailable: ${error.code}`);
+    return;
+  }
+  await fs.promises.writeFile(
+    path.join(trackerDataDir, "CLAUDE.md"),
+    [
+      "@./inside.md",
+      `@../${path.basename(outsideDir)}/outside.md`,
+      `@${outsideFile}`,
+      `@~/../${path.basename(outsideDir)}/outside.md`,
+      "@./escape-link/outside.md",
+      `@${absoluteInsideFile}`,
+    ].join("\n"),
+    "utf8",
+  );
   await fs.promises.writeFile(
     path.join(claudeProjectsDir, "session.jsonl"),
     `${JSON.stringify({
@@ -251,6 +282,7 @@ test("Claude category route confines projects, resources, and disk cache to trac
 
   const body = await invokeLocalRoute(handler, "/functions/tokentracker-usage-category-breakdown?source=claude");
   assert.equal(body.source, "claude");
+  assert.equal(body.configured_resources.memory_files_count, 3);
   assert.deepEqual(probe.outside, []);
   for (const expected of [
     path.join(trackerDataDir, ".claude", "projects"),
@@ -293,29 +325,36 @@ test("Claude categorizer import does not capture the real home directory", () =>
   }
 });
 
-test("Claude categorizer test-runner fallback does not use real-home resources or cache", async (t) => {
+test("category breakdown APIs require explicit roots in test runners", async (t) => {
   const rootDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-categorizer-api-scope-"));
   t.after(() => fs.promises.rm(rootDir, { recursive: true, force: true }));
-  await fs.promises.writeFile(
-    path.join(rootDir, "session.jsonl"),
-    `${JSON.stringify({
-      type: "assistant",
-      timestamp: new Date().toISOString(),
-      requestId: "api-fixture-request",
-      message: {
-        id: "api-fixture-message",
-        usage: { input_tokens: 1, cache_creation_input_tokens: 10, cache_read_input_tokens: 0, output_tokens: 1 },
-        content: [{ type: "text", text: "fixture" }],
-      },
-    })}\n`,
-    "utf8",
-  );
-  const probe = installScopedFsProbe(t, rootDir);
   const { computeClaudeCategoryBreakdown } = require("../src/lib/claude-categorizer.js");
+  const { computeCodexContextBreakdown } = require("../src/lib/codex-context-breakdown.js");
 
-  const result = await computeClaudeCategoryBreakdown({ rootDir });
-  assert.equal(result.source, "claude");
-  assert.deepEqual(probe.outside, []);
+  await assert.rejects(() => computeClaudeCategoryBreakdown(), /explicit rootDir and homeDir/u);
+  await assert.rejects(() => computeClaudeCategoryBreakdown({ rootDir }), /explicit rootDir and homeDir/u);
+  await assert.rejects(() => computeClaudeCategoryBreakdown({ homeDir: rootDir }), /explicit rootDir and homeDir/u);
+  await assert.rejects(() => computeCodexContextBreakdown(), /explicit codexDir/u);
+
+  const env = { ...process.env, HOME: rootDir, USERPROFILE: rootDir };
+  delete env.NODE_TEST_CONTEXT;
+  delete env.VITEST;
+  const script = `
+    const claude = require(process.argv[1]);
+    const codex = require(process.argv[2]);
+    Promise.all([
+      claude.computeClaudeCategoryBreakdown(),
+      codex.computeCodexContextBreakdown(),
+    ]).then(() => process.stdout.write("ok"));
+  `;
+  const result = spawnSync(process.execPath, [
+    "-e",
+    script,
+    require.resolve("../src/lib/claude-categorizer.js"),
+    require.resolve("../src/lib/codex-context-breakdown.js"),
+  ], { cwd: path.resolve(__dirname, ".."), env, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stdout, "ok");
 });
 
 test("NODE_ENV=test alone keeps ordinary CLI fallback inside its isolated home", async () => {
