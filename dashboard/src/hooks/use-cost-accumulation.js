@@ -140,16 +140,26 @@ export function useCostAccumulation({
     // fields instead of masking with `?? 0`. The card renders "—" for null
     // and "0.00" for a real 0, so the user can distinguish "no data yet"
     // from "genuinely zero cost this period".
-    return apiBillingAccounts.map((account, index) => ({
-      id: account.id || `${account.provider}-${index}`,
-      provider: account.provider,
-      accountName: account.accountName,
-      billingSource: account.billingSource,
-      monthCostUsd: account.monthCostUsd ?? null,
-      lifetimeCostUsd: account.lifetimeCostUsd ?? null,
-      status: account.status || "not-connected",
-      lastSyncedAt: account.lastSyncedAt || null,
-    }));
+    return apiBillingAccounts.map((account, index) => {
+      const isLegacyOfficialInvoice = account.billingSource === "official_api";
+      const spendAuthority = ["official_invoice", "local_list_price_estimate", "unavailable"]
+        .includes(account.spendAuthority)
+        ? account.spendAuthority
+        : isLegacyOfficialInvoice
+          ? "official_invoice"
+          : "unavailable";
+      return {
+        id: account.id || `${account.provider}-${index}`,
+        provider: account.provider,
+        accountName: account.accountName,
+        billingSource: isLegacyOfficialInvoice ? "api" : account.billingSource,
+        spendAuthority,
+        monthCostUsd: account.monthCostUsd ?? null,
+        lifetimeCostUsd: account.lifetimeCostUsd ?? null,
+        status: account.status || "not-connected",
+        lastSyncedAt: account.lastSyncedAt || null,
+      };
+    });
   }, [apiBillingAccounts]);
 
   // Filter spend records by sources
@@ -165,18 +175,24 @@ export function useCostAccumulation({
       const totals = spendTimeseries?.totals;
       if (totals) {
         const previousTotals = previousMonthTimeseries?.totals || null;
-        const officialApiValues = apiBillingAccountsNormalized
-          // Existing `api` rows are reconstructed from local token logs and
-          // official list prices. They are equivalent-value estimates, not
-          // cash invoices. Only an explicitly identified official Billing
-          // result may enter the actual-cash ledger.
-          .filter((account) => account.billingSource === "official_api")
+        const apiAccounts = apiBillingAccountsNormalized
+          .filter((account) => account.billingSource === "api");
+        const officialApiValues = apiAccounts
+          .filter((account) => account.spendAuthority === "official_invoice")
           .map((account) => account.monthCostUsd)
-          .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+          .filter((value) => value !== null && value !== undefined
+            && Number.isFinite(Number(value)) && Number(value) >= 0)
           .map(Number);
         const monthOfficialApiSpendUsd = officialApiValues.length > 0
           ? officialApiValues.reduce((sum, value) => sum + value, 0)
           : null;
+        const hasUncoveredApiSpend = apiAccounts.some((account) => (
+          account.spendAuthority !== "official_invoice"
+          || account.monthCostUsd === null
+          || account.monthCostUsd === undefined
+          || !Number.isFinite(Number(account.monthCostUsd))
+          || Number(account.monthCostUsd) < 0
+        ));
         const subscriptionUsd = totals.subscription_usd ?? null;
         const otherAiUsd = totals.other_ai_usd ?? null;
         const recordedCashBase = [subscriptionUsd, otherAiUsd]
@@ -200,7 +216,7 @@ export function useCostAccumulation({
           monthActualCashSpendUsd: hasRecordedCashBase
             ? recordedCashBase + (monthOfficialApiSpendUsd ?? 0)
             : monthOfficialApiSpendUsd,
-          actualCashCoverage: monthOfficialApiSpendUsd == null ? "partial" : "exact",
+          actualCashCoverage: monthOfficialApiSpendUsd == null || hasUncoveredApiSpend ? "partial" : "exact",
           monthSubscriptionCostUsd: totals.subscription_usd ?? null,
           monthOtherAiCostUsd: totals.other_ai_usd ?? null,
           monthTotalCostUsd: totals.combined_usd ?? null,

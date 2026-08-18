@@ -9,10 +9,10 @@
  * - API billing accounts are derived from spend records (manual entries) and
  *   detected credentials (API keys found in auth files).
  * - Returns ApiBillingAccount[] with provider, accountName, billingSource,
- *   monthCostUsd, lifetimeCostUsd, status, lastSyncedAt.
+ *   spendAuthority, monthCostUsd, lifetimeCostUsd, status, lastSyncedAt.
  *
  * The sync status follows the same states as token-plan-refresh.js:
- * - synced: account connected and cost data available
+ * - synced: account connected and local equivalent-cost data available
  * - not-connected: no account detected
  * - error: detection failed
  */
@@ -34,6 +34,12 @@ const BILLING_SOURCES = {
   CONSOLE: "console",
   MANUAL: "manual",
 };
+
+const SPEND_AUTHORITIES = Object.freeze({
+  OFFICIAL_INVOICE: "official_invoice",
+  LOCAL_LIST_PRICE_ESTIMATE: "local_list_price_estimate",
+  UNAVAILABLE: "unavailable",
+});
 
 // Provider display names
 const PROVIDER_NAMES = {
@@ -81,7 +87,7 @@ function getProviderName(provider) {
  * fixed subscription fees (e.g., $20/month for Claude Max plan) which are
  * different from API usage-based costs. This function only establishes account
  * identity from spend records; it does NOT contribute to monthCostUsd or lifetimeCostUsd.
- * Actual API usage costs should come from usage rows (see collectApiBillingAccounts).
+ * Local API-equivalent estimates may come from usage rows (see collectApiBillingAccounts).
  */
 function collectBillingFromSpendRecords(spendRecords = []) {
   const accountsByProvider = new Map();
@@ -97,6 +103,7 @@ function collectBillingFromSpendRecords(spendRecords = []) {
         provider: source,
         accountName: getProviderName(source),
         billingSource: normalizeBillingSource(record.billing_cycle),
+        spendAuthority: SPEND_AUTHORITIES.UNAVAILABLE,
         monthCostUsd: null, // Not API usage cost - subscription fees are different semantics
         lifetimeCostUsd: null, // Not API usage cost - subscription fees are different semantics
         status: SYNC_STATUSES.NOT_CONNECTED,
@@ -235,18 +242,19 @@ function mergeBillingAccounts(spendAccounts, detectedCredentials) {
     const provider = cred.provider;
     if (resultMap.has(provider)) {
       // Update existing account - detected credentials mean the account
-      // identity is verified, but actual API usage costs must come from usage rows
+      // identity is verified, but local API-equivalent estimates must come from usage rows
       const existing = resultMap.get(provider);
-      // Keep status as not-connected until we have actual API usage cost data
-      // Spend records only establish identity, not API usage costs
+      // Keep status as not-connected until we have local equivalent-cost data.
+      // Spend records only establish identity, not API usage costs.
     } else {
       // Add new account from detected credentials
       resultMap.set(provider, {
         provider: cred.provider,
         accountName: cred.accountName,
         billingSource: cred.billingSource,
-        monthCostUsd: null, // No actual API usage cost data yet
-        lifetimeCostUsd: null, // No actual API usage cost data yet
+        spendAuthority: SPEND_AUTHORITIES.UNAVAILABLE,
+        monthCostUsd: null, // No local API-equivalent estimate yet
+        lifetimeCostUsd: null, // No local API-equivalent estimate yet
         status: SYNC_STATUSES.NOT_CONNECTED,
         lastSyncedAt: null,
       });
@@ -363,6 +371,8 @@ async function collectApiBillingAccounts({
     const mappedSource = sourceToProvider[account.provider] || account.provider;
     const stats = costStats.get(mappedSource) || costStats.get(account.provider);
     if (stats) {
+      account.billingSource = BILLING_SOURCES.API;
+      account.spendAuthority = SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE;
       account.monthCostUsd = Number(stats.monthCostUsd.toFixed(6));
       account.lifetimeCostUsd = Number(stats.lifetimeCostUsd.toFixed(6));
       account.status = SYNC_STATUSES.SYNCED;
@@ -378,6 +388,7 @@ async function collectApiBillingAccounts({
         provider,
         accountName: getProviderName(provider),
         billingSource: BILLING_SOURCES.API,
+        spendAuthority: SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE,
         monthCostUsd: Number(stats.monthCostUsd.toFixed(6)),
         lifetimeCostUsd: Number(stats.lifetimeCostUsd.toFixed(6)),
         status: SYNC_STATUSES.SYNCED,
@@ -424,6 +435,7 @@ function getSyncStatusLabel(status) {
 module.exports = {
   SYNC_STATUSES,
   BILLING_SOURCES,
+  SPEND_AUTHORITIES,
   PROVIDER_NAMES,
   collectApiBillingAccounts,
   collectBillingFromSpendRecords,

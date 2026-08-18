@@ -6,6 +6,7 @@ const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
+const { SPEND_AUTHORITIES } = require("../src/lib/api-billing");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -54,6 +55,11 @@ test("api billing accounts endpoint returns accounts array when no spend records
     const body = readJsonResponse(res);
     assert.equal(res.statusCode, 200);
     assert.ok(Array.isArray(body.accounts));
+    assert.deepEqual(SPEND_AUTHORITIES, {
+      OFFICIAL_INVOICE: "official_invoice",
+      LOCAL_LIST_PRICE_ESTIMATE: "local_list_price_estimate",
+      UNAVAILABLE: "unavailable",
+    });
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -112,6 +118,7 @@ test("api billing accounts endpoint derives accounts from spend records (identit
     assert.ok(claudeAccount, "claude account should exist");
     assert.equal(claudeAccount.accountName, "Claude");
     assert.equal(typeof claudeAccount.billingSource, "string");
+    assert.equal(claudeAccount.spendAuthority, "unavailable");
     // Spend records establish identity only - API usage costs are null (subscription fees ≠ API usage costs)
     assert.equal(claudeAccount.monthCostUsd, null);
     assert.equal(claudeAccount.lifetimeCostUsd, null);
@@ -121,12 +128,13 @@ test("api billing accounts endpoint derives accounts from spend records (identit
     assert.ok(openaiAccount, "openai account should exist");
     assert.equal(openaiAccount.monthCostUsd, null);
     assert.equal(openaiAccount.lifetimeCostUsd, null);
+    assert.equal(openaiAccount.spendAuthority, "unavailable");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
 
-test("api billing account has required fields: provider, accountName, billingSource, monthCostUsd, lifetimeCostUsd, status, lastSyncedAt", async () => {
+test("api billing account has required fields including spendAuthority", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
@@ -163,6 +171,7 @@ test("api billing account has required fields: provider, accountName, billingSou
     assert.ok("provider" in account, "should have provider");
     assert.ok("accountName" in account, "should have accountName");
     assert.ok("billingSource" in account, "should have billingSource");
+    assert.ok("spendAuthority" in account, "should have spendAuthority");
     assert.ok("monthCostUsd" in account, "should have monthCostUsd");
     assert.ok("lifetimeCostUsd" in account, "should have lifetimeCostUsd");
     assert.ok("status" in account, "should have status");
@@ -231,6 +240,8 @@ test("api billing accounts correctly calculates cross-month costs (monthCostUsd 
     assert.equal(claudeAccount.status, "synced", "should be synced since queue has usage data");
     assert.equal(claudeAccount.monthCostUsd, 0.2, "monthCostUsd should only include current month cost");
     assert.equal(claudeAccount.lifetimeCostUsd, 0.3, "lifetimeCostUsd should include all history");
+    assert.equal(claudeAccount.billingSource, "api");
+    assert.equal(claudeAccount.spendAuthority, "local_list_price_estimate");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -267,6 +278,7 @@ test("api billing accounts with only credentials detected shows not-connected st
         assert.equal(openaiAccount.status, "not-connected");
         assert.equal(openaiAccount.monthCostUsd, null);
         assert.equal(openaiAccount.lifetimeCostUsd, null);
+        assert.equal(openaiAccount.spendAuthority, "unavailable");
       }
     } finally {
       os.homedir = originalHomedir;
