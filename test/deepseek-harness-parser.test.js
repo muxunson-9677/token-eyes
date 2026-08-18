@@ -136,6 +136,76 @@ test("keeps pure reasoning DeepSeek Harness usage", async (t) => {
   assert.equal(row.billable_total_tokens, 9);
 });
 
+test("reparses unchanged pre-fix DeepSeek Harness files once to correct totals", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-normalization-upgrade-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const sessionFile = await writeSession(root, "pre-fix", fixtureEvents({
+    sessionId: "session-dsh-pre-fix",
+  }), false);
+  const queuePath = path.join(root, "queue.jsonl");
+  const cursors = {};
+
+  await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  delete cursors.deepseekHarness.normalizationVersion;
+  const previousTotals = cursors.deepseekHarness.files[sessionFile]
+    .byModel["deepseek-v4-flash"].totals;
+  previousTotals.total_tokens = 190;
+  previousTotals.billable_total_tokens = 190;
+  const [hourlyBucket] = Object.values(cursors.hourly.buckets);
+  hourlyBucket.totals.total_tokens = 190;
+  hourlyBucket.totals.billable_total_tokens = 190;
+  hourlyBucket.queuedKey = "120|30|0|40|10|190|190|1";
+  hourlyBucket.attributionQueuedKeys.unknown =
+    "120|30|0|40|10|190|190|1|deepseek-v4-flash|unknown";
+  const [preFixRow] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
+  preFixRow.total_tokens = 190;
+  preFixRow.billable_total_tokens = 190;
+  fs.writeFileSync(queuePath, `${JSON.stringify(preFixRow)}\n`);
+
+  const upgraded = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.deepEqual(upgraded, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  const upgradedRows = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(upgradedRows.length, 2);
+  assert.deepEqual(upgradedRows[1], {
+    ...preFixRow,
+    total_tokens: 200,
+    billable_total_tokens: 200,
+  });
+
+  const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.equal(fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).length, 2);
+});
+
+test("discovers pure reasoning in an unchanged pre-fix DeepSeek Harness file once", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-reasoning-upgrade-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const events = fixtureEvents({
+    sessionId: "session-dsh-reasoning-upgrade",
+    usage: { inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 9 },
+  }).filter((event) => event.type !== "assistant/chunk");
+  const sessionFile = await writeSession(root, "reasoning-pre-fix", events, false);
+  const queuePath = path.join(root, "queue.jsonl");
+  const stat = fs.statSync(sessionFile);
+  const cursors = {
+    deepseekHarness: {
+      files: {
+        [sessionFile]: { signature: `${stat.size}:${stat.mtimeMs}`, byModel: {} },
+      },
+    },
+  };
+
+  const upgraded = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.deepEqual(upgraded, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  const [row] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(row.total_tokens, 9);
+  assert.equal(row.reasoning_output_tokens, 9);
+
+  const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.equal(fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).length, 1);
+});
+
 test("reads concatenated zstd frames written by live DeepSeek Harness sessions", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-frames-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

@@ -5985,6 +5985,8 @@ async function listDeepSeekHarnessSessionFiles(dshHome = resolveDeepSeekHarnessH
   return out;
 }
 
+const DEEPSEEK_HARNESS_NORMALIZATION_VERSION = 2;
+
 function normalizeDeepSeekHarnessUsage(raw) {
   if (!raw || typeof raw !== "object") return null;
   const input = toNonNegativeInt(raw.inputTokens);
@@ -6101,6 +6103,9 @@ async function parseDeepSeekHarnessIncremental({
     cursors?.deepseekHarness && typeof cursors.deepseekHarness === "object"
       ? cursors.deepseekHarness
       : {};
+  const priorNormalizationVersion = Number(priorState.normalizationVersion) || 1;
+  const normalizationUpgrade =
+    priorNormalizationVersion < DEEPSEEK_HARNESS_NORMALIZATION_VERSION;
   const fileState =
     priorState.files && typeof priorState.files === "object" ? { ...priorState.files } : {};
   const hourlyState = normalizeHourlyState(cursors?.hourly);
@@ -6119,7 +6124,7 @@ async function parseDeepSeekHarnessIncremental({
     }
     const signature = `${stat.size}:${stat.mtimeMs}`;
     const previousFile = fileState[filePath];
-    if (previousFile?.signature === signature) continue;
+    if (!normalizationUpgrade && previousFile?.signature === signature) continue;
 
     let text;
     try {
@@ -6170,7 +6175,12 @@ async function parseDeepSeekHarnessIncremental({
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
-  cursors.deepseekHarness = { ...priorState, files: fileState, updatedAt };
+  cursors.deepseekHarness = {
+    ...priorState,
+    normalizationVersion: DEEPSEEK_HARNESS_NORMALIZATION_VERSION,
+    files: fileState,
+    updatedAt,
+  };
   return { filesProcessed, eventsAggregated, bucketsQueued };
 }
 
