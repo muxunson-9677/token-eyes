@@ -20,9 +20,9 @@ function makeCursorJwt(userId = "user_TEST123") {
   return `${header}.${payload}.sig`;
 }
 
-// 鈹€鈹€ parseCursorCsv 鈥?new format 鈹€鈹€
+// ── parseCursorCsv — new format ──
 
-describe("parseCursorCsv 鈥?new format", () => {
+describe("parseCursorCsv — new format", () => {
   const csvText = `Date,Kind,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Cost
 "2026-03-20T06:56:12.521Z","Included","composer-2-fast","No","160000","159990","578207","2055","740252","0.49"
 "2026-03-19T10:00:00.000Z","Included","claude-4.6-sonnet-medium-thinking","Yes","50000","40000","10000","3000","103000","0.32"`;
@@ -62,9 +62,9 @@ describe("parseCursorCsv 鈥?new format", () => {
   });
 });
 
-// 鈹€鈹€ parseCursorCsv 鈥?newest format with Cloud Agent ID / Automation ID 鈹€鈹€
+// ── parseCursorCsv — newest format with Cloud Agent ID / Automation ID ──
 
-describe("parseCursorCsv 鈥?with Cloud Agent ID columns", () => {
+describe("parseCursorCsv — with Cloud Agent ID columns", () => {
   const csvText = `Date,Cloud Agent ID,Automation ID,Kind,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Cost
 "2026-04-16T03:32:33.284Z","","","On-Demand","composer-2-fast","No","0","3189","194368","1815","199372","0.11"
 "2026-04-15T03:39:53.013Z","","","On-Demand","auto","No","0","132586","93728","2303","228617","0.20"`;
@@ -96,9 +96,9 @@ describe("Cursor billing kind classification", () => {
   });
 });
 
-// 鈹€鈹€ parseCursorCsv 鈥?old format 鈹€鈹€
+// ── parseCursorCsv — old format ──
 
-describe("parseCursorCsv 鈥?old format", () => {
+describe("parseCursorCsv — old format", () => {
   const csvText = `Date,Model,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Cost,Cost to you
 2025-02-01,gpt-4o,1000,500,200,300,2000,$0.10,$0.10`;
 
@@ -119,9 +119,9 @@ describe("parseCursorCsv 鈥?old format", () => {
   });
 });
 
-// 鈹€鈹€ parseCursorCsv 鈥?empty/invalid 鈹€鈹€
+// ── parseCursorCsv — empty/invalid ──
 
-describe("parseCursorCsv 鈥?empty/invalid", () => {
+describe("parseCursorCsv — empty/invalid", () => {
   it("returns [] for empty string", () => {
     assert.deepStrictEqual(parseCursorCsv(""), []);
   });
@@ -132,7 +132,7 @@ describe("parseCursorCsv 鈥?empty/invalid", () => {
   });
 });
 
-// 鈹€鈹€ normalizeCursorUsage 鈹€鈹€
+// ── normalizeCursorUsage ──
 
 describe("normalizeCursorUsage", () => {
   it("produces standard format output", () => {
@@ -153,9 +153,9 @@ describe("normalizeCursorUsage", () => {
   });
 });
 
-// 鈹€鈹€ normalizeCursorUsage 鈥?edge cases 鈹€鈹€
+// ── normalizeCursorUsage — edge cases ──
 
-describe("normalizeCursorUsage 鈥?edge cases", () => {
+describe("normalizeCursorUsage — edge cases", () => {
   it("all zeros produce all zeros", () => {
     const norm = normalizeCursorUsage({
       inputTokens: 0,
@@ -194,7 +194,7 @@ describe("normalizeCursorUsage 鈥?edge cases", () => {
   });
 });
 
-// 鈹€鈹€ resolveCursorPaths 鈹€鈹€
+// ── resolveCursorPaths ──
 
 describe("resolveCursorPaths", () => {
   it("uses an explicit app data directory for token account detection", () => {
@@ -285,7 +285,7 @@ describe("resolveCursorPaths", () => {
   });
 });
 
-// 鈹€鈹€ isCursorInstalled 鈹€鈹€
+// ── isCursorInstalled ──
 
 describe("isCursorInstalled", () => {
   it("returns a boolean", () => {
@@ -312,7 +312,7 @@ describe("isCursorInstalled", () => {
   });
 });
 
-// 鈹€鈹€ extractCursorSessionToken 鈹€鈹€
+// ── extractCursorSessionToken ──
 
 describe("extractCursorSessionToken", () => {
   it("returns null for non-existent home dir", () => {

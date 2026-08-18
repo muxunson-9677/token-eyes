@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -12,6 +13,25 @@ const hostname = "127.0.0.1";
 const dashboardRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(dashboardRoot, "..");
 const outputDir = path.join(repoRoot, "docs", "screenshots", "token-eyes-widget-ui");
+const reportPath = path.join(outputDir, "widget-visual-audit-report.json");
+const buildTime = new Date().toISOString();
+const route = "/desktop-widget";
+
+function gitValue(command) {
+  return execFileSync("git", command.split(" "), {
+    cwd: repoRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  }).trim();
+}
+
+const provenance = {
+  buildTime,
+  worktree: gitValue("rev-parse --show-toplevel"),
+  branch: gitValue("branch --show-current"),
+  head: gitValue("rev-parse HEAD"),
+  route,
+};
 const port = await getEphemeralPort(hostname);
 const originalWorkingDirectory = process.cwd();
 process.chdir(dashboardRoot);
@@ -135,7 +155,12 @@ async function wheelToEnd(page, locator) {
     );
     if (reachedEnd) break;
   }
-  const scrollTopAfter = await locator.evaluate((element) => element.scrollTop);
+  const scrollMetricsAfter = await locator.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    scrollTop: element.scrollTop,
+  }));
+  const scrollTopAfter = scrollMetricsAfter.scrollTop;
   const scrollable = scrollMetricsBefore.scrollHeight > scrollMetricsBefore.clientHeight + 1;
   if (!scrollable) {
     throw new Error(`wheel audit fixture did not overflow: ${JSON.stringify(scrollMetricsBefore)}`);
@@ -143,7 +168,11 @@ async function wheelToEnd(page, locator) {
   if (!(scrollTopAfter > scrollTopBefore)) {
     throw new Error(`wheel input did not scroll content: ${scrollTopBefore} -> ${scrollTopAfter}`);
   }
-  return { ...scrollMetricsBefore, scrollable, scrollTopBefore, scrollTopAfter };
+  const reachedEnd = scrollTopAfter + scrollMetricsAfter.clientHeight >= scrollMetricsAfter.scrollHeight - 1;
+  if (!reachedEnd) {
+    throw new Error(`wheel input did not reach the end: ${JSON.stringify(scrollMetricsAfter)}`);
+  }
+  return { ...scrollMetricsBefore, scrollable, scrollTopBefore, scrollTopAfter, reachedEnd };
 }
 
 async function installFixture(page, prefs) {
@@ -362,7 +391,7 @@ try {
         if (request.url().includes("desktop-widget")) widgetRequests.push(request.url());
       });
       await installFixture(page, { ...scenario.prefs, height: scenario.height, scaleFactor: scale });
-      await page.goto(`${baseUrl}/desktop-widget${scenario.query ?? ""}`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${baseUrl}${route}${scenario.query ?? ""}`, { waitUntil: "domcontentloaded" });
       await page.getByTestId("desktop-widget-card").waitFor({ state: "visible" });
       try {
         if (scenario.prefs.mode === "limits") {
@@ -498,7 +527,10 @@ try {
           ),
           lastRowVisible: !last || !scroll
             ? true
-            : last.getBoundingClientRect().bottom <= scroll.getBoundingClientRect().bottom + 1,
+            : (
+              last.getBoundingClientRect().top >= scroll.getBoundingClientRect().top - 1
+              && last.getBoundingClientRect().bottom <= scroll.getBoundingClientRect().bottom + 1
+            ),
           menuItemCount: menuItems.length,
           menuVisible: !menu || menu.getBoundingClientRect().bottom <= window.innerHeight + 1,
           lastMenuItemVisible: !menuScroll || !lastMenuItem
@@ -554,6 +586,8 @@ try {
       results.push({
         name: scenario.name,
         scale,
+        route,
+        viewport: { width: viewportWidth, height: scenario.height },
         screenshotPath,
         geometry,
         fixedGeometryBefore,
@@ -568,9 +602,37 @@ try {
   }
 
   const interactionAudit = await runInteractionAudit(browser, baseUrl);
-  console.log(JSON.stringify({ status: "PASS", outputDir, scenarioCount: results.length, interactionAudit, results }, null, 2));
+  const expectedScenarioCount = scenarios.length * 4;
+  if (results.length !== expectedScenarioCount) {
+    throw new Error(`incomplete visual audit: ${results.length}/${expectedScenarioCount}`);
+  }
+  const visualAuditStatus = `PASS_${results.length}_SCENARIOS`;
+  if (visualAuditStatus !== "PASS_24_SCENARIOS") {
+    throw new Error(`unexpected visual audit status: ${visualAuditStatus}`);
+  }
+  const report = {
+    status: "PASS",
+    auditedAt: new Date().toISOString(),
+    provenance,
+    outputDir,
+    scenarioCount: results.length,
+    fixture: {
+      id: "embedded-widget-reference-v1",
+      selectedAgent: viewModel.selectedAgent,
+      agents: viewModel.agents.length,
+      projectsAndSessions: 9,
+      quotaPlans: 10,
+      quotaRows: 30,
+      models: viewModel.totals.models.length,
+      missingResetRows: 6,
+    },
+    interactionAudit,
+    results,
+  };
+  await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  console.log(JSON.stringify(report, null, 2));
   console.log("WIDGET_INTERACTION_AUDIT=PASS");
-  console.log("WIDGET_VISUAL_AUDIT=PASS_24_SCENARIOS");
+  console.log(`WIDGET_VISUAL_AUDIT=${visualAuditStatus}`);
 } finally {
   await browser?.close();
   await server.close();

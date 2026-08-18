@@ -69,6 +69,11 @@ test("LandingPage includes screenshot image and copy alt key", () => {
   assert.match(src, /dashboard-dark\.png/);
 });
 
+test("LandingPage forwards the reduced-motion preference to LightRays", () => {
+  const src = read("dashboard/src/ui/marketing/MarketingLanding.jsx");
+  assert.match(src, /<LightRays[\s\S]*?reducedMotion=\{reduceMotion\}[\s\S]*?\/>/u);
+});
+
 test("copy registry includes landing screenshot alt", () => {
   const src = read("dashboard/src/content/copy.csv");
   assert.ok(src.includes("landing.screenshot.alt"));

@@ -264,6 +264,65 @@ describe("UsageOverview", () => {
     expect(mixedBadges.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("uses copy-registry billing labels for source-level provider badges", () => {
+    const fleet = [
+      {
+        source: "codex",
+        label: "CODEX",
+        totalPercent: "34.0",
+        usage: 340,
+        usd: 3.4,
+        billingMode: "api_key",
+        billingModes: ["api_key"],
+        models: [
+          { id: "gpt-4o", name: "GPT-4o", share: 100, usage: 340, cost: 3.4, billingMode: "api_key" },
+        ],
+      },
+      {
+        source: "claude",
+        label: "CLAUDE",
+        totalPercent: "33.0",
+        usage: 330,
+        usd: 3.3,
+        billingMode: "token_plan",
+        billingModes: ["token_plan"],
+        models: [
+          { id: "claude-pro", name: "Claude Pro", share: 100, usage: 330, cost: 3.3, billingMode: "token_plan" },
+        ],
+      },
+      {
+        source: "cursor",
+        label: "CURSOR",
+        totalPercent: "33.0",
+        usage: 330,
+        usd: 3.3,
+        billingMode: "unknown",
+        billingModes: ["unknown"],
+        models: [
+          { id: "cursor-unknown", name: "Cursor Unknown", share: 100, usage: 330, cost: 3.3, billingMode: "unknown" },
+        ],
+      },
+    ];
+
+    render(
+      <UsageOverview
+        period="month"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="1,000"
+        fleetData={fleet}
+        from="2026-05-01"
+        to="2026-05-31"
+      />,
+    );
+
+    expect(screen.getAllByText("API Key").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("套餐").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("归属未知").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("直连")).not.toBeInTheDocument();
+    expect(screen.queryByText("未配置计费")).not.toBeInTheDocument();
+  });
+
   it("filters out non-matching models when API Key tab is selected", async () => {
     const user = userEvent.setup();
     render(

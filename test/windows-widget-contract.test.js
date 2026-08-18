@@ -351,6 +351,11 @@ test("bundled runtime smoke owns a unique temporary home", () => {
   assert.doesNotMatch(smoke, /runtime-smoke-\$\{process\.pid\}/u);
   assert.doesNotMatch(smoke, /\.\.\.process\.env/u);
   assert.doesNotMatch(installedSmoke, /const env\s*=\s*\{\s*\.\.\.process\.env/u);
+  assert.match(
+    installedSmoke,
+    /async function restoreInstallerRegistry[\s\S]*?installerRegistryExists\(snapshot\.registryKey\)[\s\S]*?\["delete",\s*snapshot\.registryKey,\s*"\/f"\][\s\S]*?snapshot\.existed[\s\S]*?\["import",\s*snapshot\.backupPath\]/u,
+    "installed smoke must delete each exact key before importing its snapshot",
+  );
   for (const name of [
     "AGENTDATA",
     "CLAUDE_HOME",
@@ -380,11 +385,21 @@ test("widget visual verification uses real wheel input for scrollable content", 
   assert.match(visual, /scenario\.name === "04-limits" \? 30/u);
   assert.match(visual, /stateAudit\.planCount !== 10/u);
   assert.match(visual, /lastRowVisible/u);
+  assert.match(visual, /getBoundingClientRect\(\)\.top\s*>=\s*scroll\.getBoundingClientRect\(\)\.top\s*-\s*1/u);
   assert.match(visual, /fixedGeometryBefore/u);
   assert.match(visual, /fixedGeometryAfter/u);
   assert.match(visual, /fixedToolbarVisible/u);
   assert.match(visual, /fixedRegionOutsideScroll/u);
   assert.match(visual, /fixedGeometryStable/u);
+  assert.match(visual, /widget-visual-audit-report\.json/u);
+  assert.match(visual, /gitValue\("rev-parse --show-toplevel"\)/u);
+  assert.match(visual, /auditedAt/u);
+  assert.match(visual, /worktree/u);
+  assert.match(visual, /branch/u);
+  assert.match(visual, /head/u);
+  assert.match(visual, /route/u);
+  assert.match(visual, /viewport/u);
+  assert.match(visual, /fixture/u);
   assert.match(visual, /planIndex >= 8/u);
   assert.match(visual, /planIndex === 9/u);
   assert.match(visual, /重置时间不可用/u);
@@ -396,6 +411,7 @@ test("widget visual verification uses real wheel input for scrollable content", 
   assert.match(visual, /page\.waitForFunction\([\s\S]*widget-expanded-limit-plan[\s\S]*widget-limit-row/u);
   assert.doesNotMatch(visual, /readyText[\s\S]*67%/u);
   assert.match(visual, /WIDGET_INTERACTION_AUDIT=PASS/u);
-  assert.match(visual, /WIDGET_VISUAL_AUDIT=PASS_24_SCENARIOS/u);
+  assert.match(visual, /visualAuditStatus !== "PASS_24_SCENARIOS"/u);
+  assert.match(visual, /WIDGET_VISUAL_AUDIT=\$\{visualAuditStatus\}/u);
   assert.doesNotMatch(visual, /element\.scrollTop\s*=\s*element\.scrollHeight/u);
 });

@@ -160,6 +160,7 @@ export function MarketingLanding({
           mouseInfluence={0.1}
           noiseAmount={0}
           distortion={0}
+          reducedMotion={reduceMotion}
         />
       </div>
       <header className={cn("sticky top-0 z-50 transition-all duration-300", scrolled ? "bg-oai-gray-950/80 backdrop-blur-md border-b border-oai-gray-900" : "bg-transparent border-b border-transparent")}>

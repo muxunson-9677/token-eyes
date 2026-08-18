@@ -64,4 +64,16 @@ describe("LightRays reduced-motion behavior", () => {
     expect(oglMocks.Renderer).not.toHaveBeenCalled();
     expect(requestAnimationFrame).not.toHaveBeenCalled();
   });
+
+  it("cancels pending initialization when reduced motion is enabled", async () => {
+    const { rerender } = render(<LightRays />);
+
+    rerender(<LightRays reducedMotion />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+
+    expect(oglMocks.Renderer).not.toHaveBeenCalled();
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+  });
 });

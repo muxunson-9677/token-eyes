@@ -84,10 +84,11 @@ async function snapshotInstallerRegistry(installRoot) {
 
 async function restoreInstallerRegistry(snapshots) {
   for (const snapshot of snapshots) {
+    if (installerRegistryExists(snapshot.registryKey)) {
+      await run("reg.exe", ["delete", snapshot.registryKey, "/f"]);
+    }
     if (snapshot.existed) {
       await run("reg.exe", ["import", snapshot.backupPath]);
-    } else if (installerRegistryExists(snapshot.registryKey)) {
-      await run("reg.exe", ["delete", snapshot.registryKey, "/f"]);
     }
   }
 }

@@ -180,6 +180,8 @@ export default function LightRays({
   useEffect(() => {
     if (reducedMotion || !isVisible || !containerRef.current) return;
 
+    let cancelled = false;
+
     if (cleanupFunctionRef.current) {
       cleanupFunctionRef.current();
       cleanupFunctionRef.current = null;
@@ -189,7 +191,7 @@ export default function LightRays({
       if (!containerRef.current) return;
 
       await new Promise((resolve) => setTimeout(resolve, 10));
-      if (!containerRef.current) return;
+      if (cancelled || !containerRef.current) return;
 
       const renderer = new Renderer({
         dpr: Math.min(window.devicePixelRatio, 2),
@@ -303,6 +305,7 @@ export default function LightRays({
     initializeWebGL();
 
     return () => {
+      cancelled = true;
       if (cleanupFunctionRef.current) {
         cleanupFunctionRef.current();
         cleanupFunctionRef.current = null;

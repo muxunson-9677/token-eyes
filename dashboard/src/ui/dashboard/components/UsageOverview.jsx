@@ -707,7 +707,6 @@ export function UsageOverview({
                           className="tt-provider-card-badge mt-1"
                           mode={sourceBillingMode}
                           copyKey={sourceBillingKey}
-                          label={sourceBillingMode === "api_key" ? "直连" : sourceBillingMode === "token_plan" ? "套餐" : undefined}
                         />
                       </div>
                     </div>
