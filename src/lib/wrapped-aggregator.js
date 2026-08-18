@@ -1,5 +1,7 @@
 "use strict";
 
+const { queueUsageIdentity } = require("./usage-attribution");
+
 /**
  * Wrapped aggregator — turns a list of queue.jsonl rows into a year-end
  * summary suitable for the `tracker wrapped` CLI command and the
@@ -71,13 +73,13 @@ function aggregateWrapped(rows, opts = {}) {
   // queue.jsonl is append-only: each sync re-emits the cumulative totals for
   // every touched (source, model, hour_start). Naively summing every row
   // double-counts every previously synced bucket. Keep only the latest entry
-  // per tuple — same dedup rule that local-api.js readQueueData enforces for
+  // per mode-aware tuple — same dedup rule that local-api.js readQueueData enforces for
   // the dashboard. This makes `tracker wrapped` totals match what the
   // /wrapped dashboard page shows.
   const dedup = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row || typeof row !== "object") continue;
-    const key = `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
+    const key = queueUsageIdentity(row);
     // Apply the same legacy-row corrections (codex inclusive-input, cursor
     // billable=0) as local-api.js readQueueData so `tracker wrapped` matches
     // the dashboard for identical data.

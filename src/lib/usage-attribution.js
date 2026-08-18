@@ -1,4 +1,5 @@
 const { AGENT_ADAPTERS } = require("./agent-adapters");
+const { KNOWN_PROVIDER_API_IDS } = require("./provider-api-configs");
 
 const TOKEN_FIELDS = [
   "input_tokens",
@@ -18,21 +19,7 @@ const GROUP_FIELDS = {
   model: "model_id",
 };
 
-const BILLING_MODE_ALIASES = new Map([
-  ["api_key", "api_key"],
-  ["api-key", "api_key"],
-  ["api key", "api_key"],
-  ["payg", "api_key"],
-  ["pay_as_you_go", "api_key"],
-  ["pay-as-you-go", "api_key"],
-  ["token_plan", "token_plan"],
-  ["token-plan", "token_plan"],
-  ["token plan", "token_plan"],
-  ["subscription", "token_plan"],
-  ["plan", "token_plan"],
-  ["unknown", "unknown"],
-  ["mixed", "unknown"],
-]);
+const BILLING_MODES = new Set(["api_key", "token_plan", "unknown"]);
 
 const BILLING_MODE_CONFIDENCES = new Set([
   "explicit_runtime",
@@ -93,10 +80,7 @@ function toNonNegativeInt(value) {
 }
 
 function normalizeBillingMode(value) {
-  if (value == null) return null;
-  const raw = String(value).trim().toLowerCase();
-  if (!raw) return null;
-  return BILLING_MODE_ALIASES.get(raw) || null;
+  return typeof value === "string" && BILLING_MODES.has(value) ? value : null;
 }
 
 function normalizeEndpointOrigin(value) {
@@ -119,17 +103,7 @@ const KNOWN_ATTRIBUTION_PROVIDER_IDS = new Set(
     .filter((value) => value && value !== "unknown"),
 );
 
-// Provider API-only ids mirror KNOWN_PROVIDER_PRESETS in provider-api-configs.js.
-// The parity assertion lives in test/usage-attribution.test.js.
-for (const providerId of [
-  "aliyun_bss",
-  "deepseek",
-  "glm",
-  "minimax",
-  "moonshot",
-  "volcengine_billing",
-  "xiaomi_mimo",
-]) {
+for (const providerId of KNOWN_PROVIDER_API_IDS) {
   KNOWN_ATTRIBUTION_PROVIDER_IDS.add(providerId);
 }
 
@@ -177,9 +151,18 @@ function normalizeUsageAttribution(input) {
   return result;
 }
 
+function queueUsageIdentity(row, { dimensionsKey } = {}) {
+  const record = row && typeof row === "object" ? row : {};
+  const parts = [record.source || "", record.model || "", record.hour_start || ""];
+  if (dimensionsKey != null) parts.push(dimensionsKey);
+  parts.push(normalizeUsageAttribution(record).billing_mode);
+  return parts.join("|");
+}
+
 module.exports = {
   attributeUsage,
   normalizeBillingMode,
   normalizeEndpointOrigin,
   normalizeUsageAttribution,
+  queueUsageIdentity,
 };

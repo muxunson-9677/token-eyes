@@ -574,6 +574,10 @@ const KNOWN_PROVIDER_PRESETS = [
   },
 ];
 
+const KNOWN_PROVIDER_API_IDS = Object.freeze(
+  KNOWN_PROVIDER_PRESETS.map((preset) => preset.providerId),
+);
+
 function lowerTrim(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -847,6 +851,7 @@ function writeProviderApiConfigs(config, configs) {
 module.exports = {
   CONFIG_KEY,
   ERROR_CODES,
+  KNOWN_PROVIDER_API_IDS,
   validateDotPath,
   isSecretLikeValue,
   isSecretLikeHeaderName,

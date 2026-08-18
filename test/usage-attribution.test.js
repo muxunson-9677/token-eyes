@@ -5,6 +5,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const { AGENT_ADAPTERS } = require("../src/lib/agent-adapters");
+const providerApiConfigs = require("../src/lib/provider-api-configs");
 const {
   normalizeUsageAttribution,
 } = require("../src/lib/usage-attribution");
@@ -47,12 +48,12 @@ test("mixed is invalid for a single record and normalizes to unknown", () => {
   });
 });
 
-test("explicit subscription aliases normalize to token_plan", () => {
-  for (const billingMode of ["subscription", "token-plan", "token plan"]) {
-    assert.equal(
-      normalizeUsageAttribution({ billing_mode: billingMode }).billing_mode,
-      "token_plan",
-    );
+test("trusted attribution accepts only canonical billing modes", () => {
+  for (const billingMode of ["api_key", "token_plan", "unknown"]) {
+    assert.equal(normalizeUsageAttribution({ billing_mode: billingMode }).billing_mode, billingMode);
+  }
+  for (const billingMode of ["subscription", "plan", "payg", "api-key", "token-plan"]) {
+    assert.equal(normalizeUsageAttribution({ billing_mode: billingMode }).billing_mode, "unknown");
   }
 });
 
@@ -119,17 +120,10 @@ test("known attribution provider ids remain available", () => {
     AGENT_ADAPTERS.flatMap(({ id, queueSource, family }) => [id, queueSource, family])
       .filter((value) => value && value !== "unknown"),
   );
-  const providerApiIds = [
-    "aliyun_bss",
-    "deepseek",
-    "glm",
-    "minimax",
-    "moonshot",
-    "volcengine_billing",
-    "xiaomi_mimo",
-  ];
-
-  for (const providerId of [...adapterProviderIds, ...providerApiIds]) {
+  for (const providerId of [
+    ...adapterProviderIds,
+    ...providerApiConfigs.KNOWN_PROVIDER_API_IDS,
+  ]) {
     assert.equal(
       normalizeUsageAttribution({ provider_id: providerId }).provider_id,
       providerId,
@@ -141,6 +135,11 @@ test("known attribution provider ids remain available", () => {
       providerId,
     );
   }
+});
+
+test("provider API configs export their authoritative non-secret provider ids", () => {
+  assert.ok(Array.isArray(providerApiConfigs.KNOWN_PROVIDER_API_IDS));
+  assert.ok(providerApiConfigs.KNOWN_PROVIDER_API_IDS.length > 0);
 });
 
 test("recognized credential-store references remain available", () => {

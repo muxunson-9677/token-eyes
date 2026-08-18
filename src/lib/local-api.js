@@ -49,6 +49,7 @@ const { getCodexUsageLimits } = require("./usage-limits");
 const {
   normalizeBillingMode,
   normalizeUsageAttribution,
+  queueUsageIdentity,
 } = require("./usage-attribution");
 
 const SYNC_TIMEOUT_MS = 120_000;
@@ -536,17 +537,16 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     );
   }
   // Deduplicate: each sync appends cumulative totals per bucket, so for
-  // each (source, model, hour_start) keep only the latest (last) entry.
+  // each (source, model, hour_start, billing_mode) keep only the latest entry.
   const seen = new Map();
   for (const row of parsed) {
     // A pre-release OpenClaw smoke check accidentally wrote this exact
     // synthetic fixture to the default queue. Ignore only its full fingerprint;
     // genuine OpenClaw history remains untouched.
     if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
-    const billingMode = normalizeUsageAttribution(row).billing_mode;
     const key = dedupeMode === "dimensions"
-      ? `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}|${queueRowDimensionsKey(row)}|${billingMode}`
-      : `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}|${billingMode}`;
+      ? queueUsageIdentity(row, { dimensionsKey: queueRowDimensionsKey(row) })
+      : queueUsageIdentity(row);
     seen.set(key, normalizeQueueRow(row));
   }
   const rows = Array.from(seen.values());
@@ -6383,7 +6383,7 @@ function createLocalApiHandler({
         const src = row.source || "unknown";
         const mdl = row.model || "unknown";
         if (!bySource.has(src))
-          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, models: new Map() });
+          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, models: new Map() });
         const sa = bySource.get(src);
         sa.totals.total_tokens += row.total_tokens || 0;
         sa.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -6393,7 +6393,7 @@ function createLocalApiHandler({
         sa.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         sa.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
         if (!sa.models.has(mdl))
-          bySource.get(src).models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" } });
+          bySource.get(src).models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeConfidences: {} });
         const ma = sa.models.get(mdl);
         ma.totals.total_tokens += row.total_tokens || 0;
         ma.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -6402,10 +6402,20 @@ function createLocalApiHandler({
         ma.totals.cached_input_tokens += row.cached_input_tokens || 0;
         ma.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         ma.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
+        const attribution = deriveModelBillingMode({ row });
+        const mode = attribution.mode === "api_key" || attribution.mode === "token_plan"
+          ? attribution.mode
+          : "unknown";
+        const attributedTokens = Math.max(0, Number(row.total_tokens || 0));
+        sa.billingModeTokenTotals[mode] += attributedTokens;
+        ma.billingModeTokenTotals[mode] += attributedTokens;
+        if (!ma.billingModeConfidences[mode]) {
+          ma.billingModeConfidences[mode] = attribution.confidence;
+        }
       }
 
       const sources = Array.from(bySource.values()).map((s) => {
-        const sourceBillingTotals = { api_key: 0, token_plan: 0, unknown: 0 };
+        const sourceBillingTotals = s.billingModeTokenTotals;
         s.models = Array.from(s.models.values())
           .map((m) => {
             const cost = computeRowCost({
@@ -6413,30 +6423,17 @@ function createLocalApiHandler({
               model: m.model,
               source: s.source,
             }, pricingOptions);
-            const modelRows = rows.filter(
-              (r) =>
-                (r.source || "unknown") === s.source &&
-                (r.model || "unknown") === m.model,
-            );
-            const billingModeTokenTotals = { api_key: 0, token_plan: 0, unknown: 0 };
-            const rowAttributions = modelRows.map((row) => {
-              const attribution = deriveModelBillingMode({ row });
-              const mode = attribution.mode === "api_key" || attribution.mode === "token_plan"
-                ? attribution.mode
-                : "unknown";
-              billingModeTokenTotals[mode] += Math.max(0, Number(row.total_tokens || 0));
-              sourceBillingTotals[mode] += Math.max(0, Number(row.total_tokens || 0));
-              return attribution;
-            });
+            const billingModeTokenTotals = m.billingModeTokenTotals;
             const activeModes = Object.entries(billingModeTokenTotals)
               .filter(([, total]) => total > 0)
               .map(([mode]) => mode);
             const mode = activeModes.length > 1 ? "mixed" : activeModes[0] || "unknown";
             const confidence = activeModes.length === 1
-              ? rowAttributions.find((entry) => entry.mode === mode)?.confidence || "unavailable"
+              ? m.billingModeConfidences[mode] || "unavailable"
               : "unavailable";
+            const { billingModeConfidences: _confidences, billingModeTokenTotals: _totals, ...model } = m;
             return {
-              ...m,
+              ...model,
               totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
               billing_mode: mode,
               billing_mode_confidence: confidence,
@@ -6454,6 +6451,7 @@ function createLocalApiHandler({
         s.billing_mode = summary.mode;
         s.billing_modes = summary.billing_modes;
         s.billing_mode_token_totals = sourceBillingTotals;
+        delete s.billingModeTokenTotals;
         return s;
       });
 

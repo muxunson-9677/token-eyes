@@ -1883,8 +1883,19 @@ function normalizeHourlyState(raw) {
       const source = normalizeSourceInput(parsed.source) || DEFAULT_SOURCE;
       const normalizedKey = bucketKey(source, DEFAULT_MODEL, hourStart);
       buckets[normalizedKey] = value;
-      if (value?.queuedKey) {
-        groupQueued[groupBucketKey(source, hourStart)] = value.queuedKey;
+      if (value?.totals && !value.attributionBuckets) {
+        value.attributionBuckets = {
+          unknown: {
+            totals: cloneTotals(value.totals),
+            attribution: normalizeUsageAttribution(null),
+          },
+        };
+      }
+      if (value?.queuedKey && value?.totals) {
+        value.attributionQueuedKeys = {
+          ...(value.attributionQueuedKeys || {}),
+          unknown: `${totalsKey(value.totals)}|${DEFAULT_MODEL}|unknown`,
+        };
       }
     }
     return {
