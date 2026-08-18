@@ -342,12 +342,27 @@ test("widget celebration reserves a full transparent halo around the capsule", (
 
 test("bundled runtime smoke owns a unique temporary home", () => {
   const smoke = read("test/windows-bundled-runtime-smoke.test.cjs");
+  const installedSmoke = read("test/windows-installed-runtime-smoke.test.cjs");
   assert.match(smoke, /fs\.mkdirSync\(smokeTarget,\s*\{\s*recursive:\s*true\s*\}\)/u);
   assert.match(
     smoke,
     /const smokeHome\s*=\s*fs\.mkdtempSync\(path\.join\(smokeTarget,\s*"runtime-smoke-"\)\)/u,
   );
   assert.doesNotMatch(smoke, /runtime-smoke-\$\{process\.pid\}/u);
+  assert.doesNotMatch(smoke, /\.\.\.process\.env/u);
+  assert.doesNotMatch(installedSmoke, /const env\s*=\s*\{\s*\.\.\.process\.env/u);
+  for (const name of [
+    "AGENTDATA",
+    "CLAUDE_HOME",
+    "CODEX_HOME",
+    "OPENCODE_HOME",
+    "TOKENTRACKER_AGENTDATA_ROOTS",
+    "XDG_DATA_HOME",
+  ]) {
+    const deletion = new RegExp(`delete env\\.${name}`);
+    assert.match(smoke, deletion, `bundled smoke must remove ${name}`);
+    assert.match(installedSmoke, deletion, `installed smoke must remove ${name}`);
+  }
   assert.match(smoke, /fs\.rmSync\(smokeHome,\s*\{\s*recursive:\s*true,\s*force:\s*true\s*\}\)/u);
   const cleanupIndex = smoke.indexOf("t.after(() =>");
   const spawnIndex = smoke.indexOf("spawn(nodeExe");

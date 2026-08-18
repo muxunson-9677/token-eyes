@@ -197,9 +197,45 @@ test("Windows NSIS installer deploys and starts the versioned bundled runtime", 
   const trackerDataDir = path.join(smokeHome, ".tokentracker", "tracker");
   fs.mkdirSync(trackerDataDir, { recursive: true });
   fs.writeFileSync(path.join(trackerDataDir, "cursors.json"), "{}\n", "utf8");
-  const env = { ...process.env, USERPROFILE: smokeHome, HOME: smokeHome, APPDATA: path.join(smokeHome, "AppData", "Roaming"), LOCALAPPDATA: path.join(smokeHome, "AppData", "Local") };
+  const env = Object.fromEntries(
+    ["COMSPEC", "OS", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE", "SystemRoot", "WINDIR"]
+      .filter((name) => process.env[name] !== undefined)
+      .map((name) => [name, process.env[name]]),
+  );
+  Object.assign(env, {
+    USERPROFILE: smokeHome,
+    HOME: smokeHome,
+    APPDATA: path.join(smokeHome, "AppData", "Roaming"),
+    LOCALAPPDATA: path.join(smokeHome, "AppData", "Local"),
+    TEMP: smokeHome,
+    TMP: smokeHome,
+  });
   delete env.NODE_TEST_CONTEXT;
   delete env.VITEST;
+  delete env.AGENTDATA;
+  delete env.ANTIGRAVITY_HOME;
+  delete env.CLAUDE_HOME;
+  delete env.CODE_HOME;
+  delete env.CODEBUDDY_HOME;
+  delete env.CODEX_HOME;
+  delete env.COPILOT_OTEL_FILE_EXPORTER_PATH;
+  delete env.CURSOR_HOME;
+  delete env.GEMINI_HOME;
+  delete env.GROK_HOME;
+  delete env.KIMI_CODE_HOME;
+  delete env.KIMI_HOME;
+  delete env.OPENCLAW_CONFIG_PATH;
+  delete env.OPENCLAW_HOME;
+  delete env.OPENCLAW_STATE_DIR;
+  delete env.OPENCODE_HOME;
+  delete env.TOKENTRACKER_AGENTDATA_ROOTS;
+  delete env.TOKENTRACKER_GROK_HOME;
+  delete env.TOKENTRACKER_HERMES_HOME;
+  delete env.TOKENTRACKER_OPENCLAW_HOME;
+  delete env.TRAE_HOME;
+  delete env.WORKBUDDY_HOME;
+  delete env.XDG_CONFIG_HOME;
+  delete env.XDG_DATA_HOME;
   const child = spawn(nodeExe, ["bin\\tracker.js", "serve", "--no-open", "--no-sync", "--port", String(port)], { cwd: trackerRoot, env, stdio: "pipe", windowsHide: true });
   let stderr = "";
   child.stderr.setEncoding("utf8");

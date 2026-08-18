@@ -233,6 +233,10 @@ test("usage-model-breakdown: an explicit row remains authoritative across model 
       token_plan: 0,
       unknown: 600,
     });
+    assert.equal(
+      Object.values(model.billing_mode_cost_totals).reduce((sum, value) => sum + value, 0),
+      Number(model.totals.total_cost_usd),
+    );
     assert.equal(model.totals.total_tokens, 1200);
     assert.equal(
       Object.values(model.billing_mode_token_totals).reduce((sum, value) => sum + value, 0),
@@ -243,6 +247,10 @@ test("usage-model-breakdown: an explicit row remains authoritative across model 
       token_plan: 0,
       unknown: 600,
     });
+    assert.equal(
+      Object.values(src.billing_mode_cost_totals).reduce((sum, value) => sum + value, 0),
+      Number(src.totals.total_cost_usd),
+    );
     assert.equal(src.billing_mode, "mixed");
     assert.deepEqual(src.billing_modes, ["api_key", "unknown"]);
     assert.equal(src.totals.total_tokens, 1200);

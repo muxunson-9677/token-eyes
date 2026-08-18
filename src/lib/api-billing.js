@@ -22,6 +22,7 @@ const path = require("path");
 const fs = require("fs");
 const cp = require("child_process");
 const { executeFinancialRequest } = require("./provider-api-executor");
+const { queueUsageIdentity } = require("./usage-attribution");
 
 // Sync status constants (same as token-plan-refresh.js)
 const SYNC_STATUSES = {
@@ -151,8 +152,8 @@ function detectCredentialsFromAuthFiles({ home = os.homedir(), env = process.env
 
   // Check Opencode auth
   try {
-    const opencodeDataDir = process.env.XDG_DATA_HOME
-      ? path.join(process.env.XDG_DATA_HOME, "opencode")
+    const opencodeDataDir = env.XDG_DATA_HOME
+      ? path.join(env.XDG_DATA_HOME, "opencode")
       : path.join(home, ".local", "share", "opencode");
     const authPath = path.join(opencodeDataDir, "auth.json");
     if (fs.existsSync(authPath)) {
@@ -203,7 +204,8 @@ function detectCredentialsFromKeychain({ platform = process.platform, securityRu
 
   for (const service of keychainServices) {
     try {
-      const result = cp.spawnSync(
+      const runSecurity = securityRunner || cp.spawnSync;
+      const result = runSecurity(
         "/usr/bin/security",
         ["find-generic-password", "-s", service, "-w"],
         { stdio: ["ignore", "pipe", "ignore"], timeout: 2000 }
@@ -285,13 +287,20 @@ function readQueueRows(queuePath) {
   }
 }
 
-function calculateUsageCosts(queueRows) {
+function calculateUsageCosts(queueRows, { monthKey = null } = {}) {
   const costsBySource = new Map();
-
+  const selectedPeriod = getUtcMonthPeriod(monthKey);
   const now = new Date();
-  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStart = selectedPeriod
+    ? new Date(selectedPeriod.startSeconds * 1000)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = selectedPeriod
+    ? new Date(selectedPeriod.endSeconds * 1000)
+    : new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const latestRows = new Map();
+  for (const row of queueRows) latestRows.set(queueUsageIdentity(row), row);
 
-  for (const row of queueRows) {
+  for (const row of latestRows.values()) {
     const source = String(row.source || "").trim().toLowerCase();
     if (!source) continue;
 
@@ -312,7 +321,7 @@ function calculateUsageCosts(queueRows) {
     if (hourStart) {
       try {
         const rowDate = new Date(hourStart);
-        if (rowDate >= currentMonthStart) {
+        if (Number.isFinite(rowDate.getTime()) && rowDate >= monthStart && rowDate < monthEnd) {
           stats.monthCostUsd += costUsd;
         }
       } catch {
@@ -468,12 +477,14 @@ async function collectApiBillingAccounts({
   spendRecords = [],
   options = {},
   queuePath = null,
+  monthKey = null,
 } = {}) {
   const home = options.home || os.homedir();
   const env = options.env || process.env;
   const platform = options.platform || process.platform;
+  const securityRunner = options.securityRunner;
 
-  const costStats = queuePath ? calculateUsageCosts(readQueueRows(queuePath)) : new Map();
+  const costStats = queuePath ? calculateUsageCosts(readQueueRows(queuePath), { monthKey }) : new Map();
 
   // Collect from spend records
   const spendAccounts = collectBillingFromSpendRecords(spendRecords);
@@ -482,7 +493,7 @@ async function collectApiBillingAccounts({
   const detectedCredentials = detectCredentialsFromAuthFiles({ home, env });
 
   // Detect credentials from macOS Keychain
-  const keychainCredentials = detectCredentialsFromKeychain({ platform });
+  const keychainCredentials = detectCredentialsFromKeychain({ platform, securityRunner });
   detectedCredentials.push(...keychainCredentials);
 
   // Merge all sources
@@ -501,9 +512,18 @@ async function collectApiBillingAccounts({
     openclaw: "openai",
   };
 
+  const providerCostStats = new Map();
+  for (const [source, stats] of costStats) {
+    const provider = sourceToProvider[source] || source;
+    const current = providerCostStats.get(provider) || { monthCostUsd: 0, lifetimeCostUsd: 0 };
+    current.monthCostUsd += stats.monthCostUsd;
+    current.lifetimeCostUsd += stats.lifetimeCostUsd;
+    providerCostStats.set(provider, current);
+  }
+
   for (const account of mergedAccounts) {
-    const mappedSource = sourceToProvider[account.provider] || account.provider;
-    const stats = costStats.get(mappedSource) || costStats.get(account.provider);
+    const provider = sourceToProvider[account.provider] || account.provider;
+    const stats = providerCostStats.get(provider);
     if (stats) {
       account.billingSource = BILLING_SOURCES.API;
       account.spendAuthority = SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE;
@@ -514,8 +534,7 @@ async function collectApiBillingAccounts({
     }
   }
 
-  for (const [source, stats] of costStats) {
-    const provider = sourceToProvider[source] || source;
+  for (const [provider, stats] of providerCostStats) {
     const existingAccount = mergedAccounts.find((a) => a.provider === provider);
     if (!existingAccount) {
       mergedAccounts.push({

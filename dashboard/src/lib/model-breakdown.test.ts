@@ -355,6 +355,52 @@ describe("buildFleetData preserves billing metadata", () => {
     expect(fleet[0].models[1].billingMode).toBe("token_plan");
   });
 
+  it("preserves and filters mixed-model token slices without dropping either billing mode", () => {
+    const fleet = buildFleetData({
+      sources: [{
+        source: "codex",
+        billing_mode: "mixed",
+        billing_modes: ["api_key", "token_plan"],
+        totals: { total_tokens: 100, total_cost_usd: 10 },
+        models: [{
+          model: "gpt-5",
+          billing_mode: "mixed",
+          billing_mode_token_totals: { api_key: 30, token_plan: 70, unknown: 0 },
+          billing_mode_cost_totals: { api_key: 4, token_plan: 6, unknown: 0 },
+          totals: { total_tokens: 100, total_cost_usd: 10 },
+        }],
+      }],
+    });
+
+    expect(fleet[0].models[0].billingModeTokenTotals).toEqual({
+      api_key: 30,
+      token_plan: 70,
+      unknown: 0,
+    });
+    const apiFleet = filterFleetByBillingMode(fleet, "api_key");
+    const planFleet = filterFleetByBillingMode(fleet, "token_plan");
+    expect(apiFleet[0]).toEqual(expect.objectContaining({ usage: 30, usd: 4 }));
+    expect(apiFleet[0].models[0]).toEqual(expect.objectContaining({ usage: 30, cost: 4 }));
+    expect(planFleet[0]).toEqual(expect.objectContaining({ usage: 70, usd: 6 }));
+    expect(planFleet[0].models[0]).toEqual(expect.objectContaining({ usage: 70, cost: 6 }));
+
+    const cloudFleet = buildFleetData({
+      sources: [{
+        source: "codex",
+        totals: { total_tokens: 100, total_cost_usd: 10 },
+        models: [{
+          model: "gpt-5",
+          billing_mode: "mixed",
+          billing_mode_token_totals: { api_key: 30, token_plan: 70, unknown: 0 },
+          totals: { total_tokens: 100, total_cost_usd: 10 },
+        }],
+      }],
+    });
+    const cloudApiFleet = filterFleetByBillingMode(cloudFleet, "api_key");
+    expect(cloudApiFleet[0].usd).toBeNull();
+    expect(cloudApiFleet[0].models[0].cost).toBeNull();
+  });
+
   it("defaults missing billing metadata to 'unknown' / 'fallback_unknown'", () => {
     const breakdown = {
       pricing: { pricing_mode: "list" },

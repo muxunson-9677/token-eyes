@@ -199,12 +199,24 @@ test("machine-id route confines every persistence access to trackerDataDir in te
 test("test-runner routes inject trackerDataDir as their isolated home", async (t) => {
   const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-route-home-scope-"));
   t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
+  const originalZedToken = process.env.TOKENTRACKER_ZED_ACCESS_TOKEN;
+  const originalZcodeSecret = process.env.ZCODE_CREDENTIAL_SECRET;
+  process.env.TOKENTRACKER_ZED_ACCESS_TOKEN = "outside-zed-token";
+  process.env.ZCODE_CREDENTIAL_SECRET = "outside-zcode-secret";
+  t.after(() => {
+    if (originalZedToken === undefined) delete process.env.TOKENTRACKER_ZED_ACCESS_TOKEN;
+    else process.env.TOKENTRACKER_ZED_ACCESS_TOKEN = originalZedToken;
+    if (originalZcodeSecret === undefined) delete process.env.ZCODE_CREDENTIAL_SECRET;
+    else process.env.ZCODE_CREDENTIAL_SECRET = originalZcodeSecret;
+  });
   let receivedHome = null;
+  let receivedEnv = null;
   let receivedDirectoryHome = null;
   const handler = localApi.createLocalApiHandler({
     trackerDataDir,
-    usageLimitsProvider: async ({ home }) => {
+    usageLimitsProvider: async ({ home, env }) => {
       receivedHome = home;
+      receivedEnv = env;
       return {};
     },
     tokenOnlyDirectoryStatesProvider: (_settings, { home }) => {
@@ -221,6 +233,106 @@ test("test-runner routes inject trackerDataDir as their isolated home", async (t
   });
   assert.equal(receivedHome, trackerDataDir);
   assert.equal(receivedDirectoryHome, trackerDataDir);
+  assert.equal(receivedEnv.HOME, trackerDataDir);
+  assert.equal(receivedEnv.USERPROFILE, trackerDataDir);
+  for (const name of [
+    "AGENTDATA",
+    "CLAUDE_HOME",
+    "CODEX_HOME",
+    "GEMINI_HOME",
+    "OPENCODE_HOME",
+    "TOKENTRACKER_AGENTDATA_ROOTS",
+    "TOKENTRACKER_ZED_ACCESS_TOKEN",
+    "ZCODE_CREDENTIAL_SECRET",
+    "XDG_DATA_HOME",
+  ]) {
+    assert.equal(receivedEnv[name], undefined, `${name} escaped into the isolated handler environment`);
+  }
+});
+
+test("API billing route never reads credential paths from the process environment", async (t) => {
+  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-api-billing-scope-"));
+  const outsideDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-api-billing-outside-"));
+  t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
+  t.after(() => fs.promises.rm(outsideDir, { recursive: true, force: true }));
+  await fs.promises.mkdir(path.join(outsideDir, ".codex"), { recursive: true });
+  await fs.promises.mkdir(path.join(outsideDir, "opencode"), { recursive: true });
+  await fs.promises.writeFile(
+    path.join(outsideDir, ".codex", "auth.json"),
+    JSON.stringify({ tokens: { account_id: "outside-account" } }),
+    "utf8",
+  );
+  await fs.promises.writeFile(
+    path.join(outsideDir, "opencode", "auth.json"),
+    JSON.stringify({ openai: { access: "outside-token" } }),
+    "utf8",
+  );
+
+  const originalCodexHome = process.env.CODEX_HOME;
+  const originalXdgDataHome = process.env.XDG_DATA_HOME;
+  process.env.CODEX_HOME = path.join(outsideDir, ".codex");
+  process.env.XDG_DATA_HOME = outsideDir;
+  t.after(() => {
+    if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalCodexHome;
+    if (originalXdgDataHome === undefined) delete process.env.XDG_DATA_HOME;
+    else process.env.XDG_DATA_HOME = originalXdgDataHome;
+  });
+
+  const handler = localApi.createLocalApiHandler({ trackerDataDir });
+  const accesses = [];
+  const originals = new Map();
+  for (const name of ["existsSync", "readFileSync", "readdirSync", "statSync"]) {
+    const original = fs[name];
+    originals.set(name, original);
+    fs[name] = function apiBillingFsProbe(filePath, ...args) {
+      if (typeof filePath === "string") accesses.push(path.resolve(filePath));
+      return original.call(this, filePath, ...args);
+    };
+  }
+  t.after(() => {
+    for (const [name, original] of originals) fs[name] = original;
+  });
+
+  await invokeLocalRoute(
+    handler,
+    "/functions/tokentracker-api-billing-accounts?month=2025-06&time_zone=UTC",
+  );
+  assert.deepEqual(
+    accesses.filter((entry) => {
+      const relative = path.relative(outsideDir, entry);
+      return !relative.startsWith("..") && !path.isAbsolute(relative);
+    }),
+    [],
+  );
+});
+
+test("data-directory and agent-environment routes receive the isolated handler context", async (t) => {
+  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-detection-route-scope-"));
+  t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
+  let dataOptions = null;
+  let agentOptions = null;
+  const handler = localApi.createLocalApiHandler({
+    trackerDataDir,
+    detectDataDirectories(options) {
+      dataOptions = options;
+      return { dataDirectories: {} };
+    },
+    detectAgentEnvironment(_agentId, _config, options) {
+      agentOptions = options;
+      return { agent: "codex", status: "not-detected" };
+    },
+  });
+
+  await invokeLocalRoute(handler, "/functions/tokentracker-detect-data-directories");
+  await invokeLocalRoute(handler, "/functions/tokentracker-agent-environment?agent=codex");
+
+  for (const options of [dataOptions, agentOptions]) {
+    assert.equal(options.home, trackerDataDir);
+    assert.equal(options.env.HOME, trackerDataDir);
+    assert.equal(options.env.CODEX_HOME, undefined);
+    assert.equal(options.env.CLAUDE_HOME, undefined);
+  }
 });
 
 test("Claude category route confines projects, resources, and disk cache to trackerDataDir", async (t) => {

@@ -1377,6 +1377,7 @@ module.exports = {
   applyCloudConversationsBackfill,
   readQueueBatch,
   createCloudQueueReadContext,
+  drainQueueToCloud,
   CURSOR_UNKNOWN_MIGRATION_KEY,
   ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY,
   CODEX_RESCAN_DEDUP_REPAIR_KEY,
@@ -1688,6 +1689,8 @@ const AUTO_RETRY_MAX_DELAY_MS = 2 * 60 * 60 * 1000;
 
 const INGEST_SLUG = "tokentracker-ingest";
 const MAX_INGEST_BUCKETS = 500;
+const CLOUD_QUEUE_INDEX_VERSION = 2;
+const CLOUD_QUEUE_INDEX_BASE_LIMIT = 512;
 const BILLING_MODE_COMPAT_SUMMARY = "base_total_v1";
 const COMPAT_SUMMARY_FIELDS = [
   "input_tokens",
@@ -1774,6 +1777,12 @@ function normalizeCloudQueueBucket(bucket) {
 
 function updateCloudQueueReadContext(context, bucket) {
   context.latestByIdentity.set(queueUsageIdentity(bucket), bucket);
+  const baseKey = cloudBaseBucketIdentity(bucket);
+  context.indexedBaseKeys?.add(baseKey);
+  if (context.recentBaseKeys) {
+    context.recentBaseKeys.delete(baseKey);
+    context.recentBaseKeys.set(baseKey, true);
+  }
 }
 
 async function createCloudQueueReadContext(queuePath, endOffset) {
@@ -1782,6 +1791,9 @@ async function createCloudQueueReadContext(queuePath, endOffset) {
     latestByIdentity: new Map(),
     migrationTransactions: new Map(),
     migrationTransactionsByOffset: new Map(),
+    indexedBaseKeys: new Set(),
+    recentBaseKeys: new Map(),
+    historyComplete: true,
     rowsParsed: 0,
   };
   if (endOffset <= 0) return context;
@@ -1798,6 +1810,45 @@ async function createCloudQueueReadContext(queuePath, endOffset) {
   rl.close();
   stream.close?.();
   return context;
+}
+
+function restoreCloudQueueReadContext(queuePath, state, offset) {
+  if (state?.cloudQueueIndexVersion !== CLOUD_QUEUE_INDEX_VERSION
+    || Number(state?.cloudQueueIndexOffset) !== offset
+    || !Array.isArray(state?.cloudQueueIndexRows)) return null;
+  const context = {
+    queuePath,
+    latestByIdentity: new Map(),
+    migrationTransactions: new Map(),
+    migrationTransactionsByOffset: new Map(),
+    indexedBaseKeys: new Set(),
+    recentBaseKeys: new Map(),
+    historyComplete: false,
+    rowsParsed: 0,
+  };
+  for (const rawRow of state.cloudQueueIndexRows) {
+    const bucket = normalizeCloudQueueBucket({ ...rawRow });
+    if (!bucket) return null;
+    updateCloudQueueReadContext(context, bucket);
+  }
+  return context;
+}
+
+function checkpointCloudQueueReadContext(state, context, offset) {
+  const retainedBaseKeys = new Set(
+    Array.from(context.recentBaseKeys.keys()).slice(-CLOUD_QUEUE_INDEX_BASE_LIMIT),
+  );
+  state.cloudQueueIndexVersion = CLOUD_QUEUE_INDEX_VERSION;
+  state.cloudQueueIndexOffset = offset;
+  state.cloudQueueIndexRows = Array.from(context.latestByIdentity.values())
+    .filter((bucket) => retainedBaseKeys.has(cloudBaseBucketIdentity(bucket)))
+    .map(cloudUsageWireRow);
+}
+
+function clearCloudQueueCheckpoint(state) {
+  delete state.cloudQueueIndexVersion;
+  delete state.cloudQueueIndexOffset;
+  delete state.cloudQueueIndexRows;
 }
 
 function pageCloudMigration(transaction, limit, migrationCursor) {
@@ -1840,10 +1891,13 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
   let offset = Number(state.offset || 0);
   let inserted = 0;
   let skipped = 0;
+  let stateChanged = false;
 
   const queueSize = await safeStatSize(queuePath);
+  if (offset >= queueSize) return { inserted, skipped };
   const limit = Math.min(Math.max(1, Math.floor(Number(batchSize || 200))), MAX_INGEST_BUCKETS);
-  const readContext = await createCloudQueueReadContext(queuePath, offset);
+  const readContext = restoreCloudQueueReadContext(queuePath, state, offset)
+    || await createCloudQueueReadContext(queuePath, offset);
 
   for (let batch = 0; batch < maxBatches; batch++) {
     if (offset >= queueSize) break;
@@ -1881,8 +1935,18 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
 
     offset = result.nextOffset;
     state.offset = offset;
+    stateChanged = true;
+    clearCloudQueueCheckpoint(state);
     if (result.migrationCursor) state.migrationCursor = result.migrationCursor;
-    else delete state.migrationCursor;
+    else {
+      delete state.migrationCursor;
+    }
+    state.updatedAt = new Date().toISOString();
+    await writeJson(queueStatePath, state);
+  }
+
+  if (stateChanged && !state.migrationCursor) {
+    checkpointCloudQueueReadContext(state, readContext, offset);
     state.updatedAt = new Date().toISOString();
     await writeJson(queueStatePath, state);
   }
@@ -2027,9 +2091,21 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCurso
   }
   if (sawMigrationRows) return { buckets: [], nextOffset: startOffset };
   const buckets = Array.from(bucketMap.values());
-  const priorBuckets = readContext
-    ? Array.from(readContext.latestByIdentity.values()).filter((bucket) => baseBucketKeys.has(cloudBaseBucketIdentity(bucket)))
-    : await readPriorCloudQueueRows(queuePath, startOffset, baseBucketKeys);
+  let priorBuckets;
+  if (readContext) {
+    priorBuckets = Array.from(readContext.latestByIdentity.values())
+      .filter((bucket) => baseBucketKeys.has(cloudBaseBucketIdentity(bucket)));
+    if (!readContext.historyComplete) {
+      const missingBaseKeys = new Set(
+        Array.from(baseBucketKeys).filter((baseKey) => !readContext.indexedBaseKeys.has(baseKey)),
+      );
+      const fallbackBuckets = await readPriorCloudQueueRows(queuePath, startOffset, missingBaseKeys);
+      for (const bucket of fallbackBuckets) updateCloudQueueReadContext(readContext, bucket);
+      priorBuckets.push(...fallbackBuckets);
+    }
+  } else {
+    priorBuckets = await readPriorCloudQueueRows(queuePath, startOffset, baseBucketKeys);
+  }
   const wireBuckets = withBillingModeCompatSummaries(buckets, priorBuckets);
   if (readContext) {
     for (const bucket of buckets) updateCloudQueueReadContext(readContext, bucket);

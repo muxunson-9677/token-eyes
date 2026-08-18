@@ -77,7 +77,7 @@ spend.cost.summary.estimated_usage,spend,SpendCostPage,CostSummaryCards,estimate
 spend.cost.summary.estimated_usage_suffix,spend,SpendCostPage,CostSummaryCards,estimated_usage_suffix,"estimated usage cost",,active
 spend.cost.summary.actual_subscription,spend,SpendCostPage,CostSummaryCards,actual_subscription,"Recorded subscription fees",,active
 spend.cost.summary.actual_subscription_suffix,spend,SpendCostPage,CostSummaryCards,actual_subscription_suffix,"recorded subscription fees",,active
-spend.cost.summary.scope_note,spend,SpendCostPage,CostSummaryCards,scope_note,"Actual cash spend includes recorded subscriptions, official Billing/API amounts, and custom spend. API list-price equivalent is estimated from recorded Tokens and official model prices and is never added to actual cash spend.",,active
+spend.cost.summary.scope_note,spend,SpendCostPage,CostSummaryCards,scope_note,"Actual cash spend uses the complete financial ledger and includes recorded subscriptions, official Billing/API amounts, and custom spend. API list-price equivalent follows the visible usage scope and is never added to actual cash spend.",,active
 spend.cost.error.title,spend,SpendCostPage,CostAccumulation,error_title,"Cost data could not be refreshed",,active
 spend.cost.error.stale,spend,SpendCostPage,CostAccumulation,error_stale,"Showing the last successful cost totals. Some sections may be incomplete.",,active
 spend.cost.error.unavailable,spend,SpendCostPage,CostAccumulation,error_unavailable,"No cost totals are available yet.",,active
@@ -1547,11 +1547,11 @@ usage.billing_filter.label,ui,DashboardPage,UsageOverview,billing_filter_label,"
 usage.billing_filter.all,ui,DashboardPage,UsageOverview,billing_filter_all,"All",,active
 usage.billing_filter.api_key,ui,DashboardPage,UsageOverview,billing_filter_api_key,"API Key",,active
 usage.billing_filter.token_plan,ui,DashboardPage,UsageOverview,billing_filter_token_plan,"Plan",,active
-usage.billing_filter.unknown,ui,DashboardPage,UsageOverview,billing_filter_unknown,"Unconfigured billing",,active
+usage.billing_filter.unknown,ui,DashboardPage,UsageOverview,billing_filter_unknown,"Unknown attribution",,active
 usage.billing_filter.empty,ui,DashboardPage,UsageOverview,billing_filter_empty,"当前计费方式下暂无数据",,active
 usage.billing_mode.api_key,ui,DashboardPage,UsageOverview,billing_mode_api_key,"API Key",,active
 usage.billing_mode.token_plan,ui,DashboardPage,UsageOverview,billing_mode_token_plan,"Plan",,active
-usage.billing_mode.unknown,ui,DashboardPage,UsageOverview,billing_mode_unknown,"Unconfigured billing",,active
+usage.billing_mode.unknown,ui,DashboardPage,UsageOverview,billing_mode_unknown,"Unknown attribution",,active
 usage.billing_mode.mixed,ui,DashboardPage,UsageOverview,billing_mode_mixed,"混合",,active
 usage.request_log.tab,ui,DashboardPage,RequestUsageLog,tab_label,"请求日志",,active
 usage.request_log.title,ui,DashboardPage,RequestUsageLog,title,"请求级 Token 明细",,active
@@ -2002,10 +2002,10 @@ leaderboard.table.rank,dashboard,LeaderboardPage,LeaderboardPage,table_rank,"Ran
 leaderboard.table.user_share,dashboard,LeaderboardPage,LeaderboardPage,table_user_share,"User / model usage share",,active
 leaderboard.table.token_cost,dashboard,LeaderboardPage,LeaderboardPage,table_token_cost,"Token total / estimated spend",,active
 spend.cost.roi.title,dashboard,SpendPage,CostAccumulation,roi_title,"回本倍数",,active
-spend.cost.roi.subtitle,dashboard,SpendPage,CostAccumulation,roi_subtitle,"订阅的每 1 元，本月已用出 {{value}} 元的 API 等价价值",,active
-spend.cost.roi.below_one,dashboard,SpendPage,CostAccumulation,roi_below_one,"本月 API 等价用量为订阅费的 {{percent}}%",,active
-spend.cost.roi.empty,dashboard,SpendPage,CostAccumulation,roi_empty,"添加订阅记录后，这里会显示订阅回本倍数（API 等价价值 ÷ 订阅支出）。",,active
-spend.cost.roi.formula,dashboard,SpendPage,CostAccumulation,roi_formula,"本月 API 等价价值 ÷ 本月订阅支出（USD 口径，汇率与定价引擎一致）",,active
+spend.cost.roi.subtitle,dashboard,SpendPage,CostAccumulation,roi_subtitle,"订阅的每 1 元，本月套餐用量已产生 {{value}} 元的 API 等价价值",,active
+spend.cost.roi.below_one,dashboard,SpendPage,CostAccumulation,roi_below_one,"本月套餐用量的 API 等价价值为订阅费的 {{percent}}%",,active
+spend.cost.roi.empty,dashboard,SpendPage,CostAccumulation,roi_empty,"添加订阅记录后，这里会显示订阅回本倍数（套餐用量的 API 等价价值 ÷ 订阅支出）。",,active
+spend.cost.roi.formula,dashboard,SpendPage,CostAccumulation,roi_formula,"本月套餐用量的 API 等价价值 ÷ 本月订阅支出（USD 口径，汇率与定价引擎一致）",,active
 nav.spend.plans,ui,Sidebar,Sidebar,nav_spend_plans,"套餐行情",,active
 plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接，助您明智选择。",,active
 plan_market.filter.all,dashboard,PlanMarketPage,PlanMarketPage,filter_all,"全部厂商",,active

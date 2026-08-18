@@ -739,19 +739,24 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     return section;
   }
 
-  it("uses local month boundaries across the complete financial ledger", async () => {
+  it("uses local boundaries for visible usage and UTC boundaries for the global financial ledger", async () => {
     render(
       <MemoryRouter>
         <SpendCostPage />
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(2));
-    for (const [params] of getSpendTimeseries.mock.calls) {
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(3));
+    for (const [params] of getSpendTimeseries.mock.calls.slice(0, 2)) {
       expect(params).toHaveProperty("timeZone");
       expect(params).toHaveProperty("tzOffsetMinutes");
       expect(params).toHaveProperty("sources", ["claude", "codex", "hermes", "other_ai"]);
     }
+    expect(getSpendTimeseries.mock.calls[2][0]).toEqual(expect.objectContaining({
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+    }));
+    expect(getSpendTimeseries.mock.calls[2][0]).not.toHaveProperty("sources");
   });
 
   it("changes only the independent cost month and reloads the selected historical ledger", async () => {
@@ -762,17 +767,23 @@ describe("SpendCostPage (v2.0 IA split)", () => {
     );
 
     const picker = await screen.findByLabelText("选择成本月份");
-    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(3));
     fireEvent.change(picker, { target: { value: "2025-06" } });
 
-    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(4));
-    expect(getSpendTimeseries).toHaveBeenNthCalledWith(3, expect.objectContaining({
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(6));
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(4, expect.objectContaining({
       from: "2025-06-01",
       to: "2025-06-30",
     }));
-    expect(getSpendTimeseries).toHaveBeenNthCalledWith(4, expect.objectContaining({
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(5, expect.objectContaining({
       from: "2025-05-01",
       to: "2025-05-31",
+    }));
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(6, expect.objectContaining({
+      from: "2025-06-01",
+      to: "2025-06-30",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
     }));
     expect(getSpendRecords).toHaveBeenLastCalledWith(expect.objectContaining({
       summary_month: "2025-06",

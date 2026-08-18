@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getApiBillingAccounts,
@@ -51,6 +51,7 @@ function officialPeriod(monthKey) {
 }
 
 const OTHER_AI_SOURCES = ["other_ai"];
+const CODEX_SOURCES = ["codex"];
 const COST_SOURCES = ["codex", "other_ai"];
 
 describe("useCostAccumulation selected month", () => {
@@ -64,7 +65,8 @@ describe("useCostAccumulation selected month", () => {
     getSpendRecords.mockResolvedValue({ records: [], other_ai_group_totals: [] });
     getSpendTimeseries
       .mockResolvedValueOnce(timeseriesTotals())
-      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 5, subscription_usd: 10, other_ai_usd: 15, combined_usd: 30 }));
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 5, subscription_usd: 10, other_ai_usd: 15, combined_usd: 30 }))
+      .mockResolvedValueOnce(timeseriesTotals());
   });
 
   afterEach(() => {
@@ -92,6 +94,15 @@ describe("useCostAccumulation selected month", () => {
       from: "2025-05-01",
       to: "2025-05-31",
     }));
+    expect(getSpendTimeseries).toHaveBeenNthCalledWith(3, expect.not.objectContaining({
+      sources: expect.anything(),
+    }));
+    expect(getSpendTimeseries.mock.calls[2][0]).toEqual(expect.objectContaining({
+      from: "2025-06-01",
+      to: "2025-06-30",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+    }));
     expect(getSpendRecords).toHaveBeenCalledWith(expect.objectContaining({
       summary_month: "2025-06",
     }));
@@ -112,16 +123,48 @@ describe("useCostAccumulation selected month", () => {
     }));
   });
 
+  it("keeps the global UTC ledger on the same month key at a local month boundary", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2025-07-31T16:30:00.000Z"));
+    try {
+      renderHook(() => useCostAccumulation({
+        selectedMonth: "2025-08",
+        timeZone: "Asia/Shanghai",
+        tzOffsetMinutes: 480,
+        sources: CODEX_SOURCES,
+      }));
+
+      await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(3));
+      expect(getApiBillingAccounts).toHaveBeenCalledWith({ month: "2025-08", timeZone: "UTC" });
+      expect(getSpendTimeseries.mock.calls[2][0]).toEqual(expect.objectContaining({
+        from: "2025-08-01",
+        to: "2025-08-01",
+        timeZone: "UTC",
+        tzOffsetMinutes: 0,
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps subscription cash, API equivalent value, and official API cash in separate ledgers", async () => {
     getSpendTimeseries.mockReset();
     getSpendTimeseries
       .mockResolvedValueOnce(timeseriesTotals({
-        api_usd: 30,
+        api_usd: 40,
         subscription_usd: 20,
         other_ai_usd: 0,
-        combined_usd: 50,
+        combined_usd: 60,
+        billing_mode_cost_totals: { api_key: 10, token_plan: 30, unknown: 0 },
       }))
-      .mockResolvedValueOnce(timeseriesTotals());
+      .mockResolvedValueOnce(timeseriesTotals())
+      .mockResolvedValueOnce(timeseriesTotals({
+        api_usd: 40,
+        subscription_usd: 20,
+        other_ai_usd: 0,
+        combined_usd: 60,
+        billing_mode_cost_totals: { api_key: 10, token_plan: 30, unknown: 0 },
+      }));
     getApiBillingAccounts.mockResolvedValue({
       accounts: [{
         id: "official-api",
@@ -143,16 +186,118 @@ describe("useCostAccumulation selected month", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.costSummary).toEqual(expect.objectContaining({
-      monthApiEquivalentUsd: 30,
+      monthApiEquivalentUsd: 40,
+      monthTokenPlanEquivalentUsd: 30,
       monthOfficialApiSpendUsd: 8,
       monthActualCashSpendUsd: 28,
       actualCashCoverage: "exact",
     }));
     expect(
-      result.current.costSummary.monthApiEquivalentUsd
+      result.current.costSummary.monthTokenPlanEquivalentUsd
       - result.current.costSummary.monthSubscriptionCostUsd,
     ).toBe(10);
-    expect(result.current.costSummary.monthActualCashSpendUsd).not.toBe(58);
+    expect(result.current.costSummary.monthActualCashSpendUsd).not.toBe(68);
+  });
+
+  it("keeps the official cash ledger global when usage value is source-filtered", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockResolvedValueOnce(timeseriesTotals({
+        api_usd: 0,
+        subscription_usd: 0,
+        other_ai_usd: 30,
+        combined_usd: 30,
+      }, [{
+        source: "other_ai",
+        api_cost_usd: 0,
+        billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+        billing_provider_token_totals: [],
+      }]))
+      .mockResolvedValueOnce(timeseriesTotals())
+      .mockResolvedValueOnce(timeseriesTotals());
+    getApiBillingAccounts.mockResolvedValue({
+      accounts: [{
+        id: "official-api",
+        provider: "openai",
+        accountName: "Billing",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 8,
+        status: "connected",
+        ...officialPeriod("2025-06"),
+      }],
+    });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: OTHER_AI_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      monthOfficialApiSpendUsd: 8,
+      monthActualCashSpendUsd: 58,
+      actualCashCoverage: "exact",
+    }));
+  });
+
+  it("does not attempt to split a shared provider invoice across filtered agents", async () => {
+    getApiBillingAccounts.mockResolvedValue({
+      accounts: [{
+        id: "official-api",
+        provider: "openai",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 8,
+        ...officialPeriod("2025-06"),
+      }],
+    });
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "UTC",
+      sources: CODEX_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      monthOfficialApiSpendUsd: 8,
+      monthActualCashSpendUsd: 58,
+      actualCashCoverage: "exact",
+    }));
+  });
+
+  it("does not mix filtered usage with a global invoice when global financial totals fail", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockResolvedValueOnce(timeseriesTotals())
+      .mockResolvedValueOnce(timeseriesTotals())
+      .mockRejectedValueOnce(new Error("global financial totals unavailable"));
+    getApiBillingAccounts.mockResolvedValue({
+      accounts: [{
+        id: "official-api",
+        provider: "openai",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 8,
+        ...officialPeriod("2025-06"),
+      }],
+    });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: CODEX_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      monthApiEquivalentUsd: 10,
+      monthOfficialApiSpendUsd: null,
+      monthActualCashSpendUsd: null,
+      actualCashCoverage: "unknown",
+    }));
+    expect(result.current.costSummaryStale).toBe(true);
   });
 
   it("marks actual cash spend partial when official API billing is unavailable", async () => {
@@ -205,10 +350,12 @@ describe("useCostAccumulation selected month", () => {
       source: "codex",
       api_cost_usd: 8,
       billing_mode_token_totals: { api_key: 80, token_plan: 0, unknown: 0 },
+      billing_provider_token_totals: [{ provider_id: "openai", api_key: 80, token_plan: 0, unknown: 0 }],
     }, {
       source: "anthropic",
       api_cost_usd: 2,
       billing_mode_token_totals: { api_key: 20, token_plan: 0, unknown: 0 },
+      billing_provider_token_totals: [{ provider_id: "anthropic", api_key: 20, token_plan: 0, unknown: 0 }],
     }]));
     getApiBillingAccounts.mockResolvedValue({
       accounts: [{
@@ -501,19 +648,81 @@ describe("useCostAccumulation selected month", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.costSummary.monthApiCostUsd).toBe(10);
+    expect(result.current.costSummary.monthActualCashSpendUsd).toBe(50);
 
     getSpendTimeseries.mockReset();
     getSpendTimeseries
       .mockRejectedValueOnce(new Error("financial refresh unavailable"))
-      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 5 }));
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 5 }))
+      .mockRejectedValueOnce(new Error("global financial refresh unavailable"));
 
     rerender({ refreshRevision: 1 });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.costSummary.monthApiCostUsd).toBe(10);
+    expect(result.current.costSummary.monthActualCashSpendUsd).toBe(50);
     expect(result.current.error).toContain("financial refresh unavailable");
     expect(result.current.costSummaryStale).toBe(true);
     expect(result.current.costLastSuccessfulAt).toEqual(expect.any(String));
+  });
+
+  it("does not reuse a previous source scope when the new scoped request fails", async () => {
+    getSpendRecords.mockResolvedValueOnce({
+      records: [],
+      other_ai_group_totals: [{ group_key: "previous-scope", record_count: 1, amount: 9 }],
+    });
+    const { result, rerender } = renderHook(
+      ({ sources }) => useCostAccumulation({
+        selectedMonth: "2025-06",
+        timeZone: "UTC",
+        sources,
+      }),
+      { initialProps: { sources: ["codex"] } },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary.monthApiEquivalentUsd).toBe(10);
+    expect(result.current.otherAiGroupCosts).toHaveLength(1);
+    expect(result.current.costLastSuccessfulAt).toEqual(expect.any(String));
+
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockRejectedValueOnce(new Error("claude scope unavailable"))
+      .mockResolvedValueOnce(timeseriesTotals())
+      .mockResolvedValueOnce(timeseriesTotals());
+    getSpendRecords.mockRejectedValueOnce(new Error("claude records unavailable"));
+    rerender({ sources: ["claude"] });
+    expect(result.current.costSummary.monthApiEquivalentUsd).toBeNull();
+    expect(result.current.otherAiGroupCosts).toEqual([]);
+    expect(result.current.costLastSuccessfulAt).toBeNull();
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary.monthApiEquivalentUsd).toBeNull();
+    expect(result.current.otherAiGroupCosts).toEqual([]);
+    expect(result.current.costLastSuccessfulAt).toBeNull();
+    expect(result.current.costSummaryStale).toBe(true);
+  });
+
+  it("never renders the previous source scope during a scope transition", async () => {
+    const renderedStates = [];
+    function Probe({ sources }) {
+      const value = useCostAccumulation({ selectedMonth: "2025-06", timeZone: "UTC", sources });
+      renderedStates.push({ api: value.costSummary.monthApiEquivalentUsd, loading: value.loading });
+      return null;
+    }
+    const view = render(<Probe sources={CODEX_SOURCES} />);
+    await waitFor(() => expect(renderedStates).toContainEqual({ api: 10, loading: false }));
+    renderedStates.length = 0;
+
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockRejectedValueOnce(new Error("claude scope unavailable"))
+      .mockResolvedValueOnce(timeseriesTotals())
+      .mockResolvedValueOnce(timeseriesTotals());
+    view.rerender(<Probe sources={["claude"]} />);
+
+    expect(renderedStates[0].api).toBeNull();
+    await waitFor(() => expect(renderedStates.at(-1)).toEqual({ api: null, loading: false }));
+    view.unmount();
   });
 
   it("keeps a same-month official invoice visibly stale until billing refresh recovers", async () => {
@@ -557,6 +766,7 @@ describe("useCostAccumulation selected month", () => {
       source: "codex",
       api_cost_usd: 30,
       billing_mode_token_totals: { api_key: 0, token_plan: 100, unknown: 0 },
+      billing_provider_token_totals: [{ provider_id: "openai", api_key: 0, token_plan: 100, unknown: 0 }],
     }]));
     getApiBillingAccounts.mockRejectedValueOnce(new Error("billing refresh failed again"));
     rerender({ refreshRevision: 3 });
@@ -702,7 +912,7 @@ describe("useCostAccumulation selected month", () => {
 
   it("does not let a slower old month overwrite the latest selection", async () => {
     getSpendTimeseries.mockReset();
-    const calls = [deferred(), deferred(), deferred(), deferred()];
+    const calls = [deferred(), deferred(), deferred(), deferred(), deferred(), deferred()];
     calls.forEach(({ promise }) => getSpendTimeseries.mockImplementationOnce(() => promise));
 
     const { result, rerender } = renderHook(
@@ -714,19 +924,21 @@ describe("useCostAccumulation selected month", () => {
       { initialProps: { selectedMonth: "2025-06" } },
     );
 
-    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(3));
     rerender({ selectedMonth: "2025-07" });
-    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(6));
 
     await act(async () => {
-      calls[2].resolve(timeseriesTotals({ combined_usd: 70 }));
-      calls[3].resolve(timeseriesTotals({ combined_usd: 35 }));
+      calls[3].resolve(timeseriesTotals({ combined_usd: 70 }));
+      calls[4].resolve(timeseriesTotals({ combined_usd: 35 }));
+      calls[5].resolve(timeseriesTotals({ combined_usd: 80 }));
     });
     await waitFor(() => expect(result.current.costSummary.monthTotalCostUsd).toBe(70));
 
     await act(async () => {
       calls[0].resolve(timeseriesTotals({ combined_usd: 60 }));
       calls[1].resolve(timeseriesTotals({ combined_usd: 30 }));
+      calls[2].resolve(timeseriesTotals({ combined_usd: 65 }));
     });
     expect(result.current.costSummary.monthTotalCostUsd).toBe(70);
   });

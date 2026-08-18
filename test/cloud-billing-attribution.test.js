@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fssync = require("node:fs");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
@@ -33,6 +34,188 @@ async function importIngestEdge() {
 test("sync exposes its queue batch reader for cloud identity coverage", () => {
   assert.equal(typeof syncCommand.readQueueBatch, "function");
   assert.equal(typeof syncCommand.createCloudQueueReadContext, "function");
+  assert.equal(typeof syncCommand.drainQueueToCloud, "function");
+});
+
+test("cloud drain skips queue parsing when the upload offset already reached EOF", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-eof-"));
+  const originalCreateReadStream = fssync.createReadStream;
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const queueStatePath = path.join(tmp, "queue.state.json");
+    const queueText = `${JSON.stringify(row("api_key", 11))}\n`;
+    await fs.writeFile(queuePath, queueText);
+    await fs.writeFile(queueStatePath, JSON.stringify({ offset: Buffer.byteLength(queueText) }));
+    fssync.createReadStream = () => { throw new Error("uploaded queue prefix was parsed"); };
+
+    const result = await syncCommand.drainQueueToCloud({
+      baseUrl: "https://cloud.invalid",
+      deviceToken: "device-token",
+      queuePath,
+      queueStatePath,
+    });
+
+    assert.deepEqual(result, { inserted: 0, skipped: 0 });
+  } finally {
+    fssync.createReadStream = originalCreateReadStream;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("cloud drain checkpoints billing identities instead of reparsing uploaded history", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-index-"));
+  const originalCreateReadStream = fssync.createReadStream;
+  const originalFetch = global.fetch;
+  const requests = [];
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const queueStatePath = path.join(tmp, "queue.state.json");
+    const firstLine = `${JSON.stringify(row("api_key", 11))}\n`;
+    await fs.writeFile(queuePath, firstLine);
+    global.fetch = async (_url, options) => {
+      requests.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ inserted: 1, skipped: 0 }),
+      };
+    };
+
+    await syncCommand.drainQueueToCloud({
+      baseUrl: "https://cloud.invalid",
+      deviceToken: "device-token",
+      queuePath,
+      queueStatePath,
+      maxBatches: 1,
+    });
+    const firstState = JSON.parse(await fs.readFile(queueStatePath, "utf8"));
+    assert.equal(firstState.cloudQueueIndexVersion, 2);
+    assert.equal(firstState.cloudQueueIndexOffset, Buffer.byteLength(firstLine));
+    assert.equal(firstState.cloudQueueIndexRows.length, 1);
+
+    await fs.appendFile(queuePath, `${JSON.stringify(row("token_plan", 22))}\n`);
+    fssync.createReadStream = (filePath, options = {}) => {
+      if (options.start === 0) throw new Error("uploaded queue prefix was reparsed");
+      return originalCreateReadStream(filePath, options);
+    };
+    await syncCommand.drainQueueToCloud({
+      baseUrl: "https://cloud.invalid",
+      deviceToken: "device-token",
+      queuePath,
+      queueStatePath,
+      maxBatches: 1,
+    });
+
+    const latest = requests.at(-1).hourly;
+    const compat = latest.find((item) => item.billing_mode_compat_summary === "base_total_v1");
+    assert.equal(compat.total_tokens, 33);
+    assert.equal(compat.billing_mode_compat_slices.api_key.total_tokens, 11);
+    assert.equal(compat.billing_mode_compat_slices.token_plan.total_tokens, 22);
+  } finally {
+    fssync.createReadStream = originalCreateReadStream;
+    global.fetch = originalFetch;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("cloud drain writes its historical identity checkpoint only after multi-batch upload", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-index-write-"));
+  const originalFetch = global.fetch;
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const queueStatePath = path.join(tmp, "queue.state.json");
+    await fs.writeFile(queuePath, [
+      row("api_key", 11),
+      { ...row("api_key", 7), model: "deepseek-v4-mini" },
+    ].map(JSON.stringify).join("\n") + "\n");
+    let requestCount = 0;
+    global.fetch = async () => {
+      requestCount += 1;
+      if (requestCount === 2) {
+        const interimState = JSON.parse(await fs.readFile(queueStatePath, "utf8"));
+        assert.equal("cloudQueueIndexRows" in interimState, false);
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ inserted: 1, skipped: 0 }),
+      };
+    };
+
+    await syncCommand.drainQueueToCloud({
+      baseUrl: "https://cloud.invalid",
+      deviceToken: "device-token",
+      queuePath,
+      queueStatePath,
+      maxBatches: 5,
+      batchSize: 4,
+    });
+
+    assert.equal(requestCount, 2);
+    const finalState = JSON.parse(await fs.readFile(queueStatePath, "utf8"));
+    assert.equal(finalState.cloudQueueIndexRows.length, 2);
+  } finally {
+    global.fetch = originalFetch;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("cloud checkpoint stays bounded and late buckets use a targeted history fallback", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-bounded-index-"));
+  const originalFetch = global.fetch;
+  const requests = [];
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const queueStatePath = path.join(tmp, "queue.state.json");
+    const historical = Array.from({ length: 513 }, (_, index) => ({
+      ...row("api_key", 11),
+      model: `deepseek-history-${index}`,
+    }));
+    await fs.writeFile(queuePath, `${historical.map(JSON.stringify).join("\n")}\n`);
+    global.fetch = async (_url, options) => {
+      requests.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ inserted: 1, skipped: 0 }),
+      };
+    };
+
+    await syncCommand.drainQueueToCloud({
+      baseUrl: "https://cloud.invalid",
+      deviceToken: "device-token",
+      queuePath,
+      queueStatePath,
+      maxBatches: 5,
+      batchSize: 500,
+    });
+    const checkpoint = JSON.parse(await fs.readFile(queueStatePath, "utf8"));
+    assert.ok(checkpoint.cloudQueueIndexRows.length <= 512);
+
+    await fs.appendFile(queuePath, `${JSON.stringify({
+      ...row("token_plan", 22),
+      model: "deepseek-history-0",
+    })}\n`);
+    await syncCommand.drainQueueToCloud({
+      baseUrl: "https://cloud.invalid",
+      deviceToken: "device-token",
+      queuePath,
+      queueStatePath,
+      maxBatches: 1,
+    });
+    const compat = requests.at(-1).hourly.find((item) => (
+      item.model === "deepseek-history-0" && item.billing_mode_compat_summary === "base_total_v1"
+    ));
+    assert.equal(compat.total_tokens, 33);
+    assert.equal(compat.billing_mode_compat_slices.api_key.total_tokens, 11);
+    assert.equal(compat.billing_mode_compat_slices.token_plan.total_tokens, 22);
+  } finally {
+    global.fetch = originalFetch;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
 });
 
 function row(billingMode, totalTokens) {

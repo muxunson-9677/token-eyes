@@ -284,7 +284,7 @@ function CostSummaryCards({
   const dailyAverage = hasApiEquivalent && elapsedDays ? Number(apiEquivalentUsd) / elapsedDays : null;
   const unavailable = copy("spend.cost.row.unavailable");
   const roi = computeSubscriptionRoi({
-    monthApiEquivalentUsd: apiEquivalentUsd,
+    monthApiEquivalentUsd: summary.monthTokenPlanEquivalentUsd,
     monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
   });
   const actualCoverageKey = summary.actualCashCoverage === "exact"
@@ -379,13 +379,13 @@ function CostSummaryCards({
 // Subscription ROI card (V2-W2 回本倍数)
 // ---------------------------------------------------------------------------
 
-// multiplier = month API-equivalent usage value / month subscription spend.
+// multiplier = token-plan API-equivalent usage value / month subscription spend.
 // No subscription recorded → guidance state; multiplier < 1 → neutral framing
 // (percentage of the subscription fee), never a shaming tone.
 function SubscriptionRoiCard({ summary, loading }) {
   if (loading) return null;
   const roi = computeSubscriptionRoi({
-    monthApiEquivalentUsd: summary.monthApiEquivalentUsd ?? summary.monthApiCostUsd,
+    monthApiEquivalentUsd: summary.monthTokenPlanEquivalentUsd,
     monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
   });
   if (!roi) {

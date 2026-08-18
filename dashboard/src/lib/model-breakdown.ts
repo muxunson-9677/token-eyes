@@ -39,6 +39,14 @@ function normalizeBillingFilterValue(value: any): BillingFilter {
   return "all";
 }
 
+function normalizeBillingModeTokenTotals(value: any) {
+  if (!value || typeof value !== "object") return null;
+  return Object.fromEntries(VALID_BILLING_MODES.map((mode) => [
+    mode,
+    Math.max(0, toFiniteNumber(value[mode]) ?? 0),
+  ])) as Record<BillingMode, number>;
+}
+
 function normalizeModelId(value: any) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -133,6 +141,12 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
             model?.billing_mode === "mixed"
               ? "mixed"
               : normalizeBillingModeValue(model?.billing_mode) || "unknown";
+          const billingModeTokenTotals = normalizeBillingModeTokenTotals(
+            model?.billing_mode_token_totals,
+          );
+          const billingModeCostTotals = normalizeBillingModeTokenTotals(
+            model?.billing_mode_cost_totals,
+          );
           return {
             id,
             name,
@@ -140,6 +154,8 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
             usage: modelTokens,
             cost: modelCost,
             billingMode: modelBillingMode,
+            billingModeTokenTotals,
+            billingModeCostTotals,
             billingModeConfidence:
               typeof model?.billing_mode_confidence === "string"
                 ? model.billing_mode_confidence
@@ -195,20 +211,34 @@ export function filterFleetByBillingMode(fleetData: any[], filter: any = "all") 
   const list = Array.isArray(fleetData) ? fleetData : [];
   if (safeFilter === "all") return list;
 
+  const projectModel = (model: any) => {
+    const slicedUsage = Number(model?.billingModeTokenTotals?.[safeFilter] || 0);
+    if (model?.billingMode !== safeFilter && slicedUsage <= 0) return null;
+    const originalUsage = Math.max(0, Number(model?.usage) || 0);
+    const usage = slicedUsage > 0 ? slicedUsage : originalUsage;
+    const slicedCost = toFiniteNumber(model?.billingModeCostTotals?.[safeFilter]);
+    const cost = slicedUsage > 0 ? slicedCost : model?.cost;
+    return { ...model, usage, cost, billingMode: safeFilter };
+  };
+
   return list
     .map((entry: any) => {
-      const filteredModels = (Array.isArray(entry?.models) ? entry.models : []).filter(
-        (model: any) => model?.billingMode === safeFilter,
-      );
+      const filteredModels = (Array.isArray(entry?.models) ? entry.models : [])
+        .map(projectModel)
+        .filter(Boolean);
       if (!filteredModels.length) return null;
       const filteredUsage = filteredModels.reduce(
         (acc: number, model: any) => acc + (Number(model?.usage) || 0),
         0,
       );
-      const filteredCost = filteredModels.reduce((acc: number, model: any) => {
-        const c = Number(model?.cost);
-        return Number.isFinite(c) ? acc + c : acc;
-      }, 0);
+      const hasCompleteCost = filteredModels.every((model: any) => (
+        model?.cost !== null
+        && model?.cost !== undefined
+        && Number.isFinite(Number(model.cost))
+      ));
+      const filteredCost = hasCompleteCost
+        ? filteredModels.reduce((acc: number, model: any) => acc + Number(model.cost), 0)
+        : null;
       // Recompute per-model share against the filtered source usage so a
       // provider card still shows relative weights for what survived the
       // filter. The caller will scale totalPercent against the filtered
@@ -233,9 +263,9 @@ export function filterFleetByBillingMode(fleetData: any[], filter: any = "all") 
       // not just this one) so the rendered numbers stay internally
       // consistent with whatever the user actually sees.
       const filteredGrand = list.reduce((acc: number, source: any) => {
-        const sourceFiltered = (Array.isArray(source?.models) ? source.models : []).filter(
-          (model: any) => model?.billingMode === safeFilter,
-        );
+        const sourceFiltered = (Array.isArray(source?.models) ? source.models : [])
+          .map(projectModel)
+          .filter(Boolean);
         return acc + sourceFiltered.reduce((s: number, m: any) => s + (Number(m?.usage) || 0), 0);
       }, 0);
       const totalPercentRaw = filteredGrand > 0 ? (entry.usage / filteredGrand) * 100 : 0;

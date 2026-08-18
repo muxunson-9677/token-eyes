@@ -748,7 +748,7 @@
     "spend.cost.summary.estimated_usage_suffix":  "估算用量成本",
     "spend.cost.summary.actual_subscription":  "已记录订阅费用",
     "spend.cost.summary.actual_subscription_suffix":  "已记录订阅费用",
-    "spend.cost.summary.scope_note":  "实际现金支出只汇总已记录订阅付款、官方 Billing/API 账单与自定义花销；API 标价等价价值按已记录 Token × 模型官方标价估算，仅用于衡量用量价值，不计入实际支出，避免重复计算。",
+    "spend.cost.summary.scope_note":  "实际现金支出按完整财务账本汇总已记录订阅付款、官方 Billing/API 账单与自定义花销；API 标价等价价值跟随当前可见用量范围，仅用于衡量用量价值，不计入实际支出。",
     "spend.cost.summary.actual_cash": "实际现金支出",
     "spend.cost.summary.actual_cash_suffix": "实际现金支出",
     "spend.cost.summary.actual_cash_source": "已记录付款与官方账单",

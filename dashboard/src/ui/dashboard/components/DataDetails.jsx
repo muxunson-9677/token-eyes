@@ -466,7 +466,7 @@ export function DataDetails({
                     key={rowKey}
                     role="button"
                     tabIndex={0}
-                    aria-expanded={dailyOverlay?.day === rowKey}
+                    aria-expanded={visibleDailyOverlay?.day === rowKey}
                     onClick={(event) => void toggleDailyBreakdown(row, event.currentTarget)}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
@@ -479,7 +479,7 @@ export function DataDetails({
                       <button
                         type="button"
                         className="tt-daily-row-trigger tt-analytics-focusable"
-                        aria-expanded={dailyOverlay?.day === rowKey}
+                        aria-expanded={visibleDailyOverlay?.day === rowKey}
                         onClick={(event) => {
                           event.stopPropagation();
                           void toggleDailyBreakdown(row, event.currentTarget);

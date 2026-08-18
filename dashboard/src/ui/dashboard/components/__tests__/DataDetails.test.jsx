@@ -410,6 +410,7 @@ describe("DataDetails daily rows", () => {
     }));
 
     expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
+    expect(screen.getByRole("table").querySelector(".tt-daily-row-trigger")).toHaveAttribute("aria-expanded", "false");
     await openDailyOverlay(user);
     expect(loadB).toHaveBeenCalledTimes(1);
 

@@ -195,6 +195,7 @@ async function buildRequestUsageRecordsList({
   qp,
   trackerDataDir,
   home = os.homedir(),
+  env = process.env,
   effectiveSources,
   from,
   to,
@@ -236,7 +237,7 @@ async function buildRequestUsageRecordsList({
   const dataDirectoryPaths = (wantsCodex || wantsClaude)
     ? resolveDataDirectoryPaths({
         config: readTrackerConfigAt(trackerDataDir),
-        env: process.env,
+        env,
         home,
       })
     : null;
@@ -2319,6 +2320,35 @@ function validateLocalApiTestPaths(
   };
 }
 
+function createIsolatedHandlerEnvironment(sourceEnv, handlerHome) {
+  const env = {
+    HOME: handlerHome,
+    USERPROFILE: handlerHome,
+    APPDATA: path.join(handlerHome, "AppData", "Roaming"),
+    LOCALAPPDATA: path.join(handlerHome, "AppData", "Local"),
+  };
+  for (const name of [
+    "CI",
+    "COMSPEC",
+    "NODE_TEST_CONTEXT",
+    "NUMBER_OF_PROCESSORS",
+    "OS",
+    "PATH",
+    "PATHEXT",
+    "PROCESSOR_ARCHITECTURE",
+    "SystemRoot",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "TZ",
+    "VITEST",
+    "WINDIR",
+  ]) {
+    if (sourceEnv[name] !== undefined) env[name] = sourceEnv[name];
+  }
+  return env;
+}
+
 function createLocalApiHandler({
   queuePath,
   trackerDataDir: trackerDataDirOverride,
@@ -2351,6 +2381,9 @@ function createLocalApiHandler({
     machineIdSeedPath = validatedPaths.machineIdSeedPath;
   }
   const handlerHome = isTestRunner ? trackerDataDir : os.homedir();
+  const handlerEnv = isTestRunner
+    ? createIsolatedHandlerEnvironment(process.env, handlerHome)
+    : process.env;
   const getHandlerMachineId = (queuePathForMachineId = qp) => getOrCreateMachineId(
     queuePathForMachineId,
     machineIdSeedPath ? { seedPath: machineIdSeedPath } : undefined,
@@ -2441,7 +2474,7 @@ function createLocalApiHandler({
       getCodexUsageLimits: () => {
         const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
-          env: process.env,
+          env: handlerEnv,
           home: handlerHome,
           platform: process.platform,
         });
@@ -2450,8 +2483,8 @@ function createLocalApiHandler({
         return getCodexUsageLimits({
           home: handlerHome,
           env: codexHome
-            ? { ...process.env, CODEX_HOME: codexHome }
-            : process.env,
+            ? { ...handlerEnv, CODEX_HOME: codexHome }
+            : handlerEnv,
           platform: process.platform,
         });
       },
@@ -2461,7 +2494,7 @@ function createLocalApiHandler({
       getCodexHomes: () => {
         const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
-          env: process.env,
+          env: handlerEnv,
           home: handlerHome,
           platform: process.platform,
         });
@@ -2710,7 +2743,7 @@ function createLocalApiHandler({
     if (!configuredCodexHome && !usesDefaultQueue) return rows;
     const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
       config,
-      env: process.env,
+      env: handlerEnv,
       home: handlerHome,
     });
     const codexRows = await collectCodexRolloutQueueRows({
@@ -4438,6 +4471,7 @@ function createLocalApiHandler({
           cache_creation_input_tokens: 0, reasoning_output_tokens: 0,
           total_tokens: 0, cost_usd: 0,
           billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+          billing_mode_cost_totals: { api_key: 0, token_plan: 0, unknown: 0 },
           billing_provider_token_totals: new Map(),
           models: new Map(),
         });
@@ -4449,6 +4483,7 @@ function createLocalApiHandler({
         : "unknown";
       const attributedTokens = Math.max(0, Number(row.total_tokens || 0));
       entry.billing_mode_token_totals[billingMode] += attributedTokens;
+      entry.billing_mode_cost_totals[billingMode] += costUsd;
       const billingProvider = attribution.provider_id || "unknown";
       if (!entry.billing_provider_token_totals.has(billingProvider)) {
         entry.billing_provider_token_totals.set(billingProvider, {
@@ -4726,6 +4761,7 @@ function createLocalApiHandler({
           total_tokens: 0,
           cost_usd: 0,
           billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+          billing_mode_cost_totals: { api_key: 0, token_plan: 0, unknown: 0 },
           billing_provider_token_totals: [],
           // Per-model breakdown (API cost only; subscription is source-level).
           models: [],
@@ -4746,6 +4782,10 @@ function createLocalApiHandler({
         seriesEntry.total_tokens = entry.total_tokens;
         seriesEntry.cost_usd = entry.cost_usd;
         seriesEntry.billing_mode_token_totals = { ...entry.billing_mode_token_totals };
+        seriesEntry.billing_mode_cost_totals = Object.fromEntries(
+          Object.entries(entry.billing_mode_cost_totals)
+            .map(([mode, total]) => [mode, Number(total.toFixed(6))]),
+        );
         seriesEntry.billing_provider_token_totals = Array.from(entry.billing_provider_token_totals.values())
           .sort((a, b) => a.provider_id.localeCompare(b.provider_id));
         seriesEntry.models = Array.from(entry.models.values()).map((m) => ({
@@ -4792,6 +4832,7 @@ function createLocalApiHandler({
       other_ai_cost_cny: 0,
       combined_usd: 0,
       combined_cny: 0,
+      billing_mode_cost_totals: { api_key: 0, token_plan: 0, unknown: 0 },
     };
 
     for (const entry of series) {
@@ -4803,10 +4844,17 @@ function createLocalApiHandler({
       totals.other_ai_cost_cny += entry.other_ai_cost_cny;
       totals.combined_usd += entry.combined_usd;
       totals.combined_cny += entry.combined_cny;
+      for (const mode of ["api_key", "token_plan", "unknown"]) {
+        totals.billing_mode_cost_totals[mode] += Number(entry.billing_mode_cost_totals?.[mode] || 0);
+      }
     }
 
     for (const key of Object.keys(totals)) {
-      totals[key] = round6(totals[key]);
+      if (key === "billing_mode_cost_totals") {
+        for (const mode of Object.keys(totals[key])) totals[key][mode] = round6(totals[key][mode]);
+      } else {
+        totals[key] = round6(totals[key]);
+      }
     }
 
     // 04-独立贝叶斯验收 fix (B6-7): Add backward-compatible field aliases and
@@ -4875,6 +4923,7 @@ function createLocalApiHandler({
         total_tokens: 0,
         cost_usd: 0,
         billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+        billing_mode_cost_totals: { api_key: 0, token_plan: 0, unknown: 0 },
         billing_provider_token_totals: new Map(),
       });
     }
@@ -4898,6 +4947,7 @@ function createLocalApiHandler({
       sa.cost_usd += entry.cost_usd;
       for (const mode of ["api_key", "token_plan", "unknown"]) {
         sa.billing_mode_token_totals[mode] += Number(entry.billing_mode_token_totals?.[mode] || 0);
+        sa.billing_mode_cost_totals[mode] += Number(entry.billing_mode_cost_totals?.[mode] || 0);
       }
       for (const providerTotals of entry.billing_provider_token_totals || []) {
         if (!sa.billing_provider_token_totals.has(providerTotals.provider_id)) {
@@ -4925,6 +4975,9 @@ function createLocalApiHandler({
       sa.combined_usd = round6(sa.combined_usd);
       sa.combined_cny = round6(sa.combined_cny);
       sa.cost_usd = round6(sa.cost_usd);
+      for (const mode of ["api_key", "token_plan", "unknown"]) {
+        sa.billing_mode_cost_totals[mode] = round6(sa.billing_mode_cost_totals[mode]);
+      }
       sa.billing_provider_token_totals = Array.from(sa.billing_provider_token_totals.values())
         .sort((a, b) => a.provider_id.localeCompare(b.provider_id));
     }
@@ -5222,7 +5275,7 @@ function createLocalApiHandler({
           : require("./usage-limits").getUsageLimits;
         const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({
           config: readTrackerConfigAt(trackerDataDir),
-          env: process.env,
+          env: handlerEnv,
           home: handlerHome,
           platform: process.platform,
         });
@@ -5237,7 +5290,7 @@ function createLocalApiHandler({
         const [usageLimits, sessions] = await Promise.all([
           loadUsageLimits({
             home: handlerHome,
-            env: process.env,
+            env: handlerEnv,
             platform: process.platform,
           }),
           typeof codexLifecycleProvider === "function"
@@ -6521,7 +6574,7 @@ function createLocalApiHandler({
         const src = row.source || "unknown";
         const mdl = row.model || "unknown";
         if (!bySource.has(src))
-          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, models: new Map() });
+          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeCostTotals: { api_key: 0, token_plan: 0, unknown: 0 }, models: new Map() });
         const sa = bySource.get(src);
         sa.totals.total_tokens += row.total_tokens || 0;
         sa.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -6531,7 +6584,7 @@ function createLocalApiHandler({
         sa.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         sa.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
         if (!sa.models.has(mdl))
-          bySource.get(src).models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeConfidences: {} });
+          bySource.get(src).models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeCostTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeConfidences: {} });
         const ma = sa.models.get(mdl);
         ma.totals.total_tokens += row.total_tokens || 0;
         ma.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -6540,10 +6593,13 @@ function createLocalApiHandler({
         ma.totals.cached_input_tokens += row.cached_input_tokens || 0;
         ma.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         ma.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
-        accumulateBillingModeAttribution([
+        const { mode: billingMode } = accumulateBillingModeAttribution([
           { tokenTotals: sa.billingModeTokenTotals },
           { tokenTotals: ma.billingModeTokenTotals, confidences: ma.billingModeConfidences },
         ], row);
+        const rowCost = computeRowCost(row, pricingOptions);
+        sa.billingModeCostTotals[billingMode] += rowCost;
+        ma.billingModeCostTotals[billingMode] += rowCost;
       }
 
       const sources = Array.from(bySource.values()).map((s) => {
@@ -6556,6 +6612,10 @@ function createLocalApiHandler({
               source: s.source,
             }, pricingOptions);
             const billingModeTokenTotals = m.billingModeTokenTotals;
+            const billingModeCostTotals = Object.fromEntries(
+              Object.entries(m.billingModeCostTotals)
+                .map(([mode, total]) => [mode, Number(total.toFixed(6))]),
+            );
             const activeModes = Object.entries(billingModeTokenTotals)
               .filter(([, total]) => total > 0)
               .map(([mode]) => mode);
@@ -6563,13 +6623,14 @@ function createLocalApiHandler({
             const confidence = activeModes.length === 1
               ? m.billingModeConfidences[mode] || "unavailable"
               : "unavailable";
-            const { billingModeConfidences: _confidences, billingModeTokenTotals: _totals, ...model } = m;
+            const { billingModeConfidences: _confidences, billingModeTokenTotals: _totals, billingModeCostTotals: _costs, ...model } = m;
             return {
               ...model,
               totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
               billing_mode: mode,
               billing_mode_confidence: confidence,
               billing_mode_token_totals: billingModeTokenTotals,
+              billing_mode_cost_totals: billingModeCostTotals,
             };
           })
           .sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
@@ -6583,7 +6644,12 @@ function createLocalApiHandler({
         s.billing_mode = summary.mode;
         s.billing_modes = summary.billing_modes;
         s.billing_mode_token_totals = sourceBillingTotals;
+        s.billing_mode_cost_totals = Object.fromEntries(
+          Object.entries(s.billingModeCostTotals)
+            .map(([mode, total]) => [mode, Number(total.toFixed(6))]),
+        );
         delete s.billingModeTokenTotals;
+        delete s.billingModeCostTotals;
         return s;
       });
 
@@ -7107,6 +7173,7 @@ function createLocalApiHandler({
               qp,
               trackerDataDir,
               home: handlerHome,
+              env: handlerEnv,
               effectiveSources,
               from,
               to,
@@ -7461,6 +7528,13 @@ function createLocalApiHandler({
         const accounts = await collectApiBillingAccounts({
           spendRecords: spendResult.records || [],
           queuePath: qp,
+          monthKey: billingMonth || null,
+          options: {
+            home: handlerHome,
+            env: handlerEnv,
+            platform: process.platform,
+            securityRunner: isTestRunner ? () => ({ status: 1, stdout: "" }) : undefined,
+          },
         });
 
         // 02-ia-api-balance: Augment accounts with provider API config info.
@@ -8130,7 +8204,12 @@ function createLocalApiHandler({
         const settings = readLocalSettings();
         json(res, {
           ok: true,
-          ...detectDataDirectories({ config: { dataDirectories: settings?.dataDirectories || {} } }),
+          ...detectDataDirectories({
+            config: { dataDirectories: settings?.dataDirectories || {} },
+            env: handlerEnv,
+            home: handlerHome,
+            platform: process.platform,
+          }),
         });
         return true;
       }
@@ -8164,10 +8243,18 @@ function createLocalApiHandler({
           if (draftPath != null) {
             config.dataDirectories = { ...config.dataDirectories, [agentId]: draftPath };
           }
-          const result = detectAgentEnvironmentForRequest(agentId, config);
+          const result = detectAgentEnvironmentForRequest(agentId, config, {
+            env: handlerEnv,
+            home: handlerHome,
+            platform: process.platform,
+          });
           json(res, { ok: true, result });
         } else {
-          const results = detectAllAgentEnvironments(config);
+          const results = detectAllAgentEnvironments(config, {
+            env: handlerEnv,
+            home: handlerHome,
+            platform: process.platform,
+          });
           json(res, { ok: true, results });
         }
         return true;
@@ -8464,7 +8551,7 @@ function createLocalApiHandler({
           : usageLimitsModule.getUsageLimits;
         const data = await loadUsageLimits({
           home: handlerHome,
-          env: process.env,
+          env: handlerEnv,
           platform: process.platform,
         });
         const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
@@ -8495,7 +8582,7 @@ function createLocalApiHandler({
           return true;
         }
         const data = await fetchWorkbuddyQuota({
-          env: process.env,
+          env: handlerEnv,
           home: handlerHome,
           platform: process.platform,
         });
@@ -8518,7 +8605,7 @@ function createLocalApiHandler({
           : await handleLimitAccountsRequest({
             refresh: forceRefresh === "1" || forceRefresh === "true",
             home: handlerHome,
-            env: process.env,
+            env: handlerEnv,
             platform: process.platform,
           });
         json(res, data);
@@ -8563,7 +8650,7 @@ function createLocalApiHandler({
           ? await limitAccountsProvider({ refresh: false })
           : await handleLimitAccountsRequest({
             home: handlerHome,
-            env: process.env,
+            env: handlerEnv,
             platform: process.platform,
           });
         const density = Object.values(TRAY_DENSITY).includes(url.searchParams.get("density"))

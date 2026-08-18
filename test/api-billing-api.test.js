@@ -610,6 +610,39 @@ test("api billing accounts correctly calculates cross-month costs (monthCostUsd 
   }
 });
 
+test("selected UTC month local estimates use latest queue identities and merge provider aliases", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-history-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    const rows = [
+      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "api_key", cost_usd: 0.1 },
+      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "api_key", cost_usd: 0.2 },
+      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "token_plan", cost_usd: 0.4 },
+      { source: "cursor", model: "composer-1", hour_start: "2025-06-02T00:00:00.000Z", billing_mode: "api_key", cost_usd: 0.3 },
+      { source: "codex", model: "gpt-5", hour_start: "2026-08-01T00:00:00.000Z", billing_mode: "api_key", cost_usd: 9 },
+    ];
+    await fs.writeFile(queuePath, `${rows.map(JSON.stringify).join("\n")}\n`, "utf8");
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
+
+    const res = await call(
+      handler,
+      "/functions/tokentracker-api-billing-accounts?month=2025-06&time_zone=UTC",
+    );
+    const body = readJsonResponse(res);
+    const openai = body.accounts.find((account) => account.provider === "openai");
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(openai);
+    assert.equal(openai.monthCostUsd, 0.9);
+    assert.equal(openai.lifetimeCostUsd, 9.9);
+    assert.equal(body.accounts.filter((account) => account.provider === "openai").length, 1);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("api billing accounts with only credentials detected shows not-connected status with null cost (no actual usage)", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-"));
   try {
