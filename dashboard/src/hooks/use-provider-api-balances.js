@@ -69,6 +69,49 @@ function deriveAggregateStale(configs, balances, accountRefreshStates) {
   });
 }
 
+function markBalanceStale(balances, configId, failureBalance = null) {
+  const failure = failureBalance && typeof failureBalance === "object" ? failureBalance : {};
+  const diagnostic = Object.fromEntries(Object.entries(failure).filter(([key]) => ![
+    "accountLabel",
+    "balance",
+    "configId",
+    "currency",
+    "lastSyncedAt",
+    "lifetimeSpend",
+    "monthSpend",
+    "providerId",
+    "status",
+  ].includes(key)));
+  const index = balances.findIndex((item) => item.configId === configId);
+  if (index < 0) {
+    if (Object.keys(failure).length === 0) return balances;
+    return [...balances, {
+      ...(failure.configId ? { configId: failure.configId } : { configId }),
+      ...(failure.providerId ? { providerId: failure.providerId } : {}),
+      ...(failure.accountLabel ? { accountLabel: failure.accountLabel } : {}),
+      ...diagnostic,
+      status: "stale",
+    }];
+  }
+  const current = balances[index];
+  const hasConfirmedSnapshot = current.status === "synced"
+    || current.balance != null
+    || current.monthSpend != null
+    || current.lifetimeSpend != null
+    || Boolean(current.lastSyncedAt);
+  if (!hasConfirmedSnapshot && Object.keys(failure).length === 0) return balances;
+  return balances.map((item, itemIndex) => (
+    itemIndex === index ? { ...item, ...diagnostic, status: "stale" } : item
+  ));
+}
+
+function loadFailureMessage(scope, settled) {
+  if (settled.status === "rejected") {
+    return settled.reason?.message || `Unable to load provider ${scope}`;
+  }
+  return settled.value?.error || settled.value?.message || `Unable to load provider ${scope}`;
+}
+
 export function useProviderApiBalances() {
   const cachedSnapshot = useRef(readCostSettingsSessionCache("provider-api-balances")).current;
   const [configs, setConfigs] = useState(cachedSnapshot?.configs || []);
@@ -85,8 +128,8 @@ export function useProviderApiBalances() {
   const loadRequestRef = useRef(0);
   const configsRef = useRef(cachedSnapshot?.configs || []);
   const stale = useMemo(
-    () => deriveAggregateStale(configs, balances, accountRefreshStates),
-    [accountRefreshStates, balances, configs],
+    () => Boolean(error) || deriveAggregateStale(configs, balances, accountRefreshStates),
+    [accountRefreshStates, balances, configs, error],
   );
 
   const setRefreshing = useCallback((id, on) => {
@@ -102,21 +145,32 @@ export function useProviderApiBalances() {
     const loadRequest = loadRequestRef.current + 1;
     loadRequestRef.current = loadRequest;
     try {
-      const [cfgResult, balResult] = await Promise.all([
+      const [cfgSettled, balSettled] = await Promise.allSettled([
         getProviderApiConfigs(),
         getProviderApiBalances(),
       ]);
       if (cancelledRef.current || loadRequest !== loadRequestRef.current) return false;
-      const nextConfigs = Array.isArray(cfgResult?.data?.configs) ? cfgResult.data.configs : [];
-      const nextBalances = Array.isArray(balResult?.data?.balances) ? balResult.data.balances : [];
+      const cfgResult = cfgSettled.status === "fulfilled" ? cfgSettled.value : null;
+      const balResult = balSettled.status === "fulfilled" ? balSettled.value : null;
+      const configsLoaded = cfgResult?.ok === true && Array.isArray(cfgResult?.data?.configs);
+      const balancesLoaded = balResult?.ok === true && Array.isArray(balResult?.data?.balances);
       generationRef.current += 1;
-      configsRef.current = nextConfigs;
-      setConfigs(nextConfigs);
-      setBalances(nextBalances);
+      if (configsLoaded) {
+        configsRef.current = cfgResult.data.configs;
+        setConfigs(cfgResult.data.configs);
+      }
+      if (balancesLoaded) setBalances(balResult.data.balances);
       setAccountRefreshStates({});
       setRefreshingIds(new Set());
-      const updatedAt = new Date().toISOString();
-      setLastUpdatedAt(updatedAt);
+      if (configsLoaded && balancesLoaded) {
+        setError(null);
+        setLastUpdatedAt(new Date().toISOString());
+      } else {
+        const failures = [];
+        if (!configsLoaded) failures.push(loadFailureMessage("configs", cfgSettled));
+        if (!balancesLoaded) failures.push(loadFailureMessage("balances", balSettled));
+        setError(failures.join("; "));
+      }
       return true;
     } catch (err) {
       if (cancelledRef.current || loadRequest !== loadRequestRef.current) return false;
@@ -147,26 +201,18 @@ export function useProviderApiBalances() {
         || !configsRef.current.find((item) => item.id === configId)?.enabled
       ) return;
       const balance = result?.data?.balance;
-      if (balance) {
+      const synced = result?.ok === true && balance?.status === "synced";
+      if (synced) {
         setBalances((prev) => prev.some((b) => b.configId === configId)
           ? prev.map((b) => (b.configId === configId ? balance : b))
           : [...prev, balance]);
-        const synced = balance.status === "synced";
-        setAccountRefreshStates((prev) => ({
-          ...prev,
-          [configId]: synced ? "synced" : "stale",
-        }));
-        if (synced) setLastUpdatedAt(new Date().toISOString());
+        setAccountRefreshStates((prev) => ({ ...prev, [configId]: "synced" }));
+        setLastUpdatedAt(new Date().toISOString());
       } else {
-        // Missing/HTTP-level failure: keep last balance and its diagnostics.
-        if (!result?.ok) {
-          setBalances((prev) => prev.map((item) => (
-            item.configId === configId ? { ...item, status: "stale" } : item
-          )));
-        }
+        setBalances((prev) => markBalanceStale(prev, configId, balance));
         setAccountRefreshStates((prev) => ({
           ...prev,
-          [configId]: result?.ok ? "missing" : "error",
+          [configId]: balance ? "stale" : result?.ok ? "missing" : "error",
         }));
       }
     } catch {
@@ -176,9 +222,7 @@ export function useProviderApiBalances() {
         || !configsRef.current.find((item) => item.id === configId)?.enabled
       ) return;
       // Network error — keep last successful balance, mark stale (never 0).
-      setBalances((prev) => prev.map((item) => (
-        item.configId === configId ? { ...item, status: "stale" } : item
-      )));
+      setBalances((prev) => markBalanceStale(prev, configId));
       setAccountRefreshStates((prev) => ({ ...prev, [configId]: "error" }));
     } finally {
       if (inFlightRef.current.get(configId) === expectedGeneration) {

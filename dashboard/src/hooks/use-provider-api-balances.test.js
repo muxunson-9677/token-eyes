@@ -424,7 +424,122 @@ it("keeps the last confirmed balance visible when an enabled account returns no 
 
   await waitFor(() => expect(result.current.refreshing).toBe(false));
   expect(result.current.stale).toBe(true);
-  expect(result.current.balances).toEqual([SAMPLE_BALANCE]);
+  expect(result.current.balances).toEqual([{ ...SAMPLE_BALANCE, status: "stale" }]);
+});
+
+it.each(["error", "not-connected", "unsupported", "stale"])(
+  "preserves the confirmed financial snapshot when refresh returns status=%s",
+  async (status) => {
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [SAMPLE_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [SAMPLE_BALANCE] } });
+    refreshProviderApiBalance.mockResolvedValue({
+      ok: true,
+      data: {
+        balance: {
+          ...SAMPLE_BALANCE,
+          balance: null,
+          monthSpend: null,
+          lifetimeSpend: null,
+          status,
+          errorCode: "provider_unavailable",
+          errorMessage: "refresh failed",
+          lastSyncedAt: null,
+        },
+      },
+    });
+
+    const { result } = renderHook(() => useProviderApiBalances());
+
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+    expect(result.current.stale).toBe(true);
+    expect(result.current.balances).toEqual([{
+      ...SAMPLE_BALANCE,
+      status: "stale",
+      errorCode: "provider_unavailable",
+      errorMessage: "refresh failed",
+    }]);
+  },
+);
+
+it("keeps a first provider failure diagnostic without inventing financial values", async () => {
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [SAMPLE_CONFIG] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [] } });
+  refreshProviderApiBalance.mockResolvedValue({
+    ok: true,
+    data: {
+      balance: {
+        configId: SAMPLE_CONFIG.id,
+        providerId: SAMPLE_CONFIG.providerId,
+        status: "error",
+        errorCode: "provider_unauthorized",
+        errorMessage: "bad key",
+      },
+    },
+  });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(result.current.refreshing).toBe(false));
+  expect(result.current.stale).toBe(true);
+  expect(result.current.balances).toEqual([{
+    configId: SAMPLE_CONFIG.id,
+    providerId: SAMPLE_CONFIG.providerId,
+    status: "stale",
+    errorCode: "provider_unauthorized",
+    errorMessage: "bad key",
+  }]);
+  expect(result.current.balances[0].balance).toBeUndefined();
+});
+
+it.each(["not-connected", "error"])(
+  "keeps a cached first-failure status=%s when a later refresh has no balance payload",
+  async (status) => {
+    const failedBalance = {
+      configId: SAMPLE_CONFIG.id,
+      providerId: SAMPLE_CONFIG.providerId,
+      accountLabel: SAMPLE_CONFIG.label,
+      balance: null,
+      monthSpend: null,
+      lifetimeSpend: null,
+      currency: null,
+      status,
+      errorMessage: status === "error" ? "request failed" : null,
+      lastSyncedAt: null,
+    };
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [SAMPLE_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [failedBalance] } });
+    refreshProviderApiBalance.mockResolvedValue({ ok: true, data: { balance: null } });
+
+    const { result } = renderHook(() => useProviderApiBalances());
+
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+    expect(result.current.stale).toBe(true);
+    expect(result.current.balances).toEqual([failedBalance]);
+  },
+);
+
+it("recovers a stale confirmed snapshot after a later trusted synced refresh", async () => {
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [SAMPLE_CONFIG] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [SAMPLE_BALANCE] } });
+  refreshProviderApiBalance
+    .mockResolvedValueOnce({
+      ok: true,
+      data: { balance: { ...SAMPLE_BALANCE, status: "error", errorCode: "request_timeout" } },
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      data: { balance: { ...SAMPLE_BALANCE, balance: 140, status: "synced", errorCode: null } },
+    });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+  await waitFor(() => expect(result.current.balances[0]?.status).toBe("stale"));
+
+  await act(async () => {
+    await result.current.refreshOne(SAMPLE_CONFIG.id);
+  });
+
+  expect(result.current.stale).toBe(false);
+  expect(result.current.balances[0]).toMatchObject({ balance: 140, status: "synced", errorCode: null });
 });
 
 it("ignores an old refresh after reload replaces the enabled account set", async () => {
@@ -520,6 +635,59 @@ it("does not let a disabled stale account poison enabled-account freshness", asy
   await waitFor(() => expect(result.current.refreshing).toBe(false));
   expect(result.current.stale).toBe(false);
   expect(refreshProviderApiBalance).not.toHaveBeenCalledWith("cfg-disabled");
+});
+
+it.each([
+  ["configs", { ok: false, error: "config HTTP failure" }, { ok: true, data: { balances: [{ ...SAMPLE_BALANCE, balance: 125 }] } }],
+  ["balances", { ok: true, data: { configs: [{ ...SAMPLE_CONFIG, apiKeyRef: "", label: "Updated" }] } }, { ok: false, error: "balance HTTP failure" }],
+  ["both", { ok: false, error: "config HTTP failure" }, { ok: false, error: "balance HTTP failure" }],
+])("preserves the failed %s side when cached HTTP loading is partial", async (_side, configResult, balanceResult) => {
+  const keylessConfig = { ...SAMPLE_CONFIG, apiKeyRef: "" };
+  writeCostSettingsSessionCache("provider-api-balances", {
+    configs: [keylessConfig],
+    balances: [SAMPLE_BALANCE],
+    stale: false,
+    lastUpdatedAt: "2026-07-01T00:00:00.000Z",
+  });
+  getProviderApiConfigs.mockResolvedValue(configResult);
+  getProviderApiBalances.mockResolvedValue(balanceResult);
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.stale).toBe(true);
+  expect(result.current.error).toMatch(/failure/i);
+  if (configResult.ok) expect(result.current.configs).toEqual(configResult.data.configs);
+  else expect(result.current.configs).toEqual([keylessConfig]);
+  if (balanceResult.ok) expect(result.current.balances).toEqual(balanceResult.data.balances);
+  else expect(result.current.balances).toEqual([SAMPLE_BALANCE]);
+});
+
+it("clears a partial-load error after a later complete load succeeds", async () => {
+  const keylessConfig = { ...SAMPLE_CONFIG, apiKeyRef: "" };
+  writeCostSettingsSessionCache("provider-api-balances", {
+    configs: [keylessConfig],
+    balances: [SAMPLE_BALANCE],
+    stale: false,
+    lastUpdatedAt: "2026-07-01T00:00:00.000Z",
+  });
+  getProviderApiConfigs
+    .mockResolvedValueOnce({ ok: false, error: "config HTTP failure" })
+    .mockResolvedValueOnce({ ok: true, data: { configs: [keylessConfig] } });
+  getProviderApiBalances
+    .mockResolvedValueOnce({ ok: true, data: { balances: [SAMPLE_BALANCE] } })
+    .mockResolvedValueOnce({ ok: true, data: { balances: [SAMPLE_BALANCE] } });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+  await waitFor(() => expect(result.current.error).toMatch(/failure/i));
+  expect(result.current.stale).toBe(true);
+
+  await act(async () => {
+    await result.current.reload();
+  });
+
+  expect(result.current.error).toBeNull();
+  expect(result.current.stale).toBe(false);
 });
 
 // Polling-interval contract: spy on window.setInterval to verify the clamped

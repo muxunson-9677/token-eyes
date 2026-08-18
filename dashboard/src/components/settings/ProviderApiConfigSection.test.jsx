@@ -1039,6 +1039,32 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(screen.queryByTestId("provider-api-card-currency-cfg-1")).not.toBeInTheDocument();
   });
 
+  it("keeps the last confirmed financial fields visible when the account is stale", async () => {
+    const staleConfig = { ...BASE_CONFIG, apiKeyRef: "" };
+    const staleBalance = {
+      configId: "cfg-1",
+      providerId: "openai",
+      accountLabel: "OpenAI 主账户",
+      balance: 75,
+      monthSpend: 12,
+      lifetimeSpend: 240,
+      currency: "USD",
+      status: "stale",
+      errorCode: "request_timeout",
+      errorMessage: "refresh failed",
+      lastSyncedAt: "2026-07-01T00:00:00.000Z",
+    };
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [staleConfig] } });
+    getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [staleBalance] } });
+
+    render(<ProviderApiConfigSection />);
+    await screen.findByText("OpenAI 主账户");
+
+    expect(screen.getByTestId("provider-api-card-balance-cfg-1")).toHaveTextContent("USD 75.00");
+    expect(screen.getByTestId("provider-api-card-month-spend-cfg-1")).toHaveTextContent("USD 12.00");
+    expect(screen.getAllByText("settings.cost.provider_api.stale").length).toBeGreaterThan(0);
+  });
+
   it("F4 verification: manual refresh calls refreshProviderApiBalance for that config", async () => {
     const user = userEvent.setup();
     // Config has NO apiKeyRef so the hook's mount effect skips auto-refresh

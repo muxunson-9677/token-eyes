@@ -112,6 +112,7 @@ function testResultFromBalance(balance) {
 
 function statusLabelKey(status) {
   if (status === "synced") return "settings.cost.provider_api.status.synced";
+  if (status === "stale") return "settings.cost.provider_api.stale";
   if (status === "unsupported") return "settings.cost.provider_api.status.unsupported";
   if (status === "not-connected") return "settings.cost.provider_api.status.not_connected";
   return "settings.cost.provider_api.status.error";
@@ -642,20 +643,25 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
     ? statusLabelKey(balance.status)
     : "settings.cost.provider_api.status.not_connected";
   const testResult = state.testResult;
-  const isSynced = balance?.status === "synced";
+  const hasConfirmedData = balance?.status === "synced" || (balance?.status === "stale" && (
+    balance?.balance != null
+    || balance?.monthSpend != null
+    || balance?.lifetimeSpend != null
+    || Boolean(balance?.lastSyncedAt)
+  ));
   const capabilities = getProviderFinancialCapabilities(config);
   const balanceValue = capabilities.balance === "unsupported"
     ? copy("settings.cost.provider_api.capability.unsupported")
-    : isSynced
+    : hasConfirmedData
       ? formatFinancialValue(balance?.balance, balance?.currency)
       : null;
-  const monthSpendValue = capabilities.monthSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : isSynced ? formatFinancialValue(balance?.monthSpend, balance?.currency) : null;
-  const lifetimeSpendValue = capabilities.lifetimeSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : isSynced ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : null;
+  const monthSpendValue = capabilities.monthSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : hasConfirmedData ? formatFinancialValue(balance?.monthSpend, balance?.currency) : null;
+  const lifetimeSpendValue = capabilities.lifetimeSpend === "unsupported" ? copy("settings.cost.provider_api.capability.unsupported") : hasConfirmedData ? formatFinancialValue(balance?.lifetimeSpend, balance?.currency) : null;
   const tokenQuotaValue = capabilities.tokenQuota === "token_plan" ? copy("settings.cost.provider_api.capability.token_plan_settings") : copy("settings.cost.provider_api.capability.unsupported");
-  const currencyValue = isSynced && balance?.currency
+  const currencyValue = hasConfirmedData && balance?.currency
     ? balance.currency
     : null;
-  const visibleTestResult = isSynced ? null : testResult;
+  const visibleTestResult = hasConfirmedData ? null : testResult;
   const guide = getProviderConfigurationGuide(config);
   const guideText = [
     `Provider: ${guide.provider}`,
@@ -735,7 +741,7 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
           </button>
         </div>
         <div data-testid={`provider-api-card-financial-${config.id}`} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-          <span className={cn("rounded px-1.5 py-0.5", isSynced ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : balance?.status === "unsupported" ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400" : "bg-oai-gray-50 text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400")}>{copy(statusKey)}</span>
+          <span className={cn("rounded px-1.5 py-0.5", balance?.status === "synced" ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : balance?.status === "unsupported" ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400" : "bg-oai-gray-50 text-oai-gray-500 dark:bg-oai-gray-800 dark:text-oai-gray-400")}>{copy(statusKey)}</span>
           {balanceValue ? <span className="tabular-nums text-oai-gray-700 dark:text-oai-gray-200">{copy("settings.cost.provider_api.balance")}: <span data-testid={`provider-api-card-balance-${config.id}`}>{balanceValue}</span></span> : null}
           {balance?.lastSyncedAt ? <span className="truncate">{copy("settings.cost.provider_api.last_synced")}: {balance.lastSyncedAt}</span> : null}
           {visibleTestResult ? <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5", visibleTestResult.tone === "success" ? "bg-green-50 text-green-700" : visibleTestResult.tone === "warn" ? "bg-yellow-50 text-yellow-700" : "bg-red-50 text-red-700")}>{visibleTestResult.tone === "success" ? <CheckCircle className="h-3 w-3" aria-hidden="true" /> : <AlertCircle className="h-3 w-3" aria-hidden="true" />}{copy(visibleTestResult.key)}</span> : null}
