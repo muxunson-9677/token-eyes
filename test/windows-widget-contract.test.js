@@ -114,7 +114,8 @@ test("widget view model keeps quota reset and plan expiry as independent facts",
 });
 
 test("widget view model rejects ambiguous dates and normalizes offset ISO timestamps", () => {
-  const [offset, numeric, invalid, empty] = flattenUsageLimitsPayload(null, [
+  const [offset, numeric, nonzeroNumeric, positiveSigned, negativeSigned, invalid, empty]
+    = flattenUsageLimitsPayload(null, [
     {
       id: "offset",
       source: "codex",
@@ -127,6 +128,9 @@ test("widget view model rejects ambiguous dates and normalizes offset ISO timest
       expires_at: "0",
       quota_windows: [{ kind: "rolling_5_hour", reset_at: "0" }],
     },
+    { id: "nonzero-numeric", source: "codex", expires_at: "1787196799" },
+    { id: "positive-signed", source: "codex", expires_at: "+1" },
+    { id: "negative-signed", source: "codex", expires_at: "-1" },
     {
       id: "invalid",
       source: "codex",
@@ -148,7 +152,7 @@ test("widget view model rejects ambiguous dates and normalizes offset ISO timest
       expiresAt: "2026-09-01T00:00:00.000Z",
     },
   );
-  for (const limit of [numeric, invalid, empty]) {
+  for (const limit of [numeric, nonzeroNumeric, positiveSigned, negativeSigned, invalid, empty]) {
     assert.equal(limit.resetAt, null);
     assert.equal(limit.expiresAt, null);
   }

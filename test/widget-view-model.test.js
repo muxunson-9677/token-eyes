@@ -640,6 +640,7 @@ test("normalizes official Unix reset timestamps without replacing them with the 
     quota_windows: [
       { kind: "rolling_weekly", percentage: 48, resets_at: "1787196799" },
       { kind: "gpt_5_3_codex_spark_weekly", percentage: 56, resets_at: 1787198612 },
+      { kind: "rolling_5_hour", percentage: 20, resets_at: 1787196799000 },
     ],
   }]);
 
@@ -656,6 +657,11 @@ test("normalizes official Unix reset timestamps without replacing them with the 
     {
       window: "GPT 5.3 Codex Spark",
       resetAt: "2026-08-20T04:03:32.000Z",
+      expiresAt: "2026-08-30T14:24:24.000Z",
+    },
+    {
+      window: "5 小时",
+      resetAt: "2026-08-20T03:33:19.000Z",
       expiresAt: "2026-08-30T14:24:24.000Z",
     },
   ]);
