@@ -759,6 +759,8 @@
     "spend.cost.api_billing.authority.official_invoice": "官方账单",
     "spend.cost.api_billing.authority.local_list_price_estimate": "标价估算",
     "spend.cost.api_billing.authority.unavailable": "账单不可用",
+    "spend.cost.api_billing.ambiguous_config": "检测到 {{count}} 个官方账单配置，请停用重复配置",
+    "spend.cost.api_billing.refresh_failed_stale": "账单刷新失败，当前显示上次成功金额",
     "spend.cost.api_billing.summary.unavailable_accounts": "账单不可用账户",
     "spend.cost.summary.custom_cash": "自定义花销",
     "spend.cost.summary.coverage": "覆盖状态",

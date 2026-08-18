@@ -15,16 +15,22 @@ vi.mock("../lib/api", () => ({
   getTokenPlans: vi.fn(),
 }));
 
-function timeseriesTotals(overrides = {}) {
+function timeseriesTotals(overrides = {}, bySource = null) {
+  const totals = {
+    api_usd: 10,
+    subscription_usd: 20,
+    other_ai_usd: 30,
+    combined_usd: 60,
+    lifetime_combined_usd: 600,
+    ...overrides,
+  };
   return {
-    totals: {
-      api_usd: 10,
-      subscription_usd: 20,
-      other_ai_usd: 30,
-      combined_usd: 60,
-      lifetime_combined_usd: 600,
-      ...overrides,
-    },
+    totals,
+    by_source: bySource ?? (totals.api_usd > 0 ? [{
+      source: "codex",
+      api_cost_usd: totals.api_usd,
+      billing_mode_token_totals: { api_key: 1, token_plan: 0, unknown: 0 },
+    }] : []),
   };
 }
 
@@ -193,6 +199,16 @@ describe("useCostAccumulation selected month", () => {
   });
 
   it("keeps mixed official and unavailable API accounts partially covered", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals({ api_usd: 10 }, [{
+      source: "codex",
+      api_cost_usd: 8,
+      billing_mode_token_totals: { api_key: 80, token_plan: 0, unknown: 0 },
+    }, {
+      source: "anthropic",
+      api_cost_usd: 2,
+      billing_mode_token_totals: { api_key: 20, token_plan: 0, unknown: 0 },
+    }]));
     getApiBillingAccounts.mockResolvedValue({
       accounts: [{
         provider: "openai",
@@ -219,6 +235,65 @@ describe("useCostAccumulation selected month", () => {
       monthOfficialApiSpendUsd: 8,
       monthActualCashSpendUsd: 58,
       actualCashCoverage: "partial",
+    }));
+  });
+
+  it("marks cash coverage partial when another API-key source has no matching official invoice", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals({ api_usd: 35 }, [{
+      source: "codex",
+      api_cost_usd: 30,
+      billing_mode_token_totals: { api_key: 100, token_plan: 0, unknown: 0 },
+    }, {
+      source: "anthropic",
+      api_cost_usd: 5,
+      billing_mode_token_totals: { api_key: 50, token_plan: 0, unknown: 0 },
+    }]));
+    getApiBillingAccounts.mockResolvedValue({ accounts: [{
+      provider: "openai",
+      billingSource: "api",
+      spendAuthority: "official_invoice",
+      monthCostUsd: 8,
+      ...officialPeriod("2025-06"),
+    }] });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: COST_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary.monthOfficialApiSpendUsd).toBe(8);
+    expect(result.current.costSummary.actualCashCoverage).toBe("partial");
+  });
+
+  it("does not require an API cash invoice for pure token-plan equivalent usage", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals({
+      api_usd: 30,
+      subscription_usd: 20,
+      other_ai_usd: 0,
+      combined_usd: 50,
+    }, [{
+      source: "codex",
+      api_cost_usd: 30,
+      billing_mode_token_totals: { api_key: 0, token_plan: 100, unknown: 0 },
+    }]));
+    getApiBillingAccounts.mockResolvedValue({ accounts: [] });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: COST_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      monthApiEquivalentUsd: 30,
+      monthOfficialApiSpendUsd: null,
+      monthActualCashSpendUsd: 20,
+      actualCashCoverage: "exact",
     }));
   });
 
@@ -378,6 +453,85 @@ describe("useCostAccumulation selected month", () => {
     expect(result.current.error).toContain("financial refresh unavailable");
     expect(result.current.costSummaryStale).toBe(true);
     expect(result.current.costLastSuccessfulAt).toEqual(expect.any(String));
+  });
+
+  it("keeps a same-month official invoice visibly stale until billing refresh recovers", async () => {
+    const officialAccount = {
+      provider: "openai",
+      billingSource: "api",
+      spendAuthority: "official_invoice",
+      monthCostUsd: 8,
+      status: "synced",
+      ...officialPeriod("2025-06"),
+    };
+    getApiBillingAccounts.mockResolvedValueOnce({ accounts: [officialAccount] });
+    const { result, rerender } = renderHook(
+      ({ refreshRevision }) => useCostAccumulation({
+        selectedMonth: "2025-06",
+        timeZone: "Asia/Shanghai",
+        sources: COST_SOURCES,
+        refreshRevision,
+      }),
+      { initialProps: { refreshRevision: 0 } },
+    );
+    await waitFor(() => expect(result.current.costSummary.actualCashCoverage).toBe("exact"));
+
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals());
+    getApiBillingAccounts.mockRejectedValueOnce(new Error("billing refresh failed"));
+    rerender({ refreshRevision: 1 });
+    await waitFor(() => expect(result.current.billingStale).toBe(true));
+    expect(result.current.costSummary.monthOfficialApiSpendUsd).toBe(8);
+    expect(result.current.costSummary.actualCashCoverage).toBe("partial");
+    expect(result.current.billingError).toContain("billing refresh failed");
+
+    getApiBillingAccounts.mockResolvedValueOnce({ accounts: [officialAccount] });
+    rerender({ refreshRevision: 2 });
+    await waitFor(() => expect(result.current.billingStale).toBe(false));
+    expect(result.current.costSummary.actualCashCoverage).toBe("exact");
+    expect(result.current.billingError).toBeNull();
+  });
+
+  it("preserves ambiguous billing metadata and ignores a slower old billing response", async () => {
+    const oldBilling = deferred();
+    getApiBillingAccounts.mockReset();
+    getApiBillingAccounts
+      .mockImplementationOnce(() => oldBilling.promise)
+      .mockResolvedValueOnce({ accounts: [{
+        provider: "openai",
+        accountName: "OpenAI Billing",
+        billingSource: "api",
+        spendAuthority: "unavailable",
+        status: "ambiguous",
+        errorCode: "official_invoice_ambiguous",
+        candidateCount: 2,
+      }] });
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals());
+
+    const { result, rerender } = renderHook(
+      ({ selectedMonth }) => useCostAccumulation({ selectedMonth, timeZone: "UTC", sources: COST_SOURCES }),
+      { initialProps: { selectedMonth: "2025-05" } },
+    );
+    rerender({ selectedMonth: "2025-06" });
+    await waitFor(() => expect(result.current.apiBillingAccounts[0]).toEqual(expect.objectContaining({
+      status: "ambiguous",
+      errorCode: "official_invoice_ambiguous",
+      candidateCount: 2,
+    })));
+    await act(async () => {
+      oldBilling.resolve({ accounts: [{
+        provider: "openai",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 99,
+        ...officialPeriod("2025-05"),
+      }] });
+    });
+    expect(result.current.apiBillingAccounts[0]).toEqual(expect.objectContaining({
+      status: "ambiguous",
+      candidateCount: 2,
+    }));
   });
 
   it("preserves explicit real zero totals", async () => {

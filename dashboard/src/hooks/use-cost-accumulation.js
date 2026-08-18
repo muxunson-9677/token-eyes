@@ -42,6 +42,8 @@ export function useCostAccumulation({
   const [error, setError] = useState(null);
   const [costSummaryStale, setCostSummaryStale] = useState(false);
   const [costLastSuccessfulAt, setCostLastSuccessfulAt] = useState(null);
+  const [billingStale, setBillingStale] = useState(false);
+  const [billingError, setBillingError] = useState(null);
   const requestIdRef = useRef(0);
 
   // Fetch all data
@@ -124,6 +126,11 @@ export function useCostAccumulation({
       if (!previousTimeseriesResult.error) setPreviousMonthTimeseries(previousTimeseriesResult.value || null);
       if (!billingResult.error) {
         setApiBillingAccounts(Array.isArray(billingResult.value?.accounts) ? billingResult.value.accounts : []);
+        setBillingStale(false);
+        setBillingError(null);
+      } else {
+        setBillingStale(true);
+        setBillingError(billingResult.error?.message || String(billingResult.error));
       }
 
       const failures = [
@@ -182,9 +189,12 @@ export function useCostAccumulation({
         monthKey: account.monthKey || null,
         billingPeriodStart: account.billingPeriodStart || null,
         billingPeriodEnd: account.billingPeriodEnd || null,
+        errorCode: account.errorCode || null,
+        candidateCount: Number.isInteger(account.candidateCount) ? account.candidateCount : null,
+        stale: billingStale && spendAuthority === "official_invoice",
       };
     });
-  }, [apiBillingAccounts, selectedMonth]);
+  }, [apiBillingAccounts, billingStale, selectedMonth]);
 
   // Filter spend records by sources
   const filteredSpendRecords = useMemo(() => {
@@ -210,13 +220,32 @@ export function useCostAccumulation({
         const monthOfficialApiSpendUsd = officialApiValues.length > 0
           ? officialApiValues.reduce((sum, value) => sum + value, 0)
           : null;
-        const hasUncoveredApiSpend = apiAccounts.some((account) => (
-          account.spendAuthority !== "official_invoice"
-          || account.monthCostUsd === null
-          || account.monthCostUsd === undefined
-          || !Number.isFinite(Number(account.monthCostUsd))
-          || Number(account.monthCostUsd) < 0
-        ));
+        const officialProviders = new Set(apiAccounts
+          .filter((account) => account.spendAuthority === "official_invoice"
+            && account.monthCostUsd !== null
+            && account.monthCostUsd !== undefined
+            && Number.isFinite(Number(account.monthCostUsd))
+            && Number(account.monthCostUsd) >= 0)
+          .map((account) => normalizeInvoiceProvider(account.provider)));
+        const sourceRows = Array.isArray(spendTimeseries.by_source) ? spendTimeseries.by_source : [];
+        const hasAmbiguousInvoice = apiAccounts.some((account) => account.errorCode === "official_invoice_ambiguous");
+        const hasUncoveredApiSpend = billingStale || hasAmbiguousInvoice || (sourceRows.length > 0
+          ? sourceRows.some((sourceRow) => {
+              const modes = sourceRow?.billing_mode_token_totals;
+              const hasModeTotals = modes && typeof modes === "object";
+              const unknownTokens = hasModeTotals ? Number(modes.unknown || 0) : 0;
+              if (unknownTokens > 0) return true;
+              const requiresInvoice = hasModeTotals
+                ? Number(modes.api_key || 0) > 0
+                : Number(sourceRow?.api_cost_usd ?? sourceRow?.api_usd ?? 0) > 0;
+              if (!requiresInvoice) return false;
+              const provider = normalizeInvoiceProvider(sourceRow?.source);
+              return provider === "unknown" || !officialProviders.has(provider);
+            })
+          : Number(totals.api_usd || 0) > 0 && (
+              officialProviders.size === 0
+              || apiAccounts.some((account) => account.spendAuthority === "unavailable")
+            ));
         const subscriptionUsd = totals.subscription_usd ?? null;
         const otherAiUsd = totals.other_ai_usd ?? null;
         const recordedCashBase = [subscriptionUsd, otherAiUsd]
@@ -240,7 +269,7 @@ export function useCostAccumulation({
           monthActualCashSpendUsd: hasRecordedCashBase
             ? recordedCashBase + (monthOfficialApiSpendUsd ?? 0)
             : monthOfficialApiSpendUsd,
-          actualCashCoverage: monthOfficialApiSpendUsd == null || hasUncoveredApiSpend ? "partial" : "exact",
+          actualCashCoverage: hasUncoveredApiSpend ? "partial" : "exact",
           monthSubscriptionCostUsd: totals.subscription_usd ?? null,
           monthOtherAiCostUsd: totals.other_ai_usd ?? null,
           monthTotalCostUsd: totals.combined_usd ?? null,
@@ -273,7 +302,7 @@ export function useCostAccumulation({
       lifetimeTotalCostUsd: null,
       usdToCny: 7.2,
     };
-  }, [apiBillingAccountsNormalized, spendTimeseries, previousMonthTimeseries]);
+  }, [apiBillingAccountsNormalized, billingStale, spendTimeseries, previousMonthTimeseries]);
 
   // Transform spend records into subscription records format
   const subscriptionRecords = useMemo(() => {
@@ -356,9 +385,17 @@ export function useCostAccumulation({
     error,
     costSummaryStale,
     costLastSuccessfulAt,
+    billingStale,
+    billingError,
     // Actions
     refresh: fetchData,
   };
+}
+
+function normalizeInvoiceProvider(value) {
+  const provider = String(value || "").trim().toLowerCase();
+  if (provider === "codex" || provider === "openai") return "openai";
+  return provider || "unknown";
 }
 
 // Helper functions

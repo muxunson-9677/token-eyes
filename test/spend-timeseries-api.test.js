@@ -269,6 +269,7 @@ test("P02: API-only source appears in sources, series, by_source", async () => {
       cached_input_tokens: 0,
       cache_creation_input_tokens: 0,
       total_tokens: 1500000,
+      billing_mode: "api_key",
     }) + "\n";
     await fs.writeFile(queueFile, queueEntry, "utf8");
 
@@ -292,6 +293,11 @@ test("P02: API-only source appears in sources, series, by_source", async () => {
     assert.equal(codexBySource.subscription_cost_usd, 0);
     assert.ok(codexBySource.api_cost_usd > 0);
     assert.ok(codexBySource.combined_usd > 0);
+    assert.deepEqual(codexBySource.billing_mode_token_totals, {
+      api_key: 1500000,
+      token_plan: 0,
+      unknown: 0,
+    });
 
     const codexSeries = body.series.filter((s) => s.source === "codex");
     assert.ok(codexSeries.length > 0, "codex should have series entries");

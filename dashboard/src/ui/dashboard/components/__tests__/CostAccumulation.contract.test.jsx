@@ -747,6 +747,47 @@ it("labels unavailable API billing without displaying a cash amount", () => {
   expect(screen.queryByText(/spend\.cost\.api_billing\.month_cost:/)).not.toBeInTheDocument();
 });
 
+it("shows a compact action for ambiguous official invoice configs", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, actualCashCoverage: "partial" }}
+      apiBillingAccounts={[{
+        id: "ambiguous",
+        provider: "openai",
+        accountName: "OpenAI 官方账单",
+        billingSource: "api",
+        spendAuthority: "unavailable",
+        monthCostUsd: null,
+        status: "ambiguous",
+        errorCode: "official_invoice_ambiguous",
+        candidateCount: 2,
+      }]}
+    />,
+  );
+  expect(screen.getByText("spend.cost.api_billing.ambiguous_config", { exact: false })).toBeInTheDocument();
+});
+
+it("keeps the last official amount visible when its billing refresh is stale", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, monthOfficialApiSpendUsd: 8, actualCashCoverage: "partial" }}
+      apiBillingAccounts={[{
+        id: "stale-official",
+        provider: "openai",
+        accountName: "OpenAI Billing",
+        billingSource: "api",
+        spendAuthority: "official_invoice",
+        monthCostUsd: 8,
+        lifetimeCostUsd: null,
+        status: "synced",
+        stale: true,
+      }]}
+    />,
+  );
+  expect(screen.getByText(/spend\.cost\.api_billing\.month_cost: USD 8\.00/)).toBeInTheDocument();
+  expect(screen.getByText("spend.cost.api_billing.refresh_failed_stale")).toBeInTheDocument();
+});
+
 it("keeps official API cash separate from local list-price estimates in the API summary", () => {
   render(
     <CostAccumulation

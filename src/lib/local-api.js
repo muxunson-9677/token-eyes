@@ -4357,10 +4357,12 @@ function createLocalApiHandler({
           input_tokens: 0, output_tokens: 0, cached_input_tokens: 0,
           cache_creation_input_tokens: 0, reasoning_output_tokens: 0,
           total_tokens: 0, cost_usd: 0,
+          billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
           models: new Map(),
         });
       }
       const entry = bySourceBucket.get(key);
+      accumulateBillingModeAttribution([{ tokenTotals: entry.billing_mode_token_totals }], row);
       entry.api_cost_usd += costUsd;
       entry.cost_usd += costUsd;
       entry.input_tokens += Number(row.input_tokens || 0);
@@ -4627,6 +4629,7 @@ function createLocalApiHandler({
           reasoning_output_tokens: 0,
           total_tokens: 0,
           cost_usd: 0,
+          billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
           // Per-model breakdown (API cost only; subscription is source-level).
           models: [],
         });
@@ -4645,6 +4648,7 @@ function createLocalApiHandler({
         seriesEntry.reasoning_output_tokens = entry.reasoning_output_tokens;
         seriesEntry.total_tokens = entry.total_tokens;
         seriesEntry.cost_usd = entry.cost_usd;
+        seriesEntry.billing_mode_token_totals = { ...entry.billing_mode_token_totals };
         seriesEntry.models = Array.from(entry.models.values()).map((m) => ({
           model: m.model,
           input_tokens: m.input_tokens,
@@ -4771,6 +4775,7 @@ function createLocalApiHandler({
         reasoning_output_tokens: 0,
         total_tokens: 0,
         cost_usd: 0,
+        billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
       });
     }
 
@@ -4791,6 +4796,9 @@ function createLocalApiHandler({
       sa.reasoning_output_tokens += entry.reasoning_output_tokens;
       sa.total_tokens += entry.total_tokens;
       sa.cost_usd += entry.cost_usd;
+      for (const mode of ["api_key", "token_plan", "unknown"]) {
+        sa.billing_mode_token_totals[mode] += Number(entry.billing_mode_token_totals?.[mode] || 0);
+      }
     }
 
     for (const sa of bySourceMap.values()) {

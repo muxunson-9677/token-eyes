@@ -2600,6 +2600,8 @@ spend.cost.summary.official_api_cash,spend,SpendCostPage,CostSummaryCards,offici
 spend.cost.api_billing.authority.official_invoice,spend,SpendCostPage,ApiBillingCard,authority_official_invoice,"Official bill",,active
 spend.cost.api_billing.authority.local_list_price_estimate,spend,SpendCostPage,ApiBillingCard,authority_local_list_price_estimate,"List-price estimate",,active
 spend.cost.api_billing.authority.unavailable,spend,SpendCostPage,ApiBillingCard,authority_unavailable,"Billing unavailable",,active
+spend.cost.api_billing.ambiguous_config,spend,SpendCostPage,ApiBillingCard,ambiguous_config,"Detected {{count}} official billing configs. Disable duplicates.",,active
+spend.cost.api_billing.refresh_failed_stale,spend,SpendCostPage,ApiBillingCard,refresh_failed_stale,"Billing refresh failed; showing the last successful value.",,active
 spend.cost.api_billing.summary.unavailable_accounts,spend,SpendCostPage,ApiBillingSection,unavailable_accounts,"Unavailable accounts",,active
 spend.cost.summary.custom_cash,spend,SpendCostPage,CostSummaryCards,custom_cash,"Custom spend",,active
 spend.cost.summary.coverage,spend,SpendCostPage,CostSummaryCards,coverage,"Coverage",,active

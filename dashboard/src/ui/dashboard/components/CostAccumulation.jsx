@@ -943,7 +943,7 @@ function ApiBillingCard({ account }) {
 
   const status = statusConfig[account.status] || statusConfig["not-connected"];
   const StatusIcon = status.icon;
-  const hasCostData = account.status === "synced" && account.spendAuthority !== "unavailable";
+  const hasCostData = (account.status === "synced" || account.stale) && account.spendAuthority !== "unavailable";
   const monthCost = hasCostData ? formatAmount(account.monthCostUsd) : null;
   const lifetimeCost = hasCostData ? formatAmount(account.lifetimeCostUsd) : null;
 
@@ -969,6 +969,16 @@ function ApiBillingCard({ account }) {
               <span>{copy("spend.cost.api_billing.last_synced")}: {account.lastSyncedAt}</span>
             )}
           </div>
+          {account.errorCode === "official_invoice_ambiguous" ? (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              {copy("spend.cost.api_billing.ambiguous_config", { count: account.candidateCount || 2 })}
+            </p>
+          ) : null}
+          {account.stale ? (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              {copy("spend.cost.api_billing.refresh_failed_stale")}
+            </p>
+          ) : null}
         </div>
         <div className={cn("shrink-0 rounded-full p-1", status.bg)}>
           <StatusIcon className={cn("h-4 w-4", status.color)} />
