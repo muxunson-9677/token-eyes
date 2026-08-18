@@ -418,6 +418,8 @@ try {
         ), 0);
         const expiryOnlyPlan = limitPlans.at(8);
         const neitherPlan = limitPlans.at(9);
+        const expiryOnlyText = expiryOnlyPlan
+          ?.querySelector(".widget-limit-plan__validity")?.textContent?.trim() || "";
         return {
           rowCount: rows.length,
           planCount: scenarioName === "04-limits"
@@ -428,7 +430,8 @@ try {
             expiryOnlyPlan.querySelectorAll(".widget-limit-row__reset").length === 3
             && [...expiryOnlyPlan.querySelectorAll(".widget-limit-row__reset")]
               .every((label) => label.textContent?.trim() === missingResetText)
-            && Boolean(expiryOnlyPlan.querySelector(".widget-limit-plan__validity"))
+            && expiryOnlyText.startsWith("有效期 ")
+            && expiryOnlyText.includes(" · ")
           ),
           neitherFactsValid: !neitherPlan || (
             neitherPlan.querySelectorAll(".widget-limit-row__reset").length === 3

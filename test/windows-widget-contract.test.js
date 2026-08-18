@@ -170,6 +170,41 @@ test("widget view model rejects ambiguous dates and normalizes offset ISO timest
   );
 });
 
+test("widget view model accepts only contractual ISO and calendar dates", () => {
+  const limits = flattenUsageLimitsPayload(null, [
+    { id: "date-only", source: "codex", expires_at: "2028-02-29" },
+    { id: "zulu", source: "codex", expires_at: "2026-08-20T03:33:00.123Z" },
+    { id: "offset-leap", source: "codex", expires_at: "2028-02-29T23:30:00.250+01:30" },
+    { id: "bad-calendar", source: "codex", expires_at: "2026-02-30" },
+    { id: "bad-calendar-time", source: "codex", expires_at: "2026-02-30T03:33:00Z" },
+    { id: "bad-month", source: "codex", expires_at: "2026-13-01" },
+    { id: "us-date", source: "codex", expires_at: "08/20/2026" },
+    { id: "month-name", source: "codex", expires_at: "August 20 2026" },
+    { id: "local-space", source: "codex", expires_at: "2026-08-20 03:33:00" },
+    { id: "no-zone", source: "codex", expires_at: "2026-08-20T03:33:00" },
+    { id: "overflow", source: "codex", expires_at: "2026-08-20T25:00:00Z" },
+    { id: "overflow-offset", source: "codex", expires_at: "2026-08-20T03:33:00+14:01" },
+  ]);
+  const expiryByPlan = Object.fromEntries(limits.map((limit) => [limit.planId, limit.expiresAt]));
+
+  assert.equal(expiryByPlan["codex:date-only"], "2028-02-29T00:00:00.000Z");
+  assert.equal(expiryByPlan["codex:zulu"], "2026-08-20T03:33:00.123Z");
+  assert.equal(expiryByPlan["codex:offset-leap"], "2028-02-29T22:00:00.250Z");
+  for (const planId of [
+    "bad-calendar",
+    "bad-calendar-time",
+    "bad-month",
+    "us-date",
+    "month-name",
+    "local-space",
+    "no-zone",
+    "overflow",
+    "overflow-offset",
+  ]) {
+    assert.equal(expiryByPlan[`codex:${planId}`], null);
+  }
+});
+
 test("compact widget menus temporarily expand the native window and stay vertical", () => {
   const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
   const css = read("dashboard/src/pages/desktop-widget.css");
@@ -335,6 +370,8 @@ test("widget visual verification uses real wheel input for scrollable content", 
   assert.match(visual, /重置时间不可用/u);
   assert.match(visual, /missingResetCount !== 6/u);
   assert.match(visual, /expiryOnlyFactsValid/u);
+  assert.match(visual, /expiryOnlyText\.startsWith\("有效期 "\)/u);
+  assert.match(visual, /expiryOnlyText\.includes\(" · "\)/u);
   assert.match(visual, /neitherFactsValid/u);
   assert.match(visual, /page\.waitForFunction\([\s\S]*widget-expanded-limit-plan[\s\S]*widget-limit-row/u);
   assert.doesNotMatch(visual, /readyText[\s\S]*67%/u);

@@ -589,7 +589,7 @@
     "widget.refresh_failed":  "刷新失败",
     "widget.limit.reset_at": "重置于 {{time}}",
     "widget.limit.reset_unavailable": "重置时间不可用",
-    "widget.limit.expires_at": "有效期至 {{time}}",
+    "widget.limit.expires_at": "有效期 {{days}} 天 · {{absolute}}",
     "widget.limit.time_unknown": "时间暂不可用",
     "widget.status.red":  "需要处理",
     "widget.status.yellow":  "运行中",

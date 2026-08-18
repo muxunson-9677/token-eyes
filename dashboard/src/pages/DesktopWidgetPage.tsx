@@ -425,11 +425,14 @@ export function formatCompactReset(value: string | null) {
   });
 }
 
-function formatCompactValidity(value: string | null) {
+export function formatCompactValidity(value: string | null) {
   const timestamp = Date.parse(value || "");
   if (!Number.isFinite(timestamp)) return copy("widget.limit.time_unknown");
   const days = Math.max(0, Math.ceil((timestamp - Date.now()) / (24 * 60 * 60 * 1000)));
-  return `有效期 ${days} 天`;
+  return copy("widget.limit.expires_at", {
+    days: String(days),
+    absolute: formatCompactLimitTime(value),
+  });
 }
 
 function formatCompactLimitWindow(value: string | null) {

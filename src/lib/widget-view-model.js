@@ -94,11 +94,45 @@ function usedPercent(value) {
   return Math.round(numeric);
 }
 
+function validCalendarDate(year, month, day) {
+  const daysInMonth = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
+    31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
+}
+
+function utcTimestamp(year, month, day, hour = 0, minute = 0, second = 0, millisecond = 0) {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, millisecond);
+  return date.getTime();
+}
+
 function safeIso(value) {
   const raw = String(value ?? "").trim();
-  if (!raw || /^[+-]?\d+(?:\.\d+)?$/.test(raw)) return null;
-  const time = Date.parse(raw);
-  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+  const calendar = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (calendar) {
+    const [, yearText, monthText, dayText] = calendar;
+    const [year, month, day] = [yearText, monthText, dayText].map(Number);
+    if (!validCalendarDate(year, month, day)) return null;
+    return new Date(utcTimestamp(year, month, day)).toISOString();
+  }
+
+  const timestamp = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(raw);
+  if (!timestamp) return null;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fraction = "",
+    zone, offsetSign, offsetHourText, offsetMinuteText] = timestamp;
+  const [year, month, day, hour, minute, second] = [
+    yearText, monthText, dayText, hourText, minuteText, secondText,
+  ].map(Number);
+  if (!validCalendarDate(year, month, day) || hour > 23 || minute > 59 || second > 59) return null;
+
+  const offsetHour = zone === "Z" ? 0 : Number(offsetHourText);
+  const offsetMinute = zone === "Z" ? 0 : Number(offsetMinuteText);
+  if (offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) return null;
+  const millisecond = Number(fraction.slice(0, 3).padEnd(3, "0"));
+  const offset = (offsetHour * 60 + offsetMinute) * 60_000 * (offsetSign === "-" ? -1 : 1);
+  const time = utcTimestamp(year, month, day, hour, minute, second, millisecond) - offset;
+  return new Date(time).toISOString();
 }
 
 function sessionState(value) {
