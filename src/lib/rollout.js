@@ -1871,6 +1871,7 @@ function findNearestCodexModel(hourStart, dominants) {
 function normalizeHourlyState(raw) {
   const state = raw && typeof raw === "object" ? raw : {};
   const version = Number(state.version || 1);
+  const attributionMigrationVersion = Number(state.attributionMigrationVersion || 0);
   const rawBuckets = state.buckets && typeof state.buckets === "object" ? state.buckets : {};
   const buckets = {};
   const groupQueued = {};
@@ -1902,6 +1903,7 @@ function normalizeHourlyState(raw) {
       version: 3,
       buckets,
       groupQueued,
+      attributionMigrationVersion: 1,
       updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
     };
   }
@@ -1917,10 +1919,36 @@ function normalizeHourlyState(raw) {
   const existingGroupQueued =
     state.groupQueued && typeof state.groupQueued === "object" ? state.groupQueued : {};
 
+  let normalizedGroupQueued = version >= 3 ? existingGroupQueued : {};
+  if (attributionMigrationVersion < 1) {
+    for (const [key, bucket] of Object.entries(buckets)) {
+      if (!bucket?.totals) continue;
+      const parsed = parseBucketKey(key);
+      const hourStart = parsed.hourStart;
+      if (!hourStart) continue;
+      const groupKey = groupBucketKey(parsed.source, hourStart);
+      if (!Object.prototype.hasOwnProperty.call(normalizedGroupQueued, groupKey)) continue;
+      if (!bucket.attributionBuckets || typeof bucket.attributionBuckets !== "object") {
+        bucket.attributionBuckets = {
+          unknown: {
+            totals: cloneTotals(bucket.totals),
+            attribution: normalizeUsageAttribution(null),
+          },
+        };
+        bucket.attributionQueuedKeys = {
+          ...(bucket.attributionQueuedKeys || {}),
+          unknown: `${totalsKey(bucket.totals)}|${parsed.model || DEFAULT_MODEL}|unknown`,
+        };
+      }
+    }
+    normalizedGroupQueued = {};
+  }
+
   return {
     version: 3,
     buckets,
-    groupQueued: version >= 3 ? existingGroupQueued : {},
+    groupQueued: normalizedGroupQueued,
+    attributionMigrationVersion: 1,
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
   };
 }

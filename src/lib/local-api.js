@@ -47,6 +47,7 @@ const {
 } = require("./widget-view-model");
 const { getCodexUsageLimits } = require("./usage-limits");
 const {
+  accumulateBillingModeAttribution,
   normalizeBillingMode,
   normalizeUsageAttribution,
   queueUsageIdentity,
@@ -6402,16 +6403,10 @@ function createLocalApiHandler({
         ma.totals.cached_input_tokens += row.cached_input_tokens || 0;
         ma.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         ma.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
-        const attribution = deriveModelBillingMode({ row });
-        const mode = attribution.mode === "api_key" || attribution.mode === "token_plan"
-          ? attribution.mode
-          : "unknown";
-        const attributedTokens = Math.max(0, Number(row.total_tokens || 0));
-        sa.billingModeTokenTotals[mode] += attributedTokens;
-        ma.billingModeTokenTotals[mode] += attributedTokens;
-        if (!ma.billingModeConfidences[mode]) {
-          ma.billingModeConfidences[mode] = attribution.confidence;
-        }
+        accumulateBillingModeAttribution([
+          { tokenTotals: sa.billingModeTokenTotals },
+          { tokenTotals: ma.billingModeTokenTotals, confidences: ma.billingModeConfidences },
+        ], row);
       }
 
       const sources = Array.from(bySource.values()).map((s) => {

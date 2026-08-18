@@ -159,7 +159,25 @@ function queueUsageIdentity(row, { dimensionsKey } = {}) {
   return parts.join("|");
 }
 
+function accumulateBillingModeAttribution(targets, row, evaluate = normalizeUsageAttribution) {
+  const attribution = evaluate(row);
+  const mode = attribution.billing_mode === "api_key" || attribution.billing_mode === "token_plan"
+    ? attribution.billing_mode
+    : "unknown";
+  const confidence = attribution.billing_mode_confidence || "unavailable";
+  const tokens = Math.max(0, Number(row?.total_tokens || 0));
+  for (const target of Array.isArray(targets) ? targets : []) {
+    if (!target?.tokenTotals) continue;
+    target.tokenTotals[mode] += tokens;
+    if (target.confidences && !target.confidences[mode]) {
+      target.confidences[mode] = confidence;
+    }
+  }
+  return { mode, confidence };
+}
+
 module.exports = {
+  accumulateBillingModeAttribution,
   attributeUsage,
   normalizeBillingMode,
   normalizeEndpointOrigin,

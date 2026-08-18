@@ -7,6 +7,7 @@ const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
 const {
+  accumulateBillingModeAttribution,
   normalizeBillingMode,
   normalizeUsageAttribution,
 } = require("../src/lib/usage-attribution");
@@ -15,6 +16,10 @@ function deriveRowBillingMode(row) {
   const attribution = normalizeUsageAttribution(row);
   return { mode: attribution.billing_mode, confidence: attribution.billing_mode_confidence };
 }
+
+test("billing attribution exposes a reusable pure accumulator", () => {
+  assert.equal(typeof accumulateBillingModeAttribution, "function");
+});
 
 // Q02 unit-level coverage of the derivation helpers exported on the handler.
 // These rules are documented in docs/dev-notes/billing-mode-display-spec.md
@@ -365,14 +370,30 @@ test("usage-model-breakdown: no plan, no explicit, no keyword → source=unknown
   }
 });
 
-test("usage-model-breakdown accumulates attribution during its single row pass", async () => {
-  const source = await fs.readFile(
-    path.join(__dirname, "..", "src", "lib", "local-api.js"),
-    "utf8",
-  );
-  const start = source.indexOf("// --- usage-model-breakdown ---");
-  const end = source.indexOf("// --- usage-category-breakdown", start);
-  const section = source.slice(start, end);
-  assert.doesNotMatch(section, /const modelRows = rows\.filter/u);
-  assert.match(section, /for \(const row of rows\)[\s\S]*deriveModelBillingMode\(\{ row \}\)/u);
+test("billing attribution evaluates each row once while conserving per-mode totals", () => {
+  const source = {
+    tokenTotals: { api_key: 0, token_plan: 0, unknown: 0 },
+    confidences: {},
+  };
+  const model = {
+    tokenTotals: { api_key: 0, token_plan: 0, unknown: 0 },
+    confidences: {},
+  };
+  const rows = [
+    { billing_mode: "unknown", total_tokens: 10 },
+    { billing_mode: "api_key", total_tokens: 20 },
+    { billing_mode: "token_plan", total_tokens: 5 },
+  ];
+  let evaluations = 0;
+  for (const row of rows) {
+    accumulateBillingModeAttribution([source, model], row, (input) => {
+      evaluations += 1;
+      return normalizeUsageAttribution(input);
+    });
+  }
+
+  assert.equal(evaluations, rows.length);
+  assert.deepEqual(source.tokenTotals, { api_key: 20, token_plan: 5, unknown: 10 });
+  assert.deepEqual(model.tokenTotals, source.tokenTotals);
+  assert.equal(Object.values(source.tokenTotals).reduce((sum, value) => sum + value, 0), 35);
 });
