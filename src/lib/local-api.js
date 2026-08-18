@@ -7325,9 +7325,29 @@ function createLocalApiHandler({
         // they must NOT be summed (different semantics).
         const config = readTrackerConfig();
         const providerConfigs = providerApiConfigs.readProviderApiConfigs(config);
-        for (const providerConfig of providerConfigs.filter((item) => (
+        const officialCostsConfigs = providerConfigs.filter((item) => (
           item.enabled && billingMonth && isOpenAiCostsConfig(item, { allowTestEndpoint: providerApiTestMode })
-        ))) {
+        ));
+        if (officialCostsConfigs.length > 1) {
+          let account = accounts.find((item) => item.provider === "openai");
+          if (!account) {
+            account = { provider: "openai" };
+            accounts.push(account);
+          }
+          Object.assign(account, {
+            accountName: "OpenAI 官方账单",
+            billingSource: "api",
+            spendAuthority: "unavailable",
+            monthCostUsd: null,
+            lifetimeCostUsd: null,
+            status: "ambiguous",
+            errorCode: "official_invoice_ambiguous",
+            candidateCount: officialCostsConfigs.length,
+            providerApiConfigured: true,
+            providerApiBalance: null,
+          });
+        }
+        for (const providerConfig of officialCostsConfigs.length === 1 ? officialCostsConfigs : []) {
           const secret = providerApiCredStore.isAvailable()
             ? providerApiCredStore.readSecret(String(providerConfig.apiKeyRef || ""))
             : null;
@@ -7364,9 +7384,10 @@ function createLocalApiHandler({
           const matchingConfig = providerConfigs.find(
             (c) => c.providerId === account.provider && c.enabled,
           );
-          account.providerApiConfigured = Boolean(matchingConfig);
+          const hasAmbiguousOfficialInvoice = account.errorCode === "official_invoice_ambiguous";
+          account.providerApiConfigured = Boolean(matchingConfig) || hasAmbiguousOfficialInvoice;
           // Include cached balance if available (no network call on list)
-          if (matchingConfig) {
+          if (matchingConfig && !hasAmbiguousOfficialInvoice) {
             const cached = providerApiBalanceManager.getCachedBalance(matchingConfig.id);
             // Provider financial data is in a SEPARATE field — never mixed into monthCostUsd
             account.providerApiBalance = cached || null;

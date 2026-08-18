@@ -229,6 +229,126 @@ test("canonical OpenAI Costs pages reach the selected UTC month cash contract", 
   }
 });
 
+test("multiple canonical OpenAI Costs configs stay ambiguous until exactly one is enabled", async () => {
+  let requestCount = 0;
+  const januaryStart = Date.parse("2026-01-01T00:00:00.000Z") / 1000;
+  const { server, url } = await startMockServer((req, res) => {
+    requestCount += 1;
+    if (req.headers.authorization === "Bearer sk-ambiguous-0") {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "first candidate would fail" }));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      object: "page",
+      data: [{
+        object: "bucket",
+        start_time: januaryStart,
+        end_time: januaryStart + 86400,
+        results: [{ object: "organization.costs.result", amount: { value: 8, currency: "usd" } }],
+      }],
+      has_more: false,
+      next_page: null,
+    }));
+  });
+  const originalHomedir = os.homedir;
+  const originalCodexHome = process.env.CODEX_HOME;
+  const originalAgentData = process.env.AGENTDATA;
+  const originalAgentDataRoots = process.env.TOKENTRACKER_AGENTDATA_ROOTS;
+  try {
+    for (const providerOrder of [["openai", "codex"], ["codex", "openai"], ["openai", "openai"]]) {
+      const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-ambiguous-"));
+      os.homedir = () => tmp;
+      process.env.CODEX_HOME = path.join(tmp, ".codex");
+      delete process.env.AGENTDATA;
+      delete process.env.TOKENTRACKER_AGENTDATA_ROOTS;
+      try {
+        const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+        const handler = createLocalApiHandler({
+          queuePath: path.join(trackerDir, "queue.jsonl"),
+          trackerDataDir: trackerDir,
+          credentialStore: createTestCredentialStore(),
+          providerApiTestMode: true,
+        });
+        const auth = readJsonResponse(await call(handler, "/api/local-auth"));
+        const headers = {
+          "content-type": "application/json",
+          "x-tokentracker-local-auth": auth.token,
+          origin: "http://127.0.0.1:7680",
+        };
+        const configs = [];
+        for (const [index, providerId] of providerOrder.entries()) {
+          const created = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-configs", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              providerId,
+              label: `${providerId}-${index}`,
+              requestUrl: `${url}/v1/organization/costs`,
+              requestMethod: "GET",
+              authType: "bearer",
+              balancePath: "data",
+              refreshIntervalSeconds: 300,
+              enabled: true,
+            }),
+          })).config;
+          configs.push(created);
+          await call(handler, "/functions/tokentracker-provider-api-secrets", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ configId: created.id, secret: `sk-ambiguous-${index}` }),
+          });
+        }
+
+        const requestsBeforeAmbiguousRead = requestCount;
+        const ambiguous = readJsonResponse(await call(
+          handler,
+          "/functions/tokentracker-api-billing-accounts?month=2026-01&time_zone=UTC",
+        ));
+        assert.equal(requestCount, requestsBeforeAmbiguousRead, providerOrder.join(","));
+        assert.deepEqual(ambiguous.accounts.filter((account) => account.errorCode === "official_invoice_ambiguous"), [{
+          provider: "openai",
+          accountName: "OpenAI 官方账单",
+          billingSource: "api",
+          spendAuthority: "unavailable",
+          monthCostUsd: null,
+          lifetimeCostUsd: null,
+          status: "ambiguous",
+          errorCode: "official_invoice_ambiguous",
+          candidateCount: 2,
+          providerApiConfigured: true,
+          providerApiBalance: null,
+        }]);
+        assert.equal(ambiguous.accounts.some((account) => account.spendAuthority === "official_invoice"), false);
+
+        await call(handler, `/functions/tokentracker-provider-api-configs?id=${configs[0].id}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ enabled: false }),
+        });
+        const unique = readJsonResponse(await call(
+          handler,
+          "/functions/tokentracker-api-billing-accounts?month=2026-01&time_zone=UTC",
+        ));
+        assert.equal(unique.accounts.filter((account) => account.spendAuthority === "official_invoice").length, 1);
+        assert.equal(unique.accounts.find((account) => account.spendAuthority === "official_invoice").monthCostUsd, 8);
+      } finally {
+        await fs.rm(tmp, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    os.homedir = originalHomedir;
+    if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalCodexHome;
+    if (originalAgentData === undefined) delete process.env.AGENTDATA;
+    else process.env.AGENTDATA = originalAgentData;
+    if (originalAgentDataRoots === undefined) delete process.env.TOKENTRACKER_AGENTDATA_ROOTS;
+    else process.env.TOKENTRACKER_AGENTDATA_ROOTS = originalAgentDataRoots;
+    server.close();
+  }
+});
+
 test("OpenAI Costs rejects malformed, partial, non-USD, wrong-object, and incomplete pagination responses", async () => {
   const start = Date.parse("2026-01-01T00:00:00.000Z") / 1000;
   const validBucket = {
