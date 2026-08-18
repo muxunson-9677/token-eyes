@@ -2,15 +2,35 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { before, describe, it } = require("node:test");
+const { after, before, describe, it } = require("node:test");
 
 // Sandbox HOME so the handler's local-auth + skills registry stay under tmp.
+const modifiedEnvKeys = [
+  "HOME",
+  "USERPROFILE",
+  "TOKENTRACKER_GROK_HOME",
+  "GROK_HOME",
+  "TOKENTRACKER_ANTIGRAVITY_HOME",
+];
+const previousEnv = new Map(modifiedEnvKeys.map((key) => [key, process.env[key]]));
 const sandboxHome = fs.mkdtempSync(path.join(os.tmpdir(), "tt-localapi-skills-"));
 process.env.HOME = sandboxHome;
 process.env.USERPROFILE = sandboxHome;
 process.env.TOKENTRACKER_GROK_HOME = path.join(sandboxHome, ".grok");
 delete process.env.GROK_HOME;
 delete process.env.TOKENTRACKER_ANTIGRAVITY_HOME;
+
+after(() => {
+  fs.rmSync(sandboxHome, { recursive: true, force: true });
+  for (const [key, value] of previousEnv) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  assert.equal(fs.existsSync(sandboxHome), false);
+  for (const [key, value] of previousEnv) {
+    assert.equal(process.env[key], value);
+  }
+});
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
 

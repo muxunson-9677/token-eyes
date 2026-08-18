@@ -6,6 +6,8 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { test } = require("node:test");
 
+const localApi = require("../src/lib/local-api.js");
+
 test("production Vite config does not instantiate the local API handler", async () => {
   const localApiPath = require.resolve("../src/lib/local-api.js");
   const localApi = require(localApiPath);
@@ -29,15 +31,50 @@ test("node tests reject a local API handler without an explicit trackerDataDir",
   os.homedir = () => tmp;
 
   try {
-    const { createLocalApiHandler } = require("../src/lib/local-api.js");
     assert.throws(
-      () => createLocalApiHandler({ queuePath: path.join(tmp, "queue.jsonl") }),
+      () => localApi.createLocalApiHandler({ queuePath: path.join(tmp, "queue.jsonl") }),
       /trackerDataDir/u,
     );
   } finally {
     os.homedir = originalHomedir;
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
+});
+
+test("test runner rejects an explicit queue path outside the OS temporary directory", async () => {
+  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-handler-path-scope-"));
+  try {
+    assert.throws(
+      () => localApi.createLocalApiHandler({
+        queuePath: path.resolve(__dirname, "fixtures", "queue.jsonl"),
+        trackerDataDir,
+      }),
+      /queuePath must resolve inside the OS temporary directory/u,
+    );
+  } finally {
+    await fs.promises.rm(trackerDataDir, { recursive: true, force: true });
+  }
+});
+
+test("canonical test path validation rejects a temporary junction into the repository", async (t) => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-handler-junction-"));
+  t.after(() => fs.promises.rm(tmp, { recursive: true, force: true }));
+  const linkedTrackerDir = path.join(tmp, "linked-tracker");
+  try {
+    await fs.promises.symlink(path.resolve(__dirname, ".."), linkedTrackerDir, "junction");
+  } catch (error) {
+    if (!["EPERM", "EACCES", "ENOTSUP"].includes(error?.code)) throw error;
+    t.skip(`junction unavailable: ${error.code}`);
+    return;
+  }
+
+  assert.throws(
+    () => localApi.validateLocalApiTestPaths({
+      queuePath: path.join(tmp, "queue.jsonl"),
+      trackerDataDir: path.join(linkedTrackerDir, "nonexistent-child"),
+    }),
+    /trackerDataDir must resolve inside the OS temporary directory/u,
+  );
 });
 
 test("NODE_ENV=test alone keeps ordinary CLI fallback inside its isolated home", async () => {

@@ -2254,6 +2254,60 @@ function buildProxyHeaders(headers) {
 // Main handler factory
 // ---------------------------------------------------------------------------
 
+function canonicalizePathForContainment(inputPath) {
+  const suffix = [];
+  let existingAncestor = path.resolve(inputPath);
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor);
+    if (parent === existingAncestor) break;
+    suffix.unshift(path.basename(existingAncestor));
+    existingAncestor = parent;
+  }
+  const realpath = fs.realpathSync.native || fs.realpathSync;
+  return path.resolve(realpath(existingAncestor), ...suffix);
+}
+
+function isPathContainedBy(rootPath, candidatePath, { allowRoot = true } = {}) {
+  const relative = path.relative(rootPath, candidatePath);
+  if (!relative) return allowRoot;
+  return !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function validateLocalApiTestPaths(
+  { trackerDataDir, queuePath },
+  { context = "createLocalApiHandler" } = {},
+) {
+  // queuePath is the only independently configurable file path. Cookie,
+  // config, cloud-preference, credential, and project-queue paths are derived
+  // from trackerDataDir or queuePath, so validating these two roots covers all
+  // handler persistence in test runners.
+  if (!trackerDataDir) {
+    throw new Error(`${context} requires an explicit trackerDataDir`);
+  }
+  if (!path.isAbsolute(trackerDataDir)) {
+    throw new Error(`${context} trackerDataDir must be an absolute path under the OS temporary directory`);
+  }
+  const canonicalTempDir = canonicalizePathForContainment(os.tmpdir());
+  const canonicalTrackerDataDir = canonicalizePathForContainment(trackerDataDir);
+  if (!isPathContainedBy(canonicalTempDir, canonicalTrackerDataDir, { allowRoot: false })) {
+    throw new Error(`${context} trackerDataDir must resolve inside the OS temporary directory`);
+  }
+
+  const effectiveQueuePath = queuePath || path.join(trackerDataDir, "queue.jsonl");
+  if (!path.isAbsolute(effectiveQueuePath)) {
+    throw new Error(`${context} queuePath must be an absolute path under the OS temporary directory`);
+  }
+  const canonicalQueuePath = canonicalizePathForContainment(effectiveQueuePath);
+  if (!isPathContainedBy(canonicalTempDir, canonicalQueuePath)) {
+    throw new Error(`${context} queuePath must resolve inside the OS temporary directory`);
+  }
+
+  return {
+    queuePath: canonicalQueuePath,
+    trackerDataDir: canonicalTrackerDataDir,
+  };
+}
+
 function createLocalApiHandler({
   queuePath,
   trackerDataDir: trackerDataDirOverride,
@@ -2270,10 +2324,14 @@ function createLocalApiHandler({
   dataDirectoryPathsResolver,
   now: nowProvider = () => new Date(),
 } = {}) {
-  if (!trackerDataDirOverride && (process.env.NODE_TEST_CONTEXT || process.env.VITEST === "true")) {
-    throw new Error("createLocalApiHandler requires an explicit trackerDataDir in tests");
+  const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VITEST === "true";
+  let trackerDataDir = trackerDataDirOverride || path.join(os.homedir(), ".tokentracker", "tracker");
+  let qp = queuePath || (isTestRunner ? path.join(trackerDataDir, "queue.jsonl") : resolveQueuePath());
+  if (isTestRunner) {
+    const validatedPaths = validateLocalApiTestPaths({ trackerDataDir: trackerDataDirOverride, queuePath });
+    trackerDataDir = validatedPaths.trackerDataDir;
+    qp = validatedPaths.queuePath;
   }
-  const qp = queuePath || resolveQueuePath();
   const detectDataDirectories = detectDataDirectoriesOverride || detectDataDirectoryPaths;
   const detectAgentEnvironmentForRequest = detectAgentEnvironmentOverride || detectAgentEnvironment;
   const resolveHandlerDataDirectoryPaths = dataDirectoryPathsResolver || resolveDataDirectoryPaths;
@@ -2287,7 +2345,6 @@ function createLocalApiHandler({
   // Provider API). Legacy in-memory map kept only for same-process migration.
   const tokenPlanSecretStore = new Map();
   const localAuthToken = crypto.randomBytes(24).toString("hex");
-  const trackerDataDir = trackerDataDirOverride || path.join(os.homedir(), ".tokentracker", "tracker");
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
   const usageAggregateResponseCache = new Map();
   // WorkBuddy credit quota — cache the codebuddy.cn billing response so the
@@ -8502,6 +8559,7 @@ function createLocalApiHandler({
 module.exports = {
   appendDetectedTokenOnlyProviders,
   createLocalApiHandler,
+  validateLocalApiTestPaths,
   resolveAllowedInsforgeBaseUrl,
   resolveQueuePath,
   // Exported for cross-consumer tests (pricing + native contract lock).
