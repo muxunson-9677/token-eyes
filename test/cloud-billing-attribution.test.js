@@ -201,7 +201,7 @@ test("cloud checkpoint stays bounded and late buckets use a targeted history fal
 
     await fs.appendFile(queuePath, `${JSON.stringify({
       ...row("token_plan", 22),
-      model: "deepseek-history-0",
+      model: "deepseek-history-1",
     })}\n`);
     await syncCommand.drainQueueToCloud({
       baseUrl: "https://cloud.invalid",
@@ -211,10 +211,10 @@ test("cloud checkpoint stays bounded and late buckets use a targeted history fal
       maxBatches: 1,
     });
     const compat = requests.at(-1).hourly.find((item) => (
-      item.model === "deepseek-history-0" && item.billing_mode_compat_summary === "base_total_v1"
+      item.model === "deepseek-history-1" && item.billing_mode_compat_summary === "base_total_v1"
     ));
-    assert.equal(compat.total_tokens, 34);
-    assert.equal(compat.billing_mode_compat_slices.api_key.total_tokens, 12);
+    assert.equal(compat.total_tokens, 33);
+    assert.equal(compat.billing_mode_compat_slices.api_key.total_tokens, 11);
     assert.equal(compat.billing_mode_compat_slices.token_plan.total_tokens, 22);
   } finally {
     global.fetch = originalFetch;

@@ -195,9 +195,9 @@ test("account model breakdown preserves mixed attribution through buildFleetData
 test("account model breakdown filters repeated canonical source params before edge aggregation", async (t) => {
   const secret = "account-model-source-filter-secret";
   const groupedRows = [
-    { bucket: "2026-08-18", source: "codex", model: "gpt-5", total_tokens: 10 },
-    { bucket: "2026-08-18", source: "claude", model: "opus", total_tokens: 20 },
-    { bucket: "2026-08-18", source: "gemini", model: "pro", total_tokens: 30 },
+    { bucket: "2026-08-18", source: "codex", model: "gpt-5", total_tokens: 10, billing_mode_token_totals: { api_key: 4, token_plan: 6, unknown: 0 } },
+    { bucket: "2026-08-18", source: "claude", model: "opus", total_tokens: 20, billing_mode_token_totals: { api_key: 20, token_plan: 0, unknown: 0 } },
+    { bucket: "2026-08-18", source: "gemini", model: "pro", total_tokens: 30, billing_mode_token_totals: { api_key: 0, token_plan: 30, unknown: 0 } },
   ];
   globalThis.Deno = { env: { get: (key) => ({
     INSFORGE_BASE_URL: "https://cloud.example",
@@ -236,8 +236,11 @@ test("account model breakdown filters repeated canonical source params before ed
 
   const multiple = await request("&source=%20CoDeX%20&source=CLAUDE&source=codex");
   assert.deepEqual(multiple.sources.map((entry) => entry.source).sort(), ["claude", "codex"]);
-  assert.equal(multiple.sources[0].billing_mode_cost_totals, undefined);
-  assert.equal(multiple.sources[0].models[0].billing_mode_cost_totals, undefined);
+  const rollingCodex = multiple.sources.find((entry) => entry.source === "codex");
+  assert.equal(rollingCodex.billing_mode, "mixed");
+  assert.deepEqual(rollingCodex.billing_mode_token_totals, { api_key: 4, token_plan: 6, unknown: 0 });
+  assert.equal(rollingCodex.billing_mode_cost_totals, undefined);
+  assert.equal(rollingCodex.models[0].billing_mode_cost_totals, undefined);
   assert.deepEqual((await request("&source=gemini")).sources.map((entry) => entry.source), ["gemini"]);
   assert.deepEqual((await request("&source=missing")).sources, []);
   assert.deepEqual((await request("")).sources.map((entry) => entry.source).sort(), ["claude", "codex", "gemini"]);
