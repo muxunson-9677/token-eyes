@@ -195,6 +195,8 @@ test("Windows NSIS installer deploys and starts the versioned bundled runtime", 
   const port = await findFreePort();
   const smokeHome = path.join(installRoot, "home");
   const env = { ...process.env, USERPROFILE: smokeHome, HOME: smokeHome, APPDATA: path.join(smokeHome, "AppData", "Roaming"), LOCALAPPDATA: path.join(smokeHome, "AppData", "Local") };
+  delete env.NODE_TEST_CONTEXT;
+  delete env.VITEST;
   const child = spawn(nodeExe, ["bin\\tracker.js", "serve", "--no-open", "--no-sync", "--port", String(port)], { cwd: trackerRoot, env, stdio: "pipe", windowsHide: true });
   let stderr = "";
   child.stderr.setEncoding("utf8");
