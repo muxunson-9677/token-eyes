@@ -6597,7 +6597,17 @@ function createLocalApiHandler({
       const requestedSource = (url.searchParams.get("source") || "claude").trim().toLowerCase();
       if (requestedSource === "claude") {
         try {
-          const result = await computeClaudeCategoryBreakdown({ from, to, projectDir: process.cwd() });
+          const result = await computeClaudeCategoryBreakdown({
+            from,
+            to,
+            rootDir: path.join(handlerHome, ".claude", "projects"),
+            projectDir: isTestRunner ? handlerHome : process.cwd(),
+            homeDir: handlerHome,
+            projectSearchBoundary: isTestRunner ? handlerHome : null,
+            cacheDir: isTestRunner
+              ? path.join(trackerDataDir, "cache", "claude-categorizer")
+              : path.join(handlerHome, ".tokentracker", "cache", "claude-categorizer"),
+          });
           json(res, { from, to, ...result });
         } catch (e) {
           console.error("[LocalAPI] usage-category-breakdown:", e?.message || e);
@@ -6612,6 +6622,7 @@ function createLocalApiHandler({
           const result = await computeCodexContextBreakdown({
             from,
             to,
+            codexDir: path.join(handlerHome, ".codex", "sessions"),
             top: 50,
             timeZoneContext,
           });

@@ -8,6 +8,62 @@ const { test } = require("node:test");
 
 const localApi = require("../src/lib/local-api.js");
 
+async function invokeLocalRoute(handler, route) {
+  const url = new URL(route, "http://localhost:7680");
+  return new Promise((resolve, reject) => {
+    const req = { method: "GET", headers: {}, url };
+    req[Symbol.for("tokentracker.test.localApiSecurityBypass")] = true;
+    const res = {
+      writeHead() {},
+      end(payload) {
+        try {
+          resolve(JSON.parse(payload));
+        } catch (error) {
+          reject(error);
+        }
+      },
+    };
+    Promise.resolve(handler(req, res, url)).catch(reject);
+  });
+}
+
+function installScopedFsProbe(t, allowedRoot) {
+  const accesses = [];
+  const outside = [];
+  const originals = new Map();
+  for (const name of [
+    "createReadStream",
+    "existsSync",
+    "mkdirSync",
+    "readFileSync",
+    "readdirSync",
+    "statSync",
+    "unlinkSync",
+    "writeFileSync",
+  ]) {
+    const original = fs[name];
+    originals.set(name, original);
+    fs[name] = function scopedFsProbe(filePath, ...args) {
+      if (typeof filePath === "string") {
+        const resolved = path.resolve(filePath);
+        accesses.push(resolved);
+        const relative = path.relative(allowedRoot, resolved);
+        if (relative.startsWith("..") || path.isAbsolute(relative)) {
+          outside.push(resolved);
+          const error = new Error(`blocked test access outside trackerDataDir: ${resolved}`);
+          error.code = "ENOENT";
+          throw error;
+        }
+      }
+      return original.call(this, filePath, ...args);
+    };
+  }
+  t.after(() => {
+    for (const [name, original] of originals) fs[name] = original;
+  });
+  return { accesses, outside };
+}
+
 test("production Vite config does not instantiate the local API handler", async () => {
   const localApiPath = require.resolve("../src/lib/local-api.js");
   const localApi = require(localApiPath);
@@ -165,6 +221,101 @@ test("test-runner routes inject trackerDataDir as their isolated home", async (t
   });
   assert.equal(receivedHome, trackerDataDir);
   assert.equal(receivedDirectoryHome, trackerDataDir);
+});
+
+test("Claude category route confines projects, resources, and disk cache to trackerDataDir", async (t) => {
+  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-claude-category-scope-"));
+  t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
+  const claudeProjectsDir = path.join(trackerDataDir, ".claude", "projects", "fixture");
+  await fs.promises.mkdir(claudeProjectsDir, { recursive: true });
+  await fs.promises.mkdir(path.join(trackerDataDir, ".claude", "skills", "fixture"), { recursive: true });
+  await fs.promises.mkdir(path.join(trackerDataDir, ".claude", "agents"), { recursive: true });
+  await fs.promises.writeFile(path.join(trackerDataDir, ".claude", "skills", "fixture", "SKILL.md"), "fixture", "utf8");
+  await fs.promises.writeFile(path.join(trackerDataDir, ".claude", "agents", "fixture.md"), "fixture", "utf8");
+  await fs.promises.writeFile(
+    path.join(claudeProjectsDir, "session.jsonl"),
+    `${JSON.stringify({
+      type: "assistant",
+      timestamp: new Date().toISOString(),
+      requestId: "route-fixture-request",
+      message: {
+        id: "route-fixture-message",
+        usage: { input_tokens: 1, cache_creation_input_tokens: 10, cache_read_input_tokens: 0, output_tokens: 1 },
+        content: [{ type: "text", text: "fixture" }],
+      },
+    })}\n`,
+    "utf8",
+  );
+  const handler = localApi.createLocalApiHandler({ trackerDataDir });
+  const probe = installScopedFsProbe(t, trackerDataDir);
+
+  const body = await invokeLocalRoute(handler, "/functions/tokentracker-usage-category-breakdown?source=claude");
+  assert.equal(body.source, "claude");
+  assert.deepEqual(probe.outside, []);
+  for (const expected of [
+    path.join(trackerDataDir, ".claude", "projects"),
+    path.join(trackerDataDir, ".claude", "skills"),
+    path.join(trackerDataDir, ".claude", "agents"),
+    path.join(trackerDataDir, "cache", "claude-categorizer"),
+  ]) {
+    assert.ok(probe.accesses.some((entry) => entry.startsWith(expected)), `missing isolated access under ${expected}`);
+  }
+});
+
+test("Codex category route confines session discovery to trackerDataDir", async (t) => {
+  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-codex-category-scope-"));
+  t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
+  const codexSessionsDir = path.join(trackerDataDir, ".codex", "sessions");
+  await fs.promises.mkdir(codexSessionsDir, { recursive: true });
+  const handler = localApi.createLocalApiHandler({ trackerDataDir });
+  const probe = installScopedFsProbe(t, trackerDataDir);
+
+  const body = await invokeLocalRoute(handler, "/functions/tokentracker-usage-category-breakdown?source=codex");
+  assert.equal(body.source, "codex");
+  assert.deepEqual(probe.outside, []);
+  assert.ok(probe.accesses.some((entry) => entry.startsWith(codexSessionsDir)));
+});
+
+test("Claude categorizer import does not capture the real home directory", () => {
+  const modulePath = require.resolve("../src/lib/claude-categorizer.js");
+  const cachedModule = require.cache[modulePath];
+  const originalHomedir = os.homedir;
+  delete require.cache[modulePath];
+  os.homedir = () => {
+    throw new Error("claude categorizer captured os.homedir during import");
+  };
+  try {
+    assert.doesNotThrow(() => require(modulePath));
+  } finally {
+    os.homedir = originalHomedir;
+    delete require.cache[modulePath];
+    if (cachedModule) require.cache[modulePath] = cachedModule;
+  }
+});
+
+test("Claude categorizer test-runner fallback does not use real-home resources or cache", async (t) => {
+  const rootDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-categorizer-api-scope-"));
+  t.after(() => fs.promises.rm(rootDir, { recursive: true, force: true }));
+  await fs.promises.writeFile(
+    path.join(rootDir, "session.jsonl"),
+    `${JSON.stringify({
+      type: "assistant",
+      timestamp: new Date().toISOString(),
+      requestId: "api-fixture-request",
+      message: {
+        id: "api-fixture-message",
+        usage: { input_tokens: 1, cache_creation_input_tokens: 10, cache_read_input_tokens: 0, output_tokens: 1 },
+        content: [{ type: "text", text: "fixture" }],
+      },
+    })}\n`,
+    "utf8",
+  );
+  const probe = installScopedFsProbe(t, rootDir);
+  const { computeClaudeCategoryBreakdown } = require("../src/lib/claude-categorizer.js");
+
+  const result = await computeClaudeCategoryBreakdown({ rootDir });
+  assert.equal(result.source, "claude");
+  assert.deepEqual(probe.outside, []);
 });
 
 test("NODE_ENV=test alone keeps ordinary CLI fallback inside its isolated home", async () => {
