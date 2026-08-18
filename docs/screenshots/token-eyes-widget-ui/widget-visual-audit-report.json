@@ -1,0 +1,3053 @@
+{
+  "status": "PASS",
+  "auditedAt": "2026-08-18T17:11:48.866Z",
+  "provenance": {
+    "buildTime": "2026-08-18T17:11:22.807Z",
+    "worktree": "D:/04-AI-Project/010-Token eye/.worktrees/main-v4-integration-20260819",
+    "branch": "codex/main-v4-integration-20260819",
+    "head": "4c7519ed16f70d27bf8f10bf1ade8ed8c9084778",
+    "route": "/desktop-widget"
+  },
+  "outputDir": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui",
+  "scenarioCount": 24,
+  "fixture": {
+    "id": "embedded-widget-reference-v1",
+    "selectedAgent": "codex",
+    "agents": 7,
+    "projectsAndSessions": 9,
+    "quotaPlans": 10,
+    "quotaRows": 30,
+    "models": 10,
+    "missingResetRows": 6
+  },
+  "interactionAudit": {
+    "agentMenuBlankDismissed": true,
+    "agentMenuRepeatedToggle": true,
+    "menuClosedOnModeChange": true,
+    "modeSwitches": 3,
+    "expandCollapseCycles": 2,
+    "celebrationDismissedWithoutCapsuleJump": true
+  },
+  "results": [
+    {
+      "name": "01-compact",
+      "scale": 1,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 76
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\01-compact-1x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 76,
+          "width": 352,
+          "height": 76
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": null,
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "02-agent-menu",
+      "scale": 1,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 280
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\02-agent-menu-1x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 280,
+          "width": 352,
+          "height": 280
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 180,
+        "scrollHeight": 288,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 108,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 7,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "03-projects",
+      "scale": 1,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\03-projects-1x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 276,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 2,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 9,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "04-limits",
+      "scale": 1,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\04-limits-1x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 2734,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 2460,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 30,
+        "planCount": 10,
+        "missingResetCount": 6,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "05-models",
+      "scale": 1,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\05-models-1x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 411,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 137,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 10,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "06-celebration",
+      "scale": 1,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 632,
+        "height": 356
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\06-celebration-1x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 632,
+          "bottom": 356,
+          "width": 632,
+          "height": 356
+        },
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 146,
+          "y": 146,
+          "right": 469,
+          "bottom": 211,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 146,
+          "y": 146,
+          "right": 469,
+          "bottom": 211,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": null,
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": {
+          "dismiss": {
+            "left": 447,
+            "top": 150,
+            "right": 477,
+            "bottom": 180
+          },
+          "card": {
+            "left": 145,
+            "top": 145,
+            "right": 470,
+            "bottom": 211
+          }
+        }
+      },
+      "celebrationDismissed": true
+    },
+    {
+      "name": "01-compact",
+      "scale": 1.25,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 76
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\01-compact-1_25x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 76,
+          "width": 352,
+          "height": 76
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": null,
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "02-agent-menu",
+      "scale": 1.25,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 280
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\02-agent-menu-1_25x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 280,
+          "width": 352,
+          "height": 280
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 180,
+        "scrollHeight": 288,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 108,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 7,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "03-projects",
+      "scale": 1.25,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\03-projects-1_25x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 276,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 2,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 9,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "04-limits",
+      "scale": 1.25,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\04-limits-1_25x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 2734,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 2460,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 30,
+        "planCount": 10,
+        "missingResetCount": 6,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "05-models",
+      "scale": 1.25,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\05-models-1_25x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 411,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 137,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 10,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "06-celebration",
+      "scale": 1.25,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 632,
+        "height": 356
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\06-celebration-1_25x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 632,
+          "bottom": 356,
+          "width": 632,
+          "height": 356
+        },
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 146,
+          "y": 146,
+          "right": 469,
+          "bottom": 211,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 146,
+          "y": 146,
+          "right": 469,
+          "bottom": 211,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": null,
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": {
+          "dismiss": {
+            "left": 447,
+            "top": 150,
+            "right": 477,
+            "bottom": 180
+          },
+          "card": {
+            "left": 145,
+            "top": 145,
+            "right": 470,
+            "bottom": 211
+          }
+        }
+      },
+      "celebrationDismissed": true
+    },
+    {
+      "name": "01-compact",
+      "scale": 1.5,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 76
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\01-compact-1_5x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 76,
+          "width": 352,
+          "height": 76
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": null,
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "02-agent-menu",
+      "scale": 1.5,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 280
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\02-agent-menu-1_5x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 280,
+          "width": 352,
+          "height": 280
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 180,
+        "scrollHeight": 288,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 108,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 7,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "03-projects",
+      "scale": 1.5,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\03-projects-1_5x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 276,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 2,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 9,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "04-limits",
+      "scale": 1.5,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\04-limits-1_5x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 2734,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 2460,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 30,
+        "planCount": 10,
+        "missingResetCount": 6,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "05-models",
+      "scale": 1.5,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\05-models-1_5x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 411,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 137,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 10,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "06-celebration",
+      "scale": 1.5,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 632,
+        "height": 356
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\06-celebration-1_5x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 632,
+          "bottom": 356,
+          "width": 632,
+          "height": 356
+        },
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 146,
+          "y": 146,
+          "right": 469,
+          "bottom": 211,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 146,
+          "y": 146,
+          "right": 469,
+          "bottom": 211,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": null,
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": {
+          "dismiss": {
+            "left": 447,
+            "top": 150,
+            "right": 477,
+            "bottom": 180
+          },
+          "card": {
+            "left": 145,
+            "top": 145,
+            "right": 470,
+            "bottom": 211
+          }
+        }
+      },
+      "celebrationDismissed": true
+    },
+    {
+      "name": "01-compact",
+      "scale": 2,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 76
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\01-compact-2x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 76,
+          "width": 352,
+          "height": 76
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": null,
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "02-agent-menu",
+      "scale": 2,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 280
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\02-agent-menu-2x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 280,
+          "width": 352,
+          "height": 280
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 71,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 180,
+        "scrollHeight": 288,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 108,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 7,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "03-projects",
+      "scale": 2,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\03-projects-2x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 276,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 2,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 9,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "04-limits",
+      "scale": 2,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\04-limits-2x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 2734,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 2460,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 30,
+        "planCount": 10,
+        "missingResetCount": 6,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "05-models",
+      "scale": 2,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 352,
+        "height": 360
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\05-models-2x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 352,
+          "bottom": 360,
+          "width": 352,
+          "height": 360
+        },
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 5,
+          "y": 5,
+          "right": 330,
+          "bottom": 355,
+          "width": 325,
+          "height": 350
+        },
+        "toolbar": {
+          "x": 6,
+          "y": 6,
+          "right": 329,
+          "bottom": 71,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 324,
+          "y": 9,
+          "right": 352,
+          "bottom": 68,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": {
+          "x": 12,
+          "y": 72,
+          "right": 323,
+          "bottom": 348,
+          "width": 311,
+          "height": 276
+        },
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": {
+        "clientHeight": 274,
+        "scrollHeight": 411,
+        "scrollable": true,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 137,
+        "reachedEnd": true
+      },
+      "stateAudit": {
+        "rowCount": 10,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": null
+      },
+      "celebrationDismissed": null
+    },
+    {
+      "name": "06-celebration",
+      "scale": 2,
+      "route": "/desktop-widget",
+      "viewport": {
+        "width": 632,
+        "height": 356
+      },
+      "screenshotPath": "D:\\04-AI-Project\\010-Token eye\\.worktrees\\main-v4-integration-20260819\\docs\\screenshots\\token-eyes-widget-ui\\06-celebration-2x.png",
+      "geometry": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "right": 632,
+          "bottom": 356,
+          "width": 632,
+          "height": 356
+        },
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "overflowX": 0,
+        "overflowY": 0
+      },
+      "fixedGeometryBefore": {
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 146,
+          "y": 146,
+          "right": 469,
+          "bottom": 211,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryAfter": {
+        "card": {
+          "x": 145,
+          "y": 145,
+          "right": 470,
+          "bottom": 211,
+          "width": 325,
+          "height": 66
+        },
+        "toolbar": {
+          "x": 146,
+          "y": 146,
+          "right": 469,
+          "bottom": 211,
+          "width": 323,
+          "height": 65
+        },
+        "rail": {
+          "x": 464,
+          "y": 149,
+          "right": 492,
+          "bottom": 208,
+          "width": 28,
+          "height": 59
+        },
+        "scroll": null,
+        "fixedToolbarVisible": true,
+        "fixedRegionOutsideScroll": true
+      },
+      "fixedGeometryStable": true,
+      "wheelAudit": null,
+      "stateAudit": {
+        "rowCount": 0,
+        "planCount": 0,
+        "missingResetCount": 0,
+        "expiryOnlyFactsValid": true,
+        "neitherFactsValid": true,
+        "lastRowVisible": true,
+        "menuItemCount": 0,
+        "menuVisible": true,
+        "lastMenuItemVisible": true,
+        "celebrationDismissVisible": true,
+        "celebrationGeometry": {
+          "dismiss": {
+            "left": 447,
+            "top": 150,
+            "right": 477,
+            "bottom": 180
+          },
+          "card": {
+            "left": 145,
+            "top": 145,
+            "right": 470,
+            "bottom": 211
+          }
+        }
+      },
+      "celebrationDismissed": true
+    }
+  ]
+}
