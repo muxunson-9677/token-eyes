@@ -1027,8 +1027,7 @@ async function parseRolloutFile({
     }
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
-    mergeBucketUsageAttribution(bucket, info);
-    addTotals(bucket.totals, delta);
+    addAttributedTotals(bucket, delta, info);
     touchedBuckets.add(bucketKey(source, model, bucketStart));
     if (currentProjectKey && projectState && projectTouchedBuckets) {
       const projectBucket = getProjectBucket(
@@ -1040,8 +1039,7 @@ async function parseRolloutFile({
         currentRepoRoot,
         model,
       );
-      mergeBucketUsageAttribution(projectBucket, info);
-      addTotals(projectBucket.totals, delta);
+      addAttributedTotals(projectBucket, delta, info);
       projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, bucketStart, model));
     }
     eventsAggregated += 1;
@@ -1358,24 +1356,58 @@ async function parseOpencodeMessageFile({
   return { messageKey, lastTotals: currentTotals, eventsAggregated: 1, shouldUpdate: true };
 }
 
-function mergeBucketUsageAttribution(bucket, evidence) {
-  if (!bucket || typeof bucket !== "object") return;
-  const incoming = normalizeUsageAttribution(evidence);
-  const current = normalizeUsageAttribution(bucket.attribution);
-  const incomingTrusted = incoming.billing_mode !== "unknown";
-  const currentTrusted = current.billing_mode !== "unknown";
+function addAttributedTotals(bucket, delta, evidence) {
+  const attribution = normalizeUsageAttribution(evidence);
+  const mode = attribution.billing_mode;
+  if (!bucket.attributionBuckets || typeof bucket.attributionBuckets !== "object") {
+    bucket.attributionBuckets = {};
+    if (bucket.totals && totalsKey(bucket.totals) !== totalsKey(initTotals())) {
+      bucket.attributionBuckets.unknown = {
+        totals: cloneTotals(bucket.totals),
+        attribution: normalizeUsageAttribution(null),
+      };
+    }
+  }
+  if (!bucket.attributionBuckets[mode]) {
+    bucket.attributionBuckets[mode] = { totals: initTotals(), attribution };
+  }
+  const attributedBucket = bucket.attributionBuckets[mode];
+  attributedBucket.attribution = attribution;
+  addTotals(attributedBucket.totals, delta);
+  addTotals(bucket.totals, delta);
+}
 
-  if (bucket.attributionConflict) return;
-  if (!incomingTrusted) {
-    if (!bucket.attribution) bucket.attribution = incoming;
-    return;
+function attributionSlices(bucket) {
+  const entries = Object.values(bucket?.attributionBuckets || {}).filter(
+    (entry) => entry?.totals,
+  );
+  if (entries.length > 0) return entries;
+  return [{ totals: bucket.totals, attribution: normalizeUsageAttribution(bucket.attribution) }];
+}
+
+function mergeAttributionSlices(...buckets) {
+  const merged = new Map();
+  for (const bucket of buckets.filter(Boolean)) {
+    for (const slice of attributionSlices(bucket)) {
+      const mode = slice.attribution.billing_mode;
+      if (!merged.has(mode)) {
+        merged.set(mode, { totals: initTotals(), attribution: slice.attribution });
+      }
+      addTotals(merged.get(mode).totals, slice.totals);
+    }
   }
-  if (currentTrusted && current.billing_mode !== incoming.billing_mode) {
-    bucket.attribution = normalizeUsageAttribution({ billing_mode: "mixed" });
-    bucket.attributionConflict = true;
-    return;
+  return [...merged.values()];
+}
+
+function attributionQueuedKey(bucket, outputModel, slice) {
+  const mode = slice.attribution.billing_mode;
+  const key = `${totalsKey(slice.totals)}|${outputModel}|${mode}`;
+  if (!bucket.attributionQueuedKeys || typeof bucket.attributionQueuedKeys !== "object") {
+    bucket.attributionQueuedKeys = {};
   }
-  bucket.attribution = incoming;
+  if (bucket.attributionQueuedKeys[mode] === key) return null;
+  bucket.attributionQueuedKeys[mode] = key;
+  return key;
 }
 
 function serializeUsageQueueRecord(record, evidence) {
@@ -1533,29 +1565,29 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       if (unknownBucket) unknownBucket.alignedModel = null;
       for (const [model, bucket] of group.buckets.entries()) {
         if (model === DEFAULT_MODEL) continue;
-        let totals = bucket.totals;
-        if (model === dominantModel && unknownBucket?.totals) {
-          totals = cloneTotals(bucket.totals);
-          addTotals(totals, unknownBucket.totals);
+        const slices = model === dominantModel && unknownBucket?.totals
+          ? mergeAttributionSlices(bucket, unknownBucket)
+          : attributionSlices(bucket);
+        for (const slice of slices) {
+          if (!attributionQueuedKey(bucket, model, slice)) continue;
+          const totals = slice.totals;
+          toAppend.push(
+            serializeUsageQueueRecord({
+              source: group.source,
+              model,
+              hour_start: group.hourStart,
+              input_tokens: totals.input_tokens,
+              cached_input_tokens: totals.cached_input_tokens,
+              cache_creation_input_tokens: totals.cache_creation_input_tokens,
+              output_tokens: totals.output_tokens,
+              reasoning_output_tokens: totals.reasoning_output_tokens,
+              total_tokens: totals.total_tokens,
+              billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
+              conversation_count: totals.conversation_count,
+            }, slice.attribution),
+          );
         }
-        const key = totalsKey(totals);
-        if (bucket.queuedKey === key) continue;
-        toAppend.push(
-          serializeUsageQueueRecord({
-            source: group.source,
-            model,
-            hour_start: group.hourStart,
-            input_tokens: totals.input_tokens,
-            cached_input_tokens: totals.cached_input_tokens,
-            cache_creation_input_tokens: totals.cache_creation_input_tokens,
-            output_tokens: totals.output_tokens,
-            reasoning_output_tokens: totals.reasoning_output_tokens,
-            total_tokens: totals.total_tokens,
-            billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
-            conversation_count: totals.conversation_count,
-          }, bucket.attribution),
-        );
-        bucket.queuedKey = key;
+        bucket.queuedKey = totalsKey(bucket.totals);
       }
       continue;
     }
@@ -1609,25 +1641,28 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       }
     }
     if (unknownBucket) unknownBucket.alignedModel = nextAligned;
-    const key = totalsKey(unknownBucket.totals);
-    const outputKey = outputModel === DEFAULT_MODEL ? key : `${key}|${outputModel}`;
-    if (unknownBucket.queuedKey === outputKey) continue;
-    toAppend.push(
-      serializeUsageQueueRecord({
-        source: group.source,
-        model: outputModel,
-        hour_start: group.hourStart,
-        input_tokens: unknownBucket.totals.input_tokens,
-        cached_input_tokens: unknownBucket.totals.cached_input_tokens,
-        cache_creation_input_tokens: unknownBucket.totals.cache_creation_input_tokens,
-        output_tokens: unknownBucket.totals.output_tokens,
-        reasoning_output_tokens: unknownBucket.totals.reasoning_output_tokens,
-        total_tokens: unknownBucket.totals.total_tokens,
-        billable_total_tokens: unknownBucket.totals.billable_total_tokens ?? unknownBucket.totals.total_tokens,
-        conversation_count: unknownBucket.totals.conversation_count,
-      }, unknownBucket.attribution),
-    );
-    unknownBucket.queuedKey = outputKey;
+    for (const slice of attributionSlices(unknownBucket)) {
+      if (!attributionQueuedKey(unknownBucket, outputModel, slice)) continue;
+      const totals = slice.totals;
+      toAppend.push(
+        serializeUsageQueueRecord({
+          source: group.source,
+          model: outputModel,
+          hour_start: group.hourStart,
+          input_tokens: totals.input_tokens,
+          cached_input_tokens: totals.cached_input_tokens,
+          cache_creation_input_tokens: totals.cache_creation_input_tokens,
+          output_tokens: totals.output_tokens,
+          reasoning_output_tokens: totals.reasoning_output_tokens,
+          total_tokens: totals.total_tokens,
+          billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
+          conversation_count: totals.conversation_count,
+        }, slice.attribution),
+      );
+    }
+    unknownBucket.queuedKey = outputModel === DEFAULT_MODEL
+      ? totalsKey(unknownBucket.totals)
+      : `${totalsKey(unknownBucket.totals)}|${outputModel}`;
   }
 
   if (legacyGroups.size > 0) {
@@ -1708,29 +1743,33 @@ async function enqueueTouchedProjectBuckets({
     if (!bucket || !bucket.totals) continue;
     const totals = bucket.totals;
     const queuedKey = totalsKey(totals);
-    if (bucket.queuedKey === queuedKey) continue;
     const projectRef = typeof bucket.project_ref === "string" ? bucket.project_ref : null;
     const projectKey = typeof bucket.project_key === "string" ? bucket.project_key : null;
     if (!projectRef || !projectKey) continue;
 
-    toAppend.push(
-      serializeUsageQueueRecord({
-        project_ref: projectRef,
-        project_key: projectKey,
-        repo_root: bucket.repo_root,
-        source: bucket.source,
-        model: bucket.model || DEFAULT_MODEL,
-        hour_start: bucket.hour_start,
-        input_tokens: totals.input_tokens,
-        cached_input_tokens: totals.cached_input_tokens,
-        cache_creation_input_tokens: totals.cache_creation_input_tokens,
-        output_tokens: totals.output_tokens,
-        reasoning_output_tokens: totals.reasoning_output_tokens,
-        total_tokens: totals.total_tokens,
-        billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
-        conversation_count: totals.conversation_count,
-      }, bucket.attribution),
-    );
+    for (const slice of attributionSlices(bucket)) {
+      const outputModel = bucket.model || DEFAULT_MODEL;
+      if (!attributionQueuedKey(bucket, outputModel, slice)) continue;
+      const sliceTotals = slice.totals;
+      toAppend.push(
+        serializeUsageQueueRecord({
+          project_ref: projectRef,
+          project_key: projectKey,
+          repo_root: bucket.repo_root,
+          source: bucket.source,
+          model: outputModel,
+          hour_start: bucket.hour_start,
+          input_tokens: sliceTotals.input_tokens,
+          cached_input_tokens: sliceTotals.cached_input_tokens,
+          cache_creation_input_tokens: sliceTotals.cache_creation_input_tokens,
+          output_tokens: sliceTotals.output_tokens,
+          reasoning_output_tokens: sliceTotals.reasoning_output_tokens,
+          total_tokens: sliceTotals.total_tokens,
+          billable_total_tokens: sliceTotals.billable_total_tokens ?? sliceTotals.total_tokens,
+          conversation_count: sliceTotals.conversation_count,
+        }, slice.attribution),
+      );
+    }
     bucket.queuedKey = queuedKey;
   }
 
@@ -3375,7 +3414,7 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
   // in-progress (ended_at IS NULL), OR sessions that were previously observed
   // unfinished.  Hermes updates token counts in real-time, including a final
   // delta when an active session later gets ended_at set.
-  const sql = `SELECT id, model, started_at, ended_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, message_count FROM sessions WHERE (started_at >= ${since} OR ended_at IS NULL${forceIncludeSql}) AND (input_tokens > 0 OR output_tokens > 0 OR cache_read_tokens > 0 OR cache_write_tokens > 0 OR reasoning_tokens > 0) ORDER BY started_at ASC`;
+  const sql = `SELECT id, model, started_at, ended_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, message_count, billing_provider, billing_base_url, billing_mode FROM sessions WHERE (started_at >= ${since} OR ended_at IS NULL${forceIncludeSql}) AND (input_tokens > 0 OR output_tokens > 0 OR cache_read_tokens > 0 OR cache_write_tokens > 0 OR reasoning_tokens > 0) ORDER BY started_at ASC`;
 
   let snapshot = null;
   let effectiveDbPath = dbPath;
@@ -3528,7 +3567,12 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
       };
 
       const bucket = getHourlyBucket(hourlyState, "hermes", model, bucketStart);
-      addTotals(bucket.totals, delta);
+      addAttributedTotals(bucket, delta, {
+        billing_mode: row.billing_mode,
+        billing_mode_confidence: "provider_receipt",
+        provider_id: row.billing_provider,
+        endpoint: row.billing_base_url,
+      });
       touchedBuckets.add(bucketKey("hermes", model, bucketStart));
       eventsAggregated++;
 

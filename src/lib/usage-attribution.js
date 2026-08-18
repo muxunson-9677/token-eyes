@@ -107,6 +107,18 @@ function normalizeEndpointOrigin(value) {
   }
 }
 
+function isSecretLikeReference(value) {
+  if (typeof value !== "string") return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  return (
+    /^sk-[a-z0-9]/i.test(trimmed) ||
+    /^bearer\s+/i.test(trimmed) ||
+    /(?:^|[?&;\s])(api[_-]?key|authorization|cookie|token)\s*[:=]/i.test(trimmed) ||
+    /^[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$/i.test(trimmed)
+  );
+}
+
 function normalizeUsageAttribution(input) {
   const evidence = input && typeof input === "object" ? input : {};
   const rawMode = evidence.billing_mode ?? evidence.billingMode ?? null;
@@ -125,7 +137,7 @@ function normalizeUsageAttribution(input) {
 
   for (const field of EVIDENCE_REF_FIELDS) {
     const value = evidence[field];
-    if (typeof value === "string" && value.trim()) result[field] = value.trim();
+    if (!isSecretLikeReference(value)) result[field] = value.trim();
   }
 
   if (

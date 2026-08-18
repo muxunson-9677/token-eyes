@@ -410,7 +410,8 @@ function readProjectQueueData(projectQueuePath, mainQueuePath = resolveQueuePath
   for (const line of lines) {
     try {
       const row = JSON.parse(line);
-      const key = `${row.project_key || ""}|${row.source || ""}|${row.hour_start || ""}`;
+      const billingMode = normalizeUsageAttribution(row).billing_mode;
+      const key = `${row.project_key || ""}|${row.source || ""}|${row.hour_start || ""}|${billingMode}`;
       seen.set(key, normalizeQueueRow(row));
     } catch {
       // skip malformed
@@ -542,9 +543,10 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     // synthetic fixture to the default queue. Ignore only its full fingerprint;
     // genuine OpenClaw history remains untouched.
     if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
+    const billingMode = normalizeUsageAttribution(row).billing_mode;
     const key = dedupeMode === "dimensions"
-      ? `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}|${queueRowDimensionsKey(row)}`
-      : `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
+      ? `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}|${queueRowDimensionsKey(row)}|${billingMode}`
+      : `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}|${billingMode}`;
     seen.set(key, normalizeQueueRow(row));
   }
   const rows = Array.from(seen.values());
@@ -6403,7 +6405,7 @@ function createLocalApiHandler({
       }
 
       const sources = Array.from(bySource.values()).map((s) => {
-        const modelResults = [];
+        const sourceBillingTotals = { api_key: 0, token_plan: 0, unknown: 0 };
         s.models = Array.from(s.models.values())
           .map((m) => {
             const cost = computeRowCost({
@@ -6416,27 +6418,42 @@ function createLocalApiHandler({
                 (r.source || "unknown") === s.source &&
                 (r.model || "unknown") === m.model,
             );
-            const explicitRows = modelRows
-              .map((row) => deriveModelBillingMode({ row }))
-              .filter((result) => result.mode !== "unknown");
-            const explicitModes = new Set(explicitRows.map((result) => result.mode));
-            const derived = explicitModes.size > 1
-              ? { mode: "mixed", confidence: "unavailable" }
-              : explicitRows[0] || { mode: "unknown", confidence: "unavailable" };
-            modelResults.push(derived);
+            const billingModeTokenTotals = { api_key: 0, token_plan: 0, unknown: 0 };
+            const rowAttributions = modelRows.map((row) => {
+              const attribution = deriveModelBillingMode({ row });
+              const mode = attribution.mode === "api_key" || attribution.mode === "token_plan"
+                ? attribution.mode
+                : "unknown";
+              billingModeTokenTotals[mode] += Math.max(0, Number(row.total_tokens || 0));
+              sourceBillingTotals[mode] += Math.max(0, Number(row.total_tokens || 0));
+              return attribution;
+            });
+            const activeModes = Object.entries(billingModeTokenTotals)
+              .filter(([, total]) => total > 0)
+              .map(([mode]) => mode);
+            const mode = activeModes.length > 1 ? "mixed" : activeModes[0] || "unknown";
+            const confidence = activeModes.length === 1
+              ? rowAttributions.find((entry) => entry.mode === mode)?.confidence || "unavailable"
+              : "unavailable";
             return {
               ...m,
               totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
-              billing_mode: derived.mode,
-              billing_mode_confidence: derived.confidence,
+              billing_mode: mode,
+              billing_mode_confidence: confidence,
+              billing_mode_token_totals: billingModeTokenTotals,
             };
           })
           .sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
         const sourceCost = s.models.reduce((sum, m) => sum + Number(m.totals.total_cost_usd), 0);
         s.totals.total_cost_usd = sourceCost.toFixed(6);
-        const summary = summarizeSourceBillingMode(modelResults);
+        const summary = summarizeSourceBillingMode(
+          Object.entries(sourceBillingTotals)
+            .filter(([, total]) => total > 0)
+            .map(([mode]) => ({ mode })),
+        );
         s.billing_mode = summary.mode;
         s.billing_modes = summary.billing_modes;
+        s.billing_mode_token_totals = sourceBillingTotals;
         return s;
       });
 

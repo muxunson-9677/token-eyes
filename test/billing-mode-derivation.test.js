@@ -294,7 +294,7 @@ test("usage-model-breakdown: an explicit row remains authoritative across model 
         { ...base, hour_start: "2026-06-20T00:00:00.000Z" },
         {
           ...base,
-          hour_start: "2026-06-20T00:30:00.000Z",
+          hour_start: "2026-06-20T00:00:00.000Z",
           billing_mode: "api_key",
         },
       ].map((row) => JSON.stringify(row)).join("\n") + "\n",
@@ -306,9 +306,24 @@ test("usage-model-breakdown: an explicit row remains authoritative across model 
     );
     const src = body.sources.find((entry) => entry.source === "codex");
     const model = src.models.find((entry) => entry.model === "mimo-coding-plan");
-    assert.equal(model.billing_mode, "api_key");
-    assert.equal(model.billing_mode_confidence, "explicit_runtime");
+    assert.equal(model.billing_mode, "mixed");
+    assert.deepEqual(model.billing_mode_token_totals, {
+      api_key: 600,
+      token_plan: 0,
+      unknown: 600,
+    });
     assert.equal(model.totals.total_tokens, 1200);
+    assert.equal(
+      Object.values(model.billing_mode_token_totals).reduce((sum, value) => sum + value, 0),
+      model.totals.total_tokens,
+    );
+    assert.deepEqual(src.billing_mode_token_totals, {
+      api_key: 600,
+      token_plan: 0,
+      unknown: 600,
+    });
+    assert.equal(src.billing_mode, "mixed");
+    assert.deepEqual(src.billing_modes, ["api_key", "unknown"]);
     assert.equal(src.totals.total_tokens, 1200);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
