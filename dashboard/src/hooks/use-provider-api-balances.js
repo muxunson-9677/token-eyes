@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getProviderApiConfigs,
   getProviderApiBalances,
@@ -58,19 +58,36 @@ function pickPollInterval(configs) {
   return clampInterval(min);
 }
 
+function deriveAggregateStale(configs, balances, accountRefreshStates) {
+  const enabled = configs.filter(isRefreshableConfig);
+  if (enabled.length === 0) return false;
+  const balancesByConfig = new Map(balances.map((balance) => [balance.configId, balance]));
+  return enabled.some((config) => {
+    const refreshStatus = accountRefreshStates[config.id];
+    if (refreshStatus && refreshStatus !== "pending") return refreshStatus !== "synced";
+    return balancesByConfig.get(config.id)?.status !== "synced";
+  });
+}
+
 export function useProviderApiBalances() {
   const cachedSnapshot = useRef(readCostSettingsSessionCache("provider-api-balances")).current;
   const [configs, setConfigs] = useState(cachedSnapshot?.configs || []);
   const [balances, setBalances] = useState(cachedSnapshot?.balances || []);
+  const [accountRefreshStates, setAccountRefreshStates] = useState({});
   const [refreshingIds, setRefreshingIds] = useState(() => new Set());
-  const [stale, setStale] = useState(cachedSnapshot?.stale || false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(cachedSnapshot?.lastUpdatedAt || null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(!cachedSnapshot);
 
   const cancelledRef = useRef(false);
-  const inFlightRef = useRef(new Set());
+  const generationRef = useRef(0);
+  const inFlightRef = useRef(new Map());
+  const loadRequestRef = useRef(0);
   const configsRef = useRef(cachedSnapshot?.configs || []);
+  const stale = useMemo(
+    () => deriveAggregateStale(configs, balances, accountRefreshStates),
+    [accountRefreshStates, balances, configs],
+  );
 
   const setRefreshing = useCallback((id, on) => {
     setRefreshingIds((prev) => {
@@ -82,86 +99,110 @@ export function useProviderApiBalances() {
   }, []);
 
   const loadCached = useCallback(async () => {
+    const loadRequest = loadRequestRef.current + 1;
+    loadRequestRef.current = loadRequest;
     try {
       const [cfgResult, balResult] = await Promise.all([
         getProviderApiConfigs(),
         getProviderApiBalances(),
       ]);
-      if (cancelledRef.current) return;
+      if (cancelledRef.current || loadRequest !== loadRequestRef.current) return false;
       const nextConfigs = Array.isArray(cfgResult?.data?.configs) ? cfgResult.data.configs : [];
       const nextBalances = Array.isArray(balResult?.data?.balances) ? balResult.data.balances : [];
+      generationRef.current += 1;
       configsRef.current = nextConfigs;
       setConfigs(nextConfigs);
       setBalances(nextBalances);
+      setAccountRefreshStates({});
+      setRefreshingIds(new Set());
       const updatedAt = new Date().toISOString();
       setLastUpdatedAt(updatedAt);
-      setStale(false);
-      writeCostSettingsSessionCache("provider-api-balances", {
-        configs: nextConfigs,
-        balances: nextBalances,
-        stale: false,
-        lastUpdatedAt: updatedAt,
-      });
+      return true;
     } catch (err) {
-      if (cancelledRef.current) return;
+      if (cancelledRef.current || loadRequest !== loadRequestRef.current) return false;
       setError(err?.message || "Unable to load provider balances");
+      return true;
     } finally {
-      if (!cancelledRef.current) setLoading(false);
+      if (!cancelledRef.current && loadRequest === loadRequestRef.current) setLoading(false);
     }
   }, []);
 
-  const refreshOne = useCallback(async (configId) => {
+  const refreshOne = useCallback(async (configId, expectedGeneration = generationRef.current) => {
     if (!configId) return;
-    if (inFlightRef.current.has(configId)) return; // dedup
-    inFlightRef.current.add(configId);
+    if (expectedGeneration !== generationRef.current) return;
+    const config = configsRef.current.find((item) => item.id === configId);
+    if (!config?.enabled) return;
+    if (inFlightRef.current.get(configId) === expectedGeneration) return; // dedup
+    inFlightRef.current.set(configId, expectedGeneration);
+    setAccountRefreshStates((prev) => ({ ...prev, [configId]: "pending" }));
     setRefreshing(configId, true);
     try {
-      const config = configsRef.current.find((item) => item.id === configId);
       if (String(config?.authType || "").toLowerCase() === "official_console") {
         await refreshOfficialConsoleProviderBalance(config.providerId);
       }
       const result = await refreshProviderApiBalance(configId);
-      if (cancelledRef.current) return;
+      if (
+        cancelledRef.current
+        || expectedGeneration !== generationRef.current
+        || !configsRef.current.find((item) => item.id === configId)?.enabled
+      ) return;
       const balance = result?.data?.balance;
       if (balance) {
         setBalances((prev) => prev.some((b) => b.configId === configId)
           ? prev.map((b) => (b.configId === configId ? balance : b))
           : [...prev, balance]);
         const synced = balance.status === "synced";
-        setStale(!synced);
+        setAccountRefreshStates((prev) => ({
+          ...prev,
+          [configId]: synced ? "synced" : "stale",
+        }));
         if (synced) setLastUpdatedAt(new Date().toISOString());
-      } else if (!result?.ok) {
-        // HTTP-level failure: keep last balance, mark stale.
-        setBalances((prev) => prev.map((item) => (
-          item.configId === configId ? { ...item, status: "stale" } : item
-        )));
-        setStale(true);
+      } else {
+        // Missing/HTTP-level failure: keep last balance and its diagnostics.
+        if (!result?.ok) {
+          setBalances((prev) => prev.map((item) => (
+            item.configId === configId ? { ...item, status: "stale" } : item
+          )));
+        }
+        setAccountRefreshStates((prev) => ({
+          ...prev,
+          [configId]: result?.ok ? "missing" : "error",
+        }));
       }
     } catch {
-      if (cancelledRef.current) return;
+      if (
+        cancelledRef.current
+        || expectedGeneration !== generationRef.current
+        || !configsRef.current.find((item) => item.id === configId)?.enabled
+      ) return;
       // Network error — keep last successful balance, mark stale (never 0).
       setBalances((prev) => prev.map((item) => (
         item.configId === configId ? { ...item, status: "stale" } : item
       )));
-      setStale(true);
+      setAccountRefreshStates((prev) => ({ ...prev, [configId]: "error" }));
     } finally {
-      inFlightRef.current.delete(configId);
-      if (!cancelledRef.current) setRefreshing(configId, false);
+      if (inFlightRef.current.get(configId) === expectedGeneration) {
+        inFlightRef.current.delete(configId);
+        if (!cancelledRef.current && expectedGeneration === generationRef.current) {
+          setRefreshing(configId, false);
+        }
+      }
     }
   }, [setRefreshing]);
 
   const refreshAll = useCallback(async () => {
+    const generation = generationRef.current;
     const enabled = configsRef.current.filter(isRefreshableConfig);
     if (enabled.length === 0) return;
-    await Promise.all(enabled.map((c) => refreshOne(c.id)));
+    await Promise.all(enabled.map((c) => refreshOne(c.id, generation)));
   }, [refreshOne]);
 
   // F4: reload() re-reads cached configs + balances then refreshes all
   // enabled+keyed configs. Used by the settings section after CRUD so the
   // card list and financial data stay in sync without a parallel data flow.
   const reload = useCallback(async () => {
-    await loadCached();
-    if (cancelledRef.current) return;
+    const loadedCurrent = await loadCached();
+    if (cancelledRef.current || !loadedCurrent) return;
     await refreshAll();
   }, [loadCached, refreshAll]);
 
@@ -169,13 +210,16 @@ export function useProviderApiBalances() {
   useEffect(() => {
     cancelledRef.current = false;
     (async () => {
-      await loadCached();
-      if (cancelledRef.current) return;
+      const loadedCurrent = await loadCached();
+      if (cancelledRef.current || !loadedCurrent) return;
+      const generation = generationRef.current;
       const enabled = configsRef.current.filter(isRefreshableConfig);
-      await Promise.all(enabled.map((c) => refreshOne(c.id)));
+      await Promise.all(enabled.map((c) => refreshOne(c.id, generation)));
     })();
     return () => {
       cancelledRef.current = true;
+      generationRef.current += 1;
+      loadRequestRef.current += 1;
       inFlightRef.current.clear();
     };
   }, [loadCached, refreshOne]);

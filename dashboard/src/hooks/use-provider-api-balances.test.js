@@ -7,7 +7,10 @@ import {
   refreshProviderApiBalance,
   refreshOfficialConsoleProviderBalance,
 } from "../lib/api";
-import { clearCostSettingsSessionCache } from "../lib/cost-settings-session-cache";
+import {
+  clearCostSettingsSessionCache,
+  writeCostSettingsSessionCache,
+} from "../lib/cost-settings-session-cache";
 
 // 03-ia-api-balance: useProviderApiBalances hook tests.
 //
@@ -47,6 +50,16 @@ const SAMPLE_BALANCE = {
   status: "synced",
   lastSyncedAt: "2026-07-01T00:00:00.000Z",
 };
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 beforeEach(() => {
   clearCostSettingsSessionCache();
@@ -344,6 +357,169 @@ it("refreshAll clears stale after every enabled config returns a balance", async
 
   await waitFor(() => expect(result.current.stale).toBe(false));
   expect(result.current.balances[0].balance).toBe(120);
+});
+
+it.each([
+  ["the failed account finishes first", ["cfg-a", "cfg-b"]],
+  ["the successful account finishes first", ["cfg-b", "cfg-a"]],
+])("keeps the aggregate stale when one enabled account fails and %s", async (_label, completionOrder) => {
+  const configA = { ...SAMPLE_CONFIG, id: "cfg-a" };
+  const configB = { ...SAMPLE_CONFIG, id: "cfg-b", providerId: "anthropic" };
+  const balanceA = { ...SAMPLE_BALANCE, configId: "cfg-a" };
+  const balanceB = { ...SAMPLE_BALANCE, configId: "cfg-b", providerId: "anthropic" };
+  const requests = {
+    "cfg-a": deferred(),
+    "cfg-b": deferred(),
+  };
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [configA, configB] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [balanceA, balanceB] } });
+  refreshProviderApiBalance.mockImplementation((configId) => requests[configId].promise);
+
+  const { result } = renderHook(() => useProviderApiBalances());
+  await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledTimes(2));
+
+  for (const configId of completionOrder) {
+    await act(async () => {
+      if (configId === "cfg-a") requests[configId].reject(new Error("Network error"));
+      else requests[configId].resolve({ ok: true, data: { balance: balanceB } });
+    });
+  }
+
+  await waitFor(() => expect(result.current.refreshing).toBe(false));
+  expect(result.current.stale).toBe(true);
+  expect(result.current.balances.find((item) => item.configId === "cfg-a")).toMatchObject({
+    balance: 100,
+    status: "stale",
+  });
+});
+
+it("treats a missing enabled account as partial while preserving cached stale balances", async () => {
+  const configA = { ...SAMPLE_CONFIG, id: "cfg-a" };
+  const configB = { ...SAMPLE_CONFIG, id: "cfg-b", providerId: "anthropic" };
+  const staleBalanceA = { ...SAMPLE_BALANCE, configId: "cfg-a", status: "stale" };
+  writeCostSettingsSessionCache("provider-api-balances", {
+    configs: [configA, configB],
+    balances: [staleBalanceA],
+    stale: true,
+    lastUpdatedAt: "2026-07-01T00:00:00.000Z",
+  });
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [configA, configB] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [staleBalanceA] } });
+  refreshProviderApiBalance.mockImplementation(() => new Promise(() => {}));
+
+  const { result, unmount } = renderHook(() => useProviderApiBalances());
+
+  expect(result.current.stale).toBe(true);
+  await waitFor(() => expect(result.current.balances).toEqual([staleBalanceA]));
+  expect(result.current.stale).toBe(true);
+  unmount();
+});
+
+it("keeps the last confirmed balance visible when an enabled account returns no balance", async () => {
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [SAMPLE_CONFIG] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [SAMPLE_BALANCE] } });
+  refreshProviderApiBalance.mockResolvedValue({ ok: true, data: { balance: null } });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(result.current.refreshing).toBe(false));
+  expect(result.current.stale).toBe(true);
+  expect(result.current.balances).toEqual([SAMPLE_BALANCE]);
+});
+
+it("ignores an old refresh after reload replaces the enabled account set", async () => {
+  const configA = { ...SAMPLE_CONFIG, id: "cfg-a" };
+  const configB = { ...SAMPLE_CONFIG, id: "cfg-b", providerId: "anthropic" };
+  const balanceA = { ...SAMPLE_BALANCE, configId: "cfg-a" };
+  const balanceB = { ...SAMPLE_BALANCE, configId: "cfg-b", providerId: "anthropic" };
+  const oldRequest = deferred();
+  getProviderApiConfigs
+    .mockResolvedValueOnce({ ok: true, data: { configs: [configA] } })
+    .mockResolvedValueOnce({ ok: true, data: { configs: [configB] } });
+  getProviderApiBalances
+    .mockResolvedValueOnce({ ok: true, data: { balances: [balanceA] } })
+    .mockResolvedValueOnce({ ok: true, data: { balances: [balanceB] } });
+  refreshProviderApiBalance.mockImplementation((configId) => (
+    configId === "cfg-a"
+      ? oldRequest.promise
+      : Promise.resolve({ ok: true, data: { balance: balanceB } })
+  ));
+
+  const { result } = renderHook(() => useProviderApiBalances());
+  await waitFor(() => expect(refreshProviderApiBalance).toHaveBeenCalledWith("cfg-a"));
+
+  await act(async () => {
+    await result.current.reload();
+  });
+  await waitFor(() => expect(result.current.configs).toEqual([configB]));
+  await waitFor(() => expect(result.current.stale).toBe(false));
+
+  await act(async () => {
+    oldRequest.reject(new Error("late failure"));
+  });
+
+  expect(result.current.stale).toBe(false);
+  expect(result.current.balances).toEqual([balanceB]);
+});
+
+it("keeps the newest account set when overlapping config loads finish out of order", async () => {
+  const configA = { ...SAMPLE_CONFIG, id: "cfg-a" };
+  const configB = { ...SAMPLE_CONFIG, id: "cfg-b", providerId: "anthropic" };
+  const balanceA = { ...SAMPLE_BALANCE, configId: "cfg-a" };
+  const balanceB = { ...SAMPLE_BALANCE, configId: "cfg-b", providerId: "anthropic" };
+  const oldConfigs = deferred();
+  const oldBalances = deferred();
+  const newConfigs = deferred();
+  const newBalances = deferred();
+  getProviderApiConfigs
+    .mockReturnValueOnce(oldConfigs.promise)
+    .mockReturnValueOnce(newConfigs.promise);
+  getProviderApiBalances
+    .mockReturnValueOnce(oldBalances.promise)
+    .mockReturnValueOnce(newBalances.promise);
+  refreshProviderApiBalance.mockImplementation((configId) => Promise.resolve({
+    ok: true,
+    data: { balance: configId === "cfg-a" ? balanceA : balanceB },
+  }));
+
+  const { result } = renderHook(() => useProviderApiBalances());
+  await waitFor(() => expect(getProviderApiConfigs).toHaveBeenCalledTimes(1));
+  let reloadPromise;
+  act(() => {
+    reloadPromise = result.current.reload();
+  });
+  await waitFor(() => expect(getProviderApiConfigs).toHaveBeenCalledTimes(2));
+
+  await act(async () => {
+    newConfigs.resolve({ ok: true, data: { configs: [configB] } });
+    newBalances.resolve({ ok: true, data: { balances: [balanceB] } });
+    await reloadPromise;
+  });
+  await waitFor(() => expect(result.current.configs).toEqual([configB]));
+
+  await act(async () => {
+    oldConfigs.resolve({ ok: true, data: { configs: [configA] } });
+    oldBalances.resolve({ ok: true, data: { balances: [balanceA] } });
+  });
+
+  expect(result.current.configs).toEqual([configB]);
+  expect(result.current.balances).toEqual([balanceB]);
+});
+
+it("does not let a disabled stale account poison enabled-account freshness", async () => {
+  const enabledConfig = { ...SAMPLE_CONFIG, id: "cfg-enabled" };
+  const disabledConfig = { ...SAMPLE_CONFIG, id: "cfg-disabled", enabled: false };
+  const enabledBalance = { ...SAMPLE_BALANCE, configId: "cfg-enabled" };
+  const disabledBalance = { ...SAMPLE_BALANCE, configId: "cfg-disabled", status: "stale" };
+  getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [enabledConfig, disabledConfig] } });
+  getProviderApiBalances.mockResolvedValue({ ok: true, data: { balances: [enabledBalance, disabledBalance] } });
+  refreshProviderApiBalance.mockResolvedValue({ ok: true, data: { balance: enabledBalance } });
+
+  const { result } = renderHook(() => useProviderApiBalances());
+
+  await waitFor(() => expect(result.current.refreshing).toBe(false));
+  expect(result.current.stale).toBe(false);
+  expect(refreshProviderApiBalance).not.toHaveBeenCalledWith("cfg-disabled");
 });
 
 // Polling-interval contract: spy on window.setInterval to verify the clamped
