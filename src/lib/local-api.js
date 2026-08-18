@@ -2270,7 +2270,7 @@ function createLocalApiHandler({
   dataDirectoryPathsResolver,
   now: nowProvider = () => new Date(),
 } = {}) {
-  if (!trackerDataDirOverride && (process.env.NODE_TEST_CONTEXT || process.env.NODE_ENV === "test")) {
+  if (!trackerDataDirOverride && (process.env.NODE_TEST_CONTEXT || process.env.VITEST === "true")) {
     throw new Error("createLocalApiHandler requires an explicit trackerDataDir in tests");
   }
   const qp = queuePath || resolveQueuePath();

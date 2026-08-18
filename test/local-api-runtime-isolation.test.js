@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -35,6 +36,58 @@ test("node tests reject a local API handler without an explicit trackerDataDir",
     );
   } finally {
     os.homedir = originalHomedir;
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("NODE_ENV=test alone keeps ordinary CLI fallback inside its isolated home", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-node-env-test-"));
+  const trackerDataDir = path.join(tmp, ".tokentracker", "tracker");
+  await fs.promises.mkdir(trackerDataDir, { recursive: true });
+  await fs.promises.writeFile(path.join(trackerDataDir, "relay-cookies.json"), "{}", "utf8");
+
+  const env = {
+    ...process.env,
+    NODE_ENV: "test",
+    HOME: tmp,
+    USERPROFILE: tmp,
+    LOCALAPPDATA: path.join(tmp, "AppData", "Local"),
+    CODEX_HOME: path.join(tmp, ".codex"),
+  };
+  delete env.NODE_TEST_CONTEXT;
+
+  try {
+    const script = `
+      const fs = require("node:fs");
+      const os = require("node:os");
+      const path = require("node:path");
+      const localApi = require(process.argv[1]);
+      const tempRoot = path.resolve(process.argv[2]);
+      const accesses = [];
+      for (const name of ["existsSync", "readFileSync", "mkdirSync"]) {
+        const original = fs[name];
+        fs[name] = function(filePath, ...args) {
+          if (typeof filePath === "string" && /[\\\\\\/]\.(?:tokentracker|codex)(?:[\\\\\\/]|$)/u.test(filePath)) {
+            accesses.push(path.resolve(filePath));
+          }
+          return original.call(this, filePath, ...args);
+        };
+      }
+      const handler = localApi.createLocalApiHandler();
+      if (typeof handler !== "function") throw new Error("handler was not created");
+      if (path.resolve(os.homedir()) !== tempRoot) throw new Error("homedir escaped temp root");
+      if (accesses.length === 0) throw new Error("isolated persistence path was not exercised");
+      if (accesses.some((entry) => path.relative(tempRoot, entry).startsWith(".."))) {
+        throw new Error("local API accessed a path outside the isolated home");
+      }
+    `;
+    const result = spawnSync(process.execPath, ["-e", script, require.resolve("../src/lib/local-api.js"), tmp], {
+      cwd: path.resolve(__dirname, ".."),
+      env,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
