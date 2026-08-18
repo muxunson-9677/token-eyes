@@ -128,7 +128,7 @@ it("passes the daily model breakdown abort signal to the local native fetch", as
   await getUsageModelBreakdown({
     from: "2026-08-07",
     to: "2026-08-07",
-    source: " Codex ",
+    sources: [" Codex ", "CLAUDE", "codex"],
     signal: controller.signal,
   });
 
@@ -136,7 +136,7 @@ it("passes the daily model breakdown abort signal to the local native fetch", as
     expect.stringContaining("tokentracker-usage-model-breakdown"),
     expect.objectContaining({ signal: controller.signal }),
   );
-  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("source")).toBe("codex");
+  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.getAll("source")).toEqual(["claude", "codex"]);
 });
 
 it("passes the daily model breakdown abort signal through the cloud account fetch", async () => {
@@ -151,7 +151,7 @@ it("passes the daily model breakdown abort signal through the cloud account fetc
     from: "2026-08-07",
     to: "2026-08-07",
     accessToken: "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ1In0.",
-    source: " CoDeX ",
+    sources: [" CoDeX ", "CLAUDE", "codex"],
     signal: controller.signal,
   });
 
@@ -159,7 +159,28 @@ it("passes the daily model breakdown abort signal through the cloud account fetc
     expect.stringContaining("tokentracker-account-model-breakdown"),
     expect.objectContaining({ signal: controller.signal }),
   );
-  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("source")).toBe("codex");
+  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.getAll("source")).toEqual(["claude", "codex"]);
+});
+
+it.each([
+  ["legacy singular", { source: " CoDeX " }, ["codex"]],
+  ["null means all", { sources: null }, []],
+  ["empty means all", { sources: [] }, []],
+])("keeps daily model breakdown source URL compatibility for %s", async (_label, filters, expectedSources) => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ sources: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getUsageModelBreakdown({
+    from: "2026-08-07",
+    to: "2026-08-07",
+    ...filters,
+  });
+
+  expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.getAll("source")).toEqual(expectedSources);
 });
 
 it("does not start the local model breakdown fetch when aborted while resolving the native URL", async () => {

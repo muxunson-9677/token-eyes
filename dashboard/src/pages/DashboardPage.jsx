@@ -393,9 +393,6 @@ export function DashboardPage({
     () => canonicalizeDailyBreakdownSources(usageFilterState.sources),
     [usageFilterState.sources],
   );
-  const dailyBreakdownSource = dailyBreakdownSources?.length === 1
-    ? dailyBreakdownSources[0]
-    : undefined;
   const dailyBreakdownScope = useMemo(() => ({
     accountId: accountView ? cacheKey || "account" : "local",
     mode: accountView ? "cloud" : "local",
@@ -717,12 +714,12 @@ export function DashboardPage({
       accountAccessToken,
       accessToken,
       baseUrl,
-      source: dailyBreakdownSource,
+      sources: dailyBreakdownSources,
       timeZone,
       tzOffsetMinutes,
       signal,
     });
-  }, [accountAccessToken, accountView, accessToken, baseUrl, dailyBreakdownSource, timeZone, tzOffsetMinutes]);
+  }, [accountAccessToken, accountView, accessToken, baseUrl, dailyBreakdownSources, timeZone, tzOffsetMinutes]);
   const trendRowsForDisplay = useMemo(() => {
     const source = useDailyTrend
       ? daily

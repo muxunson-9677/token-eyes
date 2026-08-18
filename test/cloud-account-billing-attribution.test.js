@@ -181,3 +181,53 @@ test("account model breakdown preserves mixed attribution through buildFleetData
   assert.equal(fleet[0].models[0].billingMode, "mixed");
   assert.equal(fleet[0].models[0].billingModeConfidence, "unavailable");
 });
+
+test("account model breakdown filters repeated canonical source params before edge aggregation", async (t) => {
+  const secret = "account-model-source-filter-secret";
+  const groupedRows = [
+    { bucket: "2026-08-18", source: "codex", model: "gpt-5", total_tokens: 10 },
+    { bucket: "2026-08-18", source: "claude", model: "opus", total_tokens: 20 },
+    { bucket: "2026-08-18", source: "gemini", model: "pro", total_tokens: 30 },
+  ];
+  globalThis.Deno = { env: { get: (key) => ({
+    INSFORGE_BASE_URL: "https://cloud.example",
+    INSFORGE_SERVICE_ROLE_KEY: "service-role",
+    JWT_SECRET: secret,
+  })[key] } };
+  globalThis.__accountBillingCreateClient = () => ({
+    database: {
+      from() {
+        const result = { data: [{ id: "device-1" }], error: null };
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          is: () => chain,
+          then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
+        };
+        return chain;
+      },
+      async rpc() { return { data: groupedRows, error: null }; },
+    },
+  });
+  t.after(() => {
+    delete globalThis.Deno;
+    delete globalThis.__accountBillingCreateClient;
+  });
+
+  const edge = await importEdge("model-breakdown");
+  const request = async (suffix) => {
+    const response = await edge.default(new Request(
+      `https://cloud.example/functions/tokentracker-account-model-breakdown?from=2026-08-18&to=2026-08-18&tz=UTC${suffix}`,
+      { headers: { Authorization: `Bearer ${signedJwt(secret)}` } },
+    ));
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+
+  const multiple = await request("&source=%20CoDeX%20&source=CLAUDE&source=codex");
+  assert.deepEqual(multiple.sources.map((entry) => entry.source).sort(), ["claude", "codex"]);
+  assert.deepEqual((await request("&source=gemini")).sources.map((entry) => entry.source), ["gemini"]);
+  assert.deepEqual((await request("&source=missing")).sources, []);
+  assert.deepEqual((await request("")).sources.map((entry) => entry.source).sort(), ["claude", "codex", "gemini"]);
+  assert.deepEqual((await request("&source=")).sources.map((entry) => entry.source).sort(), ["claude", "codex", "gemini"]);
+});

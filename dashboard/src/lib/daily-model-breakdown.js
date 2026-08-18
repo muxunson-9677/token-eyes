@@ -21,6 +21,7 @@ export async function fetchDailyModelBreakdown({
   accessToken,
   baseUrl,
   source,
+  sources,
   timeZone,
   tzOffsetMinutes,
   signal,
@@ -29,12 +30,15 @@ export async function fetchDailyModelBreakdown({
   const resolvedToken = await resolveAuthAccessToken(useCloud ? accountAccessToken : accessToken);
   throwIfAborted(signal);
   const fetcher = useCloud ? fetchCloudUsageModelBreakdown : getUsageModelBreakdown;
+  const canonicalSources = canonicalizeDailyBreakdownSources(
+    Array.isArray(sources) ? sources : source == null ? null : [source],
+  );
   return fetcher({
     baseUrl,
     accessToken: resolvedToken,
     from: day,
     to: day,
-    source,
+    sources: canonicalSources,
     timeZone,
     tzOffsetMinutes,
     signal,

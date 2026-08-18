@@ -361,6 +361,16 @@ function isLocalhostHost() {
   );
 }
 
+function appendSearchParams(url: URL, params?: AnyRecord) {
+  if (!params) return;
+  for (const [key, value] of Object.entries(params)) {
+    const values = Array.isArray(value) ? value : [value];
+    for (const item of values) {
+      if (item != null && item !== "") url.searchParams.append(key, String(item));
+    }
+  }
+}
+
 async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRecord) {
   const accessToken = options?.accessToken as string | undefined;
   const signal = options?.signal as AbortSignal | undefined;
@@ -375,11 +385,7 @@ async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRec
   if (!isTauriRuntime() && !isLocalhostHost() && accessToken && accountSlug) {
     const base = getInsforgeRemoteUrl().replace(/\/$/, "");
     const url = new URL(`${base}/functions/${accountSlug}`);
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        if (value != null && value !== "") url.searchParams.set(key, String(value));
-      }
-    }
+    appendSearchParams(url, params);
     const headers: Record<string, string> = { Accept: "application/json" };
     const anonKey = getInsforgeAnonKey();
     if (anonKey) headers.apikey = anonKey;
@@ -396,11 +402,7 @@ async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRec
 
   const url = new URL(await buildLocalApiUrl(`/functions/${slug}`));
   throwIfAborted(signal);
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
-    }
-  }
+  appendSearchParams(url, params);
   const { accessToken: _omit, ...fetchOptions } = options || {};
   const response = await fetchLocalApi(url.toString(), {
     headers: { Accept: "application/json" },
@@ -433,6 +435,18 @@ function buildFilterParams({ source, model }: AnyRecord = {}) {
   const normalizedModel = typeof model === "string" ? model.trim() : "";
   if (normalizedModel) params.model = normalizedModel;
   return params;
+}
+
+function buildModelBreakdownSourceParams({ source, sources }: AnyRecord = {}) {
+  const candidates = Array.isArray(sources)
+    ? sources
+    : sources === null
+      ? []
+      : [source];
+  const normalized = [...new Set(
+    candidates.map((value) => typeof value === "string" ? value.trim().toLowerCase() : "").filter(Boolean),
+  )].sort();
+  return normalized.length > 0 ? { source: normalized } : {};
 }
 
 /** Build multi-value filter params (sources / models / agent_ids) for the
@@ -1605,6 +1619,7 @@ export async function getUsageModelBreakdown({
   from,
   to,
   source,
+  sources,
   timeZone,
   tzOffsetMinutes,
   accessToken,
@@ -1614,7 +1629,7 @@ export async function getUsageModelBreakdown({
     return getMockUsageModelBreakdown({ from, to, seed: accessToken });
   }
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
-  const filterParams = buildFilterParams({ source });
+  const filterParams = buildModelBreakdownSourceParams({ source, sources });
   return fetchLocalJson(PATHS.usageModelBreakdown, { from, to, ...filterParams, ...tzParams }, { accessToken, signal });
 }
 
@@ -1914,11 +1929,7 @@ async function fetchAccountFunction(
   }
   const root = baseUrl.replace(/\/$/, "");
   const url = new URL(`${root}/functions/${slug}`);
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
-    }
-  }
+  appendSearchParams(url, params);
   const headers: Record<string, string> = {
     Accept: "application/json",
     Authorization: `Bearer ${accessToken}`,
@@ -2046,13 +2057,14 @@ export async function fetchCloudUsageModelBreakdown({
   from,
   to,
   source,
+  sources,
   timeZone,
   tzOffsetMinutes,
   accessToken,
   signal,
 }: AnyRecord = {}) {
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
-  const filterParams = buildFilterParams({ source });
+  const filterParams = buildModelBreakdownSourceParams({ source, sources });
   return fetchAccountFunction(
     ACCOUNT_PATHS.modelBreakdown,
     { from, to, ...filterParams, ...tzParams },

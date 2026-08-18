@@ -70,3 +70,39 @@ describe.each([
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe.each([
+  ["local", false],
+  ["cloud", true],
+])("daily model breakdown source request (%s)", (_label, useCloud) => {
+  it("passes the full canonical source set to the real request", async () => {
+    if (!useCloud) {
+      Object.defineProperty(window, "__TAURI__", {
+        configurable: true,
+        value: {
+          core: {
+            invoke: vi.fn().mockResolvedValue({ running: true, url: "http://127.0.0.1:17680" }),
+          },
+        },
+      });
+    }
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ sources: [] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchDailyModelBreakdown({
+      day: "2026-08-07",
+      useCloud,
+      accountAccessToken: useCloud ? VALID_JWT : null,
+      accessToken: useCloud ? null : VALID_JWT,
+      sources: [" Codex ", "CLAUDE", "codex"],
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+    });
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.getAll("source")).toEqual(["claude", "codex"]);
+  });
+});

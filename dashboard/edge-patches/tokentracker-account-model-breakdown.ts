@@ -401,6 +401,12 @@ export default async function (req: Request): Promise<Response> {
   const tz = url.searchParams.get("tz") || null;
   const tzOffsetRaw = url.searchParams.get("tz_offset_minutes");
   const tzOffsetMinutes = tzOffsetRaw != null && tzOffsetRaw !== "" ? Number(tzOffsetRaw) : null;
+  const requestedSources = new Set(
+    url.searchParams.getAll("source")
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
 
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")!;
   const incomingApiKey =
@@ -448,7 +454,11 @@ export default async function (req: Request): Promise<Response> {
   // Keep only the tz-local days in [from, to]. The RPC already bucketed each
   // row to its local day (honoring tz / tz_offset_minutes), so this compares
   // the bucket directly — same inclusive [from, to] semantics as before.
-  const filtered = rows.filter((r) => r.bucket >= from && r.bucket <= to);
+  const filtered = rows.filter((r) => {
+    if (r.bucket < from || r.bucket > to) return false;
+    const source = String(r.source || "unknown").trim().toLowerCase();
+    return requestedSources.size === 0 || requestedSources.has(source);
+  });
 
   interface ModelAgg {
     model: string;

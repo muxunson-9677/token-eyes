@@ -6500,8 +6500,16 @@ function createLocalApiHandler({
       const timeZoneContext = getTimeZoneContext(url);
       const { rows: scopedRows, scope, excludedSources } = scopedQueueRows(qp, url);
       const pricingOptions = getPricingOptions();
+      const requestedSources = new Set(
+        url.searchParams.getAll("source")
+          .flatMap((value) => value.split(","))
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean),
+      );
       const rows = scopedRows.filter((r) => {
         if (!r.hour_start) return false;
+        const source = String(r.source || "unknown").trim().toLowerCase();
+        if (requestedSources.size > 0 && !requestedSources.has(source)) return false;
         const d = rowDayKey(r, timeZoneContext);
         return d >= from && d <= to;
       });
