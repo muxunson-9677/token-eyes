@@ -1407,7 +1407,44 @@ function attributionQueuedKey(bucket, outputModel, slice) {
   }
   if (bucket.attributionQueuedKeys[mode] === key) return null;
   bucket.attributionQueuedKeys[mode] = key;
+  if (bucket.retractedAttributionKeys) {
+    delete bucket.retractedAttributionKeys[`${outputModel}|${mode}`];
+  }
   return key;
+}
+
+function appendAttributionRetractions(toAppend, {
+  source,
+  model,
+  hourStart,
+  bucket,
+  zeroTotals,
+}) {
+  if (!bucket) return;
+  if (!bucket.retractedAttributionKeys || typeof bucket.retractedAttributionKeys !== "object") {
+    bucket.retractedAttributionKeys = {};
+  }
+  for (const slice of attributionSlices(bucket)) {
+    const mode = slice.attribution.billing_mode;
+    const identity = `${model}|${mode}`;
+    if (bucket.retractedAttributionKeys[identity] === totalsKey(zeroTotals)) continue;
+    toAppend.push(
+      serializeUsageQueueRecord({
+        source,
+        model,
+        hour_start: hourStart,
+        input_tokens: zeroTotals.input_tokens,
+        cached_input_tokens: zeroTotals.cached_input_tokens,
+        cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
+        output_tokens: zeroTotals.output_tokens,
+        reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
+        total_tokens: zeroTotals.total_tokens,
+        billable_total_tokens: zeroTotals.billable_total_tokens,
+        conversation_count: zeroTotals.conversation_count,
+      }, slice.attribution),
+    );
+    bucket.retractedAttributionKeys[identity] = totalsKey(zeroTotals);
+  }
 }
 
 function serializeUsageQueueRecord(record, evidence) {
@@ -1522,21 +1559,13 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
 
     if (dominantModel) {
       if (alignedModel && !group.buckets.has(alignedModel)) {
-        toAppend.push(
-          serializeUsageQueueRecord({
-            source: group.source,
-            model: alignedModel,
-            hour_start: group.hourStart,
-            input_tokens: zeroTotals.input_tokens,
-            cached_input_tokens: zeroTotals.cached_input_tokens,
-            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
-            output_tokens: zeroTotals.output_tokens,
-            reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-            total_tokens: zeroTotals.total_tokens,
-            billable_total_tokens: zeroTotals.billable_total_tokens,
-            conversation_count: zeroTotals.conversation_count,
-          }),
-        );
+        appendAttributionRetractions(toAppend, {
+          source: group.source,
+          model: alignedModel,
+          hourStart: group.hourStart,
+          bucket: unknownBucket,
+          zeroTotals,
+        });
       }
       if (
         unknownBucket &&
@@ -1544,23 +1573,14 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         unknownBucket.queuedKey &&
         unknownBucket.queuedKey !== zeroKey
       ) {
-        if (unknownBucket.retractedUnknownKey !== zeroKey) {
-          toAppend.push(
-            serializeUsageQueueRecord({
-              source: group.source,
-              model: DEFAULT_MODEL,
-              hour_start: group.hourStart,
-              input_tokens: zeroTotals.input_tokens,
-              cached_input_tokens: zeroTotals.cached_input_tokens,
-              output_tokens: zeroTotals.output_tokens,
-              reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-              total_tokens: zeroTotals.total_tokens,
-              billable_total_tokens: zeroTotals.billable_total_tokens,
-              conversation_count: zeroTotals.conversation_count,
-            }),
-          );
-          unknownBucket.retractedUnknownKey = zeroKey;
-        }
+        appendAttributionRetractions(toAppend, {
+          source: group.source,
+          model: DEFAULT_MODEL,
+          hourStart: group.hourStart,
+          bucket: unknownBucket,
+          zeroTotals,
+        });
+        unknownBucket.retractedUnknownKey = zeroKey;
       }
       if (unknownBucket) unknownBucket.alignedModel = null;
       for (const [model, bucket] of group.buckets.entries()) {
@@ -1600,20 +1620,13 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
     }
     const nextAligned = outputModel !== DEFAULT_MODEL ? outputModel : null;
     if (alignedModel && alignedModel !== nextAligned) {
-      toAppend.push(
-        serializeUsageQueueRecord({
-          source: group.source,
-          model: alignedModel,
-          hour_start: group.hourStart,
-          input_tokens: zeroTotals.input_tokens,
-          cached_input_tokens: zeroTotals.cached_input_tokens,
-          output_tokens: zeroTotals.output_tokens,
-          reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-          total_tokens: zeroTotals.total_tokens,
-          billable_total_tokens: zeroTotals.billable_total_tokens,
-          conversation_count: zeroTotals.conversation_count,
-        }),
-      );
+      appendAttributionRetractions(toAppend, {
+        source: group.source,
+        model: alignedModel,
+        hourStart: group.hourStart,
+        bucket: unknownBucket,
+        zeroTotals,
+      });
     }
     if (
       !alignedModel &&
@@ -1621,24 +1634,14 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       unknownBucket.queuedKey &&
       unknownBucket.queuedKey !== zeroKey
     ) {
-      if (unknownBucket.retractedUnknownKey !== zeroKey) {
-        toAppend.push(
-          serializeUsageQueueRecord({
-            source: group.source,
-            model: DEFAULT_MODEL,
-            hour_start: group.hourStart,
-            input_tokens: zeroTotals.input_tokens,
-            cached_input_tokens: zeroTotals.cached_input_tokens,
-            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
-            output_tokens: zeroTotals.output_tokens,
-            reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-            total_tokens: zeroTotals.total_tokens,
-            billable_total_tokens: zeroTotals.billable_total_tokens,
-            conversation_count: zeroTotals.conversation_count,
-          }),
-        );
-        unknownBucket.retractedUnknownKey = zeroKey;
-      }
+      appendAttributionRetractions(toAppend, {
+        source: group.source,
+        model: DEFAULT_MODEL,
+        hourStart: group.hourStart,
+        bucket: unknownBucket,
+        zeroTotals,
+      });
+      unknownBucket.retractedUnknownKey = zeroKey;
     }
     if (unknownBucket) unknownBucket.alignedModel = nextAligned;
     for (const slice of attributionSlices(unknownBucket)) {

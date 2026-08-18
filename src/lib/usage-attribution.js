@@ -107,16 +107,20 @@ function normalizeEndpointOrigin(value) {
   }
 }
 
-function isSecretLikeReference(value) {
-  if (typeof value !== "string") return true;
+const CREDENTIAL_STORE_REFS = new Set([
+  "codex_auth_json",
+  "claude_credentials_json",
+]);
+
+function isAllowedEvidenceReference(field, value) {
+  if (typeof value !== "string") return false;
   const trimmed = value.trim();
-  if (!trimmed) return true;
-  return (
-    /^sk-[a-z0-9]/i.test(trimmed) ||
-    /^bearer\s+/i.test(trimmed) ||
-    /(?:^|[?&;\s])(api[_-]?key|authorization|cookie|token)\s*[:=]/i.test(trimmed) ||
-    /^[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$/i.test(trimmed)
-  );
+  if (!trimmed) return false;
+  if (field === "provider_id") {
+    return /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(trimmed);
+  }
+  if (field === "credential_ref" && CREDENTIAL_STORE_REFS.has(trimmed)) return true;
+  return /^(provider-api|token-plan|account|plan)(\/[a-z0-9][a-z0-9._-]{0,127}){1,4}$/i.test(trimmed);
 }
 
 function normalizeUsageAttribution(input) {
@@ -137,7 +141,7 @@ function normalizeUsageAttribution(input) {
 
   for (const field of EVIDENCE_REF_FIELDS) {
     const value = evidence[field];
-    if (!isSecretLikeReference(value)) result[field] = value.trim();
+    if (isAllowedEvidenceReference(field, value)) result[field] = value.trim();
   }
 
   if (
