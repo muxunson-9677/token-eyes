@@ -294,6 +294,7 @@ async function runLocalSyncCommand(extraEnv = {}, opts = {}) {
 const __viteRequire = createRequire(import.meta.url);
 const __pricing = __viteRequire(path.resolve(REPO_ROOT, "src/lib/pricing"));
 const { getModelPricing, computeRowCost } = __pricing;
+const { queueUsageIdentity } = __viteRequire(path.resolve(REPO_ROOT, "src/lib/usage-attribution"));
 
 async function handleLocalApi(req, res, url) {
   // Honor the dashboard's tz / tz_offset_minutes params so hourly/daily
@@ -376,10 +377,10 @@ async function handleLocalApi(req, res, url) {
       const lines = raw.split("\n").filter(line => line.trim());
       const parsed = lines.map(line => JSON.parse(line));
       // Deduplicate: each sync appends cumulative totals per bucket, so for
-      // each (source, model, hour_start) keep only the latest (last) entry.
+      // each billing-aware queue identity keep only the latest (last) entry.
       const seen = new Map();
       for (const row of parsed) {
-        const key = `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;
+        const key = queueUsageIdentity(row);
         seen.set(key, normalizeQueueRow(row));
       }
       return Array.from(seen.values());

@@ -244,6 +244,7 @@ async function fetchTopModel(client: any, userId: string): Promise<string | null
       source: string;
       model: string;
       hour_start: string;
+      billing_mode: string | null;
       total_tokens: number | null;
     }
     const accountMap = new Map<string, number>();
@@ -253,7 +254,7 @@ async function fetchTopModel(client: any, userId: string): Promise<string | null
     while (true) {
       const { data: rows, error } = await client.database
         .from("tokentracker_hourly")
-        .select("device_id, source, model, hour_start, total_tokens")
+        .select("device_id, source, model, hour_start, billing_mode, total_tokens")
         .eq("user_id", userId)
         .gte("hour_start", fromIso)
         .lt("hour_start", toIso)
@@ -263,6 +264,7 @@ async function fetchTopModel(client: any, userId: string): Promise<string | null
         .order("device_id", { ascending: true })
         .order("source", { ascending: true })
         .order("model", { ascending: true })
+        .order("billing_mode", { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);
       if (error) throw new Error(error.message);
       if (!rows || rows.length === 0) break;
@@ -270,8 +272,8 @@ async function fetchTopModel(client: any, userId: string): Promise<string | null
         const tokens = Number(row.total_tokens) || 0;
         if (!row.model || tokens <= 0) continue;
         if (ACCOUNT_LEVEL_SOURCES.has(row.source)) {
-          // Keep ONE canonical value per (source, model, hour) across devices.
-          const key = `${row.source}|${row.model}|${row.hour_start}`;
+          // Keep one canonical value per billing slice across devices.
+          const key = `${row.source}|${row.model}|${row.hour_start}|${row.billing_mode || "unknown"}`;
           const existing = accountMap.get(key) || 0;
           if (tokens > existing) {
             byModel.set(row.model, (byModel.get(row.model) || 0) + tokens - existing);

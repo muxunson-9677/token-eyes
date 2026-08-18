@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const fssync = require("node:fs");
 const cp = require("node:child_process");
 const readline = require("node:readline");
+const { normalizeUsageAttribution, queueUsageIdentity } = require("../lib/usage-attribution");
 
 const { ensureDir, readJson, writeJson, openLock } = require("../lib/fs");
 const {
@@ -1374,6 +1375,7 @@ module.exports = {
   reincludeClaudeMemObserverFiles,
   repairGrokQueueFromSessionSnapshots,
   applyCloudConversationsBackfill,
+  readQueueBatch,
   CURSOR_UNKNOWN_MIGRATION_KEY,
   ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY,
   CODEX_RESCAN_DEDUP_REPAIR_KEY,
@@ -1749,7 +1751,10 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   const bucketMap = new Map();
   let offset = startOffset;
   let linesRead = 0;
+  let migrationId = null;
+  let migrationRowsRemaining = 0;
   for await (const line of rl) {
+    const lineStartOffset = offset;
     const bytes = Buffer.byteLength(line, "utf8") + 1;
     offset += bytes;
     if (!line.trim()) continue;
@@ -1763,6 +1768,22 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
     if (!hourStart) continue;
     const source = (typeof bucket?.source === "string" ? bucket.source.trim().toLowerCase() : "") || "codex";
     const model = (typeof bucket?.model === "string" ? bucket.model.trim() : "") || "unknown";
+    const rowMigrationId = typeof bucket?.dsh_bucket_migration_id === "string"
+      ? bucket.dsh_bucket_migration_id
+      : null;
+    if (!migrationId && rowMigrationId && linesRead > 0) {
+      offset = lineStartOffset;
+      break;
+    }
+    if (!migrationId && rowMigrationId) {
+      const count = Math.max(1, Math.floor(Number(bucket.dsh_bucket_migration_count) || 1));
+      const index = Math.max(0, Math.floor(Number(bucket.dsh_bucket_migration_index) || 0));
+      migrationId = rowMigrationId;
+      migrationRowsRemaining = Math.max(1, count - index);
+    } else if (migrationId && rowMigrationId !== migrationId) {
+      offset = lineStartOffset;
+      break;
+    }
     bucket.source = source;
     bucket.model = model;
     // Apply the same legacy-row corrections every local reader applies
@@ -1771,8 +1792,14 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
     // rows whose input_tokens still include cached tokens (6-7x inflated) —
     // while the local dashboard showed corrected numbers.
     bucket = require("../lib/local-api").normalizeQueueRow(bucket);
-    bucketMap.set(`${source}|${model}|${hourStart}`, bucket);
+    bucket.billing_mode = normalizeUsageAttribution(bucket).billing_mode;
+    bucketMap.set(queueUsageIdentity(bucket), bucket);
     linesRead += 1;
+    if (migrationId) {
+      migrationRowsRemaining -= 1;
+      if (migrationRowsRemaining <= 0) break;
+      continue;
+    }
     if (linesRead >= maxBuckets) break;
   }
 
