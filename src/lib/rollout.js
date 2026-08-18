@@ -6144,13 +6144,23 @@ function addDeepSeekHarnessBucketDelta(bucket, delta) {
   const slices = bucket.attributionBuckets && typeof bucket.attributionBuckets === "object"
     ? bucket.attributionBuckets
     : null;
-  if (slices) {
-    if (!slices.unknown) {
-      slices.unknown = { totals: initTotals(), attribution: normalizeUsageAttribution(null) };
-    }
-    addTotals(slices.unknown.totals, delta);
-  }
   addTotals(bucket.totals, delta);
+  for (const totalsField of Object.keys(initTotals())) {
+    bucket.totals[totalsField] = Math.max(0, Number(bucket.totals[totalsField] || 0));
+  }
+  const hasNegativeDelta = Object.keys(initTotals()).some(
+    (key) => Number(delta?.[key] || 0) < 0,
+  );
+  if (!slices) return;
+  if (!slices.unknown) {
+    slices.unknown = { totals: initTotals(), attribution: normalizeUsageAttribution(null) };
+  }
+  if (hasNegativeDelta) {
+    for (const slice of Object.values(slices)) slice.totals = initTotals();
+    slices.unknown.totals = cloneTotals(bucket.totals);
+    return;
+  }
+  addTotals(slices.unknown.totals, delta);
 }
 
 function deepSeekHarnessRecordTotals(record) {
