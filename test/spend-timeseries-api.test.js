@@ -260,18 +260,28 @@ test("P02: API-only source appears in sources, series, by_source", async () => {
 
     const now = new Date();
     const thisMonthHour = now.toISOString().slice(0, 13) + ":00:00.000Z";
-    const queueEntry = JSON.stringify({
+    const queueEntries = [{
       hour_start: thisMonthHour,
       source: "codex",
-      model: "kiro-agent",
+      model: "other-agent",
       input_tokens: 1000000,
       output_tokens: 500000,
       cached_input_tokens: 0,
       cache_creation_input_tokens: 0,
       total_tokens: 1500000,
       billing_mode: "api_key",
-    }) + "\n";
-    await fs.writeFile(queueFile, queueEntry, "utf8");
+      provider_id: "deepseek",
+    }, {
+      hour_start: thisMonthHour,
+      source: "codex",
+      model: "kiro-agent",
+      input_tokens: 10,
+      output_tokens: 0,
+      total_tokens: 10,
+      billing_mode: "api_key",
+      provider_id: "openai",
+    }];
+    await fs.writeFile(queueFile, `${queueEntries.map(JSON.stringify).join("\n")}\n`, "utf8");
 
     const thisMonth = new Date().toISOString().slice(0, 7) + "-01";
     await call(handler, "/functions/tokentracker-spend-records", {
@@ -294,10 +304,14 @@ test("P02: API-only source appears in sources, series, by_source", async () => {
     assert.ok(codexBySource.api_cost_usd > 0);
     assert.ok(codexBySource.combined_usd > 0);
     assert.deepEqual(codexBySource.billing_mode_token_totals, {
-      api_key: 1500000,
+      api_key: 1500010,
       token_plan: 0,
       unknown: 0,
     });
+    assert.deepEqual(codexBySource.billing_provider_token_totals, [
+      { provider_id: "deepseek", api_key: 1500000, token_plan: 0, unknown: 0 },
+      { provider_id: "openai", api_key: 10, token_plan: 0, unknown: 0 },
+    ]);
 
     const codexSeries = body.series.filter((s) => s.source === "codex");
     assert.ok(codexSeries.length > 0, "codex should have series entries");

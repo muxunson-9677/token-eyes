@@ -232,31 +232,44 @@ export function useCostAccumulation({
         const sourceRequirements = sourceRows.map((sourceRow) => {
           const modes = sourceRow?.billing_mode_token_totals;
           const hasModeTotals = modes && typeof modes === "object";
+          const providerTotals = Array.isArray(sourceRow?.billing_provider_token_totals)
+            ? sourceRow.billing_provider_token_totals
+            : [];
+          const providerApiKeyTokens = providerTotals
+            .reduce((sum, provider) => sum + Math.max(0, Number(provider?.api_key || 0)), 0);
+          const apiKeyTokens = hasModeTotals
+            ? Math.max(0, Number(modes.api_key || 0))
+            : providerApiKeyTokens;
           const hasUnknownUsage = hasModeTotals && Number(modes.unknown || 0) > 0;
+          const requiresInvoice = hasModeTotals
+            ? apiKeyTokens > 0 || hasUnknownUsage
+            : providerApiKeyTokens > 0 || Number(sourceRow?.api_cost_usd ?? sourceRow?.api_usd ?? 0) > 0;
+          const hasUnmatchedProvider = providerTotals.some((provider) => (
+            Number(provider?.api_key || 0) > 0
+            && (
+              normalizeInvoiceProvider(provider?.provider_id) === "unknown"
+              || !officialProviders.has(normalizeInvoiceProvider(provider?.provider_id))
+            )
+          ));
           return {
-            provider: normalizeInvoiceProvider(sourceRow?.source),
-            hasUnknownUsage,
-            requiresInvoice: hasModeTotals
-              ? Number(modes.api_key || 0) > 0 || hasUnknownUsage
-              : Number(sourceRow?.api_cost_usd ?? sourceRow?.api_usd ?? 0) > 0,
+            requiresInvoice,
+            uncovered: hasUnknownUsage
+              || hasUnmatchedProvider
+              || (apiKeyTokens > providerApiKeyTokens),
           };
         });
         const requiresOfficialInvoice = sourceRows.length > 0
           ? sourceRequirements.some((requirement) => requirement.requiresInvoice)
           : Number(totals.api_usd || 0) > 0;
         const hasUnmatchedRequiredSource = sourceRows.length > 0
-          ? sourceRequirements.some((requirement) => requirement.requiresInvoice && (
-              requirement.hasUnknownUsage
-              || requirement.provider === "unknown"
-              || !officialProviders.has(requirement.provider)
-            ))
+          ? sourceRequirements.some((requirement) => requirement.requiresInvoice && requirement.uncovered)
           : requiresOfficialInvoice && (
               officialProviders.size === 0
               || apiAccounts.some((account) => account.spendAuthority === "unavailable")
             );
-        const hasUncoveredApiSpend = requiresOfficialInvoice && (
-          billingStale || hasAmbiguousInvoice || hasUnmatchedRequiredSource
-        );
+        const hasUncoveredApiSpend = (
+          requiresOfficialInvoice && (hasAmbiguousInvoice || hasUnmatchedRequiredSource)
+        ) || (billingStale && monthOfficialApiSpendUsd !== null);
         const subscriptionUsd = totals.subscription_usd ?? null;
         const otherAiUsd = totals.other_ai_usd ?? null;
         const recordedCashBase = [subscriptionUsd, otherAiUsd]

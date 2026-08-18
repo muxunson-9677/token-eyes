@@ -4358,11 +4358,27 @@ function createLocalApiHandler({
           cache_creation_input_tokens: 0, reasoning_output_tokens: 0,
           total_tokens: 0, cost_usd: 0,
           billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+          billing_provider_token_totals: new Map(),
           models: new Map(),
         });
       }
       const entry = bySourceBucket.get(key);
-      accumulateBillingModeAttribution([{ tokenTotals: entry.billing_mode_token_totals }], row);
+      const attribution = normalizeUsageAttribution(row);
+      const billingMode = attribution.billing_mode === "api_key" || attribution.billing_mode === "token_plan"
+        ? attribution.billing_mode
+        : "unknown";
+      const attributedTokens = Math.max(0, Number(row.total_tokens || 0));
+      entry.billing_mode_token_totals[billingMode] += attributedTokens;
+      const billingProvider = attribution.provider_id || "unknown";
+      if (!entry.billing_provider_token_totals.has(billingProvider)) {
+        entry.billing_provider_token_totals.set(billingProvider, {
+          provider_id: billingProvider,
+          api_key: 0,
+          token_plan: 0,
+          unknown: 0,
+        });
+      }
+      entry.billing_provider_token_totals.get(billingProvider)[billingMode] += attributedTokens;
       entry.api_cost_usd += costUsd;
       entry.cost_usd += costUsd;
       entry.input_tokens += Number(row.input_tokens || 0);
@@ -4630,6 +4646,7 @@ function createLocalApiHandler({
           total_tokens: 0,
           cost_usd: 0,
           billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+          billing_provider_token_totals: [],
           // Per-model breakdown (API cost only; subscription is source-level).
           models: [],
         });
@@ -4649,6 +4666,8 @@ function createLocalApiHandler({
         seriesEntry.total_tokens = entry.total_tokens;
         seriesEntry.cost_usd = entry.cost_usd;
         seriesEntry.billing_mode_token_totals = { ...entry.billing_mode_token_totals };
+        seriesEntry.billing_provider_token_totals = Array.from(entry.billing_provider_token_totals.values())
+          .sort((a, b) => a.provider_id.localeCompare(b.provider_id));
         seriesEntry.models = Array.from(entry.models.values()).map((m) => ({
           model: m.model,
           input_tokens: m.input_tokens,
@@ -4776,6 +4795,7 @@ function createLocalApiHandler({
         total_tokens: 0,
         cost_usd: 0,
         billing_mode_token_totals: { api_key: 0, token_plan: 0, unknown: 0 },
+        billing_provider_token_totals: new Map(),
       });
     }
 
@@ -4799,6 +4819,20 @@ function createLocalApiHandler({
       for (const mode of ["api_key", "token_plan", "unknown"]) {
         sa.billing_mode_token_totals[mode] += Number(entry.billing_mode_token_totals?.[mode] || 0);
       }
+      for (const providerTotals of entry.billing_provider_token_totals || []) {
+        if (!sa.billing_provider_token_totals.has(providerTotals.provider_id)) {
+          sa.billing_provider_token_totals.set(providerTotals.provider_id, {
+            provider_id: providerTotals.provider_id,
+            api_key: 0,
+            token_plan: 0,
+            unknown: 0,
+          });
+        }
+        const target = sa.billing_provider_token_totals.get(providerTotals.provider_id);
+        for (const mode of ["api_key", "token_plan", "unknown"]) {
+          target[mode] += Number(providerTotals[mode] || 0);
+        }
+      }
     }
 
     for (const sa of bySourceMap.values()) {
@@ -4811,6 +4845,8 @@ function createLocalApiHandler({
       sa.combined_usd = round6(sa.combined_usd);
       sa.combined_cny = round6(sa.combined_cny);
       sa.cost_usd = round6(sa.cost_usd);
+      sa.billing_provider_token_totals = Array.from(sa.billing_provider_token_totals.values())
+        .sort((a, b) => a.provider_id.localeCompare(b.provider_id));
     }
 
     for (const entry of series) {

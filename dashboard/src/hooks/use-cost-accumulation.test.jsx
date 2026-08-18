@@ -30,6 +30,7 @@ function timeseriesTotals(overrides = {}, bySource = null) {
       source: "codex",
       api_cost_usd: totals.api_usd,
       billing_mode_token_totals: { api_key: 1, token_plan: 0, unknown: 0 },
+      billing_provider_token_totals: [{ provider_id: "openai", api_key: 1, token_plan: 0, unknown: 0 }],
     }] : []),
   };
 }
@@ -244,10 +245,12 @@ describe("useCostAccumulation selected month", () => {
       source: "codex",
       api_cost_usd: 30,
       billing_mode_token_totals: { api_key: 100, token_plan: 0, unknown: 0 },
+      billing_provider_token_totals: [{ provider_id: "openai", api_key: 100, token_plan: 0, unknown: 0 }],
     }, {
       source: "anthropic",
       api_cost_usd: 5,
       billing_mode_token_totals: { api_key: 50, token_plan: 0, unknown: 0 },
+      billing_provider_token_totals: [{ provider_id: "anthropic", api_key: 50, token_plan: 0, unknown: 0 }],
     }]));
     getApiBillingAccounts.mockResolvedValue({ accounts: [{
       provider: "openai",
@@ -266,6 +269,58 @@ describe("useCostAccumulation selected month", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.costSummary.monthOfficialApiSpendUsd).toBe(8);
     expect(result.current.costSummary.actualCashCoverage).toBe("partial");
+  });
+
+  it.each([
+    {
+      name: "does not let an agent source override a different trusted provider",
+      source: "codex",
+      providers: [{ provider_id: "deepseek", api_key: 10, token_plan: 0, unknown: 0 }],
+      expected: "partial",
+    },
+    {
+      name: "covers a non-provider agent source through trusted OpenAI attribution",
+      source: "hermes",
+      providers: [{ provider_id: "openai", api_key: 10, token_plan: 0, unknown: 0 }],
+      expected: "exact",
+    },
+    {
+      name: "keeps missing trusted provider attribution partial",
+      source: "codex",
+      providers: [],
+      expected: "partial",
+    },
+    {
+      name: "keeps one source with covered and uncovered providers partial",
+      source: "codex",
+      providers: [
+        { provider_id: "openai", api_key: 5, token_plan: 0, unknown: 0 },
+        { provider_id: "deepseek", api_key: 5, token_plan: 0, unknown: 0 },
+      ],
+      expected: "partial",
+    },
+  ])("$name", async ({ source, providers, expected }) => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries.mockResolvedValue(timeseriesTotals({ api_usd: 10 }, [{
+      source,
+      api_cost_usd: 10,
+      billing_mode_token_totals: { api_key: 10, token_plan: 0, unknown: 0 },
+      billing_provider_token_totals: providers,
+    }]));
+    getApiBillingAccounts.mockResolvedValue({ accounts: [{
+      provider: "openai",
+      billingSource: "api",
+      spendAuthority: "official_invoice",
+      monthCostUsd: 8,
+      ...officialPeriod("2025-06"),
+    }] });
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "UTC",
+      sources: COST_SOURCES,
+    }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.costSummary.actualCashCoverage).toBe(expected);
   });
 
   it("does not require an API cash invoice for pure token-plan equivalent usage", async () => {
@@ -500,7 +555,7 @@ describe("useCostAccumulation selected month", () => {
     getApiBillingAccounts.mockRejectedValueOnce(new Error("billing refresh failed again"));
     rerender({ refreshRevision: 3 });
     await waitFor(() => expect(result.current.billingStale).toBe(true));
-    expect(result.current.costSummary.actualCashCoverage).toBe("exact");
+    expect(result.current.costSummary.actualCashCoverage).toBe("partial");
   });
 
   it("preserves ambiguous billing metadata and ignores a slower old billing response", async () => {
