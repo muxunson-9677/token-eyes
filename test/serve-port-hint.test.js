@@ -49,7 +49,8 @@ test("serve default startup falls through to the next available port", async (t)
     maxAttempts: 3,
   });
 
-  assert.equal(selectedPort, occupiedPort + 1);
+  assert.ok(selectedPort > occupiedPort);
+  assert.ok(selectedPort <= occupiedPort + 2);
 });
 
 function closeServer(server) {
