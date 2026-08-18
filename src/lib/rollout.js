@@ -5992,7 +5992,7 @@ function normalizeDeepSeekHarnessUsage(raw) {
   const cacheWrite = toNonNegativeInt(raw.cacheWriteTokens);
   const output = toNonNegativeInt(raw.outputTokens);
   const reasoning = toNonNegativeInt(raw.reasoningTokens);
-  const total = input + cacheRead + cacheWrite + output;
+  const total = input + cacheRead + cacheWrite + output + reasoning;
   if (total <= 0) return null;
   return {
     input_tokens: input,

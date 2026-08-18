@@ -72,6 +72,7 @@ test("parses exact DeepSeek Harness usage and does not double count final messag
     output_tokens: rows[0].output_tokens,
     reasoning_output_tokens: rows[0].reasoning_output_tokens,
     total_tokens: rows[0].total_tokens,
+    billable_total_tokens: rows[0].billable_total_tokens,
     conversation_count: rows[0].conversation_count,
   }, {
     input_tokens: 120,
@@ -79,9 +80,17 @@ test("parses exact DeepSeek Harness usage and does not double count final messag
     cache_creation_input_tokens: 0,
     output_tokens: 40,
     reasoning_output_tokens: 10,
-    total_tokens: 190,
+    total_tokens: 200,
+    billable_total_tokens: 200,
     conversation_count: 1,
   });
+  assert.equal(rows[0].total_tokens, [
+    rows[0].input_tokens,
+    rows[0].cached_input_tokens,
+    rows[0].cache_creation_input_tokens,
+    rows[0].output_tokens,
+    rows[0].reasoning_output_tokens,
+  ].reduce((sum, value) => sum + value, 0));
 
   const second = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
   assert.deepEqual(second, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
@@ -100,8 +109,31 @@ test("keeps a streamed usage sample when a DeepSeek Harness request has no final
   const result = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
   assert.equal(result.eventsAggregated, 1);
   const [row] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
-  assert.equal(row.total_tokens, 70);
+  assert.equal(row.total_tokens, 73);
   assert.equal(row.reasoning_output_tokens, 3);
+});
+
+test("keeps pure reasoning DeepSeek Harness usage", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-reasoning-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const events = fixtureEvents({
+    sessionId: "session-dsh-reasoning",
+    usage: { inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 9 },
+  }).filter((event) => event.type !== "assistant/chunk");
+  const sessionFile = await writeSession(root, "reasoning-only", events, false);
+  const queuePath = path.join(root, "queue.jsonl");
+
+  const result = await parseDeepSeekHarnessIncremental({
+    sessionFiles: [sessionFile],
+    cursors: {},
+    queuePath,
+  });
+
+  assert.deepEqual(result, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  const [row] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(row.total_tokens, 9);
+  assert.equal(row.reasoning_output_tokens, 9);
+  assert.equal(row.billable_total_tokens, 9);
 });
 
 test("reads concatenated zstd frames written by live DeepSeek Harness sessions", async (t) => {
@@ -125,5 +157,5 @@ test("reads concatenated zstd frames written by live DeepSeek Harness sessions",
 
   assert.equal(result.eventsAggregated, 1);
   const [row] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
-  assert.equal(row.total_tokens, 190);
+  assert.equal(row.total_tokens, 200);
 });
