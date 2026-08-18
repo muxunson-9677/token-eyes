@@ -1699,7 +1699,7 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
 
   for (let batch = 0; batch < maxBatches; batch++) {
     if (offset >= queueSize) break;
-    const result = await readQueueBatch(queuePath, offset, limit);
+    const result = await readQueueBatch(queuePath, offset, limit, state.migrationCursor || null);
     if (result.buckets.length === 0) break;
 
     const root = baseUrl.replace(/\/$/, "");
@@ -1733,6 +1733,8 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
 
     offset = result.nextOffset;
     state.offset = offset;
+    if (result.migrationCursor) state.migrationCursor = result.migrationCursor;
+    else delete state.migrationCursor;
     state.updatedAt = new Date().toISOString();
     await writeJson(queueStatePath, state);
   }
@@ -1740,7 +1742,7 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
   return { inserted, skipped };
 }
 
-async function readQueueBatch(queuePath, startOffset, maxBuckets) {
+async function readQueueBatch(queuePath, startOffset, maxBuckets, migrationCursor = null) {
   const st = await fs.stat(queuePath).catch(() => null);
   if (!st || !st.isFile()) return { buckets: [], nextOffset: startOffset };
   if (startOffset >= st.size) return { buckets: [], nextOffset: startOffset };
@@ -1753,6 +1755,7 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   let linesRead = 0;
   let migrationId = null;
   let migrationRowsRemaining = 0;
+  const migrationRows = [];
   for await (const line of rl) {
     const lineStartOffset = offset;
     const bytes = Buffer.byteLength(line, "utf8") + 1;
@@ -1793,7 +1796,8 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
     // while the local dashboard showed corrected numbers.
     bucket = require("../lib/local-api").normalizeQueueRow(bucket);
     bucket.billing_mode = normalizeUsageAttribution(bucket).billing_mode;
-    bucketMap.set(queueUsageIdentity(bucket), bucket);
+    if (migrationId) migrationRows.push(bucket);
+    else bucketMap.set(queueUsageIdentity(bucket), bucket);
     linesRead += 1;
     if (migrationId) {
       migrationRowsRemaining -= 1;
@@ -1805,6 +1809,42 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
 
   rl.close();
   stream.close?.();
+  if (migrationRows.length > 0) {
+    const latestByIdentity = new Map();
+    for (const bucket of migrationRows) latestByIdentity.set(queueUsageIdentity(bucket), bucket);
+    const rowsByBaseBucket = new Map();
+    for (const bucket of latestByIdentity.values()) {
+      const baseKey = `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
+      if (!rowsByBaseBucket.has(baseKey)) rowsByBaseBucket.set(baseKey, []);
+      rowsByBaseBucket.get(baseKey).push(bucket);
+    }
+    const groups = Array.from(rowsByBaseBucket.values());
+    const cursorMatches = migrationCursor?.id === migrationId
+      && Number(migrationCursor?.startOffset) === startOffset;
+    const firstGroup = cursorMatches
+      ? Math.max(0, Math.floor(Number(migrationCursor.groupIndex) || 0))
+      : 0;
+    const limit = Math.min(Math.max(1, Math.floor(Number(maxBuckets) || 1)), MAX_INGEST_BUCKETS);
+    const buckets = [];
+    let nextGroup = firstGroup;
+    while (nextGroup < groups.length) {
+      const group = groups[nextGroup];
+      if (group.length > limit) {
+        throw new Error(`Migration base bucket exceeds cloud batch limit (${group.length} > ${limit})`);
+      }
+      if (buckets.length > 0 && buckets.length + group.length > limit) break;
+      buckets.push(...group);
+      nextGroup += 1;
+    }
+    if (nextGroup < groups.length) {
+      return {
+        buckets,
+        nextOffset: startOffset,
+        migrationCursor: { id: migrationId, startOffset, groupIndex: nextGroup },
+      };
+    }
+    return { buckets, nextOffset: offset, migrationCursor: null };
+  }
   return { buckets: Array.from(bucketMap.values()), nextOffset: offset };
 }
 

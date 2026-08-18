@@ -59,7 +59,7 @@ test("batch boundaries preserve zero/rebuild slices, idempotence, and legacy unk
     const rows = [...migrationRows, legacy];
     await fs.writeFile(queuePath, rows.map(JSON.stringify).join("\n") + "\n");
 
-    const firstBatch = await syncCommand.readQueueBatch(queuePath, 0, 1);
+    const firstBatch = await syncCommand.readQueueBatch(queuePath, 0, 2);
     assert.deepEqual(
       firstBatch.buckets.map((bucket) => [bucket.billing_mode, bucket.total_tokens]).sort(),
       [["api_key", 11], ["token_plan", 22]],
@@ -69,7 +69,7 @@ test("batch boundaries preserve zero/rebuild slices, idempotence, and legacy unk
     const uploadFrom = async (startOffset) => {
       let offset = startOffset;
       while (true) {
-        const batch = await syncCommand.readQueueBatch(queuePath, offset, 1);
+        const batch = await syncCommand.readQueueBatch(queuePath, offset, 2);
         if (batch.buckets.length === 0) break;
         for (const bucket of batch.buckets) {
           const key = `${bucket.source}|${bucket.model}|${bucket.hour_start}|${bucket.billing_mode}`;
@@ -86,6 +86,69 @@ test("batch boundaries preserve zero/rebuild slices, idempotence, and legacy unk
     assert.equal(cloud.get("deepseek-harness|deepseek-v4|2026-08-18T00:00:00.000Z|token_plan")?.total_tokens, 22);
     assert.equal(cloud.get("deepseek-harness|deepseek-v4|2026-08-18T00:00:00.000Z|unknown")?.total_tokens, 4);
     assert.equal([...cloud.values()].reduce((sum, bucket) => sum + bucket.total_tokens, 0), 37);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("large migration transactions page by whole base bucket and resume deterministically", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cloud-attribution-large-migration-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const rebuilt = [];
+    for (let index = 0; index < 1000; index += 1) {
+      rebuilt.push({ ...row("api_key", index + 1), model: `deepseek-${String(index).padStart(3, "0")}` });
+    }
+    rebuilt.splice(200, 0, { ...rebuilt[199], billing_mode: "token_plan", total_tokens: 22 });
+    const migrationRows = [
+      ...rebuilt.map((bucket) => ({ ...bucket, total_tokens: 0, input_tokens: 0 })),
+      ...rebuilt,
+    ].map((bucket, index, rows) => ({
+      ...bucket,
+      dsh_bucket_migration_id: "migration-large",
+      dsh_bucket_migration_index: index,
+      dsh_bucket_migration_count: rows.length,
+    }));
+    await fs.writeFile(queuePath, `${migrationRows.map(JSON.stringify).join("\n")}\n`);
+
+    const cloud = new Map();
+    const basesByBatch = [];
+    let offset = 0;
+    let migrationCursor = null;
+    let batchNumber = 0;
+    while (true) {
+      const inputCursor = migrationCursor;
+      const result = await syncCommand.readQueueBatch(queuePath, offset, 200, inputCursor);
+      if (result.buckets.length === 0) break;
+      assert.ok(result.buckets.length <= 200);
+      if (batchNumber === 0) {
+        const replay = await syncCommand.readQueueBatch(queuePath, offset, 200, inputCursor);
+        assert.deepEqual(replay, result, "crash before cursor persistence must replay idempotently");
+      }
+      const bases = new Set();
+      for (const bucket of result.buckets) {
+        const base = `${bucket.source}|${bucket.model}|${bucket.hour_start}`;
+        bases.add(base);
+        cloud.set(`${base}|${bucket.billing_mode}`, bucket);
+        assert.notEqual(bucket.total_tokens, 0, "zero/rebuild must fold before upload");
+      }
+      basesByBatch.push(bases);
+      offset = result.nextOffset;
+      migrationCursor = result.migrationCursor || null;
+      batchNumber += 1;
+    }
+
+    const seenBases = new Set();
+    for (const bases of basesByBatch) {
+      for (const base of bases) {
+        assert.equal(seenBases.has(base), false, `base bucket split across requests: ${base}`);
+        seenBases.add(base);
+      }
+    }
+    assert.ok(batchNumber > 5, "migration must resume beyond one normal five-batch drain");
+    assert.equal(cloud.size, 1001);
+    assert.equal(cloud.get("deepseek-harness|deepseek-199|2026-08-18T00:00:00.000Z|api_key")?.total_tokens, 200);
+    assert.equal(cloud.get("deepseek-harness|deepseek-199|2026-08-18T00:00:00.000Z|token_plan")?.total_tokens, 22);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

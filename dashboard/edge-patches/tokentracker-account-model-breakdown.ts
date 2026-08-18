@@ -323,12 +323,14 @@ interface Totals {
   cache_creation_input_tokens: number;
   reasoning_output_tokens: number;
   total_cost_usd: string;
+  billing_mode_token_totals: BillingModeTokenTotals;
 }
 
 interface GroupedRow {
   bucket: string;
   source: string;
   model: string;
+  billing_mode: string | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -338,9 +340,22 @@ interface GroupedRow {
   conversations: number | null;
 }
 
+type BillingModeTokenTotals = { api_key: number; token_plan: number; unknown: number };
+
+function newBillingModeTokenTotals(): BillingModeTokenTotals {
+  return { api_key: 0, token_plan: 0, unknown: 0 };
+}
+
+function addBillingModeTokens(target: BillingModeTokenTotals, row: GroupedRow, tokens: number) {
+  const mode = row.billing_mode === "api_key" || row.billing_mode === "token_plan"
+    ? row.billing_mode
+    : "unknown";
+  target[mode] += tokens;
+}
+
 /**
  * Server-side aggregation. One RPC replaces the old N paginated 1000-row raw
- * fetches: account_usage_grouped() GROUPs BY (tz-local day, source, model) in
+ * fetches: account_usage_grouped_v2() GROUPs BY (tz-local day, source, model, billing_mode) in
  * Postgres and returns a single JSONB array. We still filter to local days in
  * [from, to] and collapse to (source, model) in-edge — SUM across the user's
  * active devices is byte-identical; tz-local day bucketing uses `AT TIME ZONE`
@@ -357,7 +372,7 @@ async function fetchGroupedRows(
   tzOffsetMinutes: number | null,
 ): Promise<GroupedRow[]> {
   if (activeDeviceIds.length === 0) return [];
-  const { data, error } = await client.database.rpc("account_usage_grouped", {
+  const { data, error } = await client.database.rpc("account_usage_grouped_v2", {
     p_user_id: userId,
     p_device_ids: activeDeviceIds,
     p_from: fromIso,
@@ -451,6 +466,7 @@ export default async function (req: Request): Promise<Response> {
     cache_creation_input_tokens: 0,
     reasoning_output_tokens: 0,
     total_cost_usd: "0",
+    billing_mode_token_totals: newBillingModeTokenTotals(),
   });
 
   const bySource = new Map<string, SourceAgg>();
@@ -463,6 +479,7 @@ export default async function (req: Request): Promise<Response> {
       bySource.set(src, sa);
     }
     const tt = Number(row.total_tokens) || 0;
+    addBillingModeTokens(sa.totals.billing_mode_token_totals, row, tt);
     sa.totals.total_tokens += tt;
     sa.totals.billable_total_tokens += tt;
     sa.totals.input_tokens += Number(row.input_tokens) || 0;
@@ -477,6 +494,7 @@ export default async function (req: Request): Promise<Response> {
       sa.models.set(mdl, ma);
     }
     ma.totals.total_tokens += tt;
+    addBillingModeTokens(ma.totals.billing_mode_token_totals, row, tt);
     ma.totals.billable_total_tokens += tt;
     ma.totals.input_tokens += Number(row.input_tokens) || 0;
     ma.totals.output_tokens += Number(row.output_tokens) || 0;

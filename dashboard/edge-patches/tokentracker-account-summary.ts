@@ -8,7 +8,7 @@
  * signature themselves — otherwise any caller can forge {"sub":"<victim>"}
  * and read another user's full token history.
  *
- * Cross-device aggregation lives server-side in the account_usage_grouped RPC
+ * Cross-device aggregation lives server-side in the account_usage_grouped_v2 RPC
  * (this function just buckets/sums what the RPC returns). The RPC splits by
  * source class — see its header + test/account-source-parity.test.js:
  *   * MACHINE-LEVEL sources (claude/codex/gemini/...): real independent
@@ -350,6 +350,7 @@ interface GroupedRow {
   bucket: string;
   source: string;
   model: string;
+  billing_mode: string | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -359,9 +360,22 @@ interface GroupedRow {
   conversations: number | null;
 }
 
+type BillingModeTokenTotals = { api_key: number; token_plan: number; unknown: number };
+
+function newBillingModeTokenTotals(): BillingModeTokenTotals {
+  return { api_key: 0, token_plan: 0, unknown: 0 };
+}
+
+function addBillingModeTokens(target: BillingModeTokenTotals, row: GroupedRow, tokens: number) {
+  const mode = row.billing_mode === "api_key" || row.billing_mode === "token_plan"
+    ? row.billing_mode
+    : "unknown";
+  target[mode] += tokens;
+}
+
 /**
  * Server-side aggregation. One RPC replaces the old N paginated 1000-row raw
- * fetches: account_usage_grouped() GROUPs BY (tz-local bucket, source, model)
+ * fetches: account_usage_grouped_v2() GROUPs BY (tz-local bucket, source, model, billing_mode)
  * in Postgres and returns a single JSONB array. SUM across the user's active
  * devices is byte-identical to the old in-edge aggregation; tz-local bucketing
  * uses `AT TIME ZONE` (same IANA database as the old JS Intl path, incl. DST).
@@ -377,7 +391,7 @@ async function fetchGroupedRows(
   tzOffsetMinutes: number | null,
 ): Promise<GroupedRow[]> {
   if (activeDeviceIds.length === 0) return [];
-  const { data, error } = await client.database.rpc("account_usage_grouped", {
+  const { data, error } = await client.database.rpc("account_usage_grouped_v2", {
     p_user_id: userId,
     p_device_ids: activeDeviceIds,
     p_from: fromIso,
@@ -421,6 +435,7 @@ interface DayAgg {
   cache_creation_input_tokens: number;
   reasoning_output_tokens: number;
   conversation_count: number;
+  billing_mode_token_totals: BillingModeTokenTotals;
 }
 
 function aggregateByDay(rows: GroupedRow[]): DayAgg[] {
@@ -440,10 +455,12 @@ function aggregateByDay(rows: GroupedRow[]): DayAgg[] {
         cache_creation_input_tokens: 0,
         reasoning_output_tokens: 0,
         conversation_count: 0,
+        billing_mode_token_totals: newBillingModeTokenTotals(),
       };
       byDay.set(day, a);
     }
     const tt = Number(row.total_tokens) || 0;
+    addBillingModeTokens(a.billing_mode_token_totals, row, tt);
     a.total_tokens += tt;
     a.billable_total_tokens += tt;
     a.total_cost_usd += computeRowCost(row);
@@ -540,6 +557,9 @@ export default async function (req: Request): Promise<Response> {
       acc.cache_creation_input_tokens += r.cache_creation_input_tokens;
       acc.reasoning_output_tokens += r.reasoning_output_tokens;
       acc.conversation_count += r.conversation_count;
+      acc.billing_mode_token_totals.api_key += r.billing_mode_token_totals.api_key;
+      acc.billing_mode_token_totals.token_plan += r.billing_mode_token_totals.token_plan;
+      acc.billing_mode_token_totals.unknown += r.billing_mode_token_totals.unknown;
       return acc;
     },
     {
@@ -552,6 +572,7 @@ export default async function (req: Request): Promise<Response> {
       cache_creation_input_tokens: 0,
       reasoning_output_tokens: 0,
       conversation_count: 0,
+      billing_mode_token_totals: newBillingModeTokenTotals(),
     },
   );
   const totalCost = totals.total_cost_usd;

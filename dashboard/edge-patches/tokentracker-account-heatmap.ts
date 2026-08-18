@@ -108,6 +108,7 @@ interface GroupedRow {
   bucket: string;
   source: string | null;
   model: string | null;
+  billing_mode: string | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -117,9 +118,22 @@ interface GroupedRow {
   conversations: number | null;
 }
 
+type BillingModeTokenTotals = { api_key: number; token_plan: number; unknown: number };
+
+function newBillingModeTokenTotals(): BillingModeTokenTotals {
+  return { api_key: 0, token_plan: 0, unknown: 0 };
+}
+
+function addBillingModeTokens(target: BillingModeTokenTotals, row: GroupedRow, tokens: number) {
+  const mode = row.billing_mode === "api_key" || row.billing_mode === "token_plan"
+    ? row.billing_mode
+    : "unknown";
+  target[mode] += tokens;
+}
+
 /**
  * Server-side aggregation. One RPC replaces the old N paginated 1000-row raw
- * fetches: account_usage_grouped() GROUPs BY (tz-local bucket, source, model)
+ * fetches: account_usage_grouped_v2() GROUPs BY (tz-local bucket, source, model, billing_mode)
  * in Postgres and returns a single JSONB array, so a 52-week heatmap that used
  * to need ~7 page round-trips (~3s) returns a few hundred rows in one call
  * (~150ms). SUM across the user's active devices is byte-identical to the old
@@ -137,7 +151,7 @@ async function fetchGroupedRows(
   tzOffsetMinutes: number | null,
 ): Promise<GroupedRow[]> {
   if (activeDeviceIds.length === 0) return [];
-  const { data, error } = await client.database.rpc("account_usage_grouped", {
+  const { data, error } = await client.database.rpc("account_usage_grouped_v2", {
     p_user_id: userId,
     p_device_ids: activeDeviceIds,
     p_from: fromIso,
@@ -212,16 +226,17 @@ export default async function (req: Request): Promise<Response> {
     return json({ error: (e as Error).message }, 500);
   }
 
-  const byDay = new Map<string, { total_tokens: number; billable_total_tokens: number; models: Record<string, number> }>();
+  const byDay = new Map<string, { total_tokens: number; billable_total_tokens: number; models: Record<string, number>; billing_mode_token_totals: BillingModeTokenTotals }>();
   for (const row of rows) {
     const day = row.bucket;
     if (day < from || day > to) continue;
     let a = byDay.get(day);
     if (!a) {
-      a = { total_tokens: 0, billable_total_tokens: 0, models: {} };
+      a = { total_tokens: 0, billable_total_tokens: 0, models: {}, billing_mode_token_totals: newBillingModeTokenTotals() };
       byDay.set(day, a);
     }
     const tt = Number(row.total_tokens) || 0;
+    addBillingModeTokens(a.billing_mode_token_totals, row, tt);
     a.total_tokens += tt;
     a.billable_total_tokens += tt;
     // Per-model totals so the activity-heatmap tooltip can show MODEL breakdown
@@ -244,7 +259,7 @@ export default async function (req: Request): Promise<Response> {
     return 4;
   };
 
-  const cells: { day: string; total_tokens: number; billable_total_tokens: number; level: number; models: Record<string, number> | null }[] = [];
+  const cells: { day: string; total_tokens: number; billable_total_tokens: number; level: number; models: Record<string, number> | null; billing_mode_token_totals: BillingModeTokenTotals }[] = [];
   const cursor = new Date(start);
   while (cursor <= end) {
     const day = cursor.toISOString().slice(0, 10);
@@ -256,6 +271,7 @@ export default async function (req: Request): Promise<Response> {
       billable_total_tokens: billable,
       level: calcLevel(billable),
       models: data?.models || null,
+      billing_mode_token_totals: data?.billing_mode_token_totals || newBillingModeTokenTotals(),
     });
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }

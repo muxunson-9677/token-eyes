@@ -299,7 +299,7 @@ function canonicalSource(s: string) {
 // synced them, so they must be DEDUPED across devices, not summed. Machine-level
 // sources are real independent per-machine work and SUM across active devices.
 // Keep in sync with ACCOUNT_LEVEL_SOURCES in src/lib/source-metadata.js, the
-// account_usage_grouped RPC, and tokentracker-leaderboard-refresh.ts
+// account_usage_grouped_v2 RPC, and tokentracker-leaderboard-refresh.ts
 // (parity: test/account-source-parity.test.js).
 const ACCOUNT_LEVEL_SOURCES = new Set<string>(["cursor"]);
 
@@ -364,7 +364,7 @@ function computeStreak(daysWithActivity: Set<string>): { current_days: number; l
 // ─────────────────────────── Main handler ──────────────────────────
 // deno-lint-ignore no-explicit-any
 async function scanHourlyForUser(client: any, userId: string, rangeStartIso: string, rangeEndIso: string) {
-  // Two-class cross-device aggregation, matching the account_usage_grouped RPC
+  // Two-class cross-device aggregation, matching the account_usage_grouped_v2 RPC
   // and tokentracker-leaderboard-refresh.ts:
   //   * ACCOUNT-LEVEL sources (cursor): same data on every device → keep ONE
   //     canonical whole row per (source, model, hour) (highest total_tokens),
