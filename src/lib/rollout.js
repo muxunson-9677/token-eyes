@@ -1546,6 +1546,33 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
   const codexDominants = collectCodexDominantModels(hourlyState);
 
   const toAppend = [];
+  const pendingAttributionRetractions =
+    hourlyState.pendingAttributionRetractions &&
+    typeof hourlyState.pendingAttributionRetractions === "object"
+      ? hourlyState.pendingAttributionRetractions
+      : {};
+  for (const groupKey of touchedGroups) {
+    const pending = pendingAttributionRetractions[groupKey];
+    if (!pending) continue;
+    const zeroTotals = initTotals();
+    toAppend.push(
+      serializeUsageQueueRecord({
+        source: pending.source,
+        model: DEFAULT_MODEL,
+        hour_start: pending.hourStart,
+        input_tokens: zeroTotals.input_tokens,
+        cached_input_tokens: zeroTotals.cached_input_tokens,
+        cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
+        output_tokens: zeroTotals.output_tokens,
+        reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
+        total_tokens: zeroTotals.total_tokens,
+        billable_total_tokens: zeroTotals.billable_total_tokens,
+        conversation_count: zeroTotals.conversation_count,
+      }),
+    );
+    delete pendingAttributionRetractions[groupKey];
+  }
+  hourlyState.pendingAttributionRetractions = pendingAttributionRetractions;
   for (const group of groupedBuckets.values()) {
     const unknownBucket = group.buckets.get(DEFAULT_MODEL) || null;
     const dominantModel = pickDominantModel(group.buckets);
@@ -1904,6 +1931,7 @@ function normalizeHourlyState(raw) {
       buckets,
       groupQueued,
       attributionMigrationVersion: 1,
+      pendingAttributionRetractions: {},
       updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
     };
   }
@@ -1918,9 +1946,15 @@ function normalizeHourlyState(raw) {
 
   const existingGroupQueued =
     state.groupQueued && typeof state.groupQueued === "object" ? state.groupQueued : {};
+  const existingPendingAttributionRetractions =
+    state.pendingAttributionRetractions && typeof state.pendingAttributionRetractions === "object"
+      ? state.pendingAttributionRetractions
+      : {};
 
   let normalizedGroupQueued = version >= 3 ? existingGroupQueued : {};
+  const pendingAttributionRetractions = { ...existingPendingAttributionRetractions };
   if (attributionMigrationVersion < 1) {
+    const legacyBucketsByGroup = new Map();
     for (const [key, bucket] of Object.entries(buckets)) {
       if (!bucket?.totals) continue;
       const parsed = parseBucketKey(key);
@@ -1928,6 +1962,8 @@ function normalizeHourlyState(raw) {
       if (!hourStart) continue;
       const groupKey = groupBucketKey(parsed.source, hourStart);
       if (!Object.prototype.hasOwnProperty.call(normalizedGroupQueued, groupKey)) continue;
+      if (!legacyBucketsByGroup.has(groupKey)) legacyBucketsByGroup.set(groupKey, []);
+      legacyBucketsByGroup.get(groupKey).push({ bucket, parsed, hourStart });
       if (!bucket.attributionBuckets || typeof bucket.attributionBuckets !== "object") {
         bucket.attributionBuckets = {
           unknown: {
@@ -1935,9 +1971,19 @@ function normalizeHourlyState(raw) {
             attribution: normalizeUsageAttribution(null),
           },
         };
+      }
+    }
+    for (const [groupKey, entries] of legacyBucketsByGroup) {
+      if (entries.length === 1) {
+        const [{ bucket, parsed }] = entries;
         bucket.attributionQueuedKeys = {
           ...(bucket.attributionQueuedKeys || {}),
           unknown: `${totalsKey(bucket.totals)}|${parsed.model || DEFAULT_MODEL}|unknown`,
+        };
+      } else if (entries.length > 1) {
+        pendingAttributionRetractions[groupKey] = {
+          source: normalizeSourceInput(entries[0].parsed.source) || DEFAULT_SOURCE,
+          hourStart: entries[0].hourStart,
         };
       }
     }
@@ -1949,6 +1995,7 @@ function normalizeHourlyState(raw) {
     buckets,
     groupQueued: normalizedGroupQueued,
     attributionMigrationVersion: 1,
+    pendingAttributionRetractions,
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
   };
 }
