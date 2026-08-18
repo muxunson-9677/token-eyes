@@ -901,7 +901,10 @@ function ApiBillingSection({ accounts, loading, estimatedTotalUsd = null, sectio
   const estimatedMonthUsd = hasEstimatedTotal
     ? Number(estimatedTotalUsd)
     : estimatedMonthValues.reduce((sum, value) => sum + value, 0);
-  const unavailableAccounts = accounts.filter((account) => account.spendAuthority === "unavailable").length;
+  let unavailableAccounts = 0;
+  for (const account of accounts) {
+    if (account.spendAuthority === "unavailable") unavailableAccounts += 1;
+  }
   const unavailable = copy("spend.cost.row.unavailable");
   return (
     <FoldableSection

@@ -347,16 +347,14 @@ describe("DataDetails daily rows", () => {
     );
 
     await openDailyOverlay(user);
-    rerender(
-      <DataDetails
-        {...dailyProps}
-        dailyBreakdownRows={dailyRowsWithUsage}
-        dailyBreakdownColumns={dailyColumns}
-        renderDetailCell={(row, key) => String(row[key] ?? 0)}
-        dailyBreakdownScope={scope}
-        onLoadDailyModelBreakdown={newLoader}
-      />,
-    );
+    rerender(React.createElement(DataDetails, {
+      ...dailyProps,
+      dailyBreakdownRows: dailyRowsWithUsage,
+      dailyBreakdownColumns: dailyColumns,
+      renderDetailCell: (row, key) => String(row[key] ?? 0),
+      dailyBreakdownScope: scope,
+      onLoadDailyModelBreakdown: newLoader,
+    }));
 
     expect(oldSignal.aborted).toBe(true);
     expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
@@ -395,23 +393,21 @@ describe("DataDetails daily rows", () => {
     await openDailyOverlay(user);
     expect(loadA).toHaveBeenCalledTimes(1);
 
-    rerender(
-      <DataDetails
-        {...dailyProps}
-        dailyBreakdownRows={dailyRowsWithUsage}
-        dailyBreakdownColumns={dailyColumns}
-        renderDetailCell={(row, key) => String(row[key] ?? 0)}
-        dailyBreakdownScope={dailyScope({
-          accountId: "account-b",
-          mode: "cloud",
-          baseUrl: "https://usage.example.test",
-          timeZone: "Asia/Shanghai",
-          tzOffsetMinutes: 480,
-          sources: ["gemini"],
-        })}
-        onLoadDailyModelBreakdown={loadB}
-      />,
-    );
+    rerender(React.createElement(DataDetails, {
+      ...dailyProps,
+      dailyBreakdownRows: dailyRowsWithUsage,
+      dailyBreakdownColumns: dailyColumns,
+      renderDetailCell: (row, key) => String(row[key] ?? 0),
+      dailyBreakdownScope: dailyScope({
+        accountId: "account-b",
+        mode: "cloud",
+        baseUrl: "https://usage.example.test",
+        timeZone: "Asia/Shanghai",
+        tzOffsetMinutes: 480,
+        sources: ["gemini"],
+      }),
+      onLoadDailyModelBreakdown: loadB,
+    }));
 
     expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
     await openDailyOverlay(user);
@@ -511,16 +507,14 @@ describe("DataDetails daily rows", () => {
     );
 
     await openDailyOverlay(user);
-    rerender(
-      <DataDetails
-        {...dailyProps}
-        dailyBreakdownRows={dailyRowsWithUsage}
-        dailyBreakdownColumns={dailyColumns}
-        renderDetailCell={(row, key) => String(row[key] ?? 0)}
-        dailyBreakdownScope={dailyScope({ timeZone: "Asia/Shanghai", tzOffsetMinutes: 480 })}
-        onLoadDailyModelBreakdown={loadNew}
-      />,
-    );
+    rerender(React.createElement(DataDetails, {
+      ...dailyProps,
+      dailyBreakdownRows: dailyRowsWithUsage,
+      dailyBreakdownColumns: dailyColumns,
+      renderDetailCell: (row, key) => String(row[key] ?? 0),
+      dailyBreakdownScope: dailyScope({ timeZone: "Asia/Shanghai", tzOffsetMinutes: 480 }),
+      onLoadDailyModelBreakdown: loadNew,
+    }));
     expect(oldSignal.aborted).toBe(true);
 
     await openDailyOverlay(user);
