@@ -123,6 +123,17 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 
 ## Release workflow
 
+### 当前私有迭代授权边界（硬规则）
+
+- 推送私有仓库 `main` 只更新正式源码并运行 CI，不会自动发布 npm。
+- npm 发布属于单独、明确授权；只有获得该授权后，才可手动触发 `npm-publish.yml` 的 `workflow_dispatch`，并明确勾选 `publish_npm=true`。普通 `main` push 绝不能进入 npm publish job。
+- 当前私有迭代阶段不得创建公开 GitHub Release、不得公开仓库、不得自动发布 npm。
+- Windows 私有验证安装包允许不做 Authenticode 签名；这不代表公开发布物可以省略其正式签名要求。
+- 合并或推送 `main`、npm 发布、公开 Release、清理保留分支或工作树是彼此独立的授权，不得互相推断。
+- 用户说“发布到 main”在当前阶段仅指更新私有仓库 `main`，不能解释为 npm 发布或创建公开 GitHub Release。
+
+### 正式公开发布流程（仅在另行明确授权后）
+
 **Any change under `src/` or `dashboard/` ships npm + DMG + Windows**, because both `TokenTrackerBar/EmbeddedServer/` (macOS) and `TokenTrackerWin/EmbeddedServer/` (Windows) bundle the CLI runtime and built dashboard. Bumping only `package.json` leaves desktop-app users on the stale embedded copy.
 
 The macOS + Windows release is **one workflow**: `release-dmg.yml` (display name **`release (macOS + Windows)`**). A `create-release` job makes the `vX.Y.Z` release as a **draft**, then a macOS `build` job and a `windows` job (which calls the reusable `release-windows.yml` via `workflow_call`) both `needs: create-release` and run **in parallel**, each uploading its assets to the draft with `--clobber`. A final `publish` job (`needs: [build, windows]`) flips the draft live (`gh release edit --draft=false`) and notifies the Homebrew tap. The draft stays invisible until then, so `releases/latest` never serves a half-published release (and a failed platform leaves it unpublished rather than half-public). A **single** `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` ships **both** platforms. `release-windows.yml` can still be dispatched standalone for a Windows-only build.
@@ -136,12 +147,12 @@ The macOS + Windows release is **one workflow**: `release-dmg.yml` (display name
 
 All four version locations must match or the workflows' "Verify version" steps fail (DMG checks `package.json` + `project.yml`; Windows checks `package.json` + `csproj`).
 
-When the user says "release" or "发 release", that is explicit approval for the release commit(s) + push — do not ask again for commit/push permission within that scope.
+The following steps describe the formal public release flow after each required authorization has been granted. They do not broaden one authorization into another.
 
 ### Steps
 
 1. Bump `package.json`, `project.yml`'s two `MARKETING_VERSION` entries (App + Widget targets), and `TokenTrackerWin/TokenTrackerWin.csproj`'s `<Version>` — keep all four in lockstep.
-2. `git commit && git push origin main` → `npm-publish.yml` auto-publishes when version is new.
+2. `git commit && git push origin main` updates the private repository and runs CI only. With separate explicit npm-publish authorization, manually run `gh workflow run npm-publish.yml -f publish_npm=true`; version checks still prevent republishing an existing version.
 3. For DMG-eligible changes: `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` → cloud builds DMG **and** the Windows zip + installer (in parallel), attaching all to the GitHub Release.
 4. Homebrew tap `mm7894215/homebrew-tokentracker` self-updates via dispatch (~40s if `HOMEBREW_DISPATCH_TOKEN` set) or hourly cron (≤1h fallback). **Never edit the tap repo manually for routine releases.**
 

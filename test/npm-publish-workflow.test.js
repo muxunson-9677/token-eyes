@@ -10,9 +10,14 @@ const WORKFLOW_PATH = path.join(
   "workflows",
   "npm-publish.yml"
 );
+const RELEASE_GUIDANCE_PATH = path.join(__dirname, "..", "CLAUDE.md");
 
 function loadWorkflow() {
   return fs.readFileSync(WORKFLOW_PATH, "utf8");
+}
+
+function loadReleaseGuidance() {
+  return fs.readFileSync(RELEASE_GUIDANCE_PATH, "utf8");
 }
 
 test("npm-publish workflow file exists", () => {
@@ -42,6 +47,32 @@ test("ordinary main pushes can run tests but can never enter the publish job", (
   const publishHeader = content.slice(publishIdx, content.indexOf("\n    runs-on:", publishIdx));
   assert.match(publishHeader, /github\.event_name\s*==\s*'workflow_dispatch'/u);
   assert.match(publishHeader, /inputs\.publish_npm\s*==\s*true/u);
+});
+
+test("release guidance requires an explicitly authorized manual npm publish", () => {
+  const content = loadReleaseGuidance();
+  const normalized = content.replace(/\s+/gu, " ");
+
+  assert.doesNotMatch(
+    normalized,
+    /git commit\s*&&\s*git push origin main[^。\n]*npm-publish\.yml[^。\n]*auto-publishes/iu,
+    "main push guidance must not claim that npm publishes automatically",
+  );
+  assert.match(
+    normalized,
+    /(?:推送|push)[^。\n]*main[^。\n]*(?:不会|不得)[^。\n]*自动[^。\n]*发布 npm/iu,
+    "guidance should state that a main push does not automatically publish npm",
+  );
+  assert.match(
+    normalized,
+    /npm 发布[^。\n]*(?:单独|独立)[^。\n]*明确授权/iu,
+    "npm publication should require separate explicit authorization",
+  );
+  assert.match(
+    normalized,
+    /workflow_dispatch[^。\n]*publish_npm\s*=\s*true/iu,
+    "npm publication should require manual dispatch with publish_npm=true",
+  );
 });
 
 test("publish job builds/publishes on Node.js 20 to match the engines floor", () => {
