@@ -738,7 +738,7 @@ describe("WidgetsPage Windows desktop widget", () => {
       name: copy("widgets.windows.projects.add_folder"),
     }));
 
-    expect(screen.getByRole("checkbox", { name: "012-EDU-lite" })).toBeChecked();
+    expect(await screen.findByRole("checkbox", { name: "012-EDU-lite" })).toBeChecked();
     expect(invoke).not.toHaveBeenCalledWith(
       "set_desktop_widget_prefs",
       expect.anything(),
