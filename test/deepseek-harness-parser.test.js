@@ -94,9 +94,12 @@ async function seedPreFixHarnessState({ sessionFiles, cursors, queuePath }) {
 }
 
 test("resolveDeepSeekHarnessHome follows explicit override, DSH_HOME, then ~/.dsh", () => {
-  assert.equal(resolveDeepSeekHarnessHome({ TOKENTRACKER_DSH_HOME: "D:\\override" }, "C:\\Users\\tester"), "D:\\override");
-  assert.equal(resolveDeepSeekHarnessHome({ DSH_HOME: "D:\\dsh" }, "C:\\Users\\tester"), "D:\\dsh");
-  assert.equal(resolveDeepSeekHarnessHome({}, "C:\\Users\\tester"), path.join("C:\\Users\\tester", ".dsh"));
+  const explicitOverride = path.resolve("dsh-explicit-override");
+  const dshHome = path.resolve("dsh-home-override");
+  const homeDir = path.resolve("dsh-user-home");
+  assert.equal(resolveDeepSeekHarnessHome({ TOKENTRACKER_DSH_HOME: explicitOverride }, homeDir), explicitOverride);
+  assert.equal(resolveDeepSeekHarnessHome({ DSH_HOME: dshHome }, homeDir), dshHome);
+  assert.equal(resolveDeepSeekHarnessHome({}, homeDir), path.join(homeDir, ".dsh"));
 });
 
 test("lists compressed and raw DeepSeek Harness session logs recursively", async (t) => {
