@@ -38,6 +38,12 @@ const RECORD = {
   sync_status: "success",
 };
 
+function formatLocalDateTime(value) {
+  const date = new Date(value);
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 async function expandPlan(planLabel) {
   const cards = await screen.findAllByTestId("token-plan-card");
   const card = cards.find((candidate) => candidate.textContent.includes(planLabel));
@@ -238,7 +244,9 @@ it("matches the cost-and-quota card hierarchy with account, cost, detailed valid
   expect(card).not.toHaveTextContent("只在展开后出现的备注");
 
   const validity = within(card).getByTestId("token-plan-validity");
-  expect(validity).toHaveTextContent(/有效期：.+2026\/08\/30 22:24/);
+  expect(validity).toHaveTextContent(
+    new RegExp(`有效期：.+${formatLocalDateTime("2026-08-30T14:24:24.000Z").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+  );
   expect(validity).toHaveClass("tt-token-plan-summary-expiry--single-line");
 });
 

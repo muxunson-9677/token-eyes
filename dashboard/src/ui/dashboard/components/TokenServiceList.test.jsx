@@ -7,6 +7,12 @@ import { setCopyLocale } from "../../../lib/copy";
 
 afterEach(() => setCopyLocale("zh-CN"));
 
+function formatLocalDateTime(value) {
+  const date = new Date(value);
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function plan(id, used, total = 1_000, overrides = {}) {
   return {
     id,
@@ -293,7 +299,9 @@ describe("TokenServiceList", () => {
     expect(within(row).getByTestId("token-service-reset-gpt_5_3_codex_spark_weekly"))
       .toHaveTextContent("还剩 11天 0小时");
     expect(within(row).getByTestId("token-service-validity")).toHaveTextContent("有效期：16天 14小时");
-    expect(within(row).getByTestId("token-service-validity")).toHaveTextContent("2026/08/30 22:24");
+    expect(within(row).getByTestId("token-service-validity")).toHaveTextContent(
+      formatLocalDateTime("2026-08-30T14:24:24Z"),
+    );
     expect(within(row).getByTestId("token-service-validity")).not.toHaveTextContent("到期");
   });
 
@@ -460,7 +468,9 @@ describe("TokenServiceList", () => {
     );
     expect(within(xiaomiRow).getByText("Standard")).toHaveClass("text-oai-gray-400");
     expect(within(xiaomiRow).getByTestId("token-service-validity")).toHaveTextContent("有效期：");
-    expect(within(xiaomiRow).getByTestId("token-service-validity")).toHaveTextContent("2099/12/31 08:00");
+    expect(within(xiaomiRow).getByTestId("token-service-validity")).toHaveTextContent(
+      formatLocalDateTime("2099-12-31"),
+    );
     expect(within(xiaomiRow).getByTestId("token-service-validity")).not.toHaveTextContent("到期");
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Plus")).toHaveClass("text-oai-gray-400");
