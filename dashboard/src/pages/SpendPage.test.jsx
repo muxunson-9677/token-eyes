@@ -291,7 +291,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     render(<SpendUsagePage />);
 
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
-    expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
+    expect(await screen.findByTestId("usage-cost-summary")).toBeInTheDocument();
 
     getSpendRecords.mockRejectedValue(new Error("financial refresh timed out"));
     await act(async () => {
