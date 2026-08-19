@@ -35,7 +35,7 @@ jobs:
             echo "Release notes must be one non-empty English/ASCII line"
             exit 1
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Create draft release
         run: gh release create "v${{ inputs.version }}" --draft --title "v${{ inputs.version }}" --notes "$RELEASE_NOTES"
         env:
@@ -48,8 +48,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -117,7 +117,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Publish release
         run: gh release edit "v${{ inputs.version }}" --draft=false
         env:
