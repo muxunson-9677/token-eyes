@@ -1020,7 +1020,7 @@ function collectMemoryImports(filePath, seen, homeDir, boundaryPath = null) {
   const dir = path.dirname(safeFilePath);
   // Match `@path/to/file.md` (CC's import syntax), but skip `@user@host` and
   // `email@host` patterns by requiring a path-like suffix.
-  const re = /(?:^|\s)@((?:[./~]|[A-Za-z]:[\\/])[^\s)]*\.md)\b/g;
+  const re = /(?:^|\s)@((?:[./~]|[A-Za-z]:[\\/])[^\r\n)]*?\.md)\b/g;
   let m;
   while ((m = re.exec(raw)) !== null) {
     let target = m[1];

@@ -335,8 +335,8 @@ test("data-directory and agent-environment routes receive the isolated handler c
   }
 });
 
-test("Claude category route confines projects, resources, and disk cache to trackerDataDir", async (t) => {
-  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-claude-category-scope-"));
+test("Claude category route confines spaced paths, resources, and disk cache to trackerDataDir", async (t) => {
+  const trackerDataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt claude category scope-"));
   const outsideDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-claude-category-outside-"));
   t.after(() => fs.promises.rm(trackerDataDir, { recursive: true, force: true }));
   t.after(() => fs.promises.rm(outsideDir, { recursive: true, force: true }));
