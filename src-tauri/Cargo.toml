@@ -1,6 +1,6 @@
 [package]
 name = "token-eyes"
-version = "0.54.44"
+version = "0.54.45"
 description = "Token Eyes - AI Token Usage Tracker Desktop"
 authors = ["Muxunson"]
 license = "MIT"
