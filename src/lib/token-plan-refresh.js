@@ -36,6 +36,7 @@ const SYNC_STATUSES = new Set([
   "success",
   "failed",
   "reauth_required",
+  "temporary",
   "unsupported",
 ]);
 
@@ -414,17 +415,36 @@ function getProviderAdapterForPlan(plan) {
   return getProviderAdapter(plan?.source);
 }
 
+const QUOTA_WINDOW_KINDS = new Set([
+  "rolling_5_hour",
+  "rolling_weekly",
+  "gpt_5_3_codex_spark_5_hour",
+  "gpt_5_3_codex_spark_weekly",
+  "total",
+  "auto_composer",
+  "api",
+  "team_pool",
+  "fast_request",
+]);
+const COUNT_QUOTA_UNITS = new Set([
+  "tokens",
+  "requests",
+  "prompts",
+  "points",
+  "provider_count",
+  "credits",
+]);
+const CURRENCY_QUOTA_UNITS = new Set(["CNY", "USD"]);
+const CURSOR_LANE_IDS = new Set(["overall", "auto", "api", "team_pool"]);
+const PROVIDER_REPORTED_FIELD_ORDER = [
+  "total_quota",
+  "used_quota",
+  "remaining_quota",
+  "quota_windows",
+  "expires_at",
+];
+
 function normalizeQuotaWindows(input, fallback = []) {
-  const allowedKinds = new Set([
-    "rolling_5_hour",
-    "rolling_weekly",
-    "gpt_5_3_codex_spark_5_hour",
-    "gpt_5_3_codex_spark_weekly",
-    "total",
-    "auto_composer",
-    "api",
-    "fast_request",
-  ]);
   const source = Array.isArray(input) ? input : (Array.isArray(fallback) ? fallback : []);
   const toSafeNumber = (value, allowFraction) => {
     const number = Number(value);
@@ -432,59 +452,205 @@ function normalizeQuotaWindows(input, fallback = []) {
     return allowFraction || Number.isSafeInteger(number) ? number : 0;
   };
   return source
-    .filter((item) => item && allowedKinds.has(item.kind))
+    .filter((item) => item && QUOTA_WINDOW_KINDS.has(item.kind))
     .map((item) => {
       const unit = item.unit === "percent"
         ? "percent"
-        : (item.unit === "requests" ? "requests" : "tokens");
-      const allowFraction = unit === "percent";
-      return {
+        : ((COUNT_QUOTA_UNITS.has(item.unit) || CURRENCY_QUOTA_UNITS.has(item.unit))
+          ? item.unit
+          : "tokens");
+      const allowFraction = unit === "percent" || CURRENCY_QUOTA_UNITS.has(unit);
+      const normalized = {
         kind: item.kind,
         unit,
         total: toSafeNumber(item.total, allowFraction),
         used: toSafeNumber(item.used, allowFraction),
         remaining: toSafeNumber(item.remaining, allowFraction),
-        percentage: Math.max(0, Math.min(100, Number(item.percentage) || 0)),
         resets_at: String(item.resets_at || ""),
       };
+      if (CURSOR_LANE_IDS.has(item.lane_id)) {
+        normalized.lane_id = item.lane_id;
+      }
+      if (Object.prototype.hasOwnProperty.call(item, "percentage") && item.percentage !== null) {
+        normalized.percentage = Math.max(0, Math.min(100, Number(item.percentage) || 0));
+      }
+      return normalized;
     });
 }
 
-const { getPlanById } = require("./token-plan-catalog");
+function providerSnapshotError(field, reason) {
+  const error = new Error(`provider adapter returned invalid ${field}: ${reason}`);
+  error.code = "PROVIDER_SNAPSHOT_INVALID";
+  return error;
+}
 
-function shouldPreserveCatalogTotal(plan) {
-  const catalogPlan = getPlanById(plan?.provider_id, plan?.plan_id);
-  if (!catalogPlan) return false;
-  return Number(catalogPlan.total_quota) > 0;
+function validateQuotaUnit(unit, field) {
+  if (unit === "percent" || COUNT_QUOTA_UNITS.has(unit) || CURRENCY_QUOTA_UNITS.has(unit)) {
+    return unit;
+  }
+  throw providerSnapshotError(field, "unsupported quota unit");
+}
+
+function validateProviderQuotaNumber(value, unit, field) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw providerSnapshotError(field, "expected a finite non-negative JSON number");
+  }
+  if (unit === "percent") {
+    if (value > 100) {
+      throw providerSnapshotError(field, "percent must be between 0 and 100");
+    }
+    return value;
+  }
+  if (CURRENCY_QUOTA_UNITS.has(unit)) {
+    if (value > Number.MAX_SAFE_INTEGER) {
+      throw providerSnapshotError(field, "currency must not exceed Number.MAX_SAFE_INTEGER");
+    }
+    return value;
+  }
+  if (!Number.isSafeInteger(value)) {
+    throw providerSnapshotError(field, "count must be a non-negative safe integer");
+  }
+  return value;
+}
+
+function quotaNumbersEqual(left, right, unit) {
+  if (unit !== "percent" && !CURRENCY_QUOTA_UNITS.has(unit)) return left === right;
+  const scale = Math.max(1, Math.abs(left), Math.abs(right));
+  return Math.abs(left - right) <= Number.EPSILON * scale * 16;
+}
+
+function validateProviderQuotaWindows(value) {
+  if (!Array.isArray(value)) {
+    throw providerSnapshotError("quota_windows", "expected an array");
+  }
+  value.forEach((window, index) => {
+    if (!window || typeof window !== "object" || Array.isArray(window)) {
+      throw providerSnapshotError(`quota_windows[${index}]`, "expected an object");
+    }
+    if (!QUOTA_WINDOW_KINDS.has(window.kind)) {
+      throw providerSnapshotError(`quota_windows[${index}].kind`, "unsupported window kind");
+    }
+    if (Object.prototype.hasOwnProperty.call(window, "lane_id") && !CURSOR_LANE_IDS.has(window.lane_id)) {
+      throw providerSnapshotError(`quota_windows[${index}].lane_id`, "unsupported Cursor lane");
+    }
+    const unit = validateQuotaUnit(window.unit, `quota_windows[${index}].unit`);
+    for (const field of ["total", "used", "remaining"]) {
+      if (!Object.prototype.hasOwnProperty.call(window, field) || window[field] === null) {
+        throw providerSnapshotError(`quota_windows[${index}].${field}`, "complete windows require this field");
+      }
+      validateProviderQuotaNumber(window[field], unit, `quota_windows[${index}].${field}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(window, "percentage") && window.percentage !== null) {
+      validateProviderQuotaNumber(window.percentage, "percent", `quota_windows[${index}].percentage`);
+    }
+    if (!quotaNumbersEqual(window.used + window.remaining, window.total, unit)) {
+      throw providerSnapshotError(`quota_windows[${index}]`, "used + remaining must equal total");
+    }
+  });
+}
+
+function validCalendarDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+}
+
+function isValidProviderExpiry(value) {
+  if (typeof value !== "string") return false;
+  if (validCalendarDate(value)) return true;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    return false;
+  }
+  if (!validCalendarDate(value.slice(0, 10))) return false;
+  return Number.isFinite(Date.parse(value));
 }
 
 function mergeAdapterResultIntoRecord(plan, quota, now) {
-  const weekly = Array.isArray(quota?.quota_windows)
-    ? quota.quota_windows.find((window) => window.kind === "rolling_weekly")
+  const snapshot = quota && typeof quota === "object" ? quota : {};
+  const hasOwn = (field) => Object.prototype.hasOwnProperty.call(snapshot, field);
+  const explicitReportedFields = Array.isArray(snapshot.provider_reported_fields)
+    ? new Set(snapshot.provider_reported_fields.filter((field) => PROVIDER_REPORTED_FIELD_ORDER.includes(field)))
     : null;
-  const fiveHour = Array.isArray(quota?.quota_windows)
-    ? quota.quota_windows.find((window) => window.kind === "rolling_5_hour")
+  const candidateFields = new Set();
+
+  const hasQuotaWindows = hasOwn("quota_windows") && snapshot.quota_windows !== null;
+  let quotaWindows = Array.isArray(plan.quota_windows) ? plan.quota_windows : [];
+  if (hasQuotaWindows) {
+    validateProviderQuotaWindows(snapshot.quota_windows);
+    quotaWindows = normalizeQuotaWindows(snapshot.quota_windows);
+    candidateFields.add("quota_windows");
+  }
+
+  const explicitQuotaValues = {};
+  const topLevelQuotaFields = ["total_quota", "used_quota", "remaining_quota"];
+  const hasExplicitQuotaValues = topLevelQuotaFields.some((field) => (
+    hasOwn(field) && snapshot[field] !== null
+  ));
+  const quotaUnit = hasExplicitQuotaValues
+    ? validateQuotaUnit(snapshot.quota_unit || plan.quota_unit || "tokens", "quota_unit")
     : null;
-  const liveWindow = weekly || fiveHour;
-  const quotaWindows = normalizeQuotaWindows(quota?.quota_windows, plan.quota_windows);
-  const preserveCatalogTotal = shouldPreserveCatalogTotal(plan);
-  const catalogPlan = getPlanById(plan.provider_id, plan.plan_id);
-  const total = preserveCatalogTotal
-    ? Number(catalogPlan?.total_quota ?? plan.total_quota ?? 0)
-    : (liveWindow
-      ? liveWindow.total
-      : (Number.isFinite(Number(quota?.total_quota)) ? Number(quota.total_quota) : plan.total_quota));
-  const used = liveWindow
-    ? liveWindow.used
-    : (Number.isFinite(Number(quota?.used_quota)) ? Number(quota.used_quota) : plan.used_quota);
-  const remaining = liveWindow
-    ? liveWindow.remaining
-    : (Number.isFinite(Number(quota?.remaining_quota)) ? Number(quota.remaining_quota) : plan.remaining_quota);
+  for (const field of topLevelQuotaFields) {
+    if (hasOwn(field) && snapshot[field] !== null) {
+      explicitQuotaValues[field] = validateProviderQuotaNumber(snapshot[field], quotaUnit, field);
+      candidateFields.add(field);
+    }
+  }
+
+  let expiresAt = plan.expires_at;
+  if (hasOwn("expires_at") && snapshot.expires_at !== null) {
+    if (snapshot.expires_at === "") {
+      if (explicitReportedFields?.has("expires_at")) {
+        expiresAt = "";
+        candidateFields.add("expires_at");
+      }
+    } else if (!isValidProviderExpiry(snapshot.expires_at)) {
+      throw providerSnapshotError("expires_at", "expected a valid ISO-8601 date or date-time");
+    } else {
+      expiresAt = snapshot.expires_at;
+      candidateFields.add("expires_at");
+    }
+  }
+
+  const providerReportedFields = PROVIDER_REPORTED_FIELD_ORDER.filter((field) => (
+    candidateFields.has(field) && (!explicitReportedFields || explicitReportedFields.has(field))
+  ));
+  const reports = (field) => providerReportedFields.includes(field);
+  const total = reports("total_quota")
+    ? explicitQuotaValues.total_quota
+    : plan.total_quota;
+  const used = reports("used_quota")
+    ? explicitQuotaValues.used_quota
+    : plan.used_quota;
+  const remaining = reports("remaining_quota")
+    ? explicitQuotaValues.remaining_quota
+    : plan.remaining_quota;
+  const reportedTopLevelFields = topLevelQuotaFields.filter(reports);
+  if (reportedTopLevelFields.length === topLevelQuotaFields.length) {
+    if (!quotaNumbersEqual(used + remaining, total, quotaUnit)) {
+      throw providerSnapshotError("top-level quota", "used + remaining must equal total");
+    }
+  } else if (
+    reportedTopLevelFields.length > 0
+    && plan.quota_unit
+    && plan.quota_unit !== quotaUnit
+    && topLevelQuotaFields.some((field) => !reports(field) && plan[field] !== undefined)
+  ) {
+    throw providerSnapshotError("quota_unit", "partial snapshots cannot change the top-level quota unit");
+  }
+  const hasFreshProviderFields = providerReportedFields.length > 0;
+  const hasFreshTopLevelQuota = reportedTopLevelFields.length > 0;
   const merged = {
     total_quota: total,
     used_quota: used,
     remaining_quota: remaining,
-    quota_source: quotaWindows.length > 0 ? "provider_reported" : plan.quota_source,
+    expires_at: reports("expires_at") ? expiresAt : plan.expires_at,
+    quota_source: hasFreshProviderFields ? "provider_reported" : plan.quota_source,
     last_refresh_status: "success",
     last_refresh_error: "",
     last_refresh_at: now,
@@ -494,15 +660,25 @@ function mergeAdapterResultIntoRecord(plan, quota, now) {
     last_sync_attempt_at: now,
     last_error_code: "",
     last_error_message: "",
-    provider_reported_at: quota?.provider_reported_at || now,
+    provider_reported_at: hasFreshProviderFields
+      ? (snapshot.provider_reported_at || now)
+      : plan.provider_reported_at,
+    provider_reported_fields: hasFreshProviderFields
+      ? providerReportedFields
+      : plan.provider_reported_fields,
   };
-  if (quotaWindows.length > 0) {
+  if (hasFreshTopLevelQuota) {
+    merged.quota_unit = quotaUnit;
+    merged.quota_kind = String(snapshot.quota_kind || plan.quota_kind || "").trim()
+      || (reports("quota_windows") ? "rolling_window" : "manual");
+    if (Object.prototype.hasOwnProperty.call(plan, "total_quota_display")) {
+      merged.total_quota_display = "";
+    }
+  }
+  if (reports("quota_windows")) {
     merged.quota_windows = quotaWindows;
   }
-  if (catalogPlan?.total_quota_display) {
-    merged.total_quota_display = catalogPlan.total_quota_display;
-  }
-  const suggestedPlanId = String(quota?.suggested_plan_id || "").trim();
+  const suggestedPlanId = String(snapshot.suggested_plan_id || "").trim();
   if (suggestedPlanId) {
     merged.plan_id = suggestedPlanId;
   }
@@ -510,6 +686,13 @@ function mergeAdapterResultIntoRecord(plan, quota, now) {
 }
 
 function mapAdapterErrorToSyncStatus(error) {
+  if (error?.code === "PROVIDER_SNAPSHOT_INVALID") {
+    return {
+      syncStatus: "failed",
+      errorCode: error.code,
+      errorMessage: error.message,
+    };
+  }
   try {
     const glmTokenPlan = require("./glm-token-plan");
     if (error instanceof glmTokenPlan.GlmTokenPlanError) {
@@ -714,41 +897,22 @@ async function refreshPlan(plan, options = {}) {
       const customApi = getCustomApiModule();
       const detectionResult = await customApi.detectCustomApi(customConfig, {
         apiKey: resolvedApiKey,
+        testMode: opts.testMode === true,
+        dnsLookup: opts.dnsLookup,
+        requestImpl: opts.requestImpl,
+        maxResponseBytes: opts.maxResponseBytes,
       });
 
       if (detectionResult.sync_status === "success") {
-        // Success: merge quota values from detection result
-        const total = Number.isFinite(Number(detectionResult.total_quota))
-          ? Number(detectionResult.total_quota)
-          : plan.total_quota;
-        const used = Number.isFinite(Number(detectionResult.used_quota))
-          ? Number(detectionResult.used_quota)
-          : plan.used_quota;
-        const remaining = Number.isFinite(Number(detectionResult.remaining_quota))
-          ? Number(detectionResult.remaining_quota)
-          : plan.remaining_quota;
-        const expiresAt = detectionResult.expires_at || plan.expires_at;
+        const merged = mergeAdapterResultIntoRecord(plan, detectionResult, now);
 
         return {
           status: "success",
           error: "",
           record: {
             ...plan,
-            total_quota: total,
-            used_quota: used,
-            remaining_quota: remaining,
-            expires_at: expiresAt,
+            ...merged,
             quota_source: "custom_api",
-            last_refresh_status: "success",
-            last_refresh_error: "",
-            last_refresh_at: now,
-            next_refresh_at: computeNextRefreshAt(plan, now),
-            sync_status: "success",
-            last_synced_at: now,
-            last_sync_attempt_at: now,
-            last_error_code: "",
-            last_error_message: "",
-            provider_reported_at: detectionResult.provider_reported_at || now,
           },
         };
       }
@@ -770,20 +934,20 @@ async function refreshPlan(plan, options = {}) {
         },
       };
     } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
+      const mapped = mapAdapterErrorToSyncStatus(e);
       return {
         status: "failed",
-        error: msg,
+        error: mapped.errorMessage,
         record: {
           ...plan,
           last_refresh_status: "failed",
-          last_refresh_error: msg,
+          last_refresh_error: mapped.errorMessage,
           last_refresh_at: now,
           next_refresh_at: computeNextRefreshAt(plan, now),
-          sync_status: "failed",
+          sync_status: mapped.syncStatus,
           last_sync_attempt_at: now,
-          last_error_code: "CUSTOM_API_ERROR",
-          last_error_message: msg,
+          last_error_code: mapped.errorCode,
+          last_error_message: mapped.errorMessage,
         },
       };
     }
@@ -814,10 +978,7 @@ async function refreshPlan(plan, options = {}) {
       } catch (e) {
         const mapped = mapAdapterErrorToSyncStatus(e);
         if (mapped.errorCode === "GLM_API_KEY_MISSING") {
-          const catalogPlan = getPlanById(plan.provider_id, plan.plan_id);
-          const hint = catalogPlan
-            ? "填写 Coding Plan API Key 可同步实时用量；套餐参考额度已填入总额度。"
-            : "请填写 Coding Plan API Key 以同步实时用量。";
+          const hint = "请填写 Coding Plan API Key 以同步实时用量。";
           const record = {
             ...plan,
             last_refresh_status: "failed",
@@ -829,14 +990,6 @@ async function refreshPlan(plan, options = {}) {
             last_error_code: mapped.errorCode,
             last_error_message: hint,
           };
-          if (catalogPlan) {
-            record.total_quota = Number(catalogPlan.total_quota || 0);
-            record.total_quota_display = catalogPlan.total_quota_display || "";
-            if (!Array.isArray(plan.quota_windows) || plan.quota_windows.length === 0) {
-              record.used_quota = 0;
-              record.remaining_quota = 0;
-            }
-          }
           return {
             status: "failed",
             error: hint,
@@ -992,7 +1145,17 @@ async function refreshPlan(plan, options = {}) {
  *   runDueOnce(): 立即扫描并刷新所有 due plan（供 server 启动调用与测试）
  *   refreshById(id): 手动触发某个 plan 的刷新
  */
-function createScheduler({ readAll, upsertAll, intervalMs = 60_000, logger = console, resolveApiKey } = {}) {
+function createScheduler({
+  readAll,
+  upsertAll,
+  intervalMs = 60_000,
+  logger = console,
+  resolveApiKey,
+  testMode = false,
+  dnsLookup,
+  requestImpl,
+  maxResponseBytes,
+} = {}) {
   if (typeof readAll !== "function" || typeof upsertAll !== "function") {
     throw new Error("createScheduler: readAll and upsertAll are required");
   }
@@ -1014,7 +1177,14 @@ function createScheduler({ readAll, upsertAll, intervalMs = 60_000, logger = con
       if (inFlight.has(plan.id)) continue;
       inFlight.add(plan.id);
       try {
-        const result = await refreshPlan(plan, { now: now.toISOString(), resolveApiKey });
+        const result = await refreshPlan(plan, {
+          now: now.toISOString(),
+          resolveApiKey,
+          testMode: testMode === true,
+          dnsLookup,
+          requestImpl,
+          maxResponseBytes,
+        });
         if (result.record) {
           const idx = plans.findIndex((p) => p.id === plan.id);
           if (idx >= 0) {
@@ -1054,7 +1224,14 @@ function createScheduler({ readAll, upsertAll, intervalMs = 60_000, logger = con
     }
     inFlight.add(id);
     try {
-      const result = await refreshPlan(plans[idx], { now: nowIso(), resolveApiKey });
+      const result = await refreshPlan(plans[idx], {
+        now: nowIso(),
+        resolveApiKey,
+        testMode: testMode === true,
+        dnsLookup,
+        requestImpl,
+        maxResponseBytes,
+      });
       if (result.record) {
         plans[idx] = result.record;
         try {
@@ -1136,6 +1313,10 @@ module.exports = {
   getProviderAdapter,
   getProviderAdapterForPlan,
   normalizeQuotaWindows,
+  validateQuotaUnit,
+  validateProviderQuotaNumber,
+  validateProviderQuotaWindows,
+  isValidProviderExpiry,
   mergeAdapterResultIntoRecord,
   createScheduler,
   nowIso,

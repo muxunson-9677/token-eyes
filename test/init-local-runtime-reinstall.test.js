@@ -88,6 +88,7 @@ test("installLocalTrackerApp replaces stale installed runtime and writes a packa
     assert.equal(marker.name, "tokentracker-cli");
     assert.equal(typeof marker.version, "string");
     await fs.stat(path.join(appDir, "src", "lib", "codex-context-breakdown.js"));
+    await fs.stat(path.join(appDir, "shared", "agent-registry.json"));
     const dashboardIndex = path.join(repoRoot, "dashboard", "dist", "index.html");
     if (await fs.stat(dashboardIndex).then(() => true, () => false)) {
       await fs.stat(path.join(appDir, "dashboard", "dist", "index.html"));
@@ -96,4 +97,3 @@ test("installLocalTrackerApp replaces stale installed runtime and writes a packa
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
-

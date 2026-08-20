@@ -10,6 +10,7 @@ import {
   refreshTokenPlan,
   getUsageLimits,
   getTokenPlanCatalog,
+  getTokenEyesBuildInfo,
   getConsoleSessions,
   createConsoleSession,
   deleteConsoleSession,
@@ -23,7 +24,9 @@ import {
   openCodexConsoleLogin,
   verifyCodexConsoleSession,
   syncCodexConsoleQuota,
-  discardCodexPendingSession,
+  cancelCodexConsoleLogin,
+  reopenCodexConsoleLogin,
+  cleanupLegacyCodexAuthFile,
   deleteCodexConsoleSession,
   openClaudeConsoleLogin,
   verifyClaudeConsoleSession,
@@ -43,8 +46,12 @@ import {
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
-import { limitProviderName, useLimitsDisplayPrefs } from "../../hooks/use-limits-display-prefs.js";
+import { DASHBOARD_AGENTS } from "../../lib/agent-adapters-dashboard";
 import { ProviderIcon } from "../../ui/dashboard/components/ProviderIcon.jsx";
+import {
+  OfficialExternalLink,
+  resolveProviderLinkUrl,
+} from "../OfficialExternalLink.jsx";
 import { SectionCard } from "./Controls.jsx";
 
 function isCodexSource(source) {
@@ -132,7 +139,7 @@ function isExpiredTokenPlanRecord(record) {
 
 const TOKEN_PLAN_PAGE_SIZE = 10;
 const TOKEN_PLAN_ATTENTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const TOKEN_PLAN_SYNC_FAILURE_STATES = new Set(["error", "failed", "reauth_required", "unsupported"]);
+const TOKEN_PLAN_SYNC_FAILURE_STATES = new Set(["error", "failed", "reauth_required", "temporary", "unsupported"]);
 
 function tokenPlanHasSyncFailure(record) {
   return [record?.sync_status, record?.last_refresh_status]
@@ -250,6 +257,24 @@ const LEGACY_REFRESH_METHODS = new Set(["manual", "official_api"]);
 const XIAOMI_AUTH_POLL_MS = 1000;
 const XIAOMI_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
 const TRAE_AUTH_TIMEOUT_MS = 10 * 60 * 1000;
+const CODEX_NATIVE_PENDING_STATES = new Set(["login_started", "awaiting_verification"]);
+const CODEX_AUTHORIZED_STATES = new Set(["authorized", "connected"]);
+const CODEX_STABLE_ERROR_CODES = new Set([
+  "CODEX_COMPONENT_MISSING",
+  "CODEX_CREDENTIAL_STORE_UNAVAILABLE",
+  "BROWSER_OPEN_FAILED",
+  "AWAITING_VERIFICATION",
+  "AUTHORIZATION_FAILED",
+  "AUTHORIZATION_CANCELLED",
+  "AUTHORIZATION_TIMEOUT",
+  "SESSION_NOT_FOUND",
+  "REAUTH_REQUIRED",
+  "QUOTA_SYNC_FAILED",
+  "LOCAL_SESSION_PERSIST_FAILED",
+  "CODEX_LOGOUT_FAILED",
+  "LEGACY_CREDENTIAL_CLEANUP_FAILED",
+]);
+const CODEX_QUOTA_SYNC_STATUSES = new Set(["idle", "success", "error"]);
 
 export function quotaConsoleAuthTimeoutMs(providerId) {
   return providerId === "trae" ? TRAE_AUTH_TIMEOUT_MS : XIAOMI_AUTH_TIMEOUT_MS;
@@ -268,31 +293,49 @@ const OFFICIAL_ACCOUNT_DETECTION_PROVIDERS = new Set([
 
 const WEBVIEW_CONSOLE_PROVIDERS = new Set(["xiaomi_mimo", "glm", "codex", "claude", "cursor", "kimi", "trae"]);
 
-function resolveProviderHomeUrl(providerId, planId = "") {
+export function resolveProviderHomeLinkId(providerId, planId = "") {
   switch (providerId) {
     case "xiaomi_mimo":
-      return "https://platform.xiaomimimo.com/token-plan";
+      return "provider-home-xiaomi-mimo";
     case "glm":
-      return "https://www.bigmodel.cn/coding-plan/personal/usage";
+      return "provider-home-glm-usage";
     case "codex":
-      return "https://chatgpt.com/codex";
+      return "provider-home-codex";
     case "claude":
-      return "https://console.anthropic.com/settings/billing";
+      return "provider-home-claude-billing";
     case "cursor":
-      return "https://www.cursor.com/settings";
+      return "provider-home-cursor-settings";
     case "trae":
-      return "https://www.trae.cn/";
+      return "provider-home-trae";
     case "kimi":
       return planId === "kimi_api_budget"
-        ? "https://platform.moonshot.cn/console/account"
-        : "https://www.kimi.com/code";
+        ? "provider-home-kimi-api"
+        : "provider-home-kimi-code";
     case "minimax":
-      return "https://platform.minimaxi.com/user-center/basic-information";
+      return "provider-home-minimax-account";
     case "aliyun_bailian":
-      return "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan";
+      return "provider-home-aliyun-bailian-plan";
     default:
       return "";
   }
+}
+
+function resolveProviderHomeUrl(providerId, planId = "") {
+  return resolveProviderLinkUrl(resolveProviderHomeLinkId(providerId, planId));
+}
+
+function ProviderHomeLink({ linkId, testId }) {
+  const url = resolveProviderLinkUrl(linkId);
+  if (!url) return null;
+  return (
+    <OfficialExternalLink
+      linkId={linkId}
+      data-testid={testId}
+      className="tt-product-focusable rounded-sm text-oai-brand-600 underline dark:text-oai-brand-400"
+    >
+      {url}
+    </OfficialExternalLink>
+  );
 }
 
 function providerSupportsOfficialAccountDetection(providerId, planId, claudeAccountMode = "") {
@@ -348,6 +391,210 @@ function isClaudeRoutingMode(providerId, planId, claudeAccountMode = "") {
 
 function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isCodexAuthorizationComplete(status) {
+  return CODEX_AUTHORIZED_STATES.has(status?.state_code)
+    && status?.authorized === true
+    && status?.connected === true;
+}
+
+function projectCodexQuota(quota) {
+  if (!quota || typeof quota !== "object") return null;
+  const projected = {};
+  for (const key of [
+    "total_quota",
+    "used_quota",
+    "remaining_quota",
+    "provider_reported_at",
+    "subscription_expires_at",
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(quota, key)) projected[key] = quota[key];
+  }
+  if (Array.isArray(quota.quota_windows)) {
+    projected.quota_windows = quota.quota_windows.map((window) => {
+      const item = {};
+      for (const key of ["kind", "unit", "total", "used", "remaining", "percentage", "resets_at"]) {
+        if (Object.prototype.hasOwnProperty.call(window || {}, key)) item[key] = window[key];
+      }
+      return item;
+    });
+  }
+  return projected;
+}
+
+const PROVIDER_REPORTED_QUOTA_FIELDS = [
+  "total_quota",
+  "used_quota",
+  "remaining_quota",
+  "quota_windows",
+  "expires_at",
+];
+
+function projectNativeQuotaSnapshot(quota, now) {
+  const source = quota && typeof quota === "object" ? quota : {};
+  const hasValue = (field) => Object.prototype.hasOwnProperty.call(source, field)
+    && source[field] !== null
+    && source[field] !== undefined;
+  const projected = {};
+  const providerReportedFields = [];
+  const declaredReportedFields = Array.isArray(source.provider_reported_fields)
+    ? new Set(source.provider_reported_fields)
+    : null;
+
+  for (const field of ["total_quota", "used_quota", "remaining_quota", "quota_windows"]) {
+    if (!hasValue(field)) continue;
+    projected[field] = source[field];
+    if (!declaredReportedFields || declaredReportedFields.has(field)) {
+      providerReportedFields.push(field);
+    }
+  }
+
+  const hasCompleteTopLevel = ["total_quota", "used_quota", "remaining_quota"].every(hasValue);
+  if (hasCompleteTopLevel && Array.isArray(source.quota_windows)) {
+    const headline = source.quota_windows.find((window) => (
+      Number.isFinite(Number(window?.total))
+      && Number.isFinite(Number(window?.used))
+      && Number.isFinite(Number(window?.remaining))
+      && Math.sign(Math.abs(Number(window.total) - Number(source.total_quota)) - 1e-9) === -1
+      && Math.sign(Math.abs(Number(window.used) - Number(source.used_quota)) - 1e-9) === -1
+      && Math.sign(Math.abs(Number(window.remaining) - Number(source.remaining_quota)) - 1e-9) === -1
+    ));
+    if (typeof headline?.unit === "string" && headline.unit) {
+      projected.quota_unit = headline.unit;
+    }
+  }
+
+  const nativeExpiryField = hasValue("expires_at")
+    ? "expires_at"
+    : hasValue("subscription_expires_at")
+      ? "subscription_expires_at"
+      : "";
+  if (nativeExpiryField) {
+    projected.expires_at = source[nativeExpiryField];
+    if (!declaredReportedFields || declaredReportedFields.has("expires_at")) {
+      providerReportedFields.push("expires_at");
+    }
+  }
+
+  projected.provider_reported_fields = PROVIDER_REPORTED_QUOTA_FIELDS
+    .filter((field) => providerReportedFields.includes(field));
+  const clientObserved = source.source_kind === "undocumented_console_api"
+    && source.support_tier === "best_effort"
+    && Boolean(String(source.observed_at || "").trim());
+  projected.provider_reported_at = providerReportedFields.length
+    ? (String(source.provider_reported_at || "").trim() || (clientObserved ? "" : now))
+    : "";
+  for (const field of ["fetched_at", "observed_at", "source_kind", "support_tier"]) {
+    if (hasValue(field)) projected[field] = source[field];
+  }
+  if (Object.prototype.hasOwnProperty.call(source, "partial")) {
+    projected.partial = Boolean(source.partial);
+  }
+  return projected;
+}
+
+function projectCodexStatusForLocal(nativeStatus) {
+  const rawState = String(nativeStatus?.state_code || "");
+  let connected = nativeStatus?.connected === true;
+  let authorized = nativeStatus?.authorized === true;
+  let stateCode = rawState;
+  const rawErrorCode = String(nativeStatus?.error_code || "");
+  let errorCode = CODEX_STABLE_ERROR_CODES.has(rawErrorCode)
+    ? rawErrorCode
+    : "";
+  let errorMessage = String(nativeStatus?.error_message || "");
+
+  if (CODEX_AUTHORIZED_STATES.has(rawState)) {
+    if (!isCodexAuthorizationComplete(nativeStatus)) {
+      connected = false;
+      authorized = false;
+      stateCode = "failed";
+      errorCode = "AUTHORIZATION_FAILED";
+      errorMessage ||= copy("settings.token_plan.console_session.verify_error");
+    }
+  } else if (CODEX_NATIVE_PENDING_STATES.has(rawState)) {
+    if (connected || authorized) {
+      connected = false;
+      authorized = false;
+      stateCode = "failed";
+      errorCode = "AUTHORIZATION_FAILED";
+      errorMessage ||= copy("settings.token_plan.console_session.verify_error");
+    } else if (!errorCode) {
+      errorCode = "AWAITING_VERIFICATION";
+    }
+  } else if (rawState === "disconnected"
+    && !connected
+    && !authorized
+    && !rawErrorCode
+    && !errorMessage.trim()) {
+    stateCode = "disconnected";
+    errorCode = "";
+    errorMessage = "";
+  } else if (["reauth_required", "failed", "session_not_found"].includes(rawState)) {
+    connected = false;
+    authorized = false;
+    errorCode ||= rawState === "reauth_required"
+      ? "REAUTH_REQUIRED"
+      : rawState === "session_not_found"
+        ? "SESSION_NOT_FOUND"
+        : "AUTHORIZATION_FAILED";
+  } else {
+    connected = false;
+    authorized = false;
+    stateCode = "failed";
+    errorCode = "AUTHORIZATION_FAILED";
+    errorMessage ||= copy("settings.token_plan.console_session.verify_error");
+  }
+
+  const projected = {
+    connected,
+    authorized,
+    session_ref: String(nativeStatus?.session_ref || ""),
+    state_code: stateCode,
+    quota_sync_status: CODEX_QUOTA_SYNC_STATUSES.has(nativeStatus?.quota_sync_status)
+      ? nativeStatus.quota_sync_status
+      : "idle",
+    error_code: errorCode,
+    error_message: errorMessage,
+  };
+  const quota = projectCodexQuota(nativeStatus?.quota);
+  if (quota) projected.quota = quota;
+  return projected;
+}
+
+function formatCodexCountdown(remainingMs) {
+  const seconds = Math.max(0, Math.ceil(Number(remainingMs || 0) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function buildCodexDiagnostic({ session, nativeStatus, stage, startedAt, deadlineAt, now, buildInfo }) {
+  const sessionRef = String(session?.session_ref || nativeStatus?.session_ref || "");
+  const sessionTail = (sessionRef.split("/").filter(Boolean).at(-1) || "unknown").slice(-8);
+  const rawErrorCode = String(nativeStatus?.error_code || session?.last_error_code || "");
+  const errorCode = CODEX_STABLE_ERROR_CODES.has(rawErrorCode) ? rawErrorCode : "UNKNOWN";
+  const quotaSyncStatus = CODEX_QUOTA_SYNC_STATUSES.has(nativeStatus?.quota_sync_status)
+    ? nativeStatus.quota_sync_status
+    : "unknown";
+  const elapsedMs = startedAt ? Math.max(0, now - startedAt) : 0;
+  const remainingMs = deadlineAt ? Math.max(0, deadlineAt - now) : 0;
+  const appVersion = /^\d+\.\d+\.\d+$/.test(String(buildInfo?.app_version || ""))
+    ? buildInfo.app_version
+    : "unavailable";
+  const headSha = /^[a-f0-9]{40}$/.test(String(buildInfo?.head_sha || ""))
+    ? buildInfo.head_sha
+    : "unavailable";
+  return [
+    `app_version=${appVersion}`,
+    `git_sha=${headSha}`,
+    `stage=${stage || "unknown"}`,
+    `error_code=${errorCode}`,
+    `quota_sync_status=${quotaSyncStatus}`,
+    `elapsed_seconds=${Math.floor(elapsedMs / 1000)}`,
+    `remaining_seconds=${Math.ceil(remainingMs / 1000)}`,
+    `session_tail=${sessionTail}`,
+  ].join("\n");
 }
 
 function normalizeRecords(value) {
@@ -419,9 +666,29 @@ function resolveFormProviderSession(form, sessions, records, providerId) {
       .map((r) => r.detection_config?.official_account?.account_binding_id)
       .filter(Boolean),
   );
-  return sessions.find((s) => s.provider_id === providerId
-    && !boundByOthers.has(s.id)
-    && ["pending_login", "login_started", "awaiting_verification", "connected"].includes(s.status)) || null;
+  const statusPriority = (status) => {
+    if (status === "connected") return 3;
+    if (["pending_login", "login_started", "awaiting_verification"].includes(status)) return 2;
+    return 1;
+  };
+  const sessionTimestamp = (session) => {
+    const parsed = Date.parse(
+      session?.last_verified_at
+      || session?.updated_at
+      || session?.created_at
+      || "",
+    );
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  return sessions
+    .filter((s) => s.provider_id === providerId && !boundByOthers.has(s.id))
+    .sort((left, right) => {
+      const byStatus = statusPriority(right.status) - statusPriority(left.status);
+      if (byStatus !== 0) return byStatus;
+      const byTimestamp = sessionTimestamp(right) - sessionTimestamp(left);
+      if (byTimestamp !== 0) return byTimestamp;
+      return String(right.id || "").localeCompare(String(left.id || ""));
+    })[0] || null;
 }
 
 function resolveFormCodexSession(form, sessions, records) {
@@ -461,9 +728,11 @@ function computeConsoleStage(session, connectingConsole) {
     case "expired":
     case "revoked":
     case "failed":
+    case "reauth_required":
+    case "session_not_found":
       return "failed";
     default:
-      return "awaiting_verification";
+      return "failed";
   }
 }
 
@@ -494,7 +763,7 @@ function WebviewConsoleConnectPanel({
   descCopyKey,
   connectCopyKey,
   loginStartedDescCopyKey,
-  providerHomeUrl,
+  providerHomeLinkId,
   stage,
   session,
   statusLabel,
@@ -514,9 +783,13 @@ function WebviewConsoleConnectPanel({
       <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
         {copy(descCopyKey)}
       </div>
-      {providerHomeUrl ? (
+      {providerHomeLinkId ? (
         <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
-          {copy("settings.token_plan.detection.official_account.url_label")}: {providerHomeUrl}
+          {copy("settings.token_plan.detection.official_account.url_label")}: {" "}
+          <ProviderHomeLink
+            linkId={providerHomeLinkId}
+            testId={`detection-${testIdPrefix}-provider-link`}
+          />
         </div>
       ) : null}
       {consoleSessionError && (
@@ -694,22 +967,33 @@ function SortableTokenPlanCard({
   const providerKey = String(record.provider_id || record.source || "").toLowerCase();
   const quotaWindows = Array.isArray(record.quota_windows) ? record.quota_windows : [];
   const headlineWindow = providerKey === "cursor"
-    ? quotaWindows.find((window) => window.kind === "total") || quotaWindows.find((window) => window.kind === "rolling_weekly")
+    ? quotaWindows.find((window) => window.lane_id === "overall")
+      || quotaWindows.find((window) => window.kind === "total")
+      || quotaWindows.find((window) => window.kind === "rolling_weekly")
     : providerKey === "codex"
       ? quotaWindows.find((window) => window.kind === "rolling_5_hour") || quotaWindows.find((window) => window.kind === "rolling_weekly")
       : null;
   const headlineTotal = Number(headlineWindow?.total);
   const headlineRemaining = Number(headlineWindow?.remaining);
   const headlineUsed = Number(headlineWindow?.used);
-  const totalQuota = Number.isFinite(headlineTotal) ? headlineTotal : Number(record.total_quota || 0);
-  const remainingQuota = Number.isFinite(headlineRemaining) ? headlineRemaining : Number(record.remaining_quota || 0);
+  const totalQuota = Number.isFinite(headlineTotal) ? headlineTotal : Number(record.total_quota ?? 0);
+  const remainingQuota = Number.isFinite(headlineRemaining) ? headlineRemaining : Number(record.remaining_quota ?? 0);
   const usedQuota = Number.isFinite(headlineUsed)
     ? headlineUsed
-    : Number(record.used_quota || Math.max(0, totalQuota - remainingQuota));
+    : Number(record.used_quota ?? Math.max(0, totalQuota - remainingQuota));
   const displayStatus = tokenPlanDisplayStatus(record);
-  const detailWindows = quotaWindows.length
+  const hasDetectionConfigured = record.detection_method && record.detection_method !== "not_configured";
+  const providerReportedFields = hasDetectionConfigured && Array.isArray(record.provider_reported_fields)
+    ? new Set(record.provider_reported_fields)
+    : null;
+  const reportedQuotaWindows = !providerReportedFields || providerReportedFields.has("quota_windows")
     ? quotaWindows
-    : totalQuota > 0
+    : [];
+  const hasCompleteReportedHeadline = !providerReportedFields
+    || ["total_quota", "used_quota", "remaining_quota"].every((field) => providerReportedFields.has(field));
+  const detailWindows = reportedQuotaWindows.length
+    ? reportedQuotaWindows
+    : hasCompleteReportedHeadline && totalQuota > 0
       ? [{ kind: "total", total: totalQuota, used: usedQuota, remaining: remainingQuota }]
       : [];
   const accountLabel = authorizedTokenPlanAccount(record);
@@ -805,7 +1089,12 @@ function SortableTokenPlanCard({
           </span>
         </div>
         {tokenPlanHasSyncFailure(record) ? (
-          <div data-testid="token-plan-failure-reason" className="tt-token-plan-failure-reason" role="status">
+          <div
+            data-testid="token-plan-failure-reason"
+            className="tt-token-plan-failure-reason"
+            role={record.provider_id === "xiaomi_mimo" ? "alert" : "status"}
+            tabIndex={record.provider_id === "xiaomi_mimo" ? -1 : undefined}
+          >
             <ShieldAlert aria-hidden="true" />
             <span>{copy("settings.token_plan.failure_reason", {
               reason: record.last_error_message || record.last_refresh_error || copy("settings.token_plan.failure_reason_unavailable"),
@@ -842,6 +1131,7 @@ function tokenPlanQuotaWindowLabel(providerId, window) {
   if (officialLabel) return officialLabel;
   if (providerId === "cursor") {
     if (kind === "total") return copy("settings.token_plan.cursor.total_usage");
+    if (kind === "team_pool") return copy("settings.token_plan.cursor.team_pool_usage");
     if (kind === "auto_composer") return copy("settings.token_plan.cursor.auto_composer_usage");
     if (kind === "api") return copy("settings.token_plan.cursor.api_usage");
   }
@@ -886,7 +1176,7 @@ function formatTokenPlanValidity(value, now = new Date()) {
 function normalizeTokenPlanQuotaWindows(providerId, windows) {
   const items = Array.isArray(windows) ? windows : [];
   if (providerId !== "cursor") return items;
-  const priority = ["total", "rolling_weekly", "auto_composer", "api"];
+  const priority = ["total", "rolling_weekly", "team_pool", "auto_composer", "api"];
   const seen = new Set();
   return [...items]
     .sort((left, right) => priority.indexOf(left.kind) - priority.indexOf(right.kind))
@@ -1024,7 +1314,6 @@ function TokenPlanPagination({ pagination, onPageChange, testId }) {
 }
 
 export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNavigate = () => {}, onSummaryChange }) {
-  const { visibleOrdered: visibleLimitProviders } = useLimitsDisplayPrefs();
   const cachedPlanData = useRef(
     listOnly && !editorPlanId ? readCostSettingsSessionCache("token-plans") : null,
   ).current;
@@ -1045,9 +1334,16 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
 
   // W03C: Xiaomi MiMo console session state
   const [consoleSessions, setConsoleSessions] = useState([]);
-  const [loadingConsoleSessions, setLoadingConsoleSessions] = useState(false);
+  const [loadingConsoleSessions, setLoadingConsoleSessions] = useState(true);
   const [consoleSessionError, setConsoleSessionError] = useState("");
   const [connectingConsole, setConnectingConsole] = useState(false);
+  const [codexNativeStatuses, setCodexNativeStatuses] = useState({});
+  const [codexAttempt, setCodexAttempt] = useState(null);
+  const [codexNow, setCodexNow] = useState(() => Date.now());
+  const [codexPersistFailure, setCodexPersistFailure] = useState(null);
+  const [codexWarning, setCodexWarning] = useState(null);
+  const [codexDisconnectingSessionRef, setCodexDisconnectingSessionRef] = useState("");
+  const [codexDisconnectRetry, setCodexDisconnectRetry] = useState(null);
 
   // W03-R3D: API Key input lives in separate state — NEVER stored in form or
   // serialized into the plan record.  It is only sent once to the secrets
@@ -1066,12 +1362,30 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const refreshingPlanIdsRef = useRef(new Set());
   const fullEmailRefreshAttemptedIdsRef = useRef(new Set());
   const autoCodexRefreshBusyRef = useRef(false);
+  const codexAttemptTokensRef = useRef(new Map());
+  const codexCancelPromiseRef = useRef(new Map());
+  const codexCancelPersistedRefs = useRef(new Set());
+  const codexDisconnectPromiseRef = useRef(new Map());
+  const codexNativeDisconnectedRefs = useRef(new Set());
+  const codexInitialReconcileDoneRef = useRef(false);
+  const codexAlertRef = useRef(null);
   recordsRef.current = records;
   consoleSessionsRef.current = consoleSessions;
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  useEffect(() => () => {
+    for (const attemptToken of codexAttemptTokensRef.current.values()) {
+      attemptToken.cancelled = true;
+    }
+    codexAttemptTokensRef.current.clear();
+    codexCancelPromiseRef.current.clear();
+    codexCancelPersistedRefs.current.clear();
+    codexDisconnectPromiseRef.current.clear();
+    codexNativeDisconnectedRefs.current.clear();
+  }, []);
 
   useEffect(() => {
     if (cachedPlanData) return undefined;
@@ -1178,6 +1492,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     return resolveFormCodexSession(form, consoleSessions, records);
   }, [form.provider_id, form.id, form.detection_config?.official_account?.account_binding_id, consoleSessions, records]);
 
+  const currentCodexNativeStatus = formCodexSession?.session_ref
+    ? codexNativeStatuses[formCodexSession.session_ref] || null
+    : null;
+
   const formClaudeSession = useMemo(() => {
     if (form.provider_id !== "claude") return null;
     if (isClaudeRoutingMode(form.provider_id, form.plan_id, form.detection_config?.official_account?.claude_account_mode)) {
@@ -1279,14 +1597,17 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     }
   }, [glmSession, connectingConsole]);
 
-  const codexLocalConnected = form.provider_id === "codex" && form.sync_status === "success";
   const codexStage = useMemo(
-    () => formCodexSession
-      ? computeConsoleStage(formCodexSession, connectingConsole)
-      : codexLocalConnected
-        ? "connected"
-        : "disconnected",
-    [formCodexSession, connectingConsole, codexLocalConnected],
+    () => {
+      if (currentCodexNativeStatus?.state_code === "login_started") return "login_started";
+      if (["reauth_required", "failed", "session_not_found"].includes(currentCodexNativeStatus?.state_code)) {
+        return "failed";
+      }
+      return formCodexSession
+        ? computeConsoleStage(formCodexSession, connectingConsole)
+        : "disconnected";
+    },
+    [formCodexSession, connectingConsole, currentCodexNativeStatus],
   );
 
   const claudeStage = useMemo(() => computeConsoleStage(formClaudeSession, connectingConsole), [formClaudeSession, connectingConsole]);
@@ -1298,6 +1619,17 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const kimiStage = useMemo(() => computeConsoleStage(formKimiSession, connectingConsole), [formKimiSession, connectingConsole]);
 
   const codexStatusLabel = useMemo(() => consoleStatusLabel(formCodexSession), [formCodexSession]);
+  const formCodexAttempt = formCodexSession?.session_ref
+    ? (codexAttemptTokensRef.current.get(formCodexSession.session_ref)
+      || (codexAttempt?.sessionRef === formCodexSession.session_ref ? codexAttempt : null))
+    : null;
+  const formCodexDisconnectRetry = formCodexSession?.session_ref
+    && codexDisconnectRetry?.sessionRef === formCodexSession.session_ref
+    ? codexDisconnectRetry
+    : null;
+  const codexRemainingMs = formCodexAttempt?.deadlineAt
+    ? Math.max(0, formCodexAttempt.deadlineAt - codexNow)
+    : XIAOMI_AUTH_TIMEOUT_MS;
 
   const claudeStatusLabel = useMemo(() => consoleStatusLabel(formClaudeSession), [formClaudeSession]);
 
@@ -1306,6 +1638,239 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const traeStatusLabel = useMemo(() => consoleStatusLabel(formTraeSession), [formTraeSession]);
 
   const kimiStatusLabel = useMemo(() => consoleStatusLabel(formKimiSession), [formKimiSession]);
+
+  const rememberCodexNativeStatus = (nativeStatus) => {
+    const sessionRef = String(nativeStatus?.session_ref || "");
+    if (!sessionRef) return;
+    setCodexNativeStatuses((previous) => previous[sessionRef] === nativeStatus
+      ? previous
+      : { ...previous, [sessionRef]: nativeStatus });
+  };
+
+  const replaceConsoleSession = (session) => {
+    if (!session?.id) return;
+    setConsoleSessions((previous) => {
+      const exists = previous.some((item) => item.id === session.id);
+      if (!exists) return [...previous, session];
+      return previous.map((item) => item.id === session.id ? session : item);
+    });
+  };
+
+  const codexDisconnectBlocksRefresh = (sessionRef) => Boolean(
+    sessionRef
+    && (codexDisconnectPromiseRef.current.has(sessionRef)
+      || codexNativeDisconnectedRefs.current.has(sessionRef)),
+  );
+
+  const finishCodexAttempt = (attempt) => {
+    if (!attempt?.sessionRef) return;
+    if (codexAttemptTokensRef.current.get(attempt.sessionRef) === attempt) {
+      codexAttemptTokensRef.current.delete(attempt.sessionRef);
+    }
+    setCodexAttempt((current) => current?.sessionRef === attempt.sessionRef ? null : current);
+  };
+
+  const rememberCodexPersistFailure = (sessionId, nativeStatus, error) => {
+    const message = error?.message || copy("settings.token_plan.codex.local_persist_failed");
+    setCodexPersistFailure({ sessionId, nativeStatus, message });
+    setConsoleSessionError(`LOCAL_SESSION_PERSIST_FAILED: ${message}`);
+    window.setTimeout(() => codexAlertRef.current?.focus(), 0);
+  };
+
+  const invokeCodexCancelOnce = (sessionRef, reason) => {
+    const current = codexCancelPromiseRef.current.get(sessionRef);
+    if (current) return current;
+    const promise = cancelCodexConsoleLogin(sessionRef, reason);
+    codexCancelPromiseRef.current.set(sessionRef, promise);
+    void promise.catch(() => {
+      if (codexCancelPromiseRef.current.get(sessionRef) === promise) {
+        codexCancelPromiseRef.current.delete(sessionRef);
+      }
+    });
+    return promise;
+  };
+
+  const persistCodexNativeStatus = async (sessionId, nativeStatus, options = {}) => {
+    rememberCodexNativeStatus(nativeStatus);
+    const localStatus = projectCodexStatusForLocal(nativeStatus);
+    try {
+      const verified = await verifyConsoleSession(sessionId, localStatus);
+      const cleanDisconnected = localStatus.state_code === "disconnected"
+        && localStatus.connected === false
+        && localStatus.authorized === false
+        && !localStatus.error_code
+        && !localStatus.error_message;
+      if (cleanDisconnected && Array.isArray(verified?.sessions)) {
+        setConsoleSessions(verified.sessions);
+      } else if (cleanDisconnected) {
+        setConsoleSessions((previous) => previous.filter((session) => session.id !== sessionId));
+      } else if (verified?.session) {
+        replaceConsoleSession(verified.session);
+      }
+      return verified?.session || null;
+    } catch (error) {
+      if (options.reconcileOnFailure !== false) {
+        const attemptToken = options.attemptToken;
+        if (attemptToken) attemptToken.cancelled = true;
+        setConnectingConsole(false);
+        let reconciled = null;
+        try {
+          reconciled = await invokeCodexCancelOnce(
+            nativeStatus?.session_ref || attemptToken?.sessionRef,
+            "user_cancelled",
+          );
+          rememberCodexNativeStatus(reconciled);
+          if (attemptToken && !CODEX_NATIVE_PENDING_STATES.has(reconciled?.state_code)) {
+            finishCodexAttempt(attemptToken);
+          }
+        } catch {
+          // The local write error remains the actionable failure. Native transport
+          // details are intentionally not copied into the diagnostic surface.
+        }
+        rememberCodexPersistFailure(sessionId, reconciled || nativeStatus, error);
+        return null;
+      }
+      rememberCodexPersistFailure(sessionId, nativeStatus, error);
+      return null;
+    }
+  };
+
+  const cancelCodexAttempt = async (reason, attemptOverride = null) => {
+    const attempt = attemptOverride
+      || (formCodexSession?.session_ref
+        ? (codexAttemptTokensRef.current.get(formCodexSession.session_ref)
+          || (codexAttempt?.sessionRef === formCodexSession.session_ref ? codexAttempt : null))
+        : null)
+      || null;
+    if (!attempt?.sessionRef) return null;
+    attempt.cancelled = true;
+    setConnectingConsole(false);
+    try {
+      const nativeStatus = await invokeCodexCancelOnce(attempt.sessionRef, reason);
+      rememberCodexNativeStatus(nativeStatus);
+      if (attempt.sessionId && !codexCancelPersistedRefs.current.has(attempt.sessionRef)) {
+        codexCancelPersistedRefs.current.add(attempt.sessionRef);
+        await persistCodexNativeStatus(attempt.sessionId, nativeStatus, {
+          reconcileOnFailure: false,
+          attemptToken: attempt,
+        });
+      }
+      if (["failed", "reauth_required", "session_not_found"].includes(nativeStatus?.state_code)) {
+        setConsoleSessionError("");
+      } else if (nativeStatus?.error_message) {
+        setConsoleSessionError(nativeStatus.error_message);
+      }
+      if (!CODEX_NATIVE_PENDING_STATES.has(nativeStatus?.state_code)) finishCodexAttempt(attempt);
+      return nativeStatus;
+    } catch (error) {
+      setConsoleSessionError(error?.message || copy("settings.token_plan.codex.cancel_failed"));
+      return null;
+    }
+  };
+
+  const retryCodexLocalPersist = async () => {
+    if (!codexPersistFailure) return;
+    const verified = await persistCodexNativeStatus(
+      codexPersistFailure.sessionId,
+      codexPersistFailure.nativeStatus,
+      { reconcileOnFailure: false },
+    );
+    if (!verified) return;
+    setCodexPersistFailure(null);
+    setConsoleSessionError("");
+  };
+
+  const reopenCurrentCodexLogin = async () => {
+    const session = formCodexSession;
+    if (!session?.session_ref) return;
+    try {
+      const nativeStatus = await reopenCodexConsoleLogin(session.session_ref);
+      await persistCodexNativeStatus(session.id, nativeStatus, {
+        attemptToken: codexAttemptTokensRef.current.get(session.session_ref),
+      });
+    } catch (error) {
+      setConsoleSessionError(error?.message || copy("settings.token_plan.codex.reopen_failed"));
+    }
+  };
+
+  const copyCurrentCodexDiagnostic = async () => {
+    const now = Date.now();
+    const buildInfo = await getTokenEyesBuildInfo().catch(() => null);
+    const diagnostic = buildCodexDiagnostic({
+      session: formCodexSession,
+      nativeStatus: currentCodexNativeStatus,
+      stage: codexStage,
+      startedAt: formCodexAttempt?.startedAt,
+      deadlineAt: formCodexAttempt?.deadlineAt,
+      now,
+      buildInfo,
+    });
+    try {
+      await navigator.clipboard.writeText(diagnostic);
+    } catch {
+      setConsoleSessionError(copy("settings.token_plan.codex.copy_diagnostic_failed"));
+    }
+  };
+
+  const cleanupCurrentLegacyCodexAuth = async () => {
+    const sessionRef = formCodexSession?.session_ref;
+    if (!sessionRef || currentCodexNativeStatus?.legacy_auth_present !== true) return;
+    if (!window.confirm(copy("settings.token_plan.codex.legacy_cleanup_confirm"))) return;
+    try {
+      const nativeStatus = await cleanupLegacyCodexAuthFile(sessionRef);
+      rememberCodexNativeStatus(nativeStatus);
+      if (nativeStatus?.error_code === "LEGACY_CREDENTIAL_CLEANUP_FAILED") {
+        setCodexWarning(nativeStatus);
+        window.setTimeout(() => codexAlertRef.current?.focus(), 0);
+      } else {
+        setCodexWarning(null);
+      }
+    } catch {
+      setCodexWarning({
+        error_code: "LEGACY_CREDENTIAL_CLEANUP_FAILED",
+        error_message: copy("settings.token_plan.codex.legacy_cleanup_failed"),
+      });
+      window.setTimeout(() => codexAlertRef.current?.focus(), 0);
+    }
+  };
+
+  const renderCodexAttemptControls = () => (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+        <span>{copy("settings.token_plan.codex.current_step")}</span>
+        <span data-testid="detection-codex-countdown" className="font-mono tabular-nums">
+          {formatCodexCountdown(codexRemainingMs)}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          data-testid="detection-codex-cancel"
+          onClick={() => void cancelCodexAttempt("user_cancelled", formCodexAttempt)}
+          className="tt-product-focusable rounded-md border border-oai-gray-200 px-2.5 py-1.5 text-xs dark:border-oai-gray-700"
+        >
+          {copy("settings.token_plan.codex.cancel")}
+        </button>
+        <button
+          type="button"
+          data-testid="detection-codex-reopen"
+          onClick={() => void reopenCurrentCodexLogin()}
+          disabled={!formCodexSession?.session_ref}
+          className="tt-product-focusable rounded-md border border-oai-gray-200 px-2.5 py-1.5 text-xs disabled:opacity-50 dark:border-oai-gray-700"
+        >
+          {copy("settings.token_plan.codex.reopen")}
+        </button>
+        <button
+          type="button"
+          data-testid="detection-codex-copy-diagnostic"
+          onClick={() => void copyCurrentCodexDiagnostic()}
+          className="tt-product-focusable rounded-md border border-oai-gray-200 px-2.5 py-1.5 text-xs dark:border-oai-gray-700"
+        >
+          {copy("settings.token_plan.codex.copy_diagnostic")}
+        </button>
+      </div>
+    </div>
+  );
 
   const handleConnectXiaomiMimo = async () => {
     if (connectingConsole) return;
@@ -1369,7 +1934,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             remaining_quota: Number(nativeStatus.quota.remaining_quota || 0),
             total_quota: Number(nativeStatus.quota.total_quota || form.total_quota || 0),
             expires_at: nativeStatus.quota.expires_at || form.expires_at || "",
-            provider_reported_at: nativeStatus.quota.provider_reported_at || now,
+            ...projectNativeQuotaSnapshot(nativeStatus.quota, now),
             detection_method: "official_account",
             detection_config: {
               ...form.detection_config,
@@ -1402,7 +1967,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         if (nativeStatus?.state_code === "session_not_found") {
           throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.window_closed"));
         }
-        if (["unsupported", "failed"].includes(nativeStatus?.state_code)) {
+        if (["reauth_required", "temporary", "unsupported", "failed"].includes(nativeStatus?.state_code)) {
           throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.verify_error"));
         }
         await wait(XIAOMI_AUTH_POLL_MS);
@@ -1495,10 +2060,11 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 ...form.detection_config.official_account,
                 account_binding_id: accountBindingId,
                 api_key_ref: officialApiKeyRef,
-                provider_home_url: "https://www.bigmodel.cn/coding-plan/personal/usage",
+                provider_home_url: resolveProviderHomeUrl("glm"),
               },
             },
-            provider_reported_at: nativeStatus.balance.provider_reported_at || now,
+            provider_reported_fields: [],
+            provider_reported_at: "",
             sync_status: "success",
             last_synced_at: now,
             last_sync_attempt_at: now,
@@ -1557,35 +2123,36 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     if (connectingConsole) return;
     const codexForm = record || form;
     setConsoleSessionError("");
+    setCodexPersistFailure(null);
+    setCodexWarning(null);
     if (!codexForm.source) {
       setConsoleSessionError(copy("settings.token_plan.console_session.source_required"));
       return;
     }
 
     setConnectingConsole(true);
-    const resumableSession = formCodexSession && [
+    const candidateSession = record
+      ? resolveConsoleSessionForRecord(record, consoleSessionsRef.current)
+      : formCodexSession;
+    const resumableSession = candidateSession && [
       "pending_login",
       "login_started",
       "awaiting_verification",
-    ].includes(formCodexSession.status)
-      ? formCodexSession
+    ].includes(candidateSession.status)
+      ? candidateSession
       : null;
     let sessionRef = resumableSession?.session_ref
       || `token-plan/codex/session/${crypto.randomUUID()}`;
     let createdSession = resumableSession;
     let authorizationReady = false;
+    let attemptToken = null;
     try {
       let nativeStatus = null;
       if (createdSession) {
-        nativeStatus = await verifyCodexConsoleSession(sessionRef).catch(() => null);
-        if (nativeStatus?.state_code === "session_not_found") {
-          const staleSessionId = createdSession.id;
-          await deleteConsoleSession(staleSessionId).catch(() => {});
-          setConsoleSessions((previous) => previous.filter((session) => session.id !== staleSessionId));
-          createdSession = null;
-          nativeStatus = null;
-          sessionRef = `token-plan/codex/session/${crypto.randomUUID()}`;
-        }
+        nativeStatus = await verifyCodexConsoleSession(sessionRef);
+      } else if (candidateSession) {
+        await deleteConsoleSession(candidateSession.id);
+        setConsoleSessions((previous) => previous.filter((session) => session.id !== candidateSession.id));
       }
       if (!createdSession) {
         const created = await createConsoleSession({
@@ -1599,29 +2166,34 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         nativeStatus = await openCodexConsoleLogin(sessionRef);
       }
 
-      const deadline = Date.now() + XIAOMI_AUTH_TIMEOUT_MS;
+      const parsedStartedAt = Date.parse(createdSession?.created_at || "");
+      const startedAt = resumableSession && Number.isFinite(parsedStartedAt)
+        ? parsedStartedAt
+        : Date.now();
+      const deadline = startedAt + XIAOMI_AUTH_TIMEOUT_MS;
+      attemptToken = {
+        cancelled: false,
+        sessionId: createdSession.id,
+        sessionRef,
+        startedAt,
+        deadlineAt: deadline,
+      };
+      codexAttemptTokensRef.current.set(sessionRef, attemptToken);
+      setCodexAttempt({ sessionId: createdSession.id, sessionRef, startedAt, deadlineAt: deadline });
+      setCodexNow(Date.now());
+
+      let verifyWithoutWaiting = !resumableSession;
       for (;;) {
-        if (!nativeStatus?.authorized && !nativeStatus?.connected) {
-          nativeStatus = await verifyCodexConsoleSession(sessionRef);
-        }
-        const authorizationComplete = Boolean(nativeStatus?.authorized || nativeStatus?.connected)
-          && ["authorized", "connected"].includes(nativeStatus?.state_code);
+        if (attemptToken.cancelled) return;
+        const persisted = await persistCodexNativeStatus(createdSession.id, nativeStatus, {
+          attemptToken,
+        });
+        if (!persisted || attemptToken.cancelled) return;
+
+        const authorizationComplete = isCodexAuthorizationComplete(nativeStatus);
         if (authorizationComplete) {
           authorizationReady = true;
-          const authorizedResult = {
-            connected: true,
-            authorized: true,
-            session_ref: nativeStatus.session_ref || sessionRef,
-            state_code: "authorized",
-            quota_sync_status: "idle",
-            error_code: "",
-            error_message: "",
-          };
-          const authorized = await verifyConsoleSession(createdSession.id, authorizedResult);
-          const accountBindingId = authorized.session?.id || createdSession.id;
-          setConsoleSessions((previous) => previous.map((session) =>
-            session.id === accountBindingId ? authorized.session : session
-          ));
+          const accountBindingId = persisted.id || createdSession.id;
 
           let quotaStatus;
           try {
@@ -1637,59 +2209,56 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
               error_message: copy("settings.token_plan.codex.quota_sync_failed"),
             };
           }
-          if (!quotaStatus?.authorized
-            || !quotaStatus?.connected
-            || !["authorized", "connected"].includes(quotaStatus?.state_code)) {
-            const rejected = await verifyConsoleSession(createdSession.id, quotaStatus || {
-              connected: false,
-              authorized: false,
-              session_ref: sessionRef,
-              state_code: "failed",
-              error_code: "VERIFY_FAILED",
-              error_message: copy("settings.token_plan.console_session.verify_error"),
-            });
-            setConsoleSessions((previous) => previous.map((session) =>
-              session.id === accountBindingId ? rejected.session : session
-            ));
-            throw new Error(quotaStatus?.error_message || copy("settings.token_plan.console_session.verify_error"));
+          const quotaSession = await persistCodexNativeStatus(createdSession.id, quotaStatus, {
+            attemptToken,
+          });
+          if (!quotaSession) return;
+          const projectedQuotaStatus = projectCodexStatusForLocal(quotaStatus);
+          if (!projectedQuotaStatus.authorized
+            || !projectedQuotaStatus.connected
+            || !["authorized", "connected"].includes(projectedQuotaStatus.state_code)) {
+            setConsoleSessionError(projectedQuotaStatus.error_message || copy("settings.token_plan.console_session.verify_error"));
+            return;
           }
-          const quotaAvailable = quotaStatus.state_code === "connected" && Boolean(quotaStatus.quota);
+          const quotaAvailable = projectedQuotaStatus.state_code === "connected" && Boolean(projectedQuotaStatus.quota);
           const quotaResult = {
             connected: true,
             authorized: true,
-            session_ref: quotaStatus.session_ref || sessionRef,
+            session_ref: projectedQuotaStatus.session_ref || sessionRef,
             state_code: quotaAvailable ? "connected" : "authorized",
             quota_sync_status: quotaAvailable ? "success" : "error",
-            error_code: quotaAvailable ? "" : (quotaStatus.error_code || "QUOTA_SYNC_FAILED"),
+            error_code: quotaAvailable ? "" : (projectedQuotaStatus.error_code || "QUOTA_SYNC_FAILED"),
             error_message: quotaAvailable
               ? ""
-              : (quotaStatus.error_message || copy("settings.token_plan.codex.quota_sync_failed")),
-            ...(quotaAvailable ? { quota: quotaStatus.quota } : {}),
+              : (projectedQuotaStatus.error_message || copy("settings.token_plan.codex.quota_sync_failed")),
+            ...(quotaAvailable ? { quota: projectedQuotaStatus.quota } : {}),
           };
-          const verified = await verifyConsoleSession(createdSession.id, quotaResult);
-          setConsoleSessions((previous) => previous.map((session) =>
-            session.id === accountBindingId ? verified.session : session
-          ));
+          if (quotaResult.state_code !== projectedQuotaStatus.state_code
+            || quotaResult.error_code !== projectedQuotaStatus.error_code
+            || quotaResult.quota_sync_status !== projectedQuotaStatus.quota_sync_status) {
+            const normalizedQuotaSession = await persistCodexNativeStatus(createdSession.id, quotaResult, {
+              attemptToken,
+            });
+            if (!normalizedQuotaSession) return;
+          }
           const now = new Date().toISOString();
           const saved = await saveTokenPlan({
             ...codexForm,
             refresh_enabled: false,
             refresh_method: "manual",
             used_quota: quotaAvailable
-              ? Number(quotaStatus.quota.used_quota || 0)
+              ? Number(projectedQuotaStatus.quota.used_quota || 0)
               : Number(codexForm.used_quota || 0),
             remaining_quota: quotaAvailable
-              ? Number(quotaStatus.quota.remaining_quota || 0)
+              ? Number(projectedQuotaStatus.quota.remaining_quota || 0)
               : Number(codexForm.remaining_quota || 0),
             total_quota: Number(selectedPlan?.total_quota || codexForm.total_quota || 0),
             total_quota_display: selectedPlan?.total_quota_display || codexForm.total_quota_display || "",
             quota_windows: quotaAvailable
-              ? (quotaStatus.quota.quota_windows || [])
+              ? (projectedQuotaStatus.quota.quota_windows || [])
               : (codexForm.quota_windows || []),
             expires_at: codexForm.expires_at || "",
-            provider_reported_at: quotaAvailable
-              ? (quotaStatus.quota.provider_reported_at || now)
-              : (codexForm.provider_reported_at || ""),
+            ...(quotaAvailable ? projectNativeQuotaSnapshot(projectedQuotaStatus.quota, now) : {}),
             detection_method: "official_account",
             detection_config: {
               ...codexForm.detection_config,
@@ -1697,7 +2266,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 ...codexForm.detection_config?.official_account,
                 account_binding_id: accountBindingId,
                 session_ref: sessionRef,
-                provider_home_url: "https://chatgpt.com/codex",
+                provider_home_url: resolveProviderHomeUrl("codex"),
               },
             },
             sync_status: quotaAvailable ? "success" : "failed",
@@ -1710,32 +2279,42 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           setForm(EMPTY_FORM);
           setFormOpen(false);
           setSavedNotice(true);
+          finishCodexAttempt(attemptToken);
           return;
         }
 
-        if (nativeStatus?.state_code === "session_not_found") {
-          throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.window_closed"));
-        }
-        if (["unsupported", "failed"].includes(nativeStatus?.state_code)) {
-          throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.verify_error"));
+        if (!CODEX_NATIVE_PENDING_STATES.has(nativeStatus?.state_code)) {
+          finishCodexAttempt(attemptToken);
+          setConsoleSessionError("");
+          window.setTimeout(() => codexAlertRef.current?.focus(), 0);
+          return;
         }
         if (Date.now() >= deadline) {
-          throw new Error(copy("settings.token_plan.codex.connect_timeout"));
+          await cancelCodexAttempt("timeout", attemptToken);
+          return;
         }
-        nativeStatus = null;
-        await wait(XIAOMI_AUTH_POLL_MS);
+        if (!verifyWithoutWaiting) await wait(XIAOMI_AUTH_POLL_MS);
+        verifyWithoutWaiting = false;
+        if (attemptToken.cancelled) return;
+        nativeStatus = await verifyCodexConsoleSession(sessionRef);
       }
     } catch (err) {
-      if (createdSession && !authorizationReady) {
-        const discarded = await discardCodexPendingSession(sessionRef).catch(() => false);
-        if (discarded) {
-          await deleteConsoleSession(createdSession.id).catch(() => {});
-          setConsoleSessions((previous) => previous.filter((session) => session.id !== createdSession.id));
-        }
+      if (attemptToken?.cancelled) return;
+      if (createdSession && !authorizationReady && !attemptToken?.cancelled) {
+        const fallbackAttempt = attemptToken || {
+          cancelled: false,
+          sessionId: createdSession.id,
+          sessionRef,
+          startedAt: Date.now(),
+          deadlineAt: Date.now() + XIAOMI_AUTH_TIMEOUT_MS,
+        };
+        await cancelCodexAttempt("user_cancelled", fallbackAttempt);
       }
       setConsoleSessionError(err?.message || copy("settings.token_plan.console_session.connect_error"));
     } finally {
-      setConnectingConsole(false);
+      if (codexAttemptTokensRef.current.get(sessionRef) === attemptToken || !attemptToken) {
+        setConnectingConsole(false);
+      }
     }
   };
 
@@ -1818,7 +2397,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             total_quota_display: selectedPlan?.total_quota_display || form.total_quota_display || "",
             quota_windows: nativeStatus.quota.quota_windows || [],
             expires_at: form.expires_at || "",
-            provider_reported_at: nativeStatus.quota.provider_reported_at || now,
+            ...projectNativeQuotaSnapshot(nativeStatus.quota, now),
             detection_method: "official_account",
             detection_config: {
               ...form.detection_config,
@@ -1989,18 +2568,70 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     }
   };
 
-  const handleDeleteCodexConsoleSession = async (sessionId, sessionRef) => {
-    try {
-      await deleteConsoleSession(sessionId);
+  const handleDeleteCodexConsoleSession = (sessionId, sessionRef) => {
+    const current = codexDisconnectPromiseRef.current.get(sessionRef);
+    if (current) return current;
+    const promise = (async () => {
+      setCodexDisconnectingSessionRef(sessionRef);
+      setConsoleSessionError("");
       try {
-        await deleteCodexConsoleSession(sessionRef);
+        if (!codexNativeDisconnectedRefs.current.has(sessionRef)) {
+          const nativeStatus = await deleteCodexConsoleSession(sessionRef);
+          rememberCodexNativeStatus(nativeStatus);
+          const disconnected = nativeStatus?.state_code === "disconnected"
+            && nativeStatus?.authorized === false
+            && nativeStatus?.connected === false
+            && !String(nativeStatus?.error_code || "").trim()
+            && !String(nativeStatus?.error_message || "").trim();
+          if (!disconnected) {
+            if (nativeStatus) {
+              await persistCodexNativeStatus(sessionId, {
+                connected: true,
+                authorized: true,
+                session_ref: sessionRef,
+                state_code: "authorized",
+                quota_sync_status: "idle",
+                error_code: "CODEX_LOGOUT_FAILED",
+                error_message: nativeStatus.error_message || copy("settings.token_plan.codex.logout_failed"),
+                legacy_auth_present: nativeStatus.legacy_auth_present === true,
+              }, { reconcileOnFailure: false });
+            }
+            setConsoleSessionError(
+              nativeStatus?.error_message
+              || copy("settings.token_plan.codex.logout_failed"),
+            );
+            window.setTimeout(() => codexAlertRef.current?.focus(), 0);
+            return;
+          }
+          codexNativeDisconnectedRefs.current.add(sessionRef);
+        }
+
+        try {
+          await deleteConsoleSession(sessionId);
+        } catch {
+          setCodexDisconnectRetry({ sessionRef });
+          setConsoleSessionError(
+            `LOCAL_SESSION_PERSIST_FAILED: ${copy("settings.token_plan.codex.local_persist_failed")}`,
+          );
+          window.setTimeout(() => codexAlertRef.current?.focus(), 0);
+          return;
+        }
+
+        setConsoleSessions((previous) => previous.filter((session) => session.id !== sessionId));
+        setCodexDisconnectRetry((retry) => retry?.sessionRef === sessionRef ? null : retry);
+        setConsoleSessionError("");
       } catch {
-        // Native session may already be gone; ignore.
+        setConsoleSessionError(copy("settings.token_plan.codex.logout_failed"));
+        window.setTimeout(() => codexAlertRef.current?.focus(), 0);
+      } finally {
+        if (codexDisconnectPromiseRef.current.get(sessionRef) === promise) {
+          codexDisconnectPromiseRef.current.delete(sessionRef);
+        }
+        setCodexDisconnectingSessionRef((currentRef) => currentRef === sessionRef ? "" : currentRef);
       }
-      setConsoleSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    } catch (err) {
-      setConsoleSessionError(err?.message || copy("settings.token_plan.console_session.delete_error"));
-    }
+    })();
+    codexDisconnectPromiseRef.current.set(sessionRef, promise);
+    return promise;
   };
 
   const handleDeleteClaudeConsoleSession = async (sessionId, sessionRef) => {
@@ -2072,8 +2703,8 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     return opts;
   }, [currentProvider, form.provider_id]);
   const agentOptions = useMemo(
-    () => visibleLimitProviders.map((id) => ({ value: id, label: limitProviderName(id) })),
-    [visibleLimitProviders],
+    () => DASHBOARD_AGENTS.map((agent) => ({ value: agent.id, label: agent.displayName })),
+    [],
   );
 
   const selectedPlan = useMemo(() => {
@@ -2427,7 +3058,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           official_account: {
             ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
             api_key_ref: officialApiKeyRef,
-            provider_home_url: "https://www.bigmodel.cn/coding-plan/personal/usage",
+            provider_home_url: resolveProviderHomeUrl("glm"),
             account_binding_id: glmSession?.id
               || payload.detection_config?.official_account?.account_binding_id
               || "",
@@ -2442,9 +3073,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           official_account: {
             ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
             ...(form.plan_id === "kimi_api_budget" ? { api_key_ref: officialApiKeyRef } : {}),
-            provider_home_url: form.plan_id === "kimi_api_budget"
-              ? "https://platform.moonshot.cn/console/account"
-              : "https://www.kimi.com/code",
+            provider_home_url: resolveProviderHomeUrl("kimi", form.plan_id),
           },
         };
       } else if (
@@ -2456,7 +3085,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           official_account: {
             ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
             api_key_ref: officialApiKeyRef,
-            provider_home_url: "https://platform.minimaxi.com/user-center/basic-information",
+            provider_home_url: resolveProviderHomeUrl("minimax"),
           },
         };
       } else if (
@@ -2468,7 +3097,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           official_account: {
             ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
             api_key_ref: officialApiKeyRef,
-            provider_home_url: "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan",
+            provider_home_url: resolveProviderHomeUrl("aliyun_bailian", form.plan_id),
           },
         };
       } else if (
@@ -2480,7 +3109,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           ...payload.detection_config,
           official_account: {
             ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
-            provider_home_url: "https://chatgpt.com/codex",
+            provider_home_url: resolveProviderHomeUrl("codex"),
             account_binding_id: formCodexSession?.status === "connected" ? formCodexSession.id : "",
           },
         };
@@ -2526,9 +3155,22 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           official_account: {
             ...(payload.detection_config?.official_account || EMPTY_FORM.detection_config.official_account),
             claude_account_mode: "routing",
-            provider_home_url: "https://console.anthropic.com/",
+            provider_home_url: resolveProviderLinkUrl("catalog-claude-console"),
           },
         };
+      }
+      if (payload.detection_method && payload.detection_method !== "not_configured") {
+        for (const providerOwnedField of [
+          "total_quota",
+          "used_quota",
+          "remaining_quota",
+          "quota_windows",
+          "provider_reported_fields",
+          "provider_reported_at",
+          "expires_at",
+        ]) {
+          delete payload[providerOwnedField];
+        }
       }
       payload.notes = String(form.notes || "").trim().slice(0, 200);
       const result = await saveTokenPlan(payload);
@@ -2597,6 +3239,15 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   };
 
   const refresh = async (id) => {
+    const guardedPlan = recordsRef.current.find((record) => record.id === id);
+    const guardedSession = guardedPlan
+      ? resolveConsoleSessionForRecord(guardedPlan, consoleSessionsRef.current)
+      : null;
+    if (guardedPlan?.provider_id === "codex"
+      && guardedPlan.detection_method === "official_account"
+      && codexDisconnectBlocksRefresh(guardedSession?.session_ref)) {
+      return;
+    }
     if (refreshingPlanIdsRef.current.has(id)) return;
     refreshingPlanIdsRef.current.add(id);
     setRefreshingId(id);
@@ -2625,10 +3276,11 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         recordConsoleSession.status === "connected" &&
         recordConsoleSession.session_ref
       ) {
+        if (codexDisconnectBlocksRefresh(recordConsoleSession.session_ref)) return;
         let nativeStatus;
         try {
           nativeStatus = await syncCodexConsoleQuota(recordConsoleSession.session_ref);
-        } catch (err) {
+        } catch {
           nativeStatus = {
             connected: true,
             authorized: true,
@@ -2636,35 +3288,39 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             state_code: "authorized",
             quota_sync_status: "error",
             error_code: "QUOTA_SYNC_FAILED",
-            error_message: err?.message || copy("settings.token_plan.codex.quota_sync_failed"),
+            error_message: copy("settings.token_plan.codex.quota_sync_failed"),
           };
         }
+        if (codexDisconnectBlocksRefresh(recordConsoleSession.session_ref)) return;
+        const projectedStatus = projectCodexStatusForLocal(nativeStatus);
         const now = new Date().toISOString();
-        const quotaAvailable = nativeStatus?.state_code === "connected" && Boolean(nativeStatus?.quota);
+        let verified;
+        try {
+          verified = await verifyConsoleSession(recordConsoleSession.id, projectedStatus);
+        } catch {
+          setError(`LOCAL_SESSION_PERSIST_FAILED: ${copy("settings.token_plan.codex.local_persist_failed")}`);
+          return;
+        }
+        if (codexDisconnectBlocksRefresh(recordConsoleSession.session_ref)) return;
+        if (!verified?.session) {
+          setError(`LOCAL_SESSION_PERSIST_FAILED: ${copy("settings.token_plan.codex.local_persist_failed")}`);
+          return;
+        }
+        replaceConsoleSession(verified.session);
+
+        const quotaAvailable = projectedStatus.state_code === "connected" && Boolean(projectedStatus.quota);
         if (quotaAvailable) {
           try {
             const catalogPlan = findCatalogPlan(catalog, plan.provider_id, plan.plan_id);
-            const verified = await verifyConsoleSession(recordConsoleSession.id, {
-              connected: true,
-              authorized: true,
-              session_ref: recordConsoleSession.session_ref,
-              state_code: "connected",
-              quota_sync_status: "success",
-              error_code: "",
-              error_message: "",
-              quota: nativeStatus.quota,
-            });
-            setConsoleSessions((previous) => previous.map((session) =>
-              session.id === recordConsoleSession.id ? verified.session : session
-            ));
             const result = await saveTokenPlan({
               ...plan,
-              used_quota: Number(nativeStatus.quota.used_quota || 0),
-              remaining_quota: Number(nativeStatus.quota.remaining_quota || 0),
+              used_quota: Number(projectedStatus.quota.used_quota || 0),
+              remaining_quota: Number(projectedStatus.quota.remaining_quota || 0),
               total_quota: Number(catalogPlan?.total_quota || plan.total_quota || 0),
               total_quota_display: catalogPlan?.total_quota_display || plan.total_quota_display || "",
-              quota_windows: nativeStatus.quota.quota_windows || plan.quota_windows || [],
+              quota_windows: projectedStatus.quota.quota_windows || plan.quota_windows || [],
               expires_at: plan.expires_at || "",
+              ...projectNativeQuotaSnapshot(projectedStatus.quota, now),
               sync_status: "success",
               last_synced_at: new Date().toISOString(),
               last_sync_attempt_at: now,
@@ -2681,18 +3337,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             return;
           }
         }
-        const reauthRequired = nativeStatus?.state_code === "reauth_required";
-        if (recordConsoleSession.id) {
-          const verified = await verifyConsoleSession(recordConsoleSession.id, nativeStatus).catch(() => null);
-          if (verified?.session) {
-            setConsoleSessions((previous) => previous.map((session) =>
-              session.id === recordConsoleSession.id ? verified.session : session
-            ));
-          }
-        }
-        const errorCode = nativeStatus?.error_code
+        const reauthRequired = projectedStatus.state_code === "reauth_required";
+        const errorCode = projectedStatus.error_code
           || (reauthRequired ? "REAUTH_REQUIRED" : "QUOTA_SYNC_FAILED");
-        const errorMessage = nativeStatus?.error_message
+        const errorMessage = projectedStatus.error_message
           || (reauthRequired
             ? copy("settings.token_plan.codex_quota.reauth")
             : copy("settings.token_plan.codex.quota_sync_failed"));
@@ -2752,6 +3400,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             const nativeStatus = await entry.verify(boundSessionRef);
             if (nativeStatus?.connected && nativeStatus?.quota) {
               const catalogPlan = findCatalogPlan(catalog, plan.provider_id, plan.plan_id);
+              const now = new Date().toISOString();
               await saveTokenPlan({
                 ...plan,
                 used_quota: Number(nativeStatus.quota.used_quota || 0),
@@ -2760,9 +3409,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 total_quota_display: catalogPlan?.total_quota_display || plan.total_quota_display || "",
                 quota_windows: nativeStatus.quota.quota_windows || plan.quota_windows || [],
                 expires_at: plan.expires_at || "",
-                provider_reported_at: nativeStatus.quota.provider_reported_at
-                  || nativeStatus.quota.fetched_at
-                  || new Date().toISOString(),
+                ...projectNativeQuotaSnapshot(nativeStatus.quota, now),
                 detection_config: {
                   ...plan.detection_config,
                   official_account: {
@@ -2780,13 +3427,13 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                   },
                 },
                 sync_status: "success",
-                last_synced_at: new Date().toISOString(),
-                last_sync_attempt_at: new Date().toISOString(),
+                last_synced_at: now,
+                last_sync_attempt_at: now,
                 last_error_code: "",
                 last_error_message: "",
                 last_refresh_status: "success",
                 last_refresh_error: "",
-                last_refresh_at: new Date().toISOString(),
+                last_refresh_at: now,
               });
               const plansResult = await getTokenPlans();
               setRecords(normalizeRecords(plansResult?.records));
@@ -2861,6 +3508,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             xiaomiMimoSession.session_ref
           );
           if (nativeStatus?.quota) {
+            const now = new Date().toISOString();
             // Update the plan directly with fresh quota from the native bridge
             await saveTokenPlan({
               ...plan,
@@ -2868,19 +3516,37 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
               remaining_quota: Number(nativeStatus.quota.remaining_quota || 0),
               total_quota: Number(nativeStatus.quota.total_quota || plan.total_quota),
               expires_at: nativeStatus.quota.expires_at || plan.expires_at || "",
+              ...projectNativeQuotaSnapshot(nativeStatus.quota, now),
               sync_status: "success",
-              last_synced_at: new Date().toISOString(),
-              last_sync_attempt_at: new Date().toISOString(),
+              last_synced_at: now,
+              last_sync_attempt_at: now,
               last_error_code: "",
               last_error_message: "",
               last_refresh_status: "success",
               last_refresh_error: "",
-              last_refresh_at: new Date().toISOString(),
+              last_refresh_at: now,
             });
             // Re-fetch records to reflect the update
             const plansResult = await getTokenPlans();
             setRecords(normalizeRecords(plansResult?.records));
             setRefreshingId("");
+            return;
+          }
+          const nativeState = String(nativeStatus?.state_code || "").trim();
+          if (["reauth_required", "temporary", "unsupported"].includes(nativeState)) {
+            const now = new Date().toISOString();
+            const errorMessage = nativeStatus?.error_message || copy("settings.token_plan.refresh_failed");
+            const result = await saveTokenPlan({
+              ...plan,
+              sync_status: nativeState,
+              last_sync_attempt_at: now,
+              last_error_code: nativeStatus?.error_code || nativeState.toUpperCase(),
+              last_error_message: errorMessage,
+              last_refresh_status: "failed",
+              last_refresh_error: errorMessage,
+              last_refresh_at: now,
+            });
+            setRecords(normalizeRecords(result?.records));
             return;
           }
         } catch (_) {
@@ -2902,7 +3568,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           remaining_quota: Number(refreshedPlan.remaining_quota ?? current.remaining_quota),
           total_quota: Number(refreshedPlan.total_quota ?? current.total_quota),
           total_quota_display: refreshedPlan.total_quota_display || current.total_quota_display,
-          expires_at: refreshedPlan.expires_at || current.expires_at,
+          expires_at: refreshedPlan.expires_at ?? current.expires_at,
           quota_windows: refreshedPlan.quota_windows || current.quota_windows,
           sync_status: refreshedPlan.sync_status || current.sync_status,
         };
@@ -2918,6 +3584,101 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     }
   };
   refreshRef.current = refresh;
+
+  useEffect(() => {
+    if (loadingConsoleSessions || codexInitialReconcileDoneRef.current) return;
+    codexInitialReconcileDoneRef.current = true;
+    const pendingSessions = consoleSessionsRef.current.filter((session) =>
+      session.provider_id === "codex"
+      && ["pending_login", "login_started", "awaiting_verification"].includes(session.status)
+    );
+    if (pendingSessions.length === 0) return;
+    let cancelled = false;
+    const attemptTokens = pendingSessions.map((session) => {
+      const parsedStartedAt = Date.parse(session.created_at || "");
+      const startedAt = Number.isFinite(parsedStartedAt) ? parsedStartedAt : Date.now();
+      const attemptToken = {
+        cancelled: false,
+        sessionId: session.id,
+        sessionRef: session.session_ref,
+        startedAt,
+        deadlineAt: startedAt + XIAOMI_AUTH_TIMEOUT_MS,
+      };
+      codexAttemptTokensRef.current.set(session.session_ref, attemptToken);
+      setCodexAttempt({
+        sessionId: session.id,
+        sessionRef: session.session_ref,
+        startedAt,
+        deadlineAt: attemptToken.deadlineAt,
+      });
+      setCodexNow(Date.now());
+      void (async () => {
+        try {
+          for (;;) {
+            if (cancelled || attemptToken.cancelled) return;
+            const nativeStatus = await verifyCodexConsoleSession(session.session_ref);
+            if (cancelled || attemptToken.cancelled) return;
+            const persisted = await persistCodexNativeStatus(session.id, nativeStatus, { attemptToken });
+            if (!persisted || attemptToken.cancelled) return;
+            if (isCodexAuthorizationComplete(nativeStatus)
+              || !CODEX_NATIVE_PENDING_STATES.has(nativeStatus?.state_code)) {
+              finishCodexAttempt(attemptToken);
+              return;
+            }
+            if (Date.now() >= attemptToken.deadlineAt) {
+              await cancelCodexAttempt("timeout", attemptToken);
+              return;
+            }
+            await wait(XIAOMI_AUTH_POLL_MS);
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setConsoleSessionError(error?.message || copy("settings.token_plan.console_session.verify_error"));
+          }
+        }
+      })();
+      return attemptToken;
+    });
+    return () => {
+      cancelled = true;
+      for (const attemptToken of attemptTokens) {
+        attemptToken.cancelled = true;
+        if (codexAttemptTokensRef.current.get(attemptToken.sessionRef) === attemptToken) {
+          codexAttemptTokensRef.current.delete(attemptToken.sessionRef);
+        }
+      }
+    };
+  }, [loadingConsoleSessions]);
+
+  useEffect(() => {
+    const isActive = (attemptToken) => {
+      if (!attemptToken?.deadlineAt || attemptToken.cancelled) return false;
+      const stateCode = codexNativeStatuses[attemptToken.sessionRef]?.state_code;
+      return !["authorized", "connected", "reauth_required", "failed", "session_not_found", "disconnected"].includes(stateCode);
+    };
+    if (![...codexAttemptTokensRef.current.values()].some(isActive)) return undefined;
+    const tick = () => {
+      const now = Date.now();
+      setCodexNow(now);
+      for (const attemptToken of codexAttemptTokensRef.current.values()) {
+        if (isActive(attemptToken) && now >= attemptToken.deadlineAt) {
+          void cancelCodexAttempt("timeout", attemptToken);
+        }
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [codexAttempt, codexNativeStatuses]);
+
+  useEffect(() => {
+    if (!formOpen || form.provider_id !== "codex") return;
+    if (consoleSessionError || codexWarning || codexPersistFailure || codexStage === "failed") {
+      const timer = window.setTimeout(() => codexAlertRef.current?.focus(), 50);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [codexPersistFailure, codexStage, codexWarning, consoleSessionError, form.plan_id, form.provider_id, formOpen]);
 
   useEffect(() => {
     if (!showFullEmail) {
@@ -2942,9 +3703,12 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     const run = async () => {
       if (cancelled || autoCodexRefreshBusyRef.current || document.visibilityState === "hidden") return;
       const ids = recordsRef.current
-        .filter((record) => record.provider_id === "codex"
-          && record.detection_method === "official_account"
-          && resolveConsoleSessionForRecord(record, consoleSessionsRef.current)?.status === "connected")
+        .filter((record) => {
+          if (record.provider_id !== "codex" || record.detection_method !== "official_account") return false;
+          const session = resolveConsoleSessionForRecord(record, consoleSessionsRef.current);
+          return session?.status === "connected"
+            && !codexDisconnectBlocksRefresh(session.session_ref);
+        })
         .map((record) => record.id)
         .filter(Boolean);
       if (ids.length === 0) return;
@@ -3656,7 +4420,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                       </div>
                       <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
                         {copy("settings.token_plan.detection.official_account.url_label")}:{" "}
-                        {resolveProviderHomeUrl("glm")}
+                        <ProviderHomeLink
+                          linkId={resolveProviderHomeLinkId("glm")}
+                          testId="detection-glm-provider-link"
+                        />
                       </div>
                       <label className="block text-xs text-oai-gray-600 dark:text-oai-gray-300">
                         {copy("settings.token_plan.glm.api_key")}
@@ -3831,6 +4598,13 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                         <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
                           {copy("settings.token_plan.kimi.api_budget_desc")}
                         </div>
+                        <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
+                          {copy("settings.token_plan.detection.official_account.url_label")}: {" "}
+                          <ProviderHomeLink
+                            linkId={resolveProviderHomeLinkId("kimi", form.plan_id)}
+                            testId="detection-kimi-api-provider-link"
+                          />
+                        </div>
                         <label className="block text-xs text-oai-gray-600 dark:text-oai-gray-300">
                           {copy("settings.token_plan.kimi.api_key")}
                           <input
@@ -3867,7 +4641,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                         descCopyKey="settings.token_plan.kimi.code_quota_desc"
                         connectCopyKey="settings.token_plan.kimi.connect_account"
                         loginStartedDescCopyKey="settings.token_plan.kimi.login_started_desc"
-                        providerHomeUrl={resolveProviderHomeUrl("kimi", form.plan_id)}
+                        providerHomeLinkId={resolveProviderHomeLinkId("kimi", form.plan_id)}
                         stage={kimiStage}
                         session={formKimiSession}
                         statusLabel={kimiStatusLabel}
@@ -3887,6 +4661,13 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                     <div className="space-y-3">
                       <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
                         {copy("settings.token_plan.minimax.token_plan_desc")}
+                      </div>
+                      <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
+                        {copy("settings.token_plan.detection.official_account.url_label")}: {" "}
+                        <ProviderHomeLink
+                          linkId={resolveProviderHomeLinkId("minimax")}
+                          testId="detection-minimax-provider-link"
+                        />
                       </div>
                       {form.plan_id === "minimax_manual_quota" && (
                         <label className="block text-xs text-oai-gray-600 dark:text-oai-gray-300">
@@ -3925,6 +4706,13 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                     <div className="space-y-3">
                       <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
                         {copy("settings.token_plan.aliyun_bailian.coding_plan_desc")}
+                      </div>
+                      <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
+                        {copy("settings.token_plan.detection.official_account.url_label")}: {" "}
+                        <ProviderHomeLink
+                          linkId={resolveProviderHomeLinkId("aliyun_bailian", form.plan_id)}
+                          testId="detection-aliyun-provider-link"
+                        />
                       </div>
                       {form.plan_id === "aliyun_bailian_manual_quota" && (
                         <label className="block text-xs text-oai-gray-600 dark:text-oai-gray-300">
@@ -3966,10 +4754,36 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                       </div>
                       <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
                         {copy("settings.token_plan.detection.official_account.url_label")}:{" "}
-                        {resolveProviderHomeUrl("codex")}
+                        <ProviderHomeLink
+                          linkId={resolveProviderHomeLinkId("codex")}
+                          testId="detection-codex-provider-link"
+                        />
                       </div>
-                      {consoleSessionError && (
-                        <div className="text-xs text-red-500 dark:text-red-400">{consoleSessionError}</div>
+                      {(consoleSessionError || codexWarning) && (
+                        <div
+                          ref={codexAlertRef}
+                          tabIndex={-1}
+                          role="alert"
+                          aria-live="assertive"
+                          data-testid="detection-codex-alert"
+                          className="space-y-2 text-xs text-red-500 outline-none dark:text-red-400"
+                        >
+                          <div>
+                            {codexWarning
+                              ? `${codexWarning.error_code || "LEGACY_CREDENTIAL_CLEANUP_FAILED"}: ${codexWarning.error_message || copy("settings.token_plan.codex.legacy_cleanup_failed")}`
+                              : consoleSessionError}
+                          </div>
+                          {codexPersistFailure ? (
+                            <button
+                              type="button"
+                              data-testid="detection-codex-retry-save"
+                              onClick={() => void retryCodexLocalPersist()}
+                              className="tt-product-focusable rounded-md border border-oai-brand-300 px-2.5 py-1.5 text-xs text-oai-brand-700 dark:border-oai-brand-700 dark:text-oai-brand-300"
+                            >
+                              {copy("settings.token_plan.codex.retry_save")}
+                            </button>
+                          ) : null}
+                        </div>
                       )}
                       {loadingConsoleSessions ? (
                         <div className="text-xs text-oai-gray-500">
@@ -3993,7 +4807,12 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             : copy("settings.token_plan.codex.connect_account")}
                         </button>
                       ) : codexStage === "login_started" ? (
-                        <div className="space-y-2" data-testid="detection-codex-login-started">
+                        <div
+                          className="space-y-2"
+                          data-testid="detection-codex-login-started"
+                          role="status"
+                          aria-live="polite"
+                        >
                           <div className="flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 text-amber-500" aria-hidden />
                             <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
@@ -4003,9 +4822,15 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                           <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
                             {copy("settings.token_plan.codex.login_started_desc")}
                           </div>
+                          {renderCodexAttemptControls()}
                         </div>
                       ) : codexStage === "awaiting_verification" ? (
-                        <div className="space-y-2" data-testid="detection-codex-awaiting">
+                        <div
+                          className="space-y-2"
+                          data-testid="detection-codex-awaiting"
+                          role="status"
+                          aria-live="polite"
+                        >
                           <div className="flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 text-amber-500" aria-hidden />
                             <div>
@@ -4017,23 +4842,17 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                               </div>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={handleOfficialAccountSync}
-                            disabled={connectingConsole}
-                            data-testid="detection-codex-resume"
-                            className={cn(
-                              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-                              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-                              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-                            )}
-                          >
-                            <Link2 className="h-3.5 w-3.5" aria-hidden />
-                            {copy("settings.token_plan.console_session.retry")}
-                          </button>
+                          {renderCodexAttemptControls()}
                         </div>
                       ) : codexStage === "failed" || codexStage === "desktop_not_verified" ? (
-                        <div className="space-y-2" data-testid="detection-codex-failed">
+                        <div
+                          ref={consoleSessionError || codexWarning ? undefined : codexAlertRef}
+                          tabIndex={consoleSessionError || codexWarning ? undefined : -1}
+                          className="space-y-2 outline-none"
+                          data-testid="detection-codex-failed"
+                          role={consoleSessionError || codexWarning ? undefined : "alert"}
+                          aria-live={consoleSessionError || codexWarning ? undefined : "assertive"}
+                        >
                           <div className="flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 text-red-500" aria-hidden />
                             <div>
@@ -4041,15 +4860,19 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                                 {formCodexSession?.display_name}
                               </div>
                               <div className="text-xs text-red-500 dark:text-red-400">
-                                {codexStatusLabel}
+                                {currentCodexNativeStatus?.error_message
+                                  || formCodexSession?.last_error_message
+                                  || codexStatusLabel}
                               </div>
                             </div>
                           </div>
                           <button
+                            key={`codex-retry-${form.plan_id || "unknown"}`}
                             type="button"
                             onClick={handleOfficialAccountSync}
                             disabled={connectingConsole}
                             data-testid="detection-codex-retry"
+                            autoFocus
                             className={cn(
                               "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
                               "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
@@ -4061,7 +4884,12 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                           </button>
                         </div>
                       ) : (
-                        <div className="space-y-2" data-testid="detection-codex-connected">
+                        <div
+                          className="space-y-2"
+                          data-testid="detection-codex-connected"
+                          role="status"
+                          aria-live="polite"
+                        >
                           <div className="flex items-center gap-2">
                             <CheckCircle2 className="h-4 w-4 text-green-500" aria-hidden />
                             <div>
@@ -4093,10 +4921,32 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             <button
                               type="button"
                               onClick={() => handleDeleteCodexConsoleSession(formCodexSession.id, formCodexSession.session_ref)}
-                              className="text-xs text-red-600 dark:text-red-400"
+                              disabled={codexDisconnectingSessionRef === formCodexSession.session_ref}
+                              data-testid={formCodexDisconnectRetry
+                                ? "detection-disconnect-codex-local-retry"
+                                : "detection-disconnect-codex"}
+                              className="text-xs text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400"
                             >
-                              {copy("settings.token_plan.console_session.disconnect")}
+                              {formCodexDisconnectRetry
+                                ? copy("settings.token_plan.codex.retry_local_disconnect")
+                                : copy("settings.token_plan.console_session.disconnect")}
                             </button>
+                          ) : null}
+                          {currentCodexNativeStatus?.legacy_auth_present === true ? (
+                            <div
+                              data-testid="detection-codex-legacy-warning"
+                              className="space-y-1 rounded-md border border-amber-200 p-2 text-xs text-amber-700 dark:border-amber-900 dark:text-amber-300"
+                            >
+                              <div>{copy("settings.token_plan.codex.legacy_auth_warning")}</div>
+                              <button
+                                type="button"
+                                data-testid="detection-codex-cleanup-legacy"
+                                onClick={() => void cleanupCurrentLegacyCodexAuth()}
+                                className="tt-product-focusable rounded-sm font-medium underline"
+                              >
+                                {copy("settings.token_plan.codex.cleanup_legacy")}
+                              </button>
+                            </div>
                           ) : null}
                           <button
                             type="button"
@@ -4121,7 +4971,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                         descCopyKey="settings.token_plan.claude.official_desc"
                         connectCopyKey="settings.token_plan.claude.connect_account"
                         loginStartedDescCopyKey="settings.token_plan.claude.login_started_desc"
-                        providerHomeUrl={resolveProviderHomeUrl("claude")}
+                        providerHomeLinkId={resolveProviderHomeLinkId("claude")}
                         stage={claudeStage}
                         session={formClaudeSession}
                         statusLabel={claudeStatusLabel}
@@ -4142,7 +4992,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                       descCopyKey="settings.token_plan.cursor.official_desc"
                       connectCopyKey="settings.token_plan.cursor.connect_account"
                       loginStartedDescCopyKey="settings.token_plan.cursor.login_started_desc"
-                      providerHomeUrl={resolveProviderHomeUrl("cursor")}
+                      providerHomeLinkId={resolveProviderHomeLinkId("cursor")}
                       stage={cursorStage}
                       session={formCursorSession}
                       statusLabel={cursorStatusLabel}
@@ -4162,7 +5012,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                       descCopyKey="settings.token_plan.trae.official_desc"
                       connectCopyKey="settings.token_plan.trae.connect_account"
                       loginStartedDescCopyKey="settings.token_plan.trae.login_started_desc"
-                      providerHomeUrl={resolveProviderHomeUrl("trae")}
+                      providerHomeLinkId={resolveProviderHomeLinkId("trae")}
                       stage={traeStage}
                       session={formTraeSession}
                       statusLabel={traeStatusLabel}
@@ -4184,7 +5034,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                   </div>
                   <div className="mt-1 text-xs text-oai-gray-400 dark:text-oai-gray-500">
                     {copy("settings.token_plan.detection.official_account.url_label")}:{" "}
-                    {copy("settings.token_plan.detection.official_account.url_value")}
+                    <ProviderHomeLink
+                      linkId={resolveProviderHomeLinkId("xiaomi_mimo")}
+                      testId="detection-xiaomi-provider-link"
+                    />
                   </div>
                   {consoleSessionError && (
                     <div className="mt-2 text-xs text-red-500 dark:text-red-400">

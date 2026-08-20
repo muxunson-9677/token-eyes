@@ -13,6 +13,9 @@ const { test } = require("node:test");
 const matcher = require("../src/lib/pricing/matcher");
 const fetcher = require("../src/lib/pricing/litellm-fetcher");
 const pricing = require("../src/lib/pricing");
+const curatedOverrides = require("../src/lib/pricing/curated-overrides.json");
+
+const EXPECTED_PRICING_HARD_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -147,6 +150,30 @@ test("matcher: lookupPricing strips a LiteLLM provider prefix for bare queue mod
   assert.equal(r.hit, true);
   assert.equal(r.source, "litellm:prefix-strip");
   assert.equal(r.value.input, 1);
+});
+
+test("matcher provenance: exact matches expose matched_model and high-confidence match_kind", () => {
+  const result = matcher.lookupPricing("gpt-5.4", {
+    curated: { exact: {}, alias: {}, fuzzy: [] },
+    litellm: { "gpt-5.4": { input: 2.5, output: 15 } },
+  });
+
+  assert.equal(result.matched_model, "gpt-5.4");
+  assert.equal(result.match_kind, "exact");
+  assert.equal(result.confidence, "high");
+});
+
+test("matcher provenance: provider-prefix matches are explicitly inferred", () => {
+  const result = matcher.lookupPricing("mimo-v2.5-pro", {
+    curated: { exact: {}, alias: {}, fuzzy: [] },
+    litellm: {
+      "openrouter/xiaomi/mimo-v2.5-pro": { input: 1, output: 3 },
+    },
+  });
+
+  assert.equal(result.matched_model, "openrouter/xiaomi/mimo-v2.5-pro");
+  assert.equal(result.match_kind, "inferred");
+  assert.equal(result.confidence, "low");
 });
 
 test("matcher: prefix-strip is deterministic across providers (smallest key wins, order-independent)", () => {
@@ -433,6 +460,89 @@ test("fetcher: fetch failure with stale cache prefers stale cache over seed", as
   assert.ok(result.data["stale-but-real"]);
 });
 
+for (const [label, ageDeltaMs, expectedStale] of [
+  ["one millisecond inside", -1, false],
+  ["exactly at", 0, false],
+  ["one millisecond beyond", 1, true],
+]) {
+  test(`fetcher hard max: ${label} the 30-day boundary is_stale=${expectedStale}`, async () => {
+    const cachePath = tmpCachePath();
+    const nowMs = Date.parse("2026-08-20T00:00:00.000Z");
+    const sourceUpdatedAt = new Date(
+      nowMs - EXPECTED_PRICING_HARD_MAX_AGE_MS - ageDeltaMs,
+    ).toISOString();
+    await fsp.writeFile(cachePath, JSON.stringify({
+      _meta: {
+        source: "fixture-upstream",
+        cached_at: "2026-08-19T23:59:00.000Z",
+        source_updated_at: sourceUpdatedAt,
+      },
+      "boundary-model": { input_cost_per_token: 1e-6, output_cost_per_token: 2e-6 },
+    }));
+
+    const result = await fetcher.loadLitellmData({
+      cachePath,
+      nowMs,
+      fetchImpl: async () => {
+        throw new Error("fresh cache must not fetch");
+      },
+    });
+
+    assert.equal(fetcher.PRICING_HARD_MAX_AGE_MS, EXPECTED_PRICING_HARD_MAX_AGE_MS);
+    assert.equal(result.source_updated_at, sourceUpdatedAt);
+    assert.equal(result.cached_at, "2026-08-19T23:59:00.000Z");
+    assert.equal(result.is_stale, expectedStale);
+  });
+}
+
+test("pricing hard max: stale catalog evidence is retained but cost is null", async () => {
+  pricing.resetPricingForTests();
+  const cachePath = tmpCachePath();
+  const nowMs = Date.parse("2026-08-20T00:00:00.000Z");
+  const sourceUpdatedAt = new Date(
+    nowMs - EXPECTED_PRICING_HARD_MAX_AGE_MS - 1,
+  ).toISOString();
+  await fsp.writeFile(cachePath, JSON.stringify({
+    _meta: {
+      source: "fixture-upstream",
+      cached_at: "2026-08-19T23:59:00.000Z",
+      source_updated_at: sourceUpdatedAt,
+    },
+    "stale-priced-model": { input_cost_per_token: 1e-6, output_cost_per_token: 2e-6 },
+  }));
+  await pricing.ensurePricingLoaded({ cachePath, nowMs });
+
+  const detailed = pricing.computeRowCostDetailed({
+    source: "fixture-agent",
+    model: "stale-priced-model",
+    input_tokens: 1_000_000,
+    output_tokens: 1_000_000,
+    total_tokens: 2_000_000,
+  }, { nowMs });
+
+  assert.equal(detailed.cost_usd, null);
+  assert.equal(detailed.is_stale, true);
+  assert.equal(detailed.source_updated_at, sourceUpdatedAt);
+  assert.equal(detailed.matched_model, "stale-priced-model");
+  assert.equal(detailed.note_code, "pricing_source_stale");
+});
+
+test("curated provenance: every nonzero exact rate has structured evidence", () => {
+  const invalidEntries = Object.entries(curatedOverrides.exact)
+    .filter(([, value]) => ["input", "output", "cache_read", "cache_write"]
+      .some((field) => Number(value?.[field] || 0) > 0))
+    .filter(([model]) => {
+      const evidence = curatedOverrides.evidence?.[model];
+      return typeof evidence?.source_url !== "string"
+        || !/^https:\/\//.test(evidence.source_url)
+        || !/^\d{4}-\d{2}-\d{2}$/.test(evidence.evidence_date || "")
+        || typeof evidence.estimated !== "boolean";
+    })
+    .map(([model]) => model);
+
+  assert.deepEqual(invalidEntries, []);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // index.js — public API + negative cache + computeRowCost contract
 
@@ -560,9 +670,12 @@ test("index: computeRowCost scopes Antigravity-only model aliases by source", as
     output_tokens: 1_000,
     reasoning_output_tokens: 0,
   };
-  assert.equal(pricing.computeRowCost({ ...row, source: "openrouter" }), 0);
+  assert.equal(pricing.computeRowCost({ ...row, source: "openrouter" }), null);
   assert.equal(pricing.computeRowCost({ ...row, source: "antigravity" }), 0.0125);
-  assert.equal(pricing.computeRowCost({ ...row, model: "gpt-oss-20b", source: "antigravity" }), 0);
+  assert.equal(
+    pricing.computeRowCost({ ...row, model: "gpt-oss-20b", source: "antigravity" }),
+    null,
+  );
 });
 
 test("index: Trae and CodeBuddy are token-only even when pricing is available", async () => {
@@ -600,13 +713,14 @@ test("index: Trae and CodeBuddy are token-only even when pricing is available", 
   };
 
   for (const source of ["trae", "codebuddy"]) {
-    assert.equal(pricing.computeRowCost({ ...row, source }, options), 0);
-    assert.deepEqual(pricing.computeRowCostDetailed({ ...row, source }, options), {
-      cost_usd: 0,
-      priced_tokens: 0,
-      unpriced_tokens: 1_600,
-      pricing_coverage: "unpriced",
-    });
+    assert.equal(pricing.computeRowCost({ ...row, source }, options), null);
+    const detailed = pricing.computeRowCostDetailed({ ...row, source }, options);
+    assert.equal(detailed.cost_usd, null);
+    assert.equal(detailed.priced_tokens, 0);
+    assert.equal(detailed.unpriced_tokens, 1_600);
+    assert.equal(detailed.pricing_coverage, "unpriced");
+    assert.equal(detailed.source_kind, "unpriced");
+    assert.equal(detailed.note_code, "pricing_not_supported");
   }
 });
 
@@ -734,8 +848,12 @@ test("index: agent default pricing overrides model pricing when provided", () =>
   assert.equal(cost, 16);
 });
 
-test("index: missing MVP agent pricing falls back to model pricing", () => {
+test("index: missing MVP agent pricing falls back to fresh model pricing", async () => {
   pricing.resetPricingForTests();
+  await pricing.ensurePricingLoaded({
+    cachePath: tmpCachePath(),
+    fetchImpl: makeFetchImpl(FIXTURE_LITELLM),
+  });
   const cost = pricing.computeRowCost(
     {
       source: "codex",

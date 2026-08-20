@@ -6,7 +6,10 @@ const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
 const { collectClaudeRequestUsageRecords } = require("../src/lib/claude-request-usage");
-const { createLocalApiHandler } = require("./helpers/local-api.cjs");
+const {
+  computeRecordTotals,
+  createLocalApiHandler,
+} = require("./helpers/local-api.cjs");
 
 const SECRET_BODY = "TOP-SECRET-CONVERSATION-BODY-NEVER-LEAK";
 
@@ -71,12 +74,85 @@ test("collects assistant message.usage into normalized request-event records wit
     assert.equal(rec.cache_creation_input_tokens, 20);
     assert.equal(rec.reasoning_output_tokens, 0);
     assert.equal(rec.total_tokens, 100 + 50 + 300 + 20);
-    assert.ok(typeof rec.cost_usd === "number");
+    assert.equal(rec.cost_usd, null);
+    assert.equal(rec.priced_tokens, 0);
+    assert.equal(rec.unpriced_tokens, rec.total_tokens);
+    assert.equal(rec.pricing_coverage, "unpriced");
     // Privacy red line: no conversation content may appear anywhere in output.
     assert.ok(!JSON.stringify(result).includes(SECRET_BODY));
 
     const totals = result.totals;
     assert.equal(totals.total_tokens, rec.total_tokens);
+    assert.equal(totals.cost_usd, null);
+    assert.equal(totals.pricing_coverage, "unpriced");
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("preserves priced and unpriced Claude provenance through production totals", async () => {
+  const home = await makeTmpHome();
+  try {
+    const usage = {
+      input_tokens: 100,
+      output_tokens: 50,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    };
+    const filePath = await writeClaudeFixture([
+      assistantLine({
+        msgId: "msg_priced",
+        reqId: "req_priced",
+        model: "review-priced-claude",
+        usage,
+      }),
+      assistantLine({
+        msgId: "msg_unpriced",
+        reqId: "req_unpriced",
+        model: "review-unpriced-claude",
+        timestamp: "2026-08-10T03:13:45.000Z",
+        usage,
+      }),
+    ], { home });
+
+    const result = await collectClaudeRequestUsageRecords({
+      claudeProjectFiles: [filePath],
+      pricingOptions: {
+        pricingRules: [{
+          source: "claude",
+          model: "review-priced-claude",
+          inputPricePer1M: 1,
+          outputPricePer1M: 2,
+          currency: "USD",
+          updated_at: "2026-08-20T00:00:00.000Z",
+        }],
+        nowMs: Date.parse("2026-08-21T00:00:00.000Z"),
+      },
+    });
+
+    const priced = result.records.find((record) => record.model === "review-priced-claude");
+    const unpriced = result.records.find((record) => record.model === "review-unpriced-claude");
+    assert.equal(priced.source_kind, "user_override");
+    assert.equal(priced.pricing_coverage, "complete");
+    assert.equal(unpriced.source_kind, "unpriced");
+    assert.equal(unpriced.cost_usd, null);
+
+    assert.equal(result.totals.cost_usd, priced.cost_usd);
+    assert.equal(result.totals.pricing_coverage, "partial");
+    assert.equal(result.totals.source_kind, "mixed");
+    assert.deepEqual(
+      result.totals.pricing_components.map((component) => component.source_kind).sort(),
+      ["unpriced", "user_override"],
+    );
+
+    const productionTotals = computeRecordTotals(result.records);
+    assert.equal(productionTotals.cost_usd, priced.cost_usd);
+    assert.equal(productionTotals.pricing_coverage, "partial");
+    assert.equal(productionTotals.source_kind, "mixed");
+    assert.deepEqual(
+      productionTotals.pricing_components.map((component) => component.source_kind).sort(),
+      ["unpriced", "user_override"],
+    );
   } finally {
     await fs.rm(home, { recursive: true, force: true });
   }

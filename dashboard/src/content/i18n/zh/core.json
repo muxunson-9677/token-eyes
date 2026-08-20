@@ -158,6 +158,7 @@
   "limits.panel.title": "使用限制",
   "limits.panel.mode_separator": " · ",
   "limits.label.cursor_plan": "套餐",
+  "limits.label.cursor_team_pool": "团队池",
   "limits.label.cursor_auto": "自动",
   "limits.label.cursor_api": "API",
   "limits.label.kiro_month": "月度",

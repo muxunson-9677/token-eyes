@@ -123,6 +123,69 @@ describe("useCostAccumulation selected month", () => {
     }));
   });
 
+  it("preserves pricing provenance from timeseries totals and API billing rows for source-to-screen rendering", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockResolvedValueOnce(timeseriesTotals({
+        source_kind: "mixed",
+        pricing_source: "mixed",
+        estimated: true,
+        match_kind: "mixed",
+        pricing_components: [
+          { source_kind: "curated", priced_tokens: 1_000 },
+          { source_kind: "user_override", priced_tokens: 2_000 },
+        ],
+      }))
+      .mockResolvedValueOnce(timeseriesTotals())
+      .mockResolvedValueOnce(timeseriesTotals());
+    getApiBillingAccounts.mockResolvedValue({
+      accounts: [{
+        id: "curated-row",
+        provider: "local",
+        accountName: "Curated estimate",
+        billingSource: "api",
+        spendAuthority: "local_list_price_estimate",
+        monthCostUsd: 3,
+        lifetimeCostUsd: 9,
+        status: "connected",
+        source_kind: "curated",
+        pricing_source: "curated:exact",
+        source_updated_at: "2026-07-08T00:00:00.000Z",
+        observed_at: "2026-08-20T00:00:00.000Z",
+        estimated: true,
+        match_kind: "exact",
+        matched_model: "kiro-agent",
+      }],
+    });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+      sources: COST_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      source_kind: "mixed",
+      pricing_source: "mixed",
+      estimated: true,
+      match_kind: "mixed",
+      pricing_components: [
+        { source_kind: "curated", priced_tokens: 1_000 },
+        { source_kind: "user_override", priced_tokens: 2_000 },
+      ],
+    }));
+    expect(result.current.apiBillingAccounts[0]).toEqual(expect.objectContaining({
+      source_kind: "curated",
+      pricing_source: "curated:exact",
+      estimated: true,
+      match_kind: "exact",
+      matched_model: "kiro-agent",
+    }));
+  });
+
   it("keeps the global UTC ledger on the same month key at a local month boundary", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2025-07-31T16:30:00.000Z"));

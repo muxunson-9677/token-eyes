@@ -23,6 +23,7 @@ const {
   parseRequestUsageBoundary,
   normalizeModelInput,
 } = require("./rollout");
+const { summarizePricingProvenance } = require("./data-evidence");
 
 const DEFAULT_MODEL = "unknown";
 
@@ -157,10 +158,7 @@ async function collectClaudeRequestUsageRecords(options) {
         };
 
         const costResult = computeRowCostDetailed(record, pricingOptions);
-        record.cost_usd = costResult.cost_usd;
-        record.priced_tokens = costResult.priced_tokens;
-        record.unpriced_tokens = costResult.unpriced_tokens;
-        record.pricing_coverage = costResult.pricing_coverage;
+        Object.assign(record, costResult);
 
         records.push(record);
       }
@@ -181,25 +179,22 @@ async function collectClaudeRequestUsageRecords(options) {
     totals.output_tokens += record.output_tokens;
     totals.reasoning_output_tokens += record.reasoning_output_tokens;
     totals.total_tokens += record.total_tokens;
-    totals.cost_usd += record.cost_usd;
+    if (record.cost_usd !== null && Number.isFinite(Number(record.cost_usd))) {
+      totals.cost_usd += Number(record.cost_usd);
+    }
     totals.priced_tokens += record.priced_tokens || 0;
     totals.unpriced_tokens += record.unpriced_tokens || 0;
   }
 
-  const total = totals.priced_tokens + totals.unpriced_tokens;
-  let pricingCoverage = "complete";
-  if (total > 0) {
-    if (totals.unpriced_tokens === 0) pricingCoverage = "complete";
-    else if (totals.priced_tokens === 0) pricingCoverage = "unpriced";
-    else pricingCoverage = "partial";
-  }
+  const pricingSummary = summarizePricingProvenance(limitedRecords);
+  if (pricingSummary.pricing_coverage === "unpriced") totals.cost_usd = null;
 
   return {
     source: "claude",
     from: from || null,
     to: to || null,
     records: limitedRecords,
-    totals: { ...totals, pricing_coverage: pricingCoverage },
+    totals: { ...totals, ...pricingSummary },
   };
 }
 

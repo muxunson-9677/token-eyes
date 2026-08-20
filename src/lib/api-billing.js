@@ -23,6 +23,8 @@ const fs = require("fs");
 const cp = require("child_process");
 const { executeFinancialRequest } = require("./provider-api-executor");
 const { queueUsageIdentity } = require("./usage-attribution");
+const { computeRowCostDetailed } = require("./pricing");
+const { summarizePricingProvenance } = require("./data-evidence");
 
 // Sync status constants (same as token-plan-refresh.js)
 const SYNC_STATUSES = {
@@ -271,26 +273,24 @@ function mergeBillingAccounts(spendAccounts, detectedCredentials) {
 
 function readQueueRows(queuePath) {
   try {
-    const raw = fs.readFileSync(queuePath, "utf8");
-    const lines = raw.split("\n").filter((l) => l.trim());
-    const rows = [];
-    for (const line of lines) {
-      try {
-        rows.push(JSON.parse(line));
-      } catch {
-        // skip malformed
-      }
-    }
-    return rows;
+    // local-api owns the canonical queue read contract (legacy Codex inclusive
+    // input correction, exact synthetic smoke filtering, and latest-row dedupe).
+    // Resolve lazily because local-api imports this module during initialization.
+    return require("./local-api").readQueueData(queuePath);
   } catch {
     return [];
   }
 }
 
-function calculateUsageCosts(queueRows, { monthKey = null } = {}) {
+function calculateUsageCosts(queueRows, {
+  monthKey = null,
+  pricingOptions = {},
+  nowMs = Date.now(),
+} = {}) {
   const costsBySource = new Map();
   const selectedPeriod = getUtcMonthPeriod(monthKey);
-  const now = new Date();
+  const effectiveNowMs = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const now = new Date(effectiveNowMs);
   const monthStart = selectedPeriod
     ? new Date(selectedPeriod.startSeconds * 1000)
     : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -304,25 +304,26 @@ function calculateUsageCosts(queueRows, { monthKey = null } = {}) {
     const source = String(row.source || "").trim().toLowerCase();
     if (!source) continue;
 
-    const costUsd = Number(row.cost_usd || 0);
-    if (!Number.isFinite(costUsd) || costUsd <= 0) continue;
-
     if (!costsBySource.has(source)) {
       costsBySource.set(source, {
-        monthCostUsd: 0,
-        lifetimeCostUsd: 0,
+        monthRecords: [],
+        lifetimeRecords: [],
       });
     }
 
     const stats = costsBySource.get(source);
-    stats.lifetimeCostUsd += costUsd;
+    const detailed = computeRowCostDetailed(row, {
+      ...(pricingOptions && typeof pricingOptions === "object" ? pricingOptions : {}),
+      nowMs: effectiveNowMs,
+    });
+    stats.lifetimeRecords.push(detailed);
 
     const hourStart = row.hour_start;
     if (hourStart) {
       try {
         const rowDate = new Date(hourStart);
         if (Number.isFinite(rowDate.getTime()) && rowDate >= monthStart && rowDate < monthEnd) {
-          stats.monthCostUsd += costUsd;
+          stats.monthRecords.push(detailed);
         }
       } catch {
         // skip invalid date
@@ -331,6 +332,30 @@ function calculateUsageCosts(queueRows, { monthKey = null } = {}) {
   }
 
   return costsBySource;
+}
+
+function sumDetailedCosts(records) {
+  let total = 0;
+  let hasCost = false;
+  for (const record of records) {
+    if (record?.cost_usd === null || record?.cost_usd === undefined) continue;
+    const costUsd = Number(record.cost_usd);
+    if (!Number.isFinite(costUsd)) continue;
+    total += costUsd;
+    hasCost = true;
+  }
+  return hasCost ? Number(total.toFixed(6)) : null;
+}
+
+function finalizeUsageCostStats(stats) {
+  const monthRecords = Array.isArray(stats?.monthRecords) ? stats.monthRecords : [];
+  const lifetimeRecords = Array.isArray(stats?.lifetimeRecords) ? stats.lifetimeRecords : [];
+  const evidenceRecords = lifetimeRecords.length > 0 ? lifetimeRecords : monthRecords;
+  return {
+    monthCostUsd: sumDetailedCosts(monthRecords),
+    lifetimeCostUsd: sumDetailedCosts(lifetimeRecords),
+    ...summarizePricingProvenance(evidenceRecords),
+  };
 }
 
 function getUtcMonthPeriod(monthKey) {
@@ -478,13 +503,18 @@ async function collectApiBillingAccounts({
   options = {},
   queuePath = null,
   monthKey = null,
+  pricingOptions = {},
+  nowMs = Date.now(),
 } = {}) {
   const home = options.home || os.homedir();
   const env = options.env || process.env;
   const platform = options.platform || process.platform;
   const securityRunner = options.securityRunner;
 
-  const costStats = queuePath ? calculateUsageCosts(readQueueRows(queuePath), { monthKey }) : new Map();
+  const effectiveNowMs = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const costStats = queuePath
+    ? calculateUsageCosts(readQueueRows(queuePath), { monthKey, pricingOptions, nowMs: effectiveNowMs })
+    : new Map();
 
   // Collect from spend records
   const spendAccounts = collectBillingFromSpendRecords(spendRecords);
@@ -515,10 +545,14 @@ async function collectApiBillingAccounts({
   const providerCostStats = new Map();
   for (const [source, stats] of costStats) {
     const provider = sourceToProvider[source] || source;
-    const current = providerCostStats.get(provider) || { monthCostUsd: 0, lifetimeCostUsd: 0 };
-    current.monthCostUsd += stats.monthCostUsd;
-    current.lifetimeCostUsd += stats.lifetimeCostUsd;
+    const current = providerCostStats.get(provider) || { monthRecords: [], lifetimeRecords: [] };
+    current.monthRecords.push(...stats.monthRecords);
+    current.lifetimeRecords.push(...stats.lifetimeRecords);
     providerCostStats.set(provider, current);
+  }
+
+  for (const [provider, stats] of providerCostStats) {
+    providerCostStats.set(provider, finalizeUsageCostStats(stats));
   }
 
   for (const account of mergedAccounts) {
@@ -526,11 +560,14 @@ async function collectApiBillingAccounts({
     const stats = providerCostStats.get(provider);
     if (stats) {
       account.billingSource = BILLING_SOURCES.API;
-      account.spendAuthority = SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE;
-      account.monthCostUsd = Number(stats.monthCostUsd.toFixed(6));
-      account.lifetimeCostUsd = Number(stats.lifetimeCostUsd.toFixed(6));
+      account.spendAuthority = stats.monthCostUsd !== null || stats.lifetimeCostUsd !== null
+        ? SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE
+        : SPEND_AUTHORITIES.UNAVAILABLE;
+      account.monthCostUsd = stats.monthCostUsd;
+      account.lifetimeCostUsd = stats.lifetimeCostUsd;
       account.status = SYNC_STATUSES.SYNCED;
-      account.lastSyncedAt = new Date().toISOString();
+      account.lastSyncedAt = new Date(effectiveNowMs).toISOString();
+      Object.assign(account, stats);
     }
   }
 
@@ -541,11 +578,14 @@ async function collectApiBillingAccounts({
         provider,
         accountName: getProviderName(provider),
         billingSource: BILLING_SOURCES.API,
-        spendAuthority: SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE,
-        monthCostUsd: Number(stats.monthCostUsd.toFixed(6)),
-        lifetimeCostUsd: Number(stats.lifetimeCostUsd.toFixed(6)),
+        spendAuthority: stats.monthCostUsd !== null || stats.lifetimeCostUsd !== null
+          ? SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE
+          : SPEND_AUTHORITIES.UNAVAILABLE,
+        monthCostUsd: stats.monthCostUsd,
+        lifetimeCostUsd: stats.lifetimeCostUsd,
         status: SYNC_STATUSES.SYNCED,
-        lastSyncedAt: new Date().toISOString(),
+        lastSyncedAt: new Date(effectiveNowMs).toISOString(),
+        ...stats,
       });
     }
   }

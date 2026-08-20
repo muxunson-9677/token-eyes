@@ -7,7 +7,11 @@ const SOURCE_KINDS = new Set([
   "hook",
   "otel",
   "cache",
+  "curated",
   "estimated",
+  "mixed",
+  "third_party",
+  "unpriced",
   "user_override",
 ]);
 const ACCURACIES = new Set(["exact", "normalized", "estimated", "unknown"]);
@@ -45,6 +49,13 @@ function normalizeDataEvidence(input, { nowMs = Date.now() } = {}) {
     is_stale: false,
     pricing_source: optionalString(input.pricing_source, "pricing_source"),
     pricing_version: optionalString(input.pricing_version, "pricing_version"),
+    source_url: optionalString(input.source_url, "source_url"),
+    estimated: Boolean(input.estimated),
+    match_kind: optionalString(input.match_kind, "match_kind"),
+    matched_model: optionalString(input.matched_model, "matched_model"),
+    components: Array.isArray(input.components)
+      ? input.components.map((component) => ({ ...component }))
+      : [],
     note_code: optionalString(input.note_code, "note_code"),
   };
   normalized.is_stale = isEvidenceStale(normalized, nowMs);
@@ -61,16 +72,136 @@ function coverageForPricing({ priced_tokens: pricedTokens = 0, unpriced_tokens: 
 
 function createPricingEvidence(input, options = {}) {
   return normalizeDataEvidence({
-    source_kind: "estimated",
-    accuracy: "estimated",
+    source_kind: input?.source_kind ?? "estimated",
+    accuracy: input?.accuracy ?? (input?.estimated === false ? "exact" : "estimated"),
     coverage: coverageForPricing(input),
     observed_at: input?.observed_at,
     source_updated_at: input?.source_updated_at ?? null,
     stale_after_seconds: input?.stale_after_seconds ?? DEFAULT_EVIDENCE_STALE_AFTER_SECONDS,
     pricing_source: input?.pricing_source ?? null,
     pricing_version: input?.pricing_version ?? null,
+    source_url: input?.source_url ?? null,
+    estimated: input?.estimated ?? true,
+    match_kind: input?.match_kind ?? null,
+    matched_model: input?.matched_model ?? null,
+    components: input?.components ?? [],
     note_code: input?.note_code ?? null,
   }, options);
+}
+
+function pricingProvenanceIdentity(record, sourceKind) {
+  const stringOrNull = (value) => typeof value === "string" && value ? value : null;
+  return JSON.stringify({
+    source_kind: sourceKind,
+    pricing_source: stringOrNull(record?.pricing_source),
+    pricing_version: stringOrNull(record?.pricing_version),
+    source_url: stringOrNull(record?.source_url),
+    source_updated_at: stringOrNull(record?.source_updated_at),
+    is_stale: Boolean(record?.is_stale),
+    estimated: Boolean(record?.estimated),
+    match_kind: stringOrNull(record?.match_kind),
+    note_code: stringOrNull(record?.note_code),
+  });
+}
+
+function summarizePricingProvenance(records) {
+  const groups = new Map();
+  for (const record of Array.isArray(records) ? records : []) {
+    const sourceKind = typeof record?.source_kind === "string" && record.source_kind
+      ? record.source_kind
+      : "unpriced";
+    const identity = pricingProvenanceIdentity(record, sourceKind);
+    let group = groups.get(identity);
+    if (!group) {
+      group = {
+        identity,
+        source_kind: sourceKind,
+        record_count: 0,
+        priced_tokens: 0,
+        unpriced_tokens: 0,
+        cost_usd: 0,
+        has_cost: false,
+        estimated: false,
+        is_stale: false,
+        pricing_sources: new Set(),
+        pricing_versions: new Set(),
+        source_urls: new Set(),
+        source_updated_ats: new Set(),
+        match_kinds: new Set(),
+        matched_models: new Set(),
+        note_codes: new Set(),
+        observed_ats: new Set(),
+      };
+      groups.set(identity, group);
+    }
+    group.record_count += 1;
+    group.priced_tokens += Number(record?.priced_tokens || 0);
+    group.unpriced_tokens += Number(record?.unpriced_tokens || 0);
+    if (record?.cost_usd !== null && record?.cost_usd !== undefined) {
+      group.cost_usd += Number(record.cost_usd || 0);
+      group.has_cost = true;
+    }
+    group.estimated ||= Boolean(record?.estimated);
+    group.is_stale ||= Boolean(record?.is_stale);
+    for (const [field, target] of [
+      ["pricing_source", group.pricing_sources],
+      ["pricing_version", group.pricing_versions],
+      ["source_url", group.source_urls],
+      ["source_updated_at", group.source_updated_ats],
+      ["match_kind", group.match_kinds],
+      ["matched_model", group.matched_models],
+      ["note_code", group.note_codes],
+      ["observed_at", group.observed_ats],
+    ]) {
+      if (typeof record?.[field] === "string" && record[field]) target.add(record[field]);
+    }
+  }
+
+  const singleOrNull = (values) => values.size === 1 ? [...values][0] : null;
+  const components = [...groups.values()]
+    .sort((left, right) => (
+      left.source_kind.localeCompare(right.source_kind)
+      || left.identity.localeCompare(right.identity)
+    ))
+    .map((group) => ({
+      source_kind: group.source_kind,
+      record_count: group.record_count,
+      priced_tokens: group.priced_tokens,
+      unpriced_tokens: group.unpriced_tokens,
+      cost_usd: group.has_cost ? Number(group.cost_usd.toFixed(6)) : null,
+      estimated: group.estimated,
+      is_stale: group.is_stale,
+      pricing_source: singleOrNull(group.pricing_sources),
+      pricing_version: singleOrNull(group.pricing_versions),
+      source_url: singleOrNull(group.source_urls),
+      source_updated_at: singleOrNull(group.source_updated_ats),
+      match_kind: singleOrNull(group.match_kinds),
+      matched_model: singleOrNull(group.matched_models),
+      note_code: singleOrNull(group.note_codes),
+      observed_at: singleOrNull(group.observed_ats),
+    }));
+  const mixed = components.length > 1;
+  const only = components.length === 1 ? components[0] : null;
+  const pricedTokens = components.reduce((sum, component) => sum + component.priced_tokens, 0);
+  const unpricedTokens = components.reduce((sum, component) => sum + component.unpriced_tokens, 0);
+  return {
+    pricing_source: mixed ? "mixed" : only?.pricing_source ?? null,
+    pricing_version: mixed ? null : only?.pricing_version ?? null,
+    source_kind: mixed ? "mixed" : only?.source_kind ?? null,
+    source_url: mixed ? null : only?.source_url ?? null,
+    source_updated_at: mixed ? null : only?.source_updated_at ?? null,
+    observed_at: mixed ? null : only?.observed_at ?? null,
+    is_stale: components.some((component) => component.is_stale),
+    estimated: components.some((component) => component.estimated),
+    match_kind: mixed ? "mixed" : only?.match_kind ?? null,
+    matched_model: mixed ? null : only?.matched_model ?? null,
+    note_code: mixed ? "pricing_sources_mixed" : only?.note_code ?? null,
+    pricing_coverage: coverageForPricing({
+      priced_tokens: pricedTokens,
+      unpriced_tokens: unpricedTokens,
+    }),
+    pricing_components: components,
+  };
 }
 
 function isProviderEntry(value) {
@@ -113,6 +244,7 @@ module.exports = {
   DEFAULT_EVIDENCE_STALE_AFTER_SECONDS,
   normalizeDataEvidence,
   createPricingEvidence,
+  summarizePricingProvenance,
   coverageForPricing,
   decorateUsageLimitsWithEvidence,
 };

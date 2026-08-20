@@ -20,6 +20,64 @@ function loadReleaseGuidance() {
   return fs.readFileSync(RELEASE_GUIDANCE_PATH, "utf8");
 }
 
+function npmPublishSections(content) {
+  const testIdx = content.indexOf("\n  test:");
+  const publishIdx = content.indexOf("\n  publish:");
+  assert.ok(testIdx > 0 && testIdx < publishIdx, "test job should precede the publish job");
+  return {
+    testSection: content.slice(testIdx, publishIdx),
+    publishSection: content.slice(publishIdx),
+  };
+}
+
+function assertExplicitPublishOptIn(content) {
+  const { publishSection } = npmPublishSections(content);
+  const publishHeader = publishSection.slice(0, publishSection.indexOf("\n    runs-on:"));
+  const jobConditions = [...publishHeader.matchAll(/^\s+if:\s*(.+)$/gmu)]
+    .map((match) => match[1].trim());
+  assert.deepEqual(
+    jobConditions,
+    ["${{ github.event_name == 'workflow_dispatch' && inputs.publish_npm == true }}"],
+    "publish job must require the exact manual-dispatch AND explicit opt-in condition",
+  );
+}
+
+function assertCanonicalTestJob(content) {
+  const { testSection } = npmPublishSections(content);
+  const runCommands = [...testSection.matchAll(/^\s+(?:-\s+)?run:\s*(.+)$/gmu)]
+    .map((match) => match[1].trim());
+  assert.deepEqual(
+    runCommands,
+    [
+      "|",
+      "npm ci",
+      "npm ci --prefix dashboard",
+      "npm run ci:local",
+      "cargo test --manifest-path src-tauri/Cargo.toml",
+    ],
+    "test job run steps must contain setup plus only the canonical gate and independent Rust gate",
+  );
+  const npmRunCommands = [...testSection.matchAll(
+    /\bnpm\s+(?:--prefix\s+\S+\s+)?run\s+[A-Za-z0-9:_-]+/gu,
+  )].map((match) => match[0]);
+  assert.deepEqual(
+    npmRunCommands,
+    ["npm run ci:local"],
+    "test job must not hide or duplicate a partial npm product gate",
+  );
+  assert.doesNotMatch(testSection, /\bnpm\s+test\b|\bnode\s+--test\b/u);
+  assert.equal(
+    [...testSection.matchAll(/\bcargo\s+test(?:\s+[^\r\n]*)?/gu)].length,
+    1,
+    "test job must execute the independent Rust gate exactly once",
+  );
+  assert.match(
+    testSection,
+    /cargo test --manifest-path src-tauri\/Cargo\.toml[\s\S]*?TAURI_CONFIG:\s*'\{"bundle":\{"resources":\[\]\}\}'/u,
+    "Rust gate must run with packaged resources disabled for unit tests",
+  );
+}
+
 test("npm-publish workflow file exists", () => {
   assert.ok(fs.existsSync(WORKFLOW_PATH), "workflow file should exist");
 });
@@ -42,11 +100,15 @@ test("workflow exposes an explicit opt-in manual npm publish input", () => {
 
 test("ordinary main pushes can run tests but can never enter the publish job", () => {
   const content = loadWorkflow();
-  const publishIdx = content.indexOf("\n  publish:");
-  assert.ok(publishIdx > 0, "should have a publish job");
-  const publishHeader = content.slice(publishIdx, content.indexOf("\n    runs-on:", publishIdx));
-  assert.match(publishHeader, /github\.event_name\s*==\s*'workflow_dispatch'/u);
-  assert.match(publishHeader, /inputs\.publish_npm\s*==\s*true/u);
+  assertExplicitPublishOptIn(content);
+});
+
+test("publish opt-in contract rejects a boolean OR bypass", () => {
+  const unsafeWorkflow = loadWorkflow().replace(
+    "github.event_name == 'workflow_dispatch' && inputs.publish_npm == true",
+    "github.event_name == 'workflow_dispatch' || inputs.publish_npm == true",
+  );
+  assert.throws(() => assertExplicitPublishOptIn(unsafeWorkflow));
 });
 
 test("release guidance requires an explicitly authorized manual npm publish", () => {
@@ -92,23 +154,20 @@ test("tests gate the publish on a supported Node", () => {
   // need Node >=22.18; it cannot run on the Node 20 publish runtime. So a
   // separate test job (Node 24) must pass before the publish job runs.
   assert.ok(content.includes("needs: test"), "publish job must depend on the test job");
-  const testIdx = content.indexOf("\n  test:");
-  const publishIdx = content.indexOf("\n  publish:");
-  assert.ok(testIdx > 0 && testIdx < publishIdx, "test job should precede the publish job");
-  const testSection = content.slice(testIdx, publishIdx);
+  const { testSection } = npmPublishSections(content);
   assert.ok(
     testSection.includes("node-version: 24"),
     "test job should run on Node 24"
   );
-  assert.ok(testSection.includes("npm test"), "test job should run the suite");
-  assert.ok(
-    testSection.includes("npm --prefix dashboard run test"),
-    "test job should invoke the dashboard's existing vitest run script",
+  assertCanonicalTestJob(content);
+});
+
+test("test job contract rejects every product gate beyond canonical ci:local and Rust", () => {
+  const duplicatedWorkflow = loadWorkflow().replace(
+    "      - run: npm run ci:local\n",
+    "      - run: npm run ci:local\n      - run: npm run providers:check\n",
   );
-  assert.ok(
-    !testSection.includes("npm --prefix dashboard test -- --run"),
-    "test job must not pass the invalid --run flag through npm",
-  );
+  assert.throws(() => assertCanonicalTestJob(duplicatedWorkflow));
 });
 
 test("workflow sets npm registry URL", () => {

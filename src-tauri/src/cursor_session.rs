@@ -37,6 +37,7 @@ const GET_USER_META_URL: &str = "https://api2.cursor.sh/aiserver.v1.AuthService/
 const CURSOR_AUTH_CLIENT_ID: &str = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB";
 const CURSOR_ACCESS_TOKEN_REFRESH_THRESHOLD_SECONDS: i64 = 5 * 60;
 const PERCENT_SCALE: f64 = 100.0;
+const PERCENT_EPSILON: f64 = 0.000_001;
 
 /// The JS injected into the Cursor WebView via initialization_script.
 ///
@@ -51,6 +52,8 @@ const SESSION_FETCH_JS: &str = r#"(function () {
   window.__tokenEyesCursorQuotaResult__ = null;
 
   function clampPercent(value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'string' && !value.trim()) return null;
     var n = Number(value);
     if (!Number.isFinite(n)) return null;
     if (n < 0) return 0;
@@ -73,6 +76,9 @@ const SESSION_FETCH_JS: &str = r#"(function () {
   }
 
   function cursorPercentFromCentsUsedLimit(usedRaw, limitRaw) {
+    if (usedRaw === null || usedRaw === undefined || limitRaw === null || limitRaw === undefined
+      || (typeof usedRaw === 'string' && !usedRaw.trim())
+      || (typeof limitRaw === 'string' && !limitRaw.trim())) return null;
     var used = Number(usedRaw);
     var limit = Number(limitRaw);
     if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
@@ -89,139 +95,85 @@ const SESSION_FETCH_JS: &str = r#"(function () {
   }
 
   function normalizeCursorUsageSummary(body) {
-    var plan = body && body.individualUsage && body.individualUsage.plan && typeof body.individualUsage.plan === 'object'
-      ? body.individualUsage.plan
-      : null;
-    var indOnDemand = body && body.individualUsage && body.individualUsage.onDemand && typeof body.individualUsage.onDemand === 'object'
-      ? body.individualUsage.onDemand
-      : null;
+    var individualUsage = body && body.individualUsage && typeof body.individualUsage === 'object'
+      ? body.individualUsage
+      : {};
+    var plan = individualUsage.plan && typeof individualUsage.plan === 'object'
+      ? individualUsage.plan
+      : individualUsage;
     var teamOnDemand = body && body.teamUsage && body.teamUsage.onDemand && typeof body.teamUsage.onDemand === 'object'
       ? body.teamUsage.onDemand
       : null;
     var billingCycleEnd = body && typeof body.billingCycleEnd === 'string' ? body.billingCycleEnd : null;
-    var autoPercent = clampPercent(plan && plan.autoPercentUsed);
-    var apiPercent = clampPercent(plan && plan.apiPercentUsed);
-
-    var planPercent = clampPercent(plan && plan.totalPercentUsed);
+    var autoPercent = clampPercent(plan && (plan.autoPercentUsed === undefined ? plan.auto_percent_used : plan.autoPercentUsed));
+    var apiPercent = clampPercent(plan && (plan.apiPercentUsed === undefined ? plan.api_percent_used : plan.apiPercentUsed));
+    var planPercent = clampPercent(plan && (plan.totalPercentUsed === undefined ? plan.total_percent_used : plan.totalPercentUsed));
     if (planPercent === null) {
-      if (autoPercent !== null && apiPercent !== null) {
-        planPercent = clampPercent((autoPercent + apiPercent) / 2);
-      } else if (apiPercent !== null) {
-        planPercent = apiPercent;
-      } else if (autoPercent !== null) {
-        planPercent = autoPercent;
-      } else {
-        var fromPlanCents = cursorPercentFromCentsUsedLimit(plan && plan.used, plan && plan.limit);
-        if (fromPlanCents !== null) planPercent = fromPlanCents;
-      }
+      planPercent = cursorPercentFromCentsUsedLimit(
+        plan && (plan.used === undefined ? (plan.totalSpend === undefined ? plan.total_spend : plan.totalSpend) : plan.used),
+        plan && plan.limit
+      );
     }
+    var teamPercent = cursorPercentFromCentsUsedLimit(teamOnDemand && teamOnDemand.used, teamOnDemand && teamOnDemand.limit);
 
-    if (planPercent === null) {
-      var fromInd = cursorPercentFromCentsUsedLimit(indOnDemand && indOnDemand.used, indOnDemand && indOnDemand.limit);
-      if (fromInd !== null) planPercent = fromInd;
-    }
-    if (planPercent === null) {
-      var fromTeam = cursorPercentFromCentsUsedLimit(teamOnDemand && teamOnDemand.used, teamOnDemand && teamOnDemand.limit);
-      if (fromTeam !== null) planPercent = fromTeam;
-    }
-
-    if (planPercent === 0) {
-      var fromInd2 = cursorPercentFromCentsUsedLimit(indOnDemand && indOnDemand.used, indOnDemand && indOnDemand.limit);
-      if (fromInd2 !== null && fromInd2 > 0) planPercent = fromInd2;
-    }
-    if (planPercent === 0) {
-      var fromTeam2 = cursorPercentFromCentsUsedLimit(teamOnDemand && teamOnDemand.used, teamOnDemand && teamOnDemand.limit);
-      if (fromTeam2 !== null && fromTeam2 > 0) planPercent = fromTeam2;
-    }
-
-    var limitType = body && typeof body.limitType === 'string' ? body.limitType : '';
     var membershipType = body && typeof body.membershipType === 'string' ? body.membershipType : '';
-    var preferTeamPool = limitType === 'team' || membershipType === 'enterprise' || membershipType === 'team';
-    if (preferTeamPool) {
-      var teamHeadline = cursorPercentFromCentsUsedLimit(teamOnDemand && teamOnDemand.used, teamOnDemand && teamOnDemand.limit);
-      if (teamHeadline !== null && (planPercent === null || planPercent === 0)) {
-        planPercent = teamHeadline;
-      }
-    }
+    var headlineLaneId = planPercent === null ? null : 'overall';
 
     return {
       membership_type: membershipType || null,
+      headline_lane_id: headlineLaneId,
       primary_window: buildWindow(planPercent, billingCycleEnd),
+      overall_window: buildWindow(planPercent, billingCycleEnd),
       secondary_window: buildWindow(autoPercent, billingCycleEnd),
-      tertiary_window: buildWindow(apiPercent, billingCycleEnd)
+      tertiary_window: buildWindow(apiPercent, billingCycleEnd),
+      team_pool_window: buildWindow(teamPercent, billingCycleEnd)
     };
   }
 
-  function normalizeRateWindow(window) {
-    if (!window || typeof window !== 'object' || Array.isArray(window)) return null;
-    var usedPercent = clampPercent(window.used_percent);
-    if (usedPercent === null) return null;
-    return {
-      limit_window_seconds: Number(window.limit_window_seconds),
-      used_percent: Math.round(usedPercent),
-      reset_at: parseResetAt(window.reset_at)
-    };
-  }
-
-  function classifyWindow(window) {
-    var seconds = Number(window && window.limit_window_seconds);
-    if (!Number.isFinite(seconds)) return null;
-    if (seconds === 18000) return 'rolling_5_hour';
-    if (seconds === 604800) return 'rolling_weekly';
-    return null;
-  }
-
-  function percentWindowToQuotaWindow(window, kind) {
+  function percentWindowToQuotaWindow(window, kind, laneId) {
     if (!window) return null;
     var usedPercent = clampPercent(window.used_percent);
     if (usedPercent === null) return null;
-    var used = Math.round(usedPercent);
     return {
       kind: kind,
-      unit: 'tokens',
+      lane_id: laneId,
+      unit: 'percent',
       total: 100,
-      used: used,
-      remaining: Math.max(0, 100 - used),
-      percentage: used,
+      used: usedPercent,
+      remaining: Math.max(0, 100 - usedPercent),
+      percentage: usedPercent,
       resets_at: parseResetAt(window.reset_at)
     };
   }
 
   function parseUsagePayload(payload) {
     var normalized = normalizeCursorUsageSummary(payload || {});
-    var weekly = percentWindowToQuotaWindow(normalized.primary_window, 'rolling_weekly');
-    var windowsByKind = {};
-    if (weekly) windowsByKind.rolling_weekly = weekly;
-
-    var rateLimit = payload && payload.rate_limit && typeof payload.rate_limit === 'object' ? payload.rate_limit : {};
-    var primary = normalizeRateWindow(rateLimit.primary_window);
-    var secondary = normalizeRateWindow(rateLimit.secondary_window);
-    var candidates = [primary, secondary].filter(Boolean);
-    for (var i = 0; i < candidates.length; i++) {
-      var item = candidates[i];
-      var kind = classifyWindow(item);
-      if (!kind || windowsByKind[kind]) continue;
-      var parsed = percentWindowToQuotaWindow(item, kind);
-      if (parsed) windowsByKind[kind] = parsed;
-    }
-
-    // Never synthesize 5-hour windows from local assumptions; only include
-    // rolling_5_hour when provider API explicitly returns that window.
-    var quotaWindows = [];
-    if (windowsByKind.rolling_5_hour) quotaWindows.push(windowsByKind.rolling_5_hour);
-    if (windowsByKind.rolling_weekly) quotaWindows.push(windowsByKind.rolling_weekly);
+    var quotaWindows = [
+      percentWindowToQuotaWindow(
+        normalized.overall_window,
+        'total',
+        'overall'
+      ),
+      percentWindowToQuotaWindow(normalized.secondary_window, 'auto_composer', 'auto'),
+      percentWindowToQuotaWindow(normalized.tertiary_window, 'api', 'api'),
+      percentWindowToQuotaWindow(normalized.team_pool_window, 'team_pool', 'team_pool')
+    ].filter(Boolean);
 
     if (quotaWindows.length === 0) {
       return { error: 'structure_drift', error_code: 'no_quota_windows' };
     }
 
-    var primaryWindow = windowsByKind.rolling_weekly || quotaWindows[quotaWindows.length - 1];
-    return {
-      total_quota: Number(primaryWindow.total),
-      used_quota: Number(primaryWindow.used),
-      remaining_quota: Number(primaryWindow.remaining),
-      quota_windows: quotaWindows
-    };
+    var parsed = { quota_windows: quotaWindows };
+    var headline = null;
+    for (var i = 0; i < quotaWindows.length; i++) {
+      if (quotaWindows[i].lane_id === normalized.headline_lane_id) headline = quotaWindows[i];
+    }
+    if (headline) {
+      parsed.total_quota = Number(headline.total);
+      parsed.used_quota = Number(headline.used);
+      parsed.remaining_quota = Number(headline.remaining);
+    }
+    return parsed;
   }
 
   window.__tokenEyesCursorQuotaFetch__ = async function () {
@@ -261,14 +213,15 @@ const SESSION_FETCH_JS: &str = r#"(function () {
         return;
       }
 
-      window.__tokenEyesCursorQuotaResult__ = {
+      var result = {
         status: 'success',
-        total_quota: parsed.total_quota,
-        used_quota: parsed.used_quota,
-        remaining_quota: parsed.remaining_quota,
         quota_windows: parsed.quota_windows,
         provider_reported_at: new Date().toISOString()
       };
+      if (parsed.total_quota !== undefined) result.total_quota = parsed.total_quota;
+      if (parsed.used_quota !== undefined) result.used_quota = parsed.used_quota;
+      if (parsed.remaining_quota !== undefined) result.remaining_quota = parsed.remaining_quota;
+      window.__tokenEyesCursorQuotaResult__ = result;
     } catch (_error) {
       window.__tokenEyesCursorQuotaResult__ = {
         status: 'error', error: 'network_error', error_code: 'network_error'
@@ -314,6 +267,8 @@ pub enum SessionStateCode {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CursorQuotaWindowDto {
     pub kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub lane_id: String,
     pub unit: String,
     pub total: f64,
     pub used: f64,
@@ -328,9 +283,12 @@ pub struct CursorQuotaSnapshot {
     pub account_id: String,
     pub display_name: String,
     pub plan_name: String,
-    pub total_usage_percent: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_usage_percent: Option<f64>,
     pub auto_composer_percent: Option<f64>,
     pub api_usage_percent: Option<f64>,
+    pub team_pool_percent: Option<f64>,
+    pub headline_lane_id: Option<String>,
     pub reset_at: Option<String>,
     pub fetched_at: String,
 }
@@ -342,15 +300,20 @@ pub struct CursorQuotaDto {
     pub account_id: String,
     pub display_name: String,
     pub plan_name: String,
-    pub total_usage_percent: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_usage_percent: Option<f64>,
     pub auto_composer_percent: Option<f64>,
     pub api_usage_percent: Option<f64>,
+    pub team_pool_percent: Option<f64>,
     pub reset_at: Option<String>,
     pub subscription_expires_at: Option<String>,
     pub fetched_at: String,
-    pub total_quota: f64,
-    pub used_quota: f64,
-    pub remaining_quota: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_quota: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub used_quota: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remaining_quota: Option<f64>,
     pub quota_windows: Vec<CursorQuotaWindowDto>,
     pub provider_reported_at: String,
 }
@@ -701,12 +664,7 @@ pub fn map_quota_fetch_result_to_status(
     };
 
     if result.status == "success" {
-        let (Some(total_quota), Some(used_quota), Some(remaining_quota), Some(quota_windows)) = (
-            result.total_quota,
-            result.used_quota,
-            result.remaining_quota,
-            result.quota_windows.clone(),
-        ) else {
+        let Some(quota_windows) = result.quota_windows.clone() else {
             return build_status(
                 session_ref,
                 false,
@@ -716,12 +674,31 @@ pub fn map_quota_fetch_result_to_status(
             );
         };
 
-        let numbers_ok = total_quota.is_finite()
-            && used_quota.is_finite()
-            && remaining_quota.is_finite()
-            && total_quota >= 0.0
-            && used_quota >= 0.0
-            && remaining_quota >= 0.0;
+        let top_level = match (
+            result.total_quota,
+            result.used_quota,
+            result.remaining_quota,
+        ) {
+            (Some(total), Some(used), Some(remaining)) => Some((total, used, remaining)),
+            (None, None, None) => None,
+            _ => {
+                return build_status(
+                    session_ref,
+                    false,
+                    SessionStateCode::Unsupported,
+                    "UNSUPPORTED",
+                    "官方返回的额度字段缺失或格式无效。",
+                )
+            }
+        };
+        let numbers_ok = top_level.is_none_or(|(total, used, remaining)| {
+            total.is_finite()
+                && used.is_finite()
+                && remaining.is_finite()
+                && total >= 0.0
+                && used >= 0.0
+                && remaining >= 0.0
+        });
         let windows_ok = !quota_windows.is_empty()
             && quota_windows.iter().all(|w| {
                 w.total.is_finite()
@@ -733,8 +710,12 @@ pub fn map_quota_fetch_result_to_status(
                     && w.remaining >= 0.0
                     && w.percentage >= 0.0
                     && w.percentage <= PERCENT_SCALE
+                    && (w.total - PERCENT_SCALE).abs() < PERCENT_EPSILON
+                    && (w.used + w.remaining - PERCENT_SCALE).abs() < PERCENT_EPSILON
+                    && (w.percentage - w.used).abs() < PERCENT_EPSILON
                     && !w.kind.is_empty()
-                    && !w.unit.is_empty()
+                    && w.unit == "percent"
+                    && matches!(w.lane_id.as_str(), "overall" | "auto" | "api" | "team_pool")
             });
 
         if !numbers_ok || !windows_ok {
@@ -747,6 +728,30 @@ pub fn map_quota_fetch_result_to_status(
             );
         }
 
+        let headline = top_level.and_then(|(total, used, remaining)| {
+            quota_windows.iter().find(|window| {
+                window.lane_id == "overall"
+                    && (window.total - total).abs() < PERCENT_EPSILON
+                    && (window.used - used).abs() < PERCENT_EPSILON
+                    && (window.remaining - remaining).abs() < PERCENT_EPSILON
+            })
+        });
+        if top_level.is_some() && headline.is_none() {
+            return build_status(
+                session_ref,
+                false,
+                SessionStateCode::Unsupported,
+                "UNSUPPORTED",
+                "官方返回的额度字段缺失或格式无效。",
+            );
+        }
+        let reset_at = headline
+            .or_else(|| quota_windows.first())
+            .map(|window| window.resets_at.clone())
+            .filter(|value| !value.is_empty());
+        let (total_quota, used_quota, remaining_quota) = top_level
+            .map(|(total, used, remaining)| (Some(total), Some(used), Some(remaining)))
+            .unwrap_or((None, None, None));
         return CursorSessionStatus {
             connected: true,
             session_ref: session_ref.to_string(),
@@ -757,17 +762,24 @@ pub fn map_quota_fetch_result_to_status(
                 account_id: String::new(),
                 display_name: String::new(),
                 plan_name: String::new(),
-                total_usage_percent: used_quota,
-                auto_composer_percent: None,
-                api_usage_percent: None,
-                reset_at: quota_windows
-                    .first()
-                    .map(|window| window.resets_at.clone())
-                    .filter(|value| !value.is_empty()),
-                subscription_expires_at: quota_windows
-                    .first()
-                    .map(|window| window.resets_at.clone())
-                    .filter(|value| !value.is_empty()),
+                total_usage_percent: quota_windows
+                    .iter()
+                    .find(|window| window.lane_id == "overall")
+                    .map(|window| window.used),
+                auto_composer_percent: quota_windows
+                    .iter()
+                    .find(|window| window.lane_id == "auto")
+                    .map(|window| window.used),
+                api_usage_percent: quota_windows
+                    .iter()
+                    .find(|window| window.lane_id == "api")
+                    .map(|window| window.used),
+                team_pool_percent: quota_windows
+                    .iter()
+                    .find(|window| window.lane_id == "team_pool")
+                    .map(|window| window.used),
+                reset_at: reset_at.clone(),
+                subscription_expires_at: reset_at,
                 fetched_at: result.provider_reported_at.clone().unwrap_or_default(),
                 total_quota,
                 used_quota,
@@ -898,10 +910,11 @@ fn plan_usage_ratio(plan: Option<&serde_json::Value>) -> Option<f64> {
     (limit > 0.0).then_some((used / limit) * PERCENT_SCALE)
 }
 
-fn quota_window(kind: &str, used: f64, reset_at: &str) -> CursorQuotaWindowDto {
+fn quota_window(kind: &str, lane_id: &str, used: f64, reset_at: &str) -> CursorQuotaWindowDto {
     let used = used.clamp(0.0, PERCENT_SCALE);
     CursorQuotaWindowDto {
         kind: kind.to_string(),
+        lane_id: lane_id.to_string(),
         unit: "percent".to_string(),
         total: PERCENT_SCALE,
         used,
@@ -912,32 +925,49 @@ fn quota_window(kind: &str, used: f64, reset_at: &str) -> CursorQuotaWindowDto {
 }
 
 fn quota_dto_from_snapshot(snapshot: CursorQuotaSnapshot) -> CursorQuotaDto {
-    let used = snapshot.total_usage_percent.clamp(0.0, PERCENT_SCALE);
     let reset_at = snapshot.reset_at.clone().unwrap_or_default();
-    let mut quota_windows = vec![
-        quota_window("total", used, &reset_at),
-        // Keep rolling_weekly as an alias so existing TokenServiceList priority still works.
-        quota_window("rolling_weekly", used, &reset_at),
-    ];
-    if let Some(auto_used) = snapshot.auto_composer_percent {
-        quota_windows.push(quota_window("auto_composer", auto_used, &reset_at));
+    let overall = snapshot
+        .total_usage_percent
+        .map(|value| value.clamp(0.0, PERCENT_SCALE));
+    let auto = snapshot
+        .auto_composer_percent
+        .map(|value| value.clamp(0.0, PERCENT_SCALE));
+    let api = snapshot
+        .api_usage_percent
+        .map(|value| value.clamp(0.0, PERCENT_SCALE));
+    let team_pool = snapshot
+        .team_pool_percent
+        .map(|value| value.clamp(0.0, PERCENT_SCALE));
+    let mut quota_windows = Vec::new();
+    if let Some(used) = overall {
+        quota_windows.push(quota_window("total", "overall", used, &reset_at));
     }
-    if let Some(api_used) = snapshot.api_usage_percent {
-        quota_windows.push(quota_window("api", api_used, &reset_at));
+    if let Some(auto_used) = auto {
+        quota_windows.push(quota_window("auto_composer", "auto", auto_used, &reset_at));
     }
+    if let Some(api_used) = api {
+        quota_windows.push(quota_window("api", "api", api_used, &reset_at));
+    }
+    if let Some(team_used) = team_pool {
+        quota_windows.push(quota_window("team_pool", "team_pool", team_used, &reset_at));
+    }
+    let headline_used = (snapshot.headline_lane_id.as_deref() == Some("overall"))
+        .then_some(overall)
+        .flatten();
     CursorQuotaDto {
         account_id: snapshot.account_id.clone(),
         display_name: snapshot.display_name.clone(),
         plan_name: snapshot.plan_name.clone(),
-        total_usage_percent: used,
-        auto_composer_percent: snapshot.auto_composer_percent,
-        api_usage_percent: snapshot.api_usage_percent,
+        total_usage_percent: overall,
+        auto_composer_percent: auto,
+        api_usage_percent: api,
+        team_pool_percent: team_pool,
         reset_at: snapshot.reset_at.clone(),
         subscription_expires_at: snapshot.reset_at.clone(),
         fetched_at: snapshot.fetched_at.clone(),
-        total_quota: PERCENT_SCALE,
-        used_quota: used,
-        remaining_quota: PERCENT_SCALE - used,
+        total_quota: headline_used.map(|_| PERCENT_SCALE),
+        used_quota: headline_used,
+        remaining_quota: headline_used.map(|used| PERCENT_SCALE - used),
         quota_windows,
         provider_reported_at: snapshot.fetched_at,
     }
@@ -954,10 +984,11 @@ pub fn parse_cursor_quota_snapshot(
         return Err("missing Cursor account_id".to_string());
     }
 
+    let empty_usage = serde_json::Value::Object(serde_json::Map::new());
     let individual_usage = payload
         .get("individualUsage")
         .or_else(|| payload.get("individual_usage"))
-        .ok_or_else(|| "missing individualUsage".to_string())?;
+        .unwrap_or(&empty_usage);
     let plan = individual_usage
         .get("plan")
         .or_else(|| payload.get("planUsage"))
@@ -971,9 +1002,11 @@ pub fn parse_cursor_quota_snapshot(
     let auto_direct = pick_percent(Some(plan), &["autoPercentUsed", "auto_percent_used"]);
     let api_direct = pick_percent(Some(plan), &["apiPercentUsed", "api_percent_used"]);
     let total_ratio = plan_usage_ratio(Some(plan));
-    let total = total_direct.or(total_ratio).ok_or_else(|| {
-        "missing critical usage fields (totalPercentUsed / used+limit)".to_string()
-    })?;
+    let team_on_demand = payload
+        .pointer("/teamUsage/onDemand")
+        .or_else(|| payload.pointer("/team_usage/on_demand"));
+    let team_ratio = plan_usage_ratio(team_on_demand);
+    let total = total_direct.or(total_ratio);
 
     let reset_at = payload
         .get("billingCycleEnd")
@@ -990,14 +1023,20 @@ pub fn parse_cursor_quota_snapshot(
         .filter(|value| !value.is_empty())
         .unwrap_or("unknown")
         .to_string();
+    let headline_lane_id = total.is_some().then(|| "overall".to_string());
+    if total.is_none() && auto_direct.is_none() && api_direct.is_none() && team_ratio.is_none() {
+        return Err("missing critical usage fields".to_string());
+    }
 
     Ok(CursorQuotaSnapshot {
         account_id: account_id.to_string(),
         display_name: String::new(),
         plan_name,
-        total_usage_percent: total.clamp(0.0, PERCENT_SCALE),
+        total_usage_percent: total.map(|value| value.clamp(0.0, PERCENT_SCALE)),
         auto_composer_percent: auto_direct.map(|value| value.clamp(0.0, PERCENT_SCALE)),
         api_usage_percent: api_direct.map(|value| value.clamp(0.0, PERCENT_SCALE)),
+        team_pool_percent: team_ratio.map(|value| value.clamp(0.0, PERCENT_SCALE)),
+        headline_lane_id,
         reset_at,
         fetched_at: chrono_like_now(),
     })
@@ -1769,13 +1808,13 @@ mod tests {
             "billingCycleEnd": "2026-07-21T08:57:00.000Z"
         });
         let quota = parse_cursor_usage_summary(&payload).expect("quota");
-        assert_eq!(quota.used_quota, 42.0);
-        assert_eq!(quota.remaining_quota, 58.0);
-        assert_eq!(quota.total_usage_percent, 42.0);
+        assert_eq!(quota.used_quota, Some(42.0));
+        assert_eq!(quota.remaining_quota, Some(58.0));
+        assert_eq!(quota.total_usage_percent, Some(42.0));
         assert!(quota
             .quota_windows
             .iter()
-            .any(|window| window.kind == "rolling_weekly"));
+            .any(|window| window.kind == "total" && window.lane_id == "overall"));
     }
 
     #[test]
@@ -1791,7 +1830,7 @@ mod tests {
             "billingCycleEnd": "2026-08-06T22:31:00.000Z"
         });
         let quota = parse_cursor_usage_summary(&payload).expect("quota");
-        assert_eq!(quota.used_quota, 27.0);
+        assert_eq!(quota.used_quota, Some(27.0));
         assert_eq!(quota.auto_composer_percent, Some(20.0));
         assert_eq!(quota.api_usage_percent, Some(72.0));
         assert!(quota
@@ -1814,7 +1853,7 @@ mod tests {
             "individualUsage": { "totalPercentUsed": 31 }
         });
         let quota = parse_cursor_usage_summary(&payload).expect("quota");
-        assert_eq!(quota.used_quota, 31.0);
+        assert_eq!(quota.used_quota, Some(31.0));
     }
 
     #[test]
@@ -1831,8 +1870,8 @@ mod tests {
             "billingCycleEnd": "2026-08-06T22:31:00.000Z"
         });
         let quota = parse_cursor_usage_summary(&payload).expect("quota");
-        assert_eq!(quota.used_quota, 0.0);
-        assert_eq!(quota.remaining_quota, 100.0);
+        assert_eq!(quota.used_quota, Some(0.0));
+        assert_eq!(quota.remaining_quota, Some(100.0));
     }
 
     #[test]
@@ -1847,8 +1886,8 @@ mod tests {
             "billingCycleEnd": "2026-08-06T22:31:00.000Z"
         });
         let quota = parse_cursor_usage_summary(&payload).expect("quota");
-        assert_eq!(quota.used_quota, 97.0);
-        assert_eq!(quota.remaining_quota, 3.0);
+        assert_eq!(quota.used_quota, Some(97.0));
+        assert_eq!(quota.remaining_quota, Some(3.0));
     }
 
     #[test]
@@ -1864,7 +1903,7 @@ mod tests {
             }
         });
         let quota = parse_cursor_usage_summary(&payload).expect("quota");
-        assert_eq!(quota.used_quota, 0.0);
+        assert_eq!(quota.used_quota, Some(0.0));
     }
 
     #[test]
@@ -1878,7 +1917,7 @@ mod tests {
             }
         });
         let quota = parse_cursor_usage_summary(&payload).expect("quota");
-        assert!((quota.used_quota - 88.0).abs() < 0.000_001);
+        assert!((quota.used_quota.unwrap() - 88.0).abs() < 0.000_001);
     }
 
     #[test]
@@ -1956,19 +1995,123 @@ mod tests {
         assert!(js.contains("autopercentused"));
         assert!(js.contains("apipercentused"));
         assert!(js.contains("billingcycleend"));
-        assert!(js.contains("rolling_weekly"));
+        assert!(js.contains("lane_id: laneid"));
+        assert!(js.contains("unit: 'percent'"));
     }
 
     #[test]
-    fn initialization_script_does_not_force_rolling_5_hour_without_api_window() {
+    fn task8_initialization_script_keeps_cursor_lanes_independent_and_percent_native() {
         let js = SESSION_FETCH_JS.to_lowercase();
-        assert!(js.contains("never synthesize 5-hour windows"));
-        assert!(js.contains("if (windowsbykind.rolling_5_hour)"));
+        assert!(js.contains("value === null || value === undefined || value === ''"));
+        assert!(js.contains("typeof value === 'string' && !value.trim()"));
+        assert!(!js.contains("(autopercent + apipercent) / 2"));
+        assert!(!js.contains("unit: 'tokens'"));
+        assert!(js.contains("lane_id: laneid"));
+        for lane_id in ["overall", "auto", "api", "team_pool"] {
+            assert!(
+                js.contains(&format!("'{lane_id}'")),
+                "missing lane_id {lane_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn task8_initialization_script_does_not_coerce_missing_ratio_values_to_zero() {
+        let js = SESSION_FETCH_JS.to_lowercase();
+        let ratio_helper = js
+            .split("function cursorpercentfromcentsusedlimit")
+            .nth(1)
+            .and_then(|tail| tail.split("function buildwindow").next())
+            .expect("ratio helper");
+        assert!(ratio_helper.contains("usedraw === null"));
+        assert!(ratio_helper.contains("usedraw === undefined"));
+        assert!(ratio_helper.contains("typeof usedraw === 'string' && !usedraw.trim()"));
+        assert!(ratio_helper.contains("limitraw === null"));
+        assert!(ratio_helper.contains("limitraw === undefined"));
+        assert!(ratio_helper.contains("typeof limitraw === 'string' && !limitraw.trim()"));
+    }
+
+    #[test]
+    fn task8_initialization_script_never_promotes_team_pool_to_the_headline() {
+        let js = SESSION_FETCH_JS.to_lowercase();
+        assert!(js.contains("overall_window: buildwindow(planpercent, billingcycleend)"));
+        assert!(js.contains("primary_window: buildwindow(planpercent, billingcycleend)"));
+        assert!(!js.contains("headlinelaneid = 'team_pool'"));
+        let parser = js
+            .split("function parseusagepayload")
+            .nth(1)
+            .and_then(|tail| tail.split("window.__tokeneyescursorquotafetch__").next())
+            .expect("usage parser");
+        assert!(parser.contains("normalized.overall_window"));
+        assert!(!parser.contains(
+            "normalized.headline_lane_id === 'overall' ? normalized.primary_window : null",
+        ));
+    }
+
+    #[test]
+    fn task8_auto_and_api_only_snapshot_succeeds_without_an_overall_headline() {
+        let payload = serde_json::json!({
+            "membershipType": "pro",
+            "billingCycleEnd": "2026-08-06T14:31:29.000Z",
+            "individualUsage": {
+                "plan": {
+                    "autoPercentUsed": 10.25,
+                    "apiPercentUsed": 70.75
+                }
+            }
+        });
+        let snapshot = parse_cursor_quota_snapshot(&payload, "auth0|fixture-user")
+            .expect("independent lanes are still a valid provider snapshot");
+        let encoded = serde_json::to_value(quota_dto_from_snapshot(snapshot)).unwrap();
+        assert!(encoded.get("total_quota").is_none());
+        assert!(encoded.get("used_quota").is_none());
+        assert!(encoded.get("remaining_quota").is_none());
+        assert_eq!(
+            encoded["quota_windows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|window| window["lane_id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["auto", "api"]
+        );
+    }
+
+    #[test]
+    fn task8_team_pool_without_overall_keeps_its_lane_but_omits_the_headline() {
+        let payload = serde_json::json!({
+            "membershipType": "team",
+            "limitType": "team",
+            "billingCycleEnd": "2026-08-06T14:31:29.000Z",
+            "individualUsage": { "plan": { "autoPercentUsed": 10 } },
+            "teamUsage": { "onDemand": { "used": 25, "limit": 100 } }
+        });
+        let snapshot = parse_cursor_quota_snapshot(&payload, "auth0|team-fixture").unwrap();
+        assert_eq!(snapshot.headline_lane_id, None);
+        let quota = quota_dto_from_snapshot(snapshot);
+        assert_eq!(quota.used_quota, None);
+        assert_eq!(quota.total_quota, None);
+        assert_eq!(quota.remaining_quota, None);
+        assert!(quota
+            .quota_windows
+            .iter()
+            .any(|window| window.kind == "team_pool" && window.lane_id == "team_pool"));
+        assert!(!quota
+            .quota_windows
+            .iter()
+            .any(|window| window.lane_id == "overall"));
+    }
+
+    #[test]
+    fn initialization_script_does_not_invent_time_windows_for_cursor_lanes() {
+        let js = SESSION_FETCH_JS.to_lowercase();
+        assert!(!js.contains("rolling_5_hour"));
+        assert!(!js.contains("rolling_weekly"));
     }
 
     #[test]
     fn parse_quota_eval_result_accepts_success_object() {
-        let raw = r#"{"status":"success","total_quota":100,"used_quota":42,"remaining_quota":58,"quota_windows":[{"kind":"rolling_weekly","unit":"tokens","total":100,"used":42,"remaining":58,"percentage":42,"resets_at":"2026-07-08T01:00:00.000Z"}],"provider_reported_at":"2026-07-08T00:00:00.000Z"}"#;
+        let raw = r#"{"status":"success","total_quota":100,"used_quota":42,"remaining_quota":58,"quota_windows":[{"kind":"total","lane_id":"overall","unit":"percent","total":100,"used":42,"remaining":58,"percentage":42,"resets_at":"2026-07-08T01:00:00.000Z"}],"provider_reported_at":"2026-07-08T00:00:00.000Z"}"#;
         let parsed = parse_quota_eval_result(raw).unwrap().unwrap();
         assert_eq!(parsed.status, "success");
         assert_eq!(parsed.total_quota, Some(100.0));
@@ -1995,8 +2138,9 @@ mod tests {
             used_quota: Some(42.0),
             remaining_quota: Some(58.0),
             quota_windows: Some(vec![CursorQuotaWindowDto {
-                kind: "rolling_weekly".into(),
-                unit: "tokens".into(),
+                kind: "total".into(),
+                lane_id: "overall".into(),
+                unit: "percent".into(),
                 total: 100.0,
                 used: 42.0,
                 remaining: 58.0,
@@ -2016,10 +2160,127 @@ mod tests {
         assert!(status.connected);
         assert_eq!(status.state_code, SessionStateCode::Connected);
         let quota = status.quota.unwrap();
-        assert_eq!(quota.total_quota, 100.0);
-        assert_eq!(quota.used_quota, 42.0);
-        assert_eq!(quota.remaining_quota, 58.0);
+        assert_eq!(quota.total_quota, Some(100.0));
+        assert_eq!(quota.used_quota, Some(42.0));
+        assert_eq!(quota.remaining_quota, Some(58.0));
         assert_eq!(quota.quota_windows.len(), 1);
+    }
+
+    #[test]
+    fn task8_webview_lane_only_result_connects_without_fresh_top_level_fields() {
+        let result = QuotaFetchResult {
+            status: "success".into(),
+            total_quota: None,
+            used_quota: None,
+            remaining_quota: None,
+            quota_windows: Some(vec![CursorQuotaWindowDto {
+                kind: "auto_composer".into(),
+                lane_id: "auto".into(),
+                unit: "percent".into(),
+                total: 100.0,
+                used: 10.25,
+                remaining: 89.75,
+                percentage: 10.25,
+                resets_at: "2026-08-06T14:31:29.000Z".into(),
+            }]),
+            provider_reported_at: Some("2026-08-20T00:00:00.000Z".into()),
+            error: None,
+            error_code: None,
+        };
+        let status = map_quota_fetch_result_to_status(
+            "token-plan/cursor/session/test",
+            true,
+            true,
+            Some(&result),
+        );
+        assert!(status.connected);
+        let encoded = serde_json::to_value(status.quota.unwrap()).unwrap();
+        assert!(encoded.get("total_quota").is_none());
+        assert_eq!(encoded["quota_windows"][0]["unit"], "percent");
+    }
+
+    #[test]
+    fn task8_webview_rejects_team_pool_as_a_top_level_headline() {
+        let result = QuotaFetchResult {
+            status: "success".into(),
+            total_quota: Some(100.0),
+            used_quota: Some(25.0),
+            remaining_quota: Some(75.0),
+            quota_windows: Some(vec![CursorQuotaWindowDto {
+                kind: "team_pool".into(),
+                lane_id: "team_pool".into(),
+                unit: "percent".into(),
+                total: 100.0,
+                used: 25.0,
+                remaining: 75.0,
+                percentage: 25.0,
+                resets_at: "2026-08-06T14:31:29.000Z".into(),
+            }]),
+            provider_reported_at: Some("2026-08-20T00:00:00.000Z".into()),
+            error: None,
+            error_code: None,
+        };
+        let status = map_quota_fetch_result_to_status(
+            "token-plan/cursor/session/test",
+            true,
+            true,
+            Some(&result),
+        );
+        assert!(!status.connected);
+        assert_eq!(status.state_code, SessionStateCode::Unsupported);
+        assert!(status.quota.is_none());
+    }
+
+    #[test]
+    fn task8_webview_rejects_forged_percent_arithmetic_and_top_level_values() {
+        let cases = [
+            (200.0, 25.0, 175.0, 12.5, 200.0, 25.0, 175.0),
+            (100.0, 25.0, 60.0, 25.0, 100.0, 25.0, 60.0),
+            (100.0, 25.0, 75.0, 50.0, 100.0, 25.0, 75.0),
+            (100.0, 25.0, 75.0, 25.0, 200.0, 25.0, 175.0),
+        ];
+        for (
+            window_total,
+            window_used,
+            window_remaining,
+            percentage,
+            top_total,
+            top_used,
+            top_remaining,
+        ) in cases
+        {
+            let result = QuotaFetchResult {
+                status: "success".into(),
+                total_quota: Some(top_total),
+                used_quota: Some(top_used),
+                remaining_quota: Some(top_remaining),
+                quota_windows: Some(vec![CursorQuotaWindowDto {
+                    kind: "total".into(),
+                    lane_id: "overall".into(),
+                    unit: "percent".into(),
+                    total: window_total,
+                    used: window_used,
+                    remaining: window_remaining,
+                    percentage,
+                    resets_at: "2026-08-06T14:31:29.000Z".into(),
+                }]),
+                provider_reported_at: Some("2026-08-20T00:00:00.000Z".into()),
+                error: None,
+                error_code: None,
+            };
+            let status = map_quota_fetch_result_to_status(
+                "token-plan/cursor/session/test",
+                true,
+                true,
+                Some(&result),
+            );
+            assert!(
+                !status.connected,
+                "forged case must not connect: {result:?}"
+            );
+            assert_eq!(status.state_code, SessionStateCode::Unsupported);
+            assert!(status.quota.is_none());
+        }
     }
 
     #[test]
@@ -2082,8 +2343,9 @@ mod tests {
             used_quota: Some(42.0),
             remaining_quota: Some(58.0),
             quota_windows: Some(vec![CursorQuotaWindowDto {
-                kind: "rolling_weekly".to_string(),
-                unit: "tokens".to_string(),
+                kind: "total".to_string(),
+                lane_id: "overall".to_string(),
+                unit: "percent".to_string(),
                 total: 100.0,
                 used: 42.0,
                 remaining: 58.0,
@@ -2165,19 +2427,19 @@ mod tests {
 
         // Fixture files on disk are the source of truth for these assertions.
         // usage-summary-account-a.json: totalPercentUsed / autoPercentUsed / apiPercentUsed.
-        assert!((snap_a.total_usage_percent - 29.095652173913045).abs() < 0.000_001);
+        assert!((snap_a.total_usage_percent.unwrap() - 29.095652173913045).abs() < 0.000_001);
         assert_eq!(snap_a.auto_composer_percent, Some(22.73));
         assert!((snap_a.api_usage_percent.unwrap() - 71.53333333333333).abs() < 0.000_001);
         assert_eq!(snap_a.reset_at.as_deref(), Some("2026-08-06T14:31:29.000Z"));
 
-        assert_eq!(snap_b.total_usage_percent, 6.0);
+        assert_eq!(snap_b.total_usage_percent, Some(6.0));
         assert_eq!(snap_b.auto_composer_percent, Some(1.0));
         assert_eq!(snap_b.api_usage_percent, Some(39.0));
         assert_eq!(snap_b.reset_at.as_deref(), Some("2026-08-13T09:08:00.000Z"));
 
         // Do not crush dimensions into used=0/remaining=0 placeholders.
-        assert!(snap_a.total_usage_percent > 0.0);
-        assert!(snap_b.total_usage_percent > 0.0);
+        assert!(snap_a.total_usage_percent.unwrap() > 0.0);
+        assert!(snap_b.total_usage_percent.unwrap() > 0.0);
         assert_ne!(snap_a.total_usage_percent, snap_b.total_usage_percent);
     }
 
@@ -2232,7 +2494,7 @@ mod tests {
             }
         });
         let snap = parse_cursor_quota_snapshot(&payload, "auth0|user_ratio").expect("snap");
-        assert!((snap.total_usage_percent - 29.1).abs() < 0.000_001);
+        assert!((snap.total_usage_percent.unwrap() - 29.1).abs() < 0.000_001);
     }
 
     #[test]

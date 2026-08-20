@@ -25,11 +25,54 @@ function mapMiniMaxErrorCode(error) {
   }
 }
 
-function parseTokenInteger(raw) {
-  if (raw == null || raw === "") return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0 || !Number.isSafeInteger(Math.trunc(n))) return null;
-  return Math.trunc(n);
+function invalidQuotaField(field) {
+  throw new MiniMaxTokenPlanError(
+    "MINIMAX_RESPONSE_STRUCTURE_DRIFT",
+    `MiniMax response contains invalid ${field}`,
+  );
+}
+
+function parseTokenInteger(raw, field) {
+  if (raw == null) return null;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || !Number.isSafeInteger(raw)) {
+    invalidQuotaField(field);
+  }
+  return raw;
+}
+
+function parseUsageCount(raw, field) {
+  if (raw == null) return null;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isSafeInteger(raw)) {
+    invalidQuotaField(field);
+  }
+  return raw;
+}
+
+function parseRemainingPercent(raw, field) {
+  if (raw == null) return null;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > 100) {
+    invalidQuotaField(field);
+  }
+  return raw;
+}
+
+function validateCountFields(entry) {
+  for (const field of [
+    "current_interval_total_count",
+    "current_interval_remaining_count",
+    "current_interval_remains_count",
+    "current_weekly_total_count",
+    "current_weekly_remaining_count",
+    "current_weekly_remains_count",
+  ]) {
+    parseTokenInteger(entry?.[field], field);
+  }
+  for (const field of [
+    "current_interval_usage_count",
+    "current_weekly_usage_count",
+  ]) {
+    parseUsageCount(entry?.[field], field);
+  }
 }
 
 function parseResetAt(raw) {
@@ -45,7 +88,7 @@ function buildQuotaWindow({ kind, total, used, resetsAt }) {
   const safeUsed = Math.min(Math.max(0, used), total);
   return {
     kind,
-    unit: "tokens",
+    unit: "provider_count",
     total,
     used: safeUsed,
     remaining: Math.max(0, total - safeUsed),
@@ -64,23 +107,33 @@ function pickPrimaryModelEntry(entries) {
 }
 
 function resolveIntervalUsed(entry) {
-  const total = parseTokenInteger(entry?.current_interval_total_count);
-  const usageCount = parseTokenInteger(entry?.current_interval_usage_count);
+  const total = parseTokenInteger(
+    entry?.current_interval_total_count,
+    "current_interval_total_count",
+  );
+  const usageCount = parseUsageCount(
+    entry?.current_interval_usage_count,
+    "current_interval_usage_count",
+  );
   const remainingCount = parseTokenInteger(
     entry?.current_interval_remaining_count ?? entry?.current_interval_remains_count,
+    entry?.current_interval_remaining_count != null
+      ? "current_interval_remaining_count"
+      : "current_interval_remains_count",
   );
   if (total === null) return { total: null, used: null };
   if (usageCount !== null) {
-    // Official token_plan/remains: usage_count is consumed prompts (MiniMax CLI).
-    if (usageCount <= total) return { total, used: usageCount };
-    // Defensive: treat as remaining when count exceeds total.
-    return { total, used: Math.max(0, total - usageCount) };
+    // token_plan/remains reports usage_count as the consumed provider count.
+    return { total, used: Math.min(Math.max(0, usageCount), total) };
   }
   if (remainingCount !== null) {
     return { total, used: Math.max(0, total - remainingCount) };
   }
-  const remainingPercent = Number(entry?.current_interval_remaining_percent);
-  if (Number.isFinite(remainingPercent) && remainingPercent >= 0 && remainingPercent <= 100) {
+  const remainingPercent = parseRemainingPercent(
+    entry?.current_interval_remaining_percent,
+    "current_interval_remaining_percent",
+  );
+  if (remainingPercent !== null) {
     const used = Math.round(total * (1 - remainingPercent / 100));
     return { total, used };
   }
@@ -88,21 +141,32 @@ function resolveIntervalUsed(entry) {
 }
 
 function resolveWeeklyUsed(entry) {
-  const total = parseTokenInteger(entry?.current_weekly_total_count);
+  const total = parseTokenInteger(
+    entry?.current_weekly_total_count,
+    "current_weekly_total_count",
+  );
   if (total === null || total <= 0) return null;
-  const usageCount = parseTokenInteger(entry?.current_weekly_usage_count);
+  const usageCount = parseUsageCount(
+    entry?.current_weekly_usage_count,
+    "current_weekly_usage_count",
+  );
   const remainingCount = parseTokenInteger(
     entry?.current_weekly_remaining_count ?? entry?.current_weekly_remains_count,
+    entry?.current_weekly_remaining_count != null
+      ? "current_weekly_remaining_count"
+      : "current_weekly_remains_count",
   );
   if (usageCount !== null) {
-    if (usageCount <= total) return { total, used: usageCount };
-    return { total, used: Math.max(0, total - usageCount) };
+    return { total, used: Math.min(Math.max(0, usageCount), total) };
   }
   if (remainingCount !== null) {
     return { total, used: Math.max(0, total - remainingCount) };
   }
-  const remainingPercent = Number(entry?.current_weekly_remaining_percent);
-  if (Number.isFinite(remainingPercent) && remainingPercent >= 0 && remainingPercent <= 100) {
+  const remainingPercent = parseRemainingPercent(
+    entry?.current_weekly_remaining_percent,
+    "current_weekly_remaining_percent",
+  );
+  if (remainingPercent !== null) {
     return { total, used: Math.round(total * (1 - remainingPercent / 100)) };
   }
   return null;
@@ -111,7 +175,10 @@ function resolveWeeklyUsed(entry) {
 function weeklyWindowActive(entry) {
   const status = String(entry?.current_weekly_status || "").toLowerCase();
   if (status === "active" || status === "running") return true;
-  const total = parseTokenInteger(entry?.current_weekly_total_count);
+  const total = parseTokenInteger(
+    entry?.current_weekly_total_count,
+    "current_weekly_total_count",
+  );
   return total !== null && total > 0;
 }
 
@@ -127,6 +194,7 @@ function parseMiniMaxTokenPlanResponse(payload) {
   if (!entry) {
     throw new MiniMaxTokenPlanError("MINIMAX_RESPONSE_STRUCTURE_DRIFT", "MiniMax model_remains is missing");
   }
+  validateCountFields(entry);
   const interval = resolveIntervalUsed(entry);
   const fiveHour = buildQuotaWindow({
     kind: "rolling_5_hour",
@@ -154,6 +222,7 @@ function parseMiniMaxTokenPlanResponse(payload) {
   const primary = quotaWindows.find((window) => window.kind === "rolling_weekly") || quotaWindows[0];
   return {
     quota_windows: quotaWindows,
+    quota_unit: "provider_count",
     total_quota: primary.total,
     used_quota: primary.used,
     remaining_quota: primary.remaining,

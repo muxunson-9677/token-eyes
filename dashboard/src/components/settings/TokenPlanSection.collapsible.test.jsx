@@ -117,24 +117,32 @@ it("classifies active, attention, and expired plans and paginates ten cards at a
 
 it("shows usable plans as status cards and advances after ten cards", async () => {
   const user = userEvent.setup();
+  const expiringAt = new Date(Date.now() + (3 * 24 * 60 * 60 * 1000)).toISOString();
   const records = Array.from({ length: 11 }, (_, index) => ({
     ...RECORD,
     id: `page-plan-${index + 1}`,
     plan_label: `Plan ${index + 1}`,
-    expires_at: index === 0 ? "2026-08-20" : "2099-12-31",
+    expires_at: index === 0 ? expiringAt : "2099-12-31",
     used_quota: index === 1 ? 850 : 200,
     remaining_quota: index === 1 ? 150 : 800,
     sync_status: index === 2 ? "error" : "success",
   }));
+  expect(records.slice(0, 3).map((record) => tokenPlanDisplayStatus(record))).toEqual([
+    { kind: "attention", reasons: ["expiring"] },
+    { kind: "attention", reasons: ["usage"] },
+    { kind: "attention", reasons: ["sync"] },
+  ]);
   getTokenPlans.mockResolvedValue({ records });
 
   render(<TokenPlanSection />);
 
-  expect(await screen.findAllByTestId("token-plan-card")).toHaveLength(10);
+  const cards = await screen.findAllByTestId("token-plan-card");
+  expect(cards).toHaveLength(10);
   expect(screen.getByTestId("active-token-plan-grid").style.getPropertyValue("--tt-token-plan-columns")).toBe("5");
-  expect(screen.getAllByTestId("token-plan-status").map((status) => status.dataset.status)).toEqual([
-    "attention", "attention", "attention", ...Array(7).fill("active"),
-  ]);
+  for (const [index, expectedStatus] of ["attention", "attention", "attention", "active"].entries()) {
+    expect(within(cards[index]).getByTestId("token-plan-status"))
+      .toHaveAttribute("data-status", expectedStatus);
+  }
   expect(screen.getByText("第 1 / 2 页")).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "下一页" }));

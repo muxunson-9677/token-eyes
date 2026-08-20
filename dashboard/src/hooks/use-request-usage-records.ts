@@ -7,7 +7,6 @@ import { getRequestUsageRecords } from "../lib/api";
 import type {
   UsageRecord,
   RequestUsageRecordsTotals,
-  TokenTotals,
 } from "../lib/types/usage";
 import { useUsageFilterParams, useUsageFilterCacheKey, useUsageFilters } from "./use-usage-filters";
 import { normalizeVisibleProviderIds, resolveEffectiveUsageSources } from "../lib/spend-provider-visibility.js";
@@ -45,7 +44,7 @@ interface UseRequestUsageRecordsParams {
 
 type RequestUsageRecordsSource = "edge" | "cache" | "mock";
 
-interface MergedTotals extends TokenTotals, RequestUsageRecordsTotals {}
+type MergedTotals = RequestUsageRecordsTotals;
 
 interface UseRequestUsageRecordsReturn {
   records: UsageRecord[];
@@ -81,6 +80,18 @@ const EMPTY_TOTALS: MergedTotals = {
   priced_tokens: 0,
   unpriced_tokens: 0,
   pricing_coverage: "complete",
+  pricing_source: null,
+  pricing_version: null,
+  source_kind: null,
+  source_url: null,
+  source_updated_at: null,
+  observed_at: null,
+  is_stale: false,
+  estimated: false,
+  match_kind: null,
+  matched_model: null,
+  note_code: null,
+  pricing_components: [],
   status_sample_count: 0,
   latency_sample_count: 0,
 };
@@ -97,6 +108,12 @@ function safeHost(baseUrl: unknown): string | null {
 function safeNum(value: unknown): number {
   const n = Number(value || 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+function safeNullableNum(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function useRequestUsageRecords({
@@ -291,7 +308,7 @@ export function useRequestUsageRecords({
         mergedTotals.cache_creation_input_tokens = safeNum(totals.cache_creation_input_tokens);
         mergedTotals.reasoning_output_tokens = safeNum(totals.reasoning_output_tokens);
         mergedTotals.total_tokens = safeNum(totals.total_tokens);
-        mergedTotals.cost_usd = safeNum(totals.cost_usd);
+        mergedTotals.cost_usd = safeNullableNum(totals.cost_usd);
         mergedTotals.request_count = safeNum(totals.request_count);
         mergedTotals.priced_tokens = safeNum(totals.priced_tokens);
         mergedTotals.unpriced_tokens = safeNum(totals.unpriced_tokens);
@@ -304,6 +321,20 @@ export function useRequestUsageRecords({
         mergedTotals.avg_latency_ms = totals.avg_latency_ms ?? null;
         mergedTotals.cache_hit_rate = safeNum(totals.cache_hit_rate);
         mergedTotals.pricing_coverage = totals.pricing_coverage || "complete";
+        mergedTotals.pricing_source = totals.pricing_source ?? null;
+        mergedTotals.pricing_version = totals.pricing_version ?? null;
+        mergedTotals.source_kind = totals.source_kind ?? null;
+        mergedTotals.source_url = totals.source_url ?? null;
+        mergedTotals.source_updated_at = totals.source_updated_at ?? null;
+        mergedTotals.observed_at = totals.observed_at ?? null;
+        mergedTotals.is_stale = Boolean(totals.is_stale);
+        mergedTotals.estimated = Boolean(totals.estimated);
+        mergedTotals.match_kind = totals.match_kind ?? null;
+        mergedTotals.matched_model = totals.matched_model ?? null;
+        mergedTotals.note_code = totals.note_code ?? null;
+        mergedTotals.pricing_components = Array.isArray(totals.pricing_components)
+          ? totals.pricing_components.map((component: Record<string, unknown>) => ({ ...component }))
+          : [];
       }
 
       setRecords(allRecords);

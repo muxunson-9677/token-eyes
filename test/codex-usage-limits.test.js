@@ -114,10 +114,10 @@ test("focused reader calls only Codex and normalizes windows by duration", async
 
 test("focused reader maps auth, unsupported, and network failures to sanitized states", async () => {
   for (const [status, expected] of [
-    [401, { auth_action_required: "reauth", error_code: "auth_required" }],
-    [403, { auth_action_required: "reauth", error_code: "auth_required" }],
-    [404, { unsupported: true, error_code: "endpoint_unsupported" }],
-    [503, { error_code: "upstream_5xx" }],
+    [401, { auth_action_required: "reauth", error_code: "auth_required", error: "Codex authentication is required." }],
+    [403, { auth_action_required: "reauth", error_code: "auth_required", error: "Codex authentication is required." }],
+    [404, { unsupported: true, error_code: "endpoint_unsupported", error: "Codex usage is unsupported." }],
+    [503, { error_code: "upstream_5xx", error: "Codex usage is temporarily unavailable." }],
   ]) {
     const home = createCodexHome();
     const result = await getCodexUsageLimits({
@@ -145,6 +145,7 @@ test("focused reader maps auth, unsupported, and network failures to sanitized s
     },
   });
   assert.equal(network.error_code, "network_error");
+  assert.equal(network.error, "Codex usage is temporarily unavailable.");
   assert.doesNotMatch(JSON.stringify(network), /ECONNRESET|private|path/i);
 });
 
@@ -159,7 +160,12 @@ test("shape drift is unsupported and unconfigured Codex performs no request", as
     Object.fromEntries(
       Object.entries(drift).filter(([key]) => key !== "checked_at"),
     ),
-    { configured: true, unsupported: true, error_code: "response_unsupported" },
+    {
+      configured: true,
+      unsupported: true,
+      error_code: "response_unsupported",
+      error: "Codex usage response is unsupported.",
+    },
   );
 
   let called = false;

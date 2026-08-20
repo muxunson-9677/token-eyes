@@ -26,6 +26,7 @@ export const PROVIDER_LIMIT_SPECS = {
     windows(data) {
       return [
         { key: "plan", labelKey: "limits.label.cursor_plan", window: data.primary_window },
+        { key: "team-pool", labelKey: "limits.label.cursor_team_pool", window: data.team_pool_window },
         { key: "auto", labelKey: "limits.label.cursor_auto", window: data.secondary_window },
         { key: "api", labelKey: "limits.label.cursor_api", window: data.tertiary_window },
       ];
@@ -133,6 +134,7 @@ export function usageLimitsLabelCopyAnchor() {
     copy("limits.label.codex_spark_5h"),
     copy("limits.label.codex_spark_7d"),
     copy("limits.label.cursor_plan"),
+    copy("limits.label.cursor_team_pool"),
     copy("limits.label.cursor_auto"),
     copy("limits.label.cursor_api"),
     copy("limits.label.gemini_pro"),

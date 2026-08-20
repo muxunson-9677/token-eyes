@@ -114,12 +114,40 @@ describe("useLimitsDisplayPrefs", () => {
       "zed",
       "workbuddy",
       "kimi",
-      "kimi-code",
-      "pi",
+      "kiro",
       "grok",
       "copilot",
-      "deepseek-harness",
     ]);
+  });
+
+  it("drops retired non-renderer ids from old prefs and never creates kiro-cli", () => {
+    window.localStorage.setItem(
+      ORDER_KEY,
+      JSON.stringify(["kimi-code", "pi", "deepseek-harness", "kiro-cli", "claude"]),
+    );
+    window.localStorage.setItem(
+      VISIBILITY_KEY,
+      JSON.stringify({
+        "kimi-code": false,
+        pi: false,
+        "deepseek-harness": false,
+        "kiro-cli": false,
+        claude: false,
+      }),
+    );
+
+    const { result } = renderHook(() => useLimitsDisplayPrefs());
+
+    expect(result.current.order).toEqual([
+      "claude",
+      ...LIMIT_PROVIDER_IDS.filter((id) => id !== "claude"),
+    ]);
+    expect(result.current.visibility).toEqual({
+      ...defaultVisibility(),
+      claude: false,
+    });
+    expect(result.current.order).toContain("kiro");
+    expect(result.current.order).not.toContain("kiro-cli");
   });
 
   it("reads and normalizes the existing localStorage keys", () => {

@@ -7,6 +7,7 @@ const fsSync = require("node:fs");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const { EventEmitter } = require("node:events");
 const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
@@ -26,6 +27,18 @@ const {
   createDefaultCredentialStore,
   createWindowsDpapiStore: _windowsStoreExport,
 } = require("../src/lib/provider-api-secrets");
+const { createAccessKeyCredential } = require("../src/lib/provider-api-signing");
+const {
+  SafeOutboundError,
+  validateOutboundUrl,
+  isPublicIpAddress,
+  createPinnedLookup,
+  resolveSafeOutboundTarget,
+  safeOutboundRequest,
+  readLimitedResponseBody,
+  readLimitedFetchResponse,
+  redactSecrets,
+} = require("../src/lib/safe-outbound-request");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -128,6 +141,789 @@ function validConfig(overrides = {}) {
     ...overrides,
   };
 }
+
+function createInjectedRequest(responseFactory, calls = []) {
+  return (options, callback) => {
+    const req = new EventEmitter();
+    req.destroyed = false;
+    req.destroy = () => {
+      req.destroyed = true;
+    };
+    req.end = () => {
+      queueMicrotask(() => {
+        calls.push(options);
+        const spec = responseFactory(options, req);
+        const response = Readable.from(spec.chunks || []);
+        response.statusCode = spec.statusCode ?? 200;
+        response.headers = spec.headers || { "content-type": "application/json" };
+        callback(response);
+      });
+    };
+    return req;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Task 5 RED: shared safe outbound layer
+// ---------------------------------------------------------------------------
+
+test("safe outbound URL validation requires HTTPS and rejects credentials or secret query", () => {
+  assert.equal(validateOutboundUrl("https://quota.example.test/v1/balance").protocol, "https:");
+  for (const value of [
+    "http://quota.example.test/v1/balance",
+    "ftp://quota.example.test/v1/balance",
+    "https://user:pass@quota.example.test/v1/balance",
+    "https://quota.example.test/v1/balance?api_key=synthetic",
+    "https://quota.example.test/v1/balance?token=synthetic",
+    "https://quota.example.test/v1/balance?authorization=synthetic",
+    "https://quota.example.test/v1/balance?auth=synthetic",
+    "https://quota.example.test/v1/balance?cookie=synthetic",
+    "https://quota.example.test/v1/balance?client_secret=synthetic",
+    "https://quota.example.test/v1/balance?session_token=synthetic",
+    "https://quota.example.test/v1/balance?api_token=synthetic",
+  ]) {
+    assert.throws(
+      () => validateOutboundUrl(value),
+      (error) => error?.code === "unsafe_outbound_url",
+      value
+    );
+  }
+});
+
+test("safe outbound rejects normalized numeric loopback URL spellings and bracketed IPv6", () => {
+  for (const value of [
+    "https://127.1/v1/balance",
+    "https://0x7f000001/v1/balance",
+    "https://2130706433/v1/balance",
+    "https://[::1]/v1/balance",
+    "https://[::ffff:127.0.0.1]/v1/balance",
+  ]) {
+    assert.throws(
+      () => validateOutboundUrl(value),
+      (error) => error?.code === "unsafe_outbound_address",
+      value
+    );
+  }
+});
+
+test("safe outbound IP classifier rejects every non-public IPv4 class", () => {
+  const unsafe = [
+    "0.0.0.0",
+    "0.1.2.3",
+    "10.0.0.1",
+    "100.64.0.1",
+    "100.127.255.254",
+    "127.0.0.1",
+    "169.254.169.254",
+    "172.16.0.1",
+    "172.31.255.254",
+    "192.0.0.1",
+    "192.0.2.1",
+    "192.168.0.1",
+    "198.18.0.1",
+    "198.51.100.1",
+    "203.0.113.1",
+    "224.0.0.1",
+    "239.255.255.255",
+    "240.0.0.1",
+    "255.255.255.255",
+  ];
+  for (const address of unsafe) assert.equal(isPublicIpAddress(address), false, address);
+  assert.equal(isPublicIpAddress("8.8.8.8"), true);
+  assert.equal(isPublicIpAddress("93.184.216.34"), true);
+});
+
+test("safe outbound IP classifier rejects non-public IPv6 and mapped private IPv4", () => {
+  const unsafe = [
+    "::",
+    "::1",
+    "::ffff:127.0.0.1",
+    "::ffff:10.0.0.1",
+    "::ffff:169.254.169.254",
+    "64:ff9b:1::1",
+    "100::1",
+    "2001::1",
+    "2001:2::1",
+    "2001:db8::1",
+    "2002::1",
+    "3ffe::1",
+    "3fff::1",
+    "fc00::1",
+    "fd00:ec2::254",
+    "fe80::1",
+    "fec0::1",
+    "ff02::1",
+  ];
+  for (const address of unsafe) assert.equal(isPublicIpAddress(address), false, address);
+  assert.equal(isPublicIpAddress("2001:4860:4860::8888"), true);
+  assert.equal(isPublicIpAddress("::ffff:8.8.8.8"), true);
+  assert.equal(isPublicIpAddress("not-an-ip"), false);
+});
+
+test("safe outbound resolves all A and AAAA with verbatim before approving target", async () => {
+  const lookupCalls = [];
+  const target = await resolveSafeOutboundTarget("https://quota.example.test/v1/balance", {
+    dnsLookup(hostname, options, callback) {
+      lookupCalls.push({ hostname, options });
+      callback(null, [
+        { address: "93.184.216.34", family: 4 },
+        { address: "2001:4860:4860::8888", family: 6 },
+      ]);
+    },
+  });
+  assert.deepEqual(lookupCalls, [{
+    hostname: "quota.example.test",
+    options: { all: true, verbatim: true },
+  }]);
+  assert.deepEqual(target.addresses, [
+    { address: "93.184.216.34", family: 4 },
+    { address: "2001:4860:4860::8888", family: 6 },
+  ]);
+});
+
+test("safe outbound rejects private A, private AAAA, and mixed public/private DNS", async () => {
+  for (const addresses of [
+    [{ address: "10.0.0.1", family: 4 }],
+    [{ address: "fd00::1", family: 6 }],
+    [
+      { address: "93.184.216.34", family: 4 },
+      { address: "127.0.0.1", family: 4 },
+    ],
+  ]) {
+    await assert.rejects(
+      resolveSafeOutboundTarget("https://quota.example.test/v1/balance", {
+        dnsLookup(_hostname, _options, callback) {
+          callback(null, addresses);
+        },
+      }),
+      (error) => error?.code === "unsafe_outbound_address"
+    );
+  }
+});
+
+test("safe outbound rejects empty and failed DNS resolution", async () => {
+  await assert.rejects(
+    resolveSafeOutboundTarget("https://quota.example.test/v1/balance", {
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, []);
+      },
+    }),
+    (error) => error?.code === "dns_resolution_empty"
+  );
+  await assert.rejects(
+    resolveSafeOutboundTarget("https://quota.example.test/v1/balance", {
+      dnsLookup(_hostname, _options, callback) {
+        callback(Object.assign(new Error("synthetic dns failure"), { code: "EAI_AGAIN" }));
+      },
+    }),
+    (error) => error?.code === "dns_resolution_failed" && !error.message.includes("quota.example.test")
+  );
+});
+
+test("safe outbound rejects malformed DNS records and family mismatches", async () => {
+  for (const addresses of [
+    [{ address: "not-an-ip", family: 4 }],
+    [{ address: "93.184.216.34", family: 6 }],
+    [{ address: "2001:4860:4860::8888", family: 4 }],
+    [{ address: "93.184.216.34", family: 0 }],
+  ]) {
+    await assert.rejects(
+      resolveSafeOutboundTarget("https://quota.example.test/v1/balance", {
+        dnsLookup(_hostname, _options, callback) {
+          callback(null, addresses);
+        },
+      }),
+      (error) => error?.code === "dns_resolution_failed"
+    );
+  }
+});
+
+test("pinned lookup never re-resolves and only returns the approved address family", async () => {
+  const pinned = createPinnedLookup("quota.example.test", [
+    { address: "93.184.216.34", family: 4 },
+    { address: "2001:4860:4860::8888", family: 6 },
+  ]);
+  const lookup = (hostname, options) => new Promise((resolve, reject) => {
+    pinned(hostname, options, (error, address, family) => {
+      if (error) reject(error);
+      else resolve({ address, family });
+    });
+  });
+  assert.deepEqual(await lookup("quota.example.test", { family: 4 }), {
+    address: "93.184.216.34",
+    family: 4,
+  });
+  await assert.rejects(lookup("quota.example.test", { family: 6 }), (error) => error?.code === "EAI_ADDRFAMILY");
+  assert.deepEqual(await lookup("quota.example.test", { family: 4 }), {
+    address: "93.184.216.34",
+    family: 4,
+  });
+  const all = await new Promise((resolve, reject) => {
+    pinned("quota.example.test", { all: true }, (error, addresses) => {
+      if (error) reject(error);
+      else resolve(addresses);
+    });
+  });
+  assert.deepEqual(all, [{ address: "93.184.216.34", family: 4 }]);
+  await assert.rejects(lookup("rebound.example.test", {}), (error) => error?.code === "EAI_NONAME");
+});
+
+test("safe outbound single-hop request pins DNS while preserving hostname and TLS SNI", async () => {
+  let resolverCalls = 0;
+  const requestCalls = [];
+  const requestImpl = createInjectedRequest((_options) => ({
+    statusCode: 302,
+    headers: { location: "https://other.example.test/v1/balance" },
+    chunks: [],
+  }), requestCalls);
+  const { response } = await safeOutboundRequest("https://quota.example.test/v1/balance", {
+    method: "GET",
+    headers: { Authorization: "Bearer SYNTHETIC_TASK5_BEARER" },
+    dnsLookup(hostname, options, callback) {
+      resolverCalls += 1;
+      assert.equal(hostname, "quota.example.test");
+      assert.deepEqual(options, { all: true, verbatim: true });
+      callback(null, [{ address: "93.184.216.34", family: 4 }]);
+    },
+    requestImpl,
+  });
+  assert.equal(response.statusCode, 302, "shared layer must return one response without following redirects");
+  assert.equal(resolverCalls, 1);
+  assert.equal(requestCalls.length, 1);
+  assert.equal(requestCalls[0].hostname, "quota.example.test");
+  assert.equal(requestCalls[0].servername, "quota.example.test");
+  assert.equal(requestCalls[0].agent, false);
+  const first = await new Promise((resolve, reject) => {
+    requestCalls[0].lookup("quota.example.test", { family: 4 }, (error, address, family) => {
+      if (error) reject(error);
+      else resolve({ address, family });
+    });
+  });
+  const second = await new Promise((resolve, reject) => {
+    requestCalls[0].lookup("quota.example.test", { family: 4 }, (error, address, family) => {
+      if (error) reject(error);
+      else resolve({ address, family });
+    });
+  });
+  assert.deepEqual(first, { address: "93.184.216.34", family: 4 });
+  assert.deepEqual(second, first, "a repeated request lookup must stay pinned, not re-resolve");
+});
+
+test("safe outbound strips a caller Host header so Node derives Host from the validated hostname", async () => {
+  const requestCalls = [];
+  await safeOutboundRequest("https://quota.example.test:8443/v1/balance", {
+    headers: {
+      HOST: "attacker.invalid",
+      Accept: "application/json",
+    },
+    dnsLookup(_hostname, _options, callback) {
+      callback(null, [{ address: "93.184.216.34", family: 4 }]);
+    },
+    requestImpl: createInjectedRequest(() => ({
+      chunks: [Buffer.from("{}")],
+    }), requestCalls),
+  });
+  assert.equal(requestCalls.length, 1);
+  assert.equal(requestCalls[0].hostname, "quota.example.test");
+  assert.equal(requestCalls[0].port, "8443");
+  assert.equal(requestCalls[0].servername, "quota.example.test");
+  assert.equal(Object.keys(requestCalls[0].headers).some((key) => key.toLowerCase() === "host"), false);
+  assert.equal(requestCalls[0].headers.Accept, "application/json");
+});
+
+test("limited Node response rejects oversized Content-Length and streamed bytes", async () => {
+  for (const response of [
+    Object.assign(Readable.from([]), { headers: { "content-length": "5" } }),
+    Object.assign(Readable.from([Buffer.from("abc"), Buffer.from("def")]), { headers: {} }),
+  ]) {
+    let destroyed = 0;
+    let responseDestroyed = 0;
+    response.destroy = () => { responseDestroyed += 1; };
+    await assert.rejects(
+      readLimitedResponseBody(response, {
+        maxBytes: 4,
+        request: { destroy() { destroyed += 1; } },
+      }),
+      (error) => error?.code === "response_too_large"
+    );
+    assert.equal(destroyed, 1);
+    assert.ok(responseDestroyed >= 1);
+  }
+});
+
+test("limited fetch response checks Content-Length and cancels streamed overflow", async () => {
+  let cancelled = 0;
+  const chunks = [Buffer.from("abc"), Buffer.from("def")];
+  const response = {
+    headers: { get: () => null },
+    body: {
+      getReader() {
+        let index = 0;
+        return {
+          async read() {
+            return index < chunks.length
+              ? { done: false, value: chunks[index++] }
+              : { done: true, value: undefined };
+          },
+          async cancel() { cancelled += 1; },
+        };
+      },
+    },
+  };
+  await assert.rejects(
+    readLimitedFetchResponse(response, { maxBytes: 4 }),
+    (error) => error?.code === "response_too_large"
+  );
+  assert.equal(cancelled, 1);
+});
+
+test("safe outbound exact redaction removes arbitrary synthetic secrets", () => {
+  const secret = "SYNTHETIC.actual+$secret[task5]";
+  const result = redactSecrets(`network failed with ${secret} and ${secret}`, [secret]);
+  assert.equal(result.includes(secret), false);
+  assert.equal(result, "network failed with *** and ***");
+});
+
+test("safe outbound network rejection retains no raw secret in message, stack, cause, or JSON", async () => {
+  const secret = "SYNTHETIC.raw+$cause[task5]";
+  let caught;
+  try {
+    await safeOutboundRequest("https://quota.example.test/v1/balance", {
+      secrets: [secret],
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [{ address: "93.184.216.34", family: 4 }]);
+      },
+      requestImpl() {
+        const request = new EventEmitter();
+        request.destroy = () => {};
+        request.end = () => queueMicrotask(() => request.emit("error", new Error(`failure ${secret}`)));
+        return request;
+      },
+    });
+  } catch (error) {
+    caught = error;
+  }
+  assert.ok(caught);
+  const serialized = [caught.message, caught.stack, JSON.stringify(caught), caught.cause?.message].join("\n");
+  assert.equal(serialized.includes(secret), false);
+  assert.equal(caught.message.includes("***"), true);
+  assert.equal(caught.cause, undefined);
+});
+
+test("safe outbound rewraps incoming SafeOutboundError so its original stack cannot retain a secret", async () => {
+  const secret = "SYNTHETIC.safeerror+$stack[task5]";
+  let caught;
+  try {
+    await safeOutboundRequest("https://quota.example.test/v1/balance", {
+      secrets: [secret],
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [{ address: "93.184.216.34", family: 4 }]);
+      },
+      requestImpl() {
+        const request = new EventEmitter();
+        request.destroy = () => {};
+        const incoming = new SafeOutboundError("outbound_request_failed", `failure ${secret}`);
+        void incoming.stack;
+        request.end = () => queueMicrotask(() => request.emit("error", incoming));
+        return request;
+      },
+    });
+  } catch (error) {
+    caught = error;
+  }
+  assert.ok(caught);
+  const serialized = [caught.message, caught.stack, JSON.stringify(caught), caught.cause?.message].join("\n");
+  assert.equal(serialized.includes(secret), false);
+  assert.equal(caught.message.includes("***"), true);
+  assert.equal(caught.cause, undefined);
+});
+
+test("limited Node response redacts exact secrets from stream errors", async () => {
+  const secret = "SYNTHETIC.stream+$error[task5]";
+  const response = new EventEmitter();
+  response.headers = {};
+  response.destroy = () => {};
+  const promise = readLimitedResponseBody(response, { maxBytes: 1024, secrets: [secret] });
+  queueMicrotask(() => response.emit("error", new Error(`stream failed ${secret}`)));
+  await assert.rejects(promise, (error) => {
+    const serialized = [error.message, error.stack, JSON.stringify(error), error.cause?.message].join("\n");
+    return !serialized.includes(secret) && error.message.includes("***") && error.cause === undefined;
+  });
+});
+
+test("limited fetch response fails closed when no streaming reader is available", async () => {
+  let buffered = 0;
+  const response = {
+    headers: { get: () => null },
+    body: {},
+    async arrayBuffer() {
+      buffered += 1;
+      return new ArrayBuffer(0);
+    },
+  };
+  await assert.rejects(
+    readLimitedFetchResponse(response, { maxBytes: 1024 }),
+    (error) => error?.code === "response_stream_unavailable"
+  );
+  assert.equal(buffered, 0);
+});
+
+test("limited fetch response redacts exact secrets from reader errors without raw cause", async () => {
+  const secret = "SYNTHETIC.fetch+$error[task5]";
+  let cancelled = 0;
+  const response = {
+    headers: { get: () => null },
+    body: {
+      getReader() {
+        return {
+          async read() { throw new Error(`fetch stream failed ${secret}`); },
+          async cancel() { cancelled += 1; },
+        };
+      },
+    },
+  };
+  await assert.rejects(
+    readLimitedFetchResponse(response, { maxBytes: 1024, secrets: [secret] }),
+    (error) => {
+      const serialized = [error.message, error.stack, JSON.stringify(error), error.cause?.message].join("\n");
+      return !serialized.includes(secret) && error.message.includes("***") && error.cause === undefined;
+    }
+  );
+  assert.equal(cancelled, 1);
+});
+
+test("financial production request uses shared pinned DNS seam and preserves TLS identity", async () => {
+  let resolverCalls = 0;
+  const requestCalls = [];
+  const result = await executeFinancialRequest(
+    validConfig({ requestUrl: "https://finance.example.test/v1/balance" }),
+    "SYNTHETIC_TASK5_FINANCE_BEARER",
+    {
+      dnsLookup(hostname, options, callback) {
+        resolverCalls += 1;
+        assert.equal(hostname, "finance.example.test");
+        assert.deepEqual(options, { all: true, verbatim: true });
+        callback(null, [{ address: "93.184.216.34", family: 4 }]);
+      },
+      requestImpl: createInjectedRequest(() => ({
+        chunks: [Buffer.from('{"balance":42}')],
+      }), requestCalls),
+    }
+  );
+  assert.equal(result.ok, true);
+  assert.equal(resolverCalls, 1);
+  assert.equal(requestCalls.length, 1);
+  assert.equal(requestCalls[0].hostname, "finance.example.test");
+  assert.equal(requestCalls[0].servername, "finance.example.test");
+  const pinned = await new Promise((resolve, reject) => {
+    requestCalls[0].lookup("finance.example.test", { family: 4 }, (error, address, family) => {
+      if (error) reject(error);
+      else resolve({ address, family });
+    });
+  });
+  assert.deepEqual(pinned, { address: "93.184.216.34", family: 4 });
+});
+
+test("financial production request rejects mixed DNS before sending Authorization", async () => {
+  let requestCalls = 0;
+  const result = await executeFinancialRequest(
+    validConfig({ requestUrl: "https://finance.example.test/v1/balance" }),
+    "SYNTHETIC_TASK5_MIXED_DNS_SECRET",
+    {
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [
+          { address: "93.184.216.34", family: 4 },
+          { address: "fd00::1", family: 6 },
+        ]);
+      },
+      requestImpl() {
+        requestCalls += 1;
+        throw new Error("request must not be sent");
+      },
+    }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error_code, "invalid_config");
+  assert.equal(requestCalls, 0);
+  assert.equal(JSON.stringify(result).includes("SYNTHETIC_TASK5_MIXED_DNS_SECRET"), false);
+});
+
+test("financial redirect re-runs the business allowlist before DNS or a second request", async () => {
+  let resolverCalls = 0;
+  const requestCalls = [];
+  const result = await executeFinancialRequest(
+    validConfig({ requestUrl: "https://finance.example.test/v1/balance" }),
+    "SYNTHETIC_TASK5_REDIRECT_SECRET",
+    {
+      dnsLookup(_hostname, _options, callback) {
+        resolverCalls += 1;
+        callback(null, [{ address: "93.184.216.34", family: 4 }]);
+      },
+      requestImpl: createInjectedRequest(() => ({
+        statusCode: 302,
+        headers: { location: "/v1/realtime/sessions" },
+        chunks: [],
+      }), requestCalls),
+    }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error_code, "unsupported_endpoint");
+  assert.equal(requestCalls.length, 1);
+  assert.equal(resolverCalls, 1);
+});
+
+test("financial 10 MiB Content-Length is pre-rejected and destroys the request", async () => {
+  let requestRef;
+  const requestCalls = [];
+  const result = await executeFinancialRequest(
+    validConfig({ requestUrl: "https://finance.example.test/v1/balance" }),
+    "SYNTHETIC_TASK5_SIZE_SECRET",
+    {
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [{ address: "93.184.216.34", family: 4 }]);
+      },
+      requestImpl: createInjectedRequest((_options, req) => {
+        requestRef = req;
+        return {
+          headers: {
+            "content-type": "application/json",
+            "content-length": String((10 * 1024 * 1024) + 1),
+          },
+          chunks: [],
+        };
+      }, requestCalls),
+    }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error_code, "provider_response_invalid");
+  assert.equal(requestRef.destroyed, true);
+  assert.equal(requestCalls.length, 1);
+});
+
+test("financial streamed response over 10 MiB destroys the production request", async () => {
+  let requestRef;
+  const requestCalls = [];
+  const result = await executeFinancialRequest(
+    validConfig({ requestUrl: "https://finance.example.test/v1/balance" }),
+    "SYNTHETIC_TASK5_STREAM_SECRET",
+    {
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [{ address: "93.184.216.34", family: 4 }]);
+      },
+      requestImpl: createInjectedRequest((_options, req) => {
+        requestRef = req;
+        return {
+          headers: { "content-type": "application/json" },
+          chunks: [Buffer.alloc(6 * 1024 * 1024), Buffer.alloc((4 * 1024 * 1024) + 1)],
+        };
+      }, requestCalls),
+    }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error_code, "provider_response_invalid");
+  assert.equal(requestRef.destroyed, true);
+  assert.equal(requestCalls.length, 1);
+});
+
+test("financial maxResponseBytes override can shrink but cannot exceed the hard 10 MiB cap", async () => {
+  let requestRef;
+  const requestCalls = [];
+  const result = await executeFinancialRequest(
+    validConfig({ requestUrl: "https://finance.example.test/v1/balance" }),
+    "SYNTHETIC_TASK5_HARD_CAP_SECRET",
+    {
+      maxResponseBytes: 20 * 1024 * 1024,
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [{ address: "93.184.216.34", family: 4 }]);
+      },
+      requestImpl: createInjectedRequest((_options, req) => {
+        requestRef = req;
+        return {
+          headers: {
+            "content-type": "application/json",
+            "content-length": String((10 * 1024 * 1024) + 1),
+          },
+          chunks: [],
+        };
+      }, requestCalls),
+    }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error_code, "provider_response_invalid");
+  assert.equal(requestRef.destroyed, true);
+  assert.equal(requestCalls.length, 1);
+});
+
+test("financial redirect re-resolves and blocks a mixed-DNS next hop before request", async () => {
+  const resolvedHosts = [];
+  const requestCalls = [];
+  const result = await executeFinancialRequest(
+    validConfig({ requestUrl: "https://finance.example.test/v1/balance" }),
+    "SYNTHETIC_TASK5_REBIND_SECRET",
+    {
+      dnsLookup(hostname, _options, callback) {
+        resolvedHosts.push(hostname);
+        if (hostname === "finance.example.test") {
+          callback(null, [{ address: "93.184.216.34", family: 4 }]);
+          return;
+        }
+        callback(null, [
+          { address: "93.184.216.35", family: 4 },
+          { address: "10.0.0.1", family: 4 },
+        ]);
+      },
+      requestImpl: createInjectedRequest(() => ({
+        statusCode: 302,
+        headers: { location: "https://redirect.example.test/v1/balance" },
+        chunks: [],
+      }), requestCalls),
+    }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error_code, "invalid_config");
+  assert.deepEqual(resolvedHosts, ["finance.example.test", "redirect.example.test"]);
+  assert.equal(requestCalls.length, 1);
+});
+
+test("financial internally signed query remains allowed without weakening user URL checks", async () => {
+  const requestCalls = [];
+  const credential = createAccessKeyCredential("synthetic-access-id", "synthetic-access-secret");
+  const result = await executeFinancialRequest({
+    requestUrl: "https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14",
+    requestMethod: "GET",
+    authType: "aliyun_rpc",
+  }, credential, {
+    dnsLookup(_hostname, _options, callback) {
+      callback(null, [{ address: "47.246.24.180", family: 4 }]);
+    },
+    requestImpl: createInjectedRequest(() => ({
+      chunks: [Buffer.from('{"Data":{"AvailableAmount":"1.00"}}')],
+    }), requestCalls),
+    signing: {
+      now: new Date("2026-08-20T00:00:00.000Z"),
+      nonce: "synthetic-task5-nonce",
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(requestCalls.length, 1);
+  assert.match(requestCalls[0].path, /AccessKeyId=/);
+  assert.match(requestCalls[0].path, /Signature=/);
+});
+
+test("financial signed providers reject user-supplied secret query params before DNS or request", async () => {
+  const credential = createAccessKeyCredential("synthetic-access-id", "synthetic-access-secret");
+  for (const query of [
+    "client_secret=SYNTHETIC_CLIENT_SECRET",
+    "authorization=SYNTHETIC_QUERY_AUTHORIZATION",
+    "x-amz-security-token=SYNTHETIC_SECURITY_TOKEN",
+  ]) {
+    let dnsCalls = 0;
+    let requestCalls = 0;
+    const result = await executeFinancialRequest({
+      requestUrl: `https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14&${query}`,
+      requestMethod: "GET",
+      authType: "aliyun_rpc",
+    }, credential, {
+      dnsLookup(_hostname, _options, callback) {
+        dnsCalls += 1;
+        callback(null, [{ address: "47.246.24.180", family: 4 }]);
+      },
+      requestImpl() {
+        requestCalls += 1;
+        throw new Error("request must not be sent");
+      },
+    });
+    assert.equal(result.ok, false, query);
+    assert.equal(result.error_code, "invalid_config", query);
+    assert.equal(dnsCalls, 0, query);
+    assert.equal(requestCalls, 0, query);
+  }
+});
+
+test("financial cross-origin redirect strips standard secret-like nonSecretHeaders", async () => {
+  for (const headerName of ["Proxy-Authorization", "X-Amz-Security-Token"]) {
+    const headerSecret = `SYNTHETIC_${headerName.replace(/\W/g, "_").toUpperCase()}_VALUE`;
+    const requestCalls = [];
+    const result = await executeFinancialRequest(
+      validConfig({
+        requestUrl: "https://finance.example.test/v1/balance",
+        nonSecretHeaders: { [headerName]: headerSecret },
+      }),
+      "SYNTHETIC_PRIMARY_BEARER",
+      {
+        dnsLookup(_hostname, _options, callback) {
+          callback(null, [{ address: "93.184.216.34", family: 4 }]);
+        },
+        requestImpl: createInjectedRequest(() => requestCalls.length === 1
+          ? {
+              statusCode: 302,
+              headers: { location: "https://redirect.example.test/v1/balance" },
+              chunks: [],
+            }
+          : {
+              chunks: [Buffer.from('{"balance":42}')],
+            }, requestCalls),
+      }
+    );
+    assert.equal(result.ok, true, headerName);
+    assert.equal(requestCalls.length, 2, headerName);
+    const secondHeaders = requestCalls[1].headers;
+    assert.equal(Object.keys(secondHeaders).some((key) => key.toLowerCase() === headerName.toLowerCase()), false, headerName);
+    assert.equal(JSON.stringify(result).includes(headerSecret), false, headerName);
+  }
+});
+
+test("financial injected network errors redact derived signed query and HMAC Authorization values", async () => {
+  const credential = createAccessKeyCredential("synthetic-access-id", "synthetic-access-secret");
+  for (const spec of [
+    {
+      requestUrl: "https://business.aliyuncs.com/?Action=QueryAccountBalance&Version=2017-12-14",
+      authType: "aliyun_rpc",
+      signing: { now: new Date("2026-08-20T00:00:00.000Z"), nonce: "synthetic-task5-error-nonce" },
+      derived(options) {
+        const encoded = options.path.match(/[?&]Signature=([^&]+)/)?.[1] || "";
+        return [encoded, encoded ? decodeURIComponent(encoded) : ""];
+      },
+    },
+    {
+      requestUrl: "https://open.volcengineapi.com/?Action=QueryBalanceAcct&Version=2022-01-01",
+      authType: "volcengine_hmac",
+      signing: { now: new Date("2026-08-20T00:00:00.000Z") },
+      derived(options) {
+        const authorization = String(options.headers.Authorization || "");
+        return [authorization, authorization.match(/Signature=([0-9a-f]+)/i)?.[1] || ""];
+      },
+    },
+  ]) {
+    let captured;
+    const result = await executeFinancialRequest({
+      requestUrl: spec.requestUrl,
+      requestMethod: "GET",
+      authType: spec.authType,
+    }, credential, {
+      signing: spec.signing,
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [{ address: "47.246.24.180", family: 4 }]);
+      },
+      requestImpl(options) {
+        captured = options;
+        const request = new EventEmitter();
+        request.destroy = () => {};
+        request.end = () => queueMicrotask(() => {
+          request.emit("error", new Error(`echo ${options.path} ${JSON.stringify(options.headers)}`));
+        });
+        return request;
+      },
+    });
+    const derivedValues = spec.derived(captured).filter(Boolean);
+    assert.ok(derivedValues.length > 0, spec.authType);
+    assert.equal(result.ok, false, spec.authType);
+    for (const derived of derivedValues) {
+      assert.equal(JSON.stringify(result).includes(derived), false, `${spec.authType}: ${derived.slice(0, 12)}`);
+    }
+    assert.equal(JSON.stringify(result).includes("synthetic-access-secret"), false, spec.authType);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Unit tests: isModelEndpoint

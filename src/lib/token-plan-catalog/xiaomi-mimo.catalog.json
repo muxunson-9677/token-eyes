@@ -1,30 +1,22 @@
 {
   "provider_id": "xiaomi_mimo",
   "provider_name": "小米 MiMo",
-  "official_site": "https://mimo.mi.com/docs/",
   "catalog_version": "2026-06-25",
-  "evidence": [
-    {
-      "url": "https://mimo.mi.com/docs/zh-CN/price/token-plan",
-      "title": "Token Plan - 小米 MiMo 文档",
-      "accessed_at": "2026-06-25"
-    },
-    {
-      "url": "https://platform.xiaomimimo.com/token-plan",
-      "title": "Xiaomi MiMo Token Plan",
-      "accessed_at": "2026-06-25"
-    },
-    {
-      "url": "https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call",
-      "title": "首次调用 API - 小米 MiMo 文档",
-      "accessed_at": "2026-06-25"
-    },
-    {
-      "url": "https://mimo.mi.com/docs/zh-CN/api/guidance/rate-limit",
-      "title": "速率限制 - 小米 MiMo 文档",
-      "accessed_at": "2026-06-25"
-    }
-  ],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "provider-home-xiaomi-mimo",
+    "supports": [
+      "provider_identity"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-25",
+    "fetched_at": "2026-06-25",
+    "content_sha256": "2fd0b49fc22317c1a14d0c4ee0333db0c450df3775cda672dfc55748a77beec4",
+    "content_hash_kind": "normalized_extracted_fields_v1",
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
+  },
   "plans": [
     {
       "plan_id": "xiaomi_mimo_lite_monthly",
@@ -38,7 +30,22 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-xiaomi-mimo-token-plan",
+        "supports": [
+          "plan_identity",
+          "quota"
+        ],
+        "verified": true,
+        "verified_at": "2026-06-25",
+        "fetched_at": "2026-06-25",
+        "content_sha256": "9f1feec7d53934ed5ac1b5870619d130156c0e821e43d7e9fb044ffa6f9a07ab",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "xiaomi_mimo_standard_monthly",
@@ -52,7 +59,22 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-xiaomi-mimo-token-plan",
+        "supports": [
+          "plan_identity",
+          "quota"
+        ],
+        "verified": true,
+        "verified_at": "2026-06-25",
+        "fetched_at": "2026-06-25",
+        "content_sha256": "9d10fdbe2ffc904f3f7d612249a54593143f1272c08c98aad8d870217425c4b7",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "xiaomi_mimo_pro_monthly",
@@ -66,7 +88,22 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-xiaomi-mimo-token-plan",
+        "supports": [
+          "plan_identity",
+          "quota"
+        ],
+        "verified": true,
+        "verified_at": "2026-06-25",
+        "fetched_at": "2026-06-25",
+        "content_sha256": "15e863f3a704f8bdbfe8483149b69bf67a3ed70da87a2c7c16ddf537f785a58a",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "xiaomi_mimo_max_monthly",
@@ -80,7 +117,22 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-xiaomi-mimo-token-plan",
+        "supports": [
+          "plan_identity",
+          "quota"
+        ],
+        "verified": true,
+        "verified_at": "2026-06-25",
+        "fetched_at": "2026-06-25",
+        "content_sha256": "3191e291a1bec401d35b9a44e17401f51a569146a63774bc8683dafc2197ea9a",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "xiaomi_mimo_lite_yearly",
@@ -94,7 +146,22 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-xiaomi-mimo-token-plan",
+        "supports": [
+          "plan_identity",
+          "quota"
+        ],
+        "verified": true,
+        "verified_at": "2026-06-25",
+        "fetched_at": "2026-06-25",
+        "content_sha256": "8d1a9f218fb36f21768af5e0436ec3136da4b962caa56151cad0ae2d959df323",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "xiaomi_mimo_standard_yearly",
@@ -108,7 +175,22 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-xiaomi-mimo-token-plan",
+        "supports": [
+          "plan_identity",
+          "quota"
+        ],
+        "verified": true,
+        "verified_at": "2026-06-25",
+        "fetched_at": "2026-06-25",
+        "content_sha256": "605767b9de87ee2f5ec2c6f439a34022ebaa766f1f58a61bc8329bc8a6ec0a5c",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "xiaomi_mimo_pro_yearly",
@@ -122,7 +204,22 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-xiaomi-mimo-token-plan",
+        "supports": [
+          "plan_identity",
+          "quota"
+        ],
+        "verified": true,
+        "verified_at": "2026-06-25",
+        "fetched_at": "2026-06-25",
+        "content_sha256": "d314be40ec9d19113bbefaccf98a197664f2978a9a7b6a2627717ff263d0864a",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "xiaomi_mimo_max_yearly",
@@ -136,14 +233,72 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://mimo.mi.com/docs/zh-CN/price/token-plan"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-xiaomi-mimo-token-plan",
+        "supports": [
+          "plan_identity",
+          "quota"
+        ],
+        "verified": true,
+        "verified_at": "2026-06-25",
+        "fetched_at": "2026-06-25",
+        "content_sha256": "108276ae2b8bf12f554f2a18bfd1efda6416e5f34360bcf00b73e5eb9753cb60",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
     "official_quota_api": false,
-    "authorization": "none",
+    "authorization": "official_console_session",
     "usage_endpoint_documented": false,
-    "fields_available": [],
-    "notes": "小米 MiMo 未提供官方文档化的额度查询 API。API Key 可用于模型推理调用，但没有官方文档化的额度查询能力，因此不能用于读取 used_quota、remaining_quota、expires_at。用户需登录控制台（platform.xiaomimimo.com）在订阅管理页面人工查看用量。小米 MiMo 当前没有可用于额度同步的官方授权接口。产品仅支持静态套餐目录与用户手工更新额度；不实现自动浏览器 Cookie 抓取。"
-  }
+    "source_kind": "undocumented_console_api",
+    "support_tier": "best_effort",
+    "fields_available": [
+      "total_quota",
+      "used_quota",
+      "remaining_quota",
+      "balance",
+      "available_balance",
+      "credit_balance"
+    ],
+    "notes": "官网会话检测使用非公开、未文档化的控制台接口，仅按 best-effort 支持，可能随官网升级失效。401/403 需要重新授权，5xx/网络错误为临时失败，结构变化为不支持；缺失 credit_balance 时保留有效 quota 并标记 partial。"
+  },
+  "official_site_link_id": "catalog-xiaomi-mimo-docs",
+  "sources": [
+    {
+      "label": "Token Plan - 小米 MiMo 文档",
+      "link_id": "catalog-xiaomi-mimo-token-plan",
+      "supports": [
+        "plan_identity",
+        "price",
+        "quota"
+      ]
+    },
+    {
+      "label": "Xiaomi MiMo Token Plan",
+      "link_id": "provider-home-xiaomi-mimo",
+      "supports": [
+        "provider_identity",
+        "account_access"
+      ]
+    },
+    {
+      "label": "首次调用 API - 小米 MiMo 文档",
+      "link_id": "catalog-xiaomi-mimo-quick-start",
+      "supports": [
+        "account_access"
+      ]
+    },
+    {
+      "label": "速率限制 - 小米 MiMo 文档",
+      "link_id": "catalog-xiaomi-mimo-rate-limit",
+      "supports": [
+        "quota"
+      ]
+    }
+  ]
 }

@@ -1,0 +1,508 @@
+{
+  "schema_version": 1,
+  "adapters": [
+    {
+      "id": "claude",
+      "display_name": "Claude Code",
+      "usage_identity": "claude",
+      "queue_source": "claude",
+      "family": "anthropic",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseClaudeIncremental",
+      "resolver_exports": [
+        "listClaudeProjectFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": true,
+      "path_override_key": "claude",
+      "account_level": false,
+      "notes": "Claude Code sessions under ~/.claude/projects/."
+    },
+    {
+      "id": "codex",
+      "display_name": "Codex",
+      "usage_identity": "codex",
+      "queue_source": "codex",
+      "family": "openai",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseRolloutIncremental",
+      "resolver_exports": [
+        "listRolloutFiles",
+        "listRolloutFilesDeep"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": true,
+      "path_override_key": "codex",
+      "account_level": false,
+      "notes": "OpenAI Codex CLI sessions/ JSONL; archived_sessions is scanned with event dedup."
+    },
+    {
+      "id": "every-code",
+      "display_name": "Every Code",
+      "usage_identity": "every-code",
+      "queue_source": "every-code",
+      "family": "openai",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseRolloutIncremental",
+      "resolver_exports": [
+        "listRolloutFiles",
+        "listRolloutFilesDeep"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "EveryCode CLI (OpenAI Codex fork); shares parseRolloutIncremental with codex."
+    },
+    {
+      "id": "cursor",
+      "display_name": "Cursor",
+      "usage_identity": "cursor",
+      "queue_source": "cursor",
+      "family": "unknown",
+      "collection_mode": "cloud_api",
+      "parser_export": "parseCursorApiIncremental",
+      "resolver_exports": [],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": true,
+      "path_override_key": "cursor",
+      "account_level": true,
+      "notes": "Cursor API (CSV fetch); account-level because it is a cloud-backed subscription."
+    },
+    {
+      "id": "trae",
+      "display_name": "Trae",
+      "usage_identity": "trae",
+      "queue_source": "trae",
+      "family": "bytedance",
+      "collection_mode": "passive_log",
+      "parser_export": "parseTraeIncremental",
+      "resolver_exports": [
+        "listTraeDataRoots"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": true,
+      "path_override_key": "trae",
+      "account_level": false,
+      "notes": "Trae CN local ai-agent store (decrypted DB or token_usage.jsonl export)."
+    },
+    {
+      "id": "gemini",
+      "display_name": "Gemini CLI",
+      "usage_identity": "gemini",
+      "queue_source": "gemini",
+      "family": "google",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseGeminiIncremental",
+      "resolver_exports": [
+        "listGeminiSessionFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": true,
+      "path_override_key": "gemini",
+      "account_level": false,
+      "notes": "Google Gemini CLI (CLI hook + passive log reader)."
+    },
+    {
+      "id": "opencode",
+      "display_name": "OpenCode",
+      "usage_identity": "opencode",
+      "queue_source": "opencode",
+      "family": "opencode",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseOpencodeIncremental",
+      "resolver_exports": [
+        "listOpencodeMessageFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": true,
+      "path_override_key": "opencode",
+      "account_level": false,
+      "notes": "OpenCode CLI (SQLite message store + JSON file fallback)."
+    },
+    {
+      "id": "openclaw",
+      "display_name": "OpenClaw",
+      "usage_identity": "openclaw",
+      "queue_source": "openclaw",
+      "family": "openclaw",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseOpenclawIncremental",
+      "resolver_exports": [],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": true,
+      "path_override_key": "openclaw",
+      "account_level": false,
+      "notes": "OpenClaw session plugin / hook; triggered by --from-openclaw flag."
+    },
+    {
+      "id": "kilo-cli",
+      "display_name": "Kilo CLI",
+      "usage_identity": "kilo-cli",
+      "queue_source": "kilo-cli",
+      "family": "kilo",
+      "collection_mode": "sqlite",
+      "parser_export": "parseOpencodeDbIncremental",
+      "resolver_exports": [],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Kilo CLI (kilo.ai); reuses parseOpencodeDbIncremental with separate cursor namespace."
+    },
+    {
+      "id": "kilocode",
+      "display_name": "Kilo Code",
+      "usage_identity": "kilocode",
+      "queue_source": "kilocode",
+      "family": "vscode_extension",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseKilocodeIncremental",
+      "resolver_exports": [
+        "resolveKilocodeTaskFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Kilo Code VS Code extension (Cline-style ui_messages.json)."
+    },
+    {
+      "id": "roocode",
+      "display_name": "Roo Code",
+      "usage_identity": "roocode",
+      "queue_source": "roocode",
+      "family": "vscode_extension",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseRoocodeIncremental",
+      "resolver_exports": [
+        "resolveRoocodeTaskFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Roo Code VS Code extension (Cline-derived; rooveterinaryinc.roo-cline)."
+    },
+    {
+      "id": "kiro",
+      "display_name": "Kiro（含 CLI）",
+      "usage_identity": "kiro",
+      "queue_source": "kiro",
+      "family": "kiro",
+      "collection_mode": "sqlite",
+      "parser_export": "parseKiroIncremental",
+      "resolver_exports": [
+        "resolveKiroDbPath",
+        "resolveKiroJsonlPath"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": true,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Kiro IDE (SQLite + JSONL fallback); tokens merged transparently with kiro-cli."
+    },
+    {
+      "id": "kiro-cli",
+      "display_name": "Kiro CLI",
+      "usage_identity": "kiro",
+      "queue_source": "kiro",
+      "family": "kiro",
+      "collection_mode": "sqlite",
+      "parser_export": "parseKiroCliIncremental",
+      "resolver_exports": [
+        "resolveKiroCliSessionFiles",
+        "resolveKiroCliDbPath"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Kiro CLI; tokens approximated at 4 chars/token (credit-based billing). Merged under 'kiro' in dashboards."
+    },
+    {
+      "id": "hermes",
+      "display_name": "Hermes Agent",
+      "usage_identity": "hermes",
+      "queue_source": "hermes",
+      "family": "hermes",
+      "collection_mode": "sqlite",
+      "parser_export": "parseHermesIncremental",
+      "resolver_exports": [
+        "resolveHermesPath"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": true,
+      "path_override_key": "hermes",
+      "account_level": false,
+      "notes": "Hermes Agent SQLite sessions."
+    },
+    {
+      "id": "kimi",
+      "display_name": "Kimi",
+      "usage_identity": "kimi",
+      "queue_source": "kimi",
+      "family": "moonshot",
+      "collection_mode": "passive_log",
+      "parser_export": "parseKimiIncremental",
+      "resolver_exports": [
+        "resolveKimiWireFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": true,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Kimi (moonshot-ai/kimi) passive wire.jsonl reader."
+    },
+    {
+      "id": "kimi-code",
+      "display_name": "Kimi Code",
+      "usage_identity": "kimi-code",
+      "queue_source": "kimi-code",
+      "family": "moonshot",
+      "collection_mode": "passive_log",
+      "parser_export": "parseKimiCodeIncremental",
+      "resolver_exports": [
+        "resolveKimiCodeWireFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Moonshot-ai/kimi-code official CLI (different wire.jsonl path than kimi)."
+    },
+    {
+      "id": "codebuddy",
+      "display_name": "CodeBuddy",
+      "usage_identity": "codebuddy",
+      "queue_source": "codebuddy",
+      "family": "tencent",
+      "collection_mode": "passive_log",
+      "parser_export": "parseCodebuddyIncremental",
+      "resolver_exports": [
+        "resolveCodebuddyProjectFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": true,
+      "path_override_key": "codebuddy",
+      "account_level": false,
+      "notes": "Tencent CodeBuddy CLI; passive ~/.codebuddy/projects/**/*.jsonl reader."
+    },
+    {
+      "id": "workbuddy",
+      "display_name": "WorkBuddy",
+      "usage_identity": "workbuddy",
+      "queue_source": "workbuddy",
+      "family": "tencent",
+      "collection_mode": "passive_log",
+      "parser_export": "parseWorkbuddyIncremental",
+      "resolver_exports": [
+        "resolveWorkbuddyProjectFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": true,
+      "path_override_key": "workbuddy",
+      "account_level": false,
+      "notes": "Tencent WorkBuddy CLI (CodeBuddy CLI rebrand); passive ~/.workbuddy/projects/**/*.jsonl reader + read-only credit quota via codebuddy.cn billing API."
+    },
+    {
+      "id": "omp",
+      "display_name": "oh-my-pi",
+      "usage_identity": "omp",
+      "queue_source": "omp",
+      "family": "unknown",
+      "collection_mode": "passive_log",
+      "parser_export": "parseOmpIncremental",
+      "resolver_exports": [
+        "resolveOmpSessionFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "oh-my-pi passive ~/.omp/agent/sessions/**/*.jsonl reader."
+    },
+    {
+      "id": "pi",
+      "display_name": "pi",
+      "usage_identity": "pi",
+      "queue_source": "pi",
+      "family": "unknown",
+      "collection_mode": "passive_log",
+      "parser_export": "parsePiIncremental",
+      "resolver_exports": [
+        "resolvePiSessionFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "@mariozechner/pi-coding-agent passive ~/.pi/agent/sessions/**/*.jsonl reader."
+    },
+    {
+      "id": "craft",
+      "display_name": "Craft Agents",
+      "usage_identity": "craft",
+      "queue_source": "craft",
+      "family": "unknown",
+      "collection_mode": "passive_log",
+      "parser_export": "parseCraftIncremental",
+      "resolver_exports": [
+        "resolveCraftSessionFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Craft Agents passive session.jsonl reader."
+    },
+    {
+      "id": "grok",
+      "display_name": "Grok Build",
+      "usage_identity": "grok",
+      "queue_source": "grok",
+      "family": "xai",
+      "collection_mode": "hook_or_passive_log",
+      "parser_export": "parseGrokBuildIncremental",
+      "resolver_exports": [
+        "resolveGrokBuildSessions"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": true,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "xAI Grok Build (passive session scan + optional hook)."
+    },
+    {
+      "id": "copilot",
+      "display_name": "GitHub Copilot",
+      "usage_identity": "copilot",
+      "queue_source": "copilot",
+      "family": "github",
+      "collection_mode": "otel",
+      "parser_export": "parseCopilotIncremental",
+      "resolver_exports": [
+        "resolveCopilotOtelPaths"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": true,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "GitHub Copilot OTEL JSONL file reader."
+    },
+    {
+      "id": "zed",
+      "display_name": "Zed Agent",
+      "usage_identity": "zed",
+      "queue_source": "zed",
+      "family": "zed",
+      "collection_mode": "sqlite",
+      "parser_export": "parseZedIncremental",
+      "resolver_exports": [
+        "resolveZedDbPath"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": true,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Zed Agent (all providers; cumulative-delta over SQLite threads)."
+    },
+    {
+      "id": "goose",
+      "display_name": "Goose",
+      "usage_identity": "goose",
+      "queue_source": "goose",
+      "family": "block",
+      "collection_mode": "sqlite",
+      "parser_export": "parseGooseIncremental",
+      "resolver_exports": [
+        "resolveGooseDbPath"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Goose (Block) SQLite sessions with cumulative tokens."
+    },
+    {
+      "id": "droid",
+      "display_name": "Droid",
+      "usage_identity": "droid",
+      "queue_source": "droid",
+      "family": "factory",
+      "collection_mode": "passive_log",
+      "parser_export": "parseDroidIncremental",
+      "resolver_exports": [
+        "listDroidSettingsFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "Factory CLI (Droid) passive ~/.factory/sessions/*.settings.json reader."
+    },
+    {
+      "id": "antigravity",
+      "display_name": "Antigravity",
+      "usage_identity": "antigravity",
+      "queue_source": "antigravity",
+      "family": "antigravity",
+      "collection_mode": "passive_log",
+      "parser_export": "parseAntigravityIncremental",
+      "resolver_exports": [
+        "listAntigravityTranscripts"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": false,
+      "usage_limits_surface": true,
+      "path_override_key": "antigravity",
+      "account_level": false,
+      "notes": "Antigravity passive transcript reader."
+    },
+    {
+      "id": "deepseek-harness",
+      "display_name": "DeepSeek Harness",
+      "usage_identity": "deepseek-harness",
+      "queue_source": "deepseek-harness",
+      "family": "deepseek",
+      "collection_mode": "passive_log",
+      "parser_export": "parseDeepSeekHarnessIncremental",
+      "resolver_exports": [
+        "resolveDeepSeekHarnessHome",
+        "listDeepSeekHarnessSessionFiles"
+      ],
+      "status_surface": true,
+      "diagnostics_surface": true,
+      "usage_limits_surface": false,
+      "path_override_key": null,
+      "account_level": false,
+      "notes": "DeepSeek Harness sessions under DSH_HOME or ~/.dsh/sessions/."
+    }
+  ]
+}

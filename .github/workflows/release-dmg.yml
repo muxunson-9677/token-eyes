@@ -37,7 +37,32 @@ jobs:
           fi
       - uses: actions/checkout@v4
       - name: Create draft release
-        run: gh release create "v${{ inputs.version }}" --draft --title "v${{ inputs.version }}" --notes "$RELEASE_NOTES"
+        run: |
+          TAG="v${{ inputs.version }}"
+          EXPECTED_SHA="${{ github.sha }}"
+          if ! REMOTE_TAG_LINES=$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}"); then
+            echo "Unable to read remote tag $TAG"
+            exit 1
+          fi
+          REMOTE_TAG_SHA=""
+          while IFS=$'\t' read -r sha ref; do
+            if [ "$ref" = "refs/tags/$TAG^{}" ]; then
+              REMOTE_TAG_SHA="$sha"
+              break
+            fi
+            if [ -z "$REMOTE_TAG_SHA" ] && [ "$ref" = "refs/tags/$TAG" ]; then
+              REMOTE_TAG_SHA="$sha"
+            fi
+          done <<< "$REMOTE_TAG_LINES"
+          if [ -n "$REMOTE_TAG_LINES" ] && [ -z "$REMOTE_TAG_SHA" ]; then
+            echo "Unable to resolve remote tag $TAG"
+            exit 1
+          fi
+          if [ -n "$REMOTE_TAG_SHA" ] && [ "$REMOTE_TAG_SHA" != "$EXPECTED_SHA" ]; then
+            echo "Remote tag $TAG does not match workflow SHA $EXPECTED_SHA"
+            exit 1
+          fi
+          gh release create "$TAG" --target "${{ github.sha }}" --draft --title "$TAG" --notes "$RELEASE_NOTES"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ inputs.notes }}
@@ -96,7 +121,7 @@ jobs:
       - name: Create DMG
         run: bash TokenTrackerBar/scripts/create-dmg.sh TokenTrackerBar/build/DerivedData/Build/Products/Release/TokenTrackerBar.app
       - name: Upload DMG
-        run: gh release upload "v${{ inputs.version }}" TokenTrackerBar/build/TokenTrackerBar.dmg --clobber
+        run: gh release upload "v${{ inputs.version }}" TokenTrackerBar/build/TokenTrackerBar.dmg
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -106,6 +131,8 @@ jobs:
     with:
       version: ${{ inputs.version }}
       notes: ${{ inputs.notes }}
+      upload_release_assets: true
+      publish: false
     permissions:
       contents: write
 

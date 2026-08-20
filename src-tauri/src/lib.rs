@@ -1,7 +1,6 @@
 mod auto_launch;
 mod claude_session;
 mod codex_app_server;
-mod codex_oauth;
 mod codex_session;
 #[path = "commands.rs"]
 mod commands;
@@ -18,11 +17,109 @@ mod xiaomi_mimo_session;
 
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
 
 use claude_session::ClaudeSessionState;
 use codex_session::CodexSessionState;
 use cursor_session::CursorSessionState;
 use xiaomi_mimo_session::SessionState;
+
+const PROVIDER_LINKS_JSON: &str = include_str!("../../shared/provider-links.json");
+
+#[derive(Debug, serde::Deserialize)]
+struct ProviderLinkRegistry {
+    _meta: ProviderLinkRegistryMeta,
+    links: Vec<ProviderLinkEntry>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ProviderLinkRegistryMeta {
+    schema_version: u32,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ProviderLinkEntry {
+    link_id: String,
+    source_type: String,
+    url: String,
+    allowed_hosts: Vec<String>,
+    expected_final: ProviderLinkExpectedFinal,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ProviderLinkExpectedFinal {
+    url: String,
+    path: String,
+}
+
+fn validate_provider_link_target(
+    raw_url: &str,
+    allowed_hosts: &[String],
+) -> Result<url::Url, String> {
+    let parsed = url::Url::parse(raw_url).map_err(|_| "provider_link_unsafe".to_string())?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "provider_link_unsafe".to_string())?;
+    if parsed.scheme() != "https"
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.port().is_some_and(|port| port != 443)
+        || !allowed_hosts.iter().any(|allowed| allowed == host)
+    {
+        return Err("provider_link_unsafe".to_string());
+    }
+    Ok(parsed)
+}
+
+fn parse_provider_link_registry(raw: &str) -> Result<ProviderLinkRegistry, String> {
+    let registry: ProviderLinkRegistry =
+        serde_json::from_str(raw).map_err(|_| "provider_link_registry_invalid".to_string())?;
+    if registry._meta.schema_version != 1 || registry.links.is_empty() {
+        return Err("provider_link_registry_invalid".to_string());
+    }
+
+    let mut link_ids = std::collections::HashSet::with_capacity(registry.links.len());
+    for entry in &registry.links {
+        if entry.link_id.is_empty()
+            || entry.source_type.is_empty()
+            || entry.allowed_hosts.is_empty()
+            || !link_ids.insert(entry.link_id.as_str())
+            || entry.allowed_hosts.iter().any(|host| {
+                host.is_empty() || host.contains(':') || host != &host.to_ascii_lowercase()
+            })
+        {
+            return Err("provider_link_registry_invalid".to_string());
+        }
+        validate_provider_link_target(&entry.url, &entry.allowed_hosts)
+            .map_err(|_| "provider_link_registry_invalid".to_string())?;
+        let expected_final =
+            validate_provider_link_target(&entry.expected_final.url, &entry.allowed_hosts)
+                .map_err(|_| "provider_link_registry_invalid".to_string())?;
+        if expected_final.path() != entry.expected_final.path {
+            return Err("provider_link_registry_invalid".to_string());
+        }
+    }
+    Ok(registry)
+}
+
+pub(crate) fn resolve_provider_link_url(link_id: &str) -> Result<url::Url, String> {
+    let registry = parse_provider_link_registry(PROVIDER_LINKS_JSON)?;
+    let entry = registry
+        .links
+        .iter()
+        .find(|entry| entry.link_id == link_id)
+        .ok_or_else(|| "provider_link_unknown".to_string())?;
+    validate_provider_link_target(&entry.url, &entry.allowed_hosts)
+}
+
+#[tauri::command]
+async fn open_external_link(app: tauri::AppHandle, link_id: String) -> Result<bool, String> {
+    let url = resolve_provider_link_url(&link_id)?;
+    app.opener()
+        .open_url(url.as_str(), None::<String>)
+        .map_err(|_| "provider_link_open_failed".to_string())?;
+    Ok(true)
+}
 
 /// Windows groups taskbar buttons and labels them by AppUserModelID (AUMID).
 /// Because Token Eyes started life as a "CC Switch" fork, a stale pin/shortcut
@@ -67,6 +164,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::pick_directory,
             commands::local_server_status,
+            commands::get_token_eyes_build_info,
+            open_external_link,
             tray::set_codex_reset_tray_status,
             widget_window::show_desktop_widget,
             widget_window::hide_desktop_widget,
@@ -86,9 +185,11 @@ pub fn run() {
             claude_session::verify_claude_console_session,
             claude_session::delete_claude_console_session,
             codex_session::open_codex_console_login,
+            codex_session::reopen_codex_console_login,
             codex_session::verify_codex_console_session,
             codex_session::sync_codex_console_quota,
-            codex_session::discard_codex_pending_session,
+            codex_session::cancel_codex_console_login,
+            codex_session::cleanup_legacy_codex_auth_file,
             codex_session::delete_codex_console_session,
             cursor_session::open_cursor_console_login,
             cursor_session::verify_cursor_console_session,
@@ -168,4 +269,68 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod provider_link_tests {
+    use super::{
+        parse_provider_link_registry, resolve_provider_link_url, validate_provider_link_target,
+        PROVIDER_LINKS_JSON,
+    };
+
+    #[test]
+    fn resolves_every_compiled_registry_entry_by_link_id() {
+        let registry: serde_json::Value = serde_json::from_str(PROVIDER_LINKS_JSON).unwrap();
+        for entry in registry["links"].as_array().unwrap() {
+            let link_id = entry["link_id"].as_str().unwrap();
+            let expected_url = entry["url"].as_str().unwrap();
+            assert_eq!(
+                resolve_provider_link_url(link_id).unwrap().as_str(),
+                expected_url
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_arbitrary_url_unknown_id_and_unsafe_targets() {
+        assert_eq!(
+            resolve_provider_link_url("https://evil.example/secret").unwrap_err(),
+            "provider_link_unknown"
+        );
+
+        let allowed = vec!["cursor.com".to_string()];
+        for unsafe_url in [
+            "http://cursor.com/",
+            "https://user:pass@cursor.com/",
+            "https://cursor.com:8443/",
+            "https://cursor.com.evil.example/",
+            "https://evil.example/",
+        ] {
+            assert_eq!(
+                validate_provider_link_target(unsafe_url, &allowed).unwrap_err(),
+                "provider_link_unsafe"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_registry_schema_and_duplicate_link_ids() {
+        let unknown_schema = r#"{"_meta":{"schema_version":2},"links":[]}"#;
+        assert_eq!(
+            parse_provider_link_registry(unknown_schema).unwrap_err(),
+            "provider_link_registry_invalid"
+        );
+
+        let duplicate_ids = r#"{
+          "_meta":{"schema_version":1},
+          "links":[
+            {"link_id":"same","source_type":"official_product","url":"https://cursor.com/","allowed_hosts":["cursor.com"],"expected_final":{"url":"https://cursor.com/","path":"/"}},
+            {"link_id":"same","source_type":"official_product","url":"https://cursor.com/pricing","allowed_hosts":["cursor.com"],"expected_final":{"url":"https://cursor.com/pricing","path":"/pricing"}}
+          ]
+        }"#;
+        assert_eq!(
+            parse_provider_link_registry(duplicate_ids).unwrap_err(),
+            "provider_link_registry_invalid"
+        );
+    }
 }

@@ -1,15 +1,22 @@
 {
   "provider_id": "claude",
   "provider_name": "Claude",
-  "official_site": "https://console.anthropic.com/",
   "catalog_version": "2026-07-08",
-  "evidence": [
-    {
-      "url": "https://docs.anthropic.com/en/docs/claude-code/overview",
-      "title": "Claude Code",
-      "accessed_at": "2026-07-08"
-    }
-  ],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "catalog-claude-code-overview",
+    "supports": [
+      "provider_identity"
+    ],
+    "verified": true,
+    "verified_at": "2026-07-08",
+    "fetched_at": "2026-07-08",
+    "content_sha256": "8c6357fa5b67998fab5e24237b5c6ded3dbea2e0b8e4fcaeb297022cd250b533",
+    "content_hash_kind": "normalized_extracted_fields_v1",
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
+  },
   "plans": [
     {
       "plan_id": "claude_pro",
@@ -23,7 +30,21 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://console.anthropic.com/settings/billing"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "provider-home-claude-billing",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-08",
+        "fetched_at": "2026-07-08",
+        "content_sha256": "08591d042fac70cb48b9038b08857cca51cb9520893abd84aa78b4b9252a6a0b",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "claude_max",
@@ -37,7 +58,21 @@
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://console.anthropic.com/settings/billing"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "provider-home-claude-billing",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-08",
+        "fetched_at": "2026-07-08",
+        "content_sha256": "c878bdfa50755bed0843e8b444bd07c7639111e3f92c0f86fcd0bfa9dd447ab0",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "claude_routing",
@@ -51,14 +86,47 @@
       "expires": {
         "kind": "manual"
       },
-      "official_evidence_url": "https://console.anthropic.com/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-claude-console",
+        "supports": [],
+        "verified": false,
+        "verified_at": null,
+        "fetched_at": null,
+        "content_sha256": null,
+        "content_hash_kind": null,
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
     "official_quota_api": true,
     "authorization": "claude_code_oauth",
     "usage_endpoint_documented": false,
-    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "fields_available": [
+      "rolling_5_hour",
+      "rolling_weekly"
+    ],
     "notes": "官方模式走 api.anthropic.com/oauth/usage；路由套餐 claude_routing 不调用官方额度 API。"
-  }
+  },
+  "official_site_link_id": "catalog-claude-console",
+  "sources": [
+    {
+      "label": "Claude Code",
+      "link_id": "catalog-claude-code-overview",
+      "supports": [
+        "provider_identity",
+        "plan_identity"
+      ]
+    },
+    {
+      "label": "Claude Billing",
+      "link_id": "provider-home-claude-billing",
+      "supports": [
+        "plan_identity"
+      ]
+    }
+  ]
 }

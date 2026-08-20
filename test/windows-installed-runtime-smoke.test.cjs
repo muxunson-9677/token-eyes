@@ -9,6 +9,8 @@ const { test } = require("node:test");
 
 const repoRoot = path.resolve(__dirname, "..");
 const config = JSON.parse(fs.readFileSync(path.join(repoRoot, "src-tauri", "tauri.conf.json"), "utf8"));
+const cargoToml = fs.readFileSync(path.join(repoRoot, "src-tauri", "Cargo.toml"), "utf8");
+const cargoVersion = cargoToml.match(/^version\s*=\s*"([^"]+)"\s*$/m)?.[1];
 const installerPath = path.join(repoRoot, "src-tauri", "target", "release", "bundle", "nsis", `Token Eyes_${config.version}_x64-setup.exe`);
 const installerRegistryKeys = [
   String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Token Eyes`,
@@ -160,6 +162,9 @@ async function removeInstallRoot(installRoot) {
 test("Windows NSIS installer deploys and starts the versioned bundled runtime", {
   skip: runIsolatedInstallerSmoke ? false : "requires an isolated Windows user or VM",
 }, async (t) => {
+  const workflowHeadSha = String(process.env.TOKEN_EYES_GIT_SHA || "").trim().toLowerCase();
+  assert.match(workflowHeadSha, /^[0-9a-f]{40}$/, "isolated installer smoke requires the workflow Git SHA");
+  assert.equal(config.version, cargoVersion, "Tauri config and CARGO_PKG_VERSION must match");
   assert.ok(fs.existsSync(installerPath), "build the NSIS installer before this smoke test");
   const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-installer-smoke-"));
   const installDir = path.join(installRoot, "app");
@@ -184,9 +189,28 @@ test("Windows NSIS installer deploys and starts the versioned bundled runtime", 
   const trackerEntry = path.join(trackerRoot, "bin", "tracker.js");
   const manifest = path.join(runtimeDir, "runtime-manifest.json");
   const localApiSource = path.join(trackerRoot, "src", "lib", "local-api.js");
+  const agentRegistry = path.join(trackerRoot, "shared", "agent-registry.json");
   assert.ok(fs.existsSync(nodeExe), "installer must deploy the versioned node runtime");
   assert.ok(fs.existsSync(trackerEntry), "installer must deploy tracker.js under the versioned runtime");
   assert.ok(fs.existsSync(manifest), "installer must deploy the runtime manifest");
+  const buildManifest = JSON.parse(fs.readFileSync(manifest, "utf8").replace(/^\uFEFF/, ""));
+  assert.equal(buildManifest.app_version, config.version, "installed manifest version must match Tauri config");
+  assert.equal(buildManifest.app_version, cargoVersion, "installed manifest version must match CARGO_PKG_VERSION");
+  assert.equal(buildManifest.head_sha, workflowHeadSha, "installed manifest SHA must match the workflow checkout");
+  assert.ok(Number.isFinite(Date.parse(buildManifest.built_at_utc)), "installed manifest must record a valid build time");
+  assert.match(buildManifest.built_at_utc, /Z$/, "installed manifest build time must be UTC");
+  assert.ok(fs.existsSync(agentRegistry), "installer must deploy the canonical agent registry");
+  const registryProbe = spawnSync(nodeExe, [
+    "-e",
+    "const a=require('./src/lib/agent-adapters');const r=require('./shared/agent-registry.json');process.stdout.write(JSON.stringify({adapters:a.AGENT_ADAPTERS.length,identities:a.listAgentUsageIdentities().length,canonical:r.adapters.length,kiroCli:a.getAgentAdapter('kiro-cli').queueSource}))",
+  ], { cwd: trackerRoot, encoding: "utf8", windowsHide: true });
+  assert.equal(registryProbe.status, 0, registryProbe.stderr);
+  assert.deepEqual(JSON.parse(registryProbe.stdout), {
+    adapters: 28,
+    identities: 27,
+    canonical: 28,
+    kiroCli: "kiro",
+  });
   assert.doesNotMatch(
     fs.readFileSync(localApiSource, "utf8"),
     /shouldScanDefaultWindowsDrives/,

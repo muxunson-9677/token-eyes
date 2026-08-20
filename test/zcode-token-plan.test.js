@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { test } = require("node:test");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -63,12 +64,9 @@ function fakeResponse(status, body) {
   };
 }
 
-test("encrypt/decrypt round-trips the enc:v1 envelope with a derived key", () => {
+test("encrypt/decrypt round-trips only with an explicit ZCODE_CREDENTIAL_SECRET", () => {
   const key = deriveZcodeKey({
-    env: {},
-    platform: "win32",
-    home: "C:\\Users\\demo",
-    username: "demo",
+    env: { ZCODE_CREDENTIAL_SECRET: "synthetic-explicit-secret" },
   });
   const secretValue = "jwt-token-abc.123_456";
   const envelope = encryptZcodeValue(secretValue, key);
@@ -93,22 +91,52 @@ test("decrypt with the wrong key raises a reauth-mapped decrypt error", () => {
   assert.equal(mapZcodeErrorCode(caught), "reauth_required");
 });
 
-test("ZCODE_CREDENTIAL_SECRET takes priority over the fallback secret", () => {
-  const explicit = deriveZcodeKey({ env: { ZCODE_CREDENTIAL_SECRET: "explicit" }, platform: "linux", home: "/home/a", username: "a" });
-  const fallback = deriveZcodeKey({ env: {}, platform: "linux", home: "/home/a", username: "a" });
-  assert.notDeepEqual(explicit, fallback);
+test("deriveZcodeKey refuses host-derived fallback material when no explicit secret exists", () => {
+  assert.throws(
+    () => deriveZcodeKey({ env: {}, platform: "win32", home: "C:\\Users\\synthetic", username: "synthetic" }),
+    (error) => error instanceof ZcodeTokenPlanError
+      && error.code === "ZCODE_SECURE_STORE_UNSUPPORTED"
+      && mapZcodeErrorCode(error) === "unsupported",
+  );
+
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "zcode-token-plan.js"), "utf8");
+  assert.doesNotMatch(source, /zcode-credential-fallback|safeUserInfoName|os\.userInfo/);
 });
 
-test("readZcodeJwt returns a plaintext token as-is", () => {
-  const home = makeTempZcodeHome({ zcode_jwt_token: "plain-jwt" });
-  assert.equal(readZcodeJwt({ home, env: {} }), "plain-jwt");
+test("readZcodeJwt refuses an unverified on-disk credential without leaking it", () => {
+  const syntheticToken = "synthetic-unverified-plaintext-jwt";
+  const home = makeTempZcodeHome({ zcode_jwt_token: syntheticToken });
+  assert.throws(
+    () => readZcodeJwt({ home, env: {} }),
+    (error) => error instanceof ZcodeTokenPlanError
+      && error.code === "ZCODE_SECURE_STORE_UNSUPPORTED"
+      && !String(error.message).includes(syntheticToken),
+  );
 });
 
-test("readZcodeJwt decrypts an encrypted token with the host key", () => {
+test("readZcodeJwt decrypts an encrypted fixture with an explicit secret key", () => {
   const env = { ZCODE_CREDENTIAL_SECRET: "host-secret" };
   const key = deriveZcodeKey({ env });
   const home = makeTempZcodeHome({ zcode_jwt_token: encryptZcodeValue("enc-jwt", key) });
   assert.equal(readZcodeJwt({ home, env }), "enc-jwt");
+});
+
+test("readZcodeJwt returns secure-store unsupported for encrypted data without an explicit secret and redacts ciphertext", () => {
+  const fixtureKey = crypto.createHash("sha256").update("synthetic-fixture-key").digest();
+  const ciphertext = encryptZcodeValue("synthetic-secret-jwt", fixtureKey);
+  const home = makeTempZcodeHome({ zcode_jwt_token: ciphertext });
+
+  assert.throws(
+    () => readZcodeJwt({ home, env: {}, platform: "win32", username: "synthetic" }),
+    (error) => {
+      assert.ok(error instanceof ZcodeTokenPlanError);
+      assert.equal(error.code, "ZCODE_SECURE_STORE_UNSUPPORTED");
+      assert.equal(mapZcodeErrorCode(error), "unsupported");
+      assert.equal(String(error.message).includes(ciphertext), false);
+      assert.equal(String(error.message).includes("synthetic-secret-jwt"), false);
+      return true;
+    },
+  );
 });
 
 test("readZcodeJwt honours the TOKENTRACKER_ZCODE_JWT escape hatch", () => {
@@ -180,69 +208,114 @@ test("parseZcodeBalanceResponse surfaces provider business errors", () => {
   assert.equal(caught.code, "ZCODE_PROVIDER_ERROR");
 });
 
-test("fetchZcodeQuota sends the bearer JWT to the balance endpoint", async () => {
-  const env = { ZCODE_CREDENTIAL_SECRET: "host-secret" };
-  const key = deriveZcodeKey({ env });
-  const home = makeTempZcodeHome({ zcode_jwt_token: encryptZcodeValue("live-jwt", key) });
+test("fetchZcodeQuota refuses the undocumented endpoint before any request while its fixed fixture is absent", async () => {
+  const explicitToken = "synthetic-explicit-zcode-jwt";
+  const home = makeTempZcodeHome({ zcode_jwt_token: "ignored" });
+  let requests = 0;
 
-  let seenUrl = "";
-  let seenHeaders = null;
-  const fetchImpl = async (url, options) => {
-    seenUrl = url;
-    seenHeaders = options.headers;
-    return fakeResponse(200, balancePayload);
+  await assert.rejects(
+    fetchZcodeQuota({
+      home,
+      env: { TOKENTRACKER_ZCODE_JWT: explicitToken },
+      fetchImpl: async () => {
+        requests += 1;
+        return fakeResponse(200, balancePayload);
+      },
+    }),
+    (error) => error instanceof ZcodeTokenPlanError
+      && error.code === "ZCODE_ENDPOINT_UNSUPPORTED"
+      && mapZcodeErrorCode(error) === "unsupported"
+      && !String(error.message).includes(explicitToken),
+  );
+  assert.equal(requests, 0);
+});
+
+test("fetchZcodeQuota reports secure-store unsupported without reading an unverified installed credential", async () => {
+  const syntheticToken = "synthetic-installed-zcode-token";
+  const home = makeTempZcodeHome({ zcode_jwt_token: syntheticToken });
+  let requests = 0;
+
+  await assert.rejects(
+    fetchZcodeQuota({
+      home,
+      env: {},
+      fetchImpl: async () => {
+        requests += 1;
+        return fakeResponse(200, balancePayload);
+      },
+    }),
+    (error) => error instanceof ZcodeTokenPlanError
+      && error.code === "ZCODE_SECURE_STORE_UNSUPPORTED"
+      && mapZcodeErrorCode(error) === "unsupported"
+      && !String(error.message).includes(syntheticToken),
+  );
+  assert.equal(requests, 0);
+});
+
+test("fetchZcodeQuota fails closed before host installation or credential-path probes when fixtures are absent", async () => {
+  const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), "tt-zcode-gate-empty-"));
+  const populatedHome = makeTempZcodeHome({});
+  const originalExistsSync = fs.existsSync;
+  const originalReadFileSync = fs.readFileSync;
+  let existsCalls = 0;
+  let readCalls = 0;
+  let requests = 0;
+
+  fs.existsSync = (...args) => {
+    existsCalls += 1;
+    return originalExistsSync(...args);
   };
-
-  const result = await fetchZcodeQuota({ home, env, fetchImpl });
-  assert.ok(seenUrl.startsWith(ZCODE_BALANCE_URL));
-  assert.ok(seenUrl.includes("app_version="));
-  assert.equal(seenHeaders.Authorization, "Bearer live-jwt");
-  assert.equal(result.total_quota, 1500);
-  assert.ok(result.provider_reported_at);
-});
-
-test("fetchZcodeQuota maps 401 to reauth_required", async () => {
-  const home = makeTempZcodeHome({ zcode_jwt_token: "expired-jwt" });
-  const fetchImpl = async () => fakeResponse(401, { code: 401, msg: "unauthorized" });
-  let caught = null;
+  fs.readFileSync = (...args) => {
+    readCalls += 1;
+    return originalReadFileSync(...args);
+  };
   try {
-    await fetchZcodeQuota({ home, env: {}, fetchImpl });
-  } catch (error) {
-    caught = error;
+    for (const home of [emptyHome, populatedHome]) {
+      await assert.rejects(
+        fetchZcodeQuota({
+          home,
+          env: {},
+          fetchImpl: async () => {
+            requests += 1;
+            return fakeResponse(200, balancePayload);
+          },
+        }),
+        (error) => error instanceof ZcodeTokenPlanError
+          && error.code === "ZCODE_SECURE_STORE_UNSUPPORTED"
+          && mapZcodeErrorCode(error) === "unsupported",
+      );
+    }
+  } finally {
+    fs.existsSync = originalExistsSync;
+    fs.readFileSync = originalReadFileSync;
+    fs.rmSync(emptyHome, { recursive: true, force: true });
+    fs.rmSync(populatedHome, { recursive: true, force: true });
   }
-  assert.ok(caught instanceof ZcodeTokenPlanError);
-  assert.equal(caught.code, "ZCODE_REAUTH_REQUIRED");
-  assert.equal(mapZcodeErrorCode(caught), "reauth_required");
+
+  assert.equal(existsCalls, 0);
+  assert.equal(readCalls, 0);
+  assert.equal(requests, 0);
 });
 
-test("zcode provider adapter is registered and merges into a refresh record", async () => {
+test("zcode provider adapter is registered but remains unsupported without a fixed endpoint fixture", async () => {
   const refresh = require("../src/lib/token-plan-refresh");
   assert.equal(typeof refresh.getProviderAdapter("zcode"), "function");
 
-  const env = {};
-  const home = makeTempZcodeHome({ zcode_jwt_token: "plain-jwt" });
-  const fetchImpl = async () => fakeResponse(200, balancePayload);
+  const explicitToken = "synthetic-explicit-zcode-jwt";
+  const env = { TOKENTRACKER_ZCODE_JWT: explicitToken };
+  const home = makeTempZcodeHome({ zcode_jwt_token: "ignored" });
+  let requests = 0;
+  const fetchImpl = async () => {
+    requests += 1;
+    return fakeResponse(200, balancePayload);
+  };
   const adapter = createZcodeProviderAdapter({ home, env, fetchImpl });
-  const quota = await adapter({});
-  const merged = refresh.mergeAdapterResultIntoRecord(
-    {
-      id: "plan-1",
-      provider_id: "zcode",
-      plan_id: "zcode_plan",
-      total_quota: 0,
-      used_quota: 0,
-      remaining_quota: 0,
-      quota_windows: [],
-    },
-    quota,
-    "2026-08-13T00:00:00.000Z",
+  await assert.rejects(
+    adapter({}),
+    (error) => error.code === "ZCODE_ENDPOINT_UNSUPPORTED"
+      && mapZcodeErrorCode(error) === "unsupported",
   );
-  assert.equal(merged.total_quota, 1500);
-  assert.equal(merged.used_quota, 350);
-  assert.equal(merged.remaining_quota, 1150);
-  assert.equal(merged.sync_status, "success");
-  assert.equal(merged.quota_source, "provider_reported");
-  assert.equal(merged.quota_windows.length, 1);
+  assert.equal(requests, 0);
 });
 
 test("zcode appears in the token-plan catalog", () => {
@@ -253,4 +326,14 @@ test("zcode appears in the token-plan catalog", () => {
   assert.ok(zcode.plans.length >= 1);
   const options = catalog.listProviderOptions();
   assert.ok(options.some((option) => option.id === "zcode"));
+
+  const rawCatalog = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "src", "lib", "token-plan-catalog", "zcode.catalog.json"),
+    "utf8",
+  ));
+  assert.equal(rawCatalog.account_access.official_quota_api, false);
+  assert.equal(rawCatalog.account_access.usage_endpoint_documented, false);
+  assert.equal(rawCatalog.account_access.source_kind, "undocumented_api");
+  assert.equal(rawCatalog.account_access.support_tier, "unsupported");
+  assert.doesNotMatch(rawCatalog.account_access.notes, /官方.*(?:接口|已文档化)|official.*documented/i);
 });

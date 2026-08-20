@@ -36,19 +36,12 @@ jobs:
             libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - run: npm ci
       - run: npm ci --prefix dashboard
-      - run: npm test
-      - run: npm --prefix dashboard run typecheck
-      - run: npm --prefix dashboard run lint
-      - run: npm --prefix dashboard run test
+      - run: npm run ci:local
       - run: cargo test --manifest-path src-tauri/Cargo.toml
         env:
           # Unit tests do not package the Windows runtime. The release build
           # still supplies this versioned resource via tauri:prepare-runtime.
           TAURI_CONFIG: '{"bundle":{"resources":[]}}'
-      - run: npm run validate:copy
-      - run: npm run validate:ui-hardcode
-      - run: npm run validate:guardrails
-      - run: npm run providers:check
 
   publish:
     needs: test

@@ -68,10 +68,45 @@ test("macOS LimitsSettingsStore.allProviders matches dashboard LIMIT_PROVIDER_ID
     "zed",
     "workbuddy",
     "kimi",
-    "kimi-code",
-    "pi",
+    "kiro",
     "grok",
     "copilot",
-    "deepseek-harness",
   ]);
+});
+
+test("every dashboard limit provider has a real spec or special renderer", () => {
+  const limitsSource = fs.readFileSync(
+    path.join(repoRoot, "dashboard", "src", "lib", "limits-providers.js"),
+    "utf8",
+  );
+  const specsSource = fs.readFileSync(
+    path.join(repoRoot, "dashboard", "src", "ui", "dashboard", "components", "usage-limits-provider-specs.js"),
+    "utf8",
+  );
+  const panelSource = fs.readFileSync(
+    path.join(repoRoot, "dashboard", "src", "ui", "dashboard", "components", "UsageLimitsPanel.jsx"),
+    "utf8",
+  );
+
+  const limitIds = extractQuotedList(
+    limitsSource,
+    /export const LIMIT_PROVIDER_IDS = \[([^\]]+)\]/s,
+    "LIMIT_PROVIDER_IDS",
+  );
+  const specIds = new Set(
+    [...specsSource.matchAll(/^  (?:"([^"]+)"|([a-z][\w-]*)): \{$/gm)]
+      .map((match) => match[1] || match[2]),
+  );
+  const specialIds = new Set(
+    [...panelSource.matchAll(/if \(id === "([^"]+)"\) \{/g)]
+      .map((match) => match[1]),
+  );
+
+  assert.deepEqual(
+    limitIds.filter((id) => !specIds.has(id) && !specialIds.has(id)),
+    [],
+    "LIMIT_PROVIDER_IDS must not create settings rows that cannot render a limit card",
+  );
+  assert.ok(limitIds.includes("kiro"), "the collected Kiro limit surface must be toggleable");
+  assert.equal(limitIds.includes("kiro-cli"), false, "merged Kiro must not invent a kiro-cli limits preference");
 });

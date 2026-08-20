@@ -24,6 +24,108 @@ function isolateWindowsHomeEnv(tmp) {
   };
 }
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function createSyntheticGeminiCli(tmp) {
+  const bundleDir = path.join(tmp, "synthetic-gemini", "bundle");
+  fs.mkdirSync(bundleDir, { recursive: true });
+  const geminiPath = path.join(bundleDir, "gemini.js");
+  fs.writeFileSync(geminiPath, "#!/usr/bin/env node\n", "utf8");
+  fs.writeFileSync(
+    path.join(bundleDir, "chunk-oauth.js"),
+    [
+      'var OAUTH_CLIENT_ID = "synthetic-client.apps.googleusercontent.com";',
+      'var OAUTH_CLIENT_SECRET = "synthetic-client-secret";',
+    ].join("\n"),
+    "utf8",
+  );
+  return geminiPath;
+}
+
+function syntheticCommandRunner(geminiPath = null) {
+  return (command, args) => {
+    if (command === "which" && args?.[0] === "gemini" && geminiPath) {
+      return { status: 0, stdout: `${geminiPath}\n`, stderr: "" };
+    }
+    return { status: 1, stdout: "", stderr: "" };
+  };
+}
+
+function makeCredentialRenameFailureFs(targetPath, secretMessage, counters = {}) {
+  return {
+    lstatSync: fs.lstatSync.bind(fs),
+    readFileSync: fs.readFileSync.bind(fs),
+    openSync(filePath, flags, mode) {
+      counters.tempOpens = (counters.tempOpens || 0) + 1;
+      return fs.openSync(filePath, flags, mode);
+    },
+    writeFileSync: fs.writeFileSync.bind(fs),
+    fsyncSync: fs.fsyncSync.bind(fs),
+    closeSync: fs.closeSync.bind(fs),
+    renameSync(sourcePath, destinationPath) {
+      assert.equal(destinationPath, targetPath);
+      throw new Error(`synthetic rename failure ${secretMessage}`);
+    },
+    unlinkSync: fs.unlinkSync.bind(fs),
+  };
+}
+
+function makeCredentialInodeSwapFs(targetPath, replacement) {
+  let swapped = false;
+  return {
+    lstatSync(filePath) {
+      if (filePath === targetPath && !swapped) {
+        swapped = true;
+        const vendorTempPath = `${targetPath}.vendor-swap`;
+        fs.writeFileSync(vendorTempPath, `${JSON.stringify(replacement, null, 2)}\n`);
+        fs.renameSync(vendorTempPath, targetPath);
+      }
+      return fs.lstatSync(filePath);
+    },
+    readFileSync: fs.readFileSync.bind(fs),
+    openSync: fs.openSync.bind(fs),
+    writeFileSync: fs.writeFileSync.bind(fs),
+    fsyncSync: fs.fsyncSync.bind(fs),
+    closeSync: fs.closeSync.bind(fs),
+    renameSync: fs.renameSync.bind(fs),
+    unlinkSync: fs.unlinkSync.bind(fs),
+  };
+}
+
+function makeCredentialSymlinkFs(targetPath, counters) {
+  return {
+    lstatSync(filePath) {
+      const stat = fs.lstatSync(filePath);
+      if (filePath !== targetPath) return stat;
+      return {
+        dev: stat.dev,
+        ino: stat.ino,
+        isSymbolicLink() {
+          return true;
+        },
+      };
+    },
+    readFileSync: fs.readFileSync.bind(fs),
+    openSync() {
+      counters.tempOpens += 1;
+      throw new Error("credential writer must not create a temp for a symlink target");
+    },
+    writeFileSync: fs.writeFileSync.bind(fs),
+    fsyncSync: fs.fsyncSync.bind(fs),
+    closeSync: fs.closeSync.bind(fs),
+    renameSync: fs.renameSync.bind(fs),
+    unlinkSync: fs.unlinkSync.bind(fs),
+  };
+}
+
 const {
   extractGeminiOauthClientCredentials,
   getUsageLimits,
@@ -39,6 +141,84 @@ const {
   detectAntigravityProcess,
   fetchAntigravityLimits,
 } = require("../src/lib/usage-limits");
+const { computeAccountKey } = require("../src/lib/limit-accounts");
+
+describe("Copilot hidden credential identity", () => {
+  it("survives plan-label and evidence decoration for the account adapter but never enters JSON", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-hidden-identity-"));
+    const syntheticToken = "synthetic-hidden-copilot-token";
+    try {
+      const dir = path.join(tmp, ".config", "github-copilot");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "apps.json"),
+        JSON.stringify({
+          "github.com:synthetic": {
+            oauth_token: syntheticToken,
+            updated_at: "2026-08-20T12:00:00.000Z",
+            last_used_at: "2026-08-20T12:30:00.000Z",
+          },
+        }),
+      );
+
+      const result = await getUsageLimits({
+        home: tmp,
+        env: {},
+        platform: "linux",
+        providerTimeoutMs: 50,
+        securityRunner: () => ({ status: 1, stdout: "" }),
+        commandRunner: inactiveRunner,
+        fetchImpl: async (url) => {
+          if (String(url) === "https://api.github.com/copilot_internal/user") {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                copilot_plan: "business",
+                quota_reset_date: "2026-09-01",
+                quota_snapshots: {
+                  premium_interactions: { entitlement: 100, remaining: 75, percent_remaining: 75 },
+                },
+              }),
+            };
+          }
+          throw new Error("synthetic upstream unavailable");
+        },
+      });
+
+      const context = result.copilot[Symbol.for("tokentracker.copilot.credential-identity")];
+      assert.equal(context.credential_source, "legacy_plaintext");
+      assert.equal(context.authority, "github.com");
+      assert.equal(context.updated_at, "2026-08-20T12:00:00.000Z");
+      assert.equal(context.last_used_at, "2026-08-20T12:30:00.000Z");
+      assert.equal(result.copilot.plan_label, "Business");
+      assert.ok(result.copilot.evidence);
+      const serialized = JSON.stringify(result);
+      assert.equal(serialized.includes(syntheticToken), false);
+      assert.doesNotMatch(serialized, /"(?:credential_source|authority|updated_at|last_used_at)":/);
+
+      const usageLimits = require("../src/lib/usage-limits");
+      const originalGetUsageLimits = usageLimits.getUsageLimits;
+      usageLimits.getUsageLimits = async () => result;
+      try {
+        const copilotAdapter = require("../src/lib/limit-account-adapters/copilot");
+        const salt = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+        const [account] = await copilotAdapter({ salt, home: tmp, env: {} });
+        assert.equal(
+          account.account_key,
+          computeAccountKey({ providerId: "copilot", rawAccountId: context.identity, salt }),
+        );
+        assert.equal(JSON.stringify(account).includes(syntheticToken), false);
+      } finally {
+        usageLimits.getUsageLimits = originalGetUsageLimits;
+      }
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("extractGeminiOauthClientCredentials", () => {
   it("finds OAuth constants from bundled Gemini CLI chunk files", async () => {
@@ -337,7 +517,7 @@ describe("getUsageLimits", () => {
     }
   });
 
-  it("rounds fractional Codex and Spark usage percentages before exposing windows", async () => {
+  it("Task 8 preserves fractional Codex and Spark percentages through the canonical mapper", async () => {
     resetUsageLimitsCache();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-codex-fractional-"));
     try {
@@ -375,10 +555,10 @@ describe("getUsageLimits", () => {
         },
       });
 
-      assert.equal(result.codex.primary_window.used_percent, 12);
-      assert.equal(result.codex.secondary_window.used_percent, 31);
-      assert.equal(result.codex.spark_primary_window.used_percent, 4);
-      assert.equal(result.codex.spark_secondary_window.used_percent, 19);
+      assert.equal(result.codex.primary_window.used_percent, 12.4);
+      assert.equal(result.codex.secondary_window.used_percent, 30.6);
+      assert.equal(result.codex.spark_primary_window.used_percent, 4.4);
+      assert.equal(result.codex.spark_secondary_window.used_percent, 18.6);
     } finally {
       resetUsageLimitsCache();
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -954,8 +1134,13 @@ describe("getUsageLimits", () => {
     }
   });
 
-  for (const status of [401, 403, 404]) {
-    it(`treats wham ${status} as no-data instead of a hard error`, async () => {
+  for (const [status, expected] of [
+    [401, { auth_action_required: "reauth", error_code: "auth_required", error: "Codex authentication is required." }],
+    [403, { auth_action_required: "reauth", error_code: "auth_required", error: "Codex authentication is required." }],
+    [404, { unsupported: true, error_code: "endpoint_unsupported", error: "Codex usage is unsupported." }],
+    [503, { error_code: "upstream_5xx", error: "Codex usage is temporarily unavailable." }],
+  ]) {
+    it(`Task 8 aggregate Codex shares canonical HTTP ${status} mapping with the focused reader`, async () => {
       resetUsageLimitsCache();
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `tokentracker-limits-codex-${status}-`));
       try {
@@ -985,17 +1170,64 @@ describe("getUsageLimits", () => {
         });
 
         assert.equal(result.codex.configured, true);
-        assert.equal(result.codex.error, null);
-        assert.equal(result.codex.primary_window, null);
-        assert.equal(result.codex.secondary_window, null);
-        assert.equal(result.codex.spark_primary_window, null);
-        assert.equal(result.codex.spark_secondary_window, null);
+        assert.equal(result.codex.evidence.coverage, "unavailable");
+        assert.deepEqual(
+          Object.fromEntries(
+            Object.entries(result.codex).filter(([key]) => ![
+              "configured",
+              "plan_label",
+              "data_evidence",
+              "evidence",
+            ].includes(key)),
+          ),
+          expected,
+        );
       } finally {
         resetUsageLimitsCache();
         fs.rmSync(tmp, { recursive: true, force: true });
       }
     });
   }
+
+  it("Task 8 aggregate Codex maps a rejected usage fetch to the canonical network error", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-codex-network-"));
+    try {
+      const codexHome = path.join(tmp, ".codex");
+      fs.mkdirSync(codexHome, { recursive: true });
+      fs.writeFileSync(
+        path.join(codexHome, "auth.json"),
+        JSON.stringify({ tokens: { access_token: "opaque-token" } }),
+      );
+
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "linux",
+        providerTimeoutMs: 1000,
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner() {
+          return { status: 1, stdout: "" };
+        },
+        fetchImpl(url) {
+          if (typeof url === "string" && url.includes("chatgpt.com/backend-api/wham/usage")) {
+            return Promise.reject(new Error("connect ECONNRESET synthetic-private-detail"));
+          }
+          return new Promise(() => {});
+        },
+      });
+
+      assert.equal(result.codex.configured, true);
+      assert.equal(result.codex.error_code, "network_error");
+      assert.equal(result.codex.error, "Codex usage is temporarily unavailable.");
+      assert.equal(result.codex.evidence.coverage, "unavailable");
+      assert.doesNotMatch(JSON.stringify(result.codex), /ECONNRESET|synthetic-private-detail/i);
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 
   it("reads the Claude OAuth access token from ~/.claude/.credentials.json on Linux", async () => {
     resetUsageLimitsCache();
@@ -1325,6 +1557,1021 @@ describe("getUsageLimits", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("uses the proactively rotated Kimi refresh token for a reactive refresh", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-double-refresh-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    try {
+      const kimiHome = path.join(tmp, ".kimi");
+      const credsPath = path.join(kimiHome, "credentials", "kimi-code.json");
+      fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+      fs.writeFileSync(path.join(kimiHome, "config.toml"), "");
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: "synthetic-kimi-double-expired-access",
+        refresh_token: "synthetic-kimi-double-refresh-r0",
+        expires_at: 1,
+        unknown_vendor_field: { preserve: true },
+      }));
+
+      const refreshBodies = [];
+      const usageAuthorizations = [];
+      let refreshCount = 0;
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: { platform: "linux" },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(),
+        fetchImpl(url, options = {}) {
+          if (url === "https://auth.kimi.com/api/oauth/token") {
+            refreshBodies.push(String(options.body || ""));
+            refreshCount += 1;
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => refreshCount === 1
+                ? {
+                    access_token: "synthetic-kimi-double-access-a1",
+                    refresh_token: "synthetic-kimi-double-refresh-r1",
+                    expires_in: 900,
+                  }
+                : {
+                    access_token: "synthetic-kimi-double-access-a2",
+                    refresh_token: "synthetic-kimi-double-refresh-r2",
+                    expires_in: 900,
+                  },
+            });
+          }
+          if (url === "https://api.kimi.com/coding/v1/usages") {
+            usageAuthorizations.push(options.headers?.Authorization || null);
+            if (options.headers?.Authorization === "Bearer synthetic-kimi-double-access-a1") {
+              return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
+            }
+            assert.equal(options.headers?.Authorization, "Bearer synthetic-kimi-double-access-a2");
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ usage: { used: 8, limit: 10 } }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      assert.deepEqual(
+        refreshBodies.map((body) => new URLSearchParams(body).get("refresh_token")),
+        ["synthetic-kimi-double-refresh-r0", "synthetic-kimi-double-refresh-r1"],
+      );
+      assert.deepEqual(usageAuthorizations, [
+        "Bearer synthetic-kimi-double-access-a1",
+        "Bearer synthetic-kimi-double-access-a2",
+      ]);
+      assert.equal(result.kimi.error, null);
+      assert.equal(result.kimi.primary_window.used_percent, 80);
+      assert.equal(result.kimi.credential_persist_warning, undefined);
+      const saved = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+      assert.equal(saved.access_token, "synthetic-kimi-double-access-a2");
+      assert.equal(saved.refresh_token, "synthetic-kimi-double-refresh-r2");
+      assert.deepEqual(saved.unknown_vendor_field, { preserve: true });
+    } finally {
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the latest vendor Kimi refresh token when the proactive response does not rotate it", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-effective-refresh-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    const refreshJsonEntered = createDeferred();
+    const releaseRefreshJson = createDeferred();
+    try {
+      const kimiHome = path.join(tmp, ".kimi");
+      const credsPath = path.join(kimiHome, "credentials", "kimi-code.json");
+      fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+      fs.writeFileSync(path.join(kimiHome, "config.toml"), "");
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: "synthetic-kimi-effective-expired-access",
+        refresh_token: "synthetic-kimi-effective-refresh-r0",
+        expires_at: 1,
+        vendor_generation: 1,
+      }));
+
+      const refreshBodies = [];
+      let refreshCount = 0;
+      const pending = getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: { platform: "linux" },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(),
+        fetchImpl(url, options = {}) {
+          if (url === "https://auth.kimi.com/api/oauth/token") {
+            refreshBodies.push(String(options.body || ""));
+            refreshCount += 1;
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => {
+                if (refreshCount === 1) {
+                  refreshJsonEntered.resolve();
+                  await releaseRefreshJson.promise;
+                  return { access_token: "synthetic-kimi-effective-access-a1", expires_in: 900 };
+                }
+                return {
+                  access_token: "synthetic-kimi-effective-access-a2",
+                  refresh_token: "synthetic-kimi-effective-refresh-r2",
+                  expires_in: 900,
+                };
+              },
+            });
+          }
+          if (url === "https://api.kimi.com/coding/v1/usages") {
+            if (options.headers?.Authorization === "Bearer synthetic-kimi-effective-access-a1") {
+              return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
+            }
+            assert.equal(options.headers?.Authorization, "Bearer synthetic-kimi-effective-access-a2");
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ usage: { used: 9, limit: 10 } }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      await refreshJsonEntered.promise;
+      const vendorTempPath = `${credsPath}.vendor-latest`;
+      fs.writeFileSync(vendorTempPath, JSON.stringify({
+        access_token: "synthetic-kimi-effective-vendor-access",
+        refresh_token: "synthetic-kimi-effective-vendor-refresh",
+        expires_at: 1,
+        vendor_generation: 2,
+        unknown_vendor_field: { preserve: true },
+      }));
+      fs.renameSync(vendorTempPath, credsPath);
+      releaseRefreshJson.resolve();
+
+      const result = await pending;
+      assert.deepEqual(
+        refreshBodies.map((body) => new URLSearchParams(body).get("refresh_token")),
+        ["synthetic-kimi-effective-refresh-r0", "synthetic-kimi-effective-vendor-refresh"],
+      );
+      assert.equal(result.kimi.error, null);
+      assert.equal(result.kimi.primary_window.used_percent, 90);
+      const saved = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+      assert.equal(saved.access_token, "synthetic-kimi-effective-access-a2");
+      assert.equal(saved.refresh_token, "synthetic-kimi-effective-refresh-r2");
+      assert.equal(saved.vendor_generation, 2);
+      assert.deepEqual(saved.unknown_vendor_field, { preserve: true });
+    } finally {
+      releaseRefreshJson.resolve();
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("returns fresh Kimi usage and a warning when reactive refresh persistence fails", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-reactive-warning-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    const secrets = [
+      "synthetic-kimi-reactive-refresh-r0",
+      "synthetic-kimi-reactive-refresh-r1",
+      "synthetic-kimi-reactive-refresh-r2",
+      "synthetic-kimi-reactive-access-a2",
+    ];
+    try {
+      const kimiHome = path.join(tmp, ".kimi");
+      const credsPath = path.join(kimiHome, "credentials", "kimi-code.json");
+      fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+      fs.writeFileSync(path.join(kimiHome, "config.toml"), "");
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: "synthetic-kimi-reactive-expired-access",
+        refresh_token: secrets[0],
+        expires_at: 1,
+        unknown_vendor_field: "keep",
+      }));
+
+      let renameCount = 0;
+      const credentialFs = {
+        lstatSync: fs.lstatSync.bind(fs),
+        readFileSync: fs.readFileSync.bind(fs),
+        openSync: fs.openSync.bind(fs),
+        writeFileSync: fs.writeFileSync.bind(fs),
+        fsyncSync: fs.fsyncSync.bind(fs),
+        closeSync: fs.closeSync.bind(fs),
+        renameSync(sourcePath, destinationPath) {
+          renameCount += 1;
+          if (renameCount === 2) {
+            throw new Error(`synthetic reactive rename failure ${secrets.join(" ")}`);
+          }
+          return fs.renameSync(sourcePath, destinationPath);
+        },
+        unlinkSync: fs.unlinkSync.bind(fs),
+      };
+      const refreshBodies = [];
+      let refreshCount = 0;
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: { platform: "linux", fsImpl: credentialFs },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(),
+        fetchImpl(url, options = {}) {
+          if (url === "https://auth.kimi.com/api/oauth/token") {
+            refreshBodies.push(String(options.body || ""));
+            refreshCount += 1;
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => refreshCount === 1
+                ? { access_token: "synthetic-kimi-reactive-access-a1", refresh_token: secrets[1], expires_in: 900 }
+                : { access_token: secrets[3], refresh_token: secrets[2], expires_in: 900 },
+            });
+          }
+          if (url === "https://api.kimi.com/coding/v1/usages") {
+            if (options.headers?.Authorization === "Bearer synthetic-kimi-reactive-access-a1") {
+              return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
+            }
+            assert.equal(options.headers?.Authorization, `Bearer ${secrets[3]}`);
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ usage: { used: 6, limit: 10 } }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      assert.deepEqual(
+        refreshBodies.map((body) => new URLSearchParams(body).get("refresh_token")),
+        [secrets[0], secrets[1]],
+      );
+      assert.equal(result.kimi.error, null);
+      assert.equal(result.kimi.primary_window.used_percent, 60);
+      assert.match(result.kimi.credential_persist_warning, /not saved|could not be saved|retry/i);
+      for (const [index, secret] of secrets.entries()) {
+        assert.equal(JSON.stringify(result.kimi).includes(secret), false, `secret ${index} must be redacted`);
+      }
+      const saved = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+      assert.equal(saved.access_token, "synthetic-kimi-reactive-access-a1");
+      assert.equal(saved.refresh_token, secrets[1]);
+      assert.equal(saved.unknown_vendor_field, "keep");
+      assert.deepEqual(
+        fs.readdirSync(path.dirname(credsPath)).filter((name) => name.includes(".tmp.")),
+        [],
+      );
+    } finally {
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rereads the latest Kimi JSON after refresh and keeps the initially selected credential path", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-latest-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    const refreshJsonEntered = createDeferred();
+    const releaseRefreshJson = createDeferred();
+    try {
+      const kimiCodeHome = path.join(tmp, ".kimi-code");
+      const credsPath = path.join(kimiCodeHome, "credentials", "kimi-code.json");
+      const legacyCredsPath = path.join(tmp, ".kimi", "credentials", "kimi-code.json");
+      fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+      fs.writeFileSync(path.join(kimiCodeHome, "config.toml"), 'default_model = "kimi-code/kimi-for-coding"\n');
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: "synthetic-kimi-expired-access",
+        refresh_token: "synthetic-kimi-original-refresh",
+        expires_at: 1,
+        vendor_initial: true,
+      }));
+
+      const pending = getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: { platform: "linux" },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(),
+        fetchImpl(url, options = {}) {
+          if (url === "https://auth.kimi.com/api/oauth/token") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => {
+                refreshJsonEntered.resolve();
+                await releaseRefreshJson.promise;
+                return {
+                  access_token: "synthetic-kimi-fresh-access",
+                  expires_in: 900,
+                  scope: "kimi-code",
+                  token_type: "Bearer",
+                };
+              },
+            });
+          }
+          if (url === "https://api.kimi.com/coding/v1/usages") {
+            assert.equal(options.headers?.Authorization, "Bearer synthetic-kimi-fresh-access");
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ usage: { used: 2, limit: 10 } }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      await refreshJsonEntered.promise;
+      // The vendor CLI rotates the file while Token Eyes is awaiting the refresh JSON.
+      // It intentionally omits access_token so re-resolving KIMI_HOME would select .kimi.
+      fs.writeFileSync(credsPath, JSON.stringify({
+        refresh_token: "synthetic-kimi-vendor-latest-refresh",
+        vendor_generation: 2,
+        unknown_vendor_field: { preserve: true },
+      }));
+      releaseRefreshJson.resolve();
+
+      const result = await pending;
+      assert.equal(result.kimi.error, null);
+      assert.equal(result.kimi.primary_window.used_percent, 20);
+      assert.equal(result.kimi.credential_persist_warning, undefined);
+      const saved = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+      assert.equal(saved.access_token, "synthetic-kimi-fresh-access");
+      assert.equal(saved.refresh_token, "synthetic-kimi-vendor-latest-refresh");
+      assert.equal(saved.vendor_generation, 2);
+      assert.deepEqual(saved.unknown_vendor_field, { preserve: true });
+      assert.equal(fs.existsSync(legacyCredsPath), false, "refresh must not switch credential homes mid-flight");
+    } finally {
+      releaseRefreshJson.resolve();
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("merges Kimi rotations after the helper snapshots a vendor-replaced inode", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-inode-swap-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    try {
+      const kimiHome = path.join(tmp, ".kimi");
+      const credsPath = path.join(kimiHome, "credentials", "kimi-code.json");
+      fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+      fs.writeFileSync(path.join(kimiHome, "config.toml"), "");
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: "synthetic-kimi-inode-old-access",
+        refresh_token: "synthetic-kimi-inode-old-refresh",
+        expires_at: 1,
+        vendor_generation: 1,
+      }));
+      const vendorReplacement = {
+        access_token: "synthetic-kimi-vendor-concurrent-access",
+        refresh_token: "synthetic-kimi-vendor-concurrent-refresh",
+        expires_at: 1,
+        vendor_generation: 2,
+        unknown_vendor_field: { preserve: true },
+      };
+
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: {
+          platform: "linux",
+          fsImpl: makeCredentialInodeSwapFs(credsPath, vendorReplacement),
+        },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(),
+        fetchImpl(url, options = {}) {
+          if (url === "https://auth.kimi.com/api/oauth/token") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ access_token: "synthetic-kimi-inode-fresh-access", expires_in: 900 }),
+            });
+          }
+          if (url === "https://api.kimi.com/coding/v1/usages") {
+            assert.equal(options.headers?.Authorization, "Bearer synthetic-kimi-inode-fresh-access");
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ usage: { used: 3, limit: 10 } }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      assert.equal(result.kimi.error, null);
+      const saved = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+      assert.equal(saved.access_token, "synthetic-kimi-inode-fresh-access");
+      assert.equal(saved.refresh_token, "synthetic-kimi-vendor-concurrent-refresh");
+      assert.equal(saved.vendor_generation, 2);
+      assert.deepEqual(saved.unknown_vendor_field, { preserve: true });
+    } finally {
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rereads the latest Gemini JSON after refresh and preserves an unrotated refresh token", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-gemini-latest-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    const refreshJsonEntered = createDeferred();
+    const releaseRefreshJson = createDeferred();
+    try {
+      const geminiHome = path.join(tmp, ".gemini");
+      const credsPath = path.join(geminiHome, "oauth_creds.json");
+      fs.mkdirSync(geminiHome, { recursive: true });
+      fs.writeFileSync(path.join(geminiHome, "settings.json"), JSON.stringify({
+        security: { auth: { selectedType: "oauth-personal" } },
+      }));
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: "synthetic-gemini-expired-access",
+        refresh_token: "synthetic-gemini-original-refresh",
+        id_token: "synthetic-gemini-old-id",
+        expiry_date: 1,
+      }));
+      const geminiPath = createSyntheticGeminiCli(tmp);
+
+      const pending = getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: { platform: "linux" },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(geminiPath),
+        fetchImpl(url, options = {}) {
+          if (url === "https://oauth2.googleapis.com/token") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => {
+                refreshJsonEntered.resolve();
+                await releaseRefreshJson.promise;
+                return { access_token: "synthetic-gemini-fresh-access", expires_in: 900 };
+              },
+            });
+          }
+          if (url === "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist") {
+            assert.equal(options.headers?.Authorization, "Bearer synthetic-gemini-fresh-access");
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ currentTier: { id: "free-tier" }, cloudaicompanionProject: "project-task9" }),
+            });
+          }
+          if (url === "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ buckets: [{ modelId: "gemini-pro", remainingFraction: 0.75 }] }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      await refreshJsonEntered.promise;
+      fs.writeFileSync(credsPath, JSON.stringify({
+        refresh_token: "synthetic-gemini-vendor-latest-refresh",
+        id_token: "synthetic-gemini-vendor-latest-id",
+        vendor_generation: 3,
+        unknown_vendor_field: { preserve: true },
+      }));
+      releaseRefreshJson.resolve();
+
+      const result = await pending;
+      assert.equal(result.gemini.error, null);
+      assert.equal(result.gemini.primary_window.used_percent, 25);
+      assert.equal(result.gemini.credential_persist_warning, undefined);
+      const saved = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+      assert.equal(saved.access_token, "synthetic-gemini-fresh-access");
+      assert.equal(saved.refresh_token, "synthetic-gemini-vendor-latest-refresh");
+      assert.equal(saved.id_token, "synthetic-gemini-vendor-latest-id");
+      assert.equal(saved.vendor_generation, 3);
+      assert.deepEqual(saved.unknown_vendor_field, { preserve: true });
+    } finally {
+      releaseRefreshJson.resolve();
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("persists explicit Gemini refresh and id token rotations over the latest vendor JSON", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-gemini-explicit-rotation-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    try {
+      const geminiHome = path.join(tmp, ".gemini");
+      const credsPath = path.join(geminiHome, "oauth_creds.json");
+      fs.mkdirSync(geminiHome, { recursive: true });
+      fs.writeFileSync(path.join(geminiHome, "settings.json"), JSON.stringify({
+        security: { auth: { selectedType: "oauth-personal" } },
+      }));
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: "synthetic-gemini-explicit-old-access",
+        refresh_token: "synthetic-gemini-explicit-old-refresh",
+        id_token: "synthetic-gemini-explicit-old-id",
+        expiry_date: 1,
+        unknown_vendor_field: { preserve: true },
+      }));
+      const geminiPath = createSyntheticGeminiCli(tmp);
+
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: { platform: "linux" },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(geminiPath),
+        fetchImpl(url, options = {}) {
+          if (url === "https://oauth2.googleapis.com/token") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({
+                access_token: "synthetic-gemini-explicit-new-access",
+                refresh_token: "synthetic-gemini-explicit-new-refresh",
+                id_token: "synthetic-gemini-explicit-new-id",
+                expires_in: 900,
+              }),
+            });
+          }
+          if (url === "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist") {
+            assert.equal(options.headers?.Authorization, "Bearer synthetic-gemini-explicit-new-access");
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ currentTier: { id: "free-tier" } }),
+            });
+          }
+          if (url === "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota") {
+            assert.equal(options.headers?.Authorization, "Bearer synthetic-gemini-explicit-new-access");
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ buckets: [{ modelId: "gemini-pro", remainingFraction: 0.25 }] }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      assert.equal(result.gemini.error, null);
+      assert.equal(result.gemini.primary_window.used_percent, 75);
+      assert.equal(result.gemini.credential_persist_warning, undefined);
+      const saved = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+      assert.equal(saved.access_token, "synthetic-gemini-explicit-new-access");
+      assert.equal(saved.refresh_token, "synthetic-gemini-explicit-new-refresh");
+      assert.equal(saved.id_token, "synthetic-gemini-explicit-new-id");
+      assert.deepEqual(saved.unknown_vendor_field, { preserve: true });
+    } finally {
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps fresh Kimi quota in memory but warns and preserves disk bytes when persistence fails", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-persist-warning-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    const secrets = [
+      "synthetic-kimi-old-access-task9",
+      "synthetic-kimi-old-refresh-task9",
+      "synthetic-kimi-new-access-task9",
+      "synthetic-kimi-new-refresh-task9",
+    ];
+    try {
+      const kimiHome = path.join(tmp, ".kimi");
+      const credsPath = path.join(kimiHome, "credentials", "kimi-code.json");
+      const sentinelPath = `${credsPath}.tmp.unrelated`;
+      fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+      fs.writeFileSync(path.join(kimiHome, "config.toml"), 'default_model = "kimi-code/kimi-for-coding"\n');
+      const originalBytes = Buffer.from(`${JSON.stringify({
+        access_token: secrets[0],
+        refresh_token: secrets[1],
+        expires_at: 1,
+        unknown_vendor_field: "keep",
+      }, null, 2)}\n`);
+      fs.writeFileSync(credsPath, originalBytes);
+      fs.writeFileSync(sentinelPath, "sentinel");
+
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: {
+          platform: "linux",
+          fsImpl: makeCredentialRenameFailureFs(credsPath, secrets.join(" ")),
+        },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(),
+        fetchImpl(url, options = {}) {
+          if (url === "https://auth.kimi.com/api/oauth/token") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({
+                access_token: secrets[2],
+                refresh_token: secrets[3],
+                expires_in: 900,
+              }),
+            });
+          }
+          if (url === "https://api.kimi.com/coding/v1/usages") {
+            assert.equal(options.headers?.Authorization, `Bearer ${secrets[2]}`);
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ usage: { used: 7, limit: 10 } }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      assert.equal(result.kimi.error, null);
+      assert.equal(result.kimi.primary_window.used_percent, 70);
+      assert.match(result.kimi.credential_persist_warning, /not saved|could not be saved|retry/i);
+      assert.match(result.kimi.credential_persist_warning, /\[REDACTED\]/);
+      for (const secret of secrets) {
+        assert.equal(JSON.stringify(result.kimi).includes(secret), false);
+      }
+      assert.deepEqual(fs.readFileSync(credsPath), originalBytes);
+      assert.equal(fs.readFileSync(sentinelPath, "utf8"), "sentinel");
+      assert.deepEqual(
+        fs.readdirSync(path.dirname(credsPath)).filter((name) => name.includes(".tmp.")),
+        [path.basename(sentinelPath)],
+      );
+    } finally {
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps fresh Gemini quota in memory but warns and preserves disk bytes when persistence fails", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-gemini-persist-warning-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    const secrets = [
+      "synthetic-gemini-old-access-task9",
+      "synthetic-gemini-old-refresh-task9",
+      "synthetic-gemini-old-id-task9",
+      "synthetic-gemini-new-access-task9",
+      "synthetic-gemini-new-refresh-task9",
+      "synthetic-gemini-new-id-task9",
+    ];
+    try {
+      const geminiHome = path.join(tmp, ".gemini");
+      const credsPath = path.join(geminiHome, "oauth_creds.json");
+      const sentinelPath = `${credsPath}.tmp.unrelated`;
+      fs.mkdirSync(geminiHome, { recursive: true });
+      fs.writeFileSync(path.join(geminiHome, "settings.json"), JSON.stringify({
+        security: { auth: { selectedType: "oauth-personal" } },
+      }));
+      const originalBytes = Buffer.from(`${JSON.stringify({
+        access_token: secrets[0],
+        refresh_token: secrets[1],
+        id_token: secrets[2],
+        expiry_date: 1,
+        unknown_vendor_field: "keep",
+      }, null, 2)}\n`);
+      fs.writeFileSync(credsPath, originalBytes);
+      fs.writeFileSync(sentinelPath, "sentinel");
+      const geminiPath = createSyntheticGeminiCli(tmp);
+
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: {
+          platform: "linux",
+          fsImpl: makeCredentialRenameFailureFs(credsPath, secrets.join(" ")),
+        },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(geminiPath),
+        fetchImpl(url, options = {}) {
+          if (url === "https://oauth2.googleapis.com/token") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({
+                access_token: secrets[3],
+                refresh_token: secrets[4],
+                id_token: secrets[5],
+                expires_in: 900,
+              }),
+            });
+          }
+          if (url === "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist") {
+            assert.equal(options.headers?.Authorization, `Bearer ${secrets[3]}`);
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ currentTier: { id: "free-tier" } }),
+            });
+          }
+          if (url === "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ buckets: [{ modelId: "gemini-pro", remainingFraction: 0.4 }] }),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      assert.equal(result.gemini.error, null);
+      assert.equal(result.gemini.primary_window.used_percent, 60);
+      assert.match(result.gemini.credential_persist_warning, /not saved|could not be saved|retry/i);
+      assert.match(result.gemini.credential_persist_warning, /\[REDACTED\]/);
+      for (const secret of secrets) {
+        assert.equal(JSON.stringify(result.gemini).includes(secret), false);
+      }
+      assert.deepEqual(fs.readFileSync(credsPath), originalBytes);
+      assert.equal(fs.readFileSync(sentinelPath, "utf8"), "sentinel");
+      assert.deepEqual(
+        fs.readdirSync(path.dirname(credsPath)).filter((name) => name.includes(".tmp.")),
+        [path.basename(sentinelPath)],
+      );
+    } finally {
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  for (const provider of ["Kimi", "Gemini"]) {
+    it(`keeps fresh ${provider} quota and warns without writing when its credential target is a symlink`, async () => {
+      resetUsageLimitsCache();
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `tokentracker-limits-${provider.toLowerCase()}-symlink-`));
+      const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+      try {
+        const isKimi = provider === "Kimi";
+        const providerHome = path.join(tmp, isKimi ? ".kimi" : ".gemini");
+        const credsPath = path.join(
+          providerHome,
+          isKimi ? path.join("credentials", "kimi-code.json") : "oauth_creds.json",
+        );
+        fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+        if (isKimi) {
+          fs.writeFileSync(path.join(providerHome, "config.toml"), "");
+        } else {
+          fs.writeFileSync(path.join(providerHome, "settings.json"), JSON.stringify({
+            security: { auth: { selectedType: "oauth-personal" } },
+          }));
+        }
+        const originalBytes = Buffer.from(`${JSON.stringify(isKimi
+          ? {
+              access_token: "synthetic-kimi-symlink-old-access",
+              refresh_token: "synthetic-kimi-symlink-old-refresh",
+              expires_at: 1,
+              unknown_vendor_field: "keep",
+            }
+          : {
+              access_token: "synthetic-gemini-symlink-old-access",
+              refresh_token: "synthetic-gemini-symlink-old-refresh",
+              id_token: "synthetic-gemini-symlink-old-id",
+              expiry_date: 1,
+              unknown_vendor_field: "keep",
+            }, null, 2)}\n`);
+        fs.writeFileSync(credsPath, originalBytes);
+        const counters = { tempOpens: 0 };
+        const geminiPath = isKimi ? null : createSyntheticGeminiCli(tmp);
+
+        const result = await getUsageLimits({
+          home: tmp,
+          platform: "darwin",
+          credentialFileOptions: {
+            platform: "linux",
+            fsImpl: makeCredentialSymlinkFs(credsPath, counters),
+          },
+          securityRunner() {
+            return { status: 1, stdout: "" };
+          },
+          commandRunner: syntheticCommandRunner(geminiPath),
+          fetchImpl(url, options = {}) {
+            if (url === "https://auth.kimi.com/api/oauth/token") {
+              return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                  access_token: "synthetic-kimi-symlink-fresh-access",
+                  refresh_token: "synthetic-kimi-symlink-fresh-refresh",
+                  expires_in: 900,
+                }),
+              });
+            }
+            if (url === "https://api.kimi.com/coding/v1/usages") {
+              assert.equal(options.headers?.Authorization, "Bearer synthetic-kimi-symlink-fresh-access");
+              return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: async () => ({ usage: { used: 4, limit: 10 } }),
+              });
+            }
+            if (url === "https://oauth2.googleapis.com/token") {
+              return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                  access_token: "synthetic-gemini-symlink-fresh-access",
+                  refresh_token: "synthetic-gemini-symlink-fresh-refresh",
+                  id_token: "synthetic-gemini-symlink-fresh-id",
+                  expires_in: 900,
+                }),
+              });
+            }
+            if (url === "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist") {
+              assert.equal(options.headers?.Authorization, "Bearer synthetic-gemini-symlink-fresh-access");
+              return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: async () => ({ currentTier: { id: "free-tier" } }),
+              });
+            }
+            if (url === "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota") {
+              return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: async () => ({ buckets: [{ modelId: "gemini-pro", remainingFraction: 0.4 }] }),
+              });
+            }
+            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+          },
+        });
+
+        const limits = result[provider.toLowerCase()];
+        assert.equal(limits.error, null);
+        assert.equal(limits.primary_window.used_percent, isKimi ? 40 : 60);
+        assert.match(limits.credential_persist_warning, /symlink/i);
+        assert.equal(counters.tempOpens, 0);
+        assert.deepEqual(fs.readFileSync(credsPath), originalBytes);
+        assert.deepEqual(
+          fs.readdirSync(path.dirname(credsPath)).filter((name) => name.includes(".tmp.")),
+          [],
+        );
+      } finally {
+        restoreWinEnv();
+        resetUsageLimitsCache();
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("redacts old and rotated Kimi tokens from a post-refresh usage error", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-error-redaction-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    const secrets = [
+      "synthetic-kimi-error-old-access-task9",
+      "synthetic-kimi-error-old-refresh-task9",
+      "synthetic-kimi-error-new-access-task9",
+      "synthetic-kimi-error-new-refresh-task9",
+    ];
+    try {
+      const kimiHome = path.join(tmp, ".kimi");
+      const credsPath = path.join(kimiHome, "credentials", "kimi-code.json");
+      fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+      fs.writeFileSync(path.join(kimiHome, "config.toml"), "");
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: secrets[0],
+        refresh_token: secrets[1],
+        expires_at: 1,
+      }));
+
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: { platform: "linux" },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(),
+        fetchImpl(url) {
+          if (url === "https://auth.kimi.com/api/oauth/token") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({
+                access_token: secrets[2],
+                refresh_token: secrets[3],
+                expires_in: 900,
+              }),
+            });
+          }
+          if (url === "https://api.kimi.com/coding/v1/usages") {
+            return Promise.reject(new Error(`synthetic usage failure ${secrets.join(" ")}`));
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      assert.match(result.kimi.error, /synthetic usage failure/);
+      assert.match(result.kimi.error, /\[REDACTED\]/);
+      for (const secret of secrets) {
+        assert.equal(JSON.stringify(result.kimi).includes(secret), false);
+      }
+    } finally {
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("redacts old and rotated Gemini tokens from a post-refresh quota error", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-gemini-error-redaction-"));
+    const restoreWinEnv = isolateWindowsHomeEnv(tmp);
+    const secrets = [
+      "synthetic-gemini-error-old-access-task9",
+      "synthetic-gemini-error-old-refresh-task9",
+      "synthetic-gemini-error-old-id-task9",
+      "synthetic-gemini-error-new-access-task9",
+      "synthetic-gemini-error-new-refresh-task9",
+      "synthetic-gemini-error-new-id-task9",
+    ];
+    try {
+      const geminiHome = path.join(tmp, ".gemini");
+      const credsPath = path.join(geminiHome, "oauth_creds.json");
+      fs.mkdirSync(geminiHome, { recursive: true });
+      fs.writeFileSync(path.join(geminiHome, "settings.json"), JSON.stringify({
+        security: { auth: { selectedType: "oauth-personal" } },
+      }));
+      fs.writeFileSync(credsPath, JSON.stringify({
+        access_token: secrets[0],
+        refresh_token: secrets[1],
+        id_token: secrets[2],
+        expiry_date: 1,
+      }));
+      const geminiPath = createSyntheticGeminiCli(tmp);
+
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "darwin",
+        credentialFileOptions: { platform: "linux" },
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner: syntheticCommandRunner(geminiPath),
+        fetchImpl(url) {
+          if (url === "https://oauth2.googleapis.com/token") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({
+                access_token: secrets[3],
+                refresh_token: secrets[4],
+                id_token: secrets[5],
+                expires_in: 900,
+              }),
+            });
+          }
+          if (url === "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist") {
+            return Promise.reject(new Error(`synthetic quota failure ${secrets.join(" ")}`));
+          }
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        },
+      });
+
+      assert.match(result.gemini.error, /synthetic quota failure/);
+      assert.match(result.gemini.error, /\[REDACTED\]/);
+      for (const secret of secrets) {
+        assert.equal(JSON.stringify(result.gemini).includes(secret), false);
+      }
+    } finally {
+      restoreWinEnv();
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("loadKimiCredentials", () => {
@@ -1440,7 +2687,7 @@ describe("normalizeCursorUsageSummary", () => {
     assert.equal(result.tertiary_window, null);
   });
 
-  it("prefers auto/api percent lanes over raw plan cents when both exist", () => {
+  it("Task 8 prefers semantic Cursor plan total and never averages independent Auto and API lanes", () => {
     const result = normalizeCursorUsageSummary({
       billingCycleEnd: "2026-04-30T00:00:00.000Z",
       individualUsage: {
@@ -1453,12 +2700,12 @@ describe("normalizeCursorUsageSummary", () => {
       },
     });
 
-    assert.equal(result.primary_window.used_percent, 50);
+    assert.ok(Math.abs(result.primary_window.used_percent - 0.0001) < 1e-12);
     assert.equal(result.secondary_window.used_percent, 40);
     assert.equal(result.tertiary_window.used_percent, 60);
   });
 
-  it("maps team onDemand when individual plan has no usable headline", () => {
+  it("keeps team onDemand independent when the provider omits overall", () => {
     const result = normalizeCursorUsageSummary({
       billingCycleEnd: "2026-04-30T00:00:00.000Z",
       membershipType: "team",
@@ -1468,10 +2715,12 @@ describe("normalizeCursorUsageSummary", () => {
       },
     });
 
-    assert.equal(result.primary_window.used_percent, 50);
+    assert.equal(result.primary_window, null);
+    assert.equal(result.headline_lane_id, null);
+    assert.equal(result.team_pool_window.used_percent, 50);
   });
 
-  it("uses team onDemand when enterprise individual lanes are 0% but pool has usage", () => {
+  it("keeps an explicit enterprise overall zero instead of promoting team onDemand", () => {
     const result = normalizeCursorUsageSummary({
       billingCycleEnd: "2026-05-04T03:32:21.000Z",
       membershipType: "enterprise",
@@ -1492,8 +2741,10 @@ describe("normalizeCursorUsageSummary", () => {
       },
     });
 
-    assert.ok(result.primary_window.used_percent > 0);
-    assert.ok(result.primary_window.used_percent < 1);
+    assert.equal(result.primary_window.used_percent, 0);
+    assert.equal(result.headline_lane_id, "overall");
+    assert.ok(result.team_pool_window.used_percent > 0);
+    assert.ok(result.team_pool_window.used_percent < 1);
   });
 });
 

@@ -310,6 +310,10 @@ async function buildRequestUsageRecordsList({
     }
   }
 
+  for (const record of allRecords) {
+    Object.assign(record, computeRowCostDetailed(record, pricingOptions));
+  }
+
   allRecords.sort((a, b) => {
     const ta = a.timestamp || "";
     const tb = b.timestamp || "";
@@ -340,6 +344,7 @@ const {
   normalizePricingRules,
   normalizeUsdToCny,
 } = require("./pricing");
+const { summarizePricingProvenance } = require("./data-evidence");
 
 const {
   computeClaudeCategoryBreakdown,
@@ -350,6 +355,7 @@ const { computeCodexContextBreakdown } = require("./codex-context-breakdown");
 
 const tokenPlanRefresh = require("./token-plan-refresh");
 const { getPlanById, listProviderOptions, getProviderCatalog } = require("./token-plan-catalog");
+const glmTokenPlan = require("./glm-token-plan");
 const { getPlanMarketCatalog } = require("./plan-market");
 const { getAgentAdapter, listAgentAdapters } = require("./agent-adapters");
 const {
@@ -1146,6 +1152,7 @@ function computeQueueTotals(rows, options = {}) {
     component_token_delta: 0,
     component_mismatch_records: 0,
   };
+  const pricingRecords = [];
   for (const row of rows) {
     if (!row || !row.hour_start) continue;
     const src = normalizeSource(row.source);
@@ -1165,6 +1172,7 @@ function computeQueueTotals(rows, options = {}) {
     acc.component_token_delta += componentDelta;
     if (componentDelta !== 0) acc.component_mismatch_records += 1;
     const rowCost = computeRowCostDetailed(row, pricingOptions);
+    pricingRecords.push(rowCost);
     acc.cost_usd += Number(rowCost.cost_usd || 0);
     acc.conversation_count += Number(row.conversation_count || 0);
     acc.priced_tokens += Number(rowCost.priced_tokens || 0);
@@ -1181,7 +1189,8 @@ function computeQueueTotals(rows, options = {}) {
   } else {
     acc.pricing_coverage = "partial";
   }
-  return acc;
+  if (acc.pricing_coverage === "unpriced") acc.cost_usd = null;
+  return Object.assign(acc, summarizePricingProvenance(pricingRecords));
 }
 
 function buildAggregateUsageRecords(rows, options = {}) {
@@ -1222,10 +1231,7 @@ function buildAggregateUsageRecords(rows, options = {}) {
       output_tokens: Number(row.output_tokens || 0),
       reasoning_output_tokens: Number(row.reasoning_output_tokens || 0),
       total_tokens: Number(row.total_tokens || 0),
-      cost_usd: Number(cost.cost_usd || 0),
-      priced_tokens: Number(cost.priced_tokens || 0),
-      unpriced_tokens: Number(cost.unpriced_tokens || 0),
-      pricing_coverage: cost.pricing_coverage || "complete",
+      ...cost,
       conversation_count: Number(row.conversation_count || 0),
       status: null,
       latency_ms: null,
@@ -1272,6 +1278,7 @@ function computeRecordTotals(records) {
   let successCount = 0;
   let interruptedCount = 0;
   let failureCount = 0;
+  let hasCostValue = false;
   for (const r of records) {
     const aggregateCount = Number(r.conversation_count || 0);
     totals.request_count += r.record_kind === "aggregate_bucket"
@@ -1283,9 +1290,14 @@ function computeRecordTotals(records) {
     totals.output_tokens += Number(r.output_tokens || 0);
     totals.reasoning_output_tokens += Number(r.reasoning_output_tokens || 0);
     totals.total_tokens += Number(r.total_tokens || 0);
-    totals.cost_usd += Number(r.cost_usd || 0);
+    if (r.cost_usd !== null && r.cost_usd !== undefined) {
+      totals.cost_usd += Number(r.cost_usd || 0);
+      hasCostValue = true;
+    }
     totals.priced_tokens += Number(r.priced_tokens || 0);
-    totals.unpriced_tokens += Number(r.unpriced_tokens || r.total_tokens || 0) - Number(r.priced_tokens || 0);
+    totals.unpriced_tokens += Object.hasOwn(r, "unpriced_tokens")
+      ? Number(r.unpriced_tokens || 0)
+      : Math.max(0, Number(r.total_tokens || 0) - Number(r.priced_tokens || 0));
     if (r.status !== null && r.status !== undefined) {
       measuredStatusCount++;
       const status = Number(r.status);
@@ -1314,7 +1326,11 @@ function computeRecordTotals(records) {
   totals.cache_hit_rate = cacheBase > 0
     ? Number(((totals.cached_input_tokens / cacheBase) * 100).toFixed(2))
     : 0;
-  totals.cost_usd = Number(totals.cost_usd.toFixed(6));
+  totals.cost_usd = hasCostValue
+    ? Number(totals.cost_usd.toFixed(6))
+    : records.length > 0
+      ? null
+      : 0;
   const total = totals.priced_tokens + totals.unpriced_tokens;
   if (total === 0) {
     totals.pricing_coverage = "complete";
@@ -1325,7 +1341,7 @@ function computeRecordTotals(records) {
   } else {
     totals.pricing_coverage = "partial";
   }
-  return totals;
+  return Object.assign(totals, summarizePricingProvenance(records));
 }
 
 // Aggregate queue rows by source for the provider-stats endpoint.
@@ -2761,13 +2777,45 @@ function createLocalApiHandler({
     ];
   }
 
+  function normalizeAgentDefaultPricingUpdatedAt(raw, pricing, legacyUpdatedAt) {
+    const input = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    const normalizedPricing = normalizeAgentDefaultPricing(pricing);
+    const legacy = typeof legacyUpdatedAt === "string" && Number.isFinite(Date.parse(legacyUpdatedAt))
+      ? legacyUpdatedAt
+      : null;
+    const out = {};
+    for (const source of Object.keys(normalizedPricing)) {
+      const explicit = typeof input[source] === "string" && Number.isFinite(Date.parse(input[source]))
+        ? input[source]
+        : null;
+      const configured = normalizedPricing[source].inputUsdPer1M !== 0
+        || normalizedPricing[source].outputUsdPer1M !== 0;
+      if (explicit || (legacy && configured)) out[source] = explicit || legacy;
+    }
+    return out;
+  }
+
+  function agentDefaultPriceChanged(previous, next) {
+    return previous.inputUsdPer1M !== next.inputUsdPer1M
+      || previous.outputUsdPer1M !== next.outputUsdPer1M;
+  }
+
   function readLocalSettings() {
     const config = readTrackerConfig();
+    const agentDefaultPricing = normalizeAgentDefaultPricing(config.agentDefaultPricing);
     return {
       dataDirectories: normalizeDataDirectories(config.dataDirectories),
       dataDirectoryOrder: normalizeDataDirectoryOrder(config.dataDirectoryOrder),
-      agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing),
+      agentDefaultPricing,
       pricingRules: normalizePricingRules(config.pricingRules),
+      pricing_updated_at: typeof config.pricing_updated_at === "string"
+        ? config.pricing_updated_at
+        : null,
+      agent_default_pricing_updated_at: normalizeAgentDefaultPricingUpdatedAt(
+        config.agent_default_pricing_updated_at,
+        agentDefaultPricing,
+        config.pricing_updated_at,
+      ),
       currencySettings: normalizeCurrencySettings(config.currencySettings),
       dashboardRefresh: normalizeDashboardRefresh(config.dashboardRefresh),
     };
@@ -2783,7 +2831,23 @@ function createLocalApiHandler({
       config.dataDirectoryOrder = normalizeDataDirectoryOrder(payload.dataDirectoryOrder);
     }
     if (Object.prototype.hasOwnProperty.call(payload, "agentDefaultPricing")) {
-      config.agentDefaultPricing = normalizeAgentDefaultPricing(payload.agentDefaultPricing);
+      const previous = normalizeAgentDefaultPricing(config.agentDefaultPricing);
+      const next = normalizeAgentDefaultPricing(payload.agentDefaultPricing);
+      const updatedAtBySource = normalizeAgentDefaultPricingUpdatedAt(
+        config.agent_default_pricing_updated_at,
+        previous,
+        config.pricing_updated_at,
+      );
+      const changedAt = new Date(nowProvider()).toISOString();
+      let changed = false;
+      for (const source of Object.keys(next)) {
+        if (!agentDefaultPriceChanged(previous[source], next[source])) continue;
+        updatedAtBySource[source] = changedAt;
+        changed = true;
+      }
+      config.agentDefaultPricing = next;
+      config.agent_default_pricing_updated_at = updatedAtBySource;
+      if (changed) config.pricing_updated_at = changedAt;
     }
     if (Object.prototype.hasOwnProperty.call(payload, "pricingRules")) {
       config.pricingRules = normalizePricingRules(payload.pricingRules);
@@ -2860,9 +2924,18 @@ function createLocalApiHandler({
 
   function getPricingOptions() {
     const config = readTrackerConfig();
+    const agentDefaultPricing = normalizeAgentDefaultPricing(config.agentDefaultPricing);
     return {
-      agentDefaultPricing: normalizeAgentDefaultPricing(config.agentDefaultPricing),
+      agentDefaultPricing,
       pricingRules: normalizePricingRules(config.pricingRules),
+      pricing_updated_at: typeof config.pricing_updated_at === "string"
+        ? config.pricing_updated_at
+        : null,
+      agent_default_pricing_updated_at: normalizeAgentDefaultPricingUpdatedAt(
+        config.agent_default_pricing_updated_at,
+        agentDefaultPricing,
+        config.pricing_updated_at,
+      ),
       usdToCny: normalizeCurrencySettings(config.currencySettings).usdToCny,
     };
   }
@@ -2896,12 +2969,117 @@ function createLocalApiHandler({
     }
   }
 
-  function normalizeTokenPlanRecord(record, fallback = {}) {
+  const TOKEN_PLAN_PROVIDER_FIELD_ORDER = [
+    "total_quota",
+    "used_quota",
+    "remaining_quota",
+    "quota_windows",
+    "expires_at",
+  ];
+  const TOKEN_PLAN_COUNT_UNITS = new Set([
+    "tokens",
+    "requests",
+    "prompts",
+    "points",
+    "provider_count",
+    "credits",
+  ]);
+  const TOKEN_PLAN_FAILED_SNAPSHOT_STATUSES = new Set([
+    "failed",
+    "reauth_required",
+    "temporary",
+    "unsupported",
+  ]);
+
+  function hasOwnField(value, field) {
+    return Boolean(value && Object.prototype.hasOwnProperty.call(value, field));
+  }
+
+  function normalizeProviderReportedFields(value) {
+    if (!Array.isArray(value)) return [];
+    const submitted = new Set(value.filter((field) => typeof field === "string"));
+    return TOKEN_PLAN_PROVIDER_FIELD_ORDER.filter((field) => submitted.has(field));
+  }
+
+  function tokenPlanPayloadError(message) {
+    const error = new Error(message);
+    error.statusCode = 400;
+    error.error_code = "PROVIDER_SNAPSHOT_INVALID";
+    return error;
+  }
+
+  function canonicalTokenPlanQuotaUnit(value) {
+    const raw = String(value ?? "").trim();
+    const upper = raw.toUpperCase();
+    if (upper === "CNY" || upper === "USD") return upper;
+    return raw.toLowerCase();
+  }
+
+  function effectiveTokenPlanQuotaUnit(payload, fallback) {
+    const input = payload && typeof payload === "object" ? payload : {};
+    const previous = fallback && typeof fallback === "object" ? fallback : {};
+    const providerId = String(input.provider_id ?? previous.provider_id ?? "").trim().toLowerCase();
+    const planId = String(input.plan_id ?? previous.plan_id ?? "").trim();
+    const catalogUnit = getPlanById(providerId, planId)?.quota_unit || "";
+    return canonicalTokenPlanQuotaUnit(
+      input.quota_unit ?? previous.quota_unit ?? catalogUnit ?? "tokens",
+    ) || "tokens";
+  }
+
+  function validateDirectTokenPlanPayload(payload, fallback) {
+    const input = payload && typeof payload === "object" ? payload : {};
+    const submittedQuotaFields = ["total_quota", "used_quota", "remaining_quota"]
+      .filter((field) => hasOwnField(input, field) && input[field] !== null);
+    if (submittedQuotaFields.length > 0) {
+      let quotaUnit;
+      try {
+        quotaUnit = tokenPlanRefresh.validateQuotaUnit(
+          effectiveTokenPlanQuotaUnit(input, fallback),
+          "quota_unit",
+        );
+      } catch (error) {
+        const invalid = tokenPlanPayloadError(error?.message || "quota_unit is invalid");
+        invalid.cause = error;
+        throw invalid;
+      }
+      for (const field of submittedQuotaFields) {
+        try {
+          tokenPlanRefresh.validateProviderQuotaNumber(input[field], quotaUnit, field);
+        } catch (error) {
+          const invalid = tokenPlanPayloadError(error?.message || `${field} is invalid`);
+          invalid.cause = error;
+          throw invalid;
+        }
+      }
+    }
+
+    if (hasOwnField(input, "quota_windows") && input.quota_windows !== null) {
+      try {
+        tokenPlanRefresh.validateProviderQuotaWindows(input.quota_windows);
+      } catch (error) {
+        const invalid = tokenPlanPayloadError(error?.message || "quota_windows is invalid");
+        invalid.cause = error;
+        throw invalid;
+      }
+    }
+
+    if (hasOwnField(input, "expires_at") && input.expires_at !== null) {
+      if (typeof input.expires_at !== "string") {
+        throw tokenPlanPayloadError("expires_at must be an ISO-8601 string, null, or omitted");
+      }
+      const expiresAt = input.expires_at.trim();
+      if (expiresAt && !tokenPlanRefresh.isValidProviderExpiry(expiresAt)) {
+        throw tokenPlanPayloadError("expires_at must be a valid ISO-8601 date or date-time");
+      }
+    }
+  }
+
+  function normalizeTokenPlanRecord(record, fallback = {}, options = {}) {
     const input = record && typeof record === "object" ? record : {};
     const fallbackInput = fallback && typeof fallback === "object" ? fallback : {};
-    const source = String(input.source ?? fallbackInput.source ?? "").trim();
+    const rawSource = String(input.source ?? fallbackInput.source ?? "");
+    const source = rawSource === "kiro-cli" ? "kiro" : rawSource.trim();
     const planLabel = String(input.plan_label ?? fallbackInput.plan_label ?? "").trim();
-    const expiresAt = String(input.expires_at ?? fallbackInput.expires_at ?? "").trim();
 
     const providerIdRaw = String(input.provider_id ?? fallbackInput.provider_id ?? "").trim().toLowerCase();
     const planIdRaw = String(input.plan_id ?? fallbackInput.plan_id ?? "").trim();
@@ -2909,40 +3087,162 @@ function createLocalApiHandler({
     const isLegacy = !providerIdRaw;
     const providerId = isLegacy ? "custom" : providerIdRaw;
     const planId = isLegacy ? "custom" : planIdRaw;
+    const catalogPlan = providerId !== "custom" ? getPlanById(providerId, planId) : null;
+    const detectionFields = tokenPlanRefresh.normalizeDetectionFields(input, fallbackInput);
+    const detectionMethod = detectionFields.detection_method;
+    const hasDetectionConfigured = detectionMethod && detectionMethod !== "not_configured";
+    const isMutation = options.isMutation === true;
+    const hasExisting = options.hasExisting === true;
+    const isGlm = providerId === "glm";
+    const entitlementEvidence = isMutation && hasExisting
+      ? fallbackInput
+      : { ...fallbackInput, ...input };
+    const entitlementRevision = isGlm
+      ? glmTokenPlan.resolveGlmEntitlementRevision(entitlementEvidence, {
+        isNewCatalogSelection: isMutation && !hasExisting,
+      })
+      : String(input.entitlement_revision ?? fallbackInput.entitlement_revision ?? "").trim();
+    const entitlementWindows = isGlm
+      ? glmTokenPlan.getGlmEntitlementWindows(entitlementRevision, planId)
+      : structuredClone(
+        Array.isArray(input.entitlement_windows)
+          ? input.entitlement_windows
+          : (Array.isArray(fallbackInput.entitlement_windows) ? fallbackInput.entitlement_windows : []),
+      );
+    const blocksFailedSnapshot = isMutation
+      && hasDetectionConfigured
+      && TOKEN_PLAN_FAILED_SNAPSHOT_STATUSES.has(detectionFields.sync_status);
 
-    const numberFieldNonNegative = (field) => {
-      const value = input[field] ?? fallbackInput[field] ?? 0;
+    const normalizeEvidenceIso = (value) => {
+      const normalized = String(value || "").trim();
+      return normalized && Number.isFinite(Date.parse(normalized)) ? normalized : "";
+    };
+    const incomingFetchedAt = hasOwnField(input, "fetched_at")
+      ? normalizeEvidenceIso(input.fetched_at)
+      : "";
+    const incomingObservedAt = hasOwnField(input, "observed_at")
+      ? normalizeEvidenceIso(input.observed_at)
+      : "";
+    const incomingSourceKind = String(input.source_kind || "").trim().slice(0, 64);
+    const incomingSupportTier = String(input.support_tier || "").trim().slice(0, 64);
+    const isXiaomiClientObservation = providerId === "xiaomi_mimo"
+      && incomingSourceKind === "undocumented_console_api"
+      && incomingSupportTier === "best_effort"
+      && Boolean(incomingFetchedAt)
+      && Boolean(incomingObservedAt);
+
+    const submittedReportedFields = normalizeProviderReportedFields(input.provider_reported_fields);
+    const fallbackReportedFields = normalizeProviderReportedFields(fallbackInput.provider_reported_fields);
+    const hasSubmittedReportedFields = Array.isArray(input.provider_reported_fields);
+    const candidateReportedFields = TOKEN_PLAN_PROVIDER_FIELD_ORDER.filter((field) => {
+      if (!hasOwnField(input, field) || input[field] === null) return false;
+      if (field !== "expires_at") return true;
+      const value = typeof input.expires_at === "string" ? input.expires_at.trim() : "";
+      return Boolean(value) || submittedReportedFields.includes("expires_at");
+    });
+    const freshReportedFields = hasSubmittedReportedFields
+      ? candidateReportedFields.filter((field) => submittedReportedFields.includes(field))
+      : candidateReportedFields;
+    const incomingReportedAt = String(
+      (hasOwnField(input, "provider_reported_at") ? input.provider_reported_at : "") || "",
+    ).trim();
+    const hasFreshProviderEvidence = hasSubmittedReportedFields
+      && freshReportedFields.length > 0
+      && (Boolean(incomingReportedAt) || isXiaomiClientObservation);
+    let providerReportedFields;
+    let providerReportedAt;
+    if (!isMutation) {
+      providerReportedFields = hasSubmittedReportedFields
+        ? submittedReportedFields
+        : (detectionFields.sync_status === "success" ? freshReportedFields : fallbackReportedFields);
+      providerReportedAt = String(input.provider_reported_at ?? fallbackInput.provider_reported_at ?? "").trim();
+    } else if (blocksFailedSnapshot) {
+      providerReportedFields = fallbackReportedFields;
+      providerReportedAt = String(fallbackInput.provider_reported_at ?? "").trim();
+    } else if (hasDetectionConfigured && detectionFields.sync_status === "success") {
+      if (hasFreshProviderEvidence) {
+        providerReportedFields = freshReportedFields;
+        providerReportedAt = incomingReportedAt;
+      } else {
+        providerReportedFields = fallbackReportedFields;
+        providerReportedAt = String(fallbackInput.provider_reported_at ?? "").trim();
+      }
+    } else if (hasDetectionConfigured) {
+      providerReportedFields = hasExisting ? fallbackReportedFields : [];
+      providerReportedAt = hasExisting
+        ? String(fallbackInput.provider_reported_at ?? "").trim()
+        : "";
+    } else {
+      providerReportedFields = hasSubmittedReportedFields ? submittedReportedFields : fallbackReportedFields;
+      providerReportedAt = String(input.provider_reported_at ?? fallbackInput.provider_reported_at ?? "").trim();
+    }
+
+    const shouldApplyIncomingProviderField = (field) => {
+      if (!hasOwnField(input, field) || input[field] === null) return false;
+      if (!isMutation) return true;
+      if (blocksFailedSnapshot) return false;
+      if (hasDetectionConfigured && detectionFields.sync_status === "success") {
+        return hasFreshProviderEvidence && freshReportedFields.includes(field);
+      }
+      return true;
+    };
+
+    const preliminaryQuotaUnit = canonicalTokenPlanQuotaUnit(
+      input.quota_unit ?? fallbackInput.quota_unit ?? catalogPlan?.quota_unit ?? "tokens",
+    ) || "tokens";
+    const normalizeStoredQuotaNumber = (value, unit) => {
       const numberValue = Number(value);
-      const allowFraction = providerId === "cursor"
-        && ["total_quota", "used_quota", "remaining_quota"].includes(field);
-      if (!Number.isFinite(numberValue) || numberValue < 0 || (!allowFraction && !Number.isSafeInteger(numberValue))) return 0;
+      if (!Number.isFinite(numberValue) || numberValue < 0 || numberValue > Number.MAX_SAFE_INTEGER) return 0;
+      if (unit === "percent" && numberValue > 100) return 0;
+      if (TOKEN_PLAN_COUNT_UNITS.has(unit) && !Number.isSafeInteger(numberValue)) return 0;
       return numberValue;
+    };
+    const numberFieldNonNegative = (field) => {
+      const fallbackValue = normalizeStoredQuotaNumber(fallbackInput[field] ?? 0, preliminaryQuotaUnit);
+      if (!shouldApplyIncomingProviderField(field)) return fallbackValue;
+      return normalizeStoredQuotaNumber(input[field], preliminaryQuotaUnit);
     };
 
     let quotaKind = String(input.quota_kind ?? fallbackInput.quota_kind ?? "").trim();
-    let quotaUnit = String(input.quota_unit ?? fallbackInput.quota_unit ?? "").trim();
+    let quotaUnit = canonicalTokenPlanQuotaUnit(input.quota_unit ?? fallbackInput.quota_unit ?? "");
     let totalQuota = numberFieldNonNegative("total_quota");
     let totalQuotaDisplay = String(input.total_quota_display ?? fallbackInput.total_quota_display ?? "").trim();
     let quotaCatalogVersion = String(input.quota_catalog_version ?? fallbackInput.quota_catalog_version ?? "").trim();
     let quotaSource = String(input.quota_source ?? fallbackInput.quota_source ?? "").trim();
 
-    const catalogPlan = providerId !== "custom" ? getPlanById(providerId, planId) : null;
-    const hasProviderSnapshot = String(input.sync_status || "").trim() === "success"
-      && (Array.isArray(input.quota_windows) && input.quota_windows.length > 0)
-      && Boolean(String(input.provider_reported_at || input.last_synced_at || "").trim());
+    const fallbackFetchedAt = normalizeEvidenceIso(fallbackInput.fetched_at);
+    const fallbackObservedAt = normalizeEvidenceIso(fallbackInput.observed_at);
+    const fetchedAt = blocksFailedSnapshot
+      ? fallbackFetchedAt
+      : (incomingFetchedAt || fallbackFetchedAt);
+    const observedAt = blocksFailedSnapshot
+      ? fallbackObservedAt
+      : (incomingObservedAt || fallbackObservedAt);
+    const sourceKind = blocksFailedSnapshot
+      ? String(fallbackInput.source_kind || "").trim().slice(0, 64)
+      : (incomingSourceKind || String(fallbackInput.source_kind || "").trim().slice(0, 64));
+    const supportTier = blocksFailedSnapshot
+      ? String(fallbackInput.support_tier || "").trim().slice(0, 64)
+      : (incomingSupportTier || String(fallbackInput.support_tier || "").trim().slice(0, 64));
+    const hasPartialEvidence = hasOwnField(input, "partial") || hasOwnField(fallbackInput, "partial");
+    const partial = blocksFailedSnapshot
+      ? Boolean(fallbackInput.partial)
+      : Boolean(hasOwnField(input, "partial") ? input.partial : fallbackInput.partial);
+    const hasProviderSnapshot = providerReportedFields.length > 0
+      && Boolean(providerReportedAt || observedAt);
 
-    if (catalogPlan) {
+    if (catalogPlan && !isGlm) {
       quotaKind = catalogPlan.quota_kind || "unknown";
-      quotaUnit = hasProviderSnapshot && input.quota_unit
-        ? String(input.quota_unit).trim()
+      quotaUnit = hasProviderSnapshot && (input.quota_unit ?? fallbackInput.quota_unit)
+        ? canonicalTokenPlanQuotaUnit(input.quota_unit ?? fallbackInput.quota_unit)
         : (catalogPlan.quota_unit || "tokens");
       const catalogTotal = Number.isSafeInteger(catalogPlan.total_quota) && catalogPlan.total_quota >= 0
         ? catalogPlan.total_quota
         : 0;
-      totalQuota = hasProviderSnapshot && catalogTotal === 0
+      totalQuota = hasProviderSnapshot
         ? numberFieldNonNegative("total_quota")
         : catalogTotal;
-      totalQuotaDisplay = catalogPlan.total_quota_display || "";
+      totalQuotaDisplay = hasProviderSnapshot ? "" : (catalogPlan.total_quota_display || "");
       const providerCatalog = getProviderCatalog(providerId);
       quotaCatalogVersion = providerCatalog?.catalog_version || "";
       quotaSource = hasProviderSnapshot ? "provider_reported" : "catalog";
@@ -2952,27 +3252,17 @@ function createLocalApiHandler({
       if (!quotaUnit) quotaUnit = "tokens";
     }
 
-    const usedQuota = numberFieldNonNegative("used_quota");
-    const remainingQuota = numberFieldNonNegative("remaining_quota");
-
-    // W03-R3D: When a detection method is configured, do NOT allow manual quota
-    // entry to overwrite previously-detected values. Detection is the primary path.
-    const detectionMethod = String(input.detection_method ?? fallbackInput.detection_method ?? "").trim();
-    const hasDetectionConfigured = detectionMethod && detectionMethod !== "not_configured";
-    let finalUsedQuota = usedQuota;
-    let finalRemainingQuota = remainingQuota;
-    let finalExpiresAt = expiresAt;
-    if (hasDetectionConfigured) {
-      // If the incoming value is zero/empty but fallback has a real value,
-      // preserve the fallback (previously-detected) value.
-      const fallbackUsedRaw = fallbackInput.used_quota ?? 0;
-      const fallbackUsed = Number.isFinite(Number(fallbackUsedRaw)) ? Number(fallbackUsedRaw) : 0;
-      const fallbackRemainingRaw = fallbackInput.remaining_quota ?? 0;
-      const fallbackRemaining = Number.isFinite(Number(fallbackRemainingRaw)) ? Number(fallbackRemainingRaw) : 0;
-      const fallbackExpires = String(fallbackInput.expires_at ?? "").trim();
-      if (usedQuota === 0 && fallbackUsed > 0) finalUsedQuota = fallbackUsed;
-      if (remainingQuota === 0 && fallbackRemaining > 0) finalRemainingQuota = fallbackRemaining;
-      if (!expiresAt && fallbackExpires) finalExpiresAt = fallbackExpires;
+    let usedQuota = numberFieldNonNegative("used_quota");
+    let remainingQuota = numberFieldNonNegative("remaining_quota");
+    const fallbackExpiresAt = String(fallbackInput.expires_at ?? "").trim();
+    let finalExpiresAt = fallbackExpiresAt;
+    if (shouldApplyIncomingProviderField("expires_at")) {
+      const incomingExpiresAt = String(input.expires_at ?? "").trim();
+      if (incomingExpiresAt) {
+        finalExpiresAt = incomingExpiresAt;
+      } else if (!hasDetectionConfigured || freshReportedFields.includes("expires_at")) {
+        finalExpiresAt = "";
+      }
     }
 
     const refreshFields = tokenPlanRefresh.ensureStatusFields({
@@ -2995,12 +3285,48 @@ function createLocalApiHandler({
     }
 
     const quotaWindows = tokenPlanRefresh.normalizeQuotaWindows(
-      input.quota_windows,
+      shouldApplyIncomingProviderField("quota_windows") ? input.quota_windows : undefined,
       fallbackInput.quota_windows,
     );
-
-    // W03-R3A: Normalize detection fields (new detection_method, sync_status, etc.)
-    const detectionFields = tokenPlanRefresh.normalizeDetectionFields(input, fallbackInput);
+    const omitCursorTopLevel = providerId === "cursor"
+      && Boolean(providerReportedAt)
+      && providerReportedFields.includes("quota_windows")
+      && !quotaWindows.some((window) => window.lane_id === "overall");
+    if (omitCursorTopLevel) {
+      providerReportedFields = providerReportedFields.filter((field) => (
+        !["total_quota", "used_quota", "remaining_quota"].includes(field)
+      ));
+    }
+    let hasGlmLivePrimary = false;
+    if (isGlm) {
+      if (entitlementRevision === "legacy_v2_prompts") {
+        quotaCatalogVersion = "2026-07-08";
+      } else if (entitlementRevision === "current_v3_points") {
+        quotaCatalogVersion = getProviderCatalog("glm")?.catalog_version || "2026-08-20";
+      }
+      const primaryWindow = providerReportedAt && providerReportedFields.includes("quota_windows")
+        ? (quotaWindows.find((window) => window.kind === "rolling_weekly")
+          || quotaWindows.find((window) => window.kind === "rolling_5_hour"))
+        : null;
+      if (primaryWindow) {
+        hasGlmLivePrimary = true;
+        quotaKind = "rolling_window";
+        quotaUnit = primaryWindow.unit;
+        totalQuota = primaryWindow.total;
+        usedQuota = primaryWindow.used;
+        remainingQuota = primaryWindow.remaining;
+        totalQuotaDisplay = "";
+        quotaSource = "provider_reported";
+        const liveFields = new Set([
+          ...providerReportedFields,
+          "total_quota",
+          "used_quota",
+          "remaining_quota",
+          "quota_windows",
+        ]);
+        providerReportedFields = TOKEN_PLAN_PROVIDER_FIELD_ORDER.filter((field) => liveFields.has(field));
+      }
+    }
 
     const notes = String(input.notes ?? fallbackInput.notes ?? "").trim().slice(0, 200);
     const displayOrderValue = Number(input.display_order ?? fallbackInput.display_order ?? 0);
@@ -3022,14 +3348,22 @@ function createLocalApiHandler({
       provider_id: providerId,
       plan_id: planId,
       plan_label: catalogPlan ? catalogPlan.display_name : planLabel,
-      quota_kind: quotaKind,
-      quota_unit: quotaUnit,
-      total_quota: totalQuota,
-      total_quota_display: totalQuotaDisplay,
+      ...(!isGlm || hasGlmLivePrimary ? {
+        quota_kind: quotaKind,
+        quota_unit: quotaUnit,
+        quota_source: quotaSource,
+        ...(!omitCursorTopLevel ? {
+          total_quota: totalQuota,
+          total_quota_display: totalQuotaDisplay,
+          used_quota: usedQuota,
+          remaining_quota: remainingQuota,
+        } : {}),
+      } : {}),
       quota_catalog_version: quotaCatalogVersion,
-      quota_source: quotaSource,
-      used_quota: finalUsedQuota,
-      remaining_quota: finalRemainingQuota,
+      ...(isGlm || entitlementRevision || entitlementWindows.length > 0 ? {
+        entitlement_revision: entitlementRevision,
+        entitlement_windows: entitlementWindows,
+      } : {}),
       expires_at: finalExpiresAt,
       refresh_enabled: refreshFields.refresh_enabled,
       refresh_interval_minutes: refreshFields.refresh_interval_minutes,
@@ -3047,7 +3381,13 @@ function createLocalApiHandler({
       last_synced_at: detectionFields.last_synced_at,
       last_error_code: detectionFields.last_error_code,
       last_error_message: detectionFields.last_error_message,
-      provider_reported_at: detectionFields.provider_reported_at,
+      provider_reported_at: providerReportedAt,
+      provider_reported_fields: providerReportedFields,
+      ...(fetchedAt ? { fetched_at: fetchedAt } : {}),
+      ...(observedAt ? { observed_at: observedAt } : {}),
+      ...(sourceKind ? { source_kind: sourceKind } : {}),
+      ...(supportTier ? { support_tier: supportTier } : {}),
+      ...(hasPartialEvidence ? { partial } : {}),
       subscription_amount: Number.isFinite(subscriptionAmountRaw) && subscriptionAmountRaw > 0
         ? subscriptionAmountRaw
         : 0,
@@ -3066,7 +3406,16 @@ function createLocalApiHandler({
   function readTokenPlanRecords() {
     const config = readTrackerConfig();
     const records = Array.isArray(config.tokenPlans) ? config.tokenPlans : [];
-    return records
+    const migratedRecords = records.map((record) => (
+      record && record.source === "kiro-cli"
+        ? { ...record, source: "kiro" }
+        : record
+    ));
+    if (migratedRecords.some((record, index) => record !== records[index])) {
+      config.tokenPlans = migratedRecords;
+      writeTrackerConfig(config);
+    }
+    return migratedRecords
       .map((record, index) => normalizeTokenPlanRecord(record, { display_order: index }))
       .sort((left, right) => left.display_order - right.display_order)
       .map((record, index) => ({ ...record, display_order: index }));
@@ -3144,7 +3493,12 @@ function createLocalApiHandler({
     const existingIndex = current.findIndex((record) => String(record?.id || "") === id);
     const fallback = existingIndex >= 0 ? current[existingIndex] : { id };
     validateTokenPlanCatalogSelection({ ...payload, id }, fallback);
-    const record = normalizeTokenPlanRecord({ ...payload, id }, fallback);
+    validateDirectTokenPlanPayload(payload, fallback);
+    const record = normalizeTokenPlanRecord(
+      { ...payload, id },
+      fallback,
+      { isMutation: true, hasExisting: existingIndex >= 0 },
+    );
     record.updated_at = new Date(nowProvider()).toISOString();
     record.display_order = existingIndex >= 0
       ? Number.isSafeInteger(Number(fallback.display_order)) ? Number(fallback.display_order) : existingIndex
@@ -3367,6 +3721,7 @@ function createLocalApiHandler({
     upsertAll: (records) => writeAllTokenPlanRecords(records),
     logger: console,
     resolveApiKey: resolveTokenPlanApiKey,
+    testMode: providerApiTestMode === true,
   });
 
   function startTokenPlanScheduler() {
@@ -3391,6 +3746,9 @@ function createLocalApiHandler({
   //   login_started  -> mirror of native LOGIN_STARTED, kept for symmetry
   //   awaiting_verification -> native verify returned AWAITING_VERIFICATION
   //   connected      -> only after native verify returns state_code=connected
+  //   reauth_required -> Xiaomi authorization must be completed again
+  //   temporary      -> Xiaomi provider/network failure that can be retried
+  //   unsupported    -> Xiaomi provider response schema is not supported
   //   expired        -> native verify determined the session is no longer live
   //   revoked        -> the user deleted the session
   //   failed         -> non-official domain, session not found, or other error
@@ -3401,11 +3759,35 @@ function createLocalApiHandler({
     "login_started",
     "awaiting_verification",
     "connected",
+    "reauth_required",
+    "temporary",
+    "unsupported",
     "expired",
     "revoked",
     "failed",
   ]);
-  const TERMINAL_FAILURE_STATUSES = new Set(["expired", "revoked", "failed"]);
+  const TERMINAL_FAILURE_STATUSES = new Set([
+    "reauth_required",
+    "temporary",
+    "unsupported",
+    "expired",
+    "revoked",
+    "failed",
+  ]);
+  const XIAOMI_TERMINAL_WARNINGS = Object.freeze({
+    reauth_required: {
+      errorCode: "REAUTH_REQUIRED",
+      errorMessage: "Xiaomi MiMo authorization must be completed again.",
+    },
+    temporary: {
+      errorCode: "TEMPORARY",
+      errorMessage: "Xiaomi MiMo quota service is temporarily unavailable.",
+    },
+    unsupported: {
+      errorCode: "UNSUPPORTED",
+      errorMessage: "Xiaomi MiMo quota response is unsupported.",
+    },
+  });
 
   function readConsoleSessions() {
     const config = readTrackerConfig();
@@ -3442,14 +3824,36 @@ function createLocalApiHandler({
     if (!input || typeof input !== "object") return null;
     const balance = Number(input.balance);
     const availableBalance = Number(input.available_balance ?? input.availableBalance);
-    const creditBalance = Number(input.credit_balance ?? input.creditBalance);
-    if (![balance, availableBalance, creditBalance].every(Number.isFinite)) return null;
+    const rawCreditBalance = input.credit_balance ?? input.creditBalance;
+    const hasCreditBalance = rawCreditBalance !== null
+      && rawCreditBalance !== undefined
+      && rawCreditBalance !== "";
+    const creditBalance = hasCreditBalance ? Number(rawCreditBalance) : null;
+    if (![balance, availableBalance].every(Number.isFinite)) return null;
+    if (hasCreditBalance && !Number.isFinite(creditBalance)) return null;
+    const providerReportedAt = String(input.provider_reported_at || "").trim();
+    const fetchedAt = String(input.fetched_at || "").trim();
+    const observedAt = String(input.observed_at || "").trim();
+    const providerReportedFields = Array.isArray(input.provider_reported_fields)
+      ? ["balance", "available_balance", "credit_balance"]
+        .filter((field) => input.provider_reported_fields.includes(field))
+      : null;
+    const sourceKind = String(input.source_kind || "").trim().slice(0, 64);
+    const supportTier = String(input.support_tier || "").trim().slice(0, 64);
     return {
       balance,
       available_balance: availableBalance,
       credit_balance: creditBalance,
       currency: String(input.currency || "CNY"),
-      provider_reported_at: String(input.provider_reported_at || new Date().toISOString()),
+      ...(providerReportedAt ? { provider_reported_at: providerReportedAt } : {}),
+      ...(providerReportedFields ? { provider_reported_fields: providerReportedFields } : {}),
+      ...(fetchedAt ? { fetched_at: fetchedAt } : {}),
+      ...(observedAt ? { observed_at: observedAt } : {}),
+      ...(sourceKind ? { source_kind: sourceKind } : {}),
+      ...(supportTier ? { support_tier: supportTier } : {}),
+      ...(Object.prototype.hasOwnProperty.call(input, "partial") || !hasCreditBalance
+        ? { partial: Boolean(input.partial || !hasCreditBalance) }
+        : {}),
     };
   }
 
@@ -3599,20 +4003,36 @@ function createLocalApiHandler({
       }
     }
 
+    const verifiedAt = new Date().toISOString();
+    const nativeErrorCode = String(native.error_code || "").trim();
+    const nativeErrorMessage = String(native.error_message || "").trim();
+    const isCodexAuthorizationState = session.provider_id === "codex"
+      && (nativeState === "connected" || nativeState === "authorized");
+    const hasValidAuthorizationTuple = nativeConnected && nativeAuthorized;
+
     if (nativeConnected && (
-      nativeState === "connected"
+      (nativeState === "connected" && (!isCodexAuthorizationState || nativeAuthorized))
       || (nativeAuthorized && nativeState === "authorized")
     )) {
       session.status = "connected";
-      session.last_verified_at = new Date().toISOString();
-      const quotaSyncPending = nativeState === "authorized"
-        && String(native.quota_sync_status || "").trim() === "idle";
-      session.last_error_code = nativeState === "authorized" && !quotaSyncPending
-        ? String(native.error_code || "QUOTA_SYNC_FAILED").slice(0, 64)
-        : "";
-      session.last_error_message = nativeState === "authorized" && !quotaSyncPending
-        ? String(native.error_message || "Authorization completed, but quota sync failed").slice(0, 256)
-        : "";
+      session.last_verified_at = verifiedAt;
+      const quotaSyncStatus = String(native.quota_sync_status || "").trim();
+      const hasQuotaWarning = nativeAuthorized && quotaSyncStatus === "error";
+      if (hasQuotaWarning) {
+        session.last_error_code = "QUOTA_SYNC_FAILED";
+        session.last_error_message = String(
+          nativeErrorMessage || "Authorization completed, but quota sync failed"
+        ).slice(0, 256);
+      } else if (nativeErrorCode === "CODEX_LOGOUT_FAILED") {
+        session.last_error_code = "CODEX_LOGOUT_FAILED";
+        session.last_error_message = "Unable to confirm Codex logout; the local binding was kept for retry.";
+      } else if (nativeErrorCode === "LEGACY_CREDENTIAL_CLEANUP_FAILED") {
+        session.last_error_code = "LEGACY_CREDENTIAL_CLEANUP_FAILED";
+        session.last_error_message = "Legacy Codex credential cleanup can be retried without reconnecting.";
+      } else {
+        session.last_error_code = "";
+        session.last_error_message = "";
+      }
       if (!session.connected_at) {
         session.connected_at = session.last_verified_at;
       }
@@ -3620,27 +4040,92 @@ function createLocalApiHandler({
       if (balance) {
         session.balance = balance;
       }
-    } else if (nativeState === "non_official_domain" || nativeState === "session_not_found") {
+    } else if (isCodexAuthorizationState && !hasValidAuthorizationTuple) {
       session.status = "failed";
-      session.last_verified_at = new Date().toISOString();
-      session.last_error_code = String(native.error_code || nativeState).slice(0, 64);
+      session.connected_at = "";
+      session.last_verified_at = verifiedAt;
+      session.last_error_code = "AUTHORIZATION_FAILED";
+      session.last_error_message = "Native Codex authorization status was inconsistent; reconnect from Token Eyes.";
+    } else if (nativeState === "disconnected") {
+      const cleanDisconnect = !nativeConnected
+        && !nativeAuthorized
+        && !nativeErrorCode
+        && !nativeErrorMessage;
+      if (cleanDisconnect) {
+        session.status = "disconnected";
+        session.connected_at = "";
+        session.last_verified_at = verifiedAt;
+        session.last_error_code = "";
+        session.last_error_message = "";
+        current.splice(index, 1);
+        config.consoleSessions = current;
+        writeTrackerConfig(config);
+        return { session, sessions: readConsoleSessions() };
+      }
+      session.last_verified_at = verifiedAt;
+      session.last_error_code = session.provider_id === "codex"
+        ? "CODEX_LOGOUT_FAILED"
+        : "AUTHORIZATION_FAILED";
+      session.last_error_message = session.provider_id === "codex"
+        ? "Unable to confirm Codex logout; the local binding was kept for retry."
+        : "Unable to confirm logout; the local binding was kept for retry.";
+    } else if (nativeState === "session_not_found") {
+      const previousErrorCode = String(session.last_error_code || "").trim();
+      const wasSpecificFailure = session.status === "failed"
+        && Boolean(previousErrorCode)
+        && previousErrorCode.toUpperCase() !== "SESSION_NOT_FOUND";
+      session.status = "failed";
+      session.last_verified_at = verifiedAt;
+      if (!wasSpecificFailure) {
+        session.last_error_code = "SESSION_NOT_FOUND";
+        session.last_error_message = String(
+          native.error_message || "The native authorization session is no longer available."
+        ).slice(0, 256);
+      }
+    } else if (
+      session.provider_id === "xiaomi_mimo"
+      && Object.prototype.hasOwnProperty.call(XIAOMI_TERMINAL_WARNINGS, nativeState)
+    ) {
+      const warning = XIAOMI_TERMINAL_WARNINGS[nativeState];
+      session.status = nativeState;
+      session.last_verified_at = verifiedAt;
+      session.last_error_code = warning.errorCode;
+      session.last_error_message = warning.errorMessage;
+    } else if (nativeState === "reauth_required") {
+      session.status = "failed";
+      session.last_verified_at = verifiedAt;
+      session.last_error_code = String(native.error_code || "REAUTH_REQUIRED").slice(0, 64);
+      session.last_error_message = String(
+        native.error_message || "Official authorization must be completed again."
+      ).slice(0, 256);
+    } else if (nativeState === "failed") {
+      session.status = "failed";
+      session.last_verified_at = verifiedAt;
+      session.last_error_code = String(native.error_code || "AUTHORIZATION_FAILED").slice(0, 64);
+      session.last_error_message = String(
+        native.error_message || "Official authorization did not complete."
+      ).slice(0, 256);
+    } else if (nativeState === "non_official_domain") {
+      session.status = "failed";
+      session.last_verified_at = verifiedAt;
+      session.last_error_code = String(native.error_code || "NON_OFFICIAL_DOMAIN").slice(0, 64);
       session.last_error_message = String(native.error_message || "").slice(0, 256);
     } else if (nativeState === "login_started" || nativeState === "awaiting_verification") {
       session.status = "awaiting_verification";
-      session.last_verified_at = new Date().toISOString();
+      session.last_verified_at = verifiedAt;
       session.last_error_code = "";
       session.last_error_message = "";
     } else if (nativeState === "desktop_session_not_verified" || nativeState === "not_verified") {
       session.status = "failed";
-      session.last_verified_at = new Date().toISOString();
+      session.last_verified_at = verifiedAt;
       session.last_error_code = String(native.error_code || "DESKTOP_SESSION_NOT_VERIFIED").slice(0, 64);
       session.last_error_message = String(
         native.error_message || "桌面端尚未完成真实控制台验证"
       ).slice(0, 256);
     } else {
       session.status = "failed";
-      session.last_verified_at = new Date().toISOString();
-      session.last_error_code = String(native.error_code || "VERIFY_FAILED").slice(0, 64);
+      session.last_verified_at = verifiedAt;
+      session.last_error_code = String(native.error_code || "AUTHORIZATION_FAILED").slice(0, 64);
       session.last_error_message = String(native.error_message || "验证失败").slice(0, 256);
     }
 
@@ -4902,6 +5387,28 @@ function createLocalApiHandler({
     totals.reasoning_output_tokens = queueTotals.reasoning_output_tokens;
     totals.total_tokens = queueTotals.total_tokens;
     totals.cost_usd = queueTotals.cost_usd;
+    totals.priced_tokens = queueTotals.priced_tokens;
+    totals.unpriced_tokens = queueTotals.unpriced_tokens;
+    totals.pricing_coverage = queueTotals.pricing_coverage;
+    totals.pricing_source = queueTotals.pricing_source;
+    totals.pricing_version = queueTotals.pricing_version;
+    totals.source_kind = queueTotals.source_kind;
+    totals.source_url = queueTotals.source_url;
+    totals.source_updated_at = queueTotals.source_updated_at;
+    totals.observed_at = queueTotals.observed_at;
+    totals.is_stale = queueTotals.is_stale;
+    totals.estimated = queueTotals.estimated;
+    totals.match_kind = queueTotals.match_kind;
+    totals.matched_model = queueTotals.matched_model;
+    totals.note_code = queueTotals.note_code;
+    totals.pricing_components = queueTotals.pricing_components;
+    if (queueTotals.total_tokens > 0 && queueTotals.pricing_coverage === "unpriced") {
+      totals.api_cost_usd = null;
+      totals.api_cost_cny = null;
+      totals.api_usd = null;
+      totals.combined_usd = null;
+      totals.combined_cny = null;
+    }
 
     const bySourceMap = new Map();
     for (const source of allSources) {
@@ -6210,8 +6717,6 @@ function createLocalApiHandler({
         },
         { total_tokens: 0, billable_total_tokens: 0, total_cost_usd: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 },
       );
-      const totalCost = totals.total_cost_usd;
-
       // Shared queue aggregator — guarantees three-way caliber consistency
       // with spend-timeseries totals and request-usage-records queue_baseline_totals.
       const queueTotals = computeQueueTotals(scopedRows, {
@@ -6222,6 +6727,7 @@ function createLocalApiHandler({
         sources: effectiveSources,
         models: modelsParam,
       });
+      const totalCost = queueTotals.cost_usd;
 
       const todayParts = getZonedParts(new Date(), timeZoneContext);
       const todayStr = formatPartsDayKey(todayParts) || new Date().toISOString().slice(0, 10);
@@ -6284,7 +6790,7 @@ function createLocalApiHandler({
         models: modelsParam,
         totals: {
           ...totals,
-          total_cost_usd: totalCost.toFixed(6),
+          total_cost_usd: totalCost === null ? null : Number(totalCost).toFixed(6),
           cost_usd: queueTotals.cost_usd,
           request_count: null,
           display_request_count: queueTotals.conversation_count,
@@ -6574,7 +7080,7 @@ function createLocalApiHandler({
         const src = row.source || "unknown";
         const mdl = row.model || "unknown";
         if (!bySource.has(src))
-          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeCostTotals: { api_key: 0, token_plan: 0, unknown: 0 }, models: new Map() });
+          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeCostTotals: { api_key: 0, token_plan: 0, unknown: 0 }, pricingRecords: [], models: new Map() });
         const sa = bySource.get(src);
         sa.totals.total_tokens += row.total_tokens || 0;
         sa.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -6584,7 +7090,7 @@ function createLocalApiHandler({
         sa.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         sa.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
         if (!sa.models.has(mdl))
-          bySource.get(src).models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeCostTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeConfidences: {} });
+          bySource.get(src).models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, billingModeTokenTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeCostTotals: { api_key: 0, token_plan: 0, unknown: 0 }, billingModeConfidences: {}, pricingRecords: [] });
         const ma = sa.models.get(mdl);
         ma.totals.total_tokens += row.total_tokens || 0;
         ma.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -6597,20 +7103,39 @@ function createLocalApiHandler({
           { tokenTotals: sa.billingModeTokenTotals },
           { tokenTotals: ma.billingModeTokenTotals, confidences: ma.billingModeConfidences },
         ], row);
-        const rowCost = computeRowCost(row, pricingOptions);
-        sa.billingModeCostTotals[billingMode] += rowCost;
-        ma.billingModeCostTotals[billingMode] += rowCost;
+        const rowCost = computeRowCostDetailed(row, pricingOptions);
+        sa.pricingRecords.push(rowCost);
+        ma.pricingRecords.push(rowCost);
+        if (Number.isFinite(rowCost.cost_usd)) {
+          sa.billingModeCostTotals[billingMode] += rowCost.cost_usd;
+          ma.billingModeCostTotals[billingMode] += rowCost.cost_usd;
+        }
       }
+
+      const summarizeBreakdownPricing = (pricingRecords) => {
+        const summary = summarizePricingProvenance(pricingRecords);
+        const totals = summary.pricing_components.reduce((acc, component) => {
+          acc.priced_tokens += Number(component.priced_tokens || 0);
+          acc.unpriced_tokens += Number(component.unpriced_tokens || 0);
+          if (component.cost_usd !== null && Number.isFinite(Number(component.cost_usd))) {
+            acc.cost_usd += Number(component.cost_usd);
+            acc.has_cost = true;
+          }
+          return acc;
+        }, { cost_usd: 0, has_cost: false, priced_tokens: 0, unpriced_tokens: 0 });
+        return {
+          summary,
+          cost_usd: totals.has_cost ? totals.cost_usd.toFixed(6) : null,
+          priced_tokens: totals.priced_tokens,
+          unpriced_tokens: totals.unpriced_tokens,
+        };
+      };
 
       const sources = Array.from(bySource.values()).map((s) => {
         const sourceBillingTotals = s.billingModeTokenTotals;
         s.models = Array.from(s.models.values())
           .map((m) => {
-            const cost = computeRowCost({
-              ...m.totals,
-              model: m.model,
-              source: s.source,
-            }, pricingOptions);
+            const pricing = summarizeBreakdownPricing(m.pricingRecords);
             const billingModeTokenTotals = m.billingModeTokenTotals;
             const billingModeCostTotals = Object.fromEntries(
               Object.entries(m.billingModeCostTotals)
@@ -6623,10 +7148,17 @@ function createLocalApiHandler({
             const confidence = activeModes.length === 1
               ? m.billingModeConfidences[mode] || "unavailable"
               : "unavailable";
-            const { billingModeConfidences: _confidences, billingModeTokenTotals: _totals, billingModeCostTotals: _costs, ...model } = m;
+            const { billingModeConfidences: _confidences, billingModeTokenTotals: _totals, billingModeCostTotals: _costs, pricingRecords: _pricingRecords, ...model } = m;
             return {
               ...model,
-              totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
+              totals: {
+                ...m.totals,
+                total_cost_usd: pricing.cost_usd,
+                priced_tokens: pricing.priced_tokens,
+                unpriced_tokens: pricing.unpriced_tokens,
+                pricing_coverage: pricing.summary.pricing_coverage,
+              },
+              ...pricing.summary,
               billing_mode: mode,
               billing_mode_confidence: confidence,
               billing_mode_token_totals: billingModeTokenTotals,
@@ -6634,8 +7166,12 @@ function createLocalApiHandler({
             };
           })
           .sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
-        const sourceCost = s.models.reduce((sum, m) => sum + Number(m.totals.total_cost_usd), 0);
-        s.totals.total_cost_usd = sourceCost.toFixed(6);
+        const sourcePricing = summarizeBreakdownPricing(s.pricingRecords);
+        s.totals.total_cost_usd = sourcePricing.cost_usd;
+        s.totals.priced_tokens = sourcePricing.priced_tokens;
+        s.totals.unpriced_tokens = sourcePricing.unpriced_tokens;
+        s.totals.pricing_coverage = sourcePricing.summary.pricing_coverage;
+        Object.assign(s, sourcePricing.summary);
         const summary = summarizeSourceBillingMode(
           Object.entries(sourceBillingTotals)
             .filter(([, total]) => total > 0)
@@ -6650,6 +7186,7 @@ function createLocalApiHandler({
         );
         delete s.billingModeTokenTotals;
         delete s.billingModeCostTotals;
+        delete s.pricingRecords;
         return s;
       });
 
@@ -7352,7 +7889,8 @@ function createLocalApiHandler({
           const body = await readJsonBody(req);
           json(res, { ok: true, ...upsertTokenPlanRecord(body) });
         } catch (e) {
-          json(res, { ok: false, error: e?.message || "Unable to save token plan" }, e?.statusCode || 500);
+          const statusCode = e?.statusCode || (e instanceof SyntaxError ? 400 : 500);
+          json(res, { ok: false, error: e?.message || "Unable to save token plan" }, statusCode);
         }
         return true;
       }
@@ -7529,6 +8067,8 @@ function createLocalApiHandler({
           spendRecords: spendResult.records || [],
           queuePath: qp,
           monthKey: billingMonth || null,
+          pricingOptions: getPricingOptions(),
+          nowMs: nowProvider().getTime(),
           options: {
             home: handlerHome,
             env: handlerEnv,
@@ -7563,6 +8103,21 @@ function createLocalApiHandler({
             candidateCount: officialCostsConfigs.length,
             providerApiConfigured: true,
             providerApiBalance: null,
+            lastSyncedAt: null,
+            stale: false,
+            pricing_source: null,
+            pricing_version: null,
+            source_kind: null,
+            source_url: null,
+            source_updated_at: null,
+            observed_at: null,
+            is_stale: false,
+            estimated: false,
+            match_kind: null,
+            matched_model: null,
+            note_code: "official_invoice_ambiguous",
+            pricing_coverage: null,
+            pricing_components: [],
           });
         }
         for (const providerConfig of officialCostsConfigs.length === 1 ? officialCostsConfigs : []) {
@@ -7587,15 +8142,31 @@ function createLocalApiHandler({
             };
             accounts.push(account);
           }
-          account.billingSource = "api";
-          account.spendAuthority = "official_invoice";
-          account.monthCostUsd = officialInvoice.monthCostUsd;
-          account.lifetimeCostUsd = officialInvoice.lifetimeCostUsd;
-          account.monthKey = officialInvoice.monthKey;
-          account.billingPeriodStart = officialInvoice.billingPeriodStart;
-          account.billingPeriodEnd = officialInvoice.billingPeriodEnd;
-          account.status = "synced";
-          account.lastSyncedAt = officialInvoice.lastSyncedAt;
+          Object.assign(account, {
+            billingSource: "api",
+            spendAuthority: "official_invoice",
+            monthCostUsd: officialInvoice.monthCostUsd,
+            lifetimeCostUsd: officialInvoice.lifetimeCostUsd,
+            monthKey: officialInvoice.monthKey,
+            billingPeriodStart: officialInvoice.billingPeriodStart,
+            billingPeriodEnd: officialInvoice.billingPeriodEnd,
+            status: "synced",
+            lastSyncedAt: officialInvoice.lastSyncedAt,
+            stale: false,
+            pricing_source: "openai-costs-api",
+            pricing_version: null,
+            source_kind: "official_api",
+            source_url: providerConfig.requestUrl,
+            source_updated_at: null,
+            observed_at: officialInvoice.lastSyncedAt,
+            is_stale: false,
+            estimated: false,
+            match_kind: null,
+            matched_model: null,
+            note_code: "official_invoice",
+            pricing_coverage: officialInvoice.lifetimeCostUsd === null ? "partial" : "complete",
+            pricing_components: [],
+          });
         }
         for (const account of accounts) {
           // Find matching provider API config by providerId
@@ -7982,7 +8553,7 @@ function createLocalApiHandler({
                 currency: String(snapshot.currency || "CNY"),
                 errorCode: snapshot.stale ? String(snapshot.error_code || providerApiBalance.ERROR_CODES.PROVIDER_UNAVAILABLE) : undefined,
                 errorMessage: snapshot.stale ? String(snapshot.error_message || "刷新失败，当前显示的是上次成功余额。") : undefined,
-                lastSyncedAt: String(snapshot.provider_reported_at || new Date().toISOString()),
+                lastSyncedAt: String(snapshot.provider_reported_at || snapshot.fetched_at || snapshot.observed_at || "") || null,
               });
             }
             return providerApiBalance.makeBalance(c, {

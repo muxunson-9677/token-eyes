@@ -21,6 +21,9 @@ import {
   createConsoleSession,
   deleteConsoleSession,
   verifyConsoleSession,
+  openXiaomiMimoConsoleLogin,
+  verifyXiaomiMimoConsoleSession,
+  deleteXiaomiMimoConsoleSession,
 } from "../../lib/api";
 
 // 03-ia-api-balance: ProviderApiConfigSection tests.
@@ -86,6 +89,20 @@ const BASE_CONFIG = {
   enabled: true,
   apiKeyRef: "ref-secret-1",
   nonSecretHeaders: { "X-Org-Id": "12345" },
+};
+
+const XIAOMI_CONFIG = {
+  ...BASE_CONFIG,
+  id: "xiaomi-config",
+  providerId: "xiaomi_mimo",
+  label: "Xiaomi MiMo",
+  requestUrl: "https://platform.xiaomimimo.com/console/balance",
+  authType: "official_console",
+  apiKeyRef: "",
+  balancePath: "balance.available_balance",
+  monthSpendPath: "",
+  lifetimeSpendPath: "",
+  currencyPath: "balance.currency",
 };
 
 beforeEach(() => {
@@ -547,6 +564,21 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
     expect(document.querySelector("input[type='password']")).toBeNull();
   });
 
+  it("Xiaomi mode discloses that its official-console API is undocumented and may change", async () => {
+    const user = userEvent.setup();
+    await openAddForm(user);
+
+    await act(async () => {
+      await user.selectOptions(
+        screen.getByLabelText("settings.cost.provider_api.form.api_mode"),
+        "xiaomi_mimo",
+      );
+    });
+
+    expect(screen.getByText("settings.cost.provider_api.capability.xiaomi_console_best_effort"))
+      .toBeInTheDocument();
+  });
+
   it("add form shows only name/url/key/enable by default; balance paths are in advanced", async () => {
     const user = userEvent.setup();
     await openAddForm(user);
@@ -832,6 +864,97 @@ describe("ProviderApiConfigSection (03-ia-api-balance)", () => {
 
       await waitFor(() => expect(screen.getByText(expectedKey)).toBeInTheDocument());
     });
+  });
+
+  it.each([
+    {
+      stateCode: "reauth_required",
+      errorCode: "REAUTH_REQUIRED",
+      expectedKey: "settings.cost.provider_api.console_reauth_required",
+    },
+    {
+      stateCode: "temporary",
+      errorCode: "NETWORK_ERROR",
+      expectedKey: "settings.cost.provider_api.console_temporary",
+    },
+    {
+      stateCode: "unsupported",
+      errorCode: "UNSUPPORTED",
+      expectedKey: "settings.cost.provider_api.console_unsupported",
+    },
+  ])("shows the stable Xiaomi $stateCode warning and stops official-console verification", async ({ stateCode, errorCode, expectedKey }) => {
+    const user = userEvent.setup();
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [XIAOMI_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: {
+        balances: [{
+          configId: XIAOMI_CONFIG.id,
+          providerId: XIAOMI_CONFIG.providerId,
+          status: "stale",
+          balance: 88.5,
+          currency: "CNY",
+          lastSyncedAt: "2026-08-20T10:00:00.000Z",
+        }],
+      },
+    });
+    openXiaomiMimoConsoleLogin.mockResolvedValue({ connected: false, state_code: "login_started" });
+    verifyXiaomiMimoConsoleSession
+      .mockResolvedValueOnce({
+        connected: false,
+        state_code: stateCode,
+        error_code: errorCode,
+        error_message: `${TEST_SECRET}-${stateCode}`,
+      })
+      .mockResolvedValue({
+        connected: false,
+        state_code: "failed",
+        error_code: "UNEXPECTED_SECOND_POLL",
+        error_message: "Verification should already have stopped",
+      });
+    deleteXiaomiMimoConsoleSession.mockResolvedValue({ connected: false, state_code: "disconnected" });
+
+    render(<ProviderApiConfigSection />);
+    await screen.findByText("Xiaomi MiMo");
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "settings.cost.provider_api.test" }));
+    });
+
+    await waitFor(() => expect(screen.getByText(expectedKey)).toBeInTheDocument());
+    expect(screen.getByTestId("provider-api-card-balance-xiaomi-config")).toHaveTextContent("88.50");
+    expect(verifyXiaomiMimoConsoleSession).toHaveBeenCalledTimes(1);
+    expect(verifyConsoleSession).toHaveBeenCalledWith(
+      "console-session",
+      expect.objectContaining({ state_code: stateCode, error_code: errorCode }),
+    );
+    expect(deleteXiaomiMimoConsoleSession).toHaveBeenCalledTimes(1);
+    expect(deleteConsoleSession).not.toHaveBeenCalled();
+    expect(testProviderApiConfig).not.toHaveBeenCalled();
+    expect(screen.queryByText("settings.cost.provider_api.test_unknown")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(TEST_SECRET);
+  });
+
+  it("renders the stable Xiaomi observation timestamp returned by the balance API", async () => {
+    const observedAt = "2026-08-20T12:34:56.000Z";
+    getProviderApiConfigs.mockResolvedValue({ ok: true, data: { configs: [XIAOMI_CONFIG] } });
+    getProviderApiBalances.mockResolvedValue({
+      ok: true,
+      data: {
+        balances: [{
+          configId: XIAOMI_CONFIG.id,
+          providerId: XIAOMI_CONFIG.providerId,
+          status: "synced",
+          balance: 100,
+          currency: "CNY",
+          lastSyncedAt: observedAt,
+        }],
+      },
+    });
+
+    render(<ProviderApiConfigSection />);
+
+    const financialRow = await screen.findByTestId("provider-api-card-financial-xiaomi-config");
+    expect(financialRow).toHaveTextContent(observedAt);
   });
 
   it("does NOT render any model call / chat / completion / 测试模型 button", async () => {

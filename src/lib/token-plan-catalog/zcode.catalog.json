@@ -1,15 +1,22 @@
 {
   "provider_id": "zcode",
   "provider_name": "ZCode",
-  "official_site": "https://zcode.z.ai/",
   "catalog_version": "2026-08-13",
-  "evidence": [
-    {
-      "url": "https://zcode.z.ai/",
-      "title": "ZCode 官方站点",
-      "accessed_at": "2026-08-13"
-    }
-  ],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "catalog-zcode-home",
+    "supports": [
+      "provider_identity"
+    ],
+    "verified": true,
+    "verified_at": "2026-08-13",
+    "fetched_at": "2026-08-13",
+    "content_sha256": "b7aff6442568b02381cb463b3a82f53e6274cf8a3c70b6baedec42cf1c5f78af",
+    "content_hash_kind": "normalized_extracted_fields_v1",
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
+  },
   "plans": [
     {
       "plan_id": "zcode_plan",
@@ -18,19 +25,49 @@
         "kind": "subscription_period",
         "total": 0,
         "unit": "tokens",
-        "display": "按订阅套餐分配的 Token 额度（实时用量以官方返回为准）"
+        "display": "按订阅套餐分配的 Token 额度（自动查询暂不支持）"
       },
       "expires": {
         "kind": "provider_reported"
       },
-      "official_evidence_url": "https://zcode.z.ai/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-zcode-home",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-08-13",
+        "fetched_at": "2026-08-13",
+        "content_sha256": "2d90028fd04851afe82f2c2a4d7c8060ba71b63b907ca696f35cc6fe9d811962",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
-    "official_quota_api": true,
+    "official_quota_api": false,
     "authorization": "local_encrypted_credentials",
-    "usage_endpoint_documented": true,
-    "fields_available": ["subscription", "total"],
-    "notes": "读取本机 ~/.zcode/v2/credentials.json 中的 zcode_jwt_token（AES-256-GCM），调用官方 billing/balance 接口按模型汇总额度。需在本机登录 ZCode。"
-  }
+    "usage_endpoint_documented": false,
+    "source_kind": "undocumented_api",
+    "support_tier": "unsupported",
+    "fields_available": [
+      "subscription",
+      "total"
+    ],
+    "notes": "当前观察到的本地凭据格式与额度 endpoint 缺少固定上游 fixture、版本来源 hash 和已验证 OS reader，因此自动查询保持 unsupported；Token Eyes 不派生主机密钥，也不会读取或发送未验证凭据。"
+  },
+  "official_site_link_id": "catalog-zcode-home",
+  "sources": [
+    {
+      "label": "ZCode 官方站点",
+      "link_id": "catalog-zcode-home",
+      "supports": [
+        "provider_identity",
+        "plan_identity"
+      ]
+    }
+  ]
 }

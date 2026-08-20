@@ -5,6 +5,25 @@ import { EN_LOCALE, ZH_CN_LOCALE } from "../../../lib/locale";
 import { UsageLimitsPanel } from "./UsageLimitsPanel.jsx";
 
 describe("UsageLimitsPanel", () => {
+  it("Task 8 renders independent Cursor team pool Auto and API lanes without an overall headline", () => {
+    render(
+      <UsageLimitsPanel
+        cursor={{
+          configured: true,
+          primary_window: null,
+          team_pool_window: { used_percent: 25, reset_at: "2026-08-21T00:00:00.000Z" },
+          secondary_window: { used_percent: 10.25, reset_at: "2026-08-21T00:00:00.000Z" },
+          tertiary_window: { used_percent: 70.75, reset_at: "2026-08-21T00:00:00.000Z" },
+        }}
+        order={["cursor"]}
+      />,
+    );
+
+    expect(screen.queryByText(copy("limits.label.cursor_plan"))).not.toBeInTheDocument();
+    expect(screen.getByText(copy("limits.label.cursor_team_pool"))).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.label.cursor_auto"))).toBeInTheDocument();
+    expect(screen.getByText(copy("limits.label.cursor_api"))).toBeInTheDocument();
+  });
   afterEach(() => {
     setCopyLocale(EN_LOCALE);
   });

@@ -230,6 +230,36 @@ test("provider-stats agent_ids is equivalent to sources filter", async () => {
   }
 });
 
+test("provider-stats maps simultaneous Kiro IDE and CLI agent ids to one kiro source filter", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-provider-kiro-agent-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await writeQueue(queuePath, [{
+      source: "kiro",
+      model: "kiro-cli-agent",
+      hour_start: "2026-05-09T10:00:00.000Z",
+      input_tokens: 40,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 10,
+      reasoning_output_tokens: 0,
+      total_tokens: 50,
+      conversation_count: 1,
+    }]);
+
+    const result = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-provider-stats?from=2026-05-09&to=2026-05-09&tz=UTC&agent_ids=kiro,kiro-cli",
+    );
+
+    assert.deepEqual(result.providers.map((provider) => provider.source), ["kiro"]);
+    assert.equal(result.providers[0].source_display_name, "Kiro（含 CLI）");
+    assert.equal(result.totals.total_tokens, 50);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("model-stats returns models sorted by tokens descending", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-model-stats-"));
   try {

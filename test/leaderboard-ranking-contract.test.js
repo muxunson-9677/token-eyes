@@ -17,7 +17,7 @@ const READER_PATH = path.join(
 const SQL_PATH = path.join(ROOT, "scripts/ops/leaderboard-ranking-rpc.sql");
 const AGENT_REGISTRY_PATH = path.join(
   ROOT,
-  "dashboard/src/lib/agent-adapters-dashboard.ts",
+  "shared/agent-registry.json",
 );
 
 function read(file) {
@@ -31,9 +31,7 @@ function extractQuotedValues(source, pattern, label) {
 }
 
 function extractAgentSources() {
-  return [...read(AGENT_REGISTRY_PATH).matchAll(/queueSource:\s*"([^"]+)"/g)].map(
-    (match) => match[1],
-  );
+  return JSON.parse(read(AGENT_REGISTRY_PATH)).adapters.map((adapter) => adapter.id);
 }
 
 test("leaderboard periods use Asia/Shanghai natural-day boundaries", () => {

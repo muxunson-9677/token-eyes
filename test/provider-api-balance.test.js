@@ -1391,6 +1391,65 @@ test("official-console balance is returned from a verified session without an AP
   }
 });
 
+test("Xiaomi official-console balance keeps client observation time stable across repeated GETs", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-xiaomi-freshness-"));
+  const observedAt = "2026-08-20T12:34:56.000Z";
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(path.join(trackerDir, "config.json"), JSON.stringify({
+      providerApiConfigs: [{
+        id: "xiaomi-config",
+        providerId: "xiaomi_mimo",
+        label: "Xiaomi MiMo",
+        requestUrl: "https://platform.xiaomimimo.com/console/balance",
+        requestMethod: "GET",
+        authType: "official_console",
+        apiKeyRef: "",
+        balancePath: "balance.available_balance",
+        monthSpendPath: "",
+        lifetimeSpendPath: "",
+        currencyPath: "balance.currency",
+        refreshIntervalSeconds: 300,
+        enabled: true,
+      }],
+      consoleSessions: [{
+        id: "xiaomi-session",
+        provider_id: "xiaomi_mimo",
+        auth_kind: "official_console_session",
+        display_name: "Xiaomi MiMo",
+        status: "connected",
+        session_ref: "provider-api/xiaomi_mimo/session/fixture",
+        connected_at: "2026-08-20T12:00:00.000Z",
+        last_verified_at: "2026-08-20T12:10:00.000Z",
+        balance: {
+          balance: 120,
+          available_balance: 100,
+          credit_balance: null,
+          currency: "CNY",
+          fetched_at: observedAt,
+          observed_at: observedAt,
+          source_kind: "undocumented_console_api",
+          support_tier: "best_effort",
+        },
+      }],
+    }), "utf8");
+
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      credentialStore: createTestCredentialStore(),
+    });
+
+    const first = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-balances"));
+    const second = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-balances"));
+    assert.equal(first.balances[0].lastSyncedAt, observedAt);
+    assert.equal(second.balances[0].lastSyncedAt, observedAt);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("official-console balance keeps the provider-account snapshot visible when refresh is stale", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-console-stale-"));
   try {

@@ -11,6 +11,7 @@ const { loadDashboardModule } = require("./helpers/load-dashboard-module");
 // by the existing dashboard-only tests.
 // ─────────────────────────────────────────────────────────────────────────────
 const localApi = require("../src/lib/local-api");
+const FRESH_PRICING_NOW_MS = Date.parse("2026-05-27T00:00:00.000Z");
 
 test("buildFleetData keeps usage tokens for fleet rows", async () => {
   const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
@@ -235,10 +236,13 @@ test("computeRowCost on kiro-cli-agent row is non-zero and matches claude-sonnet
     cache_creation_input_tokens: 0,
     reasoning_output_tokens: 0,
   };
-  const cost = localApi.computeRowCost(row);
+  const cost = localApi.computeRowCost(row, { nowMs: FRESH_PRICING_NOW_MS });
   assert.ok(cost > 0, "kiro-cli-agent row must have non-zero cost");
 
-  const sonnetCost = localApi.computeRowCost({ ...row, model: "claude-sonnet-4-6" });
+  const sonnetCost = localApi.computeRowCost(
+    { ...row, model: "claude-sonnet-4-6" },
+    { nowMs: FRESH_PRICING_NOW_MS },
+  );
   assert.equal(
     cost,
     sonnetCost,
@@ -260,7 +264,7 @@ test("computeRowCost on Codex row matches ccusage-style math on a cache-heavy tu
     output_tokens: 10_000,
     reasoning_output_tokens: 4_000, // informational; must NOT be billed again
   };
-  const cost = localApi.computeRowCost(row);
+  const cost = localApi.computeRowCost(row, { nowMs: FRESH_PRICING_NOW_MS });
 
   // gpt-5.4: input=$2.50, cache_read=$0.25, output=$15 per 1M.
   // 50_000 * 2.5/1e6   = 0.125
@@ -291,8 +295,11 @@ test("computeRowCost still bills reasoning for non-Codex sources (e.g. gemini)",
     output_tokens: 1_000,
     reasoning_output_tokens: 0,
   };
-  const withoutReasoning = localApi.computeRowCost(baseRow);
-  const withReasoning = localApi.computeRowCost({ ...baseRow, reasoning_output_tokens: 5_000 });
+  const withoutReasoning = localApi.computeRowCost(baseRow, { nowMs: FRESH_PRICING_NOW_MS });
+  const withReasoning = localApi.computeRowCost(
+    { ...baseRow, reasoning_output_tokens: 5_000 },
+    { nowMs: FRESH_PRICING_NOW_MS },
+  );
   assert.ok(
     withReasoning > withoutReasoning,
     "non-Codex source must still bill reasoning_output_tokens at the output rate",
@@ -501,6 +508,63 @@ test("(source, model) collapse: IDE + CLI both resolving to claude-sonnet-4 merg
     const fleet = mod.buildFleetData(body);
     const kiroFleet = fleet.find((f) => f.label === "KIRO");
     assert.equal(kiroFleet.models.length, 1);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("usage-model-breakdown exposes partial provenance for priced and unpriced models", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-model-pricing-partial-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const base = {
+      source: "custom-agent",
+      hour_start: "2026-04-20T10:00:00.000Z",
+      input_tokens: 1_000_000,
+      output_tokens: 1_000_000,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 2_000_000,
+      conversation_count: 1,
+    };
+    await writeQueue(queuePath, [
+      { ...base, model: "review-priced-model" },
+      { ...base, model: "review-unpriced-model" },
+    ]);
+    await fs.promises.writeFile(path.join(tmp, "config.json"), JSON.stringify({
+      pricingRules: [{
+        source: "custom-agent",
+        model: "review-priced-model",
+        inputPricePer1M: 1.5,
+        outputPricePer1M: 10,
+        currency: "USD",
+        updated_at: "2026-08-20T00:00:00.000Z",
+      }],
+    }));
+
+    const { body } = await callModelBreakdown(queuePath, "2026-04-20", "2026-04-20");
+    const source = body.sources.find((entry) => entry.source === "custom-agent");
+    const priced = source.models.find((model) => model.model === "review-priced-model");
+    const unpriced = source.models.find((model) => model.model === "review-unpriced-model");
+
+    assert.equal(priced.totals.total_cost_usd, "11.500000");
+    assert.equal(priced.pricing_coverage, "complete");
+    assert.equal(priced.source_kind, "user_override");
+    assert.equal(unpriced.totals.total_cost_usd, null);
+    assert.equal(unpriced.pricing_coverage, "unpriced");
+    assert.equal(unpriced.source_kind, "unpriced");
+
+    assert.equal(source.totals.total_cost_usd, "11.500000");
+    assert.equal(source.totals.priced_tokens, 2_000_000);
+    assert.equal(source.totals.unpriced_tokens, 2_000_000);
+    assert.equal(source.totals.pricing_coverage, "partial");
+    assert.equal(source.pricing_coverage, "partial");
+    assert.equal(source.source_kind, "mixed");
+    assert.deepEqual(
+      source.pricing_components.map((component) => component.source_kind).sort(),
+      ["unpriced", "user_override"],
+    );
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

@@ -1,7 +1,7 @@
 export type MetricAvailability = "measured" | "aggregate_only" | "unavailable";
 export type PricingCoverage = "complete" | "partial" | "unpriced";
 
-export type SourceKind = "official_api" | "session_log" | "sqlite" | "hook" | "otel" | "cache" | "estimated" | "user_override";
+export type SourceKind = "official_api" | "session_log" | "sqlite" | "hook" | "otel" | "cache" | "curated" | "estimated" | "mixed" | "third_party" | "unpriced" | "user_override";
 export type EvidenceAccuracy = "exact" | "normalized" | "estimated" | "unknown";
 export type EvidenceCoverage = "complete" | "partial" | "unavailable" | "unpriced";
 
@@ -33,6 +33,39 @@ export interface PricingCoverageFields {
   priced_tokens: number;
   unpriced_tokens: number;
   pricing_coverage: PricingCoverage;
+}
+
+export interface PricingProvenanceComponent {
+  source_kind: SourceKind;
+  record_count: number;
+  priced_tokens: number;
+  unpriced_tokens: number;
+  cost_usd: number | null;
+  estimated: boolean;
+  is_stale: boolean;
+  pricing_source: string | null;
+  pricing_version: string | null;
+  source_url: string | null;
+  source_updated_at: string | null;
+  match_kind: string | null;
+  matched_model: string | null;
+  note_code: string | null;
+  observed_at: string | null;
+}
+
+export interface PricingProvenanceFields {
+  pricing_source: string | null;
+  pricing_version: string | null;
+  source_kind: SourceKind | null;
+  source_url: string | null;
+  source_updated_at: string | null;
+  observed_at: string | null;
+  is_stale: boolean;
+  estimated: boolean;
+  match_kind: string | null;
+  matched_model: string | null;
+  note_code: string | null;
+  pricing_components: PricingProvenanceComponent[];
 }
 
 export interface TokenTotals {
@@ -100,7 +133,8 @@ export interface SpendTimeseriesResponse {
   totals: SpendTimeseriesTotals;
 }
 
-export interface UsageRecord extends TokenTotals {
+export interface UsageRecord extends Omit<TokenTotals, "cost_usd">, PricingCoverageFields, PricingProvenanceFields {
+  cost_usd: number | null;
   id: string;
   record_kind?: "request_event" | "aggregate_bucket";
   timestamp: string;
@@ -114,13 +148,13 @@ export interface UsageRecord extends TokenTotals {
   latency_ms: number | null;
   first_token_ms: number | null;
   request_source: string;
-  pricing_coverage?: PricingCoverage;
   origin?: string;
 }
 
 export type RequestUsageRecord = UsageRecord;
 
-export interface RequestUsageRecordsTotals extends TokenTotals, PricingCoverageFields {
+export interface RequestUsageRecordsTotals extends Omit<TokenTotals, "cost_usd">, PricingCoverageFields, PricingProvenanceFields {
+  cost_usd: number | null;
   request_count: number;
   success_count: number | null;
   interrupted_count: number;

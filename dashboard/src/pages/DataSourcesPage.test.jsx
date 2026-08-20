@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { DataSourcesPage } from "./DataSourcesPage.jsx";
-import { clearLocalData, getAllAgentEnvironments, getUsageSummary, triggerLocalSync } from "../lib/api";
+import { clearLocalData, getAllAgentEnvironments, getTokenEyesBuildInfo, getUsageSummary, triggerLocalSync } from "../lib/api";
 import { setCopyLocale } from "../lib/copy";
 import { safeWriteClipboard } from "../lib/safe-browser";
 import fs from "node:fs";
@@ -14,6 +14,7 @@ const dataSourcesCss = fs.readFileSync(path.resolve(process.cwd(), "src/ui/found
 
 vi.mock("../lib/api", () => ({
   getAllAgentEnvironments: vi.fn(),
+  getTokenEyesBuildInfo: vi.fn(),
   getUsageSummary: vi.fn(),
   clearLocalData: vi.fn(),
   triggerLocalSync: vi.fn(),
@@ -37,6 +38,11 @@ beforeEach(() => {
       { agent: "claude", agent_name: "Claude Code", status: "detected", trackingReady: false, evidenceCount: 0, environment: "wsl" },
       { agent: "cursor", agent_name: "Cursor", status: "not-detected", trackingReady: false, evidenceCount: 0, environment: "win" },
     ],
+  });
+  getTokenEyesBuildInfo.mockResolvedValue({
+    app_version: "0.54.44",
+    head_sha: "0123456789abcdef0123456789abcdef01234567",
+    built_at_utc: "2026-08-21T01:02:03.000Z",
   });
   triggerLocalSync.mockResolvedValue({ ok: true });
   getUsageSummary.mockResolvedValue({
@@ -224,6 +230,24 @@ it("exports redacted diagnostics and refreshes health after a manual sync", asyn
   await waitFor(() => expect(triggerLocalSync).toHaveBeenCalledTimes(1));
   expect(getAllAgentEnvironments).toHaveBeenCalledTimes(2);
   expect(getUsageSummary).toHaveBeenCalledTimes(2);
+});
+
+it("shows and exports the full native build identity without a Vite fallback", async () => {
+  const user = userEvent.setup();
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+
+  const buildIdentity = await screen.findByTestId("token-eyes-build-info");
+  expect(buildIdentity).toHaveTextContent("0.54.44");
+  expect(buildIdentity).toHaveTextContent("0123456789abcdef0123456789abcdef01234567");
+  expect(getTokenEyesBuildInfo).toHaveBeenCalledTimes(1);
+
+  await act(async () => user.click(screen.getByRole("button", { name: "复制脱敏诊断" })));
+  const diagnostic = JSON.parse(String(safeWriteClipboard.mock.calls.at(-1)[0]));
+  expect(diagnostic.build_info).toEqual({
+    app_version: "0.54.44",
+    head_sha: "0123456789abcdef0123456789abcdef01234567",
+    built_at_utc: "2026-08-21T01:02:03.000Z",
+  });
 });
 
 it("clears only derived local data after explicit confirmation", async () => {

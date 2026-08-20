@@ -200,6 +200,69 @@ describe("useRequestUsageRecords", () => {
     expect(totals.avg_latency_ms).toBe(610);
   });
 
+  it("preserves nullable cost and mixed pricing provenance from API totals", async () => {
+    const pricingComponents = [
+      {
+        source_kind: "user_override",
+        pricing_source: "pricing-rule",
+        record_count: 1,
+        priced_tokens: 100,
+        unpriced_tokens: 0,
+        cost_usd: 0.01,
+      },
+      {
+        source_kind: "third_party",
+        pricing_source: "litellm:exact",
+        record_count: 1,
+        priced_tokens: 0,
+        unpriced_tokens: 50,
+        cost_usd: null,
+      },
+    ];
+    getRequestUsageRecords.mockResolvedValue({
+      records: [makeRecord("codex", "gpt-5", "2026-06-24T01:00:00.000Z")],
+      totals: makeTotals({
+        cost_usd: null,
+        priced_tokens: 100,
+        unpriced_tokens: 50,
+        pricing_coverage: "partial",
+        pricing_source: "mixed",
+        pricing_version: null,
+        source_kind: "mixed",
+        source_url: null,
+        source_updated_at: null,
+        observed_at: null,
+        is_stale: true,
+        estimated: true,
+        match_kind: "mixed",
+        matched_model: null,
+        note_code: "pricing_sources_mixed",
+        pricing_components: pricingComponents,
+      }),
+      page: { page: 1, pageSize: 10, total: 1, total_pages: 1 },
+    });
+
+    const { result } = setup(["codex"]);
+    await waitFor(() => expect(result.current.totals).not.toBeNull());
+
+    expect(result.current.totals).toMatchObject({
+      cost_usd: null,
+      pricing_coverage: "partial",
+      pricing_source: "mixed",
+      pricing_version: null,
+      source_kind: "mixed",
+      source_url: null,
+      source_updated_at: null,
+      observed_at: null,
+      is_stale: true,
+      estimated: true,
+      match_kind: "mixed",
+      matched_model: null,
+      note_code: "pricing_sources_mixed",
+      pricing_components: pricingComponents,
+    });
+  });
+
   it("returns backend-provided pagination metadata", async () => {
     getRequestUsageRecords.mockResolvedValue({
       records: [makeRecord("codex", "gpt-5", "2026-06-24T01:00:00.000Z")],

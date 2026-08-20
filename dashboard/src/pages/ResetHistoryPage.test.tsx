@@ -179,24 +179,30 @@ describe("ResetHistoryPage", () => {
   });
 
   it("shows all retained records in descending occurrence order instead of capping at three", () => {
-    resetContext.value.history = Array.from({ length: 5 }, (_, index) =>
-      officialReset(
-        `past-${index}`,
-        new Date(2026, 6, 25 - index, 8, index),
-      ));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-26T12:00:00.000Z"));
+    try {
+      resetContext.value.history = Array.from({ length: 5 }, (_, index) =>
+        officialReset(
+          `past-${index}`,
+          new Date(2026, 6, 25 - index, 8, index),
+        ));
 
-    render(<ResetHistoryPage />);
+      render(<ResetHistoryPage />);
 
-    const items = screen.getAllByTestId("reset-history-item");
-    expect(items).toHaveLength(5);
-    expect(items[0].querySelector("time")).toHaveAttribute(
-      "datetime",
-      new Date(2026, 6, 25, 8, 0).toISOString(),
-    );
-    expect(items[4].querySelector("time")).toHaveAttribute(
-      "datetime",
-      new Date(2026, 6, 21, 8, 4).toISOString(),
-    );
+      const items = screen.getAllByTestId("reset-history-item");
+      expect(items).toHaveLength(5);
+      expect(items[0].querySelector("time")).toHaveAttribute(
+        "datetime",
+        new Date(2026, 6, 25, 8, 0).toISOString(),
+      );
+      expect(items[4].querySelector("time")).toHaveAttribute(
+        "datetime",
+        new Date(2026, 6, 21, 8, 4).toISOString(),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reveals the remaining official announcements from the history control", async () => {

@@ -2,11 +2,10 @@ import { copy } from "./copy";
 
 /**
  * Canonical usage-limits provider ids (order defaults in useLimitsDisplayPrefs).
- * V4 round 1 item-3a: this list now mirrors every implemented agent channel in
- * DASHBOARD_AGENTS (agent-adapters-dashboard.ts) so the settings "限制显示"
- * panel can toggle all of them. The first 11 keep their historical order so
- * existing users' saved ordering stays stable; the rest follow the registry
- * order and are appended by normalizeOrder for existing snapshots.
+ * Every id here has either a provider limit spec or a dedicated panel renderer.
+ * Agent selection is intentionally independent: agents without a real limits
+ * surface must not create empty rows in the settings panel. The first 10 keep
+ * their historical order so existing users' saved ordering stays stable.
  * Swift's normalizedOrder safely drops ids it doesn't know about, and
  * normalizeOrder here re-appends them, so macOS mirrors stay consistent.
  */
@@ -24,11 +23,9 @@ export const LIMIT_PROVIDER_IDS = [
   "zed",
   "workbuddy",
   "kimi",
-  "kimi-code",
-  "pi",
+  "kiro",
   "grok",
   "copilot",
-  "deepseek-harness",
 ];
 
 /** Keys for ProviderIcon; mono logos use inline SVG and colored logos use /brand-logos/. */

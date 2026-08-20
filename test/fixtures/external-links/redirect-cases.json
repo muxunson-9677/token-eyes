@@ -1,0 +1,888 @@
+{
+  "schema_version": 2,
+  "cases": [
+    {
+      "id": "stable-official-page",
+      "original": "https://pricing.vendor.example/plans",
+      "expected_final": {
+        "url": "https://pricing.vendor.example/plans",
+        "host": "pricing.vendor.example",
+        "path": "/plans"
+      },
+      "observed": {
+        "final": "https://pricing.vendor.example/plans",
+        "status": 200,
+        "manual_evidence_required": false
+      },
+      "expected": {
+        "original": "https://pricing.vendor.example/plans",
+        "final": "https://pricing.vendor.example/plans",
+        "status": 200,
+        "classification": "healthy"
+      }
+    },
+    {
+      "id": "campaign-path-drift",
+      "original": "https://campaign.vendor.example/activity/newyear",
+      "expected_final": {
+        "url": "https://campaign.vendor.example/activity/newyear",
+        "host": "campaign.vendor.example",
+        "path": "/activity/newyear"
+      },
+      "observed": {
+        "final": "https://campaign.vendor.example/activity/summer",
+        "status": 200,
+        "manual_evidence_required": false
+      },
+      "expected": {
+        "original": "https://campaign.vendor.example/activity/newyear",
+        "final": "https://campaign.vendor.example/activity/summer",
+        "status": 200,
+        "classification": "content_drift"
+      }
+    },
+    {
+      "id": "spa-query-route-drift",
+      "original": "https://console.vendor.example/cn?tab=model#/efm/coding_plan",
+      "expected_final": {
+        "url": "https://console.vendor.example/cn?tab=model#/efm/coding_plan",
+        "host": "console.vendor.example",
+        "path": "/cn"
+      },
+      "observed": {
+        "final": "https://console.vendor.example/cn?tab=account#/efm/coding_plan",
+        "status": 200,
+        "manual_evidence_required": false
+      },
+      "expected": {
+        "original": "https://console.vendor.example/cn?tab=model#/efm/coding_plan",
+        "final": "https://console.vendor.example/cn?tab=account#/efm/coding_plan",
+        "status": 200,
+        "classification": "content_drift"
+      }
+    },
+    {
+      "id": "spa-hash-route-drift",
+      "original": "https://console.vendor.example/cn?tab=model#/efm/coding_plan",
+      "expected_final": {
+        "url": "https://console.vendor.example/cn?tab=model#/efm/coding_plan",
+        "host": "console.vendor.example",
+        "path": "/cn"
+      },
+      "observed": {
+        "final": "https://console.vendor.example/cn?tab=model#/efm/account",
+        "status": 200,
+        "manual_evidence_required": false
+      },
+      "expected": {
+        "original": "https://console.vendor.example/cn?tab=model#/efm/coding_plan",
+        "final": "https://console.vendor.example/cn?tab=model#/efm/account",
+        "status": 200,
+        "classification": "content_drift"
+      }
+    },
+    {
+      "id": "cdn-forbidden-requires-login",
+      "original": "https://account.vendor.example/settings",
+      "expected_final": {
+        "url": "https://account.vendor.example/settings",
+        "host": "account.vendor.example",
+        "path": "/settings"
+      },
+      "observed": {
+        "final": "https://account.vendor.example/settings",
+        "status": 403,
+        "manual_evidence_required": false
+      },
+      "expected": {
+        "original": "https://account.vendor.example/settings",
+        "final": "https://account.vendor.example/settings",
+        "status": 403,
+        "classification": "requires_login"
+      }
+    },
+    {
+      "id": "login-wall-redirect",
+      "original": "https://account.vendor.example/settings",
+      "expected_final": {
+        "url": "https://account.vendor.example/settings",
+        "host": "account.vendor.example",
+        "path": "/settings"
+      },
+      "observed": {
+        "final": "https://auth.vendor.example/login",
+        "status": 401,
+        "manual_evidence_required": false
+      },
+      "expected": {
+        "original": "https://account.vendor.example/settings",
+        "final": "https://auth.vendor.example/login",
+        "status": 401,
+        "classification": "requires_login"
+      }
+    },
+    {
+      "id": "successful-login-wall-is-not-healthy-content",
+      "original": "https://account.vendor.example/settings",
+      "expected_final": {
+        "url": "https://account.vendor.example/settings",
+        "host": "account.vendor.example",
+        "path": "/settings"
+      },
+      "observed": {
+        "final": "https://auth.vendor.example/login",
+        "status": 200,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "body": "Sign in to continue to your account settings."
+      },
+      "expected": {
+        "original": "https://account.vendor.example/settings",
+        "final": "https://auth.vendor.example/login",
+        "status": 200,
+        "classification": "requires_login"
+      }
+    },
+    {
+      "id": "dynamic-spa-manual-evidence",
+      "original": "https://dynamic.vendor.example/pricing",
+      "expected_final": {
+        "url": "https://dynamic.vendor.example/pricing",
+        "host": "dynamic.vendor.example",
+        "path": "/pricing"
+      },
+      "observed": {
+        "final": "https://dynamic.vendor.example/pricing",
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html><div id=\"root\"></div><script src=\"/assets/app.js\"></script>"
+      },
+      "expected": {
+        "original": "https://dynamic.vendor.example/pricing",
+        "final": "https://dynamic.vendor.example/pricing",
+        "status": 200,
+        "classification": "manual_evidence_required"
+      }
+    }
+  ],
+  "registry_cases": [
+    {
+      "id": "registered-original-literal-is-preserved",
+      "document": {
+        "_meta": {
+          "schema_version": 1,
+          "updated_at": "2026-08-20"
+        },
+        "links": [
+          {
+            "link_id": "synthetic-original-preservation",
+            "source_type": "official_document",
+            "url": "https://pricing.vendor.example:443/plans?campaign=summer#details",
+            "allowed_hosts": [
+              "pricing.vendor.example"
+            ],
+            "expected_final": {
+              "url": "https://pricing.vendor.example/plans",
+              "path": "/plans"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "url": "https://pricing.vendor.example:443/plans?campaign=summer#details",
+        "expected_final_path": "/plans"
+      }
+    }
+  ],
+  "invalid_registry_cases": [
+    {
+      "id": "empty-registry-is-rejected",
+      "document": {
+        "_meta": {
+          "schema_version": 1,
+          "updated_at": "2026-08-20"
+        },
+        "links": []
+      }
+    },
+    {
+      "id": "duplicate-registry-url-is-rejected",
+      "document": {
+        "_meta": {
+          "schema_version": 1,
+          "updated_at": "2026-08-20"
+        },
+        "links": [
+          {
+            "link_id": "synthetic-duplicate-one",
+            "source_type": "official_document",
+            "url": "https://vendor.example/plans",
+            "allowed_hosts": ["vendor.example"],
+            "expected_final": {
+              "url": "https://vendor.example/plans",
+              "path": "/plans"
+            }
+          },
+          {
+            "link_id": "synthetic-duplicate-two",
+            "source_type": "official_document",
+            "url": "https://vendor.example/plans",
+            "allowed_hosts": ["vendor.example"],
+            "expected_final": {
+              "url": "https://vendor.example/plans",
+              "path": "/plans"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "non-default-original-port-is-rejected",
+      "link": {
+        "link_id": "synthetic-original-port",
+        "source_type": "official_document",
+        "url": "https://vendor.example:8443/plans",
+        "allowed_hosts": ["vendor.example"],
+        "expected_final": {
+          "url": "https://vendor.example/plans",
+          "path": "/plans"
+        }
+      }
+    },
+    {
+      "id": "non-default-expected-port-is-rejected",
+      "link": {
+        "link_id": "synthetic-expected-port",
+        "source_type": "official_document",
+        "url": "https://vendor.example/plans",
+        "allowed_hosts": ["vendor.example"],
+        "expected_final": {
+          "url": "https://vendor.example:8443/plans",
+          "path": "/plans"
+        }
+      }
+    },
+    {
+      "id": "unknown-source-type",
+      "link": {
+        "link_id": "synthetic-unknown-source",
+        "source_type": "mystery",
+        "url": "https://vendor.example/plans",
+        "allowed_hosts": ["vendor.example"],
+        "expected_final": {
+          "url": "https://vendor.example/plans",
+          "path": "/plans"
+        }
+      }
+    },
+    {
+      "id": "missing-expected-final-path",
+      "link": {
+        "link_id": "synthetic-missing-path",
+        "source_type": "official_document",
+        "url": "https://vendor.example/plans",
+        "allowed_hosts": ["vendor.example"],
+        "expected_final": {
+          "url": "https://vendor.example/plans"
+        }
+      }
+    },
+    {
+      "id": "malformed-allowed-host",
+      "link": {
+        "link_id": "synthetic-invalid-host",
+        "source_type": "official_document",
+        "url": "https://vendor.example/plans",
+        "allowed_hosts": ["vendor.example", "not a host"],
+        "expected_final": {
+          "url": "https://vendor.example/plans",
+          "path": "/plans"
+        }
+      }
+    }
+  ],
+  "live_report_cases": [
+    {
+      "id": "classification-failure-emits-json-before-exit",
+      "document": {
+        "_meta": {
+          "schema_version": 1,
+          "updated_at": "2026-08-20"
+        },
+        "links": [
+          {
+            "link_id": "synthetic-live-drift",
+            "source_type": "official_document",
+            "url": "https://vendor.example/old",
+            "allowed_hosts": ["vendor.example"],
+            "expected_final": {
+              "url": "https://vendor.example/new",
+              "path": "/new"
+            }
+          }
+        ]
+      },
+      "responses": [
+        {
+          "url": "https://vendor.example/old",
+          "status": 200,
+          "headers": {
+            "content-type": "text/plain"
+          },
+          "body": "Stable synthetic response body."
+        }
+      ],
+      "expected": {
+        "exit_code": 2,
+        "emitted_reports": 1,
+        "output": "external-links-report.json",
+        "classification": "content_drift"
+      }
+    },
+    {
+      "id": "oauth-secrets-never-enter-a-second-request-or-report",
+      "document": {
+        "_meta": {
+          "schema_version": 1,
+          "updated_at": "2026-08-20"
+        },
+        "links": [
+          {
+            "link_id": "synthetic-live-oauth-secret",
+            "source_type": "official_document",
+            "url": "https://vendor.example/plans",
+            "allowed_hosts": ["vendor.example", "login.identity.example"],
+            "expected_final": {
+              "url": "https://vendor.example/plans",
+              "path": "/plans"
+            }
+          }
+        ]
+      },
+      "responses": [
+        {
+          "url": "https://vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://login.identity.example/signin?code=SYNTHETIC_OAUTH_CODE&state=SYNTHETIC_OAUTH_STATE&ticket=SYNTHETIC_OAUTH_TICKET&continue=https%3A%2F%2Fcallback.example%2F%3Fid_token%3DSYNTHETIC_NESTED_ID_TOKEN#access_token=SYNTHETIC_FRAGMENT_ACCESS_TOKEN"
+          }
+        }
+      ],
+      "forbidden_values": [
+        "SYNTHETIC_OAUTH_CODE",
+        "SYNTHETIC_OAUTH_STATE",
+        "SYNTHETIC_OAUTH_TICKET",
+        "SYNTHETIC_NESTED_ID_TOKEN",
+        "SYNTHETIC_FRAGMENT_ACCESS_TOKEN"
+      ],
+      "expected": {
+        "exit_code": 0,
+        "emitted_reports": 1,
+        "output": "external-links-report.json",
+        "classification": "requires_login",
+        "final": "https://login.identity.example/signin?redacted",
+        "request_urls": [
+          "https://vendor.example/plans"
+        ],
+        "forbidden_values_present": []
+      }
+    },
+    {
+      "id": "unknown-future-credential-is-never-followed-or-reported",
+      "document": {
+        "_meta": {
+          "schema_version": 1,
+          "updated_at": "2026-08-20"
+        },
+        "links": [
+          {
+            "link_id": "synthetic-live-future-credential",
+            "source_type": "official_document",
+            "url": "https://vendor.example/plans",
+            "allowed_hosts": ["vendor.example", "callback.vendor.example"],
+            "expected_final": {
+              "url": "https://vendor.example/plans",
+              "path": "/plans"
+            }
+          }
+        ]
+      },
+      "responses": [
+        {
+          "url": "https://vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://callback.vendor.example/finish?future_credential=SYNTHETIC_FUTURE_CREDENTIAL"
+          }
+        }
+      ],
+      "forbidden_values": ["SYNTHETIC_FUTURE_CREDENTIAL"],
+      "expected": {
+        "exit_code": 2,
+        "emitted_reports": 1,
+        "output": "external-links-report.json",
+        "classification": "unsafe_target",
+        "final": "https://callback.vendor.example/finish?redacted",
+        "request_urls": ["https://vendor.example/plans"],
+        "forbidden_values_present": []
+      }
+    }
+  ],
+  "live_policy_cases": [
+    {
+      "id": "oauth-code-query-is-redacted-and-never-followed",
+      "link": {
+        "url": "https://pricing.vendor.example/plans",
+        "allowed_hosts": ["pricing.vendor.example", "login.identity.example"],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://login.identity.example/signin?code=SYNTHETIC_CODE_ONLY"
+          }
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://pricing.vendor.example/plans",
+          "final": "https://login.identity.example/signin?redacted",
+          "status": 302,
+          "classification": "requires_login"
+        },
+        "request_urls": ["https://pricing.vendor.example/plans"],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "oauth-form-state-is-redacted-and-never-followed",
+      "link": {
+        "url": "https://pricing.vendor.example/plans",
+        "allowed_hosts": ["pricing.vendor.example", "login.identity.example"],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://login.identity.example/signin?oauth%5Bstate%5D=SYNTHETIC_FORM_STATE_ONLY"
+          }
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://pricing.vendor.example/plans",
+          "final": "https://login.identity.example/signin?redacted",
+          "status": 302,
+          "classification": "requires_login"
+        },
+        "request_urls": ["https://pricing.vendor.example/plans"],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "oauth-double-encoded-ticket-is-redacted-and-never-followed",
+      "link": {
+        "url": "https://pricing.vendor.example/plans",
+        "allowed_hosts": ["pricing.vendor.example", "login.identity.example"],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://login.identity.example/signin?continue=https%253A%252F%252Fcallback.example%252F%253Fticket%253DSYNTHETIC_DOUBLE_ENCODED_TICKET"
+          }
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://pricing.vendor.example/plans",
+          "final": "https://login.identity.example/signin?redacted",
+          "status": 302,
+          "classification": "requires_login"
+        },
+        "request_urls": ["https://pricing.vendor.example/plans"],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "oauth-fragment-access-token-is-redacted-and-never-followed",
+      "link": {
+        "url": "https://pricing.vendor.example/plans",
+        "allowed_hosts": ["pricing.vendor.example", "login.identity.example"],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://login.identity.example/signin#access_token=SYNTHETIC_FRAGMENT_ACCESS_ONLY"
+          }
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://pricing.vendor.example/plans",
+          "final": "https://login.identity.example/signin?redacted",
+          "status": 302,
+          "classification": "requires_login"
+        },
+        "request_urls": ["https://pricing.vendor.example/plans"],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "oauth-nested-id-token-is-redacted-and-never-followed",
+      "link": {
+        "url": "https://pricing.vendor.example/plans",
+        "allowed_hosts": ["pricing.vendor.example", "login.identity.example"],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://login.identity.example/signin?continue=https%3A%2F%2Fcallback.example%2F%3Fid_token%3DSYNTHETIC_NESTED_ID_ONLY"
+          }
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://pricing.vendor.example/plans",
+          "final": "https://login.identity.example/signin?redacted",
+          "status": 302,
+          "classification": "requires_login"
+        },
+        "request_urls": ["https://pricing.vendor.example/plans"],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "unallowlisted-login-redirect-is-requires-login-without-a-second-request",
+      "link": {
+        "url": "https://pricing.vendor.example/plans",
+        "allowed_hosts": [
+          "pricing.vendor.example"
+        ],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://login.identity.example/signin?return_to=%2Fplans"
+          }
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://pricing.vendor.example/plans",
+          "final": "https://login.identity.example/signin?redacted",
+          "status": 302,
+          "classification": "requires_login"
+        },
+        "request_urls": [
+          "https://pricing.vendor.example/plans"
+        ],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "redirects-use-the-safe-request-on-every-hop",
+      "link": {
+        "url": "https://legacy.vendor.example/old-pricing",
+        "allowed_hosts": [
+          "legacy.vendor.example",
+          "pricing.vendor.example"
+        ],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://legacy.vendor.example/old-pricing",
+          "status": 302,
+          "headers": {
+            "location": "https://pricing.vendor.example/plans"
+          }
+        },
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8"
+          },
+          "body": "Official pricing evidence with enough stable visible text for deterministic automated verification of this synthetic page."
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://legacy.vendor.example/old-pricing",
+          "final": "https://pricing.vendor.example/plans",
+          "status": 200,
+          "classification": "healthy"
+        },
+        "request_urls": [
+          "https://legacy.vendor.example/old-pricing",
+          "https://pricing.vendor.example/plans"
+        ],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "unexpected-redirect-host-stops-before-a-second-request",
+      "link": {
+        "url": "https://pricing.vendor.example/plans",
+        "allowed_hosts": [
+          "pricing.vendor.example"
+        ],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 302,
+          "headers": {
+            "location": "https://unexpected.vendor.example/replacement"
+          }
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://pricing.vendor.example/plans",
+          "final": "https://unexpected.vendor.example/replacement",
+          "status": 302,
+          "classification": "content_drift"
+        },
+        "request_urls": [
+          "https://pricing.vendor.example/plans"
+        ],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "body-content-length-over-cap-is-destroyed",
+      "link": {
+        "url": "https://pricing.vendor.example/plans",
+        "allowed_hosts": [
+          "pricing.vendor.example"
+        ],
+        "expected_final": {
+          "url": "https://pricing.vendor.example/plans",
+          "path": "/plans"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://pricing.vendor.example/plans",
+          "status": 200,
+          "headers": {
+            "content-type": "text/html",
+            "content-length": "524289"
+          },
+          "body": "not-read"
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://pricing.vendor.example/plans",
+          "final": "https://pricing.vendor.example/plans",
+          "status": 200,
+          "classification": "transport_error"
+        },
+        "request_urls": [
+          "https://pricing.vendor.example/plans"
+        ],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 1
+      }
+    },
+    {
+      "id": "redirect-chain-stops-at-the-five-hop-cap",
+      "link": {
+        "url": "https://redirect.vendor.example/0",
+        "allowed_hosts": [
+          "redirect.vendor.example"
+        ],
+        "expected_final": {
+          "url": "https://redirect.vendor.example/final",
+          "path": "/final"
+        }
+      },
+      "responses": [
+        {
+          "url": "https://redirect.vendor.example/0",
+          "status": 302,
+          "headers": { "location": "/1" }
+        },
+        {
+          "url": "https://redirect.vendor.example/1",
+          "status": 302,
+          "headers": { "location": "/2" }
+        },
+        {
+          "url": "https://redirect.vendor.example/2",
+          "status": 302,
+          "headers": { "location": "/3" }
+        },
+        {
+          "url": "https://redirect.vendor.example/3",
+          "status": 302,
+          "headers": { "location": "/4" }
+        },
+        {
+          "url": "https://redirect.vendor.example/4",
+          "status": 302,
+          "headers": { "location": "/5" }
+        },
+        {
+          "url": "https://redirect.vendor.example/5",
+          "status": 302,
+          "headers": { "location": "/6" }
+        }
+      ],
+      "expected": {
+        "result": {
+          "original": "https://redirect.vendor.example/0",
+          "final": "https://redirect.vendor.example/5",
+          "status": 302,
+          "classification": "transport_error"
+        },
+        "request_urls": [
+          "https://redirect.vendor.example/0",
+          "https://redirect.vendor.example/1",
+          "https://redirect.vendor.example/2",
+          "https://redirect.vendor.example/3",
+          "https://redirect.vendor.example/4",
+          "https://redirect.vendor.example/5"
+        ],
+        "request_timeout_ms": 10000,
+        "destroyed_responses": 6
+      }
+    }
+  ],
+  "secret_redirect_cases": [
+    {
+      "id": "unknown-future-credential",
+      "location": "https://callback.vendor.example/finish?future_credential=SYNTHETIC_FUTURE_CREDENTIAL",
+      "forbidden_values": ["SYNTHETIC_FUTURE_CREDENTIAL"],
+      "expected_classification": "unsafe_target",
+      "expected_final": "https://callback.vendor.example/finish?redacted",
+      "registry_fail_closed": false
+    },
+    {
+      "id": "oidc-id-token-hint",
+      "location": "https://login.identity.example/signin?id_token_hint=SYNTHETIC_ID_TOKEN_HINT",
+      "forbidden_values": ["SYNTHETIC_ID_TOKEN_HINT"],
+      "expected_classification": "requires_login",
+      "expected_final": "https://login.identity.example/signin?redacted",
+      "registry_fail_closed": true
+    },
+    {
+      "id": "oauth-device-code",
+      "location": "https://callback.vendor.example/device?device-code=SYNTHETIC_DEVICE_CODE",
+      "forbidden_values": ["SYNTHETIC_DEVICE_CODE"],
+      "expected_classification": "unsafe_target",
+      "expected_final": "https://callback.vendor.example/device?redacted",
+      "registry_fail_closed": true
+    },
+    {
+      "id": "oauth-user-code",
+      "location": "https://callback.vendor.example/device?USER_CODE=SYNTHETIC_USER_CODE",
+      "forbidden_values": ["SYNTHETIC_USER_CODE"],
+      "expected_classification": "unsafe_target",
+      "expected_final": "https://callback.vendor.example/device?redacted",
+      "registry_fail_closed": true
+    },
+    {
+      "id": "oidc-client-assertion-form",
+      "location": "https://callback.vendor.example/token?oauth%5Bclient-assertion%5D=SYNTHETIC_CLIENT_ASSERTION",
+      "forbidden_values": ["SYNTHETIC_CLIENT_ASSERTION"],
+      "expected_classification": "unsafe_target",
+      "expected_final": "https://callback.vendor.example/token?redacted",
+      "registry_fail_closed": true
+    },
+    {
+      "id": "sso-assertion-nested-uri",
+      "location": "https://callback.vendor.example/consume?continue=https%3A%2F%2Fservice.example%2Ffinish%3Fassertion%3DSYNTHETIC_ASSERTION",
+      "forbidden_values": ["SYNTHETIC_ASSERTION"],
+      "expected_classification": "unsafe_target",
+      "expected_final": "https://callback.vendor.example/consume?redacted",
+      "registry_fail_closed": true
+    },
+    {
+      "id": "saml-response-form",
+      "location": "https://login.identity.example/sso/login?SAMLResponse=SYNTHETIC_SAML_RESPONSE",
+      "forbidden_values": ["SYNTHETIC_SAML_RESPONSE"],
+      "expected_classification": "requires_login",
+      "expected_final": "https://login.identity.example/sso/login?redacted",
+      "registry_fail_closed": true
+    },
+    {
+      "id": "saml-request-double-encoded",
+      "location": "https://callback.vendor.example/sso/consume?continue=https%253A%252F%252Fservice.example%252F%253FSAMLRequest%253DSYNTHETIC_SAML_REQUEST",
+      "forbidden_values": ["SYNTHETIC_SAML_REQUEST"],
+      "expected_classification": "unsafe_target",
+      "expected_final": "https://callback.vendor.example/sso/consume?redacted",
+      "registry_fail_closed": true
+    },
+    {
+      "id": "saml-relay-state-form",
+      "location": "https://login.identity.example/sso/login?sso%5BRelay-State%5D=SYNTHETIC_RELAY_STATE",
+      "forbidden_values": ["SYNTHETIC_RELAY_STATE"],
+      "expected_classification": "requires_login",
+      "expected_final": "https://login.identity.example/sso/login?redacted",
+      "registry_fail_closed": true
+    },
+    {
+      "id": "oidc-session-state-fragment",
+      "location": "https://login.identity.example/signin#session_state=SYNTHETIC_SESSION_STATE",
+      "forbidden_values": ["SYNTHETIC_SESSION_STATE"],
+      "expected_classification": "requires_login",
+      "expected_final": "https://login.identity.example/signin?redacted",
+      "registry_fail_closed": true
+    }
+  ]
+}

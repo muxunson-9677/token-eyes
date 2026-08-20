@@ -1,15 +1,22 @@
 {
   "provider_id": "minimax",
   "provider_name": "MiniMax",
-  "official_site": "https://platform.minimaxi.com/",
   "catalog_version": "2026-07-07",
-  "evidence": [
-    {
-      "url": "https://platform.minimaxi.com/",
-      "title": "MiniMax 开放平台",
-      "accessed_at": "2026-07-07"
-    }
-  ],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "catalog-minimax-platform",
+    "supports": [
+      "provider_identity"
+    ],
+    "verified": true,
+    "verified_at": "2026-07-07",
+    "fetched_at": "2026-07-07",
+    "content_sha256": "78eb270046af1fa8f0b2e3af977a01639957ac10c376eef7e3b379fa5e406264",
+    "content_hash_kind": "normalized_extracted_fields_v1",
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
+  },
   "plans": [
     {
       "plan_id": "minimax_api_budget",
@@ -23,7 +30,19 @@
       "expires": {
         "kind": "manual"
       },
-      "official_evidence_url": "https://platform.minimaxi.com/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-minimax-platform",
+        "supports": [],
+        "verified": false,
+        "verified_at": null,
+        "fetched_at": null,
+        "content_sha256": null,
+        "content_hash_kind": null,
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "minimax_manual_quota",
@@ -31,20 +50,46 @@
       "quota": {
         "kind": "manual",
         "total": 0,
-        "unit": "tokens",
+        "unit": "provider_count",
         "display": "手动填写额度或套餐；客户端不伪造官方余额检测。"
       },
       "expires": {
         "kind": "manual"
       },
-      "official_evidence_url": "https://platform.minimaxi.com/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-minimax-platform",
+        "supports": [],
+        "verified": false,
+        "verified_at": null,
+        "fetched_at": null,
+        "content_sha256": null,
+        "content_hash_kind": null,
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
     "official_quota_api": true,
     "authorization": "subscription_api_key_for_token_plan",
     "usage_endpoint_documented": true,
-    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "fields_available": [
+      "rolling_5_hour",
+      "rolling_weekly"
+    ],
     "notes": "Token Plan 额度来自 GET /v1/token_plan/remains；按量付费余额无公开 API，minimax_api_budget 仍手动登记。"
-  }
+  },
+  "official_site_link_id": "catalog-minimax-platform",
+  "sources": [
+    {
+      "label": "MiniMax 开放平台",
+      "link_id": "catalog-minimax-platform",
+      "supports": [
+        "provider_identity",
+        "account_access"
+      ]
+    }
+  ]
 }

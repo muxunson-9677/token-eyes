@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CircleAlert, Clock3, CloudOff, Grid2X2, HardDrive, List, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
-import { clearLocalData, getAllAgentEnvironments, getUsageSummary, triggerLocalSync } from "../lib/api";
+import { clearLocalData, getAllAgentEnvironments, getTokenEyesBuildInfo, getUsageSummary, triggerLocalSync } from "../lib/api";
 import { copy, getCopyLocale } from "../lib/copy";
 import { safeWriteClipboard } from "../lib/safe-browser";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
@@ -98,6 +98,21 @@ export function DataSourcesPage() {
   const [sourceEnvironment, setSourceEnvironment] = useState("all");
   const [sourceSort, setSourceSort] = useState("activity");
   const [sourceView, setSourceView] = useState("grid");
+  const [buildInfo, setBuildInfo] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getTokenEyesBuildInfo()
+      .then((info) => {
+        if (active) setBuildInfo(info);
+      })
+      .catch(() => {
+        if (active) setBuildInfo(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const loadHealth = useCallback(async ({ showLoading = false } = {}) => {
     if (showLoading) setLoading(true);
@@ -195,6 +210,7 @@ export function DataSourcesPage() {
     const payload = {
       schema: "token-eyes-data-source-diagnostics-v1",
       generated_at: new Date().toISOString(),
+      build_info: buildInfo,
       sources: sources.map((source) => ({
         agent: source.agent,
         status: healthState(source),
@@ -245,6 +261,12 @@ export function DataSourcesPage() {
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">{copy("data_sources.title")}</h1>
               <p className="mt-1 max-w-2xl text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("data_sources.subtitle")}</p>
+              {buildInfo ? (
+                <p data-testid="token-eyes-build-info" className="mt-1 flex max-w-3xl flex-wrap items-baseline gap-x-2 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                  <span>{copy("settings.data_dirs.version_current", { version: buildInfo.app_version })}</span>
+                  <code aria-label="Git SHA" className="break-all font-mono text-oai-gray-700 dark:text-oai-gray-200">{buildInfo.head_sha}</code>
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={copyDiagnostics} className="inline-flex min-h-10 items-center rounded-lg border border-oai-gray-300 px-3 text-sm font-semibold hover:bg-oai-gray-100 dark:border-oai-gray-700 dark:hover:bg-oai-gray-800">

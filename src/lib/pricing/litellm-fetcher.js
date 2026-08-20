@@ -10,6 +10,7 @@ const path = require("node:path");
 const LITELLM_PRICING_URL =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const PRICING_HARD_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const SEED_SNAPSHOT_PATH = path.resolve(__dirname, "seed-snapshot.json");
 
@@ -23,9 +24,39 @@ async function readJsonAsync(p) {
   return JSON.parse(raw);
 }
 
-function isFresh(stat, ttlMs) {
+function isFresh(stat, ttlMs, nowMs = Date.now()) {
   if (!stat) return false;
-  return Date.now() - stat.mtimeMs < ttlMs;
+  return nowMs - stat.mtimeMs < ttlMs;
+}
+
+function validIso(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+function unpackCatalog(payload, { source, nowMs, fallbackUrl = LITELLM_PRICING_URL } = {}) {
+  const meta = payload?._meta && typeof payload._meta === "object" ? payload._meta : {};
+  const cachedAt = validIso(meta.cached_at) || null;
+  const sourceUpdatedAt = validIso(meta.source_updated_at)
+    || validIso(meta.generated_at)
+    || cachedAt;
+  const sourceUrl = typeof meta.source_url === "string" && /^https:\/\//.test(meta.source_url)
+    ? meta.source_url
+    : typeof meta.source === "string" && /^https:\/\//.test(meta.source)
+      ? meta.source
+      : fallbackUrl;
+  const data = { ...(payload || {}) };
+  delete data._meta;
+  return {
+    data,
+    source,
+    source_url: sourceUrl,
+    cached_at: cachedAt,
+    source_updated_at: sourceUpdatedAt,
+    observed_at: new Date(nowMs).toISOString(),
+    is_stale: sourceUpdatedAt == null
+      || nowMs - Date.parse(sourceUpdatedAt) > PRICING_HARD_MAX_AGE_MS,
+  };
 }
 
 async function statSafe(p) {
@@ -65,7 +96,7 @@ async function fetchUpstream({ url = LITELLM_PRICING_URL, timeoutMs = DEFAULT_FE
   }
 }
 
-async function writeCache(cachePath, data) {
+async function writeCache(cachePath, data, { nowMs = Date.now(), url = LITELLM_PRICING_URL } = {}) {
   await fsp.mkdir(path.dirname(cachePath), { recursive: true });
   // Persist only the slimmed shape (4 cost fields) to keep disk small and
   // make the cache file easy to inspect/edit.
@@ -92,16 +123,20 @@ async function writeCache(cachePath, data) {
       kept++;
     }
   }
+  const observedAt = new Date(nowMs).toISOString();
   const payload = {
     _meta: {
-      source: LITELLM_PRICING_URL,
-      cached_at: new Date().toISOString(),
+      source: url,
+      cached_at: observedAt,
+      source_updated_at: validIso(data?._meta?.source_updated_at)
+        || validIso(data?._meta?.generated_at)
+        || observedAt,
       kept_models: kept,
     },
     ...slim,
   };
   await fsp.writeFile(cachePath, JSON.stringify(payload) + "\n");
-  return slim;
+  return payload;
 }
 
 // Public: load LiteLLM data into memory. Resolution chain:
@@ -116,6 +151,7 @@ async function loadLitellmData({
   fetchImpl = fetchUpstream,
   url = LITELLM_PRICING_URL,
   logger = null,
+  nowMs = Date.now(),
 } = {}) {
   if (!cachePath) {
     throw new Error("loadLitellmData: cachePath is required");
@@ -126,11 +162,10 @@ async function loadLitellmData({
 
   // 1. Fresh disk cache
   const stat = await statSafe(cachePath);
-  if (isFresh(stat, ttlMs)) {
+  if (isFresh(stat, ttlMs, nowMs)) {
     try {
       const data = await readJsonAsync(cachePath);
-      delete data._meta;
-      return { data, source: "disk-cache" };
+      return unpackCatalog(data, { source: "disk-cache", nowMs, fallbackUrl: url });
     } catch (e) {
       log("warn", `[pricing] disk cache unreadable: ${e?.message || e}`);
     }
@@ -139,8 +174,8 @@ async function loadLitellmData({
   // 2. Fetch upstream
   try {
     const upstream = await fetchImpl({ url, timeoutMs: fetchTimeoutMs });
-    const slim = await writeCache(cachePath, upstream);
-    return { data: slim, source: "upstream" };
+    const payload = await writeCache(cachePath, upstream, { nowMs, url });
+    return unpackCatalog(payload, { source: "upstream", nowMs, fallbackUrl: url });
   } catch (e) {
     log("warn", `[pricing] upstream fetch failed: ${e?.message || e}`);
   }
@@ -149,9 +184,8 @@ async function loadLitellmData({
   if (stat) {
     try {
       const data = await readJsonAsync(cachePath);
-      delete data._meta;
       log("warn", "[pricing] using stale disk cache");
-      return { data, source: "stale-cache" };
+      return unpackCatalog(data, { source: "stale-cache", nowMs, fallbackUrl: url });
     } catch (e) {
       log("warn", `[pricing] stale cache unreadable: ${e?.message || e}`);
     }
@@ -159,13 +193,13 @@ async function loadLitellmData({
 
   // 4. Bundled seed snapshot
   const seed = await loadSeedSnapshot();
-  delete seed._meta;
-  return { data: seed, source: "seed-snapshot" };
+  return unpackCatalog(seed, { source: "seed-snapshot", nowMs, fallbackUrl: url });
 }
 
 module.exports = {
   LITELLM_PRICING_URL,
   DEFAULT_TTL_MS,
+  PRICING_HARD_MAX_AGE_MS,
   loadLitellmData,
   loadSeedSnapshot,
   fetchUpstream,

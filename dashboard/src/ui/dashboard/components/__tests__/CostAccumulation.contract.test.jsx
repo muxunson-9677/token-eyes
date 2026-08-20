@@ -33,6 +33,9 @@ vi.mock("../../../../lib/copy", () => ({
     if (key === "spend.monthly_change.with_amount") return `${params.change} · ${params.amount}`;
     if (key === "spend.cost.month_picker.value") return `${params.year}年${params.month}月`;
     if (key === "spend.cost.month_picker.year_to_month") return `${params.year}年截至${params.month}月`;
+    if (key === "pricing.provenance.tooltip") {
+      return `Source: ${params.source}; matched model: ${params.model}; updated: ${params.updated}`;
+    }
     return Object.entries(params).reduce(
       (text, [name, value]) => text.replace(`{{${name}}}`, String(value)),
       key.includes("increase") || key.includes("decrease")
@@ -238,6 +241,106 @@ it("keeps actual cash spend separate from the API list-price equivalent without 
     "partial",
   );
   expect(screen.getByText("spend.cost.accuracy.partial")).toBeInTheDocument();
+});
+
+it("shows mixed pricing composition on the cost aggregate without an official-exact promotion", () => {
+  render(
+    <CostAccumulation
+      costSummary={{
+        ...BASE_SUMMARY,
+        monthApiCostUsd: 18,
+        monthApiEquivalentUsd: 18,
+        source_kind: "mixed",
+        estimated: true,
+        pricing_components: [
+          { source_kind: "curated", priced_tokens: 1_000 },
+          { source_kind: "user_override", priced_tokens: 2_000 },
+        ],
+      }}
+    />,
+  );
+
+  const provenance = screen.getByTestId("cost-pricing-provenance-summary");
+  expect(provenance).toHaveTextContent("pricing.provenance.mixed");
+  expect(provenance).toHaveTextContent("pricing.provenance.curated");
+  expect(provenance).toHaveTextContent("pricing.provenance.user_override");
+  expect(provenance).not.toHaveTextContent("pricing.provenance.official_api");
+});
+
+it("shows inferred, estimated, and stale evidence inside same-kind mixed cost components", () => {
+  render(
+    <CostAccumulation
+      costSummary={{
+        ...BASE_SUMMARY,
+        monthApiCostUsd: 18,
+        monthApiEquivalentUsd: 18,
+        source_kind: "mixed",
+        match_kind: "mixed",
+        estimated: true,
+        is_stale: true,
+        pricing_components: [
+          {
+            source_kind: "third_party",
+            match_kind: "exact",
+            estimated: false,
+            is_stale: false,
+          },
+          {
+            source_kind: "third_party",
+            match_kind: "inferred",
+            estimated: true,
+            is_stale: true,
+          },
+        ],
+      }}
+    />,
+  );
+
+  const provenance = screen.getByTestId("cost-pricing-provenance-summary");
+  expect(provenance).toHaveTextContent("pricing.provenance.mixed");
+  expect(provenance).toHaveTextContent("pricing.provenance.third_party");
+  expect(provenance).toHaveTextContent("pricing.provenance.inferred");
+  expect(provenance).toHaveTextContent("pricing.provenance.estimated");
+  expect(provenance).toHaveTextContent("pricing.provenance.stale");
+  expect(provenance).not.toHaveTextContent("pricing.provenance.official_api");
+});
+
+it("shows row-level curated provenance and keeps a null aggregate explicitly unpriced", () => {
+  render(
+    <CostAccumulation
+      costSummary={{
+        ...BASE_SUMMARY,
+        monthApiCostUsd: null,
+        monthApiEquivalentUsd: null,
+        monthSubscriptionCostUsd: null,
+        monthActualCashSpendUsd: null,
+        source_kind: "unpriced",
+        pricing_coverage: "unpriced",
+      }}
+      apiBillingAccounts={[{
+        id: "curated-row",
+        provider: "local",
+        accountName: "Curated model estimate",
+        spendAuthority: "local_list_price_estimate",
+        monthCostUsd: 3,
+        lifetimeCostUsd: 9,
+        status: "synced",
+        source_kind: "curated",
+        source_url: "https://example.test/curated",
+        estimated: true,
+        match_kind: "exact",
+      }]}
+    />,
+  );
+
+  expect(screen.getByTestId("cost-pricing-provenance-summary"))
+    .toHaveTextContent("pricing.provenance.unpriced");
+  const row = screen.getByTestId("cost-pricing-provenance-row-curated-row");
+  expect(row).toHaveTextContent("pricing.provenance.curated");
+  expect(row).toHaveTextContent("pricing.provenance.estimated");
+  expect(row).toHaveAttribute("title", expect.stringContaining("https://example.test/curated"));
+  expect(row).not.toHaveTextContent("pricing.provenance.official_api");
+  expect(screen.queryByText("USD 0.00")).not.toBeInTheDocument();
 });
 
 it("starts the cost-page groups collapsed when requested and expands their full content without clipping", () => {
@@ -700,11 +803,22 @@ it("labels official API invoice amounts as official billing", () => {
         monthCostUsd: 8,
         lifetimeCostUsd: 48,
         status: "synced",
+        pricing_source: "openai-costs-api",
+        source_kind: "official_api",
+        estimated: false,
+        is_stale: false,
+        pricing_components: [],
       }]}
     />,
   );
   expect(screen.getByText("spend.cost.api_billing.authority.official_invoice")).toBeInTheDocument();
   expect(screen.queryByText("spend.cost.api_billing.authority.local_list_price_estimate")).not.toBeInTheDocument();
+  const provenance = screen.getByTestId("cost-pricing-provenance-row-official-invoice");
+  expect(provenance).toHaveTextContent("pricing.provenance.official_api");
+  expect(provenance).not.toHaveTextContent("pricing.provenance.user_override");
+  expect(provenance).not.toHaveTextContent("pricing.provenance.third_party");
+  expect(provenance).not.toHaveTextContent("pricing.provenance.estimated");
+  expect(provenance).not.toHaveTextContent("pricing.provenance.stale");
 });
 
 it("labels local list-price costs as estimates", () => {

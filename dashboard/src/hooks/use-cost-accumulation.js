@@ -245,6 +245,21 @@ export function useCostAccumulation({
         errorCode: account.errorCode || null,
         candidateCount: Number.isInteger(account.candidateCount) ? account.candidateCount : null,
         stale: billingStale && spendAuthority === "official_invoice",
+        pricing_source: account.pricing_source ?? null,
+        pricing_version: account.pricing_version ?? null,
+        source_kind: account.source_kind ?? null,
+        source_url: account.source_url ?? null,
+        source_updated_at: account.source_updated_at ?? null,
+        observed_at: account.observed_at ?? null,
+        is_stale: Boolean(account.is_stale),
+        estimated: Boolean(account.estimated),
+        match_kind: account.match_kind ?? null,
+        matched_model: account.matched_model ?? null,
+        note_code: account.note_code ?? null,
+        pricing_coverage: account.pricing_coverage ?? null,
+        pricing_components: Array.isArray(account.pricing_components)
+          ? account.pricing_components
+          : [],
       };
     });
   }, [apiBillingAccounts, billingStale, selectedMonth]);
@@ -362,6 +377,21 @@ export function useCostAccumulation({
           previousMonthTotalCostUsd: previousTotals?.combined_usd ?? null,
           lifetimeTotalCostUsd: totals.lifetime_combined_usd ?? null,
           usdToCny: Number(totals.usd_to_cny) > 0 ? Number(totals.usd_to_cny) : 7.2,
+          pricing_source: totals.pricing_source ?? null,
+          pricing_version: totals.pricing_version ?? null,
+          source_kind: totals.source_kind ?? null,
+          source_url: totals.source_url ?? null,
+          source_updated_at: totals.source_updated_at ?? null,
+          observed_at: totals.observed_at ?? null,
+          is_stale: Boolean(totals.is_stale),
+          estimated: Boolean(totals.estimated),
+          match_kind: totals.match_kind ?? null,
+          matched_model: totals.matched_model ?? null,
+          note_code: totals.note_code ?? null,
+          pricing_coverage: totals.pricing_coverage ?? null,
+          pricing_components: Array.isArray(totals.pricing_components)
+            ? totals.pricing_components
+            : [],
         };
       }
     }
@@ -385,6 +415,19 @@ export function useCostAccumulation({
       previousMonthTotalCostUsd: null,
       lifetimeTotalCostUsd: null,
       usdToCny: 7.2,
+      pricing_source: null,
+      pricing_version: null,
+      source_kind: null,
+      source_url: null,
+      source_updated_at: null,
+      observed_at: null,
+      is_stale: false,
+      estimated: false,
+      match_kind: null,
+      matched_model: null,
+      note_code: null,
+      pricing_coverage: null,
+      pricing_components: [],
     };
   }, [apiBillingAccountsNormalized, billingStale, scopedFinancialTimeseries, scopedSpendTimeseries, scopedPreviousMonthTimeseries]);
 

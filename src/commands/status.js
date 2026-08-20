@@ -23,7 +23,7 @@ const {
 const { collectLocalSubscriptions } = require("../lib/subscriptions");
 const {
   describeCopilotOtelStatus,
-  readCopilotOauthToken,
+  describeCopilotCredentialStatus,
 } = require("../lib/usage-limits");
 const {
   normalizeState: normalizeUploadState,
@@ -266,10 +266,10 @@ async function cmdStatus(argv = []) {
     : [];
   const grokInstalled = grokHookState.hasGrokInstall || grokSessions.length > 0;
 
-  const copilotToken = readCopilotOauthToken({ home });
+  const copilotCredential = describeCopilotCredentialStatus({ home });
   const copilotOtel = describeCopilotOtelStatus({ home, env: process.env });
   const copilotLines = formatCopilotLines({
-    token: copilotToken,
+    credential: copilotCredential,
     otel: copilotOtel,
   });
 
@@ -367,7 +367,8 @@ async function cmdStatus(argv = []) {
           : { installed: false },
       },
       copilot: {
-        token_set: Boolean(copilotToken),
+        token_set: copilotCredential.status === "available",
+        credential_status: copilotCredential.status,
         otel_has_files: Boolean(copilotOtel.otel_has_files),
         otel_path: copilotOtel.otel_path || null,
         otel_enabled: Boolean(copilotOtel.otel_enabled),
@@ -471,11 +472,13 @@ async function cmdStatus(argv = []) {
   );
 }
 
-function formatCopilotLines({ token, otel }) {
-  if (!token && !otel.otel_has_files) return [];
-  const limitsState = token
-    ? "set (via GitHub OAuth)"
-    : "unset (no Copilot OAuth token found)";
+function formatCopilotLines({ credential, otel }) {
+  if (!credential?.configured && credential?.status !== "secure_store_unsupported" && !otel.otel_has_files) return [];
+  const limitsState = credential?.status === "secure_store_unsupported"
+    ? "unsupported (Windows secure credential reader unavailable)"
+    : credential?.configured
+      ? "set (via GitHub OAuth)"
+      : "unset (no Copilot OAuth credential found)";
   const usageState = otel.otel_has_files
     ? `set (${otel.otel_path || otel.otel_default_dir})`
     : otel.otel_enabled

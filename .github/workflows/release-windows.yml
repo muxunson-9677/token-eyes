@@ -13,6 +13,10 @@ on:
         type: boolean
         required: false
         default: false
+      upload_release_assets:
+        type: boolean
+        required: false
+        default: false
   workflow_dispatch:
     inputs:
       version:
@@ -24,7 +28,7 @@ on:
       publish:
         type: boolean
         required: false
-        default: true
+        default: false
 
 concurrency:
   group: release-windows-${{ inputs.version }}
@@ -83,12 +87,12 @@ jobs:
             Write-Error "Cargo.toml version $cargoVersion does not match input $expected"
             exit 1
           }
-      - name: Run local CI gate
-        run: npm run ci:local
-      - name: Build dashboard
-        run: npm run dashboard:build
+      - run: npm run ci:local
       - name: Build Tauri release
         run: npm run tauri:build:ci
+        env:
+          TOKEN_EYES_GIT_SHA: ${{ github.sha }}
+          TOKEN_EYES_ISOLATED_INSTALLER_SMOKE: "1"
       - name: Verify Tauri bundle output
         run: |
           $bundleDir = "src-tauri/target/release/bundle"
@@ -96,31 +100,106 @@ jobs:
             Write-Error "Tauri bundle directory not found: $bundleDir"
             exit 1
           }
-          $artifacts = @()
-          $artifacts += Get-ChildItem "$bundleDir/msi/*.msi" -ErrorAction SilentlyContinue
-          $artifacts += Get-ChildItem "$bundleDir/nsis/*-setup.exe" -ErrorAction SilentlyContinue
-          if ($artifacts.Count -eq 0) {
-            Write-Error "No Tauri installer found in $bundleDir"
+          $msiArtifacts = @(Get-ChildItem "$bundleDir/msi/*.msi" -ErrorAction SilentlyContinue)
+          $nsisArtifacts = @(Get-ChildItem "$bundleDir/nsis/*-setup.exe" -ErrorAction SilentlyContinue)
+          if ($msiArtifacts.Count -eq 0) {
+            Write-Error "No Tauri installer found (MSI) in $bundleDir"
             exit 1
           }
-          $artifacts | ForEach-Object { Write-Host "Found: $($_.FullName)" }
-      - name: Ensure release exists
-        run: |
-          $tag = "v${{ inputs.version }}"
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --draft --title $tag --notes "$env:RELEASE_NOTES"
+          if ($nsisArtifacts.Count -eq 0) {
+            Write-Error "No Tauri installer found (NSIS) in $bundleDir"
+            exit 1
           }
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_NOTES: ${{ inputs.notes }}
-      - name: Upload to release
+          $artifacts = @($msiArtifacts) + @($nsisArtifacts)
+          $artifacts | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+      - name: Generate Windows checksums and provenance
         run: |
           $bundleDir = "src-tauri/target/release/bundle"
           $artifacts = @()
           $artifacts += Get-ChildItem "$bundleDir/msi/*.msi" -ErrorAction SilentlyContinue
           $artifacts += Get-ChildItem "$bundleDir/nsis/*-setup.exe" -ErrorAction SilentlyContinue
-          gh release upload "v${{ inputs.version }}" $artifacts --clobber
+          $metadataArgs = @(
+            "--version", "${{ inputs.version }}",
+            "--head-sha", "${{ github.sha }}",
+            "--run-id", "${{ github.run_id }}",
+            "--run-url", "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "--output-dir", "$bundleDir/release-metadata"
+          )
+          foreach ($artifact in $artifacts) {
+            $metadataArgs += @("--artifact", $artifact.FullName)
+          }
+          node scripts/generate-windows-release-metadata.cjs @metadataArgs
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+      - name: Upload private Windows validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: token-eyes-windows-v${{ inputs.version }}-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/release-metadata/checksums-v${{ inputs.version }}.txt
+            src-tauri/target/release/bundle/release-metadata/build-provenance-v${{ inputs.version }}.json
+      - name: Create standalone draft release unless the version already exists
+        if: ${{ inputs.publish }}
+        run: |
+          $tag = "v${{ inputs.version }}"
+          $expectedSha = "${{ github.sha }}".ToLowerInvariant()
+          $remoteTagLines = @(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Unable to read remote tag $tag"
+            exit 1
+          }
+          $remoteTagSha = $null
+          foreach ($line in $remoteTagLines) {
+            $parts = $line -split '\s+', 2
+            if ($parts.Count -ne 2) {
+              Write-Error "Unexpected remote tag response for $tag"
+              exit 1
+            }
+            if ($parts[1] -eq "refs/tags/$tag^{}") {
+              $remoteTagSha = $parts[0].ToLowerInvariant()
+              break
+            }
+            if (-not $remoteTagSha -and $parts[1] -eq "refs/tags/$tag") {
+              $remoteTagSha = $parts[0].ToLowerInvariant()
+            }
+          }
+          if ($remoteTagLines.Count -gt 0 -and -not $remoteTagSha) {
+            Write-Error "Unable to resolve remote tag $tag"
+            exit 1
+          }
+          if ($remoteTagSha -and $remoteTagSha -ne $expectedSha) {
+            Write-Error "Remote tag $tag does not match workflow SHA $expectedSha"
+            exit 1
+          }
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "Release $tag already exists"
+            exit 1
+          }
+          gh release create $tag --target "${{ github.sha }}" --draft --title $tag --notes "$env:RELEASE_NOTES"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+      - name: Upload installers and provenance to the authorized release
+        if: ${{ inputs.upload_release_assets || inputs.publish }}
+        run: |
+          $tag = "v${{ inputs.version }}"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Authorized release does not exist: $tag"
+            exit 1
+          }
+          $bundleDir = "src-tauri/target/release/bundle"
+          $artifacts = @()
+          $artifacts += Get-ChildItem "$bundleDir/msi/*.msi" -ErrorAction SilentlyContinue
+          $artifacts += Get-ChildItem "$bundleDir/nsis/*-setup.exe" -ErrorAction SilentlyContinue
+          $artifacts += Get-Item "$bundleDir/release-metadata/checksums-v${{ inputs.version }}.txt"
+          $artifacts += Get-Item "$bundleDir/release-metadata/build-provenance-v${{ inputs.version }}.json"
+          gh release upload $tag $artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish standalone Windows release

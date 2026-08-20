@@ -1,10 +1,11 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { copy, setCopyLocale } from "../../../../lib/copy";
 import {
   UsageFiltersProvider,
 } from "../../../../hooks/use-usage-filters";
+import { LIMIT_PROVIDER_IDS } from "../../../../lib/limits-providers.js";
 import { UsageFilterBar } from "../UsageFilterBar.jsx";
 
 // Ticket-02 H: UsageFilterBar lays out the 5 filter children. Each child reads
@@ -53,13 +54,14 @@ describe("UsageFilterBar", () => {
     );
   });
 
-  it("renders DeepSeek Harness when it is enabled by Limits Display", () => {
-    renderBar({ visibleProviderIds: ["deepseek-harness"] });
+  it("renders exactly the 16 limits surfaces and drops a retired non-renderer id", () => {
+    renderBar({ visibleProviderIds: [...LIMIT_PROVIDER_IDS, "deepseek-harness"] });
 
-    expect(
-      screen.getByRole("button", { name: /DeepSeek Harness/ }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Codex/ })).not.toBeInTheDocument();
+    const agentGroup = within(screen.getByRole("group", { name: "切换 Agent 数据范围" }));
+    expect(LIMIT_PROVIDER_IDS).toHaveLength(16);
+    expect(agentGroup.getAllByRole("button")).toHaveLength(17);
+    expect(agentGroup.getByRole("button", { name: /Codex/ })).toBeInTheDocument();
+    expect(agentGroup.queryByRole("button", { name: /DeepSeek Harness/ })).not.toBeInTheDocument();
   });
 
   it("left-aligns the Agent cards and separates the model controls on the right", () => {

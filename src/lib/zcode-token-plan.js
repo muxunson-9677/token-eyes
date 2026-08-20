@@ -5,22 +5,11 @@
  *
  * ZCode is a local CLI whose OAuth credentials live in
  *   ~/.zcode/v2/credentials.json
- * Values that hold secrets are stored AES-256-GCM encrypted with the on-disk
- * envelope prefix `enc:v1:{nonce}.{tag}.{ciphertext}` (each part base64url,
- * no padding). The symmetric key is SHA-256 of a secret string that is either
- * the `ZCODE_CREDENTIAL_SECRET` env var or a host/user-bound fallback string.
- *
- * We read the `zcode_jwt_token` value (decrypting when needed) and call the
- * official balance endpoint. No secret is ever persisted by Token Eyes — the
- * JWT is read from disk on each refresh and used only for the balance call.
- *
- * Verification note: the exact fallback-secret derivation and the on-disk
- * platform token cannot be confirmed here without a real ZCode install, so the
- * decryption path is defensive (plaintext token and `TOKENTRACKER_ZCODE_JWT`
- * escape hatches are honoured first) and every failure maps to an actionable
- * reauth/console error rather than a crash. The crypto itself is proven by a
- * round-trip unit test; the balance HTTP + response parsing is the primary
- * tested path.
+ * The encrypted envelope can only be opened when the caller supplies the
+ * explicit ZCODE_CREDENTIAL_SECRET. Token Eyes does not derive a key from host
+ * or account identifiers. The currently observed endpoint and credential
+ * layout have no fixed upstream fixture/source hash, so production refresh is
+ * fail-closed before reading the credential file or issuing a network request.
  */
 
 const fs = require("node:fs");
@@ -52,6 +41,8 @@ function mapZcodeErrorCode(error) {
       return "reauth_required";
     case "ZCODE_RESPONSE_STRUCTURE_DRIFT":
     case "ZCODE_NO_BALANCE":
+    case "ZCODE_SECURE_STORE_UNSUPPORTED":
+    case "ZCODE_ENDPOINT_UNSUPPORTED":
       return "unsupported";
     default:
       return "failed";
@@ -69,36 +60,22 @@ function zcodeCredentialsPath({ home, env } = {}) {
 }
 
 /**
- * Derive the AES-256 key ZCode uses for `enc:v1:` values.
+ * Build the AES-256 key for the desensitized `enc:v1:` fixture helper.
  *
- * secret = ZCODE_CREDENTIAL_SECRET || `zcode-credential-fallback:{platform}:{home}:{username}`
+ * secret = ZCODE_CREDENTIAL_SECRET
  * key    = SHA-256(secret)  (raw 32 bytes)
- *
- * platform/home/username are injectable so tests are deterministic and so the
- * fallback token can be corrected once confirmed against a real install.
  */
-function deriveZcodeKey({ env = process.env, platform, home, username } = {}) {
-  const explicit = typeof env.ZCODE_CREDENTIAL_SECRET === "string" ? env.ZCODE_CREDENTIAL_SECRET : "";
-  let secret = explicit;
+function deriveZcodeKey({ env = process.env } = {}) {
+  const secret = typeof env.ZCODE_CREDENTIAL_SECRET === "string"
+    ? env.ZCODE_CREDENTIAL_SECRET.trim()
+    : "";
   if (!secret) {
-    const plat = platform || process.platform;
-    const homeDir = home || os.homedir();
-    const user = username
-      || env.USER
-      || env.USERNAME
-      || (typeof os.userInfo === "function" ? safeUserInfoName() : "")
-      || "";
-    secret = `zcode-credential-fallback:${plat}:${homeDir}:${user}`;
+    throw new ZcodeTokenPlanError(
+      "ZCODE_SECURE_STORE_UNSUPPORTED",
+      "ZCode 本地凭据读取方式尚未通过固定上游版本验证",
+    );
   }
   return crypto.createHash("sha256").update(secret, "utf8").digest();
-}
-
-function safeUserInfoName() {
-  try {
-    return os.userInfo().username || "";
-  } catch {
-    return "";
-  }
 }
 
 function b64urlToBuffer(value) {
@@ -161,7 +138,8 @@ function isZcodeInstalled({ home, env } = {}) {
  *
  * Resolution order:
  *   1. TOKENTRACKER_ZCODE_JWT env override (plaintext).
- *   2. `zcode_jwt_token` from credentials.json (plaintext or `enc:v1:`).
+ *   2. Encrypted `zcode_jwt_token` from credentials.json, only with an
+ *      explicit ZCODE_CREDENTIAL_SECRET. Plaintext files are rejected.
  * The JWT is returned but never written back to disk by Token Eyes.
  */
 function readZcodeJwt({ home, env = process.env, platform, username } = {}) {
@@ -187,6 +165,12 @@ function readZcodeJwt({ home, env = process.env, platform, username } = {}) {
   const stored = parsed && typeof parsed === "object" ? parsed.zcode_jwt_token : "";
   if (!stored || typeof stored !== "string") {
     throw new ZcodeTokenPlanError("ZCODE_TOKEN_MISSING", "ZCode 凭据中缺少 zcode_jwt_token，请重新登录 ZCode");
+  }
+  if (!isEncryptedValue(stored)) {
+    throw new ZcodeTokenPlanError(
+      "ZCODE_SECURE_STORE_UNSUPPORTED",
+      "ZCode 本地凭据格式尚未通过固定上游版本验证",
+    );
   }
   const key = deriveZcodeKey({ env, platform, home, username });
   const jwt = decryptZcodeValue(stored, key).trim();
@@ -291,54 +275,19 @@ function parseZcodeBalanceResponse(payload) {
 }
 
 async function fetchZcodeQuota({ home, env = process.env, platform, username, fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {}) {
-  if (!isZcodeInstalled({ home, env })) {
-    throw new ZcodeTokenPlanError("ZCODE_NOT_INSTALLED", "未检测到 ZCode 本地登录，请先在 ZCode 中登录");
+  const explicitJwt = typeof env.TOKENTRACKER_ZCODE_JWT === "string"
+    ? env.TOKENTRACKER_ZCODE_JWT.trim()
+    : "";
+  if (!explicitJwt) {
+    throw new ZcodeTokenPlanError(
+      "ZCODE_SECURE_STORE_UNSUPPORTED",
+      "ZCode 本地凭据读取方式尚未通过固定上游版本验证",
+    );
   }
-  const jwt = readZcodeJwt({ home, env, platform, username });
-
-  const url = `${ZCODE_BALANCE_URL}?app_version=${encodeURIComponent(ZCODE_APP_VERSION)}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        Accept: "application/json",
-      },
-      redirect: "manual",
-      signal: controller.signal,
-    });
-    const text = await response.text();
-    if (Buffer.byteLength(text, "utf8") > MAX_RESPONSE_BYTES) {
-      throw new ZcodeTokenPlanError("ZCODE_RESPONSE_STRUCTURE_DRIFT", "ZCode 响应超过大小限制");
-    }
-    if (response.status === 401 || response.status === 403) {
-      throw new ZcodeTokenPlanError("ZCODE_REAUTH_REQUIRED", "ZCode 登录已失效，请重新登录 ZCode");
-    }
-    let payload;
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      throw new ZcodeTokenPlanError("ZCODE_RESPONSE_STRUCTURE_DRIFT", "ZCode 余额响应不是有效 JSON");
-    }
-    if (!response.ok) {
-      throw new ZcodeTokenPlanError("ZCODE_PROVIDER_ERROR", `ZCode 余额接口返回 HTTP ${response.status}`);
-    }
-    const parsed = parseZcodeBalanceResponse(payload);
-    return {
-      ...parsed,
-      provider_reported_at: new Date().toISOString(),
-    };
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new ZcodeTokenPlanError("ZCODE_TIMEOUT", "ZCode 余额请求超时");
-    }
-    if (error instanceof ZcodeTokenPlanError) throw error;
-    throw new ZcodeTokenPlanError("ZCODE_NETWORK_ERROR", "无法查询 ZCode 额度");
-  } finally {
-    clearTimeout(timeout);
-  }
+  throw new ZcodeTokenPlanError(
+    "ZCODE_ENDPOINT_UNSUPPORTED",
+    "ZCode 额度接口尚无固定上游 fixture 与来源校验，已停止自动查询",
+  );
 }
 
 function createZcodeProviderAdapter({ fetchImpl = globalThis.fetch, home, env, platform, username } = {}) {

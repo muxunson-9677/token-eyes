@@ -1,7 +1,11 @@
 "use strict";
 
+const GLM_ENTITLEMENT_CONTRACT = require("../../shared/provider-plan-contracts/glm.json");
+
 const GLM_USAGE_URL = "https://open.bigmodel.cn/api/monitor/usage/quota/limit";
 const MAX_RESPONSE_BYTES = 1024 * 1024;
+const GLM_CURRENT_CATALOG_VERSION = "2026-08-20";
+const GLM_LEGACY_V2_CATALOG_VERSION = "2026-07-08";
 
 class GlmTokenPlanError extends Error {
   constructor(code, message) {
@@ -12,11 +16,10 @@ class GlmTokenPlanError extends Error {
 }
 
 function finiteNonNegative(value, field) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < 0) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw new GlmTokenPlanError("GLM_RESPONSE_STRUCTURE_DRIFT", `Invalid ${field}`);
   }
-  return number;
+  return value;
 }
 
 function parseWindow(item, kind) {
@@ -44,22 +47,139 @@ function parseGlmQuotaResponse(payload) {
   if (!fiveHour || !weekly) {
     throw new GlmTokenPlanError("GLM_RESPONSE_STRUCTURE_DRIFT", "GLM quota windows are missing");
   }
+  const quotaWindows = [
+    parseWindow(fiveHour, "rolling_5_hour"),
+    parseWindow(weekly, "rolling_weekly"),
+  ];
+  const primaryWindow = quotaWindows.find((window) => window.kind === "rolling_weekly");
   return {
     level: String(data.level || "").toLowerCase(),
-    quota_windows: [
-      parseWindow(fiveHour, "rolling_5_hour"),
-      parseWindow(weekly, "rolling_weekly"),
+    quota_kind: "rolling_window",
+    quota_unit: primaryWindow.unit,
+    total_quota: primaryWindow.total,
+    used_quota: primaryWindow.used,
+    remaining_quota: primaryWindow.remaining,
+    quota_windows: quotaWindows,
+    provider_reported_fields: [
+      "total_quota",
+      "used_quota",
+      "remaining_quota",
+      "quota_windows",
     ],
   };
 }
 
 function mapGlmLevelToPlanId(level) {
   const value = String(level || "").trim().toLowerCase();
-  if (!value) return "";
-  if (value.includes("max")) return "glm_max";
-  if (value.includes("pro")) return "glm_pro";
-  if (value.includes("lite")) return "glm_lite";
-  return "";
+  const aliases = new Map([
+    ["lite", "glm_lite"],
+    ["glm lite", "glm_lite"],
+    ["glm_lite", "glm_lite"],
+    ["pro", "glm_pro"],
+    ["glm pro", "glm_pro"],
+    ["glm_pro", "glm_pro"],
+    ["max", "glm_max"],
+    ["glm max", "glm_max"],
+    ["glm_max", "glm_max"],
+  ]);
+  return aliases.get(value) || "";
+}
+
+function clone(value) {
+  return structuredClone(value);
+}
+
+function sourceHashesFromContract(contract = GLM_ENTITLEMENT_CONTRACT) {
+  return Object.fromEntries(Object.entries(contract.sources || {}).map(([sourceId, source]) => (
+    [sourceId, String(source?.content_sha256 || "")]
+  )));
+}
+
+function assessGlmContractSourceHashes(observedSourceHashes, contract = GLM_ENTITLEMENT_CONTRACT) {
+  const observed = observedSourceHashes && typeof observedSourceHashes === "object"
+    ? observedSourceHashes
+    : {};
+  const expected = sourceHashesFromContract(contract);
+  const changedSources = Object.keys(expected).filter((sourceId) => (
+    String(observed[sourceId] || "") !== expected[sourceId]
+  ));
+  return {
+    status: changedSources.length > 0 ? "manual_evidence_required" : "verified",
+    changed_sources: changedSources,
+  };
+}
+
+function getGlmEntitlementPlan(revision, planId, contract = GLM_ENTITLEMENT_CONTRACT) {
+  const cohort = contract.cohorts?.[String(revision || "")];
+  const plan = (cohort?.plans || []).find((item) => item.plan_id === String(planId || ""));
+  return plan ? clone(plan) : null;
+}
+
+function getGlmEntitlementWindows(revision, planId, contract = GLM_ENTITLEMENT_CONTRACT) {
+  return getGlmEntitlementPlan(revision, planId, contract)?.entitlement_windows || [];
+}
+
+function entitlementWindowsMatch(record, revision, planId) {
+  if (!Array.isArray(record?.entitlement_windows)) return false;
+  return JSON.stringify(record.entitlement_windows) === JSON.stringify(
+    getGlmEntitlementWindows(revision, planId),
+  );
+}
+
+function resolveGlmEntitlementRevision(record, { isNewCatalogSelection = false } = {}) {
+  const input = record && typeof record === "object" ? record : {};
+  const planId = String(input.plan_id || "");
+  const explicit = String(input.entitlement_revision || "");
+  if (explicit === "legacy_v1" || explicit === "unknown") return explicit;
+  if (
+    (explicit === "legacy_v2_prompts" || explicit === "current_v3_points")
+    && entitlementWindowsMatch(input, explicit, planId)
+  ) {
+    return explicit;
+  }
+  const catalogVersion = String(input.quota_catalog_version || "");
+  const quotaUnit = String(input.quota_unit || "").toLowerCase();
+  if (catalogVersion === GLM_LEGACY_V2_CATALOG_VERSION && quotaUnit === "prompts") {
+    return "legacy_v2_prompts";
+  }
+  if (catalogVersion === GLM_CURRENT_CATALOG_VERSION && quotaUnit === "points") {
+    return "current_v3_points";
+  }
+  return isNewCatalogSelection ? "current_v3_points" : "unknown";
+}
+
+function projectGlmCatalog(rawCatalog, {
+  contract = GLM_ENTITLEMENT_CONTRACT,
+  observedSourceHashes,
+} = {}) {
+  const projected = clone(rawCatalog && typeof rawCatalog === "object" ? rawCatalog : {});
+  const current = contract.cohorts?.current_v3_points || { plans: [] };
+  const sourceHashes = observedSourceHashes
+    || projected.source_hashes
+    || sourceHashesFromContract(contract);
+  const assessment = assessGlmContractSourceHashes(sourceHashes, contract);
+  projected.entitlement_revision = "current_v3_points";
+  projected.cohort_display_name = current.user_facing_name || "新版积分套餐";
+  projected.evidence_status = assessment.status;
+  projected.source_hashes = clone(projected.source_hashes || sourceHashesFromContract(contract));
+  projected.plans = (current.plans || []).map((contractPlan) => {
+    const existing = (projected.plans || []).find((plan) => plan.plan_id === contractPlan.plan_id) || {};
+    return {
+      ...existing,
+      plan_id: contractPlan.plan_id,
+      display_name: contractPlan.display_name,
+      entitlement_revision: "current_v3_points",
+      entitlement_windows: clone(contractPlan.entitlement_windows),
+      quota: {
+        ...(existing.quota || {}),
+        kind: "entitlement_windows",
+        total: 0,
+        unit: "points",
+        display: contractPlan.quota_display,
+      },
+    };
+  });
+  return projected;
 }
 
 function mapGlmErrorCode(error) {
@@ -127,10 +247,14 @@ function createGlmProviderAdapter({ fetchImpl = globalThis.fetch } = {}) {
     const ref = plan?.detection_config?.official_account?.api_key_ref || "";
     const apiKey = resolveApiKey ? await resolveApiKey(ref) : "";
     const result = await fetchGlmQuota({ apiKey, fetchImpl });
-    const suggestedPlanId = mapGlmLevelToPlanId(result.level);
     return {
+      quota_kind: result.quota_kind,
+      quota_unit: result.quota_unit,
+      total_quota: result.total_quota,
+      used_quota: result.used_quota,
+      remaining_quota: result.remaining_quota,
       quota_windows: result.quota_windows,
-      suggested_plan_id: suggestedPlanId,
+      provider_reported_fields: result.provider_reported_fields,
       provider_reported_at: new Date().toISOString(),
     };
   };
@@ -144,4 +268,9 @@ module.exports = {
   mapGlmLevelToPlanId,
   mapGlmErrorCode,
   createGlmProviderAdapter,
+  assessGlmContractSourceHashes,
+  getGlmEntitlementPlan,
+  getGlmEntitlementWindows,
+  resolveGlmEntitlementRevision,
+  projectGlmCatalog,
 };

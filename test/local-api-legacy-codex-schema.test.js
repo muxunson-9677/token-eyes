@@ -72,7 +72,9 @@ test("usage-summary normalizes legacy Codex rows whose input still includes cach
     assert.equal(body.totals.cached_input_tokens, 950);
     assert.equal(body.totals.output_tokens, 10);
     assert.equal(body.totals.reasoning_output_tokens, 4);
-    assert.equal(body.totals.total_cost_usd, "0.000513");
+    assert.equal(body.totals.total_cost_usd, null);
+    assert.equal(body.totals.cost_usd, null);
+    assert.equal(body.totals.pricing_coverage, "unpriced");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -110,7 +112,7 @@ test("usage-model-breakdown applies the same legacy Codex normalization before p
     assert.equal(codex.totals.cached_input_tokens, 950);
     assert.equal(codex.totals.output_tokens, 10);
     assert.equal(codex.totals.reasoning_output_tokens, 4);
-    assert.equal(codex.totals.total_cost_usd, "0.000513");
+    assert.equal(codex.totals.total_cost_usd, null);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

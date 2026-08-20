@@ -2,6 +2,8 @@ import { describe, expectTypeOf, it } from "vitest";
 import type {
   MetricAvailability,
   PricingCoverage,
+  PricingCoverageFields,
+  PricingProvenanceFields,
   ProviderStat,
   RequestUsageRecordsResponse,
   UsageRecord,
@@ -35,17 +37,73 @@ describe("TICKET-06 truthful usage metrics contract", () => {
       cached_input_tokens: 0,
       cache_creation_input_tokens: 0,
       reasoning_output_tokens: 0,
-      cost_usd: 0,
+      cost_usd: null,
+      priced_tokens: 0,
+      unpriced_tokens: 10,
       pricing_coverage: "unpriced",
+      pricing_source: null,
+      pricing_version: null,
+      source_kind: "unpriced",
+      source_url: null,
+      source_updated_at: null,
+      observed_at: "2026-06-29T00:00:00.000Z",
+      is_stale: false,
+      estimated: false,
+      match_kind: null,
+      matched_model: null,
+      note_code: "pricing_not_found",
+      pricing_components: [],
       status: null,
       latency_ms: null,
       first_token_ms: null,
       request_source: "codex_rollout",
     };
-    expectTypeOf(rolloutRecord.record_kind).toBeString();
+    expectTypeOf<UsageRecord["record_kind"]>().toEqualTypeOf<"request_event" | "aggregate_bucket" | undefined>();
     expectTypeOf(rolloutRecord.status).toBeNullable();
     expectTypeOf(rolloutRecord.latency_ms).toBeNullable();
-    expectTypeOf(rolloutRecord.pricing_coverage).toBeString();
+    expectTypeOf<UsageRecord["pricing_coverage"]>().toEqualTypeOf<PricingCoverage>();
+  });
+
+  it("Task 8 UsageRecord accepts null cost and the complete pricing provenance contract", () => {
+    const unpricedRecord: UsageRecord = {
+      id: "codex:session:unpriced",
+      record_kind: "request_event",
+      timestamp: "2026-08-20T00:00:00.000Z",
+      hour_start: "2026-08-20T00:00:00.000Z",
+      source: "codex",
+      source_display_name: "Codex",
+      model: "unpriced-review-model",
+      total_tokens: 10,
+      input_tokens: 6,
+      output_tokens: 4,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      cost_usd: null,
+      priced_tokens: 0,
+      unpriced_tokens: 10,
+      pricing_coverage: "unpriced",
+      pricing_source: null,
+      pricing_version: null,
+      source_kind: "unpriced",
+      source_url: null,
+      source_updated_at: null,
+      observed_at: "2026-08-20T00:00:00.000Z",
+      is_stale: false,
+      estimated: false,
+      match_kind: null,
+      matched_model: null,
+      note_code: "pricing_not_found",
+      pricing_components: [],
+      status: null,
+      latency_ms: null,
+      first_token_ms: null,
+      request_source: "codex_rollout",
+    };
+
+    expectTypeOf<UsageRecord["cost_usd"]>().toEqualTypeOf<number | null>();
+    const pricingEvidence: PricingCoverageFields & PricingProvenanceFields = unpricedRecord;
+    expectTypeOf(pricingEvidence.pricing_components).toBeArray();
   });
 
   it("ProviderStat supports aggregate_only metrics", () => {
@@ -84,12 +142,26 @@ describe("TICKET-06 truthful usage metrics contract", () => {
         cost_usd: 0,
         request_count: 0,
         success_count: null,
+        interrupted_count: 0,
+        failure_count: 0,
         success_rate: null,
         avg_latency_ms: null,
         cache_hit_rate: 0,
         priced_tokens: 0,
         unpriced_tokens: 0,
         pricing_coverage: "complete",
+        pricing_source: null,
+        pricing_version: null,
+        source_kind: null,
+        source_url: null,
+        source_updated_at: null,
+        observed_at: null,
+        is_stale: false,
+        estimated: false,
+        match_kind: null,
+        matched_model: null,
+        note_code: null,
+        pricing_components: [],
         status_sample_count: 0,
         latency_sample_count: 0,
       },

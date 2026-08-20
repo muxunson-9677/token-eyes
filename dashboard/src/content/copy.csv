@@ -825,6 +825,7 @@ usage.overview.antigravity_notice_body,ui,DashboardPage,UsageOverview,antigravit
 limits.panel.title,ui,LimitsPage,UsageLimitsPanel,title,"Usage Limits",,active
 limits.panel.mode_separator,ui,LimitsPage,UsageLimitsPanel,title_separator," · ",,active
 limits.label.cursor_plan,ui,LimitsPage,UsageLimitsPanel,cursor_plan,"Plan",,active
+limits.label.cursor_team_pool,ui,LimitsPage,UsageLimitsPanel,cursor_team_pool,"Team Pool",,active
 limits.label.cursor_auto,ui,LimitsPage,UsageLimitsPanel,cursor_auto,"Auto",,active
 limits.label.cursor_api,ui,LimitsPage,UsageLimitsPanel,cursor_api,"API",,active
 limits.label.kiro_month,ui,LimitsPage,UsageLimitsPanel,kiro_month,"Month",,active
@@ -1705,7 +1706,7 @@ ticket04.request.loading,dashboard,SpendPage,RequestUsageLog,loading,"Loading re
 ticket04.request.retry,dashboard,SpendPage,RequestUsageLog,retry,"Retry",,active
 ticket04.request.title,dashboard,SpendPage,RequestUsageLog,title,"Request Log",,active
 ticket04.request.subtitle,dashboard,SpendPage,RequestUsageLog,subtitle,"Per-request token usage (no prompt content)",,active
-ticket04.request.pricing_source_note,dashboard,SpendPage,RequestUsageLog,caption,"计费统计来源于模型官方标价",,active
+ticket04.request.pricing_evidence_note,dashboard,SpendPage,RequestUsageLog,caption,"每条记录会显示实际价格来源、匹配方式和新鲜度。",,active
 ticket04.provider.column.provider,dashboard,SpendPage,ProviderUsageTable,column_provider,"Provider",,active
 ticket04.provider.column.requests,dashboard,SpendPage,ProviderUsageTable,column_requests,"Requests",,active
 ticket04.provider.column.tokens,dashboard,SpendPage,ProviderUsageTable,column_tokens,"Tokens",,active
@@ -1786,6 +1787,21 @@ settings.token_plan.codex.account_display_name,ui,SettingsPage,TokenPlanSection,
 settings.token_plan.codex.login_started_desc,ui,SettingsPage,TokenPlanSection,codex_login_started_desc,"系统默认浏览器已打开 OpenAI 官方授权页；确认后 Token Eyes 会自动识别授权结果。授权页标签是否自动关闭由浏览器与 OpenAI 官方页面决定，不影响连接。",,active
 settings.token_plan.codex.connect_timeout,ui,SettingsPage,TokenPlanSection,codex_connect_timeout,"等待 ChatGPT 登录超时，请重试。",,active
 settings.token_plan.codex.quota_sync_failed,ui,SettingsPage,TokenPlanSection,codex_quota_sync_failed,"授权已完成，但额度同步暂时失败，可稍后重试。",,active
+settings.token_plan.codex.current_step,ui,SettingsPage,TokenPlanSection,codex_current_step,"当前步骤：等待 OpenAI 官方授权",,active
+settings.token_plan.codex.cancel,ui,SettingsPage,TokenPlanSection,codex_cancel,"取消授权",,active
+settings.token_plan.codex.reopen,ui,SettingsPage,TokenPlanSection,codex_reopen,"重新打开授权页",,active
+settings.token_plan.codex.copy_diagnostic,ui,SettingsPage,TokenPlanSection,codex_copy_diagnostic,"复制脱敏诊断",,active
+settings.token_plan.codex.retry_save,ui,SettingsPage,TokenPlanSection,codex_retry_save,"重试保存",,active
+settings.token_plan.codex.local_persist_failed,ui,SettingsPage,TokenPlanSection,codex_local_persist_failed,"授权状态无法保存到本地，请重试保存。",,active
+settings.token_plan.codex.retry_local_disconnect,ui,SettingsPage,TokenPlanSection,codex_retry_local_disconnect,"仅重试本地删除",,active
+settings.token_plan.codex.cancel_failed,ui,SettingsPage,TokenPlanSection,codex_cancel_failed,"无法确认授权已取消，请稍后重试。",,active
+settings.token_plan.codex.reopen_failed,ui,SettingsPage,TokenPlanSection,codex_reopen_failed,"无法重新打开当前授权页，请稍后重试。",,active
+settings.token_plan.codex.copy_diagnostic_failed,ui,SettingsPage,TokenPlanSection,codex_copy_diagnostic_failed,"复制脱敏诊断失败。",,active
+settings.token_plan.codex.logout_failed,ui,SettingsPage,TokenPlanSection,codex_logout_failed,"无法确认 Codex 已注销，本地绑定已保留。",,active
+settings.token_plan.codex.legacy_auth_warning,ui,SettingsPage,TokenPlanSection,codex_legacy_auth_warning,"检测到旧版明文 auth.json。新安全凭据已验证后，可单独删除这个旧文件。",,active
+settings.token_plan.codex.cleanup_legacy,ui,SettingsPage,TokenPlanSection,codex_cleanup_legacy,"删除旧版 auth.json",,active
+settings.token_plan.codex.legacy_cleanup_confirm,ui,SettingsPage,TokenPlanSection,codex_legacy_cleanup_confirm,"仅删除此账号绑定目录中的旧版 auth.json，不会注销当前账号。是否继续？",,active
+settings.token_plan.codex.legacy_cleanup_failed,ui,SettingsPage,TokenPlanSection,codex_legacy_cleanup_failed,"旧版 auth.json 删除失败，当前安全凭据连接保持不变。",,active
 settings.token_plan.claude.account_mode,ui,SettingsPage,TokenPlanSection,claude_account_mode,"Claude 检测模式",,active
 settings.token_plan.claude.account_mode.official,ui,SettingsPage,TokenPlanSection,claude_account_mode_official,"官方账号（同步 Anthropic 额度）",,active
 settings.token_plan.claude.account_mode.routing,ui,SettingsPage,TokenPlanSection,claude_account_mode_routing,"路由模式（仅 Token 统计）",,active
@@ -1802,6 +1818,7 @@ settings.token_plan.cursor.account,ui,SettingsPage,TokenPlanSection,cursor_accou
 settings.token_plan.cursor.auth_id,ui,SettingsPage,TokenPlanSection,cursor_auth_id,"Auth ID",,active
 settings.token_plan.cursor.plan_name,ui,SettingsPage,TokenPlanSection,cursor_plan_name,"套餐",,active
 settings.token_plan.cursor.total_usage,ui,SettingsPage,TokenPlanSection,cursor_total_usage,"Total Usage",,active
+settings.token_plan.cursor.team_pool_usage,ui,SettingsPage,TokenPlanSection,cursor_team_pool_usage,"Team Pool Usage",,active
 settings.token_plan.cursor.auto_composer_usage,ui,SettingsPage,TokenPlanSection,cursor_auto_composer_usage,"Auto + Composer Usage",,active
 settings.token_plan.cursor.api_usage,ui,SettingsPage,TokenPlanSection,cursor_api_usage,"API Usage",,active
 settings.token_plan.cursor.reset_at,ui,SettingsPage,TokenPlanSection,cursor_reset_at,"重置时间",,active
@@ -1814,7 +1831,7 @@ settings.token_plan.detection_method.none,ui,SettingsPage,TokenPlanSection,detec
 settings.token_plan.detection_method.official_account,ui,SettingsPage,TokenPlanSection,detection_method_official_account,"官网账号登录检测",,active
 settings.token_plan.detection_method.custom_api,ui,SettingsPage,TokenPlanSection,detection_method_custom_api,"自定义 API 检测",,active
 settings.token_plan.detection.official_account.title,ui,SettingsPage,TokenPlanSection,detection_official_account_title,"官网账号登录",,active
-settings.token_plan.detection.official_account.desc,ui,SettingsPage,TokenPlanSection,detection_official_account_desc,"登录小米官网控制台以同步套餐额度状态。",,active
+settings.token_plan.detection.official_account.desc,ui,SettingsPage,TokenPlanSection,detection_official_account_desc,"官网会话检测（非公开接口，可能随官网升级失效）",,active
 settings.token_plan.detection.official_account.url_label,ui,SettingsPage,TokenPlanSection,detection_official_account_url_label,"官网链接",,active
 settings.token_plan.detection.official_account.url_value,ui,SettingsPage,TokenPlanSection,detection_official_account_url_value,"https://platform.xiaomimimo.com/token-plan",,active
 settings.token_plan.detection.official_account.connect,ui,SettingsPage,TokenPlanSection,detection_official_account_connect,"连接小米 MiMo 控制台账号",,active
@@ -1863,6 +1880,16 @@ ticket06.pricing.unpriced,dashboard,common,PricingDisplay,unpriced,"未定价",,
 ticket06.pricing.partial,dashboard,common,PricingDisplay,partial,"部分定价",,active
 ticket06.pricing.partial_hint,dashboard,common,PricingDisplay,partial_hint,"部分 token 未定价",,active
 ticket06.pricing.unpriced_hint,dashboard,common,PricingDisplay,unpriced_hint,"Token 未定价",,active
+pricing.provenance.official_api,dashboard,common,PricingProvenance,official_api,"官方价",,active
+pricing.provenance.curated,dashboard,common,PricingProvenance,curated,"维护定价",,active
+pricing.provenance.third_party,dashboard,common,PricingProvenance,third_party,"第三方价格目录",,active
+pricing.provenance.user_override,dashboard,common,PricingProvenance,user_override,"用户配置",,active
+pricing.provenance.mixed,dashboard,common,PricingProvenance,mixed,"混合来源",,active
+pricing.provenance.unpriced,dashboard,common,PricingProvenance,unpriced,"未定价",,active
+pricing.provenance.estimated,dashboard,common,PricingProvenance,estimated,"估算",,active
+pricing.provenance.inferred,dashboard,common,PricingProvenance,inferred,"推断匹配",,active
+pricing.provenance.stale,dashboard,common,PricingProvenance,stale,"价格已过期",,active
+pricing.provenance.tooltip,dashboard,common,PricingProvenance,tooltip,"来源：{{source}}；匹配模型：{{model}}；更新时间：{{updated}}",,active
 ticket06.availability.measured,dashboard,common,AvailabilityIndicator,measured,"Measured",,active
 ticket06.availability.aggregate_only,dashboard,common,AvailabilityIndicator,aggregate_only,"Aggregate Only",,active
 ticket06.availability.unavailable,dashboard,common,AvailabilityIndicator,unavailable,"Unavailable",,active
@@ -2046,12 +2073,13 @@ plan_market.plan_badge.recommended,dashboard,PlanMarketPage,PlanMarketPage,plan_
 plan_market.plan_badge.premium,dashboard,PlanMarketPage,PlanMarketPage,plan_badge_premium,"高配",,active
 plan_market.sources_label,dashboard,PlanMarketPage,PlanMarketPage,sources_label,"来源",,active
 plan_market.status.discontinued,dashboard,PlanMarketPage,PlanMarketPage,status_discontinued,"已停售",,active
+plan_market.status.needs_review,dashboard,PlanMarketPage,PlanMarketPage,status_needs_review,"待复核",,active
 plan_market.quota_label,dashboard,PlanMarketPage,PlanMarketPage,quota_label,"额度",,active
 plan_market.cycle.monthly,dashboard,PlanMarketPage,PlanMarketPage,cycle_monthly,"/月",,active
 plan_market.cycle.quarterly,dashboard,PlanMarketPage,PlanMarketPage,cycle_quarterly,"/季",,active
 plan_market.cycle.yearly,dashboard,PlanMarketPage,PlanMarketPage,cycle_yearly,"/年",,active
 plan_market.cycle.one_time,dashboard,PlanMarketPage,PlanMarketPage,cycle_one_time,"一次性",,active
-plan_market.global_price_comparison,dashboard,PlanMarketPage,PlanMarketPage,global_price_comparison,"全球不同地区订阅费比价",,active
+plan_market.global_price_comparison,dashboard,PlanMarketPage,PlanMarketPage,global_price_comparison,"第三方比价（非官方，数据可能滞后）",,active
 plan_market.access.direct,dashboard,PlanMarketPage,PlanMarketPage,access_direct,"国内直连",,active
 plan_market.access.vpn,dashboard,PlanMarketPage,PlanMarketPage,access_vpn,"需要 VPN",,active
 plan_market.risk_label,dashboard,PlanMarketPage,PlanMarketPage,risk_label,"风控风险",,active
@@ -2116,6 +2144,7 @@ settings.cost.provider_api.capability.aliyun_account_scope,ui,SettingsPage,Provi
 settings.cost.provider_api.capability.volcengine_account_scope,ui,SettingsPage,ProviderApiConfigSection,volcengine_account_scope,"查询的是火山引擎账号总余额（包含豆包/方舟相关消费），不是单独的豆包模型余额；需使用具备账务查询权限的 AccessKey。",,active
 settings.cost.provider_api.capability.token_plan_settings,ui,SettingsPage,ProviderApiConfigSection,token_plan_settings,"套餐 Token 额度请在 Token 套餐设置中配置",,active
 settings.cost.provider_api.capability.official_console_hint,ui,SettingsPage,ProviderApiConfigSection,official_console_hint,"保存后点击“测试连接”，在官方控制台窗口完成登录。Token Eyes 只保存脱敏后的余额数字，不保存密码或 Cookie。",,active
+settings.cost.provider_api.capability.xiaomi_console_best_effort,ui,SettingsPage,ProviderApiConfigSection,xiaomi_console_best_effort,"官网会话检测（非公开接口，可能随官网升级失效）",,active
 settings.cost.provider_api.token_quota,ui,SettingsPage,ProviderApiConfigSection,token_quota,"套餐 Token 额度",,active
 settings.cost.provider_api.form.advanced_show,ui,SettingsPage,ProviderApiConfigSection,form_advanced_show,"展开高级配置",,active
 settings.cost.provider_api.form.advanced_hide,ui,SettingsPage,ProviderApiConfigSection,form_advanced_hide,"收起高级配置",,active
@@ -2132,6 +2161,9 @@ settings.cost.provider_api.test_unsupported,ui,SettingsPage,ProviderApiConfigSec
 settings.cost.provider_api.test_invalid,ui,SettingsPage,ProviderApiConfigSection,test_invalid,"响应格式错误，请检查字段路径",,active
 settings.cost.provider_api.test_unavailable,ui,SettingsPage,ProviderApiConfigSection,test_unavailable,"供应商服务暂不可用",,active
 settings.cost.provider_api.test_unknown,ui,SettingsPage,ProviderApiConfigSection,test_unknown,"测试失败",,active
+settings.cost.provider_api.console_reauth_required,ui,SettingsPage,ProviderApiConfigSection,console_reauth_required,"官网会话已失效，请重新连接",,active
+settings.cost.provider_api.console_temporary,ui,SettingsPage,ProviderApiConfigSection,console_temporary,"官网额度服务暂时不可用，请稍后重试",,active
+settings.cost.provider_api.console_unsupported,ui,SettingsPage,ProviderApiConfigSection,console_unsupported,"官网响应格式暂不支持，可能已随官网升级变化",,active
 settings.cost.provider_api.error_credential_unavailable,ui,SettingsPage,ProviderApiConfigSection,error_credential_unavailable,"安全凭据存储不可用，无法保存 API Key",,active
 settings.cost.provider_api.error_invalid,ui,SettingsPage,ProviderApiConfigSection,error_invalid,"配置无效，请检查必填项与字段路径",,active
 settings.cost.provider_api.error_unsupported_endpoint,ui,SettingsPage,ProviderApiConfigSection,error_unsupported_endpoint,"该 URL 不是财务查询接口；请填写供应商 API Base URL（如 https://api.deepseek.com）或在高级配置中指定完整余额地址",,active

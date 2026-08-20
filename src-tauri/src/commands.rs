@@ -5,7 +5,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
@@ -337,6 +337,56 @@ struct ResolvedRuntime {
 
 fn bundled_runtime_dir_name() -> String {
     format!("EmbeddedServer-{}", env!("CARGO_PKG_VERSION"))
+}
+
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TokenEyesBuildInfo {
+    app_version: String,
+    head_sha: String,
+    built_at_utc: String,
+}
+
+fn parse_token_eyes_build_info(raw: &str) -> Result<TokenEyesBuildInfo, String> {
+    let raw = raw.strip_prefix('\u{feff}').unwrap_or(raw);
+    let info: TokenEyesBuildInfo = serde_json::from_str(raw)
+        .map_err(|_| "[E_BUILD_INFO_INVALID] manifest JSON is invalid".to_string())?;
+    if info.app_version != env!("CARGO_PKG_VERSION") {
+        return Err("[E_BUILD_INFO_VERSION] manifest version mismatch".to_string());
+    }
+    if info.head_sha.len() != 40
+        || !info
+            .head_sha
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err("[E_BUILD_INFO_SHA] manifest Git SHA is invalid".to_string());
+    }
+    let built_at = chrono::DateTime::parse_from_rfc3339(&info.built_at_utc)
+        .map_err(|_| "[E_BUILD_INFO_TIME] manifest build time is invalid".to_string())?;
+    if built_at.offset().local_minus_utc() != 0 {
+        return Err("[E_BUILD_INFO_TIME] manifest build time is not UTC".to_string());
+    }
+    Ok(info)
+}
+
+fn get_token_eyes_build_info_at(
+    resource_dir: &std::path::Path,
+) -> Result<TokenEyesBuildInfo, String> {
+    let manifest_path = resource_dir
+        .join(bundled_runtime_dir_name())
+        .join("runtime-manifest.json");
+    let raw = std::fs::read_to_string(manifest_path)
+        .map_err(|_| "[E_BUILD_INFO_MISSING] runtime manifest is unavailable".to_string())?;
+    parse_token_eyes_build_info(&raw)
+}
+
+#[tauri::command]
+pub fn get_token_eyes_build_info(app: AppHandle) -> Result<TokenEyesBuildInfo, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|_| "[E_BUILD_INFO_RESOURCE] resource directory is unavailable".to_string())?;
+    get_token_eyes_build_info_at(&resource_dir)
 }
 
 /// Resolve this release's versioned bundled runtime from Tauri's resource
@@ -1008,6 +1058,72 @@ mod tests {
             bundled_runtime_dir_name(),
             format!("EmbeddedServer-{}", env!("CARGO_PKG_VERSION"))
         );
+    }
+
+    #[test]
+    fn build_info_reads_the_versioned_manifest_and_serializes_only_public_identity() {
+        let root = make_complete_runtime_root();
+        let raw = format!(
+            "\u{feff}{{\"app_version\":\"{}\",\"head_sha\":\"{}\",\"built_at_utc\":\"2026-08-21T01:02:03.000Z\",\"node\":{{\"sha256\":\"synthetic\"}},\"ignored_secret\":\"must-not-escape\"}}",
+            env!("CARGO_PKG_VERSION"),
+            "a".repeat(40),
+        );
+        std::fs::write(
+            root.join(bundled_runtime_dir_name())
+                .join("runtime-manifest.json"),
+            raw,
+        )
+        .expect("write build manifest");
+
+        let info = get_token_eyes_build_info_at(&root).expect("valid build identity");
+        let serialized = serde_json::to_value(info).expect("serialize build identity");
+        std::fs::remove_dir_all(&root).ok();
+        assert_eq!(
+            serialized,
+            serde_json::json!({
+                "app_version": env!("CARGO_PKG_VERSION"),
+                "head_sha": "a".repeat(40),
+                "built_at_utc": "2026-08-21T01:02:03.000Z",
+            })
+        );
+    }
+
+    #[test]
+    fn build_info_rejects_version_sha_and_time_drift_without_echoing_manifest_values() {
+        for (raw, expected_code, forbidden) in [
+            (
+                format!(
+                    r#"{{"app_version":"9.9.9","head_sha":"{}","built_at_utc":"2026-08-21T01:02:03Z"}}"#,
+                    "a".repeat(40)
+                ),
+                "[E_BUILD_INFO_VERSION]",
+                "9.9.9",
+            ),
+            (
+                format!(
+                    r#"{{"app_version":"{}","head_sha":"unknown","built_at_utc":"2026-08-21T01:02:03Z"}}"#,
+                    env!("CARGO_PKG_VERSION")
+                ),
+                "[E_BUILD_INFO_SHA]",
+                "unknown",
+            ),
+            (
+                format!(
+                    r#"{{"app_version":"{}","head_sha":"{}","built_at_utc":"SYNTHETIC_BAD_TIME"}}"#,
+                    env!("CARGO_PKG_VERSION"),
+                    "a".repeat(40)
+                ),
+                "[E_BUILD_INFO_TIME]",
+                "SYNTHETIC_BAD_TIME",
+            ),
+        ] {
+            let error = parse_token_eyes_build_info(&raw).expect_err("invalid manifest must fail");
+            assert!(error.starts_with(expected_code), "got {error}");
+            assert!(
+                !error.contains(forbidden),
+                "error echoed manifest value: {error}"
+            );
+        }
     }
 
     #[test]

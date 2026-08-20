@@ -204,21 +204,30 @@ test("listUsageLimitAdapterIds is a non-empty array", () => {
 
 test("listUsageLimitAdapterIds matches the supported limits display sources", () => {
   const ids = listUsageLimitAdapterIds();
-  assert.deepEqual(ids, [
-    "claude",
-    "codex",
-    "cursor",
-    "trae",
-    "gemini",
-    "hermes",
-    "openclaw",
-    "opencode",
-    "antigravity",
-    "deepseek-harness",
-  ]);
+  const limitsSource = fs.readFileSync(
+    path.join(__dirname, "..", "dashboard", "src", "lib", "limits-providers.js"),
+    "utf8",
+  );
+  const match = limitsSource.match(/export const LIMIT_PROVIDER_IDS = \[([^\]]+)\]/s);
+  assert.ok(match, "LIMIT_PROVIDER_IDS literal must remain available for the cross-runtime contract");
+  const dashboardIds = [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]);
+  assert.deepEqual(
+    [...ids].sort(),
+    [...dashboardIds].sort(),
+    "canonical usageLimitsSurface flags and dashboard limit renderers must stay aligned",
+  );
 });
 
-test("DeepSeek Harness is a real passive-log adapter", () => {
+test("Kiro IDE and CLI adapters share one usage identity and queue source", () => {
+  const kiro = getAgentAdapter("kiro");
+  const kiroCli = getAgentAdapter("kiro-cli");
+  assert.equal(kiro.usageIdentity, "kiro");
+  assert.equal(kiroCli.usageIdentity, "kiro");
+  assert.equal(kiro.queueSource, "kiro");
+  assert.equal(kiroCli.queueSource, "kiro");
+});
+
+test("DeepSeek Harness remains a real adapter without a fabricated limits surface", () => {
   const adapter = getAgentAdapter("deepseek-harness");
   assert.ok(adapter);
   assert.equal(adapter.displayName, "DeepSeek Harness");
@@ -226,7 +235,7 @@ test("DeepSeek Harness is a real passive-log adapter", () => {
   assert.equal(adapter.collectionMode, "passive_log");
   assert.equal(adapter.parserExport, "parseDeepSeekHarnessIncremental");
   assert.deepEqual(adapter.resolverExports, ["resolveDeepSeekHarnessHome", "listDeepSeekHarnessSessionFiles"]);
-  assert.equal(adapter.usageLimitsSurface, true);
+  assert.equal(adapter.usageLimitsSurface, false);
 });
 
 // ---------------------------------------------------------------------------

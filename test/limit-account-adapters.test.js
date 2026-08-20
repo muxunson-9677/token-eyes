@@ -1,4 +1,7 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { describe, it, beforeEach, afterEach } = require("node:test");
 
 require("./helpers/home-shim.cjs");
@@ -8,6 +11,7 @@ const {
   buildLimitWindowV2,
   LIMIT_ACCOUNT_STATUS,
   LIMIT_WINDOW_KINDS,
+  computeAccountKey,
   resetLimitAccountsCache,
 } = require("../src/lib/limit-accounts");
 const { resetUsageLimitsCache } = require("../src/lib/usage-limits");
@@ -137,9 +141,7 @@ function installFakeCredentials() {
 
   const usageLimits = require("../src/lib/usage-limits");
   const originalLoadKimi = usageLimits.loadKimiCredentials;
-  const originalReadCopilot = usageLimits.readCopilotOauthToken;
   usageLimits.loadKimiCredentials = async () => ({ account: "kimi-acct-789" });
-  usageLimits.readCopilotOauthToken = async () => "copilot-token";
 
   const grokLimits = require("../src/lib/grok-limits");
   const originalReadGrok = grokLimits.readGrokAccessToken;
@@ -151,7 +153,6 @@ function installFakeCredentials() {
     cursorConfig.isCursorInstalled = originalIsCursorInstalled;
     cursorConfig.extractCursorSessionToken = originalExtractCursorSessionToken;
     usageLimits.loadKimiCredentials = originalLoadKimi;
-    usageLimits.readCopilotOauthToken = originalReadCopilot;
     grokLimits.readGrokAccessToken = originalReadGrok;
   };
 }
@@ -273,6 +274,55 @@ describe("adapter mapping (hermetic)", () => {
     assert.ok(!JSON.stringify(acc).includes("acct-codex-123"));
   });
 
+  it("Task 8 Codex account adapter preserves the canonical 401/403 reauth error code", async () => {
+    restoreLimits();
+    restoreCreds();
+    resetUsageLimitsCache();
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-codex-adapter-401-"));
+    try {
+      const codexHome = path.join(home, ".codex");
+      fs.mkdirSync(codexHome, { recursive: true });
+      fs.writeFileSync(
+        path.join(codexHome, "auth.json"),
+        JSON.stringify({ tokens: { access_token: "opaque-token" } }),
+      );
+
+      for (const status of [401, 403]) {
+        resetUsageLimitsCache();
+        const adapters = getDefaultAdapters();
+        const salt = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+        const accounts = await adapters.codex({
+          salt,
+          home,
+          env: {},
+          platform: "linux",
+          providerTimeoutMs: 100,
+          securityRunner() {
+            return { status: 1, stdout: "" };
+          },
+          commandRunner() {
+            return { status: 1, stdout: "" };
+          },
+          fetchImpl(url) {
+            if (typeof url === "string" && url.includes("chatgpt.com/backend-api/wham/usage")) {
+              return Promise.resolve({ ok: false, status, json: async () => ({}) });
+            }
+            return new Promise(() => {});
+          },
+        });
+
+        assert.equal(accounts.length, 1, status);
+        assert.equal(accounts[0].status, "auth_error", status);
+        assert.equal(accounts[0].error_code, "auth_required", status);
+        assert.deepEqual(accounts[0].windows, [], status);
+        assert.doesNotMatch(JSON.stringify(accounts[0]), /opaque-token/i);
+      }
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("claude adapter maps five_hour + seven_day windows", async () => {
     const adapters = getDefaultAdapters();
     const salt = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
@@ -312,6 +362,46 @@ describe("adapter mapping (hermetic)", () => {
     assert.equal(acc.status, "ok");
     // The raw email must never appear in the serialized output.
     assert.ok(!JSON.stringify(acc).includes("user@example.com"));
+  });
+
+  it("copilot adapter hashes the exact credential identity selected by the quota request", async () => {
+    const limits = buildFakeLimits();
+    const selectedIdentity = "sha256:synthetic-selected-candidate";
+    limits.copilot[Symbol.for("tokentracker.copilot.credential-identity")] = selectedIdentity;
+    restoreLimits();
+    restoreLimits = installFakeUsageLimits(limits);
+
+    const adapters = getDefaultAdapters();
+    const salt = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+    const accounts = await adapters.copilot({ salt, home: "/tmp/fake", env: {} });
+
+    assert.equal(accounts.length, 1);
+    assert.equal(
+      accounts[0].account_key,
+      computeAccountKey({ providerId: "copilot", rawAccountId: selectedIdentity, salt }),
+    );
+    assert.doesNotMatch(JSON.stringify(accounts[0]), /synthetic-selected-candidate|copilot-token/);
+  });
+
+  it("copilot adapter preserves a detected Windows secure-store unsupported state", async () => {
+    const limits = buildFakeLimits();
+    limits.copilot = {
+      configured: true,
+      error: "secure_store_unsupported",
+      error_code: "secure_store_unsupported",
+      plan_label: null,
+      evidence: null,
+    };
+    restoreLimits();
+    restoreLimits = installFakeUsageLimits(limits);
+
+    const adapters = getDefaultAdapters();
+    const salt = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+    const accounts = await adapters.copilot({ salt, home: "/tmp/fake", env: {} });
+
+    assert.equal(accounts.length, 1);
+    assert.equal(accounts[0].status, "unavailable");
+    assert.equal(accounts[0].error_code, "secure_store_unsupported");
   });
 
   it("all adapters return [] when the provider is not configured", async () => {

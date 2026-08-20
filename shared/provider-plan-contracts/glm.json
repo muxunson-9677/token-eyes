@@ -1,0 +1,282 @@
+{
+  "provider_id": "glm",
+  "contract_version": "2026-08-20",
+  "sources": {
+    "overview_md": {
+      "source_type": "official_document",
+      "source_url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+      "verified_at": "2026-08-20",
+      "fetched_at": "2026-08-20",
+      "content_sha256": "d0224afd5a7c63367e52d32000ba5c8b3e6520454bdbeb6f17f4019ebd9238d9"
+    },
+    "usage_revision_md": {
+      "source_type": "official_document",
+      "source_url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision.md",
+      "verified_at": "2026-08-20",
+      "fetched_at": "2026-08-20",
+      "content_sha256": "09e4e52b41de37500c758ae424dde4a384e9feddaf8df5aaa36d04950f5a7db8"
+    }
+  },
+  "cohorts": {
+    "legacy_v1": {
+      "cohort_id": "legacy_v1",
+      "user_facing_name": "历史套餐（证据待人工复核）",
+      "evidence_status": "manual_evidence_required",
+      "plans": []
+    },
+    "legacy_v2_prompts": {
+      "cohort_id": "legacy_v2_prompts",
+      "user_facing_name": "历史 V2 prompts 套餐",
+      "evidence_status": "verified",
+      "plans": [
+        {
+          "plan_id": "glm_lite",
+          "display_name": "Lite",
+          "quota_display": "每 5 小时 80 prompts；每周 400 prompts",
+          "entitlement_windows": [
+            {
+              "kind": "rolling_5_hour",
+              "unit": "prompts",
+              "total": 80,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "09e4e52b41de37500c758ae424dde4a384e9feddaf8df5aaa36d04950f5a7db8",
+              "valid_from": null,
+              "valid_until": "2026-07-29",
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            },
+            {
+              "kind": "rolling_weekly",
+              "unit": "prompts",
+              "total": 400,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "09e4e52b41de37500c758ae424dde4a384e9feddaf8df5aaa36d04950f5a7db8",
+              "valid_from": null,
+              "valid_until": "2026-07-29",
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            }
+          ]
+        },
+        {
+          "plan_id": "glm_pro",
+          "display_name": "Pro",
+          "quota_display": "每 5 小时 400 prompts；每周 2,000 prompts",
+          "entitlement_windows": [
+            {
+              "kind": "rolling_5_hour",
+              "unit": "prompts",
+              "total": 400,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "09e4e52b41de37500c758ae424dde4a384e9feddaf8df5aaa36d04950f5a7db8",
+              "valid_from": null,
+              "valid_until": "2026-07-29",
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            },
+            {
+              "kind": "rolling_weekly",
+              "unit": "prompts",
+              "total": 2000,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "09e4e52b41de37500c758ae424dde4a384e9feddaf8df5aaa36d04950f5a7db8",
+              "valid_from": null,
+              "valid_until": "2026-07-29",
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            }
+          ]
+        },
+        {
+          "plan_id": "glm_max",
+          "display_name": "Max",
+          "quota_display": "每 5 小时 1,600 prompts；每周 8,000 prompts",
+          "entitlement_windows": [
+            {
+              "kind": "rolling_5_hour",
+              "unit": "prompts",
+              "total": 1600,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "09e4e52b41de37500c758ae424dde4a384e9feddaf8df5aaa36d04950f5a7db8",
+              "valid_from": null,
+              "valid_until": "2026-07-29",
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            },
+            {
+              "kind": "rolling_weekly",
+              "unit": "prompts",
+              "total": 8000,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "09e4e52b41de37500c758ae424dde4a384e9feddaf8df5aaa36d04950f5a7db8",
+              "valid_from": null,
+              "valid_until": "2026-07-29",
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            }
+          ]
+        }
+      ]
+    },
+    "current_v3_points": {
+      "cohort_id": "current_v3_points",
+      "user_facing_name": "新版积分套餐",
+      "evidence_status": "verified",
+      "plans": [
+        {
+          "plan_id": "glm_lite",
+          "display_name": "Lite",
+          "quota_display": "每 5 小时 2,000 积分；每周 10,000 积分",
+          "entitlement_windows": [
+            {
+              "kind": "rolling_5_hour",
+              "unit": "points",
+              "total": 2000,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "d0224afd5a7c63367e52d32000ba5c8b3e6520454bdbeb6f17f4019ebd9238d9",
+              "valid_from": "2026-07-30",
+              "valid_until": null,
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            },
+            {
+              "kind": "rolling_weekly",
+              "unit": "points",
+              "total": 10000,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "d0224afd5a7c63367e52d32000ba5c8b3e6520454bdbeb6f17f4019ebd9238d9",
+              "valid_from": "2026-07-30",
+              "valid_until": null,
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            }
+          ]
+        },
+        {
+          "plan_id": "glm_pro",
+          "display_name": "Pro",
+          "quota_display": "每 5 小时 12,000 积分；每周 60,000 积分",
+          "entitlement_windows": [
+            {
+              "kind": "rolling_5_hour",
+              "unit": "points",
+              "total": 12000,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "d0224afd5a7c63367e52d32000ba5c8b3e6520454bdbeb6f17f4019ebd9238d9",
+              "valid_from": "2026-07-30",
+              "valid_until": null,
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            },
+            {
+              "kind": "rolling_weekly",
+              "unit": "points",
+              "total": 60000,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "d0224afd5a7c63367e52d32000ba5c8b3e6520454bdbeb6f17f4019ebd9238d9",
+              "valid_from": "2026-07-30",
+              "valid_until": null,
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            }
+          ]
+        },
+        {
+          "plan_id": "glm_max",
+          "display_name": "Max",
+          "quota_display": "每 5 小时 28,000 积分；每周 140,000 积分",
+          "entitlement_windows": [
+            {
+              "kind": "rolling_5_hour",
+              "unit": "points",
+              "total": 28000,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "d0224afd5a7c63367e52d32000ba5c8b3e6520454bdbeb6f17f4019ebd9238d9",
+              "valid_from": "2026-07-30",
+              "valid_until": null,
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            },
+            {
+              "kind": "rolling_weekly",
+              "unit": "points",
+              "total": 140000,
+              "source_type": "official_document",
+              "source_url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+              "verified": true,
+              "verified_at": "2026-08-20",
+              "fetched_at": "2026-08-20",
+              "content_sha256": "d0224afd5a7c63367e52d32000ba5c8b3e6520454bdbeb6f17f4019ebd9238d9",
+              "valid_from": "2026-07-30",
+              "valid_until": null,
+              "is_stale": false,
+              "estimated": false,
+              "confidence": "exact"
+            }
+          ]
+        }
+      ]
+    },
+    "unknown": {
+      "cohort_id": "unknown",
+      "user_facing_name": "套餐版本待确认",
+      "evidence_status": "manual_evidence_required",
+      "plans": []
+    }
+  }
+}

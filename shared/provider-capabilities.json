@@ -16,11 +16,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "Claude Code",
-      "queue_source": "claude",
       "native_session_bridge": true,
       "catalog_token_plan": true,
-      "agent_order": 0,
       "catalog_order": 6
     },
     {
@@ -31,11 +28,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "Codex",
-      "queue_source": "codex",
       "native_session_bridge": true,
       "catalog_token_plan": true,
-      "agent_order": 1,
       "catalog_order": 5
     },
     {
@@ -46,11 +40,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "Cursor",
-      "queue_source": "cursor",
       "native_session_bridge": true,
       "catalog_token_plan": true,
-      "agent_order": 3,
       "catalog_order": 7
     },
     {
@@ -61,11 +52,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "Trae",
-      "queue_source": "trae",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 4,
       "catalog_order": null
     },
     {
@@ -76,11 +64,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "Gemini CLI",
-      "queue_source": "gemini",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 5,
       "catalog_order": null
     },
     {
@@ -91,11 +76,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "Hermes Agent",
-      "queue_source": "hermes",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 13,
       "catalog_order": null
     },
     {
@@ -106,11 +88,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "OpenClaw",
-      "queue_source": "openclaw",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 7,
       "catalog_order": null
     },
     {
@@ -121,11 +100,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "OpenCode",
-      "queue_source": "opencode",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 6,
       "catalog_order": null
     },
     {
@@ -136,11 +112,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "agent_display_name": "Antigravity",
-      "queue_source": "antigravity",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 25,
       "catalog_order": null
     },
     {
@@ -151,11 +124,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Every Code",
-      "queue_source": "every-code",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 2,
       "catalog_order": null
     },
     {
@@ -166,11 +136,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Kilo CLI",
-      "queue_source": "kilo-cli",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 8,
       "catalog_order": null
     },
     {
@@ -181,11 +148,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Kilo Code",
-      "queue_source": "kilocode",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 9,
       "catalog_order": null
     },
     {
@@ -196,11 +160,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Roo Code",
-      "queue_source": "roocode",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 10,
       "catalog_order": null
     },
     {
@@ -211,11 +172,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Kiro",
-      "queue_source": "kiro",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 11,
       "catalog_order": null
     },
     {
@@ -226,11 +184,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Kiro CLI",
-      "queue_source": "kiro-cli",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 12,
       "catalog_order": null
     },
     {
@@ -241,11 +196,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Kimi",
-      "queue_source": "kimi",
       "native_session_bridge": true,
       "catalog_token_plan": true,
-      "agent_order": 14,
       "catalog_order": 3
     },
     {
@@ -256,11 +208,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Kimi Code",
-      "queue_source": "kimi-code",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 15,
       "catalog_order": null
     },
     {
@@ -271,11 +220,20 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "CodeBuddy",
-      "queue_source": "codebuddy",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 16,
+      "catalog_order": null
+    },
+    {
+      "id": "workbuddy",
+      "display_name": "WorkBuddy",
+      "token_usage_collection": true,
+      "official_rate_limit": true,
+      "manual_token_plan": true,
+      "provider_balance": false,
+      "desktop_visibility": false,
+      "native_session_bridge": false,
+      "catalog_token_plan": false,
       "catalog_order": null
     },
     {
@@ -286,11 +244,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "oh-my-pi",
-      "queue_source": "omp",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 17,
       "catalog_order": null
     },
     {
@@ -301,11 +256,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "pi",
-      "queue_source": "pi",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 18,
       "catalog_order": null
     },
     {
@@ -316,11 +268,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Craft Agents",
-      "queue_source": "craft",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 19,
       "catalog_order": null
     },
     {
@@ -331,11 +280,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Grok Build",
-      "queue_source": "grok",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 20,
       "catalog_order": null
     },
     {
@@ -346,11 +292,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "GitHub Copilot",
-      "queue_source": "copilot",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 21,
       "catalog_order": null
     },
     {
@@ -361,11 +304,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Zed Agent",
-      "queue_source": "zed",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 22,
       "catalog_order": null
     },
     {
@@ -376,11 +316,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Goose",
-      "queue_source": "goose",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 23,
       "catalog_order": null
     },
     {
@@ -391,11 +328,20 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": "Droid",
-      "queue_source": "droid",
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": 24,
+      "catalog_order": null
+    },
+    {
+      "id": "deepseek-harness",
+      "display_name": "DeepSeek Harness",
+      "token_usage_collection": true,
+      "official_rate_limit": false,
+      "manual_token_plan": true,
+      "provider_balance": false,
+      "desktop_visibility": false,
+      "native_session_bridge": false,
+      "catalog_token_plan": false,
       "catalog_order": null
     },
     {
@@ -406,11 +352,10 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": true,
       "catalog_token_plan": true,
-      "agent_order": null,
+      "source_kind": "undocumented_console_api",
+      "support_tier": "best_effort",
       "catalog_order": 0
     },
     {
@@ -421,11 +366,8 @@
       "manual_token_plan": true,
       "provider_balance": true,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": true,
       "catalog_token_plan": true,
-      "agent_order": null,
       "catalog_order": 1
     },
     {
@@ -436,11 +378,10 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": false,
       "catalog_token_plan": true,
-      "agent_order": null,
+      "source_kind": "undocumented_api",
+      "support_tier": "unsupported",
       "catalog_order": 8
     },
     {
@@ -451,11 +392,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": false,
       "catalog_token_plan": true,
-      "agent_order": null,
       "catalog_order": 4
     },
     {
@@ -466,11 +404,8 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": false,
       "catalog_token_plan": true,
-      "agent_order": null,
       "catalog_order": 2
     },
     {
@@ -481,11 +416,8 @@
       "manual_token_plan": false,
       "provider_balance": true,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": null,
       "catalog_order": null
     },
     {
@@ -496,11 +428,8 @@
       "manual_token_plan": false,
       "provider_balance": true,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": null,
       "catalog_order": null
     },
     {
@@ -511,11 +440,8 @@
       "manual_token_plan": false,
       "provider_balance": true,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": null,
       "catalog_order": null
     },
     {
@@ -526,11 +452,8 @@
       "manual_token_plan": false,
       "provider_balance": true,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": null,
       "catalog_order": null
     },
     {
@@ -541,11 +464,8 @@
       "manual_token_plan": false,
       "provider_balance": true,
       "desktop_visibility": false,
-      "agent_display_name": null,
-      "queue_source": null,
       "native_session_bridge": false,
       "catalog_token_plan": false,
-      "agent_order": null,
       "catalog_order": null
     }
   ]

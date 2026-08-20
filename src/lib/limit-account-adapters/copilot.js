@@ -5,33 +5,26 @@
 // chat window. There is no stable account id in the payload; the OAuth token
 // hash is used as a stable identifier.
 
-const crypto = require("node:crypto");
 const usageLimits = require("../usage-limits");
 const { buildAccountFromProviderEntry, windowWithEvidence, LIMIT_WINDOW_KINDS } = require("./_shared");
 
 async function copilotAdapter({ salt, home, env, platform, fetchImpl, scanDefaultWindowsDrives, windowsDriveRoots, securityRunner, commandRunner, providerTimeoutMs } = {}) {
-  const [limits, token] = await Promise.all([
-    usageLimits.getUsageLimits({
-      home,
-      env,
-      platform,
-      fetchImpl,
-      scanDefaultWindowsDrives,
-      windowsDriveRoots,
-      securityRunner,
-      commandRunner,
-      providerTimeoutMs,
-    }),
-    Promise.resolve().then(() => usageLimits.readCopilotOauthToken({ home, platform, securityRunner })).catch(() => null),
-  ]);
+  const limits = await usageLimits.getUsageLimits({
+    home,
+    env,
+    platform,
+    fetchImpl,
+    scanDefaultWindowsDrives,
+    windowsDriveRoots,
+    securityRunner,
+    commandRunner,
+    providerTimeoutMs,
+  });
 
   const entry = limits?.copilot;
   if (!entry || !entry.configured) return [];
 
-  let rawAccountId = "default";
-  if (token && typeof token === "string" && token.length > 0) {
-    rawAccountId = `sha256:${crypto.createHash("sha256").update(token).digest("hex").slice(0, 16)}`;
-  }
+  const rawAccountId = usageLimits.getCopilotCredentialIdentity(entry) || "default";
   const evidence = entry.evidence;
   const windows = [];
   if (entry.primary_window) {
@@ -59,7 +52,10 @@ async function copilotAdapter({ salt, home, env, platform, fetchImpl, scanDefaul
     windows: windows.filter(Boolean),
     accountLabel: null,
   });
-  return [account];
+  return [{
+    ...account,
+    error_code: entry.error_code || account.error_code,
+  }];
 }
 
 module.exports = copilotAdapter;

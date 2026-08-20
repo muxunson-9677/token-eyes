@@ -1,9 +1,12 @@
 const assert = require("node:assert/strict");
+const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { Readable } = require("node:stream");
 const { describe, it } = require("node:test");
 
+const cursorConfig = require("../src/lib/cursor-config");
 const {
   parseCursorCsv,
   isCursorBillableKind,
@@ -12,13 +15,529 @@ const {
   readCursorAccessTokenFromStateDb,
   extractCursorSessionToken,
   resolveCursorPaths,
-} = require("../src/lib/cursor-config");
+} = cursorConfig;
 
 function makeCursorJwt(userId = "user_TEST123") {
   const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
   const payload = Buffer.from(JSON.stringify({ sub: `auth0|${userId}` })).toString("base64url");
   return `${header}.${payload}.sig`;
 }
+
+const SYNTHETIC_CURSOR_COOKIE =
+  "WorkosCursorSessionToken=synthetic-user%3A%3Asynthetic-jwt-never-real";
+const CURSOR_CSV_URL = "https://cursor.com/api/dashboard/export-usage-events-csv?strategy=tokens";
+const CURSOR_SUMMARY_URL = "https://cursor.com/api/usage-summary";
+const MIB = 1024 * 1024;
+
+function syntheticPublicDnsLookup(hostname, options, callback) {
+  assert.equal(hostname, "cursor.com");
+  assert.deepEqual(options, { all: true, verbatim: true });
+  callback(null, [{ address: "8.8.8.8", family: 4 }]);
+}
+
+function makeNodeRequestSequence(steps) {
+  const calls = [];
+  const requestImpl = (options, callback) => {
+    const step = steps[calls.length];
+    assert.ok(step, `unexpected request #${calls.length + 1}`);
+
+    const request = new EventEmitter();
+    const call = {
+      options,
+      request,
+      destroyed: false,
+    };
+    calls.push(call);
+
+    request.destroy = () => {
+      call.destroyed = true;
+      if (call.response && !call.response.destroyed) call.response.destroy();
+    };
+    request.end = () => {
+      queueMicrotask(() => {
+        if (step.error) {
+          request.emit("error", new Error(step.error));
+          return;
+        }
+
+        const response = Readable.from((function* chunks() {
+          for (const chunk of step.chunks || []) {
+            call.chunksRead = (call.chunksRead || 0) + 1;
+            yield chunk;
+          }
+        })());
+        response.statusCode = step.statusCode ?? 200;
+        response.headers = step.headers || {};
+        call.response = response;
+        callback(response);
+      });
+    };
+
+    return request;
+  };
+
+  return { requestImpl, calls };
+}
+
+function makeFetchResponse({ status = 200, headers = {}, chunks = [] } = {}) {
+  const state = { pulls: 0, cancelled: false };
+  const body = new ReadableStream({
+    pull(controller) {
+      if (state.pulls >= chunks.length) {
+        controller.close();
+        return;
+      }
+      const chunk = chunks[state.pulls];
+      state.pulls += 1;
+      controller.enqueue(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    },
+    cancel() {
+      state.cancelled = true;
+    },
+  });
+  return {
+    response: new Response(body, { status, headers }),
+    state,
+  };
+}
+
+function makeManualFetchResponse({ status = 200, headers = {}, chunks = [] } = {}) {
+  const normalizedHeaders = new Map(
+    Object.entries(headers).map(([name, value]) => [name.toLowerCase(), String(value)]),
+  );
+  const state = { reads: 0, cancelled: false };
+  return {
+    response: {
+      status,
+      ok: status >= 200 && status < 300,
+      headers: {
+        get(name) {
+          return normalizedHeaders.get(String(name).toLowerCase()) || null;
+        },
+      },
+      body: {
+        locked: false,
+        getReader() {
+          let index = 0;
+          return {
+            async read() {
+              state.reads += 1;
+              if (index >= chunks.length) return { done: true, value: undefined };
+              const value = chunks[index];
+              index += 1;
+              return { done: false, value: typeof value === "string" ? Buffer.from(value) : value };
+            },
+            async cancel() {
+              state.cancelled = true;
+            },
+          };
+        },
+      },
+    },
+    state,
+  };
+}
+
+async function fetchCursorCsvWithMock(steps) {
+  assert.equal(
+    typeof cursorConfig.fetchCursorAuthenticated,
+    "function",
+    "fetchCursorAuthenticated must be an injectable request seam",
+  );
+  const mock = makeNodeRequestSequence(steps);
+  const body = await cursorConfig.fetchCursorAuthenticated({
+    urlStr: CURSOR_CSV_URL,
+    cookie: SYNTHETIC_CURSOR_COOKIE,
+    dnsLookup: syntheticPublicDnsLookup,
+    requestImpl: mock.requestImpl,
+  });
+  return { ...mock, body };
+}
+
+async function captureRejection(run) {
+  let rejection = null;
+  try {
+    await run();
+  } catch (error) {
+    rejection = error;
+  }
+  assert.ok(rejection, "expected operation to reject");
+  return rejection;
+}
+
+describe("SEC-04 Cursor authenticated redirects", () => {
+  it("follows one relative same-origin redirect and keeps the synthetic Cookie on cursor.com", async () => {
+    const { calls, body } = await fetchCursorCsvWithMock([
+      {
+        statusCode: 302,
+        headers: { location: "/api/dashboard/download.csv?fixture=1" },
+        chunks: [Buffer.from("redirect-body-must-not-be-read")],
+      },
+      {
+        statusCode: 200,
+        chunks: [Buffer.from("Date,Model\n")],
+      },
+    ]);
+
+    assert.equal(body, "Date,Model\n");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].options.hostname, "cursor.com");
+    assert.equal(calls[1].options.hostname, "cursor.com");
+    assert.equal(typeof calls[0].options.lookup, "function");
+    assert.equal(typeof calls[1].options.lookup, "function");
+    assert.equal(calls[1].options.path, "/api/dashboard/download.csv?fixture=1");
+    assert.equal(calls[0].options.headers.Cookie, SYNTHETIC_CURSOR_COOKIE);
+    assert.equal(calls[1].options.headers.Cookie, SYNTHETIC_CURSOR_COOKIE);
+    assert.equal(calls[0].destroyed, true);
+    assert.equal(calls[0].response.destroyed, true);
+    assert.equal(calls[0].chunksRead || 0, 0);
+  });
+
+  it("allows at most one redirect", async () => {
+    assert.equal(typeof cursorConfig.fetchCursorAuthenticated, "function");
+    const mock = makeNodeRequestSequence([
+      { statusCode: 302, headers: { location: "/first.csv" } },
+      { statusCode: 302, headers: { location: "/second.csv" } },
+    ]);
+
+    await assert.rejects(
+      () =>
+        cursorConfig.fetchCursorAuthenticated({
+          urlStr: CURSOR_CSV_URL,
+          cookie: SYNTHETIC_CURSOR_COOKIE,
+          dnsLookup: syntheticPublicDnsLookup,
+          requestImpl: mock.requestImpl,
+        }),
+      /redirect/i,
+    );
+    assert.equal(mock.calls.length, 2);
+  });
+
+  it("rejects a non-cursor.com initial URL before sending any request", async () => {
+    assert.equal(typeof cursorConfig.fetchCursorAuthenticated, "function");
+    const mock = makeNodeRequestSequence([]);
+
+    await assert.rejects(() =>
+      cursorConfig.fetchCursorAuthenticated({
+        urlStr: "https://www.cursor.com/api/usage-summary",
+        cookie: SYNTHETIC_CURSOR_COOKIE,
+        dnsLookup: syntheticPublicDnsLookup,
+        requestImpl: mock.requestImpl,
+      }));
+
+    assert.equal(mock.calls.length, 0);
+  });
+
+  for (const [name, location] of [
+    ["cross-origin", "https://attacker.example/collect"],
+    ["lookalike suffix", "https://cursor.com.attacker.example/collect"],
+    ["subdomain", "https://www.cursor.com/collect"],
+    ["cross-port", "https://cursor.com:444/collect"],
+    ["HTTPS-to-HTTP downgrade", "http://cursor.com/collect"],
+    ["URL credentials", "https://synthetic-user@cursor.com/collect"],
+  ]) {
+    it(`rejects ${name} Location before a second request and never leaks the Cookie`, async () => {
+      assert.equal(typeof cursorConfig.fetchCursorAuthenticated, "function");
+      const mock = makeNodeRequestSequence([
+        { statusCode: 302, headers: { location } },
+      ]);
+
+      const error = await captureRejection(() =>
+        cursorConfig.fetchCursorAuthenticated({
+          urlStr: CURSOR_CSV_URL,
+          cookie: SYNTHETIC_CURSOR_COOKIE,
+          dnsLookup: syntheticPublicDnsLookup,
+          requestImpl: mock.requestImpl,
+        }));
+
+      assert.equal(mock.calls.length, 1);
+      assert.equal(mock.calls[0].options.headers.Cookie, SYNTHETIC_CURSOR_COOKIE);
+      assert.doesNotMatch(String(error?.message || error), /synthetic-jwt-never-real/);
+    });
+  }
+
+  for (const [name, headers] of [
+    ["missing", {}],
+    ["invalid", { location: "https://[invalid" }],
+  ]) {
+    it(`rejects ${name} Location before a second request`, async () => {
+      assert.equal(typeof cursorConfig.fetchCursorAuthenticated, "function");
+      const mock = makeNodeRequestSequence([{ statusCode: 302, headers }]);
+
+      await assert.rejects(() =>
+        cursorConfig.fetchCursorAuthenticated({
+          urlStr: CURSOR_CSV_URL,
+          cookie: SYNTHETIC_CURSOR_COOKIE,
+          dnsLookup: syntheticPublicDnsLookup,
+          requestImpl: mock.requestImpl,
+        }));
+      assert.equal(mock.calls.length, 1);
+    });
+  }
+
+  for (const statusCode of [401, 500]) {
+    it(`destroys a ${statusCode} response without draining its body`, async () => {
+      assert.equal(typeof cursorConfig.fetchCursorAuthenticated, "function");
+      const mock = makeNodeRequestSequence([
+        {
+          statusCode,
+          chunks: [Buffer.from("error-body-must-not-be-read")],
+        },
+      ]);
+
+      await assert.rejects(() =>
+        cursorConfig.fetchCursorAuthenticated({
+          urlStr: CURSOR_CSV_URL,
+          cookie: SYNTHETIC_CURSOR_COOKIE,
+          dnsLookup: syntheticPublicDnsLookup,
+          requestImpl: mock.requestImpl,
+        }));
+
+      assert.equal(mock.calls.length, 1);
+      assert.equal(mock.calls[0].destroyed, true);
+      assert.equal(mock.calls[0].response.destroyed, true);
+      assert.equal(mock.calls[0].chunksRead || 0, 0);
+    });
+  }
+});
+
+describe("SEC-04 Cursor CSV response limits", () => {
+  it("routes the production CSV wrapper through the injectable authenticated request seam", async () => {
+    const mock = makeNodeRequestSequence([
+      { statusCode: 200, chunks: [Buffer.from("Date,Model\n")] },
+    ]);
+
+    const body = await cursorConfig.fetchCursorUsageCsv({
+      cookie: SYNTHETIC_CURSOR_COOKIE,
+      dnsLookup: syntheticPublicDnsLookup,
+      requestImpl: mock.requestImpl,
+    });
+
+    assert.equal(body, "Date,Model\n");
+    assert.equal(mock.calls.length, 1);
+    assert.equal(mock.calls[0].options.hostname, "cursor.com");
+    assert.equal(typeof mock.calls[0].options.lookup, "function");
+  });
+
+  it("pre-rejects Content-Length above 25 MiB and destroys the request", async () => {
+    assert.equal(typeof cursorConfig.fetchCursorAuthenticated, "function");
+    const mock = makeNodeRequestSequence([
+      {
+        statusCode: 200,
+        headers: { "content-length": String(25 * MIB + 1) },
+        chunks: [Buffer.from("must-not-be-buffered")],
+      },
+    ]);
+
+    const error = await captureRejection(() =>
+      cursorConfig.fetchCursorAuthenticated({
+        urlStr: CURSOR_CSV_URL,
+        cookie: SYNTHETIC_CURSOR_COOKIE,
+        dnsLookup: syntheticPublicDnsLookup,
+        requestImpl: mock.requestImpl,
+      }));
+
+    assert.equal(error.code, "response_too_large");
+    assert.equal(mock.calls[0].destroyed, true);
+    assert.equal(mock.calls[0].response.destroyed, true);
+    assert.doesNotMatch(String(error.message), /synthetic-jwt-never-real/);
+  });
+
+  it("destroys the request as soon as streamed CSV bytes exceed 25 MiB", async () => {
+    assert.equal(typeof cursorConfig.fetchCursorAuthenticated, "function");
+    const mock = makeNodeRequestSequence([
+      {
+        statusCode: 200,
+        chunks: [Buffer.alloc(20 * MIB), Buffer.alloc(6 * MIB)],
+      },
+    ]);
+
+    const error = await captureRejection(() =>
+      cursorConfig.fetchCursorAuthenticated({
+        urlStr: CURSOR_CSV_URL,
+        cookie: SYNTHETIC_CURSOR_COOKIE,
+        dnsLookup: syntheticPublicDnsLookup,
+        requestImpl: mock.requestImpl,
+      }));
+
+    assert.equal(error.code, "response_too_large");
+    assert.equal(mock.calls[0].destroyed, true);
+    assert.equal(mock.calls[0].response.destroyed, true);
+  });
+});
+
+describe("SEC-04 Cursor summary manual redirects and response limits", () => {
+  it("uses redirect=manual and follows one relative same-origin Location", async () => {
+    const first = makeFetchResponse({
+      status: 302,
+      headers: { location: "/api/usage-summary-v2" },
+    });
+    const second = makeFetchResponse({
+      status: 200,
+      chunks: [JSON.stringify({ membershipType: "synthetic-pro" })],
+    });
+    const calls = [];
+    const fetchImpl = async (url, options) => {
+      calls.push({ url: String(url), options });
+      return calls.length === 1 ? first.response : second.response;
+    };
+
+    const body = await cursorConfig.fetchCursorUsageSummary({
+      cookie: SYNTHETIC_CURSOR_COOKIE,
+      fetchImpl,
+    });
+
+    assert.deepEqual(body, { membershipType: "synthetic-pro" });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].url, CURSOR_SUMMARY_URL);
+    assert.equal(calls[1].url, "https://cursor.com/api/usage-summary-v2");
+    assert.equal(calls[0].options.redirect, "manual");
+    assert.equal(calls[1].options.redirect, "manual");
+    assert.equal(calls[0].options.headers.Cookie, SYNTHETIC_CURSOR_COOKIE);
+    assert.equal(calls[1].options.headers.Cookie, SYNTHETIC_CURSOR_COOKIE);
+  });
+
+  it("summary allows at most one redirect", async () => {
+    const first = makeFetchResponse({ status: 302, headers: { location: "/first" } });
+    const second = makeFetchResponse({ status: 302, headers: { location: "/second" } });
+    const calls = [];
+    const fetchImpl = async (url, options) => {
+      calls.push({ url: String(url), options });
+      return calls.length === 1 ? first.response : second.response;
+    };
+
+    await assert.rejects(() =>
+      cursorConfig.fetchCursorUsageSummary({
+        cookie: SYNTHETIC_CURSOR_COOKIE,
+        fetchImpl,
+      }), /redirect/i);
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].options.redirect, "manual");
+    assert.equal(calls[1].options.redirect, "manual");
+  });
+
+  for (const [name, location] of [
+    ["cross-origin", "https://attacker.example/collect"],
+    ["lookalike suffix", "https://cursor.com.attacker.example/collect"],
+    ["subdomain", "https://www.cursor.com/collect"],
+    ["cross-port", "https://cursor.com:444/collect"],
+    ["HTTPS-to-HTTP", "http://cursor.com/collect"],
+    ["URL credentials", "https://synthetic-user@cursor.com/collect"],
+    ["invalid", "https://[invalid"],
+    ["missing", null],
+  ]) {
+    it(`summary rejects ${name} redirect without a second fetch`, async () => {
+      const headers = location === null ? {} : { location };
+      const redirect = makeFetchResponse({ status: 302, headers });
+      const calls = [];
+      const fetchImpl = async (url, options) => {
+        calls.push({ url: String(url), options });
+        return redirect.response;
+      };
+
+      const error = await captureRejection(() =>
+        cursorConfig.fetchCursorUsageSummary({
+          cookie: SYNTHETIC_CURSOR_COOKIE,
+          fetchImpl,
+        }));
+
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].options.redirect, "manual");
+      assert.doesNotMatch(String(error?.message || error), /synthetic-jwt-never-real/);
+    });
+  }
+
+  it("pre-rejects summary Content-Length above 1 MiB without reading the body", async () => {
+    const oversized = makeManualFetchResponse({
+      status: 200,
+      headers: { "content-length": String(MIB + 1) },
+      chunks: [Buffer.from("{}")],
+    });
+
+    const error = await captureRejection(() =>
+      cursorConfig.fetchCursorUsageSummary({
+        cookie: SYNTHETIC_CURSOR_COOKIE,
+        fetchImpl: async () => oversized.response,
+      }));
+
+    assert.equal(error.code, "response_too_large");
+    assert.equal(oversized.state.reads, 0);
+    assert.equal(oversized.state.cancelled, true);
+  });
+
+  it("cancels the summary stream as soon as bytes exceed 1 MiB", async () => {
+    const oversized = makeManualFetchResponse({
+      status: 200,
+      chunks: [Buffer.alloc(700 * 1024), Buffer.alloc(400 * 1024)],
+    });
+
+    const error = await captureRejection(() =>
+      cursorConfig.fetchCursorUsageSummary({
+        cookie: SYNTHETIC_CURSOR_COOKIE,
+        fetchImpl: async () => oversized.response,
+      }));
+
+    assert.equal(error.code, "response_too_large");
+    assert.equal(oversized.state.cancelled, true);
+  });
+});
+
+describe("SEC-04 Cursor secret redaction", () => {
+  it("does not expose a synthetic Cookie in returned errors or stderr", { concurrency: false }, async () => {
+    assert.equal(typeof cursorConfig.fetchCursorAuthenticated, "function");
+    const mock = makeNodeRequestSequence([
+      { error: `network failed for ${SYNTHETIC_CURSOR_COOKIE}` },
+    ]);
+    const stderr = [];
+    const originalWrite = process.stderr.write;
+    process.stderr.write = function capture(chunk, ...args) {
+      stderr.push(String(chunk));
+      if (typeof args.at(-1) === "function") args.at(-1)();
+      return true;
+    };
+
+    try {
+      const error = await captureRejection(() =>
+        cursorConfig.fetchCursorAuthenticated({
+          urlStr: CURSOR_CSV_URL,
+          cookie: SYNTHETIC_CURSOR_COOKIE,
+          dnsLookup: syntheticPublicDnsLookup,
+          requestImpl: mock.requestImpl,
+        }));
+      assert.doesNotMatch(String(error?.message || error), /synthetic-jwt-never-real/);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+
+    assert.doesNotMatch(stderr.join(""), /synthetic-jwt-never-real/);
+  });
+
+  it("redacts a synthetic Cookie from summary fetch errors", { concurrency: false }, async () => {
+    const stderr = [];
+    const originalWrite = process.stderr.write;
+    process.stderr.write = function capture(chunk, ...args) {
+      stderr.push(String(chunk));
+      if (typeof args.at(-1) === "function") args.at(-1)();
+      return true;
+    };
+
+    try {
+      const error = await captureRejection(() =>
+        cursorConfig.fetchCursorUsageSummary({
+          cookie: SYNTHETIC_CURSOR_COOKIE,
+          fetchImpl: async () => {
+            throw new Error(`summary failed for ${SYNTHETIC_CURSOR_COOKIE}`);
+          },
+        }));
+      assert.doesNotMatch(String(error?.message || error), /synthetic-jwt-never-real/);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+
+    assert.doesNotMatch(stderr.join(""), /synthetic-jwt-never-real/);
+  });
+});
 
 // ── parseCursorCsv — new format ──
 
@@ -552,4 +1071,3 @@ describe("extractCursorSessionToken", () => {
     assert.equal(result, null);
   });
 });
-

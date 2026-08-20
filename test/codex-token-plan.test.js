@@ -34,9 +34,72 @@ test("parseCodexUsageBody returns 5-hour and weekly percent windows", () => {
   assert.equal(result.remaining_quota, 45);
 });
 
+test("Task 8 Codex preserves fractional percent windows and never labels them as tokens", () => {
+  const result = parseCodexUsageBody({
+    rate_limit: {
+      primary_window: {
+        used_percent: 20.25,
+        limit_window_seconds: 18000,
+        reset_at: 1_700_000_000,
+      },
+      secondary_window: {
+        used_percent: 60.75,
+        limit_window_seconds: 604800,
+        reset_at: 1_700_604_800,
+      },
+    },
+  });
+
+  assert.deepEqual(
+    result.quota_windows.map(({ kind, unit, total, used, remaining, percentage }) => ({
+      kind,
+      unit,
+      total,
+      used,
+      remaining,
+      percentage,
+    })),
+    [
+      {
+        kind: "rolling_5_hour",
+        unit: "percent",
+        total: 100,
+        used: 20.25,
+        remaining: 79.75,
+        percentage: 20.25,
+      },
+      {
+        kind: "rolling_weekly",
+        unit: "percent",
+        total: 100,
+        used: 60.75,
+        remaining: 39.25,
+        percentage: 60.75,
+      },
+    ],
+  );
+  assert.equal(result.used_quota, 60.75);
+  assert.equal(result.remaining_quota, 39.25);
+  assert.equal(result.quota_unit, "percent");
+});
+
+test("Task 8 Codex catalog declares dynamic quota as percent rather than tokens", () => {
+  const catalog = require("../src/lib/token-plan-catalog/codex.catalog.json");
+  assert.equal(catalog.plans.length > 0, true);
+  assert.equal(catalog.plans.every((plan) => plan.quota.unit === "percent"), true);
+});
+
 test("parseCodexUsageBody rejects missing windows", () => {
   assert.throws(
     () => parseCodexUsageBody({ rate_limit: {} }),
+    (error) => error instanceof CodexTokenPlanError && error.code === "CODEX_NO_QUOTA_WINDOWS",
+  );
+  assert.throws(
+    () => parseCodexUsageBody({ rate_limit: { primary_window: { used_percent: null, limit_window_seconds: 18000 } } }),
+    (error) => error instanceof CodexTokenPlanError && error.code === "CODEX_NO_QUOTA_WINDOWS",
+  );
+  assert.throws(
+    () => parseCodexUsageBody({ rate_limit: { primary_window: { used_percent: "   ", limit_window_seconds: 18000 } } }),
     (error) => error instanceof CodexTokenPlanError && error.code === "CODEX_NO_QUOTA_WINDOWS",
   );
 });
@@ -45,6 +108,9 @@ test("mapCodexErrorCode maps Codex errors to sync statuses", () => {
   assert.equal(mapCodexErrorCode(new CodexTokenPlanError("CODEX_REAUTH_REQUIRED", "x")), "reauth_required");
   assert.equal(mapCodexErrorCode(new CodexTokenPlanError("CODEX_CONSOLE_SYNC_REQUIRED", "x")), "not_configured");
   assert.equal(mapCodexErrorCode(new CodexTokenPlanError("CODEX_NO_QUOTA_WINDOWS", "x")), "unsupported");
+  assert.equal(mapCodexErrorCode(new CodexTokenPlanError("CODEX_ENDPOINT_UNSUPPORTED", "x")), "unsupported");
+  assert.equal(mapCodexErrorCode(new CodexTokenPlanError("CODEX_TEMPORARY_ERROR", "x")), "temporary");
+  assert.equal(mapCodexErrorCode(new CodexTokenPlanError("CODEX_NETWORK_ERROR", "x")), "temporary");
 });
 
 test("codex provider adapter uses the local official login for official_account detection", async () => {

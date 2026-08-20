@@ -45,6 +45,19 @@ const QUOTA_FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 /// sessionStorage, or any DOM content. It only calls the official API and
 /// passes back quota numbers.
 const SESSION_FETCH_JS: &str = r#"(function () {
+  function requiredFiniteNumber(value) {
+    if (typeof value !== 'number') return null;
+    return Number.isFinite(value) ? value : null;
+  }
+  async function parseJsonResponse(response) {
+    try {
+      return await response.json();
+    } catch (_error) {
+      var parseError = new Error('Xiaomi response JSON is invalid');
+      parseError.tokenEyesError = 'structure_drift';
+      throw parseError;
+    }
+  }
   window.__tokenEyesQuotaResult__ = null;
   window.__tokenEyesSessionFetch__ = async function() {
     if (window.location.hostname !== 'platform.xiaomimimo.com') return;
@@ -67,12 +80,17 @@ const SESSION_FETCH_JS: &str = r#"(function () {
         };
         return;
       }
-      var balancePayload = await balanceResp.json();
+      var balancePayload = await parseJsonResponse(balanceResp);
       var balanceData = balancePayload && balancePayload.data ? balancePayload.data : balancePayload;
-      var availableBalance = Number(balanceData && (balanceData.available_balance ?? balanceData.availableBalance ?? balanceData.balance));
-      var totalBalance = Number(balanceData && (balanceData.balance ?? balanceData.total_balance ?? availableBalance));
-      var creditBalance = Number(balanceData && (balanceData.remainingOverdraftLimit ?? balanceData.remaining_overdraft_limit ?? balanceData.credit_balance ?? 0));
-      if (![totalBalance, availableBalance, creditBalance].every(Number.isFinite)) {
+      var rawAvailableBalance = balanceData && (balanceData.available_balance ?? balanceData.availableBalance ?? balanceData.balance);
+      var availableBalance = requiredFiniteNumber(rawAvailableBalance);
+      var rawTotalBalance = balanceData && (balanceData.balance ?? balanceData.total_balance ?? rawAvailableBalance);
+      var totalBalance = requiredFiniteNumber(rawTotalBalance);
+      var rawCreditBalance = balanceData && (balanceData.remainingOverdraftLimit ?? balanceData.remaining_overdraft_limit ?? balanceData.credit_balance);
+      var hasCreditBalance = rawCreditBalance !== null && rawCreditBalance !== undefined && rawCreditBalance !== '';
+      var creditBalance = hasCreditBalance ? requiredFiniteNumber(rawCreditBalance) : null;
+      if (![totalBalance, availableBalance].every(Number.isFinite)
+          || (hasCreditBalance && !Number.isFinite(creditBalance))) {
         window.__tokenEyesQuotaResult__ = {
           status: 'error', error: 'structure_drift', error_code: 'parse_error'
         };
@@ -94,7 +112,7 @@ const SESSION_FETCH_JS: &str = r#"(function () {
         };
         return;
       }
-      var json = await resp.json();
+      var json = await parseJsonResponse(resp);
       var items = json && json.data && json.data.usage && json.data.usage.items;
       var planItem = Array.isArray(items)
         ? items.find(function (item) { return item.name === 'plan_total_token'; })
@@ -105,14 +123,19 @@ const SESSION_FETCH_JS: &str = r#"(function () {
         };
         return;
       }
-      var total = Number(planItem.limit);
-      var used = Number(planItem.used);
+      var total = requiredFiniteNumber(planItem.limit);
+      var used = requiredFiniteNumber(planItem.used);
       if (!Number.isFinite(total) || !Number.isFinite(used) || total < 0 || used < 0) {
         window.__tokenEyesQuotaResult__ = {
           status: 'error', error: 'structure_drift', error_code: 'parse_error'
         };
         return;
       }
+      var observedAt = new Date().toISOString();
+      var providerReportedFields = [
+        'total_quota', 'used_quota', 'remaining_quota', 'balance', 'available_balance'
+      ];
+      if (hasCreditBalance) providerReportedFields.push('credit_balance');
       window.__tokenEyesQuotaResult__ = {
         status: 'success',
         total: total,
@@ -123,11 +146,18 @@ const SESSION_FETCH_JS: &str = r#"(function () {
         available_balance: availableBalance,
         credit_balance: creditBalance,
         currency: String((balanceData && balanceData.currency) || 'CNY'),
-        provider_reported_at: new Date().toISOString()
+        partial: !hasCreditBalance,
+        provider_reported_fields: providerReportedFields,
+        fetched_at: observedAt,
+        observed_at: observedAt,
+        source_kind: 'undocumented_console_api',
+        support_tier: 'best_effort'
       };
     } catch (_error) {
       window.__tokenEyesQuotaResult__ = {
-        status: 'error', error: 'network_error', error_code: 'network_error'
+        status: 'error',
+        error: _error && _error.tokenEyesError === 'structure_drift' ? 'structure_drift' : 'network_error',
+        error_code: _error && _error.tokenEyesError === 'structure_drift' ? 'parse_error' : 'network_error'
       };
     }
   };
@@ -159,6 +189,7 @@ pub enum SessionStateCode {
     NonOfficialDomain,
     DesktopSessionNotVerified,
     ReauthRequired,
+    Temporary,
     Unsupported,
     Failed,
 }
@@ -171,16 +202,30 @@ pub struct XiaomiMimoQuotaDto {
     pub used_quota: f64,
     pub remaining_quota: f64,
     pub expires_at: Option<String>,
-    pub provider_reported_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_reported_at: Option<String>,
+    pub provider_reported_fields: Vec<String>,
+    pub fetched_at: String,
+    pub observed_at: String,
+    pub source_kind: String,
+    pub support_tier: String,
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct XiaomiMimoBalanceDto {
     pub balance: f64,
     pub available_balance: f64,
-    pub credit_balance: f64,
+    pub credit_balance: Option<f64>,
     pub currency: String,
-    pub provider_reported_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_reported_at: Option<String>,
+    pub provider_reported_fields: Vec<String>,
+    pub fetched_at: String,
+    pub observed_at: String,
+    pub source_kind: String,
+    pub support_tier: String,
+    pub partial: bool,
 }
 
 /// The structure Rust reads from page memory through `eval_with_callback`.
@@ -205,6 +250,14 @@ pub struct QuotaFetchResult {
     pub currency: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_reported_at: Option<String>,
+    #[serde(default)]
+    pub provider_reported_fields: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fetched_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_at: Option<String>,
+    #[serde(default)]
+    pub partial: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -381,11 +434,8 @@ pub fn map_quota_fetch_result_to_status(
                 "官方返回的额度字段缺失或格式无效。",
             );
         }
-        let (Some(balance), Some(available_balance), Some(credit_balance)) = (
-            result.balance,
-            result.available_balance,
-            result.credit_balance,
-        ) else {
+        let (Some(balance), Some(available_balance)) = (result.balance, result.available_balance)
+        else {
             return build_status(
                 session_ref,
                 false,
@@ -394,7 +444,12 @@ pub fn map_quota_fetch_result_to_status(
                 "官方返回的余额字段缺失或格式无效。",
             );
         };
-        if !balance.is_finite() || !available_balance.is_finite() || !credit_balance.is_finite() {
+        if !balance.is_finite()
+            || !available_balance.is_finite()
+            || result
+                .credit_balance
+                .is_some_and(|value| !value.is_finite())
+        {
             return build_status(
                 session_ref,
                 false,
@@ -404,10 +459,35 @@ pub fn map_quota_fetch_result_to_status(
             );
         }
         let remaining = (total - used).max(0.0);
-        let provider_reported_at = result
-            .provider_reported_at
+        let reported_fields = &result.provider_reported_fields;
+        let quota_reported_fields = ["total_quota", "used_quota", "remaining_quota", "expires_at"]
+            .into_iter()
+            .filter(|field| {
+                if reported_fields.is_empty() {
+                    *field != "expires_at" || result.expires_at.is_some()
+                } else {
+                    reported_fields.iter().any(|reported| reported == field)
+                }
+            })
+            .map(str::to_string)
+            .collect();
+        let balance_reported_fields = ["balance", "available_balance", "credit_balance"]
+            .into_iter()
+            .filter(|field| {
+                if reported_fields.is_empty() {
+                    *field != "credit_balance" || result.credit_balance.is_some()
+                } else {
+                    reported_fields.iter().any(|reported| reported == field)
+                }
+            })
+            .map(str::to_string)
+            .collect();
+        let fetched_at = result.fetched_at.clone().unwrap_or_default();
+        let observed_at = result
+            .observed_at
             .clone()
-            .unwrap_or_else(|| String::new());
+            .unwrap_or_else(|| fetched_at.clone());
+        let partial = result.partial || result.credit_balance.is_none();
         return XiaomiMimoSessionStatus {
             connected: true,
             session_ref: session_ref.to_string(),
@@ -419,14 +499,26 @@ pub fn map_quota_fetch_result_to_status(
                 used_quota: used,
                 remaining_quota: remaining,
                 expires_at: result.expires_at.clone(),
-                provider_reported_at,
+                provider_reported_at: result.provider_reported_at.clone(),
+                provider_reported_fields: quota_reported_fields,
+                fetched_at: fetched_at.clone(),
+                observed_at: observed_at.clone(),
+                source_kind: "undocumented_console_api".to_string(),
+                support_tier: "best_effort".to_string(),
+                partial,
             }),
             balance: Some(XiaomiMimoBalanceDto {
                 balance,
                 available_balance,
-                credit_balance,
+                credit_balance: result.credit_balance,
                 currency: result.currency.clone().unwrap_or_else(|| "CNY".to_string()),
-                provider_reported_at: result.provider_reported_at.clone().unwrap_or_default(),
+                provider_reported_at: result.provider_reported_at.clone(),
+                provider_reported_fields: balance_reported_fields,
+                fetched_at,
+                observed_at,
+                source_kind: "undocumented_console_api".to_string(),
+                support_tier: "best_effort".to_string(),
+                partial,
             }),
         };
     }
@@ -451,7 +543,7 @@ pub fn map_quota_fetch_result_to_status(
         "network_error" => build_status(
             session_ref,
             false,
-            SessionStateCode::Failed,
+            SessionStateCode::Temporary,
             "NETWORK_ERROR",
             "网络请求失败，请检查网络后重试。",
         ),
@@ -461,7 +553,7 @@ pub fn map_quota_fetch_result_to_status(
                 build_status(
                     session_ref,
                     false,
-                    SessionStateCode::Failed,
+                    SessionStateCode::Temporary,
                     "SERVER_ERROR",
                     "服务商暂时不可用，请稍后重试。",
                 )
@@ -869,9 +961,31 @@ mod tests {
     #[test]
     fn initialization_script_preserves_provider_credit_units() {
         let js = SESSION_FETCH_JS.to_lowercase();
-        assert!(js.contains("var total = number(planitem.limit);"));
-        assert!(js.contains("var used = number(planitem.used);"));
+        assert!(js.contains("var total = requiredfinitenumber(planitem.limit);"));
+        assert!(js.contains("var used = requiredfinitenumber(planitem.used);"));
         assert!(!js.contains("100000000"));
+    }
+
+    #[test]
+    fn initialization_script_accepts_only_finite_json_number_quota_values() {
+        let js = SESSION_FETCH_JS.to_lowercase();
+        assert!(js.contains("typeof value !== 'number'"));
+        assert!(!js.contains("var parsed = number(value)"));
+        assert!(js.contains("var availablebalance = requiredfinitenumber(rawavailablebalance);"));
+        assert!(js.contains("var totalbalance = requiredfinitenumber(rawtotalbalance);"));
+        assert!(js.contains("var total = requiredfinitenumber(planitem.limit);"));
+        assert!(js.contains("var used = requiredfinitenumber(planitem.used);"));
+    }
+
+    #[test]
+    fn initialization_script_marks_missing_credit_partial_without_zero_fallback_or_fake_provider_time(
+    ) {
+        let js = SESSION_FETCH_JS.to_lowercase();
+        assert!(!js.contains("credit_balance ?? 0"));
+        assert!(js.contains("partial"));
+        assert!(js.contains("fetched_at"));
+        assert!(js.contains("observed_at"));
+        assert!(!js.contains("provider_reported_at: new date().toisostring()"));
     }
 
     #[test]
@@ -953,6 +1067,7 @@ mod tests {
             provider_reported_at: Some("2026-06-27T12:00:00Z".to_string()),
             error: None,
             error_code: None,
+            ..Default::default()
         };
         let status = map_quota_fetch_result_to_status(
             "token-plan/xiaomi_mimo/session/uuid-1",
@@ -968,7 +1083,37 @@ mod tests {
         assert_eq!(quota.total_quota, 100.0);
         assert_eq!(quota.used_quota, 30.0);
         assert_eq!(quota.remaining_quota, 70.0);
-        assert_eq!(quota.provider_reported_at, "2026-06-27T12:00:00Z");
+        assert_eq!(
+            quota.provider_reported_at.as_deref(),
+            Some("2026-06-27T12:00:00Z")
+        );
+    }
+
+    #[test]
+    fn session_fetch_quota_keeps_valid_usage_when_credit_is_missing_and_marks_partial() {
+        let raw = r#"{"status":"success","total":100,"used":30,"remaining":70,"expires_at":null,"balance":120,"available_balance":100,"credit_balance":null,"currency":"CNY","partial":true,"provider_reported_fields":["total_quota","used_quota","remaining_quota","balance","available_balance"],"fetched_at":"2026-08-20T12:00:00.000Z","observed_at":"2026-08-20T12:00:00.000Z"}"#;
+        let result = parse_quota_eval_result(raw).unwrap().unwrap();
+        let status = map_quota_fetch_result_to_status(
+            "token-plan/xiaomi_mimo/session/uuid-partial",
+            true,
+            true,
+            Some(&result),
+        );
+        assert!(status.connected);
+
+        let json = serde_json::to_value(status).unwrap();
+        assert_eq!(json["state_code"], "connected");
+        assert_eq!(json["quota"]["partial"], true);
+        assert_eq!(json["balance"]["credit_balance"], serde_json::Value::Null);
+        assert_eq!(json["quota"]["source_kind"], "undocumented_console_api");
+        assert_eq!(json["quota"]["support_tier"], "best_effort");
+        assert_eq!(json["quota"]["fetched_at"], "2026-08-20T12:00:00.000Z");
+        assert_eq!(json["quota"]["observed_at"], "2026-08-20T12:00:00.000Z");
+        assert!(json["quota"].get("provider_reported_at").is_none());
+        assert_eq!(
+            json["balance"]["provider_reported_fields"],
+            serde_json::json!(["balance", "available_balance"]),
+        );
     }
 
     #[test]
@@ -1017,6 +1162,7 @@ mod tests {
             provider_reported_at: Some("2026-06-27T12:00:00Z".to_string()),
             error: None,
             error_code: None,
+            ..Default::default()
         };
         let status = map_quota_fetch_result_to_status(
             "token-plan/xiaomi_mimo/session/uuid-overage",
@@ -1077,7 +1223,7 @@ mod tests {
     }
 
     #[test]
-    fn session_fetch_quota_returns_failed_on_network_error() {
+    fn session_fetch_quota_returns_temporary_on_network_error() {
         let result = QuotaFetchResult {
             status: "error".to_string(),
             total: None,
@@ -1096,13 +1242,16 @@ mod tests {
             Some(&result),
         );
         assert!(!status.connected);
-        assert_eq!(status.state_code, SessionStateCode::Failed);
+        assert_eq!(
+            serde_json::to_value(&status).unwrap()["state_code"],
+            "temporary"
+        );
         assert_eq!(status.error_code, "NETWORK_ERROR");
         assert!(status.quota.is_none());
     }
 
     #[test]
-    fn session_fetch_quota_returns_failed_on_5xx() {
+    fn session_fetch_quota_returns_temporary_on_5xx() {
         let result = QuotaFetchResult {
             status: "error".to_string(),
             total: None,
@@ -1121,7 +1270,10 @@ mod tests {
             Some(&result),
         );
         assert!(!status.connected);
-        assert_eq!(status.state_code, SessionStateCode::Failed);
+        assert_eq!(
+            serde_json::to_value(&status).unwrap()["state_code"],
+            "temporary"
+        );
         assert_eq!(status.error_code, "SERVER_ERROR");
     }
 
@@ -1164,6 +1316,7 @@ mod tests {
             provider_reported_at: Some("2026-06-27T12:00:00Z".to_string()),
             error: None,
             error_code: None,
+            ..Default::default()
         };
         let status = map_quota_fetch_result_to_status(
             "token-plan/xiaomi_mimo/session/uuid-1",

@@ -22,10 +22,13 @@ const {
   extractCursorSessionToken,
   fetchCursorUsageSummary,
 } = require("./cursor-config");
+const { normalizeCursorUsageSummary } = require("./cursor-token-plan");
+const codexUsageMapper = require("./codex-token-plan");
 const { fetchGrokLimits } = require("./grok-limits");
 const { fetchZedLimits } = require("./zed-limits");
 const { readSqliteJsonRows } = require("./sqlite-reader");
 const { decorateUsageLimitsWithEvidence } = require("./data-evidence");
+const { redactSecrets, writeCredentialJsonFileSync } = require("./credential-file");
 
 // 2-minute in-memory cache
 let cache = { data: null, fetchedAt: 0 };
@@ -170,152 +173,6 @@ async function fetchClaudeUsageLimits(accessToken, { fetchImpl = fetch, maxAttem
   }
 }
 
-// Classify a wham window by `limit_window_seconds` rather than its slot name.
-// 18000s = 5h session window. 604800s = 7d weekly window. Free-tier accounts only get a
-// weekly window, often delivered in the `primary_window` slot — naive position-based
-// reading mislabels it as "5h". Aligned with steipete/CodexBar's rate-window normalizer.
-const CODEX_SESSION_WINDOW_SECONDS = 18000;
-const CODEX_WEEKLY_WINDOW_SECONDS = 604800;
-const CODEX_RESET_CREDIT_ALLOWLIST = Object.freeze([
-  "rate_limit_reset_credits.available_count",
-  "rate_limit_reset_credits.applicable_available_count",
-]);
-
-function parseCodexResetCreditFields(body) {
-  const source = body?.rate_limit_reset_credits;
-  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
-  const available = Number(source.available_count);
-  const applicable = Number(source.applicable_available_count);
-  if (
-    !Number.isSafeInteger(available)
-    || available < 0
-    || !Number.isSafeInteger(applicable)
-    || applicable < 0
-  ) {
-    return null;
-  }
-  return {
-    available_count: available,
-    applicable_available_count: applicable,
-  };
-}
-
-function classifyCodexWindow(window) {
-  if (!window || typeof window !== "object") return null;
-  const seconds = Number(window.limit_window_seconds);
-  if (!Number.isFinite(seconds)) return null;
-  if (seconds === CODEX_SESSION_WINDOW_SECONDS) return "session";
-  if (seconds === CODEX_WEEKLY_WINDOW_SECONDS) return "weekly";
-  return null;
-}
-
-function normalizeCodexRateWindow(window) {
-  if (!window || typeof window !== "object" || Array.isArray(window)) return null;
-  const usedPercent = clampPercent(window.used_percent);
-  if (usedPercent === null) return null;
-  return {
-    ...window,
-    used_percent: Math.round(usedPercent),
-  };
-}
-
-function normalizeCodexRateWindows(rateLimit) {
-  const primary = normalizeCodexRateWindow(rateLimit?.primary_window);
-  const secondary = normalizeCodexRateWindow(rateLimit?.secondary_window);
-  const candidates = [primary, secondary].filter(Boolean);
-  let session = null;
-  let weekly = null;
-  for (const w of candidates) {
-    const kind = classifyCodexWindow(w);
-    if (kind === "session" && !session) session = w;
-    else if (kind === "weekly" && !weekly) weekly = w;
-  }
-  // Fall back to positional read only if classification failed for both — preserves data
-  // from unexpected window durations rather than dropping it silently.
-  if (!session && !weekly && candidates.length > 0) {
-    return {
-      primary_window: primary,
-      secondary_window: secondary,
-    };
-  }
-  return { primary_window: session, secondary_window: weekly };
-}
-
-function isCodexSparkLimit(entry) {
-  if (!entry || typeof entry !== "object") return false;
-  return [entry.limit_name, entry.metered_feature].some((value) => (
-    typeof value === "string" && value.trim().toLowerCase().includes("spark")
-  ));
-}
-
-function codexSparkFallbackCandidates(primary, secondary) {
-  const primaryKind = classifyCodexWindow(primary);
-  const secondaryKind = classifyCodexWindow(secondary);
-  const out = [];
-  const primaryDurationMissing = primary
-    && (primary.limit_window_seconds === undefined
-      || primary.limit_window_seconds === null
-      || primary.limit_window_seconds === "");
-
-  if (primaryKind || secondaryKind) {
-    if (!primaryKind && primary && secondaryKind === "weekly") {
-      out.push({ kind: "session", window: primary });
-    }
-    if (!primaryKind && primaryDurationMissing && secondaryKind === "session") {
-      out.push({ kind: "weekly", window: primary });
-    }
-    if (!secondaryKind && secondary && primaryKind === "weekly") {
-      out.push({ kind: "session", window: secondary });
-    }
-    if (!secondaryKind && secondary && primaryKind === "session") {
-      out.push({ kind: "weekly", window: secondary });
-    }
-    return out;
-  }
-
-  if (primary) out.push({ kind: "session", window: primary });
-  if (secondary) out.push({ kind: "weekly", window: secondary });
-  return out;
-}
-
-function normalizeCodexSparkRateWindows(additionalRateLimits) {
-  let session = null;
-  let weekly = null;
-  if (!Array.isArray(additionalRateLimits)) {
-    return { spark_primary_window: null, spark_secondary_window: null };
-  }
-
-  const classifiedCandidates = [];
-  const fallbackCandidates = [];
-  for (const entry of additionalRateLimits) {
-    if (!isCodexSparkLimit(entry)) continue;
-    const rateLimit = entry.rate_limit;
-    if (!rateLimit || typeof rateLimit !== "object") continue;
-
-    const primary = normalizeCodexRateWindow(rateLimit.primary_window);
-    const secondary = normalizeCodexRateWindow(rateLimit.secondary_window);
-    for (const window of [primary, secondary]) {
-      const kind = classifyCodexWindow(window);
-      if (kind) classifiedCandidates.push({ kind, window });
-    }
-    fallbackCandidates.push(...codexSparkFallbackCandidates(primary, secondary));
-  }
-
-  for (const candidate of classifiedCandidates) {
-    if (candidate.kind === "session" && !session) session = candidate.window;
-    else if (candidate.kind === "weekly" && !weekly) weekly = candidate.window;
-  }
-  for (const candidate of fallbackCandidates) {
-    if (candidate.kind === "session" && !session) session = candidate.window;
-    else if (candidate.kind === "weekly" && !weekly) weekly = candidate.window;
-  }
-
-  return {
-    spark_primary_window: session,
-    spark_secondary_window: weekly,
-  };
-}
-
 async function fetchCodexUsageLimits(
   accessToken,
   { fetchImpl = fetch, accountId = null } = {},
@@ -330,30 +187,38 @@ async function fetchCodexUsageLimits(
     headers["ChatGPT-Account-Id"] = accountId;
   }
 
-  const res = await fetchImpl("https://chatgpt.com/backend-api/wham/usage", {
-    method: "GET",
-    headers,
-  });
-  // 401/403/404 from wham means "no usage data available for this auth state" — render
-  // a neutral empty state instead of a red "Fetch failed" error.
-  if (res.status === 401 || res.status === 403 || res.status === 404) {
-    return {
-      primary_window: null,
-      secondary_window: null,
-      spark_primary_window: null,
-      spark_secondary_window: null,
-    };
+  let res;
+  try {
+    res = await fetchImpl("https://chatgpt.com/backend-api/wham/usage", {
+      method: "GET",
+      headers,
+    });
+  } catch {
+    throw new codexUsageMapper.CodexTokenPlanError(
+      "CODEX_NETWORK_ERROR",
+      "Codex usage request failed",
+    );
   }
   if (!res.ok) {
-    throw new Error(`Codex API returned ${res.status}`);
+    throw codexUsageMapper.codexUsageErrorForHttpStatus(res.status);
   }
-  const body = await res.json();
-  const resetCredits = parseCodexResetCreditFields(body);
-  return {
-    ...normalizeCodexRateWindows(body.rate_limit || {}),
-    ...normalizeCodexSparkRateWindows(body.additional_rate_limits),
-    ...(resetCredits ? { reset_credits: resetCredits } : {}),
-  };
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    throw new codexUsageMapper.CodexTokenPlanError(
+      "CODEX_RESPONSE_STRUCTURE_DRIFT",
+      "Codex usage response is not valid JSON",
+    );
+  }
+  const mapped = codexUsageMapper.mapCodexUsageResponse(body);
+  if (!mapped.primary_window && !mapped.secondary_window) {
+    throw new codexUsageMapper.CodexTokenPlanError(
+      "CODEX_NO_QUOTA_WINDOWS",
+      "Codex quota windows are missing",
+    );
+  }
+  return mapped;
 }
 
 function toIsoResetAt(value) {
@@ -369,7 +234,7 @@ function toIsoResetAt(value) {
 }
 
 function sanitizeCodexWindow(window) {
-  const normalized = normalizeCodexRateWindow(window);
+  const normalized = codexUsageMapper.normalizeCodexRateWindow(window);
   if (!normalized) return null;
   return {
     used_percent: normalized.used_percent,
@@ -449,30 +314,22 @@ async function getCodexUsageLimits({
       providerTimeoutMs,
     );
   } catch (_error) {
-    return { configured: true, checked_at, error_code: "network_error" };
+    return {
+      configured: true,
+      checked_at,
+      ...codexUsageMapper.codexUsageErrorState(
+        new codexUsageMapper.CodexTokenPlanError("CODEX_NETWORK_ERROR", "Codex usage request failed"),
+      ),
+    };
   }
 
-  if (response.status === 401 || response.status === 403) {
-    return {
-      configured: true,
-      checked_at,
-      auth_action_required: "reauth",
-      error_code: "auth_required",
-    };
-  }
-  if (response.status === 404) {
-    return {
-      configured: true,
-      checked_at,
-      unsupported: true,
-      error_code: "endpoint_unsupported",
-    };
-  }
   if (!response.ok) {
     return {
       configured: true,
       checked_at,
-      error_code: response.status >= 500 ? "upstream_5xx" : "upstream_http_error",
+      ...codexUsageMapper.codexUsageErrorState(
+        codexUsageMapper.codexUsageErrorForHttpStatus(response.status),
+      ),
     };
   }
 
@@ -483,99 +340,35 @@ async function getCodexUsageLimits({
     return {
       configured: true,
       checked_at,
-      unsupported: true,
-      error_code: "response_unsupported",
+      ...codexUsageMapper.codexUsageErrorState(
+        new codexUsageMapper.CodexTokenPlanError(
+          "CODEX_RESPONSE_STRUCTURE_DRIFT",
+          "Codex usage response is not valid JSON",
+        ),
+      ),
     };
   }
-  const regular = normalizeCodexRateWindows(body?.rate_limit);
-  const spark = normalizeCodexSparkRateWindows(body?.additional_rate_limits);
-  const resetCredits = parseCodexResetCreditFields(body);
-  if (!regular.primary_window && !regular.secondary_window) {
+  const mapped = codexUsageMapper.mapCodexUsageResponse(body);
+  if (!mapped.primary_window && !mapped.secondary_window) {
     return {
       configured: true,
       checked_at,
-      unsupported: true,
-      error_code: "response_unsupported",
+      ...codexUsageMapper.codexUsageErrorState(
+        new codexUsageMapper.CodexTokenPlanError(
+          "CODEX_NO_QUOTA_WINDOWS",
+          "Codex quota windows are missing",
+        ),
+      ),
     };
   }
   return {
     configured: true,
     checked_at,
-    primary_window: sanitizeCodexWindow(regular.primary_window),
-    secondary_window: sanitizeCodexWindow(regular.secondary_window),
-    spark_primary_window: sanitizeCodexWindow(spark.spark_primary_window),
-    spark_secondary_window: sanitizeCodexWindow(spark.spark_secondary_window),
-    ...(resetCredits ? { reset_credits: resetCredits } : {}),
-  };
-}
-
-function cursorPercentFromCentsUsedLimit(usedRaw, limitRaw) {
-  const used = Number(usedRaw);
-  const limit = Number(limitRaw);
-  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
-  return clampPercent((used / limit) * 100);
-}
-
-function normalizeCursorUsageSummary(body) {
-  const plan = body?.individualUsage?.plan || null;
-  const indOnDemand = body?.individualUsage?.onDemand || null;
-  const teamOnDemand = body?.teamUsage?.onDemand || null;
-  const billingCycleEnd = typeof body?.billingCycleEnd === "string" ? body.billingCycleEnd : null;
-  const autoPercent = clampPercent(plan?.autoPercentUsed);
-  const apiPercent = clampPercent(plan?.apiPercentUsed);
-
-  // Prefer totalPercentUsed, then Auto/API lanes (aligned with CodexBar): raw plan used/limit
-  // are often cents where limit can be price/cap semantics — do not prefer that over percent lanes.
-  let planPercent = clampPercent(plan?.totalPercentUsed);
-  if (planPercent === null) {
-    if (autoPercent !== null && apiPercent !== null) {
-      planPercent = clampPercent((autoPercent + apiPercent) / 2);
-    } else if (apiPercent !== null) {
-      planPercent = apiPercent;
-    } else if (autoPercent !== null) {
-      planPercent = autoPercent;
-    } else {
-      const fromPlanCents = cursorPercentFromCentsUsedLimit(plan?.used, plan?.limit);
-      if (fromPlanCents !== null) planPercent = fromPlanCents;
-    }
-  }
-  if (planPercent === null) {
-    const fromInd = cursorPercentFromCentsUsedLimit(indOnDemand?.used, indOnDemand?.limit);
-    if (fromInd !== null) planPercent = fromInd;
-  }
-  if (planPercent === null) {
-    const fromTeam = cursorPercentFromCentsUsedLimit(teamOnDemand?.used, teamOnDemand?.limit);
-    if (fromTeam !== null) planPercent = fromTeam;
-  }
-  // Enterprise / team: individualUsage.plan often stays at 0% while pooled usage is on teamUsage.onDemand.
-  if (planPercent === 0) {
-    const fromInd = cursorPercentFromCentsUsedLimit(indOnDemand?.used, indOnDemand?.limit);
-    if (fromInd !== null && fromInd > 0) planPercent = fromInd;
-  }
-  if (planPercent === 0) {
-    const fromTeam = cursorPercentFromCentsUsedLimit(teamOnDemand?.used, teamOnDemand?.limit);
-    if (fromTeam !== null && fromTeam > 0) planPercent = fromTeam;
-  }
-
-  // Team / enterprise: headline usage is the pooled quota (teamUsage.onDemand), not individual lanes.
-  const limitType = typeof body?.limitType === "string" ? body.limitType : "";
-  const membershipTypeStr = typeof body?.membershipType === "string" ? body.membershipType : "";
-  const preferTeamPool =
-    limitType === "team" ||
-    membershipTypeStr === "enterprise" ||
-    membershipTypeStr === "team";
-  if (preferTeamPool) {
-    const teamHeadline = cursorPercentFromCentsUsedLimit(teamOnDemand?.used, teamOnDemand?.limit);
-    if (teamHeadline !== null && (planPercent === null || planPercent === 0)) {
-      planPercent = teamHeadline;
-    }
-  }
-
-  return {
-    membership_type: typeof body?.membershipType === "string" ? body.membershipType : null,
-    primary_window: buildWindow({ usedPercent: planPercent, resetAt: billingCycleEnd }),
-    secondary_window: buildWindow({ usedPercent: autoPercent, resetAt: billingCycleEnd }),
-    tertiary_window: buildWindow({ usedPercent: apiPercent, resetAt: billingCycleEnd }),
+    primary_window: sanitizeCodexWindow(mapped.primary_window),
+    secondary_window: sanitizeCodexWindow(mapped.secondary_window),
+    spark_primary_window: sanitizeCodexWindow(mapped.spark_primary_window),
+    spark_secondary_window: sanitizeCodexWindow(mapped.spark_secondary_window),
+    ...(mapped.reset_credits ? { reset_credits: mapped.reset_credits } : {}),
   };
 }
 
@@ -632,15 +425,46 @@ function loadKimiCredentials({ home, env } = {}) {
   }
 }
 
-function saveKimiCredentials(creds, { home, env } = {}) {
-  const kimiHome = resolveKimiHome({ home, env });
-  const credsPath = path.join(kimiHome, "credentials", "kimi-code.json");
-  fs.mkdirSync(path.dirname(credsPath), { recursive: true });
-  fs.writeFileSync(credsPath, JSON.stringify(creds, null, 2));
+function readCredentialJson(filePath) {
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Vendor credential file is not a JSON object");
+  }
+  return parsed;
 }
 
-function hasKimiConfig({ home, env } = {}) {
-  return fs.existsSync(path.join(resolveKimiHome({ home, env }), "config.toml"));
+function credentialTokenSecrets(...groups) {
+  const secrets = [];
+  for (const group of groups) {
+    if (typeof group === "string") {
+      if (group) secrets.push(group);
+      continue;
+    }
+    if (!group || typeof group !== "object") continue;
+    for (const key of ["access_token", "refresh_token", "id_token"]) {
+      if (typeof group[key] === "string" && group[key]) secrets.push(group[key]);
+    }
+  }
+  return Array.from(new Set(secrets));
+}
+
+function credentialPersistWarning(provider, error, secrets) {
+  const detail = redactSecrets(error?.message || "Unknown persistence error", secrets);
+  return `${provider} refreshed credential was not saved; Token Eyes will retry from the vendor file next time: ${detail}`;
+}
+
+function persistCredentialJson(filePath, value, credentialFileOptions, secrets) {
+  const injectedSecrets = Array.isArray(credentialFileOptions?.secrets)
+    ? credentialFileOptions.secrets
+    : [];
+  return writeCredentialJsonFileSync(filePath, value, {
+    ...(credentialFileOptions || {}),
+    mergeLatest: true,
+    secrets: [
+      ...credentialTokenSecrets(...injectedSecrets),
+      ...secrets,
+    ],
+  });
 }
 
 function kimiNumber(value) {
@@ -692,7 +516,13 @@ function kimiCredentialsExpired(creds, nowMs = Date.now()) {
   return expiresAt * 1000 <= nowMs + 30_000;
 }
 
-async function refreshKimiAccessToken({ refreshToken, home, env, fetchImpl = fetch } = {}) {
+async function refreshKimiAccessToken({
+  refreshToken,
+  credentialPath,
+  credentialFileOptions,
+  knownSecrets,
+  fetchImpl = fetch,
+} = {}) {
   if (typeof refreshToken !== "string" || !refreshToken.trim()) {
     throw new Error("Not logged in to Kimi. Run 'kimi' in Terminal to authenticate.");
   }
@@ -724,16 +554,53 @@ async function refreshKimiAccessToken({ refreshToken, home, env, fetchImpl = fet
   }
 
   const expiresIn = Number(json.expires_in);
-  const next = {
-    access_token: String(json.access_token),
-    refresh_token: String(json.refresh_token || refreshToken),
-    expires_at: Date.now() / 1000 + (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 900),
-    scope: String(json.scope || "kimi-code"),
-    token_type: String(json.token_type || "Bearer"),
-    expires_in: Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 900,
+  const accessToken = String(json.access_token);
+  const secrets = credentialTokenSecrets(
+    ...(Array.isArray(knownSecrets) ? knownSecrets : []),
+    refreshToken,
+    json,
+  );
+  let effectiveRefreshToken = typeof json.refresh_token === "string" && json.refresh_token
+    ? json.refresh_token
+    : refreshToken;
+  let warning = null;
+  try {
+    const lifetimeSeconds = Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 900;
+    const rotations = {
+      access_token: accessToken,
+      expires_at: Date.now() / 1000 + lifetimeSeconds,
+      expires_in: lifetimeSeconds,
+    };
+    if (typeof json.refresh_token === "string" && json.refresh_token) {
+      rotations.refresh_token = json.refresh_token;
+    }
+    if (typeof json.scope === "string" && json.scope) rotations.scope = json.scope;
+    if (typeof json.token_type === "string" && json.token_type) rotations.token_type = json.token_type;
+    const persisted = persistCredentialJson(credentialPath, rotations, credentialFileOptions, secrets);
+    secrets.push(...credentialTokenSecrets(persisted.value));
+    if (!(typeof json.refresh_token === "string" && json.refresh_token)
+        && typeof persisted.value?.refresh_token === "string"
+        && persisted.value.refresh_token) {
+      effectiveRefreshToken = persisted.value.refresh_token;
+    }
+  } catch (error) {
+    warning = credentialPersistWarning("Kimi", error, secrets);
+    if (!(typeof json.refresh_token === "string" && json.refresh_token)) {
+      try {
+        const latestCredentials = readCredentialJson(credentialPath);
+        secrets.push(...credentialTokenSecrets(latestCredentials));
+        if (typeof latestCredentials.refresh_token === "string" && latestCredentials.refresh_token) {
+          effectiveRefreshToken = latestCredentials.refresh_token;
+        }
+      } catch (_readError) {}
+    }
+  }
+  return {
+    accessToken,
+    refreshToken: effectiveRefreshToken,
+    credentialPersistWarning: warning,
+    redactionSecrets: credentialTokenSecrets(...secrets, accessToken),
   };
-  saveKimiCredentials(next, { home, env });
-  return next.access_token;
 }
 
 async function fetchKimiUsage(accessToken, { fetchImpl = fetch } = {}) {
@@ -753,35 +620,55 @@ async function fetchKimiUsage(accessToken, { fetchImpl = fetch } = {}) {
   return res.json();
 }
 
-async function fetchKimiLimits({ home, env, fetchImpl = fetch } = {}) {
-  if (!hasKimiConfig({ home, env })) {
+async function fetchKimiLimits({ home, env, fetchImpl = fetch, credentialFileOptions } = {}) {
+  const kimiHome = resolveKimiHome({ home, env });
+  if (!fs.existsSync(path.join(kimiHome, "config.toml"))) {
     return { configured: false };
   }
-  const creds = loadKimiCredentials({ home, env });
+  const credentialPath = path.join(kimiHome, "credentials", "kimi-code.json");
+  let creds = null;
+  try {
+    creds = readCredentialJson(credentialPath);
+  } catch (_error) {
+    return { configured: false };
+  }
   let accessToken = typeof creds?.access_token === "string" ? creds.access_token.trim() : "";
   if (!accessToken) {
     return { configured: false };
   }
+  const errorSecrets = credentialTokenSecrets(creds);
   try {
-    if (kimiCredentialsExpired(creds) && creds?.refresh_token) {
-      accessToken = await refreshKimiAccessToken({
-        refreshToken: creds.refresh_token,
-        home,
-        env,
+    let persistWarning = null;
+    let refreshToken = typeof creds?.refresh_token === "string" ? creds.refresh_token : "";
+    if (kimiCredentialsExpired(creds) && refreshToken) {
+      const refreshed = await refreshKimiAccessToken({
+        refreshToken,
+        credentialPath,
+        credentialFileOptions,
+        knownSecrets: errorSecrets,
         fetchImpl,
       });
+      accessToken = refreshed.accessToken;
+      refreshToken = refreshed.refreshToken || refreshToken;
+      errorSecrets.push(...refreshed.redactionSecrets);
+      persistWarning = refreshed.credentialPersistWarning;
     }
     let body;
     try {
       body = await fetchKimiUsage(accessToken, { fetchImpl });
     } catch (error) {
-      if (error?.message === "token_expired" && creds?.refresh_token) {
-        accessToken = await refreshKimiAccessToken({
-          refreshToken: creds.refresh_token,
-          home,
-          env,
+      if (error?.message === "token_expired" && refreshToken) {
+        const refreshed = await refreshKimiAccessToken({
+          refreshToken,
+          credentialPath,
+          credentialFileOptions,
+          knownSecrets: errorSecrets,
           fetchImpl,
         });
+        accessToken = refreshed.accessToken;
+        refreshToken = refreshed.refreshToken || refreshToken;
+        errorSecrets.push(...refreshed.redactionSecrets);
+        persistWarning = refreshed.credentialPersistWarning || persistWarning;
         body = await fetchKimiUsage(accessToken, { fetchImpl });
       } else {
         throw error;
@@ -791,11 +678,12 @@ async function fetchKimiLimits({ home, env, fetchImpl = fetch } = {}) {
       configured: true,
       error: null,
       ...normalizeKimiUsageResponse(body),
+      ...(persistWarning ? { credential_persist_warning: persistWarning } : {}),
     };
   } catch (error) {
     return {
       configured: true,
-      error: error?.message || "Unknown error",
+      error: redactSecrets(error?.message || "Unknown error", errorSecrets),
     };
   }
 }
@@ -911,7 +799,8 @@ async function extractGeminiOauthClientCredentials({ commandRunner, home } = {})
 async function refreshGeminiAccessToken({
   refreshToken,
   home,
-  env,
+  credentialPath,
+  credentialFileOptions,
   fetchImpl = fetch,
   commandRunner,
 }) {
@@ -941,19 +830,36 @@ async function refreshGeminiAccessToken({
     throw new Error("Could not parse Gemini usage: invalid token refresh response");
   }
 
-  const geminiHome = resolveGeminiHome({ home, env });
-  const credsPath = path.join(geminiHome, "oauth_creds.json");
+  const accessToken = String(json.access_token);
+  const secrets = credentialTokenSecrets(refreshToken, json);
+  let latestIdToken = typeof json.id_token === "string" && json.id_token ? json.id_token : null;
+  let warning = null;
   try {
-    const creds = loadGeminiCredentials({ home, env }) || {};
-    creds.access_token = json.access_token;
-    if (json.id_token) creds.id_token = json.id_token;
-    if (typeof json.expires_in === "number" && Number.isFinite(json.expires_in)) {
-      creds.expiry_date = Date.now() + json.expires_in * 1000;
+    const rotations = { access_token: accessToken };
+    if (typeof json.refresh_token === "string" && json.refresh_token) {
+      rotations.refresh_token = json.refresh_token;
     }
-    fs.writeFileSync(credsPath, JSON.stringify(creds, null, 2));
-  } catch (_error) {}
+    if (typeof json.id_token === "string" && json.id_token) {
+      rotations.id_token = json.id_token;
+    }
+    if (typeof json.expires_in === "number" && Number.isFinite(json.expires_in)) {
+      rotations.expiry_date = Date.now() + json.expires_in * 1000;
+    }
+    const persisted = persistCredentialJson(credentialPath, rotations, credentialFileOptions, secrets);
+    secrets.push(...credentialTokenSecrets(persisted.value));
+    if (!latestIdToken && typeof persisted.value.id_token === "string" && persisted.value.id_token) {
+      latestIdToken = persisted.value.id_token;
+    }
+  } catch (error) {
+    warning = credentialPersistWarning("Gemini", error, secrets);
+  }
 
-  return json.access_token;
+  return {
+    accessToken,
+    idToken: latestIdToken,
+    credentialPersistWarning: warning,
+    redactionSecrets: credentialTokenSecrets(...secrets, accessToken, latestIdToken),
+  };
 }
 
 async function loadGeminiCodeAssistStatus(accessToken, { fetchImpl = fetch } = {}) {
@@ -1058,7 +964,13 @@ function normalizeGeminiQuotaResponse({ buckets, email, tier }) {
   };
 }
 
-async function fetchGeminiLimits({ home, env, fetchImpl = fetch, commandRunner } = {}) {
+async function fetchGeminiLimits({
+  home,
+  env,
+  fetchImpl = fetch,
+  commandRunner,
+  credentialFileOptions,
+} = {}) {
   const settings = loadGeminiSettings({ home, env });
   const selectedType = settings?.security?.auth?.selectedType ?? null;
   if (!settings && !loadGeminiCredentials({ home, env })) {
@@ -1076,20 +988,28 @@ async function fetchGeminiLimits({ home, env, fetchImpl = fetch, commandRunner }
     return { configured: true, error: "Not logged in to Gemini. Run 'gemini' in Terminal to authenticate." };
   }
 
+  const errorSecrets = credentialTokenSecrets(creds);
   try {
     let accessToken = creds.access_token;
+    let idToken = creds.id_token;
+    let persistWarning = null;
     const expiry = Number(creds.expiry_date);
     if (Number.isFinite(expiry) && expiry > 0 && expiry < Date.now() && creds.refresh_token) {
-      accessToken = await refreshGeminiAccessToken({
+      const refreshed = await refreshGeminiAccessToken({
         refreshToken: creds.refresh_token,
         home,
-        env,
+        credentialPath: path.join(resolveGeminiHome({ home, env }), "oauth_creds.json"),
+        credentialFileOptions,
         fetchImpl,
         commandRunner,
       });
+      accessToken = refreshed.accessToken;
+      idToken = refreshed.idToken || idToken;
+      errorSecrets.push(...refreshed.redactionSecrets);
+      persistWarning = refreshed.credentialPersistWarning;
     }
 
-    const claims = decodeJwtPayload(creds.id_token);
+    const claims = decodeJwtPayload(idToken);
     const codeAssist = await loadGeminiCodeAssistStatus(accessToken, { fetchImpl });
     const res = await fetchImpl("https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota", {
       method: "POST",
@@ -1114,11 +1034,12 @@ async function fetchGeminiLimits({ home, env, fetchImpl = fetch, commandRunner }
         email: claims?.email || null,
         tier: codeAssist.tier,
       }),
+      ...(persistWarning ? { credential_persist_warning: persistWarning } : {}),
     };
   } catch (error) {
     return {
       configured: true,
-      error: error?.message || "Unknown error",
+      error: redactSecrets(error?.message || "Unknown error", errorSecrets),
     };
   }
 }
@@ -1343,8 +1264,8 @@ function parseKiroUsageOutput(output, { now = new Date() } = {}) {
 // keep it in plaintext (`~/.config/github-copilot/{apps,hosts}.json`); recent
 // copilot-language-server builds (Zed, copilot.vim) migrate it into an encrypted
 // SQLite store (`auth.db`) and leave the plaintext files behind as stale legacy
-// copies. Read the plaintext first, then fall back to the encrypted store. No
-// device flow needed either way.
+// copies. Prefer secure-store candidates; legacy plaintext is attempted only
+// after a 401/403 response. No device flow is needed either way.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MACOS_SECURITY_BIN = "/usr/bin/security";
@@ -1357,8 +1278,34 @@ const COPILOT_LS_KEYCHAIN_ACCOUNT = "oauth-token-key";
 const COPILOT_AUTH_DB_SQL =
   "SELECT user_login, auth_authority, scopes, hex(token_ciphertext) AS token_hex, "
   + "last_used_at, updated_at FROM oauth_tokens ORDER BY last_used_at DESC, updated_at DESC";
+const COPILOT_CREDENTIAL_IDENTITY = Symbol.for("tokentracker.copilot.credential-identity");
 
-function readPlaintextCopilotOauthToken({ home }) {
+function copilotAuthDbPath(home) {
+  return path.join(home, ".config", "github-copilot", "auth.db");
+}
+
+function candidateTimestamp(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function orderCopilotCandidates(candidates) {
+  return [...candidates].sort((left, right) => {
+    const leftPublic = left.authority === "github.com" ? 0 : 1;
+    const rightPublic = right.authority === "github.com" ? 0 : 1;
+    return leftPublic - rightPublic;
+  });
+}
+
+function dedupeCopilotCandidates(candidates) {
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    if (!candidate?.token || seen.has(candidate.token)) return false;
+    seen.add(candidate.token);
+    return true;
+  });
+}
+
+function readPlaintextCopilotOauthCandidates({ home }) {
   const candidates = [
     path.join(home, ".config", "github-copilot", "apps.json"),
     path.join(home, ".config", "github-copilot", "hosts.json"),
@@ -1367,7 +1314,7 @@ function readPlaintextCopilotOauthToken({ home }) {
   // composite like "github.com:Iv1.b507a08c87ecfe98". We always hit
   // api.github.com, so prefer the public-host token; only fall back to
   // whatever's there if no public-host entry exists.
-  let fallback = null;
+  const found = [];
   for (const filePath of candidates) {
     if (!fs.existsSync(filePath)) continue;
     let parsed;
@@ -1382,11 +1329,16 @@ function readPlaintextCopilotOauthToken({ home }) {
       const token = typeof value.oauth_token === "string" ? value.oauth_token : "";
       if (!token) continue;
       const host = String(key).split(":")[0];
-      if (host === "github.com") return token;
-      if (!fallback) fallback = token;
+      found.push({
+        token,
+        credential_source: "legacy_plaintext",
+        authority: host || null,
+        updated_at: candidateTimestamp(value.updated_at),
+        last_used_at: candidateTimestamp(value.last_used_at),
+      });
     }
   }
-  return fallback;
+  return dedupeCopilotCandidates(orderCopilotCandidates(found));
 }
 
 function readMacosKeychainGenericPassword({ service, account, securityRunner } = {}) {
@@ -1437,46 +1389,115 @@ function decryptCopilotAuthDbToken(keyBase64, ciphertextHex) {
   }
 }
 
-function readCopilotAuthDbToken({ home, platform = process.platform, securityRunner, sqliteReader } = {}) {
-  // The decryption key lives in the macOS Keychain. On Linux/Windows the
-  // copilot-language-server uses libsecret / Credential Manager instead, which we
-  // don't read yet — callers fall back to the plaintext path there.
-  if (platform !== "darwin") return null;
+function readMacosCopilotAuthDbCandidates({ home, securityRunner, sqliteReader } = {}) {
   const resolvedHome = home || os.homedir();
-  const dbPath = path.join(resolvedHome, ".config", "github-copilot", "auth.db");
   const reader = typeof sqliteReader === "function" ? sqliteReader : readSqliteJsonRows;
   let rows;
   try {
-    rows = reader(dbPath, COPILOT_AUTH_DB_SQL, { label: "GitHub Copilot" });
+    rows = reader(copilotAuthDbPath(resolvedHome), COPILOT_AUTH_DB_SQL, { label: "GitHub Copilot" });
   } catch (_e) {
-    return null;
+    return [];
   }
-  if (!Array.isArray(rows) || rows.length === 0) return null;
-  // Prefer the public github.com host (mirrors the plaintext reader); rows are
-  // already ordered most-recently-used first.
-  const row =
-    rows.find((r) => String(r?.auth_authority || "").split(":")[0] === "github.com") || rows[0];
-  const ciphertextHex = typeof row?.token_hex === "string" ? row.token_hex : null;
-  if (!ciphertextHex) return null;
-  const keyBase64 = readMacosKeychainGenericPassword({
-    service: COPILOT_LS_KEYCHAIN_SERVICE,
-    account: COPILOT_LS_KEYCHAIN_ACCOUNT,
-    securityRunner,
-  });
-  if (!keyBase64) return null;
-  return decryptCopilotAuthDbToken(keyBase64, ciphertextHex);
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  let keyBase64;
+  try {
+    keyBase64 = readMacosKeychainGenericPassword({
+      service: COPILOT_LS_KEYCHAIN_SERVICE,
+      account: COPILOT_LS_KEYCHAIN_ACCOUNT,
+      securityRunner,
+    });
+  } catch (_e) {
+    return [];
+  }
+  if (!keyBase64) return [];
+
+  const found = [];
+  for (const row of orderCopilotCandidates(rows.map((item) => ({
+    ...item,
+    authority: String(item?.auth_authority || "").split(":")[0] || null,
+  })))) {
+    const ciphertextHex = typeof row?.token_hex === "string" ? row.token_hex : null;
+    if (!ciphertextHex) continue;
+    const token = decryptCopilotAuthDbToken(keyBase64, ciphertextHex);
+    if (!token) continue;
+    found.push({
+      token,
+      credential_source: "secure_auth_db_macos",
+      authority: row.authority,
+      updated_at: candidateTimestamp(row.updated_at),
+      last_used_at: candidateTimestamp(row.last_used_at),
+    });
+  }
+  return dedupeCopilotCandidates(found);
 }
 
-function readCopilotOauthToken({
+function readCopilotCredentialCandidates({
   home = os.homedir(),
   platform = process.platform,
   securityRunner,
   sqliteReader,
 } = {}) {
-  const plaintext = readPlaintextCopilotOauthToken({ home });
-  if (plaintext) return plaintext;
-  // No plaintext token found — recover the live one from the encrypted auth.db.
-  return readCopilotAuthDbToken({ home, platform, securityRunner, sqliteReader });
+  // Windows Credential Manager target/blob semantics are not yet backed by a
+  // fixed upstream fixture. If auth.db proves that the secure store is in use,
+  // fail closed instead of guessing a target or sending a stale plaintext copy.
+  if (platform === "win32" && fs.existsSync(copilotAuthDbPath(home))) {
+    return { candidates: [], secure_store_status: "secure_store_unsupported" };
+  }
+
+  const secure = platform === "darwin"
+    ? readMacosCopilotAuthDbCandidates({ home, securityRunner, sqliteReader })
+    : [];
+  const legacy = readPlaintextCopilotOauthCandidates({ home });
+  return {
+    candidates: dedupeCopilotCandidates([...secure, ...legacy]),
+    secure_store_status: null,
+  };
+}
+
+function candidateIdentity(candidate) {
+  return `sha256:${crypto.createHash("sha256").update(candidate.token).digest("hex")}`;
+}
+
+function attachCopilotCredentialContext(entry, candidate) {
+  if (!entry || !candidate) return entry;
+  Object.defineProperty(entry, COPILOT_CREDENTIAL_IDENTITY, {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: Object.freeze({
+      identity: candidateIdentity(candidate),
+      credential_source: candidate.credential_source,
+      authority: candidate.authority,
+      updated_at: candidate.updated_at,
+      last_used_at: candidate.last_used_at,
+    }),
+  });
+  return entry;
+}
+
+function getCopilotCredentialIdentity(entry) {
+  const context = entry?.[COPILOT_CREDENTIAL_IDENTITY];
+  const identity = typeof context === "string" ? context : context?.identity;
+  return typeof identity === "string" && identity ? identity : null;
+}
+
+function describeCopilotCredentialStatus(options = {}) {
+  const result = readCopilotCredentialCandidates(options);
+  const selected = result.candidates[0] || null;
+  if (result.secure_store_status === "secure_store_unsupported") {
+    return {
+      configured: true,
+      status: "secure_store_unsupported",
+      credential_source: null,
+      authority: null,
+    };
+  }
+  return {
+    configured: Boolean(selected),
+    status: selected ? "available" : "not_found",
+    credential_source: selected?.credential_source || null,
+    authority: selected?.authority || null,
+  };
 }
 
 function copilotRequestHeaders(token) {
@@ -1551,26 +1572,68 @@ async function fetchCopilotLimits({
   sqliteReader,
 } = {}) {
   const otel = describeCopilotOtelStatus({ home, env });
-  const token = readCopilotOauthToken({
+  const credentialResult = readCopilotCredentialCandidates({
     home: home || (env.HOME || os.homedir()),
     platform,
     securityRunner,
     sqliteReader,
   });
-  if (!token) return { configured: false, ...otel };
+  if (credentialResult.secure_store_status === "secure_store_unsupported") {
+    return {
+      configured: true,
+      error: "secure_store_unsupported",
+      error_code: "secure_store_unsupported",
+      ...otel,
+    };
+  }
+  if (credentialResult.candidates.length === 0) return { configured: false, ...otel };
 
-  try {
-    const res = await fetchImpl("https://api.github.com/copilot_internal/user", {
-      method: "GET",
-      headers: copilotRequestHeaders(token),
-    });
+  for (let index = 0; index < credentialResult.candidates.length; index += 1) {
+    const candidate = credentialResult.candidates[index];
+    let res;
+    try {
+      res = await fetchImpl("https://api.github.com/copilot_internal/user", {
+        method: "GET",
+        headers: copilotRequestHeaders(candidate.token),
+      });
+    } catch (_error) {
+      return attachCopilotCredentialContext({
+        configured: true,
+        error: "GitHub Copilot request failed.",
+        error_code: "network_error",
+        ...otel,
+      }, candidate);
+    }
+
     if (res.status === 401 || res.status === 403) {
-      throw new Error("GitHub Copilot token rejected. Re-authenticate via GitHub Copilot CLI/extension.");
+      if (index + 1 < credentialResult.candidates.length) continue;
+      return attachCopilotCredentialContext({
+        configured: true,
+        error: "GitHub Copilot credential rejected. Re-authenticate via GitHub Copilot CLI/extension.",
+        error_code: "auth_error",
+        ...otel,
+      }, candidate);
     }
     if (!res.ok) {
-      throw new Error(`GitHub Copilot API error: HTTP ${res.status}`);
+      return attachCopilotCredentialContext({
+        configured: true,
+        error: `GitHub Copilot API error: HTTP ${res.status}`,
+        error_code: "upstream_error",
+        ...otel,
+      }, candidate);
     }
-    const json = await res.json();
+
+    let json;
+    try {
+      json = await res.json();
+    } catch (_error) {
+      return attachCopilotCredentialContext({
+        configured: true,
+        error: "GitHub Copilot response could not be parsed.",
+        error_code: "response_error",
+        ...otel,
+      }, candidate);
+    }
     const planName = typeof json?.copilot_plan === "string" && json.copilot_plan
       ? json.copilot_plan.charAt(0).toUpperCase() + json.copilot_plan.slice(1)
       : null;
@@ -1579,21 +1642,17 @@ async function fetchCopilotLimits({
     const premiumWindow = buildCopilotWindow(snapshots.premium_interactions, resetIso);
     const chatWindow = buildCopilotWindow(snapshots.chat, resetIso);
 
-    if (!premiumWindow && !chatWindow) {
-      return { configured: true, error: null, plan_name: planName, primary_window: null, secondary_window: null, ...otel };
-    }
-
-    return {
+    return attachCopilotCredentialContext({
       configured: true,
       error: null,
       plan_name: planName,
       primary_window: premiumWindow,
       secondary_window: chatWindow,
       ...otel,
-    };
-  } catch (error) {
-    return { configured: true, error: error?.message || "Unknown error", ...otel };
+    }, candidate);
   }
+
+  return { configured: false, ...otel };
 }
 
 async function fetchKiroLimits({ commandRunner, now = new Date() } = {}) {
@@ -2290,6 +2349,7 @@ async function fetchUsageLimitsUncached({
   fetchImpl = fetch,
   commandRunner,
   requestFn,
+  credentialFileOptions,
   now = new Date(),
   providerTimeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS,
 } = {}) {
@@ -2345,9 +2405,15 @@ async function fetchUsageLimitsUncached({
       : Promise.resolve(null),
     withProviderTimeout(fetchCursorLimits({ home, fetchImpl: providerFetch }), "Cursor", providerTimeoutMs)
       .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
-    withProviderTimeout(fetchKimiLimits({ home, env, fetchImpl: providerFetch }), "Kimi", providerTimeoutMs)
+    withProviderTimeout(fetchKimiLimits({ home, env, fetchImpl: providerFetch, credentialFileOptions }), "Kimi", providerTimeoutMs)
       .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
-    withProviderTimeout(fetchGeminiLimits({ home, env, fetchImpl: providerFetch, commandRunner }), "Gemini", providerTimeoutMs)
+    withProviderTimeout(fetchGeminiLimits({
+      home,
+      env,
+      fetchImpl: providerFetch,
+      commandRunner,
+      credentialFileOptions,
+    }), "Gemini", providerTimeoutMs)
       .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
     fetchKiroLimits({ commandRunner, now }),
     fetchAntigravityLimits({ home, commandRunner, requestFn, nowMs }),
@@ -2409,7 +2475,10 @@ async function fetchUsageLimitsUncached({
       auth_action_required: "reauth",
     };
   } else if (!codexResult || codexResult.status === "rejected") {
-    codex = { configured: true, error: codexResult?.reason?.message || "Unknown error" };
+    codex = {
+      configured: true,
+      ...codexUsageMapper.codexUsageErrorState(codexResult?.reason),
+    };
   } else {
     codex = {
       configured: true,
@@ -2450,7 +2519,7 @@ function resetUsageLimitsCache() {
 }
 
 module.exports = {
-  CODEX_RESET_CREDIT_ALLOWLIST,
+  CODEX_RESET_CREDIT_ALLOWLIST: codexUsageMapper.CODEX_RESET_CREDIT_ALLOWLIST,
   getCodexUsageLimits,
   getUsageLimits,
   normalizePlanLabel,
@@ -2462,14 +2531,14 @@ module.exports = {
   normalizeGeminiQuotaResponse,
   normalizeKimiUsageResponse,
   parseKiroUsageOutput,
-  parseCodexResetCreditFields,
+  parseCodexResetCreditFields: codexUsageMapper.parseCodexResetCreditFields,
   normalizeAntigravityResponse,
   parseListeningPorts,
   detectAntigravityProcess,
   fetchAntigravityLimits,
   fetchCopilotLimits,
-  readCopilotOauthToken,
-  readCopilotAuthDbToken,
+  describeCopilotCredentialStatus,
+  getCopilotCredentialIdentity,
   decryptCopilotAuthDbToken,
   describeCopilotOtelStatus,
   fetchGrokLimits,

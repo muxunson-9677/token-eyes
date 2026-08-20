@@ -582,7 +582,7 @@ describe("DesktopWidgetPage", () => {
     expect(screen.getAllByTestId("widget-traffic-light")[2]).toHaveTextContent("1");
   });
 
-  it("uses the Limits Display visibility order for the agent switcher", async () => {
+  it("normalizes legacy Limits Display prefs to the renderer-backed agent menu", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
       "tt.limits.providerOrder",
@@ -604,12 +604,13 @@ describe("DesktopWidgetPage", () => {
     await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
     const menu = screen.getByRole("menu", { name: "copy:widget.agent_menu" });
     expect(within(menu).getByText("WorkBuddy")).toBeInTheDocument();
-    expect(within(menu).getByText("DeepSeek Harness")).toBeInTheDocument();
     expect(within(menu).getByText("Codex")).toBeInTheDocument();
+    expect(within(menu).queryByText("DeepSeek Harness")).not.toBeInTheDocument();
     expect(within(menu).queryByText("Claude")).not.toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(16);
   });
 
-  it("uses Limits Display as the source of visible agents even before usage data exists", async () => {
+  it("does not revive a retired non-renderer from legacy prefs before usage data exists", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
       "tt.limits.providerOrder",
@@ -629,8 +630,9 @@ describe("DesktopWidgetPage", () => {
 
     render(<DesktopWidgetPage />);
     await user.click(screen.getByRole("button", { name: "copy:widget.agent_menu" }));
-    expect(within(screen.getByRole("menu", { name: "copy:widget.agent_menu" }))
-      .getByText("DeepSeek Harness")).toBeInTheDocument();
+    const menu = within(screen.getByRole("menu", { name: "copy:widget.agent_menu" }));
+    expect(menu.getByText("Codex")).toBeInTheDocument();
+    expect(menu.queryByText("DeepSeek Harness")).not.toBeInTheDocument();
   });
 
   it.each([

@@ -18,6 +18,36 @@ function loadWorkflow() {
   return fs.readFileSync(WORKFLOW_PATH, "utf8").replace(/\r\n/g, "\n");
 }
 
+function assertReleaseCommandsUseVPrefixedTags(content) {
+  const steps = content.split(/(?=^ {6}- (?:name:|uses:|run:))/m);
+  const releaseCommands = [...content.matchAll(
+    /^\s*(?:run:\s*)?gh release (create|upload|edit)\s+("[^"]+"|'[^']+'|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|\S+)/gm,
+  )];
+  assert.ok(releaseCommands.length >= 3, "should have create, upload, and edit steps");
+
+  for (const command of releaseCommands) {
+    const commandLine = command[0].trim();
+    const tagArgument = command[2].replace(/^["']|["']$/g, "");
+    if (/^v\$\{\{\s*inputs\.version\s*\}\}$/.test(tagArgument)) continue;
+
+    const variableMatch = tagArgument.match(/^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/);
+    assert.ok(variableMatch, `release tag must be a v-prefixed version or local variable: ${commandLine}`);
+    const variableName = variableMatch[1];
+    const step = steps.find((candidate) => candidate.includes(command[0]));
+    assert.ok(step, `release command must belong to one workflow step: ${commandLine}`);
+    const assignmentPattern = new RegExp(
+      `^\\s*${variableName}=["']v\\$\\{\\{\\s*inputs\\.version\\s*\\}\\}["']\\s*$`,
+      "m",
+    );
+    const assignmentIndex = step.search(assignmentPattern);
+    const commandIndex = step.indexOf(command[0]);
+    assert.ok(
+      assignmentIndex >= 0 && assignmentIndex < commandIndex,
+      `${variableName} must be assigned v-prefixed inputs.version in the same step before: ${commandLine}`,
+    );
+  }
+}
+
 test("release-dmg workflow file exists", () => {
   assert.ok(fs.existsSync(WORKFLOW_PATH));
 });
@@ -59,16 +89,17 @@ test("F8: workflow uses macos-26 runner (not macos-latest)", () => {
 
 test("workflow uses v-prefixed tag for all gh release commands", () => {
   const content = loadWorkflow();
-  const releaseLines = content
-    .split("\n")
-    .filter((l) => /gh release (create|upload|edit)/.test(l));
-  assert.ok(releaseLines.length >= 3, "should have create, upload, and edit steps");
-  for (const line of releaseLines) {
-    assert.ok(
-      /v\$\{\{.*version.*\}\}/.test(line),
-      `must use v-prefixed tag: ${line.trim()}`
-    );
-  }
+  assertReleaseCommandsUseVPrefixedTags(content);
+
+  const withoutPrefix = content.replace(
+    'TAG="v${{ inputs.version }}"',
+    'TAG="${{ inputs.version }}"',
+  );
+  assert.throws(
+    () => assertReleaseCommandsUseVPrefixedTags(withoutPrefix),
+    /TAG must be assigned v-prefixed inputs\.version in the same step/,
+    "dropping the v prefix from a local release tag variable must fail the contract",
+  );
 });
 
 test("workflow verifies version matches package.json", () => {

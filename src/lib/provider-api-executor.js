@@ -19,14 +19,17 @@
  * provider account balance / spend financial endpoints.
  */
 
-const https = require("node:https");
-const http = require("node:http");
 const {
   getCredentialRedactions,
   parseAccessKeyCredential,
   signAliyunRpcRequest,
   signVolcengineRequest,
 } = require("./provider-api-signing");
+const {
+  SECRET_QUERY_PARAMS,
+  safeOutboundRequest,
+  readLimitedResponseBody,
+} = require("./safe-outbound-request");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -100,17 +103,6 @@ const FINANCIAL_KEYWORD_REGEX = new RegExp(
   "(?:^|[/:._-])(" + FINANCIAL_KEYWORDS.join("|") + ")(?:[/:._-]|$)",
   "i"
 );
-
-// Query param names that indicate a secret in the URL
-const SECRET_QUERY_PARAMS = new Set([
-  "api_key", "apikey", "api-key",
-  "key", "token", "secret",
-  "access_token", "accesstoken",
-  "refresh_token", "refreshtoken",
-  "password", "passwd",
-  "private_key", "privatekey",
-  "accesskeyid", "signature",
-]);
 
 // ---------------------------------------------------------------------------
 // URL / endpoint validation
@@ -261,6 +253,8 @@ function isAllowedUrl(url, options = {}) {
   // Reject cloud metadata addresses
   if (isCloudMetadataAddress(parsed.hostname)) return false;
 
+  if (parsed.username || parsed.password) return false;
+
   // Reject model inference endpoints
   if (isModelEndpoint(url)) return false;
 
@@ -342,6 +336,17 @@ function sanitizeErrorMessage(msg, extraSecrets = []) {
   return str;
 }
 
+function isSensitiveOutboundHeaderName(name) {
+  const normalized = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return ["authorization", "cookie", "token", "secret", "credential", "apikey", "signature"]
+    .some((part) => normalized.includes(part));
+}
+
+function addExactRedaction(redactions, value) {
+  const text = String(value || "");
+  if (text && !redactions.includes(text)) redactions.push(text);
+}
+
 // ---------------------------------------------------------------------------
 // Redirect target validation (pure, testable)
 // ---------------------------------------------------------------------------
@@ -376,6 +381,9 @@ function validateRedirectTarget(redirectUrl, options = {}) {
   if (isCloudMetadataAddress(parsed.hostname)) {
     return { ok: false, error_code: "provider_response_invalid", error: "重定向目标不允许指向云元数据地址" };
   }
+  if (parsed.username || parsed.password) {
+    return { ok: false, error_code: "provider_response_invalid", error: "重定向目标不允许包含 URL credentials" };
+  }
   if (isModelEndpoint(redirectUrl)) {
     return { ok: false, error_code: "provider_response_invalid", error: "重定向目标不允许指向模型推理端点" };
   }
@@ -384,6 +392,13 @@ function validateRedirectTarget(redirectUrl, options = {}) {
     if (SECRET_QUERY_PARAMS.has(key.toLowerCase())) {
       return { ok: false, error_code: "provider_response_invalid", error: "重定向目标不允许携带密钥查询参数" };
     }
+  }
+  if (!isFinancialProviderEndpoint(redirectUrl)) {
+    return {
+      ok: false,
+      error_code: "unsupported_endpoint",
+      error: "重定向目标不是受支持的财务端点",
+    };
   }
   return { ok: true };
 }
@@ -406,7 +421,10 @@ function validateRedirectTarget(redirectUrl, options = {}) {
  */
 async function executeFinancialRequest(config, secret, options = {}) {
   const timeoutMs = Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS;
-  const maxResponseBytes = Number(options.maxResponseBytes) || DEFAULT_MAX_RESPONSE_BYTES;
+  const configuredMaxResponseBytes = Number(options.maxResponseBytes);
+  const maxResponseBytes = Number.isSafeInteger(configuredMaxResponseBytes) && configuredMaxResponseBytes >= 0
+    ? Math.min(configuredMaxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES)
+    : DEFAULT_MAX_RESPONSE_BYTES;
   const configuredMaxRedirects = Number(options.maxRedirects);
   const maxRedirects = Number.isInteger(configuredMaxRedirects) && configuredMaxRedirects >= 0
     ? configuredMaxRedirects
@@ -469,6 +487,7 @@ async function executeFinancialRequest(config, secret, options = {}) {
   // 鉴权 Header 名（如 X-Custom-Auth），而不仅是固定的 Authorization/Cookie。
   // 大小写不敏感：集合统一存小写，比较时也对 Header 名转小写。
   const sensitiveHeaderNames = new Set(["authorization", "cookie"]);
+  const extraRedactions = getCredentialRedactions(secret);
   let configuredAuthHeaderName = "";
   let signedRequest = false;
 
@@ -510,13 +529,27 @@ async function executeFinancialRequest(config, secret, options = {}) {
       // Never overwrite auth headers
       const lower = k.toLowerCase();
       if (lower === "authorization" || lower === "cookie") continue;
-      headers[k] = String(v);
+      const value = String(v);
+      headers[k] = value;
+      if (isSensitiveOutboundHeaderName(k)) {
+        sensitiveHeaderNames.add(lower);
+        addExactRedaction(extraRedactions, value);
+      }
     }
   }
 
-  // 01-密钥安全修复 (F1 错误脱敏): 把实际密钥作为 verbatim 脱敏目标传入，
-  // 保证子进程/网络错误中出现的密钥原文被清除（覆盖非 sk- 前缀的密钥）。
-  const extraRedactions = getCredentialRedactions(secret);
+  for (const [name, value] of Object.entries(headers)) {
+    if (sensitiveHeaderNames.has(name.toLowerCase()) || isSensitiveOutboundHeaderName(name)) {
+      addExactRedaction(extraRedactions, value);
+    }
+  }
+  const transportUrl = new URL(requestUrl);
+  for (const [name, value] of transportUrl.searchParams.entries()) {
+    if (!SECRET_QUERY_PARAMS.has(name.toLowerCase())) continue;
+    addExactRedaction(extraRedactions, value);
+    addExactRedaction(extraRedactions, encodeURIComponent(value));
+    addExactRedaction(extraRedactions, new URLSearchParams([["value", value]]).toString().slice("value=".length));
+  }
 
   // Execute with redirect handling
   // SECURITY: originalHost uses URL.host (includes port) so that redirects to a
@@ -532,242 +565,180 @@ async function executeFinancialRequest(config, secret, options = {}) {
     originalProtocol: originalParsed.protocol,
     sensitiveHeaderNames,
     extraRedactions,
+    dnsLookup: options.dnsLookup,
+    requestImpl: options.requestImpl,
+    signedRequest,
   });
 }
 
-function executeWithRedirects(url, method, headers, opts, redirectCount = 0) {
-  return new Promise((resolve) => {
-    let parsed;
-    try {
-      parsed = new URL(url);
-    } catch {
-      resolve({ ok: false, error_code: "invalid_config", error: "请求地址格式无效" });
-      return;
-    }
+async function executeWithRedirects(url, method, headers, opts, redirectCount = 0) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, error_code: "invalid_config", error: "请求地址格式无效" };
+  }
 
-    const client = parsed.protocol === "https:" ? https : http;
-    const requestOptions = {
-      hostname: parsed.hostname,
-      port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-      path: parsed.pathname + parsed.search,
-      method,
-      headers: { ...headers },
-      timeout: opts.timeoutMs,
+  if (isModelEndpoint(url)) {
+    return { ok: false, error_code: "invalid_config", error: "不允许调用模型推理端点" };
+  }
+  if (!isFinancialProviderEndpoint(url)) {
+    return {
+      ok: false,
+      error_code: "unsupported_endpoint",
+      error: "只允许查询财务端点（余额/账单/用量/花销/订阅/发票/配额/支付）",
     };
+  }
 
-    let settled = false;
-    let totalBytes = 0;
-    const chunks = [];
-    let aborted = false;
+  let outbound;
+  try {
+    outbound = await safeOutboundRequest(url, {
+      method,
+      headers,
+      timeoutMs: opts.timeoutMs,
+      testMode: opts.testMode,
+      rejectSecretQuery: !(opts.signedRequest && redirectCount === 0),
+      dnsLookup: opts.dnsLookup,
+      requestImpl: opts.requestImpl,
+      secrets: opts.extraRedactions || [],
+    });
+  } catch (error) {
+    const sanitized = sanitizeErrorMessage(error?.message || String(error), opts.extraRedactions || []);
+    if (error?.code === "request_timeout") {
+      return { ok: false, error_code: "request_timeout", error: "请求超时" };
+    }
+    if (error?.code === "unsafe_outbound_url" || error?.code === "unsafe_outbound_address") {
+      return { ok: false, error_code: "invalid_config", error: sanitized };
+    }
+    return { ok: false, error_code: "provider_unavailable", error: `网络错误：${sanitized}` };
+  }
 
-    function done(result) {
-      if (settled) return;
-      settled = true;
-      resolve(result);
+  const { request, response } = outbound;
+  const statusCode = Number(response.statusCode || 0);
+
+  if (statusCode >= 300 && statusCode < 400) {
+    request.destroy();
+    response.destroy?.();
+    const location = response.headers.location;
+    if (![301, 302, 303, 307, 308].includes(statusCode) || !location) {
+      return {
+        ok: false,
+        error_code: "provider_response_invalid",
+        error: "供应商返回了无效重定向",
+        statusCode,
+      };
+    }
+    if (redirectCount >= opts.maxRedirects) {
+      return {
+        ok: false,
+        error_code: "provider_response_invalid",
+        error: `重定向次数超过限制（${opts.maxRedirects}）`,
+        statusCode,
+      };
     }
 
-    const req = client.request(requestOptions, (res) => {
-      // Handle redirects
-      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-        res.resume(); // drain
+    let redirectUrl;
+    let redirectParsed;
+    try {
+      redirectUrl = new URL(location, url).toString();
+      redirectParsed = new URL(redirectUrl);
+    } catch {
+      return {
+        ok: false,
+        error_code: "provider_response_invalid",
+        error: "重定向地址无效",
+        statusCode,
+      };
+    }
 
-        if (redirectCount >= opts.maxRedirects) {
-          done({
-            ok: false,
-            error_code: "provider_response_invalid",
-            error: `重定向次数超过限制（${opts.maxRedirects}）`,
-            statusCode: res.statusCode,
-          });
-          return;
+    const targetCheck = validateRedirectTarget(redirectUrl, { testMode: opts.testMode });
+    if (!targetCheck.ok) {
+      return {
+        ok: false,
+        error_code: targetCheck.error_code,
+        error: targetCheck.error,
+        statusCode,
+      };
+    }
+
+    const redirectHeaders = { ...headers };
+    const isSameOrigin = redirectParsed.host === opts.originalHost &&
+      redirectParsed.protocol === opts.originalProtocol;
+    if (!isSameOrigin) {
+      const sensitive = opts.sensitiveHeaderNames || new Set(["authorization", "cookie"]);
+      for (const key of Object.keys(redirectHeaders)) {
+        const lower = key.toLowerCase();
+        if (sensitive.has(lower) ||
+            isSensitiveOutboundHeaderName(key) ||
+            lower === "authorization" ||
+            lower === "cookie" ||
+            lower.includes("api-key") ||
+            lower.includes("apikey") ||
+            SECRET_QUERY_PARAMS.has(lower)) {
+          delete redirectHeaders[key];
         }
-
-        let redirectUrl;
-        try {
-          redirectUrl = new URL(res.headers.location, url).toString();
-        } catch {
-          done({
-            ok: false,
-            error_code: "provider_response_invalid",
-            error: "重定向地址无效",
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-
-        let redirectParsed;
-        try {
-          redirectParsed = new URL(redirectUrl);
-        } catch {
-          done({
-            ok: false,
-            error_code: "provider_response_invalid",
-            error: "重定向地址无效",
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-
-        // 01-密钥安全修复 (F2): 每个重定向目标重新执行 HTTPS / 云元数据 / 模型
-        // endpoint / 密钥查询参数校验。HTTP 降级在生产模式下被拒绝。
-        const targetCheck = validateRedirectTarget(redirectUrl, { testMode: opts.testMode });
-        if (!targetCheck.ok) {
-          done({
-            ok: false,
-            error_code: targetCheck.error_code,
-            error: targetCheck.error,
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-
-        // SECURITY: Cross-origin redirect — strip sensitive headers.
-        // "Same origin" means same host (hostname:port) AND same protocol, matching
-        // browser same-origin policy. A redirect to a different port is cross-origin
-        // because it may be a different service that must not receive the credentials.
-        //
-        // 01-密钥安全修复 (F2): 剥离集合必须包含实际配置的 authHeaderName
-        // （如 X-Custom-Auth），而不仅是固定名称。大小写不敏感。第一跳跨域剥离
-        // 后，后续跳传递的是已剥离的 redirectHeaders 副本，因此即使再跳回原域，
-        // 密钥也不会恢复（不存在"重新注入"路径）。
-        const redirectHeaders = { ...headers };
-        const isSameOrigin = redirectParsed.host === opts.originalHost &&
-          redirectParsed.protocol === opts.originalProtocol;
-
-        if (!isSameOrigin) {
-          const sensitive = opts.sensitiveHeaderNames || new Set(["authorization", "cookie"]);
-          for (const key of Object.keys(redirectHeaders)) {
-            const lower = key.toLowerCase();
-            if (sensitive.has(lower) ||
-                lower === "authorization" ||
-                lower === "cookie" ||
-                lower.includes("api-key") ||
-                lower.includes("apikey") ||
-                SECRET_QUERY_PARAMS.has(lower)) {
-              delete redirectHeaders[key];
-            }
-          }
-        }
-
-        done(executeWithRedirects(redirectUrl, method, redirectHeaders, opts, redirectCount + 1));
-        return;
       }
+    }
+    return executeWithRedirects(redirectUrl, method, redirectHeaders, opts, redirectCount + 1);
+  }
 
-      // Check Content-Type — reject HTML pages (likely login pages)
-      const contentType = String(res.headers["content-type"] || "").toLowerCase();
-      const isHtml = contentType.includes("text/html") || contentType.includes("application/xhtml");
+  let body;
+  try {
+    body = (await readLimitedResponseBody(response, {
+      maxBytes: opts.maxResponseBytes,
+      request,
+      secrets: opts.extraRedactions || [],
+    })).toString("utf8");
+  } catch (error) {
+    const sanitized = sanitizeErrorMessage(error?.message || String(error), opts.extraRedactions || []);
+    return {
+      ok: false,
+      error_code: error?.code === "response_too_large" ? "provider_response_invalid" : "provider_unavailable",
+      error: error?.code === "response_too_large" ? "响应体超过大小限制" : `网络错误：${sanitized}`,
+      statusCode,
+    };
+  }
 
-      res.on("data", (chunk) => {
-        if (aborted) return;
-        totalBytes += chunk.length;
-        if (totalBytes > opts.maxResponseBytes) {
-          aborted = true;
-          req.destroy();
-          done({
-            ok: false,
-            error_code: "provider_response_invalid",
-            error: "响应体超过大小限制",
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-        chunks.push(chunk);
-      });
+  if (statusCode === 401 || statusCode === 403) {
+    return {
+      ok: false,
+      error_code: "provider_unauthorized",
+      error: `供应商鉴权失败（HTTP ${statusCode}）`,
+      statusCode,
+    };
+  }
+  if (statusCode === 429) {
+    return { ok: false, error_code: "provider_rate_limited", error: "供应商限流（HTTP 429）", statusCode };
+  }
+  if (statusCode >= 500) {
+    return { ok: false, error_code: "provider_unavailable", error: `供应商不可用（HTTP ${statusCode}）`, statusCode };
+  }
+  if (statusCode < 200 || statusCode >= 300) {
+    return {
+      ok: false,
+      error_code: "provider_response_invalid",
+      error: `供应商返回非成功状态（HTTP ${statusCode}）`,
+      statusCode,
+    };
+  }
 
-      res.on("end", () => {
-        if (aborted) return;
-        const body = Buffer.concat(chunks).toString("utf8");
+  const contentType = String(response.headers["content-type"] || "").toLowerCase();
+  if (contentType.includes("text/html") || contentType.includes("application/xhtml")) {
+    return {
+      ok: false,
+      error_code: "provider_response_invalid",
+      error: "供应商返回 HTML 页面而非 JSON（可能是登录页）",
+      statusCode,
+    };
+  }
 
-        // Map HTTP errors to error codes
-        if (res.statusCode === 401 || res.statusCode === 403) {
-          done({
-            ok: false,
-            error_code: "provider_unauthorized",
-            error: `供应商鉴权失败（HTTP ${res.statusCode}）`,
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-        if (res.statusCode === 429) {
-          done({
-            ok: false,
-            error_code: "provider_rate_limited",
-            error: "供应商限流（HTTP 429）",
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-        if (res.statusCode >= 500) {
-          done({
-            ok: false,
-            error_code: "provider_unavailable",
-            error: `供应商不可用（HTTP ${res.statusCode}）`,
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          done({
-            ok: false,
-            error_code: "provider_response_invalid",
-            error: `供应商返回非成功状态（HTTP ${res.statusCode}）`,
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-
-        // Reject HTML responses (likely login pages)
-        if (isHtml) {
-          done({
-            ok: false,
-            error_code: "provider_response_invalid",
-            error: "供应商返回 HTML 页面而非 JSON（可能是登录页）",
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-
-        // Parse JSON
-        let data;
-        try {
-          data = JSON.parse(body);
-        } catch {
-          done({
-            ok: false,
-            error_code: "provider_response_invalid",
-            error: "供应商响应不是有效 JSON",
-            statusCode: res.statusCode,
-          });
-          return;
-        }
-
-        done({ ok: true, data, statusCode: res.statusCode });
-      });
-    });
-
-    req.on("timeout", () => {
-      if (aborted) return;
-      aborted = true;
-      req.destroy();
-      done({
-        ok: false,
-        error_code: "request_timeout",
-        error: "请求超时",
-      });
-    });
-
-    req.on("error", (err) => {
-      if (aborted) return;
-      aborted = true;
-      const sanitized = sanitizeErrorMessage(err?.message || String(err), opts.extraRedactions || []);
-      done({
-        ok: false,
-        error_code: "provider_unavailable",
-        error: `网络错误：${sanitized}`,
-      });
-    });
-
-    req.end();
-  });
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    return { ok: false, error_code: "provider_response_invalid", error: "供应商响应不是有效 JSON", statusCode };
+  }
+  return { ok: true, data, statusCode };
 }
 
 // ---------------------------------------------------------------------------

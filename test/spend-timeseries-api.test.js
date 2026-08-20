@@ -1024,3 +1024,103 @@ test("TICKET-01: empty queue returns empty series array + zero totals (A1 空值
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("pricing provenance timeseries: totals expose mixed user-override and curated composition", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-ts-pricing-mixed-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queueFile = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    const handler = createLocalApiHandler({ queuePath: queueFile, trackerDataDir: trackerDir });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        pricingRules: [{
+          source: "custom-agent",
+          model: "custom-model",
+          inputPricePer1M: 1.5,
+          outputPricePer1M: 10,
+          currency: "USD",
+          updated_at: "2026-07-08T00:00:00.000Z",
+        }],
+      }),
+    });
+    const now = new Date();
+    const todayHour = `${now.toISOString().slice(0, 13)}:00:00.000Z`;
+    const todayStr = now.toISOString().slice(0, 10);
+    await fs.writeFile(queueFile, [
+      JSON.stringify({
+        hour_start: todayHour,
+        source: "custom-agent",
+        model: "custom-model",
+        input_tokens: 1_000_000,
+        output_tokens: 1_000_000,
+        total_tokens: 2_000_000,
+      }),
+      JSON.stringify({
+        hour_start: todayHour,
+        source: "custom-agent",
+        model: "kiro-agent",
+        input_tokens: 1_000_000,
+        output_tokens: 1_000_000,
+        total_tokens: 2_000_000,
+      }),
+    ].join("\n") + "\n", "utf8");
+
+    const response = await call(
+      handler,
+      `/functions/tokentracker-spend-timeseries?from=${todayStr}&to=${todayStr}&bucket=day&sources=custom-agent`,
+      { method: "GET" },
+    );
+    const body = readJsonResponse(response);
+
+    assert.equal(body.totals.source_kind, "mixed");
+    assert.equal(body.totals.pricing_source, "mixed");
+    assert.deepEqual(
+      body.totals.pricing_components.map((component) => component.source_kind).sort(),
+      ["curated", "user_override"],
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("pricing provenance timeseries: an entirely unpriced API total remains null", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-ts-pricing-null-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queueFile = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    const today = new Date().toISOString();
+    await fs.writeFile(queueFile, `${JSON.stringify({
+      hour_start: `${today.slice(0, 13)}:00:00.000Z`,
+      source: "custom-agent",
+      model: "definitely-unpriced-model-2099",
+      input_tokens: 1_000,
+      output_tokens: 500,
+      total_tokens: 1_500,
+    })}\n`, "utf8");
+    const handler = createLocalApiHandler({ queuePath: queueFile, trackerDataDir: trackerDir });
+    const day = today.slice(0, 10);
+    const response = await call(
+      handler,
+      `/functions/tokentracker-spend-timeseries?from=${day}&to=${day}&bucket=day&sources=custom-agent`,
+      { method: "GET" },
+    );
+    const body = readJsonResponse(response);
+
+    assert.equal(body.totals.api_usd, null);
+    assert.equal(body.totals.cost_usd, null);
+    assert.equal(body.totals.source_kind, "unpriced");
+    assert.equal(body.totals.pricing_coverage, "unpriced");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

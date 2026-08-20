@@ -2084,6 +2084,9 @@ export type ConsoleSessionStatus =
   | "login_started"
   | "awaiting_verification"
   | "connected"
+  | "reauth_required"
+  | "temporary"
+  | "unsupported"
   | "expired"
   | "revoked"
   | "failed";
@@ -2117,7 +2120,27 @@ function getTauriInvoke() {
   const tauri = (window as any).__TAURI__;
   if (typeof tauri?.core?.invoke === "function") return tauri.core.invoke;
   if (typeof tauri?.invoke === "function") return tauri.invoke;
+  const internals = (window as any).__TAURI_INTERNALS__;
+  if (typeof internals?.invoke === "function") return internals.invoke;
   return null;
+}
+
+export interface TokenEyesBuildInfo {
+  app_version: string;
+  head_sha: string;
+  built_at_utc: string;
+}
+
+export async function getTokenEyesBuildInfo(): Promise<TokenEyesBuildInfo> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("get_token_eyes_build_info");
+}
+
+export async function openExternalLink(linkId: string): Promise<boolean> {
+  const invoke = getTauriInvoke();
+  if (!invoke) throw new Error("Tauri runtime not available");
+  return invoke("open_external_link", { linkId });
 }
 
 export async function getConsoleSessions(): Promise<ConsoleSessionsResponse> {
@@ -2197,7 +2220,7 @@ export interface NativeSessionResult {
 export async function verifyConsoleSession(
   id: string,
   nativeResult: NativeSessionResult,
-): Promise<{ ok: boolean; session: ConsoleSession }> {
+): Promise<{ ok: boolean; session: ConsoleSession; sessions: ConsoleSession[] }> {
   if (!isTauriRuntime()) {
     throw new Error("该功能仅桌面端支持");
   }
@@ -2214,7 +2237,7 @@ export async function verifyConsoleSession(
       },
       body: JSON.stringify({ native_result: nativeResult }),
     },
-  ) as Promise<{ ok: boolean; session: ConsoleSession }>;
+  ) as Promise<{ ok: boolean; session: ConsoleSession; sessions: ConsoleSession[] }>;
 }
 
 export interface XiaomiMimoSessionStatus extends NativeSessionResult {}
@@ -2341,21 +2364,23 @@ export interface CodexQuotaSnapshot {
   used_quota: number;
   remaining_quota: number;
   provider_reported_at: string;
+  account_label?: string;
   subscription_expires_at?: string;
-  quota_windows?: Array<{
+  quota_windows: Array<{
     kind: string;
     unit: string;
     total: number;
     used: number;
     remaining: number;
-    percentage?: number;
-    resets_at?: string;
+    percentage: number;
+    resets_at: string;
   }>;
 }
 
 export interface CodexSessionStatus extends NativeSessionResult {
   authorized: boolean;
-  quota_sync_status?: "idle" | "success" | "error";
+  quota_sync_status: "idle" | "success" | "error";
+  legacy_auth_present: boolean;
   quota?: CodexQuotaSnapshot;
 }
 
@@ -2383,15 +2408,34 @@ export async function syncCodexConsoleQuota(sessionRef: string): Promise<CodexSe
   return invoke("sync_codex_console_quota", { sessionRef });
 }
 
-export async function discardCodexPendingSession(sessionRef: string): Promise<boolean> {
+export async function cancelCodexConsoleLogin(
+  sessionRef: string,
+  reason: "user_cancelled" | "timeout",
+): Promise<CodexSessionStatus> {
   const invoke = getTauriInvoke();
   if (!invoke) {
     throw new Error("Tauri runtime not available");
   }
-  return invoke("discard_codex_pending_session", { sessionRef });
+  return invoke("cancel_codex_console_login", { sessionRef, reason });
 }
 
-export async function deleteCodexConsoleSession(sessionRef: string): Promise<void> {
+export async function reopenCodexConsoleLogin(sessionRef: string): Promise<CodexSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    throw new Error("Tauri runtime not available");
+  }
+  return invoke("reopen_codex_console_login", { sessionRef });
+}
+
+export async function cleanupLegacyCodexAuthFile(sessionRef: string): Promise<CodexSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    throw new Error("Tauri runtime not available");
+  }
+  return invoke("cleanup_legacy_codex_auth_file", { sessionRef });
+}
+
+export async function deleteCodexConsoleSession(sessionRef: string): Promise<CodexSessionStatus> {
   const invoke = getTauriInvoke();
   if (!invoke) {
     throw new Error("Tauri runtime not available");

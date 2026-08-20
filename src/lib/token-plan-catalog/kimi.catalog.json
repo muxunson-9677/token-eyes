@@ -1,15 +1,22 @@
 {
   "provider_id": "kimi",
   "provider_name": "Kimi",
-  "official_site": "https://platform.moonshot.cn/",
   "catalog_version": "2026-07-08",
-  "evidence": [
-    {
-      "url": "https://platform.moonshot.cn/",
-      "title": "Moonshot AI / Kimi 开放平台",
-      "accessed_at": "2026-07-08"
-    }
-  ],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "catalog-kimi-platform",
+    "supports": [
+      "provider_identity"
+    ],
+    "verified": true,
+    "verified_at": "2026-07-08",
+    "fetched_at": "2026-07-08",
+    "content_sha256": "ddf94e6d4e24efea6ccfdb552e6a6bda7111fc8e8ee993d89977a3171ef8fab0",
+    "content_hash_kind": "normalized_extracted_fields_v1",
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
+  },
   "plans": [
     {
       "plan_id": "kimi_api_budget",
@@ -23,7 +30,19 @@
       "expires": {
         "kind": "manual"
       },
-      "official_evidence_url": "https://platform.moonshot.cn/console/account"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "provider-home-kimi-api",
+        "supports": [],
+        "verified": false,
+        "verified_at": null,
+        "fetched_at": null,
+        "content_sha256": null,
+        "content_hash_kind": null,
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "kimi_code_manual_quota",
@@ -37,14 +56,50 @@
       "expires": {
         "kind": "manual"
       },
-      "official_evidence_url": "https://www.kimi.com/code"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "provider-home-kimi-code",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-08",
+        "fetched_at": "2026-07-08",
+        "content_sha256": "b01384d18f065a843f969f9b5771a9c858e716a35d06ff698310774b191277fd",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
     "official_quota_api": true,
     "authorization": "api_key_for_balance_or_oauth_for_code_usage",
     "usage_endpoint_documented": true,
-    "fields_available": ["rolling_5_hour", "rolling_weekly", "available_balance"],
+    "fields_available": [
+      "rolling_5_hour",
+      "rolling_weekly",
+      "available_balance"
+    ],
     "notes": "推荐使用 API Key 余额检测；Kimi Code 额度需本机 OAuth。"
-  }
+  },
+  "official_site_link_id": "catalog-kimi-platform",
+  "sources": [
+    {
+      "label": "Moonshot AI / Kimi 开放平台",
+      "link_id": "catalog-kimi-platform",
+      "supports": [
+        "provider_identity",
+        "account_access"
+      ]
+    },
+    {
+      "label": "Kimi Code",
+      "link_id": "provider-home-kimi-code",
+      "supports": [
+        "plan_identity"
+      ]
+    }
+  ]
 }

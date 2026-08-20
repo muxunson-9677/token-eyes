@@ -95,7 +95,10 @@ async function codexAdapter({ salt, home, env, platform, fetchImpl, scanDefaultW
     windows: windows.filter(Boolean),
     accountLabel: null,
   });
-  return [account];
+  return [{
+    ...account,
+    error_code: entry.error_code || account.error_code,
+  }];
 }
 
 module.exports = codexAdapter;

@@ -229,7 +229,111 @@ test("canonical OpenAI Costs pages reach the selected UTC month cash contract", 
   }
 });
 
-test("multiple canonical OpenAI Costs configs stay ambiguous until exactly one is enabled", async () => {
+test("official OpenAI Costs atomically replaces local list-price provenance", async () => {
+  const augustStart = Date.parse("2026-08-01T00:00:00.000Z") / 1000;
+  const { server, url } = await startMockServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      object: "page",
+      data: [{
+        object: "bucket",
+        start_time: augustStart,
+        end_time: augustStart + 86400,
+        results: [{ object: "organization.costs.result", amount: { value: 8, currency: "usd" } }],
+      }],
+      has_more: false,
+      next_page: null,
+    }));
+  });
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-official-provenance-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(queuePath, `${JSON.stringify({
+      source: "codex",
+      model: "official-overwrite-local-model",
+      hour_start: "2026-08-15T00:00:00.000Z",
+      input_tokens: 1_000_000,
+      output_tokens: 0,
+      total_tokens: 1_000_000,
+    })}\n`, "utf8");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: trackerDir,
+      credentialStore: createTestCredentialStore(),
+      providerApiTestMode: true,
+      now: () => new Date("2026-08-20T00:00:00.000Z"),
+    });
+    const token = readJsonResponse(await call(handler, "/api/local-auth")).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        pricingRules: [{
+          source: "codex",
+          model: "official-overwrite-local-model",
+          inputPricePer1M: 99,
+          outputPricePer1M: 0,
+          currency: "USD",
+          updated_at: "2026-08-01T00:00:00.000Z",
+        }],
+      }),
+    });
+    const created = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-configs", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        providerId: "openai",
+        label: "OpenAI Billing",
+        requestUrl: `${url}/v1/organization/costs`,
+        requestMethod: "GET",
+        authType: "bearer",
+        balancePath: "data",
+        monthSpendPath: "",
+        lifetimeSpendPath: "",
+        currencyPath: "",
+        refreshIntervalSeconds: 300,
+        enabled: true,
+      }),
+    })).config;
+    await call(handler, "/functions/tokentracker-provider-api-secrets", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ configId: created.id, secret: "sk-official-provenance-test" }),
+    });
+
+    const response = await call(
+      handler,
+      "/functions/tokentracker-api-billing-accounts?month=2026-08&time_zone=UTC",
+    );
+    const openai = readJsonResponse(response).accounts.find((account) => account.provider === "openai");
+
+    assert.equal(response.statusCode, 200);
+    assert.ok(openai);
+    assert.equal(openai.monthCostUsd, 8);
+    assert.equal(openai.lifetimeCostUsd, null);
+    assert.equal(openai.spendAuthority, "official_invoice");
+    assert.equal(openai.source_kind, "official_api");
+    assert.equal(openai.pricing_source, "openai-costs-api");
+    assert.equal(openai.estimated, false);
+    assert.equal(openai.is_stale, false);
+    assert.equal(openai.note_code, "official_invoice");
+    assert.deepEqual(openai.pricing_components, []);
+    assert.notEqual(openai.match_kind, "exact");
+    assert.notEqual(openai.matched_model, "official-overwrite-local-model");
+  } finally {
+    server.close();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("multiple canonical OpenAI Costs configs stay ambiguous without retaining local pricing provenance", async () => {
   let requestCount = 0;
   const januaryStart = Date.parse("2026-01-01T00:00:00.000Z") / 1000;
   const { server, url } = await startMockServer((req, res) => {
@@ -265,11 +369,22 @@ test("multiple canonical OpenAI Costs configs stay ambiguous until exactly one i
       delete process.env.TOKENTRACKER_AGENTDATA_ROOTS;
       try {
         const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+        const queuePath = path.join(trackerDir, "queue.jsonl");
+        await fs.mkdir(trackerDir, { recursive: true });
+        await fs.writeFile(queuePath, `${JSON.stringify({
+          source: "codex",
+          model: "ambiguous-local-review-model",
+          hour_start: "2026-01-15T00:00:00.000Z",
+          input_tokens: 1_000_000,
+          output_tokens: 0,
+          total_tokens: 1_000_000,
+        })}\n`, "utf8");
         const handler = createLocalApiHandler({
-          queuePath: path.join(trackerDir, "queue.jsonl"),
+          queuePath,
           trackerDataDir: trackerDir,
           credentialStore: createTestCredentialStore(),
           providerApiTestMode: true,
+          now: () => new Date("2026-01-20T00:00:00.000Z"),
         });
         const auth = readJsonResponse(await call(handler, "/api/local-auth"));
         const headers = {
@@ -277,6 +392,20 @@ test("multiple canonical OpenAI Costs configs stay ambiguous until exactly one i
           "x-tokentracker-local-auth": auth.token,
           origin: "http://127.0.0.1:7680",
         };
+        await call(handler, "/functions/tokentracker-local-settings", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            pricingRules: [{
+              source: "codex",
+              model: "ambiguous-local-review-model",
+              inputPricePer1M: 99,
+              outputPricePer1M: 0,
+              currency: "USD",
+              updated_at: "2026-01-01T00:00:00.000Z",
+            }],
+          }),
+        });
         const configs = [];
         for (const [index, providerId] of providerOrder.entries()) {
           const created = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-configs", {
@@ -307,19 +436,22 @@ test("multiple canonical OpenAI Costs configs stay ambiguous until exactly one i
           "/functions/tokentracker-api-billing-accounts?month=2026-01&time_zone=UTC",
         ));
         assert.equal(requestCount, requestsBeforeAmbiguousRead, providerOrder.join(","));
-        assert.deepEqual(ambiguous.accounts.filter((account) => account.errorCode === "official_invoice_ambiguous"), [{
-          provider: "openai",
-          accountName: "OpenAI 官方账单",
-          billingSource: "api",
-          spendAuthority: "unavailable",
-          monthCostUsd: null,
-          lifetimeCostUsd: null,
-          status: "ambiguous",
-          errorCode: "official_invoice_ambiguous",
-          candidateCount: 2,
-          providerApiConfigured: true,
-          providerApiBalance: null,
-        }]);
+        const ambiguousAccount = ambiguous.accounts.find((account) => account.errorCode === "official_invoice_ambiguous");
+        assert.ok(ambiguousAccount);
+        assert.equal(ambiguousAccount.provider, "openai");
+        assert.equal(ambiguousAccount.spendAuthority, "unavailable");
+        assert.equal(ambiguousAccount.monthCostUsd, null);
+        assert.equal(ambiguousAccount.lifetimeCostUsd, null);
+        assert.equal(ambiguousAccount.status, "ambiguous");
+        assert.equal(ambiguousAccount.candidateCount, 2);
+        assert.equal(ambiguousAccount.pricing_source, null);
+        assert.equal(ambiguousAccount.source_kind, null);
+        assert.equal(ambiguousAccount.estimated, false);
+        assert.equal(ambiguousAccount.is_stale, false);
+        assert.equal(ambiguousAccount.match_kind, null);
+        assert.equal(ambiguousAccount.matched_model, null);
+        assert.equal(ambiguousAccount.pricing_coverage, null);
+        assert.deepEqual(ambiguousAccount.pricing_components, []);
         assert.equal(ambiguous.accounts.some((account) => account.spendAuthority === "official_invoice"), false);
 
         await call(handler, `/functions/tokentracker-provider-api-configs?id=${configs[0].id}`, {
@@ -333,6 +465,7 @@ test("multiple canonical OpenAI Costs configs stay ambiguous until exactly one i
         ));
         assert.equal(unique.accounts.filter((account) => account.spendAuthority === "official_invoice").length, 1);
         assert.equal(unique.accounts.find((account) => account.spendAuthority === "official_invoice").monthCostUsd, 8);
+        assert.equal(unique.accounts.find((account) => account.spendAuthority === "official_invoice").source_kind, "official_api");
       } finally {
         await fs.rm(tmp, { recursive: true, force: true });
       }
@@ -573,22 +706,39 @@ test("api billing accounts correctly calculates cross-month costs (monthCostUsd 
     const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}-${String(lastMonthDate.getDate()).padStart(2, "0")}T00:00:00.000Z`;
     const currentMonthKey = `${currentMonthDate.getFullYear()}-${String(currentMonthDate.getMonth() + 1).padStart(2, "0")}-${String(currentMonthDate.getDate()).padStart(2, "0")}T00:00:00.000Z`;
 
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        pricingRules: [{
+          source: "claude",
+          model: "review-cross-month",
+          inputPricePer1M: 1,
+          outputPricePer1M: 0,
+          currency: "USD",
+          updated_at: "2026-08-01T00:00:00.000Z",
+        }],
+      }),
+    });
+
     await fs.writeFile(queueJsonl,
       JSON.stringify({
         hour_start: lastMonthKey,
         source: "claude",
-        total_tokens: 1000,
-        input_tokens: 500,
-        output_tokens: 500,
-        cost_usd: 0.1,
+        model: "review-cross-month",
+        total_tokens: 100_000,
+        input_tokens: 100_000,
+        output_tokens: 0,
+        cost_usd: 999,
       }) + "\n" +
       JSON.stringify({
         hour_start: currentMonthKey,
         source: "claude",
-        total_tokens: 2000,
-        input_tokens: 1000,
-        output_tokens: 1000,
-        cost_usd: 0.2,
+        model: "review-cross-month",
+        total_tokens: 200_000,
+        input_tokens: 200_000,
+        output_tokens: 0,
+        cost_usd: 999,
       }) + "\n",
       "utf8"
     );
@@ -610,6 +760,87 @@ test("api billing accounts correctly calculates cross-month costs (monthCostUsd 
   }
 });
 
+test("API billing shared month and lifetime badge unions materially different pricing evidence", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-lifetime-evidence-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(queuePath, `${[
+      {
+        source: "claude",
+        model: "review-lifetime-old-model",
+        hour_start: "2026-07-15T00:00:00.000Z",
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        total_tokens: 1_000_000,
+      },
+      {
+        source: "claude",
+        model: "review-month-current-model",
+        hour_start: "2026-08-15T00:00:00.000Z",
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        total_tokens: 1_000_000,
+      },
+    ].map(JSON.stringify).join("\n")}\n`, "utf8");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-08-20T00:00:00.000Z"),
+    });
+    const token = readJsonResponse(await call(handler, "/api/local-auth")).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        pricingRules: [
+          {
+            source: "claude",
+            model: "review-lifetime-old-model",
+            inputPricePer1M: 1,
+            outputPricePer1M: 0,
+            currency: "USD",
+            updated_at: "2026-07-01T00:00:00.000Z",
+          },
+          {
+            source: "claude",
+            model: "review-month-current-model",
+            inputPricePer1M: 2,
+            outputPricePer1M: 0,
+            currency: "USD",
+            updated_at: "2026-08-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    });
+
+    const response = await call(
+      handler,
+      "/functions/tokentracker-api-billing-accounts?month=2026-08&time_zone=UTC",
+    );
+    const claude = readJsonResponse(response).accounts.find((account) => account.provider === "claude");
+
+    assert.equal(response.statusCode, 200);
+    assert.ok(claude);
+    assert.equal(claude.monthCostUsd, 2);
+    assert.equal(claude.lifetimeCostUsd, 3);
+    assert.equal(claude.source_kind, "mixed");
+    assert.equal(claude.pricing_source, "mixed");
+    assert.deepEqual(
+      claude.pricing_components.map((component) => component.matched_model).sort(),
+      ["review-lifetime-old-model", "review-month-current-model"],
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("selected UTC month local estimates use latest queue identities and merge provider aliases", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-history-"));
   try {
@@ -617,14 +848,29 @@ test("selected UTC month local estimates use latest queue identities and merge p
     const queuePath = path.join(trackerDir, "queue.jsonl");
     await fs.mkdir(trackerDir, { recursive: true });
     const rows = [
-      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "api_key", cost_usd: 0.1 },
-      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "api_key", cost_usd: 0.2 },
-      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "token_plan", cost_usd: 0.4 },
-      { source: "cursor", model: "composer-1", hour_start: "2025-06-02T00:00:00.000Z", billing_mode: "api_key", cost_usd: 0.3 },
-      { source: "codex", model: "gpt-5", hour_start: "2026-08-01T00:00:00.000Z", billing_mode: "api_key", cost_usd: 9 },
+      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "api_key", input_tokens: 100_000, total_tokens: 100_000, cost_usd: 999 },
+      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "api_key", input_tokens: 200_000, total_tokens: 200_000, cost_usd: 999 },
+      { source: "codex", model: "gpt-5", hour_start: "2025-06-01T00:00:00.000Z", billing_mode: "token_plan", input_tokens: 400_000, total_tokens: 400_000, cost_usd: 999 },
+      { source: "cursor", model: "composer-1", hour_start: "2025-06-02T00:00:00.000Z", billing_mode: "api_key", input_tokens: 300_000, total_tokens: 300_000, cost_usd: 999 },
+      { source: "codex", model: "gpt-5", hour_start: "2026-08-01T00:00:00.000Z", billing_mode: "api_key", input_tokens: 9_000_000, total_tokens: 9_000_000, cost_usd: 999 },
     ];
     await fs.writeFile(queuePath, `${rows.map(JSON.stringify).join("\n")}\n`, "utf8");
     const handler = createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
+    const token = readJsonResponse(await call(handler, "/api/local-auth")).token;
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-tokentracker-local-auth": token,
+        origin: "http://127.0.0.1:7680",
+      },
+      body: JSON.stringify({
+        pricingRules: [
+          { source: "codex", model: "gpt-5", inputPricePer1M: 1, outputPricePer1M: 0, currency: "USD", updated_at: "2026-08-01T00:00:00.000Z" },
+          { source: "cursor", model: "composer-1", inputPricePer1M: 1, outputPricePer1M: 0, currency: "USD", updated_at: "2026-08-01T00:00:00.000Z" },
+        ],
+      }),
+    });
 
     const res = await call(
       handler,
@@ -638,6 +884,335 @@ test("selected UTC month local estimates use latest queue identities and merge p
     assert.equal(openai.monthCostUsd, 0.9);
     assert.equal(openai.lifetimeCostUsd, 9.9);
     assert.equal(body.accounts.filter((account) => account.provider === "openai").length, 1);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("API billing recomputes configured prices and exposes their production provenance", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-pricing-rule-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(queuePath, `${JSON.stringify({
+      source: "claude",
+      model: "review-fixture-model",
+      hour_start: "2026-08-15T00:00:00.000Z",
+      input_tokens: 600_000,
+      output_tokens: 400_000,
+      total_tokens: 1_000_000,
+      cost_usd: 999,
+    })}\n`, "utf8");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-08-20T00:00:00.000Z"),
+    });
+    const token = readJsonResponse(await call(handler, "/api/local-auth")).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        pricingRules: [{
+          source: "claude",
+          model: "review-fixture-model",
+          inputPricePer1M: 2,
+          outputPricePer1M: 4,
+          currency: "USD",
+          updated_at: "2026-08-01T00:00:00.000Z",
+        }],
+      }),
+    });
+
+    const response = await call(
+      handler,
+      "/functions/tokentracker-api-billing-accounts?month=2026-08&time_zone=UTC",
+    );
+    const claude = readJsonResponse(response).accounts.find((account) => account.provider === "claude");
+
+    assert.equal(response.statusCode, 200);
+    assert.ok(claude);
+    assert.equal(claude.monthCostUsd, 2.8);
+    assert.equal(claude.lifetimeCostUsd, 2.8);
+    assert.equal(claude.source_kind, "user_override");
+    assert.equal(claude.pricing_source, "pricing-rule");
+    assert.equal(claude.source_updated_at, "2026-08-01T00:00:00.000Z");
+    assert.equal(claude.observed_at, "2026-08-20T00:00:00.000Z");
+    assert.equal(claude.match_kind, "exact");
+    assert.equal(claude.matched_model, "review-fixture-model");
+    assert.equal(claude.pricing_coverage, "complete");
+    assert.equal(claude.pricing_components.length, 1);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("API billing normalizes legacy inclusive Codex input before recomputing local list cost", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-legacy-codex-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(queuePath, `${JSON.stringify({
+      source: "codex",
+      model: "legacy-inclusive-review-model",
+      hour_start: "2026-08-15T00:00:00.000Z",
+      input_tokens: 1_000_000,
+      cached_input_tokens: 900_000,
+      output_tokens: 100_000,
+      total_tokens: 1_100_000,
+      cost_usd: 999,
+    })}\n`, "utf8");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-08-20T00:00:00.000Z"),
+    });
+    const token = readJsonResponse(await call(handler, "/api/local-auth")).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+    await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        pricingRules: [{
+          source: "codex",
+          model: "legacy-inclusive-review-model",
+          inputPricePer1M: 1,
+          outputPricePer1M: 10,
+          currency: "USD",
+          updated_at: "2026-08-01T00:00:00.000Z",
+        }],
+      }),
+    });
+
+    const response = await call(
+      handler,
+      "/functions/tokentracker-api-billing-accounts?month=2026-08&time_zone=UTC",
+    );
+    const openai = readJsonResponse(response).accounts.find((account) => account.provider === "openai");
+
+    assert.equal(response.statusCode, 200);
+    assert.ok(openai);
+    assert.equal(openai.monthCostUsd, 2);
+    assert.equal(openai.lifetimeCostUsd, 2);
+    assert.equal(openai.matched_model, "legacy-inclusive-review-model");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("API billing never revives a stale catalog price from persisted row cost_usd", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-stale-pricing-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(queuePath, `${JSON.stringify({
+      source: "codex",
+      model: "gpt-4o",
+      hour_start: "2026-08-15T00:00:00.000Z",
+      input_tokens: 1_000_000,
+      output_tokens: 1_000_000,
+      total_tokens: 2_000_000,
+      cost_usd: 999,
+    })}\n`, "utf8");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-08-20T00:00:00.000Z"),
+    });
+
+    const response = await call(
+      handler,
+      "/functions/tokentracker-api-billing-accounts?month=2026-08&time_zone=UTC",
+    );
+    const openai = readJsonResponse(response).accounts.find((account) => account.provider === "openai");
+
+    assert.equal(response.statusCode, 200);
+    assert.ok(openai);
+    assert.equal(openai.monthCostUsd, null);
+    assert.equal(openai.lifetimeCostUsd, null);
+    assert.equal(openai.source_kind, "third_party");
+    assert.equal(openai.pricing_coverage, "unpriced");
+    assert.equal(openai.is_stale, true);
+    assert.equal(openai.note_code, "pricing_source_stale");
+    assert.equal(openai.matched_model, "gpt-4o");
+    assert.equal(openai.observed_at, "2026-08-20T00:00:00.000Z");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("API billing preserves the saved modification time of agent-default user pricing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-api-billing-agent-default-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(queuePath, `${JSON.stringify({
+      source: "claude",
+      model: "review-fixture-agent-default",
+      hour_start: "2026-08-15T00:00:00.000Z",
+      input_tokens: 1_000_000,
+      output_tokens: 1_000_000,
+      total_tokens: 2_000_000,
+      cost_usd: 999,
+    })}\n`, "utf8");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: trackerDir,
+      now: () => new Date("2026-08-20T12:34:56.000Z"),
+    });
+    const token = readJsonResponse(await call(handler, "/api/local-auth")).token;
+    const settingsResponse = await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-tokentracker-local-auth": token,
+        origin: "http://127.0.0.1:7680",
+      },
+      body: JSON.stringify({
+        agentDefaultPricing: {
+          claude: { inputUsdPer1M: 3, outputUsdPer1M: 15 },
+        },
+      }),
+    });
+    assert.equal(
+      readJsonResponse(settingsResponse).pricing_updated_at,
+      "2026-08-20T12:34:56.000Z",
+    );
+
+    const response = await call(
+      handler,
+      "/functions/tokentracker-api-billing-accounts?month=2026-08&time_zone=UTC",
+    );
+    const claude = readJsonResponse(response).accounts.find((account) => account.provider === "claude");
+
+    assert.equal(response.statusCode, 200);
+    assert.ok(claude);
+    assert.equal(claude.monthCostUsd, 18);
+    assert.equal(claude.pricing_source, "agent-default");
+    assert.equal(claude.source_kind, "user_override");
+    assert.equal(claude.pricing_version, "2026-08-20T12:34:56.000Z");
+    assert.equal(claude.source_updated_at, "2026-08-20T12:34:56.000Z");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("agent-default pricing timestamps change only for materially edited agents", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-agent-default-per-agent-time-"));
+  let nowIso = "2026-08-01T00:00:00.000Z";
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(queuePath, `${[
+      {
+        source: "codex",
+        model: "codex-default-review-model",
+        hour_start: "2026-08-20T00:00:00.000Z",
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        total_tokens: 1_000_000,
+      },
+      {
+        source: "claude",
+        model: "claude-default-review-model",
+        hour_start: "2026-08-20T00:00:00.000Z",
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        total_tokens: 1_000_000,
+      },
+    ].map(JSON.stringify).join("\n")}\n`, "utf8");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: trackerDir,
+      now: () => new Date(nowIso),
+    });
+    const token = readJsonResponse(await call(handler, "/api/local-auth")).token;
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const defaults = {
+      claude: { inputUsdPer1M: 3, outputUsdPer1M: 15 },
+      codex: { inputUsdPer1M: 2, outputUsdPer1M: 8 },
+      hermes: { inputUsdPer1M: 1, outputUsdPer1M: 4 },
+    };
+
+    const first = readJsonResponse(await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ agentDefaultPricing: defaults, pricingRules: [] }),
+    }));
+    assert.equal(first.pricing_updated_at, "2026-08-01T00:00:00.000Z");
+    assert.deepEqual(first.agent_default_pricing_updated_at, {
+      claude: "2026-08-01T00:00:00.000Z",
+      codex: "2026-08-01T00:00:00.000Z",
+      hermes: "2026-08-01T00:00:00.000Z",
+    });
+
+    nowIso = "2026-08-10T00:00:00.000Z";
+    const rulesOnly = readJsonResponse(await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        agentDefaultPricing: defaults,
+        pricingRules: [{
+          source: "hermes",
+          model: "rules-only-review-model",
+          inputPricePer1M: 9,
+          outputPricePer1M: 9,
+          currency: "USD",
+          updated_at: nowIso,
+        }],
+      }),
+    }));
+    assert.equal(rulesOnly.pricing_updated_at, "2026-08-01T00:00:00.000Z");
+    assert.equal(rulesOnly.agent_default_pricing_updated_at.codex, "2026-08-01T00:00:00.000Z");
+    assert.equal(rulesOnly.agent_default_pricing_updated_at.hermes, "2026-08-01T00:00:00.000Z");
+
+    nowIso = "2026-08-15T00:00:00.000Z";
+    const claudeChanged = readJsonResponse(await call(handler, "/functions/tokentracker-local-settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        agentDefaultPricing: {
+          ...defaults,
+          claude: { inputUsdPer1M: 4, outputUsdPer1M: 15 },
+        },
+        pricingRules: rulesOnly.pricingRules,
+      }),
+    }));
+    assert.equal(claudeChanged.pricing_updated_at, "2026-08-15T00:00:00.000Z");
+    assert.deepEqual(claudeChanged.agent_default_pricing_updated_at, {
+      claude: "2026-08-15T00:00:00.000Z",
+      codex: "2026-08-01T00:00:00.000Z",
+      hermes: "2026-08-01T00:00:00.000Z",
+    });
+
+    const billing = readJsonResponse(await call(
+      handler,
+      "/functions/tokentracker-api-billing-accounts?month=2026-08&time_zone=UTC",
+    ));
+    const openai = billing.accounts.find((account) => account.provider === "openai");
+    const claude = billing.accounts.find((account) => account.provider === "claude");
+    assert.equal(openai.source_updated_at, "2026-08-01T00:00:00.000Z");
+    assert.equal(openai.pricing_version, "2026-08-01T00:00:00.000Z");
+    assert.equal(claude.source_updated_at, "2026-08-15T00:00:00.000Z");
+    assert.equal(claude.pricing_version, "2026-08-15T00:00:00.000Z");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

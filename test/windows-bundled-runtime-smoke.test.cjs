@@ -53,10 +53,23 @@ async function waitForLocalAuth(port, child) {
 test("Windows bundled runtime includes its shared registry and starts the local API", async (t) => {
   const nodeExe = path.join(runtimeDir, "node.exe");
   const trackerEntry = path.join(trackerRoot, "bin", "tracker.js");
+  const agentRegistry = path.join(trackerRoot, "shared", "agent-registry.json");
   const providerRegistry = path.join(trackerRoot, "shared", "provider-capabilities.json");
   assert.ok(fs.existsSync(nodeExe), "run the Tauri Windows build before this smoke test");
   assert.ok(fs.existsSync(trackerEntry), "bundled tracker entry must exist");
+  assert.ok(fs.existsSync(agentRegistry), "bundled canonical agent registry must exist");
   assert.ok(fs.existsSync(providerRegistry), "bundled shared provider registry must exist");
+  const registryProbe = spawnSync(nodeExe, [
+    "-e",
+    "const a=require('./src/lib/agent-adapters');const r=require('./shared/agent-registry.json');process.stdout.write(JSON.stringify({adapters:a.AGENT_ADAPTERS.length,identities:a.listAgentUsageIdentities().length,canonical:r.adapters.length,kiroCli:a.getAgentAdapter('kiro-cli').queueSource}))",
+  ], { cwd: trackerRoot, encoding: "utf8", windowsHide: true });
+  assert.equal(registryProbe.status, 0, registryProbe.stderr);
+  assert.deepEqual(JSON.parse(registryProbe.stdout), {
+    adapters: 28,
+    identities: 27,
+    canonical: 28,
+    kiroCli: "kiro",
+  });
 
   const port = await findFreePort();
   const smokeTarget = path.join(repoRoot, "src-tauri", "target");

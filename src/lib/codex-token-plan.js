@@ -12,6 +12,10 @@ const MAX_RESPONSE_BYTES = 1024 * 1024;
 const CODEX_SESSION_WINDOW_SECONDS = 18000;
 const CODEX_WEEKLY_WINDOW_SECONDS = 604800;
 const PERCENT_SCALE = 100;
+const CODEX_RESET_CREDIT_ALLOWLIST = Object.freeze([
+  "rate_limit_reset_credits.available_count",
+  "rate_limit_reset_credits.applicable_available_count",
+]);
 
 class CodexTokenPlanError extends Error {
   constructor(code, message) {
@@ -30,13 +34,71 @@ function mapCodexErrorCode(error) {
       return "not_configured";
     case "CODEX_RESPONSE_STRUCTURE_DRIFT":
     case "CODEX_NO_QUOTA_WINDOWS":
+    case "CODEX_ENDPOINT_UNSUPPORTED":
       return "unsupported";
+    case "CODEX_TEMPORARY_ERROR":
+    case "CODEX_NETWORK_ERROR":
+      return "temporary";
     default:
       return "failed";
   }
 }
 
+function codexUsageErrorForHttpStatus(status) {
+  if (status === 401 || status === 403) {
+    return new CodexTokenPlanError("CODEX_REAUTH_REQUIRED", "Codex login expired — reauthenticate");
+  }
+  if (status === 404) {
+    return new CodexTokenPlanError("CODEX_ENDPOINT_UNSUPPORTED", "Codex usage endpoint is unavailable");
+  }
+  if (status >= 500) {
+    return new CodexTokenPlanError("CODEX_TEMPORARY_ERROR", "Codex usage service is temporarily unavailable");
+  }
+  return new CodexTokenPlanError("CODEX_PROVIDER_ERROR", "Codex usage request failed");
+}
+
+function codexUsageErrorState(error) {
+  switch (error?.code) {
+    case "CODEX_REAUTH_REQUIRED":
+      return {
+        auth_action_required: "reauth",
+        error_code: "auth_required",
+        error: "Codex authentication is required.",
+      };
+    case "CODEX_ENDPOINT_UNSUPPORTED":
+      return {
+        unsupported: true,
+        error_code: "endpoint_unsupported",
+        error: "Codex usage is unsupported.",
+      };
+    case "CODEX_RESPONSE_STRUCTURE_DRIFT":
+    case "CODEX_NO_QUOTA_WINDOWS":
+      return {
+        unsupported: true,
+        error_code: "response_unsupported",
+        error: "Codex usage response is unsupported.",
+      };
+    case "CODEX_TEMPORARY_ERROR":
+      return {
+        error_code: "upstream_5xx",
+        error: "Codex usage is temporarily unavailable.",
+      };
+    case "CODEX_NETWORK_ERROR":
+      return {
+        error_code: "network_error",
+        error: "Codex usage is temporarily unavailable.",
+      };
+    default:
+      return {
+        error_code: "upstream_http_error",
+        error: "Codex usage request failed.",
+      };
+  }
+}
+
 function clampPercent(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "string" && !value.trim()) return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   if (n < 0) return 0;
@@ -73,29 +135,13 @@ function normalizeCodexRateWindow(window) {
   if (usedPercent === null) return null;
   return {
     ...window,
-    used_percent: Math.round(usedPercent),
+    used_percent: usedPercent,
   };
 }
 
-function percentWindowToQuotaWindow(window, kind) {
-  const usedPercent = clampPercent(window?.used_percent);
-  if (usedPercent === null) return null;
-  const used = Math.round(usedPercent);
-  return {
-    kind,
-    unit: "tokens",
-    total: PERCENT_SCALE,
-    used,
-    remaining: Math.max(0, PERCENT_SCALE - used),
-    percentage: used,
-    resets_at: parseResetAt(window.reset_at),
-  };
-}
-
-function parseCodexUsageBody(body) {
-  const rateLimit = body?.rate_limit && typeof body.rate_limit === "object" ? body.rate_limit : {};
-  const primary = normalizeCodexRateWindow(rateLimit.primary_window);
-  const secondary = normalizeCodexRateWindow(rateLimit.secondary_window);
+function normalizeCodexRateWindows(rateLimit) {
+  const primary = normalizeCodexRateWindow(rateLimit?.primary_window);
+  const secondary = normalizeCodexRateWindow(rateLimit?.secondary_window);
   const candidates = [primary, secondary].filter(Boolean);
   let fiveHour = null;
   let weekly = null;
@@ -105,9 +151,111 @@ function parseCodexUsageBody(body) {
     else if (kind === "rolling_weekly" && !weekly) weekly = window;
   }
   if (!fiveHour && !weekly && candidates.length > 0) {
-    if (primary) fiveHour = primary;
-    if (secondary) weekly = secondary;
+    return { primary_window: primary, secondary_window: secondary };
   }
+  return { primary_window: fiveHour, secondary_window: weekly };
+}
+
+function isCodexSparkLimit(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  return [entry.limit_name, entry.metered_feature].some((value) => (
+    typeof value === "string" && value.trim().toLowerCase().includes("spark")
+  ));
+}
+
+function codexSparkFallbackCandidates(primary, secondary) {
+  const primaryKind = classifyCodexWindow(primary);
+  const secondaryKind = classifyCodexWindow(secondary);
+  const out = [];
+  const primaryDurationMissing = primary
+    && (primary.limit_window_seconds === undefined
+      || primary.limit_window_seconds === null
+      || primary.limit_window_seconds === "");
+  if (primaryKind || secondaryKind) {
+    if (!primaryKind && primary && secondaryKind === "rolling_weekly") {
+      out.push({ kind: "rolling_5_hour", window: primary });
+    }
+    if (!primaryKind && primaryDurationMissing && secondaryKind === "rolling_5_hour") {
+      out.push({ kind: "rolling_weekly", window: primary });
+    }
+    if (!secondaryKind && secondary && primaryKind === "rolling_weekly") {
+      out.push({ kind: "rolling_5_hour", window: secondary });
+    }
+    if (!secondaryKind && secondary && primaryKind === "rolling_5_hour") {
+      out.push({ kind: "rolling_weekly", window: secondary });
+    }
+    return out;
+  }
+  if (primary) out.push({ kind: "rolling_5_hour", window: primary });
+  if (secondary) out.push({ kind: "rolling_weekly", window: secondary });
+  return out;
+}
+
+function normalizeCodexSparkRateWindows(additionalRateLimits) {
+  let fiveHour = null;
+  let weekly = null;
+  if (!Array.isArray(additionalRateLimits)) {
+    return { spark_primary_window: null, spark_secondary_window: null };
+  }
+  const classified = [];
+  const fallback = [];
+  for (const entry of additionalRateLimits) {
+    if (!isCodexSparkLimit(entry) || !entry.rate_limit || typeof entry.rate_limit !== "object") continue;
+    const primary = normalizeCodexRateWindow(entry.rate_limit.primary_window);
+    const secondary = normalizeCodexRateWindow(entry.rate_limit.secondary_window);
+    for (const window of [primary, secondary]) {
+      const kind = classifyCodexWindow(window);
+      if (kind) classified.push({ kind, window });
+    }
+    fallback.push(...codexSparkFallbackCandidates(primary, secondary));
+  }
+  for (const candidate of [...classified, ...fallback]) {
+    if (candidate.kind === "rolling_5_hour" && !fiveHour) fiveHour = candidate.window;
+    else if (candidate.kind === "rolling_weekly" && !weekly) weekly = candidate.window;
+  }
+  return { spark_primary_window: fiveHour, spark_secondary_window: weekly };
+}
+
+function parseCodexResetCreditFields(body) {
+  const source = body?.rate_limit_reset_credits;
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+  const available = Number(source.available_count);
+  const applicable = Number(source.applicable_available_count);
+  if (!Number.isSafeInteger(available) || available < 0
+    || !Number.isSafeInteger(applicable) || applicable < 0) return null;
+  return { available_count: available, applicable_available_count: applicable };
+}
+
+function mapCodexUsageResponse(body) {
+  const regular = normalizeCodexRateWindows(body?.rate_limit);
+  const spark = normalizeCodexSparkRateWindows(body?.additional_rate_limits);
+  const resetCredits = parseCodexResetCreditFields(body);
+  return {
+    ...regular,
+    ...spark,
+    ...(resetCredits ? { reset_credits: resetCredits } : {}),
+  };
+}
+
+function percentWindowToQuotaWindow(window, kind) {
+  const usedPercent = clampPercent(window?.used_percent);
+  if (usedPercent === null) return null;
+  const used = usedPercent;
+  return {
+    kind,
+    unit: "percent",
+    total: PERCENT_SCALE,
+    used,
+    remaining: Math.max(0, PERCENT_SCALE - used),
+    percentage: used,
+    resets_at: parseResetAt(window.reset_at),
+  };
+}
+
+function parseCodexUsageBody(body) {
+  const mapped = mapCodexUsageResponse(body);
+  const fiveHour = mapped.primary_window;
+  const weekly = mapped.secondary_window;
   const quotaWindows = [
     percentWindowToQuotaWindow(fiveHour, "rolling_5_hour"),
     percentWindowToQuotaWindow(weekly, "rolling_weekly"),
@@ -121,6 +269,7 @@ function parseCodexUsageBody(body) {
     total_quota: primaryWindow.total,
     used_quota: primaryWindow.used,
     remaining_quota: primaryWindow.remaining,
+    quota_unit: "percent",
   };
 }
 
@@ -132,19 +281,18 @@ async function fetchCodexWhamUsage(accessToken, { fetchImpl = globalThis.fetch, 
   if (accountId) {
     headers["ChatGPT-Account-Id"] = accountId;
   }
-  const response = await fetchImpl(CODEX_USAGE_URL, {
-    method: "GET",
-    headers,
-    redirect: "manual",
-  });
-  if (response.status === 401 || response.status === 403) {
-    throw new CodexTokenPlanError("CODEX_REAUTH_REQUIRED", "Codex login expired — run `codex` to re-authenticate");
-  }
-  if (response.status === 404) {
-    throw new CodexTokenPlanError("CODEX_NO_QUOTA_WINDOWS", "Codex usage data is not available for this account");
+  let response;
+  try {
+    response = await fetchImpl(CODEX_USAGE_URL, {
+      method: "GET",
+      headers,
+      redirect: "manual",
+    });
+  } catch {
+    throw new CodexTokenPlanError("CODEX_NETWORK_ERROR", "Codex usage request failed");
   }
   if (!response.ok) {
-    throw new CodexTokenPlanError("CODEX_PROVIDER_ERROR", `Codex usage endpoint returned HTTP ${response.status}`);
+    throw codexUsageErrorForHttpStatus(response.status);
   }
   const text = await response.text();
   if (Buffer.byteLength(text, "utf8") > MAX_RESPONSE_BYTES) {
@@ -208,9 +356,16 @@ function createCodexProviderAdapter({
 
 module.exports = {
   CODEX_USAGE_URL,
+  CODEX_RESET_CREDIT_ALLOWLIST,
   CodexTokenPlanError,
+  codexUsageErrorForHttpStatus,
+  codexUsageErrorState,
   mapCodexErrorCode,
+  mapCodexUsageResponse,
+  normalizeCodexRateWindow,
+  parseCodexResetCreditFields,
   parseCodexUsageBody,
+  fetchCodexWhamUsage,
   fetchCodexQuota,
   createCodexProviderAdapter,
 };

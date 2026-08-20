@@ -3,6 +3,10 @@ import { ArrowDownUp, CalendarDays, ChevronDown, ChevronUp, ExternalLink, Globe2
 import { copy } from "../lib/copy";
 import planMarketCatalog from "../../../shared/plan-market-catalog.json";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
+import {
+  OfficialExternalLink,
+  resolveProviderLink,
+} from "../components/OfficialExternalLink.jsx";
 
 // V2-W1 plan market: curated subscription-plan snapshot for AI providers.
 // Data lives in shared/plan-market-catalog.json (single source of truth,
@@ -10,6 +14,176 @@ import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
 // every provider entry carries official source links + a last_verified date.
 
 const CURRENCY_SYMBOL = { CNY: "¥", USD: "$" };
+const DEFAULT_STALE_AFTER_SECONDS = 30 * 24 * 60 * 60;
+const FRESHNESS_BADGES = new Set(["latest", "new", "hot"]);
+
+export function hasOfficialProviderSource(provider) {
+  return provider?.evidence?.verified === true
+    && String(provider?.evidence?.source_type || "").startsWith("official_");
+}
+
+function marketNowMilliseconds(now) {
+  if (now === undefined) return Date.now();
+  if (now === null) throw new TypeError("now must be a valid date");
+  const value = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  if (!Number.isFinite(value)) throw new TypeError("now must be a valid date");
+  return value;
+}
+
+function marketDateMilliseconds(value, { endOfDay = false } = {}) {
+  if (!value) return NaN;
+  const raw = String(value);
+  const suffix = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? (endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z")
+    : "";
+  return Date.parse(raw + suffix);
+}
+
+function marketEvidenceIsStale(evidence, nowMs) {
+  if (!evidence?.verified) return true;
+  const validFromMs = marketDateMilliseconds(evidence.valid_from);
+  if (Number.isFinite(validFromMs) && Math.sign(nowMs - validFromMs) === -1) return true;
+  const validUntilMs = marketDateMilliseconds(evidence.valid_until, { endOfDay: true });
+  if (Number.isFinite(validUntilMs) && Math.sign(nowMs - validUntilMs) === 1) return true;
+  const fetchedAtMs = marketDateMilliseconds(evidence.fetched_at);
+  const ttlSeconds = Number(evidence.stale_after_seconds);
+  if (!Number.isFinite(fetchedAtMs) || !Number.isFinite(ttlSeconds) || Math.sign(ttlSeconds) !== 1) return true;
+  return Math.sign(nowMs - fetchedAtMs - (ttlSeconds * 1000)) === 1;
+}
+
+function requireMarketLink(linkId) {
+  const link = resolveProviderLink(linkId);
+  if (!link) throw new Error("Unknown plan market link_id");
+  return link;
+}
+
+function projectMarketEvidence(evidence, nowMs) {
+  const link = requireMarketLink(evidence?.link_id);
+  return {
+    ...structuredClone(evidence),
+    source_type: link.source_type,
+    source_url: link.url,
+    is_stale: marketEvidenceIsStale(evidence, nowMs),
+  };
+}
+
+function projectMarketSource(source) {
+  const link = requireMarketLink(source?.link_id);
+  return {
+    ...structuredClone(source),
+    url: link.url,
+    source_type: link.source_type,
+  };
+}
+
+function projectMarketEntitlementWindow(window, nowMs) {
+  const link = requireMarketLink(window?.link_id);
+  const evidence = {
+    ...structuredClone(window),
+    supports: structuredClone(window?.supports || ["quota", "effective_dates"]),
+    stale_after_seconds: Number(window?.stale_after_seconds) || DEFAULT_STALE_AFTER_SECONDS,
+  };
+  return {
+    ...evidence,
+    source_type: link.source_type,
+    source_url: link.url,
+    is_stale: marketEvidenceIsStale(evidence, nowMs),
+  };
+}
+
+function withoutMarketFreshnessBadges(values) {
+  return (values || []).filter((value) => (
+    !FRESHNESS_BADGES.has(String(value).toLowerCase())
+  ));
+}
+
+function projectMarketProvider(rawProvider, nowMs) {
+  const sourcesByLinkId = new Map((rawProvider.sources || []).map((source) => [source.link_id, source]));
+  assertMarketEvidenceSupportedBySource(rawProvider, sourcesByLinkId);
+  assertMarketEvidenceHash(rawProvider);
+  assertMarketPromotionOffers(rawProvider);
+  const provider = structuredClone(rawProvider);
+  provider.evidence = projectMarketEvidence(provider.evidence, nowMs);
+  provider.sources = (provider.sources || []).map(projectMarketSource);
+  provider.promotions = (provider.promotions || [])
+    .map((promotion) => {
+      assertMarketEvidenceSupportedBySource(promotion, sourcesByLinkId);
+      assertMarketEvidenceHash(promotion);
+      return {
+        ...promotion,
+        evidence: projectMarketEvidence(promotion.evidence, nowMs),
+      };
+    })
+    .filter((promotion) => !promotion.evidence.is_stale);
+
+  const activePromotionIds = new Set(
+    provider.promotions.map((promotion) => promotion.promotion_id),
+  );
+  provider.plans = (provider.plans || []).map((rawPlan) => {
+    assertMarketEvidenceSupportedBySource(rawPlan, sourcesByLinkId);
+    assertMarketEvidenceHash(rawPlan);
+    const plan = structuredClone(rawPlan);
+    plan.evidence = projectMarketEvidence(plan.evidence, nowMs);
+    plan.entitlement_windows = (plan.entitlement_windows || []).map((window) => (
+      projectMarketEntitlementWindow(window, nowMs)
+    ));
+    plan.alt_prices = (plan.alt_prices || []).filter((price) => (
+      !price.promotion_id || activePromotionIds.has(price.promotion_id)
+    ));
+    if (plan.evidence.is_stale) {
+      plan.badges = withoutMarketFreshnessBadges(plan.badges);
+    }
+    return plan;
+  });
+
+  provider.announcement = [
+    provider.announcement,
+    ...provider.promotions.map((promotion) => promotion.display),
+  ].filter(Boolean).join("；");
+  provider.is_recent = Boolean(provider.is_recent) && !provider.evidence.is_stale;
+  if (provider.evidence.is_stale) {
+    provider.tags = withoutMarketFreshnessBadges(provider.tags);
+  }
+  return provider;
+}
+
+function marketOfficialSourceCoverage(providers) {
+  const sourceLinkIds = new Set();
+  let providerCount = 0;
+  let planCount = 0;
+  for (const provider of providers) {
+    if (hasOfficialProviderSource(provider)) {
+      providerCount += 1;
+      for (const source of provider.sources) {
+        if (source.source_type.startsWith("official_")) sourceLinkIds.add(source.link_id);
+      }
+    }
+    for (const plan of provider.plans) {
+      if (plan.evidence.verified && plan.evidence.source_type.startsWith("official_")) {
+        planCount += 1;
+        sourceLinkIds.add(plan.evidence.link_id);
+      }
+    }
+  }
+  return {
+    provider_count: providerCount,
+    plan_count: planCount,
+    source_link_ids: [...sourceLinkIds].sort(),
+  };
+}
+
+export function projectPlanMarketCatalogForDashboard(data, { now } = {}) {
+  const nowMs = marketNowMilliseconds(now);
+  const providers = (data?.providers || []).map((provider) => (
+    projectMarketProvider(provider, nowMs)
+  ));
+  return {
+    updated_at: data?._meta?.updated_at || "",
+    providers,
+    comparison_links: (data?.comparison_links || []).map(projectMarketSource),
+    official_source_coverage: marketOfficialSourceCoverage(providers),
+  };
+}
 
 function formatAmount(amount) {
   const n = Number(amount);
@@ -45,7 +219,7 @@ const PROVIDER_ICON_KEYS = {
   openai: "codex",
   cursor: "cursor",
   kimi: "kimi",
-  copilot: "copilot",
+  "microsoft-copilot": "microsoft-copilot",
   grok: "grok",
   antigravity: "antigravity",
 };
@@ -57,7 +231,7 @@ const PLAN_MARKET_ICON_SOURCES = {
   openai: "/plan-market-icons/openai.png",
   cursor: "/plan-market-icons/cursor.png",
   kimi: "/plan-market-icons/kimi.png",
-  copilot: "/plan-market-icons/copilot.png",
+  "microsoft-copilot": "/plan-market-icons/copilot.png",
   "xiaomi-mimo": "/plan-market-icons/xiaomi-mimo.png",
   "volcengine-doubao": "https://portal.volccdn.com/obj/volcfe/misc/favicon.png",
   antigravity: "/brand-logos/antigravity.svg",
@@ -115,6 +289,7 @@ function startingPrice(provider) {
 
 function PlanRow({ plan }) {
   const discontinued = plan.status === "discontinued";
+  const needsReview = plan.evidence?.is_stale === true;
   return (
     <article className={`tt-plan-market-plan-card${discontinued ? " opacity-70" : ""}`}>
       <div className="tt-plan-market-plan-card-heading">
@@ -127,6 +302,11 @@ function PlanRow({ plan }) {
         {discontinued ? (
           <span className="tt-plan-market-status-discontinued">
             {copy("plan_market.status.discontinued")}
+          </span>
+        ) : null}
+        {needsReview ? (
+          <span className="tt-plan-market-plan-badge tt-plan-market-plan-badge--review">
+            {copy("plan_market.status.needs_review")}
           </span>
         ) : null}
         <span className="tt-plan-market-plan-price">
@@ -169,6 +349,9 @@ function ProviderCard({ provider, expanded, onToggle }) {
   const price = startingPrice(provider);
   const access = providerAccess(provider);
   const risk = providerRisk(provider);
+  const official = hasOfficialProviderSource(provider);
+  const needsReview = provider.evidence?.verified !== true
+    || provider.evidence?.is_stale === true;
   return (
     <section data-testid={`plan-market-provider-${provider.id}`} className="tt-plan-market-provider" data-open={expanded}>
       <button
@@ -184,7 +367,12 @@ function ProviderCard({ provider, expanded, onToggle }) {
           <span className="min-w-0 text-left">
             <span className="flex flex-wrap items-center gap-2">
               <span className="tt-plan-market-provider-name" role="heading" aria-level="2">{provider.display_name}</span>
-              <span className="tt-plan-market-official">{copy("plan_market.official")}</span>
+              {official ? <span className="tt-plan-market-official">{copy("plan_market.official")}</span> : null}
+              {needsReview ? (
+                <span className="tt-plan-market-plan-badge tt-plan-market-plan-badge--review">
+                  {copy("plan_market.status.needs_review")}
+                </span>
+              ) : null}
             </span>
             {!expanded ? (
               <span className="tt-plan-market-compact-details" data-testid={`plan-market-compact-details-${provider.id}`}>
@@ -234,9 +422,9 @@ function ProviderCard({ provider, expanded, onToggle }) {
           <div className="tt-plan-market-sources">
             <span>{copy("plan_market.sources_label")}：</span>
             {provider.sources.map((source) => (
-              <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
+              <OfficialExternalLink key={source.link_id} linkId={source.link_id}>
                 {source.label}<ExternalLink aria-hidden />
-              </a>
+              </OfficialExternalLink>
             ))}
           </div>
         </div>
@@ -246,7 +434,10 @@ function ProviderCard({ provider, expanded, onToggle }) {
 }
 
 export function PlanMarketPage() {
-  const providers = planMarketCatalog.providers;
+  const marketCatalog = useMemo(() => (
+    projectPlanMarketCatalogForDashboard(planMarketCatalog, { now: new Date() })
+  ), []);
+  const providers = marketCatalog.providers;
   const [providerFilter, setProviderFilter] = useState("all");
   const [sort, setSort] = useState("default");
   const [expandedProviderIds, setExpandedProviderIds] = useState(() => new Set());
@@ -260,18 +451,19 @@ export function PlanMarketPage() {
   }, [providerFilter, providers, sort]);
   const totalPlans = providers.reduce((count, provider) => count + provider.plans.length, 0);
   const plans = providers.flatMap((provider) => provider.plans);
-  const providersWithOfficialSources = providers.filter((provider) => provider.sources?.length);
-  const officialProviderCount = providersWithOfficialSources.length;
+  const officialProviderCount = marketCatalog.official_source_coverage.provider_count;
   const customProviderCount = providers.length - officialProviderCount;
   const recentProviders = providers.filter((provider) => provider.is_recent);
   const recentPlanCount = recentProviders.flatMap((provider) => provider.plans).length;
   const freePlanCount = plans.filter((plan) => Number(plan.price?.amount) === 0).length;
   const paidPlanCount = plans.filter((plan) => Number(plan.price?.amount) > 0 || plan.price?.display).length;
-  const officialSourcePlanCount = providersWithOfficialSources.flatMap((provider) => provider.plans).length;
+  const officialSourcePlanCount = marketCatalog.official_source_coverage.plan_count;
   const noSourcePlanCount = totalPlans - officialSourcePlanCount;
   const officialSourceCoverage = totalPlans > 0 ? Math.round((officialSourcePlanCount / totalPlans) * 100) : 0;
-  const latestProviderCount = providers.filter((provider) => provider.is_recent).length
-    || providers.filter((provider) => provider.last_verified === latestVerification).length;
+  const latestProviderCount = recentProviders.length;
+  const globalComparisonLinkId = marketCatalog.comparison_links.find((source) => (
+    source.source_type === "third_party_comparison"
+  ))?.link_id;
   const toggleProvider = (providerId) => setExpandedProviderIds((current) => {
     const next = new Set(current);
     if (next.has(providerId)) next.delete(providerId); else next.add(providerId);
@@ -286,12 +478,16 @@ export function PlanMarketPage() {
             <div>
               <h1>{copy("nav.spend.plans")}</h1>
               <p>{copy("plan_market.page.subtitle")}</p>
-              <a data-testid="plan-market-global-price-comparison" className="tt-plan-market-global-price-comparison" href="https://opentherank.com/zh/ai-pricing/" target="_blank" rel="noopener noreferrer">
+              <OfficialExternalLink
+                linkId={globalComparisonLinkId}
+                data-testid="plan-market-global-price-comparison"
+                className="tt-plan-market-global-price-comparison"
+              >
                 <Globe2 aria-hidden />{copy("plan_market.global_price_comparison")}<ExternalLink aria-hidden />
-              </a>
+              </OfficialExternalLink>
             </div>
             <div className="tt-plan-market-controls">
-              <span className="tt-plan-market-updated"><RefreshCw aria-hidden />{copy("plan_market.last_verified_label")} <time dateTime={planMarketCatalog._meta.updated_at}>{planMarketCatalog._meta.updated_at}</time></span>
+              <span className="tt-plan-market-updated"><RefreshCw aria-hidden />{copy("plan_market.last_verified_label")} <time dateTime={marketCatalog.updated_at}>{marketCatalog.updated_at}</time></span>
               <label className="tt-plan-market-select-wrap"><ListFilter aria-hidden /><span className="sr-only">{copy("plan_market.filter.label")}</span>
                 <select data-testid="plan-market-provider-filter" value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)} aria-label={copy("plan_market.filter.label")}>
                   <option value="all">{copy("plan_market.filter.all")}</option>
@@ -355,3 +551,253 @@ function MarketStat({ icon: Icon, tone, label, value, note, metrics = [] }) {
 }
 
 export default PlanMarketPage;
+
+const SHA256_INITIAL = [
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+  0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+];
+
+const SHA256_CONSTANTS = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+];
+
+function rotateMarketHashRight(value, shift) {
+  const wrapped = (value % (2 ** shift)) * (2 ** (32 - shift));
+  return ((value >>> shift) | wrapped) >>> 0;
+}
+
+function marketSha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
+  const padded = new Uint8Array(paddedLength);
+  padded.set(bytes);
+  padded[bytes.length] = 0x80;
+  const view = new DataView(padded.buffer);
+  const bitLength = bytes.length * 8;
+  view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000));
+  view.setUint32(paddedLength - 4, bitLength >>> 0);
+  const hash = [...SHA256_INITIAL];
+
+  Array.from({ length: paddedLength / 64 }).forEach((_, blockIndex) => {
+    const words = new Uint32Array(64);
+    const offset = blockIndex * 64;
+    Array.from({ length: 16 }).forEach((unused, index) => {
+      words[index] = view.getUint32(offset + (index * 4));
+    });
+    Array.from({ length: 48 }).forEach((unused, wordIndex) => {
+      const index = wordIndex + 16;
+      const before15 = words[index - 15];
+      const before2 = words[index - 2];
+      const sigma0 = rotateMarketHashRight(before15, 7)
+        ^ rotateMarketHashRight(before15, 18)
+        ^ (before15 >>> 3);
+      const sigma1 = rotateMarketHashRight(before2, 17)
+        ^ rotateMarketHashRight(before2, 19)
+        ^ (before2 >>> 10);
+      words[index] = (words[index - 16] + sigma0 + words[index - 7] + sigma1) >>> 0;
+    });
+
+    let [a, b, c, d, e, f, g, h] = hash;
+    SHA256_CONSTANTS.forEach((constant, index) => {
+      const sum1 = rotateMarketHashRight(e, 6)
+        ^ rotateMarketHashRight(e, 11)
+        ^ rotateMarketHashRight(e, 25);
+      const choose = (e & f) ^ ((~e) & g);
+      const first = (h + sum1 + choose + constant + words[index]) >>> 0;
+      const sum0 = rotateMarketHashRight(a, 2)
+        ^ rotateMarketHashRight(a, 13)
+        ^ rotateMarketHashRight(a, 22);
+      const majority = (a & b) ^ (a & c) ^ (b & c);
+      const second = (sum0 + majority) >>> 0;
+      [a, b, c, d, e, f, g, h] = [
+        (first + second) >>> 0,
+        a,
+        b,
+        c,
+        (d + first) >>> 0,
+        e,
+        f,
+        g,
+      ];
+    });
+    [a, b, c, d, e, f, g, h].forEach((word, index) => {
+      hash[index] = (hash[index] + word) >>> 0;
+    });
+  });
+
+  return hash.map((word) => word.toString(16).padStart(8, "0")).join("");
+}
+
+function canonicalMarketJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalMarketJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalMarketJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function normalizedMarketEvidenceClaim(claim) {
+  const scope = claim.evidence?.claim_scope;
+  const supports = [...(claim.evidence?.supports || [])].sort();
+  const normalized = { claim_scope: scope, supports };
+  if (scope === "market_provider") {
+    if (supports.includes("provider_identity")) Object.assign(normalized, {
+      id: claim.id,
+      display_name: claim.display_name,
+      vendor: claim.vendor,
+      region: claim.region,
+    });
+    if (supports.includes("plan_inventory")) {
+      normalized.plan_ids = (claim.plans || []).map((plan) => plan.plan_id).sort();
+    }
+    return normalized;
+  }
+  if (scope === "market_plan") {
+    if (supports.includes("plan_identity")) Object.assign(normalized, {
+      plan_id: claim.plan_id,
+      display_name: claim.display_name,
+      status: claim.status,
+    });
+    if (supports.includes("price")) Object.assign(normalized, {
+      price: claim.price,
+      alt_prices: claim.alt_prices ?? null,
+    });
+    if (supports.includes("quota")) Object.assign(normalized, {
+      quota_summary: claim.quota_summary,
+      entitlement_windows: (claim.entitlement_windows || []).map((window) => ({
+        kind: window.kind,
+        unit: window.unit,
+        total: window.total,
+      })),
+    });
+    if (supports.includes("eligibility")) normalized.highlights = claim.highlights ?? null;
+    if (supports.includes("effective_dates")) Object.assign(normalized, {
+      valid_from: claim.evidence.valid_from,
+      valid_until: claim.evidence.valid_until,
+    });
+    if (supports.includes("promotion")) {
+      normalized.promotion_prices = (claim.alt_prices || [])
+        .filter((price) => price.promotion_id)
+        .map((price) => ({ ...price }));
+    }
+    return normalized;
+  }
+  if (scope === "market_promotion") {
+    if (supports.includes("promotion")) Object.assign(normalized, {
+      promotion_id: claim.promotion_id,
+      display: claim.display,
+      offers: (claim.offers || []).map((offer) => ({
+        promotion_id: offer.promotion_id,
+        plan_id: offer.plan_id,
+        amount: offer.amount,
+        currency: offer.currency,
+        cycle: offer.cycle,
+        note: offer.note ?? null,
+      })).sort(compareCanonicalMarketValues),
+    });
+    if (supports.includes("effective_dates")) Object.assign(normalized, {
+      valid_from: claim.evidence.valid_from,
+      valid_until: claim.evidence.valid_until,
+    });
+    return normalized;
+  }
+  throw new Error(`Unsupported evidence claim scope: ${scope}`);
+}
+
+function assertMarketEvidenceHash(claim) {
+  const evidence = claim?.evidence;
+  if (!evidence?.verified) {
+    if (evidence?.content_sha256 !== null) throw new Error("Unverified evidence must not carry a content hash");
+    return;
+  }
+  if (evidence.content_hash_kind !== "normalized_extracted_fields_v1") {
+    throw new Error(`Market claims require normalized evidence hash kind: ${evidence.content_hash_kind}`);
+  }
+  const actual = marketSha256Hex(canonicalMarketJson(normalizedMarketEvidenceClaim(claim)));
+  if (actual !== evidence.content_sha256) {
+    throw new Error(`Evidence hash mismatch for ${evidence.claim_scope}`);
+  }
+}
+
+function assertMarketEvidenceSupportedBySource(claim, sourcesByLinkId) {
+  const evidence = claim?.evidence;
+  if (!evidence?.verified) return;
+  const source = sourcesByLinkId.get(evidence.link_id);
+  if (!source) {
+    throw new Error(`Evidence source reference is missing: ${evidence.link_id}`);
+  }
+  const sourceSupports = new Set(source.supports || []);
+  for (const support of evidence.supports || []) {
+    if (!sourceSupports.has(support)) {
+      throw new Error(`Evidence source ${evidence.link_id} does not support ${support}`);
+    }
+  }
+}
+
+function assertMarketPromotionOffers(provider) {
+  const planIds = new Set((provider.plans || []).map((plan) => plan.plan_id));
+  const promotionsById = new Map();
+  const offersByKey = new Map();
+  for (const promotion of provider.promotions || []) {
+    if (promotionsById.has(promotion.promotion_id)) {
+      throw new Error(`Duplicate promotion ${promotion.promotion_id}`);
+    }
+    promotionsById.set(promotion.promotion_id, promotion);
+    for (const offer of promotion.offers || []) {
+      if (offer.promotion_id !== promotion.promotion_id) {
+        throw new Error(`Promotion offer mismatch for ${promotion.promotion_id}/${offer.plan_id}`);
+      }
+      if (!planIds.has(offer.plan_id)) {
+        throw new Error(`Promotion offer references unknown plan ${offer.plan_id}`);
+      }
+      const key = `${offer.promotion_id}\u0000${offer.plan_id}`;
+      if (offersByKey.has(key)) {
+        throw new Error(`Duplicate promotion offer for ${offer.promotion_id}/${offer.plan_id}`);
+      }
+      offersByKey.set(key, offer);
+    }
+  }
+  const matchedOfferKeys = new Set();
+  for (const plan of provider.plans || []) {
+    for (const price of plan.alt_prices || []) {
+      if (!price.promotion_id) continue;
+      const promotion = promotionsById.get(price.promotion_id);
+      if (!promotion) {
+        throw new Error(`Orphan promotion price ${price.promotion_id} for plan ${plan.plan_id}`);
+      }
+      const key = `${price.promotion_id}\u0000${plan.plan_id}`;
+      if (matchedOfferKeys.has(key)) {
+        throw new Error(`Duplicate promotion price for ${price.promotion_id}/${plan.plan_id}`);
+      }
+      const offer = offersByKey.get(key);
+      if (!offer
+        || offer.amount !== price.amount
+        || offer.currency !== price.currency
+        || offer.cycle !== price.cycle
+        || (offer.note ?? null) !== (price.note ?? null)) {
+        throw new Error(`Promotion offer mismatch for ${price.promotion_id}/${plan.plan_id}`);
+      }
+      matchedOfferKeys.add(key);
+    }
+  }
+  for (const [key, offer] of offersByKey) {
+    if (!matchedOfferKeys.has(key)) {
+      throw new Error(`Orphan promotion offer for ${offer.promotion_id}/${offer.plan_id}`);
+    }
+  }
+}
+
+function compareCanonicalMarketValues(left, right) {
+  const leftJson = canonicalMarketJson(left);
+  const rightJson = canonicalMarketJson(right);
+  if (leftJson < rightJson) return -1;
+  if (leftJson > rightJson) return 1;
+  return 0;
+}

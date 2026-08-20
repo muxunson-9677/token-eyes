@@ -128,6 +128,17 @@ function maskUrl(rawUrl) {
 }
 
 const OFFICIAL_CONSOLE_AUTH_TIMEOUT_MS = 120_000;
+const OFFICIAL_CONSOLE_TEST_RESULTS = Object.freeze({
+  reauth_required: { tone: "error", key: "settings.cost.provider_api.console_reauth_required", showWithConfirmedData: true },
+  temporary: { tone: "warn", key: "settings.cost.provider_api.console_temporary", showWithConfirmedData: true },
+  unsupported: { tone: "warn", key: "settings.cost.provider_api.console_unsupported", showWithConfirmedData: true },
+});
+
+function officialConsoleStateError(state) {
+  const error = new Error("Official console verification stopped");
+  error.officialConsoleState = state;
+  return error;
+}
 
 function officialConsoleAdapter(providerId) {
   if (providerId === "xiaomi_mimo") {
@@ -491,16 +502,21 @@ export function ProviderApiConfigSection({ onSummaryChange }) {
               connected = true;
               break;
             }
-            if (["reauth_required", "unsupported", "failed", "session_not_found"].includes(nativeResult?.state_code)) {
-              await verifyConsoleSession(created.session.id, nativeResult).catch(() => null);
-              throw new Error(nativeResult.error_message || nativeResult.error_code || "Console verification failed");
+            if (["reauth_required", "temporary", "unsupported", "failed", "session_not_found"].includes(nativeResult?.state_code)) {
+              await verifyConsoleSession(created.session.id, nativeResult);
+              if (Object.prototype.hasOwnProperty.call(OFFICIAL_CONSOLE_TEST_RESULTS, nativeResult.state_code)) {
+                throw officialConsoleStateError(nativeResult.state_code);
+              }
+              throw new Error("Console verification failed");
             }
             await waitForNextConsolePoll();
           }
           if (!connected) throw new Error("Official console authorization timed out");
         } catch (error) {
           await adapter.close(sessionRef).catch(() => null);
-          await deleteConsoleSession(created.session.id).catch(() => null);
+          if (!Object.prototype.hasOwnProperty.call(OFFICIAL_CONSOLE_TEST_RESULTS, error?.officialConsoleState)) {
+            await deleteConsoleSession(created.session.id).catch(() => null);
+          }
           throw error;
         }
       }
@@ -510,10 +526,15 @@ export function ProviderApiConfigSection({ onSummaryChange }) {
         ...prev,
         [config.id]: { ...(prev[config.id] || {}), testing: false, testResult: testResultFromBalance(balance) },
       }));
-    } catch {
+    } catch (error) {
+      const officialConsoleResult = OFFICIAL_CONSOLE_TEST_RESULTS[error?.officialConsoleState];
       setCardState((prev) => ({
         ...prev,
-        [config.id]: { ...(prev[config.id] || {}), testing: false, testResult: { tone: "error", key: "settings.cost.provider_api.test_unknown" } },
+        [config.id]: {
+          ...(prev[config.id] || {}),
+          testing: false,
+          testResult: officialConsoleResult || { tone: "error", key: "settings.cost.provider_api.test_unknown" },
+        },
       }));
     }
   };
@@ -661,7 +682,7 @@ function ProviderApiConfigCard({ config, state, balance, refreshing, onEdit, onD
   const currencyValue = hasConfirmedData && balance?.currency
     ? balance.currency
     : null;
-  const visibleTestResult = hasConfirmedData ? null : testResult;
+  const visibleTestResult = hasConfirmedData && !testResult?.showWithConfirmedData ? null : testResult;
   const guide = getProviderConfigurationGuide(config);
   const guideText = [
     `Provider: ${guide.provider}`,
@@ -881,7 +902,9 @@ function ProviderApiConfigForm({
 
       {usesOfficialConsole && (
         <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
-          {copy("settings.cost.provider_api.capability.official_console_hint")}
+          {copy(preview.providerId === "xiaomi_mimo"
+            ? "settings.cost.provider_api.capability.xiaomi_console_best_effort"
+            : "settings.cost.provider_api.capability.official_console_hint")}
         </div>
       )}
 

@@ -135,10 +135,10 @@ function buildDotRestoredModel(model) {
 
 function lookupExactCaseInsensitive(table, model) {
   if (!table || !model) return null;
-  if (table[model]) return table[model];
+  if (table[model]) return { key: model, value: table[model] };
   const lower = model.toLowerCase();
   for (const key of Object.keys(table)) {
-    if (key.toLowerCase() === lower) return table[key];
+    if (key.toLowerCase() === lower) return { key, value: table[key] };
   }
   return null;
 }
@@ -148,14 +148,32 @@ function lookupContainedExactCaseInsensitive(table, model) {
   const lower = model.toLowerCase();
   const keys = Object.keys(table).sort((a, b) => b.length - a.length);
   for (const key of keys) {
-    if (lower.includes(key.toLowerCase())) return table[key];
+    if (lower.includes(key.toLowerCase())) return { key, value: table[key] };
   }
   return null;
 }
 
+function pricingHit(source, value, matchedModel, matchKind, confidence) {
+  return {
+    hit: true,
+    source,
+    value,
+    matched_model: matchedModel,
+    match_kind: matchKind,
+    confidence,
+  };
+}
+
 function lookupPricing(model, { curated, litellm, source } = {}) {
   if (!model || typeof model !== "string") {
-    return { hit: false, source: "empty", value: null };
+    return {
+      hit: false,
+      source: "empty",
+      value: null,
+      matched_model: null,
+      match_kind: null,
+      confidence: null,
+    };
   }
   const normalize =
     typeof source === "string" ? SOURCE_MODEL_NORMALIZERS[source.toLowerCase()] : null;
@@ -165,33 +183,66 @@ function lookupPricing(model, { curated, litellm, source } = {}) {
 
   // 1. CURATED exact
   if (curated.exact && curated.exact[lookupModel]) {
-    return { hit: true, source: "curated:exact", value: curated.exact[lookupModel] };
+    return pricingHit(
+      "curated:exact",
+      curated.exact[lookupModel],
+      lookupModel,
+      lookupModel === model ? "exact" : "normalized",
+      "high",
+    );
   }
   const curatedDotExact = lookupExactCaseInsensitive(curated.exact, dotForm);
   if (curatedDotExact) {
-    return { hit: true, source: "curated:exact-dot", value: curatedDotExact };
+    return pricingHit(
+      "curated:exact-dot",
+      curatedDotExact.value,
+      curatedDotExact.key,
+      "normalized",
+      "medium",
+    );
   }
   const curatedDotContainedExact = lookupContainedExactCaseInsensitive(curated.exact, dotForm);
   if (curatedDotContainedExact) {
-    return { hit: true, source: "curated:exact-dot", value: curatedDotContainedExact };
+    return pricingHit(
+      "curated:exact-dot",
+      curatedDotContainedExact.value,
+      curatedDotContainedExact.key,
+      "inferred",
+      "low",
+    );
   }
 
   // 2. LiteLLM exact
   if (litellm && litellm[lookupModel]) {
-    return { hit: true, source: "litellm:exact", value: litellm[lookupModel] };
+    return pricingHit(
+      "litellm:exact",
+      litellm[lookupModel],
+      lookupModel,
+      lookupModel === model ? "exact" : "normalized",
+      "high",
+    );
   }
   const litellmDotExact = lookupExactCaseInsensitive(litellm, dotForm);
   if (litellmDotExact) {
-    return { hit: true, source: "litellm:exact-dot", value: litellmDotExact };
+    return pricingHit(
+      "litellm:exact-dot",
+      litellmDotExact.value,
+      litellmDotExact.key,
+      "normalized",
+      "medium",
+    );
   }
 
   // 3. CURATED alias (literal mapping like "auto" -> "composer-1")
   if (curated.alias && curated.alias[lookupModel] && curated.exact[curated.alias[lookupModel]]) {
-    return {
-      hit: true,
-      source: "curated:alias",
-      value: curated.exact[curated.alias[lookupModel]],
-    };
+    const matchedModel = curated.alias[lookupModel];
+    return pricingHit(
+      "curated:alias",
+      curated.exact[matchedModel],
+      matchedModel,
+      "alias",
+      "medium",
+    );
   }
 
   // 4. CURATED fuzzy substring. Also try a dot-restored variant of the input
@@ -207,10 +258,10 @@ function lookupPricing(model, { curated, litellm, source } = {}) {
       const needle = match.toLowerCase();
       if (!curated.exact[ref]) continue;
       if (lower.includes(needle)) {
-        return { hit: true, source: "curated:fuzzy", value: curated.exact[ref] };
+        return pricingHit("curated:fuzzy", curated.exact[ref], ref, "inferred", "low");
       }
       if (dotForm && dotForm.includes(needle)) {
-        return { hit: true, source: "curated:fuzzy", value: curated.exact[ref] };
+        return pricingHit("curated:fuzzy", curated.exact[ref], ref, "inferred", "low");
       }
     }
   }
@@ -219,7 +270,7 @@ function lookupPricing(model, { curated, litellm, source } = {}) {
   if (litellm) {
     const stripped = stripReasoningSuffix(lookupModel);
     if (stripped !== lookupModel && litellm[stripped]) {
-      return { hit: true, source: "litellm:strip", value: litellm[stripped] };
+      return pricingHit("litellm:strip", litellm[stripped], stripped, "inferred", "medium");
     }
   }
 
@@ -239,7 +290,9 @@ function lookupPricing(model, { curated, litellm, source } = {}) {
         if (best === null || key < best) best = key;
       }
     }
-    if (best) return { hit: true, source: "litellm:prefix-strip", value: litellm[best] };
+    if (best) {
+      return pricingHit("litellm:prefix-strip", litellm[best], best, "inferred", "low");
+    }
   }
 
   // 6. LiteLLM reverse substring (longest-key first)
@@ -250,12 +303,19 @@ function lookupPricing(model, { curated, litellm, source } = {}) {
       // Only accept if model is a superset of key (model contains key), to
       // avoid e.g. "gpt-5" matching "gpt-5-pro" in the wrong direction.
       if (lower.includes(keyLower) || (dotForm && dotForm.includes(keyLower))) {
-        return { hit: true, source: "litellm:fuzzy", value: litellm[key] };
+        return pricingHit("litellm:fuzzy", litellm[key], key, "inferred", "low");
       }
     }
   }
 
-  return { hit: false, source: "miss", value: null };
+  return {
+    hit: false,
+    source: "miss",
+    value: null,
+    matched_model: null,
+    match_kind: null,
+    confidence: null,
+  };
 }
 
 // Convert one LiteLLM entry (per-token) to internal per-million USD shape.

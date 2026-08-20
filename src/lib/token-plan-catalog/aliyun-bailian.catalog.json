@@ -1,15 +1,22 @@
 {
   "provider_id": "aliyun_bailian",
   "provider_name": "阿里云百炼",
-  "official_site": "https://bailian.console.aliyun.com/",
   "catalog_version": "2026-07-07",
-  "evidence": [
-    {
-      "url": "https://bailian.console.aliyun.com/",
-      "title": "阿里云百炼控制台",
-      "accessed_at": "2026-07-07"
-    }
-  ],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "provider-home-aliyun-bailian",
+    "supports": [
+      "provider_identity"
+    ],
+    "verified": true,
+    "verified_at": "2026-07-07",
+    "fetched_at": "2026-07-07",
+    "content_sha256": "29437475f8afef3a578653e6ca6f52e9a5f1820ad766cfd1ad02c843c27cdfaa",
+    "content_hash_kind": "normalized_extracted_fields_v1",
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
+  },
   "plans": [
     {
       "plan_id": "aliyun_bailian_manual_quota",
@@ -23,7 +30,21 @@
       "expires": {
         "kind": "manual"
       },
-      "official_evidence_url": "https://bailian.console.aliyun.com/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "provider-home-aliyun-bailian",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-07",
+        "fetched_at": "2026-07-07",
+        "content_sha256": "6053643ba544e100068ae98d1bd841a6400f11235464dde9bf92feee8644f3a7",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "aliyun_bailian_pay_as_you_go_budget",
@@ -37,14 +58,43 @@
       "expires": {
         "kind": "manual"
       },
-      "official_evidence_url": "https://bailian.console.aliyun.com/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "provider-home-aliyun-bailian",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-07",
+        "fetched_at": "2026-07-07",
+        "content_sha256": "92abbe677c52922e2e6d8454ebbd69e39c743333eeca055e7dd6f626249e7aa5",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
     "official_quota_api": true,
     "authorization": "coding_plan_subscription_key",
     "usage_endpoint_documented": true,
-    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "fields_available": [
+      "rolling_5_hour",
+      "rolling_weekly"
+    ],
     "notes": "Coding Plan 额度来自百炼控制台 queryCodingPlanInstanceInfoV2；按量预算无公开余额 API。"
-  }
+  },
+  "official_site_link_id": "provider-home-aliyun-bailian",
+  "sources": [
+    {
+      "label": "阿里云百炼控制台",
+      "link_id": "provider-home-aliyun-bailian",
+      "supports": [
+        "provider_identity",
+        "plan_identity",
+        "account_access"
+      ]
+    }
+  ]
 }

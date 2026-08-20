@@ -36,7 +36,12 @@ const DEFAULT_EVIDENCE = {
   is_stale: false,
   pricing_source: null,
   pricing_version: null,
+  source_url: null,
+  estimated: false,
+  match_kind: null,
+  matched_model: null,
   note_code: null,
+  components: [],
 };
 
 describe("identity salt", () => {

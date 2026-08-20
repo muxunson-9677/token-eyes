@@ -1,0 +1,337 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "updated_at": "2026-08-20"
+  },
+  "links": [
+    {
+      "link_id": "catalog-claude-code-overview",
+      "source_type": "official_document",
+      "url": "https://docs.anthropic.com/en/docs/claude-code/overview",
+      "allowed_hosts": ["docs.anthropic.com"],
+      "expected_final": { "url": "https://docs.anthropic.com/en/docs/claude-code/overview", "path": "/en/docs/claude-code/overview" }
+    },
+    {
+      "link_id": "catalog-claude-console",
+      "source_type": "official_console",
+      "url": "https://console.anthropic.com/",
+      "allowed_hosts": ["console.anthropic.com"],
+      "expected_final": { "url": "https://console.anthropic.com/", "path": "/" }
+    },
+    {
+      "link_id": "catalog-codex-github",
+      "source_type": "official_repository",
+      "url": "https://github.com/openai/codex",
+      "allowed_hosts": ["github.com"],
+      "expected_final": { "url": "https://github.com/openai/codex", "path": "/openai/codex" }
+    },
+    {
+      "link_id": "catalog-codex-pricing",
+      "source_type": "official_pricing",
+      "url": "https://chatgpt.com/codex/pricing/",
+      "allowed_hosts": ["chatgpt.com"],
+      "expected_final": { "url": "https://chatgpt.com/codex/pricing/", "path": "/codex/pricing/" }
+    },
+    {
+      "link_id": "catalog-cursor-home",
+      "source_type": "official_product",
+      "url": "https://www.cursor.com/",
+      "allowed_hosts": ["www.cursor.com", "cursor.com"],
+      "expected_final": { "url": "https://cursor.com/", "path": "/" }
+    },
+    {
+      "link_id": "catalog-glm-overview-markdown",
+      "source_type": "official_document",
+      "url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+      "allowed_hosts": ["docs.bigmodel.cn"],
+      "expected_final": { "url": "https://docs.bigmodel.cn/cn/coding-plan/overview.md", "path": "/cn/coding-plan/overview.md" }
+    },
+    {
+      "link_id": "catalog-kimi-platform",
+      "source_type": "official_console",
+      "url": "https://platform.moonshot.cn/",
+      "allowed_hosts": ["platform.moonshot.cn", "platform.kimi.com"],
+      "expected_final": { "url": "https://platform.kimi.com/", "path": "/" }
+    },
+    {
+      "link_id": "catalog-minimax-platform",
+      "source_type": "official_console",
+      "url": "https://platform.minimaxi.com/",
+      "allowed_hosts": ["platform.minimaxi.com"],
+      "expected_final": { "url": "https://platform.minimaxi.com/", "path": "/" }
+    },
+    {
+      "link_id": "catalog-xiaomi-mimo-docs",
+      "source_type": "official_document",
+      "url": "https://mimo.mi.com/docs/",
+      "allowed_hosts": ["mimo.mi.com"],
+      "expected_final": { "url": "https://mimo.mi.com/docs/", "path": "/docs/" }
+    },
+    {
+      "link_id": "catalog-xiaomi-mimo-quick-start",
+      "source_type": "official_document",
+      "url": "https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call",
+      "allowed_hosts": ["mimo.mi.com"],
+      "expected_final": { "url": "https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call", "path": "/docs/zh-CN/quick-start/summary/first-api-call" }
+    },
+    {
+      "link_id": "catalog-xiaomi-mimo-rate-limit",
+      "source_type": "official_document",
+      "url": "https://mimo.mi.com/docs/zh-CN/api/guidance/rate-limit",
+      "allowed_hosts": ["mimo.mi.com"],
+      "expected_final": { "url": "https://mimo.mi.com/docs/zh-CN/api/guidance/rate-limit", "path": "/docs/zh-CN/api/guidance/rate-limit" }
+    },
+    {
+      "link_id": "catalog-xiaomi-mimo-token-plan",
+      "source_type": "official_document",
+      "url": "https://mimo.mi.com/docs/zh-CN/price/token-plan",
+      "allowed_hosts": ["mimo.mi.com"],
+      "expected_final": { "url": "https://mimo.mi.com/docs/zh-CN/price/token-plan", "path": "/docs/zh-CN/price/token-plan" }
+    },
+    {
+      "link_id": "catalog-zcode-home",
+      "source_type": "official_product",
+      "url": "https://zcode.z.ai/",
+      "allowed_hosts": ["zcode.z.ai"],
+      "expected_final": { "url": "https://zcode.z.ai/", "path": "/" }
+    },
+    {
+      "link_id": "market-aliyun-bailian-help",
+      "source_type": "official_document",
+      "url": "https://help.aliyun.com/zh/model-studio/coding-plan",
+      "allowed_hosts": ["help.aliyun.com"],
+      "expected_final": { "url": "https://help.aliyun.com/zh/model-studio/coding-plan", "path": "/zh/model-studio/coding-plan" }
+    },
+    {
+      "link_id": "market-antigravity-plan-changes",
+      "source_type": "official_announcement",
+      "url": "https://antigravity.google/blog/changes-to-antigravity-plans",
+      "allowed_hosts": ["antigravity.google"],
+      "expected_final": { "url": "https://antigravity.google/blog/changes-to-antigravity-plans", "path": "/blog/changes-to-antigravity-plans" }
+    },
+    {
+      "link_id": "market-antigravity-pricing",
+      "source_type": "official_pricing",
+      "url": "https://antigravity.google/pricing",
+      "allowed_hosts": ["antigravity.google"],
+      "expected_final": { "url": "https://antigravity.google/pricing", "path": "/pricing" }
+    },
+    {
+      "link_id": "market-claude-code-plan",
+      "source_type": "official_document",
+      "url": "https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan",
+      "allowed_hosts": ["support.claude.com"],
+      "expected_final": { "url": "https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan", "path": "/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan" }
+    },
+    {
+      "link_id": "market-claude-max-plan",
+      "source_type": "official_document",
+      "url": "https://support.claude.com/en/articles/11049741-what-is-the-max-plan",
+      "allowed_hosts": ["support.claude.com"],
+      "expected_final": { "url": "https://support.claude.com/en/articles/11049741-what-is-the-max-plan", "path": "/en/articles/11049741-what-is-the-max-plan" }
+    },
+    {
+      "link_id": "market-claude-pricing",
+      "source_type": "official_pricing",
+      "url": "https://claude.com/pricing",
+      "allowed_hosts": ["claude.com"],
+      "expected_final": { "url": "https://claude.com/pricing", "path": "/pricing" }
+    },
+    {
+      "link_id": "market-cursor-pricing",
+      "source_type": "official_pricing",
+      "url": "https://www.cursor.com/pricing",
+      "allowed_hosts": ["www.cursor.com", "cursor.com"],
+      "expected_final": { "url": "https://cursor.com/pricing", "path": "/pricing" }
+    },
+    {
+      "link_id": "market-glm-overview",
+      "source_type": "official_document",
+      "url": "https://docs.bigmodel.cn/cn/coding-plan/overview",
+      "allowed_hosts": ["docs.bigmodel.cn"],
+      "expected_final": { "url": "https://docs.bigmodel.cn/cn/coding-plan/overview", "path": "/cn/coding-plan/overview" }
+    },
+    {
+      "link_id": "market-glm-subscription",
+      "source_type": "official_pricing",
+      "url": "https://bigmodel.cn/glm-coding",
+      "allowed_hosts": ["bigmodel.cn", "www.bigmodel.cn"],
+      "expected_final": { "url": "https://bigmodel.cn/glm-coding", "path": "/glm-coding" }
+    },
+    {
+      "link_id": "market-glm-usage-revision",
+      "source_type": "official_announcement",
+      "url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision",
+      "allowed_hosts": ["docs.bigmodel.cn"],
+      "expected_final": { "url": "https://docs.bigmodel.cn/cn/coding-plan/notice/usage-revision", "path": "/cn/coding-plan/notice/usage-revision" }
+    },
+    {
+      "link_id": "market-google-ai-plans",
+      "source_type": "official_pricing",
+      "url": "https://one.google.com/about/google-ai-plans/",
+      "allowed_hosts": ["one.google.com"],
+      "expected_final": { "url": "https://one.google.com/about/google-ai-plans/", "path": "/about/google-ai-plans/" }
+    },
+    {
+      "link_id": "market-grok-faq",
+      "source_type": "official_document",
+      "url": "https://docs.x.ai/grok/faq",
+      "allowed_hosts": ["docs.x.ai"],
+      "expected_final": { "url": "https://docs.x.ai/grok/faq", "path": "/grok/faq" }
+    },
+    {
+      "link_id": "market-grok-pricing",
+      "source_type": "official_pricing",
+      "url": "https://x.ai/pricing",
+      "allowed_hosts": ["x.ai"],
+      "expected_final": { "url": "https://x.ai/pricing", "path": "/pricing" }
+    },
+    {
+      "link_id": "market-kimi-membership-overview",
+      "source_type": "official_document",
+      "url": "https://www.kimi.com/zh-cn/help/membership/membership-overview",
+      "allowed_hosts": ["www.kimi.com"],
+      "expected_final": { "url": "https://www.kimi.com/help/membership/membership-overview", "path": "/help/membership/membership-overview" }
+    },
+    {
+      "link_id": "market-kimi-membership-pricing",
+      "source_type": "official_pricing",
+      "url": "https://www.kimi.com/zh-cn/help/membership/membership-pricing",
+      "allowed_hosts": ["www.kimi.com"],
+      "expected_final": { "url": "https://www.kimi.com/help/membership/membership-pricing", "path": "/help/membership/membership-pricing" }
+    },
+    {
+      "link_id": "market-microsoft-copilot-pricing",
+      "source_type": "official_pricing",
+      "url": "https://www.microsoft.com/microsoft-copilot/for-individuals",
+      "allowed_hosts": ["www.microsoft.com"],
+      "expected_final": { "url": "https://www.microsoft.com/microsoft-copilot/for-individuals", "path": "/microsoft-copilot/for-individuals" }
+    },
+    {
+      "link_id": "market-openai-chatgpt-go",
+      "source_type": "official_announcement",
+      "url": "https://openai.com/index/introducing-chatgpt-go/",
+      "allowed_hosts": ["openai.com"],
+      "expected_final": { "url": "https://openai.com/index/introducing-chatgpt-go/", "path": "/index/introducing-chatgpt-go/" }
+    },
+    {
+      "link_id": "market-openai-chatgpt-pricing",
+      "source_type": "official_pricing",
+      "url": "https://openai.com/chatgpt/pricing",
+      "allowed_hosts": ["openai.com", "chatgpt.com"],
+      "expected_final": { "url": "https://chatgpt.com/pricing/", "path": "/pricing/" }
+    },
+    {
+      "link_id": "market-qwen-cloud-overview",
+      "source_type": "official_document",
+      "url": "https://docs.qwencloud.com/coding-plan/overview",
+      "allowed_hosts": ["docs.qwencloud.com"],
+      "expected_final": { "url": "https://docs.qwencloud.com/coding-plan/overview", "path": "/coding-plan/overview" }
+    },
+    {
+      "link_id": "market-volcengine-newyear-referral",
+      "source_type": "official_announcement",
+      "url": "https://www.volcengine.com/activity/newyear-referral",
+      "allowed_hosts": ["www.volcengine.com", "ai.volcengine.com"],
+      "expected_final": { "url": "https://www.volcengine.com/activity/newyear-referral", "path": "/activity/newyear-referral" }
+    },
+    {
+      "link_id": "market-xiaomi-mimo-release",
+      "source_type": "official_announcement",
+      "url": "https://mimo.mi.com/docs/zh-CN/news/latest/token-plan-release",
+      "allowed_hosts": ["mimo.mi.com"],
+      "expected_final": { "url": "https://mimo.mi.com/docs/zh-CN/news/latest/token-plan-release", "path": "/docs/zh-CN/news/latest/token-plan-release" }
+    },
+    {
+      "link_id": "market-xiaomi-mimo-subscription",
+      "source_type": "official_pricing",
+      "url": "https://mimo.mi.com/docs/zh-CN/price/tokenplan/subscription",
+      "allowed_hosts": ["mimo.mi.com"],
+      "expected_final": { "url": "https://mimo.mi.com/docs/zh-CN/price/tokenplan/subscription", "path": "/docs/zh-CN/price/tokenplan/subscription" }
+    },
+    {
+      "link_id": "provider-home-aliyun-bailian",
+      "source_type": "official_console",
+      "url": "https://bailian.console.aliyun.com/",
+      "allowed_hosts": ["bailian.console.aliyun.com"],
+      "expected_final": { "url": "https://bailian.console.aliyun.com/", "path": "/" }
+    },
+    {
+      "link_id": "provider-home-aliyun-bailian-plan",
+      "source_type": "official_console",
+      "url": "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan",
+      "allowed_hosts": ["bailian.console.aliyun.com"],
+      "expected_final": { "url": "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan", "path": "/cn-beijing/" }
+    },
+    {
+      "link_id": "provider-home-claude-billing",
+      "source_type": "official_console",
+      "url": "https://console.anthropic.com/settings/billing",
+      "allowed_hosts": ["console.anthropic.com", "platform.claude.com"],
+      "expected_final": { "url": "https://platform.claude.com/settings/billing", "path": "/settings/billing" }
+    },
+    {
+      "link_id": "provider-home-codex",
+      "source_type": "official_product",
+      "url": "https://chatgpt.com/codex",
+      "allowed_hosts": ["chatgpt.com"],
+      "expected_final": { "url": "https://chatgpt.com/codex/", "path": "/codex/" }
+    },
+    {
+      "link_id": "provider-home-cursor-settings",
+      "source_type": "official_console",
+      "url": "https://www.cursor.com/settings",
+      "allowed_hosts": ["www.cursor.com", "cursor.com", "authenticator.cursor.sh"],
+      "expected_final": { "url": "https://cursor.com/settings", "path": "/settings" }
+    },
+    {
+      "link_id": "provider-home-glm-usage",
+      "source_type": "official_console",
+      "url": "https://www.bigmodel.cn/coding-plan/personal/usage",
+      "allowed_hosts": ["www.bigmodel.cn", "bigmodel.cn"],
+      "expected_final": { "url": "https://www.bigmodel.cn/coding-plan/personal/usage", "path": "/coding-plan/personal/usage" }
+    },
+    {
+      "link_id": "provider-home-kimi-api",
+      "source_type": "official_console",
+      "url": "https://platform.moonshot.cn/console/account",
+      "allowed_hosts": ["platform.moonshot.cn", "platform.kimi.com"],
+      "expected_final": { "url": "https://platform.kimi.com/console/account", "path": "/console/account" }
+    },
+    {
+      "link_id": "provider-home-kimi-code",
+      "source_type": "official_product",
+      "url": "https://www.kimi.com/code",
+      "allowed_hosts": ["www.kimi.com"],
+      "expected_final": { "url": "https://www.kimi.com/code", "path": "/code" }
+    },
+    {
+      "link_id": "provider-home-minimax-account",
+      "source_type": "official_console",
+      "url": "https://platform.minimaxi.com/user-center/basic-information",
+      "allowed_hosts": ["platform.minimaxi.com"],
+      "expected_final": { "url": "https://platform.minimaxi.com/console/personal-info", "path": "/console/personal-info" }
+    },
+    {
+      "link_id": "provider-home-trae",
+      "source_type": "official_product",
+      "url": "https://www.trae.cn/",
+      "allowed_hosts": ["www.trae.cn"],
+      "expected_final": { "url": "https://www.trae.cn/", "path": "/" }
+    },
+    {
+      "link_id": "provider-home-xiaomi-mimo",
+      "source_type": "official_console",
+      "url": "https://platform.xiaomimimo.com/token-plan",
+      "allowed_hosts": ["platform.xiaomimimo.com"],
+      "expected_final": { "url": "https://platform.xiaomimimo.com/token-plan", "path": "/token-plan" }
+    },
+    {
+      "link_id": "third-party-opentherank-ai-pricing",
+      "source_type": "third_party_comparison",
+      "url": "https://opentherank.com/zh/ai-pricing/",
+      "allowed_hosts": ["opentherank.com"],
+      "expected_final": { "url": "https://opentherank.com/zh/ai-pricing/", "path": "/zh/ai-pricing/" }
+    }
+  ]
+}

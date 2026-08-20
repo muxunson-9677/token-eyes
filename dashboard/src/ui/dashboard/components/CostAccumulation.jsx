@@ -147,6 +147,61 @@ function formatFinancialValue(value, currency, formatter = formatAmount) {
   return formatter(value, currency);
 }
 
+function pricingKindKey(sourceKind) {
+  const normalized = sourceKind === "official" ? "official_api" : sourceKind;
+  return ["official_api", "curated", "third_party", "user_override", "mixed", "unpriced"]
+    .includes(normalized)
+    ? `pricing.provenance.${normalized}`
+    : null;
+}
+
+function pricingProvenanceLabels(evidence) {
+  const labels = [];
+  const add = (key) => {
+    if (key && !labels.includes(key)) labels.push(key);
+  };
+  add(pricingKindKey(evidence?.source_kind));
+  if (evidence?.source_kind === "mixed" && Array.isArray(evidence.pricing_components)) {
+    for (const component of evidence.pricing_components) {
+      add(pricingKindKey(component?.source_kind));
+      if (component?.match_kind === "inferred") add("pricing.provenance.inferred");
+      if (component?.estimated) add("pricing.provenance.estimated");
+      if (component?.is_stale) add("pricing.provenance.stale");
+    }
+  }
+  if (evidence?.match_kind === "inferred") add("pricing.provenance.inferred");
+  if (evidence?.estimated) add("pricing.provenance.estimated");
+  if (evidence?.is_stale) add("pricing.provenance.stale");
+  if (evidence?.pricing_coverage === "unpriced") add("pricing.provenance.unpriced");
+  return labels;
+}
+
+function PricingProvenance({ evidence, testId, className = "" }) {
+  const labels = pricingProvenanceLabels(evidence);
+  if (labels.length === 0) return null;
+  const unavailable = copy("ticket06.metric.unavailable");
+  return (
+    <div
+      className={cn("flex flex-wrap gap-1 text-xs", className)}
+      data-testid={testId}
+      title={copy("pricing.provenance.tooltip", {
+        source: evidence?.source_url || evidence?.pricing_source || evidence?.source_kind || unavailable,
+        model: evidence?.matched_model || unavailable,
+        updated: evidence?.source_updated_at || unavailable,
+      })}
+    >
+      {labels.map((key) => (
+        <span
+          key={key}
+          className="inline-flex rounded-full bg-oai-gray-100 px-2 py-0.5 text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300"
+        >
+          {copy(key)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function formatSelectedMonth(monthKey) {
   const [year, month] = String(monthKey || "").split("-").map(Number);
   if (!year || !month) return "";
@@ -302,6 +357,11 @@ function CostSummaryCards({
         <Info className="mr-3 h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
         {copy("spend.cost.summary.scope_note")}
       </p>
+      <PricingProvenance
+        evidence={summary}
+        testId="cost-pricing-provenance-summary"
+        className="mb-3"
+      />
       <div className="grid gap-2 sm:grid-cols-2">
       {hasActualCash ? <SummaryCard
         id="actual-cash"
@@ -972,6 +1032,11 @@ function ApiBillingCard({ account }) {
               <span>{copy("spend.cost.api_billing.last_synced")}: {account.lastSyncedAt}</span>
             )}
           </div>
+          <PricingProvenance
+            evidence={account}
+            testId={`cost-pricing-provenance-row-${account.id}`}
+            className="mt-1"
+          />
           {account.errorCode === "official_invoice_ambiguous" ? (
             <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
               {copy("spend.cost.api_billing.ambiguous_config", { count: account.candidateCount || 2 })}

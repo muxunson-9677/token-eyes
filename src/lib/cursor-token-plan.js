@@ -5,7 +5,6 @@ const {
   fetchCursorUsageSummary,
   isCursorInstalled,
 } = require("./cursor-config");
-const { normalizeCursorUsageSummary } = require("./usage-limits");
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const PERCENT_SCALE = 100;
@@ -39,36 +38,109 @@ function parseResetAt(raw) {
   return Number.isFinite(ts) && ts > 0 ? new Date(ts).toISOString() : "";
 }
 
-function percentWindowToQuotaWindow(window, kind) {
-  const usedPercent = Number(window?.used_percent);
-  if (!Number.isFinite(usedPercent)) return null;
-  const used = Math.round(Math.max(0, Math.min(PERCENT_SCALE, usedPercent)));
+function clampPercent(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.min(PERCENT_SCALE, number));
+}
+
+function cursorPercentFromUsedLimit(usedRaw, limitRaw) {
+  if (usedRaw === null || usedRaw === undefined || limitRaw === null || limitRaw === undefined
+    || (typeof usedRaw === "string" && !usedRaw.trim())
+    || (typeof limitRaw === "string" && !limitRaw.trim())) return null;
+  const used = Number(usedRaw);
+  const limit = Number(limitRaw);
+  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
+  return clampPercent((used / limit) * PERCENT_SCALE);
+}
+
+function buildUsageWindow(usedPercent, resetAt) {
+  const percent = clampPercent(usedPercent);
+  if (percent === null) return null;
+  return {
+    used_percent: percent,
+    reset_at: typeof resetAt === "string" && resetAt ? resetAt : null,
+  };
+}
+
+function quotaWindow({ usedPercent, resetAt, laneId, kind }) {
+  const used = clampPercent(usedPercent);
+  if (used === null) return null;
   return {
     kind,
-    unit: "tokens",
+    lane_id: laneId,
+    unit: "percent",
     total: PERCENT_SCALE,
     used,
-    remaining: Math.max(0, PERCENT_SCALE - used),
+    remaining: PERCENT_SCALE - used,
     percentage: used,
-    resets_at: parseResetAt(window.reset_at),
+    resets_at: parseResetAt(resetAt),
+  };
+}
+
+function normalizeCursorUsageSummary(body) {
+  const individualUsage = body?.individualUsage && typeof body.individualUsage === "object"
+    ? body.individualUsage
+    : {};
+  const plan = individualUsage.plan && typeof individualUsage.plan === "object"
+    ? individualUsage.plan
+    : (body?.planUsage && typeof body.planUsage === "object" ? body.planUsage : individualUsage);
+  const teamOnDemand = body?.teamUsage?.onDemand && typeof body.teamUsage.onDemand === "object"
+    ? body.teamUsage.onDemand
+    : null;
+  const billingCycleEnd = typeof body?.billingCycleEnd === "string" ? body.billingCycleEnd : null;
+  const membershipType = typeof body?.membershipType === "string" ? body.membershipType : "";
+  const autoPercent = clampPercent(plan?.autoPercentUsed ?? plan?.auto_percent_used);
+  const apiPercent = clampPercent(plan?.apiPercentUsed ?? plan?.api_percent_used);
+  const explicitOverall = clampPercent(plan?.totalPercentUsed ?? plan?.total_percent_used);
+  const semanticPlanTotal = cursorPercentFromUsedLimit(
+    plan?.used ?? plan?.totalSpend ?? plan?.total_spend,
+    plan?.limit,
+  );
+  const teamTotal = cursorPercentFromUsedLimit(teamOnDemand?.used, teamOnDemand?.limit);
+  const overallPercent = explicitOverall ?? semanticPlanTotal;
+  const headlineLaneId = overallPercent === null ? null : "overall";
+
+  const quotaWindows = [
+    quotaWindow({ usedPercent: overallPercent, resetAt: billingCycleEnd, laneId: "overall", kind: "total" }),
+    quotaWindow({ usedPercent: autoPercent, resetAt: billingCycleEnd, laneId: "auto", kind: "auto_composer" }),
+    quotaWindow({ usedPercent: apiPercent, resetAt: billingCycleEnd, laneId: "api", kind: "api" }),
+    quotaWindow({ usedPercent: teamTotal, resetAt: billingCycleEnd, laneId: "team_pool", kind: "team_pool" }),
+  ].filter(Boolean);
+
+  return {
+    membership_type: membershipType || null,
+    headline_lane_id: headlineLaneId,
+    primary_window: buildUsageWindow(overallPercent, billingCycleEnd),
+    secondary_window: buildUsageWindow(autoPercent, billingCycleEnd),
+    tertiary_window: buildUsageWindow(apiPercent, billingCycleEnd),
+    team_pool_window: buildUsageWindow(teamTotal, billingCycleEnd),
+    quota_windows: quotaWindows,
   };
 }
 
 function parseCursorUsageBody(body) {
   const normalized = normalizeCursorUsageSummary(body);
-  const weekly = percentWindowToQuotaWindow(normalized.primary_window, "rolling_weekly");
-  const quotaWindows = [weekly].filter(Boolean);
+  const quotaWindows = normalized.quota_windows;
   if (quotaWindows.length === 0) {
     throw new CursorTokenPlanError("CURSOR_NO_QUOTA_WINDOWS", "Cursor usage windows are missing");
   }
-  const primary = quotaWindows[0];
-  return {
+  const headline = normalized.headline_lane_id
+    ? quotaWindows.find((window) => window.lane_id === normalized.headline_lane_id)
+    : null;
+  const result = {
     quota_windows: quotaWindows,
-    total_quota: primary.total,
-    used_quota: primary.used,
-    remaining_quota: primary.remaining,
     membership_type: normalized.membership_type || "",
   };
+  if (headline) {
+    result.total_quota = headline.total;
+    result.used_quota = headline.used;
+    result.remaining_quota = headline.remaining;
+    result.quota_unit = "percent";
+  }
+  return result;
 }
 
 async function fetchCursorQuota({ home, platform, env, fetchImpl = globalThis.fetch } = {}) {
@@ -118,6 +190,7 @@ function createCursorProviderAdapter({ fetchImpl = globalThis.fetch, home, platf
 module.exports = {
   CursorTokenPlanError,
   mapCursorErrorCode,
+  normalizeCursorUsageSummary,
   parseCursorUsageBody,
   fetchCursorQuota,
   createCursorProviderAdapter,

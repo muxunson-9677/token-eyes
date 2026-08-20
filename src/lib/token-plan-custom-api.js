@@ -14,8 +14,13 @@
  * result, never mutates records directly.
  */
 
-const https = require("node:https");
-const http = require("node:http");
+const {
+  safeOutboundRequest,
+  readLimitedResponseBody,
+  redactSecrets,
+} = require("./safe-outbound-request");
+
+const MAX_CUSTOM_API_RESPONSE_BYTES = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // JSON Path extractor (minimal, spec-compliant for W03-R3C).
@@ -88,6 +93,7 @@ const ERROR_CODES = {
   CUSTOM_API_AUTH_EXPIRED: "CUSTOM_API_AUTH_EXPIRED",
   CUSTOM_API_NETWORK_ERROR: "CUSTOM_API_NETWORK_ERROR",
   CUSTOM_API_CONFIG_INVALID: "CUSTOM_API_CONFIG_INVALID",
+  PROVIDER_SNAPSHOT_INVALID: "PROVIDER_SNAPSHOT_INVALID",
 };
 
 // ---------------------------------------------------------------------------
@@ -193,11 +199,11 @@ async function detectCustomApi(config, options = {}) {
   // Perform HTTP request
   let responseBody;
   try {
-    responseBody = await httpRequest(requestUrl, method, apiKey);
+    responseBody = await httpRequest(requestUrl, method, apiKey, options);
   } catch (err) {
     const msg = err?.message || String(err);
     // Do NOT include the API key in error messages
-    const sanitizedMsg = sanitizeErrorMessage(msg);
+    const sanitizedMsg = sanitizeErrorMessage(msg, [apiKey]);
     const statusCode = err?.statusCode || 0;
 
     if (statusCode === 401 || statusCode === 403) {
@@ -205,6 +211,19 @@ async function detectCustomApi(config, options = {}) {
         sync_status: "reauth_required",
         last_error_code: ERROR_CODES.CUSTOM_API_AUTH_EXPIRED,
         last_error_message: `自定义 API 授权失败（HTTP ${statusCode}），请更新 API Key`,
+        total_quota: null,
+        used_quota: null,
+        remaining_quota: null,
+        expires_at: "",
+        provider_reported_at: now,
+      };
+    }
+
+    if (err?.code === "unsafe_outbound_url" || err?.code === "unsafe_outbound_address") {
+      return {
+        sync_status: "failed",
+        last_error_code: ERROR_CODES.CUSTOM_API_CONFIG_INVALID,
+        last_error_message: `自定义 API 配置无效：${sanitizedMsg}`,
         total_quota: null,
         used_quota: null,
         remaining_quota: null,
@@ -265,8 +284,9 @@ async function detectCustomApi(config, options = {}) {
     total_quota: result.total_quota,
     used_quota: result.used_quota,
     remaining_quota: result.remaining_quota,
-    expires_at: result.expires_at || "",
+    expires_at: result.expires_at,
     provider_reported_at: now,
+    provider_reported_fields: result.provider_reported_fields,
     quota_source: "custom_api",
   };
 }
@@ -300,6 +320,20 @@ function parseResponseWithMapping(data, mapping, apiFormat) {
   const usedQuota = parseQuotaValue(usedRaw);
   const remainingQuota = parseQuotaValue(remainingRaw);
 
+  const invalidQuotaField = [
+    [totalPath, totalRaw, totalQuota],
+    [usedPath, usedRaw, usedQuota],
+    [remainingPath, remainingRaw, remainingQuota],
+  ].some(([path, raw, parsed]) => (
+    path && raw !== undefined && raw !== null && parsed === null
+  ));
+  if (invalidQuotaField) {
+    return {
+      error: "自定义 API 响应包含非法额度数值",
+      errorCode: ERROR_CODES.PROVIDER_SNAPSHOT_INVALID,
+    };
+  }
+
   // Validation: at least one of total/remaining must be a valid number
   if (totalQuota === null && remainingQuota === null) {
     return {
@@ -317,19 +351,19 @@ function parseResponseWithMapping(data, mapping, apiFormat) {
     used_quota: usedQuota,
     remaining_quota: remainingQuota,
     expires_at: expiresAt,
+    provider_reported_fields: [
+      totalRaw !== undefined && totalRaw !== null ? "total_quota" : null,
+      usedRaw !== undefined && usedRaw !== null ? "used_quota" : null,
+      remainingRaw !== undefined && remainingRaw !== null ? "remaining_quota" : null,
+      expiresRaw !== undefined && expiresRaw !== null ? "expires_at" : null,
+    ].filter(Boolean),
     error: null,
     errorCode: null,
   };
 }
 
 function parseQuotaValue(raw) {
-  if (raw === undefined || raw === null || raw === "") return null;
-  const n = Number(raw);
-  if (Number.isFinite(n) && n >= 0) return Math.floor(n);
-  // Try string parsing
-  const str = String(raw).trim();
-  const parsed = Number(str);
-  if (Number.isFinite(parsed) && parsed >= 0) return Math.floor(parsed);
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) return raw;
   return null;
 }
 
@@ -337,64 +371,46 @@ function parseQuotaValue(raw) {
 // HTTP request helper
 // ---------------------------------------------------------------------------
 
-function httpRequest(url, method, apiKey) {
-  return new Promise((resolve, reject) => {
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(url);
-    } catch {
-      reject(Object.assign(new Error("自定义 API 请求地址格式无效"), { statusCode: 0 }));
-      return;
-    }
-
-    const client = parsedUrl.protocol === "https:" ? https : http;
-    const headers = {
+async function httpRequest(url, method, apiKey, options = {}) {
+  const configuredLimit = Number(options.maxResponseBytes);
+  const maxResponseBytes = Number.isSafeInteger(configuredLimit) && configuredLimit >= 0
+    ? Math.min(configuredLimit, MAX_CUSTOM_API_RESPONSE_BYTES)
+    : MAX_CUSTOM_API_RESPONSE_BYTES;
+  const { request, response } = await safeOutboundRequest(url, {
+    method,
+    headers: {
       Accept: "application/json",
       Authorization: `Bearer ${apiKey}`,
-    };
-
-    const options = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (parsedUrl.protocol === "https:" ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
-      method,
-      headers,
-      timeout: 30_000,
-    };
-
-    const req = client.request(options, (res) => {
-      const chunks = [];
-      res.on("data", (chunk) => chunks.push(chunk));
-      res.on("end", () => {
-        const body = Buffer.concat(chunks).toString("utf8");
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(body);
-        } else {
-          const err = new Error(`HTTP ${res.statusCode}`);
-          err.statusCode = res.statusCode;
-          reject(err);
-        }
-      });
-    });
-
-    req.on("timeout", () => {
-      req.destroy();
-      reject(Object.assign(new Error("自定义 API 请求超时"), { statusCode: 0 }));
-    });
-
-    req.on("error", (err) => {
-      reject(Object.assign(new Error(`网络错误：${err.message}`), { statusCode: 0 }));
-    });
-
-    req.end();
+    },
+    timeoutMs: 30_000,
+    testMode: Boolean(options.testMode),
+    dnsLookup: options.dnsLookup,
+    requestImpl: options.requestImpl,
+    secrets: [apiKey],
   });
+
+  const statusCode = Number(response.statusCode || 0);
+  if (statusCode < 200 || statusCode >= 300) {
+    request.destroy();
+    response.destroy?.();
+    const error = new Error(`HTTP ${statusCode}`);
+    error.statusCode = statusCode;
+    throw error;
+  }
+
+  const body = await readLimitedResponseBody(response, {
+    maxBytes: maxResponseBytes,
+    request,
+    secrets: [apiKey],
+  });
+  return body.toString("utf8");
 }
 
 // ---------------------------------------------------------------------------
 // Sanitize error messages (never leak API keys)
 // ---------------------------------------------------------------------------
 
-function sanitizeErrorMessage(msg) {
+function sanitizeErrorMessage(msg, extraSecrets = []) {
   if (typeof msg !== "string") return String(msg);
   // Redact common API key patterns
   let sanitized = msg
@@ -403,7 +419,7 @@ function sanitizeErrorMessage(msg) {
     .replace(/tp-[a-zA-Z0-9]{10,}/g, "tp-***")
     .replace(/api[_-]?key[=:]\s*\S+/gi, "api_key=***")
     .replace(/Authorization:\s*\S+/gi, "Authorization: ***");
-  return sanitized;
+  return redactSecrets(sanitized, extraSecrets);
 }
 
 // ---------------------------------------------------------------------------
@@ -418,4 +434,5 @@ module.exports = {
   sanitizeErrorMessage,
   ERROR_CODES,
   API_FORMATS,
+  MAX_CUSTOM_API_RESPONSE_BYTES,
 };

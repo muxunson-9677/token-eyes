@@ -17,7 +17,7 @@ async function writeQueue(queuePath, rows) {
   );
 }
 
-async function callEndpoint(queuePath, endpoint) {
+async function callEndpoint(queuePath, endpoint, configOverrides = {}) {
   const trackerDataDir = path.dirname(queuePath);
   await fs.promises.writeFile(
     path.join(trackerDataDir, "config.json"),
@@ -26,6 +26,7 @@ async function callEndpoint(queuePath, endpoint) {
         claude: path.join(trackerDataDir, "claude"),
         codex: path.join(trackerDataDir, "codex"),
       },
+      ...configOverrides,
     }),
   );
   const handler = createLocalApiHandler({ queuePath, trackerDataDir });
@@ -340,6 +341,131 @@ test("TICKET-06: empty queue.jsonl returns empty records with proper fields", as
     assert.ok(body.queue_baseline_totals, "queue_baseline_totals should still be present");
     assert.equal(body.queue_baseline_totals.total_tokens, 0, "queue_baseline_totals.total_tokens should be 0");
   } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("pricing provenance API: user override fields survive from config to aggregate record and totals", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-req-pricing-override-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await writeQueue(queuePath, [makeRow({
+      source: "custom-agent",
+      model: "custom-model",
+      input_tokens: 1_000_000,
+      output_tokens: 1_000_000,
+      cached_input_tokens: 0,
+      total_tokens: 2_000_000,
+    })]);
+    const updatedAt = "2026-01-01T00:00:00.000Z";
+    const body = await callEndpoint(
+      queuePath,
+      `/functions/tokentracker-request-usage-records?from=${TODAY_STR}&to=${TODAY_STR}&sources=custom-agent&tz=UTC`,
+      {
+        pricingRules: [{
+          source: "custom-agent",
+          model: "custom-model",
+          inputPricePer1M: 1.5,
+          outputPricePer1M: 10,
+          currency: "USD",
+          updated_at: updatedAt,
+        }],
+      },
+    );
+
+    const record = body.records[0];
+    for (const field of [
+      "pricing_source", "pricing_version", "source_kind", "source_url",
+      "source_updated_at", "observed_at", "is_stale", "estimated",
+      "match_kind", "matched_model", "note_code",
+    ]) {
+      assert.ok(Object.hasOwn(record, field), `record must expose ${field}`);
+    }
+    assert.equal(record.cost_usd, 11.5);
+    assert.equal(record.source_kind, "user_override");
+    assert.equal(record.source_updated_at, updatedAt);
+    assert.equal(record.estimated, false);
+    assert.equal(record.is_stale, false);
+    assert.equal(body.totals.source_kind, "user_override");
+  } finally {
+    clearRequestUsageRecordsListCacheForTests();
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("pricing provenance API: unpriced records and totals keep cost null instead of fake zero", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-req-pricing-unpriced-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await writeQueue(queuePath, [makeRow({
+      source: "custom-agent",
+      model: "definitely-unpriced-model-2099",
+    })]);
+    const body = await callEndpoint(
+      queuePath,
+      `/functions/tokentracker-request-usage-records?from=${TODAY_STR}&to=${TODAY_STR}&sources=custom-agent&tz=UTC`,
+    );
+
+    assert.equal(body.records[0].cost_usd, null);
+    assert.equal(body.records[0].source_kind, "unpriced");
+    assert.equal(body.records[0].pricing_coverage, "unpriced");
+    assert.equal(body.totals.cost_usd, null);
+    assert.equal(body.totals.source_kind, "unpriced");
+  } finally {
+    clearRequestUsageRecordsListCacheForTests();
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("pricing provenance API: mixed aggregates identify user override and curated composition", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-req-pricing-mixed-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await writeQueue(queuePath, [
+      makeRow({
+        source: "custom-agent",
+        model: "custom-model",
+        input_tokens: 1_000_000,
+        output_tokens: 1_000_000,
+        total_tokens: 2_000_000,
+      }),
+      makeRow({
+        source: "custom-agent",
+        model: "kiro-agent",
+        input_tokens: 1_000_000,
+        output_tokens: 1_000_000,
+        total_tokens: 2_000_000,
+      }),
+    ]);
+    const body = await callEndpoint(
+      queuePath,
+      `/functions/tokentracker-request-usage-records?from=${TODAY_STR}&to=${TODAY_STR}&sources=custom-agent&tz=UTC`,
+      {
+        pricingRules: [{
+          source: "custom-agent",
+          model: "custom-model",
+          inputPricePer1M: 1.5,
+          outputPricePer1M: 10,
+          currency: "USD",
+          updated_at: "2026-08-01T00:00:00.000Z",
+        }],
+      },
+    );
+
+    assert.equal(body.totals.source_kind, "mixed");
+    assert.deepEqual(
+      body.totals.pricing_components.map((component) => component.source_kind).sort(),
+      ["curated", "user_override"],
+    );
+    assert.equal(
+      body.totals.pricing_components.reduce(
+        (sum, component) => sum + component.priced_tokens,
+        0,
+      ),
+      4_000_000,
+    );
+  } finally {
+    clearRequestUsageRecordsListCacheForTests();
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });

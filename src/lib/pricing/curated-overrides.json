@@ -2,6 +2,7 @@
   "_meta": {
     "note": "Curated price overrides. Always wins over LiteLLM. Two reasons to live here: (1) self-defined alias names that LiteLLM will never carry (kiro-*, hy3-*, composer-*, kimi-for-coding, free-tier OpenRouter routes); (2) prices we want to pin even if LiteLLM has the model (e.g. cache_write fields LiteLLM often omits). Units: USD per million tokens. Edit this file to override pricing without redeploying.",
     "units": "usd_per_million_tokens",
+    "evidence_note": "For estimated entries, evidence_date is the repository snapshot date of the curated rate and source URL, not a claim that the exact rate was verified on that date.",
     "deepseek_v4_pro_pricing_note": "The 2026-05-31 promotional-expiry warning is obsolete: api-docs.deepseek.com/quick_start/pricing verified on 2026-06-10 still lists input $0.435/M, output $0.87/M, cache_read $0.003625/M as the official v4-pro rates (the discount became the list price). Do NOT 'restore' the old 4x rates; re-verify against the official page before any change."
   },
   "exact": {
@@ -51,6 +52,45 @@
     "minimax-m2.1-free":{ "input": 0,    "output": 0,    "cache_read": 0 },
     "MiniMax-M2.1":     { "input": 0.5,  "output": 3,    "cache_read": 0.05 },
     "antigravity-gpt-oss-120b": { "input": 2.5, "output": 10, "cache_read": 0, "note": "Antigravity bridge alias. Approximate with GPT-4o-class pricing until Google exposes route-specific billing metadata." }
+  },
+  "evidence": {
+    "claude-fable-5": { "source_url": "https://docs.anthropic.com/en/docs/about-claude/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "claude-opus-4-8": { "source_url": "https://docs.anthropic.com/en/docs/about-claude/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "kiro-agent": { "source_url": "https://docs.anthropic.com/en/docs/about-claude/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "kiro-cli-agent": { "source_url": "https://docs.anthropic.com/en/docs/about-claude/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "composer-1": { "source_url": "https://www.cursor.com/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "composer-1.5": { "source_url": "https://www.cursor.com/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "composer-2": { "source_url": "https://www.cursor.com/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "composer-2-fast": { "source_url": "https://www.cursor.com/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "MiniMax-M2.7": { "source_url": "https://platform.minimaxi.com/docs/guides/pricing-paygo", "evidence_date": "2026-07-08", "estimated": true },
+    "MiniMax-M2.7-highspeed": { "source_url": "https://platform.minimaxi.com/docs/guides/pricing-paygo", "evidence_date": "2026-07-08", "estimated": true },
+    "deepseek-v4-flash": { "source_url": "https://api-docs.deepseek.com/quick_start/pricing-details-usd", "evidence_date": "2026-07-08", "estimated": true },
+    "deepseek-v4-pro": { "source_url": "https://api-docs.deepseek.com/quick_start/pricing-details-usd", "evidence_date": "2026-06-10", "estimated": false },
+    "deepseek-chat": { "source_url": "https://api-docs.deepseek.com/quick_start/pricing-details-usd", "evidence_date": "2026-07-08", "estimated": true },
+    "grok-build": { "source_url": "https://docs.x.ai/docs/models", "evidence_date": "2026-07-08", "estimated": true },
+    "grok-4-0709": { "source_url": "https://docs.x.ai/docs/models", "evidence_date": "2026-07-08", "estimated": true },
+    "grok-4": { "source_url": "https://docs.x.ai/docs/models", "evidence_date": "2026-07-08", "estimated": true },
+    "grok-4-latest": { "source_url": "https://docs.x.ai/docs/models", "evidence_date": "2026-07-08", "estimated": true },
+    "grok-4-fast": { "source_url": "https://docs.x.ai/docs/models", "evidence_date": "2026-07-08", "estimated": true },
+    "grok-4-fast-reasoning": { "source_url": "https://docs.x.ai/docs/models", "evidence_date": "2026-07-08", "estimated": true },
+    "grok-4-fast-non-reasoning": { "source_url": "https://docs.x.ai/docs/models", "evidence_date": "2026-07-08", "estimated": true },
+    "grok-4-1-fast-non-reasoning": { "source_url": "https://docs.x.ai/docs/models", "evidence_date": "2026-07-08", "estimated": true },
+    "deepseek-reasoner": { "source_url": "https://api-docs.deepseek.com/quick_start/pricing-details-usd", "evidence_date": "2026-07-08", "estimated": true },
+    "kimi-for-coding": { "source_url": "https://platform.moonshot.cn/docs/pricing/chat", "evidence_date": "2026-07-08", "estimated": true },
+    "kimi-k2.5": { "source_url": "https://platform.moonshot.cn/docs/pricing/chat", "evidence_date": "2026-07-08", "estimated": true },
+    "kimi-k2.6": { "source_url": "https://platform.moonshot.cn/docs/pricing/chat", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-5.1": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-5": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-5-turbo": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-4.7": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-4.7-flashx": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-4.6": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-4.5": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-4.5-x": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-4.5-air": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "glm-4.5-airx": { "source_url": "https://open.bigmodel.cn/pricing", "evidence_date": "2026-07-08", "estimated": true },
+    "MiniMax-M2.1": { "source_url": "https://platform.minimaxi.com/docs/guides/pricing-paygo", "evidence_date": "2026-07-08", "estimated": true },
+    "antigravity-gpt-oss-120b": { "source_url": "https://antigravity.google/pricing", "evidence_date": "2026-07-08", "estimated": true }
   },
   "alias": {
     "auto": "composer-1"

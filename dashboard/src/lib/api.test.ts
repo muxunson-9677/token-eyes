@@ -8,7 +8,10 @@ import {
   getUsageModelBreakdown,
   fetchCloudUsageModelBreakdown,
   getTokenPlans,
+  cancelCodexConsoleLogin,
+  cleanupLegacyCodexAuthFile,
   openXiaomiMimoConsoleLogin,
+  reopenCodexConsoleLogin,
   refreshGlmConsoleSession,
   refreshOfficialConsoleProviderBalance,
   reorderTokenPlans,
@@ -364,6 +367,36 @@ it("invokes the Xiaomi MiMo native commands with camelCase arguments", async () 
     sessionRef: "session-ref",
   });
   expect(invoke).toHaveBeenNthCalledWith(2, "verify_xiaomi_mimo_console_session", {
+    sessionRef: "session-ref",
+  });
+});
+
+it("invokes Codex cancel, reopen, and legacy cleanup with the session reference", async () => {
+  const invoke = vi.fn().mockResolvedValue({
+    connected: false,
+    authorized: false,
+    session_ref: "session-ref",
+    state_code: "failed",
+    error_code: "AUTHORIZATION_CANCELLED",
+    error_message: "",
+  });
+  Object.defineProperty(window, "__TAURI__", {
+    configurable: true,
+    value: { core: { invoke } },
+  });
+
+  await cancelCodexConsoleLogin("session-ref", "timeout");
+  await reopenCodexConsoleLogin("session-ref");
+  await cleanupLegacyCodexAuthFile("session-ref");
+
+  expect(invoke).toHaveBeenNthCalledWith(1, "cancel_codex_console_login", {
+    sessionRef: "session-ref",
+    reason: "timeout",
+  });
+  expect(invoke).toHaveBeenNthCalledWith(2, "reopen_codex_console_login", {
+    sessionRef: "session-ref",
+  });
+  expect(invoke).toHaveBeenNthCalledWith(3, "cleanup_legacy_codex_auth_file", {
     sessionRef: "session-ref",
   });
 });

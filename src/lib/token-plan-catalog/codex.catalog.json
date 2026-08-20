@@ -1,20 +1,22 @@
 {
   "provider_id": "codex",
   "provider_name": "Codex",
-  "official_site": "https://chatgpt.com/codex",
   "catalog_version": "2026-07-08",
-  "evidence": [
-    {
-      "url": "https://chatgpt.com/codex/pricing/",
-      "title": "Codex Pricing",
-      "accessed_at": "2026-07-08"
-    },
-    {
-      "url": "https://github.com/openai/codex",
-      "title": "OpenAI Codex CLI",
-      "accessed_at": "2026-07-08"
-    }
-  ],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "catalog-codex-github",
+    "supports": [
+      "provider_identity"
+    ],
+    "verified": true,
+    "verified_at": "2026-07-08",
+    "fetched_at": "2026-07-08",
+    "content_sha256": "ea13bcb051cd7da0e5e3757e8b28ea232312a6f023d900ae06def7e94964f202",
+    "content_hash_kind": "normalized_extracted_fields_v1",
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
+  },
   "plans": [
     {
       "plan_id": "codex_plus",
@@ -22,13 +24,27 @@
       "quota": {
         "kind": "rolling_window",
         "total": 0,
-        "unit": "tokens",
+        "unit": "percent",
         "display": "官方动态额度（5 小时与 7 天窗口，百分比）"
       },
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://chatgpt.com/codex/pricing/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-codex-pricing",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-08",
+        "fetched_at": "2026-07-08",
+        "content_sha256": "2c434ad74895a05f4e31f27c2b1d7e578440a30de7e0e2cf25410a91dccc0488",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "codex_pro_5x",
@@ -36,13 +52,27 @@
       "quota": {
         "kind": "rolling_window",
         "total": 0,
-        "unit": "tokens",
+        "unit": "percent",
         "display": "官方动态额度（5 小时与 7 天窗口，约为 Plus 的 5 倍）"
       },
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://chatgpt.com/codex/pricing/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-codex-pricing",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-08",
+        "fetched_at": "2026-07-08",
+        "content_sha256": "1dbd85c2c3b14da46bf23cddc1199bd6a1567d867daef50cfd1609ff8b7e507d",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "codex_pro_20x",
@@ -50,20 +80,56 @@
       "quota": {
         "kind": "rolling_window",
         "total": 0,
-        "unit": "tokens",
+        "unit": "percent",
         "display": "官方动态额度（5 小时与 7 天窗口，约为 Plus 的 20 倍）"
       },
       "expires": {
         "kind": "subscription_period"
       },
-      "official_evidence_url": "https://chatgpt.com/codex/pricing/"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "catalog-codex-pricing",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-08",
+        "fetched_at": "2026-07-08",
+        "content_sha256": "aa2f7587993802fcfdfcffc066ad2222de67c9c63125cb3dd9cecf3eef4836d1",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
     "official_quota_api": true,
     "authorization": "chatgpt_account_oauth_auth_json",
     "usage_endpoint_documented": true,
-    "fields_available": ["rolling_5_hour", "rolling_weekly"],
+    "fields_available": [
+      "rolling_5_hour",
+      "rolling_weekly"
+    ],
     "notes": "额度来自 chatgpt.com wham/usage；桌面端支持官网 WebView 登录同步，无需本机 CLI。"
-  }
+  },
+  "official_site_link_id": "provider-home-codex",
+  "sources": [
+    {
+      "label": "Codex Pricing",
+      "link_id": "catalog-codex-pricing",
+      "supports": [
+        "plan_identity",
+        "price"
+      ]
+    },
+    {
+      "label": "OpenAI Codex CLI",
+      "link_id": "catalog-codex-github",
+      "supports": [
+        "provider_identity",
+        "client_identity"
+      ]
+    }
+  ]
 }

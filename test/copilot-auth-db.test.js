@@ -6,10 +6,11 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
-  readCopilotOauthToken,
-  readCopilotAuthDbToken,
   decryptCopilotAuthDbToken,
+  describeCopilotCredentialStatus,
+  fetchCopilotLimits,
 } = require("../src/lib/usage-limits");
+const { computeAccountKey } = require("../src/lib/limit-accounts");
 
 // Mirror copilot-language-server's auth.db scheme: AES-256-GCM with the
 // ciphertext laid out as iv(12) ‖ ciphertext ‖ authTag(16), key base64-encoded.
@@ -56,131 +57,296 @@ describe("decryptCopilotAuthDbToken", () => {
   });
 });
 
-describe("readCopilotAuthDbToken", () => {
-  const okRunner = (keyBase64) => () => ({ status: 0, stdout: keyBase64 });
-
-  it("decrypts the token from auth.db via the keychain key (macOS)", () => {
-    const { keyBase64, tokenHex } = makeAuthDbFixture("ghu_authdb_token");
-    const token = readCopilotAuthDbToken({
-      home: "/home/test",
-      platform: "darwin",
-      securityRunner: okRunner(keyBase64),
-      sqliteReader: () => [{ auth_authority: "github.com", token_hex: tokenHex }],
-    });
-    assert.equal(token, "ghu_authdb_token");
-  });
-
-  it("prefers the public github.com row over a composite/enterprise row", () => {
-    const enterprise = makeAuthDbFixture("ghu_enterprise", { authority: "github.example.com" });
-    const publicHost = makeAuthDbFixture("ghu_public", { authority: "github.com" });
-    // Both rows decrypt with their own key; the keychain returns the public one's key.
-    const token = readCopilotAuthDbToken({
-      home: "/home/test",
-      platform: "darwin",
-      securityRunner: okRunner(publicHost.keyBase64),
-      sqliteReader: () => [
-        { auth_authority: "github.example.com", token_hex: enterprise.tokenHex },
-        { auth_authority: "github.com", token_hex: publicHost.tokenHex },
-      ],
-    });
-    assert.equal(token, "ghu_public");
-  });
-
-  it("returns null on non-darwin platforms (no keychain reader yet)", () => {
-    const { keyBase64, tokenHex } = makeAuthDbFixture("ghu_token");
-    let readerCalled = false;
-    const token = readCopilotAuthDbToken({
-      home: "/home/test",
-      platform: "linux",
-      securityRunner: okRunner(keyBase64),
-      sqliteReader: () => {
-        readerCalled = true;
-        return [{ auth_authority: "github.com", token_hex: tokenHex }];
+function writeLegacyToken(home, token) {
+  const dir = path.join(home, ".config", "github-copilot");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "apps.json"),
+    JSON.stringify({
+      "github.com:Iv1.b507a08c87ecfe98": {
+        oauth_token: token,
+        updated_at: "2026-07-01T00:00:00.000Z",
       },
-    });
-    assert.equal(token, null);
-    assert.equal(readerCalled, false);
+    }),
+  );
+}
+
+function okResponse(payload = {}) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      copilot_plan: "business",
+      quota_reset_date: "2026-09-01",
+      quota_snapshots: {
+        premium_interactions: { entitlement: 100, remaining: 75, percent_remaining: 75 },
+      },
+      ...payload,
+    }),
+  };
+}
+
+function secureFixture(token) {
+  const fixture = makeAuthDbFixture(token);
+  return {
+    fixture,
+    securityRunner: () => ({ status: 0, stdout: fixture.keyBase64 }),
+    sqliteReader: () => [{
+      auth_authority: "github.com",
+      token_hex: fixture.tokenHex,
+      updated_at: "2026-08-20T10:00:00.000Z",
+      last_used_at: "2026-08-20T11:00:00.000Z",
+    }],
+  };
+}
+
+function assertSecretsAbsent(value, secrets) {
+  const text = String(value);
+  for (const secret of secrets) {
+    assert.equal(text.includes(secret), false, "serialized output must not contain synthetic credentials");
+  }
+}
+
+describe("fetchCopilotLimits credential candidate policy", () => {
+  it("uses a valid secure auth.db candidate once and never sends stale legacy plaintext", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-secure-first-"));
+    try {
+      const secureToken = "synthetic-secure-valid";
+      const legacyToken = "synthetic-legacy-stale";
+      writeLegacyToken(tmp, legacyToken);
+      const secure = secureFixture(secureToken);
+      const authorization = [];
+
+      const result = await fetchCopilotLimits({
+        home: tmp,
+        platform: "darwin",
+        securityRunner: secure.securityRunner,
+        sqliteReader: secure.sqliteReader,
+        fetchImpl: async (_url, options) => {
+          authorization.push(options.headers.Authorization);
+          return okResponse();
+        },
+      });
+
+      assert.equal(result.error, null);
+      assert.deepEqual(authorization, [`token ${secureToken}`]);
+      const serialized = JSON.stringify(result);
+      assertSecretsAbsent(serialized, [secureToken, legacyToken, secure.fixture.keyBase64, secure.fixture.tokenHex]);
+      assert.doesNotMatch(serialized, /"(?:credential_source|authority|updated_at|last_used_at)":/);
+      assert.deepEqual(result[Symbol.for("tokentracker.copilot.credential-identity")], {
+        identity: `sha256:${crypto.createHash("sha256").update(secureToken).digest("hex")}`,
+        credential_source: "secure_auth_db_macos",
+        authority: "github.com",
+        updated_at: "2026-08-20T10:00:00.000Z",
+        last_used_at: "2026-08-20T11:00:00.000Z",
+      });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
-  it("returns null when the keychain key is unavailable", () => {
-    const { tokenHex } = makeAuthDbFixture("ghu_token");
-    const token = readCopilotAuthDbToken({
-      home: "/home/test",
-      platform: "darwin",
-      securityRunner: () => ({ status: 1, stdout: "" }),
-      sqliteReader: () => [{ auth_authority: "github.com", token_hex: tokenHex }],
+  for (const authStatus of [401, 403]) {
+    it(`falls back exactly once after secure ${authStatus} and binds the account to the legacy winner`, async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-auth-fallback-"));
+      try {
+        const secureToken = `synthetic-secure-stale-${authStatus}`;
+        const legacyToken = `synthetic-legacy-valid-${authStatus}`;
+        writeLegacyToken(tmp, legacyToken);
+        const secure = secureFixture(secureToken);
+        const authorization = [];
+
+        const result = await fetchCopilotLimits({
+          home: tmp,
+          platform: "darwin",
+          securityRunner: secure.securityRunner,
+          sqliteReader: secure.sqliteReader,
+          fetchImpl: async (_url, options) => {
+            authorization.push(options.headers.Authorization);
+            if (options.headers.Authorization === `token ${secureToken}`) {
+              return { ok: false, status: authStatus, json: async () => ({}) };
+            }
+            return okResponse();
+          },
+        });
+
+        assert.equal(result.error, null);
+        assert.deepEqual(authorization, [`token ${secureToken}`, `token ${legacyToken}`]);
+        const context = result[Symbol.for("tokentracker.copilot.credential-identity")];
+        assert.equal(context.credential_source, "legacy_plaintext");
+        assert.equal(context.authority, "github.com");
+        assert.equal(context.updated_at, "2026-07-01T00:00:00.000Z");
+        assert.equal(context.last_used_at, null);
+
+        const usageLimits = require("../src/lib/usage-limits");
+        const originalGetUsageLimits = usageLimits.getUsageLimits;
+        usageLimits.getUsageLimits = async () => ({ copilot: result });
+        try {
+          const copilotAdapter = require("../src/lib/limit-account-adapters/copilot");
+          const salt = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+          const [account] = await copilotAdapter({ salt, home: tmp, env: {} });
+          const winnerIdentity = `sha256:${crypto.createHash("sha256").update(legacyToken).digest("hex")}`;
+          assert.equal(
+            account.account_key,
+            computeAccountKey({ providerId: "copilot", rawAccountId: winnerIdentity, salt }),
+          );
+          assertSecretsAbsent(JSON.stringify(account), [secureToken, legacyToken]);
+        } finally {
+          usageLimits.getUsageLimits = originalGetUsageLimits;
+        }
+
+        const serialized = JSON.stringify(result);
+        assertSecretsAbsent(serialized, [secureToken, legacyToken, secure.fixture.keyBase64, secure.fixture.tokenHex]);
+        assert.doesNotMatch(serialized, /"(?:credential_source|authority|updated_at|last_used_at)":/);
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
     });
-    assert.equal(token, null);
+  }
+
+  for (const status of [500, 503]) {
+    it(`does not switch to legacy plaintext when the secure candidate receives HTTP ${status}`, async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-no-5xx-fallback-"));
+      try {
+        const secureToken = `synthetic-secure-${status}`;
+        const legacyToken = `synthetic-legacy-${status}`;
+        writeLegacyToken(tmp, legacyToken);
+        const secure = secureFixture(secureToken);
+        const authorization = [];
+
+        const result = await fetchCopilotLimits({
+          home: tmp,
+          platform: "darwin",
+          securityRunner: secure.securityRunner,
+          sqliteReader: secure.sqliteReader,
+          fetchImpl: async (_url, options) => {
+            authorization.push(options.headers.Authorization);
+            if (options.headers.Authorization === `token ${secureToken}`) {
+              return { ok: false, status, json: async () => ({}) };
+            }
+            return okResponse();
+          },
+        });
+
+        assert.deepEqual(authorization, [`token ${secureToken}`]);
+        assert.equal(result.error_code, "upstream_error");
+        assert.doesNotMatch(JSON.stringify(result), new RegExp(`${secureToken}|${legacyToken}`));
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("does not switch candidates on a network failure and redacts the thrown secret", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-no-network-fallback-"));
+    try {
+      const secureToken = "synthetic-secure-network";
+      const legacyToken = "synthetic-legacy-network";
+      writeLegacyToken(tmp, legacyToken);
+      const secure = secureFixture(secureToken);
+      const authorization = [];
+      let stderr = "";
+      const originalStderrWrite = process.stderr.write;
+      process.stderr.write = (chunk) => {
+        stderr += String(chunk);
+        return true;
+      };
+
+      let result;
+      try {
+        result = await fetchCopilotLimits({
+          home: tmp,
+          platform: "darwin",
+          securityRunner: secure.securityRunner,
+          sqliteReader: secure.sqliteReader,
+          fetchImpl: async (_url, options) => {
+            authorization.push(options.headers.Authorization);
+            if (options.headers.Authorization === `token ${secureToken}`) {
+              throw new Error(`socket failed ${secureToken} ${secure.fixture.keyBase64} ${secure.fixture.tokenHex}`);
+            }
+            return okResponse();
+          },
+        });
+      } finally {
+        process.stderr.write = originalStderrWrite;
+      }
+
+      assert.deepEqual(authorization, [`token ${secureToken}`]);
+      assert.equal(result.error_code, "network_error");
+      assertSecretsAbsent(JSON.stringify(result), [secureToken, legacyToken, secure.fixture.keyBase64, secure.fixture.tokenHex]);
+      assertSecretsAbsent(stderr, [secureToken, legacyToken, secure.fixture.keyBase64, secure.fixture.tokenHex]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
-  it("returns null when auth.db has no token rows", () => {
-    const token = readCopilotAuthDbToken({
-      home: "/home/test",
-      platform: "darwin",
-      securityRunner: okRunner("AAAA"),
-      sqliteReader: () => [],
-    });
-    assert.equal(token, null);
-  });
-});
+  it("redacts credentials when parsing a successful upstream response fails", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-response-error-"));
+    try {
+      const secureToken = "synthetic-secure-response";
+      const secure = secureFixture(secureToken);
+      const result = await fetchCopilotLimits({
+        home: tmp,
+        platform: "darwin",
+        securityRunner: secure.securityRunner,
+        sqliteReader: secure.sqliteReader,
+        fetchImpl: async () => ({
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new Error(`${secureToken} ${secure.fixture.keyBase64} ${secure.fixture.tokenHex}`);
+          },
+        }),
+      });
 
-describe("readCopilotOauthToken precedence", () => {
-  it("returns the plaintext apps.json token without consulting auth.db", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-"));
+      assert.equal(result.error_code, "response_error");
+      assertSecretsAbsent(JSON.stringify(result), [secureToken, secure.fixture.keyBase64, secure.fixture.tokenHex]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("returns secure_store_unsupported for a Windows auth.db fixture without guessing Credential Manager rules", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-win-unsupported-"));
     try {
       const dir = path.join(tmp, ".config", "github-copilot");
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(
-        path.join(dir, "apps.json"),
-        JSON.stringify({
-          "github.com:Iv1.b507a08c87ecfe98": { user: "octocat", oauth_token: "ghu_plaintext_token" },
-        }),
-      );
-      const token = readCopilotOauthToken({
+      fs.writeFileSync(path.join(dir, "auth.db"), "synthetic-fixture-placeholder");
+      writeLegacyToken(tmp, "synthetic-stale-windows-plaintext");
+      let requests = 0;
+
+      const result = await fetchCopilotLimits({
         home: tmp,
-        platform: "darwin",
-        // Would throw if the encrypted fallback were consulted.
-        securityRunner: () => {
-          throw new Error("keychain should not be read when plaintext exists");
-        },
-        sqliteReader: () => {
-          throw new Error("auth.db should not be read when plaintext exists");
+        platform: "win32",
+        fetchImpl: async () => {
+          requests += 1;
+          return okResponse();
         },
       });
-      assert.equal(token, "ghu_plaintext_token");
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
 
-  it("falls back to the encrypted auth.db when no plaintext token exists", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-"));
-    try {
-      const { keyBase64, tokenHex } = makeAuthDbFixture("ghu_fallback_token");
-      const token = readCopilotOauthToken({
-        home: tmp, // no apps.json / hosts.json present
-        platform: "darwin",
-        securityRunner: () => ({ status: 0, stdout: keyBase64 }),
-        sqliteReader: () => [{ auth_authority: "github.com", token_hex: tokenHex }],
-      });
-      assert.equal(token, "ghu_fallback_token");
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
+      assert.equal(result.configured, true);
+      assert.equal(result.error_code, "secure_store_unsupported");
+      assert.equal(requests, 0);
+      assert.doesNotMatch(JSON.stringify(result), /synthetic-stale-windows-plaintext/);
 
-  it("returns null when there is neither a plaintext nor an encrypted token", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-copilot-"));
-    try {
-      const token = readCopilotOauthToken({
-        home: tmp,
-        platform: "linux",
-        securityRunner: () => ({ status: 1, stdout: "" }),
-        sqliteReader: () => [],
+      const status = describeCopilotCredentialStatus({ home: tmp, platform: "win32" });
+      assert.deepEqual(status, {
+        configured: true,
+        status: "secure_store_unsupported",
+        credential_source: null,
+        authority: null,
       });
-      assert.equal(token, null);
+      assert.doesNotMatch(JSON.stringify(status), /synthetic-stale-windows-plaintext|oauth_token/);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+});
+
+it("status consumes non-secret Copilot credential status instead of a token value", () => {
+  const statusSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "commands", "status.js"),
+    "utf8",
+  );
+  assert.match(statusSource, /describeCopilotCredentialStatus/);
+  assert.doesNotMatch(statusSource, /readCopilotOauthToken|copilotToken/);
 });

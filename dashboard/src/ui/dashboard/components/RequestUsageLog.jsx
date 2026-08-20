@@ -147,6 +147,62 @@ function getPricingDiagnostic(record) {
   return copy(`observability.request.pricing.${coverage}`);
 }
 
+function pricingKindKey(sourceKind) {
+  const normalized = sourceKind === "official" ? "official_api" : sourceKind;
+  return ["official_api", "curated", "third_party", "user_override", "mixed", "unpriced"]
+    .includes(normalized)
+    ? `pricing.provenance.${normalized}`
+    : null;
+}
+
+function pricingProvenanceLabels(evidence) {
+  const labels = [];
+  const add = (key) => {
+    if (key && !labels.includes(key)) labels.push(key);
+  };
+  add(pricingKindKey(evidence?.source_kind));
+  if (evidence?.source_kind === "mixed" && Array.isArray(evidence.pricing_components)) {
+    for (const component of evidence.pricing_components) {
+      add(pricingKindKey(component?.source_kind));
+      if (component?.match_kind === "inferred") add("pricing.provenance.inferred");
+      if (component?.estimated) add("pricing.provenance.estimated");
+      if (component?.is_stale) add("pricing.provenance.stale");
+    }
+  }
+  if (evidence?.match_kind === "inferred") add("pricing.provenance.inferred");
+  if (evidence?.estimated) add("pricing.provenance.estimated");
+  if (evidence?.is_stale) add("pricing.provenance.stale");
+  if (evidence?.pricing_coverage === "unpriced") add("pricing.provenance.unpriced");
+  return labels;
+}
+
+function PricingProvenance({ evidence, testId }) {
+  const labels = pricingProvenanceLabels(evidence);
+  if (labels.length === 0) return null;
+  const unavailable = copy("ticket06.metric.unavailable");
+  const title = copy("pricing.provenance.tooltip", {
+    source: evidence?.source_url || evidence?.pricing_source || evidence?.source_kind || unavailable,
+    model: evidence?.matched_model || unavailable,
+    updated: evidence?.source_updated_at || unavailable,
+  });
+  return (
+    <div
+      className="mt-1 flex max-w-[220px] flex-wrap gap-1"
+      data-testid={testId}
+      title={title}
+    >
+      {labels.map((key) => (
+        <span
+          key={key}
+          className="inline-flex rounded-full bg-oai-gray-100 px-1.5 py-0.5 text-[10px] leading-4 text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300"
+        >
+          {copy(key)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 const COLUMNS = [
   { id: "time", labelKey: "ticket04.request.column.time" },
   { id: "provider", labelKey: "ticket04.request.column.provider" },
@@ -387,6 +443,10 @@ export function RequestUsageLog({
                       <div className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
                         {getPricingDiagnostic(record)}
                       </div>
+                      <PricingProvenance
+                        evidence={record}
+                        testId={`request-pricing-provenance-${idx}`}
+                      />
                     </td>
                     <td className="px-3 py-2 text-xs text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap">
                       {/* V2-W3 granularity badge: honest about whether this row is
@@ -441,7 +501,12 @@ export function RequestUsageLog({
                   <td className="px-3 py-2 text-sm font-semibold whitespace-nowrap text-right tabular-nums">
                     {isProvidedNumber(totals.success_rate) ? `${Number(totals.success_rate).toFixed(1)}%` : null}
                   </td>
-                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2">
+                    <PricingProvenance
+                      evidence={totals}
+                      testId="request-pricing-provenance-total"
+                    />
+                  </td>
                   <td className="px-3 py-2" />
                 </tr>
               )}
@@ -507,7 +572,7 @@ export function RequestUsageLog({
         </div>
         <div className="flex items-center gap-3">
           <span className="max-w-52 text-right text-[11px] leading-4 text-oai-gray-400 dark:text-oai-gray-500">
-            {copy("ticket04.request.pricing_source_note")}
+            {copy("ticket04.request.pricing_evidence_note")}
           </span>
           <label className="inline-flex items-center gap-1.5 text-xs text-oai-gray-600 dark:text-oai-gray-400 cursor-pointer select-none">
             <input

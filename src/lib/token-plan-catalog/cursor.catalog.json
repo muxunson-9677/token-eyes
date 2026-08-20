@@ -1,15 +1,22 @@
 {
   "provider_id": "cursor",
   "provider_name": "Cursor",
-  "official_site": "https://www.cursor.com/",
   "catalog_version": "2026-07-08",
-  "evidence": [
-    {
-      "url": "https://www.cursor.com/pricing",
-      "title": "Cursor Pricing",
-      "accessed_at": "2026-07-08"
-    }
-  ],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "market-cursor-pricing",
+    "supports": [
+      "provider_identity"
+    ],
+    "verified": true,
+    "verified_at": "2026-07-08",
+    "fetched_at": "2026-07-08",
+    "content_sha256": "c8b9663cea5e3990670518c13df955ddce24ac77ea38ad78df8e8c515529f247",
+    "content_hash_kind": "normalized_extracted_fields_v1",
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
+  },
   "plans": [
     {
       "plan_id": "cursor_pro",
@@ -17,13 +24,27 @@
       "quota": {
         "kind": "rolling_window",
         "total": 0,
-        "unit": "tokens",
+        "unit": "percent",
         "display": "账单周期用量（官方百分比）"
       },
       "expires": {
         "kind": "billing_cycle"
       },
-      "official_evidence_url": "https://www.cursor.com/settings"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+      "link_id": "provider-home-cursor-settings",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-08",
+        "fetched_at": "2026-07-08",
+        "content_sha256": "32385de5a991ba641c06ee097d8455a149631995c96d2cd47762fdc6e8934871",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     },
     {
       "plan_id": "cursor_business",
@@ -31,20 +52,56 @@
       "quota": {
         "kind": "rolling_window",
         "total": 0,
-        "unit": "tokens",
+        "unit": "percent",
         "display": "团队池化用量（官方百分比）"
       },
       "expires": {
         "kind": "billing_cycle"
       },
-      "official_evidence_url": "https://www.cursor.com/settings"
+      "evidence": {
+        "claim_scope": "catalog_plan",
+      "link_id": "provider-home-cursor-settings",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": true,
+        "verified_at": "2026-07-08",
+        "fetched_at": "2026-07-08",
+        "content_sha256": "23e137fa10550fc146bbc5f0e39434506a994f2606d1a16361d47ebfbf97041e",
+        "content_hash_kind": "normalized_extracted_fields_v1",
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
     "official_quota_api": true,
     "authorization": "local_cursor_session_cookie",
     "usage_endpoint_documented": false,
-    "fields_available": ["rolling_weekly"],
+    "fields_available": [
+      "rolling_weekly"
+    ],
     "notes": "额度来自 cursor.com/api/usage-summary；需本机 Cursor IDE 已登录。无独立 5 小时窗口 API。"
-  }
+  },
+  "official_site_link_id": "catalog-cursor-home",
+  "sources": [
+    {
+      "label": "Cursor Pricing",
+      "link_id": "market-cursor-pricing",
+      "supports": [
+        "provider_identity",
+        "plan_identity",
+        "price",
+        "quota"
+      ]
+    },
+    {
+      "label": "Cursor Settings",
+      "link_id": "provider-home-cursor-settings",
+      "supports": [
+        "plan_identity"
+      ]
+    }
+  ]
 }

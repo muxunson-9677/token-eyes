@@ -53,9 +53,60 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $TauriDir   = Split-Path -Parent $ScriptDir      # src-tauri/
 $RepoRoot   = Split-Path -Parent $TauriDir        # repo root
 $tauriConf = Get-Content (Join-Path $TauriDir 'tauri.conf.json') -Raw | ConvertFrom-Json
-$appVersion = $tauriConf.version
-if ([string]::IsNullOrWhiteSpace($appVersion)) {
+$cargoToml = Get-Content (Join-Path $TauriDir 'Cargo.toml') -Raw
+$cargoPackageSection = [regex]::Match($cargoToml, '(?ms)^\[package\]\s*(.*?)(?=^\[|\z)')
+$cargoPackageVersion = if ($cargoPackageSection.Success) {
+    [regex]::Match($cargoPackageSection.Groups[1].Value, '(?m)^version\s*=\s*"([^"]+)"\s*$')
+} else {
+    $null
+}
+if ($null -eq $cargoPackageVersion -or -not $cargoPackageVersion.Success) {
+    throw 'Missing package version in src-tauri/Cargo.toml'
+}
+$cargoVersion = $cargoPackageVersion.Groups[1].Value
+$tauriVersion = [string]$tauriConf.version
+if ([string]::IsNullOrWhiteSpace($tauriVersion)) {
     throw 'Missing app version in src-tauri/tauri.conf.json'
+}
+if ($tauriVersion -ne $cargoVersion) {
+    throw 'Cargo package version does not match tauri.conf.json version'
+}
+$appVersion = $cargoVersion
+
+# Resolve the build identity before any download, bundle mutation, or clean.
+# Workflow input wins only after strict validation and, when git is readable,
+# exact comparison with the checked-out commit.
+$providedHeadShaRaw = [Environment]::GetEnvironmentVariable('TOKEN_EYES_GIT_SHA')
+$providedHeadSha = $null
+if ($null -ne $providedHeadShaRaw) {
+    $providedHeadSha = $providedHeadShaRaw.Trim()
+    if ($providedHeadSha -notmatch '^[0-9a-fA-F]{40}$') {
+        throw 'TOKEN_EYES_GIT_SHA must be exactly 40 hexadecimal characters'
+    }
+    $providedHeadSha = $providedHeadSha.ToLowerInvariant()
+}
+
+$gitHeadSha = $null
+$previousErrorActionPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = 'Continue'
+    $gitCandidate = (git -C $RepoRoot rev-parse HEAD 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $gitCandidate -match '^[0-9a-fA-F]{40}$') {
+        $gitHeadSha = $gitCandidate.ToLowerInvariant()
+    }
+} catch {
+    $gitHeadSha = $null
+} finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+
+if ($providedHeadSha -and $gitHeadSha -and $providedHeadSha -ne $gitHeadSha) {
+    throw 'TOKEN_EYES_GIT_SHA does not match the readable git HEAD'
+}
+$headSha = if ($providedHeadSha) { $providedHeadSha } elseif ($gitHeadSha) { $gitHeadSha } else { 'unknown' }
+$releaseIdentityRequired = (-not $Clean) -or $env:CI -eq 'true' -or $env:TOKEN_EYES_ISOLATED_INSTALLER_SMOKE -eq '1'
+if ($releaseIdentityRequired -and $headSha -eq 'unknown') {
+    throw 'Release bundle requires a verified 40-character Git SHA'
 }
 $EmbedDir   = Join-Path $TauriDir ("EmbeddedServer-" + $appVersion)
 
@@ -73,12 +124,14 @@ if ($NodeVersion -ne $ExpectedNodeVersion) {
 $trackerJs = Join-Path $RepoRoot 'bin\tracker.js'
 $packageJson = Join-Path $RepoRoot 'package.json'
 $packageLock = Join-Path $RepoRoot 'package-lock.json'
+$agentRegistry = Join-Path $RepoRoot 'shared\agent-registry.json'
 $providerCapabilities = Join-Path $RepoRoot 'shared\provider-capabilities.json'
 $dashDist = Join-Path $RepoRoot 'dashboard\dist\index.html'
 
 if (-not (Test-Path $trackerJs))   { throw "Missing $trackerJs — run from repo root" }
 if (-not (Test-Path $packageJson)) { throw "Missing $packageJson" }
 if (-not (Test-Path $packageLock)) { throw "Missing $packageLock — required for reproducible production deps" }
+if (-not (Test-Path $agentRegistry)) { throw "Missing $agentRegistry" }
 if (-not (Test-Path $providerCapabilities)) { throw "Missing $providerCapabilities" }
 if (-not (Test-Path $dashDist)) {
     throw "Missing dashboard/dist/index.html — run 'npm run dashboard:build' first"
@@ -231,28 +284,6 @@ if (Test-Path $nm) {
 # -- 5. Generate runtime-manifest.json --
 Write-Host 'Generating runtime-manifest.json...'
 
-# Capture current HEAD for traceability. Use try/catch + explicit
-# exit-code check because PowerShell 5.1 under `$ErrorActionPreference='Stop'`
-# converts git's non-zero exit (e.g. when the working dir is a tarball/zip
-# extracted without .git, as in CI or the R1 round-3 clean checkout probe)
-# into a terminating error that `2>$null` cannot suppress. Falling back to
-# 'unknown' keeps the manifest valid so the bundle can still be produced
-# from a non-git source tree.
-$headSha = $null
-try {
-    $prevEAP = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $headSha = (git -C $RepoRoot rev-parse HEAD 2>$null | Out-String).Trim()
-    $ErrorActionPreference = $prevEAP
-} catch {
-    $ErrorActionPreference = $prevEAP
-    $headSha = $null
-}
-if ([string]::IsNullOrWhiteSpace($headSha)) {
-    $headSha = 'unknown'
-    Write-Warning "Could not resolve HEAD from $RepoRoot (not a git repo?); using 'unknown'"
-}
-
 # Count bundled files (excluding node_modules bloat already trimmed)
 $fileCount = (Get-ChildItem $EmbedDir -Recurse -File | Measure-Object).Count
 
@@ -261,7 +292,7 @@ $totalBytes = (Get-ChildItem $EmbedDir -Recurse -File | Measure-Object Length -S
 
 $manifest = [ordered]@{
     app_name        = 'Token Eyes'
-    app_version     = $appVersion
+    app_version     = $cargoVersion
     node_version    = $ExpectedNodeVersion
     # Nested `node` object matches the R1 work order's product verification
     # contract: `$Manifest.node.sha256 -ne $Manifest.node.official_sha256`.

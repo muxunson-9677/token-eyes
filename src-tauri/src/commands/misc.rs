@@ -20,18 +20,8 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// 打开外部链接
 #[tauri::command]
-pub async fn open_external(app: AppHandle, url: String) -> Result<bool, String> {
-    let url = if url.starts_with("http://") || url.starts_with("https://") {
-        url
-    } else {
-        format!("https://{url}")
-    };
-
-    app.opener()
-        .open_url(&url, None::<String>)
-        .map_err(|e| format!("打开链接失败: {e}"))?;
-
-    Ok(true)
+pub async fn open_external(app: AppHandle, link_id: String) -> Result<bool, String> {
+    crate::open_external_link(app, link_id).await
 }
 
 #[tauri::command]

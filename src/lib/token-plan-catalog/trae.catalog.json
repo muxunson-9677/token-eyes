@@ -1,7 +1,6 @@
 {
   "provider_id": "trae",
   "provider_name": "Trae CN",
-  "official_site": "https://www.trae.cn/",
   "catalog_version": "2026-07-18",
   "plans": [
     {
@@ -13,14 +12,47 @@
         "unit": "requests",
         "display": "官方账户订阅额度"
       },
-      "expires": { "kind": "provider_reported" },
-      "official_evidence_url": "https://www.trae.cn/"
+      "expires": {
+        "kind": "provider_reported"
+      },
+      "evidence": {
+        "claim_scope": "catalog_plan",
+        "link_id": "provider-home-trae",
+        "supports": [
+          "plan_identity"
+        ],
+        "verified": false,
+        "verified_at": null,
+        "fetched_at": null,
+        "content_sha256": null,
+        "content_hash_kind": null,
+        "valid_from": null,
+        "valid_until": null,
+        "stale_after_seconds": 2592000
+      }
     }
   ],
   "account_access": {
     "official_quota_api": true,
     "authorization": "official_oauth_pkce",
-    "fields_available": ["subscription"],
+    "fields_available": [
+      "subscription"
+    ],
     "notes": "使用 Trae CN 官方 OAuth 授权并查询官方订阅额度。"
+  },
+  "official_site_link_id": "provider-home-trae",
+  "sources": [],
+  "evidence": {
+    "claim_scope": "catalog_provider",
+    "link_id": "provider-home-trae",
+    "supports": [],
+    "verified": false,
+    "verified_at": null,
+    "fetched_at": null,
+    "content_sha256": null,
+    "content_hash_kind": null,
+    "valid_from": null,
+    "valid_until": null,
+    "stale_after_seconds": 2592000
   }
 }

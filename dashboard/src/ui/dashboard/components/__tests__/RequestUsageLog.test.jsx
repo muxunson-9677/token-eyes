@@ -19,7 +19,7 @@ vi.mock("../../../../lib/copy", () => ({
     const map = {
       "ticket04.request.title": "Request Token Detail",
       "ticket04.request.subtitle": "Request-level token usage",
-      "ticket04.request.pricing_source_note": "Billing statistics use official model list prices",
+      "ticket04.request.pricing_evidence_note": "Pricing source and freshness are shown per record",
       "ticket04.request.loading": "Loading request records",
       "ticket04.request.empty": "No request records",
       "ticket04.request.error": "Failed to load",
@@ -51,6 +51,17 @@ vi.mock("../../../../lib/copy", () => ({
       "observability.request.pricing.complete": "Complete price",
       "observability.request.pricing.partial": "Partial price",
       "observability.request.pricing.unpriced": "Unpriced",
+      "pricing.provenance.official_api": "Official price",
+      "pricing.provenance.curated": "Curated rate",
+      "pricing.provenance.third_party": "Third-party catalog",
+      "pricing.provenance.user_override": "User configured",
+      "pricing.provenance.mixed": "Mixed sources",
+      "pricing.provenance.unpriced": "Unpriced",
+      "pricing.provenance.estimated": "Estimated",
+      "pricing.provenance.inferred": "Inferred match",
+      "pricing.provenance.stale": "Stale price",
+      "pricing.provenance.composition": `${vars.sources}`,
+      "pricing.provenance.tooltip": `Source: ${vars.source}; matched model: ${vars.model}; updated: ${vars.updated}`,
       "ticket04.request.column.source": "Source",
       "ticket04.request.sort_aria": `Sort by ${vars.column}`,
       "ticket04.request.status_error_aria": "Error status",
@@ -115,10 +126,11 @@ const HOOK_DEFAULTS = {
 };
 
 describe("RequestUsageLog", () => {
-  it("shows the official list-price source note in the request-log heading", () => {
+  it("states that pricing evidence is per-record instead of claiming every price is official", () => {
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
 
-    expect(screen.getByText("Billing statistics use official model list prices")).toBeInTheDocument();
+    expect(screen.getByText("Pricing source and freshness are shown per record")).toBeInTheDocument();
+    expect(screen.queryByText("Billing statistics use official model list prices")).not.toBeInTheDocument();
   });
 
   it("uses nested glass metric summaries without changing the request data", () => {
@@ -187,6 +199,135 @@ describe("RequestUsageLog", () => {
     }
     expect(screen.getByText("Hit")).toBeInTheDocument();
     expect(screen.getByText("Complete price")).toBeInTheDocument();
+  });
+
+  it("renders row provenance, mixed composition, and null price without promoting it to official", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [
+        makeRecord({
+          id: "curated",
+          source_kind: "curated",
+          pricing_source: "curated:exact",
+          source_url: "https://example.test/curated",
+          source_updated_at: "2026-08-01T00:00:00.000Z",
+          estimated: true,
+          match_kind: "exact",
+          matched_model: "gpt-5",
+        }),
+        makeRecord({
+          id: "inferred",
+          source_kind: "third_party",
+          pricing_source: "litellm:prefix-strip",
+          estimated: true,
+          match_kind: "inferred",
+          matched_model: "provider/gpt-5",
+        }),
+        makeRecord({
+          id: "stale-unpriced",
+          cost_usd: null,
+          pricing_coverage: "unpriced",
+          source_kind: "unpriced",
+          is_stale: true,
+          note_code: "pricing_source_stale",
+        }),
+      ],
+      totals: {
+        request_count: 3,
+        cost_usd: 0.02,
+        pricing_coverage: "partial",
+        source_kind: "mixed",
+        pricing_components: [
+          { source_kind: "curated", priced_tokens: 150 },
+          { source_kind: "user_override", priced_tokens: 150 },
+        ],
+      },
+      total: 3,
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    const curated = screen.getByTestId("request-pricing-provenance-0");
+    expect(curated).toHaveTextContent("Curated rate");
+    expect(curated).toHaveTextContent("Estimated");
+    expect(curated).toHaveAttribute("title", expect.stringContaining("gpt-5"));
+    expect(curated).toHaveAttribute("title", expect.stringContaining("https://example.test/curated"));
+    expect(curated).not.toHaveTextContent("Official price");
+
+    const inferred = screen.getByTestId("request-pricing-provenance-1");
+    expect(inferred).toHaveTextContent("Third-party catalog");
+    expect(inferred).toHaveTextContent("Inferred match");
+
+    const stale = screen.getByTestId("request-pricing-provenance-2");
+    expect(stale).toHaveTextContent("Unpriced");
+    expect(stale).toHaveTextContent("Stale price");
+    expect(within(screen.getByTestId("request-log-row-2")).queryByText("$0")).not.toBeInTheDocument();
+
+    const mixed = screen.getByTestId("request-pricing-provenance-total");
+    expect(mixed).toHaveTextContent("Mixed sources");
+    expect(mixed).toHaveTextContent("Curated rate");
+    expect(mixed).toHaveTextContent("User configured");
+    expect(mixed).not.toHaveTextContent("Official price");
+  });
+
+  it("shows the official label only when the API explicitly reports official provenance", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({
+        source_kind: "official_api",
+        pricing_source: "provider-billing",
+        match_kind: "exact",
+        matched_model: "provider-model",
+        estimated: false,
+      })],
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    const official = screen.getByTestId("request-pricing-provenance-0");
+    expect(official).toHaveTextContent("Official price");
+    expect(official).not.toHaveTextContent("Estimated");
+  });
+
+  it("shows inferred, estimated, and stale evidence inside same-kind mixed totals without promoting official", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord()],
+      totals: {
+        request_count: 2,
+        cost_usd: 0.01,
+        pricing_coverage: "partial",
+        source_kind: "mixed",
+        match_kind: "mixed",
+        estimated: true,
+        is_stale: true,
+        pricing_components: [
+          {
+            source_kind: "third_party",
+            match_kind: "exact",
+            estimated: false,
+            is_stale: false,
+          },
+          {
+            source_kind: "third_party",
+            match_kind: "inferred",
+            estimated: true,
+            is_stale: true,
+          },
+        ],
+      },
+      total: 1,
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    const mixed = screen.getByTestId("request-pricing-provenance-total");
+    expect(mixed).toHaveTextContent("Mixed sources");
+    expect(mixed).toHaveTextContent("Third-party catalog");
+    expect(mixed).toHaveTextContent("Inferred match");
+    expect(mixed).toHaveTextContent("Estimated");
+    expect(mixed).toHaveTextContent("Stale price");
+    expect(mixed).not.toHaveTextContent("Official price");
   });
 
   it("does not render inert sort controls when request ordering is server-owned", () => {

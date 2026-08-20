@@ -12,7 +12,10 @@ const {
   lookupPricing,
   buildLitellmPerMillionMap,
 } = require("./matcher");
-const { loadLitellmData } = require("./litellm-fetcher");
+const {
+  loadLitellmData,
+  PRICING_HARD_MAX_AGE_MS,
+} = require("./litellm-fetcher");
 
 const ZERO_PRICING = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
 const TOKEN_ONLY_SOURCES = new Set(["trae", "codebuddy"]);
@@ -163,6 +166,7 @@ const SEED_SNAPSHOT_PATH = path.resolve(__dirname, "seed-snapshot.json");
 // get LiteLLM-backed pricing instead of all-zero. ensurePricingLoaded() will
 // later upgrade this to fresh disk cache or upstream data.
 let seedSnapshotVersion = null;
+let seedSnapshotMetadata = null;
 
 function loadSeedSync() {
   try {
@@ -171,6 +175,11 @@ function loadSeedSync() {
     seedSnapshotVersion = typeof parsed?._meta?.generated_at === "string"
       ? parsed._meta.generated_at
       : null;
+    seedSnapshotMetadata = {
+      source_url: typeof parsed?._meta?.source === "string" ? parsed._meta.source : null,
+      cached_at: null,
+      source_updated_at: seedSnapshotVersion,
+    };
     delete parsed._meta;
     return parsed;
   } catch (e) {
@@ -186,6 +195,9 @@ const state = {
   litellmRawMap: seedRaw, // raw per-token; field shape from LiteLLM JSON
   litellmPerMillionMap: buildLitellmPerMillionMap(seedRaw), // USD/MTok
   source: Object.keys(seedRaw).length ? "seed-snapshot:sync" : null,
+  source_url: seedSnapshotMetadata?.source_url || null,
+  cached_at: seedSnapshotMetadata?.cached_at || null,
+  source_updated_at: seedSnapshotMetadata?.source_updated_at || null,
   // negativeCache prevents re-walking the LiteLLM map for models we've already
   // determined are unknown. Cleared on every reload.
   negativeCache: new Set(),
@@ -202,10 +214,14 @@ async function ensurePricingLoaded(opts = {}) {
   state.loadingPromise = (async () => {
     try {
       const cachePath = opts.cachePath || defaultCachePath();
-      const { data, source } = await loadLitellmData({ ...opts, cachePath });
+      const loaded = await loadLitellmData({ ...opts, cachePath });
+      const { data, source } = loaded;
       state.litellmRawMap = data || {};
       state.litellmPerMillionMap = buildLitellmPerMillionMap(state.litellmRawMap);
       state.source = source;
+      state.source_url = loaded.source_url || null;
+      state.cached_at = loaded.cached_at || null;
+      state.source_updated_at = loaded.source_updated_at || null;
       state.loaded = true;
       state.negativeCache.clear();
       return state;
@@ -225,7 +241,104 @@ function resetPricingForTests() {
   state.litellmRawMap = seedRaw;
   state.litellmPerMillionMap = buildLitellmPerMillionMap(seedRaw);
   state.source = Object.keys(seedRaw).length ? "seed-snapshot:sync" : null;
+  state.source_url = seedSnapshotMetadata?.source_url || null;
+  state.cached_at = seedSnapshotMetadata?.cached_at || null;
+  state.source_updated_at = seedSnapshotMetadata?.source_updated_at || null;
   state.negativeCache.clear();
+}
+
+function pricingRates(value) {
+  return {
+    input: Number(value?.input || 0),
+    output: Number(value?.output || 0),
+    cache_read: Number(value?.cache_read || 0),
+    cache_write: Number(value?.cache_write || 0),
+  };
+}
+
+function isoDate(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T00:00:00.000Z`
+    : value;
+  return Number.isFinite(Date.parse(normalized)) ? normalized : null;
+}
+
+function catalogIsStale(nowMs) {
+  const sourceUpdatedAt = isoDate(state.source_updated_at);
+  return sourceUpdatedAt == null
+    || nowMs - Date.parse(sourceUpdatedAt) > PRICING_HARD_MAX_AGE_MS;
+}
+
+function resolveModelPricing(model, opts = {}) {
+  if (!model) return { hit: false, pricing: ZERO_PRICING, provenance: null };
+  let lookupSource = null;
+  if (typeof opts === "string") {
+    lookupSource = opts.toLowerCase();
+  } else if (typeof opts.source === "string") {
+    lookupSource = opts.source.toLowerCase();
+  }
+  const result = lookupPricing(model, {
+    curated: curatedOverrides,
+    litellm: state.litellmPerMillionMap,
+    source: lookupSource,
+  });
+  if (!result.hit) return { hit: false, pricing: ZERO_PRICING, provenance: null };
+
+  const nowMs = Number.isFinite(opts?.nowMs) ? opts.nowMs : Date.now();
+  const observedAt = new Date(nowMs).toISOString();
+  const curated = result.source.startsWith("curated:");
+  if (curated) {
+    const evidence = curatedOverrides.evidence?.[result.matched_model] || null;
+    const estimated = Boolean(evidence?.estimated || result.match_kind === "inferred");
+    return {
+      hit: true,
+      pricing: pricingRates(result.value),
+      provenance: {
+        pricing_source: result.source,
+        pricing_version: evidence?.evidence_date || null,
+        source_kind: "curated",
+        source_url: evidence?.source_url || null,
+        source_updated_at: isoDate(evidence?.evidence_date),
+        observed_at: observedAt,
+        is_stale: false,
+        estimated,
+        match_kind: result.match_kind,
+        matched_model: result.matched_model,
+        confidence: result.confidence,
+        note_code: result.match_kind === "inferred"
+          ? "pricing_match_inferred"
+          : estimated
+            ? "pricing_estimated"
+            : null,
+      },
+    };
+  }
+
+  const isStale = catalogIsStale(nowMs);
+  const estimated = result.match_kind === "inferred";
+  return {
+    hit: true,
+    pricing: pricingRates(result.value),
+    provenance: {
+      pricing_source: result.source,
+      pricing_version: state.source_updated_at || state.cached_at || state.source || null,
+      source_kind: "third_party",
+      source_url: state.source_url || null,
+      source_updated_at: isoDate(state.source_updated_at),
+      observed_at: observedAt,
+      is_stale: isStale,
+      estimated,
+      match_kind: result.match_kind,
+      matched_model: result.matched_model,
+      confidence: result.confidence,
+      note_code: isStale
+        ? "pricing_source_stale"
+        : estimated
+          ? "pricing_match_inferred"
+          : null,
+    },
+  };
 }
 
 function getModelPricing(model, opts = {}) {
@@ -239,14 +352,13 @@ function getModelPricing(model, opts = {}) {
   const cacheKey = lookupSource ? `${lookupSource}\0${model}` : model;
   if (state.negativeCache.has(cacheKey)) return ZERO_PRICING;
 
-  const result = lookupPricing(model, {
-    curated: curatedOverrides,
-    litellm: state.litellmPerMillionMap,
+  const result = resolveModelPricing(model, {
+    ...(typeof opts === "object" ? opts : {}),
     source: lookupSource,
   });
-  if (result.hit) return result.value;
+  if (result.hit && !result.provenance?.is_stale) return result.pricing;
 
-  state.negativeCache.add(cacheKey);
+  if (!result.hit) state.negativeCache.add(cacheKey);
   return ZERO_PRICING;
 }
 
@@ -258,15 +370,14 @@ function getPricingMetadata(model, opts = {}) {
   } else if (typeof opts.source === "string") {
     lookupSource = opts.source.toLowerCase();
   }
-  const result = lookupPricing(model, {
-    curated: curatedOverrides,
-    litellm: state.litellmPerMillionMap,
+  const result = resolveModelPricing(model, {
+    ...(typeof opts === "object" ? opts : {}),
     source: lookupSource,
   });
   if (!result.hit) return { pricing_source: null, pricing_version: null };
   return {
-    pricing_source: result.source,
-    pricing_version: seedSnapshotVersion || state.source || "unknown",
+    pricing_source: result.provenance.pricing_source,
+    pricing_version: result.provenance.pricing_version || "unknown",
   };
 }
 
@@ -288,6 +399,7 @@ function computeRowCostDetailed(row, options = {}) {
   let pricedTokens = 0;
   let unpricedTokens = 0;
   let hasPricing = false;
+  let provenance = null;
 
   const totalTokens = Number(row.total_tokens || 0);
   const inputTokens = Number(row.input_tokens || 0);
@@ -296,13 +408,27 @@ function computeRowCostDetailed(row, options = {}) {
   const cacheCreationTokens = Number(row.cache_creation_input_tokens || 0);
   const reasoningTokens = Number(row.reasoning_output_tokens || 0);
   const source = String(row.source || "").trim().toLowerCase();
+  const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
+  const observedAt = new Date(nowMs).toISOString();
 
   if (TOKEN_ONLY_SOURCES.has(source)) {
     return {
-      cost_usd: 0,
+      cost_usd: null,
       priced_tokens: 0,
       unpriced_tokens: totalTokens,
       pricing_coverage: totalTokens > 0 ? "unpriced" : "complete",
+      pricing_source: null,
+      pricing_version: null,
+      source_kind: "unpriced",
+      source_url: null,
+      source_updated_at: null,
+      observed_at: observedAt,
+      is_stale: false,
+      estimated: false,
+      match_kind: null,
+      matched_model: null,
+      confidence: null,
+      note_code: "pricing_not_supported",
     };
   }
 
@@ -312,12 +438,31 @@ function computeRowCostDetailed(row, options = {}) {
       costUsd = computeRowCostWithRule(row, rule, options.usdToCny);
       pricedTokens = totalTokens;
       hasPricing = true;
+      provenance = {
+        pricing_source: "pricing-rule",
+        pricing_version: rule.updated_at || null,
+        source_kind: "user_override",
+        source_url: null,
+        source_updated_at: isoDate(rule.updated_at),
+        observed_at: observedAt,
+        is_stale: false,
+        estimated: false,
+        match_kind: "exact",
+        matched_model: String(row.model || "") || null,
+        confidence: "high",
+        note_code: "pricing_user_override",
+      };
     }
   }
 
   if (!hasPricing && Object.prototype.hasOwnProperty.call(options, "agentDefaultPricing")) {
     const agentPricing = getAgentDefaultPriceForSource(row.source, options.agentDefaultPricing);
     if (agentPricing && (agentPricing.inputUsdPer1M !== 0 || agentPricing.outputUsdPer1M !== 0)) {
+      const updatedAtBySource = options.agent_default_pricing_updated_at
+        && typeof options.agent_default_pricing_updated_at === "object"
+        ? options.agent_default_pricing_updated_at
+        : {};
+      const agentPricingUpdatedAt = updatedAtBySource[source] || options.pricing_updated_at || null;
       costUsd = (
         ((inputTokens + cachedInputTokens + cacheCreationTokens) *
           agentPricing.inputUsdPer1M +
@@ -327,12 +472,27 @@ function computeRowCostDetailed(row, options = {}) {
       );
       pricedTokens = totalTokens;
       hasPricing = true;
+      provenance = {
+        pricing_source: "agent-default",
+        pricing_version: agentPricingUpdatedAt,
+        source_kind: "user_override",
+        source_url: null,
+        source_updated_at: isoDate(agentPricingUpdatedAt),
+        observed_at: observedAt,
+        is_stale: false,
+        estimated: false,
+        match_kind: "exact",
+        matched_model: String(row.model || "") || null,
+        confidence: "high",
+        note_code: "pricing_user_override",
+      };
     }
   }
 
   if (!hasPricing) {
-    const pricing = getModelPricing(row.model, { source: row.source });
-    if (pricing.input !== 0 || pricing.output !== 0 || pricing.cache_read !== 0 || pricing.cache_write !== 0) {
+    const resolved = resolveModelPricing(row.model, { source: row.source, nowMs });
+    if (resolved.hit && !resolved.provenance?.is_stale) {
+      const pricing = resolved.pricing;
       const reasoningIncludedInOutput = row.source === "codex" || row.source === "every-code";
       const reasoningCost = reasoningIncludedInOutput
         ? 0
@@ -346,6 +506,9 @@ function computeRowCostDetailed(row, options = {}) {
       ) / 1_000_000;
       pricedTokens = totalTokens;
       hasPricing = true;
+      provenance = resolved.provenance;
+    } else if (resolved.hit) {
+      provenance = resolved.provenance;
     }
   }
 
@@ -361,10 +524,24 @@ function computeRowCostDetailed(row, options = {}) {
   }
 
   return {
-    cost_usd: Number(costUsd.toFixed(6)),
+    cost_usd: hasPricing ? Number(costUsd.toFixed(6)) : null,
     priced_tokens: pricedTokens,
     unpriced_tokens: unpricedTokens,
     pricing_coverage: pricingCoverage,
+    ...(provenance || {
+      pricing_source: null,
+      pricing_version: null,
+      source_kind: "unpriced",
+      source_url: null,
+      source_updated_at: null,
+      observed_at: observedAt,
+      is_stale: false,
+      estimated: false,
+      match_kind: null,
+      matched_model: null,
+      confidence: null,
+      note_code: "pricing_unavailable",
+    }),
   };
 }
 
@@ -374,7 +551,9 @@ function computeRowCostDetailed(row, options = {}) {
 // CURATED.exact map (which contains the kiro entries by design); LiteLLM
 // entries are NOT included here because they're keyed dynamically and the old
 // table was authoritative for what is now CURATED.
-const MODEL_PRICING = curatedOverrides.exact;
+const MODEL_PRICING = Object.fromEntries(
+  Object.entries(curatedOverrides.exact).map(([model, value]) => [model, pricingRates(value)]),
+);
 
 module.exports = {
   ensurePricingLoaded,
