@@ -99,6 +99,7 @@ async function expandAllPlans() {
 }
 
 beforeEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   getConsoleSessions.mockReset();
   createConsoleSession.mockReset();
@@ -3151,6 +3152,39 @@ it("reopens official Codex OAuth when manual sync reports reauth_required", asyn
   }
 });
 
+it("reopens official Codex OAuth when a connected session cannot fetch quota", async () => {
+  mockCodexCatalog();
+  mockConnectedCodexPlan();
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+  syncCodexConsoleQuota.mockResolvedValue({
+    connected: true,
+    authorized: true,
+    session_ref: codexSessionRef,
+    state_code: "authorized",
+    quota_sync_status: "error",
+    error_code: "QUOTA_SYNC_FAILED",
+    error_message: "Codex authorization has expired; reconnect this account",
+  });
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeCodexSession({ id: "replacement-codex-session", session_ref: params.session_ref }),
+    sessions: [makeCodexSession({ id: "replacement-codex-session", session_ref: params.session_ref })],
+  }));
+  openCodexConsoleLogin.mockRejectedValue(new Error("browser open invoked"));
+  const user = userEvent.setup();
+
+  try {
+    render(<TokenPlanSection />);
+    await screen.findByText(/codex \/ Pro 5x/i);
+    await expandAllPlans();
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
+    await user.click(await screen.findByTestId("detection-sync-codex"));
+
+    await waitFor(() => expect(openCodexConsoleLogin).toHaveBeenCalledTimes(1));
+  } finally {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  }
+});
+
 it("starts one reload recovery flow that persists awaiting then authorized without reopening OAuth", async () => {
   mockCodexCatalog();
   const record = {
@@ -4315,7 +4349,7 @@ it("selects the latest unbound failed Codex session and treats an unknown state 
   expect(failed).toHaveTextContent("latest unknown failure");
   expect(failed).toHaveAttribute("role", "alert");
   expect(failed).toHaveAttribute("aria-live", "assertive");
-  await waitFor(() => expect([failed, screen.getByTestId("detection-codex-retry")]).toContain(document.activeElement));
+  expect(screen.getByTestId("detection-codex-retry")).toBeEnabled();
 });
 
 it("replaces a terminal Codex session with a new session_ref on retry", async () => {

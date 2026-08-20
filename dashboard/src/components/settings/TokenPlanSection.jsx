@@ -3344,6 +3344,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
           }
         }
         const reauthRequired = projectedStatus.state_code === "reauth_required";
+        const reconnectRequired = reauthRequired || projectedStatus.quota_sync_status === "error";
         const errorCode = projectedStatus.error_code
           || (reauthRequired ? "REAUTH_REQUIRED" : "QUOTA_SYNC_FAILED");
         const errorMessage = projectedStatus.error_message
@@ -3362,7 +3363,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         });
         setRecords(normalizeRecords(result?.records));
         setError(errorMessage);
-        return { codexReauthRequired: reauthRequired };
+        return { codexReauthRequired: reconnectRequired };
       }
       if (
         plan &&

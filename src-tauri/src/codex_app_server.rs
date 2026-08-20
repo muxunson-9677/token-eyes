@@ -27,7 +27,6 @@ const ACCOUNT_READ_METHOD: &str = "account/read";
 const LOGIN_START_METHOD: &str = "account/login/start";
 const LOGIN_COMPLETED_METHOD: &str = "account/login/completed";
 const LOGIN_CANCEL_METHOD: &str = "account/login/cancel";
-const LOGOUT_METHOD: &str = "account/logout";
 const RATE_LIMITS_READ_METHOD: &str = "account/rateLimits/read";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const QUEUE_LIMIT: usize = 256;
@@ -68,7 +67,6 @@ pub trait AppServerOps: Send {
     fn poll_login(&mut self, expected_login_id: &str) -> LoginCompletion;
     fn read_rate_limits(&mut self) -> Result<SanitizedRateLimits, String>;
     fn cancel_login(&mut self, login_id: &str) -> Result<(), String>;
-    fn logout(&mut self) -> Result<(), String>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -679,13 +677,6 @@ impl AppServerClient {
         }
     }
 
-    pub fn logout(&mut self) -> Result<(), String> {
-        match self.request(LOGOUT_METHOD, None)? {
-            ResponsePayload::Acknowledged => Ok(()),
-            _ => Err("Codex logout failed".to_string()),
-        }
-    }
-
     fn notify(&mut self, method: &str, params: Option<Value>) -> Result<(), String> {
         let mut message = json!({ "method": method });
         if let Some(params) = params {
@@ -761,10 +752,6 @@ impl AppServerOps for AppServerClient {
 
     fn cancel_login(&mut self, login_id: &str) -> Result<(), String> {
         AppServerClient::cancel_login(self, login_id)
-    }
-
-    fn logout(&mut self) -> Result<(), String> {
-        AppServerClient::logout(self)
     }
 }
 

@@ -417,12 +417,18 @@ describe("repairGrokQueueFromSessionSnapshots", () => {
 
   it("regular sync does not run Grok history repair unless explicitly requested", async () => {
     const dir = await makeTempDir();
+    const originalHomedir = os.homedir;
     const prevHome = process.env.HOME;
+    const prevUserProfile = process.env.USERPROFILE;
+    const prevCodexHome = process.env.CODEX_HOME;
     const prevToken = process.env.TOKENTRACKER_DEVICE_TOKEN;
     const prevGrokHome = process.env.GROK_HOME;
     const prevTrackerGrokHome = process.env.TOKENTRACKER_GROK_HOME;
     try {
       process.env.HOME = dir;
+      process.env.USERPROFILE = dir;
+      process.env.CODEX_HOME = path.join(dir, ".codex");
+      os.homedir = () => dir;
       delete process.env.TOKENTRACKER_DEVICE_TOKEN;
       delete process.env.GROK_HOME;
       process.env.TOKENTRACKER_GROK_HOME = path.join(dir, ".grok");
@@ -467,8 +473,13 @@ describe("repairGrokQueueFromSessionSnapshots", () => {
         undefined,
       );
     } finally {
+      os.homedir = originalHomedir;
       if (prevHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevHome;
+      if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = prevUserProfile;
+      if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = prevCodexHome;
       if (prevToken === undefined) delete process.env.TOKENTRACKER_DEVICE_TOKEN;
       else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
       if (prevGrokHome === undefined) delete process.env.GROK_HOME;

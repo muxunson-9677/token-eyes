@@ -939,20 +939,13 @@ fn disconnected_status(session_ref: &str) -> CodexSessionStatus {
     basic_status(session_ref, SessionStateCode::Disconnected, "", "")
 }
 
-fn logout_failure_status(session_ref: &str, storage: &Path) -> CodexSessionStatus {
-    let mut status = authorized_status(session_ref);
-    status.error_code = "CODEX_LOGOUT_FAILED".to_string();
-    status.error_message = "无法确认 Codex 已从系统安全凭据存储退出，账号绑定已保留。".to_string();
-    status_with_legacy_auth(status, storage)
-}
-
 fn binding_cleanup_failure_status(session_ref: &str, storage: &Path) -> CodexSessionStatus {
     status_with_legacy_auth(
         basic_status(
             session_ref,
             SessionStateCode::Failed,
-            "CODEX_LOGOUT_FAILED",
-            "Codex 已退出，但本地账号绑定清理失败；请重试断开。",
+            "CODEX_LOCAL_BINDING_DELETE_FAILED",
+            "Token Eyes 本地账号绑定清理失败；请重试删除连接。",
         ),
         storage,
     )
@@ -967,41 +960,24 @@ fn disconnect_flow_core<F>(
 where
     F: FnMut(&Path) -> Result<(), String>,
 {
-    if state.active_session_ref.as_deref() != Some(session_ref)
-        || state.account_dir.as_deref() != Some(storage)
-        || state.client.is_none()
-    {
-        return Ok(logout_failure_status(session_ref, storage));
-    }
-
-    let login_id = state.login_id.clone();
-    let logout_check = {
-        let client = state.client.as_mut().expect("client checked above");
-        if let Some(login_id) = login_id.as_deref() {
+    let owns_active_binding = state.active_session_ref.as_deref() == Some(session_ref)
+        && state.account_dir.as_deref() == Some(storage);
+    if owns_active_binding {
+        if let (Some(login_id), Some(client)) = (state.login_id.as_deref(), state.client.as_mut()) {
             let _ = client.cancel_login(login_id);
         }
-        if client.logout().is_err() {
-            None
-        } else {
-            Some(client.read_account_authorized(true))
-        }
-    };
-
-    if logout_check != Some(Ok(false)) {
-        state.authorized = true;
-        return Ok(logout_failure_status(session_ref, storage));
+        let client = state.client.take();
+        drop(client);
+        state.login_id = None;
+        state.auth_url = None;
+        state.authorized = false;
+        state.active_session_ref = None;
+        state.account_dir = None;
     }
 
-    let client = state.client.take();
-    drop(client);
-    state.login_id = None;
-    state.auth_url = None;
-    state.authorized = false;
     if storage.exists() && remove_binding(storage).is_err() {
         return Ok(binding_cleanup_failure_status(session_ref, storage));
     }
-    state.active_session_ref = None;
-    state.account_dir = None;
     Ok(disconnected_status(session_ref))
 }
 
@@ -1018,12 +994,6 @@ fn disconnect_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionSta
     let mut state = managed
         .lock()
         .map_err(|_| "Codex session state is unavailable".to_string())?;
-    if ensure_client(&mut state, session_ref, &storage).is_err() {
-        state.active_session_ref = Some(session_ref.to_string());
-        state.account_dir = Some(storage.clone());
-        state.authorized = true;
-        return Ok(logout_failure_status(session_ref, &storage));
-    }
     disconnect_flow_core(&mut state, session_ref, &storage, |path| {
         std::fs::remove_dir_all(path)
             .map_err(|_| "Unable to remove the Token Eyes Codex account binding".to_string())
@@ -1139,7 +1109,6 @@ mod tests {
         PollLogin(String),
         ReadRateLimits,
         CancelLogin(String),
-        Logout,
     }
 
     #[derive(Default)]
@@ -1150,7 +1119,6 @@ mod tests {
         login_completions: VecDeque<LoginCompletion>,
         rate_limits: VecDeque<Result<SanitizedRateLimits, String>>,
         cancel_results: VecDeque<Result<(), String>>,
-        logout_results: VecDeque<Result<(), String>>,
     }
 
     impl FakeAppServer {
@@ -1193,13 +1161,6 @@ mod tests {
             self.cancel_results
                 .pop_front()
                 .expect("unexpected account/login/cancel")
-        }
-
-        fn logout(&mut self) -> Result<(), String> {
-            self.record(AppServerCall::Logout);
-            self.logout_results
-                .pop_front()
-                .expect("unexpected account/logout")
         }
     }
 
@@ -2530,101 +2491,7 @@ mod tests {
     }
 
     #[test]
-    fn disconnect_logout_failure_keeps_the_binding_connected() {
-        let session_ref = "token-plan/codex/session/logout-failure";
-        let storage = TestDirectory::new("logout-failure");
-        let marker = storage.path().join("binding-marker");
-        std::fs::write(&marker, "binding").expect("binding marker should be written");
-        std::fs::write(storage.path().join("auth.json"), "{}")
-            .expect("legacy auth fixture should be written");
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        let fake = FakeAppServer {
-            calls: Arc::clone(&calls),
-            logout_results: VecDeque::from([Err("logout failed".to_string())]),
-            ..FakeAppServer::default()
-        };
-        let mut state = state_with_fake(session_ref, storage.path(), fake);
-        state.authorized = true;
-        let removed_paths = Arc::new(Mutex::new(Vec::new()));
-        let removed_for_call = Arc::clone(&removed_paths);
-
-        let status = disconnect_flow_core(&mut state, session_ref, storage.path(), |path| {
-            assert_eq!(path, storage.path());
-            removed_for_call
-                .lock()
-                .expect("remove log should lock")
-                .push(path.to_path_buf());
-            std::fs::remove_dir_all(path).map_err(|error| error.to_string())
-        })
-        .expect("logout failure should be represented as a status");
-
-        assert_eq!(
-            *calls.lock().expect("call log should lock"),
-            vec![AppServerCall::Logout]
-        );
-        assert!(status.authorized);
-        assert!(status.connected);
-        assert_eq!(status.error_code, "CODEX_LOGOUT_FAILED");
-        assert!(status.legacy_auth_present);
-        assert!(state.authorized);
-        assert!(state.client.is_some());
-        assert_eq!(state.active_session_ref.as_deref(), Some(session_ref));
-        assert_eq!(state.account_dir.as_deref(), Some(storage.path()));
-        assert!(removed_paths
-            .lock()
-            .expect("remove log should lock")
-            .is_empty());
-        assert!(marker.exists());
-    }
-
-    #[test]
-    fn disconnect_account_read_failure_keeps_the_binding_connected() {
-        let session_ref = "token-plan/codex/session/logout-read-failure";
-        let storage = TestDirectory::new("logout-read-failure");
-        let marker = storage.path().join("binding-marker");
-        std::fs::write(&marker, "binding").expect("binding marker should be written");
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        let fake = FakeAppServer {
-            calls: Arc::clone(&calls),
-            logout_results: VecDeque::from([Ok(())]),
-            account_reads: VecDeque::from([Err("account/read failed".to_string())]),
-            ..FakeAppServer::default()
-        };
-        let mut state = state_with_fake(session_ref, storage.path(), fake);
-        state.authorized = true;
-        let removed_paths = Arc::new(Mutex::new(Vec::new()));
-        let removed_for_call = Arc::clone(&removed_paths);
-
-        let status = disconnect_flow_core(&mut state, session_ref, storage.path(), |path| {
-            assert_eq!(path, storage.path());
-            removed_for_call
-                .lock()
-                .expect("remove log should lock")
-                .push(path.to_path_buf());
-            std::fs::remove_dir_all(path).map_err(|error| error.to_string())
-        })
-        .expect("account/read failure should be represented as a status");
-
-        assert_eq!(
-            *calls.lock().expect("call log should lock"),
-            vec![AppServerCall::Logout, AppServerCall::ReadAccount(true)]
-        );
-        assert!(status.authorized);
-        assert!(status.connected);
-        assert_eq!(status.error_code, "CODEX_LOGOUT_FAILED");
-        assert!(state.authorized);
-        assert!(state.client.is_some());
-        assert_eq!(state.active_session_ref.as_deref(), Some(session_ref));
-        assert_eq!(state.account_dir.as_deref(), Some(storage.path()));
-        assert!(removed_paths
-            .lock()
-            .expect("remove log should lock")
-            .is_empty());
-        assert!(marker.exists());
-    }
-
-    #[test]
-    fn disconnect_still_authorized_after_logout_keeps_the_binding_connected() {
+    fn disconnect_removes_the_token_eyes_binding_without_logging_out_codex() {
         let session_ref = "token-plan/codex/session/logout-still-authorized";
         let storage = TestDirectory::new("logout-still-authorized");
         let marker = storage.path().join("binding-marker");
@@ -2632,8 +2499,6 @@ mod tests {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let fake = FakeAppServer {
             calls: Arc::clone(&calls),
-            logout_results: VecDeque::from([Ok(())]),
-            account_reads: VecDeque::from([Ok(true)]),
             ..FakeAppServer::default()
         };
         let mut state = state_with_fake(session_ref, storage.path(), fake);
@@ -2649,24 +2514,22 @@ mod tests {
                 .push(path.to_path_buf());
             std::fs::remove_dir_all(path).map_err(|error| error.to_string())
         })
-        .expect("still-authorized logout should return a status");
+        .expect("local disconnect should return a status");
 
+        assert!(calls.lock().expect("call log should lock").is_empty());
+        assert_eq!(status.state_code, SessionStateCode::Disconnected);
+        assert!(!status.authorized);
+        assert!(!status.connected);
+        assert!(status.error_code.is_empty());
+        assert!(!state.authorized);
+        assert!(state.client.is_none());
+        assert!(state.active_session_ref.is_none());
+        assert!(state.account_dir.is_none());
         assert_eq!(
-            *calls.lock().expect("call log should lock"),
-            vec![AppServerCall::Logout, AppServerCall::ReadAccount(true)]
+            *removed_paths.lock().expect("remove log should lock"),
+            vec![storage.path().to_path_buf()]
         );
-        assert_eq!(status.error_code, "CODEX_LOGOUT_FAILED");
-        assert!(status.authorized);
-        assert!(status.connected);
-        assert!(state.authorized);
-        assert!(state.client.is_some());
-        assert_eq!(state.active_session_ref.as_deref(), Some(session_ref));
-        assert_eq!(state.account_dir.as_deref(), Some(storage.path()));
-        assert!(removed_paths
-            .lock()
-            .expect("remove log should lock")
-            .is_empty());
-        assert!(marker.exists());
+        assert!(!marker.exists());
     }
 
     #[test]
@@ -2679,8 +2542,6 @@ mod tests {
         let fake = FakeAppServer {
             calls: Arc::clone(&calls),
             cancel_results: VecDeque::from([Ok(())]),
-            logout_results: VecDeque::from([Ok(())]),
-            account_reads: VecDeque::from([Ok(false)]),
             ..FakeAppServer::default()
         };
         let mut state = state_with_fake(session_ref, storage.path(), fake);
@@ -2699,14 +2560,12 @@ mod tests {
         let status = result.expect("checked above");
         assert_eq!(
             *calls.lock().expect("call log should lock"),
-            vec![
-                AppServerCall::CancelLogin("login-remove-failure".to_string()),
-                AppServerCall::Logout,
-                AppServerCall::ReadAccount(true),
-            ]
+            vec![AppServerCall::CancelLogin(
+                "login-remove-failure".to_string()
+            )]
         );
         assert_eq!(status.state_code, SessionStateCode::Failed);
-        assert_eq!(status.error_code, "CODEX_LOGOUT_FAILED");
+        assert_eq!(status.error_code, "CODEX_LOCAL_BINDING_DELETE_FAILED");
         assert!(!status.authorized);
         assert!(!status.connected);
         assert!(!status.error_message.contains("secret-looking"));
@@ -2717,13 +2576,13 @@ mod tests {
         assert!(state.client.is_none());
         assert!(state.login_id.is_none());
         assert!(state.auth_url.is_none());
-        assert_eq!(state.active_session_ref.as_deref(), Some(session_ref));
-        assert_eq!(state.account_dir.as_deref(), Some(storage.path()));
+        assert!(state.active_session_ref.is_none());
+        assert!(state.account_dir.is_none());
         assert!(marker.exists());
     }
 
     #[test]
-    fn disconnect_pending_login_cancels_then_logs_out_and_confirms_account_state() {
+    fn disconnect_pending_login_cancels_the_pending_flow_then_removes_the_binding() {
         let session_ref = "token-plan/codex/session/logout-pending";
         let storage = TestDirectory::new("logout-pending");
         let marker = storage.path().join("binding-marker");
@@ -2732,8 +2591,6 @@ mod tests {
         let fake = FakeAppServer {
             calls: Arc::clone(&calls),
             cancel_results: VecDeque::from([Ok(())]),
-            logout_results: VecDeque::from([Ok(())]),
-            account_reads: VecDeque::from([Ok(false)]),
             ..FakeAppServer::default()
         };
         let mut state = state_with_fake(session_ref, storage.path(), fake);
@@ -2750,15 +2607,11 @@ mod tests {
                 .push(path.to_path_buf());
             std::fs::remove_dir_all(path).map_err(|error| error.to_string())
         })
-        .expect("confirmed logout should return a disconnected status");
+        .expect("local disconnect should return a disconnected status");
 
         assert_eq!(
             *calls.lock().expect("call log should lock"),
-            vec![
-                AppServerCall::CancelLogin("login-disconnect".to_string()),
-                AppServerCall::Logout,
-                AppServerCall::ReadAccount(true),
-            ]
+            vec![AppServerCall::CancelLogin("login-disconnect".to_string())]
         );
         assert_eq!(status.state_code, SessionStateCode::Disconnected);
         assert!(!status.connected);
