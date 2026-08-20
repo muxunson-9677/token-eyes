@@ -1612,6 +1612,12 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
 
   const claudeStage = useMemo(() => computeConsoleStage(formClaudeSession, connectingConsole), [formClaudeSession, connectingConsole]);
 
+  useEffect(() => {
+    if (codexStage !== "failed" || consoleSessionError || codexWarning) return undefined;
+    const timer = window.setTimeout(() => codexAlertRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [codexStage, consoleSessionError, codexWarning, formCodexSession?.id]);
+
   const cursorStage = useMemo(() => computeConsoleStage(formCursorSession, connectingConsole), [formCursorSession, connectingConsole]);
 
   const traeStage = useMemo(() => computeConsoleStage(formTraeSession, connectingConsole), [formTraeSession, connectingConsole]);
@@ -3331,7 +3337,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
               last_refresh_at: now,
             });
             setRecords(normalizeRecords(result?.records));
-            return;
+            return { codexReauthRequired: false };
           } catch (err) {
             setError(err?.message || copy("settings.token_plan.refresh_failed"));
             return;
@@ -3356,7 +3362,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         });
         setRecords(normalizeRecords(result?.records));
         setError(errorMessage);
-        return;
+        return { codexReauthRequired: reauthRequired };
       }
       if (
         plan &&
@@ -3377,7 +3383,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         });
         setRecords(normalizeRecords(result?.records));
         setError(errorMessage);
-        return;
+        return { codexReauthRequired: true };
       }
       const webviewQuotaProviders = [
         { id: "claude", verify: verifyClaudeConsoleSession, skip: isClaudeRoutingMode(plan?.provider_id, plan?.plan_id, plan?.detection_config?.official_account?.claude_account_mode) },
@@ -3776,8 +3782,12 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     }
     if (form.provider_id === "codex") {
       if (formCodexSession?.status === "connected" && form.id) {
-        await save({ keepOpen: true });
-        await refresh(form.id);
+        const saved = await save({ keepOpen: true });
+        if (!saved?.savedId) return;
+        const refreshResult = await refresh(form.id);
+        if (refreshResult?.codexReauthRequired) {
+          await handleConnectCodex({ record: form });
+        }
         return;
       }
       await handleConnectCodex();

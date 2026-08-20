@@ -3113,6 +3113,44 @@ it("persists reauth_required and stops Codex polling immediately", async () => {
   }
 });
 
+it("reopens official Codex OAuth when manual sync reports reauth_required", async () => {
+  mockCodexCatalog();
+  const record = mockConnectedCodexPlan();
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+  syncCodexConsoleQuota.mockResolvedValue({
+    connected: false,
+    authorized: false,
+    session_ref: codexSessionRef,
+    state_code: "reauth_required",
+    quota_sync_status: "idle",
+    error_code: "REAUTH_REQUIRED",
+    error_message: "Codex 官网授权已失效，请重新连接。",
+  });
+  createConsoleSession.mockImplementation(async (params) => ({
+    session: makeCodexSession({ id: "replacement-codex-session", session_ref: params.session_ref }),
+    sessions: [makeCodexSession({ id: "replacement-codex-session", session_ref: params.session_ref })],
+  }));
+  openCodexConsoleLogin.mockRejectedValue(new Error("browser open invoked"));
+  const user = userEvent.setup();
+
+  try {
+    render(<TokenPlanSection />);
+    await screen.findByText(/codex \/ Pro 5x/i);
+    await expandAllPlans();
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
+    await user.click(await screen.findByTestId("detection-sync-codex"));
+
+    await waitFor(() => expect(openCodexConsoleLogin).toHaveBeenCalledTimes(1));
+    expect(createConsoleSession).toHaveBeenCalledWith(expect.objectContaining({
+      provider_id: "codex",
+      session_ref: expect.stringContaining("token-plan/codex/session/"),
+    }));
+    expect(record.id).toBe("codex-plan");
+  } finally {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  }
+});
+
 it("starts one reload recovery flow that persists awaiting then authorized without reopening OAuth", async () => {
   mockCodexCatalog();
   const record = {
