@@ -22,6 +22,7 @@ import {
   verifyGlmConsoleSession,
   deleteGlmConsoleSession,
   openCodexConsoleLogin,
+  reauthorizeCodexConsoleLogin,
   verifyCodexConsoleSession,
   syncCodexConsoleQuota,
   cancelCodexConsoleLogin,
@@ -2147,6 +2148,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     ].includes(candidateSession.status)
       ? candidateSession
       : null;
+    const explicitReauthorization = Boolean(candidateSession && !resumableSession);
     let sessionRef = resumableSession?.session_ref
       || `token-plan/codex/session/${crypto.randomUUID()}`;
     let createdSession = resumableSession;
@@ -2169,7 +2171,9 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         });
         createdSession = created.session;
         setConsoleSessions(Array.isArray(created.sessions) ? created.sessions : []);
-        nativeStatus = await openCodexConsoleLogin(sessionRef);
+        nativeStatus = explicitReauthorization
+          ? await reauthorizeCodexConsoleLogin(sessionRef)
+          : await openCodexConsoleLogin(sessionRef);
       }
 
       const parsedStartedAt = Date.parse(createdSession?.created_at || "");

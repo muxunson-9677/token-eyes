@@ -265,6 +265,7 @@ spawn_blocking(move || {
 
 for (const [command, flow] of [
   ["open_codex_console_login", "open_flow"],
+  ["reauthorize_codex_console_login", "reauthorize_flow"],
   ["verify_codex_console_session", "verify_flow"],
   ["sync_codex_console_quota", "sync_quota_flow"],
   [cancelCommand, "cancel_flow"],
@@ -344,6 +345,10 @@ test("native Codex reopen returns the status DTO through its blocking flow", () 
 
 test("lib.rs registers the native Codex reopen command", () => {
   assert.match(lib, /codex_session::reopen_codex_console_login\s*,/u);
+});
+
+test("lib.rs registers the explicit Codex reauthorization command", () => {
+  assert.match(lib, /codex_session::reauthorize_codex_console_login\s*,/u);
 });
 
 test("the app-server client owns account and rate-limit reads", () => {

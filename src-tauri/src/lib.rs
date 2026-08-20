@@ -185,6 +185,7 @@ pub fn run() {
             claude_session::verify_claude_console_session,
             claude_session::delete_claude_console_session,
             codex_session::open_codex_console_login,
+            codex_session::reauthorize_codex_console_login,
             codex_session::reopen_codex_console_login,
             codex_session::verify_codex_console_session,
             codex_session::sync_codex_console_quota,

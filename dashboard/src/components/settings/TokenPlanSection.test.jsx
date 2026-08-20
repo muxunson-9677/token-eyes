@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TokenPlanSection, quotaConsoleAuthTimeoutMs, resolveConsoleSessionForRecord } from "./TokenPlanSection.jsx";
-import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getTokenEyesBuildInfo, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openGlmConsoleLogin, verifyGlmConsoleSession, deleteGlmConsoleSession, openCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, cancelCodexConsoleLogin, reopenCodexConsoleLogin, cleanupLegacyCodexAuthFile, deleteCodexConsoleSession, openCursorConsoleLogin, verifyCursorConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getTokenEyesBuildInfo, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openGlmConsoleLogin, verifyGlmConsoleSession, deleteGlmConsoleSession, openCodexConsoleLogin, reauthorizeCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, cancelCodexConsoleLogin, reopenCodexConsoleLogin, cleanupLegacyCodexAuthFile, deleteCodexConsoleSession, openCursorConsoleLogin, verifyCursorConsoleSession, saveTokenPlanSecret } from "../../lib/api";
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { DASHBOARD_AGENTS } from "../../lib/agent-adapters-dashboard";
 import { copy } from "../../lib/copy";
@@ -36,6 +36,7 @@ vi.mock("../../lib/api", () => ({
   verifyGlmConsoleSession: vi.fn(),
   deleteGlmConsoleSession: vi.fn(),
   openCodexConsoleLogin: vi.fn(),
+  reauthorizeCodexConsoleLogin: vi.fn(),
   verifyCodexConsoleSession: vi.fn(),
   syncCodexConsoleQuota: vi.fn(),
   cancelCodexConsoleLogin: vi.fn(),
@@ -112,6 +113,7 @@ beforeEach(() => {
   verifyGlmConsoleSession.mockReset();
   deleteGlmConsoleSession.mockReset().mockResolvedValue(undefined);
   openCodexConsoleLogin.mockReset();
+  reauthorizeCodexConsoleLogin.mockReset();
   verifyCodexConsoleSession.mockReset();
   syncCodexConsoleQuota.mockReset();
   cancelCodexConsoleLogin.mockReset();
@@ -3141,7 +3143,8 @@ it("reopens official Codex OAuth when manual sync reports reauth_required", asyn
     await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
     await user.click(await screen.findByTestId("detection-sync-codex"));
 
-    await waitFor(() => expect(openCodexConsoleLogin).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(reauthorizeCodexConsoleLogin).toHaveBeenCalledTimes(1));
+    expect(openCodexConsoleLogin).not.toHaveBeenCalled();
     expect(createConsoleSession).toHaveBeenCalledWith(expect.objectContaining({
       provider_id: "codex",
       session_ref: expect.stringContaining("token-plan/codex/session/"),
@@ -3169,7 +3172,7 @@ it("reopens official Codex OAuth when a connected session cannot fetch quota", a
     session: makeCodexSession({ id: "replacement-codex-session", session_ref: params.session_ref }),
     sessions: [makeCodexSession({ id: "replacement-codex-session", session_ref: params.session_ref })],
   }));
-  openCodexConsoleLogin.mockRejectedValue(new Error("browser open invoked"));
+  reauthorizeCodexConsoleLogin.mockRejectedValue(new Error("browser open invoked"));
   const user = userEvent.setup();
 
   try {
@@ -3179,7 +3182,8 @@ it("reopens official Codex OAuth when a connected session cannot fetch quota", a
     await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
     await user.click(await screen.findByTestId("detection-sync-codex"));
 
-    await waitFor(() => expect(openCodexConsoleLogin).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(reauthorizeCodexConsoleLogin).toHaveBeenCalledTimes(1));
+    expect(openCodexConsoleLogin).not.toHaveBeenCalled();
   } finally {
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   }
@@ -4406,7 +4410,8 @@ it("replaces a terminal Codex session with a new session_ref on retry", async ()
   expect(replacementRef).toMatch(/^token-plan\/codex\/session\//);
   expect(replacementRef).not.toBe(oldRef);
   expect(deleteConsoleSession).toHaveBeenCalledWith("terminal-session");
-  expect(openCodexConsoleLogin).toHaveBeenCalledWith(replacementRef);
+  expect(reauthorizeCodexConsoleLogin).toHaveBeenCalledWith(replacementRef);
+  expect(openCodexConsoleLogin).not.toHaveBeenCalled();
 });
 
 it.each([

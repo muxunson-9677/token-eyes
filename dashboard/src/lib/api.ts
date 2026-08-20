@@ -2392,6 +2392,14 @@ export async function openCodexConsoleLogin(sessionRef: string): Promise<CodexSe
   return invoke("open_codex_console_login", { sessionRef });
 }
 
+export async function reauthorizeCodexConsoleLogin(sessionRef: string): Promise<CodexSessionStatus> {
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    throw new Error("Tauri runtime not available");
+  }
+  return invoke("reauthorize_codex_console_login", { sessionRef });
+}
+
 export async function verifyCodexConsoleSession(sessionRef: string): Promise<CodexSessionStatus> {
   const invoke = getTauriInvoke();
   if (!invoke) {

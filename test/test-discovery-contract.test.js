@@ -13,6 +13,7 @@ const DASHBOARD_VITEST_CONFIG = fs.readFileSync(
 const RUNTIME_TEST_OWNERS = new Map([
   ["test/windows-bundled-runtime-smoke.test.cjs", "tauri:verify-runtime"],
   ["test/windows-installed-runtime-smoke.test.cjs", "tauri:verify-installer"],
+  ["test/windows-packaged-codex-ui.test.cjs", "tauri:verify-codex-ui"],
 ]);
 const CANONICAL_CI_LOCAL_COMMANDS = [
   "npm run agents:check",

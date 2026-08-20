@@ -423,7 +423,7 @@ fn open_flow_core_with_start<F, S>(
     state: &mut CodexSessionState,
     session_ref: &str,
     storage: &Path,
-    mut open_url: F,
+    open_url: F,
     start_client: S,
 ) -> Result<CodexSessionStatus, String>
 where
@@ -462,6 +462,18 @@ where
         ));
     }
 
+    start_browser_login_flow(state, session_ref, storage, open_url)
+}
+
+fn start_browser_login_flow<F>(
+    state: &mut CodexSessionState,
+    session_ref: &str,
+    storage: &Path,
+    mut open_url: F,
+) -> Result<CodexSessionStatus, String>
+where
+    F: FnMut(&str) -> Result<(), String>,
+{
     let started = match state
         .client
         .as_mut()
@@ -510,6 +522,44 @@ where
         basic_status(session_ref, SessionStateCode::LoginStarted, "", ""),
         storage,
     ))
+}
+
+fn reauthorize_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
+    let storage = account_dir(app, session_ref)?;
+    let managed = app.state::<Mutex<CodexSessionState>>();
+    let mut state = managed
+        .lock()
+        .map_err(|_| "Codex session state is unavailable".to_string())?;
+    reauthorize_flow_core(&mut state, session_ref, &storage, |auth_url| {
+        app.opener()
+            .open_url(auth_url, None::<String>)
+            .map_err(|_| "无法在系统默认浏览器中打开 OpenAI 官方授权页面。".to_string())
+    })
+}
+
+fn reauthorize_flow_core<F>(
+    state: &mut CodexSessionState,
+    session_ref: &str,
+    storage: &Path,
+    open_url: F,
+) -> Result<CodexSessionStatus, String>
+where
+    F: FnMut(&str) -> Result<(), String>,
+{
+    if let Err(error) = ensure_client(state, session_ref, storage) {
+        return Ok(status_with_legacy_auth(
+            app_server_start_error_status(session_ref, error),
+            storage,
+        ));
+    }
+    if let Some(login_id) = state.login_id.take() {
+        if let Some(client) = state.client.as_mut() {
+            let _ = client.cancel_login(&login_id);
+        }
+    }
+    state.auth_url = None;
+    state.authorized = false;
+    start_browser_login_flow(state, session_ref, storage, open_url)
 }
 
 fn reopen_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
@@ -888,6 +938,17 @@ pub async fn open_codex_console_login(
     tauri::async_runtime::spawn_blocking(move || open_flow(&app, &session_ref))
         .await
         .map_err(|_| "Codex login task failed".to_string())?
+}
+
+#[tauri::command]
+pub async fn reauthorize_codex_console_login(
+    app: AppHandle,
+    session_ref: String,
+) -> Result<CodexSessionStatus, String> {
+    validate_session_ref(&session_ref).map_err(str::to_string)?;
+    tauri::async_runtime::spawn_blocking(move || reauthorize_flow(&app, &session_ref))
+        .await
+        .map_err(|_| "Codex reauthorization task failed".to_string())?
 }
 
 #[tauri::command]
@@ -1459,6 +1520,47 @@ mod tests {
         assert_eq!(status.state_code, SessionStateCode::LoginStarted);
         assert!(status.error_code.is_empty());
         assert!(status.error_message.is_empty());
+    }
+
+    #[test]
+    fn explicit_reauthorization_starts_browser_login_even_when_account_read_is_authorized() {
+        let session_ref = "token-plan/codex/session/force-reauth";
+        let storage = TestDirectory::new("force-reauth");
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = FakeAppServer {
+            calls: Arc::clone(&calls),
+            account_reads: VecDeque::from([Ok(true)]),
+            login_starts: VecDeque::from([Ok(BrowserLoginStart {
+                login_id: "login-force-reauth".to_string(),
+                auth_url: "https://auth.openai.com/authorize".to_string(),
+            })]),
+            ..FakeAppServer::default()
+        };
+        let mut state = state_with_fake(session_ref, storage.path(), fake);
+        state.authorized = true;
+        let opened = Arc::new(Mutex::new(Vec::new()));
+        let opened_for_call = Arc::clone(&opened);
+
+        let status = reauthorize_flow_core(&mut state, session_ref, storage.path(), move |url| {
+            opened_for_call
+                .lock()
+                .expect("opened URL log should lock")
+                .push(url.to_string());
+            Ok(())
+        })
+        .expect("explicit reauthorization should return a status");
+
+        assert_eq!(status.state_code, SessionStateCode::LoginStarted);
+        assert!(!status.authorized);
+        assert_eq!(
+            *opened.lock().expect("opened URL log should lock"),
+            vec!["https://auth.openai.com/authorize".to_string()]
+        );
+        assert_eq!(
+            *calls.lock().expect("app-server call log should lock"),
+            vec![AppServerCall::StartLogin],
+            "explicit user reauthorization must not short-circuit on account/read"
+        );
     }
 
     #[test]

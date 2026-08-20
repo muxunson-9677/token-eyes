@@ -51,6 +51,7 @@
     "tauri:build:ci": "npm run tauri:build && npm run tauri:verify-installer && powershell -NoProfile -ExecutionPolicy Bypass -Command \"$bundleDir = 'src-tauri/target/release/bundle'; $artifacts = @(); $artifacts += Get-ChildItem $bundleDir/msi/*.msi -File -ErrorAction SilentlyContinue; $artifacts += Get-ChildItem $bundleDir/nsis/*-setup.exe -File -ErrorAction SilentlyContinue; if ($artifacts.Count -eq 0) { Write-Error 'No Tauri installer found'; exit 1 }; $artifactArgs = @(); foreach ($artifact in $artifacts) { $artifactArgs += @('--artifact', $artifact.FullName) }; node scripts/generate-windows-release-metadata.cjs @artifactArgs --version $env:npm_package_version --head-sha $env:TOKEN_EYES_GIT_SHA --run-id local --run-url null --output-dir src-tauri/target/release/bundle/local-release-metadata; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\"",
     "tauri:verify-runtime": "node --test test/windows-bundled-runtime-smoke.test.cjs && cargo test resolve_bundled_runtime_at --manifest-path src-tauri/Cargo.toml --lib",
     "tauri:verify-installer": "node --test test/windows-installed-runtime-smoke.test.cjs",
+    "tauri:verify-codex-ui": "node --test test/windows-packaged-codex-ui.test.cjs",
     "tauri:prepare-runtime": "powershell -ExecutionPolicy Bypass -File src-tauri/scripts/bundle-runtime.ps1"
   },
   "dependencies": {

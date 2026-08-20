@@ -10,6 +10,7 @@ import {
   getTokenPlans,
   cancelCodexConsoleLogin,
   cleanupLegacyCodexAuthFile,
+  reauthorizeCodexConsoleLogin,
   openXiaomiMimoConsoleLogin,
   reopenCodexConsoleLogin,
   refreshGlmConsoleSession,
@@ -371,7 +372,7 @@ it("invokes the Xiaomi MiMo native commands with camelCase arguments", async () 
   });
 });
 
-it("invokes Codex cancel, reopen, and legacy cleanup with the session reference", async () => {
+it("invokes Codex reauthorization, cancel, reopen, and legacy cleanup with the session reference", async () => {
   const invoke = vi.fn().mockResolvedValue({
     connected: false,
     authorized: false,
@@ -385,18 +386,22 @@ it("invokes Codex cancel, reopen, and legacy cleanup with the session reference"
     value: { core: { invoke } },
   });
 
+  await reauthorizeCodexConsoleLogin("session-ref");
   await cancelCodexConsoleLogin("session-ref", "timeout");
   await reopenCodexConsoleLogin("session-ref");
   await cleanupLegacyCodexAuthFile("session-ref");
 
-  expect(invoke).toHaveBeenNthCalledWith(1, "cancel_codex_console_login", {
+  expect(invoke).toHaveBeenNthCalledWith(1, "reauthorize_codex_console_login", {
+    sessionRef: "session-ref",
+  });
+  expect(invoke).toHaveBeenNthCalledWith(2, "cancel_codex_console_login", {
     sessionRef: "session-ref",
     reason: "timeout",
   });
-  expect(invoke).toHaveBeenNthCalledWith(2, "reopen_codex_console_login", {
+  expect(invoke).toHaveBeenNthCalledWith(3, "reopen_codex_console_login", {
     sessionRef: "session-ref",
   });
-  expect(invoke).toHaveBeenNthCalledWith(3, "cleanup_legacy_codex_auth_file", {
+  expect(invoke).toHaveBeenNthCalledWith(4, "cleanup_legacy_codex_auth_file", {
     sessionRef: "session-ref",
   });
 });

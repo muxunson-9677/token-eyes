@@ -499,6 +499,38 @@ fn tracker_entry_arg() -> PathBuf {
     PathBuf::from("bin").join("tracker.js")
 }
 
+fn resolve_packaged_ui_acceptance_home(
+    gate: Option<&str>,
+    raw_home: Option<&std::ffi::OsStr>,
+) -> Result<Option<PathBuf>, String> {
+    if gate != Some("1") {
+        return Ok(None);
+    }
+    let home = raw_home
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .ok_or_else(|| "Packaged UI acceptance home is invalid".to_string())?;
+    if home
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+        || !home.starts_with(std::env::temp_dir())
+    {
+        return Err(
+            "Packaged UI acceptance home must be inside the OS temporary directory".to_string(),
+        );
+    }
+    Ok(Some(home))
+}
+
+fn packaged_ui_acceptance_home() -> Result<Option<PathBuf>, String> {
+    resolve_packaged_ui_acceptance_home(
+        std::env::var("TOKEN_EYES_PACKAGED_UI_ACCEPTANCE")
+            .ok()
+            .as_deref(),
+        std::env::var_os("TOKEN_EYES_PACKAGED_UI_HOME").as_deref(),
+    )
+}
+
 fn spawn_local_server(
     app: &AppHandle,
     runtime: &ResolvedRuntime,
@@ -515,6 +547,14 @@ fn spawn_local_server(
         .arg(port.to_string())
         .current_dir(&runtime.tracker_root)
         .stdin(Stdio::null());
+
+    if let Some(home) = packaged_ui_acceptance_home()? {
+        command
+            .env("HOME", &home)
+            .env("USERPROFILE", &home)
+            .env("APPDATA", home.join("AppData").join("Roaming"))
+            .env("LOCALAPPDATA", home.join("AppData").join("Local"));
+    }
 
     if let Some((stdout, stderr)) = backend_log_stdio(app) {
         command.stdout(stdout).stderr(stderr);
@@ -994,6 +1034,24 @@ mod tests {
         assert_eq!(arg, PathBuf::from("bin").join("tracker.js"));
         assert!(!arg.is_absolute());
         assert!(!arg.to_string_lossy().contains("Token Eyes"));
+    }
+
+    #[test]
+    fn packaged_ui_acceptance_home_requires_the_explicit_gate_and_a_temp_directory() {
+        let temp_home = std::env::temp_dir().join("token-eyes-packaged-ui-home");
+        assert_eq!(
+            resolve_packaged_ui_acceptance_home(Some("1"), Some(temp_home.as_os_str())),
+            Ok(Some(temp_home))
+        );
+        assert_eq!(
+            resolve_packaged_ui_acceptance_home(None, Some(std::env::temp_dir().as_os_str())),
+            Ok(None)
+        );
+        assert!(resolve_packaged_ui_acceptance_home(
+            Some("1"),
+            Some(std::path::Path::new("C:\\Users\\admin").as_os_str())
+        )
+        .is_err());
     }
 
     #[test]
