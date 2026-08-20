@@ -89,6 +89,17 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 - **Contract synchronization (hard rule)**: when a UI, provider list, data source, or layout contract changes, find every related test and update the implementation and all affected test suites together. Do not leave parallel assertions (for example Node static checks and dashboard Vitest tests) describing different versions of the same contract. Prefer product-level assertions over duplicated CSS utility literals when practical.
 - **Isolated tests (hard rule)**: tests must use their own temporary data/configuration paths and must not read a developer's live queue, accounts, sessions, cookies, or other local application data unless that access is the explicit subject of the test.
 - **Delivery gate (hard rule)**: before committing any functional change, run `git diff --check`, the relevant focused tests, and the applicable build/typecheck. For dashboard changes, run `npm --prefix dashboard run typecheck` and `npm --prefix dashboard run build`; for UI changes, also verify the affected journey in a real browser at the relevant viewport. Before handoff, run `npm test` unless an unrelated, previously recorded blocker remains; never claim a change is complete or safe to release without stating any remaining failure and its root cause.
+
+#### 四层交付硬门（硬规则）
+
+适用于会跨越 UI、native bridge、local API、持久化、供应商数据/凭据、安全出站或发行物的变更。提交、测试通过或构建成功均不等于交付完成；任何缺证据项只能标为 `code done`、`partial` 或 `blocked`，不得写成“已修复/已验证”。
+
+- **开始门**：修改前记录目标 worktree、分支、HEAD、脏状态、依赖健康和相关失败基线；不把缺依赖、旧失败或错误 checkout 归因给本次变更。
+- **契约门（每个提交）**：先写出跨层不变量及失败语义，并以 RED→GREEN 锁定。例如授权不能因额度读取失败撤销、供应商显式 `0` 不能被旧值覆盖、带秘密的请求不能越过安全边界。不得通过删除、反转或弱化测试来获得绿色结果。
+- **集成门（每个功能波次/合并前）**：验证完整状态与数据路径，而非只验证单模块：native/CLI → local API → 持久化 → UI，以及来源、单位、身份、缓存、失败降级的一致性。外部供应商事实必须带可重放来源、核验时间和失效策略；真实账号、浏览器或上游交互只在获授权时进行。
+- **产物门（每个候选版本/发布前）**：从同一已提交 SHA 构建，证明源码 SHA → build manifest → 安装后 manifest → 用户可见 UI/诊断一致；在获授权的真实安装包中重走关键用户旅程。安装 smoke 只证明安装/启动，不替代 UI、状态恢复或外部流程验收。
+- **节奏与例外**：每个提交过契约门，每个功能波次过集成门，每个候选版本过产物门；不要求每个小提交都打包。任何无法获得的 fixture、权限、账号或运行时必须写明阻塞原因和未验证范围，不能用 mock、旧截图或未运行的 CI 冒充通过。
+
 - CommonJS in `src/`, ESM + TypeScript strict in `dashboard/`. No mixing.
 - Env-var prefixes: `TOKENTRACKER_` for CLI, `VITE_` for dashboard.
 - Git commits in **English**, conventional style (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:` / `ci:`).
