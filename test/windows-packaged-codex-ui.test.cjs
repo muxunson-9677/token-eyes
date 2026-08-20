@@ -289,7 +289,7 @@ async function navigateToCodexEditor(cdp) {
   );
 }
 
-function clickScreenPoint(clientX, clientY, devicePixelRatio, processId) {
+function runScreenInput(action, clientX, clientY, devicePixelRatio, processId) {
   const script = [
     "Add-Type @'",
     "using System;",
@@ -330,11 +330,16 @@ function clickScreenPoint(clientX, clientY, devicePixelRatio, processId) {
     "'@",
     "[NativeInput]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null",
     "$p = Get-Process -Id $env:TOKEN_EYES_UI_PID -ErrorAction Stop",
-    "[NativeInput]::ForceForeground($p.MainWindowHandle) | Out-Null",
-    "Start-Sleep -Milliseconds 400",
+    "$action = $env:TOKEN_EYES_UI_ACTION",
+    "if ($action -eq 'focus') {",
+    "  [NativeInput]::ForceForeground($p.MainWindowHandle) | Out-Null",
+    "  Start-Sleep -Milliseconds 400",
+    "}",
     "$foregroundPid = [uint32]0",
     "[NativeInput]::GetWindowThreadProcessId([NativeInput]::GetForegroundWindow(), [ref]$foregroundPid) | Out-Null",
     "if ($foregroundPid -ne $p.Id) { throw 'Token Eyes could not become foreground for the real pointer click' }",
+    "if ($action -eq 'focus') { @{ pid = $foregroundPid } | ConvertTo-Json -Compress; exit 0 }",
+    "if ($action -ne 'click') { throw 'Unsupported packaged UI input action' }",
     "$origin = [NativeInput+Point]::new()",
     "if (-not [NativeInput]::ClientToScreen($p.MainWindowHandle, [ref]$origin)) { throw 'Token Eyes client origin is unavailable' }",
     "$culture = [System.Globalization.CultureInfo]::InvariantCulture",
@@ -353,6 +358,7 @@ function clickScreenPoint(clientX, clientY, devicePixelRatio, processId) {
     windowsHide: true,
     env: {
       ...process.env,
+      TOKEN_EYES_UI_ACTION: action,
       TOKEN_EYES_UI_PID: String(processId),
       TOKEN_EYES_UI_CLIENT_X: String(clientX),
       TOKEN_EYES_UI_CLIENT_Y: String(clientY),
@@ -363,7 +369,16 @@ function clickScreenPoint(clientX, clientY, devicePixelRatio, processId) {
   return JSON.parse(result.stdout.trim());
 }
 
+function focusProcessWindow(processId) {
+  return runScreenInput("focus", 0, 0, 1, processId);
+}
+
+function clickScreenPoint(clientX, clientY, devicePixelRatio, processId) {
+  return runScreenInput("click", clientX, clientY, devicePixelRatio, processId);
+}
+
 async function clickElementAsUser(cdp, selector, processId) {
+  focusProcessWindow(processId);
   const point = await cdp.evaluate(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) return null;
