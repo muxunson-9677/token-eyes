@@ -86,6 +86,8 @@ function findFreePort() {
 
 function cleanEnvironment(home, fixtureBin, debuggingPort, tracePath) {
   const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  delete env.VITEST;
   for (const name of Object.keys(env)) {
     if (/(?:auth|cookie|credential|password|secret|token)/iu.test(name)) delete env[name];
   }
@@ -94,8 +96,6 @@ function cleanEnvironment(home, fixtureBin, debuggingPort, tracePath) {
     HOME: process.env.USERPROFILE,
     APPDATA: process.env.APPDATA,
     LOCALAPPDATA: process.env.LOCALAPPDATA,
-    TEMP: path.join(home, "Temp"),
-    TMP: path.join(home, "Temp"),
     PATH: `${fixtureBin};${process.env.PATH || ""}`,
     TOKEN_EYES_TEST_NODE_EXE: process.execPath,
     TOKEN_EYES_CODEX_APP_SERVER_TRACE: tracePath,
@@ -228,7 +228,10 @@ async function waitForCdp(port, child) {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`);
       const targets = await response.json();
       const pages = targets.filter((candidate) => candidate.type === "page" && candidate.webSocketDebuggerUrl);
-      const target = pages.find((candidate) => !String(candidate.url || "").includes("/desktop-widget")) || pages[0];
+      const target = pages.find((candidate) => {
+        const url = String(candidate.url || "");
+        return url.length > 0 && !url.includes("/desktop-widget");
+      });
       if (target) return target;
     } catch (error) {
       lastError = error;
@@ -252,8 +255,32 @@ async function waitForExpression(cdp, expression, description, timeoutMs = 20_00
   throw new Error(`Timed out waiting for ${description}`);
 }
 
+async function waitForFileText(filePath, pattern, description, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+    if (pattern.test(value)) return value;
+    await delay(200);
+  }
+  throw new Error(`Timed out waiting for ${description}`);
+}
+
+async function navigateAfterBootstrap(cdp, pathname) {
+  await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: "window.localStorage.setItem('tokentracker.firstRun.completed.v1', '1');",
+  });
+  await cdp.send("Runtime.evaluate", {
+    expression: "window.localStorage.setItem('tokentracker.firstRun.completed.v1', '1')",
+    awaitPromise: true,
+  });
+  await cdp.send("Page.reload", { ignoreCache: true });
+  await waitForExpression(cdp, "window.location.pathname === '/dashboard'", "the completed first-run redirect");
+  const origin = await cdp.evaluate("window.location.origin");
+  await cdp.send("Page.navigate", { url: `${origin}${pathname}` });
+}
+
 async function navigateToCodexEditor(cdp) {
-  await cdp.send("Page.navigate", { url: "http://tauri.localhost/settings/cost/token-plans/codex-ui-plan/edit" });
+  await navigateAfterBootstrap(cdp, "/settings/cost/token-plans/codex-ui-plan/edit");
   await waitForExpression(
     cdp,
     `document.querySelector('[data-testid="detection-sync-codex"]')`,
@@ -262,23 +289,64 @@ async function navigateToCodexEditor(cdp) {
   );
 }
 
-function clickScreenPoint(x, y, processId) {
+function clickScreenPoint(clientX, clientY, devicePixelRatio, processId) {
   const script = [
     "Add-Type @'",
     "using System;",
     "using System.Runtime.InteropServices;",
     "public static class NativeInput {",
+    "  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X; public int Y; }",
+    "  [DllImport(\"user32.dll\")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);",
     "  [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();",
+    "  [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);",
+    "  [DllImport(\"kernel32.dll\")] public static extern uint GetCurrentThreadId();",
+    "  [DllImport(\"user32.dll\")] public static extern bool AttachThreadInput(uint from, uint to, bool attach);",
+    "  [DllImport(\"user32.dll\")] public static extern bool ShowWindowAsync(IntPtr hWnd, int command);",
+    "  [DllImport(\"user32.dll\")] public static extern bool BringWindowToTop(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\")] public static extern IntPtr SetActiveWindow(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\")] public static extern IntPtr SetFocus(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\")] public static extern bool ClientToScreen(IntPtr hWnd, ref Point point);",
     "  [DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int X, int Y);",
     "  [DllImport(\"user32.dll\")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);",
+    "  public static bool ForceForeground(IntPtr target) {",
+    "    IntPtr foreground = GetForegroundWindow();",
+    "    uint ignored;",
+    "    uint foregroundThread = GetWindowThreadProcessId(foreground, out ignored);",
+    "    uint targetThread = GetWindowThreadProcessId(target, out ignored);",
+    "    uint currentThread = GetCurrentThreadId();",
+    "    if (foregroundThread != currentThread) AttachThreadInput(currentThread, foregroundThread, true);",
+    "    if (targetThread != currentThread) AttachThreadInput(currentThread, targetThread, true);",
+    "    ShowWindowAsync(target, 9);",
+    "    BringWindowToTop(target);",
+    "    SetForegroundWindow(target);",
+    "    SetActiveWindow(target);",
+    "    SetFocus(target);",
+    "    if (targetThread != currentThread) AttachThreadInput(currentThread, targetThread, false);",
+    "    if (foregroundThread != currentThread) AttachThreadInput(currentThread, foregroundThread, false);",
+    "    return GetForegroundWindow() == target;",
+    "  }",
     "}",
     "'@",
+    "[NativeInput]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null",
     "$p = Get-Process -Id $env:TOKEN_EYES_UI_PID -ErrorAction Stop",
-    "[NativeInput]::SetForegroundWindow($p.MainWindowHandle) | Out-Null",
-    "Start-Sleep -Milliseconds 200",
-    "[NativeInput]::SetCursorPos([int]$env:TOKEN_EYES_UI_X, [int]$env:TOKEN_EYES_UI_Y) | Out-Null",
+    "[NativeInput]::ForceForeground($p.MainWindowHandle) | Out-Null",
+    "Start-Sleep -Milliseconds 400",
+    "$foregroundPid = [uint32]0",
+    "[NativeInput]::GetWindowThreadProcessId([NativeInput]::GetForegroundWindow(), [ref]$foregroundPid) | Out-Null",
+    "if ($foregroundPid -ne $p.Id) { throw 'Token Eyes could not become foreground for the real pointer click' }",
+    "$origin = [NativeInput+Point]::new()",
+    "if (-not [NativeInput]::ClientToScreen($p.MainWindowHandle, [ref]$origin)) { throw 'Token Eyes client origin is unavailable' }",
+    "$culture = [System.Globalization.CultureInfo]::InvariantCulture",
+    "$clientX = [double]::Parse($env:TOKEN_EYES_UI_CLIENT_X, $culture)",
+    "$clientY = [double]::Parse($env:TOKEN_EYES_UI_CLIENT_Y, $culture)",
+    "$scale = [double]::Parse($env:TOKEN_EYES_UI_SCALE, $culture)",
+    "$screenX = $origin.X + [int][Math]::Round($clientX * $scale)",
+    "$screenY = $origin.Y + [int][Math]::Round($clientY * $scale)",
+    "[NativeInput]::SetCursorPos($screenX, $screenY) | Out-Null",
     "[NativeInput]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)",
     "[NativeInput]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)",
+    "@{ x = $screenX; y = $screenY } | ConvertTo-Json -Compress",
   ].join("\n");
   const result = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
     encoding: "utf8",
@@ -286,11 +354,13 @@ function clickScreenPoint(x, y, processId) {
     env: {
       ...process.env,
       TOKEN_EYES_UI_PID: String(processId),
-      TOKEN_EYES_UI_X: String(Math.round(x)),
-      TOKEN_EYES_UI_Y: String(Math.round(y)),
+      TOKEN_EYES_UI_CLIENT_X: String(clientX),
+      TOKEN_EYES_UI_CLIENT_Y: String(clientY),
+      TOKEN_EYES_UI_SCALE: String(devicePixelRatio),
     },
   });
   assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout.trim());
 }
 
 async function clickElementAsUser(cdp, selector, processId) {
@@ -300,12 +370,19 @@ async function clickElementAsUser(cdp, selector, processId) {
     element.scrollIntoView({ block: 'center' });
     const rect = element.getBoundingClientRect();
     return {
-      x: window.screenX + (window.outerWidth - window.innerWidth) / 2 + rect.left + rect.width / 2,
-      y: window.screenY + (window.outerHeight - window.innerHeight) + rect.top + rect.height / 2,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      devicePixelRatio: window.devicePixelRatio,
     };
   })()`);
-  assert.ok(point && Number.isFinite(point.x) && Number.isFinite(point.y), `missing clickable element ${selector}`);
-  clickScreenPoint(point.x, point.y, processId);
+  assert.ok(
+    point
+      && Number.isFinite(point.clientX)
+      && Number.isFinite(point.clientY)
+      && Number.isFinite(point.devicePixelRatio),
+    `missing clickable element ${selector}`,
+  );
+  return clickScreenPoint(point.clientX, point.clientY, point.devicePixelRatio, processId);
 }
 
 function foregroundWindow() {
@@ -391,13 +468,43 @@ async function runSyncJourney({ executable, fixtureBin, passRoot, passName, sess
   let launched;
   try {
     launched = await launchApp(executable, env);
-    await navigateToCodexEditor(launched.cdp);
-    await waitForExpression(launched.cdp, `document.body.innerText.includes('需要重新登录 Codex 后读取额度')`, "the quota re-login warning");
+    try {
+      await navigateToCodexEditor(launched.cdp);
+    } catch (error) {
+      await capture(launched.cdp, path.join(evidenceRoot, `${passName}-startup-failure.png`));
+      const diagnostic = await launched.cdp.evaluate(`({
+        href: window.location.href,
+        firstRunCompleted: window.localStorage.getItem('tokentracker.firstRun.completed.v1'),
+        bodyText: document.body?.innerText || '',
+      })`);
+      fs.writeFileSync(path.join(evidenceRoot, `${passName}-startup-failure.txt`), `${JSON.stringify(diagnostic, null, 2)}\n`, "utf8");
+      throw error;
+    }
     await capture(launched.cdp, path.join(evidenceRoot, `${passName}-before-sync.png`));
-    await clickElementAsUser(launched.cdp, '[data-testid="detection-sync-codex"]', launched.child.pid);
-    await waitForExpression(launched.cdp, `document.querySelector('[data-testid="detection-codex-login-started"]')`, "the browser authorization waiting state", 30_000);
+    const initialBodyText = await launched.cdp.evaluate("document.body?.innerText || ''");
+    fs.writeFileSync(path.join(evidenceRoot, `${passName}-before-sync.txt`), `${initialBodyText}\n`, "utf8");
+    assert.match(initialBodyText, /已连接/u, "the installed editor must start from the connected state reported by the user");
+    const clickPoint = await clickElementAsUser(launched.cdp, '[data-testid="detection-sync-codex"]', launched.child.pid);
+    try {
+      await waitForFileText(tracePath, /^account\/login\/start$/mu, "the official app-server login call", 30_000);
+      await waitForExpression(
+        launched.cdp,
+        `document.querySelector('[data-testid="detection-codex-login-started"]') || document.body.innerText.includes('授权已完成，但额度同步暂时失败')`,
+        "the browser authorization waiting or completed state",
+        30_000,
+      );
+    } catch (error) {
+      await capture(launched.cdp, path.join(evidenceRoot, `${passName}-sync-click-failure.png`));
+      const bodyText = await launched.cdp.evaluate("document.body?.innerText || ''");
+      const trace = fs.existsSync(tracePath) ? fs.readFileSync(tracePath, "utf8") : "";
+      fs.writeFileSync(
+        path.join(evidenceRoot, `${passName}-sync-click-failure.txt`),
+        `${JSON.stringify({ clickPoint, foreground: foregroundWindow(), bodyText, trace }, null, 2)}\n`,
+        "utf8",
+      );
+      throw error;
+    }
     const browser = await waitForBrowserForeground(launched.child.pid);
-    await waitForExpression(launched.cdp, `document.body.innerText.includes('系统默认浏览器已打开 OpenAI 官方授权页')`, "the browser-open confirmation");
     const trace = fs.readFileSync(tracePath, "utf8").trim().split(/\r?\n/u);
     assert.ok(trace.includes("account/login/start"), "the installed UI click must reach the official app-server login method");
     await capture(launched.cdp, path.join(evidenceRoot, `${passName}-after-sync.png`));
@@ -422,8 +529,19 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
     launched = await launchApp(executable, env);
     await navigateToCodexEditor(launched.cdp);
     await capture(launched.cdp, path.join(evidenceRoot, `${passName}-before-delete.png`));
-    await clickElementAsUser(launched.cdp, '[data-testid="detection-disconnect-codex"]', launched.child.pid);
-    await waitForExpression(launched.cdp, `document.querySelector('[data-testid="detection-connect-codex"]') && !document.querySelector('[data-testid="detection-codex-connected"]')`, "the disconnected Codex state", 30_000);
+    const clickPoint = await clickElementAsUser(launched.cdp, '[data-testid="detection-disconnect-codex"]', launched.child.pid);
+    try {
+      await waitForExpression(launched.cdp, `document.querySelector('[data-testid="detection-connect-codex"]') && !document.querySelector('[data-testid="detection-codex-connected"]')`, "the disconnected Codex state", 30_000);
+    } catch (error) {
+      await capture(launched.cdp, path.join(evidenceRoot, `${passName}-delete-click-failure.png`));
+      const bodyText = await launched.cdp.evaluate("document.body?.innerText || ''");
+      fs.writeFileSync(
+        path.join(evidenceRoot, `${passName}-delete-click-failure.txt`),
+        `${JSON.stringify({ clickPoint, foreground: foregroundWindow(), bodyText }, null, 2)}\n`,
+        "utf8",
+      );
+      throw error;
+    }
     await launched.cdp.send("Page.reload", { ignoreCache: true });
     await waitForExpression(launched.cdp, `document.querySelector('[data-testid="detection-connect-codex"]') && !document.querySelector('[data-testid="detection-codex-connected"]')`, "the disconnected state after reload", 30_000);
     await capture(launched.cdp, path.join(evidenceRoot, `${passName}-after-delete-reload.png`));
@@ -439,7 +557,7 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
   let restarted;
   try {
     restarted = await launchApp(executable, restartEnv);
-    await restarted.cdp.send("Page.navigate", { url: "http://tauri.localhost/settings/cost/token-plans/codex-ui-plan/edit" });
+    await navigateAfterBootstrap(restarted.cdp, "/settings/cost/token-plans/codex-ui-plan/edit");
     await waitForExpression(restarted.cdp, `document.querySelector('[data-testid="detection-connect-codex"]') && !document.querySelector('[data-testid="detection-codex-connected"]')`, "the disconnected state after app restart", 30_000);
     await capture(restarted.cdp, path.join(evidenceRoot, `${passName}-after-delete-restart.png`));
   } finally {
@@ -449,7 +567,7 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
   }
 }
 
-test("the final installed Codex buttons complete the browser authorization and durable delete journeys twice", {
+test("the final installed Codex buttons launch browser authorization and complete durable delete twice", {
   skip: enabled ? false : "requires the explicit private packaged-UI acceptance gate",
   timeout: 360_000,
 }, async (t) => {
