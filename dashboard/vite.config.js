@@ -1329,6 +1329,10 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), richLinkMetaPlugin(), localDataApiPlugin()],
     ...(Object.keys(define).length ? { define } : {}),
     build: {
+      // The local desktop server can stay open while a newer dashboard build
+      // is produced. Keep prior content-hashed chunks so an existing tab can
+      // finish a lazy route import instead of receiving the SPA HTML fallback.
+      emptyOutDir: false,
       rollupOptions: {
         input: rollupInput,
       },
