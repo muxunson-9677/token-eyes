@@ -68,3 +68,21 @@ test("retains native resource units independently of token totals", () => {
   assert.deepEqual(result.native_resources, [{ provider: "WorkBuddy", value: 2300, unit: "credits" }]);
 });
 
+test("aggregates safe token components and activity without exposing request content", () => {
+  const result = buildRealtimeSessionViewModel({
+    observedAt: "2026-08-21T08:00:00.000Z",
+    usageRows: [
+      { session_id: "one", source: "codex", hour_start: "2026-08-21T07:00:00.000Z", input_tokens: 40, output_tokens: 10, cached_input_tokens: 5, total_tokens: 55, cost_usd: 0.04, prompt: "secret" },
+      { session_id: "one", source: "codex", hour_start: "2026-08-21T08:00:00.000Z", input_tokens: 30, output_tokens: 20, cached_input_tokens: 10, total_tokens: 60, cost_usd: 0.06, request_body: "secret" },
+    ],
+  });
+
+  const session = result.sessions[0];
+  assert.equal(session.total_tokens.value, 115);
+  assert.equal(session.input_tokens.value, 70);
+  assert.equal(session.output_tokens.value, 30);
+  assert.equal(session.cached_input_tokens.value, 15);
+  assert.equal(session.request_count.value, 2);
+  assert.deepEqual(result.activity_points.map((point) => point.total_tokens), [55, 60]);
+  assert.equal(JSON.stringify(result).includes("secret"), false);
+});

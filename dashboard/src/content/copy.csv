@@ -2079,6 +2079,65 @@ realtime.recent_activity,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,rec
 realtime.running,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,running,"运行中",,active
 realtime.loading,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,loading,"正在读取本地会话状态…",,active
 realtime.error,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,error,"暂时无法读取实时会话",,active
+value.calendar,dashboard,ValueComparisonPage,ValueComparisonPage,calendar,"选择时间范围",,active
+value.change_unavailable,dashboard,ValueComparisonPage,ValueComparisonPage,change_unavailable,"暂无可比历史数据",,active
+value.actual_breakdown,dashboard,ValueComparisonPage,ValueComparisonPage,actual_breakdown,"实际支出",,active
+value.value_breakdown,dashboard,ValueComparisonPage,ValueComparisonPage,value_breakdown,"使用价值",,active
+value.category.subscription,dashboard,ValueComparisonPage,ValueComparisonPage,category_subscription,"订阅",,active
+value.category.official_api,dashboard,ValueComparisonPage,ValueComparisonPage,category_official_api,"官方 API",,active
+value.category.other_ai,dashboard,ValueComparisonPage,ValueComparisonPage,category_other_ai,"其他 AI",,active
+value.category.api_key,dashboard,ValueComparisonPage,ValueComparisonPage,category_api_key,"API Key",,active
+value.category.token_plan,dashboard,ValueComparisonPage,ValueComparisonPage,category_token_plan,"套餐 / 通道",,active
+value.category.unknown,dashboard,ValueComparisonPage,ValueComparisonPage,category_unknown,"待识别",,active
+value.table.source,dashboard,ValueComparisonPage,ValueComparisonPage,table_source,"套餐 / 渠道",,active
+value.table.actual,dashboard,ValueComparisonPage,ValueComparisonPage,table_actual,"本期实付",,active
+value.table.value,dashboard,ValueComparisonPage,ValueComparisonPage,table_value,"使用价值",,active
+value.table.multiple,dashboard,ValueComparisonPage,ValueComparisonPage,table_multiple,"价值倍数",,active
+value.table.trend,dashboard,ValueComparisonPage,ValueComparisonPage,table_trend,"趋势",,active
+value.table.unlinked,dashboard,ValueComparisonPage,ValueComparisonPage,table_unlinked,"未关联 {{source}}",,active
+value.table.all,dashboard,ValueComparisonPage,ValueComparisonPage,table_all,"查看全部",,active
+value.details.subscription,dashboard,ValueComparisonPage,ValueComparisonPage,details_subscription,"订阅套餐 vs API Key 详细对比",,active
+value.details.credits,dashboard,ValueComparisonPage,ValueComparisonPage,details_credits,"积分 / 通道 / 配额明细",,active
+value.details.evidence,dashboard,ValueComparisonPage,ValueComparisonPage,details_evidence,"说明与数据状态",,active
+value.details.summary,dashboard,ValueComparisonPage,ValueComparisonPage,details_summary,"展开查看当前事实与口径",,active
+value.equivalence_prefix,dashboard,ValueComparisonPage,ValueComparisonPage,equivalence_prefix,"每花 $1，当前换回约",,active
+value.equivalence_suffix,dashboard,ValueComparisonPage,ValueComparisonPage,equivalence_suffix,"的等价使用价值",,active
+realtime.range.7d,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_7d,"近 7 天",,active
+realtime.range.month,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_month,"本月",,active
+realtime.range.30d,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_30d,"近 30 天",,active
+realtime.range.select,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_select,"选择数据范围",,active
+realtime.refreshing,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,refreshing,"正在刷新",,active
+realtime.changed,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,changed,"较上次刷新",,active
+realtime.no_change,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,no_change,"等待下一次真实数据更新",,active
+realtime.current_task,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,current_task,"当前任务",,active
+realtime.no_task_label,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,no_task_label,"未提供安全任务标签",,active
+realtime.input,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,input,"输入 Token",,active
+realtime.output,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,output,"输出 Token",,active
+realtime.cache_read,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,cache_read,"缓存读取",,active
+realtime.cache_write,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,cache_write,"缓存写入",,active
+realtime.requests,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,requests,"请求数",,active
+realtime.sub_agents,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,sub_agents,"子 Agent",,active
+realtime.duration,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,duration,"持续时长",,active
+realtime.model,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,model,"模型",,active
+realtime.billing,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,billing,"计费方式",,active
+realtime.billing_safe,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,billing_safe,"按已识别 Token 估算",,active
+realtime.tabs.composition,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_composition,"会话构成",,active
+realtime.tabs.trend,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_trend,"趋势",,active
+realtime.tabs.children,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_children,"子 Agent",,active
+realtime.tabs.requests,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_requests,"请求明细",,active
+realtime.chart.window,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,chart_window,"最近 48 个安全活动点",,active
+realtime.tree.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tree_empty,"当前没有可确认的父子会话关系",,active
+realtime.requests.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,requests_empty,"当前没有可展示的请求汇总",,active
+realtime.status.exact,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_exact,"精确",,active
+realtime.status.estimated,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_estimated,"估算",,active
+realtime.status.connected,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_connected,"仅缓存",,active
+realtime.covered_models,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,covered_models,"已覆盖模型数",,active
+realtime.legend,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,legend,"图例说明",,active
+value.chart.value_usd,dashboard,ValueComparisonPage,ValueComparisonPage,chart_value_usd,"使用价值（$）",,active
+value.zero,dashboard,ValueComparisonPage,ValueComparisonPage,zero,"0",,active
+realtime.token_unit,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,token_unit,"Token",,active
+realtime.tokens_with_unit,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tokens_with_unit,"{{value}} Token",,active
+realtime.count_unit,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,count_unit,"{{count}} 个",,active
 plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接，助您明智选择。",,active
 plan_market.filter.all,dashboard,PlanMarketPage,PlanMarketPage,filter_all,"全部厂商",,active
 plan_market.filter.label,dashboard,PlanMarketPage,PlanMarketPage,filter_label,"筛选厂商",,active

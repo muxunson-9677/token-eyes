@@ -5627,7 +5627,15 @@ function createLocalApiHandler({
       source,
       agent_label: source,
       model: typeof record?.model === "string" ? record.model : null,
+      parent_session_id: typeof record?.parent_session_id === "string" ? publicValueRealtimeId("session", record.parent_session_id) : null,
+      root_task_id: typeof record?.root_task_id === "string" ? publicValueRealtimeId("task", record.root_task_id) : null,
+      project_label: typeof record?.project_label === "string" ? record.project_label.slice(0, 80) : null,
       last_activity_at: timestamp,
+      input_tokens: Number.isFinite(Number(record?.input_tokens)) ? Number(record.input_tokens) : null,
+      output_tokens: Number.isFinite(Number(record?.output_tokens)) ? Number(record.output_tokens) : null,
+      cached_input_tokens: Number.isFinite(Number(record?.cached_input_tokens)) ? Number(record.cached_input_tokens) : null,
+      cache_creation_input_tokens: Number.isFinite(Number(record?.cache_creation_input_tokens)) ? Number(record.cache_creation_input_tokens) : null,
+      reasoning_output_tokens: Number.isFinite(Number(record?.reasoning_output_tokens)) ? Number(record.reasoning_output_tokens) : null,
       total_tokens: Number.isFinite(Number(record?.total_tokens)) ? Number(record.total_tokens) : null,
       cost_usd: Number.isFinite(Number(record?.cost_usd)) ? Number(record.cost_usd) : null,
     };
@@ -5892,18 +5900,51 @@ function createLocalApiHandler({
       try {
         const nowDate = nowProvider();
         const range = valueRealtimeRange(url.searchParams.get("range") || "month", nowDate);
-        const spend = await readSpendTimeseries(range.from, range.to, "day", { timeZone: "UTC", offsetMinutes: 0 });
+        const timeZoneContext = { timeZone: "UTC", offsetMinutes: 0 };
+        const spend = await readSpendTimeseries(range.from, range.to, "day", timeZoneContext);
         const totals = spend.totals || {};
         const totalTokens = Number.isFinite(Number(totals.total_tokens)) ? Number(totals.total_tokens) : null;
         const pricedTokens = Number.isFinite(Number(totals.priced_tokens)) ? Number(totals.priced_tokens) : null;
         const coverage = totalTokens && pricedTokens !== null ? (pricedTokens / totalTokens) * 100 : null;
-        const monthlyTrend = (spend.series || []).reduce((items, entry) => {
-          const key = entry.bucket_start;
-          const current = items.get(key) || { bucket_start: key, actual_spend_usd: 0, api_equivalent_usd: 0 };
+        const monthlyStart = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth() - 5, 1));
+        const monthlySpend = await readSpendTimeseries(
+          monthlyStart.toISOString().slice(0, 10),
+          range.to,
+          "month",
+          timeZoneContext,
+        );
+        const sixMonthKeys = Array.from({ length: 6 }, (_unused, index) => {
+          const month = new Date(Date.UTC(monthlyStart.getUTCFullYear(), monthlyStart.getUTCMonth() + index, 1));
+          return month.toISOString().slice(0, 10);
+        });
+        const monthlyTrend = (monthlySpend.series || []).reduce((items, entry) => {
+          const key = `${String(entry.bucket_start).slice(0, 7)}-01`;
+          const current = items.get(key) || {
+            bucket_start: key,
+            label: `${Number(key.slice(5, 7))}月`,
+            actual_spend_usd: 0,
+            api_equivalent_usd: 0,
+          };
           current.actual_spend_usd += Number(entry.subscription_cost_usd || 0) + Number(entry.other_ai_cost_usd || 0);
           current.api_equivalent_usd += Number(entry.cost_usd || 0);
           items.set(key, current);
           return items;
+        }, new Map());
+        const actualComposition = [
+          { key: "subscription", value: Number(totals.subscription_cost_usd), evidence_state: Number.isFinite(Number(totals.subscription_cost_usd)) ? "exact" : "unsupported" },
+          { key: "official_api", value: null, evidence_state: "unsupported" },
+          { key: "other_ai", value: Number(totals.other_ai_cost_usd), evidence_state: Number.isFinite(Number(totals.other_ai_cost_usd)) ? "exact" : "unsupported" },
+        ];
+        const valueModes = (spend.series || []).reduce((result, entry) => {
+          for (const [key, value] of Object.entries(entry.billing_mode_cost_totals || {})) {
+            result.set(key, (result.get(key) || 0) + Number(value || 0));
+          }
+          return result;
+        }, new Map());
+        const sourceValue = (spend.series || []).reduce((result, entry) => {
+          const source = typeof entry.source === "string" ? entry.source : "unknown";
+          result.set(source, (result.get(source) || 0) + Number(entry.cost_usd || 0));
+          return result;
         }, new Map());
         json(res, buildValueComparisonViewModel({
           generatedAt: nowDate.toISOString(),
@@ -5918,7 +5959,15 @@ function createLocalApiHandler({
             recognizedTokens: totalTokens,
             pricingCoveragePercent: coverage,
           },
-          monthlyTrend: Array.from(monthlyTrend.values()),
+          actualComposition,
+          valueComposition: Array.from(valueModes.entries()).map(([key, value]) => ({ key, value, evidence_state: "estimated" })),
+          records: Array.from(sourceValue.entries()).map(([source, apiEquivalentUsd]) => ({ source, apiEquivalentUsd })),
+          monthlyTrend: sixMonthKeys.map((key) => monthlyTrend.get(key) || {
+            bucket_start: key,
+            label: `${Number(key.slice(5, 7))}月`,
+            actual_spend_usd: 0,
+            api_equivalent_usd: 0,
+          }),
         }));
       } catch (_error) {
         json(res, { ok: false, error: "value_comparison_unavailable" }, 500);

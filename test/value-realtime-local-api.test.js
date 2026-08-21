@@ -45,14 +45,16 @@ test("value and realtime endpoints return privacy-safe, explicit evidence payloa
     assert.equal(value.range, "month");
     assert.equal(value.actual_spend.total_usd.evidence_state, "partial");
     assert.equal(value.api_equivalent_value.unit, "USD");
+    assert.equal(value.monthly_trend.length, 6);
+    assert.ok(value.actual_composition.some((item) => item.key === "subscription"));
 
     const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=today");
     assert.equal(typeof realtime.revision, "string");
     assert.equal(realtime.sessions.some((item) => item.state === "running"), true);
+    assert.equal(realtime.activity_points.length, 1);
     assert.equal(JSON.stringify(realtime).includes("prompt"), false);
     assert.equal(JSON.stringify(realtime).includes("authorization"), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
-

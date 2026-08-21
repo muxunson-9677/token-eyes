@@ -77,3 +77,25 @@ test("does not fold native quota units into token or dollar totals", () => {
   assert.deepEqual(result.native_resources, [{ provider: "WorkBuddy", value: 2300, unit: "credits" }]);
 });
 
+test("keeps separate real composition and six-month series for the visual report", () => {
+  const result = buildValueComparisonViewModel({
+    actualSpend: { subscriptionUsd: 8, officialApiUsd: null, otherAiUsd: 2 },
+    usage: { apiEquivalentUsd: 20, recognizedTokens: 100, pricingCoveragePercent: 75 },
+    actualComposition: [
+      { key: "subscription", value: 8, evidence_state: "exact" },
+      { key: "other_ai", value: 2, evidence_state: "exact" },
+    ],
+    valueComposition: [
+      { key: "api_key", value: 12, evidence_state: "estimated" },
+      { key: "token_plan", value: 8, evidence_state: "estimated" },
+    ],
+    monthlyTrend: [{ bucket_start: "2026-08-01", label: "8月", actual_spend_usd: 10, api_equivalent_usd: 20 }],
+  });
+
+  assert.deepEqual(result.actual_composition, [
+    { key: "subscription", value: 8, evidence_state: "exact" },
+    { key: "other_ai", value: 2, evidence_state: "exact" },
+  ]);
+  assert.equal(result.value_composition[1].key, "token_plan");
+  assert.equal(result.monthly_trend[0].label, "8月");
+});

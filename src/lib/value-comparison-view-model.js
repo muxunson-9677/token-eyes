@@ -67,6 +67,27 @@ function buildNativeResources(nativeResources = []) {
     }));
 }
 
+function buildComposition(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item.key === "string")
+    .map((item) => ({
+      key: item.key,
+      value: finiteNumber(item.value),
+      evidence_state: typeof item.evidence_state === "string" ? item.evidence_state : "unsupported",
+    }));
+}
+
+function buildMonthlyTrend(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item.bucket_start === "string")
+    .map((item) => ({
+      bucket_start: item.bucket_start,
+      label: typeof item.label === "string" ? item.label : item.bucket_start.slice(5, 7),
+      actual_spend_usd: finiteNumber(item.actual_spend_usd) || 0,
+      api_equivalent_usd: finiteNumber(item.api_equivalent_usd) || 0,
+    }));
+}
+
 function buildValueComparisonViewModel(input = {}) {
   const actualSpend = buildActualSpend(input.actualSpend);
   const usage = input.usage || {};
@@ -92,7 +113,9 @@ function buildValueComparisonViewModel(input = {}) {
     recognized_tokens: metric(tokens, "tokens", tokens === null ? "unsupported" : "partial"),
     pricing_coverage_percent: metric(coverage, "percent", coverage === null ? "unsupported" : "partial"),
     attribution: buildAttribution(input.records),
-    monthly_trend: Array.isArray(input.monthlyTrend) ? input.monthlyTrend : [],
+    actual_composition: buildComposition(input.actualComposition),
+    value_composition: buildComposition(input.valueComposition),
+    monthly_trend: buildMonthlyTrend(input.monthlyTrend),
     native_resources: buildNativeResources(input.nativeResources),
   };
 }
@@ -100,4 +123,3 @@ function buildValueComparisonViewModel(input = {}) {
 module.exports = {
   buildValueComparisonViewModel,
 };
-
