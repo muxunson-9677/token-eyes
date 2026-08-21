@@ -4368,6 +4368,7 @@ it("selects the latest unbound failed Codex session and treats an unknown state 
   expect(failed).toHaveAttribute("role", "alert");
   expect(failed).toHaveAttribute("aria-live", "assertive");
   expect(screen.getByTestId("detection-codex-retry")).toBeEnabled();
+  expect(screen.getByTestId("detection-disconnect-codex")).toBeEnabled();
 });
 
 it("replaces a terminal Codex session with a new session_ref on retry", async () => {

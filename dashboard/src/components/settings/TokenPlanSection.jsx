@@ -4913,6 +4913,21 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             <Link2 className="h-3.5 w-3.5" aria-hidden />
                             {copy("settings.token_plan.console_session.retry")}
                           </button>
+                          {formCodexSession ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCodexConsoleSession(formCodexSession.id, formCodexSession.session_ref)}
+                              disabled={codexDisconnectingSessionRef === formCodexSession.session_ref}
+                              data-testid={formCodexDisconnectRetry
+                                ? "detection-disconnect-codex-local-retry"
+                                : "detection-disconnect-codex"}
+                              className="ml-3 text-xs text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400"
+                            >
+                              {formCodexDisconnectRetry
+                                ? copy("settings.token_plan.codex.retry_local_disconnect")
+                                : copy("settings.token_plan.console_session.disconnect")}
+                            </button>
+                          ) : null}
                         </div>
                       ) : (
                         <div
