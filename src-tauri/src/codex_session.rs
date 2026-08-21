@@ -8,7 +8,13 @@ use crate::codex_app_server::{
     validate_auth_url, AppServerClient, AppServerOps, AppServerStartError, LoginCompletion,
     SanitizedRateLimits,
 };
+use crate::codex_oauth::{
+    account_label_from_id_token, complete_oauth, fetch_usage, load_tokens, refresh_tokens,
+    save_tokens, start_oauth_listener, subscription_expires_at_from_id_token, CodexUsageWindow,
+    PendingCodexOAuth, StoredCodexTokens,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
@@ -127,6 +133,7 @@ pub struct CodexSessionState {
     auth_url: Option<String>,
     authorized: bool,
     client: Option<Box<dyn AppServerOps>>,
+    pending_oauth: HashMap<String, PendingCodexOAuth>,
 }
 
 pub fn validated_session_suffix(session_ref: &str) -> Result<&str, &'static str> {
@@ -392,19 +399,6 @@ fn reconcile_unopened_login(
     status_with_legacy_auth(failure_status, storage)
 }
 
-fn open_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
-    let storage = account_dir(app, session_ref)?;
-    let managed = app.state::<Mutex<CodexSessionState>>();
-    let mut state = managed
-        .lock()
-        .map_err(|_| "Codex session state is unavailable".to_string())?;
-    open_flow_core(&mut state, session_ref, &storage, |auth_url| {
-        app.opener()
-            .open_url(auth_url, None::<String>)
-            .map_err(|_| "无法在系统默认浏览器中打开 OpenAI 官方授权页面。".to_string())
-    })
-}
-
 fn open_flow_core<F>(
     state: &mut CodexSessionState,
     session_ref: &str,
@@ -524,19 +518,6 @@ where
     ))
 }
 
-fn reauthorize_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
-    let storage = account_dir(app, session_ref)?;
-    let managed = app.state::<Mutex<CodexSessionState>>();
-    let mut state = managed
-        .lock()
-        .map_err(|_| "Codex session state is unavailable".to_string())?;
-    reauthorize_flow_core(&mut state, session_ref, &storage, |auth_url| {
-        app.opener()
-            .open_url(auth_url, None::<String>)
-            .map_err(|_| "无法在系统默认浏览器中打开 OpenAI 官方授权页面。".to_string())
-    })
-}
-
 fn reauthorize_flow_core<F>(
     state: &mut CodexSessionState,
     session_ref: &str,
@@ -560,19 +541,6 @@ where
     state.auth_url = None;
     state.authorized = false;
     start_browser_login_flow(state, session_ref, storage, open_url)
-}
-
-fn reopen_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
-    let storage = account_dir(app, session_ref)?;
-    let managed = app.state::<Mutex<CodexSessionState>>();
-    let mut state = managed
-        .lock()
-        .map_err(|_| "Codex session state is unavailable".to_string())?;
-    reopen_flow_core(&mut state, session_ref, &storage, |auth_url| {
-        app.opener()
-            .open_url(auth_url, None::<String>)
-            .map_err(|_| "无法在系统默认浏览器中重新打开 OpenAI 官方授权页面。".to_string())
-    })
 }
 
 fn reopen_flow_core<F>(
@@ -659,15 +627,6 @@ where
         basic_status(session_ref, SessionStateCode::AwaitingVerification, "", ""),
         storage,
     ))
-}
-
-fn verify_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
-    let storage = account_dir(app, session_ref)?;
-    let managed = app.state::<Mutex<CodexSessionState>>();
-    let mut state = managed
-        .lock()
-        .map_err(|_| "Codex session state is unavailable".to_string())?;
-    verify_flow_core(&mut state, session_ref, &storage)
 }
 
 fn verify_flow_core(
@@ -782,15 +741,6 @@ where
     ))
 }
 
-fn sync_quota_flow(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
-    let storage = account_dir(app, session_ref)?;
-    let managed = app.state::<Mutex<CodexSessionState>>();
-    let mut state = managed
-        .lock()
-        .map_err(|_| "Codex session state is unavailable".to_string())?;
-    sync_quota_flow_core(&mut state, session_ref, &storage)
-}
-
 fn sync_quota_flow_core(
     state: &mut CodexSessionState,
     session_ref: &str,
@@ -838,19 +788,6 @@ fn sync_quota_flow_core(
             }
         }
     }
-}
-
-fn cancel_flow(
-    app: &AppHandle,
-    session_ref: &str,
-    reason: CodexCancelReason,
-) -> Result<CodexSessionStatus, String> {
-    let storage = account_dir(app, session_ref)?;
-    let managed = app.state::<Mutex<CodexSessionState>>();
-    let mut state = managed
-        .lock()
-        .map_err(|_| "Codex session state is unavailable".to_string())?;
-    cancel_flow_core(&mut state, session_ref, &storage, reason)
 }
 
 fn cancel_flow_core(
@@ -929,15 +866,297 @@ fn cancel_flow_core(
     }
 }
 
+fn oauth_windows_to_quota(windows: &[CodexUsageWindow]) -> Result<CodexQuotaDto, String> {
+    let sanitized = SanitizedRateLimits {
+        windows: windows
+            .iter()
+            .map(|window| crate::codex_app_server::SanitizedRateLimitWindow {
+                kind: window.kind.clone(),
+                used_percent: window.used_percent,
+                resets_at: window.resets_at,
+            })
+            .collect(),
+    };
+    map_rate_limits_to_quota(&sanitized)
+}
+
+fn enrich_quota_from_tokens(quota: &mut CodexQuotaDto, tokens: &StoredCodexTokens) {
+    quota.account_label = account_label_from_id_token(&tokens.id_token).unwrap_or_default();
+    quota.subscription_expires_at =
+        subscription_expires_at_from_id_token(&tokens.id_token).unwrap_or_default();
+}
+
+async fn status_from_managed_oauth(
+    storage: &Path,
+    session_ref: &str,
+) -> Result<Option<CodexSessionStatus>, String> {
+    let Some(tokens) = load_tokens(storage)? else {
+        return Ok(None);
+    };
+    match fetch_usage(&tokens).await {
+        Ok(windows) => {
+            let mut quota = oauth_windows_to_quota(&windows)?;
+            enrich_quota_from_tokens(&mut quota, &tokens);
+            Ok(Some(status_with_legacy_auth(
+                quota_status(session_ref, quota),
+                storage,
+            )))
+        }
+        Err(error) if error.contains("expired") => match refresh_tokens(&tokens).await {
+            Ok(refreshed) => {
+                save_tokens(storage, &refreshed)?;
+                match fetch_usage(&refreshed).await {
+                    Ok(windows) => {
+                        let mut quota = oauth_windows_to_quota(&windows)?;
+                        enrich_quota_from_tokens(&mut quota, &refreshed);
+                        Ok(Some(status_with_legacy_auth(
+                            quota_status(session_ref, quota),
+                            storage,
+                        )))
+                    }
+                    Err(_) => Ok(Some(status_with_legacy_auth(
+                        quota_error_status(session_ref),
+                        storage,
+                    ))),
+                }
+            }
+            Err(_) => Ok(Some(status_with_legacy_auth(
+                reauth_status(session_ref),
+                storage,
+            ))),
+        },
+        Err(_) => Ok(Some(status_with_legacy_auth(
+            quota_error_status(session_ref),
+            storage,
+        ))),
+    }
+}
+
+async fn start_direct_oauth(
+    app: &AppHandle,
+    session_ref: &str,
+    force_reauthorize: bool,
+) -> Result<CodexSessionStatus, String> {
+    let storage = account_dir(app, session_ref)?;
+    if !force_reauthorize {
+        if let Some(status) = status_from_managed_oauth(&storage, session_ref).await? {
+            if status.state_code != SessionStateCode::ReauthRequired {
+                return Ok(status);
+            }
+        }
+    }
+
+    let (pending, auth_url) = start_oauth_listener(session_ref)?;
+    {
+        let managed = app.state::<Mutex<CodexSessionState>>();
+        let mut state = managed
+            .lock()
+            .map_err(|_| "Codex session state is unavailable".to_string())?;
+        state.pending_oauth.remove(session_ref);
+        state.pending_oauth.insert(session_ref.to_string(), pending);
+        state.active_session_ref = Some(session_ref.to_string());
+        state.account_dir = Some(storage.clone());
+        state.authorized = false;
+        state.login_id = None;
+        state.auth_url = None;
+    }
+
+    if app.opener().open_url(&auth_url, None::<String>).is_err() {
+        let managed = app.state::<Mutex<CodexSessionState>>();
+        if let Ok(mut state) = managed.lock() {
+            state.pending_oauth.remove(session_ref);
+            if state.active_session_ref.as_deref() == Some(session_ref) {
+                clear_session_state(&mut state);
+            }
+        }
+        return Ok(status_with_legacy_auth(
+            basic_status(
+                session_ref,
+                SessionStateCode::Failed,
+                "BROWSER_OPEN_FAILED",
+                "无法在系统默认浏览器中打开 OpenAI 官方授权页面。",
+            ),
+            &storage,
+        ));
+    }
+
+    Ok(status_with_legacy_auth(
+        basic_status(session_ref, SessionStateCode::LoginStarted, "", ""),
+        &storage,
+    ))
+}
+
+async fn verify_direct_oauth(
+    app: &AppHandle,
+    session_ref: &str,
+) -> Result<CodexSessionStatus, String> {
+    let storage = account_dir(app, session_ref)?;
+    let pending = {
+        let managed = app.state::<Mutex<CodexSessionState>>();
+        let mut state = managed
+            .lock()
+            .map_err(|_| "Codex session state is unavailable".to_string())?;
+        state.pending_oauth.remove(session_ref)
+    };
+
+    let Some(pending) = pending else {
+        if let Some(status) = status_from_managed_oauth(&storage, session_ref).await? {
+            return Ok(status);
+        }
+        return Ok(status_with_legacy_auth(
+            basic_status(
+                session_ref,
+                SessionStateCode::SessionNotFound,
+                "SESSION_NOT_FOUND",
+                "未找到待确认的 Codex 授权，请重新连接。",
+            ),
+            &storage,
+        ));
+    };
+
+    match complete_oauth(&pending).await {
+        Ok(None) => {
+            let managed = app.state::<Mutex<CodexSessionState>>();
+            managed
+                .lock()
+                .map_err(|_| "Codex session state is unavailable".to_string())?
+                .pending_oauth
+                .insert(session_ref.to_string(), pending);
+            Ok(status_with_legacy_auth(
+                basic_status(
+                    session_ref,
+                    SessionStateCode::AwaitingVerification,
+                    "AWAITING_VERIFICATION",
+                    "等待 OpenAI 官方授权确认。",
+                ),
+                &storage,
+            ))
+        }
+        Ok(Some(tokens)) => {
+            save_tokens(&storage, &tokens)?;
+            {
+                let managed = app.state::<Mutex<CodexSessionState>>();
+                if let Ok(mut state) = managed.lock() {
+                    state.authorized = true;
+                    state.active_session_ref = Some(session_ref.to_string());
+                    state.account_dir = Some(storage.clone());
+                };
+            }
+            Ok(status_from_managed_oauth(&storage, session_ref)
+                .await?
+                .unwrap_or_else(|| quota_error_status(session_ref)))
+        }
+        Err(_) => Ok(status_with_legacy_auth(
+            authorization_failure_status(session_ref),
+            &storage,
+        )),
+    }
+}
+
+async fn sync_direct_oauth(
+    app: &AppHandle,
+    session_ref: &str,
+) -> Result<CodexSessionStatus, String> {
+    let storage = account_dir(app, session_ref)?;
+    Ok(status_from_managed_oauth(&storage, session_ref)
+        .await?
+        .unwrap_or_else(|| status_with_legacy_auth(reauth_status(session_ref), &storage)))
+}
+
+fn reopen_direct_oauth(app: &AppHandle, session_ref: &str) -> Result<CodexSessionStatus, String> {
+    let storage = account_dir(app, session_ref)?;
+    let auth_url = {
+        let managed = app.state::<Mutex<CodexSessionState>>();
+        let state = managed
+            .lock()
+            .map_err(|_| "Codex session state is unavailable".to_string())?;
+        state
+            .pending_oauth
+            .get(session_ref)
+            .map(PendingCodexOAuth::authorize_url)
+    };
+    let Some(auth_url) = auth_url else {
+        return Ok(status_with_legacy_auth(
+            basic_status(
+                session_ref,
+                SessionStateCode::SessionNotFound,
+                "SESSION_NOT_FOUND",
+                "未找到正在等待验证的 Codex 授权，请重新连接。",
+            ),
+            &storage,
+        ));
+    };
+    if app.opener().open_url(&auth_url, None::<String>).is_err() {
+        return Ok(status_with_legacy_auth(
+            basic_status(
+                session_ref,
+                SessionStateCode::Failed,
+                "BROWSER_OPEN_FAILED",
+                "无法在系统默认浏览器中重新打开 OpenAI 官方授权页面。",
+            ),
+            &storage,
+        ));
+    }
+    Ok(status_with_legacy_auth(
+        basic_status(
+            session_ref,
+            SessionStateCode::AwaitingVerification,
+            "AWAITING_VERIFICATION",
+            "等待 OpenAI 官方授权确认。",
+        ),
+        &storage,
+    ))
+}
+
+fn cancel_direct_oauth(
+    app: &AppHandle,
+    session_ref: &str,
+    reason: CodexCancelReason,
+) -> Result<CodexSessionStatus, String> {
+    let storage = account_dir(app, session_ref)?;
+    let removed = app
+        .state::<Mutex<CodexSessionState>>()
+        .lock()
+        .map_err(|_| "Codex session state is unavailable".to_string())?
+        .pending_oauth
+        .remove(session_ref)
+        .is_some();
+    if !removed {
+        return Ok(status_with_legacy_auth(
+            basic_status(
+                session_ref,
+                SessionStateCode::SessionNotFound,
+                "SESSION_NOT_FOUND",
+                "未找到待取消的 Codex 授权。",
+            ),
+            &storage,
+        ));
+    }
+    let (error_code, error_message) = match reason {
+        CodexCancelReason::UserCancelled => ("AUTHORIZATION_CANCELLED", "已取消 Codex 授权。"),
+        CodexCancelReason::Timeout => (
+            "AUTHORIZATION_TIMEOUT",
+            "等待 OpenAI 官方授权超时，已结束本次授权。",
+        ),
+    };
+    Ok(status_with_legacy_auth(
+        basic_status(
+            session_ref,
+            SessionStateCode::Failed,
+            error_code,
+            error_message,
+        ),
+        &storage,
+    ))
+}
+
 #[tauri::command]
 pub async fn open_codex_console_login(
     app: AppHandle,
     session_ref: String,
 ) -> Result<CodexSessionStatus, String> {
     validate_session_ref(&session_ref).map_err(str::to_string)?;
-    tauri::async_runtime::spawn_blocking(move || open_flow(&app, &session_ref))
-        .await
-        .map_err(|_| "Codex login task failed".to_string())?
+    start_direct_oauth(&app, &session_ref, false).await
 }
 
 #[tauri::command]
@@ -946,9 +1165,7 @@ pub async fn reauthorize_codex_console_login(
     session_ref: String,
 ) -> Result<CodexSessionStatus, String> {
     validate_session_ref(&session_ref).map_err(str::to_string)?;
-    tauri::async_runtime::spawn_blocking(move || reauthorize_flow(&app, &session_ref))
-        .await
-        .map_err(|_| "Codex reauthorization task failed".to_string())?
+    start_direct_oauth(&app, &session_ref, true).await
 }
 
 #[tauri::command]
@@ -957,7 +1174,7 @@ pub async fn reopen_codex_console_login(
     session_ref: String,
 ) -> Result<CodexSessionStatus, String> {
     validate_session_ref(&session_ref).map_err(str::to_string)?;
-    tauri::async_runtime::spawn_blocking(move || reopen_flow(&app, &session_ref))
+    tauri::async_runtime::spawn_blocking(move || reopen_direct_oauth(&app, &session_ref))
         .await
         .map_err(|_| "Codex login reopen task failed".to_string())?
 }
@@ -968,9 +1185,7 @@ pub async fn verify_codex_console_session(
     session_ref: String,
 ) -> Result<CodexSessionStatus, String> {
     validate_session_ref(&session_ref).map_err(str::to_string)?;
-    tauri::async_runtime::spawn_blocking(move || verify_flow(&app, &session_ref))
-        .await
-        .map_err(|_| "Codex verification task failed".to_string())?
+    verify_direct_oauth(&app, &session_ref).await
 }
 
 #[tauri::command]
@@ -979,9 +1194,7 @@ pub async fn sync_codex_console_quota(
     session_ref: String,
 ) -> Result<CodexSessionStatus, String> {
     validate_session_ref(&session_ref).map_err(str::to_string)?;
-    tauri::async_runtime::spawn_blocking(move || sync_quota_flow(&app, &session_ref))
-        .await
-        .map_err(|_| "Codex rate-limit sync task failed".to_string())?
+    sync_direct_oauth(&app, &session_ref).await
 }
 
 #[tauri::command]
@@ -991,7 +1204,7 @@ pub async fn cancel_codex_console_login(
     reason: CodexCancelReason,
 ) -> Result<CodexSessionStatus, String> {
     validate_session_ref(&session_ref).map_err(str::to_string)?;
-    tauri::async_runtime::spawn_blocking(move || cancel_flow(&app, &session_ref, reason))
+    tauri::async_runtime::spawn_blocking(move || cancel_direct_oauth(&app, &session_ref, reason))
         .await
         .map_err(|_| "Codex cancellation task failed".to_string())?
 }
@@ -1023,6 +1236,7 @@ where
 {
     let owns_active_binding = state.active_session_ref.as_deref() == Some(session_ref)
         && state.account_dir.as_deref() == Some(storage);
+    state.pending_oauth.remove(session_ref);
     if owns_active_binding {
         if let (Some(login_id), Some(client)) = (state.login_id.as_deref(), state.client.as_mut()) {
             let _ = client.cancel_login(login_id);
@@ -1073,20 +1287,16 @@ fn cleanup_legacy_codex_auth_file_flow(
     session_ref: &str,
 ) -> Result<CodexSessionStatus, String> {
     let storage = account_dir(app, session_ref)?;
-    let managed = app.state::<Mutex<CodexSessionState>>();
-    let mut state = managed
-        .lock()
-        .map_err(|_| "Codex session state is unavailable".to_string())?;
-    if ensure_client(&mut state, session_ref, &storage).is_err() {
-        state.active_session_ref = Some(session_ref.to_string());
-        state.account_dir = Some(storage.clone());
-        state.authorized = true;
+    if load_tokens(&storage)?.is_none() {
         return Ok(legacy_cleanup_failure_status(session_ref, &storage));
     }
-    cleanup_legacy_codex_auth_file_core(&mut state, session_ref, &storage, |path| {
-        std::fs::remove_file(path)
-            .map_err(|_| "Unable to remove the legacy Codex auth file".to_string())
-    })
+    let legacy_auth = storage.join("auth.json");
+    if !legacy_auth.is_file() || std::fs::remove_file(&legacy_auth).is_err() {
+        return Ok(legacy_cleanup_failure_status(session_ref, &storage));
+    }
+    let mut status = authorized_status(session_ref);
+    status.legacy_auth_present = false;
+    Ok(status)
 }
 
 fn cleanup_legacy_codex_auth_file_core<F>(
@@ -2434,6 +2644,7 @@ mod tests {
             auth_url: Some("https://auth.openai.com/authorize".to_string()),
             authorized: false,
             client: None,
+            pending_oauth: HashMap::new(),
         };
 
         let status = reopen_flow_core(&mut state, session_ref, storage.path(), |_| {

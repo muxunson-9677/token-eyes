@@ -263,39 +263,55 @@ spawn_blocking(move || {
   );
 });
 
+test("Task 12 Codex Token Plans use built-in Cockpit-style OAuth without Codex CLI", () => {
+  const oauthPath = path.join(repoRoot, "src-tauri/src/codex_oauth.rs");
+  assert.equal(fs.existsSync(oauthPath), true, "built-in Codex OAuth module must exist");
+  const oauth = fs.readFileSync(oauthPath, "utf8");
+  assert.match(oauth, /https:\/\/auth\.openai\.com\/oauth\/authorize/u);
+  assert.match(oauth, /https:\/\/auth\.openai\.com\/oauth\/token/u);
+  assert.match(oauth, /app_EMoamEEZ73f0CkXaXp7hrann/u);
+  assert.match(oauth, /openid profile email offline_access/u);
+  assert.match(oauth, /OAUTH_ORIGINATOR\s*:\s*&str\s*=\s*"codex_vscode"/u);
+  assert.match(oauth, /append_pair\(\s*"originator"\s*,\s*OAUTH_ORIGINATOR\s*\)/u);
+  assert.match(oauth, /code_challenge_method[\s\S]*S256/u);
+  assert.match(oauth, /http:\/\/localhost:1455\/auth\/callback/u);
+  assert.match(oauth, /expected_state/u);
+  assert.match(lib, /mod codex_oauth;/u);
+  assert.match(session, /crate::codex_oauth/u);
+
+  for (const command of [
+    "open_codex_console_login",
+    "reauthorize_codex_console_login",
+    "verify_codex_console_session",
+    "sync_codex_console_quota",
+  ]) {
+    const body = extractRustFunctionBody(session, command);
+    assert.doesNotMatch(body, /AppServerClient|app-server|codex\.(?:exe|cmd)/iu);
+  }
+});
+
 for (const [command, flow] of [
-  ["open_codex_console_login", "open_flow"],
-  ["reauthorize_codex_console_login", "reauthorize_flow"],
-  ["verify_codex_console_session", "verify_flow"],
-  ["sync_codex_console_quota", "sync_quota_flow"],
-  [cancelCommand, "cancel_flow"],
+  ["open_codex_console_login", "start_direct_oauth"],
+  ["reauthorize_codex_console_login", "start_direct_oauth"],
+  ["verify_codex_console_session", "verify_direct_oauth"],
+  ["sync_codex_console_quota", "sync_direct_oauth"],
+  [cancelCommand, "cancel_direct_oauth"],
 ]) {
-  test(`${command} routes its own command body through the Codex app-server flow`, () => {
+  test(`${command} routes its own command body through built-in OAuth`, () => {
     const body = extractRustFunctionBody(session, command);
     assert.match(body, new RegExp(`\\b${flow}\\s*\\(`));
-    assert.doesNotMatch(body, /direct_oauth|start_oauth_listener|complete_oauth/);
-  });
-  test(`${command} runs its blocking Codex app-server flow off the async runtime`, () => {
-    const body = extractRustFunctionBody(session, command);
-    findBlockingFlowOpeningParen(body, flow);
+    assert.doesNotMatch(body, /AppServerClient|app-server|codex\.(?:exe|cmd)/iu);
   });
 }
 
-test("compiled Codex auth excludes the Token Plan direct OAuth implementation", () => {
-  const compiledCodexSource = `${lib}\n${session}\n${appServer}`;
-  assert.doesNotMatch(compiledCodexSource, /start_oauth_listener|complete_oauth/);
-  assert.doesNotMatch(compiledCodexSource, /backend-api\/wham\/usage/);
-  assert.doesNotMatch(compiledCodexSource, /\b(?:1455|1457)\b/);
-  assert.doesNotMatch(compiledCodexSource, /<html|Codex 授权已完成|Token Eyes.*callback/i);
-});
-
-test("the app-server client implements account login start, completion, and matching cancel", () => {
-  assert.match(appServer, /account\/login\/start/);
-  assert.match(appServer, /account\/login\/completed/);
-  assert.match(appServer, /account\/login\/cancel/);
-  const cancelBody = extractRustFunctionBody(appServer, "cancel_login");
-  assert.match(cancelBody, /LOGIN_CANCEL_METHOD/);
-  assert.match(cancelBody, /loginId/);
+test("built-in OAuth owns browser authorization and official quota reads", () => {
+  const oauth = read("src-tauri/src/codex_oauth.rs");
+  assert.match(oauth, /start_oauth_listener/u);
+  assert.match(oauth, /complete_oauth/u);
+  assert.match(oauth, /backend-api\/wham\/usage/u);
+  assert.match(oauth, /http:\/\/localhost:1455\/auth\/callback/u);
+  assert.match(oauth, /Codex 授权已完成/u);
+  assert.doesNotMatch(oauth, /AppServerClient|account\/login\/start/u);
 });
 
 test("native Codex cancellation accepts only a typed reason and returns the status DTO", () => {
@@ -317,7 +333,7 @@ test("native Codex cancellation accepts only a typed reason and returns the stat
   const blockingArgument = extractRustCallArgument(body, "spawn_blocking");
   assert.match(
     blockingArgument,
-    /cancel_flow\s*\(\s*&app\s*,\s*&session_ref\s*,\s*reason\s*\)/u,
+    /cancel_direct_oauth\s*\(\s*&app\s*,\s*&session_ref\s*,\s*reason\s*\)/u,
   );
 });
 
@@ -335,12 +351,12 @@ test("native Codex reopen returns the status DTO through its blocking flow", () 
   const blockingArgument = extractRustCallArgument(body, "spawn_blocking");
   assert.match(
     blockingArgument,
-    /reopen_flow\s*\(\s*&app\s*,\s*&session_ref\s*\)/u,
+    /reopen_direct_oauth\s*\(\s*&app\s*,\s*&session_ref\s*\)/u,
   );
-  const flowBody = extractRustFunctionBody(session, "reopen_flow");
+  const flowBody = extractRustFunctionBody(session, "reopen_direct_oauth");
   assert.match(flowBody, /app\s*\.\s*opener\s*\(\s*\)/u);
   assert.match(flowBody, /\.\s*open_url\s*\(/u);
-  assert.match(flowBody, /reopen_flow_core\s*\(/u);
+  assert.match(flowBody, /PendingCodexOAuth::authorize_url/u);
 });
 
 test("lib.rs registers the native Codex reopen command", () => {
@@ -351,12 +367,13 @@ test("lib.rs registers the explicit Codex reauthorization command", () => {
   assert.match(lib, /codex_session::reauthorize_codex_console_login\s*,/u);
 });
 
-test("the app-server client owns account and rate-limit reads", () => {
-  assert.match(appServer, /account\/read/);
-  assert.match(appServer, /account\/rateLimits\/read/);
+test("the direct OAuth module owns account identity and rate-limit reads", () => {
+  const oauth = read("src-tauri/src/codex_oauth.rs");
+  assert.match(oauth, /account_id_from_id_token/u);
+  assert.match(oauth, /backend-api\/wham\/usage/u);
   assert.match(read("dashboard/src/lib/api.ts"), /syncCodexConsoleQuota/);
-  assert.doesNotMatch(`${appServer}\n${session}`, /WebviewWindowBuilder/);
-  assert.doesNotMatch(`${appServer}\n${session}`, /document\.cookie|localStorage|sessionStorage/);
+  assert.doesNotMatch(`${oauth}\n${session}`, /WebviewWindowBuilder/);
+  assert.doesNotMatch(`${oauth}\n${session}`, /document\.cookie|localStorage|sessionStorage/);
 });
 
 test("Codex verification has no alternate account-updated authorization channel", () => {
@@ -395,15 +412,15 @@ test("lib.rs registers the dedicated legacy Codex cleanup command", () => {
   );
 });
 
-test("lib.rs no longer compiles the Token Plan direct OAuth module", () => {
+test("lib.rs compiles the Token Plan direct OAuth module", () => {
   assert.match(lib, /mod codex_app_server;/);
-  assert.doesNotMatch(lib, /mod codex_oauth;/);
-  assert.doesNotMatch(session, /crate::codex_oauth/);
+  assert.match(lib, /mod codex_oauth;/);
+  assert.match(session, /crate::codex_oauth/);
 });
 
-test("the Token Plan direct OAuth source file is physically removed", () => {
+test("the Token Plan direct OAuth source file is present", () => {
   assert.equal(
     fs.existsSync(path.join(repoRoot, "src-tauri/src/codex_oauth.rs")),
-    false,
+    true,
   );
 });

@@ -2932,6 +2932,20 @@ async function flushCodexAsyncWork() {
   });
 }
 
+it("explains that Codex account login uses built-in OAuth without Codex CLI", async () => {
+  mockCodexCatalog();
+  getTokenPlans.mockResolvedValue({ records: [] });
+  getConsoleSessions.mockResolvedValue({ sessions: [] });
+  const user = userEvent.setup();
+
+  render(<TokenPlanSection />);
+  await openCodexOfficialAccountForm(user);
+
+  expect(screen.getByText(/Token Eyes 内置 OAuth/u)).toBeInTheDocument();
+  expect(screen.getByText(/无需安装 Codex CLI/u)).toBeInTheDocument();
+  expect(screen.queryByText(/OpenAI 官方 Codex 组件/u)).not.toBeInTheDocument();
+});
+
 it("Codex account detection creates an isolated binding before saving a new account", async () => {
   mockCodexCatalog();
   const user = userEvent.setup();

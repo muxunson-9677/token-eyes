@@ -1,6 +1,7 @@
 mod auto_launch;
 mod claude_session;
 mod codex_app_server;
+mod codex_oauth;
 mod codex_session;
 #[path = "commands.rs"]
 mod commands;

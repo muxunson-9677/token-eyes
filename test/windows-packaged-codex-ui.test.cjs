@@ -17,7 +17,6 @@ const installerPath = path.join(
   "nsis",
   `Token Eyes_${tauriConfig.version}_x64-setup.exe`,
 );
-const fakeAppServer = path.join(repoRoot, "test", "fixtures", "codex-app-server", "fake-app-server.cjs");
 const evidenceRoot = path.join(repoRoot, "src-tauri", "target", "private-acceptance", "codex-ui");
 const enabled = process.env.TOKEN_EYES_PACKAGED_CODEX_UI === "1";
 const installerRegistryKeys = [
@@ -84,7 +83,7 @@ function findFreePort() {
   });
 }
 
-function cleanEnvironment(home, fixtureBin, debuggingPort, tracePath) {
+function cleanEnvironment(home, fixtureBin, debuggingPort) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   delete env.VITEST;
@@ -96,9 +95,7 @@ function cleanEnvironment(home, fixtureBin, debuggingPort, tracePath) {
     HOME: process.env.USERPROFILE,
     APPDATA: process.env.APPDATA,
     LOCALAPPDATA: process.env.LOCALAPPDATA,
-    PATH: `${fixtureBin};${process.env.PATH || ""}`,
-    TOKEN_EYES_TEST_NODE_EXE: process.execPath,
-    TOKEN_EYES_CODEX_APP_SERVER_TRACE: tracePath,
+    PATH: fixtureBin,
     TOKEN_EYES_PACKAGED_UI_ACCEPTANCE: "1",
     TOKEN_EYES_PACKAGED_UI_HOME: home,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${debuggingPort}`,
@@ -107,14 +104,14 @@ function cleanEnvironment(home, fixtureBin, debuggingPort, tracePath) {
   return env;
 }
 
-function writeFakeCodexCommand(fixtureBin) {
-  fs.mkdirSync(fixtureBin, { recursive: true });
-  const command = [
-    "@echo off",
-    `\"%TOKEN_EYES_TEST_NODE_EXE%\" \"${fakeAppServer}\" %*`,
-    "",
-  ].join("\r\n");
-  fs.writeFileSync(path.join(fixtureBin, "codex.cmd"), command, "utf8");
+async function portIsAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.listen(port, "127.0.0.1", () => {
+      server.close(() => resolve(true));
+    });
+  });
 }
 
 function connectedConfig(sessionId, sessionRef) {
@@ -255,16 +252,6 @@ async function waitForExpression(cdp, expression, description, timeoutMs = 20_00
   throw new Error(`Timed out waiting for ${description}`);
 }
 
-async function waitForFileText(filePath, pattern, description, timeoutMs = 20_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const value = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
-    if (pattern.test(value)) return value;
-    await delay(200);
-  }
-  throw new Error(`Timed out waiting for ${description}`);
-}
-
 async function navigateAfterBootstrap(cdp, pathname) {
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
     source: "window.localStorage.setItem('tokentracker.firstRun.completed.v1', '1');",
@@ -283,8 +270,12 @@ async function navigateToCodexEditor(cdp) {
   await navigateAfterBootstrap(cdp, "/settings/cost/token-plans/codex-ui-plan/edit");
   await waitForExpression(
     cdp,
-    `document.querySelector('[data-testid="detection-sync-codex"]')`,
-    "the connected Codex editor",
+    `[...document.querySelectorAll('[data-testid^="detection-"]')].some((element) => [
+      'detection-sync-codex',
+      'detection-codex-retry',
+      'detection-connect-codex',
+    ].includes(element.dataset.testid) && !element.disabled)`,
+    "an enabled Codex account action",
     30_000,
   );
 }
@@ -400,6 +391,39 @@ async function clickElementAsUser(cdp, selector, processId) {
   return clickScreenPoint(point.clientX, point.clientY, point.devicePixelRatio, processId);
 }
 
+async function clickCodexAccountActionAsUser(cdp, processId) {
+  const selectors = [
+    '[data-testid="detection-sync-codex"]',
+    '[data-testid="detection-codex-retry"]',
+    '[data-testid="detection-connect-codex"]',
+  ];
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    focusProcessWindow(processId);
+    const match = await cdp.evaluate(`(() => {
+      for (const selector of ${JSON.stringify(selectors)}) {
+        const element = document.querySelector(selector);
+        if (!element || element.disabled) continue;
+        element.scrollIntoView({ block: 'center' });
+        const rect = element.getBoundingClientRect();
+        return {
+          selector,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+          devicePixelRatio: window.devicePixelRatio,
+        };
+      }
+      return null;
+    })()`);
+    if (match) {
+      const point = clickScreenPoint(match.clientX, match.clientY, match.devicePixelRatio, processId);
+      return { point, selector: match.selector };
+    }
+    await delay(200);
+  }
+  throw new Error("the installed Codex editor has no enabled connect, sync, or retry action");
+}
+
 function foregroundWindow() {
   const script = [
     "Add-Type @'",
@@ -473,13 +497,19 @@ async function launchApp(executable, env) {
 
 async function runSyncJourney({ executable, fixtureBin, passRoot, passName, sessionSuffix }) {
   const home = path.join(passRoot, "sync-profile");
-  const tracePath = path.join(passRoot, "sync-app-server-methods.txt");
   const sessionId = `${passName}-sync-session`;
   const sessionRef = `token-plan/codex/session/${sessionSuffix}-sync`;
   const nativeAccountDir = path.join(process.env.APPDATA, "com.tokeneyes.desktop", "codex-accounts", `${sessionSuffix}-sync`);
   seedProfile(home, sessionId, sessionRef, nativeAccountDir);
   const port = await findFreePort();
-  const env = cleanEnvironment(home, fixtureBin, port, tracePath);
+  const env = cleanEnvironment(home, fixtureBin, port);
+  const codexLookup = spawnSync("C:\\Windows\\System32\\where.exe", ["codex"], {
+    encoding: "utf8",
+    env,
+    windowsHide: true,
+  });
+  assert.notEqual(codexLookup.status, 0, "packaged acceptance must not expose codex.exe or codex.cmd");
+  assert.equal(await portIsAvailable(1455), true, "OAuth callback port must be free before the click");
   let launched;
   try {
     launched = await launchApp(executable, env);
@@ -499,31 +529,32 @@ async function runSyncJourney({ executable, fixtureBin, passRoot, passName, sess
     const initialBodyText = await launched.cdp.evaluate("document.body?.innerText || ''");
     fs.writeFileSync(path.join(evidenceRoot, `${passName}-before-sync.txt`), `${initialBodyText}\n`, "utf8");
     assert.match(initialBodyText, /已连接/u, "the installed editor must start from the connected state reported by the user");
-    const clickPoint = await clickElementAsUser(launched.cdp, '[data-testid="detection-sync-codex"]', launched.child.pid);
+    const clickedAction = await clickCodexAccountActionAsUser(launched.cdp, launched.child.pid);
     try {
-      await waitForFileText(tracePath, /^account\/login\/start$/mu, "the official app-server login call", 30_000);
       await waitForExpression(
         launched.cdp,
-        `document.querySelector('[data-testid="detection-codex-login-started"]') || document.body.innerText.includes('授权已完成，但额度同步暂时失败')`,
-        "the browser authorization waiting or completed state",
+        `document.querySelector('[data-testid="detection-codex-login-started"]')`,
+        "the built-in OAuth waiting state",
         30_000,
       );
+      const listenerDeadline = Date.now() + 10_000;
+      while (await portIsAvailable(1455)) {
+        if (Date.now() >= listenerDeadline) throw new Error("built-in OAuth did not bind localhost:1455");
+        await delay(100);
+      }
     } catch (error) {
       await capture(launched.cdp, path.join(evidenceRoot, `${passName}-sync-click-failure.png`));
       const bodyText = await launched.cdp.evaluate("document.body?.innerText || ''");
-      const trace = fs.existsSync(tracePath) ? fs.readFileSync(tracePath, "utf8") : "";
       fs.writeFileSync(
         path.join(evidenceRoot, `${passName}-sync-click-failure.txt`),
-        `${JSON.stringify({ clickPoint, foreground: foregroundWindow(), bodyText, trace }, null, 2)}\n`,
+        `${JSON.stringify({ clickedAction, foreground: foregroundWindow(), bodyText, callbackPortAvailable: await portIsAvailable(1455) }, null, 2)}\n`,
         "utf8",
       );
       throw error;
     }
     const browser = await waitForBrowserForeground(launched.child.pid);
-    const trace = fs.readFileSync(tracePath, "utf8").trim().split(/\r?\n/u);
-    assert.ok(trace.includes("account/login/start"), "the installed UI click must reach the official app-server login method");
     await capture(launched.cdp, path.join(evidenceRoot, `${passName}-after-sync.png`));
-    return { browserProcess: browser.name, trace };
+    return { browserProcess: browser.name, callbackPort: 1455, codexCliAvailable: false };
   } finally {
     launched?.cdp.close();
     await stopProcessTree(launched?.child);
@@ -533,12 +564,11 @@ async function runSyncJourney({ executable, fixtureBin, passRoot, passName, sess
 
 async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, sessionSuffix }) {
   const home = path.join(passRoot, "delete-profile");
-  const tracePath = path.join(passRoot, "delete-app-server-methods.txt");
   const sessionId = `${passName}-delete-session`;
   const sessionRef = `token-plan/codex/session/${sessionSuffix}-delete`;
   const nativeAccountDir = path.join(process.env.APPDATA, "com.tokeneyes.desktop", "codex-accounts", `${sessionSuffix}-delete`);
   const configPath = seedProfile(home, sessionId, sessionRef, nativeAccountDir);
-  const env = cleanEnvironment(home, fixtureBin, await findFreePort(), tracePath);
+  const env = cleanEnvironment(home, fixtureBin, await findFreePort());
   let launched;
   try {
     launched = await launchApp(executable, env);
@@ -568,7 +598,7 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
     await stopProcessTree(launched?.child);
   }
 
-  const restartEnv = cleanEnvironment(home, fixtureBin, await findFreePort(), tracePath);
+  const restartEnv = cleanEnvironment(home, fixtureBin, await findFreePort());
   let restarted;
   try {
     restarted = await launchApp(executable, restartEnv);
@@ -588,7 +618,6 @@ test("the final installed Codex buttons launch browser authorization and complet
 }, async (t) => {
   assert.equal(process.platform, "win32", "the packaged Codex UI acceptance is Windows-only");
   assert.ok(fs.existsSync(installerPath), "build the exact NSIS installer before packaged UI acceptance");
-  assert.ok(fs.existsSync(fakeAppServer), "the deterministic Codex app-server fixture must exist");
   const existingGui = spawnSync("powershell.exe", ["-NoProfile", "-Command", "@(Get-Process -Name 'Token Eyes' -ErrorAction SilentlyContinue).Count"], {
     encoding: "utf8",
     windowsHide: true,
@@ -601,7 +630,7 @@ test("the final installed Codex buttons launch browser authorization and complet
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-codex-packaged-ui-"));
   const installDir = path.join(root, "app");
   const fixtureBin = path.join(root, "fixture-bin");
-  writeFakeCodexCommand(fixtureBin);
+  fs.mkdirSync(fixtureBin, { recursive: true });
   const registrySnapshot = await snapshotInstallerRegistry(root);
   t.after(async () => {
     try {
@@ -625,8 +654,14 @@ test("the final installed Codex buttons launch browser authorization and complet
     const sessionSuffix = `uiaccept-${process.pid}-${index + 1}`;
     const sync = await runSyncJourney({ executable, fixtureBin, passRoot, passName, sessionSuffix });
     await runDeleteJourney({ executable, fixtureBin, passRoot, passName, sessionSuffix });
-    results.push({ pass: passName, browser_process: sync.browserProcess, login_start_calls: sync.trace.filter((method) => method === "account/login/start").length });
+    results.push({
+      pass: passName,
+      browser_process: sync.browserProcess,
+      callback_port: sync.callbackPort,
+      codex_cli_available: sync.codexCliAvailable,
+    });
   }
   fs.writeFileSync(path.join(evidenceRoot, "result.json"), `${JSON.stringify({ installer: path.basename(installerPath), results }, null, 2)}\n`, "utf8");
-  assert.deepEqual(results.map((result) => result.login_start_calls), [1, 1]);
+  assert.deepEqual(results.map((result) => result.callback_port), [1455, 1455]);
+  assert.deepEqual(results.map((result) => result.codex_cli_available), [false, false]);
 });
