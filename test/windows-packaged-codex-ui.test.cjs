@@ -245,11 +245,16 @@ async function waitForCdp(port, child) {
 
 async function waitForExpression(cdp, expression, description, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
+  let lastError;
   while (Date.now() < deadline) {
-    if (await cdp.evaluate(`Boolean(${expression})`)) return;
+    try {
+      if (await cdp.evaluate(`Boolean(${expression})`)) return;
+    } catch (error) {
+      lastError = error;
+    }
     await delay(200);
   }
-  throw new Error(`Timed out waiting for ${description}`);
+  throw new Error(`Timed out waiting for ${description}; last=${lastError?.message || "none"}`);
 }
 
 async function navigateAfterBootstrap(cdp, pathname) {
@@ -261,7 +266,11 @@ async function navigateAfterBootstrap(cdp, pathname) {
     awaitPromise: true,
   });
   await cdp.send("Page.reload", { ignoreCache: true });
-  await waitForExpression(cdp, "window.location.pathname === '/dashboard'", "the completed first-run redirect");
+  await waitForExpression(
+    cdp,
+    "window.localStorage.getItem('tokentracker.firstRun.completed.v1') === '1'",
+    "the completed first-run state",
+  );
   const origin = await cdp.evaluate("window.location.origin");
   await cdp.send("Page.navigate", { url: `${origin}${pathname}` });
 }
