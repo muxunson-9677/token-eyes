@@ -4420,6 +4420,7 @@ it("replaces a terminal Codex session with a new session_ref on retry", async ()
   });
 
   await waitFor(() => expect(createConsoleSession).toHaveBeenCalledTimes(1));
+  expect(await screen.findByTestId("detection-codex-login-started")).toBeInTheDocument();
   const replacementRef = createConsoleSession.mock.calls[0][0].session_ref;
   expect(replacementRef).toMatch(/^token-plan\/codex\/session\//);
   expect(replacementRef).not.toBe(oldRef);

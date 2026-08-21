@@ -2171,6 +2171,22 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         });
         createdSession = created.session;
         setConsoleSessions(Array.isArray(created.sessions) ? created.sessions : []);
+        setForm((current) => {
+          if (current.provider_id !== "codex" || (codexForm.id && current.id !== codexForm.id)) {
+            return current;
+          }
+          return {
+            ...current,
+            detection_config: {
+              ...current.detection_config,
+              official_account: {
+                ...current.detection_config?.official_account,
+                account_binding_id: createdSession.id,
+                session_ref: sessionRef,
+              },
+            },
+          };
+        });
         nativeStatus = explicitReauthorization
           ? await reauthorizeCodexConsoleLogin(sessionRef)
           : await openCodexConsoleLogin(sessionRef);
