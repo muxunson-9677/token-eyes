@@ -45,6 +45,8 @@ const {
   buildWidgetViewModel,
   flattenUsageLimitsPayload,
 } = require("./widget-view-model");
+const { buildValueComparisonViewModel } = require("./value-comparison-view-model");
+const { buildRealtimeSessionViewModel } = require("./realtime-session-view-model");
 const { getCodexUsageLimits } = require("./usage-limits");
 const {
   accumulateBillingModeAttribution,
@@ -75,6 +77,8 @@ const LOCAL_API_CAPABILITIES = Object.freeze([
   "provider_api_balance",
   "codex_reset_events",
   "desktop_widget_view_model",
+  "value_comparison_v1",
+  "realtime_sessions_v1",
   "request_diagnostics_v2",
   "observability_export_v2",
   "tray_compact_v2",
@@ -5594,6 +5598,51 @@ function createLocalApiHandler({
     };
   }
 
+  function valueRealtimeRange(range, nowDate) {
+    const normalized = ["today", "7d", "month", "30d"].includes(range) ? range : "today";
+    const end = new Date(nowDate);
+    const start = new Date(end);
+    if (normalized === "month") start.setUTCDate(1);
+    if (normalized === "7d") start.setUTCDate(start.getUTCDate() - 6);
+    if (normalized === "30d") start.setUTCDate(start.getUTCDate() - 29);
+    return {
+      range: normalized,
+      from: start.toISOString().slice(0, 10),
+      to: end.toISOString().slice(0, 10),
+    };
+  }
+
+  function publicValueRealtimeId(prefix, value) {
+    return `${prefix}-${crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 12)}`;
+  }
+
+  function publicRealtimeUsageRow(record, index) {
+    const source = normalizeSource(record?.source) || "unknown";
+    const timestamp = typeof record?.timestamp === "string"
+      ? record.timestamp
+      : typeof record?.hour_start === "string" ? record.hour_start : null;
+    const rawSession = record?.session_key || record?.session_id || record?.request_id || `${source}:${timestamp || index}`;
+    return {
+      session_id: publicValueRealtimeId("session", rawSession),
+      source,
+      agent_label: source,
+      model: typeof record?.model === "string" ? record.model : null,
+      last_activity_at: timestamp,
+      total_tokens: Number.isFinite(Number(record?.total_tokens)) ? Number(record.total_tokens) : null,
+      cost_usd: Number.isFinite(Number(record?.cost_usd)) ? Number(record.cost_usd) : null,
+    };
+  }
+
+  function publicRealtimeLifecycleSession(session) {
+    return {
+      sessionId: publicValueRealtimeId("session", session?.sessionId),
+      agent: typeof session?.agent === "string" ? session.agent : "unknown",
+      projectLabel: typeof session?.projectLabel === "string" ? session.projectLabel.slice(0, 80) : null,
+      status: typeof session?.status === "string" ? session.status : null,
+      updatedAt: typeof session?.updatedAt === "string" ? session.updatedAt : null,
+    };
+  }
+
   function getRefreshTokenForCloud() {
     return getRelayCookieValue("insforge_refresh_token", { decode: true });
   }
@@ -5831,6 +5880,82 @@ function createLocalApiHandler({
           { ok: false, error: "widget_view_model_unavailable" },
           500,
         );
+      }
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-value-comparison") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      try {
+        const nowDate = nowProvider();
+        const range = valueRealtimeRange(url.searchParams.get("range") || "month", nowDate);
+        const spend = await readSpendTimeseries(range.from, range.to, "day", { timeZone: "UTC", offsetMinutes: 0 });
+        const totals = spend.totals || {};
+        const totalTokens = Number.isFinite(Number(totals.total_tokens)) ? Number(totals.total_tokens) : null;
+        const pricedTokens = Number.isFinite(Number(totals.priced_tokens)) ? Number(totals.priced_tokens) : null;
+        const coverage = totalTokens && pricedTokens !== null ? (pricedTokens / totalTokens) * 100 : null;
+        const monthlyTrend = (spend.series || []).reduce((items, entry) => {
+          const key = entry.bucket_start;
+          const current = items.get(key) || { bucket_start: key, actual_spend_usd: 0, api_equivalent_usd: 0 };
+          current.actual_spend_usd += Number(entry.subscription_cost_usd || 0) + Number(entry.other_ai_cost_usd || 0);
+          current.api_equivalent_usd += Number(entry.cost_usd || 0);
+          items.set(key, current);
+          return items;
+        }, new Map());
+        json(res, buildValueComparisonViewModel({
+          generatedAt: nowDate.toISOString(),
+          range: range.range,
+          actualSpend: {
+            subscriptionUsd: Number.isFinite(Number(totals.subscription_cost_usd)) ? Number(totals.subscription_cost_usd) : null,
+            officialApiUsd: null,
+            otherAiUsd: Number.isFinite(Number(totals.other_ai_cost_usd)) ? Number(totals.other_ai_cost_usd) : null,
+          },
+          usage: {
+            apiEquivalentUsd: Number.isFinite(Number(totals.cost_usd)) ? Number(totals.cost_usd) : null,
+            recognizedTokens: totalTokens,
+            pricingCoveragePercent: coverage,
+          },
+          monthlyTrend: Array.from(monthlyTrend.values()),
+        }));
+      } catch (_error) {
+        json(res, { ok: false, error: "value_comparison_unavailable" }, 500);
+      }
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-realtime-sessions") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      try {
+        const nowDate = nowProvider();
+        const range = valueRealtimeRange(url.searchParams.get("range") || "today", nowDate);
+        const config = readTrackerConfig();
+        const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({ config, env: handlerEnv, home: handlerHome });
+        const codexHomes = dataDirectoryPaths.codexHomes?.length ? dataDirectoryPaths.codexHomes : [dataDirectoryPaths.codexHome];
+        const [usageRows, lifecycleSessions] = await Promise.all([
+          Promise.resolve(readQueueData(qp)
+            .filter((row) => {
+              const day = String(row?.hour_start || row?.timestamp || "").slice(0, 10);
+              return day >= range.from && day <= range.to;
+            })
+            .slice(-100)
+            .map((row) => ({ ...row, ...computeRowCostDetailed(row, getPricingOptions()) }))),
+          typeof codexLifecycleProvider === "function"
+            ? codexLifecycleProvider({ homes: codexHomes, nowMs: nowDate.getTime() })
+            : collectCodexLifecycleSessions({ homes: codexHomes, nowMs: nowDate.getTime() }),
+        ]);
+        json(res, buildRealtimeSessionViewModel({
+          observedAt: nowDate.toISOString(),
+          usageRows: usageRows.map(publicRealtimeUsageRow),
+          lifecycleSessions: (lifecycleSessions || []).map(publicRealtimeLifecycleSession),
+        }));
+      } catch (_error) {
+        json(res, { ok: false, error: "realtime_sessions_unavailable" }, 500);
       }
       return true;
     }

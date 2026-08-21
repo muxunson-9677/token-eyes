@@ -239,6 +239,8 @@ const PATHS = {
   spendRecords: "tokentracker-spend-records",
   otherAiSpendGroups: "tokentracker-other-ai-groups",
   spendTimeseries: "tokentracker-spend-timeseries",
+  valueComparison: "tokentracker-value-comparison",
+  realtimeSessions: "tokentracker-realtime-sessions",
   requestUsageRecords: "tokentracker-request-usage-records",
   providerStats: "tokentracker-provider-stats",
   usageAttribution: "tokentracker-usage-attribution",
@@ -651,6 +653,14 @@ export async function getSpendTimeseries(params?: AnyRecord) {
   const tzParams = buildTimeZoneParams(params || {});
   const multiParams = buildMultiFilterParams(params || {});
   return fetchLocalJson(PATHS.spendTimeseries, { ...(params || {}), ...tzParams, ...multiParams });
+}
+
+export async function getValueComparison(range = "month", signal?: AbortSignal) {
+  return fetchLocalJson(PATHS.valueComparison, { range }, { signal });
+}
+
+export async function getRealtimeSessions(range = "today", signal?: AbortSignal) {
+  return fetchLocalJson(PATHS.realtimeSessions, { range }, { signal });
 }
 
 export async function getRequestUsageRecords({

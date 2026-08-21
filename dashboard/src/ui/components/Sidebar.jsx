@@ -65,6 +65,8 @@ export function getNavGroups() {
         { id: "spend-usage", to: "/spend/usage", label: copy("nav.spend.usage") },
         { id: "spend-cost", to: "/spend/cost", label: copy("nav.spend.cost") },
         { id: "spend-plans", to: "/spend/plans", label: copy("nav.spend.plans") },
+        { id: "spend-value-comparison", to: "/spend/value-comparison", label: copy("nav.spend.value_comparison") },
+        { id: "spend-realtime-sessions", to: "/spend/realtime-sessions", label: copy("nav.spend.realtime_sessions") },
       ],
     },
     {
@@ -777,6 +779,9 @@ export function AppLayout({ children }) {
     if (pathname === "/widgets") return "widgets";
     if (pathname === "/spend/usage") return "spend-usage";
     if (pathname === "/spend/cost") return "spend-cost";
+    if (pathname === "/spend/plans") return "spend-plans";
+    if (pathname === "/spend/value-comparison") return "spend-value-comparison";
+    if (pathname === "/spend/realtime-sessions") return "spend-realtime-sessions";
     if (pathname === "/settings/basic") return "settings-basic";
     if (pathname === "/settings/cost") return "settings-cost";
     if (pathname === "/settings/data") return "settings-data";

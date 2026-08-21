@@ -2034,6 +2034,51 @@ spend.cost.roi.below_one,dashboard,SpendPage,CostAccumulation,roi_below_one,"本
 spend.cost.roi.empty,dashboard,SpendPage,CostAccumulation,roi_empty,"添加订阅记录后，这里会显示订阅回本倍数（套餐用量的 API 等价价值 ÷ 订阅支出）。",,active
 spend.cost.roi.formula,dashboard,SpendPage,CostAccumulation,roi_formula,"本月套餐用量的 API 等价价值 ÷ 本月订阅支出（USD 口径，汇率与定价引擎一致）",,active
 nav.spend.plans,ui,Sidebar,Sidebar,nav_spend_plans,"套餐行情",,active
+nav.spend.value_comparison,ui,Sidebar,Sidebar,nav_spend_value_comparison,"价值对比",,active
+nav.spend.realtime_sessions,ui,Sidebar,Sidebar,nav_spend_realtime_sessions,"实时会话",,active
+value.page.title,dashboard,ValueComparisonPage,ValueComparisonPage,title,"价值对比",,active
+value.page.subtitle,dashboard,ValueComparisonPage,ValueComparisonPage,subtitle,"从用户价值视角，对比支出与换回的等价使用价值",,active
+value.range.today,dashboard,ValueComparisonPage,ValueComparisonPage,range_today,"今日",,active
+value.range.7d,dashboard,ValueComparisonPage,ValueComparisonPage,range_7d,"近 7 天",,active
+value.range.month,dashboard,ValueComparisonPage,ValueComparisonPage,range_month,"本月",,active
+value.range.30d,dashboard,ValueComparisonPage,ValueComparisonPage,range_30d,"近 30 天",,active
+value.privacy,dashboard,ValueComparisonPage,ValueComparisonPage,privacy,"仅展示事实，不做推测",,active
+value.actual,dashboard,ValueComparisonPage,ValueComparisonPage,actual,"实际支出",,active
+value.equivalent,dashboard,ValueComparisonPage,ValueComparisonPage,equivalent,"使用价值",,active
+value.multiple,dashboard,ValueComparisonPage,ValueComparisonPage,multiple,"价值倍数",,active
+value.actual_hint,dashboard,ValueComparisonPage,ValueComparisonPage,actual_hint,"订阅、官方 API 与其他 AI 支出的已知部分",,active
+value.equivalent_hint,dashboard,ValueComparisonPage,ValueComparisonPage,equivalent_hint,"按本地已识别模型价格计算的 API 等价值",,active
+value.multiple_hint,dashboard,ValueComparisonPage,ValueComparisonPage,multiple_hint,"使用价值 ÷ 已确认实际支出",,active
+value.recognized,dashboard,ValueComparisonPage,ValueComparisonPage,recognized,"已识别 Token",,active
+value.coverage,dashboard,ValueComparisonPage,ValueComparisonPage,coverage,"价格覆盖率",,active
+value.composition,dashboard,ValueComparisonPage,ValueComparisonPage,composition,"本月构成",,active
+value.plan_compare,dashboard,ValueComparisonPage,ValueComparisonPage,plan_compare,"套餐价值对比",,active
+value.trend,dashboard,ValueComparisonPage,ValueComparisonPage,trend,"近 6 个月趋势",,active
+value.unattributed,dashboard,ValueComparisonPage,ValueComparisonPage,unattributed,"未归因",,active
+value.no_match,dashboard,ValueComparisonPage,ValueComparisonPage,no_match,"暂无可明确归因的套餐记录",,active
+value.loading,dashboard,ValueComparisonPage,ValueComparisonPage,loading,"正在读取本地汇总数据…",,active
+value.error,dashboard,ValueComparisonPage,ValueComparisonPage,error,"暂时无法读取价值数据",,active
+value.partial,dashboard,ValueComparisonPage,ValueComparisonPage,partial,"部分数据",,active
+value.estimated,dashboard,ValueComparisonPage,ValueComparisonPage,estimated,"估算",,active
+realtime.page.title,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,title,"实时会话",,active
+realtime.page.subtitle,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,subtitle,"只展示用量与成本事实，不读取会话内容",,active
+realtime.range.today,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_today,"今天",,active
+realtime.updated,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,updated,"最后更新",,active
+realtime.refresh,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,refresh,"刷新",,active
+realtime.active_agents,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,active_agents,"当前活跃 Agent",,active
+realtime.tokens,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tokens,"实时 Token / Credits",,active
+realtime.equivalent,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,equivalent,"API 等价值",,active
+realtime.focus,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,focus,"当前焦点会话",,active
+realtime.other,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,other,"其他会话",,active
+realtime.composition,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,composition,"会话构成",,active
+realtime.trend,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,trend,"实时 Token 趋势",,active
+realtime.status,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status,"数据状态",,active
+realtime.coverage,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,coverage,"价格覆盖率",,active
+realtime.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,empty,"当前没有可安全展示的会话活动",,active
+realtime.recent_activity,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,recent_activity,"近期有活动",,active
+realtime.running,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,running,"运行中",,active
+realtime.loading,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,loading,"正在读取本地会话状态…",,active
+realtime.error,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,error,"暂时无法读取实时会话",,active
 plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接，助您明智选择。",,active
 plan_market.filter.all,dashboard,PlanMarketPage,PlanMarketPage,filter_all,"全部厂商",,active
 plan_market.filter.label,dashboard,PlanMarketPage,PlanMarketPage,filter_label,"筛选厂商",,active

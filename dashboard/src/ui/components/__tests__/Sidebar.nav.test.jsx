@@ -112,7 +112,13 @@ describe("getNavGroups structure (v2.0 IA)", () => {
     expect(spend).toBeDefined();
     expect(spend.children).toBeDefined();
     const spendChildTos = spend.children.map((c) => c.to);
-    expect(spendChildTos).toEqual(["/spend/usage", "/spend/cost", "/spend/plans"]);
+    expect(spendChildTos).toEqual([
+      "/spend/usage",
+      "/spend/cost",
+      "/spend/plans",
+      "/spend/value-comparison",
+      "/spend/realtime-sessions",
+    ]);
     expect(spend.defaultChildTo).toBe("/spend/usage");
 
     const settings = groups.find((g) => g.id === "settings");
@@ -195,10 +201,13 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(screen.getByRole("link", { name: "copy:nav.settings.data" })).toBeVisible();
   });
 
-  it("renders spend children labels (使用统计 / 成本累积)", () => {
+  it("renders spend children labels through the two new pages", () => {
     renderSidebar("/spend/usage");
     expect(screen.getByText("copy:nav.spend.usage")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.spend.cost")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.spend.plans")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.spend.value_comparison")).toBeInTheDocument();
+    expect(screen.getByText("copy:nav.spend.realtime_sessions")).toBeInTheDocument();
   });
 
   it("renders settings children labels (基础设置 / 成本设置 / 数据与诊断)", () => {
