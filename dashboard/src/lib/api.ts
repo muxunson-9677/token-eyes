@@ -181,7 +181,7 @@ export interface DesktopWidgetViewModel {
     agent: string;
     provider: string;
     planLabel: string;
-    accountState: "official_bound" | "not_bound";
+    accountLabel: string;
     subscriptionAmount: number;
     subscriptionCurrency: string;
     kind: string;
@@ -1830,6 +1830,7 @@ export interface WorkbuddyQuotaGroup {
 
 export interface WorkbuddyQuotaResponse {
   signed_in: boolean | null;
+  account?: { nickname?: string; phone_masked?: string; type?: string };
   plan?: string | null;
   groups?: WorkbuddyQuotaGroup[];
   fetched_at: string | null;

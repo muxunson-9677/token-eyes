@@ -406,7 +406,12 @@ function WorkbuddyCreditsGroup({ data, mode }) {
       </ToolGroup>
     );
   }
-  const title = data.plan ? `${baseName} ${data.plan}` : baseName;
+  const accountText = [
+    data.plan,
+    data.account?.nickname,
+    data.account?.phone_masked,
+  ].filter(Boolean).join(" · ");
+  const title = accountText ? `${baseName} ${accountText}` : baseName;
   const groups = Array.isArray(data.groups) ? data.groups : [];
   return (
     <div data-testid="workbuddy-credits-group">

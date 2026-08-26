@@ -264,7 +264,7 @@ function buildLimits(limits, selectedAgent) {
       agent: agentKey(item?.agent) || "unknown",
       provider: safeLabel(item?.provider, "Unknown"),
       planLabel: safeLabel(item?.planLabel, ""),
-      accountState: item?.accountState === "official_bound" ? "official_bound" : "not_bound",
+      accountLabel: safeLabel(item?.accountLabel, ""),
       subscriptionAmount: finiteNonNegative(item?.subscriptionAmount),
       subscriptionCurrency: safeLabel(item?.subscriptionCurrency, "").toUpperCase(),
       kind: safeLabel(item?.kind, ""),
@@ -277,7 +277,7 @@ function buildLimits(limits, selectedAgent) {
     }))
     .sort((left, right) => (
       left.provider.localeCompare(right.provider)
-      || left.accountState.localeCompare(right.accountState)
+      || left.accountLabel.localeCompare(right.accountLabel)
       || left.planLabel.localeCompare(right.planLabel)
       || left.planId.localeCompare(right.planId)
       || (WINDOW_ORDER[left.window] ?? 99) - (WINDOW_ORDER[right.window] ?? 99)
@@ -387,8 +387,15 @@ function planWindowId(providerId, kind) {
   return normalized || "other";
 }
 
-function tokenPlanAccountState(record) {
-  return record?.detection_method === "official_account" ? "official_bound" : "not_bound";
+function tokenPlanAccountLabel(record) {
+  const official = record?.detection_config?.official_account || {};
+  if (record?.detection_method === "official_account") {
+    return optionalLabel(
+      official.display_name || official.account_label || official.account_id
+      || record?.account_label || record?.account_name,
+    ) || "";
+  }
+  return optionalLabel(record?.account_label || record?.account_name) || "";
 }
 
 function canonicalTokenPlanWindows(providerId, windows) {
@@ -419,7 +426,7 @@ function flattenTokenPlanRecords(records) {
     const agent = agentKey(record.source || record.provider_id) || "unknown";
     const provider = providerName(record.provider_id || agent);
     const planLabel = safeLabel(record.plan_label, provider);
-    const accountState = tokenPlanAccountState(record);
+    const accountLabel = tokenPlanAccountLabel(record);
     const subscriptionAmount = finiteNonNegative(record.subscription_amount);
     const subscriptionCurrency = safeLabel(record.subscription_currency, "").toUpperCase();
     const expiresAt = safeIso(record.subscription_end_date || record.expires_at);
@@ -435,7 +442,7 @@ function flattenTokenPlanRecords(records) {
           agent,
           provider,
           planLabel,
-          accountState,
+          accountLabel,
           subscriptionAmount,
           subscriptionCurrency,
           kind,
@@ -456,7 +463,7 @@ function flattenTokenPlanRecords(records) {
         agent,
         provider,
         planLabel,
-        accountState,
+        accountLabel,
         subscriptionAmount,
         subscriptionCurrency,
         kind: agent === "cursor" ? "total" : "other",

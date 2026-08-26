@@ -834,7 +834,9 @@ function WorkbuddyQuotaSection({ color }) {
   }, []);
   if (!quota) return null;
   const groups = Array.isArray(quota.groups) ? quota.groups : [];
-  const planText = typeof quota.plan === "string" ? quota.plan.trim() : "";
+  const accountText = [quota.plan, quota.account?.nickname, quota.account?.phone_masked]
+    .filter(Boolean)
+    .join(" · ");
   const statusCopyKey = quota.signed_in === false
     ? "limits.status.not_connected"
     : quota.error === "unauthorized"
@@ -849,9 +851,9 @@ function WorkbuddyQuotaSection({ color }) {
       className="mb-4 pb-4 border-b border-oai-gray-200 dark:border-oai-gray-700"
       data-testid="workbuddy-quota-section"
     >
-      {planText ? (
-        <p className="mb-2 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400" data-testid="workbuddy-plan-line">
-          {planText}
+      {accountText ? (
+        <p className="mb-2 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400" data-testid="workbuddy-account-line">
+          {accountText}
         </p>
       ) : null}
       <div className="space-y-2">

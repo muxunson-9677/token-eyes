@@ -92,8 +92,8 @@ test("builds filtered status, limits, model totals, and one pending reset", () =
   );
   assert.equal(result.limits.length, 1);
   assert.equal(result.limits[0].usedPercent, 21);
-  assert.equal(result.limits[0].accountState, "not_bound");
-  assert.equal(Object.hasOwn(result.limits[0], "accountLabel"), false);
+  assert.equal(result.limits[0].accountLabel, "Codex Plus · A1B2");
+  assert.equal(Object.hasOwn(result.limits[0], "accountState"), false);
   assert.equal(result.totals.tokens, 100);
   assert.equal(result.totals.costUsd, 1.3);
   assert.deepEqual(
@@ -497,7 +497,7 @@ test("uses configured token plans as the widget limit source and carries their n
     agent: item.agent,
     provider: item.provider,
     planLabel: item.planLabel,
-    accountState: item.accountState,
+    accountLabel: item.accountLabel,
     window: item.window,
     usedPercent: item.usedPercent,
     notes: item.notes,
@@ -508,7 +508,7 @@ test("uses configured token plans as the widget limit source and carries their n
       agent: "codex",
       provider: "Codex",
       planLabel: "Plus",
-      accountState: "not_bound",
+      accountLabel: "",
       window: "5 小时",
       usedPercent: 42,
       notes: "主力开发账号",
@@ -519,7 +519,7 @@ test("uses configured token plans as the widget limit source and carries their n
       agent: "codex",
       provider: "Codex",
       planLabel: "Plus",
-      accountState: "not_bound",
+      accountLabel: "",
       window: "7 天",
       usedPercent: 68,
       notes: "主力开发账号",
@@ -530,7 +530,7 @@ test("uses configured token plans as the widget limit source and carries their n
       agent: "cursor",
       provider: "Cursor",
       planLabel: "Pro",
-      accountState: "not_bound",
+      accountLabel: "",
       window: "Total Usage",
       usedPercent: 30,
       notes: "备用套餐",
@@ -566,7 +566,7 @@ test("keeps the canonical Cursor quota lanes and plan identity for the widget", 
     kind: item.kind,
     window: item.window,
     planLabel: item.planLabel,
-    accountState: item.accountState,
+    accountLabel: item.accountLabel,
     subscriptionAmount: item.subscriptionAmount,
     subscriptionCurrency: item.subscriptionCurrency,
   })), [
@@ -575,7 +575,7 @@ test("keeps the canonical Cursor quota lanes and plan identity for the widget", 
       kind: "total",
       window: "Total Usage",
       planLabel: "Pro",
-      accountState: "official_bound",
+      accountLabel: "ezequielhuelsxw@outlook.com",
       subscriptionAmount: 20,
       subscriptionCurrency: "USD",
     },
@@ -584,7 +584,7 @@ test("keeps the canonical Cursor quota lanes and plan identity for the widget", 
       kind: "auto_composer",
       window: "Auto + Composer Usage",
       planLabel: "Pro",
-      accountState: "official_bound",
+      accountLabel: "ezequielhuelsxw@outlook.com",
       subscriptionAmount: 20,
       subscriptionCurrency: "USD",
     },
@@ -593,7 +593,7 @@ test("keeps the canonical Cursor quota lanes and plan identity for the widget", 
       kind: "api",
       window: "API Usage",
       planLabel: "Pro",
-      accountState: "official_bound",
+      accountLabel: "ezequielhuelsxw@outlook.com",
       subscriptionAmount: 20,
       subscriptionCurrency: "USD",
     },

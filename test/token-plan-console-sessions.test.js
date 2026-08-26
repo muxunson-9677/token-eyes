@@ -592,19 +592,16 @@ test("Xiaomi terminal warning states are persisted canonically without upstream 
         state: "reauth_required",
         errorCode: "REAUTH_REQUIRED",
         errorMessage: "Xiaomi MiMo authorization must be completed again.",
-        publicMessage: "授权或额度状态暂时不可读取，请稍后重试。",
       },
       {
         state: "temporary",
         errorCode: "TEMPORARY",
         errorMessage: "Xiaomi MiMo quota service is temporarily unavailable.",
-        publicMessage: "服务暂时不可读取，请稍后重试。",
       },
       {
         state: "unsupported",
         errorCode: "UNSUPPORTED",
         errorMessage: "Xiaomi MiMo quota response is unsupported.",
-        publicMessage: "当前授权状态暂不支持读取。",
       },
     ];
 
@@ -651,7 +648,7 @@ test("Xiaomi terminal warning states are persisted canonically without upstream 
       await call(reloaded, "/functions/tokentracker-token-plan-console-sessions"),
     ).sessions;
     for (const item of cases) {
-      const session = persisted.find((candidate) => candidate.last_error_code === item.errorCode);
+      const session = persisted.find((candidate) => candidate.session_ref.endsWith(`/${item.state}`));
       assert.equal(session.status, item.state, item.state);
       assert.equal(session.last_error_code, item.errorCode, item.state);
       assert.equal(
@@ -659,7 +656,7 @@ test("Xiaomi terminal warning states are persisted canonically without upstream 
         `provider-api/xiaomi_mimo/session/${item.state}`,
         item.state,
       );
-      assert.equal(session.last_error_message, item.publicMessage, item.state);
+      assert.equal(session.last_error_message, item.errorMessage, item.state);
     }
     const rawConfig = await fs.readFile(path.join(trackerDir, "config.json"), "utf8");
     assert.equal(rawConfig.includes(syntheticSecret), false);
@@ -1862,7 +1859,7 @@ test("Codex cancel and timeout keep their specific failed records", async () => 
       ).sessions.find((candidate) => candidate.id === session.id);
       assert.equal(stored.status, "failed");
       assert.equal(stored.last_error_code, terminal.error_code);
-      assert.equal(stored.last_error_message, "授权或额度状态暂时不可读取，请稍后重试。");
+      assert.equal(stored.last_error_message, terminal.error_message);
       const internal = JSON.parse(
         await fs.readFile(path.join(trackerDir, "config.json"), "utf8"),
       ).consoleSessions.find((candidate) => candidate.id === session.id);

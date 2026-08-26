@@ -61,7 +61,7 @@ test("Token Eyes desktop shell starts at the reference size with the formal icon
 
   for (const windowConfig of [mainWindow, windowsMainWindow]) {
     assert.equal(windowConfig.width, 1586);
-    assert.equal(windowConfig.height, 970);
+    assert.equal(windowConfig.height, 932);
     assert.equal(windowConfig.minWidth, 900);
     assert.equal(windowConfig.minHeight, 600);
     assert.equal(windowConfig.resizable, true);

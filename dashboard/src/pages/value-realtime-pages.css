@@ -71,6 +71,7 @@
 
 .vr-value-flow { display: grid; grid-template-columns: minmax(0, 1fr) 38px minmax(0, 1fr) 38px minmax(0, 1fr); align-items: stretch; }
 .vr-value-card { box-sizing: border-box; display: flex; align-items: center; gap: var(--vr-space-5); height: 154px; min-width: 0; border-radius: var(--vr-radius-hero); border: 1px solid var(--vr-line); padding: 18px 24px; box-shadow: var(--vr-shadow-card); }
+.vr-value-card > div:last-child { min-width: 0; }
 .vr-value-card--orange { background: linear-gradient(135deg, #fffdfb, #fff8f1); border-color: #ffdfc8; }
 .vr-value-card--green { background: linear-gradient(135deg, #fcfffd, #f2fbf6); border-color: #d6eee2; }
 .vr-value-card--violet { background: linear-gradient(135deg, #fffefe, #f8f4ff); border-color: #e5dcfb; }
@@ -86,7 +87,7 @@
 .vr-value-card--green .vr-value-number { color: var(--vr-green); }
 .vr-value-card--violet .vr-value-number { color: var(--vr-violet); }
 .vr-value-caption { margin: 9px 0 0; color: var(--vr-muted); font-size: 12px; }
-.vr-value-meta { align-items: center; display: flex; gap: var(--vr-space-2); margin-top: 9px; min-width: 0; white-space: nowrap; }
+.vr-value-meta { align-items: center; display: flex; gap: var(--vr-space-1); margin-top: 9px; min-width: 0; white-space: nowrap; }
 .vr-value-state, .vr-value-badge { border: 1px solid currentColor; border-radius: 6px; color: #61708c; background: rgba(255,255,255,.78); display: inline-flex; font-size: 12px; font-weight: 700; line-height: 1; padding: 6px 8px; white-space: nowrap; }
 .vr-flow-arrow { align-self: center; justify-self: center; color: #6e7d99; }
 .vr-evidence-strip { display: grid; grid-template-columns: minmax(0, 1fr) 38px minmax(0, 1fr) 38px minmax(0, 1fr); margin-top: -1px; border: 1px solid var(--vr-line); border-radius: 0 0 12px 12px; background: #fff; overflow: hidden; }
@@ -97,14 +98,14 @@
 .vr-evidence-cell--coverage { grid-column: 5; }
 
 .vr-twin-grid { display: grid; grid-template-columns: 1fr 1.05fr; gap: var(--vr-space-4); margin-top: 10px; }
-.vr-section { height: 250px; min-height: 0; overflow: hidden; padding: 16px 20px; min-width: 0; }
+.vr-section { height: 270px; min-height: 0; overflow: clip; padding: 16px 20px; min-width: 0; }
 .vr-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .vr-section-heading h2 { margin: 0; font-size: var(--vr-type-card-title); font-weight: 800; }
 .vr-link-button { border: 0; background: transparent; color: var(--vr-blue); cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; padding: 0; }
 .vr-comparison-columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--vr-space-4); height: calc(100% - 30px); margin-top: 8px; min-height: 0; }
 .vr-comparison-columns > div + div { border-left: 1px solid var(--vr-line); padding-left: var(--vr-space-5); }
 .vr-composition-title { color: #273a60; font-size: 13px; font-weight: 750; margin-bottom: 5px; }
-.vr-composition-row { display: grid; grid-template-columns: minmax(76px, 90px) minmax(42px, 1fr) minmax(64px, max-content) 40px; align-items: center; column-gap: 8px; min-height: 30px; color: #26385b; font-size: 12px; }
+.vr-composition-row { display: grid; grid-template-columns: minmax(76px, 90px) minmax(42px, 1fr) minmax(64px, max-content) 44px; align-items: center; column-gap: 7px; min-height: 30px; color: #26385b; font-size: 12px; }
 .vr-composition-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vr-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 7px; }
 .vr-tone--subscription, .vr-tone--api_key, .vr-tone--blue { background: var(--vr-blue); }
@@ -131,7 +132,7 @@
 .vr-data-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
 .vr-data-table th { border-bottom: 1px solid var(--vr-line); color: #72809a; font-size: 12px; font-weight: 650; padding: 9px 10px; text-align: right; white-space: nowrap; }
 .vr-data-table th:first-child, .vr-data-table td:first-child { text-align: left; }
-.vr-data-table td { border-bottom: 1px solid #edf1f5; color: #22355a; font-weight: 600; padding: 7px 8px; text-align: right; white-space: nowrap; }
+.vr-data-table td { border-bottom: 1px solid #edf1f5; color: #22355a; font-weight: 600; padding: 4px 8px; text-align: right; white-space: nowrap; }
 .vr-data-table tr:last-child td { border-bottom: 0; }
 .vr-source-name { display: flex; align-items: center; gap: 7px; max-width: 220px; overflow: visible; white-space: normal; }
 .vr-source-mark { width: 16px; height: 16px; border-radius: 50%; background: #eaf1ff; color: var(--vr-blue); display: grid; place-items: center; flex: 0 0 auto; }
@@ -467,6 +468,23 @@
   .rt-mini-data--workbuddy { font-size: 10px; letter-spacing: -.05em; }
   .rt-focus-footer strong { overflow-wrap: anywhere; text-overflow: clip; white-space: normal; }
   .rt-focus-top { grid-template-columns: minmax(220px, 1.1fr) minmax(145px, .9fr) minmax(140px, .75fr) minmax(180px, 1fr); }
+}
+
+@media (min-width: 761px) and (max-width: 1300px) {
+  .vr-page--value .vr-value-flow,
+  .vr-page--value .vr-evidence-strip { grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr) 16px minmax(0, 1fr); }
+  .vr-page--value .vr-value-card { gap: 8px; height: 154px; padding: 14px 12px; }
+  .vr-page--value .vr-value-icon { flex-basis: 48px; height: 48px; width: 48px; }
+  .vr-page--value .vr-value-icon svg { height: 29px; width: 29px; }
+  .vr-page--value .vr-value-number { font-size: 28px; }
+  .vr-page--value .vr-value-meta { align-content: flex-start; flex-wrap: wrap; white-space: normal; }
+  .vr-page--value .vr-value-state,
+  .vr-page--value .vr-value-badge { font-size: 11px; padding: 5px 6px; }
+  .vr-page--value .vr-evidence-strip > div { font-size: 12px; gap: 4px; padding-inline: 4px; text-align: center; }
+  .vr-page--value .vr-comparison-columns { gap: 8px; }
+  .vr-page--value .vr-twin-grid { grid-template-columns: 1fr; }
+  .vr-page--value .vr-comparison-columns > div + div { padding-left: 12px; }
+  .vr-page--value .vr-composition-row { column-gap: 3px; font-size: 11px; grid-template-columns: minmax(60px, 72px) minmax(20px, 1fr) minmax(45px, max-content) 40px; }
 }
 
 @media (max-width: 1180px) {

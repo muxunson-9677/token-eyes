@@ -260,7 +260,6 @@ pub struct TraeQuotaWindow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TraeQuota {
-    #[serde(skip_serializing)]
     pub account_id: String,
     pub plan_name: String,
     pub total_quota: f64,
@@ -1694,7 +1693,7 @@ mod tests {
     }
 
     #[test]
-    fn public_quota_status_omits_account_identity_fields() {
+    fn public_quota_status_keeps_safe_account_identity() {
         let serialized = serde_json::to_value(TraeSessionStatus {
             quota: Some(TraeQuota {
                 account_id: "synthetic-account".to_string(),
@@ -1710,7 +1709,7 @@ mod tests {
         .expect("status serialization");
         let quota = serialized["quota"].as_object().expect("quota object");
 
-        assert!(!quota.contains_key("account_id"));
+        assert_eq!(quota.get("account_id"), Some(&json!("synthetic-account")));
         assert!(!quota.contains_key("display_name"));
         assert_eq!(quota.get("plan_name"), Some(&json!("Synthetic plan")));
     }

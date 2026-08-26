@@ -69,7 +69,7 @@ it("retains the last safe aggregate for instant value and realtime remounts whil
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
-it("keeps nullable WorkBuddy Credits and account identity out of the public contract", () => {
+it("keeps nullable WorkBuddy Credits and safe account identity in the trusted UI contract", () => {
   const groupContract = apiSource.slice(
     apiSource.indexOf("export interface WorkbuddyQuotaGroup"),
     apiSource.indexOf("export interface WorkbuddyQuotaResponse"),
@@ -82,8 +82,8 @@ it("keeps nullable WorkBuddy Credits and account identity out of the public cont
   for (const field of ["total", "remain", "used", "used_percent"]) {
     expect(groupContract).toContain(`${field}: number | null;`);
   }
-  expect(responseContract).not.toMatch(/\baccount\??\s*:/);
-  expect(responseContract).not.toMatch(/\bnickname\b|\bphone(?:_masked)?\b/);
+  expect(responseContract).toContain("account?: { nickname?: string; phone_masked?: string; type?: string };");
+  expect(responseContract).not.toMatch(/\b(?:token|cookie|authorization|raw_response)\b/i);
 });
 
 it("routes local function requests to the Tauri-reported loopback CLI API", async () => {

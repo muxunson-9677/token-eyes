@@ -404,8 +404,7 @@ it("shows the same complete Token service details on the cost page", () => {
   const section = document.querySelector('[data-cost-section="token-packages"]');
   expect(within(section).getByText("Codex")).toBeInTheDocument();
   expect(within(section).getByText("Pro 20x")).toBeInTheDocument();
-  expect(within(section).getByText("settings.token_plan.official_account.bound_safe")).toBeInTheDocument();
-  expect(within(section).queryByText("work@example.com")).not.toBeInTheDocument();
+  expect(within(section).getByText("work@example.com")).toBeInTheDocument();
   expect(within(section).getByTestId("token-service-window-rolling_5_hour")).toHaveTextContent("12%");
   expect(within(section).getByTestId("token-service-window-rolling_weekly")).toHaveTextContent("34%");
   expect(within(section).getByTestId("token-service-reset-rolling_5_hour")).toBeInTheDocument();

@@ -1058,6 +1058,46 @@ async function copyTreeWithTransientRetry(from, to, options, dependencies = {}) 
   }
 }
 
+async function runFsOperationWithTransientRetry(operation) {
+  const retryable = new Set(["EBUSY", "EPERM", "ENOENT", "ENOTEMPTY"]);
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!retryable.has(error?.code) || attempt === 6) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 125));
+    }
+  }
+  return undefined;
+}
+
+async function publishDirectoryAtomically(from, to) {
+  const suffix = crypto.randomUUID();
+  const staging = `${to}.next-${suffix}`;
+  const previous = `${to}.previous-${suffix}`;
+  await ensureDir(path.dirname(to));
+  await fs.rm(staging, { recursive: true, force: true });
+  await copyTreeWithTransientRetry(from, staging, { recursive: true });
+
+  let movedPrevious = false;
+  try {
+    if (await isDir(to)) {
+      await runFsOperationWithTransientRetry(() => fs.rename(to, previous));
+      movedPrevious = true;
+    }
+    await runFsOperationWithTransientRetry(() => fs.rename(staging, to));
+    if (movedPrevious) {
+      await runFsOperationWithTransientRetry(() => fs.rm(previous, { recursive: true, force: true }));
+    }
+  } catch (error) {
+    if (!(await isDir(to)) && movedPrevious && await isDir(previous)) {
+      await runFsOperationWithTransientRetry(() => fs.rename(previous, to)).catch(() => {});
+    }
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
 async function installLocalTrackerApp({ appDir }) {
   // Copy the current package's runtime (bin + src) into ~/.tokentracker so notify can run sync without npx.
   const packageRoot = path.resolve(__dirname, "../..");
@@ -1081,8 +1121,6 @@ async function installLocalTrackerApp({ appDir }) {
   const nodeModulesTo = path.join(appDir, "node_modules");
   const dashboardDistTo = path.join(appDir, "dashboard", "dist");
 
-  // Keep content-hashed dashboard assets from a prior runtime so an already-open
-  // dashboard can finish loading a lazy page while this runtime refresh copies new files.
   await ensureDir(appDir);
   await fs.cp(srcFrom, srcTo, { recursive: true });
   await ensureDir(binToDir);
@@ -1091,14 +1129,7 @@ async function installLocalTrackerApp({ appDir }) {
   await fs.copyFile(packageJsonFrom, path.join(appDir, "package.json")).catch(() => {});
   await fs.cp(sharedFrom, sharedTo, { recursive: true });
   if (await isDir(dashboardDistFrom)) {
-    const dashboardIndexFrom = path.join(dashboardDistFrom, "index.html");
-    const dashboardIndexTo = path.join(dashboardDistTo, "index.html");
-    await copyTreeWithTransientRetry(dashboardDistFrom, dashboardDistTo, {
-      recursive: true,
-      filter: (source) => path.resolve(source) !== path.resolve(dashboardIndexFrom),
-    });
-    // Publish the new resource graph only after every referenced asset is in place.
-    await fs.copyFile(dashboardIndexFrom, dashboardIndexTo);
+    await publishDirectoryAtomically(dashboardDistFrom, dashboardDistTo);
   }
   await copyRuntimeDependencies({ from: nodeModulesFrom, to: nodeModulesTo });
 }

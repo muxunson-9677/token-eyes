@@ -110,7 +110,7 @@ const viewModel = {
       agent: "codex",
       provider: "Codex",
       planLabel: "Plus",
-      accountState: "not_bound",
+      accountLabel: "",
       window: "5h",
       usedPercent: 42,
       resetAt: null,
@@ -124,7 +124,7 @@ const viewModel = {
       agent: "codex",
       provider: "Codex",
       planLabel: "Plus",
-      accountState: "not_bound",
+      accountLabel: "",
       window: "1w",
       usedPercent: 68,
       resetAt: null,
@@ -170,7 +170,7 @@ describe("DesktopWidgetPage", () => {
       agent: "cursor",
       provider: "Cursor",
       planLabel: "Pro",
-      accountState: "not_bound" as const,
+      accountLabel: "Cursor Pro",
       subscriptionAmount: 0,
       subscriptionCurrency: "USD",
       kind: "total",
@@ -790,7 +790,7 @@ describe("DesktopWidgetPage", () => {
       agent: "cursor",
       provider: "Cursor",
       planLabel: "Pro",
-      accountState: "official_bound",
+      accountLabel: "ezequielhuelsxw@outlook.com",
       window: "7d",
       usedPercent: 100,
       resetAt: "2026-08-20T03:33:00.000Z",
@@ -825,7 +825,7 @@ describe("DesktopWidgetPage", () => {
     expect(planCards).toHaveLength(2);
     const cursorCard = planCards.find((card) => within(card).queryByText("Cursor · Pro"));
     expect(cursorCard).toBeDefined();
-    expect(within(cursorCard!).queryByText("ezequielhuelsxw@outlook.com")).not.toBeInTheDocument();
+    expect(within(cursorCard!).getByText("ezequielhuelsxw@outlook.com")).toBeInTheDocument();
     expect(within(cursorCard!).getByText("Weekly")).toBeInTheDocument();
     expect(within(cursorCard!).getByText(formatCompactReset("2026-08-20T03:33:00.000Z")))
       .toBeInTheDocument();
@@ -840,6 +840,36 @@ describe("DesktopWidgetPage", () => {
     now.mockRestore();
   });
 
+  it("falls back to the provider name when both plan and account labels are unavailable", () => {
+    widget.value = {
+      ...widget.value,
+      prefs: { ...prefs, mode: "limits", selectedLimitIds: ["codex:default:5h"] },
+      viewModel: {
+        ...viewModel,
+        limits: [{
+          ...viewModel.limits[0],
+          planLabel: "",
+          accountLabel: "",
+        }],
+      },
+    };
+
+    const { rerender } = render(<DesktopWidgetPage />);
+
+    expect(screen.getByText(/^Codex$/u)).toBeInTheDocument();
+    expect(screen.queryByText(/^Codex\s*·/u)).not.toBeInTheDocument();
+
+    widget.value = {
+      ...widget.value,
+      prefs: { ...widget.value.prefs, expanded: true },
+    };
+    rerender(<DesktopWidgetPage />);
+
+    const expandedPlan = screen.getByTestId("widget-expanded-limit-plan");
+    expect(within(expandedPlan).getByText(/^Codex$/u)).toBeInTheDocument();
+    expect(screen.queryByText(/^Codex\s*·/u)).not.toBeInTheDocument();
+  });
+
   it("keeps all ten three-window plans reachable through the expanded scroll region", () => {
     const denseLimits = Array.from({ length: 10 }, (_, planIndex) => (
       ["5h", "1w", "API Usage"].map((window, windowIndex) => ({
@@ -847,7 +877,7 @@ describe("DesktopWidgetPage", () => {
         id: `codex:plan-${planIndex}:window-${windowIndex}`,
         planId: `codex:plan-${planIndex}`,
         planLabel: `Plan ${planIndex + 1}`,
-        accountState: "not_bound",
+        accountLabel: "",
         window,
         usedPercent: planIndex * 10 + windowIndex,
       }))

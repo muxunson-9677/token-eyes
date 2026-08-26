@@ -10,7 +10,7 @@ export function groupWidgetLimits(limits) {
         agent: limit.agent,
         provider: limit.provider,
         planLabel: limit.planLabel,
-        accountState: limit.accountState === "official_bound" ? "official_bound" : "not_bound",
+        accountLabel: limit.accountLabel,
         subscriptionAmount: limit.subscriptionAmount,
         subscriptionCurrency: limit.subscriptionCurrency,
         usedPercent: limit.usedPercent,

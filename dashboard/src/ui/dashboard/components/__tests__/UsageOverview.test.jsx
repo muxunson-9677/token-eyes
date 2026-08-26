@@ -607,8 +607,8 @@ describe("UsageOverview", () => {
     expect(zeroRow).toHaveTextContent(
       copy("limits.workbuddy.credits_remaining", { remain: "0", total: "100" }),
     );
-    expect(section).not.toHaveTextContent("SYNTHETIC_PRIVATE_NICKNAME");
-    expect(section).not.toHaveTextContent("SYNTHETIC_PRIVATE_PHONE");
+    expect(section).toHaveTextContent("SYNTHETIC_PRIVATE_NICKNAME");
+    expect(section).toHaveTextContent("SYNTHETIC_PRIVATE_PHONE");
   });
 
   it("shows a fixed WorkBuddy unreadable state instead of a blank quota section", async () => {

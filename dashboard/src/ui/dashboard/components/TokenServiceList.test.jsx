@@ -151,10 +151,8 @@ describe("TokenServiceList", () => {
     expect(rows).toHaveLength(5);
     expect(list).toHaveClass("gap-1.5");
     for (const row of rows) expect(row).toHaveClass("border");
-    const cursorRow = screen.getByText("Cursor").closest("li");
+    const cursorRow = screen.getByText("eve***@hotmail.com").closest("li");
     expect(cursorRow).not.toBeNull();
-    expect(cursorRow).toHaveTextContent(copy("settings.token_plan.official_account.bound_safe"));
-    expect(cursorRow).not.toHaveTextContent("eve***@hotmail.com");
     expect(within(cursorRow).getByTestId("token-service-window-total")).toHaveTextContent("33.522");
     expect(within(cursorRow).getByTestId("token-service-window-auto_composer")).toHaveTextContent("27.82");
     expect(within(cursorRow).getByTestId("token-service-window-api")).toHaveTextContent("71.533");
@@ -209,7 +207,7 @@ describe("TokenServiceList", () => {
     expect(within(row).getAllByText(/官方未提供/)).toHaveLength(2);
   });
 
-  it("shows only the safe binding state for an official Codex authorization", () => {
+  it("shows the account label attached to an official Codex authorization", () => {
     render(
       <TokenServiceList
         plans={[plan("codex-official", 3, 100, {
@@ -223,9 +221,7 @@ describe("TokenServiceList", () => {
       />,
     );
 
-    const row = screen.getByTestId("token-service-row");
-    expect(row).toHaveTextContent(copy("settings.token_plan.official_account.bound_safe"));
-    expect(row).not.toHaveTextContent("muxunson@gmail.com");
+    expect(screen.getByTestId("token-service-row")).toHaveTextContent("muxunson@gmail.com");
   });
 
   it("shows every live quota window when a rolling plan has no fixed total", () => {
@@ -273,8 +269,7 @@ describe("TokenServiceList", () => {
     );
 
     const row = screen.getByTestId("token-service-row");
-    expect(row).toHaveTextContent(copy("settings.token_plan.official_account.bound_safe"));
-    expect(row).not.toHaveTextContent("muxunson@gmail.com");
+    expect(row).toHaveTextContent("muxunson@gmail.com");
     expect(within(row).getByTestId("token-service-window-gpt_5_3_codex_spark_weekly"))
       .toHaveTextContent("GPT 5.3 Codex Spark Weekly");
     expect(row).toHaveTextContent("44%");
@@ -498,7 +493,7 @@ describe("TokenServiceList", () => {
     expect(row).not.toHaveTextContent("11.00B");
   });
 
-  it("does not expose a saved plan note as an account identifier", () => {
+  it("shows the saved plan note so same-provider accounts are distinguishable", () => {
     render(
       <TokenServiceList
         plans={[plan("codex-work", 30, 100, {
@@ -509,9 +504,7 @@ describe("TokenServiceList", () => {
       />,
     );
 
-    const row = screen.getByTestId("token-service-row");
-    expect(row).toHaveTextContent(copy("settings.token_plan.official_account.not_bound_safe"));
-    expect(row).not.toHaveTextContent("工作账号");
+    expect(screen.getByText("工作账号")).toBeInTheDocument();
   });
 
   it("shows Cursor Total Usage / Auto + Composer / API Usage percentages per account", () => {
@@ -557,9 +550,8 @@ describe("TokenServiceList", () => {
 
     const rows = screen.getAllByTestId("token-service-row");
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent(copy("settings.token_plan.official_account.bound_safe"));
-    expect(rows[0]).not.toHaveTextContent("eve***@hotmail.com");
-    expect(rows[1]).not.toHaveTextContent("she***@gmail.com");
+    expect(rows[0]).toHaveTextContent("eve***@hotmail.com");
+    expect(rows[1]).toHaveTextContent("she***@gmail.com");
     expect(within(rows[0]).getByTestId("token-service-window-total")).toHaveTextContent("Total Usage");
     expect(within(rows[0]).getByTestId("token-service-window-total")).toHaveTextContent("30%");
     expect(within(rows[0]).getByTestId("token-service-window-auto_composer")).toHaveTextContent("Auto + Composer");

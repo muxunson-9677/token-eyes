@@ -98,7 +98,7 @@ test("init can rerun from installed local runtime without self-deleting app sour
   }
 });
 
-test("installLocalTrackerApp publishes the new dashboard index after retaining served hashed assets", async () => {
+test("installLocalTrackerApp atomically replaces the dashboard graph without retaining stale assets", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-runtime-refresh-"));
   try {
     const appDir = path.join(tmp, "app");
@@ -117,11 +117,7 @@ test("installLocalTrackerApp publishes the new dashboard index after retaining s
     assert.notEqual(copiedParser, "stale parser\n");
     assert.equal(marker.name, "tokentracker-cli");
     assert.equal(typeof marker.version, "string");
-    assert.equal(
-      await fs.readFile(retainedCss, "utf8"),
-      "/* served by an existing dashboard tab */\n",
-      "an already-open dashboard can still request its prior hashed CSS after runtime refresh",
-    );
+    await assert.rejects(fs.stat(retainedCss), { code: "ENOENT" });
     await fs.stat(path.join(appDir, "src", "lib", "codex-context-breakdown.js"));
     await fs.stat(path.join(appDir, "shared", "agent-registry.json"));
     const dashboardIndex = path.join(repoRoot, "dashboard", "dist", "index.html");
@@ -131,4 +127,9 @@ test("installLocalTrackerApp publishes the new dashboard index after retaining s
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
+});
+
+test("dashboard production builds clear the prior dist graph", async () => {
+  const config = await fs.readFile(path.join(repoRoot, "dashboard", "vite.config.js"), "utf8");
+  assert.doesNotMatch(config, /emptyOutDir\s*:\s*false/u);
 });

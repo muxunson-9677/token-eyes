@@ -112,7 +112,7 @@ test("private local-data GET routes allow direct and loopback app reads without 
   }
 });
 
-test("public Token Plan and console-session GET DTOs use strict privacy allowlists", async () => {
+test("trusted local Token Plan reads preserve 0.54.47 account context while filtering secrets", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-private-dto-"));
   const configPath = path.join(root, "config.json");
   const validSessionRef = "token-plan/codex/session/private-binding";
@@ -131,7 +131,7 @@ test("public Token Plan and console-session GET DTOs use strict privacy allowlis
     "token-plan/codex/session/opaque#private",
     "token-plan/trae/session/provider-mismatch",
   ];
-  const rawError = "synthetic failure C:/Users/private/account.json?token=secret";
+  const rawError = "synthetic failure C:/Users/private/account.json?token=secret Authorization: Bearer synthetic-bearer-secret Cookie: session=synthetic-cookie-secret api_key=synthetic-api-secret sk-synthetic-secret-123 tp-synthetic-secret-456";
   const rawErrorCode = "PRIVATE_ACCOUNT_123";
   const privateEmail = "private@example.test";
   try {
@@ -232,6 +232,7 @@ test("public Token Plan and console-session GET DTOs use strict privacy allowlis
       "last_sync_attempt_at",
       "last_synced_at",
       "next_refresh_at",
+      "notes",
       "plan_id",
       "plan_label",
       "provider_id",
@@ -258,12 +259,15 @@ test("public Token Plan and console-session GET DTOs use strict privacy allowlis
       "used_quota",
     ].sort());
     assert.equal(plan.detection_config.official_account.account_binding_id, "safe-binding-id");
+    assert.equal(plan.detection_config.official_account.account_id, "private-account-id");
+    assert.equal(plan.detection_config.official_account.display_name, privateEmail);
     assert.equal(plan.detection_config.official_account.provider_home_url, "https://example.test/account");
     assert.equal(plan.detection_config.official_account.session_ref, validSessionRef);
     assert.equal(plan.detection_config.custom_api.request_url, "https://example.test/quota");
     assert.equal(plan.detection_config.custom_api.official_url, "https://example.test/docs");
-    assert.equal(plan.last_error_message, "授权或额度状态暂时不可读取，请稍后重试。");
-    assert.equal(plan.last_refresh_error, "授权或额度状态暂时不可读取，请稍后重试。");
+    assert.equal(plan.notes, privateEmail);
+    assert.match(plan.last_error_message, /synthetic failure/u);
+    assert.match(plan.last_refresh_error, /synthetic failure/u);
     assert.equal(plan.last_error_code, "UNAVAILABLE");
 
     const sessions = await call(handler, "/functions/tokentracker-token-plan-console-sessions", {
@@ -278,12 +282,14 @@ test("public Token Plan and console-session GET DTOs use strict privacy allowlis
       "last_error_code",
       "last_error_message",
       "last_verified_at",
+      "display_name",
       "provider_id",
       "session_ref",
       "status",
     ].sort());
     assert.equal(session.session_ref, validSessionRef);
-    assert.equal(session.last_error_message, "授权或额度状态暂时不可读取，请稍后重试。");
+    assert.equal(session.display_name, privateEmail);
+    assert.match(session.last_error_message, /synthetic failure/u);
     assert.equal(session.last_error_code, "UNAVAILABLE");
     assert.deepEqual(Object.keys(session.balance).sort(), [
       "available_balance",
@@ -308,14 +314,16 @@ test("public Token Plan and console-session GET DTOs use strict privacy allowlis
 
     const serialized = JSON.stringify({ plan, sessions: sessions.body.sessions });
     for (const forbidden of [
-      privateEmail,
-      "private-account-id",
-      rawError,
       rawErrorCode,
       "token=secret",
       "password",
       "private-key-ref",
       "C:/Users/private",
+      "synthetic-bearer-secret",
+      "synthetic-cookie-secret",
+      "synthetic-api-secret",
+      "sk-synthetic-secret-123",
+      "tp-synthetic-secret-456",
       ...unsafeSessionRefs,
     ]) {
       assert.equal(serialized.includes(forbidden), false, forbidden);
@@ -383,7 +391,7 @@ test("a valid namespaced session_ref returned by GET remains usable by the verif
   }
 });
 
-test("WorkBuddy GET strictly allowlists provider data and returns a fixed unreadable state on failure", async () => {
+test("WorkBuddy GET keeps display account context, filters provider secrets, and fixes unreadable state", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-private-workbuddy-"));
   try {
     const handler = createIsolatedHandler(root, {
@@ -418,8 +426,12 @@ test("WorkBuddy GET strictly allowlists provider data and returns a fixed unread
     });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(Object.keys(response.body).sort(), [
-      "error", "fetched_at", "groups", "plan", "signed_in",
+      "account", "error", "fetched_at", "groups", "plan", "signed_in",
     ]);
+    assert.deepEqual(response.body.account, {
+      nickname: "Private",
+      phone_masked: "123",
+    });
     assert.deepEqual(response.body.groups, [{
       id: "base",
       items: 1,

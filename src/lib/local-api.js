@@ -2487,6 +2487,26 @@ function createLocalApiHandler({
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
   }
 
+  function trustedLocalDisplayText(value, maximum = 320) {
+    const normalized = String(value ?? "").trim();
+    if (!normalized || normalized.length > maximum) return null;
+    if (/[\u0000-\u001f\u007f]/u.test(normalized)) return null;
+    return normalized;
+  }
+
+  function trustedLocalStatusMessage(value) {
+    const normalized = trustedLocalDisplayText(value, 1000);
+    if (!normalized) return "";
+    return normalized
+      .replace(/\b(?:authorization|proxy-authorization)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+/giu, "[授权信息已隐藏]")
+      .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]+/giu, "[授权信息已隐藏]")
+      .replace(/\b(?:sk|tp)-[A-Za-z0-9_-]{10,}/giu, "[密钥已隐藏]")
+      .replace(/\b(?:cookie|set-cookie)\s*[:=]\s*[^\s,]+/giu, "[Cookie 已隐藏]")
+      .replace(/\b(?:token|password|secret|api[_-]?key)\s*[:=]\s*[^\s&,;]+/giu, "[敏感参数已隐藏]")
+      .replace(/\b[A-Za-z]:[\\/][^\s]*/gu, "[本机路径已隐藏]")
+      .replace(/\b(?:https?|file):\/\/[^\s]*/giu, "[链接已隐藏]");
+  }
+
   function publicWorkbuddyQuota(payload) {
     const source = payload && typeof payload === "object" ? payload : {};
     const groups = [];
@@ -2507,8 +2527,18 @@ function createLocalApiHandler({
     }
     const plan = String(source.plan || "").trim().toUpperCase();
     const rawError = String(source.error || "").trim().toLowerCase();
+    const nickname = trustedLocalDisplayText(source.account?.nickname, 160);
+    const phoneMasked = trustedLocalDisplayText(source.account?.phone_masked, 80);
+    const accountType = trustedLocalDisplayText(source.account?.type, 80);
     return {
       signed_in: source.signed_in === true ? true : source.signed_in === false ? false : null,
+      ...((nickname || phoneMasked || accountType) ? {
+        account: {
+          ...(nickname ? { nickname } : {}),
+          ...(phoneMasked ? { phone_masked: phoneMasked } : {}),
+          ...(accountType ? { type: accountType } : {}),
+        },
+      } : {}),
       plan: WORKBUDDY_PUBLIC_PLANS.has(plan) ? plan : null,
       groups,
       fetched_at: safeIsoString(source.fetched_at),
@@ -3679,6 +3709,8 @@ function createLocalApiHandler({
       const sessionRef = publicNamespacedSessionRef(official.session_ref, providerId);
       const providerHomeUrl = publicTokenPlanUrl(official.provider_home_url);
       const planName = publicTokenPlanText(official.plan_name, 100);
+      const accountId = trustedLocalDisplayText(official.account_id, 320);
+      const displayName = trustedLocalDisplayText(official.display_name, 320);
       const claudeAccountMode = ["official", "routing"].includes(official.claude_account_mode)
         ? official.claude_account_mode
         : null;
@@ -3687,6 +3719,8 @@ function createLocalApiHandler({
         ...(accountBindingId ? { account_binding_id: accountBindingId } : {}),
         ...(sessionRef ? { session_ref: sessionRef } : {}),
         ...(planName ? { plan_name: planName } : {}),
+        ...(accountId ? { account_id: accountId } : {}),
+        ...(displayName ? { display_name: displayName } : {}),
         ...(claudeAccountMode ? { claude_account_mode: claudeAccountMode } : {}),
       };
     }
@@ -3745,6 +3779,10 @@ function createLocalApiHandler({
       || ["failed", "auth_required", "temporary", "unsupported"].includes(input.sync_status)
       || Boolean(input.last_refresh_error)
       || Boolean(input.last_error_message);
+    const refreshError = trustedLocalStatusMessage(input.last_refresh_error || input.last_error_message)
+      || (hasStatusError ? PUBLIC_TOKEN_PLAN_ERROR_MESSAGE : "");
+    const statusError = trustedLocalStatusMessage(input.last_error_message || input.last_refresh_error)
+      || (hasStatusError ? PUBLIC_TOKEN_PLAN_ERROR_MESSAGE : "");
     const dto = {
       id: publicOpaqueRef(input.id),
       source: publicTokenPlanIdentifier(input.source, 64),
@@ -3764,7 +3802,7 @@ function createLocalApiHandler({
       refresh_interval_minutes: publicTokenPlanNumber(input.refresh_interval_minutes),
       refresh_method: publicTokenPlanIdentifier(input.refresh_method, 64),
       last_refresh_status: publicTokenPlanIdentifier(input.last_refresh_status, 64),
-      last_refresh_error: hasStatusError ? PUBLIC_TOKEN_PLAN_ERROR_MESSAGE : "",
+      last_refresh_error: refreshError,
       last_refresh_at: publicTokenPlanTimestamp(input.last_refresh_at),
       next_refresh_at: publicTokenPlanTimestamp(input.next_refresh_at),
       detection_method: publicTokenPlanIdentifier(input.detection_method, 64),
@@ -3773,7 +3811,7 @@ function createLocalApiHandler({
       last_sync_attempt_at: publicTokenPlanTimestamp(input.last_sync_attempt_at),
       last_synced_at: publicTokenPlanTimestamp(input.last_synced_at),
       last_error_code: publicStatusErrorCode(input.last_error_code),
-      last_error_message: hasStatusError ? PUBLIC_TOKEN_PLAN_ERROR_MESSAGE : "",
+      last_error_message: statusError,
       provider_reported_at: publicTokenPlanTimestamp(input.provider_reported_at),
       provider_reported_fields: Array.isArray(input.provider_reported_fields)
         ? TOKEN_PLAN_PROVIDER_FIELD_ORDER.filter((field) => input.provider_reported_fields.includes(field))
@@ -3787,6 +3825,7 @@ function createLocalApiHandler({
         : "",
       subscription_start_date: publicTokenPlanTimestamp(input.subscription_start_date),
       subscription_end_date: publicTokenPlanTimestamp(input.subscription_end_date),
+      notes: trustedLocalDisplayText(input.notes, 1000) || "",
       created_at: publicTokenPlanTimestamp(input.created_at),
       updated_at: publicTokenPlanTimestamp(input.updated_at),
       display_order: Number.isSafeInteger(input.display_order) && input.display_order >= 0
@@ -4303,6 +4342,8 @@ function createLocalApiHandler({
 
   function publicConsoleErrorMessage(session) {
     if (!session?.last_error_message && !session?.last_error_code) return "";
+    const detailed = trustedLocalStatusMessage(session.last_error_message);
+    if (detailed) return detailed;
     if (["temporary"].includes(session.status)) return "服务暂时不可读取，请稍后重试。";
     if (["unsupported"].includes(session.status)) return "当前授权状态暂不支持读取。";
     if (["expired", "revoked"].includes(session.status)) return "授权已失效，请重新连接。";
@@ -4315,6 +4356,7 @@ function createLocalApiHandler({
       id: publicOpaqueRef(input.id),
       provider_id: ALLOWED_CONSOLE_PROVIDER_IDS.has(input.provider_id) ? input.provider_id : null,
       auth_kind: ALLOWED_AUTH_KINDS.has(input.auth_kind) ? input.auth_kind : null,
+      display_name: trustedLocalDisplayText(input.display_name, 320) || "",
       status: ALLOWED_CONSOLE_STATUSES.has(input.status) ? input.status : "failed",
       session_ref: publicNamespacedSessionRef(input.session_ref, input.provider_id),
       connected_at: publicTokenPlanTimestamp(input.connected_at),

@@ -1198,13 +1198,12 @@ it("Cursor authorization persists the live usage snapshot instead of connected z
     ]),
     detection_config: expect.objectContaining({
       official_account: expect.objectContaining({
+        account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
+        display_name: "eve***@hotmail.com",
         plan_name: "pro",
       }),
     }),
   }));
-  const savedOfficialAccount = saveTokenPlan.mock.calls.at(-1)[0].detection_config.official_account;
-  expect(savedOfficialAccount).not.toHaveProperty("account_id");
-  expect(savedOfficialAccount).not.toHaveProperty("display_name");
   const localVerificationPayload = verifyConsoleSession.mock.calls.at(-1)[1];
   expect(localVerificationPayload.quota).not.toHaveProperty("account_id");
   expect(localVerificationPayload.quota).not.toHaveProperty("display_name");
@@ -5727,7 +5726,7 @@ it("Cursor refresh treats a missing native session as reauthorization instead of
   expect(refreshTokenPlan).not.toHaveBeenCalled();
 });
 
-it("shows a privacy-safe Cursor binding state and keeps all quota lanes without account diagnostics", async () => {
+it("shows Cursor account under the title and keeps all quota lanes without account diagnostics", async () => {
   const record = {
     ...BASE_RECORD,
     id: "cursor-live-plan",
@@ -5768,8 +5767,7 @@ it("shows a privacy-safe Cursor binding state and keeps all quota lanes without 
   await expandAllPlans();
 
   const identityMeta = screen.getByTestId("token-plan-card-identity-meta");
-  expect(identityMeta).toHaveTextContent("当前官方账户已绑定");
-  expect(identityMeta).not.toHaveTextContent("eve***@hotmail.com");
+  expect(identityMeta).toHaveTextContent("eve***@hotmail.com");
   expect(identityMeta).not.toHaveTextContent("auth0|user_");
   expect(screen.queryByText(/Auth ID:/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/套餐: pro/i)).not.toBeInTheDocument();

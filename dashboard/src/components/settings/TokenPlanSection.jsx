@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2, Package, CalendarDays } from "lucide-react";
+import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2, Package, CalendarDays, Eye, EyeOff } from "lucide-react";
 import {
   getTokenPlans,
   deleteTokenPlan,
@@ -78,6 +78,33 @@ function formatCodexReset(isoOrUnix) {
 function formatQuota(value) {
   const n = Number(value || 0);
   return new Intl.NumberFormat().format(Number.isFinite(n) ? n : 0);
+}
+
+const TOKEN_PLAN_FULL_EMAIL_KEY = "token-eyes.settings.token-plan.show-full-email.v1";
+
+function readTokenPlanFullEmailPreference() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(TOKEN_PLAN_FULL_EMAIL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function authorizedTokenPlanAccount(record) {
+  const official = record?.detection_config?.official_account || {};
+  if (record?.detection_method === "official_account") {
+    return official.display_name || official.account_label || official.account_id
+      || record.account_label || record.account_name || "";
+  }
+  return record?.account_label || record?.account_name || "";
+}
+
+function maskTokenPlanEmail(value) {
+  const normalized = String(value || "").trim();
+  const match = /^([^@]+)@(.+)$/.exec(normalized);
+  if (!match || match[1].includes("*")) return normalized;
+  return `${match[1].slice(0, Math.min(3, match[1].length))}***@${match[2]}`;
 }
 
 export function tokenPlanExpiryTimestamp(value) {
@@ -768,26 +795,11 @@ function consoleStatusLabel(session) {
 }
 
 function buildOfficialAccountPayload(form, accountBindingId, providerHomeUrl, extraOfficial = {}) {
-  const stripIdentifiers = (value) => {
-    const safe = { ...(value && typeof value === "object" ? value : {}) };
-    for (const key of [
-      "account_id",
-      "auth_id",
-      "user_id",
-      "display_name",
-      "account_label",
-      "account_name",
-      "email",
-    ]) {
-      delete safe[key];
-    }
-    return safe;
-  };
   return {
-    ...stripIdentifiers(form.detection_config?.official_account),
+    ...form.detection_config?.official_account,
     account_binding_id: accountBindingId,
     provider_home_url: providerHomeUrl,
-    ...stripIdentifiers(extraOfficial),
+    ...extraOfficial,
   };
 }
 
@@ -1011,6 +1023,7 @@ function SortableTokenPlanCard({
   saving,
   usageLimits,
   loadingUsageLimits,
+  showFullEmail,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
   const planLabel = record.plan_label || record.id;
@@ -1048,9 +1061,8 @@ function SortableTokenPlanCard({
     : hasCompleteReportedHeadline && totalQuota > 0
       ? [{ kind: "total", total: totalQuota, used: usedQuota, remaining: remainingQuota }]
       : [];
-  const displayedAccountLabel = record.detection_method === "official_account"
-    ? copy("settings.token_plan.official_account.bound_safe")
-    : copy("settings.token_plan.official_account.not_bound_safe");
+  const accountLabel = authorizedTokenPlanAccount(record);
+  const displayedAccountLabel = showFullEmail ? accountLabel : maskTokenPlanEmail(accountLabel);
   const subscriptionCurrency = String(record.subscription_currency || "CNY").toUpperCase();
   const subscriptionAmount = Number(record.subscription_amount).toLocaleString();
   const subscriptionSummary = record.subscription_amount > 0
@@ -1112,10 +1124,10 @@ function SortableTokenPlanCard({
             </span>
             <span data-testid="token-plan-card-identity-meta" className="tt-token-plan-card-identity-meta">
               <span
-                className="tt-token-plan-card-account"
+                className={cn("tt-token-plan-card-account", showFullEmail && "tt-token-plan-card-account--full")}
                 title={displayedAccountLabel}
               >
-                {displayedAccountLabel}
+                {displayedAccountLabel || copy("settings.token_plan.value_unavailable")}
               </span>
               <span className="tt-token-plan-card-cost">{subscriptionSummary}</span>
             </span>
@@ -1406,12 +1418,14 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const [expiredPlansOpen, setExpiredPlansOpen] = useState(false);
   const [activePage, setActivePage] = useState(0);
   const [expiredPage, setExpiredPage] = useState(0);
+  const [showFullEmail, setShowFullEmail] = useState(readTokenPlanFullEmailPreference);
   const [editorInitialized, setEditorInitialized] = useState(false);
   const [editorMissing, setEditorMissing] = useState(false);
   const recordsRef = useRef(records);
   const consoleSessionsRef = useRef(consoleSessions);
   const refreshRef = useRef(null);
   const refreshingPlanIdsRef = useRef(new Set());
+  const fullEmailRefreshAttemptedIdsRef = useRef(new Set());
   const autoCodexRefreshBusyRef = useRef(false);
   const codexAttemptTokensRef = useRef(new Map());
   const codexCancelPromiseRef = useRef(new Map());
@@ -2504,6 +2518,8 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 {
                   ...officialExtra,
                   session_ref: sessionRef,
+                  account_id: nativeStatus.quota.account_id || "",
+                  display_name: nativeStatus.quota.display_name || "",
                   plan_name: nativeStatus.quota.plan_name || "",
                 },
               ),
@@ -3519,6 +3535,12 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                     plan.detection_config?.official_account?.provider_home_url || "",
                     {
                       session_ref: nativeStatus.session_ref || boundSessionRef,
+                      account_id: nativeStatus.quota.account_id
+                        || plan.detection_config?.official_account?.account_id
+                        || "",
+                      display_name: nativeStatus.quota.display_name
+                        || plan.detection_config?.official_account?.display_name
+                        || "",
                       plan_name: nativeStatus.quota.plan_name
                         || plan.detection_config?.official_account?.plan_name
                         || "",
@@ -3779,6 +3801,23 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     }
     return undefined;
   }, [codexPersistFailure, codexStage, codexWarning, consoleSessionError, form.plan_id, form.provider_id, formOpen]);
+
+  useEffect(() => {
+    if (!showFullEmail) {
+      fullEmailRefreshAttemptedIdsRef.current.clear();
+      return;
+    }
+    if (loading) return;
+    recordsRef.current
+      .filter((record) => record.provider_id === "cursor"
+        && record.detection_method === "official_account"
+        && authorizedTokenPlanAccount(record).includes("*"))
+      .forEach((record) => {
+        if (!record.id || fullEmailRefreshAttemptedIdsRef.current.has(record.id)) return;
+        fullEmailRefreshAttemptedIdsRef.current.add(record.id);
+        void refreshRef.current?.(record.id);
+      });
+  }, [loading, records, showFullEmail]);
 
   useEffect(() => {
     if (loading) return undefined;
@@ -4140,6 +4179,31 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       collapsedSummaryTone="violet"
       action={!editorPlanId ? (
         <div className="tt-token-plan-actions flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="token-plan-email-visibility"
+            aria-label={copy(showFullEmail
+              ? "settings.token_plan.email.hide"
+              : "settings.token_plan.email.show_full")}
+            title={copy(showFullEmail
+              ? "settings.token_plan.email.hide"
+              : "settings.token_plan.email.show_full")}
+            onClick={() => {
+              const next = !showFullEmail;
+              setShowFullEmail(next);
+              try {
+                window.localStorage.setItem(TOKEN_PLAN_FULL_EMAIL_KEY, next ? "1" : "0");
+              } catch {
+                // The preference remains active for this session when storage is unavailable.
+              }
+            }}
+            className="tt-cost-header-action"
+          >
+            {showFullEmail ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
+            {copy(showFullEmail
+              ? "settings.token_plan.email.hide"
+              : "settings.token_plan.email.show_full")}
+          </button>
           <button type="button" onClick={() => activeRecords.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="tt-cost-header-action">
             <RefreshCw className={cn("h-3.5 w-3.5", refreshingId && "animate-spin")} aria-hidden />
             {copy("settings.token_plan.batch_refresh")}
@@ -4182,6 +4246,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                     saving={saving || deletingId === record.id}
                     usageLimits={usageLimits}
                     loadingUsageLimits={loadingUsageLimits}
+                    showFullEmail={showFullEmail}
                   />
                 ))}
               </div>

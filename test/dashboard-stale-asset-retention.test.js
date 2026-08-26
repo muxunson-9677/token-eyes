@@ -8,7 +8,7 @@ const repositoryRoot = path.resolve(__dirname, "..");
 const dashboardDir = path.join(repositoryRoot, "dashboard");
 const retainedAsset = path.join(dashboardDir, "dist", "assets", `stale-build-${process.pid}.js`);
 
-test("dashboard rebuild keeps a previously served hashed asset available", () => {
+test("dashboard rebuild removes a stale hashed asset", () => {
   fs.mkdirSync(path.dirname(retainedAsset), { recursive: true });
   fs.writeFileSync(retainedAsset, "export default 'stale build';\n", "utf8");
 
@@ -18,7 +18,7 @@ test("dashboard rebuild keeps a previously served hashed asset available", () =>
       stdio: "pipe",
       env: { ...process.env, NO_COLOR: "1", npm_config_loglevel: "error" },
     });
-    assert.equal(fs.existsSync(retainedAsset), true);
+    assert.equal(fs.existsSync(retainedAsset), false);
   } finally {
     fs.rmSync(retainedAsset, { force: true });
   }

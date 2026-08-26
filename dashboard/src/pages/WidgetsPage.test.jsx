@@ -860,7 +860,6 @@ describe("WidgetsPage Windows desktop widget", () => {
               kind: "rolling_weekly",
               provider: "Codex",
               planLabel: "Pro 20x",
-              accountState: "official_bound",
               accountLabel: "muxunson@gmail.com",
               subscriptionAmount: 20,
               subscriptionCurrency: "USD",
@@ -876,7 +875,6 @@ describe("WidgetsPage Windows desktop widget", () => {
               kind: "gpt_5_3_codex_spark_weekly",
               provider: "Codex",
               planLabel: "Pro 20x",
-              accountState: "official_bound",
               accountLabel: "muxunson@gmail.com",
               subscriptionAmount: 20,
               subscriptionCurrency: "USD",
@@ -890,7 +888,6 @@ describe("WidgetsPage Windows desktop widget", () => {
               kind: "total",
               provider: "Cursor",
               planLabel: "Pro",
-              accountState: "official_bound",
               accountLabel: "ezequielhuelsxw@outlook.com",
               subscriptionAmount: 20,
               subscriptionCurrency: "USD",
@@ -905,7 +902,6 @@ describe("WidgetsPage Windows desktop widget", () => {
               kind: "auto_composer",
               provider: "Cursor",
               planLabel: "Pro",
-              accountState: "official_bound",
               accountLabel: "ezequielhuelsxw@outlook.com",
               subscriptionAmount: 20,
               subscriptionCurrency: "USD",
@@ -919,7 +915,6 @@ describe("WidgetsPage Windows desktop widget", () => {
               kind: "api",
               provider: "Cursor",
               planLabel: "Pro",
-              accountState: "official_bound",
               accountLabel: "ezequielhuelsxw@outlook.com",
               subscriptionAmount: 20,
               subscriptionCurrency: "USD",
@@ -963,8 +958,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(within(planCard).getAllByTestId("widget-limit-quota-window")).toHaveLength(2);
     expect(within(planCard).getByText("7 天")).toBeInTheDocument();
     expect(within(planCard).getByText("GPT 5.3 Codex Spark")).toBeInTheDocument();
-    expect(within(planCard).getByText(copy("settings.token_plan.official_account.bound_safe"))).toBeInTheDocument();
-    expect(planCard).not.toHaveTextContent("mux***@gmail.com");
+    expect(within(planCard).getByText("mux***@gmail.com")).toBeInTheDocument();
     expect(planCard.querySelector(".tt-token-plan-card-cost")).toBeNull();
     expect(planCard).toHaveAttribute("draggable", "true");
     expect(planCard).toHaveAttribute("data-layout-density", "content");
@@ -984,8 +978,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(within(cursorCard).getByText("API Usage")).toBeInTheDocument();
     expect(within(cursorCard).queryByText("7d")).not.toBeInTheDocument();
     expect(within(cursorCard).queryByText("monthly")).not.toBeInTheDocument();
-    expect(within(cursorCard).getByText(copy("settings.token_plan.official_account.bound_safe"))).toBeInTheDocument();
-    expect(cursorCard).not.toHaveTextContent("eze***@outlook.com");
+    expect(within(cursorCard).getByText("eze***@outlook.com")).toBeInTheDocument();
     expect(within(cursorCard).getAllByText(/重置时间:/u)).toHaveLength(3);
     expect(cursorCard.querySelector('[data-kind="total"] strong svg')).toBeNull();
     expect(cursorCard.querySelectorAll('[data-kind="auto_composer"] strong svg')).toHaveLength(1);

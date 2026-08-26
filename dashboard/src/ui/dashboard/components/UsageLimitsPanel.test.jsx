@@ -378,10 +378,10 @@ describe("UsageLimitsPanel", () => {
     expect(zeroRow).toHaveTextContent(
       copy("limits.workbuddy.credits_used", { used: "0", total: "100" }),
     );
-    expect(screen.getByTestId("workbuddy-credits-group")).not.toHaveTextContent(
+    expect(screen.getByTestId("workbuddy-credits-group")).toHaveTextContent(
       "SYNTHETIC_PRIVATE_NICKNAME",
     );
-    expect(screen.getByTestId("workbuddy-credits-group")).not.toHaveTextContent(
+    expect(screen.getByTestId("workbuddy-credits-group")).toHaveTextContent(
       "SYNTHETIC_PRIVATE_PHONE",
     );
   });
