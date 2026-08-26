@@ -91,27 +91,27 @@
 |---|---|---|---|---|---|
 | SRC-01 | 开始每个调整波次前读取工作树、分支、HEAD、status | 始终是本计划固定的工作树和分支；既有脏文件完整保留 | 新分支、新工作树、清理或覆盖既有文件 | 通过 | `.codex-artifacts/05448-acceptance/source-state-round-01.txt` |
 | SRC-02 | 对比 `7445f02ba42b753625b005d54f48b1250035463d..HEAD` 的文件和行级差异 | 每一处非新页面差异都被标记为“恢复基线”或某个 KEEP 验收 ID | 无验收 ID 的顺手修改、重构或格式化 | 通过 | `.codex-artifacts/05448-acceptance/diff-inventory.md` |
-| SRC-03 | 从最终已确认 SHA 构建 0.54.48 | 源码 SHA、版本、runtime manifest、EXE SHA-256 一一对应 | dirty build、manifest 只记录 HEAD 但遗漏未提交内容 | 未执行 | `.codex-artifacts/05448-acceptance/artifact-provenance.json` |
+| SRC-03 | 从最终已确认 SHA 构建 0.54.48 | 源码 SHA、版本、runtime manifest、EXE SHA-256 一一对应 | dirty build、manifest 只记录 HEAD 但遗漏未提交内容 | 通过 | `.codex-artifacts/05448-acceptance/artifact-provenance.json` |
 
 ### 3.2 0.54.47 旧页面兼容合同
 
 | ID | 页面/运行时 | 正常用户操作 | 预期可见结果 | 禁止出现 | 状态 | 证据 |
 |---|---|---|---|---|---|---|
-| OLD-01 | Windows 主窗口，启动尺寸 `1586×932`，最小尺寸 `900×600` | 启动、缩小、恢复、切换旧页面 | 尺寸、滚动和旧页面可用区域与 0.54.47 一致 | 全局高度变成 `970`、内容遮挡或额外滚动 | 未执行 | `.codex-artifacts/05448-acceptance/old-shell/` |
-| OLD-02 | `/dashboard` 首页 | 切换时间范围、Agent、刷新、打开已有详情 | 卡片、趋势、热力图、Agent、Token、成本和详情入口不少于 0.54.47 | 字段消失、真实未知变成 0、布局被新页面 CSS 污染 | 未执行 | `.codex-artifacts/05448-acceptance/old-dashboard/` |
-| OLD-03 | `/spend/usage` 用量页 | 切换筛选、查看请求和展开详情 | 原有来源、模型、请求、Token 组成和筛选全部保留 | DSH/Hermes 迁移后重复、请求详情减少 | 未执行 | `.codex-artifacts/05448-acceptance/old-spend-usage/` |
-| OLD-04 | `/spend/cost` 成本页 | 切换月份、展开各成本组、刷新 | 现金支出、API 估算、订阅成本、余额和未知状态语义保持分离 | 将套餐额度当现金、未知显示 `$0.00`、旧组消失 | 未执行 | `.codex-artifacts/05448-acceptance/old-spend-cost/` |
-| OLD-05 | `/spend/plans` 套餐市场 | 搜索、筛选、查看套餐、进入配置 | 0.54.47 原有套餐、链接、标签和操作保留；允许增加经核验信息 | 套餐减少、入口失效、价格来源混淆 | 未执行 | `.codex-artifacts/05448-acceptance/old-plan-market/` |
-| OLD-06 | `/settings/basic` 基础设置 | 修改可逆设置、刷新、离开返回、重启 | 原设置项、默认值、保存和恢复行为不减少 | 设置消失或不持久化 | 未执行 | `.codex-artifacts/05448-acceptance/old-settings-basic/` |
-| OLD-07 | `/settings/cost` Token Plan 列表 | 查看账户、切换完整邮箱、刷新、排序、展开状态 | 账户名称/脱敏邮箱、完整邮箱开关、成本、有效期、额度、具体错误和排序全部保留 | 只显示“已绑定/未绑定”、开关消失、错误被泛化 | 未执行 | `.codex-artifacts/05448-acceptance/old-token-plans/` |
-| OLD-08 | `/settings/cost/token-plans/new` 与编辑路由 | 新建、编辑、保存、取消、刷新、删除测试记录 | 0.54.47 支持的 Provider、字段和操作全部可用；增加的授权能力不得破坏旧 Provider | 字段被脱敏到无法编辑、取消后残留监听、删除错误账户 | 未执行 | `.codex-artifacts/05448-acceptance/old-token-plan-editor/` |
-| OLD-09 | `/settings/data` 数据源 | 查看路径、健康状态、刷新和已有操作 | 数据源清单、路径、状态、诊断和操作不少于 0.54.47 | 诊断信息减少、来源顺序或开关丢失 | 未执行 | `.codex-artifacts/05448-acceptance/old-data-sources/` |
-| OLD-10 | `/reset-history` 重置历史 | 查看列表、筛选、刷新 | 既有事件、状态、时间和恢复信息完整 | 历史被新聚合逻辑隐藏或显示假零 | 未执行 | `.codex-artifacts/05448-acceptance/old-reset-history/` |
-| OLD-11 | `/widgets` 组件管理 | 查看组件、筛选 Agent、编辑 Token Plan 组件 | 账户标签、套餐、额度、筛选和保存行为不减少 | 账户名称退化成账户状态、DSH/WorkBuddy 过滤丢失 | 未执行 | `.codex-artifacts/05448-acceptance/old-widgets/` |
-| OLD-12 | `/desktop-widget` 桌面组件 | 打开设置、切换 Agent、刷新、重启 | 账户标签、选中状态、数据、持久化和恢复与 0.54.47 一致或只增加 | 账户标签消失、重启后选择丢失 | 未执行 | `.codex-artifacts/05448-acceptance/old-desktop-widget/` |
-| OLD-13 | `/leaderboard`、规则与个人资料路由 | 导航、筛选、打开资料、返回 | 原公开页面、筛选和导航保持可用 | 新路由或共享 CSS 破坏旧页面 | 未执行 | `.codex-artifacts/05448-acceptance/old-leaderboard/` |
-| OLD-14 | `/first-run` 与旧重定向路由 | 首次进入、完成、重启；访问 `/spend`、`/settings`、`/data-sources` | 首次运行状态和重定向目标与 0.54.47 一致 | 新页面改变首次运行或根路由 | 未执行 | `.codex-artifacts/05448-acceptance/old-navigation/` |
-| OLD-15 | 旧 Token Plan 与 Console Session 本地 API | 以可信本地应用来源读取并完成旧页面旅程 | 旧页面需要的账户、session、错误、额度和状态字段仍存在；秘密仍不外泄 | 无差别安全投影导致旧页面字段减少，或跨来源泄密 | 未执行 | `.codex-artifacts/05448-acceptance/old-api-contract/` |
+| OLD-01 | Windows 主窗口，启动尺寸 `1586×932`，最小尺寸 `900×600` | 启动、缩小、恢复、切换旧页面 | 尺寸、滚动和旧页面可用区域与 0.54.47 一致 | 全局高度变成 `970`、内容遮挡或额外滚动 | 通过 | `.codex-artifacts/05448-acceptance/dev-round-10-final-interaction-a/old-pages/report.json`; `.codex-artifacts/05448-acceptance/dev-round-11-final-interaction-b/old-pages/report.json` |
+| OLD-02 | `/dashboard` 首页 | 切换时间范围、Agent、刷新、打开已有详情 | 卡片、趋势、热力图、Agent、Token、成本和详情入口不少于 0.54.47 | 字段消失、真实未知变成 0、布局被新页面 CSS 污染 | 通过 | 同 OLD-01；`.codex-artifacts/05448-acceptance/installed-final-parity-round-1/` |
+| OLD-03 | `/spend/usage` 用量页 | 切换筛选、查看请求和展开详情 | 原有来源、模型、请求、Token 组成和筛选全部保留 | DSH/Hermes 迁移后重复、请求详情减少 | 通过 | 同 OLD-01；`.codex-artifacts/05448-acceptance/installed-baseline-05447-real-usage-capture/` |
+| OLD-04 | `/spend/cost` 成本页 | 切换月份、展开各成本组、刷新 | 现金支出、API 估算、订阅成本、余额和未知状态语义保持分离 | 将套餐额度当现金、未知显示 `$0.00`、旧组消失 | 通过 | 同 OLD-01；`.codex-artifacts/05448-acceptance/installed-final-parity-round-2/` |
+| OLD-05 | `/spend/plans` 套餐市场 | 搜索、筛选、查看套餐、进入配置 | 0.54.47 原有套餐、链接、标签和操作保留；允许增加经核验信息 | 套餐减少、入口失效、价格来源混淆 | 通过 | 同 OLD-01 |
+| OLD-06 | `/settings/basic` 基础设置 | 修改可逆设置、刷新、离开返回、重启 | 原设置项、默认值、保存和恢复行为不减少 | 设置消失或不持久化 | 通过 | 同 OLD-01；`.codex-artifacts/05448-acceptance/artifact-provenance.json`（升级前后配置哈希一致） |
+| OLD-07 | `/settings/cost` Token Plan 列表 | 查看账户、切换完整邮箱、刷新、排序、展开状态 | 账户名称/脱敏邮箱、完整邮箱开关、成本、有效期、额度、具体错误和排序全部保留 | 只显示“已绑定/未绑定”、开关消失、错误被泛化 | 通过 | 同 OLD-01；`.codex-artifacts/05448-acceptance/keep-api-security/test-results.txt` |
+| OLD-08 | `/settings/cost/token-plans/new` 与编辑路由 | 新建、编辑、保存、取消、刷新、删除测试记录 | 0.54.47 支持的 Provider、字段和操作全部可用；增加的授权能力不得破坏旧 Provider | 字段被脱敏到无法编辑、取消后残留监听、删除错误账户 | 通过 | 同 OLD-01；`.codex-artifacts/05448-acceptance/installed-final-parity-round-1/` |
+| OLD-09 | `/settings/data` 数据源 | 查看路径、健康状态、刷新和已有操作 | 数据源清单、路径、状态、诊断和操作不少于 0.54.47 | 诊断信息减少、来源顺序或开关丢失 | 通过 | 同 OLD-01 |
+| OLD-10 | `/reset-history` 重置历史 | 查看列表、筛选、刷新 | 既有事件、状态、时间和恢复信息完整 | 历史被新聚合逻辑隐藏或显示假零 | 通过 | 同 OLD-01 |
+| OLD-11 | `/widgets` 组件管理 | 查看组件、筛选 Agent、编辑 Token Plan 组件 | 账户标签、套餐、额度、筛选和保存行为不减少 | 账户名称退化成账户状态、DSH/WorkBuddy 过滤丢失 | 通过 | 同 OLD-01；`.codex-artifacts/05448-acceptance/installed-final-parity-round-2/` |
+| OLD-12 | `/desktop-widget` 桌面组件 | 打开设置、切换 Agent、刷新、重启 | 账户标签、选中状态、数据、持久化和恢复与 0.54.47 一致或只增加 | 账户标签消失、重启后选择丢失 | 通过 | 同 OLD-01；`.codex-artifacts/05448-acceptance/installed-final-parity-round-1/`; `.codex-artifacts/05448-acceptance/installed-final-parity-round-2/` |
+| OLD-13 | `/leaderboard`、规则与个人资料路由 | 导航、筛选、打开资料、返回 | 原公开页面、筛选和导航保持可用 | 新路由或共享 CSS 破坏旧页面 | 通过 | 同 OLD-01 |
+| OLD-14 | `/first-run` 与旧重定向路由 | 首次进入、完成、重启；访问 `/spend`、`/settings`、`/data-sources` | 首次运行状态和重定向目标与 0.54.47 一致 | 新页面改变首次运行或根路由 | 通过 | 同 OLD-01 |
+| OLD-15 | 旧 Token Plan 与 Console Session 本地 API | 以可信本地应用来源读取并完成旧页面旅程 | 旧页面需要的账户、session、错误、额度和状态字段仍存在；秘密仍不外泄 | 无差别安全投影导致旧页面字段减少，或跨来源泄密 | 通过 | `.codex-artifacts/05448-acceptance/keep-api-security/test-results.txt`; 同 OLD-01 |
 
 ### 3.3 值得保留的非页面增量
 
@@ -129,10 +129,10 @@
 
 | ID | 页面 | 正常用户操作 | 预期可见结果 | 禁止出现 | 状态 | 证据 |
 |---|---|---|---|---|---|---|
-| NEW-01 | `/spend/value-comparison` | 首次进入、切换周期/月、展开证据、刷新、离开返回 | 真实来源、单位、证据状态、API 等价值、订阅现金和不可用原因清楚分离；缓存不阻塞切换 | 设计稿数字、公开价格冒充账单、未知显示 0、隐私内容 | 未执行 | `.codex-artifacts/05448-acceptance/new-value-comparison/` |
-| NEW-02 | `/spend/realtime-sessions` | 查看请求/会话/Agent/覆盖率，切换标签和周期，刷新、失败恢复 | 生命周期、来源、模型、Token、状态和覆盖证据正确；持续轮询不阻断页面 | lifecycle-only 显示 unknown、提示词/消息正文/秘密泄露 | 未执行 | `.codex-artifacts/05448-acceptance/new-realtime-sessions/` |
-| NEW-03 | 响应式和密度 | 在 `1586×932`、`1280×760`，分别使用 0/1/2/5/10 项与长文本/错误状态 | 无水平溢出、遮挡、卡片畸变或不可达控件 | 只验空状态或单一截图 | 未执行 | `.codex-artifacts/05448-acceptance/new-responsive-density/` |
-| NEW-04 | 缓存和失败恢复 | 先取得成功数据，再模拟单端点失败、恢复并刷新 | 保留最后一次成功数据并标记 stale；一个 Provider 失败不清空其他数据 | 失败后整页空白、旧数据冒充实时数据 | 未执行 | `.codex-artifacts/05448-acceptance/new-cache-recovery/` |
+| NEW-01 | `/spend/value-comparison` | 首次进入、切换周期/月、展开证据、刷新、离开返回 | 真实来源、单位、证据状态、API 等价值、订阅现金和不可用原因清楚分离；缓存不阻塞切换 | 设计稿数字、公开价格冒充账单、未知显示 0、隐私内容 | 通过 | `.codex-artifacts/05448-acceptance/dev-round-7-final-sha-a/new-pages/report.json`; `.codex-artifacts/05448-acceptance/dev-round-8-final-sha-b/new-pages/report.json` |
+| NEW-02 | `/spend/realtime-sessions` | 查看请求/会话/Agent/覆盖率，切换标签和周期，刷新、失败恢复 | 生命周期、来源、模型、Token、状态和覆盖证据正确；持续轮询不阻断页面 | lifecycle-only 显示 unknown、提示词/消息正文/秘密泄露 | 通过 | 同 NEW-01 |
+| NEW-03 | 响应式和密度 | 在 `1586×932`、`1280×760`，分别使用 0/1/2/5/10 项与长文本/错误状态 | 无水平溢出、遮挡、卡片畸变或不可达控件 | 只验空状态或单一截图 | 通过 | 同 NEW-01；对应目录 `density/` 截图与 JSON |
+| NEW-04 | 缓存和失败恢复 | 先取得成功数据，再模拟单端点失败、恢复并刷新 | 保留最后一次成功数据并标记 stale；一个 Provider 失败不清空其他数据 | 失败后整页空白、旧数据冒充实时数据 | 通过 | 同 NEW-01（`preservedAfterFailure`、`recovered`） |
 
 ## 4. 实施任务与阻断门
 
@@ -269,7 +269,7 @@
 - [x] **Step 4：生成与第一审独立的截图、API 快照和日志**
 - [x] **Step 5：第二审失败时撤销第一审通过状态，修复后两审都必须完整重跑**
 
-fresh 进程第二审证据：`.codex-artifacts/05448-acceptance/dev-round-6-precommit-review-b/`；综合摘要：`.codex-artifacts/05448-acceptance/source-browser-audit-summary.md`。尚未执行 Task 7，不得据此交付 EXE。
+fresh 进程第二审证据：`.codex-artifacts/05448-acceptance/dev-round-6-precommit-review-b/`；综合摘要：`.codex-artifacts/05448-acceptance/source-browser-audit-summary.md`。Task 7 的最终来源绑定、升级安装和两次独立安装版核对证据见 `.codex-artifacts/05448-acceptance/artifact-provenance.json` 与 `installed-final-parity-round-{1,2}/`。
 
 第二审只回答：“真实用户重新使用时，代码中声称已实现的结果是否确实出现且没有退化？”
 
@@ -277,12 +277,14 @@ fresh 进程第二审证据：`.codex-artifacts/05448-acceptance/dev-round-6-pre
 
 只有在用户另行授权安装/卸载后执行。
 
-- [ ] **Step 1：确认工作区可构建状态，记录精确 SHA；不得从未记录 dirty 内容构建候选**
-- [ ] **Step 2：从该 SHA 构建 0.54.48，记录 EXE SHA-256、manifest 和 bundle 文件清单**
-- [ ] **Step 3：安装版第一审：从 0.54.47 升级，验证旧设置/账户/数据保留并完成关键 OLD/NEW 旅程**
-- [ ] **Step 4：安装版第二审：完全退出并重启已安装应用，从入口重新核对窗口、旧页面、新页面、刷新和持久化**
-- [ ] **Step 5：核对安装目录内容与构建 manifest；发现 stale chunk、SHA 不一致或旧 runtime 即判失败**
-- [ ] **Step 6：所有验收行均为通过后，才允许把精确 EXE 描述为 0.54.48 验收候选**
+- [x] **Step 1：确认工作区可构建状态，记录精确 SHA；不得从未记录 dirty 内容构建候选**
+- [x] **Step 2：从该 SHA 构建 0.54.48，记录 EXE SHA-256、manifest 和 bundle 文件清单**
+- [x] **Step 3：安装版第一审：从 0.54.47 升级，验证旧设置/账户/数据保留并完成关键 OLD/NEW 旅程**
+- [x] **Step 4：安装版第二审：完全退出并重启已安装应用，从入口重新核对窗口、旧页面、新页面、刷新和持久化**
+- [x] **Step 5：核对安装目录内容与构建 manifest；发现 stale chunk、SHA 不一致或旧 runtime 即判失败**
+- [x] **Step 6：所有验收行均为通过后，才允许把精确 EXE 描述为 0.54.48 验收候选**
+
+网页登录/OAuth 不包含在上述安装版输入中。KEEP-04 的当前“通过”仅指本地 state、fragment、取消、超时、断线和错误语义合同；真实网页登录链路按用户 2026-08-26 指示延期，未打开登录页、未触发授权，也未用替代证据声称登录成功。
 
 ## 5. 防止“执行中做偏”的强制机制
 
