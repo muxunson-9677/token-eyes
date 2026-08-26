@@ -45,3 +45,36 @@ test("Windows NSIS installer preinstall hook stops only Token Eyes bundled node"
     "installer must not kill every node.exe on the machine",
   );
 });
+
+test("Windows NSIS installer postinstall hook removes only superseded bundled runtimes", () => {
+  const configPath = path.join(repoRoot, "src-tauri", "tauri.conf.json");
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const hookPath = path.join(repoRoot, "src-tauri", config.bundle.windows.nsis.installerHooks);
+  const hookSource = fs.readFileSync(hookPath, "utf8");
+
+  assert.match(
+    hookSource,
+    /!macro\s+NSIS_HOOK_POSTINSTALL/,
+    "hook file must define a postinstall cleanup hook",
+  );
+  assert.match(
+    hookSource,
+    /"\$INSTDIR"\s+"\$\{VERSION\}"/,
+    "cleanup hook must pass the resolved install directory and current version",
+  );
+  assert.match(
+    hookSource,
+    /-Filter 'EmbeddedServer-\*'/,
+    "cleanup hook must enumerate only versioned bundled runtime directories",
+  );
+  assert.match(
+    hookSource,
+    /\.Name -ne \('EmbeddedServer-' \+ \$\$CurrentVersion\)/,
+    "cleanup hook must preserve the runtime belonging to the version just installed",
+  );
+  assert.match(
+    hookSource,
+    /Remove-Item -LiteralPath \$\$_\.FullName -Recurse -Force/,
+    "cleanup hook must remove superseded runtime directories by literal path",
+  );
+});

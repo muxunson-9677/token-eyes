@@ -13,3 +13,15 @@
   FileClose $0
   nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\token-eyes-stop-running.ps1" "$INSTDIR"'
 !macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+  InitPluginsDir
+  FileOpen $0 "$PLUGINSDIR\token-eyes-prune-runtimes.ps1" w
+  FileWrite $0 "param([string]$$InstallDir, [string]$$CurrentVersion)$\r$\n"
+  FileWrite $0 "if ([string]::IsNullOrWhiteSpace($$InstallDir) -or [string]::IsNullOrWhiteSpace($$CurrentVersion) -or -not (Test-Path -LiteralPath $$InstallDir)) { exit 0 }$\r$\n"
+  FileWrite $0 "Get-ChildItem -LiteralPath $$InstallDir -Directory -Filter 'EmbeddedServer-*' -ErrorAction SilentlyContinue |$\r$\n"
+  FileWrite $0 "  Where-Object { $$_.Name -ne ('EmbeddedServer-' + $$CurrentVersion) } |$\r$\n"
+  FileWrite $0 "  ForEach-Object { Remove-Item -LiteralPath $$_.FullName -Recurse -Force -ErrorAction Stop }$\r$\n"
+  FileClose $0
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\token-eyes-prune-runtimes.ps1" "$INSTDIR" "${VERSION}"'
+!macroend
