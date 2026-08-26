@@ -232,7 +232,8 @@ it("matches the cost-and-quota card hierarchy with account, cost, detailed valid
   expect(card.querySelector('img[src="/brand-logos/codex.svg"]')).not.toBeNull();
   const identityMeta = within(card).getByTestId("token-plan-card-identity-meta");
   expect(within(card).getByTestId("token-plan-card-copy")).toContainElement(identityMeta);
-  expect(identityMeta).toHaveTextContent("ale***@example.com");
+  expect(identityMeta).toHaveTextContent("当前官方账户已绑定");
+  expect(identityMeta).not.toHaveTextContent("alex@example.com");
   expect(identityMeta).toHaveTextContent("99 元");
   expect(identityMeta).not.toHaveTextContent("套餐成本");
   expect(identityMeta).not.toHaveTextContent("未设置");
@@ -258,8 +259,7 @@ it("matches the cost-and-quota card hierarchy with account, cost, detailed valid
   expect(validity).toHaveClass("tt-token-plan-summary-expiry--single-line");
 });
 
-it("uses the authorized account and lets settings switch between masked and full email", async () => {
-  const user = userEvent.setup();
+it("uses the authorized binding state without rendering account identifiers", async () => {
   window.localStorage.removeItem("token-eyes.settings.token-plan.show-full-email.v1");
   getTokenPlans.mockResolvedValue({
     records: [{
@@ -276,22 +276,17 @@ it("uses the authorized account and lets settings switch between masked and full
 
   const meta = await screen.findByTestId("token-plan-card-identity-meta");
   const account = meta.querySelector(".tt-token-plan-card-account");
-  expect(meta).toHaveTextContent("aut***@example.com");
+  expect(meta).toHaveTextContent("当前官方账户已绑定");
   expect(account).not.toHaveClass("tt-token-plan-card-account--full");
   expect(meta).not.toHaveTextContent("wrong-account@example.com");
   expect(meta).not.toHaveTextContent("authorized@example.com");
-
-  await user.click(screen.getByRole("button", { name: "显示完整邮箱" }));
-
-  expect(meta).toHaveTextContent("authorized@example.com");
-  expect(account).toHaveClass("tt-token-plan-card-account--full");
+  expect(screen.queryByRole("button", { name: "显示完整邮箱" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "隐藏邮箱" })).not.toBeInTheDocument();
   expect(window.localStorage.getItem("token-eyes.settings.token-plan.show-full-email.v1"))
-    .toBe("1");
-  expect(screen.getByRole("button", { name: "隐藏邮箱" })).toBeInTheDocument();
+    .toBeNull();
 });
 
-it("refreshes a connected Cursor account when showing a previously masked email", async () => {
-  const user = userEvent.setup();
+it("does not refresh or reveal a connected Cursor account solely for an identifier", async () => {
   window.localStorage.removeItem("token-eyes.settings.token-plan.show-full-email.v1");
   const maskedRecord = {
     ...RECORD,
@@ -342,17 +337,15 @@ it("refreshes a connected Cursor account when showing a previously masked email"
 
   render(<TokenPlanSection />);
 
-  expect(await screen.findByText("ale***@example.com")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "显示完整邮箱" }));
-
-  await waitFor(() => {
-    expect(verifyCursorConsoleSession).toHaveBeenCalledWith("cursor/session-1");
-    expect(screen.getByText("alex.authorized@example.com")).toBeInTheDocument();
-  });
-  expect(screen.queryByText("ale***@example.com")).not.toBeInTheDocument();
+  const meta = await screen.findByTestId("token-plan-card-identity-meta");
+  expect(meta).toHaveTextContent("当前官方账户已绑定");
+  expect(meta).not.toHaveTextContent("ale***@example.com");
+  expect(meta).not.toHaveTextContent("alex.authorized@example.com");
+  expect(screen.queryByRole("button", { name: "显示完整邮箱" })).not.toBeInTheDocument();
+  expect(verifyCursorConsoleSession).not.toHaveBeenCalled();
 });
 
-it("refreshes a masked Cursor email on startup when full-email mode is already enabled", async () => {
+it("ignores the legacy full-email preference and keeps Cursor identifiers hidden", async () => {
   window.localStorage.setItem("token-eyes.settings.token-plan.show-full-email.v1", "1");
   const maskedRecord = {
     ...RECORD,
@@ -402,11 +395,12 @@ it("refreshes a masked Cursor email on startup when full-email mode is already e
 
   render(<TokenPlanSection />);
 
-  await waitFor(() => {
-    expect(verifyCursorConsoleSession).toHaveBeenCalledWith("cursor/session-1");
-    expect(screen.getByText("alex.authorized@example.com")).toBeInTheDocument();
-  });
-  expect(screen.getByRole("button", { name: "隐藏邮箱" })).toBeInTheDocument();
+  const meta = await screen.findByTestId("token-plan-card-identity-meta");
+  expect(meta).toHaveTextContent("当前官方账户已绑定");
+  expect(meta).not.toHaveTextContent("ale***@example.com");
+  expect(meta).not.toHaveTextContent("alex.authorized@example.com");
+  expect(screen.queryByRole("button", { name: "隐藏邮箱" })).not.toBeInTheDocument();
+  expect(verifyCursorConsoleSession).not.toHaveBeenCalled();
 });
 
 it("renders complete quota and subscription details immediately inside each plan card", async () => {
@@ -427,7 +421,8 @@ it("renders complete quota and subscription details immediately inside each plan
 
   await expandPlan("Max");
   const detail = await screen.findByTestId("token-plan-detail-plan-1");
-  expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("工作账户");
+  expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("未绑定官方账户");
+  expect(screen.getByTestId("token-plan-card-identity-meta")).not.toHaveTextContent("工作账户");
   expect(detail).not.toHaveTextContent("10 / 50 · 40");
   expect(within(detail).getByTestId("token-plan-quota-window-percent")).toHaveTextContent("20%");
   expect(detail).not.toHaveTextContent("已用额度");

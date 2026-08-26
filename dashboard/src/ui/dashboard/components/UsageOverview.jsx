@@ -807,11 +807,15 @@ const WORKBUDDY_GROUP_NAME_KEYS = {
 };
 
 function formatWorkbuddyCredits(value) {
-  return Number(value || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (value === null || value === undefined) return copy("data_sources.unknown");
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? amount.toLocaleString("en-US", { maximumFractionDigits: 2 })
+    : copy("data_sources.unknown");
 }
 
 /**
- * V4 item-3c: WorkBuddy account + credit packages (基础体验包 / 活动赠送包 /
+ * V4 item-3c: WorkBuddy plan + credit packages (基础体验包 / 活动赠送包 /
  * 加量包) inside the expanded overview card — the same numbers the official
  * client's 账号管理 screen shows, read via the local codebuddy.cn relay.
  */
@@ -828,24 +832,41 @@ function WorkbuddyQuotaSection({ color }) {
       alive = false;
     };
   }, []);
-  if (!quota || quota.signed_in === false) return null;
+  if (!quota) return null;
   const groups = Array.isArray(quota.groups) ? quota.groups : [];
-  const accountText = [quota.plan, quota.account?.nickname, quota.account?.phone_masked]
-    .filter(Boolean)
-    .join(" · ");
+  const planText = typeof quota.plan === "string" ? quota.plan.trim() : "";
+  const statusCopyKey = quota.signed_in === false
+    ? "limits.status.not_connected"
+    : quota.error === "unauthorized"
+      ? "limits.workbuddy.error_unauthorized"
+      : quota.error
+        ? "limits.workbuddy.error_fetch"
+        : groups.length === 0
+          ? "limits.status.no_data"
+          : null;
   return (
     <div
       className="mb-4 pb-4 border-b border-oai-gray-200 dark:border-oai-gray-700"
       data-testid="workbuddy-quota-section"
     >
-      {accountText ? (
-        <p className="mb-2 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400" data-testid="workbuddy-account-line">
-          {accountText}
+      {planText ? (
+        <p className="mb-2 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400" data-testid="workbuddy-plan-line">
+          {planText}
         </p>
       ) : null}
       <div className="space-y-2">
+        {statusCopyKey ? (
+          <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400" data-testid="workbuddy-quota-status">
+            {copy(statusCopyKey)}
+          </p>
+        ) : null}
         {groups.map((group) => {
-          const usedPct = Math.max(0, Math.min(100, Number(group.used_percent) || 0));
+          const parsedUsedPct = group.used_percent === null || group.used_percent === undefined
+            ? null
+            : Number(group.used_percent);
+          const usedPct = Number.isFinite(parsedUsedPct)
+            ? Math.max(0, Math.min(100, parsedUsedPct))
+            : null;
           return (
             <div key={group.id} data-testid="workbuddy-credit-row" data-group={group.id}>
               <div className="flex items-baseline gap-3 mb-1">
@@ -863,13 +884,14 @@ function WorkbuddyQuotaSection({ color }) {
               <div
                 className="h-[3px] bg-oai-gray-100 dark:bg-oai-gray-800 rounded-full overflow-hidden"
                 role="progressbar"
-                aria-valuenow={usedPct}
+                aria-valuenow={usedPct ?? undefined}
+                aria-valuetext={usedPct === null ? copy("data_sources.unknown") : undefined}
                 aria-valuemin={0}
                 aria-valuemax={100}
               >
                 <div
                   className="h-full transition-[width] duration-500 ease-out"
-                  style={{ width: `${usedPct}%`, backgroundColor: color, opacity: 0.45 }}
+                  style={{ width: `${usedPct ?? 0}%`, backgroundColor: color, opacity: 0.45 }}
                 />
               </div>
             </div>

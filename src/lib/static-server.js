@@ -1,4 +1,3 @@
-const fs = require("node:fs");
 const fsPromises = require("node:fs/promises");
 const path = require("node:path");
 
@@ -42,14 +41,15 @@ async function serveStaticFile(baseDir, pathname, res) {
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
     const isHtml = ext === ".html";
 
+    const content = await fsPromises.readFile(filePath);
+    if (!isHtml && content.length === 0) return false;
+
     res.writeHead(200, {
       "Content-Type": contentType,
-      "Content-Length": stat.size,
+      "Content-Length": content.length,
       "Cache-Control": isHtml ? "no-cache" : "public, max-age=31536000, immutable",
     });
-
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
+    res.end(content);
     return true;
   } catch (_e) {
     return false;

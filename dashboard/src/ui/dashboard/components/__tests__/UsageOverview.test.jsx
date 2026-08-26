@@ -1,9 +1,17 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { copy } from "../../../../lib/copy";
 import { UsageOverview } from "../UsageOverview.jsx";
 
 const breakdownProps = [];
+const { getWorkbuddyQuotaMock } = vi.hoisted(() => ({
+  getWorkbuddyQuotaMock: vi.fn(),
+}));
+
+vi.mock("../../../../lib/api", () => ({
+  getWorkbuddyQuota: getWorkbuddyQuotaMock,
+}));
 
 vi.mock("../ContextBreakdownPanel.jsx", () => ({
   ContextBreakdownPanel: (props) => {
@@ -51,6 +59,11 @@ const mixedFleet = [
 ];
 
 describe("UsageOverview", () => {
+  beforeEach(() => {
+    getWorkbuddyQuotaMock.mockReset();
+    getWorkbuddyQuotaMock.mockResolvedValue({ signed_in: false });
+  });
+
   it("hides the primary total when it was not provided", () => {
     render(
       <UsageOverview
@@ -520,5 +533,118 @@ describe("UsageOverview", () => {
     expect(screen.getByTestId("usage-summary-value")).toHaveAttribute("aria-label", "124亿");
     expect(screen.getByTestId("usage-summary-number")).toHaveTextContent("124");
     expect(screen.getByTestId("usage-summary-unit")).toHaveTextContent("亿");
+  });
+
+  it("keeps unknown WorkBuddy Credits distinct from exact zero without exposing account fields", async () => {
+    getWorkbuddyQuotaMock.mockResolvedValueOnce({
+      signed_in: true,
+      plan: "PRO",
+      account: {
+        nickname: "SYNTHETIC_PRIVATE_NICKNAME",
+        phone_masked: "SYNTHETIC_PRIVATE_PHONE",
+        type: "synthetic",
+      },
+      groups: [
+        {
+          id: "base",
+          items: null,
+          total: null,
+          remain: null,
+          used: null,
+          used_percent: null,
+        },
+        {
+          id: "extra",
+          items: 1,
+          total: 100,
+          remain: 0,
+          used: 100,
+          used_percent: 100,
+        },
+      ],
+    });
+    const user = userEvent.setup();
+
+    render(
+      <UsageOverview
+        period="total"
+        periods={[{ key: "total", label: "Total" }]}
+        summaryLabel="Total"
+        summaryValue="100"
+        fleetData={[
+          {
+            source: "workbuddy",
+            label: "WorkBuddy",
+            totalPercent: "100.0",
+            usage: 100,
+            usd: 0,
+            billingMode: "token_plan",
+            billingModes: ["token_plan"],
+            models: [{ id: "workbuddy", name: "WorkBuddy", share: 100, usage: 100, cost: 0 }],
+          },
+        ]}
+      />,
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /WorkBuddy/i }));
+    });
+    const section = await screen.findByTestId("workbuddy-quota-section");
+    const rows = within(section).getAllByTestId("workbuddy-credit-row");
+    const unknownRow = rows.find((row) => row.dataset.group === "base");
+    const zeroRow = rows.find((row) => row.dataset.group === "extra");
+
+    expect(unknownRow).toHaveTextContent(copy("data_sources.unknown"));
+    expect(unknownRow).not.toHaveTextContent("null");
+    expect(unknownRow).not.toHaveTextContent(
+      copy("limits.workbuddy.credits_remaining", { remain: "0", total: "0" }),
+    );
+    expect(within(unknownRow).getByRole("progressbar")).not.toHaveAttribute("aria-valuenow");
+    expect(within(unknownRow).getByRole("progressbar")).toHaveAttribute(
+      "aria-valuetext",
+      copy("data_sources.unknown"),
+    );
+    expect(zeroRow).toHaveTextContent(
+      copy("limits.workbuddy.credits_remaining", { remain: "0", total: "100" }),
+    );
+    expect(section).not.toHaveTextContent("SYNTHETIC_PRIVATE_NICKNAME");
+    expect(section).not.toHaveTextContent("SYNTHETIC_PRIVATE_PHONE");
+  });
+
+  it("shows a fixed WorkBuddy unreadable state instead of a blank quota section", async () => {
+    getWorkbuddyQuotaMock.mockResolvedValueOnce({
+      signed_in: null,
+      plan: null,
+      groups: [],
+      fetched_at: null,
+      error: "unavailable",
+    });
+    const user = userEvent.setup();
+    render(
+      <UsageOverview
+        period="total"
+        periods={[{ key: "total", label: "Total" }]}
+        summaryLabel="Total"
+        summaryValue="100"
+        fleetData={[{
+          source: "workbuddy",
+          label: "WorkBuddy",
+          totalPercent: "100.0",
+          usage: 100,
+          usd: null,
+          billingMode: "token_plan",
+          billingModes: ["token_plan"],
+          models: [{ id: "workbuddy", name: "WorkBuddy", share: 100, usage: 100, cost: null }],
+        }]}
+      />,
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /WorkBuddy/i }));
+    });
+
+    expect(await screen.findByTestId("workbuddy-quota-status")).toHaveTextContent(
+      copy("limits.workbuddy.error_fetch"),
+    );
   });
 });

@@ -3511,6 +3511,26 @@ function sqliteStringLiteral(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function normalizeObservedProviderId(value) {
+  const provider = String(value || "").trim().toLowerCase();
+  if (!provider) return null;
+  if (provider.startsWith("deepseek")) return "deepseek";
+  if (provider === "xiaomi" || provider.startsWith("mimo")) return "xiaomi_mimo";
+  return provider.replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || null;
+}
+
+function hermesBillingAttribution(row) {
+  const explicitMode = String(row?.billing_mode || "").trim();
+  const providerId = normalizeObservedProviderId(row?.billing_provider);
+  const endpoint = typeof row?.billing_base_url === "string" ? row.billing_base_url.trim() : "";
+  return {
+    billing_mode: explicitMode || (providerId && endpoint ? "api_key" : "unknown"),
+    billing_mode_confidence: "provider_receipt",
+    provider_id: providerId,
+    endpoint,
+  };
+}
+
 // UNC paths (\\wsl$\Ubuntu\..., \\wsl.localhost\..., \\server\share\...) make
 // sqlite3.exe fail with "database is locked (5)" on Windows because the Plan 9
 // / SMB bridge can't grant the locks SQLite asks for — even after `wsl
@@ -3587,6 +3607,109 @@ function hasLegacyHermesDefaultState(hermesState) {
   );
 }
 
+const HERMES_ATTRIBUTION_VERSION = 2;
+
+function hermesRecordTotals(record) {
+  const totals = initTotals();
+  totals.input_tokens = toNonNegativeInt(record?.input_tokens);
+  totals.cached_input_tokens = toNonNegativeInt(record?.cached_input_tokens ?? record?.cache_read_tokens);
+  totals.cache_creation_input_tokens = toNonNegativeInt(record?.cache_creation_input_tokens ?? record?.cache_write_tokens);
+  totals.output_tokens = toNonNegativeInt(record?.output_tokens);
+  totals.reasoning_output_tokens = toNonNegativeInt(record?.reasoning_output_tokens ?? record?.reasoning_tokens);
+  totals.total_tokens = toNonNegativeInt(record?.total_tokens)
+    || totals.input_tokens + totals.cached_input_tokens + totals.cache_creation_input_tokens
+      + totals.output_tokens + totals.reasoning_output_tokens;
+  totals.billable_total_tokens = toNonNegativeInt(record?.billable_total_tokens ?? totals.total_tokens);
+  totals.conversation_count = toNonNegativeInt(record?.conversation_count ?? record?.message_count);
+  return totals;
+}
+
+function collectHermesAttributionEvidence(dbPaths, sqliteOptions) {
+  const buckets = new Map();
+  const paths = [dbPaths.default, ...Object.values(dbPaths.profiles || {})].filter(Boolean);
+  for (const currentDbPath of paths) {
+    for (const row of readHermesSessions(currentDbPath, 0, [], sqliteOptions)) {
+      const attribution = normalizeUsageAttribution(hermesBillingAttribution(row));
+      if (attribution.billing_mode === "unknown") continue;
+      const epochSec = row.ended_at == null ? Number(row.started_at) : Number(row.ended_at);
+      if (!Number.isFinite(epochSec) || epochSec <= 0) continue;
+      const bucketStart = toUtcHalfHourStart(new Date(epochSec * 1000).toISOString());
+      const model = normalizeModelInput(row.model) || "hermes-agent";
+      if (!bucketStart) continue;
+      const key = bucketKey("hermes", model, bucketStart);
+      if (!buckets.has(key)) buckets.set(key, { model, bucketStart, slices: new Map() });
+      const group = buckets.get(key);
+      const mode = attribution.billing_mode;
+      if (!group.slices.has(mode)) {
+        group.slices.set(mode, { totals: initTotals(), attribution });
+      } else {
+        mergeProviderAttribution(group.slices.get(mode), attribution);
+      }
+      addTotals(group.slices.get(mode).totals, hermesRecordTotals(row));
+    }
+  }
+  return buckets;
+}
+
+async function migrateHermesAttribution({ queuePath, hourlyState, dbPaths, sqliteOptions }) {
+  const evidence = collectHermesAttributionEvidence(dbPaths, sqliteOptions);
+  if (evidence.size === 0) return new Set();
+  let raw = "";
+  try {
+    raw = await fs.readFile(queuePath, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  const latest = new Map();
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      if (normalizeSourceInput(row?.source) !== "hermes") continue;
+      const model = normalizeModelInput(row?.model) || DEFAULT_MODEL;
+      const hourStart = typeof row?.hour_start === "string" ? row.hour_start : "";
+      if (!hourStart) continue;
+      const mode = normalizeUsageAttribution(row).billing_mode;
+      latest.set(`${bucketKey("hermes", model, hourStart)}${BUCKET_SEPARATOR}${mode}`, row);
+    } catch { }
+  }
+
+  const touched = new Set();
+  const zeroRows = [];
+  for (const [key, group] of evidence) {
+    const currentRows = [...latest.entries()]
+      .filter(([identity]) => identity.startsWith(`${key}${BUCKET_SEPARATOR}`))
+      .map(([, row]) => row)
+      .filter((row) => Number(row?.total_tokens || 0) > 0);
+    if (currentRows.length !== 1) continue;
+    const current = currentRows[0];
+    if (normalizeUsageAttribution(current).billing_mode !== "unknown") continue;
+    const evidenceTotals = initTotals();
+    for (const slice of group.slices.values()) addTotals(evidenceTotals, slice.totals);
+    if (totalsKey(evidenceTotals) !== totalsKey(hermesRecordTotals(current))) continue;
+    const bucket = hourlyState.buckets?.[key];
+    if (!bucket?.totals || totalsKey(bucket.totals) !== totalsKey(evidenceTotals)) continue;
+
+    bucket.attributionBuckets = Object.fromEntries(
+      [...group.slices.entries()].map(([mode, slice]) => [mode, {
+        totals: cloneTotals(slice.totals),
+        attribution: normalizeUsageAttribution(slice.attribution),
+      }]),
+    );
+    bucket.attributionQueuedKeys = {};
+    const zero = initTotals();
+    zeroRows.push(serializeUsageQueueRecord({
+      source: "hermes",
+      model: group.model,
+      hour_start: group.bucketStart,
+      ...zero,
+    }, normalizeUsageAttribution(current)));
+    touched.add(key);
+  }
+  await appendJsonlLines(queuePath, zeroRows);
+  return touched;
+}
+
 async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, onProgress, sqliteOptions } = {}) {
   await ensureDir(path.dirname(queuePath));
   const hermesState = cursors.hermes && typeof cursors.hermes === "object" ? cursors.hermes : {};
@@ -3602,7 +3725,9 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
   const updatedAt = new Date().toISOString();
   let recordsProcessed = 0;
   let eventsAggregated = 0;
-  const touchedBuckets = new Set();
+  const touchedBuckets = Number(hermesState.attributionVersion || 0) < HERMES_ATTRIBUTION_VERSION
+    ? await migrateHermesAttribution({ queuePath, hourlyState, dbPaths, sqliteOptions })
+    : new Set();
 
   function ingestProfile(dbPath, dbState) {
     const trackedUnfinishedSessionIds = Array.isArray(dbState.unfinishedSessionIds)
@@ -3706,12 +3831,7 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
       };
 
       const bucket = getHourlyBucket(hourlyState, "hermes", model, bucketStart);
-      addAttributedTotals(bucket, delta, {
-        billing_mode: row.billing_mode,
-        billing_mode_confidence: "provider_receipt",
-        provider_id: row.billing_provider,
-        endpoint: row.billing_base_url,
-      });
+      addAttributedTotals(bucket, delta, hermesBillingAttribution(row));
       touchedBuckets.add(bucketKey("hermes", model, bucketStart));
       eventsAggregated++;
 
@@ -3758,6 +3878,7 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
   cursors.hourly = hourlyState;
   cursors.hermes = {
     ...hermesState,
+    attributionVersion: HERMES_ATTRIBUTION_VERSION,
     updatedAt, // Update the overall profile state timestamp even if the DB doesn't exist for the fast-path check
   };
 
@@ -6035,8 +6156,8 @@ async function listDeepSeekHarnessSessionFiles(dshHome = resolveDeepSeekHarnessH
   return out;
 }
 
-const DEEPSEEK_HARNESS_NORMALIZATION_VERSION = 2;
-const DEEPSEEK_HARNESS_BUCKET_STATE_VERSION = 3;
+const DEEPSEEK_HARNESS_NORMALIZATION_VERSION = 3;
+const DEEPSEEK_HARNESS_BUCKET_STATE_VERSION = 4;
 
 function normalizeDeepSeekHarnessUsage(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -6070,6 +6191,7 @@ async function readDeepSeekHarnessSession(filePath) {
 
 function extractDeepSeekHarnessFileTotals(text, fallbackTimestamp) {
   let currentModel = DEFAULT_MODEL;
+  let currentAttribution = normalizeUsageAttribution(null);
   const samples = new Map();
   for (const line of String(text || "").split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -6081,6 +6203,12 @@ function extractDeepSeekHarnessFileTotals(text, fallbackTimestamp) {
     }
     if (event?.type === "request/context") {
       currentModel = normalizeModelInput(event?.data?.model) || DEFAULT_MODEL;
+      const providerId = normalizeObservedProviderId(event?.data?.provider);
+      currentAttribution = normalizeUsageAttribution(providerId ? {
+        billing_mode: "api_key",
+        billing_mode_confidence: "provider_receipt",
+        provider_id: providerId,
+      } : null);
       continue;
     }
     const turn = event?.data?.turn;
@@ -6094,12 +6222,12 @@ function extractDeepSeekHarnessFileTotals(text, fallbackTimestamp) {
       : fallbackTimestamp;
     if (event.type === "assistant/chunk" && event?.data?.chunk?.type === "usage") {
       const usage = normalizeDeepSeekHarnessUsage(event.data.chunk.usage);
-      if (usage) samples.set(key, { model: currentModel, timestamp, usage, final: false });
+      if (usage) samples.set(key, { model: currentModel, timestamp, usage, attribution: currentAttribution, final: false });
       continue;
     }
     if (event.type === "assistant/message") {
       const usage = normalizeDeepSeekHarnessUsage(event?.data?.usage);
-      if (usage) samples.set(key, { model: currentModel, timestamp, usage, final: true });
+      if (usage) samples.set(key, { model: currentModel, timestamp, usage, attribution: currentAttribution, final: true });
     }
   }
 
@@ -6108,8 +6236,9 @@ function extractDeepSeekHarnessFileTotals(text, fallbackTimestamp) {
     const model = normalizeModelInput(sample.model) || DEFAULT_MODEL;
     const bucketStart = toUtcHalfHourStart(sample.timestamp || fallbackTimestamp);
     if (!bucketStart) continue;
-    const key = bucketKey("deepseek-harness", model, bucketStart);
-    if (!byBucket[key]) byBucket[key] = { model, bucketStart, totals: initTotals() };
+    const attribution = normalizeUsageAttribution(sample.attribution);
+    const key = `${bucketKey("deepseek-harness", model, bucketStart)}${BUCKET_SEPARATOR}${attribution.billing_mode}`;
+    if (!byBucket[key]) byBucket[key] = { model, bucketStart, attribution, totals: initTotals() };
     addTotals(byBucket[key].totals, sample.usage);
   }
   return byBucket;
@@ -6192,10 +6321,12 @@ async function collectDeepSeekHarnessRetractions(queuePath, hourlyState) {
   return [...identities.values()].filter((entry) => entry.active);
 }
 
-function addDeepSeekHarnessBucketDelta(bucket, delta) {
+function addDeepSeekHarnessBucketDelta(bucket, delta, evidence) {
+  const attribution = normalizeUsageAttribution(evidence);
+  const mode = attribution.billing_mode;
   const slices = bucket.attributionBuckets && typeof bucket.attributionBuckets === "object"
     ? bucket.attributionBuckets
-    : null;
+    : (bucket.attributionBuckets = {});
   addTotals(bucket.totals, delta);
   for (const totalsField of Object.keys(initTotals())) {
     bucket.totals[totalsField] = Math.max(0, Number(bucket.totals[totalsField] || 0));
@@ -6203,16 +6334,22 @@ function addDeepSeekHarnessBucketDelta(bucket, delta) {
   const hasNegativeDelta = Object.keys(initTotals()).some(
     (key) => Number(delta?.[key] || 0) < 0,
   );
-  if (!slices) return;
-  if (!slices.unknown) {
-    slices.unknown = { totals: initTotals(), attribution: normalizeUsageAttribution(null) };
-  }
-  if (hasNegativeDelta) {
+  if (hasNegativeDelta && mode === "unknown") {
     for (const slice of Object.values(slices)) slice.totals = initTotals();
-    slices.unknown.totals = cloneTotals(bucket.totals);
+    slices.unknown = {
+      totals: cloneTotals(bucket.totals),
+      attribution: normalizeUsageAttribution(null),
+    };
     return;
   }
-  addTotals(slices.unknown.totals, delta);
+  if (!slices[mode]) {
+    slices[mode] = { totals: initTotals(), attribution };
+  }
+  mergeProviderAttribution(slices[mode], attribution);
+  addTotals(slices[mode].totals, delta);
+  for (const totalsField of Object.keys(initTotals())) {
+    slices[mode].totals[totalsField] = Math.max(0, Number(slices[mode].totals[totalsField] || 0));
+  }
 }
 
 function deepSeekHarnessRecordTotals(record) {
@@ -6245,6 +6382,9 @@ function restoreDeepSeekHarnessMigrationAttribution(hourlyState, evidence) {
   for (const [key, entries] of byBucket) {
     const bucket = hourlyState.buckets?.[key];
     if (!bucket?.totals) continue;
+    if (attributionSlices(bucket).some((slice) => normalizeUsageAttribution(slice.attribution).billing_mode !== "unknown")) {
+      continue;
+    }
     const trustedTotals = initTotals();
     for (const entry of entries) addTotals(trustedTotals, entry.totals);
     if (totalsKey(trustedTotals) !== totalsKey(bucket.totals)) continue;
@@ -6361,7 +6501,8 @@ async function parseDeepSeekHarnessIncremental({
       : {};
   const hourlyState = normalizeHourlyState(cursors?.hourly);
   const startsBucketMigration =
-    Number(priorState.bucketStateVersion || 0) < DEEPSEEK_HARNESS_BUCKET_STATE_VERSION;
+    Number(priorState.bucketStateVersion || 0) < DEEPSEEK_HARNESS_BUCKET_STATE_VERSION
+    || Number(priorState.normalizationVersion || 0) < DEEPSEEK_HARNESS_NORMALIZATION_VERSION;
   const bucketMigrationPending = startsBucketMigration || priorState.bucketMigrationComplete === false;
   let fileState =
     priorState.files && typeof priorState.files === "object" ? { ...priorState.files } : {};
@@ -6420,7 +6561,11 @@ async function parseDeepSeekHarnessIncremental({
     for (const key of fileBucketKeys) {
       const currentEntry = currentByBucket[key];
       const previousEntry = previousByBucket[key];
-      if (totalsKey(currentEntry?.totals || initTotals()) === totalsKey(previousEntry?.totals || initTotals())) {
+      if (
+        totalsKey(currentEntry?.totals || initTotals()) === totalsKey(previousEntry?.totals || initTotals())
+        && normalizeUsageAttribution(currentEntry?.attribution).billing_mode
+          === normalizeUsageAttribution(previousEntry?.attribution).billing_mode
+      ) {
         continue;
       }
       const delta = diffDeepSeekHarnessTotals(
@@ -6434,7 +6579,7 @@ async function parseDeepSeekHarnessIncremental({
         model,
         bucketStart,
       );
-      addDeepSeekHarnessBucketDelta(bucket, delta);
+      addDeepSeekHarnessBucketDelta(bucket, delta, (currentEntry || previousEntry)?.attribution);
       for (const totalsField of Object.keys(initTotals())) {
         bucket.totals[totalsField] = Math.max(0, Number(bucket.totals[totalsField] || 0));
       }

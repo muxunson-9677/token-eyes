@@ -35,6 +35,8 @@ const {
 } = require("../src/lib/opencode-config");
 const { GROK_HOOK_FILENAME } = require("../src/lib/grok-hook");
 
+const ISOLATED_FIRST_SYNC = Object.freeze({ firstSyncRunner: async () => null });
+
 async function waitForFile(filePath, { timeoutMs = 1500, intervalMs = 50 } = {}) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -180,7 +182,7 @@ test("init preserves existing config fields and custom URLs", async () => {
     );
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"], ISOLATED_FIRST_SYNC);
 
     const config = JSON.parse(await fs.readFile(path.join(trackerDir, "config.json"), "utf8"));
     assert.equal(config.installedAt, "2026-04-01T00:00:00.000Z");
@@ -223,19 +225,31 @@ test("init then uninstall restores original Codex notify (when pre-existing noti
     const originalNotify = 'notify = ["echo", "hello"]\n';
     await fs.writeFile(codexConfigPath, originalNotify, "utf8");
 
+    const cursorsPath = path.join(tmp, ".tokentracker", "tracker", "cursors.json");
+    let firstSyncCalls = 0;
+    const firstSyncRunner = async ({ trackerDir }) => {
+      firstSyncCalls += 1;
+      assert.equal(trackerDir, path.dirname(cursorsPath));
+      await fs.writeFile(
+        cursorsPath,
+        `${JSON.stringify({ updatedAt: "2026-08-23T00:00:00.000Z" })}\n`,
+        "utf8",
+      );
+      return null;
+    };
+
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      { firstSyncRunner },
+    );
 
     const installed = await fs.readFile(codexConfigPath, "utf8");
     assert.match(installed, /^notify\s*=\s*\[.+\]\s*$/m);
     assert.ok(!installed.includes('["echo", "hello"]'), "expected init to override notify");
 
-    const cursorsPath = path.join(tmp, ".tokentracker", "tracker", "cursors.json");
-    // The detached sync child re-parses every provider log on the machine
-    // before writing cursors — measured at ~66s on a data-heavy Windows dev
-    // box. waitForFile polls, so CI stays fast; only slow machines wait long.
-    const cursorsRaw = await waitForFile(cursorsPath, { timeoutMs: 120000 });
-    assert.ok(cursorsRaw, "expected init to trigger sync and write cursors");
+    assert.equal(firstSyncCalls, 1, "expected init to trigger first sync once");
+    const cursorsRaw = await fs.readFile(cursorsPath, "utf8");
     const cursors = JSON.parse(cursorsRaw);
     assert.ok(typeof cursors.updatedAt === "string" && cursors.updatedAt.length > 0);
 
@@ -296,7 +310,10 @@ test("init then uninstall removes notify when none existed", async () => {
     await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const installed = await fs.readFile(codexConfigPath, "utf8");
     assert.match(installed, /^notify\s*=\s*\[.+\]\s*$/m);
@@ -340,7 +357,10 @@ test("init skips Codex notify when config is missing", async () => {
     process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
     await assert.rejects(fs.stat(codexConfigPath), /ENOENT/);
@@ -386,7 +406,10 @@ test("init then uninstall restores original Every Code notify (when config exist
     await fs.writeFile(codeConfigPath, originalNotify, "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const installed = await fs.readFile(codeConfigPath, "utf8");
     assert.match(installed, /notify\s*=\s*\[[^\n]*notify\.cjs[^\n]*--source=every-code[^\n]*\]/);
@@ -440,7 +463,10 @@ test("init skips Every Code notify when config is missing", async () => {
     await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const codeConfigPath = path.join(process.env.CODE_HOME, "config.toml");
     await assert.rejects(fs.stat(codeConfigPath), /ENOENT/);
@@ -584,7 +610,10 @@ test("init then uninstall manages Claude hooks without removing existing hooks",
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const installedRaw = await fs.readFile(settingsPath, "utf8");
     const installed = JSON.parse(installedRaw);
@@ -664,7 +693,10 @@ test("init then uninstall manages Gemini hooks without removing existing hooks",
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const installedRaw = await fs.readFile(settingsPath, "utf8");
     const installed = JSON.parse(installedRaw);
@@ -736,7 +768,10 @@ test("init skips Gemini hooks when config directory is missing", async () => {
     await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     await assert.rejects(fs.stat(process.env.GEMINI_HOME), /ENOENT/);
   } finally {
@@ -779,7 +814,10 @@ test("init creates Gemini settings when directory exists but file is missing", a
     const settingsPath = path.join(process.env.GEMINI_HOME, "settings.json");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const createdRaw = await fs.readFile(settingsPath, "utf8");
     const created = JSON.parse(createdRaw);
@@ -830,7 +868,10 @@ test("init then uninstall manages Opencode plugin without removing other plugins
     await fs.writeFile(existingPluginPath, "// existing\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const pluginPath = path.join(pluginDir, "tokentracker.js");
     const installed = await fs.readFile(pluginPath, "utf8");
@@ -874,7 +915,10 @@ test("init installs Opencode plugin when config dir is missing", async () => {
     await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(
+      ["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      ISOLATED_FIRST_SYNC,
+    );
 
     const pluginPath = path.join(process.env.OPENCODE_CONFIG_DIR, "plugin", "tokentracker.js");
     const installed = await fs.readFile(pluginPath, "utf8");

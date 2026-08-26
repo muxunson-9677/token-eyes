@@ -512,6 +512,7 @@ it.each(["not-connected", "error"])(
 
     const { result } = renderHook(() => useProviderApiBalances());
 
+    await waitFor(() => expect(result.current.balances).toEqual([failedBalance]));
     await waitFor(() => expect(result.current.refreshing).toBe(false));
     expect(result.current.stale).toBe(true);
     expect(result.current.balances).toEqual([failedBalance]);

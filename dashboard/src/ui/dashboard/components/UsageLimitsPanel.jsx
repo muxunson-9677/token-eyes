@@ -334,15 +334,27 @@ const WORKBUDDY_GROUP_NAME_KEYS = {
 };
 
 function formatWorkbuddyCredits(value) {
-  return Number(value || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (value === null || value === undefined) return copy("data_sources.unknown");
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? amount.toLocaleString("en-US", { maximumFractionDigits: 2 })
+    : copy("data_sources.unknown");
 }
 
 /** One credit package row: label + bar + used/total credits (wider right column than LimitBar's %). */
 function WorkbuddyCreditRow({ group, mode }) {
   const remaining = mode === LIMIT_DISPLAY_MODES.REMAINING;
-  const usedPct = Math.max(0, Math.min(100, Number(group.used_percent) || 0));
-  const displayPct = remaining ? 100 - usedPct : usedPct;
-  const label = `${copy(WORKBUDDY_GROUP_NAME_KEYS[group.id] || WORKBUDDY_GROUP_NAME_KEYS.other)} (${group.items})`;
+  const parsedUsedPct = group.used_percent === null || group.used_percent === undefined
+    ? null
+    : Number(group.used_percent);
+  const usedPct = Number.isFinite(parsedUsedPct)
+    ? Math.max(0, Math.min(100, parsedUsedPct))
+    : null;
+  const displayPct = usedPct === null ? null : (remaining ? 100 - usedPct : usedPct);
+  const itemCount = Number.isSafeInteger(group.items) && group.items >= 0
+    ? group.items
+    : copy("data_sources.unknown");
+  const label = `${copy(WORKBUDDY_GROUP_NAME_KEYS[group.id] || WORKBUDDY_GROUP_NAME_KEYS.other)} (${itemCount})`;
   const credits = copy(
     remaining ? "limits.workbuddy.credits_remaining" : "limits.workbuddy.credits_used",
     {
@@ -360,10 +372,17 @@ function WorkbuddyCreditRow({ group, mode }) {
       >
         {label}
       </span>
-      <div className="relative flex-1 bg-oai-gray-100 dark:bg-oai-gray-700/50 rounded-full h-1.5 overflow-hidden">
+      <div
+        className="relative flex-1 bg-oai-gray-100 dark:bg-oai-gray-700/50 rounded-full h-1.5 overflow-hidden"
+        role="progressbar"
+        aria-valuenow={displayPct ?? undefined}
+        aria-valuetext={displayPct === null ? copy("data_sources.unknown") : undefined}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div
-          className={`${barColor(displayPct, mode)} rounded-full h-full transition-[width] duration-500 ease-out`}
-          style={{ width: `${displayPct}%`, minWidth: displayPct > 0 ? "3px" : 0 }}
+          className={`${barColor(displayPct ?? 0, mode)} rounded-full h-full transition-[width] duration-500 ease-out`}
+          style={{ width: `${displayPct ?? 0}%`, minWidth: (displayPct ?? 0) > 0 ? "3px" : 0 }}
         />
       </div>
       <span className="text-[11px] tabular-nums text-oai-gray-500 dark:text-oai-gray-400 text-right shrink-0 whitespace-nowrap">
@@ -374,7 +393,7 @@ function WorkbuddyCreditRow({ group, mode }) {
 }
 
 /**
- * V4 item-3c: WorkBuddy account + credit packages (基础体验包 / 活动赠送包 /
+ * V4 item-3c: WorkBuddy plan + credit packages (基础体验包 / 活动赠送包 /
  * 加量包), read via the local API from codebuddy.cn's billing endpoint —
  * mirrors the official client's 账号管理 screen.
  */
@@ -387,12 +406,7 @@ function WorkbuddyCreditsGroup({ data, mode }) {
       </ToolGroup>
     );
   }
-  const accountText = [
-    data.plan,
-    data.account?.nickname,
-    data.account?.phone_masked,
-  ].filter(Boolean).join(" · ");
-  const title = accountText ? `${baseName} ${accountText}` : baseName;
+  const title = data.plan ? `${baseName} ${data.plan}` : baseName;
   const groups = Array.isArray(data.groups) ? data.groups : [];
   return (
     <div data-testid="workbuddy-credits-group">

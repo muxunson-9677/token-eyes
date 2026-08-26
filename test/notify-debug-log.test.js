@@ -16,12 +16,21 @@ async function runNotify(notifyPath, env) {
 
 async function runInit(env) {
   const root = path.resolve(__dirname, "..");
-  const entry = path.join(root, "bin", "tracker.js");
+  const fixture = path.join(__dirname, "fixtures", "init-noop-first-sync.cjs");
+  const initModule = path.join(root, "src", "commands", "init.js");
 
   await new Promise((resolve, reject) => {
     cp.execFile(
       process.execPath,
-      [entry, "init", "--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"],
+      [
+        fixture,
+        initModule,
+        "--yes",
+        "--no-auth",
+        "--no-open",
+        "--base-url",
+        "https://example.invalid",
+      ],
       { env },
       (err) => {
         if (err) return reject(err);

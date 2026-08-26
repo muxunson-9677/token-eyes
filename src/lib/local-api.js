@@ -42,11 +42,19 @@ const {
   collectCodexLifecycleSessions,
 } = require("./codex-lifecycle-reader");
 const {
+  collectCodexMessageSpans,
+} = require("./codex-message-span-reader");
+const {
   buildWidgetViewModel,
   flattenUsageLimitsPayload,
 } = require("./widget-view-model");
 const { buildValueComparisonViewModel } = require("./value-comparison-view-model");
 const { buildRealtimeSessionViewModel } = require("./realtime-session-view-model");
+const { buildAgentHistoryInventory } = require("./agent-history-inventory");
+const {
+  advanceWorkbuddyDailyObservation,
+  summarizeWorkbuddyQuota,
+} = require("./workbuddy-quota");
 const { getCodexUsageLimits } = require("./usage-limits");
 const {
   accumulateBillingModeAttribution,
@@ -880,6 +888,7 @@ function codexRolloutFileDay(filePath) {
 async function collectCodexRolloutQueueRows({
   codexHome,
   codexHomes,
+  rolloutFiles,
   from = "",
   to = "",
   timeZoneContext = null,
@@ -890,18 +899,20 @@ async function collectCodexRolloutQueueRows({
   const scanScopeKey = [
     "codex-rollout-queue-v1",
     homes.join("\u0001"),
+    Array.isArray(rolloutFiles) ? rolloutFiles.join("\u0001") : "",
     from || "",
     to || "",
     timeZoneContext?.timeZone || "",
     Number.isFinite(timeZoneContext?.offsetMinutes) ? timeZoneContext.offsetMinutes : "",
   ].join("|");
   const rows = await enqueueCodexRolloutScan(scanScopeKey, async () => {
-    const files = await listCodexRolloutFilesFromHomes(homes, {
-      forceRefresh: true,
-    });
+    const usesDirectRolloutFiles = Array.isArray(rolloutFiles) && rolloutFiles.length > 0;
+    const files = usesDirectRolloutFiles
+      ? [...new Set(rolloutFiles.map((filePath) => path.resolve(String(filePath))))]
+      : await listCodexRolloutFilesFromHomes(homes, { forceRefresh: true });
     const minFileDay = from ? shiftDayKey(from, -1) : null;
     const maxFileDay = to ? shiftDayKey(to, 1) : null;
-    const relevantFiles = files.filter((filePath) => {
+    const relevantFiles = usesDirectRolloutFiles ? files : files.filter((filePath) => {
       const fileDay = codexRolloutFileDay(filePath);
       if (fileDay && minFileDay && fileDay < minFileDay) return false;
       if (fileDay && maxFileDay && fileDay > maxFileDay) return false;
@@ -923,6 +934,7 @@ async function collectCodexRolloutQueueRows({
       if (!stat || !stat.isFile()) continue;
 
       let model = "unknown";
+      let sessionId = null;
       const stream = fs.createReadStream(filePath, { encoding: "utf8" });
       const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
@@ -952,6 +964,13 @@ async function collectCodexRolloutQueueRows({
             if (typeof obj.payload.model === "string" && obj.payload.model.trim()) {
               model = obj.payload.model.trim();
             }
+            if (
+              obj.type === "session_meta" &&
+              typeof obj.payload.id === "string" &&
+              obj.payload.id.trim()
+            ) {
+              sessionId = obj.payload.id.trim();
+            }
             continue;
           }
 
@@ -969,11 +988,12 @@ async function collectCodexRolloutQueueRows({
           const hourStart = toUtcHalfHourStart(timestamp);
           if (!hourStart) continue;
 
-          const bucketKey = `codex|${model}|${hourStart}`;
+          const bucketKey = `codex|${sessionId || "aggregate"}|${model}|${hourStart}`;
           if (!buckets.has(bucketKey)) {
             buckets.set(bucketKey, {
               hour_start: hourStart,
               source: "codex",
+              ...(sessionId ? { session_id: sessionId } : {}),
               model,
               input_tokens: 0,
               output_tokens: 0,
@@ -1855,6 +1875,30 @@ function hasAllowedLoopbackOrigin(headers = {}) {
   return true;
 }
 
+const PRIVATE_LOCAL_GET_PATHS = new Set([
+  "/functions/tokentracker-value-comparison",
+  "/functions/tokentracker-realtime-sessions",
+  "/functions/tokentracker-workbuddy-quota",
+  "/functions/tokentracker-token-plans",
+  "/functions/tokentracker-token-plan-console-sessions",
+]);
+
+function privateLocalJson(req, res, data, status = 200) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Methods": "GET",
+    "Access-Control-Allow-Headers": "Content-Type",
+    Vary: "Origin",
+  };
+  const origin = req?.headers?.origin;
+  if (typeof origin === "string" && isAllowedLocalAppOrigin(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  res.writeHead(status, headers);
+  res.end(JSON.stringify(data));
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -2376,11 +2420,14 @@ function createLocalApiHandler({
   credentialStore: injectedCredentialStore,
   detectDataDirectories: detectDataDirectoriesOverride,
   detectAgentEnvironment: detectAgentEnvironmentOverride,
+  detectAllAgentEnvironments: detectAllAgentEnvironmentsOverride,
   codexResetMonitorService: injectedCodexResetMonitorService,
   providerApiTestMode = false,
   providerApiTimeoutMs,
   usageLimitsProvider,
   codexLifecycleProvider,
+  codexRolloutRowsProvider,
+  workbuddyQuotaProvider,
   limitAccountsProvider,
   tokenOnlyDirectoryStatesProvider,
   dataDirectoryPathsResolver,
@@ -2410,6 +2457,8 @@ function createLocalApiHandler({
   );
   const detectDataDirectories = detectDataDirectoriesOverride || detectDataDirectoryPaths;
   const detectAgentEnvironmentForRequest = detectAgentEnvironmentOverride || detectAgentEnvironment;
+  const detectAllAgentEnvironmentsForRequest = detectAllAgentEnvironmentsOverride || detectAllAgentEnvironments;
+  const collectCodexRolloutRowsForRequest = codexRolloutRowsProvider || collectCodexRolloutQueueRows;
   const resolveHandlerDataDirectoryPaths = dataDirectoryPathsResolver || resolveDataDirectoryPaths;
 
   // Server-side cookie relay: captures auth cookies from InsForge cloud responses
@@ -2427,6 +2476,117 @@ function createLocalApiHandler({
   // dashboard can poll freely without hammering the remote API.
   const WORKBUDDY_QUOTA_CACHE_MS = 5 * 60 * 1000;
   const workbuddyQuotaCache = { payload: null, fetchedAtMs: 0 };
+  const workbuddyDailyBalancePath = path.join(trackerDataDir, "workbuddy-daily-balance.json");
+  const WORKBUDDY_PUBLIC_GROUP_IDS = new Set(["base", "activity", "extra", "other"]);
+  const WORKBUDDY_PUBLIC_PLANS = new Set(["FREE", "TRIAL", "PRO"]);
+  const WORKBUDDY_PUBLIC_ERRORS = new Set(["unauthorized", "fetch_failed"]);
+
+  function publicWorkbuddyNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  function publicWorkbuddyQuota(payload) {
+    const source = payload && typeof payload === "object" ? payload : {};
+    const groups = [];
+    const seen = new Set();
+    for (const rawGroup of Array.isArray(source.groups) ? source.groups : []) {
+      const id = String(rawGroup?.id || "").trim().toLowerCase();
+      if (!WORKBUDDY_PUBLIC_GROUP_IDS.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      const items = Number(rawGroup?.items);
+      groups.push({
+        id,
+        items: Number.isSafeInteger(items) && items >= 0 ? items : null,
+        total: publicWorkbuddyNumber(rawGroup?.total),
+        remain: publicWorkbuddyNumber(rawGroup?.remain),
+        used: publicWorkbuddyNumber(rawGroup?.used),
+        used_percent: publicWorkbuddyNumber(rawGroup?.used_percent),
+      });
+    }
+    const plan = String(source.plan || "").trim().toUpperCase();
+    const rawError = String(source.error || "").trim().toLowerCase();
+    return {
+      signed_in: source.signed_in === true ? true : source.signed_in === false ? false : null,
+      plan: WORKBUDDY_PUBLIC_PLANS.has(plan) ? plan : null,
+      groups,
+      fetched_at: safeIsoString(source.fetched_at),
+      error: rawError ? (WORKBUDDY_PUBLIC_ERRORS.has(rawError) ? rawError : "unavailable") : null,
+    };
+  }
+
+  function unavailableWorkbuddyQuota() {
+    return {
+      signed_in: null,
+      plan: null,
+      groups: [],
+      fetched_at: null,
+      error: "unavailable",
+    };
+  }
+
+  function readWorkbuddyDailyBalance() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(workbuddyDailyBalancePath, "utf8"));
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeWorkbuddyDailyBalance(snapshot) {
+    if (!snapshot) return;
+    try {
+      fs.mkdirSync(trackerDataDir, { recursive: true });
+      const tempPath = `${workbuddyDailyBalancePath}.${process.pid}.tmp`;
+      fs.writeFileSync(tempPath, `${JSON.stringify(snapshot)}\n`, { encoding: "utf8", mode: 0o600 });
+      fs.renameSync(tempPath, workbuddyDailyBalancePath);
+    } catch {
+      // Snapshot evidence is optional and must never take down either dashboard.
+    }
+  }
+
+  function attachWorkbuddyDailyObservation(payload, observedAt) {
+    const publicQuota = publicWorkbuddyQuota(payload);
+    if (publicQuota.signed_in !== true || publicQuota.error) return payload;
+    const balance = summarizeWorkbuddyQuota(publicQuota.groups);
+    const day = `${observedAt.getFullYear()}-${String(observedAt.getMonth() + 1).padStart(2, "0")}-${String(observedAt.getDate()).padStart(2, "0")}`;
+    const observation = advanceWorkbuddyDailyObservation(readWorkbuddyDailyBalance(), {
+      day,
+      observedAt: observedAt.toISOString(),
+      remaining: balance.remaining,
+      total: balance.total,
+    });
+    writeWorkbuddyDailyBalance(observation.snapshot);
+    return {
+      ...payload,
+      daily_observation: {
+        remaining: balance.remaining,
+        today_consumed: observation.todayConsumed,
+        evidence_state: observation.evidenceState,
+      },
+    };
+  }
+
+  async function readWorkbuddyQuotaForRequest({ forceRefresh = false } = {}) {
+    const nowMs = nowProvider().getTime();
+    const cached = workbuddyQuotaCache.payload;
+    const fresh = cached && nowMs - workbuddyQuotaCache.fetchedAtMs < WORKBUDDY_QUOTA_CACHE_MS;
+    if (fresh && !forceRefresh) return cached;
+    const provider = typeof workbuddyQuotaProvider === "function"
+      ? workbuddyQuotaProvider
+      : require("./workbuddy-quota").fetchWorkbuddyQuota;
+    const data = await provider({
+      env: handlerEnv,
+      home: handlerHome,
+      platform: process.platform,
+    });
+    const observed = attachWorkbuddyDailyObservation(data, nowProvider());
+    workbuddyQuotaCache.payload = observed;
+    workbuddyQuotaCache.fetchedAtMs = nowMs;
+    return observed;
+  }
 
   function prepareUsageAggregateResponseCache(req, res, url) {
     if (String(req.method || "GET").toUpperCase() !== "GET") return false;
@@ -2766,7 +2926,7 @@ function createLocalApiHandler({
       env: handlerEnv,
       home: handlerHome,
     });
-    const codexRows = await collectCodexRolloutQueueRows({
+    const codexRows = await collectCodexRolloutRowsForRequest({
       codexHomes: dataDirectoryPaths.codexHomes?.length
         ? dataDirectoryPaths.codexHomes
         : [dataDirectoryPaths.codexHome],
@@ -3425,6 +3585,246 @@ function createLocalApiHandler({
       .map((record, index) => ({ ...record, display_order: index }));
   }
 
+  const PUBLIC_OPAQUE_REF_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u;
+  const PUBLIC_SESSION_REF_PATTERN = /^(?:token-plan|provider-api)\/([a-z0-9_]{1,32})\/session\/([A-Za-z0-9_-]{1,128})$/u;
+  const PUBLIC_TOKEN_PLAN_ERROR_MESSAGE = "授权或额度状态暂时不可读取，请稍后重试。";
+  const PUBLIC_STATUS_ERROR_CODE_PATTERN = /^(?:(?:CUSTOM_API|PROVIDER|REFRESH|GLM|MINIMAX|KIMI|CURSOR|CODEX|CLAUDE|BAILIAN|ZCODE|TRAE|XIAOMI|AUTHORIZATION|QUOTA|SESSION|DESKTOP|LEGACY|NON_OFFICIAL)_[A-Z0-9_]+|REAUTH_REQUIRED|TEMPORARY|UNSUPPORTED|COOKIE_SCRAPE_NOT_SUPPORTED|NO_PROVIDER_ADAPTER)$/u;
+
+  function publicOpaqueRef(value) {
+    const normalized = String(value || "").trim();
+    return PUBLIC_OPAQUE_REF_PATTERN.test(normalized) ? normalized : null;
+  }
+
+  function publicNamespacedSessionRef(value, expectedProviderId) {
+    const normalized = String(value || "").trim();
+    const match = PUBLIC_SESSION_REF_PATTERN.exec(normalized);
+    const providerId = String(expectedProviderId || "").trim();
+    return match && match[1] === providerId ? normalized : null;
+  }
+
+  function publicStatusErrorCode(value) {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (!normalized) return "";
+    return normalized.length <= 64 && PUBLIC_STATUS_ERROR_CODE_PATTERN.test(normalized)
+      ? normalized
+      : "UNAVAILABLE";
+  }
+
+  function publicTokenPlanIdentifier(value, maximum = 128) {
+    const normalized = String(value || "").trim();
+    if (!normalized || normalized.length > maximum) return null;
+    if (!/^[A-Za-z0-9_.:-]+$/u.test(normalized)) return null;
+    return normalized;
+  }
+
+  function publicTokenPlanText(value, maximum = 160) {
+    const normalized = String(value || "").trim();
+    if (!normalized || normalized.length > maximum) return null;
+    if (/[^\S\r\n]*[\r\n]/u.test(normalized) || /\S+@\S+\.\S+/u.test(normalized)) return null;
+    if (/^(?:[A-Za-z]:[\\/]|[/\\]{1,2}|file:)/iu.test(normalized) || normalized.includes("\\\\")) return null;
+    return normalized;
+  }
+
+  function publicTokenPlanUrl(value) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    try {
+      const parsed = new URL(value.trim());
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+      parsed.username = "";
+      parsed.password = "";
+      parsed.search = "";
+      parsed.hash = "";
+      return parsed.toString();
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function publicTokenPlanTimestamp(value) {
+    if (value === null || value === undefined || value === "") return "";
+    if (typeof value !== "string") return null;
+    const normalized = value.trim();
+    const parsed = /^\d{4}-\d{2}-\d{2}$/u.test(normalized)
+      ? Date.parse(`${normalized}T00:00:00.000Z`)
+      : Date.parse(normalized);
+    return Number.isFinite(parsed) ? normalized : null;
+  }
+
+  function publicTokenPlanNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function publicResponseMapping(value) {
+    const input = value && typeof value === "object" ? value : {};
+    const output = {};
+    for (const key of ["total_quota_path", "used_quota_path", "remaining_quota_path", "expires_at_path"]) {
+      const candidate = String(input[key] || "").trim();
+      if (candidate && candidate.length <= 128 && /^[A-Za-z0-9_$.[\]-]+$/u.test(candidate)) {
+        output[key] = candidate;
+      }
+    }
+    return output;
+  }
+
+  function publicTokenPlanDetectionConfig(value, providerId) {
+    const input = value && typeof value === "object" ? value : {};
+    const output = {};
+    const official = input.official_account && typeof input.official_account === "object"
+      ? input.official_account
+      : null;
+    if (official) {
+      const accountBindingId = publicOpaqueRef(official.account_binding_id);
+      const sessionRef = publicNamespacedSessionRef(official.session_ref, providerId);
+      const providerHomeUrl = publicTokenPlanUrl(official.provider_home_url);
+      const planName = publicTokenPlanText(official.plan_name, 100);
+      const claudeAccountMode = ["official", "routing"].includes(official.claude_account_mode)
+        ? official.claude_account_mode
+        : null;
+      output.official_account = {
+        ...(providerHomeUrl ? { provider_home_url: providerHomeUrl } : {}),
+        ...(accountBindingId ? { account_binding_id: accountBindingId } : {}),
+        ...(sessionRef ? { session_ref: sessionRef } : {}),
+        ...(planName ? { plan_name: planName } : {}),
+        ...(claudeAccountMode ? { claude_account_mode: claudeAccountMode } : {}),
+      };
+    }
+    const custom = input.custom_api && typeof input.custom_api === "object"
+      ? input.custom_api
+      : null;
+    if (custom) {
+      const requestUrl = publicTokenPlanUrl(custom.request_url);
+      const officialUrl = publicTokenPlanUrl(custom.official_url);
+      output.custom_api = {
+        api_format: custom.api_format === "json_path" ? "json_path" : "json_path",
+        ...(requestUrl ? { request_url: requestUrl } : {}),
+        ...(officialUrl ? { official_url: officialUrl } : {}),
+        method: String(custom.method || "GET").toUpperCase() === "POST" ? "POST" : "GET",
+        response_mapping: publicResponseMapping(custom.response_mapping),
+      };
+    }
+    return output;
+  }
+
+  function publicQuotaWindows(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map((window) => {
+      const input = window && typeof window === "object" ? window : {};
+      const result = {
+        kind: publicTokenPlanIdentifier(input.kind, 64),
+        lane_id: publicTokenPlanIdentifier(input.lane_id, 64),
+        unit: publicTokenPlanIdentifier(input.unit, 64),
+        total: publicTokenPlanNumber(input.total),
+        used: publicTokenPlanNumber(input.used),
+        remaining: publicTokenPlanNumber(input.remaining),
+        percentage: publicTokenPlanNumber(input.percentage),
+        source_type: publicTokenPlanIdentifier(input.source_type, 64),
+        source_url: publicTokenPlanUrl(input.source_url),
+        verified: typeof input.verified === "boolean" ? input.verified : null,
+        content_sha256: /^[a-f0-9]{64}$/u.test(String(input.content_sha256 || ""))
+          ? String(input.content_sha256)
+          : null,
+        is_stale: typeof input.is_stale === "boolean" ? input.is_stale : null,
+        estimated: typeof input.estimated === "boolean" ? input.estimated : null,
+        confidence: publicTokenPlanIdentifier(input.confidence, 32),
+      };
+      const output = Object.fromEntries(Object.entries(result).filter(([, item]) => item !== null));
+      for (const key of ["resets_at", "verified_at", "fetched_at", "valid_from", "valid_until"]) {
+        if (Object.prototype.hasOwnProperty.call(input, key)) {
+          output[key] = input[key] === null ? null : publicTokenPlanTimestamp(input[key]);
+        }
+      }
+      return output;
+    });
+  }
+
+  function publicTokenPlanRecord(record) {
+    const input = record && typeof record === "object" ? record : {};
+    const hasStatusError = input.last_refresh_status === "failed"
+      || ["failed", "auth_required", "temporary", "unsupported"].includes(input.sync_status)
+      || Boolean(input.last_refresh_error)
+      || Boolean(input.last_error_message);
+    const dto = {
+      id: publicOpaqueRef(input.id),
+      source: publicTokenPlanIdentifier(input.source, 64),
+      provider_id: publicTokenPlanIdentifier(input.provider_id, 64),
+      plan_id: publicTokenPlanIdentifier(input.plan_id, 128),
+      plan_label: publicTokenPlanText(input.plan_label, 160),
+      quota_kind: publicTokenPlanIdentifier(input.quota_kind, 64),
+      quota_unit: publicTokenPlanIdentifier(input.quota_unit, 64),
+      quota_source: publicTokenPlanIdentifier(input.quota_source, 64),
+      total_quota: publicTokenPlanNumber(input.total_quota),
+      total_quota_display: publicTokenPlanText(input.total_quota_display, 120) || "",
+      used_quota: publicTokenPlanNumber(input.used_quota),
+      remaining_quota: publicTokenPlanNumber(input.remaining_quota),
+      quota_catalog_version: publicTokenPlanText(input.quota_catalog_version, 64),
+      expires_at: publicTokenPlanTimestamp(input.expires_at),
+      refresh_enabled: input.refresh_enabled === true,
+      refresh_interval_minutes: publicTokenPlanNumber(input.refresh_interval_minutes),
+      refresh_method: publicTokenPlanIdentifier(input.refresh_method, 64),
+      last_refresh_status: publicTokenPlanIdentifier(input.last_refresh_status, 64),
+      last_refresh_error: hasStatusError ? PUBLIC_TOKEN_PLAN_ERROR_MESSAGE : "",
+      last_refresh_at: publicTokenPlanTimestamp(input.last_refresh_at),
+      next_refresh_at: publicTokenPlanTimestamp(input.next_refresh_at),
+      detection_method: publicTokenPlanIdentifier(input.detection_method, 64),
+      detection_config: publicTokenPlanDetectionConfig(input.detection_config, input.provider_id),
+      sync_status: publicTokenPlanIdentifier(input.sync_status, 64),
+      last_sync_attempt_at: publicTokenPlanTimestamp(input.last_sync_attempt_at),
+      last_synced_at: publicTokenPlanTimestamp(input.last_synced_at),
+      last_error_code: publicStatusErrorCode(input.last_error_code),
+      last_error_message: hasStatusError ? PUBLIC_TOKEN_PLAN_ERROR_MESSAGE : "",
+      provider_reported_at: publicTokenPlanTimestamp(input.provider_reported_at),
+      provider_reported_fields: Array.isArray(input.provider_reported_fields)
+        ? TOKEN_PLAN_PROVIDER_FIELD_ORDER.filter((field) => input.provider_reported_fields.includes(field))
+        : [],
+      subscription_amount: publicTokenPlanNumber(input.subscription_amount),
+      subscription_currency: ["USD", "CNY"].includes(input.subscription_currency)
+        ? input.subscription_currency
+        : "",
+      subscription_cycle: ["monthly", "yearly", "one_time"].includes(input.subscription_cycle)
+        ? input.subscription_cycle
+        : "",
+      subscription_start_date: publicTokenPlanTimestamp(input.subscription_start_date),
+      subscription_end_date: publicTokenPlanTimestamp(input.subscription_end_date),
+      created_at: publicTokenPlanTimestamp(input.created_at),
+      updated_at: publicTokenPlanTimestamp(input.updated_at),
+      display_order: Number.isSafeInteger(input.display_order) && input.display_order >= 0
+        ? input.display_order
+        : 0,
+    };
+    if (Array.isArray(input.quota_windows)) dto.quota_windows = publicQuotaWindows(input.quota_windows);
+    const credentialRef = publicOpaqueRef(input.credential_ref);
+    if (credentialRef) dto.credential_ref = credentialRef;
+    for (const key of [
+      "quota_kind",
+      "quota_unit",
+      "quota_source",
+      "total_quota",
+      "total_quota_display",
+      "used_quota",
+      "remaining_quota",
+    ]) {
+      if (!Object.prototype.hasOwnProperty.call(input, key)) delete dto[key];
+    }
+    if (Object.prototype.hasOwnProperty.call(input, "entitlement_revision")) {
+      dto.entitlement_revision = publicTokenPlanIdentifier(input.entitlement_revision, 64);
+    }
+    if (Array.isArray(input.entitlement_windows)) {
+      dto.entitlement_windows = publicQuotaWindows(input.entitlement_windows);
+    }
+    for (const key of ["fetched_at", "observed_at"]) {
+      if (Object.prototype.hasOwnProperty.call(input, key)) dto[key] = publicTokenPlanTimestamp(input[key]);
+    }
+    for (const key of ["source_kind", "support_tier"]) {
+      if (Object.prototype.hasOwnProperty.call(input, key)) {
+        dto[key] = publicTokenPlanIdentifier(input[key], 64);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(input, "partial")) dto.partial = input.partial === true;
+    return dto;
+  }
+
   // ---------------------------------------------------------------------------
   // billing_mode is trusted evidence from a queue/runtime row. Model names,
   // sources, and locally configured plan records are not billing evidence.
@@ -3879,6 +4279,52 @@ function createLocalApiHandler({
     };
   }
 
+  function publicConsoleBalance(value) {
+    if (!value || typeof value !== "object") return null;
+    const providerReportedFields = Array.isArray(value.provider_reported_fields)
+      ? ["balance", "available_balance", "credit_balance"]
+        .filter((field) => value.provider_reported_fields.includes(field))
+      : [];
+    const currency = String(value.currency || "").trim().toUpperCase();
+    return {
+      balance: publicTokenPlanNumber(value.balance),
+      available_balance: publicTokenPlanNumber(value.available_balance),
+      credit_balance: publicTokenPlanNumber(value.credit_balance),
+      currency: /^[A-Z]{3,8}$/u.test(currency) ? currency : null,
+      provider_reported_at: publicTokenPlanTimestamp(value.provider_reported_at),
+      provider_reported_fields: providerReportedFields,
+      fetched_at: publicTokenPlanTimestamp(value.fetched_at),
+      observed_at: publicTokenPlanTimestamp(value.observed_at),
+      source_kind: publicTokenPlanIdentifier(value.source_kind, 64),
+      support_tier: publicTokenPlanIdentifier(value.support_tier, 64),
+      partial: value.partial === true,
+    };
+  }
+
+  function publicConsoleErrorMessage(session) {
+    if (!session?.last_error_message && !session?.last_error_code) return "";
+    if (["temporary"].includes(session.status)) return "服务暂时不可读取，请稍后重试。";
+    if (["unsupported"].includes(session.status)) return "当前授权状态暂不支持读取。";
+    if (["expired", "revoked"].includes(session.status)) return "授权已失效，请重新连接。";
+    return PUBLIC_TOKEN_PLAN_ERROR_MESSAGE;
+  }
+
+  function publicConsoleSession(session) {
+    const input = session && typeof session === "object" ? session : {};
+    return {
+      id: publicOpaqueRef(input.id),
+      provider_id: ALLOWED_CONSOLE_PROVIDER_IDS.has(input.provider_id) ? input.provider_id : null,
+      auth_kind: ALLOWED_AUTH_KINDS.has(input.auth_kind) ? input.auth_kind : null,
+      status: ALLOWED_CONSOLE_STATUSES.has(input.status) ? input.status : "failed",
+      session_ref: publicNamespacedSessionRef(input.session_ref, input.provider_id),
+      connected_at: publicTokenPlanTimestamp(input.connected_at),
+      last_verified_at: publicTokenPlanTimestamp(input.last_verified_at),
+      last_error_code: publicStatusErrorCode(input.last_error_code),
+      last_error_message: publicConsoleErrorMessage(input),
+      balance: publicConsoleBalance(input.balance),
+    };
+  }
+
   function upsertConsoleSession(body) {
     const payload = body && typeof body === "object" ? body : {};
     const config = readTrackerConfig();
@@ -3998,13 +4444,34 @@ function createLocalApiHandler({
     const nativeState = String(native.state_code || "").trim();
     const nativeConnected = Boolean(native.connected);
     const nativeAuthorized = Boolean(native.authorized);
-    const forbiddenNativeKeys = ["authorization", "cookie", "token", "raw_response", "headers"];
-    for (const key of forbiddenNativeKeys) {
-      if (Object.prototype.hasOwnProperty.call(native, key)) {
-        const error = new Error(`native_result must not include sensitive field: ${key}`);
-        error.statusCode = 400;
-        throw error;
+    const forbiddenNativeKeys = new Set([
+      "authorization", "cookie", "cookies", "token", "access_token", "refresh_token", "id_token",
+      "secret", "raw_response", "headers", "account_id", "auth_id", "email", "callback_code",
+      "authorization_code",
+    ]);
+    const pending = [{ value: native, depth: 0 }];
+    let sensitiveField = null;
+    while (pending.length && !sensitiveField) {
+      const { value, depth } = pending.pop();
+      if (!value || typeof value !== "object") continue;
+      if (depth > 12) {
+        sensitiveField = "nested_payload";
+        break;
       }
+      for (const [key, nestedValue] of Object.entries(value)) {
+        if (forbiddenNativeKeys.has(key.toLowerCase())) {
+          sensitiveField = key;
+          break;
+        }
+        if (nestedValue && typeof nestedValue === "object") {
+          pending.push({ value: nestedValue, depth: depth + 1 });
+        }
+      }
+    }
+    if (sensitiveField) {
+      const error = new Error(`native_result must not include sensitive field: ${sensitiveField}`);
+      error.statusCode = 400;
+      throw error;
     }
 
     const verifiedAt = new Date().toISOString();
@@ -4191,10 +4658,10 @@ function createLocalApiHandler({
     const plans = Array.isArray(config?.tokenPlans) ? config.tokenPlans : [];
     return plans
       .map((plan) => normalizeTokenPlanRecord(plan))
-      .filter((plan) => plan.subscription_amount > 0
+      .filter((plan) => plan.subscription_amount >= 0
         && plan.subscription_currency
         && plan.subscription_cycle
-        && plan.subscription_start_date)
+        && (plan.subscription_cycle !== "one_time" || plan.subscription_start_date))
       .map((plan) => normalizeSpendRecord({
         id: `token-plan-cost:${plan.id}`,
         source: String(plan.source || plan.provider_id || "token_plan").trim().toLowerCase(),
@@ -4202,7 +4669,7 @@ function createLocalApiHandler({
         amount: plan.subscription_amount,
         currency: plan.subscription_currency,
         billing_cycle: plan.subscription_cycle,
-        start_date: plan.subscription_start_date,
+        start_date: plan.subscription_start_date || "1970-01-01",
         end_date: plan.subscription_end_date,
         note: "Token Eyes Token Plan",
         created_at: plan.created_at,
@@ -5598,17 +6065,33 @@ function createLocalApiHandler({
     };
   }
 
-  function valueRealtimeRange(range, nowDate) {
+  function valueRealtimeRange(range, nowDate, timeZoneContext = null, requestedMonth = null) {
     const normalized = ["today", "7d", "month", "30d"].includes(range) ? range : "today";
-    const end = new Date(nowDate);
+    const parts = getZonedParts(nowDate, timeZoneContext || {}) || {
+      year: nowDate.getUTCFullYear(), month: nowDate.getUTCMonth() + 1, day: nowDate.getUTCDate(),
+    };
+    const validRequestedMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(requestedMonth || ""))
+      ? String(requestedMonth)
+      : null;
+    const requestedParts = validRequestedMonth ? validRequestedMonth.split("-").map(Number) : null;
+    const end = normalized === "month" && requestedParts
+      ? new Date(Date.UTC(requestedParts[0], requestedParts[1], 0))
+      : new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+    if (normalized === "month" && requestedParts && requestedParts[0] === parts.year && requestedParts[1] === parts.month) {
+      end.setUTCDate(parts.day);
+    }
     const start = new Date(end);
-    if (normalized === "month") start.setUTCDate(1);
+    if (normalized === "month") {
+      start.setUTCDate(1);
+      if (requestedParts) start.setUTCMonth(requestedParts[1] - 1);
+    }
     if (normalized === "7d") start.setUTCDate(start.getUTCDate() - 6);
     if (normalized === "30d") start.setUTCDate(start.getUTCDate() - 29);
     return {
       range: normalized,
       from: start.toISOString().slice(0, 10),
       to: end.toISOString().slice(0, 10),
+      requested_month: validRequestedMonth,
     };
   }
 
@@ -5616,28 +6099,266 @@ function createLocalApiHandler({
     return `${prefix}-${crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 12)}`;
   }
 
-  function publicRealtimeUsageRow(record, index) {
+  function safePublicHttpsUrl(value) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    try {
+      const parsed = new URL(value.trim());
+      if (parsed.protocol !== "https:") return null;
+      parsed.username = "";
+      parsed.password = "";
+      parsed.search = "";
+      parsed.hash = "";
+      return parsed.toString();
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function publicFiniteNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function valueRealtimeObservedAt(record) {
+    if (typeof record?.timestamp === "string") return record.timestamp;
+    return typeof record?.hour_start === "string" ? record.hour_start : null;
+  }
+
+  function publicValueRealtimeEvidence(records, recordPrefix = "record") {
+    const sourceRecords = Array.isArray(records) ? records : [];
+    const observed = sourceRecords
+      .map(valueRealtimeObservedAt)
+      .filter(Boolean)
+      .sort();
+    const models = new Set(sourceRecords.map((record) => String(record?.model || "").trim()).filter(Boolean));
+    const versions = new Set(sourceRecords.map((record) => String(record?.pricing_version || "").trim()).filter(Boolean));
+    const urls = new Set(sourceRecords.map((record) => safePublicHttpsUrl(record?.source_url)).filter(Boolean));
+    const hasPrice = sourceRecords.some((record) => publicFiniteNumber(record?.cost_usd) !== null);
+    const safeRecordRefs = sourceRecords.slice(0, 12).map((record, index) => {
+      const source = normalizeSource(record?.source) || "unknown";
+      const timestamp = valueRealtimeObservedAt(record) || index;
+      const rawRecord = record?.session_key || record?.session_id || record?.request_id || `${source}:${timestamp}:${index}`;
+      return `${recordPrefix}:${publicValueRealtimeId("record", rawRecord)}`;
+    });
+    return {
+      source_kind: sourceRecords.length ? "local_usage_log" : "unavailable",
+      record_count: sourceRecords.length,
+      observed_from: observed[0] || null,
+      observed_to: observed.at(-1) || null,
+      safe_record_refs: safeRecordRefs,
+      pricing: {
+        state: hasPrice ? "estimated" : "unavailable",
+        model: models.size === 1 ? [...models][0] : null,
+        source_url: urls.size === 1 ? [...urls][0] : null,
+        version: versions.size === 1 ? [...versions][0] : null,
+      },
+    };
+  }
+
+  async function readValueRealtimeUsageRows(range, timeZoneContext, { includeCodexRolloutFallback = true } = {}) {
+    const queueRows = readQueueData(qp);
+    const rows = includeCodexRolloutFallback
+      ? await withCodexRolloutRows(queueRows, {
+          from: range.from,
+          to: range.to,
+          timeZoneContext,
+          sources: null,
+        })
+      : queueRows;
+    return rows
+      .filter((row) => {
+        const day = rowDayKey(row, timeZoneContext);
+        return day >= range.from && day <= range.to;
+      })
+      .map((row) => ({ ...row, ...computeRowCostDetailed(row, getPricingOptions()) }));
+  }
+
+  async function readRealtimeUsageRows(range, timeZoneContext, { codexRolloutFiles = [] } = {}) {
+    const queueRows = readQueueData(qp);
+    let rows;
+    if (codexRolloutFiles.length) {
+      const config = readTrackerConfig();
+      const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({ config, env: handlerEnv, home: handlerHome });
+      const codexRows = await collectCodexRolloutRowsForRequest({
+        codexHomes: dataDirectoryPaths.codexHomes?.length
+          ? dataDirectoryPaths.codexHomes
+          : [dataDirectoryPaths.codexHome],
+        rolloutFiles: codexRolloutFiles,
+        from: range.from,
+        to: range.to,
+        timeZoneContext,
+      });
+      rows = codexRows.length > 0
+        ? [...queueRows.filter((row) => normalizeSource(row?.source) !== "codex"), ...codexRows]
+        : queueRows;
+    } else {
+      rows = await withCodexRolloutRows(queueRows, {
+        from: range.from,
+        to: range.to,
+        timeZoneContext,
+      });
+    }
+    return rows
+      .filter((row) => {
+        const day = rowDayKey(row, timeZoneContext);
+        return day >= range.from && day <= range.to;
+      })
+      .map((row) => ({ ...row, ...computeRowCostDetailed(row, getPricingOptions()) }));
+  }
+
+  function configuredPlanAttribution(config) {
+    const plans = [];
+    const bySource = new Map();
+    const orderedPlans = (Array.isArray(config?.tokenPlans) ? config.tokenPlans : [])
+      .map((rawPlan) => normalizeTokenPlanRecord(rawPlan))
+      .sort((left, right) => left.display_order - right.display_order);
+    for (const plan of orderedPlans) {
+      const source = normalizeSource(plan.source || plan.provider_id);
+      const provider = normalizeSource(plan.provider_id || source);
+      const accountBound = Boolean(plan?.detection_config?.official_account?.account_binding_id);
+      if (!source || !provider) continue;
+      const catalogPlan = getPlanById(provider, plan.plan_id);
+      const link = {
+        source,
+        plan_ref: `token-plan/${provider}/${publicValueRealtimeId("plan", plan.id || `${source}:${plan.plan_id}`)}`,
+        account_ref: plan.detection_method === "official_account" && accountBound
+          ? `account/${provider}/official-bound`
+          : `configured/${publicValueRealtimeId("selection", plan.id || `${source}:${plan.plan_id}`)}`,
+        plan_label: String(plan.plan_label || catalogPlan?.display_name || plan.plan_id || provider).slice(0, 120),
+        association_state: plan.detection_method === "official_account" && accountBound
+          ? "configured_current_account"
+          : "configured_plan",
+      };
+      plans.push(link);
+      if (!bySource.has(source)) bySource.set(source, link);
+    }
+    return { plans, bySource };
+  }
+
+  function workbuddyNativeResources(quota) {
+    const publicQuota = publicWorkbuddyQuota(quota);
+    if (quota?.unreadable || publicQuota.error) {
+      return ["remaining", "today_consumed"].map((label) => ({
+        provider: "workbuddy", label, value: null, unit: "Credits", evidence_state: "unavailable",
+      }));
+    }
+    if (publicQuota.signed_in !== true) return [];
+    const balance = summarizeWorkbuddyQuota(publicQuota.groups);
+    const daily = quota?.daily_observation && typeof quota.daily_observation === "object"
+      ? quota.daily_observation
+      : {};
+    const remaining = publicFiniteNumber(daily.remaining ?? balance.remaining);
+    const todayConsumed = publicFiniteNumber(daily.today_consumed);
+    return [
+      {
+        provider: "workbuddy", label: "remaining", value: remaining, unit: "Credits",
+        evidence_state: remaining === null ? "connected_no_exact_data" : "exact",
+      },
+      {
+        provider: "workbuddy", label: "today_consumed", value: todayConsumed, unit: "Credits",
+        evidence_state: todayConsumed === null ? "connected_no_exact_data" : daily.evidence_state === "observed" ? "observed" : "connected_no_exact_data",
+      },
+    ];
+  }
+
+  function spendRecordOverlapsRange(record, from, to) {
+    const start = typeof record?.start_date === "string" ? record.start_date.trim() : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return false;
+    const cycle = String(record?.billing_cycle || "").trim().toLowerCase();
+    if (cycle === "one_time") return start >= from && start <= to;
+    const end = typeof record?.end_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(record.end_date.trim())
+      ? record.end_date.trim()
+      : "9999-12-31";
+    return start <= to && end >= from;
+  }
+
+  function spendRecordHasBillEvidence(record) {
+    const amount = publicFiniteNumber(record?.amount);
+    const currency = String(record?.currency || "").trim().toUpperCase();
+    const cycle = String(record?.billing_cycle || "").trim().toLowerCase();
+    return amount !== null
+      && (currency === "USD" || currency === "CNY")
+      && (cycle === "monthly" || cycle === "yearly" || cycle === "one_time")
+      && /^\d{4}-\d{2}-\d{2}$/.test(String(record?.start_date || ""));
+  }
+
+  function monthRange(monthKey) {
+    const start = new Date(`${monthKey}T00:00:00.000Z`);
+    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0));
+    return { from: monthKey, to: end.toISOString().slice(0, 10) };
+  }
+
+  function attachNativeResourcesToHistory(history, nativeResources) {
+    const bySource = new Map();
+    for (const resource of nativeResources) {
+      const source = normalizeSource(resource?.provider);
+      if (!source) continue;
+      const list = bySource.get(source) || [];
+      list.push(resource);
+      bySource.set(source, list);
+    }
+    return history.map((item) => ({
+      ...item,
+      ...(bySource.has(normalizeSource(item?.source)) ? { native_resources: bySource.get(normalizeSource(item.source)) } : {}),
+    }));
+  }
+
+  function publicActualSpendEvidence(records) {
+    const sourceRecords = Array.isArray(records) ? records : [];
+    const safeRecordRefs = sourceRecords.slice(0, 12).map((record, index) => {
+      const source = String(record?.source || "unknown").trim().toLowerCase() || "unknown";
+      const stableValue = `${source}:${record?.start_date || ""}:${record?.end_date || ""}:${index}`;
+      return `spend:${publicValueRealtimeId("record", stableValue)}`;
+    });
+    return {
+      source_kind: sourceRecords.length ? "local_spend_ledger" : "unavailable",
+      record_count: sourceRecords.length,
+      observed_from: null,
+      observed_to: null,
+      safe_record_refs: safeRecordRefs,
+      pricing: {
+        state: sourceRecords.length ? "reported" : "unavailable",
+        model: null,
+        source_url: null,
+        version: null,
+      },
+    };
+  }
+
+  function publicRealtimeUsageRow(record, index, timeZoneContext = null) {
     const source = normalizeSource(record?.source) || "unknown";
     const timestamp = typeof record?.timestamp === "string"
       ? record.timestamp
       : typeof record?.hour_start === "string" ? record.hour_start : null;
-    const rawSession = record?.session_key || record?.session_id || record?.request_id || `${source}:${timestamp || index}`;
+    const rawSession = record?.session_key || record?.session_id || record?.request_id || null;
+    const firstMessageAt = typeof record?.first_message_at === "string" ? record.first_message_at : null;
+    const lastMessageAt = typeof record?.last_message_at === "string" ? record.last_message_at : null;
+    const activityDay = /^\d{4}-\d{2}-\d{2}$/.test(String(record?.activity_day || ""))
+      ? record.activity_day
+      : codexTimestampDayKey(firstMessageAt || lastMessageAt || timestamp, timeZoneContext);
     return {
-      session_id: publicValueRealtimeId("session", rawSession),
+      session_id: rawSession ? publicValueRealtimeId("session", rawSession) : null,
       source,
       agent_label: source,
       model: typeof record?.model === "string" ? record.model : null,
       parent_session_id: typeof record?.parent_session_id === "string" ? publicValueRealtimeId("session", record.parent_session_id) : null,
       root_task_id: typeof record?.root_task_id === "string" ? publicValueRealtimeId("task", record.root_task_id) : null,
-      project_label: typeof record?.project_label === "string" ? record.project_label.slice(0, 80) : null,
+      project_label: null,
       last_activity_at: timestamp,
-      input_tokens: Number.isFinite(Number(record?.input_tokens)) ? Number(record.input_tokens) : null,
-      output_tokens: Number.isFinite(Number(record?.output_tokens)) ? Number(record.output_tokens) : null,
-      cached_input_tokens: Number.isFinite(Number(record?.cached_input_tokens)) ? Number(record.cached_input_tokens) : null,
-      cache_creation_input_tokens: Number.isFinite(Number(record?.cache_creation_input_tokens)) ? Number(record.cache_creation_input_tokens) : null,
-      reasoning_output_tokens: Number.isFinite(Number(record?.reasoning_output_tokens)) ? Number(record.reasoning_output_tokens) : null,
-      total_tokens: Number.isFinite(Number(record?.total_tokens)) ? Number(record.total_tokens) : null,
-      cost_usd: Number.isFinite(Number(record?.cost_usd)) ? Number(record.cost_usd) : null,
+      activity_day: activityDay,
+      first_message_at: firstMessageAt,
+      last_message_at: lastMessageAt,
+      message_span_state: record?.message_span_state === "exact" ? "exact" : "unavailable",
+      input_tokens: publicFiniteNumber(record?.input_tokens),
+      output_tokens: publicFiniteNumber(record?.output_tokens),
+      cached_input_tokens: publicFiniteNumber(record?.cached_input_tokens),
+      cache_creation_input_tokens: publicFiniteNumber(record?.cache_creation_input_tokens),
+      reasoning_output_tokens: publicFiniteNumber(record?.reasoning_output_tokens),
+      total_tokens: publicFiniteNumber(record?.total_tokens),
+      cost_usd: publicFiniteNumber(record?.cost_usd),
+      pricing_version: typeof record?.pricing_version === "string" ? record.pricing_version.slice(0, 120) : null,
+      source_url: safePublicHttpsUrl(record?.source_url),
     };
   }
 
@@ -5645,9 +6366,22 @@ function createLocalApiHandler({
     return {
       sessionId: publicValueRealtimeId("session", session?.sessionId),
       agent: typeof session?.agent === "string" ? session.agent : "unknown",
-      projectLabel: typeof session?.projectLabel === "string" ? session.projectLabel.slice(0, 80) : null,
+      model: typeof session?.model === "string" ? session.model.slice(0, 120) : null,
+      projectLabel: null,
+      taskLabel: typeof session?.taskLabel === "string" && session.taskLabel.trim()
+        ? session.taskLabel.trim().slice(0, 120)
+        : null,
+      taskRef: typeof session?.taskId === "string" && session.taskId.trim()
+        ? publicValueRealtimeId("task", session.taskId)
+        : null,
       status: typeof session?.status === "string" ? session.status : null,
       updatedAt: typeof session?.updatedAt === "string" ? session.updatedAt : null,
+      activityDay: /^\d{4}-\d{2}-\d{2}$/.test(String(session?.activityDay || ""))
+        ? session.activityDay
+        : null,
+      firstMessageAt: typeof session?.firstMessageAt === "string" ? session.firstMessageAt : null,
+      lastMessageAt: typeof session?.lastMessageAt === "string" ? session.lastMessageAt : null,
+      messageSpanState: session?.messageSpanState === "exact" ? "exact" : "unavailable",
     };
   }
 
@@ -5822,6 +6556,15 @@ function createLocalApiHandler({
   async function handleLocalApi(req, res, url) {
     const p = url.pathname;
 
+    if (
+      String(req.method || "GET").toUpperCase() === "GET"
+      && PRIVATE_LOCAL_GET_PATHS.has(p)
+      && !hasAllowedLoopbackOrigin(req?.headers || {})
+    ) {
+      privateLocalJson(req, res, { ok: false, error: "Forbidden" }, 403);
+      return true;
+    }
+
     if (prepareUsageAggregateResponseCache(req, res, url)) return true;
 
     if (p === "/functions/tokentracker-desktop-widget") {
@@ -5894,117 +6637,465 @@ function createLocalApiHandler({
 
     if (p === "/functions/tokentracker-value-comparison") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {
-        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        privateLocalJson(req, res, { ok: false, error: "Method Not Allowed" }, 405);
         return true;
       }
       try {
         const nowDate = nowProvider();
-        const range = valueRealtimeRange(url.searchParams.get("range") || "month", nowDate);
-        const timeZoneContext = { timeZone: "UTC", offsetMinutes: 0 };
-        const spend = await readSpendTimeseries(range.from, range.to, "day", timeZoneContext);
+        const timeZoneContext = getTimeZoneContext(url);
+        const requestedRange = url.searchParams.get("range") || "month";
+        const currentMonthKey = valueRealtimeRange("today", nowDate, timeZoneContext).to.slice(0, 7);
+        const requestedMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(url.searchParams.get("month") || ""))
+          ? String(url.searchParams.get("month"))
+          : currentMonthKey;
+        let range = valueRealtimeRange(requestedRange, nowDate, timeZoneContext, requestedMonth);
+        const trackerConfig = readTrackerConfig();
+        const rawSpendRecords = Array.isArray(trackerConfig.spendRecords) ? trackerConfig.spendRecords : [];
+        const planCostRecords = tokenPlanCostRecords(trackerConfig);
+        const spendRecords = [
+          ...withoutTokenPlanCostDuplicates(rawSpendRecords.map((record) => normalizeSpendRecord(record)), planCostRecords),
+          ...planCostRecords,
+        ].filter(spendRecordHasBillEvidence);
+        let dataMonth = range.to.slice(0, 7);
+        let monthOptions = [];
+        let availableMonths = [];
+        let historyProbeRows = [];
+        let [spend, valueUsageRows, workbuddyQuota] = await Promise.all([
+          readSpendTimeseries(range.from, range.to, "day", timeZoneContext),
+          readValueRealtimeUsageRows(range, timeZoneContext),
+          readWorkbuddyQuotaForRequest().catch(() => ({ unreadable: true })),
+        ]);
+        if (range.range === "month") {
+          const currentDate = new Date(`${currentMonthKey}-01T00:00:00.000Z`);
+          monthOptions = Array.from({ length: 6 }, (_unused, index) => {
+            const month = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() - index, 1));
+            return month.toISOString().slice(0, 7);
+          });
+          const probeRange = {
+            from: `${monthOptions.at(-1)}-01`,
+            to: valueRealtimeRange("month", nowDate, timeZoneContext, currentMonthKey).to,
+          };
+          historyProbeRows = await readValueRealtimeUsageRows(probeRange, timeZoneContext, { includeCodexRolloutFallback: false });
+          const usageMonths = new Set(historyProbeRows.map((row) => rowDayKey(row, timeZoneContext)?.slice(0, 7)).filter(Boolean));
+          if (valueUsageRows.length) usageMonths.add(requestedMonth);
+          const billedMonths = new Set(monthOptions.filter((month) => {
+            const naturalMonth = monthRange(`${month}-01`);
+            return spendRecords.some((record) => spendRecordOverlapsRange(record, naturalMonth.from, naturalMonth.to));
+          }));
+          availableMonths = monthOptions.filter((month) => usageMonths.has(month) || billedMonths.has(month));
+          const comparableMonths = monthOptions.filter((month) => usageMonths.has(month) && billedMonths.has(month));
+          dataMonth = comparableMonths.find((month) => month <= requestedMonth)
+            || availableMonths.find((month) => month <= requestedMonth)
+            || requestedMonth;
+          if (dataMonth !== requestedMonth) {
+            range = valueRealtimeRange("month", nowDate, timeZoneContext, dataMonth);
+            [spend, valueUsageRows] = await Promise.all([
+              readSpendTimeseries(range.from, range.to, "day", timeZoneContext),
+              readValueRealtimeUsageRows(range, timeZoneContext),
+            ]);
+          }
+        }
+        const planAttribution = configuredPlanAttribution(trackerConfig);
+        const nativeResources = workbuddyNativeResources(workbuddyQuota);
+        const rangedSpendRecords = spendRecords.filter((record) => spendRecordOverlapsRange(record, range.from, range.to));
+        const subscriptionSpendRecords = rangedSpendRecords.filter((record) => String(record?.source || "").trim().toLowerCase() !== "other_ai");
+        const otherAiSpendRecords = rangedSpendRecords.filter((record) => String(record?.source || "").trim().toLowerCase() === "other_ai");
+        const subscriptionEvidence = publicActualSpendEvidence(subscriptionSpendRecords);
+        const otherAiEvidence = publicActualSpendEvidence(otherAiSpendRecords);
         const totals = spend.totals || {};
-        const totalTokens = Number.isFinite(Number(totals.total_tokens)) ? Number(totals.total_tokens) : null;
-        const pricedTokens = Number.isFinite(Number(totals.priced_tokens)) ? Number(totals.priced_tokens) : null;
-        const coverage = totalTokens && pricedTokens !== null ? (pricedTokens / totalTokens) * 100 : null;
-        const monthlyStart = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth() - 5, 1));
-        const monthlySpend = await readSpendTimeseries(
-          monthlyStart.toISOString().slice(0, 10),
-          range.to,
-          "month",
+        const valueUsageTotals = computeQueueTotals(valueUsageRows, {
+          fromKey: range.from,
+          toKey: range.to,
           timeZoneContext,
-        );
+          pricingOptions: getPricingOptions(),
+        });
+        const hasUsageRows = valueUsageRows.length > 0;
+        const selectedFrom = new Date(`${range.from}T00:00:00.000Z`);
+        const selectedTo = new Date(`${range.to}T23:59:59.999Z`);
+        const actualSpendBySource = rangedSpendRecords.reduce((items, record) => {
+          const source = normalizeSource(record?.source) || "unknown";
+          const amount = computeSubscriptionCostForRange(record, selectedFrom, selectedTo, getUsdToCny());
+          items.set(source, (items.get(source) || 0) + amount);
+          return items;
+        }, new Map());
+        const totalTokens = hasUsageRows ? publicFiniteNumber(valueUsageTotals.total_tokens) : null;
+        const pricedTokens = hasUsageRows ? publicFiniteNumber(valueUsageTotals.priced_tokens) : null;
+        const coverage = totalTokens && pricedTokens !== null ? (pricedTokens / totalTokens) * 100 : null;
+        const currentMonth = new Date(`${range.to.slice(0, 7)}-01T00:00:00.000Z`);
+        const monthlyStart = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - 5, 1));
+        const monthlyRange = { from: monthlyStart.toISOString().slice(0, 10), to: range.to };
+        const [monthlySpend, monthlyUsageRows] = await Promise.all([
+          readSpendTimeseries(monthlyRange.from, monthlyRange.to, "month", timeZoneContext),
+          readValueRealtimeUsageRows(monthlyRange, timeZoneContext),
+        ]);
         const sixMonthKeys = Array.from({ length: 6 }, (_unused, index) => {
           const month = new Date(Date.UTC(monthlyStart.getUTCFullYear(), monthlyStart.getUTCMonth() + index, 1));
           return month.toISOString().slice(0, 10);
         });
+        const billedMonthKeys = new Set(sixMonthKeys.filter((key) => {
+          const month = monthRange(key);
+          return spendRecords.some((record) => spendRecordOverlapsRange(record, month.from, month.to));
+        }));
         const monthlyTrend = (monthlySpend.series || []).reduce((items, entry) => {
           const key = `${String(entry.bucket_start).slice(0, 7)}-01`;
+          if (!billedMonthKeys.has(key)) return items;
           const current = items.get(key) || {
             bucket_start: key,
             label: `${Number(key.slice(5, 7))}月`,
             actual_spend_usd: 0,
-            api_equivalent_usd: 0,
+            api_equivalent_usd: null,
           };
           current.actual_spend_usd += Number(entry.subscription_cost_usd || 0) + Number(entry.other_ai_cost_usd || 0);
-          current.api_equivalent_usd += Number(entry.cost_usd || 0);
           items.set(key, current);
           return items;
         }, new Map());
-        const actualComposition = [
-          { key: "subscription", value: Number(totals.subscription_cost_usd), evidence_state: Number.isFinite(Number(totals.subscription_cost_usd)) ? "exact" : "unsupported" },
-          { key: "official_api", value: null, evidence_state: "unsupported" },
-          { key: "other_ai", value: Number(totals.other_ai_cost_usd), evidence_state: Number.isFinite(Number(totals.other_ai_cost_usd)) ? "exact" : "unsupported" },
+        const trendUsageRows = [
+          ...monthlyUsageRows.filter((entry) => {
+            const day = rowDayKey(entry, timeZoneContext);
+            return !day || day < range.from || day > range.to;
+          }),
+          ...valueUsageRows,
         ];
-        const valueModes = (spend.series || []).reduce((result, entry) => {
-          for (const [key, value] of Object.entries(entry.billing_mode_cost_totals || {})) {
-            result.set(key, (result.get(key) || 0) + Number(value || 0));
+        const monthlyUsage = trendUsageRows.reduce((items, entry) => {
+          const day = rowDayKey(entry, timeZoneContext);
+          if (!day) return items;
+          const key = `${day.slice(0, 7)}-01`;
+          const current = items.get(key) || { value: 0, hasPrice: false };
+          const cost = publicFiniteNumber(entry?.cost_usd);
+          if (cost !== null) {
+            current.value += cost;
+            current.hasPrice = true;
           }
+          items.set(key, current);
+          return items;
+        }, new Map());
+        for (const [key, item] of monthlyUsage) {
+          const current = monthlyTrend.get(key) || {
+            bucket_start: key,
+            label: `${Number(key.slice(5, 7))}月`,
+            actual_spend_usd: null,
+            api_equivalent_usd: null,
+          };
+          current.api_equivalent_usd = item.hasPrice ? item.value : null;
+          monthlyTrend.set(key, current);
+        }
+        const compositionMonths = range.range === "month"
+          ? monthOptions.filter((month) => month <= requestedMonth)
+          : [dataMonth];
+        if (!compositionMonths.includes(dataMonth)) compositionMonths.unshift(dataMonth);
+        const observedBillingModes = [...valueUsageRows, ...historyProbeRows].reduce((modes, row) => {
+          const month = rowDayKey(row, timeZoneContext)?.slice(0, 7);
+          if (month && compositionMonths.includes(month)) {
+            modes.add(normalizeUsageAttribution(row).billing_mode);
+          }
+          return modes;
+        }, new Set());
+        function spendCompositionForMonth(key, month) {
+          const naturalMonth = monthRange(`${month}-01`);
+          const records = spendRecords.filter((record) => spendRecordOverlapsRange(record, naturalMonth.from, naturalMonth.to));
+          const matching = records.filter((record) => {
+            const source = String(record?.source || "").trim().toLowerCase();
+            if (key === "other_ai") return source === "other_ai";
+            if (key === "official_api") return source === "official_api" || source === "api_key";
+            if (key === "subscription") return source !== "other_ai" && source !== "official_api" && source !== "api_key";
+            return false;
+          });
+          if (!matching.length) return null;
+          const fromDate = new Date(`${naturalMonth.from}T00:00:00.000Z`);
+          const toDate = new Date(`${naturalMonth.to}T23:59:59.999Z`);
+          return {
+            value: matching.reduce((sum, record) => sum + computeSubscriptionCostForRange(record, fromDate, toDate, getUsdToCny()), 0),
+            evidence: publicActualSpendEvidence(matching),
+          };
+        }
+        function usageRowsForMonth(month) {
+          return month === dataMonth
+            ? valueUsageRows
+            : historyProbeRows.filter((row) => rowDayKey(row, timeZoneContext)?.slice(0, 7) === month);
+        }
+        function usageRowsForMode(key, month) {
+          return usageRowsForMonth(month).filter((entry) => {
+            const attribution = normalizeUsageAttribution(entry);
+            const source = normalizeSource(entry?.source) || "unknown";
+            const mode = attribution.billing_mode === "api_key"
+              ? "api_key"
+              : attribution.billing_mode === "token_plan" || planAttribution.bySource.has(source)
+                ? "subscription"
+                : "unknown";
+            return mode === key;
+          });
+        }
+        function usageCompositionForMonth(key, month) {
+          const matching = usageRowsForMode(key, month);
+          if (!matching.length) return null;
+          const priced = matching.map((entry) => publicFiniteNumber(entry?.cost_usd)).filter((value) => value !== null);
+          if (!priced.length) return null;
+          return {
+            value: priced.reduce((sum, value) => sum + value, 0),
+            evidence: publicValueRealtimeEvidence(matching),
+          };
+        }
+        function observedUsageForMonth(key, month) {
+          const matching = usageRowsForMode(key, month);
+          if (!matching.length) return null;
+          return {
+            value: matching.reduce((sum, entry) => sum + Math.max(0, Number(entry?.total_tokens || 0)), 0),
+            unit: "tokens",
+            evidence_state: "observed",
+            evidence: publicValueRealtimeEvidence(matching),
+          };
+        }
+        const actualComposition = ["subscription", "official_api", "other_ai"].map((key) => {
+          for (const month of compositionMonths) {
+            const result = spendCompositionForMonth(key, month);
+            if (!result) continue;
+            return { key, value: result.value, evidence_state: "exact", evidence: result.evidence, source_month: month, fallback_applied: month !== dataMonth };
+          }
+          if (key === "official_api" && observedBillingModes.has("api_key")) {
+            for (const month of compositionMonths) {
+              const observedUsage = observedUsageForMonth("api_key", month);
+              if (!observedUsage) continue;
+              return {
+                key,
+                value: null,
+                evidence_state: "observed",
+                display_state: "usage_detected",
+                observed_usage: observedUsage,
+                source_month: month,
+                fallback_applied: month !== dataMonth,
+              };
+            }
+          }
+          return { key, value: null, evidence_state: "unsupported", display_state: "not_detected" };
+        });
+        actualComposition.push(
+          {
+            key: "token_plan",
+            value: null,
+            evidence_state: nativeResources.some((resource) => resource.value !== null) ? "exact" : "unsupported",
+            display_state: nativeResources.some((resource) => resource.value !== null) ? "native_only" : "not_detected",
+            ...(nativeResources.length ? { native_resources: nativeResources } : {}),
+          },
+          { key: "unknown", value: null, evidence_state: "unsupported", display_state: "not_detected" },
+        );
+        const valueComposition = ["subscription", "api_key", "unknown"].map((key) => {
+          for (const month of compositionMonths) {
+            const result = usageCompositionForMonth(key, month);
+            if (!result) continue;
+            return { key, value: result.value, evidence_state: "estimated", evidence: result.evidence, source_month: month, fallback_applied: month !== dataMonth };
+          }
+          return { key, value: null, evidence_state: "unsupported", display_state: "not_detected" };
+        });
+        if (nativeResources.length) {
+          const readable = nativeResources.some((resource) => resource.value !== null);
+          valueComposition.push({ key: "token_plan", value: null, evidence_state: readable ? "exact" : "unsupported", display_state: readable ? "native_only" : "unreadable", native_resources: nativeResources });
+        } else {
+          valueComposition.push({ key: "token_plan", value: null, evidence_state: "unsupported", display_state: "not_detected" });
+        }
+        const sourceValue = valueUsageRows.reduce((result, entry) => {
+          const source = normalizeSource(entry?.source) || "unknown";
+          const current = result.get(source) || { apiEquivalentUsd: 0, observedTokens: 0, hasPrice: false, hasObservedTokens: false, records: [] };
+          const cost = publicFiniteNumber(entry?.cost_usd);
+          const observedTokens = publicFiniteNumber(entry?.total_tokens);
+          if (cost !== null) {
+            current.apiEquivalentUsd += cost;
+            current.hasPrice = true;
+          }
+          if (observedTokens !== null) {
+            current.observedTokens += observedTokens;
+            current.hasObservedTokens = true;
+          }
+          current.records.push(entry);
+          result.set(source, current);
           return result;
         }, new Map());
-        const sourceValue = (spend.series || []).reduce((result, entry) => {
-          const source = typeof entry.source === "string" ? entry.source : "unknown";
-          result.set(source, (result.get(source) || 0) + Number(entry.cost_usd || 0));
-          return result;
-        }, new Map());
-        json(res, buildValueComparisonViewModel({
+        const usageEvidence = publicValueRealtimeEvidence(valueUsageRows);
+        privateLocalJson(req, res, buildValueComparisonViewModel({
           generatedAt: nowDate.toISOString(),
           range: range.range,
+          requestedMonth,
+          dataMonth,
+          monthOptions,
+          availableMonths,
+          fallbackApplied: range.range === "month" && dataMonth !== requestedMonth,
           actualSpend: {
-            subscriptionUsd: Number.isFinite(Number(totals.subscription_cost_usd)) ? Number(totals.subscription_cost_usd) : null,
+            subscriptionUsd: subscriptionSpendRecords.length ? Number(totals.subscription_cost_usd) : null,
             officialApiUsd: null,
-            otherAiUsd: Number.isFinite(Number(totals.other_ai_cost_usd)) ? Number(totals.other_ai_cost_usd) : null,
+            otherAiUsd: otherAiSpendRecords.length ? Number(totals.other_ai_cost_usd) : null,
+            subscriptionEvidence,
+            otherAiEvidence,
           },
+          actualSpendEvidence: publicActualSpendEvidence([...subscriptionSpendRecords, ...otherAiSpendRecords]),
           usage: {
-            apiEquivalentUsd: Number.isFinite(Number(totals.cost_usd)) ? Number(totals.cost_usd) : null,
+            apiEquivalentUsd: hasUsageRows ? publicFiniteNumber(valueUsageTotals.cost_usd) : null,
             recognizedTokens: totalTokens,
             pricingCoveragePercent: coverage,
           },
+          usageEvidence,
           actualComposition,
-          valueComposition: Array.from(valueModes.entries()).map(([key, value]) => ({ key, value, evidence_state: "estimated" })),
-          records: Array.from(sourceValue.entries()).map(([source, apiEquivalentUsd]) => ({ source, apiEquivalentUsd })),
+          valueComposition,
+          records: [
+            ...planAttribution.plans.map((plan) => {
+              const isPrimaryPlan = planAttribution.bySource.get(plan.source) === plan;
+              const item = isPrimaryPlan ? sourceValue.get(plan.source) : null;
+              if (isPrimaryPlan) sourceValue.delete(plan.source);
+              return {
+                ...plan,
+                apiEquivalentUsd: item?.hasPrice ? item.apiEquivalentUsd : null,
+                observedTokens: item?.hasObservedTokens ? item.observedTokens : null,
+                actualSpendUsd: isPrimaryPlan && actualSpendBySource.has(plan.source) ? actualSpendBySource.get(plan.source) : null,
+                evidence: publicValueRealtimeEvidence(item?.records || []),
+              };
+            }),
+            ...Array.from(sourceValue.entries()).map(([source, item]) => ({
+              source,
+              apiEquivalentUsd: item.hasPrice ? item.apiEquivalentUsd : null,
+              observedTokens: item.hasObservedTokens ? item.observedTokens : null,
+              actualSpendUsd: actualSpendBySource.has(source) ? actualSpendBySource.get(source) : null,
+              evidence: publicValueRealtimeEvidence(item.records),
+            })),
+            ...Array.from(actualSpendBySource.entries())
+              .filter(([source]) => !planAttribution.bySource.has(source) && !sourceValue.has(source))
+              .map(([source, actualSpendUsd]) => ({
+                source,
+                apiEquivalentUsd: null,
+                actualSpendUsd,
+                evidence: publicActualSpendEvidence(rangedSpendRecords.filter((record) => normalizeSource(record?.source) === source)),
+              })),
+          ],
           monthlyTrend: sixMonthKeys.map((key) => monthlyTrend.get(key) || {
             bucket_start: key,
             label: `${Number(key.slice(5, 7))}月`,
-            actual_spend_usd: 0,
-            api_equivalent_usd: 0,
+            actual_spend_usd: null,
+            api_equivalent_usd: null,
           }),
+          nativeResources,
         }));
       } catch (_error) {
-        json(res, { ok: false, error: "value_comparison_unavailable" }, 500);
+        privateLocalJson(req, res, { ok: false, error: "value_comparison_unavailable" }, 500);
       }
       return true;
     }
 
     if (p === "/functions/tokentracker-realtime-sessions") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {
-        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        privateLocalJson(req, res, { ok: false, error: "Method Not Allowed" }, 405);
         return true;
       }
       try {
         const nowDate = nowProvider();
-        const range = valueRealtimeRange(url.searchParams.get("range") || "today", nowDate);
+        const timeZoneContext = getTimeZoneContext(url);
+        const range = valueRealtimeRange(url.searchParams.get("range") || "today", nowDate, timeZoneContext);
+        const currentMonthKey = range.to.slice(0, 7);
+        const historyMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(url.searchParams.get("month") || ""))
+          ? String(url.searchParams.get("month"))
+          : currentMonthKey;
+        const historyMonthDate = new Date(`${historyMonth}-01T00:00:00.000Z`);
+        const historyRange = valueRealtimeRange("month", nowDate, timeZoneContext, historyMonth);
+        const monthOptions = Array.from({ length: 6 }, (_unused, index) => {
+          const month = new Date(Date.UTC(historyMonthDate.getUTCFullYear(), historyMonthDate.getUTCMonth() - index, 1));
+          return month.toISOString().slice(0, 7);
+        });
         const config = readTrackerConfig();
         const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({ config, env: handlerEnv, home: handlerHome });
         const codexHomes = dataDirectoryPaths.codexHomes?.length ? dataDirectoryPaths.codexHomes : [dataDirectoryPaths.codexHome];
-        const [usageRows, lifecycleSessions] = await Promise.all([
-          Promise.resolve(readQueueData(qp)
-            .filter((row) => {
-              const day = String(row?.hour_start || row?.timestamp || "").slice(0, 10);
-              return day >= range.from && day <= range.to;
-            })
-            .slice(-100)
-            .map((row) => ({ ...row, ...computeRowCostDetailed(row, getPricingOptions()) }))),
+        const [historyRows, lifecycleSessions, workbuddyQuota] = await Promise.all([
+          readValueRealtimeUsageRows(historyRange, timeZoneContext, { includeCodexRolloutFallback: false }),
           typeof codexLifecycleProvider === "function"
             ? codexLifecycleProvider({ homes: codexHomes, nowMs: nowDate.getTime() })
             : collectCodexLifecycleSessions({ homes: codexHomes, nowMs: nowDate.getTime() }),
+          readWorkbuddyQuotaForRequest().catch(() => ({ unreadable: true })),
         ]);
-        json(res, buildRealtimeSessionViewModel({
+        const orderedLifecycleSessions = [...(lifecycleSessions || [])]
+          .sort((left, right) => {
+            const stateOrder = Number(right?.status === "running") - Number(left?.status === "running");
+            return stateOrder || Date.parse(right?.updatedAt || 0) - Date.parse(left?.updatedAt || 0);
+          });
+        const runningLifecycleSessions = orderedLifecycleSessions.filter((session) => session?.status === "running");
+        const messageSpanCandidates = (runningLifecycleSessions.length ? runningLifecycleSessions : orderedLifecycleSessions)
+          .slice(0, runningLifecycleSessions.length ? 3 : 1);
+        const messageSpanSessionIds = messageSpanCandidates
+          .map((session) => session?.sessionId)
+          .filter(Boolean);
+        const messageSpanFilePaths = messageSpanCandidates
+          .map((session) => session?.[Symbol.for("token-eyes.codex-rollout-path")])
+          .filter(Boolean);
+        const [usageRows, messageSpans] = await Promise.all([
+          readRealtimeUsageRows(range, timeZoneContext, { codexRolloutFiles: messageSpanFilePaths })
+            .then((rows) => rows.slice(-100)),
+          collectCodexMessageSpans({
+            homes: codexHomes,
+            from: range.to,
+            to: range.to,
+            timeZoneContext,
+            sessionIds: messageSpanSessionIds,
+            filePaths: messageSpanFilePaths,
+          }).catch(() => []),
+        ]);
+        const messageSpanBySession = new Map(
+          (messageSpans || []).map((span) => [span.sessionId, span]),
+        );
+        const usageRowsWithMessageSpans = usageRows.map((row) => {
+          const rawSessionId = row?.session_key || row?.session_id || row?.request_id || null;
+          const span = rawSessionId ? messageSpanBySession.get(rawSessionId) : null;
+          if (!span) return row;
+          return {
+            ...row,
+            activity_day: span.activityDay,
+            first_message_at: span.firstMessageAt,
+            last_message_at: span.lastMessageAt,
+            message_span_state: "exact",
+          };
+        });
+        const lifecycleSessionsWithMessageSpans = (lifecycleSessions || []).map((session) => {
+          const span = messageSpanBySession.get(session?.sessionId);
+          if (!span) return session;
+          return {
+            ...session,
+            activityDay: span.activityDay,
+            firstMessageAt: span.firstMessageAt,
+            lastMessageAt: span.lastMessageAt,
+            messageSpanState: "exact",
+          };
+        });
+        const tokenOnlyInstalledSources = Object.entries(resolveTokenOnlyDirectoryStates(config, {
+          env: handlerEnv,
+          home: handlerHome,
+        }))
+          .filter(([, state]) => state?.status !== "not-detected")
+          .map(([source]) => source);
+        // The realtime page already has usage history plus the lightweight
+        // token-only directory states needed for explicit no-history cards.
+        // Running the full executable/WSL environment probe here adds several
+        // seconds to every page refresh, so keep that diagnostic in its own
+        // endpoint. Injected test providers remain supported for contract tests.
+        const environmentInstalledSources = typeof detectAllAgentEnvironmentsOverride === "function"
+          ? detectAllAgentEnvironmentsForRequest(config, {
+              env: handlerEnv,
+              home: handlerHome,
+              platform: process.platform,
+            })
+              .filter((result) => result?.status !== "not-detected")
+              .map((result) => getAgentAdapter(result.agent)?.queueSource || result.agent)
+          : [];
+        const installedSources = [...new Set([...tokenOnlyInstalledSources, ...environmentInstalledSources])];
+        const nativeResources = workbuddyNativeResources(workbuddyQuota);
+        privateLocalJson(req, res, buildRealtimeSessionViewModel({
           observedAt: nowDate.toISOString(),
-          usageRows: usageRows.map(publicRealtimeUsageRow),
-          lifecycleSessions: (lifecycleSessions || []).map(publicRealtimeLifecycleSession),
+          todayKey: range.to,
+          dataMonth: historyMonth,
+          monthOptions,
+          usageRows: usageRowsWithMessageSpans.map((row, index) => publicRealtimeUsageRow(row, index, timeZoneContext)),
+          lifecycleSessions: lifecycleSessionsWithMessageSpans.map(publicRealtimeLifecycleSession),
+          agentHistory: attachNativeResourcesToHistory(buildAgentHistoryInventory({
+            rows: historyRows,
+            installedSources,
+            now: nowDate,
+          }), nativeResources),
+          nativeResources,
         }));
       } catch (_error) {
-        json(res, { ok: false, error: "realtime_sessions_unavailable" }, 500);
+        privateLocalJson(req, res, { ok: false, error: "realtime_sessions_unavailable" }, 500);
       }
       return true;
     }
@@ -8051,7 +9142,7 @@ function createLocalApiHandler({
     if (p === "/functions/tokentracker-token-plans") {
       const method = String(req.method || "GET").toUpperCase();
       if (method === "GET") {
-        json(res, { records: readTokenPlanRecords() });
+        privateLocalJson(req, res, { records: readTokenPlanRecords().map(publicTokenPlanRecord) });
         return true;
       }
       if (method === "POST" || method === "PUT") {
@@ -8786,7 +9877,7 @@ function createLocalApiHandler({
 
       // GET list
       if (method === "GET") {
-        json(res, { sessions: readConsoleSessions() });
+        privateLocalJson(req, res, { sessions: readConsoleSessions().map(publicConsoleSession) });
         return true;
       }
 
@@ -9316,26 +10407,18 @@ function createLocalApiHandler({
 
     // --- workbuddy-quota (read-only credit packages from codebuddy.cn) ---
     if (p === "/functions/tokentracker-workbuddy-quota") {
-      const { fetchWorkbuddyQuota } = require("./workbuddy-quota");
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        privateLocalJson(req, res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
       try {
         const forceRefresh = url.searchParams.get("refresh");
-        const nowMs = nowProvider().getTime();
-        const cached = workbuddyQuotaCache.payload;
-        const fresh = cached && nowMs - workbuddyQuotaCache.fetchedAtMs < WORKBUDDY_QUOTA_CACHE_MS;
-        if (fresh && forceRefresh !== "1" && forceRefresh !== "true") {
-          json(res, cached);
-          return true;
-        }
-        const data = await fetchWorkbuddyQuota({
-          env: handlerEnv,
-          home: handlerHome,
-          platform: process.platform,
+        const data = await readWorkbuddyQuotaForRequest({
+          forceRefresh: forceRefresh === "1" || forceRefresh === "true",
         });
-        workbuddyQuotaCache.payload = data;
-        workbuddyQuotaCache.fetchedAtMs = nowMs;
-        json(res, data);
-      } catch (e) {
-        json(res, { error: e?.message || "Unknown error" }, 500);
+        privateLocalJson(req, res, publicWorkbuddyQuota(data));
+      } catch (_error) {
+        privateLocalJson(req, res, unavailableWorkbuddyQuota());
       }
       return true;
     }

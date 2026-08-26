@@ -10,7 +10,7 @@ const {
   collectCodexLifecycleSessions,
 } = require("../src/lib/codex-lifecycle-reader");
 
-test("reads only Codex lifecycle metadata and returns privacy-safe project sessions", async () => {
+test("reads the safe Codex thread name without returning prompts, bodies, or paths", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-lifecycle-"));
   try {
     fs.writeFileSync(path.join(root, "session_index.jsonl"), JSON.stringify({
@@ -28,6 +28,14 @@ test("reads only Codex lifecycle metadata and returns privacy-safe project sessi
           id: "019-safe-session",
           cwd: "C:\\Users\\alice\\Secret Project",
           thread_source: "user",
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-07-29T08:01:00.000Z",
+        type: "turn_context",
+        payload: {
+          model: "gpt-5.6-sol",
+          user_prompt: "private prompt that must never be returned",
         },
       }),
       JSON.stringify({
@@ -54,15 +62,15 @@ test("reads only Codex lifecycle metadata and returns privacy-safe project sessi
     assert.deepEqual(result[0], {
       agent: "codex",
       projectId: result[0].projectId,
-      projectLabel: "Secret Project",
       sessionId: "019-safe-session",
-      sessionLabel: "执行代码修复",
+      taskLabel: "执行代码修复",
+      model: "gpt-5.6-sol",
       status: "running",
       updatedAt: "2026-07-29T08:02:00.000Z",
     });
     assert.match(result[0].projectId, /^project-[a-f0-9]{12}$/u);
     const serialized = JSON.stringify(result);
-    assert.doesNotMatch(serialized, /Users|private prompt|private first message|message|cwd/iu);
+    assert.doesNotMatch(serialized, /Users|Secret Project|private prompt|private first message|user_prompt|message|cwd/iu);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -149,16 +149,10 @@ function serviceLabels(plan) {
   return { provider, planLabel, providerId: providerId || "custom" };
 }
 
-function authorizedAccountLabel(plan) {
-  if (String(plan?.detection_method || "").trim() !== "official_account") return "";
-  const official = plan?.detection_config?.official_account || {};
-  return String(
-    official.display_name
-    || official.account_label
-    || official.account_id
-    || plan?.notes
-    || "",
-  ).trim();
+function accountBindingState(plan) {
+  return String(plan?.detection_method || "").trim() === "official_account"
+    ? "official_bound"
+    : "not_bound";
 }
 
 export function normalizeTokenServices(plans, now = new Date()) {
@@ -179,10 +173,9 @@ export function normalizeTokenServices(plans, now = new Date()) {
         ...labels,
         unit: String(plan?.quota_unit || "tokens"),
         expiresAt: effectiveExpiry,
-        notes: String(plan?.notes || "").trim(),
-        accountLabel: authorizedAccountLabel(plan),
+        accountState: accountBindingState(plan),
         syncStatus: String(plan?.sync_status || plan?.last_refresh_status || "").trim().toLowerCase(),
-        errorMessage: String(plan?.last_error_message || "").trim(),
+        hasError: Boolean(String(plan?.last_error_message || "").trim()),
         originalIndex: index,
         metrics,
         ...primaryMetric,
@@ -398,11 +391,11 @@ export function TokenServiceList({
                           : syncStatusLabel(service.syncStatus)}
                       </span> : null}
                     </span>
-                    {(service.accountLabel || service.notes) && (
-                      <span className="mt-0.5 block break-words text-[9px] leading-3 text-oai-gray-400 dark:text-oai-gray-500" title={service.accountLabel || service.notes}>
-                        {service.accountLabel || service.notes}
-                      </span>
-                    )}
+                    <span className="mt-0.5 block break-words text-[9px] leading-3 text-oai-gray-400 dark:text-oai-gray-500">
+                      {copy(service.accountState === "official_bound"
+                        ? "settings.token_plan.official_account.bound_safe"
+                        : "settings.token_plan.official_account.not_bound_safe")}
+                    </span>
                   </span>
                 </div>
                 <div className="mt-1.5 space-y-1.5">
@@ -457,9 +450,9 @@ export function TokenServiceList({
                     })
                     : copy("spend.usage.token_services.validity_unknown")}
                 </div>
-                {service.errorMessage ? (
+                {service.hasError ? (
                   <div className="mt-1 break-words text-[9px] leading-3 text-red-600 dark:text-red-400">
-                    {service.errorMessage}
+                    {copy("settings.token_plan.refresh_failed")}
                   </div>
                 ) : null}
               </li>

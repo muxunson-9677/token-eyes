@@ -498,6 +498,36 @@ test("POST /functions/.../verify without native_result returns 400 and never mar
   }
 });
 
+test("verify rejects sensitive native fields at any nesting depth without persisting their values", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-console-native-allowlist-"));
+  const syntheticSecret = "nested-sensitive-value-must-not-persist";
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const headers = await getAuthHeaders(handler);
+    const session = await createCodexSession(handler, headers, "token-plan/codex/session/nested-sensitive");
+    const response = await persistNativeSessionState(handler, headers, session.id, {
+      connected: true,
+      authorized: true,
+      state_code: "connected",
+      quota: {
+        safe_total: 10,
+        identity: { account_id: syntheticSecret },
+      },
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.body.toString("utf8").includes(syntheticSecret), false);
+    const config = await fs.readFile(path.join(trackerDir, "config.json"), "utf8");
+    assert.equal(config.includes(syntheticSecret), false);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("verify with native state awaiting_verification updates session to awaiting_verification (not connected)", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-console-sessions-"));
   try {
@@ -562,16 +592,19 @@ test("Xiaomi terminal warning states are persisted canonically without upstream 
         state: "reauth_required",
         errorCode: "REAUTH_REQUIRED",
         errorMessage: "Xiaomi MiMo authorization must be completed again.",
+        publicMessage: "授权或额度状态暂时不可读取，请稍后重试。",
       },
       {
         state: "temporary",
         errorCode: "TEMPORARY",
         errorMessage: "Xiaomi MiMo quota service is temporarily unavailable.",
+        publicMessage: "服务暂时不可读取，请稍后重试。",
       },
       {
         state: "unsupported",
         errorCode: "UNSUPPORTED",
         errorMessage: "Xiaomi MiMo quota response is unsupported.",
+        publicMessage: "当前授权状态暂不支持读取。",
       },
     ];
 
@@ -618,13 +651,23 @@ test("Xiaomi terminal warning states are persisted canonically without upstream 
       await call(reloaded, "/functions/tokentracker-token-plan-console-sessions"),
     ).sessions;
     for (const item of cases) {
-      const session = persisted.find((candidate) => candidate.session_ref.endsWith(`/${item.state}`));
+      const session = persisted.find((candidate) => candidate.last_error_code === item.errorCode);
       assert.equal(session.status, item.state, item.state);
       assert.equal(session.last_error_code, item.errorCode, item.state);
-      assert.equal(session.last_error_message, item.errorMessage, item.state);
+      assert.equal(
+        session.session_ref,
+        `provider-api/xiaomi_mimo/session/${item.state}`,
+        item.state,
+      );
+      assert.equal(session.last_error_message, item.publicMessage, item.state);
     }
     const rawConfig = await fs.readFile(path.join(trackerDir, "config.json"), "utf8");
     assert.equal(rawConfig.includes(syntheticSecret), false);
+    const internalSessions = JSON.parse(rawConfig).consoleSessions;
+    for (const item of cases) {
+      const internal = internalSessions.find((candidate) => candidate.session_ref.endsWith(`/${item.state}`));
+      assert.equal(internal.last_error_message, item.errorMessage, item.state);
+    }
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -1819,7 +1862,11 @@ test("Codex cancel and timeout keep their specific failed records", async () => 
       ).sessions.find((candidate) => candidate.id === session.id);
       assert.equal(stored.status, "failed");
       assert.equal(stored.last_error_code, terminal.error_code);
-      assert.equal(stored.last_error_message, terminal.error_message);
+      assert.equal(stored.last_error_message, "授权或额度状态暂时不可读取，请稍后重试。");
+      const internal = JSON.parse(
+        await fs.readFile(path.join(trackerDir, "config.json"), "utf8"),
+      ).consoleSessions.find((candidate) => candidate.id === session.id);
+      assert.equal(internal.last_error_message, terminal.error_message);
     } finally {
       await fs.rm(tmp, { recursive: true, force: true });
     }

@@ -19,7 +19,7 @@ test("keeps unknown actual spend unknown and never turns it into zero", () => {
 
   assert.equal(result.actual_spend.total_usd.value, 8);
   assert.equal(result.actual_spend.total_usd.evidence_state, "partial");
-  assert.equal(result.value_multiple.value, null);
+  assert.equal(result.value_multiple.value, 2.5);
   assert.equal(result.value_multiple.evidence_state, "partial");
 });
 
@@ -54,14 +54,52 @@ test("attributes plan value only when an explicit plan reference exists", () => 
   });
 
   assert.deepEqual(result.attribution.linked, [{
+    source: "codex",
     plan_ref: "codex-plus",
     account_ref: "acct-a",
+    plan_label: null,
+    association_state: "explicit_record",
     api_equivalent_usd: 12,
+    actual_spend_usd: null,
+    evidence: null,
   }]);
   assert.deepEqual(result.attribution.unattributed, [{
     source: "claude",
+    association_state: "usage_detected",
     api_equivalent_usd: 9,
+    actual_spend_usd: null,
+    evidence: null,
   }]);
+});
+
+test("unlinked providers with readable usage are labelled as detected usage, not as disconnected agents", () => {
+  const result = buildValueComparisonViewModel({
+    records: [
+      { source: "claude", apiEquivalentUsd: 9 },
+      { source: "hermes", apiEquivalentUsd: null },
+    ],
+  });
+
+  assert.equal(result.attribution.unattributed[0].association_state, "usage_detected");
+  assert.equal(result.attribution.unattributed[1].association_state, "usage_detected");
+});
+
+test("keeps observed Token totals on linked and unmatched source rows", () => {
+  const result = buildValueComparisonViewModel({
+    records: [
+      {
+        source: "codex",
+        plan_ref: "codex-plus",
+        account_ref: "acct-a",
+        observedTokens: 1_100,
+        apiEquivalentUsd: 9,
+      },
+      { source: "claude", observedTokens: 2_200, apiEquivalentUsd: 4 },
+    ],
+  });
+
+  assert.equal(result.attribution.linked[0].observed_tokens, 1_100);
+  assert.equal(result.attribution.unattributed[0].observed_tokens, 2_200);
 });
 
 test("does not fold native quota units into token or dollar totals", () => {
@@ -74,7 +112,29 @@ test("does not fold native quota units into token or dollar totals", () => {
   });
 
   assert.equal(result.recognized_tokens.value, 100);
-  assert.deepEqual(result.native_resources, [{ provider: "WorkBuddy", value: 2300, unit: "credits" }]);
+  assert.deepEqual(result.native_resources, [{
+    provider: "WorkBuddy",
+    label: null,
+    value: 2300,
+    unit: "credits",
+    evidence_state: "connected_no_exact_data",
+  }]);
+});
+
+test("keeps an unreadable native resource distinct from a real zero", () => {
+  const result = buildValueComparisonViewModel({
+    actualSpend: {},
+    usage: {},
+    nativeResources: [{ provider: "WorkBuddy", label: "Credits", value: null, unit: "Credits", evidence_state: "unavailable" }],
+  });
+
+  assert.deepEqual(result.native_resources, [{
+    provider: "WorkBuddy",
+    label: "Credits",
+    value: null,
+    unit: "Credits",
+    evidence_state: "unavailable",
+  }]);
 });
 
 test("keeps separate real composition and six-month series for the visual report", () => {
@@ -98,4 +158,39 @@ test("keeps separate real composition and six-month series for the visual report
   ]);
   assert.equal(result.value_composition[1].key, "token_plan");
   assert.equal(result.monthly_trend[0].label, "8月");
+});
+
+test("preserves observed API Token usage without turning it into cash spend", () => {
+  const result = buildValueComparisonViewModel({
+    actualSpend: { subscriptionUsd: 8, officialApiUsd: null, otherAiUsd: 2 },
+    usage: { apiEquivalentUsd: 20, recognizedTokens: 12_345, pricingCoveragePercent: 75 },
+    actualComposition: [{
+      key: "official_api",
+      value: null,
+      evidence_state: "observed",
+      display_state: "usage_detected",
+      observed_usage: {
+        value: 12_345,
+        unit: "tokens",
+        evidence_state: "observed",
+        evidence: { source_kind: "local_usage_ledger", record_count: 2 },
+      },
+    }],
+  });
+
+  const officialApi = result.actual_composition.find((row) => row.key === "official_api");
+  assert.equal(officialApi.value, null, "observed Token usage is not an actual cash bill");
+  assert.deepEqual(officialApi.observed_usage, {
+    value: 12_345,
+    unit: "tokens",
+    evidence_state: "observed",
+    evidence: {
+      source_kind: "local_usage_ledger",
+      record_count: 2,
+      observed_from: null,
+      observed_to: null,
+      safe_record_refs: [],
+      pricing: null,
+    },
+  });
 });

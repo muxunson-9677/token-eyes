@@ -185,7 +185,7 @@ function LimitsSummary({ model }: { model: DesktopWidgetViewModel }) {
   const plan = plans[0];
   const planIdentity = plan.planLabel
     ? `${plan.provider} · ${plan.planLabel}`
-    : `${plan.provider} · ${plan.accountLabel}`;
+    : plan.provider;
   return (
     <div className="widget-limit-summary">
       <span className="widget-limit-summary__item" key={plan.id}>
@@ -520,16 +520,12 @@ function ExpandedLimits({ model }: { model: DesktopWidgetViewModel }) {
   return (
     <div className="widget-limit-list">
       {plans.map((plan) => {
-        const planName = plan.planLabel || plan.accountLabel || plan.provider;
-        const planIdentity = `${plan.provider} · ${planName}`;
-        const accountLabel = plan.accountLabel && plan.accountLabel !== planName
-          ? plan.accountLabel
-          : null;
+        const planName = plan.planLabel || plan.provider;
+        const planIdentity = planName === plan.provider ? plan.provider : `${plan.provider} · ${planName}`;
         return (
         <div className="widget-limit-plan" data-testid="widget-expanded-limit-plan" key={plan.id}>
           <span className="widget-limit-plan__identity">
             <strong className="widget-limit-plan__title widget-truncate">{planIdentity}</strong>
-            {accountLabel ? <small className="widget-limit-plan__account widget-truncate">{accountLabel}</small> : null}
           </span>
           {plan.windows.map((limit) => (
             <div className="widget-limit-row" key={limit.id}>

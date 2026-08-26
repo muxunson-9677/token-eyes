@@ -27,6 +27,34 @@ function getLocalServerUrl(port) {
   return `http://${LOCAL_BIND_HOST}:${port}`;
 }
 
+async function serveDashboardRequest(dashboardDir, pathname, res) {
+  const isAssetRequest = pathname.startsWith("/assets/") || Boolean(path.extname(pathname));
+  const deadline = Date.now() + (isAssetRequest ? 500 : 0);
+  do {
+    const served = await serveStaticFile(dashboardDir, pathname, res);
+    if (served) return true;
+    if (!isAssetRequest || Date.now() >= deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  } while (true);
+
+  if (isAssetRequest) {
+    res.writeHead(404, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end("Not Found");
+    return true;
+  }
+
+  const fallbackServed = await serveStaticFile(dashboardDir, "/index.html", res);
+  if (!fallbackServed) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+    res.end("Not Found");
+  }
+  return true;
+}
+
 async function cmdServe(argv) {
   const opts = parseArgs(argv);
 
@@ -129,12 +157,7 @@ async function cmdServe(argv) {
         if (handled) return;
       }
 
-      // Static files
-      const served = await serveStaticFile(dashboardDir, url.pathname, res);
-      if (served) return;
-
-      // SPA fallback
-      await serveStaticFile(dashboardDir, "/index.html", res);
+      await serveDashboardRequest(dashboardDir, url.pathname, res);
     } catch (e) {
       if (!res.headersSent) {
         res.writeHead(500, { "Content-Type": "text/plain" });
@@ -359,5 +382,6 @@ module.exports = {
   isPortUnavailableError,
   listenOnAvailablePort,
   getLocalServerUrl,
+  serveDashboardRequest,
   parseArgs,
 };

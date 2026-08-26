@@ -109,7 +109,8 @@ const viewModel = {
       planId: "codex:default",
       agent: "codex",
       provider: "Codex",
-      accountLabel: "Plus",
+      planLabel: "Plus",
+      accountState: "not_bound",
       window: "5h",
       usedPercent: 42,
       resetAt: null,
@@ -122,7 +123,8 @@ const viewModel = {
       planId: "codex:default",
       agent: "codex",
       provider: "Codex",
-      accountLabel: "Plus",
+      planLabel: "Plus",
+      accountState: "not_bound",
       window: "1w",
       usedPercent: 68,
       resetAt: null,
@@ -168,7 +170,7 @@ describe("DesktopWidgetPage", () => {
       agent: "cursor",
       provider: "Cursor",
       planLabel: "Pro",
-      accountLabel: "Pro",
+      accountState: "not_bound" as const,
       subscriptionAmount: 0,
       subscriptionCurrency: "USD",
       kind: "total",
@@ -788,7 +790,7 @@ describe("DesktopWidgetPage", () => {
       agent: "cursor",
       provider: "Cursor",
       planLabel: "Pro",
-      accountLabel: "ezequielhuelsxw@outlook.com",
+      accountState: "official_bound",
       window: "7d",
       usedPercent: 100,
       resetAt: "2026-08-20T03:33:00.000Z",
@@ -823,7 +825,7 @@ describe("DesktopWidgetPage", () => {
     expect(planCards).toHaveLength(2);
     const cursorCard = planCards.find((card) => within(card).queryByText("Cursor · Pro"));
     expect(cursorCard).toBeDefined();
-    expect(within(cursorCard!).getByText("ezequielhuelsxw@outlook.com")).toBeInTheDocument();
+    expect(within(cursorCard!).queryByText("ezequielhuelsxw@outlook.com")).not.toBeInTheDocument();
     expect(within(cursorCard!).getByText("Weekly")).toBeInTheDocument();
     expect(within(cursorCard!).getByText(formatCompactReset("2026-08-20T03:33:00.000Z")))
       .toBeInTheDocument();
@@ -845,7 +847,7 @@ describe("DesktopWidgetPage", () => {
         id: `codex:plan-${planIndex}:window-${windowIndex}`,
         planId: `codex:plan-${planIndex}`,
         planLabel: `Plan ${planIndex + 1}`,
-        accountLabel: `account-${planIndex + 1}`,
+        accountState: "not_bound",
         window,
         usedPercent: planIndex * 10 + windowIndex,
       }))

@@ -326,4 +326,63 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText("30%")).toBeInTheDocument();
     expect(screen.getByText("55%")).toBeInTheDocument();
   });
+
+  it("keeps unknown WorkBuddy Credits distinct from exact zero without exposing account fields", () => {
+    render(
+      <UsageLimitsPanel
+        workbuddy={{
+          signed_in: true,
+          plan: "PRO",
+          account: {
+            nickname: "SYNTHETIC_PRIVATE_NICKNAME",
+            phone_masked: "SYNTHETIC_PRIVATE_PHONE",
+            type: "synthetic",
+          },
+          groups: [
+            {
+              id: "base",
+              items: null,
+              total: null,
+              remain: null,
+              used: null,
+              used_percent: null,
+            },
+            {
+              id: "extra",
+              items: 1,
+              total: 100,
+              remain: 100,
+              used: 0,
+              used_percent: 0,
+            },
+          ],
+        }}
+        order={["workbuddy"]}
+      />,
+    );
+
+    const rows = screen.getAllByTestId("workbuddy-credit-row");
+    const unknownRow = rows.find((row) => row.dataset.group === "base");
+    const zeroRow = rows.find((row) => row.dataset.group === "extra");
+
+    expect(unknownRow).toHaveTextContent(copy("data_sources.unknown"));
+    expect(unknownRow).not.toHaveTextContent("(null)");
+    expect(unknownRow).not.toHaveTextContent(
+      copy("limits.workbuddy.credits_used", { used: "0", total: "0" }),
+    );
+    expect(within(unknownRow).getByRole("progressbar")).not.toHaveAttribute("aria-valuenow");
+    expect(within(unknownRow).getByRole("progressbar")).toHaveAttribute(
+      "aria-valuetext",
+      copy("data_sources.unknown"),
+    );
+    expect(zeroRow).toHaveTextContent(
+      copy("limits.workbuddy.credits_used", { used: "0", total: "100" }),
+    );
+    expect(screen.getByTestId("workbuddy-credits-group")).not.toHaveTextContent(
+      "SYNTHETIC_PRIVATE_NICKNAME",
+    );
+    expect(screen.getByTestId("workbuddy-credits-group")).not.toHaveTextContent(
+      "SYNTHETIC_PRIVATE_PHONE",
+    );
+  });
 });

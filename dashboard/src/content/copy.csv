@@ -2042,6 +2042,8 @@ value.range.today,dashboard,ValueComparisonPage,ValueComparisonPage,range_today,
 value.range.7d,dashboard,ValueComparisonPage,ValueComparisonPage,range_7d,"近 7 天",,active
 value.range.month,dashboard,ValueComparisonPage,ValueComparisonPage,range_month,"本月",,active
 value.range.30d,dashboard,ValueComparisonPage,ValueComparisonPage,range_30d,"近 30 天",,active
+value.month.select,dashboard,ValueComparisonPage,ValueComparisonPage,month_select,"选择数据月份",,active
+value.month.fallback,dashboard,ValueComparisonPage,ValueComparisonPage,month_fallback,"所选月份无记录，当前展示 {{month}} 的最近真实数据",,active
 value.privacy,dashboard,ValueComparisonPage,ValueComparisonPage,privacy,"仅展示事实，不做推测",,active
 value.actual,dashboard,ValueComparisonPage,ValueComparisonPage,actual,"实际支出",,active
 value.equivalent,dashboard,ValueComparisonPage,ValueComparisonPage,equivalent,"使用价值",,active
@@ -2049,6 +2051,9 @@ value.multiple,dashboard,ValueComparisonPage,ValueComparisonPage,multiple,"价�
 value.actual_hint,dashboard,ValueComparisonPage,ValueComparisonPage,actual_hint,"订阅、官方 API 与其他 AI 支出的已知部分",,active
 value.equivalent_hint,dashboard,ValueComparisonPage,ValueComparisonPage,equivalent_hint,"按本地已识别模型价格计算的 API 等价值",,active
 value.multiple_hint,dashboard,ValueComparisonPage,ValueComparisonPage,multiple_hint,"使用价值 ÷ 已确认实际支出",,active
+value.provenance.actual,dashboard,ValueComparisonPage,MetricCard,provenance_actual,"已录 {{known}}/{{total}} 类账单",,active
+value.provenance.equivalent,dashboard,ValueComparisonPage,MetricCard,provenance_equivalent,"本机 Token × 已配置价格",,active
+value.provenance.multiple,dashboard,ValueComparisonPage,MetricCard,provenance_multiple,"使用价值 ÷ 已录支出",,active
 value.recognized,dashboard,ValueComparisonPage,ValueComparisonPage,recognized,"已识别 Token",,active
 value.coverage,dashboard,ValueComparisonPage,ValueComparisonPage,coverage,"价格覆盖率",,active
 value.composition,dashboard,ValueComparisonPage,ValueComparisonPage,composition,"本月构成",,active
@@ -2067,9 +2072,19 @@ realtime.updated,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,updated,"�
 realtime.refresh,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,refresh,"刷新",,active
 realtime.active_agents,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,active_agents,"当前活跃 Agent",,active
 realtime.tokens,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tokens,"实时 Token / Credits",,active
+realtime.tokens.short,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tokens_short,实时 Token,,active
+realtime.agent_today_total,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,agent_today_total,"当前 Agent 今日累计",,active
 realtime.equivalent,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,equivalent,"API 等价值",,active
 realtime.focus,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,focus,"当前焦点会话",,active
 realtime.other,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,other,"其他会话",,active
+realtime.history.six_month,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,history_six_month,"近6月",,active
+realtime.history.detected_no_history,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,history_detected_no_history,"已检测，无记录",,active
+realtime.history.detected_no_history_detail,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,history_detected_no_history_detail,"已检测到，暂无可读历史记录",,active
+realtime.history.authorization_pending,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,history_authorization_pending,"待授权",,active
+realtime.history.installed,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,history_installed,"已安装",,active
+realtime.history.trae_pending_detail,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,history_trae_pending_detail,"Trae 已安装，连接官方账户后显示速通用量",,active
+realtime.history.trae_pending_metric,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,history_trae_pending_metric,"速通待连接",,active
+realtime.history.no_usage_metric,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,history_no_usage_metric,"暂无用量记录",,active
 realtime.composition,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,composition,"会话构成",,active
 realtime.trend,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,trend,"实时 Token 趋势",,active
 realtime.status,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status,"数据状态",,active
@@ -2077,17 +2092,35 @@ realtime.coverage,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,coverage,"
 realtime.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,empty,"当前没有可安全展示的会话活动",,active
 realtime.recent_activity,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,recent_activity,"近期有活动",,active
 realtime.running,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,running,"运行中",,active
+realtime.state.running,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_running,"运行中",,active
+realtime.state.idle,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_idle,"空闲",,active
+realtime.state.completed,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_completed,"已完成",,active
+realtime.state.interrupted,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_interrupted,"已中断",,active
+realtime.state.error,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_error,"运行异常",,active
+realtime.state.waiting_approval,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_waiting_approval,"等待授权",,active
+realtime.state.recent_activity,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_recent_activity,"近期",,active
 realtime.loading,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,loading,"正在读取本地会话状态…",,active
 realtime.error,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,error,"暂时无法读取实时会话",,active
 value.calendar,dashboard,ValueComparisonPage,ValueComparisonPage,calendar,"选择时间范围",,active
 value.change_unavailable,dashboard,ValueComparisonPage,ValueComparisonPage,change_unavailable,"暂无可比历史数据",,active
+value.month_compare.delta,dashboard,ValueComparisonPage,MetricCard,month_compare_delta,"较上月 {{value}}",,active
+value.month_compare.bill_missing,dashboard,ValueComparisonPage,MetricCard,month_compare_bill_missing,"较上月：上月账单未录入",,active
+value.month_compare.data_unavailable,dashboard,ValueComparisonPage,MetricCard,month_compare_data_unavailable,"较上月：上月暂无可读数据",,active
+value.month_compare.current_partial,dashboard,ValueComparisonPage,MetricCard,month_compare_current_partial,"较上月：当前账单不完整",,active
+value.month_compare.zero_base,dashboard,ValueComparisonPage,MetricCard,month_compare_zero_base,"较上月：上月为 $0.00",,active
+value.previous.actual,dashboard,ValueComparisonPage,MetricCard,previous_actual,"上月 {{value}}",,active
+value.previous.value,dashboard,ValueComparisonPage,MetricCard,previous_value,"上月 {{value}}",,active
+value.previous.multiple,dashboard,ValueComparisonPage,MetricCard,previous_multiple,"上月 {{value}}",,active
+value.multiple.pending_bill,dashboard,ValueComparisonPage,MetricCard,multiple_pending_bill,"缺少账单金额",,active
+value.state.unrecorded,dashboard,ValueComparisonPage,MetricCard,state_unrecorded,"本月未录入",,active
+value.state.awaiting_bill,dashboard,ValueComparisonPage,MetricCard,state_awaiting_bill,"缺少账单金额",,active
 value.actual_breakdown,dashboard,ValueComparisonPage,ValueComparisonPage,actual_breakdown,"实际支出",,active
 value.value_breakdown,dashboard,ValueComparisonPage,ValueComparisonPage,value_breakdown,"使用价值",,active
 value.category.subscription,dashboard,ValueComparisonPage,ValueComparisonPage,category_subscription,"订阅",,active
 value.category.official_api,dashboard,ValueComparisonPage,ValueComparisonPage,category_official_api,"官方 API",,active
 value.category.other_ai,dashboard,ValueComparisonPage,ValueComparisonPage,category_other_ai,"其他 AI",,active
 value.category.api_key,dashboard,ValueComparisonPage,ValueComparisonPage,category_api_key,"API Key",,active
-value.category.token_plan,dashboard,ValueComparisonPage,ValueComparisonPage,category_token_plan,"套餐 / 通道",,active
+value.category.token_plan,dashboard,ValueComparisonPage,ValueComparisonPage,category_token_plan,"积分 / 通道",,active
 value.category.unknown,dashboard,ValueComparisonPage,ValueComparisonPage,category_unknown,"待识别",,active
 value.table.source,dashboard,ValueComparisonPage,ValueComparisonPage,table_source,"套餐 / 渠道",,active
 value.table.actual,dashboard,ValueComparisonPage,ValueComparisonPage,table_actual,"本期实付",,active
@@ -2095,9 +2128,25 @@ value.table.value,dashboard,ValueComparisonPage,ValueComparisonPage,table_value,
 value.table.multiple,dashboard,ValueComparisonPage,ValueComparisonPage,table_multiple,"价值倍数",,active
 value.table.trend,dashboard,ValueComparisonPage,ValueComparisonPage,table_trend,"趋势",,active
 value.table.unlinked,dashboard,ValueComparisonPage,ValueComparisonPage,table_unlinked,"未关联 {{source}}",,active
+value.table.current_binding,dashboard,ValueComparisonPage,ValueComparisonPage,table_current_binding,"当前官方账户已绑定",,active
+value.table.usage_detected,dashboard,ValueComparisonPage,ValueComparisonPage,table_usage_detected,"已检测用量",,active
+value.table.bill_missing,dashboard,ValueComparisonPage,ValueComparisonPage,table_bill_missing,"账单未录入",,active
+value.action.configure_bill,dashboard,ValueComparisonPage,ValueComparisonPage,configure_bill,"录入账单",,active
+value.action.configure_price,dashboard,ValueComparisonPage,ValueComparisonPage,configure_price,"设置价格",,active
+value.action.pending,dashboard,ValueComparisonPage,ValueComparisonPage,pending,"待配置",,active
+value.action.not_configured,dashboard,ValueComparisonPage,ValueComparisonPage,not_configured,"未配置",,active
+value.table.configured_plan,dashboard,ValueComparisonPage,SourceTable,table_configured_plan,"已配置计划",,active
+value.table.previous_page,dashboard,ValueComparisonPage,SourceTable,table_previous_page,"上一页 Agent",,active
+value.table.next_page,dashboard,ValueComparisonPage,SourceTable,table_next_page,"下一页 Agent",,active
+value.table.page,dashboard,ValueComparisonPage,SourceTable,table_page,"第 {{current}} / {{total}} 页",,active
+value.table.awaiting_bill,dashboard,ValueComparisonPage,ValueComparisonPage,table_awaiting_bill,"待账单",,active
+value.no_attribution_record,dashboard,ValueComparisonPage,ValueComparisonPage,no_attribution_record,"无归因记录",,active
+value.data_unavailable,dashboard,ValueComparisonPage,ValueComparisonPage,data_unavailable,"暂无可读数据",,active
+value.data_unpriced,dashboard,ValueComparisonPage,ValueComparisonPage,data_unpriced,"已检测用量，暂无可用价格",,active
+value.share_unavailable,dashboard,ValueComparisonPage,ValueComparisonPage,share_unavailable,"占比不可计算",,active
 value.table.all,dashboard,ValueComparisonPage,ValueComparisonPage,table_all,"查看全部",,active
 value.details.subscription,dashboard,ValueComparisonPage,ValueComparisonPage,details_subscription,"订阅套餐 vs API Key 详细对比",,active
-value.details.credits,dashboard,ValueComparisonPage,ValueComparisonPage,details_credits,"积分 / 通道 / 配额明细",,active
+value.details.credits,dashboard,ValueComparisonPage,ValueComparisonPage,details_credits,"积分 / 速通 / 配额明细",,active
 value.details.evidence,dashboard,ValueComparisonPage,ValueComparisonPage,details_evidence,"说明与数据状态",,active
 value.details.summary,dashboard,ValueComparisonPage,ValueComparisonPage,details_summary,"展开查看当前事实与口径",,active
 value.equivalence_prefix,dashboard,ValueComparisonPage,ValueComparisonPage,equivalence_prefix,"每花 $1，当前换回约",,active
@@ -2106,11 +2155,18 @@ realtime.range.7d,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_7d,"
 realtime.range.month,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_month,"本月",,active
 realtime.range.30d,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_30d,"近 30 天",,active
 realtime.range.select,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,range_select,"选择数据范围",,active
+realtime.month.select,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,month_select,"选择 Agent 数据月份",,active
+realtime.agent.previous,dashboard,RealtimeSessionsPage,SessionStrip,agent_previous,"上一组 Agent",,active
+realtime.task.current_session,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,task_current_session,"{{agent}} 当前会话",,active
 realtime.refreshing,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,refreshing,"正在刷新",,active
 realtime.changed,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,changed,"较上次刷新",,active
 realtime.no_change,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,no_change,"等待下一次真实数据更新",,active
+realtime.current_range,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,current_range,"当前范围真实统计",,active
+realtime.current_range_value,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,current_range_value,"本次打开",,active
 realtime.current_task,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,current_task,"当前任务",,active
 realtime.no_task_label,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,no_task_label,"未提供安全任务标签",,active
+realtime.task.ref,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,task_ref,"{{state}} · 任务标识 {{ref}}",,active
+realtime.task_trend.unavailable,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,task_trend_unavailable,"暂无可读趋势",,active
 realtime.input,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,input,"输入 Token",,active
 realtime.output,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,output,"输出 Token",,active
 realtime.cache_read,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,cache_read,"缓存读取",,active
@@ -2118,6 +2174,15 @@ realtime.cache_write,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,cache_w
 realtime.requests,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,requests,"请求数",,active
 realtime.sub_agents,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,sub_agents,"子 Agent",,active
 realtime.duration,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,duration,"持续时长",,active
+realtime.duration.hours,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,duration_hours,"{{hours}} 小时",,active
+realtime.duration.hours_minutes,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,duration_hours_minutes,"{{hours}} 小时 {{minutes}} 分钟",,active
+realtime.duration.minutes,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,duration_minutes,"{{minutes}} 分钟",,active
+realtime.points,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,points,"积分",,active
+realtime.workbuddy.base,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,workbuddy_base,"基础",,active
+realtime.workbuddy.activity,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,workbuddy_activity,"活跃",,active
+realtime.workbuddy.remaining,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,workbuddy_remaining,"总积分",,active
+realtime.workbuddy.today_consumed,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,workbuddy_today_consumed,"已消耗",,active
+value.observed,dashboard,ValueComparisonPage,ValueComparisonPage,observed,"当天已观测",,active
 realtime.model,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,model,"模型",,active
 realtime.billing,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,billing,"计费方式",,active
 realtime.billing_safe,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,billing_safe,"按已识别 Token 估算",,active
@@ -2131,6 +2196,7 @@ realtime.requests.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,requ
 realtime.status.exact,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_exact,"精确",,active
 realtime.status.estimated,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_estimated,"估算",,active
 realtime.status.connected,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_connected,"仅缓存",,active
+realtime.status.observed,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_observed,"近期状态",,active
 realtime.covered_models,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,covered_models,"已覆盖模型数",,active
 realtime.legend,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,legend,"图例说明",,active
 value.chart.value_usd,dashboard,ValueComparisonPage,ValueComparisonPage,chart_value_usd,"使用价值（$）",,active
@@ -2138,6 +2204,30 @@ value.zero,dashboard,ValueComparisonPage,ValueComparisonPage,zero,"0",,active
 realtime.token_unit,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,token_unit,"Token",,active
 realtime.tokens_with_unit,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tokens_with_unit,"{{value}} Token",,active
 realtime.count_unit,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,count_unit,"{{count}} 个",,active
+realtime.agent.next,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,agent_next,"查看下一组 Agent",,active
+realtime.data_range,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,data_range,"数据范围：当前会话",,active
+realtime.updated_just_now,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,updated_just_now,"更新时间：刚刚",,active
+realtime.chart.window.1h,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,chart_window_1h,"1 小时",,active
+realtime.chart.window.4h,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,chart_window_4h,"4 小时",,active
+realtime.chart.window.all,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,chart_window_all,"当前范围",,active
+realtime.coverage.uncovered,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,coverage_uncovered,"查看未覆盖模型",,active
+realtime.coverage.in_progress,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,coverage_in_progress,"覆盖中",,active
+realtime.coverage.back,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,coverage_back,"返回覆盖率",,active
+realtime.coverage.full,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,coverage_full,"全部已覆盖",,active
+value_realtime.evidence.source,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,source,"数据来源",,active
+value_realtime.evidence.records,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,records,"记录数",,active
+value_realtime.evidence.observed,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,observed,"观测区间",,active
+value_realtime.evidence.pricing,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,pricing,"定价依据",,active
+value_realtime.evidence.open_pricing,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,open_pricing,"查看公开定价来源",,active
+value_realtime.evidence.safe_refs,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,safe_refs,"脱敏记录索引",,active
+value_realtime.evidence.privacy,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,privacy,"不展示提示词、消息正文、密钥或原始会话标识。",,active
+value_realtime.evidence.unavailable,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,unavailable,"暂无可用证据",,active
+value_realtime.evidence.source.local_usage_log,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,source_local_usage_log,"本地用量记录",,active
+value_realtime.evidence.source.local_spend_ledger,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,source_local_spend_ledger,"本地支出账本",,active
+value_realtime.evidence.source.unavailable,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,source_unavailable,"暂无可用来源",,active
+value_realtime.evidence.pricing.estimated,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,pricing_estimated,"按公开模型价格估算",,active
+value_realtime.evidence.pricing.reported,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,pricing_reported,"已记录实际支出",,active
+value_realtime.evidence.pricing.unavailable,dashboard,ValueRealtimeEvidence,ValueRealtimeEvidence,pricing_unavailable,"暂无可用定价依据",,active
 plan_market.page.subtitle,dashboard,PlanMarketPage,PlanMarketPage,subtitle,"各家 AI 编程订阅套餐的最新价格与内容，附官方来源链接，助您明智选择。",,active
 plan_market.filter.all,dashboard,PlanMarketPage,PlanMarketPage,filter_all,"全部厂商",,active
 plan_market.filter.label,dashboard,PlanMarketPage,PlanMarketPage,filter_label,"筛选厂商",,active
@@ -2560,6 +2650,9 @@ settings.cost.provider_api.summary.balance_cny,ui,SettingsPage,ProviderApiConfig
 settings.token_plan.batch_refresh,ui,SettingsPage,TokenPlanSection,batch_refresh,"Refresh all",,active
 settings.token_plan.email.show_full,ui,SettingsPage,TokenPlanSection,email_show_full,"Show full email",,active
 settings.token_plan.email.hide,ui,SettingsPage,TokenPlanSection,email_hide,"Hide email",,active
+settings.token_plan.official_account.bound_safe,ui,SettingsPage,TokenPlanSection,official_account_bound_safe,"当前官方账户已绑定",,active
+settings.token_plan.official_account.not_bound_safe,ui,SettingsPage,TokenPlanSection,official_account_not_bound_safe,"未绑定官方账户",,active
+settings.token_plan.console_session.safe_account_label,ui,SettingsPage,TokenPlanSection,console_session_safe_account_label,"官方账户授权",,active
 data_sources.reference.local_only,data_sources,DataSourcesPage,Privacy,local_only,"Local-only access",,active
 data_sources.reference.local_only_detail,data_sources,DataSourcesPage,Privacy,local_only_detail,"All scanning and parsing happens locally",,active
 data_sources.reference.privacy_first,data_sources,DataSourcesPage,Privacy,privacy_first,"Privacy first",,active
@@ -2750,3 +2843,12 @@ widget.limit.reset_at,ui,DesktopWidgetPage,ExpandedLimits,reset_at,"Resets {{tim
 widget.limit.reset_unavailable,ui,DesktopWidgetPage,ExpandedLimits,reset_unavailable,"Reset time unavailable",,active
 widget.limit.expires_at,ui,DesktopWidgetPage,ExpandedLimits,expires_at,"Expires in {{days}}d · {{absolute}}",,active
 widget.limit.time_unknown,ui,DesktopWidgetPage,ExpandedLimits,time_unknown,"Time unavailable",,active
+value.category.history_not_detected,dashboard,ValueComparisonPage,ValueComparisonPage,history_not_detected,"所选月份无此类记录",,active
+value.category.native_readable,dashboard,ValueComparisonPage,ValueComparisonPage,native_readable,"积分已读取",,active
+value.category.native_unreadable,dashboard,ValueComparisonPage,ValueComparisonPage,native_unreadable,"积分暂不可读",,active
+value.category.usage_detected,dashboard,ValueComparisonPage,ValueComparisonPage,usage_detected,"用量已识别",,active
+value.manual.billing,dashboard,ValueComparisonPage,ValueComparisonPage,manual_billing,"若应用里有现金账单但这里未显示，请在“设置 → 成本设置”录入对应月份、来源、金额和币种；API 用量只有存在明确 API Key 归因时才会进入 API Key 构成。",,active
+value.manual.open_cost_settings,dashboard,ValueComparisonPage,ValueComparisonPage,open_cost_settings,"打开成本设置",,active
+value.manual.native_points,dashboard,ValueComparisonPage,ValueComparisonPage,native_points,"WorkBuddy 积分会自动读取并保持原生单位；积分不能换算成 Token 或现金账单。",,active
+value.action.bill_then_compare,dashboard,ValueComparisonPage,SourceTable,bill_then_compare,"录入账单后计算",,active
+value.action.price_then_compare,dashboard,ValueComparisonPage,SourceTable,price_then_compare,"设置价格后计算",,active

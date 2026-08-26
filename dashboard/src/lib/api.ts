@@ -19,6 +19,7 @@ import { getInsforgeFunctionsUrl, getInsforgeRemoteUrl, getInsforgeAnonKey } fro
 import { isValidJwtShape } from "./auth-token";
 import { getLocalApiAuthHeaders } from "./local-api-auth";
 import { buildLocalApiUrl, isTauriRuntime } from "./local-api-url";
+import { getBrowserTimeZone, getBrowserTimeZoneOffsetMinutes } from "./timezone";
 
 type AnyRecord = Record<string, any>;
 
@@ -180,7 +181,7 @@ export interface DesktopWidgetViewModel {
     agent: string;
     provider: string;
     planLabel: string;
-    accountLabel: string;
+    accountState: "official_bound" | "not_bound";
     subscriptionAmount: number;
     subscriptionCurrency: string;
     kind: string;
@@ -655,12 +656,44 @@ export async function getSpendTimeseries(params?: AnyRecord) {
   return fetchLocalJson(PATHS.spendTimeseries, { ...(params || {}), ...tzParams, ...multiParams });
 }
 
-export async function getValueComparison(range = "month", signal?: AbortSignal) {
-  return fetchLocalJson(PATHS.valueComparison, { range }, { signal });
+const valueComparisonCache = new Map<string, AnyRecord>();
+const realtimeSessionsCache = new Map<string, AnyRecord>();
+
+function valueRealtimeCacheKey(range: string, month?: string) {
+  return `${range}:${month || "current"}`;
 }
 
-export async function getRealtimeSessions(range = "today", signal?: AbortSignal) {
-  return fetchLocalJson(PATHS.realtimeSessions, { range }, { signal });
+export function peekValueComparison(range = "month", month?: string) {
+  return valueComparisonCache.get(valueRealtimeCacheKey(range, month)) || null;
+}
+
+export function peekRealtimeSessions(range = "today", month?: string) {
+  return realtimeSessionsCache.get(valueRealtimeCacheKey(range, month)) || null;
+}
+
+export function resetValueRealtimeCacheForTests() {
+  valueComparisonCache.clear();
+  realtimeSessionsCache.clear();
+}
+
+export async function getValueComparison(range = "month", signal?: AbortSignal, month?: string) {
+  const tzParams = buildTimeZoneParams({
+    timeZone: getBrowserTimeZone(),
+    tzOffsetMinutes: getBrowserTimeZoneOffsetMinutes(),
+  });
+  const result = await fetchLocalJson(PATHS.valueComparison, { range, ...(month ? { month } : {}), ...tzParams }, { signal });
+  valueComparisonCache.set(valueRealtimeCacheKey(range, month), result);
+  return result;
+}
+
+export async function getRealtimeSessions(range = "today", signal?: AbortSignal, month?: string) {
+  const tzParams = buildTimeZoneParams({
+    timeZone: getBrowserTimeZone(),
+    tzOffsetMinutes: getBrowserTimeZoneOffsetMinutes(),
+  });
+  const result = await fetchLocalJson(PATHS.realtimeSessions, { range, ...(month ? { month } : {}), ...tzParams }, { signal });
+  realtimeSessionsCache.set(valueRealtimeCacheKey(range, month), result);
+  return result;
 }
 
 export async function getRequestUsageRecords({
@@ -1788,19 +1821,18 @@ export async function getLimitAccounts(opts: { refresh?: boolean } = {}) {
 
 export interface WorkbuddyQuotaGroup {
   id: "base" | "activity" | "extra" | "other";
-  items: number;
-  total: number;
-  remain: number;
-  used: number;
-  used_percent: number;
+  items: number | null;
+  total: number | null;
+  remain: number | null;
+  used: number | null;
+  used_percent: number | null;
 }
 
 export interface WorkbuddyQuotaResponse {
-  signed_in: boolean;
-  account?: { nickname: string; phone_masked: string; type: string };
+  signed_in: boolean | null;
   plan?: string | null;
   groups?: WorkbuddyQuotaGroup[];
-  fetched_at: string;
+  fetched_at: string | null;
   error?: string | null;
 }
 
@@ -2500,8 +2532,6 @@ export async function deleteClaudeConsoleSession(sessionRef: string): Promise<vo
 }
 
 export interface CursorQuotaSnapshot {
-  account_id?: string;
-  display_name?: string;
   plan_name?: string;
   total_usage_percent?: number;
   auto_composer_percent?: number | null;
@@ -2547,7 +2577,6 @@ export async function deleteCursorConsoleSession(sessionRef: string): Promise<vo
 }
 
 export interface TraeQuotaSnapshot {
-  account_id?: string;
   plan_name?: string;
   total_quota: number;
   used_quota: number;

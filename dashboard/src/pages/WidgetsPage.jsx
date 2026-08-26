@@ -900,7 +900,7 @@ function WindowsWidgetProjectSettings() {
               {visibleLimitOptions.length > 0 ? visibleLimitOptions.map((plan) => {
                 const id = String(plan.id || "");
                 const checked = widgetLimitGroupSelected(plan, draftLimitIds);
-                const label = [plan.provider, plan.planLabel || plan.accountLabel].filter(Boolean).join(" - ");
+                const label = [plan.provider, plan.planLabel].filter(Boolean).join(" - ");
                 return (
                   <div
                     key={id}
@@ -1118,11 +1118,10 @@ function widgetProjectTagTone(tag) {
   return tones[tag] || "project";
 }
 
-function maskWidgetPlanEmail(value) {
-  const normalized = String(value || "").trim();
-  const match = /^([^@]+)@(.+)$/.exec(normalized);
-  if (!match || match[1].includes("*")) return normalized;
-  return `${match[1].slice(0, Math.min(3, match[1].length))}***@${match[2]}`;
+function widgetPlanAccountStateLabel(value) {
+  return copy(value === "official_bound"
+    ? "settings.token_plan.official_account.bound_safe"
+    : "settings.token_plan.official_account.not_bound_safe");
 }
 
 function isWidgetLimitSelected(limit, selectedIds) {
@@ -1533,7 +1532,7 @@ function WindowsProjectManager({ onOpenSettings }) {
                         <span className="tt-token-plan-full-text"><span>{plan.provider || agent}</span>{` / ${planName}`}</span>
                       </span>
                       <span className="tt-token-plan-card-identity-meta">
-                        <span className="tt-token-plan-card-account">{maskWidgetPlanEmail(plan.accountLabel) || "—"}</span>
+                        <span className="tt-token-plan-card-account">{widgetPlanAccountStateLabel(plan.accountState)}</span>
                       </span>
                     </span>
                     <button

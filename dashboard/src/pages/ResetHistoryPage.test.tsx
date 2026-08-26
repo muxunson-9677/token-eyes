@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexResetHistoryEvent } from "../lib/api";
 
 const resetContext = vi.hoisted(() => ({
@@ -26,6 +26,8 @@ vi.mock("../lib/copy", () => ({
 }));
 
 import { ResetHistoryPage } from "./ResetHistoryPage";
+
+const TEST_NOW = new Date("2026-08-14T12:00:00.000Z");
 
 function resetEvent(id: string, occurredAt: Date): CodexResetHistoryEvent {
   return {
@@ -80,10 +82,16 @@ function officialReset(
 
 describe("ResetHistoryPage", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(TEST_NOW);
     window.localStorage.clear();
     resetContext.value.available = true;
     resetContext.value.history = [];
     document.documentElement.classList.remove("tt-reference-route-reset-history");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("activates reset-history-only route styles while the page is mounted", () => {
@@ -218,24 +226,30 @@ describe("ResetHistoryPage", () => {
   });
 
   it("renders compact timeline nodes and indexes each unique official source once", () => {
-    resetContext.value.history = [
-      officialReset("newest", new Date(2026, 6, 29, 12, 9), "https://x.com/source/one"),
-      officialReset("middle", new Date(2026, 6, 28, 11, 9), "https://x.com/source/one"),
-      officialReset("oldest", new Date(2026, 6, 26, 3, 17), "https://x.com/source/two"),
-    ];
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-30T12:00:00.000Z"));
+    try {
+      resetContext.value.history = [
+        officialReset("newest", new Date(2026, 6, 29, 12, 9), "https://x.com/source/one"),
+        officialReset("middle", new Date(2026, 6, 28, 11, 9), "https://x.com/source/one"),
+        officialReset("oldest", new Date(2026, 6, 26, 3, 17), "https://x.com/source/two"),
+      ];
 
-    render(<ResetHistoryPage />);
+      render(<ResetHistoryPage />);
 
-    expect(screen.getByTestId("reset-history-timeline")).toBeInTheDocument();
-    expect(screen.getAllByTestId("reset-history-node")).toHaveLength(3);
-    expect(screen.getAllByTestId("reset-history-source-ref").map((node) => node.textContent))
-      .toEqual(["[1]", "[1]", "[2]"]);
-    const sourceIndex = screen.getByTestId("reset-history-source-index");
-    expect(within(sourceIndex).getAllByRole("link")).toHaveLength(2);
-    expect(sourceIndex).toHaveTextContent("copy:reset_history.sources_title");
-    expect(sourceIndex).toHaveTextContent("[1]");
-    expect(sourceIndex).toHaveTextContent("[2]");
-    expect(screen.queryByRole("contentinfo", { name: "Token Eyes" })).not.toBeInTheDocument();
+      expect(screen.getByTestId("reset-history-timeline")).toBeInTheDocument();
+      expect(screen.getAllByTestId("reset-history-node")).toHaveLength(3);
+      expect(screen.getAllByTestId("reset-history-source-ref").map((node) => node.textContent))
+        .toEqual(["[1]", "[1]", "[2]"]);
+      const sourceIndex = screen.getByTestId("reset-history-source-index");
+      expect(within(sourceIndex).getAllByRole("link")).toHaveLength(2);
+      expect(sourceIndex).toHaveTextContent("copy:reset_history.sources_title");
+      expect(sourceIndex).toHaveTextContent("[1]");
+      expect(sourceIndex).toHaveTextContent("[2]");
+      expect(screen.queryByRole("contentinfo", { name: "Token Eyes" })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows a compact thirty-day reset count and adjacent interval statistics", () => {

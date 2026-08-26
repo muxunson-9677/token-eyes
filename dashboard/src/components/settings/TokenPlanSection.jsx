@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2, Package, CalendarDays, Eye, EyeOff } from "lucide-react";
+import { Plus, RefreshCw, Save, X, Link2, CheckCircle2, AlertCircle, Clock, ShieldAlert, GripVertical, ChevronDown, ChevronUp, Trash2, Package, CalendarDays } from "lucide-react";
 import {
   getTokenPlans,
   deleteTokenPlan,
@@ -48,6 +48,7 @@ import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 import { DASHBOARD_AGENTS } from "../../lib/agent-adapters-dashboard";
+import providerCapabilitiesRegistry from "../../../../shared/provider-capabilities.json";
 import { ProviderIcon } from "../../ui/dashboard/components/ProviderIcon.jsx";
 import {
   OfficialExternalLink,
@@ -77,33 +78,6 @@ function formatCodexReset(isoOrUnix) {
 function formatQuota(value) {
   const n = Number(value || 0);
   return new Intl.NumberFormat().format(Number.isFinite(n) ? n : 0);
-}
-
-const TOKEN_PLAN_FULL_EMAIL_KEY = "token-eyes.settings.token-plan.show-full-email.v1";
-
-function readTokenPlanFullEmailPreference() {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(TOKEN_PLAN_FULL_EMAIL_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function authorizedTokenPlanAccount(record) {
-  const official = record?.detection_config?.official_account || {};
-  if (record?.detection_method === "official_account") {
-    return official.display_name || official.account_label || official.account_id
-      || record.account_label || record.account_name || "";
-  }
-  return record?.account_label || record?.account_name || "";
-}
-
-function maskTokenPlanEmail(value) {
-  const normalized = String(value || "").trim();
-  const match = /^([^@]+)@(.+)$/.exec(normalized);
-  if (!match || match[1].includes("*")) return normalized;
-  return `${match[1].slice(0, Math.min(3, match[1].length))}***@${match[2]}`;
 }
 
 export function tokenPlanExpiryTimestamp(value) {
@@ -280,19 +254,30 @@ const CODEX_QUOTA_SYNC_STATUSES = new Set(["idle", "success", "error"]);
 export function quotaConsoleAuthTimeoutMs(providerId) {
   return providerId === "trae" ? TRAE_AUTH_TIMEOUT_MS : XIAOMI_AUTH_TIMEOUT_MS;
 }
-const OFFICIAL_ACCOUNT_DETECTION_PROVIDERS = new Set([
-  "xiaomi_mimo",
-  "glm",
-  "kimi",
-  "minimax",
-  "aliyun_bailian",
-  "codex",
-  "claude",
-  "cursor",
-  "trae",
-]);
+const AUTHORIZATION_DEFAULT = providerCapabilitiesRegistry.authorization?.default || {
+  mode: "no_official_auth",
+  operations: {
+    start: false,
+    reopen: false,
+    verify: false,
+    sync: false,
+    cancel: false,
+    delete: false,
+  },
+};
+const AUTHORIZATION_BY_PROVIDER = providerCapabilitiesRegistry.authorization?.providers || {};
+const AUTHORIZATION_OPERATION_KEYS = new Set(
+  providerCapabilitiesRegistry.authorization?.operation_keys || [],
+);
 
-const WEBVIEW_CONSOLE_PROVIDERS = new Set(["xiaomi_mimo", "glm", "codex", "claude", "cursor", "kimi", "trae"]);
+export function providerAuthorizationState(providerId) {
+  return AUTHORIZATION_BY_PROVIDER[providerId] || AUTHORIZATION_DEFAULT;
+}
+
+export function providerSupportsAuthorizationOperation(providerId, operation) {
+  return AUTHORIZATION_OPERATION_KEYS.has(operation)
+    && providerAuthorizationState(providerId).operations?.[operation] === true;
+}
 
 export function resolveProviderHomeLinkId(providerId, planId = "") {
   switch (providerId) {
@@ -340,7 +325,10 @@ function ProviderHomeLink({ linkId, testId }) {
 }
 
 function providerSupportsOfficialAccountDetection(providerId, planId, claudeAccountMode = "") {
-  if (!OFFICIAL_ACCOUNT_DETECTION_PROVIDERS.has(providerId)) return false;
+  if (
+    !providerSupportsAuthorizationOperation(providerId, "start")
+    || !providerSupportsAuthorizationOperation(providerId, "verify")
+  ) return false;
   if (providerId === "claude") {
     if (planId === "claude_routing") return false;
     if (String(claudeAccountMode || "").trim().toLowerCase() === "routing") return false;
@@ -491,6 +479,34 @@ function projectNativeQuotaSnapshot(quota, now) {
   }
   if (Object.prototype.hasOwnProperty.call(source, "partial")) {
     projected.partial = Boolean(source.partial);
+  }
+  return projected;
+}
+
+function projectNativeQuotaForLocal(quota, now) {
+  return projectNativeQuotaSnapshot(quota, now);
+}
+
+function projectNativeStatusForLocal(nativeStatus, fallbackSessionRef = "") {
+  const status = nativeStatus && typeof nativeStatus === "object" ? nativeStatus : {};
+  const rawErrorCode = String(status.error_code || "").trim();
+  const projected = {
+    connected: status.connected === true,
+    session_ref: String(status.session_ref || fallbackSessionRef),
+    state_code: String(status.state_code || "failed"),
+    error_code: /^[a-z0-9_]{1,64}$/i.test(rawErrorCode) ? rawErrorCode : "PROVIDER_ERROR",
+    error_message: status.error_message ? copy("settings.token_plan.refresh_failed") : "",
+  };
+  if (status.quota && typeof status.quota === "object") {
+    projected.quota = projectNativeQuotaForLocal(status.quota, new Date().toISOString());
+  }
+  if (status.balance && typeof status.balance === "object") {
+    projected.balance = {};
+    for (const key of ["balance", "available_balance", "credit_balance", "currency", "provider_reported_at"]) {
+      if (Object.prototype.hasOwnProperty.call(status.balance, key)) {
+        projected.balance[key] = status.balance[key];
+      }
+    }
   }
   return projected;
 }
@@ -752,15 +768,35 @@ function consoleStatusLabel(session) {
 }
 
 function buildOfficialAccountPayload(form, accountBindingId, providerHomeUrl, extraOfficial = {}) {
+  const stripIdentifiers = (value) => {
+    const safe = { ...(value && typeof value === "object" ? value : {}) };
+    for (const key of [
+      "account_id",
+      "auth_id",
+      "user_id",
+      "display_name",
+      "account_label",
+      "account_name",
+      "email",
+    ]) {
+      delete safe[key];
+    }
+    return safe;
+  };
   return {
-    ...form.detection_config?.official_account,
+    ...stripIdentifiers(form.detection_config?.official_account),
     account_binding_id: accountBindingId,
     provider_home_url: providerHomeUrl,
-    ...extraOfficial,
+    ...stripIdentifiers(extraOfficial),
   };
 }
 
-function WebviewConsoleConnectPanel({
+function AuthorizedOperation({ allowed, children }) {
+  if (!allowed) return null;
+  return children;
+}
+
+export function WebviewConsoleConnectPanel({
   descCopyKey,
   connectCopyKey,
   loginStartedDescCopyKey,
@@ -778,7 +814,22 @@ function WebviewConsoleConnectPanel({
   testIdPrefix,
   syncing,
   syncDisabled,
+  operations = AUTHORIZATION_DEFAULT.operations,
 }) {
+  const renderDisconnectAction = () => {
+    return (
+      <AuthorizedOperation allowed={operations.delete && session?.id && session?.session_ref}>
+        <button
+          type="button"
+          onClick={() => onDelete(session.id, session.session_ref)}
+          data-testid={`detection-disconnect-${testIdPrefix}`}
+          className="text-xs text-oai-gray-500 underline hover:text-oai-gray-700 dark:text-oai-gray-400 dark:hover:text-oai-gray-200"
+        >
+          {copy("settings.token_plan.console_session.disconnect")}
+        </button>
+      </AuthorizedOperation>
+    );
+  };
   return (
     <div className="space-y-3">
       <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
@@ -801,22 +852,24 @@ function WebviewConsoleConnectPanel({
           {copy("settings.token_plan.console_session.loading")}
         </div>
       ) : stage === "disconnected" ? (
-        <button
-          type="button"
-          onClick={onConnect}
-          disabled={connectingConsole}
-          data-testid={`detection-connect-${testIdPrefix}`}
-          className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-            "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-            "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-          )}
-        >
-          <Link2 className="h-3.5 w-3.5" aria-hidden />
-          {connectingConsole
-            ? copy("settings.token_plan.console_session.connecting")
-            : copy(connectCopyKey)}
-        </button>
+        <AuthorizedOperation allowed={operations.start}>
+          <button
+            type="button"
+            onClick={onConnect}
+            disabled={connectingConsole}
+            data-testid={`detection-connect-${testIdPrefix}`}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
+              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
+            )}
+          >
+            <Link2 className="h-3.5 w-3.5" aria-hidden />
+            {connectingConsole
+              ? copy("settings.token_plan.console_session.connecting")
+              : copy(connectCopyKey)}
+          </button>
+        </AuthorizedOperation>
       ) : stage === "login_started" ? (
         <div className="space-y-2" data-testid={`detection-${testIdPrefix}-login-started`}>
           <div className="flex items-center gap-2">
@@ -835,27 +888,30 @@ function WebviewConsoleConnectPanel({
             <AlertCircle className="h-4 w-4 text-amber-500" aria-hidden />
             <div>
               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                {session?.display_name}
+                {copy("settings.token_plan.console_session.safe_account_label")}
               </div>
               <div className="text-xs text-amber-600 dark:text-amber-300">
                 {copy("settings.token_plan.console_session.status_awaiting_verification")}
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onConnect}
-            disabled={connectingConsole}
-            data-testid={`detection-${testIdPrefix}-resume`}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-            )}
-          >
-            <Link2 className="h-3.5 w-3.5" aria-hidden />
-            {copy("settings.token_plan.console_session.retry")}
-          </button>
+          <AuthorizedOperation allowed={operations.verify}>
+            <button
+              type="button"
+              onClick={onConnect}
+              disabled={connectingConsole}
+              data-testid={`detection-${testIdPrefix}-resume`}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+                "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
+                "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
+              )}
+            >
+              <Link2 className="h-3.5 w-3.5" aria-hidden />
+              {copy("settings.token_plan.console_session.retry")}
+            </button>
+          </AuthorizedOperation>
+          {renderDisconnectAction()}
         </div>
       ) : stage === "failed" || stage === "desktop_not_verified" ? (
         <div className="space-y-2" data-testid={`detection-${testIdPrefix}-failed`}>
@@ -863,27 +919,30 @@ function WebviewConsoleConnectPanel({
             <ShieldAlert className="h-4 w-4 text-red-500" aria-hidden />
             <div>
               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                {session?.display_name}
+                {copy("settings.token_plan.console_session.safe_account_label")}
               </div>
               <div className="text-xs text-red-500 dark:text-red-400">
                 {statusLabel}
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onConnect}
-            disabled={connectingConsole}
-            data-testid={`detection-${testIdPrefix}-retry`}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-            )}
-          >
-            <Link2 className="h-3.5 w-3.5" aria-hidden />
-            {copy("settings.token_plan.console_session.retry")}
-          </button>
+          <AuthorizedOperation allowed={operations.start}>
+            <button
+              type="button"
+              onClick={onConnect}
+              disabled={connectingConsole}
+              data-testid={`detection-${testIdPrefix}-retry`}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+                "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
+                "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
+              )}
+            >
+              <Link2 className="h-3.5 w-3.5" aria-hidden />
+              {copy("settings.token_plan.console_session.retry")}
+            </button>
+          </AuthorizedOperation>
+          {renderDisconnectAction()}
         </div>
       ) : (
         <div className="space-y-2" data-testid={`detection-${testIdPrefix}-connected`}>
@@ -891,40 +950,33 @@ function WebviewConsoleConnectPanel({
             <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden />
             <div>
               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                {session?.display_name}
+                {copy("settings.token_plan.console_session.safe_account_label")}
               </div>
               <div className="text-xs text-emerald-600 dark:text-emerald-300">
                 {statusLabel}
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onSync}
-            disabled={syncDisabled}
-            data-testid={`detection-sync-${testIdPrefix}`}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-            )}
-          >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-            {syncing
-              ? copy("settings.token_plan.official_sync.syncing")
-              : copy("settings.token_plan.official_sync.connect")}
-          </button>
-          {session?.id && session?.session_ref ? (
+          <AuthorizedOperation allowed={operations.sync}>
             <button
               type="button"
-              onClick={() => onDelete(session.id, session.session_ref)}
-              data-testid={`detection-disconnect-${testIdPrefix}`}
-              className="text-xs text-oai-gray-500 underline hover:text-oai-gray-700 dark:text-oai-gray-400 dark:hover:text-oai-gray-200"
+              onClick={onSync}
+              disabled={syncDisabled}
+              data-testid={`detection-sync-${testIdPrefix}`}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+                "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
+                "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
+              )}
             >
-              {copy("settings.token_plan.console_session.disconnect")}
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              {syncing
+                ? copy("settings.token_plan.official_sync.syncing")
+                : copy("settings.token_plan.official_sync.connect")}
             </button>
-          ) : null}
-          {onAddAccount ? (
+          </AuthorizedOperation>
+          {renderDisconnectAction()}
+          <AuthorizedOperation allowed={operations.start && onAddAccount}>
             <button
               type="button"
               onClick={onAddAccount}
@@ -933,7 +985,7 @@ function WebviewConsoleConnectPanel({
             >
               {copy("settings.token_plan.console_session.add_account")}
             </button>
-          ) : null}
+          </AuthorizedOperation>
         </div>
       )}
     </div>
@@ -959,7 +1011,6 @@ function SortableTokenPlanCard({
   saving,
   usageLimits,
   loadingUsageLimits,
-  showFullEmail,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: record.id });
   const planLabel = record.plan_label || record.id;
@@ -997,8 +1048,9 @@ function SortableTokenPlanCard({
     : hasCompleteReportedHeadline && totalQuota > 0
       ? [{ kind: "total", total: totalQuota, used: usedQuota, remaining: remainingQuota }]
       : [];
-  const accountLabel = authorizedTokenPlanAccount(record);
-  const displayedAccountLabel = showFullEmail ? accountLabel : maskTokenPlanEmail(accountLabel);
+  const displayedAccountLabel = record.detection_method === "official_account"
+    ? copy("settings.token_plan.official_account.bound_safe")
+    : copy("settings.token_plan.official_account.not_bound_safe");
   const subscriptionCurrency = String(record.subscription_currency || "CNY").toUpperCase();
   const subscriptionAmount = Number(record.subscription_amount).toLocaleString();
   const subscriptionSummary = record.subscription_amount > 0
@@ -1060,10 +1112,10 @@ function SortableTokenPlanCard({
             </span>
             <span data-testid="token-plan-card-identity-meta" className="tt-token-plan-card-identity-meta">
               <span
-                className={cn("tt-token-plan-card-account", showFullEmail && "tt-token-plan-card-account--full")}
+                className="tt-token-plan-card-account"
                 title={displayedAccountLabel}
               >
-                {displayedAccountLabel || copy("settings.token_plan.value_unavailable")}
+                {displayedAccountLabel}
               </span>
               <span className="tt-token-plan-card-cost">{subscriptionSummary}</span>
             </span>
@@ -1354,14 +1406,12 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const [expiredPlansOpen, setExpiredPlansOpen] = useState(false);
   const [activePage, setActivePage] = useState(0);
   const [expiredPage, setExpiredPage] = useState(0);
-  const [showFullEmail, setShowFullEmail] = useState(readTokenPlanFullEmailPreference);
   const [editorInitialized, setEditorInitialized] = useState(false);
   const [editorMissing, setEditorMissing] = useState(false);
   const recordsRef = useRef(records);
   const consoleSessionsRef = useRef(consoleSessions);
   const refreshRef = useRef(null);
   const refreshingPlanIdsRef = useRef(new Set());
-  const fullEmailRefreshAttemptedIdsRef = useRef(new Set());
   const autoCodexRefreshBusyRef = useRef(false);
   const codexAttemptTokensRef = useRef(new Map());
   const codexCancelPromiseRef = useRef(new Map());
@@ -1930,7 +1980,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             state_code: "connected",
             error_code: "",
             error_message: "",
-            quota: nativeStatus.quota,
+            quota: projectNativeQuotaForLocal(nativeStatus.quota, new Date().toISOString()),
           };
           const verified = await verifyConsoleSession(createdSession.id, nativeResult);
           const accountBindingId = verified.session?.id || createdSession.id;
@@ -2166,7 +2216,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         const created = await createConsoleSession({
           provider_id: "codex",
           auth_kind: "official_console_session",
-          display_name: codexForm.notes?.trim() || `${codexForm.source} / Codex`,
+          display_name: copy("settings.token_plan.console_session.safe_account_label"),
           session_ref: sessionRef,
         });
         createdSession = created.session;
@@ -2365,17 +2415,37 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     }
 
     setConnectingConsole(true);
-    const activeResumable = resumableSession && [
+    const isRetainedQuotaRetry = retainNativeSession
+      && resumableSession?.status === "failed"
+      && resumableSession?.last_error_code === "QUOTA_SYNC_FAILED";
+    const activeResumable = resumableSession && ([
       "pending_login",
       "login_started",
       "awaiting_verification",
-    ].includes(resumableSession.status)
+    ].includes(resumableSession.status) || isRetainedQuotaRetry)
       ? resumableSession
       : null;
     let sessionRef = activeResumable?.session_ref
       || `token-plan/${sessionPrefix}/session/${crypto.randomUUID()}`;
     let createdSession = activeResumable;
     let quotaReady = false;
+    let publicErrorCopyKey = "settings.token_plan.console_session.connect_error";
+    const persistSafeFailure = async (stateCode, errorCode) => {
+      if (!createdSession || !retainNativeSession) return;
+      const verified = await verifyConsoleSession(createdSession.id, {
+        connected: false,
+        authorized: false,
+        session_ref: sessionRef,
+        state_code: stateCode,
+        error_code: errorCode,
+        error_message: "",
+      }).catch(() => null);
+      if (verified?.session) {
+        setConsoleSessions((previous) => previous.map((session) =>
+          session.id === createdSession.id ? verified.session : session
+        ));
+      }
+    };
     try {
       if (createdSession) {
         const resumableStatus = await verifySession(sessionRef).catch(() => null);
@@ -2391,7 +2461,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         const created = await createConsoleSession({
           provider_id: providerId,
           auth_kind: "official_console_session",
-          display_name: form.notes?.trim() || `${form.source} / ${displayNameSuffix}`,
+          display_name: `${displayNameSuffix} · ${copy("settings.token_plan.console_session.safe_account_label")}`,
           session_ref: sessionRef,
         });
         createdSession = created.session;
@@ -2410,7 +2480,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             state_code: "connected",
             error_code: "",
             error_message: "",
-            quota: nativeStatus.quota,
+            quota: projectNativeQuotaForLocal(nativeStatus.quota, new Date().toISOString()),
           };
           const verified = await verifyConsoleSession(createdSession.id, nativeResult);
           const accountBindingId = verified.session?.id || createdSession.id;
@@ -2434,8 +2504,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 {
                   ...officialExtra,
                   session_ref: sessionRef,
-                  account_id: nativeStatus.quota.account_id || "",
-                  display_name: nativeStatus.quota.display_name || "",
                   plan_name: nativeStatus.quota.plan_name || "",
                 },
               ),
@@ -2464,26 +2532,36 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
         }
 
         if (nativeStatus?.state_code === "session_not_found") {
-          throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.window_closed"));
+          publicErrorCopyKey = "settings.token_plan.console_session.window_closed";
+          await persistSafeFailure("session_not_found", "SESSION_NOT_FOUND");
+          throw new Error(copy(publicErrorCopyKey));
         }
         // Auth may succeed while usage fails — surface sync_failed; do not treat as connected 0%.
         if (["unsupported", "failed", "sync_failed", "reauth_required"].includes(nativeStatus?.state_code)) {
-          throw new Error(nativeStatus.error_message || copy("settings.token_plan.console_session.verify_error"));
+          publicErrorCopyKey = "settings.token_plan.console_session.verify_error";
+          const publicErrorCode = nativeStatus.state_code === "sync_failed"
+            ? "QUOTA_SYNC_FAILED"
+            : nativeStatus.state_code === "reauth_required"
+              ? "REAUTH_REQUIRED"
+              : nativeStatus.state_code === "unsupported"
+                ? "UNSUPPORTED"
+                : "AUTHORIZATION_FAILED";
+          await persistSafeFailure(nativeStatus.state_code, publicErrorCode);
+          throw new Error(copy(publicErrorCopyKey));
         }
         await wait(XIAOMI_AUTH_POLL_MS);
       }
-      throw new Error(copy(connectTimeoutCopyKey));
-    } catch (err) {
-      if (createdSession && !quotaReady) {
+      publicErrorCopyKey = connectTimeoutCopyKey;
+      throw new Error(copy(publicErrorCopyKey));
+    } catch {
+      if (createdSession && !quotaReady && !retainNativeSession) {
         // retainNativeSession keeps per-account auth.json so reconnect can retry usage sync
         // without wiping a just-authorized Cursor/Trae account on a transient sync_failed.
-        if (!retainNativeSession) {
-          await deleteNativeSession(sessionRef).catch(() => {});
-        }
+        await deleteNativeSession(sessionRef).catch(() => {});
         await deleteConsoleSession(createdSession.id).catch(() => {});
         setConsoleSessions((previous) => previous.filter((session) => session.id !== createdSession.id));
       }
-      setConsoleSessionError(err?.message || copy("settings.token_plan.console_session.connect_error"));
+      setConsoleSessionError(copy(publicErrorCopyKey));
     } finally {
       setConnectingConsole(false);
     }
@@ -2690,15 +2768,11 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
 
   const handleDeleteTraeConsoleSession = async (sessionId, sessionRef) => {
     try {
+      await deleteTraeConsoleSession(sessionRef);
       await deleteConsoleSession(sessionId);
-      try {
-        await deleteTraeConsoleSession(sessionRef);
-      } catch {
-        // Native session may already be gone; ignore.
-      }
       setConsoleSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    } catch (err) {
-      setConsoleSessionError(err?.message || copy("settings.token_plan.console_session.delete_error"));
+    } catch {
+      setConsoleSessionError(copy("settings.token_plan.console_session.delete_error"));
     }
   };
 
@@ -3439,19 +3513,17 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 ...projectNativeQuotaSnapshot(nativeStatus.quota, now),
                 detection_config: {
                   ...plan.detection_config,
-                  official_account: {
-                    ...(plan.detection_config?.official_account || {}),
-                    session_ref: nativeStatus.session_ref || boundSessionRef,
-                    account_id: nativeStatus.quota.account_id
-                      || plan.detection_config?.official_account?.account_id
-                      || "",
-                    display_name: nativeStatus.quota.display_name
-                      || plan.detection_config?.official_account?.display_name
-                      || "",
-                    plan_name: nativeStatus.quota.plan_name
-                      || plan.detection_config?.official_account?.plan_name
-                      || "",
-                  },
+                  official_account: buildOfficialAccountPayload(
+                    plan,
+                    plan.detection_config?.official_account?.account_binding_id || recordConsoleSession?.id || "",
+                    plan.detection_config?.official_account?.provider_home_url || "",
+                    {
+                      session_ref: nativeStatus.session_ref || boundSessionRef,
+                      plan_name: nativeStatus.quota.plan_name
+                        || plan.detection_config?.official_account?.plan_name
+                        || "",
+                    },
+                  ),
                 },
                 sync_status: "success",
                 last_synced_at: now,
@@ -3476,13 +3548,14 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 ? copy("settings.token_plan.console_session.window_closed")
                 : copy("settings.token_plan.refresh_failed"));
             if (recordConsoleSession?.id) {
-              const verified = await verifyConsoleSession(recordConsoleSession.id, nativeStatus || {
+              const localStatus = projectNativeStatusForLocal(nativeStatus || {
                 connected: false,
                 session_ref: boundSessionRef,
                 state_code: reauthRequired ? "session_not_found" : (syncFailed ? "sync_failed" : "failed"),
                 error_code: errorCode,
                 error_message: errorMessage,
-              }).catch(() => null);
+              }, boundSessionRef);
+              const verified = await verifyConsoleSession(recordConsoleSession.id, localStatus).catch(() => null);
               if (verified?.session) {
                 setConsoleSessions((previous) => previous.map((session) =>
                   session.id === recordConsoleSession.id ? verified.session : session
@@ -3706,23 +3779,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
     }
     return undefined;
   }, [codexPersistFailure, codexStage, codexWarning, consoleSessionError, form.plan_id, form.provider_id, formOpen]);
-
-  useEffect(() => {
-    if (!showFullEmail) {
-      fullEmailRefreshAttemptedIdsRef.current.clear();
-      return;
-    }
-    if (loading) return;
-    recordsRef.current
-      .filter((record) => record.provider_id === "cursor"
-        && record.detection_method === "official_account"
-        && authorizedTokenPlanAccount(record).includes("*"))
-      .forEach((record) => {
-        if (!record.id || fullEmailRefreshAttemptedIdsRef.current.has(record.id)) return;
-        fullEmailRefreshAttemptedIdsRef.current.add(record.id);
-        void refreshRef.current?.(record.id);
-      });
-  }, [loading, records, showFullEmail]);
 
   useEffect(() => {
     if (loading) return undefined;
@@ -4084,31 +4140,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       collapsedSummaryTone="violet"
       action={!editorPlanId ? (
         <div className="tt-token-plan-actions flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="token-plan-email-visibility"
-            aria-label={copy(showFullEmail
-              ? "settings.token_plan.email.hide"
-              : "settings.token_plan.email.show_full")}
-            title={copy(showFullEmail
-              ? "settings.token_plan.email.hide"
-              : "settings.token_plan.email.show_full")}
-            onClick={() => {
-              const next = !showFullEmail;
-              setShowFullEmail(next);
-              try {
-                window.localStorage.setItem(TOKEN_PLAN_FULL_EMAIL_KEY, next ? "1" : "0");
-              } catch {
-                // The preference remains active for this session when storage is unavailable.
-              }
-            }}
-            className="tt-cost-header-action"
-          >
-            {showFullEmail ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
-            {copy(showFullEmail
-              ? "settings.token_plan.email.hide"
-              : "settings.token_plan.email.show_full")}
-          </button>
           <button type="button" onClick={() => activeRecords.forEach((record) => refresh(record.id))} disabled={loading || Boolean(refreshingId)} className="tt-cost-header-action">
             <RefreshCw className={cn("h-3.5 w-3.5", refreshingId && "animate-spin")} aria-hidden />
             {copy("settings.token_plan.batch_refresh")}
@@ -4151,7 +4182,6 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                     saving={saving || deletingId === record.id}
                     usageLimits={usageLimits}
                     loadingUsageLimits={loadingUsageLimits}
-                    showFullEmail={showFullEmail}
                   />
                 ))}
               </div>
@@ -4511,7 +4541,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             <AlertCircle className="h-4 w-4 text-amber-500" aria-hidden />
                             <div>
                               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                                {glmSession?.display_name}
+                                {copy("settings.token_plan.console_session.safe_account_label")}
                               </div>
                               <div className="text-xs text-amber-600 dark:text-amber-300">
                                 {copy("settings.token_plan.console_session.status_awaiting_verification")}
@@ -4539,7 +4569,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             <AlertCircle className="h-4 w-4 text-red-500" aria-hidden />
                             <div>
                               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                                {glmSession?.display_name}
+                                {copy("settings.token_plan.console_session.safe_account_label")}
                               </div>
                               <div className="text-xs text-red-500 dark:text-red-400">
                                 {glmStatusLabel}
@@ -4572,7 +4602,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             <CheckCircle2 className="h-4 w-4 text-green-500" aria-hidden />
                             <div>
                               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                                {glmSession?.display_name}
+                                {copy("settings.token_plan.console_session.safe_account_label")}
                               </div>
                               <div className="text-xs text-green-600 dark:text-green-300">
                                 {glmStatusLabel}
@@ -4650,22 +4680,24 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                         {consoleSessionError && (
                           <div className="text-xs text-red-500 dark:text-red-400">{consoleSessionError}</div>
                         )}
-                        <button
-                          type="button"
-                          onClick={handleOfficialAccountSync}
-                          disabled={refreshingId === form.id || saving}
-                          data-testid="detection-sync-kimi"
-                          className={cn(
-                            "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-                            "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-                            "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-                          )}
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                          {refreshingId === form.id
-                            ? copy("settings.token_plan.official_sync.syncing")
-                            : copy("settings.token_plan.official_sync.connect")}
-                        </button>
+                        {providerSupportsAuthorizationOperation("kimi", "sync") ? (
+                          <button
+                            type="button"
+                            onClick={handleOfficialAccountSync}
+                            disabled={refreshingId === form.id || saving}
+                            data-testid="detection-sync-kimi"
+                            className={cn(
+                              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+                              "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
+                              "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
+                            )}
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                            {refreshingId === form.id
+                              ? copy("settings.token_plan.official_sync.syncing")
+                              : copy("settings.token_plan.official_sync.connect")}
+                          </button>
+                        ) : null}
                       </div>
                     ) : (
                       <WebviewConsoleConnectPanel
@@ -4686,6 +4718,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                         testIdPrefix="kimi"
                         syncing={refreshingId === form.id || connectingConsole}
                         syncDisabled={refreshingId === form.id || saving || connectingConsole}
+                        operations={providerAuthorizationState("kimi").operations}
                       />
                     )
                   ) : form.provider_id === "minimax" ? (
@@ -4716,22 +4749,24 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                       {consoleSessionError && (
                         <div className="text-xs text-red-500 dark:text-red-400">{consoleSessionError}</div>
                       )}
-                      <button
-                        type="button"
-                        onClick={handleOfficialAccountSync}
-                        disabled={refreshingId === form.id || saving}
-                        data-testid="detection-sync-minimax"
-                        className={cn(
-                          "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
-                          "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
-                          "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
-                        )}
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                        {refreshingId === form.id
-                          ? copy("settings.token_plan.official_sync.syncing")
-                          : copy("settings.token_plan.official_sync.connect")}
-                      </button>
+                      {providerSupportsAuthorizationOperation("minimax", "sync") ? (
+                        <button
+                          type="button"
+                          onClick={handleOfficialAccountSync}
+                          disabled={refreshingId === form.id || saving}
+                          data-testid="detection-sync-minimax"
+                          className={cn(
+                            "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+                            "border-oai-gray-200 text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50",
+                            "dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800",
+                          )}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                          {refreshingId === form.id
+                            ? copy("settings.token_plan.official_sync.syncing")
+                            : copy("settings.token_plan.official_sync.connect")}
+                        </button>
+                      ) : null}
                     </div>
                   ) : form.provider_id === "aliyun_bailian" ? (
                     <div className="space-y-3">
@@ -4866,7 +4901,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             <AlertCircle className="h-4 w-4 text-amber-500" aria-hidden />
                             <div>
                               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                                {formCodexSession?.display_name}
+                                {copy("settings.token_plan.console_session.safe_account_label")}
                               </div>
                               <div className="text-xs text-amber-600 dark:text-amber-300">
                                 {copy("settings.token_plan.console_session.status_awaiting_verification")}
@@ -4888,7 +4923,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             <AlertCircle className="h-4 w-4 text-red-500" aria-hidden />
                             <div>
                               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                                {formCodexSession?.display_name}
+                                {copy("settings.token_plan.console_session.safe_account_label")}
                               </div>
                               <div className="text-xs text-red-500 dark:text-red-400">
                                 {currentCodexNativeStatus?.error_message
@@ -4940,7 +4975,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                             <CheckCircle2 className="h-4 w-4 text-green-500" aria-hidden />
                             <div>
                               <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                                {formCodexSession?.display_name || `${form.source} / Codex`}
+                                {copy("settings.token_plan.console_session.safe_account_label")}
                               </div>
                               <div className="text-xs text-green-600 dark:text-green-300">
                                 {codexStatusLabel || copy("settings.token_plan.console_session.status_connected")}
@@ -5031,6 +5066,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                         testIdPrefix="claude"
                         syncing={refreshingId === form.id || connectingConsole}
                         syncDisabled={refreshingId === form.id || saving || connectingConsole}
+                        operations={providerAuthorizationState("claude").operations}
                       />
                     )
                   ) : form.provider_id === "cursor" ? (
@@ -5052,6 +5088,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                       testIdPrefix="cursor"
                       syncing={refreshingId === form.id || connectingConsole}
                       syncDisabled={refreshingId === form.id || saving || connectingConsole}
+                      operations={providerAuthorizationState("cursor").operations}
                     />
                   ) : form.provider_id === "trae" ? (
                     <WebviewConsoleConnectPanel
@@ -5066,12 +5103,13 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                       connectingConsole={connectingConsole}
                       consoleSessionError={consoleSessionError}
                       onConnect={handleConnectTrae}
-                      onSync={handleConnectTrae}
+                      onSync={handleOfficialAccountSync}
                       onDelete={handleDeleteTraeConsoleSession}
                       onAddAccount={handleAddDetectedAccount}
                       testIdPrefix="trae"
                       syncing={connectingConsole}
                       syncDisabled={saving || connectingConsole}
+                      operations={providerAuthorizationState("trae").operations}
                     />
                   ) : form.provider_id === "xiaomi_mimo" ? (
                     <>
@@ -5131,7 +5169,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                         <AlertCircle className="h-4 w-4 text-amber-500" aria-hidden />
                         <div>
                           <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                            {xiaomiMimoSession?.display_name}
+                            {copy("settings.token_plan.console_session.safe_account_label")}
                           </div>
                           <div className="text-xs text-amber-600 dark:text-amber-300">
                             {copy("settings.token_plan.console_session.status_awaiting_verification")}
@@ -5162,7 +5200,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                         <AlertCircle className="h-4 w-4 text-red-500" aria-hidden />
                         <div>
                           <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                            {xiaomiMimoSession?.display_name}
+                            {copy("settings.token_plan.console_session.safe_account_label")}
                           </div>
                           <div className="text-xs text-red-500 dark:text-red-400">
                             {xiaomiMimoStatusLabel}
@@ -5198,7 +5236,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                           <CheckCircle2 className="h-4 w-4 text-green-500" aria-hidden />
                           <div>
                             <div className="text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                              {xiaomiMimoSession?.display_name}
+                              {copy("settings.token_plan.console_session.safe_account_label")}
                             </div>
                             <div className="text-xs text-green-600 dark:text-green-300">
                               {xiaomiMimoStatusLabel}

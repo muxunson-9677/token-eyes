@@ -297,8 +297,6 @@ pub struct CursorQuotaSnapshot {
 /// MUST NOT contain cookie, header, token, or raw_response fields.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CursorQuotaDto {
-    pub account_id: String,
-    pub display_name: String,
     pub plan_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_usage_percent: Option<f64>,
@@ -759,8 +757,6 @@ pub fn map_quota_fetch_result_to_status(
             error_code: String::new(),
             error_message: String::new(),
             quota: Some(CursorQuotaDto {
-                account_id: String::new(),
-                display_name: String::new(),
                 plan_name: String::new(),
                 total_usage_percent: quota_windows
                     .iter()
@@ -955,8 +951,6 @@ fn quota_dto_from_snapshot(snapshot: CursorQuotaSnapshot) -> CursorQuotaDto {
         .then_some(overall)
         .flatten();
     CursorQuotaDto {
-        account_id: snapshot.account_id.clone(),
-        display_name: snapshot.display_name.clone(),
         plan_name: snapshot.plan_name.clone(),
         total_usage_percent: overall,
         auto_composer_percent: auto,
@@ -2371,6 +2365,8 @@ mod tests {
             "header",
             "raw_response",
             "set-cookie",
+            "account_id",
+            "display_name",
         ] {
             assert!(
                 !json.contains(forbidden),

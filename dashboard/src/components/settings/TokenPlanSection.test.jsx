@@ -2,8 +2,15 @@ import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { TokenPlanSection, quotaConsoleAuthTimeoutMs, resolveConsoleSessionForRecord } from "./TokenPlanSection.jsx";
-import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getTokenEyesBuildInfo, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openGlmConsoleLogin, verifyGlmConsoleSession, deleteGlmConsoleSession, openCodexConsoleLogin, reauthorizeCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, cancelCodexConsoleLogin, reopenCodexConsoleLogin, cleanupLegacyCodexAuthFile, deleteCodexConsoleSession, openCursorConsoleLogin, verifyCursorConsoleSession, saveTokenPlanSecret } from "../../lib/api";
+import {
+  TokenPlanSection,
+  WebviewConsoleConnectPanel,
+  providerAuthorizationState,
+  providerSupportsAuthorizationOperation,
+  quotaConsoleAuthTimeoutMs,
+  resolveConsoleSessionForRecord,
+} from "./TokenPlanSection.jsx";
+import { getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getTokenEyesBuildInfo, getConsoleSessions, createConsoleSession, deleteConsoleSession, verifyConsoleSession, openXiaomiMimoConsoleLogin, verifyXiaomiMimoConsoleSession, deleteXiaomiMimoConsoleSession, openGlmConsoleLogin, verifyGlmConsoleSession, deleteGlmConsoleSession, openCodexConsoleLogin, reauthorizeCodexConsoleLogin, verifyCodexConsoleSession, syncCodexConsoleQuota, cancelCodexConsoleLogin, reopenCodexConsoleLogin, cleanupLegacyCodexAuthFile, deleteCodexConsoleSession, openCursorConsoleLogin, verifyCursorConsoleSession, openTraeConsoleLogin, verifyTraeConsoleSession, deleteTraeConsoleSession, saveTokenPlanSecret } from "../../lib/api";
 import { LIMIT_PROVIDER_IDS } from "../../lib/limits-providers";
 import { DASHBOARD_AGENTS } from "../../lib/agent-adapters-dashboard";
 import { copy } from "../../lib/copy";
@@ -89,6 +96,92 @@ it("keeps TRAE polling for the official 600-second OAuth lifetime", () => {
   expect(quotaConsoleAuthTimeoutMs("cursor")).toBe(5 * 60 * 1000);
 });
 
+it("uses the source-backed authorization operation matrix without granting passive agents", () => {
+  expect(providerAuthorizationState("trae")).toEqual({
+    mode: "native_session_commands",
+    operations: {
+      start: true,
+      reopen: false,
+      verify: true,
+      sync: true,
+      cancel: false,
+      delete: true,
+    },
+  });
+  expect(providerSupportsAuthorizationOperation("claude", "sync")).toBe(false);
+  expect(providerSupportsAuthorizationOperation("codex", "reopen")).toBe(true);
+  expect(providerAuthorizationState("workbuddy")).toMatchObject({
+    mode: "read_only_credits",
+    operations: {
+      start: false,
+      reopen: false,
+      verify: false,
+      sync: false,
+      cancel: false,
+      delete: false,
+    },
+  });
+  expect(providerAuthorizationState("codebuddy")).toMatchObject({
+    mode: "no_official_auth",
+    operations: {
+      start: false,
+      reopen: false,
+      verify: false,
+      sync: false,
+      cancel: false,
+      delete: false,
+    },
+  });
+});
+
+it("renders console actions only when the operation matrix grants them", () => {
+  const commonProps = {
+    descCopyKey: "settings.token_plan.claude.official_desc",
+    connectCopyKey: "settings.token_plan.claude.connect_account",
+    loginStartedDescCopyKey: "settings.token_plan.claude.login_started_desc",
+    providerHomeLinkId: "",
+    statusLabel: "connected",
+    loadingConsoleSessions: false,
+    connectingConsole: false,
+    consoleSessionError: "",
+    onConnect: vi.fn(),
+    onSync: vi.fn(),
+    onDelete: vi.fn(),
+    testIdPrefix: "matrix",
+    syncing: false,
+    syncDisabled: false,
+  };
+  const panel = (stage, providerId, session = {}) => React.createElement(
+    WebviewConsoleConnectPanel,
+    {
+      ...commonProps,
+      stage,
+      session,
+      operations: providerAuthorizationState(providerId).operations,
+    },
+  );
+  const { rerender } = render(panel("awaiting_verification", "claude"));
+
+  expect(screen.getByTestId("detection-matrix-resume")).toBeInTheDocument();
+
+  rerender(panel("connected", "claude", { id: "session-test", session_ref: "native-test" }));
+  expect(screen.queryByTestId("detection-sync-matrix")).not.toBeInTheDocument();
+  expect(screen.getByTestId("detection-disconnect-matrix")).toBeInTheDocument();
+
+  rerender(panel("connected", "trae", { id: "session-test", session_ref: "native-test" }));
+  expect(screen.getByTestId("detection-sync-matrix")).toBeInTheDocument();
+
+  rerender(panel("awaiting_verification", "trae", { id: "session-test", session_ref: "native-test" }));
+  expect(screen.getByTestId("detection-disconnect-matrix")).toBeInTheDocument();
+
+  rerender(panel("failed", "trae", { id: "session-test", session_ref: "native-test" }));
+  expect(screen.getByTestId("detection-disconnect-matrix")).toBeInTheDocument();
+
+  rerender(panel("connected", "workbuddy", { id: "session-test", session_ref: "native-test" }));
+  expect(screen.queryByTestId("detection-sync-matrix")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("detection-disconnect-matrix")).not.toBeInTheDocument();
+});
+
 async function expandAllPlans() {
   await waitFor(() => {
     expect(screen.getAllByTestId("token-plan-card").length).toBeGreaterThan(0);
@@ -120,6 +213,9 @@ beforeEach(() => {
   reopenCodexConsoleLogin.mockReset();
   cleanupLegacyCodexAuthFile.mockReset();
   deleteCodexConsoleSession.mockReset();
+  openTraeConsoleLogin.mockReset();
+  verifyTraeConsoleSession.mockReset();
+  deleteTraeConsoleSession.mockReset().mockResolvedValue(undefined);
   window.localStorage.clear();
   window.localStorage.setItem(
     "token-eyes.settings.disclosure.cost.token-plans.v1",
@@ -813,7 +909,7 @@ it("new plan catalog plan choices render as separated card options", async () =>
   expect(standardOption).toHaveClass("mb-1");
 });
 
-it("catalog plans with official detection expose connect and sync controls", async () => {
+it("catalog plans without a native sync command do not invent a sync control", async () => {
   const user = userEvent.setup();
   getTokenPlanCatalog.mockResolvedValueOnce({
     providers: [
@@ -854,7 +950,8 @@ it("catalog plans with official detection expose connect and sync controls", asy
 
   expect(screen.queryByLabelText(copy("settings.token_plan.refresh_method"))).not.toBeInTheDocument();
   expect(screen.queryByTestId("token-plan-static-catalog-notice")).not.toBeInTheDocument();
-  expect(screen.getByTestId("detection-sync-minimax")).toBeInTheDocument();
+  expect(screen.getByTestId("detection-minimax-provider-link")).toBeInTheDocument();
+  expect(screen.queryByTestId("detection-sync-minimax")).not.toBeInTheDocument();
 
   await act(async () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
@@ -900,6 +997,118 @@ it("Trae catalog plans expose the official OAuth connect control", async () => {
   });
 
   expect(screen.getByTestId("detection-connect-trae")).toBeInTheDocument();
+});
+
+it("keeps the Trae binding visible when native deletion fails", async () => {
+  const user = userEvent.setup();
+  const session = makeXiaomiSession({
+    id: "trae-session-test",
+    provider_id: "trae",
+    session_ref: "token-plan/trae/session/test-ref",
+    status: "awaiting_verification",
+  });
+  getTokenPlanCatalog.mockResolvedValueOnce({
+    providers: [
+      {
+        id: "trae",
+        name: "Trae CN",
+        plans: [{
+          plan_id: "trae_cn_pro",
+          display_name: "速通 Pro",
+          quota_kind: "requests",
+          quota_unit: "requests",
+          total_quota: 100,
+          total_quota_display: "官方动态额度",
+        }],
+      },
+      { id: "custom", name: "自定义套餐", plans: [] },
+    ],
+  });
+  getConsoleSessions.mockResolvedValueOnce({ sessions: [session] });
+  deleteTraeConsoleSession.mockRejectedValueOnce(new Error("synthetic private native failure"));
+
+  render(<TokenPlanSection />);
+  await screen.findByText(copy("settings.section.token_plan"));
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.add") }));
+  });
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText(copy("settings.token_plan.provider")), "trae");
+  });
+
+  await act(async () => {
+    await user.click(await screen.findByTestId("detection-disconnect-trae"));
+  });
+
+  await waitFor(() => expect(deleteTraeConsoleSession).toHaveBeenCalledWith(session.session_ref));
+  expect(deleteConsoleSession).not.toHaveBeenCalled();
+  expect(screen.getByTestId("detection-disconnect-trae")).toBeInTheDocument();
+  expect(screen.getByText(copy("settings.token_plan.console_session.delete_error"))).toBeInTheDocument();
+  expect(screen.queryByText("synthetic private native failure")).not.toBeInTheDocument();
+});
+
+it("retains a Trae binding with a safe failure state when quota reading fails", async () => {
+  const user = userEvent.setup();
+  const createdSession = makeXiaomiSession({
+    id: "trae-retained-test",
+    provider_id: "trae",
+    session_ref: "token-plan/trae/session/retained-test",
+    status: "pending_login",
+  });
+  getTokenPlanCatalog.mockResolvedValueOnce({
+    providers: [
+      {
+        id: "trae",
+        name: "Trae CN",
+        plans: [{
+          plan_id: "trae_cn_pro",
+          display_name: "速通 Pro",
+          quota_kind: "requests",
+          quota_unit: "requests",
+          total_quota: 100,
+          total_quota_display: "官方动态额度",
+        }],
+      },
+      { id: "custom", name: "自定义套餐", plans: [] },
+    ],
+  });
+  createConsoleSession.mockResolvedValueOnce({
+    session: createdSession,
+    sessions: [createdSession],
+  });
+  openTraeConsoleLogin.mockResolvedValueOnce({ connected: false, state_code: "login_started" });
+  verifyTraeConsoleSession.mockResolvedValueOnce({
+    connected: false,
+    state_code: "sync_failed",
+    error_code: "TRAE_QUOTA_FAILED",
+    error_message: "synthetic private quota failure",
+  });
+  verifyConsoleSession.mockResolvedValueOnce({
+    ok: true,
+    session: { ...createdSession, status: "failed", last_error_code: "QUOTA_SYNC_FAILED" },
+  });
+
+  render(<TokenPlanSection />);
+  await screen.findByText(copy("settings.section.token_plan"));
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.add") }));
+  });
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText("Agent 来源"), "hermes");
+  });
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText(copy("settings.token_plan.provider")), "trae");
+  });
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-connect-trae"));
+  });
+
+  expect(await screen.findByTestId("detection-trae-failed")).toBeInTheDocument();
+  expect(screen.getByTestId("detection-disconnect-trae")).toBeInTheDocument();
+  expect(screen.getByText(copy("settings.token_plan.console_session.verify_error"))).toBeInTheDocument();
+  expect(screen.queryByText("synthetic private quota failure")).not.toBeInTheDocument();
+  expect(deleteTraeConsoleSession).not.toHaveBeenCalled();
+  expect(deleteConsoleSession).not.toHaveBeenCalled();
 });
 
 it("Cursor authorization persists the live usage snapshot instead of connected zero", async () => {
@@ -989,12 +1198,16 @@ it("Cursor authorization persists the live usage snapshot instead of connected z
     ]),
     detection_config: expect.objectContaining({
       official_account: expect.objectContaining({
-        account_id: "auth0|user_01KWTPZG4VW30ZF6MKZ2XXM398",
-        display_name: "eve***@hotmail.com",
         plan_name: "pro",
       }),
     }),
   }));
+  const savedOfficialAccount = saveTokenPlan.mock.calls.at(-1)[0].detection_config.official_account;
+  expect(savedOfficialAccount).not.toHaveProperty("account_id");
+  expect(savedOfficialAccount).not.toHaveProperty("display_name");
+  const localVerificationPayload = verifyConsoleSession.mock.calls.at(-1)[1];
+  expect(localVerificationPayload.quota).not.toHaveProperty("account_id");
+  expect(localVerificationPayload.quota).not.toHaveProperty("display_name");
 });
 
 it("selecting xiaomi_mimo provider shows only verified catalog plans", async () => {
@@ -2641,7 +2854,7 @@ it("lists codex claude cursor in catalog provider options", async () => {
   expect(screen.getByTestId("token-plan-provider-card-select-option-cursor")).toBeInTheDocument();
 });
 
-it("renders every provider home URL from the registry as a safe keyboard link", async () => {
+it("renders source-backed provider home URLs without granting Aliyun an auth flow", async () => {
   getTokenPlanCatalog.mockResolvedValue({
     providers: [
       {
@@ -2716,10 +2929,17 @@ it("renders every provider home URL from the registry as a safe keyboard link", 
   const claude = snapshotLink("detection-claude-provider-link");
   await chooseOfficialProvider("kimi", "kimi_api_budget");
   const kimi = snapshotLink("detection-kimi-api-provider-link");
+  expect(screen.queryByTestId("detection-sync-kimi")).not.toBeInTheDocument();
   await chooseOfficialProvider("minimax", "minimax_manual_quota");
   const minimax = snapshotLink("detection-minimax-provider-link");
-  await chooseOfficialProvider("aliyun_bailian", "aliyun_bailian_manual_quota");
+  expect(screen.queryByTestId("detection-sync-minimax")).not.toBeInTheDocument();
+  await act(async () => {
+    await user.selectOptions(screen.getByLabelText(copy("settings.token_plan.provider")), "aliyun_bailian");
+    await user.selectOptions(screen.getByLabelText(copy("settings.token_plan.plan")), "aliyun_bailian_manual_quota");
+  });
   const aliyun = snapshotLink("detection-aliyun-provider-link");
+  expect(screen.queryByLabelText(copy("settings.token_plan.detection_method.select"))).not.toBeInTheDocument();
+  expect(screen.getByTestId("token-plan-static-catalog-notice")).toBeInTheDocument();
 
   expect({ xiaomi, glm, claude, kimi, minimax, aliyun }).toEqual({
     xiaomi: {
@@ -2757,13 +2977,7 @@ it("renders every provider home URL from the registry as a safe keyboard link", 
       rel: expect.stringContaining("noopener"),
       focused: true,
     },
-    aliyun: {
-      linkId: "provider-home-aliyun-bailian-plan",
-      href: providerLinksById.get("provider-home-aliyun-bailian-plan").url,
-      target: "_blank",
-      rel: expect.stringContaining("noopener"),
-      focused: true,
-    },
+    aliyun: null,
   });
 });
 
@@ -4364,7 +4578,8 @@ it("selects the latest unbound failed Codex session and treats an unknown state 
   await openCodexOfficialAccountForm(user);
 
   const failed = await screen.findByTestId("detection-codex-failed");
-  expect(failed).toHaveTextContent("latest unknown failure");
+  expect(failed).toHaveTextContent(copy("settings.token_plan.console_session.safe_account_label"));
+  expect(failed).not.toHaveTextContent("latest unknown failure");
   expect(failed).toHaveAttribute("role", "alert");
   expect(failed).toHaveAttribute("aria-live", "assertive");
   expect(screen.getByTestId("detection-codex-retry")).toBeEnabled();
@@ -5512,7 +5727,7 @@ it("Cursor refresh treats a missing native session as reauthorization instead of
   expect(refreshTokenPlan).not.toHaveBeenCalled();
 });
 
-it("shows Cursor account under the title and keeps all quota lanes without account diagnostics", async () => {
+it("shows a privacy-safe Cursor binding state and keeps all quota lanes without account diagnostics", async () => {
   const record = {
     ...BASE_RECORD,
     id: "cursor-live-plan",
@@ -5552,7 +5767,10 @@ it("shows Cursor account under the title and keeps all quota lanes without accou
   await screen.findByText(/cursor \/ Pro/i);
   await expandAllPlans();
 
-  expect(screen.getByTestId("token-plan-card-identity-meta")).toHaveTextContent("eve***@hotmail.com");
+  const identityMeta = screen.getByTestId("token-plan-card-identity-meta");
+  expect(identityMeta).toHaveTextContent("当前官方账户已绑定");
+  expect(identityMeta).not.toHaveTextContent("eve***@hotmail.com");
+  expect(identityMeta).not.toHaveTextContent("auth0|user_");
   expect(screen.queryByText(/Auth ID:/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/套餐: pro/i)).not.toBeInTheDocument();
   const detail = screen.getByTestId("token-plan-detail-cursor-live-plan");

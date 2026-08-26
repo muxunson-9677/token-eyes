@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import apiSource from "./api.ts?raw";
 import {
   getAgentEnvironment,
   getObservabilityExport,
@@ -8,6 +9,11 @@ import {
   getUsageModelBreakdown,
   fetchCloudUsageModelBreakdown,
   getTokenPlans,
+  getRealtimeSessions,
+  getValueComparison,
+  peekRealtimeSessions,
+  peekValueComparison,
+  resetValueRealtimeCacheForTests,
   cancelCodexConsoleLogin,
   cleanupLegacyCodexAuthFile,
   reauthorizeCodexConsoleLogin,
@@ -39,7 +45,45 @@ beforeEach(() => {
   setTauriRuntime(false);
   clearLocalApiAuthToken();
   resetLocalApiOriginForTests();
+  resetValueRealtimeCacheForTests();
   vi.restoreAllMocks();
+});
+
+it("retains the last safe aggregate for instant value and realtime remounts while still refreshing from the API", async () => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify({
+    page: String(input).includes("value-comparison") ? "value" : "realtime",
+  }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  expect(peekValueComparison("month", "2026-08")).toBeNull();
+  expect(peekRealtimeSessions("today", "2026-08")).toBeNull();
+
+  const value = await getValueComparison("month", undefined, "2026-08");
+  const realtime = await getRealtimeSessions("today", undefined, "2026-08");
+
+  expect(peekValueComparison("month", "2026-08")).toBe(value);
+  expect(peekRealtimeSessions("today", "2026-08")).toBe(realtime);
+  expect(peekValueComparison("month", "2026-07")).toBeNull();
+  expect(peekRealtimeSessions("7d", "2026-08")).toBeNull();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it("keeps nullable WorkBuddy Credits and account identity out of the public contract", () => {
+  const groupContract = apiSource.slice(
+    apiSource.indexOf("export interface WorkbuddyQuotaGroup"),
+    apiSource.indexOf("export interface WorkbuddyQuotaResponse"),
+  );
+  const responseContract = apiSource.slice(
+    apiSource.indexOf("export interface WorkbuddyQuotaResponse"),
+    apiSource.indexOf("export async function getWorkbuddyQuota"),
+  );
+
+  for (const field of ["total", "remain", "used", "used_percent"]) {
+    expect(groupContract).toContain(`${field}: number | null;`);
+  }
+  expect(responseContract).not.toMatch(/\baccount\??\s*:/);
+  expect(responseContract).not.toMatch(/\bnickname\b|\bphone(?:_masked)?\b/);
 });
 
 it("routes local function requests to the Tauri-reported loopback CLI API", async () => {

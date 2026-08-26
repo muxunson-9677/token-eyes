@@ -18,8 +18,9 @@ use std::fs;
 use std::io::{ErrorKind, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -28,6 +29,7 @@ const SESSION_PREFIX: &str = "token-plan/trae/session/";
 const CLIENT_ID: &str = "ono9krqynydwx5";
 const TRAE_APP_VERSION: &str = "3.5.66";
 const OAUTH_TIMEOUT: Duration = Duration::from_secs(600);
+const AUTH_CALLBACK_FAILED_MESSAGE: &str = "TRAE authorization was not completed";
 /// Official Trae CN browser authorization origin (Cockpit successful OAuth link).
 /// Distinct from GetLoginGuidance API hosts such as api.trae.cn.
 const BROWSER_AUTH_ORIGIN_CN: &str = "https://www.trae.cn";
@@ -76,6 +78,13 @@ struct PendingTraeOAuth {
     verifier: String,
     context: TraeLoginContext,
     receiver: Mutex<Receiver<Result<OAuthCallback, String>>>,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Drop for PendingTraeOAuth {
+    fn drop(&mut self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -251,6 +260,7 @@ pub struct TraeQuotaWindow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TraeQuota {
+    #[serde(skip_serializing)]
     pub account_id: String,
     pub plan_name: String,
     pub total_quota: f64,
@@ -277,6 +287,47 @@ pub struct TraeSessionState {
     pending: HashMap<String, PendingTraeOAuth>,
 }
 
+#[derive(Debug)]
+enum PendingTraeOAuthPoll {
+    Missing,
+    Awaiting,
+    Completed(PendingTraeOAuth, Result<OAuthCallback, String>),
+    Closed,
+}
+
+fn poll_pending_oauth(
+    state: &Mutex<TraeSessionState>,
+    session_ref: &str,
+) -> Result<PendingTraeOAuthPoll, String> {
+    let mut guard = state
+        .lock()
+        .map_err(|_| "TRAE session state is unavailable".to_string())?;
+    let outcome = {
+        let Some(pending) = guard.pending.get(session_ref) else {
+            return Ok(PendingTraeOAuthPoll::Missing);
+        };
+        let receiver = pending
+            .receiver
+            .lock()
+            .map_err(|_| "TRAE OAuth callback state is unavailable".to_string())?;
+        receiver.try_recv()
+    };
+    match outcome {
+        Ok(result) => {
+            let pending = guard
+                .pending
+                .remove(session_ref)
+                .ok_or_else(|| "TRAE OAuth session disappeared".to_string())?;
+            Ok(PendingTraeOAuthPoll::Completed(pending, result))
+        }
+        Err(TryRecvError::Empty) => Ok(PendingTraeOAuthPoll::Awaiting),
+        Err(TryRecvError::Disconnected) => {
+            guard.pending.remove(session_ref);
+            Ok(PendingTraeOAuthPoll::Closed)
+        }
+    }
+}
+
 fn status(session_ref: &str, state_code: &str) -> TraeSessionStatus {
     TraeSessionStatus {
         connected: state_code == "connected",
@@ -301,8 +352,12 @@ fn failed(session_ref: &str, code: &str, message: impl Into<String>) -> TraeSess
     }
 }
 
-fn callback_failed(session_ref: &str, message: impl Into<String>) -> TraeSessionStatus {
-    failed(session_ref, "TRAE_AUTH_CALLBACK_FAILED", message)
+fn callback_failed(session_ref: &str, _message: impl Into<String>) -> TraeSessionStatus {
+    failed(
+        session_ref,
+        "TRAE_AUTH_CALLBACK_FAILED",
+        AUTH_CALLBACK_FAILED_MESSAGE,
+    )
 }
 
 /// Auth file / tokens may exist while entitlement parse fails — never "connected" with zeros.
@@ -401,7 +456,7 @@ fn callback_auth_code(values: &HashMap<String, String>) -> Result<Option<String>
     ))
 }
 
-fn callback_from_target(target: &str) -> Result<OAuthCallback, String> {
+fn callback_values_from_target(target: &str) -> Result<HashMap<String, String>, String> {
     let parsed = url::Url::parse(&format!("http://localhost{target}"))
         .map_err(|_| "Invalid TRAE OAuth callback".to_string())?;
     if parsed.path() != "/authorize" {
@@ -411,12 +466,16 @@ fn callback_from_target(target: &str) -> Result<OAuthCallback, String> {
     if let Some(fragment) = parsed.fragment() {
         values.extend(url::form_urlencoded::parse(fragment.as_bytes()).into_owned());
     }
-    if let Some(error) = first_query_value(&values, &["error", "error_code", "err", "errorCode"]) {
-        return Err(format!("TRAE authorization failed: {error}"));
+    Ok(values)
+}
+
+fn callback_from_values(values: &HashMap<String, String>) -> Result<OAuthCallback, String> {
+    if first_query_value(values, &["error", "error_code", "err", "errorCode"]).is_some() {
+        return Err(AUTH_CALLBACK_FAILED_MESSAGE.to_string());
     }
-    let auth_code = callback_auth_code(&values)?;
+    let auth_code = callback_auth_code(values)?;
     let refresh_token = first_query_value(
-        &values,
+        values,
         &[
             "refreshToken",
             "refresh_token",
@@ -432,9 +491,9 @@ fn callback_from_target(target: &str) -> Result<OAuthCallback, String> {
     Ok(OAuthCallback {
         auth_code,
         refresh_token,
-        state: first_query_value(&values, &["state"]),
+        state: first_query_value(values, &["state"]),
         login_host: first_query_value(
-            &values,
+            values,
             &[
                 "loginHost",
                 "login_host",
@@ -444,10 +503,29 @@ fn callback_from_target(target: &str) -> Result<OAuthCallback, String> {
             ],
         ),
         cloudide_token: first_query_value(
-            &values,
+            values,
             &["cloudideToken", "cloudide_token", "CloudideToken", "token"],
         ),
     })
+}
+
+fn callback_from_target(target: &str) -> Result<OAuthCallback, String> {
+    callback_from_values(&callback_values_from_target(target)?)
+}
+
+fn validate_callback_state_value(
+    callback_state: Option<&str>,
+    expected_state: &str,
+) -> Result<(), String> {
+    if callback_state == Some(expected_state) {
+        Ok(())
+    } else {
+        Err("TRAE OAuth callback state did not match the pending flow".to_string())
+    }
+}
+
+fn validate_callback_state(callback: &OAuthCallback, expected_state: &str) -> Result<(), String> {
+    validate_callback_state_value(callback.state.as_deref(), expected_state)
 }
 
 fn callback_pending_html() -> &'static str {
@@ -498,6 +576,7 @@ fn build_authorization_url_with_context(
         .append_pair("client_id", &context.client_id)
         .append_pair("redirect", "0")
         .append_pair("login_trace_id", trace_id)
+        .append_pair("state", trace_id)
         .append_pair("auth_callback_url", redirect_uri)
         .append_pair("machine_id", &context.machine_id)
         .append_pair("device_id", &context.device_id)
@@ -527,6 +606,7 @@ fn build_authorization_url(
 fn start_listener(
     login_host: &str,
     trace_id: String,
+    context: TraeLoginContext,
 ) -> Result<(PendingTraeOAuth, String), String> {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .map_err(|_| "Unable to start the TRAE OAuth callback listener".to_string())?;
@@ -537,7 +617,6 @@ fn start_listener(
     let redirect_uri = format!("http://127.0.0.1:{port}/authorize");
     let verifier = random_urlsafe(64);
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-    let context = load_login_context();
     let auth_url = build_authorization_url_with_context(
         login_host,
         &redirect_uri,
@@ -546,12 +625,17 @@ fn start_listener(
         &context,
     )?;
     let (sender, receiver) = mpsc::channel();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let listener_cancelled = Arc::clone(&cancelled);
     listener
         .set_nonblocking(true)
         .map_err(|_| "Unable to configure the TRAE OAuth callback listener".to_string())?;
     std::thread::spawn(move || {
         let deadline = Instant::now() + OAUTH_TIMEOUT;
         let result = loop {
+            if listener_cancelled.load(Ordering::Acquire) {
+                break Err("TRAE OAuth callback was cancelled".to_string());
+            }
             if Instant::now() >= deadline {
                 break Err("TRAE OAuth authorization timed out".to_string());
             }
@@ -579,7 +663,26 @@ fn start_listener(
                         write_callback_response(&mut stream, callback_pending_html());
                         continue;
                     }
-                    let parsed = callback_from_target(target);
+                    let values = match callback_values_from_target(target) {
+                        Ok(values) => values,
+                        Err(_) => {
+                            write_callback_response(
+                                &mut stream,
+                                "<!doctype html><meta charset=utf-8><title>Token Eyes</title><h1>TRAE 授权失败</h1><p>请重新发起授权。</p>",
+                            );
+                            continue;
+                        }
+                    };
+                    let callback_state = first_query_value(&values, &["state"]);
+                    if validate_callback_state_value(callback_state.as_deref(), &trace_id).is_err()
+                    {
+                        write_callback_response(
+                            &mut stream,
+                            "<!doctype html><meta charset=utf-8><title>Token Eyes</title><h1>TRAE 授权失败</h1><p>请重新发起授权。</p>",
+                        );
+                        continue;
+                    }
+                    let parsed = callback_from_values(&values);
                     let body = if parsed.is_ok() {
                         "<!doctype html><meta charset=utf-8><title>Token Eyes</title><h1>TRAE 授权已完成</h1><p>此页面将自动关闭。</p><script>setTimeout(()=>window.close(),800)</script>"
                     } else {
@@ -601,6 +704,7 @@ fn start_listener(
             verifier,
             context,
             receiver: Mutex::new(receiver),
+            cancelled,
         },
         auth_url.to_string(),
     ))
@@ -1312,15 +1416,15 @@ pub async fn open_trae_console_login(
     let _dir = account_dir(&app, &session_ref)?;
     let trace_id = random_urlsafe(24);
     let login_host = resolve_login_guidance_host(&trace_id).await;
-    let (pending, auth_url) = start_listener(&login_host, trace_id)?;
+    let (pending, auth_url) = start_listener(&login_host, trace_id, load_login_context())?;
+    app.opener()
+        .open_url(auth_url, None::<&str>)
+        .map_err(|_| "Unable to open the TRAE authorization page".to_string())?;
     state
         .lock()
         .map_err(|_| "TRAE session state is unavailable".to_string())?
         .pending
         .insert(session_ref.clone(), pending);
-    app.opener()
-        .open_url(auth_url, None::<&str>)
-        .map_err(|_| "Unable to open the TRAE authorization page".to_string())?;
     Ok(status(&session_ref, "login_started"))
 }
 
@@ -1354,38 +1458,22 @@ pub async fn verify_trae_console_session(
             });
         }
     }
-    let callback = {
-        let guard = state
-            .lock()
-            .map_err(|_| "TRAE session state is unavailable".to_string())?;
-        let Some(pending) = guard.pending.get(&session_ref) else {
+    let (pending, callback_result) = match poll_pending_oauth(state.inner(), &session_ref)? {
+        PendingTraeOAuthPoll::Missing => {
             return Ok(status(&session_ref, "session_not_found"));
-        };
-        let receiver = pending
-            .receiver
-            .lock()
-            .map_err(|_| "TRAE OAuth callback state is unavailable".to_string())?;
-        match receiver.try_recv() {
-            Ok(result) => Some(result),
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                return Ok(failed(
-                    &session_ref,
-                    "CALLBACK_CLOSED",
-                    "TRAE OAuth callback listener stopped",
-                ))
-            }
         }
+        PendingTraeOAuthPoll::Awaiting => {
+            return Ok(status(&session_ref, "awaiting_verification"));
+        }
+        PendingTraeOAuthPoll::Closed => {
+            return Ok(failed(
+                &session_ref,
+                "CALLBACK_CLOSED",
+                "TRAE OAuth callback listener stopped",
+            ));
+        }
+        PendingTraeOAuthPoll::Completed(pending, result) => (pending, result),
     };
-    let Some(callback_result) = callback else {
-        return Ok(status(&session_ref, "awaiting_verification"));
-    };
-    let pending = state
-        .lock()
-        .map_err(|_| "TRAE session state is unavailable".to_string())?
-        .pending
-        .remove(&session_ref)
-        .ok_or_else(|| "TRAE OAuth session disappeared".to_string())?;
     let callback = match callback_result {
         Ok(callback) => callback,
         Err(message) => return Ok(callback_failed(&session_ref, message)),
@@ -1458,6 +1546,69 @@ pub fn delete_trae_console_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn synthetic_listener() -> (PendingTraeOAuth, u16) {
+        let context = login_context_from_values(
+            &json!({
+                "tronBuildVersion": "test-plugin",
+                "appVersion": "test-app",
+                "quality": "stable",
+                "iCubeApp": { "authConfig": { "TRAE": { "stable": "test-client" } } }
+            }),
+            &json!({ "telemetry.machineId": "test-machine", "deviceId": "test-device" }),
+            "Test OS",
+        );
+        let (pending, auth_url) =
+            start_listener("https://www.trae.cn", "expected-state".to_string(), context)
+                .expect("synthetic listener");
+        let auth_url = url::Url::parse(&auth_url).expect("authorization URL");
+        let redirect_uri = auth_url
+            .query_pairs()
+            .find_map(|(key, value)| (key == "auth_callback_url").then(|| value.into_owned()))
+            .expect("callback URL");
+        let callback_port = url::Url::parse(&redirect_uri)
+            .expect("parsed callback URL")
+            .port()
+            .expect("callback port");
+        (pending, callback_port)
+    }
+
+    fn send_synthetic_callback(callback_port: u16, target: &str) {
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", callback_port))
+            .expect("connect to synthetic callback listener");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .expect("set callback response timeout");
+        write!(
+            stream,
+            "GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        )
+        .expect("write synthetic callback request");
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .expect("read synthetic callback response");
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+    }
+
+    fn wait_for_synthetic_callback(pending: &PendingTraeOAuth) -> Result<OAuthCallback, String> {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            let result = pending
+                .receiver
+                .lock()
+                .expect("callback receiver")
+                .try_recv();
+            match result {
+                Ok(callback) => return callback,
+                Err(TryRecvError::Empty) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(TryRecvError::Empty) => panic!("synthetic callback timed out"),
+                Err(TryRecvError::Disconnected) => panic!("synthetic callback listener closed"),
+            }
+        }
+    }
 
     #[test]
     fn rejects_credentials_as_session_references() {
@@ -1543,6 +1694,28 @@ mod tests {
     }
 
     #[test]
+    fn public_quota_status_omits_account_identity_fields() {
+        let serialized = serde_json::to_value(TraeSessionStatus {
+            quota: Some(TraeQuota {
+                account_id: "synthetic-account".to_string(),
+                plan_name: "Synthetic plan".to_string(),
+                total_quota: 10.0,
+                used_quota: 2.0,
+                remaining_quota: 8.0,
+                quota_windows: Vec::new(),
+                provider_reported_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            ..status("token-plan/trae/session/synthetic", "connected")
+        })
+        .expect("status serialization");
+        let quota = serialized["quota"].as_object().expect("quota object");
+
+        assert!(!quota.contains_key("account_id"));
+        assert!(!quota.contains_key("display_name"));
+        assert_eq!(quota.get("plan_name"), Some(&json!("Synthetic plan")));
+    }
+
+    #[test]
     fn callback_error_is_a_terminal_failed_status() {
         let status = callback_failed("token-plan/trae/session/a", "authorization timed out");
         assert_eq!(status.state_code, "failed");
@@ -1605,10 +1778,151 @@ mod tests {
     }
 
     #[test]
+    fn callback_state_must_match_the_pending_flow() {
+        let matching =
+            callback_from_target("/authorize?authCode=synthetic-code&state=expected-state")
+                .expect("matching callback");
+        assert!(validate_callback_state(&matching, "expected-state").is_ok());
+
+        for target in [
+            "/authorize?authCode=synthetic-code",
+            "/authorize?authCode=synthetic-code&state=other-state",
+        ] {
+            let callback = callback_from_target(target).expect("synthetic callback");
+            let error = validate_callback_state(&callback, "expected-state")
+                .expect_err("missing or mismatched state must be rejected");
+            assert_eq!(
+                error,
+                "TRAE OAuth callback state did not match the pending flow"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_or_missing_state_does_not_consume_the_pending_flow() {
+        for invalid_target in [
+            "/authorize?authCode=untrusted-code",
+            "/authorize?authCode=untrusted-code&state=wrong-state",
+            "/authorize?error=synthetic-private-marker",
+            "/authorize?error=synthetic-private-marker&state=wrong-state",
+        ] {
+            let (pending, callback_port) = synthetic_listener();
+            send_synthetic_callback(callback_port, invalid_target);
+            send_synthetic_callback(
+                callback_port,
+                "/authorize?authCode=accepted-code&state=expected-state",
+            );
+
+            let callback = wait_for_synthetic_callback(&pending).expect("accepted callback");
+            assert_eq!(callback.auth_code.as_deref(), Some("accepted-code"));
+        }
+    }
+
+    #[test]
+    fn valid_error_callback_uses_a_fixed_sanitized_public_message() {
+        let (pending, callback_port) = synthetic_listener();
+        send_synthetic_callback(
+            callback_port,
+            "/authorize?error=synthetic-private-marker&state=expected-state",
+        );
+
+        let message = wait_for_synthetic_callback(&pending)
+            .expect_err("provider error must fail the callback");
+        assert_eq!(message, "TRAE authorization was not completed");
+        assert!(!message.contains("synthetic-private-marker"));
+        let status = callback_failed("token-plan/trae/session/synthetic", message);
+        assert_eq!(status.error_message, "TRAE authorization was not completed");
+    }
+
+    #[test]
     fn pending_callback_page_forwards_browser_fragment_and_keeps_waiting() {
         let body = callback_pending_html();
         assert!(body.contains("window.location.hash"));
         assert!(body.contains("window.location.replace"));
+    }
+
+    #[test]
+    fn removing_a_pending_flow_cancels_its_listener_and_cleans_the_registry() {
+        let context = login_context_from_values(
+            &json!({
+                "tronBuildVersion": "test-plugin",
+                "appVersion": "test-app",
+                "quality": "stable",
+                "iCubeApp": { "authConfig": { "TRAE": { "stable": "test-client" } } }
+            }),
+            &json!({ "telemetry.machineId": "test-machine", "deviceId": "test-device" }),
+            "Test OS",
+        );
+        let (pending, auth_url) =
+            start_listener("https://www.trae.cn", "test-state".to_string(), context)
+                .expect("synthetic listener");
+        let auth_url = url::Url::parse(&auth_url).expect("authorization URL");
+        let redirect_uri = auth_url
+            .query_pairs()
+            .find_map(|(key, value)| (key == "auth_callback_url").then(|| value.into_owned()))
+            .expect("callback URL");
+        let callback_port = url::Url::parse(&redirect_uri)
+            .expect("parsed callback URL")
+            .port()
+            .expect("callback port");
+
+        let mut state = TraeSessionState::default();
+        let session_ref = "token-plan/trae/session/cancel-test";
+        state.pending.insert(session_ref.to_string(), pending);
+        drop(state.pending.remove(session_ref));
+        assert!(!state.pending.contains_key(session_ref));
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            match TcpListener::bind(("127.0.0.1", callback_port)) {
+                Ok(listener) => {
+                    drop(listener);
+                    break;
+                }
+                Err(_) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => panic!("TRAE callback listener stayed active after cancel: {error}"),
+            }
+        }
+    }
+
+    #[test]
+    fn disconnected_callback_cleans_the_pending_registry() {
+        let (sender, receiver) = mpsc::channel::<Result<OAuthCallback, String>>();
+        drop(sender);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let pending = PendingTraeOAuth {
+            verifier: "synthetic-verifier".to_string(),
+            context: login_context_from_values(
+                &json!({
+                    "quality": "stable",
+                    "iCubeApp": { "authConfig": { "TRAE": { "stable": "test-client" } } }
+                }),
+                &json!({ "telemetry.machineId": "test-machine" }),
+                "Test OS",
+            ),
+            receiver: Mutex::new(receiver),
+            cancelled: Arc::clone(&cancelled),
+        };
+        let session_ref = "token-plan/trae/session/disconnected-test";
+        let state = Mutex::new(TraeSessionState::default());
+        state
+            .lock()
+            .expect("state")
+            .pending
+            .insert(session_ref.to_string(), pending);
+
+        assert!(matches!(
+            poll_pending_oauth(&state, session_ref).expect("poll"),
+            PendingTraeOAuthPoll::Closed
+        ));
+        assert!(!state
+            .lock()
+            .expect("state")
+            .pending
+            .contains_key(session_ref));
+        assert!(cancelled.load(Ordering::Acquire));
     }
 
     #[test]
@@ -1750,7 +2064,10 @@ mod tests {
             Some("http://127.0.0.1:1455/authorize")
         );
         assert!(!params.contains_key("response_type"));
-        assert!(!params.contains_key("state"));
+        assert_eq!(
+            params.get("state").map(|value| value.as_ref()),
+            Some("trace-1")
+        );
     }
 
     #[test]

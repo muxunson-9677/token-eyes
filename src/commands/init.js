@@ -110,7 +110,7 @@ const SUPPORTED_PROVIDERS = [
   "Kilo Code",
 ];
 
-async function cmdInit(argv) {
+async function cmdInit(argv, { firstSyncRunner = runFirstSyncAndRead } = {}) {
   const opts = parseArgs(argv);
   const home = os.homedir();
 
@@ -198,7 +198,7 @@ async function cmdInit(argv) {
   ahaSpinner.start();
   let firstSync = null;
   try {
-    firstSync = await runFirstSyncAndRead({
+    firstSync = await firstSyncRunner({
       trackerBinPath,
       trackerDir,
       packageName: "tokentracker",
@@ -1019,7 +1019,7 @@ function isRunnableCommand(command) {
 `;
 }
 
-module.exports = { cmdInit, buildNotifyHandler, installLocalTrackerApp, readFirstSyncTotals };
+module.exports = { cmdInit, buildNotifyHandler, copyTreeWithTransientRetry, installLocalTrackerApp, readFirstSyncTotals };
 
 async function probeFile(p) {
   try {
@@ -1040,6 +1040,21 @@ async function isDir(p) {
     return st.isDirectory();
   } catch (_e) {
     return false;
+  }
+}
+
+async function copyTreeWithTransientRetry(from, to, options, dependencies = {}) {
+  const copy = dependencies.copy || fs.cp;
+  const wait = dependencies.wait || ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
+  const retryable = new Set(["EBUSY", "EPERM", "ENOENT"]);
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    try {
+      await copy(from, to, options);
+      return;
+    } catch (error) {
+      if (!retryable.has(error?.code) || attempt === 6) throw error;
+      await wait(attempt * 125);
+    }
   }
 }
 
@@ -1066,7 +1081,8 @@ async function installLocalTrackerApp({ appDir }) {
   const nodeModulesTo = path.join(appDir, "node_modules");
   const dashboardDistTo = path.join(appDir, "dashboard", "dist");
 
-  await fs.rm(appDir, { recursive: true, force: true }).catch(() => {});
+  // Keep content-hashed dashboard assets from a prior runtime so an already-open
+  // dashboard can finish loading a lazy page while this runtime refresh copies new files.
   await ensureDir(appDir);
   await fs.cp(srcFrom, srcTo, { recursive: true });
   await ensureDir(binToDir);
@@ -1075,7 +1091,14 @@ async function installLocalTrackerApp({ appDir }) {
   await fs.copyFile(packageJsonFrom, path.join(appDir, "package.json")).catch(() => {});
   await fs.cp(sharedFrom, sharedTo, { recursive: true });
   if (await isDir(dashboardDistFrom)) {
-    await fs.cp(dashboardDistFrom, dashboardDistTo, { recursive: true });
+    const dashboardIndexFrom = path.join(dashboardDistFrom, "index.html");
+    const dashboardIndexTo = path.join(dashboardDistTo, "index.html");
+    await copyTreeWithTransientRetry(dashboardDistFrom, dashboardDistTo, {
+      recursive: true,
+      filter: (source) => path.resolve(source) !== path.resolve(dashboardIndexFrom),
+    });
+    // Publish the new resource graph only after every referenced asset is in place.
+    await fs.copyFile(dashboardIndexFrom, dashboardIndexTo);
   }
   await copyRuntimeDependencies({ from: nodeModulesFrom, to: nodeModulesTo });
 }

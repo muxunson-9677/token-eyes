@@ -7,6 +7,129 @@
     "provider_balance",
     "desktop_visibility"
   ],
+  "authorization": {
+    "contract_version": 2,
+    "operation_keys": [
+      "start",
+      "reopen",
+      "verify",
+      "sync",
+      "cancel",
+      "delete"
+    ],
+    "default": {
+      "mode": "no_official_auth",
+      "operations": {
+        "start": false,
+        "reopen": false,
+        "verify": false,
+        "sync": false,
+        "cancel": false,
+        "delete": false
+      }
+    },
+    "providers": {
+      "xiaomi_mimo": {
+        "mode": "native_session_commands",
+        "operations": {
+          "start": true,
+          "reopen": false,
+          "verify": true,
+          "sync": false,
+          "cancel": false,
+          "delete": true
+        }
+      },
+      "claude": {
+        "mode": "native_session_commands",
+        "operations": {
+          "start": true,
+          "reopen": false,
+          "verify": true,
+          "sync": false,
+          "cancel": false,
+          "delete": true
+        }
+      },
+      "codex": {
+        "mode": "native_session_commands",
+        "operations": {
+          "start": true,
+          "reopen": true,
+          "verify": true,
+          "sync": true,
+          "cancel": true,
+          "delete": true
+        }
+      },
+      "cursor": {
+        "mode": "native_session_commands",
+        "operations": {
+          "start": true,
+          "reopen": false,
+          "verify": true,
+          "sync": false,
+          "cancel": false,
+          "delete": true
+        }
+      },
+      "glm": {
+        "mode": "native_session_commands",
+        "operations": {
+          "start": true,
+          "reopen": false,
+          "verify": true,
+          "sync": true,
+          "cancel": false,
+          "delete": true
+        }
+      },
+      "kimi": {
+        "mode": "native_session_commands",
+        "operations": {
+          "start": true,
+          "reopen": false,
+          "verify": true,
+          "sync": false,
+          "cancel": false,
+          "delete": true
+        }
+      },
+      "minimax": {
+        "mode": "native_session_commands",
+        "operations": {
+          "start": true,
+          "reopen": false,
+          "verify": true,
+          "sync": false,
+          "cancel": false,
+          "delete": true
+        }
+      },
+      "trae": {
+        "mode": "native_session_commands",
+        "operations": {
+          "start": true,
+          "reopen": false,
+          "verify": true,
+          "sync": true,
+          "cancel": false,
+          "delete": true
+        }
+      },
+      "workbuddy": {
+        "mode": "read_only_credits",
+        "operations": {
+          "start": false,
+          "reopen": false,
+          "verify": false,
+          "sync": false,
+          "cancel": false,
+          "delete": false
+        }
+      }
+    }
+  },
   "providers": [
     {
       "id": "claude",
@@ -52,7 +175,7 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": true,
-      "native_session_bridge": false,
+      "native_session_bridge": true,
       "catalog_token_plan": false,
       "catalog_order": null
     },
@@ -392,7 +515,7 @@
       "manual_token_plan": true,
       "provider_balance": false,
       "desktop_visibility": false,
-      "native_session_bridge": false,
+      "native_session_bridge": true,
       "catalog_token_plan": true,
       "catalog_order": 4
     },

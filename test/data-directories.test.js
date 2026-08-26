@@ -608,6 +608,41 @@ test("detectDataDirectoryPaths discovers WSL homes from distro names when the se
   }
 });
 
+test("detectDataDirectoryPaths discovers Claude, Hermes, and WorkBuddy evidence inside a WSL distro home", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-data-dirs-wsl-agents-"));
+  try {
+    const wslRoot = path.join(tmp, "wsl.localhost");
+    const wslHome = path.join(wslRoot, "Ubuntu", "home", "agent");
+    const claudeHome = path.join(wslHome, ".claude");
+    const hermesHome = path.join(wslHome, ".hermes");
+    const workbuddyHome = path.join(wslHome, ".workbuddy");
+    await fs.promises.mkdir(path.join(claudeHome, "projects"), { recursive: true });
+    await fs.promises.mkdir(hermesHome, { recursive: true });
+    await fs.promises.mkdir(path.join(workbuddyHome, "projects"), { recursive: true });
+    await fs.promises.writeFile(path.join(claudeHome, "projects", "active.jsonl"), "{}\n", "utf8");
+    await fs.promises.writeFile(path.join(hermesHome, "state.db"), "db", "utf8");
+    await fs.promises.writeFile(path.join(workbuddyHome, "projects", "active.jsonl"), "{}\n", "utf8");
+
+    const result = detectDataDirectoryPaths({
+      home: tmp,
+      env: {},
+      platform: "win32",
+      wslRoots: [wslRoot],
+      wslDistributions: ["Ubuntu"],
+      detectInstallation: () => ({ installed: true, executablePath: "fixture", currentVersion: null }),
+    });
+
+    assert.equal(result.dataDirectories.claude, claudeHome);
+    assert.equal(result.dataDirectories.hermes, hermesHome);
+    assert.equal(result.dataDirectories.workbuddy, workbuddyHome);
+    assert.equal(result.detected.claude.evidence, "token_logs");
+    assert.equal(result.detected.hermes.evidence, "state_db_exists");
+    assert.equal(result.detected.workbuddy.evidence, "token_logs");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("listTrackingReadyTraeHomes detects token_usage.jsonl export", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tokentracker-trae-homes-"));
   try {

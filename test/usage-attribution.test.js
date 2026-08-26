@@ -347,6 +347,107 @@ test("Hermes parser retains explicit billing evidence and sanitizes its endpoint
   }
 });
 
+test("Hermes parser derives API usage from its recorded provider endpoint when legacy billing_mode is empty", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-provider-endpoint-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    execSqlScript(dbPath, `
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        model TEXT,
+        started_at INTEGER,
+        ended_at INTEGER,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cache_read_tokens INTEGER,
+        cache_write_tokens INTEGER,
+        reasoning_tokens INTEGER,
+        message_count INTEGER,
+        billing_provider TEXT,
+        billing_base_url TEXT,
+        billing_mode TEXT
+      );
+      INSERT INTO sessions VALUES (
+        'session-legacy', 'deepseek-chat', 1787011200, 1787011260,
+        10, 5, 0, 0, 0, 1,
+        'deepseek', 'https://api.deepseek.com/v1', NULL
+      );
+    `);
+
+    await parseHermesIncremental({ dbPath, cursors: {}, queuePath });
+
+    const queued = JSON.parse((await fs.readFile(queuePath, "utf8")).trim());
+    assert.equal(queued.billing_mode, "api_key");
+    assert.equal(queued.billing_mode_confidence, "provider_receipt");
+    assert.equal(queued.provider_id, "deepseek");
+    assert.equal(queued.endpoint_origin, "https://api.deepseek.com");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("Hermes parser reattributes matching legacy unknown history without changing token totals", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-history-attribution-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const epoch = 1787011200;
+    execSqlScript(dbPath, `
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, model TEXT, started_at INTEGER, ended_at INTEGER,
+        input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
+        cache_write_tokens INTEGER, reasoning_tokens INTEGER, message_count INTEGER,
+        billing_provider TEXT, billing_base_url TEXT, billing_mode TEXT
+      );
+      INSERT INTO sessions VALUES (
+        'session-history', 'deepseek-chat', ${epoch}, ${epoch + 60},
+        10, 5, 0, 0, 0, 1, 'deepseek', 'https://api.deepseek.com/v1', NULL
+      );
+    `);
+    const hourStart = new Date(epoch * 1000).toISOString().replace(/:\d{2}\.000Z$/, ":00.000Z");
+    const legacy = {
+      source: "hermes", model: "deepseek-chat", hour_start: hourStart,
+      input_tokens: 10, cached_input_tokens: 0, cache_creation_input_tokens: 0,
+      output_tokens: 5, reasoning_output_tokens: 0, total_tokens: 15,
+      billable_total_tokens: 15, conversation_count: 1,
+      billing_mode: "unknown", billing_mode_confidence: "unavailable",
+    };
+    await fs.writeFile(queuePath, `${JSON.stringify(legacy)}\n`);
+    const cursors = {
+      hermes: {
+        lastCompletedStartedAt: epoch,
+        snapshots: { "session-history": { in: 10, out: 5, cacheRead: 0, cacheWrite: 0, reasoning: 0, message_count: 1 } },
+      },
+      hourly: {
+        version: 3,
+        buckets: {
+          [`hermes|deepseek-chat|${hourStart}`]: {
+            totals: { ...legacy },
+            attributionBuckets: {
+              unknown: {
+                totals: { ...legacy },
+                attribution: { billing_mode: "unknown", billing_mode_confidence: "unavailable" },
+              },
+            },
+          },
+        },
+        groupQueued: {},
+      },
+    };
+
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+
+    const rows = (await fs.readFile(queuePath, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
+    const latest = new Map(rows.map((row) => [row.billing_mode, row]));
+    assert.equal(latest.get("unknown").total_tokens, 0);
+    assert.equal(latest.get("api_key").total_tokens, 15);
+    assert.equal([...latest.values()].reduce((sum, row) => sum + row.total_tokens, 0), 15);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("Hermes provider attribution degrades conservatively within one cumulative bucket", async () => {
   const cases = [
     { name: "deepseek then openai", providers: ["deepseek", "openai"], expectedProvider: undefined },
