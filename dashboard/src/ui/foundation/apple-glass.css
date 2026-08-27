@@ -8192,9 +8192,10 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-overview-project-summary strong { margin-top: 2px; color: #17212b; font-size: 12px; }
 .tt-overview-project-panel { --tt-project-accent-blue: #4d9cff; --tt-project-accent-green: #45c873; --tt-project-accent-purple: #9a6bff; --tt-project-accent-orange: #ff9f43; --tt-project-accent-pink: #ec6aa7; }
 .tt-overview-project-card--embedded {
+  position: relative;
   min-height: 150px;
   gap: 10px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid rgba(28, 43, 59, 0.16);
   border-radius: 16px;
   padding: 13px;
@@ -8208,20 +8209,18 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   transform: translateY(-1px);
 }
 .tt-overview-project-card--embedded[data-expanded="true"] {
-  height: 340px;
-  min-height: 340px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+  z-index: 20;
+  overflow: visible;
 }
+.tt-overview-project-card--embedded.is-dragging { z-index: 30; opacity: .7; }
 .tt-overview-project-card--embedded.tt-overview-project-card--compact { min-height: 108px; gap: 4px; padding: 8px; }
 .tt-overview-project-card--compact .tt-overview-project-toggle { gap: 6px; }
 .tt-overview-project-card--compact .tt-overview-project-icon { width: 28px; height: 28px; flex-basis: 28px; border-radius: 8px; }
 .tt-overview-project-card--compact .tt-overview-project-icon svg { width: 15px; height: 15px; }
 .tt-overview-project-card--compact .tt-overview-project-toggle .text-sm { font-size: 12px; line-height: 16px; }
-.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-location,
-.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-tags--summary,
-.tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-pricing { display: none; }
+.tt-overview-project-card--compact .tt-overview-project-location,
+.tt-overview-project-card--compact .tt-overview-project-tags--summary,
+.tt-overview-project-card--compact .tt-overview-project-pricing { display: none; }
 .tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-tags { gap: 3px; }
 .tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-tags--summary { min-height: 16px; }
 .tt-overview-project-card--compact:not([data-expanded="true"]) .tt-overview-project-tags > span { padding: 1px 5px; font-size: 8px; }
@@ -8233,6 +8232,9 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-overview-project-card--compact .tt-overview-project-progress-row { gap: 5px; font-size: 9px; }
 .tt-overview-project-card--compact .tt-overview-project-progress { height: 4px; }
 .tt-overview-project-toggle { display: flex; width: 100%; align-items: center; gap: 10px; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; }
+.tt-overview-project-drag-handle { display: inline-flex; width: 20px; height: 30px; flex: 0 0 20px; align-items: center; justify-content: center; border: 0; border-radius: 7px; padding: 0; background: transparent; color: #a4afba; cursor: grab; touch-action: none; }
+.tt-overview-project-drag-handle:active { cursor: grabbing; }
+.tt-overview-project-drag-handle svg { width: 14px; height: 14px; }
 .tt-overview-project-icon { display: inline-flex; width: 34px; height: 34px; flex: 0 0 34px; align-items: center; justify-content: center; border-radius: 10px; background: color-mix(in srgb,var(--tt-project-accent,#438df0) 11%,white); color: var(--tt-project-accent,#438df0); }
 .tt-overview-project-default-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .tt-overview-project-default-metrics > div { min-width: 0; border: 1px solid rgba(31,43,56,.06); border-radius: 10px; padding: 8px 9px; background: rgba(248,251,253,.86); }
@@ -8242,8 +8244,9 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
 .tt-overview-project-progress-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; margin-top: auto; color: var(--tt-project-accent,#1687ec); font-size: 10px; font-weight: 700; }
 .tt-overview-project-progress { height: 6px; overflow: hidden; border-radius: 999px; background: rgba(38,135,241,.12); }
 .tt-overview-project-progress::after { display: block; width: var(--tt-project-progress,0%); height: 100%; border-radius: inherit; background: var(--tt-project-accent,#1687ec); content: ""; }
-.tt-overview-project-details { display: grid; gap: 9px; border-top: 1px solid rgba(31,43,56,.08); padding-top: 9px; }
+.tt-overview-project-details { position: absolute; top: 40px; right: 8px; left: 8px; z-index: 25; display: grid; max-height: 264px; gap: 9px; overflow: auto; border: 1px solid rgba(31,43,56,.13); border-radius: 12px; padding: 11px; background: rgba(255,255,255,.98); box-shadow: 0 18px 38px rgba(31,43,56,.22); outline: none; backdrop-filter: blur(16px); }
 .tt-overview-project-details[hidden] { display: none; }
+:root.dark .tt-overview-project-details { border-color: rgba(148,163,184,.25); background: rgba(28,32,39,.98); box-shadow: 0 20px 42px rgba(0,0,0,.42); }
 .tt-overview-project-detail-grid { display: flex; flex-wrap: wrap; gap: 8px 14px; color: #657383; font-size: 10px; }
 .tt-overview-project-detail-grid > div { display: inline-flex; align-items: center; gap: 5px; }
 .tt-overview-project-detail-grid svg { width: 13px; height: 13px; color: #9aa6b2; }

@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../../../../lib/copy";
 import { formatCompactNumber } from "../../../../lib/format";
 import { render } from "../../../../test/test-utils";
-import { ProjectUsagePanel } from "../ProjectUsagePanel.jsx";
+import {
+  PROJECT_ORDER_STORAGE_KEY,
+  ProjectUsagePanel,
+  reorderProjectOrder,
+} from "../ProjectUsagePanel.jsx";
 
 describe("ProjectUsagePanel", () => {
   const baseEntry = {
@@ -25,6 +29,7 @@ describe("ProjectUsagePanel", () => {
 
   beforeEach(() => {
     document.documentElement.classList.add("screenshot-capture");
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -202,7 +207,7 @@ describe("ProjectUsagePanel", () => {
 
     render(<ProjectUsagePanel embedded entries={entries} />);
     const cards = screen.getAllByTestId("project-usage-card");
-    const secondToggle = screen.getByRole("button", { name: /Second project/ });
+    const secondToggle = cards[1].querySelector(".tt-overview-project-toggle");
 
     expect(cards[0]).toHaveClass("tt-overview-project-card--compact");
     expect(secondToggle).toHaveClass("tt-pressable", "tt-product-focusable");
@@ -212,6 +217,64 @@ describe("ProjectUsagePanel", () => {
     expect(cards[2]).toHaveAttribute("data-expanded", "false");
     expect(cards[1].querySelector('[data-slot="project-agent-icon"]')).toBeInTheDocument();
     expect(cards[1].querySelector('[data-slot="project-model-icon"]')).toBeInTheDocument();
+  });
+
+  it("renders project details as a focus-managed overlay that does not resize its card", async () => {
+    const user = userEvent.setup();
+    render(<ProjectUsagePanel embedded entries={[baseEntry]} />);
+    const card = screen.getByTestId("project-usage-card");
+    const trigger = card.querySelector(".tt-overview-project-toggle");
+    expect(trigger).not.toBeNull();
+
+    await act(async () => user.click(trigger));
+    const detail = screen.getByRole("dialog");
+    expect(detail).toHaveAttribute("data-overlay-layout", "cover");
+    expect(card).toHaveAttribute("data-expanded", "true");
+    expect(detail).toHaveFocus();
+
+    await act(async () => user.keyboard("{Escape}"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("compacts large project cost while exposing the complete converted value", () => {
+    render(<ProjectUsagePanel embedded entries={[{ ...baseEntry, cost_usd: 12_345.67 }]} />);
+    const value = screen.getByTestId("project-cost-value");
+    expect(value).toHaveTextContent("$1.23万");
+    expect(value).toHaveAttribute("title", "$12,345.6700");
+    expect(value).toHaveAttribute("aria-label", "$12,345.6700");
+  });
+
+  it("persists an explicit project order and keeps controls outside the drag handle", async () => {
+    const user = userEvent.setup();
+    const entries = [
+      { ...baseEntry, project_key: "alpha", project_name: "Alpha", total_tokens: 300 },
+      { ...baseEntry, project_key: "beta", project_name: "Beta", total_tokens: 200 },
+      { ...baseEntry, project_key: "gamma", project_name: "Gamma", total_tokens: 100 },
+    ];
+    const initialOrder = entries.map((entry) => `${entry.project_key}|${entry.project_path}`);
+    expect(reorderProjectOrder(initialOrder, initialOrder[0], initialOrder[2])).toEqual([
+      initialOrder[1],
+      initialOrder[2],
+      initialOrder[0],
+    ]);
+    window.localStorage.setItem(PROJECT_ORDER_STORAGE_KEY, JSON.stringify([
+      initialOrder[2],
+      initialOrder[0],
+      initialOrder[1],
+    ]));
+
+    render(<ProjectUsagePanel embedded entries={entries} onRemoveProject={vi.fn()} />);
+    const cards = screen.getAllByTestId("project-usage-card");
+    expect(cards.map((card) => card.textContent)).toEqual([
+      expect.stringContaining("Gamma"),
+      expect.stringContaining("Alpha"),
+      expect.stringContaining("Beta"),
+    ]);
+    const dragHandle = screen.getAllByTestId("project-usage-drag-handle")[0];
+    await act(async () => user.click(dragHandle));
+    expect(cards[0]).toHaveAttribute("data-expanded", "false");
+    expect(screen.getAllByTestId("project-usage-remove")).toHaveLength(3);
   });
 
   it("keeps the card remove action isolated from the disclosure", async () => {
@@ -253,7 +316,7 @@ describe("ProjectUsagePanel", () => {
 
     expect(cards[0]).toHaveAttribute("data-expanded", "false");
     expect(cards[1]).toHaveAttribute("data-expanded", "false");
-    await user.click(screen.getByRole("button", { name: /Detailed project/ }));
+    await user.click(cards[0].querySelector(".tt-overview-project-toggle"));
 
     expect(cards[0]).toHaveAttribute("data-expanded", "true");
     expect(cards[1]).toHaveAttribute("data-expanded", "false");

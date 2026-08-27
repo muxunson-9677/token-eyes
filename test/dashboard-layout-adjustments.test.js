@@ -143,6 +143,16 @@ test("ProjectUsagePanel constrains identity text width", () => {
   assert.ok(src.includes("min-w-0"), "expected min width constraint for identity text");
 });
 
+test("ProjectUsagePanel keeps drag and detail interactions out of card flow", () => {
+  const src = readFile(projectUsagePath);
+  const css = readFile(appleGlassPath);
+  assert.ok(src.includes("project-usage-drag-handle"), "expected an isolated project drag handle");
+  assert.ok(src.includes('data-overlay-layout="cover"'), "expected project details to be marked as an overlay");
+  assert.ok(src.includes('role="dialog"'), "expected project details to expose dialog semantics");
+  assert.ok(css.includes(".tt-overview-project-details { position: absolute;"), "expected project details outside normal layout flow");
+  assert.ok(!css.includes('height: 340px;'), "expanded project cards must not grow to a fixed detail height");
+});
+
 test("DashboardPage does not restore the removed initialization prompt", () => {
   const containerSrc = readFile(containerPath);
   const viewSrc = readFile(viewPath);

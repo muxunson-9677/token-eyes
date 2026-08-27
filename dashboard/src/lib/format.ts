@@ -126,6 +126,10 @@ interface FormatUsdCurrencyOptions {
   rate?: number;
 }
 
+interface FormatCompactUsdCurrencyOptions extends FormatUsdCurrencyOptions {
+  locale?: string;
+}
+
 /**
  * Format a USD value as currency. Pure function — accepts currency and rate
  * via options so React components can drive presentation via `useCurrency()`
@@ -181,4 +185,41 @@ export function formatUsdCurrency(value: any, options: FormatUsdCurrencyOptions 
     ? `${formattedInt.replace("-", "")}.${decimalPart}`
     : formattedInt.replace("-", "");
   return `${sign}${symbol}${valuePart}`;
+}
+
+/**
+ * Compact a known USD amount after applying the selected display currency.
+ * Small values keep four decimal places; large values use locale-appropriate
+ * magnitude units. Callers that need exact disclosure should pair this with
+ * formatUsdCurrency rather than treating the compact text as the source value.
+ */
+export function formatCompactUsdCurrency(
+  value: any,
+  options: FormatCompactUsdCurrencyOptions = {},
+) {
+  const { currency = "USD", rate = 1, locale = "zh-CN", decimals = 4 } = options;
+  if (value == null || (typeof value === "string" && value.trim() === "")) return "-";
+  const parsed = Number(typeof value === "bigint" ? value : String(value).trim());
+  if (!Number.isFinite(parsed)) return String(value);
+
+  const converted = currency !== "USD" && Number.isFinite(rate) && rate > 0
+    ? parsed * rate
+    : parsed;
+  const absolute = Math.abs(converted);
+  const sign = converted < 0 ? "-" : "";
+  const symbol = getCurrencySymbol(currency);
+  const compact = (divisor: number, suffix: string) => {
+    const scaled = Number((absolute / divisor).toFixed(2));
+    return `${sign}${symbol}${scaled}${suffix}`;
+  };
+
+  if (String(locale).toLowerCase().startsWith("zh")) {
+    if (absolute >= 100_000_000) return compact(100_000_000, "亿");
+    if (absolute >= 10_000) return compact(10_000, "万");
+  } else {
+    if (absolute >= 1_000_000_000) return compact(1_000_000_000, "B");
+    if (absolute >= 1_000_000) return compact(1_000_000, "M");
+    if (absolute >= 1_000) return compact(1_000, "K");
+  }
+  return formatUsdCurrency(value, { currency, rate, decimals });
 }

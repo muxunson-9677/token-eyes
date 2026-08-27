@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatChineseTokenCount, formatTokenCount, formatUsdCurrency } from "./format";
+import { formatChineseTokenCount, formatCompactUsdCurrency, formatTokenCount, formatUsdCurrency } from "./format";
 
 describe("formatTokenCount", () => {
   it("uses Western compact units in English without leaking Chinese suffixes", () => {
@@ -9,6 +9,22 @@ describe("formatTokenCount", () => {
 
   it("keeps the established Chinese token vocabulary in Chinese", () => {
     expect(formatTokenCount(4_716_100, { locale: "zh-CN" })).toBe("471.61万");
+  });
+});
+
+describe("formatCompactUsdCurrency", () => {
+  it("uses compact locale-aware units without losing the currency symbol", () => {
+    expect(formatCompactUsdCurrency(12_345.67, { locale: "zh-CN" })).toBe("$1.23万");
+    expect(formatCompactUsdCurrency(12_345.67, { locale: "en" })).toBe("$12.35K");
+  });
+
+  it("converts USD into the selected currency before compacting", () => {
+    expect(formatCompactUsdCurrency(2_000, { currency: "CNY", rate: 7.2, locale: "zh-CN" })).toBe("¥1.44万");
+  });
+
+  it("keeps small precise values and never turns missing input into zero", () => {
+    expect(formatCompactUsdCurrency(0.4567)).toBe("$0.4567");
+    expect(formatCompactUsdCurrency(null)).toBe("-");
   });
 });
 
