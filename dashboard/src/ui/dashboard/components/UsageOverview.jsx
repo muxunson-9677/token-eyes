@@ -4,6 +4,7 @@ import { ChevronRight, Info, RefreshCw, SquareArrowOutUpRight, Loader2 } from "l
 import { Popover } from "@base-ui/react/popover";
 import { Button } from "../../components";
 import { useCurrency } from "../../../hooks/useCurrency.js";
+import { DASHBOARD_AGENTS } from "../../../lib/agent-adapters-dashboard";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { CURRENCY_USD, getCurrencySymbol } from "../../../lib/currency";
 import { DateRangePopover, formatDateShort, getDateFnsLocale } from "./DateRangePopover.jsx";
@@ -87,12 +88,32 @@ export function getProviderColor(label, index) {
   return PROVIDER_COLORS[normalized] || `hsl(${150 + index * 40}, 60%, 45%)`;
 }
 
-function resolveContextBreakdownSource(provider) {
-  const source = String(provider?.source || "").trim().toLowerCase();
-  const label = String(provider?.label || "").trim().toLowerCase();
-  if (source === "claude" || label === "claude") return "claude";
-  if (source === "codex" || label === "codex") return "codex";
-  return null;
+function normalizeAgentIdentity(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+const DASHBOARD_AGENT_BY_IDENTITY = new Map();
+for (const agent of DASHBOARD_AGENTS) {
+  for (const identity of [agent.id, agent.usageIdentity, agent.queueSource, agent.displayName]) {
+    const normalized = normalizeAgentIdentity(identity);
+    if (normalized && !DASHBOARD_AGENT_BY_IDENTITY.has(normalized)) {
+      DASHBOARD_AGENT_BY_IDENTITY.set(normalized, agent);
+    }
+  }
+}
+
+function resolveContextBreakdown(provider) {
+  const providerSource = normalizeAgentIdentity(provider?.source);
+  const providerLabel = normalizeAgentIdentity(provider?.label);
+  const agent = DASHBOARD_AGENT_BY_IDENTITY.get(providerSource)
+    || DASHBOARD_AGENT_BY_IDENTITY.get(providerLabel)
+    || null;
+  const source = agent?.usageIdentity || providerSource || providerLabel;
+  if (!source) return null;
+  return {
+    source,
+    providerLabel: provider.label || agent?.displayName || source,
+  };
 }
 
 const PERIOD_COPY_KEYS = {
@@ -683,6 +704,7 @@ export function UsageOverview({
                 return (
                   <button
                     key={provider.label}
+                    type="button"
                     aria-expanded={isExpanded}
                     aria-controls={`provider-details-${provider.label}`}
                     aria-label={copy("usage.overview.provider_card_aria", {
@@ -756,14 +778,17 @@ export function UsageOverview({
                   .filter((p) => p.label === expandedProvider)
                   .map((provider) => {
                     const color = getProviderColor(provider.label, 0);
-                    const contextSource = resolveContextBreakdownSource(provider);
+                    const contextBreakdown = resolveContextBreakdown(provider);
+                    const contextSource = contextBreakdown?.source || null;
                     const sortedModels = [...provider.models].sort(
                       (a, b) => (b.share || 0) - (a.share || 0)
                     );
 
-                    const providerHeading = contextSource
+                    const providerHeading = contextSource === "claude" || contextSource === "codex"
                       ? copy(`dashboard.context_breakdown.title_${contextSource}`)
-                      : provider.label;
+                      : copy("dashboard.context_breakdown.title_generic", {
+                          provider: contextBreakdown?.providerLabel || provider.label,
+                        });
                     return (
                       <ProviderExpandedSection
                         key={provider.label}
@@ -771,6 +796,7 @@ export function UsageOverview({
                         color={color}
                         providerHeading={providerHeading}
                         contextSource={contextSource}
+                        contextProviderLabel={contextBreakdown?.providerLabel || provider.label}
                         from={from}
                         to={to}
                         sortedModels={sortedModels}
@@ -917,7 +943,7 @@ function WorkbuddyQuotaSection({ color }) {
 // Renders a single expanded provider section. Hosts loading state for the
 // inline Context Breakdown so the spinner can sit next to the heading instead
 // of taking its own row.
-function ProviderExpandedSection({ provider, color, providerHeading, contextSource, from, to, sortedModels, billingModeCopyKeys }) {
+function ProviderExpandedSection({ provider, color, providerHeading, contextSource, contextProviderLabel, from, to, sortedModels, billingModeCopyKeys }) {
   const { currency, rate } = useCurrency();
   const [breakdownLoading, setBreakdownLoading] = useState(false);
   const providerKey = String(provider?.source || provider?.label || "").trim().toLowerCase();
@@ -964,15 +990,16 @@ function ProviderExpandedSection({ provider, color, providerHeading, contextSour
                         {/* WorkBuddy account + credit packages (item 3c). */}
                         {isWorkbuddy ? <WorkbuddyQuotaSection color={color} /> : null}
 
-                        {/* Context Breakdown drill-down.
-                            Claude: category-based (approx /context).
-                            Codex: tool-oriented breakdown. */}
+                        {/* Context Breakdown drill-down. Claude and Codex expose
+                            collected details; other Agents fail closed with an
+                            explicit per-field availability matrix. */}
                         {contextSource ? (
                           <div className="mb-4 pb-4 border-b border-oai-gray-200 dark:border-oai-gray-700">
                             <ContextBreakdownPanel
                               from={from}
                               to={to}
                               source={contextSource}
+                              providerLabel={contextProviderLabel}
                               referenceTotalTokens={provider.usage}
                               onLoadingChange={setBreakdownLoading}
                             />

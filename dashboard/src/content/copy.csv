@@ -979,10 +979,14 @@ settings.appearance.language.japanese,ui,SettingsPage,SettingsPage,language_japa
 settings.appearance.language.korean,ui,SettingsPage,SettingsPage,language_korean,Korean,,active
 dashboard.context_breakdown.title_claude,dashboard,DashboardPage,ContextBreakdownPanel,title_claude,"Claude 上下文拆解",,active
 dashboard.context_breakdown.title_codex,dashboard,DashboardPage,ContextBreakdownPanel,title_codex,"Codex 上下文拆解",,active
+dashboard.context_breakdown.title_generic,dashboard,DashboardPage,ContextBreakdownPanel,title_generic,"{{provider}} 上下文拆解",,active
 dashboard.context_breakdown.empty,dashboard,DashboardPage,ContextBreakdownPanel,empty,"当前周期没有 Claude Code 活动。",,active
 dashboard.context_breakdown.empty_codex,dashboard,DashboardPage,ContextBreakdownPanel,empty_codex,"当前周期没有 Codex 活动。",,active
+dashboard.context_breakdown.empty_generic,dashboard,DashboardPage,ContextBreakdownPanel,empty_generic,"当前周期没有 {{agent}} 活动。",,active
 dashboard.context_breakdown.error,dashboard,DashboardPage,ContextBreakdownPanel,error,"无法读取 Claude Code 日志。",,active
 dashboard.context_breakdown.error_codex,dashboard,DashboardPage,ContextBreakdownPanel,error_codex,"无法读取 Codex 日志。",,active
+dashboard.context_breakdown.error_generic,dashboard,DashboardPage,ContextBreakdownPanel,error_generic,"无法读取 {{agent}} 上下文数据。",,active
+dashboard.context_breakdown.unavailable_item,dashboard,DashboardPage,ContextBreakdownPanel,unavailable_item,"{{agent}} 当前未采集，暂不可用",,active
 dashboard.context_breakdown.bar_aria,dashboard,DashboardPage,ContextBreakdownPanel,bar_aria,"Token 分布：{{summary}}",,active
 dashboard.context_breakdown.system_prefix_tooltip,dashboard,DashboardPage,ContextBreakdownPanel,tooltip,"系统提示词、工具 schema、技能、规则和 MCP 描述会作为缓存前缀合并统计，不能从日志里继续拆分。",,active
 dashboard.context_breakdown.footnote,dashboard,DashboardPage,ContextBreakdownPanel,footnote,"近似统计：缓存读取会跨轮次累积，因此对话历史会随时间占比变高。只有 Claude Code 日志提供此视图所需的消息级明细。",,active

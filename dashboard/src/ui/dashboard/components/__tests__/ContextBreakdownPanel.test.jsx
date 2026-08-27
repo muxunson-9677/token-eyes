@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ContextBreakdownPanel } from "../ContextBreakdownPanel.jsx";
 import { getUsageCategoryBreakdown } from "../../../../lib/api";
@@ -14,6 +14,48 @@ vi.mock("../../../../lib/timezone", () => ({
 }));
 
 describe("ContextBreakdownPanel", () => {
+  it("renders an honest unavailable matrix for an unsupported Agent without zero values", async () => {
+    getUsageCategoryBreakdown.mockResolvedValueOnce({
+      source: "cursor",
+      scope: "unsupported",
+      totals: {
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 0,
+      },
+      categories: [],
+      session_count: 0,
+      message_count: 0,
+    });
+
+    render(
+      <ContextBreakdownPanel
+        from="2026-05-09"
+        to="2026-05-09"
+        source="cursor"
+        providerLabel="Cursor"
+      />,
+    );
+
+    const matrix = await screen.findByTestId("context-breakdown-unavailable");
+    expect(getUsageCategoryBreakdown).toHaveBeenCalledWith(expect.objectContaining({
+      source: "cursor",
+    }));
+    expect(within(matrix).getAllByTestId("context-breakdown-unavailable-row")).toHaveLength(5);
+    for (const key of ["messages", "tool_calls", "custom_agents", "reasoning", "mcp_servers"]) {
+      const label = within(matrix).getByText(copy(`dashboard.context_breakdown.category.${key}`));
+      expect(label.closest("li")).toHaveTextContent(
+        copy("dashboard.context_breakdown.unavailable_item", { agent: "Cursor" }),
+      );
+    }
+    expect(matrix.textContent).not.toMatch(/\b0(?:\.0+)?%?\b/u);
+    expect(matrix).not.toHaveTextContent("Claude Code");
+    expect(matrix).not.toHaveTextContent("Codex");
+  });
+
   it("uses generic loading copy while session logs are being scanned", async () => {
     getUsageCategoryBreakdown.mockReturnValueOnce(new Promise(() => {}));
 

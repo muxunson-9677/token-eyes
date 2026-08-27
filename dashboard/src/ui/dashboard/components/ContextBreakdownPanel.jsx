@@ -53,6 +53,14 @@ const DISPLAY_GROUPS = [
   { key: "reasoning", from: ["reasoning"] },
 ];
 
+const UNAVAILABLE_GROUPS = [
+  "messages",
+  "tool_calls",
+  "custom_agents",
+  "reasoning",
+  "mcp_servers",
+];
+
 const EXEC_DETAIL_TABS = [
   ["by_type", "dashboard.context_breakdown.exec_details.group_by_type"],
   ["by_executable", "dashboard.context_breakdown.exec_details.group_by_executable"],
@@ -674,14 +682,16 @@ function ToolCallsExpanded({ toolSet, execDetails, source, codexQueueFallback })
   );
 }
 
-// Inline Context Breakdown for Claude Code only. Renders bare (no Card
-// wrapper) so it can drop into the UsageOverview expanded provider section.
-export function ContextBreakdownPanel({ from, to, source = "claude", referenceTotalTokens = null, onLoadingChange = null }) {
+// Inline Context Breakdown. Renders bare (no Card wrapper) so it can drop
+// into the UsageOverview expanded provider section.
+export function ContextBreakdownPanel({ from, to, source = "claude", providerLabel = null, referenceTotalTokens = null, onLoadingChange = null }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   // Track which top-level disclosure rows are open
   const [openRows, setOpenRows] = useState({});
+  const agentLabel = String(providerLabel || source).trim() || source;
+  const hasSourceSpecificCopy = source === "claude" || source === "codex";
 
   function toggleRow(key) {
     setOpenRows((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -744,15 +754,44 @@ export function ContextBreakdownPanel({ from, to, source = "claude", referenceTo
   if (error) {
     return (
       <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
-        {copy(sourceErrorCopyKey(source))}
+        {hasSourceSpecificCopy
+          ? copy(sourceErrorCopyKey(source))
+          : copy("dashboard.context_breakdown.error_generic", { agent: agentLabel })}
       </p>
+    );
+  }
+
+  if (data?.scope === "unsupported") {
+    return (
+      <ul
+        data-testid="context-breakdown-unavailable"
+        aria-label={copy("dashboard.context_breakdown.title_generic", { provider: agentLabel })}
+        className="divide-y divide-oai-gray-200 dark:divide-oai-gray-700"
+      >
+        {UNAVAILABLE_GROUPS.map((key) => (
+          <li
+            key={key}
+            data-testid="context-breakdown-unavailable-row"
+            className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-3 py-2 text-xs"
+          >
+            <span className="font-medium text-oai-gray-700 dark:text-oai-gray-300">
+              {copy(`dashboard.context_breakdown.category.${key}`)}
+            </span>
+            <span className="text-oai-gray-500 dark:text-oai-gray-400">
+              {copy("dashboard.context_breakdown.unavailable_item", { agent: agentLabel })}
+            </span>
+          </li>
+        ))}
+      </ul>
     );
   }
 
   if (!data || data.scope !== "supported" || !data.totals?.total_tokens) {
     return (
       <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
-        {copy(sourceEmptyCopyKey(source))}
+        {hasSourceSpecificCopy
+          ? copy(sourceEmptyCopyKey(source))
+          : copy("dashboard.context_breakdown.empty_generic", { agent: agentLabel })}
       </p>
     );
   }

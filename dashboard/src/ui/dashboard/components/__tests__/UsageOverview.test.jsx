@@ -1,6 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DASHBOARD_AGENTS } from "../../../../lib/agent-adapters-dashboard";
 import { copy } from "../../../../lib/copy";
 import { UsageOverview } from "../UsageOverview.jsx";
 
@@ -58,10 +59,115 @@ const mixedFleet = [
   },
 ];
 
+function fleetEntryForAgent(agent, index = 0) {
+  return {
+    source: agent.queueSource,
+    label: agent.displayName,
+    totalPercent: (100 / DASHBOARD_AGENTS.length).toFixed(1),
+    usage: 100 + index,
+    usd: 1 + index / 100,
+    billingMode: "unknown",
+    billingModes: ["unknown"],
+    models: [{
+      id: `${agent.id}-model`,
+      name: `${agent.displayName} real model`,
+      share: 100,
+      usage: 100 + index,
+      cost: 1 + index / 100,
+      billingMode: "unknown",
+    }],
+  };
+}
+
 describe("UsageOverview", () => {
   beforeEach(() => {
+    breakdownProps.length = 0;
     getWorkbuddyQuotaMock.mockReset();
     getWorkbuddyQuotaMock.mockResolvedValue({ signed_in: false });
+  });
+
+  it("renders every visible registry Agent card as a native button", () => {
+    const { container } = render(
+      <UsageOverview
+        period="total"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="123"
+        fleetData={DASHBOARD_AGENTS.map(fleetEntryForAgent)}
+      />,
+    );
+
+    const agentButtons = container.querySelectorAll(
+      'button[aria-controls^="provider-details-"]',
+    );
+    expect(agentButtons).toHaveLength(DASHBOARD_AGENTS.length);
+    expect(Array.from(agentButtons, (button) => button.getAttribute("aria-controls"))).toEqual(
+      DASHBOARD_AGENTS.map((agent) => `provider-details-${agent.displayName}`),
+    );
+    for (const button of agentButtons) {
+      expect(button).toHaveProperty("tagName", "BUTTON");
+      expect(button).toHaveAttribute("type", "button");
+    }
+  });
+
+  it("opens an unsupported Agent breakdown by mouse without hiding its real models", async () => {
+    const user = userEvent.setup();
+    const cursor = DASHBOARD_AGENTS.find((agent) => agent.id === "cursor");
+    const cursorFleet = { ...fleetEntryForAgent(cursor), label: "CURSOR" };
+    render(
+      <UsageOverview
+        period="total"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="123"
+        fleetData={[cursorFleet]}
+        from="2026-05-01"
+        to="2026-05-31"
+      />,
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /Cursor/i }));
+    });
+
+    expect(screen.getByText("CURSOR 上下文拆解")).toBeInTheDocument();
+    expect(screen.getByTestId("context-breakdown")).toHaveTextContent(
+      "cursor:2026-05-01:2026-05-31",
+    );
+    expect(screen.getByText("Cursor real model")).toBeInTheDocument();
+    expect(breakdownProps.at(-1)).toMatchObject({
+      source: "cursor",
+      providerLabel: "CURSOR",
+      referenceTotalTokens: 100,
+    });
+  });
+
+  it("opens registry Agent breakdowns with Enter and Space", async () => {
+    const user = userEvent.setup();
+    const agents = DASHBOARD_AGENTS.filter((agent) => ["gemini", "hermes"].includes(agent.id));
+    render(
+      <UsageOverview
+        period="total"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="203"
+        fleetData={agents.map(fleetEntryForAgent)}
+      />,
+    );
+
+    const geminiButton = screen.getByRole("button", { name: /Gemini CLI/i });
+    geminiButton.focus();
+    await act(async () => {
+      await user.keyboard("{Enter}");
+    });
+    expect(screen.getByTestId("context-breakdown")).toHaveTextContent("gemini");
+
+    const hermesButton = screen.getByRole("button", { name: /Hermes Agent/i });
+    hermesButton.focus();
+    await act(async () => {
+      await user.keyboard(" ");
+    });
+    expect(screen.getByTestId("context-breakdown")).toHaveTextContent("hermes");
   });
 
   it("hides the primary total when it was not provided", () => {
