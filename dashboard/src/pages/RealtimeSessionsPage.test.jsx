@@ -165,8 +165,8 @@ describe("RealtimeSessionsPage", () => {
     expect(traeCard.querySelector(".rt-mini-state")).toHaveTextContent(copy("realtime.state.idle"));
     expect(codeBuddyCard).toHaveTextContent(copy("realtime.history.no_usage_metric"));
     expect(codeBuddyCard.querySelector(".rt-mini-state")).toHaveTextContent(copy("realtime.state.idle"));
-    expect(traeCard).not.toHaveTextContent(copy("value.data_unavailable"));
-    expect(codeBuddyCard).not.toHaveTextContent(copy("value.data_unavailable"));
+    expect(traeCard).not.toHaveTextContent(copy("value_realtime.data_unavailable"));
+    expect(codeBuddyCard).not.toHaveTextContent(copy("value_realtime.data_unavailable"));
     await act(async () => { await user.click(screen.getByRole("button", { name: copy("realtime.agent.next") })); });
     expect(screen.queryByText("DeepSeek Harness")).not.toBeInTheDocument();
     expect(await screen.findByText("总积分 180")).toBeInTheDocument();
@@ -272,7 +272,7 @@ describe("RealtimeSessionsPage", () => {
     render(<RealtimeSessionsPage />);
     const card = (await screen.findByText("WorkBuddy")).closest(".rt-session-mini");
     expect(card).toHaveTextContent("积分");
-    expect(card).toHaveTextContent(copy("value.data_unavailable"));
+    expect(card).toHaveTextContent(copy("value_realtime.data_unavailable"));
     expect(card).not.toHaveTextContent("Credits");
     expect(card).not.toHaveTextContent("0 积分");
   });
@@ -325,7 +325,7 @@ describe("RealtimeSessionsPage", () => {
       },
     });
     render(<RealtimeSessionsPage />);
-    await screen.findAllByText(copy("value.data_unavailable"));
+    await screen.findAllByText(copy("value_realtime.data_unavailable"));
     const exactDashes = Array.from(document.querySelectorAll("body *"))
       .filter((node) => node.children.length === 0 && node.textContent?.trim() === "—");
     expect(exactDashes).toHaveLength(0);

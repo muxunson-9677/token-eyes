@@ -63,7 +63,6 @@ function createIsolatedHandler(root, overrides = {}) {
 }
 
 const PRIVATE_READ_PATHS = [
-  "/functions/tokentracker-value-comparison?range=month",
   "/functions/tokentracker-realtime-sessions?range=today",
   "/functions/tokentracker-workbuddy-quota",
   "/functions/tokentracker-token-plans",
@@ -443,7 +442,6 @@ test("WorkBuddy GET keeps display account context, filters provider secrets, and
     assert.equal(JSON.stringify(response.body).includes("secret"), false);
 
     for (const pathname of [
-      "/functions/tokentracker-value-comparison?range=month",
       "/functions/tokentracker-realtime-sessions?range=today",
     ]) {
       const pageData = await call(handler, pathname, {
@@ -486,7 +484,6 @@ test("WorkBuddy GET keeps display account context, filters provider secrets, and
     assert.equal(unavailable.headers["Access-Control-Allow-Origin"], "http://tauri.localhost");
 
     for (const pathname of [
-      "/functions/tokentracker-value-comparison?range=month",
       "/functions/tokentracker-realtime-sessions?range=today",
     ]) {
       const pageData = await call(failing, pathname, {

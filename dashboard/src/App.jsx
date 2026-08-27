@@ -91,9 +91,6 @@ const SpendCostPage = lazy(() =>
 const PlanMarketPage = lazy(() =>
   import("./pages/PlanMarketPage.jsx").then((m) => ({ default: m.PlanMarketPage })),
 );
-const ValueComparisonPage = lazy(() =>
-  import("./pages/ValueComparisonPage.jsx").then((m) => ({ default: m.ValueComparisonPage })),
-);
 const RealtimeSessionsPage = lazy(() =>
   import("./pages/RealtimeSessionsPage.jsx").then((m) => ({ default: m.RealtimeSessionsPage })),
 );
@@ -295,7 +292,7 @@ export default function App() {
   // v2.0 IA: legacy bare routes redirect to the default child (replace so
   // the bare URL doesn't linger in history). Tauri root now lands on the
   // basic settings page per the IA spec.
-  if (isSpendRootPath) {
+  if (isSpendRootPath || isSpendValueComparisonPath) {
     return <Navigate to="/spend/usage" replace />;
   }
   if (isSettingsRootPath) {
@@ -340,8 +337,6 @@ export default function App() {
     PageComponent = SpendCostPage;
   } else if (isSpendPlansPath) {
     PageComponent = PlanMarketPage;
-  } else if (isSpendValueComparisonPath) {
-    PageComponent = ValueComparisonPage;
   } else if (isSpendRealtimeSessionsPath) {
     PageComponent = RealtimeSessionsPage;
   } else if (isSkillsPath) {

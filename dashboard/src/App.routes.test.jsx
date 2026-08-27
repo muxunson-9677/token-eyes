@@ -269,6 +269,13 @@ describe("App routes (v2.0 IA refactor)", () => {
     expect(screen.queryByText(TEXT.spendCost)).not.toBeInTheDocument();
   });
 
+  it("retired /spend/value-comparison redirects to /spend/usage without a dead page", async () => {
+    renderApp("/spend/value-comparison");
+    expect(await screen.findByText(TEXT.spendUsage)).toBeInTheDocument();
+    expect(screen.getByTestId("route-location")).toHaveTextContent("/spend/usage");
+    expect(screen.queryByText(TEXT.spendCost)).not.toBeInTheDocument();
+  });
+
   it("/settings redirects to /settings/basic (replace)", async () => {
     renderApp("/settings");
     expect(await screen.findByText(TEXT.settingsBasic)).toBeInTheDocument();

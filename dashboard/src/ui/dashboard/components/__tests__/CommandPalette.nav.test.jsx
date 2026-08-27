@@ -106,7 +106,7 @@ describe("CommandPalette real render (F3 reproduction)", () => {
     renderPalette();
     openWithCtrlK();
     const dialog = await screen.findByRole("dialog");
-    // All twelve approved navigable pages must render as option buttons.
+    // All approved navigable pages must render as option buttons.
     const expectedLabels = [
       "nav.usage",
       "nav.leaderboard",
@@ -115,7 +115,6 @@ describe("CommandPalette real render (F3 reproduction)", () => {
       "nav.spend.usage",
       "nav.spend.cost",
       "nav.spend.plans",
-      "nav.spend.value_comparison",
       "nav.spend.realtime_sessions",
       "nav.settings.basic",
       "nav.settings.data",
@@ -124,9 +123,10 @@ describe("CommandPalette real render (F3 reproduction)", () => {
     for (const label of expectedLabels) {
       expect(within(dialog).getByText(label)).toBeInTheDocument();
     }
-    // No React error boundary swallowed the list — there are 12 page options.
+    expect(within(dialog).queryByText("nav.spend.value_comparison")).not.toBeInTheDocument();
+    // No React error boundary swallowed the list — there are 11 page options.
     const options = within(dialog).getAllByRole("option");
-    expect(options.length).toBe(12);
+    expect(options.length).toBe(11);
   });
 
   it("clicking a secondary-nav child navigates to the correct URL", async () => {

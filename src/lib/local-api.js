@@ -48,7 +48,6 @@ const {
   buildWidgetViewModel,
   flattenUsageLimitsPayload,
 } = require("./widget-view-model");
-const { buildValueComparisonViewModel } = require("./value-comparison-view-model");
 const { buildRealtimeSessionViewModel } = require("./realtime-session-view-model");
 const { buildAgentHistoryInventory } = require("./agent-history-inventory");
 const {
@@ -86,7 +85,6 @@ const LOCAL_API_CAPABILITIES = Object.freeze([
   "provider_api_balance",
   "codex_reset_events",
   "desktop_widget_view_model",
-  "value_comparison_v1",
   "realtime_sessions_v1",
   "request_diagnostics_v2",
   "observability_export_v2",
@@ -1877,7 +1875,6 @@ function hasAllowedLoopbackOrigin(headers = {}) {
 }
 
 const PRIVATE_LOCAL_GET_PATHS = new Set([
-  "/functions/tokentracker-value-comparison",
   "/functions/tokentracker-realtime-sessions",
   "/functions/tokentracker-workbuddy-quota",
   "/functions/tokentracker-token-plans",
@@ -6164,42 +6161,6 @@ function createLocalApiHandler({
     return Number.isFinite(number) ? number : null;
   }
 
-  function valueRealtimeObservedAt(record) {
-    if (typeof record?.timestamp === "string") return record.timestamp;
-    return typeof record?.hour_start === "string" ? record.hour_start : null;
-  }
-
-  function publicValueRealtimeEvidence(records, recordPrefix = "record") {
-    const sourceRecords = Array.isArray(records) ? records : [];
-    const observed = sourceRecords
-      .map(valueRealtimeObservedAt)
-      .filter(Boolean)
-      .sort();
-    const models = new Set(sourceRecords.map((record) => String(record?.model || "").trim()).filter(Boolean));
-    const versions = new Set(sourceRecords.map((record) => String(record?.pricing_version || "").trim()).filter(Boolean));
-    const urls = new Set(sourceRecords.map((record) => safePublicHttpsUrl(record?.source_url)).filter(Boolean));
-    const hasPrice = sourceRecords.some((record) => publicFiniteNumber(record?.cost_usd) !== null);
-    const safeRecordRefs = sourceRecords.slice(0, 12).map((record, index) => {
-      const source = normalizeSource(record?.source) || "unknown";
-      const timestamp = valueRealtimeObservedAt(record) || index;
-      const rawRecord = record?.session_key || record?.session_id || record?.request_id || `${source}:${timestamp}:${index}`;
-      return `${recordPrefix}:${publicValueRealtimeId("record", rawRecord)}`;
-    });
-    return {
-      source_kind: sourceRecords.length ? "local_usage_log" : "unavailable",
-      record_count: sourceRecords.length,
-      observed_from: observed[0] || null,
-      observed_to: observed.at(-1) || null,
-      safe_record_refs: safeRecordRefs,
-      pricing: {
-        state: hasPrice ? "estimated" : "unavailable",
-        model: models.size === 1 ? [...models][0] : null,
-        source_url: urls.size === 1 ? [...urls][0] : null,
-        version: versions.size === 1 ? [...versions][0] : null,
-      },
-    };
-  }
-
   async function readValueRealtimeUsageRows(range, timeZoneContext, { includeCodexRolloutFallback = true } = {}) {
     const queueRows = readQueueData(qp);
     const rows = includeCodexRolloutFallback
@@ -6309,33 +6270,6 @@ function createLocalApiHandler({
     ];
   }
 
-  function spendRecordOverlapsRange(record, from, to) {
-    const start = typeof record?.start_date === "string" ? record.start_date.trim() : "";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return false;
-    const cycle = String(record?.billing_cycle || "").trim().toLowerCase();
-    if (cycle === "one_time") return start >= from && start <= to;
-    const end = typeof record?.end_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(record.end_date.trim())
-      ? record.end_date.trim()
-      : "9999-12-31";
-    return start <= to && end >= from;
-  }
-
-  function spendRecordHasBillEvidence(record) {
-    const amount = publicFiniteNumber(record?.amount);
-    const currency = String(record?.currency || "").trim().toUpperCase();
-    const cycle = String(record?.billing_cycle || "").trim().toLowerCase();
-    return amount !== null
-      && (currency === "USD" || currency === "CNY")
-      && (cycle === "monthly" || cycle === "yearly" || cycle === "one_time")
-      && /^\d{4}-\d{2}-\d{2}$/.test(String(record?.start_date || ""));
-  }
-
-  function monthRange(monthKey) {
-    const start = new Date(`${monthKey}T00:00:00.000Z`);
-    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0));
-    return { from: monthKey, to: end.toISOString().slice(0, 10) };
-  }
-
   function attachNativeResourcesToHistory(history, nativeResources) {
     const bySource = new Map();
     for (const resource of nativeResources) {
@@ -6349,28 +6283,6 @@ function createLocalApiHandler({
       ...item,
       ...(bySource.has(normalizeSource(item?.source)) ? { native_resources: bySource.get(normalizeSource(item.source)) } : {}),
     }));
-  }
-
-  function publicActualSpendEvidence(records) {
-    const sourceRecords = Array.isArray(records) ? records : [];
-    const safeRecordRefs = sourceRecords.slice(0, 12).map((record, index) => {
-      const source = String(record?.source || "unknown").trim().toLowerCase() || "unknown";
-      const stableValue = `${source}:${record?.start_date || ""}:${record?.end_date || ""}:${index}`;
-      return `spend:${publicValueRealtimeId("record", stableValue)}`;
-    });
-    return {
-      source_kind: sourceRecords.length ? "local_spend_ledger" : "unavailable",
-      record_count: sourceRecords.length,
-      observed_from: null,
-      observed_to: null,
-      safe_record_refs: safeRecordRefs,
-      pricing: {
-        state: sourceRecords.length ? "reported" : "unavailable",
-        model: null,
-        source_url: null,
-        version: null,
-      },
-    };
   }
 
   function publicRealtimeUsageRow(record, index, timeZoneContext = null) {
@@ -6678,338 +6590,6 @@ function createLocalApiHandler({
           { ok: false, error: "widget_view_model_unavailable" },
           500,
         );
-      }
-      return true;
-    }
-
-    if (p === "/functions/tokentracker-value-comparison") {
-      if (String(req.method || "GET").toUpperCase() !== "GET") {
-        privateLocalJson(req, res, { ok: false, error: "Method Not Allowed" }, 405);
-        return true;
-      }
-      try {
-        const nowDate = nowProvider();
-        const timeZoneContext = getTimeZoneContext(url);
-        const requestedRange = url.searchParams.get("range") || "month";
-        const currentMonthKey = valueRealtimeRange("today", nowDate, timeZoneContext).to.slice(0, 7);
-        const requestedMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(url.searchParams.get("month") || ""))
-          ? String(url.searchParams.get("month"))
-          : currentMonthKey;
-        let range = valueRealtimeRange(requestedRange, nowDate, timeZoneContext, requestedMonth);
-        const trackerConfig = readTrackerConfig();
-        const rawSpendRecords = Array.isArray(trackerConfig.spendRecords) ? trackerConfig.spendRecords : [];
-        const planCostRecords = tokenPlanCostRecords(trackerConfig);
-        const spendRecords = [
-          ...withoutTokenPlanCostDuplicates(rawSpendRecords.map((record) => normalizeSpendRecord(record)), planCostRecords),
-          ...planCostRecords,
-        ].filter(spendRecordHasBillEvidence);
-        let dataMonth = range.to.slice(0, 7);
-        let monthOptions = [];
-        let availableMonths = [];
-        let historyProbeRows = [];
-        let [valueUsageRows, workbuddyQuota] = await Promise.all([
-          readValueRealtimeUsageRows(range, timeZoneContext),
-          readWorkbuddyQuotaForRequest().catch(() => ({ unreadable: true })),
-        ]);
-        if (range.range === "month") {
-          const currentDate = new Date(`${currentMonthKey}-01T00:00:00.000Z`);
-          monthOptions = Array.from({ length: 6 }, (_unused, index) => {
-            const month = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() - index, 1));
-            return month.toISOString().slice(0, 7);
-          });
-          const probeRange = {
-            from: `${monthOptions.at(-1)}-01`,
-            to: valueRealtimeRange("month", nowDate, timeZoneContext, currentMonthKey).to,
-          };
-          historyProbeRows = await readValueRealtimeUsageRows(probeRange, timeZoneContext, { includeCodexRolloutFallback: false });
-          const usageMonths = new Set(historyProbeRows.map((row) => rowDayKey(row, timeZoneContext)?.slice(0, 7)).filter(Boolean));
-          if (valueUsageRows.length) usageMonths.add(requestedMonth);
-          const billedMonths = new Set(monthOptions.filter((month) => {
-            const naturalMonth = monthRange(`${month}-01`);
-            return spendRecords.some((record) => spendRecordOverlapsRange(record, naturalMonth.from, naturalMonth.to));
-          }));
-          availableMonths = monthOptions.filter((month) => usageMonths.has(month) || billedMonths.has(month));
-          const comparableMonths = monthOptions.filter((month) => usageMonths.has(month) && billedMonths.has(month));
-          dataMonth = comparableMonths.find((month) => month <= requestedMonth)
-            || availableMonths.find((month) => month <= requestedMonth)
-            || requestedMonth;
-          if (dataMonth !== requestedMonth) {
-            range = valueRealtimeRange("month", nowDate, timeZoneContext, dataMonth);
-            valueUsageRows = await readValueRealtimeUsageRows(range, timeZoneContext);
-          }
-        }
-        const planAttribution = configuredPlanAttribution(trackerConfig);
-        const nativeResources = workbuddyNativeResources(workbuddyQuota);
-        const rangedSpendRecords = spendRecords.filter((record) => spendRecordOverlapsRange(record, range.from, range.to));
-        const subscriptionSpendRecords = rangedSpendRecords.filter((record) => String(record?.source || "").trim().toLowerCase() !== "other_ai");
-        const otherAiSpendRecords = rangedSpendRecords.filter((record) => String(record?.source || "").trim().toLowerCase() === "other_ai");
-        const subscriptionEvidence = publicActualSpendEvidence(subscriptionSpendRecords);
-        const otherAiEvidence = publicActualSpendEvidence(otherAiSpendRecords);
-        const valueUsageTotals = computeQueueTotals(valueUsageRows, {
-          fromKey: range.from,
-          toKey: range.to,
-          timeZoneContext,
-          pricingOptions: getPricingOptions(),
-        });
-        const hasUsageRows = valueUsageRows.length > 0;
-        const selectedFrom = new Date(`${range.from}T00:00:00.000Z`);
-        const selectedTo = new Date(`${range.to}T23:59:59.999Z`);
-        const actualSpendBySource = rangedSpendRecords.reduce((items, record) => {
-          const source = normalizeSource(record?.source) || "unknown";
-          const amount = computeSubscriptionCostForRange(record, selectedFrom, selectedTo, getUsdToCny());
-          items.set(source, (items.get(source) || 0) + amount);
-          return items;
-        }, new Map());
-        const subscriptionSpendUsd = Array.from(actualSpendBySource.entries())
-          .filter(([source]) => source !== "other_ai")
-          .reduce((sum, [, amount]) => sum + amount, 0);
-        const otherAiSpendUsd = actualSpendBySource.get("other_ai") || 0;
-        const totalTokens = hasUsageRows ? publicFiniteNumber(valueUsageTotals.total_tokens) : null;
-        const pricedTokens = hasUsageRows ? publicFiniteNumber(valueUsageTotals.priced_tokens) : null;
-        const coverage = totalTokens && pricedTokens !== null ? (pricedTokens / totalTokens) * 100 : null;
-        const currentMonth = new Date(`${range.to.slice(0, 7)}-01T00:00:00.000Z`);
-        const monthlyStart = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - 5, 1));
-        const monthlyRange = { from: monthlyStart.toISOString().slice(0, 10), to: range.to };
-        const monthlyUsageRows = await readValueRealtimeUsageRows(monthlyRange, timeZoneContext);
-        const sixMonthKeys = Array.from({ length: 6 }, (_unused, index) => {
-          const month = new Date(Date.UTC(monthlyStart.getUTCFullYear(), monthlyStart.getUTCMonth() + index, 1));
-          return month.toISOString().slice(0, 10);
-        });
-        const monthlyTrend = new Map(sixMonthKeys.map((key) => {
-          const naturalMonth = monthRange(key);
-          const matching = spendRecords.filter((record) => spendRecordOverlapsRange(record, naturalMonth.from, naturalMonth.to));
-          const fromDate = new Date(`${naturalMonth.from}T00:00:00.000Z`);
-          const toDate = new Date(`${naturalMonth.to}T23:59:59.999Z`);
-          return [key, {
-            bucket_start: key,
-            label: `${Number(key.slice(5, 7))}月`,
-            actual_spend_usd: matching.length
-              ? matching.reduce((sum, record) => sum + computeSubscriptionCostForRange(record, fromDate, toDate, getUsdToCny()), 0)
-              : null,
-            api_equivalent_usd: null,
-          }];
-        }));
-        const trendUsageRows = [
-          ...monthlyUsageRows.filter((entry) => {
-            const day = rowDayKey(entry, timeZoneContext);
-            return !day || day < range.from || day > range.to;
-          }),
-          ...valueUsageRows,
-        ];
-        const monthlyUsage = trendUsageRows.reduce((items, entry) => {
-          const day = rowDayKey(entry, timeZoneContext);
-          if (!day) return items;
-          const key = `${day.slice(0, 7)}-01`;
-          const current = items.get(key) || { value: 0, hasPrice: false };
-          const cost = publicFiniteNumber(entry?.cost_usd);
-          if (cost !== null) {
-            current.value += cost;
-            current.hasPrice = true;
-          }
-          items.set(key, current);
-          return items;
-        }, new Map());
-        for (const [key, item] of monthlyUsage) {
-          const current = monthlyTrend.get(key) || {
-            bucket_start: key,
-            label: `${Number(key.slice(5, 7))}月`,
-            actual_spend_usd: null,
-            api_equivalent_usd: null,
-          };
-          current.api_equivalent_usd = item.hasPrice ? item.value : null;
-          monthlyTrend.set(key, current);
-        }
-        const compositionMonths = [dataMonth];
-        const observedBillingModes = valueUsageRows.reduce((modes, row) => {
-          const month = rowDayKey(row, timeZoneContext)?.slice(0, 7);
-          if (month && compositionMonths.includes(month)) {
-            modes.add(normalizeUsageAttribution(row).billing_mode);
-          }
-          return modes;
-        }, new Set());
-        function spendCompositionForMonth(key, month) {
-          const naturalMonth = monthRange(`${month}-01`);
-          const records = spendRecords.filter((record) => spendRecordOverlapsRange(record, naturalMonth.from, naturalMonth.to));
-          const matching = records.filter((record) => {
-            const source = String(record?.source || "").trim().toLowerCase();
-            if (key === "other_ai") return source === "other_ai";
-            if (key === "official_api") return source === "official_api" || source === "api_key";
-            if (key === "subscription") return source !== "other_ai" && source !== "official_api" && source !== "api_key";
-            return false;
-          });
-          if (!matching.length) return null;
-          const fromDate = new Date(`${naturalMonth.from}T00:00:00.000Z`);
-          const toDate = new Date(`${naturalMonth.to}T23:59:59.999Z`);
-          return {
-            value: matching.reduce((sum, record) => sum + computeSubscriptionCostForRange(record, fromDate, toDate, getUsdToCny()), 0),
-            evidence: publicActualSpendEvidence(matching),
-          };
-        }
-        function usageRowsForMonth(month) {
-          return month === dataMonth
-            ? valueUsageRows
-            : historyProbeRows.filter((row) => rowDayKey(row, timeZoneContext)?.slice(0, 7) === month);
-        }
-        function usageRowsForMode(key, month) {
-          return usageRowsForMonth(month).filter((entry) => {
-            const attribution = normalizeUsageAttribution(entry);
-            const source = normalizeSource(entry?.source) || "unknown";
-            const mode = attribution.billing_mode === "api_key"
-              ? "api_key"
-              : attribution.billing_mode === "token_plan" || planAttribution.bySource.has(source)
-                ? "subscription"
-                : "unknown";
-            return mode === key;
-          });
-        }
-        function usageCompositionForMonth(key, month) {
-          const matching = usageRowsForMode(key, month);
-          if (!matching.length) return null;
-          const priced = matching.map((entry) => publicFiniteNumber(entry?.cost_usd)).filter((value) => value !== null);
-          if (!priced.length) return null;
-          return {
-            value: priced.reduce((sum, value) => sum + value, 0),
-            evidence: publicValueRealtimeEvidence(matching),
-          };
-        }
-        function observedUsageForMonth(key, month) {
-          const matching = usageRowsForMode(key, month);
-          if (!matching.length) return null;
-          return {
-            value: matching.reduce((sum, entry) => sum + Math.max(0, Number(entry?.total_tokens || 0)), 0),
-            unit: "tokens",
-            evidence_state: "observed",
-            evidence: publicValueRealtimeEvidence(matching),
-          };
-        }
-        const actualComposition = ["subscription", "official_api", "other_ai"].map((key) => {
-          for (const month of compositionMonths) {
-            const result = spendCompositionForMonth(key, month);
-            if (!result) continue;
-            return { key, value: result.value, evidence_state: "exact", evidence: result.evidence, source_month: month, fallback_applied: month !== dataMonth };
-          }
-          if (key === "official_api" && observedBillingModes.has("api_key")) {
-            for (const month of compositionMonths) {
-              const observedUsage = observedUsageForMonth("api_key", month);
-              if (!observedUsage) continue;
-              return {
-                key,
-                value: null,
-                evidence_state: "observed",
-                display_state: "usage_detected",
-                observed_usage: observedUsage,
-                source_month: month,
-                fallback_applied: month !== dataMonth,
-              };
-            }
-          }
-          return { key, value: null, evidence_state: "unsupported", display_state: "not_detected" };
-        });
-        actualComposition.push(
-          {
-            key: "token_plan",
-            value: null,
-            evidence_state: nativeResources.some((resource) => resource.value !== null) ? "exact" : "unsupported",
-            display_state: nativeResources.some((resource) => resource.value !== null) ? "native_only" : "not_detected",
-            ...(nativeResources.length ? { native_resources: nativeResources } : {}),
-          },
-          { key: "unknown", value: null, evidence_state: "unsupported", display_state: "not_detected" },
-        );
-        const valueComposition = ["subscription", "api_key", "unknown"].map((key) => {
-          for (const month of compositionMonths) {
-            const result = usageCompositionForMonth(key, month);
-            if (!result) continue;
-            return { key, value: result.value, evidence_state: "estimated", evidence: result.evidence, source_month: month, fallback_applied: month !== dataMonth };
-          }
-          return { key, value: null, evidence_state: "unsupported", display_state: "not_detected" };
-        });
-        if (nativeResources.length) {
-          const readable = nativeResources.some((resource) => resource.value !== null);
-          valueComposition.push({ key: "token_plan", value: null, evidence_state: readable ? "exact" : "unsupported", display_state: readable ? "native_only" : "unreadable", native_resources: nativeResources });
-        } else {
-          valueComposition.push({ key: "token_plan", value: null, evidence_state: "unsupported", display_state: "not_detected" });
-        }
-        const sourceValue = valueUsageRows.reduce((result, entry) => {
-          const source = normalizeSource(entry?.source) || "unknown";
-          const current = result.get(source) || { apiEquivalentUsd: 0, observedTokens: 0, hasPrice: false, hasObservedTokens: false, records: [] };
-          const cost = publicFiniteNumber(entry?.cost_usd);
-          const observedTokens = publicFiniteNumber(entry?.total_tokens);
-          if (cost !== null) {
-            current.apiEquivalentUsd += cost;
-            current.hasPrice = true;
-          }
-          if (observedTokens !== null) {
-            current.observedTokens += observedTokens;
-            current.hasObservedTokens = true;
-          }
-          current.records.push(entry);
-          result.set(source, current);
-          return result;
-        }, new Map());
-        const usageEvidence = publicValueRealtimeEvidence(valueUsageRows);
-        privateLocalJson(req, res, buildValueComparisonViewModel({
-          generatedAt: nowDate.toISOString(),
-          range: range.range,
-          requestedMonth,
-          dataMonth,
-          monthOptions,
-          availableMonths,
-          fallbackApplied: range.range === "month" && dataMonth !== requestedMonth,
-          actualSpend: {
-            subscriptionUsd: subscriptionSpendRecords.length ? subscriptionSpendUsd : null,
-            officialApiUsd: null,
-            otherAiUsd: otherAiSpendRecords.length ? otherAiSpendUsd : null,
-            subscriptionEvidence,
-            otherAiEvidence,
-          },
-          actualSpendEvidence: publicActualSpendEvidence([...subscriptionSpendRecords, ...otherAiSpendRecords]),
-          usage: {
-            apiEquivalentUsd: hasUsageRows ? publicFiniteNumber(valueUsageTotals.cost_usd) : null,
-            recognizedTokens: totalTokens,
-            pricingCoveragePercent: coverage,
-          },
-          usageEvidence,
-          actualComposition,
-          valueComposition,
-          records: [
-            ...planAttribution.plans.map((plan) => {
-              const isPrimaryPlan = planAttribution.bySource.get(plan.source) === plan;
-              const item = isPrimaryPlan ? sourceValue.get(plan.source) : null;
-              if (isPrimaryPlan) sourceValue.delete(plan.source);
-              return {
-                ...plan,
-                apiEquivalentUsd: item?.hasPrice ? item.apiEquivalentUsd : null,
-                observedTokens: item?.hasObservedTokens ? item.observedTokens : null,
-                actualSpendUsd: isPrimaryPlan && actualSpendBySource.has(plan.source) ? actualSpendBySource.get(plan.source) : null,
-                evidence: publicValueRealtimeEvidence(item?.records || []),
-              };
-            }),
-            ...Array.from(sourceValue.entries()).map(([source, item]) => ({
-              source,
-              apiEquivalentUsd: item.hasPrice ? item.apiEquivalentUsd : null,
-              observedTokens: item.hasObservedTokens ? item.observedTokens : null,
-              actualSpendUsd: actualSpendBySource.has(source) ? actualSpendBySource.get(source) : null,
-              evidence: publicValueRealtimeEvidence(item.records),
-            })),
-            ...Array.from(actualSpendBySource.entries())
-              .filter(([source]) => !planAttribution.bySource.has(source) && !sourceValue.has(source))
-              .map(([source, actualSpendUsd]) => ({
-                source,
-                apiEquivalentUsd: null,
-                actualSpendUsd,
-                evidence: publicActualSpendEvidence(rangedSpendRecords.filter((record) => normalizeSource(record?.source) === source)),
-              })),
-          ],
-          monthlyTrend: sixMonthKeys.map((key) => monthlyTrend.get(key) || {
-            bucket_start: key,
-            label: `${Number(key.slice(5, 7))}月`,
-            actual_spend_usd: null,
-            api_equivalent_usd: null,
-          }),
-          nativeResources,
-        }));
-      } catch (_error) {
-        privateLocalJson(req, res, { ok: false, error: "value_comparison_unavailable" }, 500);
       }
       return true;
     }

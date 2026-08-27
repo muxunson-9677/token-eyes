@@ -12,107 +12,26 @@ test("focus billing method wraps instead of truncating at the compact desktop br
   assert.match(stylesheet, /@media \(max-width: 1360px\)[\s\S]*?\.rt-focus-footer strong\s*\{[^}]*overflow-wrap:\s*anywhere/);
 });
 
-test("value comparison source names wrap instead of hiding long provider labels", () => {
+test("reference-sized Agent cards stay compact without stacking at desktop width", () => {
   const stylesheet = fs.readFileSync(path.join(__dirname, "..", "dashboard", "src", "pages", "value-realtime-pages.css"), "utf8");
-  const sourceNameRule = stylesheet.match(/\.vr-source-name\s*\{[^}]*\}/)?.[0] || "";
-
-  assert.match(sourceNameRule, /white-space:\s*normal/);
-  assert.match(sourceNameRule, /overflow:\s*visible/);
-  assert.doesNotMatch(sourceNameRule, /overflow:\s*hidden/);
-});
-
-test("reference-sized value and Agent cards stay compact without stacking at desktop width", () => {
-  const stylesheet = fs.readFileSync(path.join(__dirname, "..", "dashboard", "src", "pages", "value-realtime-pages.css"), "utf8");
-  const valueCardRule = stylesheet.match(/\.vr-value-card\s*\{[^}]*\}/)?.[0] || "";
   const agentCardRule = stylesheet.match(/\.rt-session-mini\s*\{[^}]*\}/)?.[0] || "";
   const miniDataRule = stylesheet.match(/\.rt-mini-data\s*\{[^}]*\}/)?.[0] || "";
-  const desktopBreakpoint = stylesheet.match(/@media \(max-width: 1360px\)\s*\{[\s\S]*?\n\}/)?.[0] || "";
 
-  assert.match(valueCardRule, /height:\s*154px/);
-  assert.match(valueCardRule, /box-sizing:\s*border-box/);
   assert.match(agentCardRule, /height:\s*90px/);
   assert.match(agentCardRule, /justify-content:\s*center/);
   assert.match(miniDataRule, /flex-wrap:\s*nowrap/);
-  assert.doesNotMatch(desktopBreakpoint, /\.vr-value-flow\s*\{[^}]*grid-template-columns:\s*1fr/);
   assert.match(stylesheet, /\.rt-focus-top\s*\{[^}]*grid-template-columns:\s*1\.2fr\s+\.85fr\s+\.75fr\s+\.95fr/);
   assert.doesNotMatch(stylesheet, /\.rt-focus-art\s*\{/);
 });
 
-test("compact desktop keeps value labels readable without collapsing the three-card flow", () => {
+test("compact desktop keeps the Agent strip readable", () => {
   const stylesheet = fs.readFileSync(path.join(__dirname, "..", "dashboard", "src", "pages", "value-realtime-pages.css"), "utf8");
-  const compositionRule = stylesheet.match(/\.vr-composition-row\s*\{[^}]*\}/)?.[0] || "";
   const compactDesktopBlock = stylesheet.match(/@media \(max-width: 1360px\)\s*\{[\s\S]*?\n\}/)?.[0] || "";
 
-  assert.match(compositionRule, /grid-template-columns:\s*minmax\(76px,\s*90px\)\s+minmax\(42px,\s*1fr\)\s+minmax\(64px,\s*max-content\)\s+44px/);
-  assert.doesNotMatch(compactDesktopBlock, /\.vr-twin-grid\s*\{[^}]*grid-template-columns:\s*1fr/);
-  assert.match(compactDesktopBlock, /\.vr-value-number\s*\{[^}]*font-size:\s*32px/);
-  assert.match(compactDesktopBlock, /\.vr-value-number--status\s*\{[^}]*font-size:\s*24px/);
   assert.match(compactDesktopBlock, /\.rt-session-viewport\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*calc\(\(100%\s*-\s*51px\)\s*\/\s*4\)\)/);
   assert.match(compactDesktopBlock, /\.rt-session-viewport\s*\{[^}]*overflow:\s*hidden/);
   assert.match(compactDesktopBlock, /\.rt-mini-name\s*\{[^}]*font-size:\s*11px/);
   assert.match(compactDesktopBlock, /\.rt-mini-name\s*\{[^}]*gap:\s*5px/);
-  assert.doesNotMatch(compactDesktopBlock, /\.vr-value-flow\s*\{[^}]*grid-template-columns:\s*1fr/);
-});
-
-test("narrow desktop value cards keep both comparison badges inside the card", () => {
-  const stylesheet = fs.readFileSync(path.join(__dirname, "..", "dashboard", "src", "pages", "value-realtime-pages.css"), "utf8");
-  const cardContentRule = stylesheet.match(/\.vr-value-card\s*>\s*div:last-child\s*\{[^}]*\}/)?.[0] || "";
-  const sectionRule = stylesheet.match(/\.vr-section\s*\{[^}]*\}/)?.[0] || "";
-  const tableCellRule = stylesheet.match(/\.vr-data-table td\s*\{[^}]*\}/)?.[0] || "";
-  const narrowStart = stylesheet.indexOf("@media (min-width: 761px) and (max-width: 1300px)");
-  const narrowEnd = stylesheet.indexOf("@media", narrowStart + 1);
-  const narrowBlock = narrowStart >= 0 ? stylesheet.slice(narrowStart, narrowEnd >= 0 ? narrowEnd : undefined) : "";
-
-  assert.match(cardContentRule, /min-width:\s*0/);
-  assert.match(sectionRule, /height:\s*270px/);
-  assert.match(sectionRule, /overflow:\s*clip/);
-  assert.match(tableCellRule, /padding:\s*4px\s+8px/);
-  assert.ok(narrowBlock, "missing narrow-desktop value-card breakpoint");
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-value-flow,\s*\.vr-page--value\s+\.vr-evidence-strip\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+16px\s+minmax\(0,\s*1fr\)\s+16px\s+minmax\(0,\s*1fr\)/);
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-value-meta\s*\{[^}]*flex-wrap:\s*wrap/);
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-value-state,[^}]*\.vr-page--value\s+\.vr-value-badge\s*\{[^}]*font-size:\s*11px/);
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-evidence-strip\s*>\s*div\s*\{[^}]*font-size:\s*12px/);
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-comparison-columns\s*\{[^}]*gap:\s*8px/);
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-twin-grid\s*\{[^}]*grid-template-columns:\s*1fr/);
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-comparison-columns\s*>\s*div\s*\+\s*div\s*\{[^}]*padding-left:\s*12px/);
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-composition-row\s*\{[^}]*grid-template-columns:\s*minmax\(60px,\s*72px\)\s+minmax\(20px,\s*1fr\)\s+minmax\(45px,\s*max-content\)\s+40px/);
-  assert.match(narrowBlock, /\.vr-page--value\s+\.vr-composition-row\s*\{[^}]*column-gap:\s*3px/);
-});
-
-test("six-month positive bars use a definite-height flex container instead of a collapsed grid percentage", () => {
-  const stylesheet = fs.readFileSync(path.join(__dirname, "..", "dashboard", "src", "pages", "value-realtime-pages.css"), "utf8");
-  const monthRule = stylesheet.match(/\.vr-month\s*\{[^}]*\}/)?.[0] || "";
-
-  assert.match(monthRule, /display:\s*flex/);
-  assert.match(monthRule, /height:\s*88px/);
-  assert.match(monthRule, /align-items:\s*flex-end/);
-  assert.match(stylesheet, /\.vr-month-series--actual\s*>\s*span\s*\{[^}]*background:\s*var\(--vr-blue\)/);
-  assert.match(stylesheet, /\.vr-month-series--value\s*>\s*span\s*\{[^}]*background:\s*var\(--vr-green\)/);
-  assert.match(stylesheet, /\.vr-month-series\s*\{[^}]*align-items:\s*center/);
-  assert.match(stylesheet, /\.vr-month-series\s*\{[^}]*justify-content:\s*flex-end/);
-});
-
-test("value summary columns align to the same five-track flow as the three hero cards", () => {
-  const stylesheet = fs.readFileSync(path.join(__dirname, "..", "dashboard", "src", "pages", "value-realtime-pages.css"), "utf8");
-  const flowRule = stylesheet.match(/\.vr-value-flow\s*\{[^}]*\}/)?.[0] || "";
-  const evidenceRule = stylesheet.match(/\.vr-evidence-strip\s*\{[^}]*\}/)?.[0] || "";
-
-  assert.match(flowRule, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+38px\s+minmax\(0,\s*1fr\)\s+38px\s+minmax\(0,\s*1fr\)/);
-  assert.match(evidenceRule, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+38px\s+minmax\(0,\s*1fr\)\s+38px\s+minmax\(0,\s*1fr\)/);
-  assert.match(stylesheet, /\.vr-evidence-cell--actual\s*\{[^}]*grid-column:\s*1/);
-  assert.match(stylesheet, /\.vr-evidence-cell--value\s*\{[^}]*grid-column:\s*3/);
-  assert.match(stylesheet, /\.vr-evidence-cell--coverage\s*\{[^}]*grid-column:\s*5/);
-});
-
-test("five composition rows fit inside the card and preserve their category colors", () => {
-  const stylesheet = fs.readFileSync(path.join(__dirname, "..", "dashboard", "src", "pages", "value-realtime-pages.css"), "utf8");
-  const rowRule = stylesheet.match(/\.vr-composition-row\s*\{[^}]*\}/)?.[0] || "";
-  const unavailableDotRule = stylesheet.match(/\.vr-composition-row--unavailable\s+\.vr-dot\s*\{[^}]*\}/)?.[0] || "";
-
-  assert.match(rowRule, /min-height:\s*30px/);
-  assert.match(rowRule, /grid-template-columns:\s*minmax\(76px,\s*90px\)\s+minmax\(42px,\s*1fr\)\s+minmax\(64px,\s*max-content\)\s+44px/);
-  assert.match(rowRule, /column-gap:\s*7px/);
-  assert.doesNotMatch(unavailableDotRule, /background:/);
 });
 
 test("Agent metrics align below the name and coverage content has no conflicting divider", () => {
@@ -158,7 +77,6 @@ test("only a genuinely wide tall desktop uses enlarged reference proportions", (
   assert.doesNotMatch(stylesheet, /@media \(min-width: 1361px\) and \(min-height: 1040px\)/);
   assert.match(stylesheet, /\.vr-head\s*\{[^}]*flex-wrap:\s*wrap/);
   assert.match(stylesheet, /\.vr-controls\s*\{[^}]*flex-wrap:\s*wrap/);
-  assert.match(stylesheet, /\.vr-value-meta\s*\{[^}]*flex-wrap:\s*wrap[^}]*white-space:\s*normal/);
   assert.doesNotMatch(largeDesktopBlock, /\d+(?:\.\d+)?vh/u, "independent viewport-height stretching distorts the reference rhythm");
   assert.match(largeDesktopBlock, /\.vr-page\s*\{[^}]*max-width:\s*1682px/);
   assert.match(largeDesktopBlock, /\.vr-page\s*\{[^}]*margin-inline:\s*auto/);

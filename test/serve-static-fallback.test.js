@@ -32,7 +32,7 @@ test("missing hashed assets return a hard 404 instead of SPA HTML", async () => 
       assert.match(missingCss.headers.get("content-type") || "", /^text\/plain/u);
       assert.doesNotMatch(await missingCss.text(), /<!doctype html>/iu);
 
-      const route = await fetch(`${origin}/value-comparison`);
+      const route = await fetch(`${origin}/arbitrary-client-route`);
       assert.equal(route.status, 200);
       assert.match(route.headers.get("content-type") || "", /^text\/html/u);
     });

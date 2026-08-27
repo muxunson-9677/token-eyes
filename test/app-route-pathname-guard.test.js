@@ -27,7 +27,8 @@ test("App.jsx keeps MVP routes reachable", () => {
   assert.equal(source.includes('"/settings"'), true, "/settings route should exist");
   assert.equal(source.includes("SpendPage"), true, "SpendPage should be referenced");
   assert.equal(source.includes("SettingsPage"), true, "SettingsPage should be referenced");
-  assert.equal(source.includes('"/spend/value-comparison"'), true, "value comparison route should exist");
+  assert.equal(source.includes('"/spend/value-comparison"'), true, "retired value comparison path should remain as an explicit redirect");
+  assert.equal(source.includes("ValueComparisonPage"), false, "retired value comparison page must not remain importable");
   assert.equal(source.includes('"/spend/realtime-sessions"'), true, "realtime sessions route should exist");
 });
 

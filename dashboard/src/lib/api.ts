@@ -241,7 +241,6 @@ const PATHS = {
   spendRecords: "tokentracker-spend-records",
   otherAiSpendGroups: "tokentracker-other-ai-groups",
   spendTimeseries: "tokentracker-spend-timeseries",
-  valueComparison: "tokentracker-value-comparison",
   realtimeSessions: "tokentracker-realtime-sessions",
   requestUsageRecords: "tokentracker-request-usage-records",
   providerStats: "tokentracker-provider-stats",
@@ -657,34 +656,18 @@ export async function getSpendTimeseries(params?: AnyRecord) {
   return fetchLocalJson(PATHS.spendTimeseries, { ...(params || {}), ...tzParams, ...multiParams });
 }
 
-const valueComparisonCache = new Map<string, AnyRecord>();
 const realtimeSessionsCache = new Map<string, AnyRecord>();
 
-function valueRealtimeCacheKey(range: string, month?: string) {
+function realtimeSessionsCacheKey(range: string, month?: string) {
   return `${range}:${month || "current"}`;
 }
 
-export function peekValueComparison(range = "month", month?: string) {
-  return valueComparisonCache.get(valueRealtimeCacheKey(range, month)) || null;
-}
-
 export function peekRealtimeSessions(range = "today", month?: string) {
-  return realtimeSessionsCache.get(valueRealtimeCacheKey(range, month)) || null;
+  return realtimeSessionsCache.get(realtimeSessionsCacheKey(range, month)) || null;
 }
 
-export function resetValueRealtimeCacheForTests() {
-  valueComparisonCache.clear();
+export function resetRealtimeSessionsCacheForTests() {
   realtimeSessionsCache.clear();
-}
-
-export async function getValueComparison(range = "month", signal?: AbortSignal, month?: string) {
-  const tzParams = buildTimeZoneParams({
-    timeZone: getBrowserTimeZone(),
-    tzOffsetMinutes: getBrowserTimeZoneOffsetMinutes(),
-  });
-  const result = await fetchLocalJson(PATHS.valueComparison, { range, ...(month ? { month } : {}), ...tzParams }, { signal });
-  valueComparisonCache.set(valueRealtimeCacheKey(range, month), result);
-  return result;
 }
 
 export async function getRealtimeSessions(range = "today", signal?: AbortSignal, month?: string) {
@@ -693,7 +676,7 @@ export async function getRealtimeSessions(range = "today", signal?: AbortSignal,
     tzOffsetMinutes: getBrowserTimeZoneOffsetMinutes(),
   });
   const result = await fetchLocalJson(PATHS.realtimeSessions, { range, ...(month ? { month } : {}), ...tzParams }, { signal });
-  realtimeSessionsCache.set(valueRealtimeCacheKey(range, month), result);
+  realtimeSessionsCache.set(realtimeSessionsCacheKey(range, month), result);
   return result;
 }
 

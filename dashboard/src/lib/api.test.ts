@@ -10,10 +10,8 @@ import {
   fetchCloudUsageModelBreakdown,
   getTokenPlans,
   getRealtimeSessions,
-  getValueComparison,
   peekRealtimeSessions,
-  peekValueComparison,
-  resetValueRealtimeCacheForTests,
+  resetRealtimeSessionsCacheForTests,
   cancelCodexConsoleLogin,
   cleanupLegacyCodexAuthFile,
   reauthorizeCodexConsoleLogin,
@@ -45,28 +43,33 @@ beforeEach(() => {
   setTauriRuntime(false);
   clearLocalApiAuthToken();
   resetLocalApiOriginForTests();
-  resetValueRealtimeCacheForTests();
+  resetRealtimeSessionsCacheForTests();
   vi.restoreAllMocks();
 });
 
-it("retains the last safe aggregate for instant value and realtime remounts while still refreshing from the API", async () => {
+it("retains the last safe realtime aggregate for instant remounts while still refreshing from the API", async () => {
   setTauriRuntime(true);
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify({
-    page: String(input).includes("value-comparison") ? "value" : "realtime",
-  }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ page: "realtime" }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
   vi.stubGlobal("fetch", fetchMock);
 
-  expect(peekValueComparison("month", "2026-08")).toBeNull();
   expect(peekRealtimeSessions("today", "2026-08")).toBeNull();
 
-  const value = await getValueComparison("month", undefined, "2026-08");
   const realtime = await getRealtimeSessions("today", undefined, "2026-08");
 
-  expect(peekValueComparison("month", "2026-08")).toBe(value);
   expect(peekRealtimeSessions("today", "2026-08")).toBe(realtime);
-  expect(peekValueComparison("month", "2026-07")).toBeNull();
   expect(peekRealtimeSessions("7d", "2026-08")).toBeNull();
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it("does not expose the retired value comparison API or cache", () => {
+  expect(apiSource).not.toContain("tokentracker-value-comparison");
+  expect(apiSource).not.toContain("getValueComparison");
+  expect(apiSource).not.toContain("peekValueComparison");
+  expect(apiSource).toContain("tokentracker-realtime-sessions");
+  expect(apiSource).toContain("getRealtimeSessions");
 });
 
 it("keeps nullable WorkBuddy Credits and safe account identity in the trusted UI contract", () => {

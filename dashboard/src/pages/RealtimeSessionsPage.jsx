@@ -21,11 +21,11 @@ const COMPONENTS = [
 
 function number(metric) {
   const value = metric && typeof metric === "object" ? metric.value : metric;
-  return value == null || !Number.isFinite(Number(value)) ? copy("value.data_unavailable") : Number(value).toLocaleString();
+  return value == null || !Number.isFinite(Number(value)) ? copy("value_realtime.data_unavailable") : Number(value).toLocaleString();
 }
-function money(metric) { return metric?.value == null ? copy("value.data_unavailable") : `$${Number(metric.value).toFixed(2)}`; }
+function money(metric) { return metric?.value == null ? copy("value_realtime.data_unavailable") : `$${Number(metric.value).toFixed(2)}`; }
 function compact(metric) {
-  if (metric?.value == null) return copy("value.data_unavailable");
+  if (metric?.value == null) return copy("value_realtime.data_unavailable");
   return new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(Number(metric.value));
 }
 function finiteValue(value) { return typeof value === "number" && Number.isFinite(value) ? value : null; }
@@ -46,11 +46,11 @@ function missingHistoryMetric(agent) {
 }
 function formatTime(value) {
   const date = value ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : copy("value.data_unavailable");
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : copy("value_realtime.data_unavailable");
 }
 function formatDuration(metric) {
   const value = Number(metric?.value);
-  if (!Number.isFinite(value) || value < 0) return copy("value.data_unavailable");
+  if (!Number.isFinite(value) || value < 0) return copy("value_realtime.data_unavailable");
   const minutes = Math.round(value);
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
@@ -65,7 +65,7 @@ function taskText(session) {
 }
 function nativeMetrics(agent, resources) {
   if (agent.source !== "workbuddy") {
-    return resources.map((resource) => `${resource.label || resource.unit} · ${resource.value == null ? copy("value.data_unavailable") : `${compact({ value: resource.value })} ${resource.unit}`}`);
+    return resources.map((resource) => `${resource.label || resource.unit} · ${resource.value == null ? copy("value_realtime.data_unavailable") : `${compact({ value: resource.value })} ${resource.unit}`}`);
   }
   const unit = copy("realtime.points");
   const parts = resources.map((resource) => {
@@ -77,7 +77,7 @@ function nativeMetrics(agent, resources) {
         : rawLabel.toLowerCase() === "today_consumed"
           ? copy("realtime.workbuddy.today_consumed")
           : rawLabel;
-    const value = resource.value == null ? copy("value.data_unavailable") : compact({ value: resource.value });
+    const value = resource.value == null ? copy("value_realtime.data_unavailable") : compact({ value: resource.value });
     return [label, value].filter(Boolean).join(" ");
   });
   return parts;
@@ -250,7 +250,7 @@ function CompositionTab({ focus, points, evidence, rangeFrom, rangeTo }) {
   }, { offset: 0, stops: [] });
   return <><div className="rt-composition-view">
     <div className="rt-donut-wrap"><div className="rt-donut" style={total ? { background: `conic-gradient(${stops.stops.join(", ")})` } : undefined}><span className="rt-donut-center">{copy("realtime.tokens.short")}<strong>{compact(focus?.total_tokens)}</strong></span></div>
-      <div className="rt-breakdown">{rows.map((row) => <div className="rt-breakdown-row" key={row.key}><span><i className={`vr-dot vr-tone--${row.tone}`} />{copy(row.label)}</span><strong>{compact({ value: row.value })}</strong><em>{total && row.value !== null ? `${(row.value / total * 100).toFixed(1)}%` : copy("value.share_unavailable")}</em></div>)}</div>
+      <div className="rt-breakdown">{rows.map((row) => <div className="rt-breakdown-row" key={row.key}><span><i className={`vr-dot vr-tone--${row.tone}`} />{copy(row.label)}</span><strong>{compact({ value: row.value })}</strong><em>{total && row.value !== null ? `${(row.value / total * 100).toFixed(1)}%` : copy("value_realtime.share_unavailable")}</em></div>)}</div>
     </div>
     <RealtimeLineChart points={points} showLegend={false} />
   </div><footer className="rt-composition-foot"><div className="rt-composition-foot-meta"><span>{copy("realtime.data_range")}</span><i /> <span data-testid="realtime-range-window">{rangeFrom && rangeTo ? `${rangeFrom} 至 ${rangeTo}` : `${formatTime(evidence?.observed_from)} 至 ${formatTime(evidence?.observed_to)}`}</span></div><span className="rt-composition-legend"><i className="vr-dot vr-tone--blue" />{copy("realtime.tokens.short")}</span></footer></>;
@@ -266,7 +266,7 @@ function TreeTab({ tree }) {
 }
 
 function RequestsTab({ requests }) {
-  return <div className="rt-list-view">{requests.length ? requests.slice(0, 8).map((request) => <div className="rt-request-row" key={request.record_ref}><strong>{request.source}</strong><span>{request.record_ref}</span><span>{formatTime(request.observed_at)}</span><span>{request.total_tokens?.value == null ? copy("value.data_unavailable") : copy("realtime.tokens_with_unit", { value: request.total_tokens.value.toLocaleString() })}</span><span>{money(request.api_equivalent_usd)}</span></div>) : copy("realtime.requests.empty")}</div>;
+  return <div className="rt-list-view">{requests.length ? requests.slice(0, 8).map((request) => <div className="rt-request-row" key={request.record_ref}><strong>{request.source}</strong><span>{request.record_ref}</span><span>{formatTime(request.observed_at)}</span><span>{request.total_tokens?.value == null ? copy("value_realtime.data_unavailable") : copy("realtime.tokens_with_unit", { value: request.total_tokens.value.toLocaleString() })}</span><span>{money(request.api_equivalent_usd)}</span></div>) : copy("realtime.requests.empty")}</div>;
 }
 
 function SidePanels({ data, stateCounts }) {
@@ -380,7 +380,7 @@ export function RealtimeSessionsPage() {
         <div className="rt-focus-metric"><div className="rt-focus-metric-label">{focusUsesAgentDay ? copy("realtime.agent_today_total") : copy("realtime.tokens")}</div><div className="rt-focus-metric-value">{compact(focusUsage?.total_tokens)}</div><div className="rt-focus-metric-sub">{copy("realtime.input")} {compact(focusUsage?.input_tokens)} · {copy("realtime.output")} {compact(focusUsage?.output_tokens)}</div></div>
         <div className="rt-focus-metric"><div className="rt-focus-metric-label">{copy("realtime.equivalent")}</div><div className="rt-focus-metric-value">{money(focusUsage?.api_equivalent_usd)}</div><div className="rt-focus-metric-sub">{focusUsesAgentDay ? copy("realtime.agent_today_total") : copy("realtime.billing_safe")}</div></div>
         <div className="rt-focus-metric rt-focus-metric--blue"><div className="rt-focus-metric-label">{delta("realtime_tokens") == null ? copy("realtime.current_range") : copy("realtime.changed")}</div><div className="rt-focus-metric-value">{delta("realtime_tokens") == null ? copy("realtime.current_range_value") : `${delta("realtime_tokens") > 0 ? "+" : ""}${delta("realtime_tokens").toLocaleString()} Token`}</div></div>
-      </div><div className="rt-focus-footer"><div><span>{copy("realtime.requests")}</span><strong>{number(focusUsage?.request_count)}</strong></div><div><span>{copy("realtime.sub_agents")}</span><strong>{focusTree[0]?.children?.length || 0}</strong></div><div><span>{copy("realtime.duration")}</span><strong>{formatDuration(focus.duration_minutes)}</strong></div><div><span>{copy("realtime.model")}</span><strong>{focus.model || copy("value.data_unavailable")}</strong></div><div><span>{copy("realtime.billing")}</span><strong>{copy("realtime.billing_safe")}</strong></div></div></section> : <section className="vr-empty mt-4">{copy("realtime.empty")}</section>}
+      </div><div className="rt-focus-footer"><div><span>{copy("realtime.requests")}</span><strong>{number(focusUsage?.request_count)}</strong></div><div><span>{copy("realtime.sub_agents")}</span><strong>{focusTree[0]?.children?.length || 0}</strong></div><div><span>{copy("realtime.duration")}</span><strong>{formatDuration(focus.duration_minutes)}</strong></div><div><span>{copy("realtime.model")}</span><strong>{focus.model || copy("value_realtime.data_unavailable")}</strong></div><div><span>{copy("realtime.billing")}</span><strong>{copy("realtime.billing_safe")}</strong></div></div></section> : <section className="vr-empty mt-4">{copy("realtime.empty")}</section>}
       {agentHistory.length ? <SessionStrip agents={agentHistory} selectedSource={activeSource} onSelect={setSelectedSource} /> : null}
       <section className="rt-workspace"><div className="vr-card rt-analysis"><div className="rt-tabs" role="tablist">{TABS.map((item) => <button type="button" key={item} role="tab" aria-selected={tab === item} onClick={() => setTab(item)}>{copy(`realtime.tabs.${item}`)}</button>)}</div><div className="rt-analysis-body">{!focus ? <div className="vr-empty">{copy("realtime.empty")}</div> : <>{tab === "composition" ? <CompositionTab focus={focusForAnalysis} points={focusPoints} evidence={focusUsage?.total_tokens?.evidence || focus?.evidence || data.summary?.realtime_tokens?.evidence} rangeFrom={data.range_from} rangeTo={data.range_to} /> : null}{tab === "trend" ? <TrendTab points={focusPoints} /> : null}{tab === "children" ? <TreeTab tree={focusTree} /> : null}{tab === "requests" ? <RequestsTab requests={focusRequests} /> : null}</>}</div></div><SidePanels data={data} stateCounts={stateCounts} /></section>
     </> : null}

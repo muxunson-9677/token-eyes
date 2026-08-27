@@ -116,7 +116,6 @@ describe("getNavGroups structure (v2.0 IA)", () => {
       "/spend/usage",
       "/spend/cost",
       "/spend/plans",
-      "/spend/value-comparison",
       "/spend/realtime-sessions",
     ]);
     expect(spend.defaultChildTo).toBe("/spend/usage");
@@ -201,12 +200,12 @@ describe("Sidebar two-level nav rendering (desktop)", () => {
     expect(screen.getByRole("link", { name: "copy:nav.settings.data" })).toBeVisible();
   });
 
-  it("renders spend children labels through the two new pages", () => {
+  it("renders spend children without the retired value comparison page", () => {
     renderSidebar("/spend/usage");
     expect(screen.getByText("copy:nav.spend.usage")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.spend.cost")).toBeInTheDocument();
     expect(screen.getByText("copy:nav.spend.plans")).toBeInTheDocument();
-    expect(screen.getByText("copy:nav.spend.value_comparison")).toBeInTheDocument();
+    expect(screen.queryByText("copy:nav.spend.value_comparison")).not.toBeInTheDocument();
     expect(screen.getByText("copy:nav.spend.realtime_sessions")).toBeInTheDocument();
   });
 

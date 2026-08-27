@@ -20,7 +20,7 @@ function pricingLabel(value) {
   return copy("value_realtime.evidence.pricing.unavailable");
 }
 
-export function ValueRealtimeEvidence({ evidence, className = "", title = copy("value.details.evidence") }) {
+export function ValueRealtimeEvidence({ evidence, className = "", title = copy("value_realtime.evidence.title") }) {
   const pricing = evidence?.pricing || null;
   return <details className={`vr-evidence-details ${className}`.trim()}>
     <summary><span className="vr-detail-icon vr-detail-icon--violet"><CircleHelp data-detail-icon="evidence" size={15} /></span>{title}</summary>
