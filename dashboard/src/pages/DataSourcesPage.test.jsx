@@ -7,10 +7,26 @@ import { DataSourcesPage } from "./DataSourcesPage.jsx";
 import { clearLocalData, getAllAgentEnvironments, getTokenEyesBuildInfo, getUsageSummary, triggerLocalSync } from "../lib/api";
 import { setCopyLocale } from "../lib/copy";
 import { safeWriteClipboard } from "../lib/safe-browser";
+import { LIMIT_PROVIDER_IDS } from "../lib/limits-providers.js";
+import { LIMITS_DISPLAY_CHANGE_EVENT } from "../hooks/use-limits-display-prefs.js";
 import fs from "node:fs";
 import path from "node:path";
 
 const dataSourcesCss = fs.readFileSync(path.resolve(process.cwd(), "src/ui/foundation/apple-glass.css"), "utf8");
+
+function setVisibleAgents(agentIds) {
+  const visible = new Set(agentIds);
+  window.localStorage.setItem(
+    "tt.limits.providerOrder",
+    JSON.stringify(LIMIT_PROVIDER_IDS),
+  );
+  window.localStorage.setItem(
+    "tt.limits.providerVisibility",
+    JSON.stringify(Object.fromEntries(
+      LIMIT_PROVIDER_IDS.map((id) => [id, visible.has(id)]),
+    )),
+  );
+}
 
 vi.mock("../lib/api", () => ({
   getAllAgentEnvironments: vi.fn(),
@@ -60,6 +76,53 @@ beforeEach(() => {
   });
   safeWriteClipboard.mockResolvedValue(true);
   clearLocalData.mockResolvedValue({ ok: true, removed: ["queue.jsonl", "cursors.json"] });
+});
+
+it("filters cached Agent sources and summary counts by limits visibility before page filters", async () => {
+  const cachedSources = [
+    { agent: " CODEX ", agent_name: "Cached Codex", status: "ready", trackingReady: true, evidenceCount: 4, environment: "win" },
+    { agent: "claude", agent_name: "Hidden Claude", status: "detected", trackingReady: false, evidenceCount: 0, environment: "wsl" },
+    { agent: "cursor", agent_name: "Hidden Cursor", status: "not-detected", trackingReady: false, evidenceCount: 0, environment: "win" },
+    { agent: "unknown-cache", agent_name: "Unknown Cache", status: "ready", trackingReady: true, evidenceCount: 1, environment: "win" },
+  ];
+  setVisibleAgents(["codex"]);
+  window.localStorage.setItem("token-eyes:data-source-health:v1", JSON.stringify({
+    sources: cachedSources,
+    ledgerSummary: null,
+    updatedAt: "2026-08-27T01:00:00.000Z",
+  }));
+  getAllAgentEnvironments.mockImplementation(() => new Promise(() => {}));
+  getUsageSummary.mockImplementation(() => new Promise(() => {}));
+
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+
+  expect(screen.getByText("Cached Codex")).toBeInTheDocument();
+  expect(screen.queryByText("Hidden Claude")).not.toBeInTheDocument();
+  expect(screen.queryByText("Hidden Cursor")).not.toBeInTheDocument();
+  expect(screen.queryByText("Unknown Cache")).not.toBeInTheDocument();
+  expect(screen.getByTestId("data-health-summary-ready")).toHaveTextContent("1");
+  expect(screen.getByTestId("data-health-summary-ready")).toHaveTextContent("100%");
+  expect(screen.getByTestId("data-health-summary-no-logs")).toHaveTextContent("0");
+  expect(screen.getByTestId("data-health-summary-unavailable")).toHaveTextContent("0");
+  await screen.findByTestId("token-eyes-build-info");
+
+  act(() => {
+    setVisibleAgents(["claude"]);
+    window.dispatchEvent(new CustomEvent(LIMITS_DISPLAY_CHANGE_EVENT));
+  });
+
+  expect(screen.queryByText("Cached Codex")).not.toBeInTheDocument();
+  expect(screen.getByText("Hidden Claude")).toBeInTheDocument();
+  expect(screen.getByTestId("data-health-summary-ready")).toHaveTextContent("0");
+  expect(screen.getByTestId("data-health-summary-no-logs")).toHaveTextContent("1");
+
+  act(() => {
+    setVisibleAgents([]);
+    window.dispatchEvent(new CustomEvent(LIMITS_DISPLAY_CHANGE_EVENT));
+  });
+
+  expect(screen.getByTestId("data-health-grid").querySelectorAll("article")).toHaveLength(0);
+  expect(screen.getByTestId("data-health-summary-no-logs")).toHaveTextContent("0");
 });
 
 it("shows source health without treating installation as valid synchronized data", async () => {

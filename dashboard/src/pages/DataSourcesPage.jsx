@@ -3,6 +3,8 @@ import { CircleAlert, Clock3, CloudOff, Grid2X2, HardDrive, List, RefreshCw, Sea
 import { clearLocalData, getAllAgentEnvironments, getTokenEyesBuildInfo, getUsageSummary, triggerLocalSync } from "../lib/api";
 import { copy, getCopyLocale } from "../lib/copy";
 import { safeWriteClipboard } from "../lib/safe-browser";
+import { normalizeVisibleProviderIds } from "../lib/spend-provider-visibility.js";
+import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
 
 function healthState(source) {
@@ -82,6 +84,7 @@ function writeDataSourceCache(payload) {
 }
 
 export function DataSourcesPage() {
+  const { visibleOrdered } = useLimitsDisplayPrefs();
   const [initialCache] = useState(readDataSourceCache);
   const [sources, setSources] = useState(() => initialCache?.sources || []);
   const [loading, setLoading] = useState(() => !initialCache);
@@ -149,17 +152,24 @@ export function DataSourcesPage() {
     void loadHealth({ showLoading: !initialCache });
   }, [initialCache, loadHealth]);
 
-  const counts = useMemo(() => sources.reduce((result, source) => {
+  const visibleSources = useMemo(() => {
+    const visibleAgentIds = new Set(normalizeVisibleProviderIds(visibleOrdered));
+    return sources.filter((source) => {
+      const [agentId] = normalizeVisibleProviderIds([source?.agent]);
+      return agentId ? visibleAgentIds.has(agentId) : false;
+    });
+  }, [sources, visibleOrdered]);
+  const counts = useMemo(() => visibleSources.reduce((result, source) => {
     result[healthState(source)] += 1;
     return result;
-  }, { ready: 0, "no-logs": 0, unavailable: 0 }), [sources]);
-  const sourceTotal = sources.length;
-  const sourceEnvironments = useMemo(() => [...new Set(sources
+  }, { ready: 0, "no-logs": 0, unavailable: 0 }), [visibleSources]);
+  const sourceTotal = visibleSources.length;
+  const sourceEnvironments = useMemo(() => [...new Set(visibleSources
     .map((source) => source.environment)
-    .filter(Boolean))].sort(), [sources]);
+    .filter(Boolean))].sort(), [visibleSources]);
   const displayedSources = useMemo(() => {
     const query = sourceQuery.trim().toLocaleLowerCase(getCopyLocale());
-    return sources
+    return visibleSources
       .filter((source) => sourceFilter === "all" || healthState(source) === sourceFilter)
       .filter((source) => sourceEnvironment === "all" || source.environment === sourceEnvironment)
       .filter((source) => !query || [source.agent_name, source.agent, source.environment]
@@ -171,7 +181,7 @@ export function DataSourcesPage() {
         }
         return new Date(right.latestActivityAt || 0).getTime() - new Date(left.latestActivityAt || 0).getTime();
       });
-  }, [sourceEnvironment, sourceFilter, sourceQuery, sourceSort, sources]);
+  }, [sourceEnvironment, sourceFilter, sourceQuery, sourceSort, visibleSources]);
   const ledgerMetrics = [
     ["raw", ledgerSummary?.data_integrity?.raw_records],
     ["visible", ledgerSummary?.data_integrity?.visible_records],
@@ -308,7 +318,7 @@ export function DataSourcesPage() {
             <div data-testid="data-health-toolbar" className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-oai-gray-100 pb-2 dark:border-oai-gray-800">
               <div className="flex flex-wrap gap-1.5" role="group" aria-label={copy("data_sources.title")}>
                 {[
-                  ["all", copy("data_sources.filters.all"), sources.length],
+                  ["all", copy("data_sources.filters.all"), sourceTotal],
                   ["ready", copy("data_sources.health.ready"), counts.ready],
                   ["no-logs", copy("data_sources.health.no_logs"), counts["no-logs"]],
                   ["unavailable", copy("data_sources.health.unavailable"), counts.unavailable],
