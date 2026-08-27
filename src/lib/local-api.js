@@ -6702,8 +6702,7 @@ function createLocalApiHandler({
         let monthOptions = [];
         let availableMonths = [];
         let historyProbeRows = [];
-        let [spend, valueUsageRows, workbuddyQuota] = await Promise.all([
-          readSpendTimeseries(range.from, range.to, "day", timeZoneContext),
+        let [valueUsageRows, workbuddyQuota] = await Promise.all([
           readValueRealtimeUsageRows(range, timeZoneContext),
           readWorkbuddyQuotaForRequest().catch(() => ({ unreadable: true })),
         ]);
@@ -6731,10 +6730,7 @@ function createLocalApiHandler({
             || requestedMonth;
           if (dataMonth !== requestedMonth) {
             range = valueRealtimeRange("month", nowDate, timeZoneContext, dataMonth);
-            [spend, valueUsageRows] = await Promise.all([
-              readSpendTimeseries(range.from, range.to, "day", timeZoneContext),
-              readValueRealtimeUsageRows(range, timeZoneContext),
-            ]);
+            valueUsageRows = await readValueRealtimeUsageRows(range, timeZoneContext);
           }
         }
         const planAttribution = configuredPlanAttribution(trackerConfig);
@@ -6744,7 +6740,6 @@ function createLocalApiHandler({
         const otherAiSpendRecords = rangedSpendRecords.filter((record) => String(record?.source || "").trim().toLowerCase() === "other_ai");
         const subscriptionEvidence = publicActualSpendEvidence(subscriptionSpendRecords);
         const otherAiEvidence = publicActualSpendEvidence(otherAiSpendRecords);
-        const totals = spend.totals || {};
         const valueUsageTotals = computeQueueTotals(valueUsageRows, {
           fromKey: range.from,
           toKey: range.to,
@@ -6760,37 +6755,35 @@ function createLocalApiHandler({
           items.set(source, (items.get(source) || 0) + amount);
           return items;
         }, new Map());
+        const subscriptionSpendUsd = Array.from(actualSpendBySource.entries())
+          .filter(([source]) => source !== "other_ai")
+          .reduce((sum, [, amount]) => sum + amount, 0);
+        const otherAiSpendUsd = actualSpendBySource.get("other_ai") || 0;
         const totalTokens = hasUsageRows ? publicFiniteNumber(valueUsageTotals.total_tokens) : null;
         const pricedTokens = hasUsageRows ? publicFiniteNumber(valueUsageTotals.priced_tokens) : null;
         const coverage = totalTokens && pricedTokens !== null ? (pricedTokens / totalTokens) * 100 : null;
         const currentMonth = new Date(`${range.to.slice(0, 7)}-01T00:00:00.000Z`);
         const monthlyStart = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - 5, 1));
         const monthlyRange = { from: monthlyStart.toISOString().slice(0, 10), to: range.to };
-        const [monthlySpend, monthlyUsageRows] = await Promise.all([
-          readSpendTimeseries(monthlyRange.from, monthlyRange.to, "month", timeZoneContext),
-          readValueRealtimeUsageRows(monthlyRange, timeZoneContext),
-        ]);
+        const monthlyUsageRows = await readValueRealtimeUsageRows(monthlyRange, timeZoneContext);
         const sixMonthKeys = Array.from({ length: 6 }, (_unused, index) => {
           const month = new Date(Date.UTC(monthlyStart.getUTCFullYear(), monthlyStart.getUTCMonth() + index, 1));
           return month.toISOString().slice(0, 10);
         });
-        const billedMonthKeys = new Set(sixMonthKeys.filter((key) => {
-          const month = monthRange(key);
-          return spendRecords.some((record) => spendRecordOverlapsRange(record, month.from, month.to));
-        }));
-        const monthlyTrend = (monthlySpend.series || []).reduce((items, entry) => {
-          const key = `${String(entry.bucket_start).slice(0, 7)}-01`;
-          if (!billedMonthKeys.has(key)) return items;
-          const current = items.get(key) || {
+        const monthlyTrend = new Map(sixMonthKeys.map((key) => {
+          const naturalMonth = monthRange(key);
+          const matching = spendRecords.filter((record) => spendRecordOverlapsRange(record, naturalMonth.from, naturalMonth.to));
+          const fromDate = new Date(`${naturalMonth.from}T00:00:00.000Z`);
+          const toDate = new Date(`${naturalMonth.to}T23:59:59.999Z`);
+          return [key, {
             bucket_start: key,
             label: `${Number(key.slice(5, 7))}月`,
-            actual_spend_usd: 0,
+            actual_spend_usd: matching.length
+              ? matching.reduce((sum, record) => sum + computeSubscriptionCostForRange(record, fromDate, toDate, getUsdToCny()), 0)
+              : null,
             api_equivalent_usd: null,
-          };
-          current.actual_spend_usd += Number(entry.subscription_cost_usd || 0) + Number(entry.other_ai_cost_usd || 0);
-          items.set(key, current);
-          return items;
-        }, new Map());
+          }];
+        }));
         const trendUsageRows = [
           ...monthlyUsageRows.filter((entry) => {
             const day = rowDayKey(entry, timeZoneContext);
@@ -6821,11 +6814,8 @@ function createLocalApiHandler({
           current.api_equivalent_usd = item.hasPrice ? item.value : null;
           monthlyTrend.set(key, current);
         }
-        const compositionMonths = range.range === "month"
-          ? monthOptions.filter((month) => month <= requestedMonth)
-          : [dataMonth];
-        if (!compositionMonths.includes(dataMonth)) compositionMonths.unshift(dataMonth);
-        const observedBillingModes = [...valueUsageRows, ...historyProbeRows].reduce((modes, row) => {
+        const compositionMonths = [dataMonth];
+        const observedBillingModes = valueUsageRows.reduce((modes, row) => {
           const month = rowDayKey(row, timeZoneContext)?.slice(0, 7);
           if (month && compositionMonths.includes(month)) {
             modes.add(normalizeUsageAttribution(row).billing_mode);
@@ -6961,9 +6951,9 @@ function createLocalApiHandler({
           availableMonths,
           fallbackApplied: range.range === "month" && dataMonth !== requestedMonth,
           actualSpend: {
-            subscriptionUsd: subscriptionSpendRecords.length ? Number(totals.subscription_cost_usd) : null,
+            subscriptionUsd: subscriptionSpendRecords.length ? subscriptionSpendUsd : null,
             officialApiUsd: null,
-            otherAiUsd: otherAiSpendRecords.length ? Number(totals.other_ai_cost_usd) : null,
+            otherAiUsd: otherAiSpendRecords.length ? otherAiSpendUsd : null,
             subscriptionEvidence,
             otherAiEvidence,
           },

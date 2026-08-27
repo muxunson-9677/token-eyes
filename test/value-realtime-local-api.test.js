@@ -368,7 +368,7 @@ test("a requested month with usage but no bill falls back to the latest comparab
   }
 });
 
-test("value comparison falls back per category and exposes WorkBuddy points without converting them to dollars", async () => {
+test("value comparison keeps categories in the selected data month and exposes WorkBuddy points without converting them to dollars", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-value-category-fallback-"));
   try {
     const queuePath = path.join(root, "queue.jsonl");
@@ -402,13 +402,13 @@ test("value comparison falls back per category and exposes WorkBuddy points with
 
     const value = await call(handler, "/functions/tokentracker-value-comparison?range=month&month=2026-08&tz=UTC&tz_offset_minutes=0");
     const otherAi = value.actual_composition.find((row) => row.key === "other_ai");
-    assert.equal(otherAi.value, 7);
-    assert.equal(otherAi.source_month, "2026-07");
-    assert.equal(otherAi.fallback_applied, true);
+    assert.equal(otherAi.value, null);
+    assert.equal(otherAi.source_month, undefined);
+    assert.equal(otherAi.fallback_applied, undefined);
     const apiKey = value.value_composition.find((row) => row.key === "api_key");
-    assert.ok(apiKey.value > 0);
-    assert.equal(apiKey.source_month, "2026-07");
-    assert.equal(apiKey.fallback_applied, true);
+    assert.equal(apiKey.value, null);
+    assert.equal(apiKey.source_month, undefined);
+    assert.equal(apiKey.fallback_applied, undefined);
     const points = value.value_composition.find((row) => row.key === "token_plan");
     assert.equal(points.display_state, "native_only");
     assert.deepEqual(points.native_resources.map((item) => [item.label, item.value, item.unit]), [
@@ -418,13 +418,43 @@ test("value comparison falls back per category and exposes WorkBuddy points with
     assert.equal(points.value, null, "native points must not be converted to dollars");
     assert.equal(value.actual_composition.find((row) => row.key === "token_plan")?.display_state, "native_only");
     const observedApi = value.actual_composition.find((row) => row.key === "official_api");
-    assert.equal(observedApi.display_state, "usage_detected");
+    assert.equal(observedApi.display_state, "not_detected");
     assert.equal(observedApi.value, null, "API Token usage must not become an actual cash bill");
-    assert.equal(observedApi.observed_usage.value, 2_200);
-    assert.equal(observedApi.observed_usage.unit, "tokens");
-    assert.equal(observedApi.observed_usage.evidence_state, "observed");
-    assert.equal(observedApi.source_month, "2026-07");
-    assert.equal(observedApi.fallback_applied, true);
+    assert.equal(observedApi.observed_usage, undefined);
+    assert.equal(observedApi.source_month, undefined);
+    assert.equal(observedApi.fallback_applied, undefined);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("value comparison counts a monthly plan once across an Asia/Shanghai natural month", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-value-natural-month-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, "");
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
+      spendRecords: [{
+        source: "codex",
+        amount: 12,
+        currency: "USD",
+        billing_cycle: "monthly",
+        start_date: "1970-01-01",
+      }],
+    }));
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: root,
+      now: () => new Date("2026-08-21T08:30:00.000Z"),
+      codexLifecycleProvider: async () => [],
+      detectAllAgentEnvironments: () => [],
+      workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+
+    const value = await call(handler, "/functions/tokentracker-value-comparison?range=month&month=2026-08&tz=Asia%2FShanghai&tz_offset_minutes=480");
+    assert.equal(value.actual_spend.subscription_usd.value, 12);
+    assert.equal(value.actual_composition.find((row) => row.key === "subscription").value, 12);
+    assert.equal(value.monthly_trend.find((row) => row.bucket_start === "2026-08-01").actual_spend_usd, 12);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -755,8 +785,8 @@ test("value total, composition, attribution, and current trend share one usage s
       ...value.attribution.unattributed,
     ].reduce((sum, item) => sum + (typeof item.api_equivalent_usd === "number" ? item.api_equivalent_usd : 0), 0);
 
-    assert.equal(rolloutReadCount, 2);
-    assert.equal(value.api_equivalent_value.value, 4);
+    assert.equal(rolloutReadCount, 1);
+    assert.equal(value.api_equivalent_value.value, 2);
     assert.equal(composedValue, value.api_equivalent_value.value);
     assert.equal(attributedValue, value.api_equivalent_value.value);
     assert.equal(value.monthly_trend.find((item) => item.label === "3月")?.api_equivalent_usd, 1);

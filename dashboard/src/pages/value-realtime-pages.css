@@ -50,12 +50,12 @@
   outline-offset: 2px;
 }
 
-.vr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--vr-space-6); margin-bottom: var(--vr-space-5); }
+.vr-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: var(--vr-space-6); margin-bottom: var(--vr-space-5); min-width: 0; }
 .vr-page--value .vr-head { margin-bottom: var(--vr-space-4); }
 .vr-page--value { padding-bottom: var(--vr-space-5); }
 .vr-head h1 { margin: 0; font-size: var(--vr-type-page-title); line-height: 1.2; font-weight: 800; letter-spacing: -.04em; }
 .vr-head p { margin: var(--vr-space-2) 0 0; color: var(--vr-muted); font-size: var(--vr-type-body); }
-.vr-controls { display: flex; align-items: center; gap: 22px; }
+.vr-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 22px; }
 .vr-range { display: flex; align-items: stretch; overflow: hidden; border: 1px solid var(--vr-line); border-radius: 9px; background: #fff; box-shadow: 0 1px 3px rgba(34, 54, 88, .04); }
 .vr-range button { border: 0; border-right: 1px solid var(--vr-line); background: #fff; color: #25375a; cursor: pointer; font: inherit; font-size: 14px; font-weight: 650; min-width: 67px; padding: 10px 13px; }
 .vr-range button:last-of-type { border-right: 0; }
@@ -87,7 +87,7 @@
 .vr-value-card--green .vr-value-number { color: var(--vr-green); }
 .vr-value-card--violet .vr-value-number { color: var(--vr-violet); }
 .vr-value-caption { margin: 9px 0 0; color: var(--vr-muted); font-size: 12px; }
-.vr-value-meta { align-items: center; display: flex; gap: var(--vr-space-1); margin-top: 9px; min-width: 0; white-space: nowrap; }
+.vr-value-meta { align-items: center; display: flex; flex-wrap: wrap; gap: var(--vr-space-1); margin-top: 9px; min-width: 0; white-space: normal; }
 .vr-value-state, .vr-value-badge { border: 1px solid currentColor; border-radius: 6px; color: #61708c; background: rgba(255,255,255,.78); display: inline-flex; font-size: 12px; font-weight: 700; line-height: 1; padding: 6px 8px; white-space: nowrap; }
 .vr-flow-arrow { align-self: center; justify-self: center; color: #6e7d99; }
 .vr-evidence-strip { display: grid; grid-template-columns: minmax(0, 1fr) 38px minmax(0, 1fr) 38px minmax(0, 1fr); margin-top: -1px; border: 1px solid var(--vr-line); border-radius: 0 0 12px 12px; background: #fff; overflow: hidden; }
@@ -318,7 +318,7 @@
 /* A maximized desktop keeps the 1600 x 970 reference as one uniformly scaled
    composition. Width is capped from the reference aspect ratio; typography,
    icons, gaps and card geometry grow together instead of stretching by vh. */
-@media (min-width: 1361px) and (min-height: 1040px) {
+@media (min-width: 1760px) and (min-height: 1040px) {
   .vr-page {
     --vr-space-1: 5px;
     --vr-space-2: 10px;

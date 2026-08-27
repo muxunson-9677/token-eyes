@@ -193,9 +193,6 @@ function SourceTable({ data }) {
 
   function actualValue(row) {
     if (row.actual != null) return `$${Number(row.actual).toFixed(2)}`;
-    if (row.tokens != null) {
-      return <span className="vr-table-observed">{compactTokens(row.tokens)} {copy("realtime.token_unit")}</span>;
-    }
     return <a className="vr-table-action" href="/spend/cost#subscriptions">{copy("value.action.configure_bill")}</a>;
   }
 

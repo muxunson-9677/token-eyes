@@ -1,5 +1,5 @@
 import React from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
@@ -73,6 +73,26 @@ describe("ValueComparisonPage", () => {
     expect((await screen.findAllByRole("link", { name: copy("value.action.configure_bill") })).every((link) => link.getAttribute("href") === "/spend/cost#subscriptions")).toBe(true);
     expect(screen.getByRole("link", { name: copy("value.action.configure_price") })).toHaveAttribute("href", "/settings/cost");
   });
+
+  it("keeps observed Token usage out of the cash-only actual-spend column", async () => {
+    getValueComparison.mockResolvedValue({
+      ...payload,
+      attribution: {
+        linked: [{
+          ...payload.attribution.linked[0],
+          plan_label: "Observed-only plan",
+          actual_spend_usd: null,
+          observed_tokens: 18_256_000,
+        }],
+        unattributed: [],
+      },
+    });
+    render(<ValueComparisonPage />);
+
+    const row = (await screen.findByText("Observed-only plan")).closest("tr");
+    expect(within(row).getByRole("link", { name: copy("value.action.configure_bill") })).toBeVisible();
+    expect(within(row).queryByText(/Token$/u)).not.toBeInTheDocument();
+  });
   it("changes the actual data range through the segmented control", async () => {
     const user = userEvent.setup();
     getValueComparison.mockResolvedValue(payload);
@@ -104,8 +124,9 @@ describe("ValueComparisonPage", () => {
     getValueComparison.mockResolvedValue(payload);
     render(<ValueComparisonPage />);
     expect(await screen.findByText("Pro 20x")).toBeInTheDocument();
-    expect(await screen.findByText(/claude/)).toBeInTheDocument();
-    expect(await screen.findByText("500 Token")).toBeInTheDocument();
+    const claudeRow = (await screen.findByText(/claude/)).closest("tr");
+    expect(within(claudeRow).getByRole("link", { name: copy("value.action.configure_bill") })).toBeVisible();
+    expect(within(claudeRow).queryByText("500 Token")).not.toBeInTheDocument();
     expect(screen.queryByText(copy("value.table.unlinked", { source: "claude" }))).not.toBeInTheDocument();
     expect(await screen.findByText("总积分 180")).toBeInTheDocument();
     expect(await screen.findByText("已消耗 12")).toBeInTheDocument();
@@ -217,7 +238,8 @@ describe("ValueComparisonPage", () => {
     expect(actualLane).toHaveTextContent("1234.6万 Token");
     expect(actualLane).toHaveTextContent("7月数据");
     expect(actualLane).not.toHaveTextContent("用量已识别");
-    expect(screen.getAllByText("1234.6万 Token").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("1234.6万 Token")).toHaveLength(1);
+    expect(document.querySelector(".vr-data-table")).not.toHaveTextContent("Token");
     expect(document.querySelector(".vr-data-table")).not.toHaveTextContent(copy("value.category.usage_detected"));
     expect(screen.getAllByText("180 积分").length).toBeGreaterThan(0);
   });

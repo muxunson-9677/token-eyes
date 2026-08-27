@@ -148,13 +148,17 @@ test("reference-height realtime workspace does not add an extra blank 18px", () 
   assert.match(analysisRule, /min-height:\s*288px/);
 });
 
-test("tall desktop viewports preserve the reference proportions instead of stretching cards and charts", () => {
+test("only a genuinely wide tall desktop uses enlarged reference proportions", () => {
   const stylesheet = fs.readFileSync(path.join(__dirname, "..", "dashboard", "src", "pages", "value-realtime-pages.css"), "utf8");
-  const blockStart = stylesheet.indexOf("@media (min-width: 1361px) and (min-height: 1040px)");
+  const blockStart = stylesheet.indexOf("@media (min-width: 1760px) and (min-height: 1040px)");
   const blockEnd = stylesheet.indexOf("@media", blockStart + 1);
   const largeDesktopBlock = blockStart >= 0 ? stylesheet.slice(blockStart, blockEnd >= 0 ? blockEnd : undefined) : "";
 
   assert.ok(largeDesktopBlock, "missing large-desktop reference scaling block");
+  assert.doesNotMatch(stylesheet, /@media \(min-width: 1361px\) and \(min-height: 1040px\)/);
+  assert.match(stylesheet, /\.vr-head\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(stylesheet, /\.vr-controls\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(stylesheet, /\.vr-value-meta\s*\{[^}]*flex-wrap:\s*wrap[^}]*white-space:\s*normal/);
   assert.doesNotMatch(largeDesktopBlock, /\d+(?:\.\d+)?vh/u, "independent viewport-height stretching distorts the reference rhythm");
   assert.match(largeDesktopBlock, /\.vr-page\s*\{[^}]*max-width:\s*1682px/);
   assert.match(largeDesktopBlock, /\.vr-page\s*\{[^}]*margin-inline:\s*auto/);
