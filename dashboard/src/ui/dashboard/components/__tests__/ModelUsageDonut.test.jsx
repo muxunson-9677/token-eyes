@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ModelUsageDonut } from "../ModelUsageDonut.jsx";
@@ -94,6 +94,51 @@ describe("ModelUsageDonut", () => {
     expect(container.firstChild).toHaveClass("tt-pressable-parent");
     expect(screen.getByText("当前范围暂无模型消耗")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "模型消耗分布图" })).not.toBeInTheDocument();
+  });
+
+  it("shows the same exact model details from pointer and keyboard chart interactions", () => {
+    render(
+      <ModelUsageDonut
+        totalTokens={18495678}
+        rows={[
+          { id: "alpha", name: "Alpha model", tokens: 12345678, percent: 67.2 },
+          { id: "beta", name: "Beta model", tokens: 6150000, percent: 32.8 },
+        ]}
+      />,
+    );
+
+    const segments = screen.getAllByTestId("model-donut-segment");
+    const vertices = screen.getAllByTestId("model-radar-vertex");
+    expect(segments).toHaveLength(2);
+    expect(vertices).toHaveLength(2);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(segments[1]);
+    let tooltip = screen.getByRole("tooltip");
+    expect(within(tooltip).getByText("Beta model")).toBeVisible();
+    expect(within(tooltip).getByText(/6,150,000/)).toBeVisible();
+    expect(within(tooltip).getByText(/32\.8%/)).toBeVisible();
+    expect(segments[1]).toHaveAttribute("data-active", "true");
+    expect(vertices[1]).toHaveAttribute("data-active", "true");
+
+    fireEvent.mouseLeave(segments[1]);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    expect(segments[0]).toHaveAttribute("tabindex", "0");
+    act(() => segments[0].focus());
+    expect(segments[0]).toHaveFocus();
+    tooltip = screen.getByRole("tooltip");
+    expect(within(tooltip).getByText("Alpha model")).toBeVisible();
+    expect(within(tooltip).getByText(/12,345,678/)).toBeVisible();
+    expect(within(tooltip).getByText(/67\.2%/)).toBeVisible();
+
+    act(() => segments[0].blur());
+    expect(vertices[0]).toHaveAttribute("tabindex", "0");
+    act(() => vertices[0].focus());
+    expect(vertices[0]).toHaveFocus();
+    expect(vertices[0]).toHaveAccessibleName(/Alpha model.*12,345,678.*67\.2%/);
+    expect(segments[0]).toHaveAttribute("data-active", "true");
+    expect(vertices[0]).toHaveAttribute("data-active", "true");
   });
 
   it("keeps every supplied model readable in a scrollable legend without truncating names", () => {

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { setCopyLocale } from "../../../../lib/copy";
 import { StatsPanel } from "../StatsPanel.jsx";
 
@@ -159,4 +159,21 @@ it("uses one real scrolling model list that can consume the ranking card height"
     "flex-1",
     "overflow-y-auto",
   );
+});
+
+it("keeps the overview model ranking and every row non-navigational", () => {
+  renderPanel({
+    overviewModels: [
+      { id: "one", name: "Model One", tokens: 100, percent: 60 },
+      { id: "two", name: "Model Two", tokens: 50, percent: 40 },
+    ],
+  });
+
+  const ranking = screen.getByTestId("overview-model-ranking");
+  expect(within(ranking).queryByRole("link", { name: /查看全部|view all/i })).not.toBeInTheDocument();
+  expect(ranking.querySelector('[href="/leaderboard"]')).toBeNull();
+  for (const row of screen.getAllByTestId("overview-model-row")) {
+    expect(row.closest("a, button")).toBeNull();
+    expect(row.querySelector("a, button")).toBeNull();
+  }
 });

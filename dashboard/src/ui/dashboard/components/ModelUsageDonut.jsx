@@ -33,10 +33,24 @@ function hasPositiveUsage(row) {
 }
 
 export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) {
+  const [activeIndex, setActiveIndex] = React.useState(null);
   const locale = getCopyLocale();
   const safeRows = Array.isArray(rows)
     ? rows.filter(hasPositiveUsage)
     : [];
+  const activeRow = Number.isInteger(activeIndex) ? safeRows[activeIndex] : null;
+  const activePercent = activeRow
+    ? clampPercent(activeRow.percent).toLocaleString(locale, { maximumFractionDigits: 1 })
+    : "";
+  const activeTokens = activeRow
+    ? Number(activeRow.tokens).toLocaleString(locale, { maximumFractionDigits: 20 })
+    : "";
+  const activeLabel = activeRow
+    ? `${activeRow.name}, ${copy("dashboard.model_distribution.table_tokens")} ${activeTokens}, ${copy("dashboard.model_distribution.table_share")} ${activePercent}%`
+    : "";
+  const clearActiveIndex = (index) => {
+    setActiveIndex((current) => (current === index ? null : current));
+  };
   const topOnePercent = clampPercent(safeRows[0]?.percent);
   const topThreePercent = clampPercent(
     safeRows.slice(0, 3).reduce(function sumPercent(sum, row) {
@@ -128,31 +142,60 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
               {safeRows.map(function renderSegment(row, index) {
                 const percent = clampPercent(row.percent);
                 const dashOffset = -offset;
+                const isActive = activeIndex === index;
                 offset += percent;
                 return (
                   <circle
                     key={row.id || row.name}
+                    data-testid="model-donut-segment"
+                    data-active={isActive ? "true" : undefined}
                     cx="60"
                     cy="60"
                     r="46"
                     pathLength="100"
                     fill="none"
-                    strokeWidth="12"
+                    strokeWidth={isActive ? "15" : "12"}
                     strokeLinecap="butt"
                     strokeDasharray={`${percent} ${100 - percent}`}
                     strokeDashoffset={dashOffset}
-                    className={`${SERIES_STYLES[index % SERIES_STYLES.length].stroke} transition-[stroke-dasharray] duration-500`}
+                    tabIndex="0"
+                    role="img"
+                    aria-label={`${row.name}, ${copy("dashboard.model_distribution.table_tokens")} ${Number(row.tokens).toLocaleString(locale, { maximumFractionDigits: 20 })}, ${copy("dashboard.model_distribution.table_share")} ${percent.toLocaleString(locale, { maximumFractionDigits: 1 })}%`}
+                    aria-describedby={isActive ? "model-usage-tooltip" : undefined}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onMouseLeave={() => clearActiveIndex(index)}
+                    onFocus={() => setActiveIndex(index)}
+                    onBlur={() => clearActiveIndex(index)}
+                    className={`${SERIES_STYLES[index % SERIES_STYLES.length].stroke} cursor-pointer outline-none transition-[stroke-width,stroke-dasharray] duration-200`}
                   />
                 );
               })}
             </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
-                {copy("dashboard.model_distribution.total")}
-              </span>
-              <strong className="mt-0.5 text-lg font-semibold tabular-nums text-oai-black dark:text-oai-white">
-                {formatTokenCount(totalTokens, { locale })}
-              </strong>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+              {activeRow ? (
+                <div
+                  id="model-usage-tooltip"
+                  role="tooltip"
+                  aria-label={activeLabel}
+                  className="pointer-events-none w-24 rounded-lg border border-oai-gray-200 bg-white/95 px-1.5 py-1 shadow-sm dark:border-oai-gray-700 dark:bg-oai-gray-900/95"
+                >
+                  <strong className="block break-words text-[9px] font-semibold leading-3 text-oai-black dark:text-oai-white">
+                    {activeRow.name}
+                  </strong>
+                  <span className="mt-0.5 block text-[8px] leading-3 tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                    {activeTokens} · {activePercent}%
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
+                    {copy("dashboard.model_distribution.total")}
+                  </span>
+                  <strong className="mt-0.5 text-lg font-semibold tabular-nums text-oai-black dark:text-oai-white">
+                    {formatTokenCount(totalTokens, { locale })}
+                  </strong>
+                </>
+              )}
             </div>
           </div>
 
@@ -259,14 +302,25 @@ export function ModelUsageDonut({ rows = [], totalTokens = 0, className = "" }) 
                     index,
                     RADAR_RADIUS * (clampPercent(row.percent) / 100),
                   );
+                  const percent = clampPercent(row.percent);
+                  const isActive = activeIndex === index;
                   return (
                     <circle
                       key={row.id || row.name}
                       data-testid="model-radar-vertex"
+                      data-active={isActive ? "true" : undefined}
                       cx={point.x}
                       cy={point.y}
-                      r="4"
-                      className={`${SERIES_STYLES[index % SERIES_STYLES.length].fill} stroke-white dark:stroke-oai-gray-950`}
+                      r={isActive ? "5.5" : "4"}
+                      tabIndex="0"
+                      role="img"
+                      aria-label={`${row.name}, ${copy("dashboard.model_distribution.table_tokens")} ${Number(row.tokens).toLocaleString(locale, { maximumFractionDigits: 20 })}, ${copy("dashboard.model_distribution.table_share")} ${percent.toLocaleString(locale, { maximumFractionDigits: 1 })}%`}
+                      aria-describedby={isActive ? "model-usage-tooltip" : undefined}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onMouseLeave={() => clearActiveIndex(index)}
+                      onFocus={() => setActiveIndex(index)}
+                      onBlur={() => clearActiveIndex(index)}
+                      className={`${SERIES_STYLES[index % SERIES_STYLES.length].fill} cursor-pointer stroke-white outline-none transition-[r] duration-200 dark:stroke-oai-gray-950`}
                       strokeWidth="2"
                     />
                   );

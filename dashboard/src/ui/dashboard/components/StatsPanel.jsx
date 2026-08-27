@@ -267,9 +267,6 @@ export function StatsPanel({
           >
             <header className="flex items-center justify-between px-4 pb-2 pt-4">
               <h2 className="text-base font-semibold text-oai-black dark:text-white">{copy("stats.model_ranking")}</h2>
-              <a href="/leaderboard" className="rounded-md border border-oai-gray-200 px-3 py-1.5 text-xs text-oai-gray-500 hover:text-oai-black dark:border-oai-gray-700 dark:text-oai-gray-300">
-                {copy("stats.view_all")}
-              </a>
             </header>
             <div
               data-testid="overview-model-list"
