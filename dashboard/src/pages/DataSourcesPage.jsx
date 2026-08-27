@@ -167,6 +167,11 @@ export function DataSourcesPage() {
   const sourceEnvironments = useMemo(() => [...new Set(visibleSources
     .map((source) => source.environment)
     .filter(Boolean))].sort(), [visibleSources]);
+  useEffect(() => {
+    if (sourceEnvironment !== "all" && !sourceEnvironments.includes(sourceEnvironment)) {
+      setSourceEnvironment("all");
+    }
+  }, [sourceEnvironment, sourceEnvironments]);
   const displayedSources = useMemo(() => {
     const query = sourceQuery.trim().toLocaleLowerCase(getCopyLocale());
     return visibleSources

@@ -125,6 +125,44 @@ it("filters cached Agent sources and summary counts by limits visibility before 
   expect(screen.getByTestId("data-health-summary-no-logs")).toHaveTextContent("0");
 });
 
+it("resets a hidden environment filter when limits visibility changes", async () => {
+  const user = userEvent.setup();
+  setVisibleAgents(["codex", "claude"]);
+  window.localStorage.setItem("token-eyes:data-source-health:v1", JSON.stringify({
+    sources: [
+      { agent: "codex", agent_name: "Cached Codex", status: "ready", trackingReady: true, evidenceCount: 4, environment: "win" },
+      { agent: "claude", agent_name: "Cached Claude", status: "detected", trackingReady: false, evidenceCount: 0, environment: "wsl" },
+    ],
+    ledgerSummary: null,
+    updatedAt: "2026-08-27T01:00:00.000Z",
+  }));
+  getAllAgentEnvironments.mockImplementation(() => new Promise(() => {}));
+  getUsageSummary.mockImplementation(() => new Promise(() => {}));
+
+  render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
+
+  expect(screen.getByText("Cached Codex")).toBeInTheDocument();
+  expect(screen.getByText("Cached Claude")).toBeInTheDocument();
+  await screen.findByTestId("token-eyes-build-info");
+
+  const environmentSelect = screen.getByTestId("data-health-environment");
+  await act(async () => user.selectOptions(environmentSelect, "wsl"));
+  expect(environmentSelect).toHaveValue("wsl");
+  expect(screen.queryByText("Cached Codex")).not.toBeInTheDocument();
+  expect(screen.getByText("Cached Claude")).toBeInTheDocument();
+
+  act(() => {
+    setVisibleAgents(["codex"]);
+    window.dispatchEvent(new CustomEvent(LIMITS_DISPLAY_CHANGE_EVENT));
+  });
+
+  await waitFor(() => {
+    expect(environmentSelect).toHaveValue("all");
+    expect(screen.getByText("Cached Codex")).toBeInTheDocument();
+    expect(screen.queryByText("Cached Claude")).not.toBeInTheDocument();
+  });
+});
+
 it("shows source health without treating installation as valid synchronized data", async () => {
   render(<MemoryRouter><DataSourcesPage /></MemoryRouter>);
 
