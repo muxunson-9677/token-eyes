@@ -821,4 +821,24 @@ describe("useLimitsDisplayPrefs", () => {
     });
     expect(result.current.displayMode).toBe(LIMIT_DISPLAY_MODES.USED);
   });
+
+  it("synchronizes zero visible providers to another same-page consumer immediately", () => {
+    const providerVisibility = Object.fromEntries(
+      LIMIT_PROVIDER_IDS.map((id) => [id, id === "codex"]),
+    );
+    setStoredSnapshot({
+      ...defaultSnapshot(1000),
+      providerVisibility,
+    });
+    const writer = renderHook(() => useLimitsDisplayPrefs());
+    const consumer = renderHook(() => useLimitsDisplayPrefs());
+
+    expect(consumer.result.current.visibleOrdered).toEqual(["codex"]);
+
+    act(() => {
+      writer.result.current.toggle("codex");
+    });
+
+    expect(consumer.result.current.visibleOrdered).toEqual([]);
+  });
 });

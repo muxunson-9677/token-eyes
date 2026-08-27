@@ -348,6 +348,17 @@ export function useLimitsDisplayPrefs() {
     return () => window.removeEventListener("storage", onStorage);
   }, [applySnapshot]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onLimitsDisplayChange = () => applySnapshot(readLocalSnapshot());
+    window.addEventListener(LIMITS_DISPLAY_CHANGE_EVENT, onLimitsDisplayChange);
+    return () =>
+      window.removeEventListener(
+        LIMITS_DISPLAY_CHANGE_EVENT,
+        onLimitsDisplayChange,
+      );
+  }, [applySnapshot]);
+
   const toggle = useCallback((id) => {
     if (!ALL_LIMIT_PROVIDERS.includes(id)) return;
     commitUserChange((current) => ({
