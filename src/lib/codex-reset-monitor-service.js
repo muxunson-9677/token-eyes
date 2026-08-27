@@ -8,7 +8,10 @@ const {
   listUnreadCodexResetEvents,
   mergeCodexResetSnapshots,
 } = require("./codex-reset-monitor");
-const { verifyCodexResetFeed } = require("./codex-reset-feed");
+const {
+  isConfirmedResetAnnouncement,
+  verifyCodexResetFeed,
+} = require("./codex-reset-feed");
 
 const STARTUP_DELAY_MS = 10_000;
 const SUCCESS_INTERVAL_MS = 30_000;
@@ -47,7 +50,7 @@ function materializeOfficialFeedEvents(
   const localEvents = compactedEvents.filter(
     (event) => event.type !== "official_reset_announcement",
   );
-  const officialEvents = announcements.map((announcement) => {
+  const officialEvents = announcements.filter(isConfirmedResetAnnouncement).map((announcement) => {
     const nextEvent = officialEvent(announcement);
     const previous = previousById.get(nextEvent.id);
     if (!previous) return nextEvent;
@@ -116,6 +119,7 @@ function officialEvent(announcement) {
     resetScope: announcement.reset_scope || "unknown",
     title: announcement.title,
     summary: announcement.summary,
+    body: announcement.body || null,
     expiresAt: announcement.expires_at,
     source: "signed_feed",
     alertEligible: true,

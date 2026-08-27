@@ -2,7 +2,7 @@
 
 const crypto = require("node:crypto");
 
-const MAX_FEED_BYTES = 64 * 1024;
+const MAX_FEED_BYTES = 128 * 1024;
 const MAX_ANNOUNCEMENTS = 20;
 const ALLOWED_OPENAI_HOSTS = new Set([
   "help.openai.com",
@@ -14,6 +14,7 @@ const X_AUTHORS = new Map([
   ["openai", "OpenAI"],
   ["thsottiaux", "thsottiaux"],
 ]);
+const CONFIRMED_RESET_CONCEPT = /\b(?:i(?:'ve| have)\s+reset|we(?:'ve| have)\s+reset|usage\s+limits?\s+(?:have\s+been|were)\s+reset|banked\s+reset\s+has\s+landed|reset\s+has\s+been\s+propagated|reset\s+is\s+(?:live|complete))\b/iu;
 
 function requireIso(value, label) {
   if (typeof value !== "string" || !value) {
@@ -91,8 +92,14 @@ function validateAnnouncement(item, { nowMs }) {
   if (item.type !== "official_reset_announcement") {
     throw new TypeError("announcement type is unsupported");
   }
+  if (item.announcement_state !== undefined && item.announcement_state !== "confirmed") {
+    throw new TypeError("announcement state is unsupported");
+  }
   assertBoundedText(item.title, "announcement title", 80);
   assertBoundedText(item.summary, "announcement summary", 240);
+  if (item.body !== undefined) {
+    assertBoundedText(item.body, "announcement body", 4_000);
+  }
   if (
     item.reset_kind !== undefined
     && !["hard", "banked", "mixed", "unknown"].includes(item.reset_kind)
@@ -132,6 +139,13 @@ function validateAnnouncement(item, { nowMs }) {
   if (expiresAt <= nowMs) throw new TypeError("announcement is expired");
 }
 
+function isConfirmedResetAnnouncement(item) {
+  if (!item || typeof item !== "object") return false;
+  if (item.announcement_state === "confirmed") return true;
+  if (item.source_author !== "thsottiaux") return true;
+  return CONFIRMED_RESET_CONCEPT.test(String(item.body || item.summary || ""));
+}
+
 function validateCodexResetFeedPayload(payload, { nowMs = Date.now() } = {}) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new TypeError("feed payload must be an object");
@@ -147,10 +161,18 @@ function validateCodexResetFeedPayload(payload, { nowMs = Date.now() } = {}) {
     throw new TypeError("feed announcement count exceeds the limit");
   }
   const ids = new Set();
+  const sourcePosts = new Set();
   for (const item of payload.announcements) {
     validateAnnouncement(item, { nowMs });
     if (ids.has(item.id)) throw new TypeError("duplicate announcement id");
     ids.add(item.id);
+    if (item.source_author && item.source_post_id) {
+      const sourceKey = `${item.source_author}:${item.source_post_id}`;
+      if (sourcePosts.has(sourceKey)) {
+        throw new TypeError("duplicate announcement source post");
+      }
+      sourcePosts.add(sourceKey);
+    }
   }
   return payload;
 }
@@ -211,6 +233,7 @@ function createSignedCodexResetFeedEnvelope(payload, privateKey) {
 module.exports = {
   ALLOWED_OPENAI_HOSTS,
   createSignedCodexResetFeedEnvelope,
+  isConfirmedResetAnnouncement,
   validateCodexResetFeedPayload,
   verifyCodexResetFeed,
 };

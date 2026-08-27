@@ -9,7 +9,9 @@ const MAX_X_PAGES = 12;
 const X_EPOCH_MS = 1_288_834_974_657n;
 const CODEX_CONCEPT = /\bcodex\b/iu;
 const RESET_CONCEPT = /\b(reset|rate\s+limits?|usage\s+limits?|quota|credits?|extra\s+usage|additional\s+usage)\b|重置|额度|使用限制|额外用量|赠送额度/iu;
-const GLOBAL_RESET_CONCEPT = /\b(?:i(?:'ve| have)\s+reset|we(?:'ve| have|\s+are)\b[\s\S]{0,50}\breset(?:ting)?|usage\s+limits?\b[\s\S]{0,35}\breset|(?:added|granted|have\s+added)\s+(?:a\s+)?banked\s+reset|(?:full|another|new)\b[\s\S]{0,50}\breset|enjoy\b[\s\S]{0,50}\breset|reset(?:ting)?\b[\s\S]{0,50}\b(?:for\s+all|everyone))\b/iu;
+const CONFIRMED_RESET_CONCEPT = /\b(?:i(?:'ve| have)\s+reset|we(?:'ve| have)\s+reset|usage\s+limits?\s+(?:have\s+been|were)\s+reset|banked\s+reset\s+has\s+landed|reset\s+has\s+been\s+propagated|reset\s+is\s+(?:live|complete))\b/iu;
+const SCHEDULED_RESET_CONCEPT = /\b(?:reset\s+will\s+be|will\s+(?:be\s+)?reset|will\s+reset|going\s+to\s+reset|reset\s+(?:is\s+)?(?:coming|scheduled)|tomorrow[\s\S]{0,60}\breset)\b/iu;
+const RESET_CONFIRMATION_CORRELATION_MS = 6 * 60 * 60_000;
 type ResetKind = "hard" | "banked" | "mixed" | "unknown";
 type ResetScope = "all_paid_users" | "all_codex_work_users" | "unknown";
 
@@ -18,6 +20,8 @@ type Announcement = {
   type: "official_reset_announcement";
   title: string;
   summary: string;
+  body?: string;
+  announcement_state?: "confirmed";
   source_url: string;
   official_url: string;
   published_at: string;
@@ -53,11 +57,18 @@ function classifyResetScope(text: string): ResetScope {
 }
 
 function enrichAnnouncement(item: Announcement): Announcement {
+  const fullText = item.body || item.summary;
   return {
     ...item,
-    reset_kind: classifyResetKind(item.summary),
-    reset_scope: classifyResetScope(item.summary),
+    reset_kind: classifyResetKind(fullText),
+    reset_scope: classifyResetScope(fullText),
   };
+}
+
+function isConfirmedRetainedAnnouncement(item: Announcement) {
+  if (item.source_author !== "thsottiaux") return true;
+  return item.announcement_state === "confirmed"
+    || CONFIRMED_RESET_CONCEPT.test(item.body || item.summary);
 }
 
 function json(value: unknown, status = 200) {
@@ -119,23 +130,51 @@ function tiboCandidate(result: Record<string, unknown>, nowMs: number) {
     return null;
   }
   const text = String(result.text || "").trim();
-  if (
-    !CODEX_CONCEPT.test(text)
-    || !RESET_CONCEPT.test(text)
-    || !GLOBAL_RESET_CONCEPT.test(text)
-  ) return null;
+  const state = CONFIRMED_RESET_CONCEPT.test(text)
+    ? "confirmed"
+    : SCHEDULED_RESET_CONCEPT.test(text)
+      ? "scheduled"
+      : null;
+  if (!text || text.length > 4_000 || !RESET_CONCEPT.test(text) || !state) return null;
   const publishedAt = xPublishedAt(match[1]);
   const publishedMs = publishedAt ? Date.parse(publishedAt) : Number.NaN;
   if (!Number.isFinite(publishedMs) || publishedMs > nowMs + 5 * 60_000 || nowMs - publishedMs > X_WINDOW_MS) return null;
-  return { postId: match[1], text, publishedAt, publishedMs };
+  return {
+    postId: match[1],
+    text,
+    publishedAt,
+    publishedMs,
+    state,
+    hasCodexContext: CODEX_CONCEPT.test(text),
+  };
+}
+
+function correlateTiboResetPosts(
+  candidates: Array<NonNullable<ReturnType<typeof tiboCandidate>>>,
+) {
+  const ordered = [...candidates].sort((left, right) => left.publishedMs - right.publishedMs);
+  const scheduled = ordered.filter((candidate) => (
+    candidate.state === "scheduled" && candidate.hasCodexContext
+  ));
+  return ordered.flatMap((candidate) => {
+    if (candidate.state !== "confirmed") return [];
+    if (candidate.hasCodexContext) {
+      return [{ ...candidate, contextText: candidate.text }];
+    }
+    const context = [...scheduled].reverse().find((scheduledPost) => {
+      const delay = candidate.publishedMs - scheduledPost.publishedMs;
+      return delay >= 0 && delay <= RESET_CONFIRMATION_CORRELATION_MS;
+    });
+    return context
+      ? [{ ...candidate, contextText: `${context.text}\n${candidate.text}` }]
+      : [];
+  });
 }
 
 async function verifyTiboAnnouncement(
-  result: Record<string, unknown>,
-  nowMs: number,
+  candidate: ReturnType<typeof correlateTiboResetPosts>[number],
 ): Promise<Announcement | null> {
-  const candidate = tiboCandidate(result, nowMs);
-  if (!candidate) return null;
+  if (candidate.state !== "confirmed") return null;
   const sourceUrl = `https://x.com/thsottiaux/status/${candidate.postId}`;
   const oembedUrl = new URL(X_OEMBED_URL);
   oembedUrl.searchParams.set("omit_script", "true");
@@ -149,9 +188,8 @@ async function verifyTiboAnnouncement(
     verified?.url !== sourceUrl
     || verified?.author_url !== "https://x.com/thsottiaux"
     || verified?.provider_name !== "X"
-    || !CODEX_CONCEPT.test(verifiedText)
     || !RESET_CONCEPT.test(verifiedText)
-    || !GLOBAL_RESET_CONCEPT.test(verifiedText.replace(/&#39;/gu, "'"))
+    || !CONFIRMED_RESET_CONCEPT.test(verifiedText.replace(/&#39;/gu, "'"))
   ) {
     return null;
   }
@@ -160,14 +198,16 @@ async function verifyTiboAnnouncement(
     type: "official_reset_announcement",
     title: "Codex 官方额外重置",
     summary: candidate.text.slice(0, 240),
+    body: candidate.text,
+    announcement_state: "confirmed",
     source_url: sourceUrl,
     official_url: "https://chatgpt.com/codex",
     published_at: candidate.publishedAt,
     expires_at: new Date(candidate.publishedMs + ANNOUNCEMENT_RETENTION_MS).toISOString(),
     source_author: "thsottiaux",
     source_post_id: candidate.postId,
-    reset_kind: classifyResetKind(candidate.text),
-    reset_scope: classifyResetScope(candidate.text),
+    reset_kind: classifyResetKind(candidate.contextText),
+    reset_scope: classifyResetScope(candidate.contextText),
   };
 }
 
@@ -209,7 +249,7 @@ function statusAnnouncement(incident: Record<string, unknown>, nowMs: number): A
   if (
     !CODEX_CONCEPT.test(text)
     || !RESET_CONCEPT.test(text)
-    || !GLOBAL_RESET_CONCEPT.test(text)
+    || !CONFIRMED_RESET_CONCEPT.test(text)
   ) return null;
   const publishedMs = Date.parse(String(incident.created_at || incident.started_at || ""));
   if (!Number.isFinite(publishedMs) || nowMs - publishedMs > X_WINDOW_MS) return null;
@@ -221,6 +261,7 @@ function statusAnnouncement(incident: Record<string, unknown>, nowMs: number): A
     type: "official_reset_announcement",
     title: String(incident.name || "OpenAI Codex 状态公告").slice(0, 80),
     summary: "OpenAI 状态页发布了 Codex 额度或限制相关公告，请打开官方页面确认。",
+    body: String(incident.name || "OpenAI Codex 状态公告").slice(0, 4_000),
     source_url: sourceUrl,
     official_url: "https://status.openai.com/",
     published_at: new Date(publishedMs).toISOString(),
@@ -267,6 +308,7 @@ export default async function (request: Request): Promise<Response> {
   const nowMs = Date.now();
   const announcements = decodeBase64UrlJson(current?.envelope?.payload_b64)
     .filter((item) => Date.parse(item.expires_at) > nowMs)
+    .filter(isConfirmedRetainedAnnouncement)
     .map(enrichAnnouncement);
   let openaiStatus = "ok";
   try {
@@ -286,10 +328,14 @@ export default async function (request: Request): Promise<Response> {
     const knownPostIds = new Set(
       announcements.map((item) => item.source_post_id).filter(Boolean),
     );
-    for (const result of await fetchTiboResults(nowMs)) {
-      const candidate = tiboCandidate(result, nowMs);
-      if (!candidate || knownPostIds.has(candidate.postId)) continue;
-      const item = await verifyTiboAnnouncement(result, nowMs);
+    const candidates = correlateTiboResetPosts(
+      (await fetchTiboResults(nowMs))
+        .map((result) => tiboCandidate(result, nowMs))
+        .filter((candidate): candidate is NonNullable<ReturnType<typeof tiboCandidate>> => Boolean(candidate)),
+    );
+    for (const candidate of candidates) {
+      if (knownPostIds.has(candidate.postId)) continue;
+      const item = await verifyTiboAnnouncement(candidate);
       if (item) {
         announcements.push(item);
         knownPostIds.add(candidate.postId);

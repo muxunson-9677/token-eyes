@@ -227,6 +227,7 @@ test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", a
       type: "official_reset_announcement",
       title: "Codex 额外额度活动",
       summary: "请前往官方页面确认是否适用于你的账户。",
+      body: "完整声明第一段。\n\n完整声明第二段。",
       source_url: "https://openai.com/index/introducing-codex/",
       official_url: "https://chatgpt.com/codex",
       published_at: new Date(BASE - 60_000).toISOString(),
@@ -265,6 +266,7 @@ test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", a
     unread.occurredAt,
     feedPayload.announcements[0].published_at,
   );
+  assert.equal(unread.body, feedPayload.announcements[0].body);
 
   const cached = await h.service.checkFeed();
   assert.equal(cached.skipped, "fresh");
@@ -286,6 +288,7 @@ test("startup rematerializes cached official events when a newer app adds feed m
     type: "official_reset_announcement",
     title: "Codex official extra reset",
     summary: "Usage limits were reset for all ChatGPT Work and Codex users.",
+    body: "Usage limits were reset for all ChatGPT Work and Codex users.\n\nFull second paragraph.",
     source_url: "https://x.com/thsottiaux/status/2082317452755751098",
     source_author: "thsottiaux",
     source_post_id: "2082317452755751098",
@@ -294,6 +297,15 @@ test("startup rematerializes cached official events when a newer app adds feed m
     expires_at: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
     reset_kind: "hard",
     reset_scope: "all_codex_work_users",
+  };
+  const scheduledAnnouncement = {
+    ...announcement,
+    id: "x:2090947196107764189",
+    summary: "The banked reset will be there by 8pm PST.",
+    body: "The banked reset will be there by 8pm PST. For all paid users of ChatGPT Work and Codex.",
+    source_url: "https://x.com/thsottiaux/status/2090947196107764189",
+    source_post_id: "2090947196107764189",
+    published_at: new Date(BASE - 2 * 60_000).toISOString(),
   };
   const h = harness(async () => validSnapshot(BASE), {
     loadState: () => ({
@@ -313,7 +325,7 @@ test("startup rematerializes cached official events when a newer app adds feed m
       acknowledgedEventIds: [],
       feed: {
         fetchedAt: new Date(BASE).toISOString(),
-        announcements: [announcement],
+        announcements: [scheduledAnnouncement, announcement],
       },
     }),
   });
@@ -323,6 +335,9 @@ test("startup rematerializes cached official events when a newer app adds feed m
   assert.equal(event.resetScope, "all_codex_work_users");
   assert.equal(event.sourcePostId, "2082317452755751098");
   assert.equal(event.occurredAt, announcement.published_at);
+  assert.equal(event.body, announcement.body);
+  assert.equal(h.service.listHistory().length, 1);
+  assert.notEqual(event.sourcePostId, scheduledAnnouncement.source_post_id);
 });
 
 test("offline or invalid feed keeps prior unexpired events and never blocks quota checks", async () => {

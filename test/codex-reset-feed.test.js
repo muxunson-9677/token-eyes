@@ -10,6 +10,7 @@ const test = require("node:test");
 
 const {
   createSignedCodexResetFeedEnvelope,
+  isConfirmedResetAnnouncement,
   validateCodexResetFeedPayload,
   verifyCodexResetFeed,
 } = require("../src/lib/codex-reset-feed");
@@ -24,6 +25,7 @@ function announcement(overrides = {}) {
     type: "official_reset_announcement",
     title: "Codex 重置或额外额度活动",
     summary: "可能适用于你的账户，请前往官方页面确认。",
+    body: "完整的官方重置声明正文。\n第二段保留原始换行。",
     source_author: "thsottiaux",
     source_post_id: X_POST_ID,
     source_url: `https://x.com/thsottiaux/status/${X_POST_ID}`,
@@ -83,6 +85,7 @@ test("rejects expired, duplicate, oversized, and unsupported announcements", () 
     payload([announcement(), announcement()]),
     payload([announcement({ title: "x".repeat(81) })]),
     payload([announcement({ summary: "x".repeat(241) })]),
+    payload([announcement({ body: "x".repeat(4001) })]),
     payload([announcement({ type: "banked_reset_available" })]),
     payload([announcement({ reset_kind: "weekly" })]),
     payload([announcement({ reset_scope: "everyone_maybe" })]),
@@ -98,6 +101,45 @@ test("rejects expired, duplicate, oversized, and unsupported announcements", () 
       /feed|announcement|expired|duplicate|length|type/i,
     );
   }
+});
+
+test("retains full announcement bodies and deduplicates the canonical X post", () => {
+  const longBody = `${"完整正文 ".repeat(300)}\n最后一段。`;
+  const item = announcement({ body: longBody });
+  assert.equal(
+    verifyCodexResetFeed(envelope(payload([item])), { publicKey, nowMs: NOW })
+      .announcements[0].body,
+    longBody,
+  );
+
+  assert.throws(
+    () => validateCodexResetFeedPayload(payload([
+      announcement(),
+      announcement({ id: "same-post-different-feed-id" }),
+    ]), { nowMs: NOW }),
+    /duplicate.*source|duplicate.*post/i,
+  );
+});
+
+test("distinguishes a scheduled reset from its confirmed landing without guessing a timestamp", () => {
+  const scheduled = announcement({
+    body: "The banked reset will be there by 8pm PST. For all paid users of ChatGPT Work and Codex.",
+  });
+  const landed = announcement({
+    body: "The banked reset has landed, I repeat, the banked reset has landed. Have an amazing weekend.",
+  });
+  assert.equal(isConfirmedResetAnnouncement(scheduled), false);
+  assert.equal(isConfirmedResetAnnouncement(landed), true);
+  assert.equal(isConfirmedResetAnnouncement({
+    ...scheduled,
+    announcement_state: "confirmed",
+  }), true);
+  assert.throws(
+    () => validateCodexResetFeedPayload(payload([
+      announcement({ announcement_state: "scheduled" }),
+    ]), { nowMs: NOW }),
+    /state/i,
+  );
 });
 
 test("allows only exact official HTTPS links and matching X source metadata", () => {

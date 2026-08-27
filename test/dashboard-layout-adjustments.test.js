@@ -302,6 +302,8 @@ test("approved overview, usage, settings, diagnostics, and reset-history capabil
   assert.ok(sidebarSrc.includes('to: "/settings/data"'), "expected settings data diagnostics item");
   assert.ok(!sidebarSrc.includes('to: "/data-sources"'), "legacy data-sources route must not be a primary item");
   assert.ok(resetHistorySrc.includes("triggerResetCelebrationPreview"), "expected reset effect preview");
-  assert.ok(resetHistorySrc.includes('data-testid="reset-history-source-index"'), "expected reset source index");
+  assert.ok(!resetHistorySrc.includes('data-testid="reset-history-source-index"'), "reset source index must not remain");
+  assert.ok(!resetHistorySrc.includes('data-testid="reset-history-source-ref"'), "numbered reset source references must not remain");
+  assert.ok(resetHistorySrc.includes("tt-reset-history-source-action"), "expected source action inside reset detail overlay");
+  assert.ok(resetHistorySrc.includes("openExternalLink"), "expected reset source action to use the native external-link boundary");
 });
-

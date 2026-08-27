@@ -2205,6 +2205,7 @@ function sanitizeCodexResetEvent(event) {
     const sourceUrl = safeCodexResetUrl(event.sourceUrl, { allowX: true });
     const title = boundedString(event.title, 80);
     const summary = boundedString(event.summary, 240);
+    const body = boundedString(event.body, 4_000);
     const expiresAt = safeIsoString(event.expiresAt);
     if (!sourceUrl || !title || !summary || !expiresAt) return null;
     const parsedSourceUrl = new URL(sourceUrl);
@@ -2227,6 +2228,7 @@ function sanitizeCodexResetEvent(event) {
     dto.reset_scope = CODEX_RESET_SCOPES.has(event.resetScope) ? event.resetScope : "unknown";
     dto.title = title;
     dto.summary = summary;
+    if (body) dto.body = body;
     dto.expires_at = expiresAt;
   }
   return dto;

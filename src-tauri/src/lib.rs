@@ -113,9 +113,39 @@ pub(crate) fn resolve_provider_link_url(link_id: &str) -> Result<url::Url, Strin
     validate_provider_link_target(&entry.url, &entry.allowed_hosts)
 }
 
+fn resolve_reset_source_link_url(link_id: &str) -> Result<url::Url, String> {
+    let mut parts = link_id.split(':');
+    let prefix = parts.next();
+    let author = parts.next();
+    let post_id = parts.next();
+    if parts.next().is_some()
+        || prefix != Some("reset-source")
+        || !matches!(author, Some("thsottiaux" | "OpenAI"))
+        || post_id.is_none_or(|value| {
+            value.is_empty() || value.len() > 20 || !value.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    {
+        return Err("provider_link_unknown".to_string());
+    }
+    url::Url::parse(&format!(
+        "https://x.com/{}/status/{}",
+        author.unwrap(),
+        post_id.unwrap()
+    ))
+    .map_err(|_| "provider_link_unsafe".to_string())
+}
+
+fn resolve_external_link_url(link_id: &str) -> Result<url::Url, String> {
+    match resolve_provider_link_url(link_id) {
+        Ok(url) => Ok(url),
+        Err(error) if error == "provider_link_unknown" => resolve_reset_source_link_url(link_id),
+        Err(error) => Err(error),
+    }
+}
+
 #[tauri::command]
 async fn open_external_link(app: tauri::AppHandle, link_id: String) -> Result<bool, String> {
-    let url = resolve_provider_link_url(&link_id)?;
+    let url = resolve_external_link_url(&link_id)?;
     app.opener()
         .open_url(url.as_str(), None::<String>)
         .map_err(|_| "provider_link_open_failed".to_string())?;
@@ -276,8 +306,8 @@ pub fn run() {
 #[cfg(test)]
 mod provider_link_tests {
     use super::{
-        parse_provider_link_registry, resolve_provider_link_url, validate_provider_link_target,
-        PROVIDER_LINKS_JSON,
+        parse_provider_link_registry, resolve_external_link_url, resolve_provider_link_url,
+        validate_provider_link_target, PROVIDER_LINKS_JSON,
     };
 
     #[test]
@@ -312,6 +342,30 @@ mod provider_link_tests {
                 validate_provider_link_target(unsafe_url, &allowed).unwrap_err(),
                 "provider_link_unsafe"
             );
+        }
+    }
+
+    #[test]
+    fn resolves_only_allowlisted_reset_source_ids() {
+        assert_eq!(
+            resolve_external_link_url("reset-source:thsottiaux:2090964822422949999")
+                .unwrap()
+                .as_str(),
+            "https://x.com/thsottiaux/status/2090964822422949999"
+        );
+        assert_eq!(
+            resolve_external_link_url("reset-source:OpenAI:2090964822422949999")
+                .unwrap()
+                .as_str(),
+            "https://x.com/OpenAI/status/2090964822422949999"
+        );
+        for unsafe_id in [
+            "reset-source:evil:2090964822422949999",
+            "reset-source:thsottiaux:not-a-number",
+            "reset-source:thsottiaux:2090964822422949999/../../evil",
+            "https://x.com/thsottiaux/status/2090964822422949999",
+        ] {
+            assert!(resolve_external_link_url(unsafe_id).is_err(), "{unsafe_id}");
         }
     }
 

@@ -78,6 +78,7 @@ export interface CodexResetEvent {
   reset_scope?: "all_paid_users" | "all_codex_work_users" | "unknown";
   title?: string;
   summary?: string;
+  body?: string;
   expires_at?: string;
 }
 

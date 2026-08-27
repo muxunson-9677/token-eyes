@@ -1,4 +1,5 @@
-import React, { useLayoutEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArchiveRestore,
   ArrowDownToLine,
@@ -16,7 +17,8 @@ import {
 
 import { useCodexResetEvents } from "../hooks/use-codex-reset-events";
 import { copy, getCopyLocale } from "../lib/copy";
-import type { CodexResetHistoryEvent } from "../lib/api";
+import { openExternalLink, type CodexResetHistoryEvent } from "../lib/api";
+import { isTauriRuntime } from "../lib/local-api-url";
 import {
   calculateResetStatistics,
   filterRecentOfficialResets,
@@ -28,57 +30,7 @@ import {
   saveResetCelebrationEffect,
 } from "../ui/celebration/reset-celebration-preference.js";
 
-type TimelineEvent = CodexResetHistoryEvent & {
-  sourceIndex: number | null;
-};
-
-type TimelineSource = {
-  index: number;
-  label: string;
-  url: string;
-};
-
-const PREVIEW_RESET_DATES = [
-  "2026-08-01T11:32:00.000Z",
-  "2026-07-29T12:09:00.000Z",
-  "2026-07-28T11:09:00.000Z",
-  "2026-07-26T03:17:00.000Z",
-  "2026-07-22T00:47:00.000Z",
-  "2026-07-18T11:28:00.000Z",
-  "2026-07-16T12:14:00.000Z",
-  "2026-07-15T03:34:00.000Z",
-  "2026-07-14T02:29:00.000Z",
-  "2026-07-13T05:28:00.000Z",
-  "2026-07-12T18:20:00.000Z",
-  "2026-07-11T13:54:00.000Z",
-  "2026-07-10T22:18:00.000Z",
-] as const;
-
-const PREVIEW_RESET_HISTORY: CodexResetHistoryEvent[] = PREVIEW_RESET_DATES.map(
-  (occurredAt, index) => ({
-    id: `preview-official-reset-${index + 1}`,
-    type: "official_reset_announcement",
-    agent: "codex",
-    account_key: "preview",
-    window: null,
-    created_at: occurredAt,
-    reset_at: null,
-    occurred_at: occurredAt,
-    observed_at: occurredAt,
-    previous_used_percent: null,
-    current_used_percent: null,
-    confidence: "confirmed",
-    alert_eligible: false,
-    official_url: "https://chatgpt.com/codex",
-    source_url: "https://x.com/thsottiaux/status/2082317452755751098",
-    source_author: "thsottiaux",
-    source: "signed_feed",
-    reset_kind: index === 4 ? "unknown" : index >= 8 ? "banked" : "hard",
-    reset_scope: index % 3 === 0 ? "all_codex_work_users" : "all_paid_users",
-    title: "Codex official extra reset",
-    summary: "OpenAI issued an extra Codex usage reset for paid users.",
-  }),
-);
+type TimelineEvent = CodexResetHistoryEvent;
 
 function startResetControlPress(event: React.PointerEvent<HTMLElement>) {
   if (event.button !== undefined && event.button !== 0) return;
@@ -90,13 +42,6 @@ function startResetControlPress(event: React.PointerEvent<HTMLElement>) {
 
 function finishResetControlPress(event: React.AnimationEvent<HTMLElement>) {
   event.currentTarget.classList.remove("tt-reset-control-click-bounce");
-}
-
-function shouldUseLocalPreviewHistory(available: boolean, history: CodexResetHistoryEvent[]) {
-  if (!import.meta.env.DEV || available || history.length > 0 || typeof window === "undefined") {
-    return false;
-  }
-  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 }
 
 export function formatResetDateTime(iso: string) {
@@ -387,8 +332,23 @@ function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[];
   );
 }
 
+function resetSourceLinkId(event: TimelineEvent) {
+  const author = event.source_author;
+  const postId = String(event.source_post_id || "");
+  if ((author !== "thsottiaux" && author !== "OpenAI") || !/^[0-9]+$/u.test(postId)) {
+    return null;
+  }
+  const expectedUrl = `https://x.com/${author}/status/${postId}`;
+  if (event.source_url !== expectedUrl && event.source_url !== `${expectedUrl}/`) return null;
+  return `reset-source:${author}:${postId}`;
+}
+
 function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLatest?: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const cardRef = useRef<HTMLLIElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [overlayStyle, setOverlayStyle] = useState<React.CSSProperties>({});
   const sourceLabel = getSourceLabel(event);
   const resetKind = event.reset_kind && event.reset_kind in RESET_KIND_VISUALS
     ? event.reset_kind as keyof typeof RESET_KIND_VISUALS
@@ -396,20 +356,83 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
   const kindLabel = copy(`reset_history.kind.${resetKind}`);
   const scopeLabel = copy(`reset_history.scope.${event.reset_scope || "unknown"}`);
   const { Icon, tone, className } = RESET_KIND_VISUALS[resetKind];
-  const quotedAuthor = event.source_author === "thsottiaux"
-    ? copy("reset_history.source.tibo")
-    : event.source_author === "OpenAI"
-      ? copy("reset_history.source.openai")
-      : event.source_author;
-  const hasDetail = Boolean(event.title || event.summary || event.source_url);
+  const body = event.body || event.summary;
+  const sourceLinkId = resetSourceLinkId(event);
+  const hasDetail = Boolean(event.title || body || event.source_url);
 
   const toggleExpanded = () => {
     if (!hasDetail) return;
     setExpanded((current) => !current);
   };
 
+  useEffect(() => {
+    if (!expanded) return undefined;
+    detailRef.current?.focus();
+    const closeAndRestoreFocus = () => {
+      setExpanded(false);
+      triggerRef.current?.focus();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeAndRestoreFocus();
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        !cardRef.current?.contains(target)
+        && !detailRef.current?.contains(target)
+      ) closeAndRestoreFocus();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [expanded]);
+
+  useLayoutEffect(() => {
+    if (!expanded) return undefined;
+    const positionOverlay = () => {
+      const rect = cardRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const availableWidth = Math.max(240, viewportWidth - 32);
+      const width = Math.min(Math.max(320, rect.width - 44), availableWidth);
+      const left = Math.min(
+        Math.max(16, rect.left + 44),
+        Math.max(16, viewportWidth - width - 16),
+      );
+      const below = Math.max(0, viewportHeight - rect.bottom - 16);
+      const above = Math.max(0, rect.top - 16);
+      const placeBelow = below >= Math.min(320, Math.max(200, above));
+      const maxHeight = Math.max(180, Math.min(430, placeBelow ? below : above));
+      setOverlayStyle({
+        top: placeBelow ? rect.bottom + 6 : Math.max(16, rect.top - maxHeight - 6),
+        left,
+        width,
+        maxHeight,
+      });
+    };
+    positionOverlay();
+    window.addEventListener("resize", positionOverlay);
+    window.addEventListener("scroll", positionOverlay, true);
+    return () => {
+      window.removeEventListener("resize", positionOverlay);
+      window.removeEventListener("scroll", positionOverlay, true);
+    };
+  }, [expanded]);
+
+  const handleSourceClick = (clickEvent: React.MouseEvent<HTMLAnchorElement>) => {
+    clickEvent.stopPropagation();
+    if (!sourceLinkId || !isTauriRuntime()) return;
+    clickEvent.preventDefault();
+    void openExternalLink(sourceLinkId).catch(() => {});
+  };
+
   return (
     <li
+      ref={cardRef}
       data-testid="reset-history-item"
       data-expanded={expanded ? "true" : "false"}
       className="tt-reset-history-card tt-pressable grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 sm:grid-cols-[1.75rem_minmax(0,1fr)_auto]"
@@ -431,22 +454,6 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
         {kindLabel}
         <span aria-hidden> · </span>
         {scopeLabel}
-        {event.source_url && event.sourceIndex ? (
-          <>
-            <span aria-hidden> </span>
-            <a
-              data-testid="reset-history-source-ref"
-              href={event.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-emerald-700 hover:underline dark:text-emerald-300"
-              aria-label={`${copy("codex_reset.action.view_official")} ${event.sourceIndex}`}
-              onClick={(event) => event.stopPropagation()}
-            >
-              [{event.sourceIndex}]
-            </a>
-          </>
-        ) : null}
       </p>
       <time
         dateTime={event.occurred_at}
@@ -455,6 +462,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
         {isLatest ? <span className="tt-reset-latest-badge">{copy("reset_history.latest")}</span> : null}
         {formatResetDateTime(event.occurred_at)}
         <button
+          ref={triggerRef}
           type="button"
           className="tt-reset-row-chevron-button"
           data-testid="reset-history-expand"
@@ -468,34 +476,42 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
           <ChevronRight className={`tt-reset-row-chevron${expanded ? " is-expanded" : ""}`} aria-hidden />
         </button>
       </time>
-      {expanded && hasDetail ? (
-        <div className="tt-reset-history-detail" data-testid="reset-history-detail">
-          {event.title ? <h3>{event.title}</h3> : null}
+      {expanded && hasDetail && typeof document !== "undefined" ? createPortal((
+        <div
+          ref={detailRef}
+          className="tt-reset-history-detail tt-reset-history-detail--overlay"
+          data-testid="reset-history-detail"
+          role="dialog"
+          aria-label={event.title || copy("reset_history.detail_content")}
+          tabIndex={-1}
+          style={overlayStyle}
+          onClick={(clickEvent) => clickEvent.stopPropagation()}
+        >
+          <div className="tt-reset-history-detail-header">
+            {event.title ? <h3>{event.title}</h3> : <span />}
+            {event.source_url ? (
+              <a
+                href={event.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tt-reset-history-source-action tt-focus-ring tt-pressable"
+                aria-label={copy("codex_reset.action.view_official")}
+                onClick={handleSourceClick}
+              >
+                <ArrowUpRight aria-hidden />
+              </a>
+            ) : null}
+          </div>
           <dl>
-            {event.summary ? (
+            {body ? (
               <div>
                 <dt>{copy("reset_history.detail_content")}</dt>
-                <dd>{event.summary}</dd>
-              </div>
-            ) : null}
-            {event.source_url ? (
-              <div>
-                <dt>{copy("reset_history.quoted_tweet")}</dt>
-                <dd>
-                  <a
-                    href={event.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    {quotedAuthor || event.source_url}
-                  </a>
-                </dd>
+                <dd className="tt-reset-history-full-body">{body}</dd>
               </div>
             ) : null}
           </dl>
         </div>
-      ) : null}
+      ), document.body) : null}
     </li>
   );
 }
@@ -513,36 +529,16 @@ export function ResetHistoryPage() {
   }, []);
 
   const { history, available } = useCodexResetEvents();
-  const usePreviewHistory = shouldUseLocalPreviewHistory(available, history);
-  const displayedHistory = usePreviewHistory ? PREVIEW_RESET_HISTORY : history;
   const [celebrationEffect, setCelebrationEffect] = useState(readResetCelebrationEffect);
   const [visibleRecordCount, setVisibleRecordCount] = useState(11);
-  const { events, sources, statistics } = useMemo(() => {
-    const official = filterRecentOfficialResets(displayedHistory)
+  const { events, statistics } = useMemo(() => {
+    const official = filterRecentOfficialResets(history)
       .sort((left, right) => Date.parse(right.occurred_at) - Date.parse(left.occurred_at));
-    const indexByUrl = new Map<string, number>();
-    const indexedSources: TimelineSource[] = [];
     // Feed the FULL history so the previous 30-day window is available for
     // the period-over-period comparison (item-9a); the current-window stats
     // are still filtered inside calculateResetStatistics.
-    const resetStatistics = calculateResetStatistics(displayedHistory);
-    const indexedEvents: TimelineEvent[] = official.map((event) => {
-      const url = String(event.source_url || "").trim();
-      if (!url) return { ...event, sourceIndex: null };
-      let sourceIndex = indexByUrl.get(url);
-      if (!sourceIndex) {
-        sourceIndex = indexedSources.length + 1;
-        indexByUrl.set(url, sourceIndex);
-        indexedSources.push({
-          index: sourceIndex,
-          label: getSourceLabel(event),
-          url,
-        });
-      }
-      return { ...event, sourceIndex };
-    });
-    return { events: indexedEvents, sources: indexedSources, statistics: resetStatistics };
-  }, [displayedHistory]);
+    return { events: official, statistics: calculateResetStatistics(history) };
+  }, [history]);
   const visibleEvents = events.slice(0, visibleRecordCount);
   const hasMoreRecords = visibleEvents.length < events.length;
 
@@ -593,7 +589,7 @@ export function ResetHistoryPage() {
           <ResetStatisticsSummary
             statistics={statistics}
             events={events}
-            isLoading={!available && !usePreviewHistory}
+            isLoading={!available}
           />
 
           <ResetActivitySummary events={events} statistics={statistics} />
@@ -629,34 +625,10 @@ export function ResetHistoryPage() {
                     ) : null}
                     <span>{copy("reset_history.records_total", { count: events.length })}</span>
                   </div>
-                  {sources.length > 0 ? (
-                    <footer
-                      data-testid="reset-history-source-index"
-                      className="mt-5 border-t border-oai-gray-200 pt-4 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400"
-                    >
-                      <p className="mb-2 font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                        {copy("reset_history.sources_title")}
-                      </p>
-                      <div className="flex flex-wrap gap-x-5 gap-y-2">
-                        {sources.map((source) => (
-                          <a
-                            key={source.url}
-                            href={source.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 hover:text-emerald-700 hover:underline dark:hover:text-emerald-300"
-                          >
-                            [{source.index}] {source.label}
-                            <ArrowUpRight className="h-3 w-3" aria-hidden />
-                          </a>
-                        ))}
-                      </div>
-                    </footer>
-                  ) : null}
                 </>
               ) : (
                 <p className="tt-reset-history-empty py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
-                  {available || usePreviewHistory
+                  {available
                     ? copy("reset_history.empty")
                     : copy("reset_history.loading_detail")}
                 </p>

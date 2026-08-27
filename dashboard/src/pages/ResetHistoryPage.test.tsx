@@ -16,6 +16,10 @@ const resetContext = vi.hoisted(() => ({
   },
 }));
 
+const apiMocks = vi.hoisted(() => ({
+  openExternalLink: vi.fn(),
+}));
+
 vi.mock("../hooks/use-codex-reset-events", () => ({
   useCodexResetEvents: () => resetContext.value,
 }));
@@ -23,6 +27,16 @@ vi.mock("../hooks/use-codex-reset-events", () => ({
 vi.mock("../lib/copy", () => ({
   copy: (key: string) => `copy:${key}`,
   getCopyLocale: () => "zh-CN",
+}));
+
+vi.mock("../lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/api")>()),
+  openExternalLink: apiMocks.openExternalLink,
+}));
+
+vi.mock("../lib/local-api-url", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/local-api-url")>()),
+  isTauriRuntime: () => true,
 }));
 
 import { ResetHistoryPage } from "./ResetHistoryPage";
@@ -72,11 +86,13 @@ function officialReset(
     official_url: "https://chatgpt.com/codex",
     source_url: sourceUrl,
     source_author: "thsottiaux",
+    source_post_id: sourceUrl.match(/\/status\/([0-9]+)$/u)?.[1] || null,
     source: "signed_feed",
     reset_kind: resetKind,
     reset_scope: "all_codex_work_users",
     title: "Codex official extra reset",
     summary: "FULL_SUMMARY_MUST_NOT_RENDER",
+    body: "FULL_BODY_FIRST_PARAGRAPH\n\nFULL_BODY_SECOND_PARAGRAPH",
   } as unknown as CodexResetHistoryEvent;
 }
 
@@ -87,6 +103,8 @@ describe("ResetHistoryPage", () => {
     window.localStorage.clear();
     resetContext.value.available = true;
     resetContext.value.history = [];
+    apiMocks.openExternalLink.mockReset();
+    apiMocks.openExternalLink.mockResolvedValue(true);
     document.documentElement.classList.remove("tt-reference-route-reset-history");
   });
 
@@ -104,24 +122,15 @@ describe("ResetHistoryPage", () => {
     expect(document.documentElement).not.toHaveClass(routeClass);
   });
 
-  it("shows deterministic preview records when the local desktop API is unavailable", () => {
-    // The preview dataset uses fixed July 2026 dates and the page filters by a
-    // rolling recency window, so freeze the clock to keep the count stable.
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
-    try {
-      window.history.replaceState({}, "", "/reset-history");
-      resetContext.value.available = false;
-      resetContext.value.history = [];
+  it("never injects fixed preview reset records when the local API is unavailable", () => {
+    resetContext.value.available = false;
+    resetContext.value.history = [];
 
-      render(<ResetHistoryPage />);
+    render(<ResetHistoryPage />);
 
-      expect(screen.getAllByTestId("reset-history-item")).toHaveLength(10);
-      expect(screen.getByText("copy:reset_history.records_total")).toBeInTheDocument();
-      expect(screen.queryByText("copy:reset_history.loading_detail")).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(screen.queryByTestId("reset-history-item")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reset-history-list").querySelector(".tt-reset-history-empty"))
+      .toHaveTextContent("copy:reset_history.loading_detail");
   });
 
   it("keeps the heatmap and summary figures in one right-side divided group", () => {
@@ -181,9 +190,31 @@ describe("ResetHistoryPage", () => {
     const detail = screen.getByTestId("reset-history-detail");
     expect(detail).toHaveTextContent("Codex official extra reset");
     expect(detail).toHaveTextContent("copy:reset_history.detail_content");
-    expect(detail).toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
-    expect(detail).toHaveTextContent("copy:reset_history.quoted_tweet");
+    expect(detail).toHaveTextContent("FULL_BODY_FIRST_PARAGRAPH");
+    expect(detail).toHaveTextContent("FULL_BODY_SECOND_PARAGRAPH");
+    expect(detail).not.toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
+    expect(detail).toHaveAttribute("role", "dialog");
+    expect(detail).toHaveClass("tt-reset-history-detail--overlay");
+    expect(detail.parentElement).toBe(document.body);
+    expect(item).not.toContainElement(detail);
+    const source = within(detail).getByRole("link", {
+      name: "copy:codex_reset.action.view_official",
+    });
+    expect(source).toHaveClass("tt-reset-history-source-action");
+    await user.click(source);
+    expect(apiMocks.openExternalLink).toHaveBeenCalledWith(
+      "reset-source:thsottiaux:2082317452755751098",
+    );
     expect(item).toHaveAttribute("data-expanded", "true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("reset-history-detail")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reset-history-expand")).toHaveFocus();
+
+    await user.click(screen.getByTestId("reset-history-expand"));
+    expect(screen.getByTestId("reset-history-detail")).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByTestId("reset-history-detail")).not.toBeInTheDocument();
   });
 
   it("shows all retained records in descending occurrence order instead of capping at three", () => {
@@ -225,7 +256,7 @@ describe("ResetHistoryPage", () => {
     expect(screen.getAllByTestId("reset-history-item")).toHaveLength(13);
   });
 
-  it("renders compact timeline nodes and indexes each unique official source once", () => {
+  it("renders compact timeline nodes without legacy numbered source references", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-30T12:00:00.000Z"));
     try {
@@ -239,13 +270,8 @@ describe("ResetHistoryPage", () => {
 
       expect(screen.getByTestId("reset-history-timeline")).toBeInTheDocument();
       expect(screen.getAllByTestId("reset-history-node")).toHaveLength(3);
-      expect(screen.getAllByTestId("reset-history-source-ref").map((node) => node.textContent))
-        .toEqual(["[1]", "[1]", "[2]"]);
-      const sourceIndex = screen.getByTestId("reset-history-source-index");
-      expect(within(sourceIndex).getAllByRole("link")).toHaveLength(2);
-      expect(sourceIndex).toHaveTextContent("copy:reset_history.sources_title");
-      expect(sourceIndex).toHaveTextContent("[1]");
-      expect(sourceIndex).toHaveTextContent("[2]");
+      expect(screen.queryByTestId("reset-history-source-ref")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("reset-history-source-index")).not.toBeInTheDocument();
       expect(screen.queryByRole("contentinfo", { name: "Token Eyes" })).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();

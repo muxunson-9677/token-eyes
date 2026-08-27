@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const EDGE_PATH = path.join(
   __dirname,
@@ -45,4 +46,28 @@ test("collector backfills and retains exact Tibo reset announcements for 30 days
   assert.match(source, /reset_scope/u);
   assert.match(source, /classifyResetKind/u);
   assert.match(source, /classifyResetScope/u);
+  assert.match(source, /CONFIRMED_RESET_CONCEPT/u);
+  assert.match(source, /SCHEDULED_RESET_CONCEPT/u);
+  assert.match(source, /correlateTiboResetPosts/u);
+  assert.match(source, /state\s*!==\s*"confirmed"/u);
+  assert.match(source, /body:\s*candidate\.text/u);
+  assert.match(source, /summary:\s*candidate\.text\.slice\(0,\s*240\)/u);
+  assert.match(source, /filter\(isConfirmedRetainedAnnouncement\)/u);
+  assert.doesNotMatch(source, /!CODEX_CONCEPT\.test\(text\)[\s\S]{0,120}!GLOBAL_RESET_CONCEPT\.test\(text\)/u);
+});
+
+test("collector semantics classify the real schedule and landing states separately", () => {
+  const source = fs.readFileSync(EDGE_PATH, "utf8");
+  const readRegex = (name) => {
+    const line = source.split(/\r?\n/u).find((value) => value.startsWith(`const ${name} = /`));
+    assert.ok(line, `${name} must exist`);
+    return vm.runInNewContext(line.slice(line.indexOf("=") + 1, -1).trim());
+  };
+  const confirmed = readRegex("CONFIRMED_RESET_CONCEPT");
+  const scheduled = readRegex("SCHEDULED_RESET_CONCEPT");
+  const scheduleText = "The banked reset will be there by 8pm PST. For all paid users of ChatGPT Work and Codex.";
+  const landedText = "The banked reset has landed, I repeat, the banked reset has landed. Have an amazing weekend.";
+  assert.equal(scheduled.test(scheduleText), true);
+  assert.equal(confirmed.test(scheduleText), false);
+  assert.equal(confirmed.test(landedText), true);
 });

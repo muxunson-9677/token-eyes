@@ -82,6 +82,7 @@ function harness() {
     resetScope: "all_codex_work_users",
     title: "Codex 官方额外重置",
     summary: "OpenAI 已为 Codex 用户额外重置使用额度。",
+    body: "OpenAI 已为 Codex 用户额外重置使用额度。\n\n这里是完整第二段。",
     expiresAt: "2026-08-20T08:00:00.000Z",
     source: "signed_feed",
     confidence: "confirmed",
@@ -123,7 +124,7 @@ function harness() {
     trackerDataDir: root,
     codexResetMonitorService: service,
   });
-  return { root, handler, acknowledgements, checks, deliveries };
+  return { root, handler, acknowledgements, checks, deliveries, officialEvent };
 }
 
 test("GET returns no-store sanitized official reset events without auth", async () => {
@@ -142,6 +143,7 @@ test("GET returns no-store sanitized official reset events without auth", async 
     assert.equal(body.history[0].source_author, "thsottiaux");
     assert.equal(body.history[0].reset_kind, "hard");
     assert.equal(body.history[0].reset_scope, "all_codex_work_users");
+    assert.equal(body.history[0].body, h.officialEvent.body);
     assert.equal(body.history[0].occurred_at, "2026-07-20T08:00:00.000Z");
     assert.equal(body.history[0].confidence, "confirmed");
     assert.equal(body.history[0].alert_eligible, true);
