@@ -971,7 +971,9 @@ describe("useCostAccumulation selected month", () => {
       origin: "token_plan",
       readOnly: true,
     }));
-    expect(result.current.tokenPackages).toEqual([]);
+    expect(result.current.tokenPackages).toEqual([
+      expect.objectContaining({ id: "expired-plan", expired: true }),
+    ]);
   });
 
   it("classifies and displays Unix token plan expiry consistently across packages and subscriptions", async () => {
@@ -1009,7 +1011,10 @@ describe("useCostAccumulation selected month", () => {
     }));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.tokenPackages.map((plan) => plan.id)).toEqual(["future-unix-plan"]);
+    expect(result.current.tokenPackages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "future-unix-plan", expired: false }),
+      expect.objectContaining({ id: "expired-unix-plan", expired: true }),
+    ]));
     expect(result.current.subscriptionRecords).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "token-plan-cost:future-unix-plan",

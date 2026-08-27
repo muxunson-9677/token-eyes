@@ -61,7 +61,7 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("Service equal-expiry")).toBeInTheDocument();
   });
 
-  it("sorts available plans by used quota before exhausted plans, hides expired records, and paginates five rows with global ranks", async () => {
+  it("sorts available plans by used quota, keeps expired records collapsed, and paginates five active rows with global ranks", async () => {
     const user = userEvent.setup();
     const plans = [
       plan("G", 300),
@@ -86,6 +86,7 @@ describe("TokenServiceList", () => {
     expect(within(rows[4]).getByText("5")).toBeInTheDocument();
     expect(within(rows[4]).getByText("E")).toBeInTheDocument();
     expect(screen.queryByText("Service expired")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已过期 (1)" })).toHaveAttribute("aria-expanded", "false");
 
     await act(async () => {
       await user.click(screen.getByRole("button", { name: "下一页" }));
@@ -106,7 +107,7 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
   });
 
-  it("supports a ten-card cost-page window while still filtering expired plans", async () => {
+  it("supports a ten-card cost-page window without letting expired plans affect active pagination", async () => {
     const user = userEvent.setup();
     const plans = [
       ...Array.from({ length: 11 }, (_, index) => plan(`active-${index + 1}`, 900 - index * 10)),
@@ -123,6 +124,7 @@ describe("TokenServiceList", () => {
 
     expect(screen.getAllByTestId("token-service-row")).toHaveLength(10);
     expect(screen.queryByText("Service expired-cost-plan")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已过期 (1)" })).toBeInTheDocument();
 
     await act(async () => {
       await user.click(screen.getByRole("button", { name: "下一页" }));
@@ -398,11 +400,66 @@ describe("TokenServiceList", () => {
     expect(screen.queryByTestId("token-service-row")).not.toBeInTheDocument();
   });
 
-  it("shows an explicit empty state", () => {
+  it("shows an active empty state while an all-expired group mounts only between expand and collapse", async () => {
+    const user = userEvent.setup();
     render(<TokenServiceList plans={[plan("expired", 1_000, 1_000, { expires_at: "2020-01-01" })]} />);
 
     expect(screen.getByText("暂无未过期的 Token 服务")).toBeInTheDocument();
     expect(screen.queryByTestId("token-service-row")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "已过期 (1)" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("expired-token-service-cards")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await user.click(toggle);
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("expired-token-service-cards")).toHaveTextContent("Service expired");
+
+    await act(async () => {
+      await user.click(toggle);
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("expired-token-service-cards")).not.toBeInTheDocument();
+  });
+
+  it.each([0, 1, 2, 5, 10])("reports the exact expired count for %i records", (count) => {
+    render(
+      <TokenServiceList
+        plans={Array.from({ length: count }, (_, index) => (
+          plan(`expired-${index + 1}`, 100, 1_000, { expires_at: "2020-01-01" })
+        ))}
+      />,
+    );
+
+    if (count === 0) {
+      expect(screen.queryByRole("button", { name: /已过期/ })).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByRole("button", { name: `已过期 (${count})` })).toBeInTheDocument();
+    }
+  });
+
+  it("keeps Unix second and millisecond expiries active at equality and folds them one millisecond later", () => {
+    const exactSeconds = "1785081600";
+    const exactMilliseconds = "1785081600000";
+    const now = new Date(1_785_081_600_000);
+
+    render(
+      <TokenServiceList
+        now={now}
+        plans={[
+          plan("seconds-equal", 10, 100, { expires_at: exactSeconds }),
+          plan("milliseconds-equal", 20, 100, { expires_at: exactMilliseconds }),
+          plan("seconds-past", 30, 100, { expires_at: "1785081599" }),
+          plan("milliseconds-past", 40, 100, { expires_at: "1785081599999" }),
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByTestId("token-service-row")).toHaveLength(2);
+    expect(screen.getByText("Service seconds-equal")).toBeInTheDocument();
+    expect(screen.getByText("Service milliseconds-equal")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已过期 (2)" })).toBeInTheDocument();
   });
 
   it("returns to the last valid page when refreshed data shrinks", async () => {

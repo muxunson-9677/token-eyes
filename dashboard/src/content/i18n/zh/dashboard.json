@@ -979,6 +979,7 @@
     "spend.cost.subscription.status":  "状态",
     "spend.cost.subscription.status.active":  "生效中",
     "spend.cost.subscription.status.expired":  "已过期",
+    "settings.token_plan.expired_group":  "已过期 ({{count}})",
     "spend.cost.subscription.status.cancelled":  "已取消",
     "spend.cost.month_picker.label":  "选择成本月份",
     "spend.cost.month_picker.previous":  "上一个月",

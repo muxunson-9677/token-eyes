@@ -490,7 +490,6 @@ export function useCostAccumulation({
   // Transform token plans for display
   const tokenPackages = useMemo(() => {
     return tokenPlans
-      .filter((plan) => !isTokenPlanExpired(plan))
       .map((plan) => ({
       ...plan,
       id: plan.id,
@@ -503,6 +502,7 @@ export function useCostAccumulation({
       expiresAt: tokenPlanExpiryValue(plan),
       syncStatus: plan.sync_status || plan.last_refresh_status || "not_configured",
       syncStatusLabel: getSyncStatusLabel(plan.sync_status || plan.last_refresh_status),
+      expired: isTokenPlanExpired(plan),
       monthCostUsd: plan.month_cost_usd ?? 0,
       availableQuotaDisplay: plan.available_quota_display || null,
       }));

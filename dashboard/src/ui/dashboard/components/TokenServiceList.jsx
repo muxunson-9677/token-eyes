@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3 } from "lucide-react";
 import { cn } from "../../../lib/cn";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { formatTokenCount } from "../../../lib/format";
@@ -177,7 +177,7 @@ export function normalizeTokenServices(plans, now = new Date()) {
       };
     })
     .filter((service) => {
-      if (service.expired) return false;
+      if (service.expired) return true;
       // A saved plan is part of the user's Token service list. A temporary
       // refresh/auth failure must not make the whole service disappear.
       if (service.metrics.length === 0) return true;
@@ -289,20 +289,23 @@ export function TokenServiceList({
   pageSize = TOKEN_SERVICE_PAGE_SIZE,
 }) {
   const [page, setPage] = useState(1);
+  const [expiredOpen, setExpiredOpen] = useState(false);
   const services = useMemo(() => normalizeTokenServices(plans, now), [plans, now]);
+  const activeServices = useMemo(() => services.filter((service) => !service.expired), [services]);
+  const expiredServices = useMemo(() => services.filter((service) => service.expired), [services]);
   const effectivePageSize = Math.max(1, Number(pageSize) || TOKEN_SERVICE_PAGE_SIZE);
-  const pageCount = Math.max(1, Math.ceil(services.length / effectivePageSize));
+  const pageCount = Math.max(1, Math.ceil(activeServices.length / effectivePageSize));
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
 
   const pageStart = (page - 1) * effectivePageSize;
-  const pageRows = paginate ? services.slice(pageStart, pageStart + effectivePageSize) : services;
+  const pageRows = paginate ? activeServices.slice(pageStart, pageStart + effectivePageSize) : activeServices;
   const showPagination = paginate
     && !loading
     && !error
-    && services.length !== Math.min(services.length, effectivePageSize);
+    && activeServices.length !== Math.min(activeServices.length, effectivePageSize);
 
   return (
     <aside
@@ -319,7 +322,7 @@ export function TokenServiceList({
         <h3 data-testid="token-service-list-title" className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100">
           {copy("spend.usage.token_services.title")}
         </h3>
-        {!loading && !error && services.length > 0 && (
+        {!loading && !error && activeServices.length > 0 && (
           <span className="text-[11px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
             {page} / {pageCount}
           </span>
@@ -452,6 +455,55 @@ export function TokenServiceList({
           })}
         </ol>
       )}
+
+      {!loading && !error && expiredServices.length > 0 ? (
+        <section
+          data-testid="expired-token-services"
+          className="mt-2 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800"
+        >
+          <button
+            type="button"
+            aria-expanded={expiredOpen}
+            aria-controls="expired-token-service-cards"
+            onClick={() => setExpiredOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-oai-gray-600 hover:bg-oai-gray-50 dark:text-oai-gray-300 dark:hover:bg-oai-gray-900/60"
+          >
+            <span>{copy("settings.token_plan.expired_group", { count: expiredServices.length })}</span>
+            {expiredOpen
+              ? <ChevronUp className="h-3.5 w-3.5 text-oai-gray-400" aria-hidden="true" />
+              : <ChevronDown className="h-3.5 w-3.5 text-oai-gray-400" aria-hidden="true" />}
+          </button>
+          {expiredOpen ? (
+            <ol
+              id="expired-token-service-cards"
+              data-testid="expired-token-service-cards"
+              className="space-y-1.5 border-t border-oai-gray-100 p-2 dark:border-oai-gray-800"
+            >
+              {expiredServices.map((service) => (
+                <li
+                  key={service.id}
+                  data-testid="expired-token-service-row"
+                  className="flex min-w-0 items-center gap-2 rounded-md bg-oai-gray-50 px-2 py-1.5 dark:bg-oai-gray-900/60"
+                >
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-oai-gray-500 ring-1 ring-inset ring-oai-gray-200 dark:bg-oai-gray-900 dark:text-oai-gray-400 dark:ring-oai-gray-700">
+                    <ProviderIcon provider={service.providerId} size={14} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-oai-gray-600 dark:text-oai-gray-300">
+                      {[service.provider, service.planLabel].filter(Boolean).join(" · ")}
+                    </span>
+                    {service.expiresAt ? (
+                      <span className="mt-0.5 block text-[10px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
+                        {copy("settings.token_plan.expired_at")} {formatDateTime(service.expiresAt, true)}
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : null}
 
       {showPagination && (
         <div className="mt-auto flex items-center justify-end gap-1 border-t border-oai-gray-100 pt-2 dark:border-oai-gray-800">

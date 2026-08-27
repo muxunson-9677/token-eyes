@@ -5839,12 +5839,21 @@ it("shows usable plans with full summary and keeps expired plans in a collapsed 
   expect(screen.queryByText(/claude \/ Expired Max/i)).not.toBeInTheDocument();
 
   const expiredGroup = screen.getByTestId("expired-token-plans");
-  expect(expiredGroup).toHaveTextContent("已过期套餐");
+  const expiredToggle = screen.getByRole("button", { name: "已过期 (1)" });
+  expect(expiredGroup).toHaveTextContent("已过期 (1)");
+  expect(expiredToggle).toHaveAttribute("aria-expanded", "false");
   await act(async () => {
-    await user.click(screen.getByRole("button", { name: /已过期套餐/ }));
+    await user.click(expiredToggle);
   });
 
+  expect(expiredToggle).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText(/claude \/ Expired Max/i)).toBeInTheDocument();
   expect(screen.getByTestId("expired-token-plan-row")).toHaveTextContent("已过期");
   expect(screen.getAllByTestId("active-token-plan-summary")).toHaveLength(1);
+
+  await act(async () => {
+    await user.click(expiredToggle);
+  });
+  expect(expiredToggle).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByTestId("expired-token-plan-row")).not.toBeInTheDocument();
 });

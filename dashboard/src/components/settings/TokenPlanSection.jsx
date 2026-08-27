@@ -4245,10 +4245,9 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 aria-expanded={expiredPlansOpen}
                 className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
               >
-                <span>
-                  <strong className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">{copy("settings.token_plan.expired_group")}</strong>
-                  <small className="ml-2 text-xs text-oai-gray-400">{expiredRecords.length}</small>
-                </span>
+                <strong className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">
+                  {copy("settings.token_plan.expired_group", { count: expiredRecords.length })}
+                </strong>
                 {expiredPlansOpen ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
               </button>
               {expiredPlansOpen ? (

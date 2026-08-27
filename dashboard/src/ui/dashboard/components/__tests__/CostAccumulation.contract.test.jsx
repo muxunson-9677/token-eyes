@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { calculateCollapseScrollReserve, CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
 
 // 02 work order contract tests for CostAccumulation.
 //
@@ -55,22 +55,53 @@ const BASE_SUMMARY = {
   usdToCny: 7.2,
 };
 
-it("reserves only the missing scroll range when collapsing a tall section", () => {
-  expect(calculateCollapseScrollReserve({
-    scrollTop: 120,
-    scrollHeight: 1114,
-    clientHeight: 975,
-    removedHeight: 220,
-  })).toBe(120);
-  expect(calculateCollapseScrollReserve({
-    scrollTop: 40,
-    scrollHeight: 1400,
-    clientHeight: 900,
-    removedHeight: 200,
-  })).toBe(0);
+afterEach(() => {
+  window.localStorage.removeItem("token-eyes:cost-section:provider-api");
 });
 
-it("shows ten usable token plans per cost-page view and keeps expired plans out", () => {
+it("unmounts a provider account section after false-to-true-to-false without a scroll reserve spacer", () => {
+  render(
+    <div data-testid="scroll-host" style={{ overflowY: "auto" }}>
+      <CostAccumulation
+        sectionsInitiallyOpen={false}
+        costSummary={{ ...BASE_SUMMARY }}
+        providerApiBalances={[{
+          configId: "provider-1",
+          providerId: "deepseek",
+          accountLabel: "DeepSeek",
+          status: "synced",
+          balance: 688.21,
+          monthSpend: 1.5,
+          lifetimeSpend: 3,
+          currency: "USD",
+        }]}
+        onRefreshOneProviderApi={() => {}}
+      />
+    </div>,
+  );
+
+  const host = screen.getByTestId("scroll-host");
+  const section = screen.getByTestId("provider-api-account-section");
+  const toggle = within(section).getByRole("button", { name: /spend\.cost\.provider_account\.section/ });
+  Object.defineProperties(host, {
+    scrollHeight: { configurable: true, value: 1_114 },
+    clientHeight: { configurable: true, value: 975 },
+  });
+  Object.defineProperty(section, "offsetHeight", { configurable: true, value: 292 });
+  host.scrollTop = 120;
+
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(within(section).queryByTestId("provider-api-expanded-list")).not.toBeInTheDocument();
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(within(section).getByTestId("provider-api-expanded-list")).toBeInTheDocument();
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(within(section).queryByTestId("provider-api-expanded-list")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("cost-scroll-reserve-provider-api")).not.toBeInTheDocument();
+});
+
+it("shows ten active token plans per cost-page view and folds expired plans separately", () => {
   window.localStorage.removeItem("token-eyes:cost-section:token-packages");
   const tokenPackages = [
     ...Array.from({ length: 11 }, (_, index) => ({
@@ -99,8 +130,59 @@ it("shows ten usable token plans per cost-page view and keeps expired plans out"
 
   expect(screen.getAllByTestId("token-service-row")).toHaveLength(10);
   expect(screen.queryByText("Expired plan")).not.toBeInTheDocument();
+  const expiredToggle = screen.getByRole("button", { name: "settings.token_plan.expired_group" });
+  expect(expiredToggle).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(expiredToggle);
+  expect(expiredToggle).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByTestId("expired-token-service-cards")).toHaveTextContent("Expired plan");
+  fireEvent.click(expiredToggle);
+  expect(expiredToggle).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByTestId("expired-token-service-cards")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "spend.usage.token_services.next" }));
   expect(screen.getAllByTestId("token-service-row")).toHaveLength(1);
+});
+
+it("calculates Token package summary metrics from active plans only", () => {
+  render(
+    <CostAccumulation
+      costSummary={{ ...BASE_SUMMARY, monthApiCostUsd: 100 }}
+      now={new Date("2026-08-15T00:00:00.000Z")}
+      tokenPackages={[
+        {
+          id: "active",
+          source: "active",
+          provider_id: "custom",
+          plan_label: "Active plan",
+          total_quota: 100,
+          used_quota: 10,
+          remaining_quota: 90,
+          expires_at: "2026-08-15T00:00:00.000Z",
+          monthCostUsd: 20,
+          availableQuotaDisplay: "90 active credits",
+        },
+        {
+          id: "expired",
+          source: "expired",
+          provider_id: "custom",
+          plan_label: "Expired plan",
+          total_quota: 100,
+          used_quota: 90,
+          remaining_quota: 10,
+          expires_at: "2026-08-14T23:59:59.999Z",
+          monthCostUsd: 80,
+          availableQuotaDisplay: "10 expired credits",
+        },
+      ]}
+    />,
+  );
+
+  const section = document.querySelector('[data-cost-section="token-packages"]');
+  const metrics = within(section).getByTestId("cost-row-metrics");
+  expect(metrics).toHaveTextContent("20.00");
+  expect(metrics).toHaveTextContent("20.0%");
+  expect(metrics).toHaveTextContent("90 active credits");
+  expect(metrics).not.toHaveTextContent("100.00");
+  expect(metrics).not.toHaveTextContent("10 expired credits");
 });
 
 it("shows expired token-plan subscriptions as read-only history", () => {

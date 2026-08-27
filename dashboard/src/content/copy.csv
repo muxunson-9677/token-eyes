@@ -2762,7 +2762,7 @@ settings.agent_pricing.save_changes,ui,SettingsPage,AgentPricingSection,save_cha
 settings.token_plan.collapsed_summary,ui,SettingsPage,TokenPlanSection,collapsed_summary,"{{count}} 个套餐",,active
 settings.token_plan.count_active,ui,SettingsPage,TokenPlanSection,count_active,"已激活 {{count}} 个",,active
 settings.token_plan.count_watch,ui,SettingsPage,TokenPlanSection,count_watch,"需关注 {{count}} 个",,active
-settings.token_plan.expired_group,ui,SettingsPage,TokenPlanSection,expired_group,"已过期套餐",,active
+settings.token_plan.expired_group,ui,SettingsPage,TokenPlanSection,expired_group,"Expired ({{count}})",,active
 settings.token_plan.status_expired,ui,SettingsPage,TokenPlanSection,status_expired,"已过期",,active
 settings.token_plan.status_active,ui,SettingsPage,TokenPlanSection,status_active,"已激活",,active
 settings.token_plan.status_attention,ui,SettingsPage,TokenPlanSection,status_attention,"需关注",,active

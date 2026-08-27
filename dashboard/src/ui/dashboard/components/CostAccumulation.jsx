@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BarChart3, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Code2, CreditCard, Package, Globe, Info, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings, TrendingUp } from "lucide-react";
 import { copy } from "../../../lib/copy";
@@ -8,6 +8,7 @@ import { deriveDataConfidence } from "../../../lib/data-confidence";
 import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
 import { TokenServiceList } from "./TokenServiceList.jsx";
 import { computeSubscriptionRoi } from "../../../lib/subscription-roi";
+import { isTokenPlanExpired } from "../../../lib/token-plan-validity.js";
 
 const COST_ICON_TONES = {
   blue: "bg-blue-50 text-blue-600 dark:bg-blue-950/45 dark:text-blue-300",
@@ -16,21 +17,6 @@ const COST_ICON_TONES = {
   orange: "bg-orange-50 text-orange-600 dark:bg-orange-950/45 dark:text-orange-300",
   rose: "bg-rose-50 text-rose-600 dark:bg-rose-950/45 dark:text-rose-300",
 };
-
-export function calculateCollapseScrollReserve({ scrollTop, scrollHeight, clientHeight, removedHeight }) {
-  const futureMaxScroll = Math.max(0, Number(scrollHeight) - Number(removedHeight) - Number(clientHeight));
-  return Math.max(0, Number(scrollTop) - futureMaxScroll);
-}
-
-function findVerticalScrollContainer(node) {
-  let current = node?.parentElement;
-  while (current) {
-    const overflowY = window.getComputedStyle(current).overflowY;
-    if (["auto", "scroll"].includes(overflowY)) return current;
-    current = current.parentElement;
-  }
-  return document.scrollingElement || document.documentElement;
-}
 
 /**
  * CostAccumulation component (03-cost-billing).
@@ -546,43 +532,14 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
       return initiallyOpen;
     }
   });
-  const [scrollReserve, setScrollReserve] = useState(0);
-  const sectionRef = useRef(null);
-  const scrollContainerRef = useRef(null);
-
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer || scrollReserve <= 0) return undefined;
-    const releaseReserve = () => {
-      const naturalMaxScroll = Math.max(0, scrollContainer.scrollHeight - scrollReserve - scrollContainer.clientHeight);
-      if (scrollContainer.scrollTop <= naturalMaxScroll + 1) setScrollReserve(0);
-    };
-    scrollContainer.addEventListener("scroll", releaseReserve, { passive: true });
-    return () => scrollContainer.removeEventListener("scroll", releaseReserve);
-  }, [scrollReserve]);
 
   const toggle = () => {
     const next = !open;
-    if (open && sectionRef.current) {
-      const scrollContainer = findVerticalScrollContainer(sectionRef.current);
-      const removedHeight = Math.max(0, sectionRef.current.offsetHeight - 72);
-      scrollContainerRef.current = scrollContainer;
-      setScrollReserve(calculateCollapseScrollReserve({
-        scrollTop: scrollContainer.scrollTop,
-        scrollHeight: scrollContainer.scrollHeight,
-        clientHeight: scrollContainer.clientHeight,
-        removedHeight,
-      }));
-    } else {
-      setScrollReserve(0);
-    }
     try { window.localStorage.setItem(storageKey, next ? "open" : "closed"); } catch { /* local preference only */ }
     setOpen(next);
   };
   return (
-    <>
     <section
-      ref={sectionRef}
       className={cn(
         "tt-surface-nested tt-pressable-parent rounded-[var(--tt-card-radius)] p-4",
         className,
@@ -614,14 +571,6 @@ function FoldableSection({ id, icon, iconTone = "blue", title, description, coun
       </div>
       {open ? children : null}
     </section>
-    {scrollReserve > 0 ? (
-      <div
-        aria-hidden="true"
-        data-testid={`cost-scroll-reserve-${id}`}
-        style={{ height: `${scrollReserve}px` }}
-      />
-    ) : null}
-    </>
   );
 }
 
@@ -704,9 +653,17 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth, estimatedTotalUsd
 // ---------------------------------------------------------------------------
 
 function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, sectionsInitiallyOpen, onRefresh, now }) {
-  const monthUsd = packages.reduce((sum, item) => sum + Number(item.monthCostUsd || 0), 0);
+  const displayPackages = packages.map((pkg) => ({
+    ...pkg,
+    plan_label: pkg.plan_label || pkg.name,
+    provider_id: pkg.provider_id || pkg.provider,
+    sync_status: pkg.sync_status || pkg.syncStatus,
+    expires_at: pkg.expires_at || pkg.expiresAt,
+  }));
+  const activePackages = displayPackages.filter((item) => !isTokenPlanExpired(item, now));
+  const monthUsd = activePackages.reduce((sum, item) => sum + Number(item.monthCostUsd || 0), 0);
   const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
-  const quota = packages.find((item) => item.availableQuotaDisplay)?.availableQuotaDisplay || copy("spend.cost.row.unavailable");
+  const quota = activePackages.find((item) => item.availableQuotaDisplay)?.availableQuotaDisplay || copy("spend.cost.row.unavailable");
   return (
     <FoldableSection
       id="token-packages"
@@ -714,12 +671,12 @@ function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, section
       iconTone="violet"
       title={copy("spend.cost.token_package.section")}
       description={copy("spend.cost.design.packages_description")}
-      count={packages.length}
+      count={activePackages.length}
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
         { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
         { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
-        { label: copy("spend.cost.design.package_count"), value: packages.length.toLocaleString() },
+        { label: copy("spend.cost.design.package_count"), value: activePackages.length.toLocaleString() },
         { label: copy("spend.cost.row.available_quota"), value: quota },
       ]}
     >
@@ -730,13 +687,7 @@ function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, section
       ) : (
         <div data-testid="token-package-table" className="tt-token-package-table">
           <TokenServiceList
-            plans={packages.map((pkg) => ({
-              ...pkg,
-              plan_label: pkg.plan_label || pkg.name,
-              provider_id: pkg.provider_id || pkg.provider,
-              sync_status: pkg.sync_status || pkg.syncStatus,
-              expires_at: pkg.expires_at || pkg.expiresAt,
-            }))}
+            plans={displayPackages}
             loading={loading}
             now={now}
             embedded
