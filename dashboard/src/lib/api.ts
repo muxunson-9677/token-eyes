@@ -238,6 +238,7 @@ const PATHS = {
   tokenPlansOrder: "tokentracker-token-plans-order",
   tokenPlansRefresh: "tokentracker-token-plans-refresh",
   tokenPlanCatalog: "tokentracker-token-plan-catalog",
+  planMarket: "tokentracker-plan-market",
   spendRecords: "tokentracker-spend-records",
   otherAiSpendGroups: "tokentracker-other-ai-groups",
   spendTimeseries: "tokentracker-spend-timeseries",
@@ -796,6 +797,18 @@ export async function deleteOtherAiSpendGroup(id: string) {
     method: "DELETE",
     headers: { Accept: "application/json", "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify({ id }),
+  });
+}
+
+export async function getPlanMarketState({ signal }: { signal?: AbortSignal } = {}) {
+  return fetchLocalJson(PATHS.planMarket, undefined, { signal });
+}
+
+export async function refreshPlanMarketCatalog() {
+  const authHeaders = await getLocalApiAuthHeaders();
+  return fetchLocalJson(PATHS.planMarket, undefined, {
+    method: "POST",
+    headers: { Accept: "application/json", ...authHeaders },
   });
 }
 

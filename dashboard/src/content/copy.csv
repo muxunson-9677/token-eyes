@@ -2206,6 +2206,23 @@ plan_market.risk.low,dashboard,PlanMarketPage,PlanMarketPage,risk_low,"低",,act
 plan_market.risk.medium,dashboard,PlanMarketPage,PlanMarketPage,risk_medium,"中",,active
 plan_market.risk.high,dashboard,PlanMarketPage,PlanMarketPage,risk_high,"高",,active
 plan_market.risk.extreme,dashboard,PlanMarketPage,PlanMarketPage,risk_extreme,"极高",,active
+plan_market.refresh.button,dashboard,PlanMarketPage,PlanMarketPage,refresh_button,"检查更新",,active
+plan_market.refresh.retry,dashboard,PlanMarketPage,PlanMarketPage,refresh_retry,"重试更新",,active
+plan_market.refresh.loading,dashboard,PlanMarketPage,PlanMarketPage,refresh_loading,"正在检查套餐变化…",,active
+plan_market.refresh.success,dashboard,PlanMarketPage,PlanMarketPage,refresh_success,"检查完成",,active
+plan_market.refresh.failure,dashboard,PlanMarketPage,PlanMarketPage,refresh_failure,"远程套餐目录暂不可用，当前继续显示上次成功数据。",,active
+plan_market.refresh.last_success,dashboard,PlanMarketPage,PlanMarketPage,refresh_last_success,"最后成功更新",,active
+plan_market.refresh.never,dashboard,PlanMarketPage,PlanMarketPage,refresh_never,"尚无远程更新记录",,active
+plan_market.refresh.catalog_version,dashboard,PlanMarketPage,PlanMarketPage,refresh_catalog_version,"目录版本",,active
+plan_market.refresh.cadence_label,dashboard,PlanMarketPage,PlanMarketPage,refresh_cadence_label,"套餐自动更新周期",,active
+plan_market.refresh.cadence_manual,dashboard,PlanMarketPage,PlanMarketPage,refresh_cadence_manual,"仅手动",,active
+plan_market.refresh.cadence_6h,dashboard,PlanMarketPage,PlanMarketPage,refresh_cadence_6h,"每 6 小时",,active
+plan_market.refresh.cadence_24h,dashboard,PlanMarketPage,PlanMarketPage,refresh_cadence_24h,"每 24 小时",,active
+plan_market.refresh.added,dashboard,PlanMarketPage,PlanMarketPage,refresh_added,"新增",,active
+plan_market.refresh.changed,dashboard,PlanMarketPage,PlanMarketPage,refresh_changed,"变更",,active
+plan_market.refresh.listed,dashboard,PlanMarketPage,PlanMarketPage,refresh_listed,"上架",,active
+plan_market.refresh.delisted,dashboard,PlanMarketPage,PlanMarketPage,refresh_delisted,"下架",,active
+plan_market.refresh.price_changed,dashboard,PlanMarketPage,PlanMarketPage,refresh_price_changed,"价格变更",,active
 settings.basic.page.title,ui,SettingsPage,SettingsPage,basic_page_title,"基础设置",,active
 settings.basic.page.subtitle,ui,SettingsPage,SettingsPage,basic_page_subtitle,"Manage appearance, menu bar, account, and display preferences.",,active
 settings.cost.page.title,ui,SettingsPage,SettingsPage,cost_page_title,"Cost settings",,active

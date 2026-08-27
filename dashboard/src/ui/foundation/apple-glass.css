@@ -3026,7 +3026,8 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
 
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-select-wrap,
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-sources a,
-:root.dark .tt-reference-route-spend-plans .tt-plan-market-global-price-comparison {
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-global-price-comparison,
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-refresh-button {
   border-color: var(--tt-page-border-strong);
   background: linear-gradient(180deg, #292e37, #21252c);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 0 #15181d;
@@ -3051,6 +3052,9 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-sources { color: var(--tt-page-muted); }
 
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-select-wrap select { color: var(--tt-page-ink); }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-refresh-feedback { color: var(--tt-page-muted); }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-refresh-feedback--success { color: #83dbad; }
+:root.dark .tt-reference-route-spend-plans .tt-plan-market-refresh-feedback--failure { color: #f2a094; }
 :root.dark .tt-reference-route-spend-plans .tt-plan-market-metadata-separator {
   background: rgba(176, 190, 209, 0.28);
   box-shadow: none;
@@ -9360,6 +9364,7 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-updated {
+  flex-wrap: wrap;
   gap: 9px;
   color: #667085;
   font-size: 14px;
@@ -9369,6 +9374,89 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 .tt-reference-route-spend-plans .tt-plan-market-updated svg {
   width: 19px;
   height: 19px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-updated small {
+  flex-basis: 100%;
+  padding-left: 28px;
+  color: #8a94a6;
+  font-size: 11px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  gap: 8px;
+  padding: 0 15px;
+  border: 1px solid #bed4f3;
+  border-radius: 9px;
+  color: #245f9e;
+  background: linear-gradient(180deg, #fff, #f1f7ff);
+  box-shadow: 0 2px 0 #c5d9f4, 0 5px 12px rgb(38 117 246 / 0.08);
+  font-size: 13px;
+  font-weight: 680;
+  transform: translateY(0);
+  transition: transform 120ms ease-out, box-shadow 120ms ease-out, background 120ms ease-out;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-button:hover:not(:disabled) {
+  background: #ebf4ff;
+  transform: translateY(-1px);
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-button:active:not(:disabled) {
+  box-shadow: inset 0 1px 2px rgb(22 83 158 / 0.16), 0 1px 0 #bfd7ff;
+  transform: translateY(2px) scale(0.985);
+  transition-duration: 60ms;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-button:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-spin {
+  animation: tt-plan-market-refresh-spin 900ms linear infinite;
+}
+
+@keyframes tt-plan-market-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-feedback {
+  display: inline-flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px 12px;
+  min-height: 28px;
+  color: #536177;
+  font-size: 12px;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-feedback > span:not(:first-child) {
+  padding-left: 10px;
+  border-left: 1px solid #dce3ec;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-feedback--success {
+  color: #24734c;
+}
+
+.tt-reference-route-spend-plans .tt-plan-market-refresh-feedback--failure {
+  color: #a2483a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-reference-route-spend-plans .tt-plan-market-refresh-spin { animation: none; }
 }
 
 .tt-reference-route-spend-plans .tt-plan-market-select-wrap {
@@ -9905,6 +9993,7 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
   .tt-reference-route-spend-plans .tt-plan-market-header { align-items: flex-start; flex-direction: column; margin-bottom: 26px; }
   .tt-reference-route-spend-plans .tt-plan-market-header h1 { font-size: 29px; }
   .tt-reference-route-spend-plans .tt-plan-market-controls { justify-content: flex-start; }
+  .tt-reference-route-spend-plans .tt-plan-market-refresh-feedback { justify-content: flex-start; }
   .tt-reference-route-spend-plans .tt-plan-market-select-wrap { min-width: 142px; }
   .tt-reference-route-spend-plans .tt-plan-market-overview { grid-template-columns: 1fr; gap: 12px; }
   .tt-reference-route-spend-plans .tt-plan-market-stat { min-height: 88px; padding: 14px; }

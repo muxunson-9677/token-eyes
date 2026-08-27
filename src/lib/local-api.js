@@ -367,7 +367,7 @@ const { computeCodexContextBreakdown } = require("./codex-context-breakdown");
 const tokenPlanRefresh = require("./token-plan-refresh");
 const { getPlanById, listProviderOptions, getProviderCatalog } = require("./token-plan-catalog");
 const glmTokenPlan = require("./glm-token-plan");
-const { getPlanMarketCatalog } = require("./plan-market");
+const { createPlanMarketUpdateService } = require("./plan-market");
 const { getAgentAdapter, listAgentAdapters } = require("./agent-adapters");
 const {
   collectApiBillingAccounts,
@@ -2431,6 +2431,7 @@ function createLocalApiHandler({
   limitAccountsProvider,
   tokenOnlyDirectoryStatesProvider,
   dataDirectoryPathsResolver,
+  planMarketUpdateService: injectedPlanMarketUpdateService,
   now: nowProvider = () => new Date(),
 } = {}) {
   const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VITEST === "true";
@@ -2460,6 +2461,10 @@ function createLocalApiHandler({
   const detectAllAgentEnvironmentsForRequest = detectAllAgentEnvironmentsOverride || detectAllAgentEnvironments;
   const collectCodexRolloutRowsForRequest = codexRolloutRowsProvider || collectCodexRolloutQueueRows;
   const resolveHandlerDataDirectoryPaths = dataDirectoryPathsResolver || resolveDataDirectoryPaths;
+  const planMarketUpdateService = injectedPlanMarketUpdateService || createPlanMarketUpdateService({
+    trackerDataDir,
+    now: nowProvider,
+  });
 
   // Server-side cookie relay: captures auth cookies from InsForge cloud responses
   // so that both browser and WKWebView share the same login session via the proxy.
@@ -8906,15 +8911,47 @@ function createLocalApiHandler({
       json(res, { providers });
       return true;
     }
-    // --- plan market (V2-W1: 供应商套餐行情快照，只读，含来源链接) ---
+    // --- plan market: validated remote catalog + atomic last-known-good snapshot ---
     if (p === "/functions/tokentracker-plan-market") {
       const method = String(req.method || "GET").toUpperCase();
-      if (method !== "GET") {
+      if (method !== "GET" && method !== "POST") {
         json(res, { ok: false, error: "Method Not Allowed" }, 405);
         return true;
       }
-      const catalog = getPlanMarketCatalog();
-      json(res, { updated_at: catalog.updated_at, providers: catalog.providers });
+      if (method === "POST" && !isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        const state = method === "POST"
+          ? await planMarketUpdateService.refresh()
+          : planMarketUpdateService.read();
+        json(res, {
+          ...state,
+          updated_at: state.catalog.updated_at,
+          providers: state.catalog.providers,
+          comparison_links: state.catalog.comparison_links,
+          official_source_coverage: state.catalog.official_source_coverage,
+        });
+      } catch (error) {
+        const state = planMarketUpdateService.read();
+        const knownRefreshError = error?.name === "PlanMarketRefreshError"
+          && /^feed_[a-z_]+$/u.test(String(error?.code || ""));
+        const errorCode = knownRefreshError ? error.code : "refresh_failed";
+        const safeError = knownRefreshError
+          ? String(error.message)
+          : "套餐目录更新失败，已保留上次成功数据。";
+        json(res, {
+          ...state,
+          ok: false,
+          error_code: errorCode,
+          error: safeError,
+          updated_at: state.catalog.updated_at,
+          providers: state.catalog.providers,
+          comparison_links: state.catalog.comparison_links,
+          official_source_coverage: state.catalog.official_source_coverage,
+        }, errorCode === "refresh_failed" ? 500 : 502);
+      }
       return true;
     }
     // --- token plans refresh (F03: 鎵嬪姩瑙﹀彂鍗曚釜 plan 鐨勫埛鏂? ---

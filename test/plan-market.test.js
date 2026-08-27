@@ -318,13 +318,42 @@ test("Copilot vendor families remain distinct across market, agent, and capabili
   );
 });
 
-test("local API serves plan market catalog read-only", async () => {
+test("local API serves plan market state and protects manual refresh with local auth", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const catalog = require("../src/lib/plan-market").getPlanMarketCatalog();
+    let refreshCount = 0;
+    const current = {
+      ok: true,
+      catalog,
+      refresh: {
+        source_url: "https://a62b9nf2.function2.insforge.app/tokentracker-plan-market-feed",
+        source_status: "configured",
+        last_successful_at: null,
+        catalog_version: null,
+        changes: { plans_added: 0, plans_changed: 0, listed: 0, delisted: 0, price_changed: 0 },
+        error_code: null,
+      },
+    };
     const handler = createLocalApiHandler({
       queuePath: path.join(trackerDir, "queue.jsonl"),
       trackerDataDir: trackerDir,
+      planMarketUpdateService: {
+        read: () => current,
+        refresh: async () => {
+          refreshCount += 1;
+          return {
+            ...current,
+            refresh: {
+              ...current.refresh,
+              last_successful_at: "2026-08-27T08:05:00.000Z",
+              catalog_version: "2026-08-27.1",
+              changes: { ...current.refresh.changes, plans_added: 2, plans_changed: 1 },
+            },
+          };
+        },
+      },
     });
 
     const res = await call(handler, "/functions/tokentracker-plan-market");
@@ -333,9 +362,62 @@ test("local API serves plan market catalog read-only", async () => {
     assert.ok(body.updated_at);
     assert.ok(Array.isArray(body.providers) && body.providers.length >= 4);
     assert.ok(body.providers.every((p) => Array.isArray(p.sources) && p.sources.length >= 1));
+    assert.equal(body.refresh.source_status, "configured");
+    assert.equal(body.catalog.providers.length, body.providers.length);
 
-    const rejected = await call(handler, "/functions/tokentracker-plan-market", { method: "POST" });
-    assert.equal(rejected.statusCode, 405);
+    const unauthorized = await call(handler, "/functions/tokentracker-plan-market", { method: "POST" });
+    assert.equal(unauthorized.statusCode, 401);
+    assert.equal(refreshCount, 0);
+
+    const auth = readJsonResponse(await call(handler, "/api/local-auth"));
+    const refreshed = await call(handler, "/functions/tokentracker-plan-market", {
+      method: "POST",
+      headers: { "x-tokentracker-local-auth": auth.token },
+    });
+    assert.equal(refreshed.statusCode, 200);
+    assert.equal(refreshCount, 1);
+    assert.equal(readJsonResponse(refreshed).refresh.changes.plans_added, 2);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("local API keeps unexpected plan market refresh failures private", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-private-error-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const catalog = require("../src/lib/plan-market").getPlanMarketCatalog();
+    const current = {
+      ok: true,
+      catalog,
+      refresh: {
+        source_status: "configured",
+        last_successful_at: null,
+        changes: {},
+      },
+    };
+    const privateError = Object.assign(new Error(`cannot write ${path.join(tmp, "secret")}`), {
+      code: "EACCES",
+    });
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      planMarketUpdateService: {
+        read: () => current,
+        refresh: async () => { throw privateError; },
+      },
+    });
+    const auth = readJsonResponse(await call(handler, "/api/local-auth"));
+    const response = await call(handler, "/functions/tokentracker-plan-market", {
+      method: "POST",
+      headers: { "x-tokentracker-local-auth": auth.token },
+    });
+    const body = readJsonResponse(response);
+
+    assert.equal(response.statusCode, 500);
+    assert.equal(body.error_code, "refresh_failed");
+    assert.equal(body.error, "套餐目录更新失败，已保留上次成功数据。");
+    assert.doesNotMatch(JSON.stringify(body), /secret|EACCES/u);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

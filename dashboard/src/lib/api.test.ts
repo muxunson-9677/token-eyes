@@ -10,6 +10,7 @@ import {
   fetchCloudUsageModelBreakdown,
   getTokenPlans,
   getRealtimeSessions,
+  getPlanMarketState,
   peekRealtimeSessions,
   resetRealtimeSessionsCacheForTests,
   cancelCodexConsoleLogin,
@@ -19,6 +20,7 @@ import {
   reopenCodexConsoleLogin,
   refreshGlmConsoleSession,
   refreshOfficialConsoleProviderBalance,
+  refreshPlanMarketCatalog,
   reorderTokenPlans,
   triggerLocalSync,
   verifyOfficialModelPricing,
@@ -106,6 +108,35 @@ it("routes local function requests to the Tauri-reported loopback CLI API", asyn
       headers: expect.objectContaining({ Accept: "application/json" }),
     }),
   );
+});
+
+it("reads plan market state and authenticates the manual refresh mutation", async () => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const payload = url.endsWith("/api/local-auth")
+      ? { token: "local-token" }
+      : { ok: true, catalog: { providers: [] }, refresh: {} };
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getPlanMarketState();
+  await refreshPlanMarketCatalog();
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://127.0.0.1:17680/functions/tokentracker-plan-market",
+    expect.objectContaining({ method: "POST", headers: expect.objectContaining({
+      Accept: "application/json",
+      "x-tokentracker-local-auth": "local-token",
+    }) }),
+  );
+  expect(fetchMock.mock.calls.filter(([input]) => (
+    String(input).endsWith("/functions/tokentracker-plan-market")
+  ))).toHaveLength(2);
 });
 
 it("uses deterministic spend trend and Token service fixtures in screenshot mock mode", async () => {

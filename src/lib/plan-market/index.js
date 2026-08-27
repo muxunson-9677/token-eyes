@@ -379,4 +379,22 @@ function getPlanMarketCatalog({ now } = {}) {
   return projectPlanMarketCatalog(loadRaw(), loadProviderLinks(), { now });
 }
 
-module.exports = { getPlanMarketCatalog, projectPlanMarketCatalog };
+const planMarketRefresh = require("./refresh");
+
+function createPlanMarketUpdateService(options = {}) {
+  return planMarketRefresh.createPlanMarketUpdateService({
+    ...options,
+    projectCatalog: projectPlanMarketCatalog,
+  });
+}
+
+module.exports = {
+  getPlanMarketCatalog,
+  projectPlanMarketCatalog,
+  createPlanMarketUpdateService,
+  diffPlanMarketCatalogs: planMarketRefresh.diffPlanMarketCatalogs,
+  hashPlanMarketCatalog: planMarketRefresh.hashPlanMarketCatalog,
+  resolvePlanMarketSnapshotPath: planMarketRefresh.resolvePlanMarketSnapshotPath,
+  PLAN_MARKET_FEED_SCHEMA: planMarketRefresh.PLAN_MARKET_FEED_SCHEMA,
+  PLAN_MARKET_FEED_URL: planMarketRefresh.PLAN_MARKET_FEED_URL,
+};

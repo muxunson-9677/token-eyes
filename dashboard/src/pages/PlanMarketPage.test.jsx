@@ -2,8 +2,8 @@ import React from "react";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import {
   PlanMarketPage,
@@ -36,6 +36,13 @@ const { getPlanMarketCatalog } = nodeRequire(
   path.resolve(process.cwd(), "../src/lib/plan-market"),
 );
 
+const planMarketApi = vi.hoisted(() => ({
+  getPlanMarketState: vi.fn(),
+  refreshPlanMarketCatalog: vi.fn(),
+}));
+
+vi.mock("../lib/api", () => planMarketApi);
+
 // V2-W1 plan market: static curated catalog rendered directly from
 // shared/plan-market-catalog.json (no API round-trip, works on web host too).
 
@@ -53,8 +60,157 @@ function renderPage() {
   );
 }
 
+beforeEach(() => {
+  window.localStorage.clear();
+  planMarketApi.getPlanMarketState.mockReset();
+  planMarketApi.refreshPlanMarketCatalog.mockReset();
+  planMarketApi.getPlanMarketState.mockReturnValue(new Promise(() => {}));
+});
+
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+function remoteState({
+  lastSuccessfulAt = "2026-08-27T08:05:00.000Z",
+  changes = {},
+} = {}) {
+  return {
+    ok: true,
+    catalog: projectPlanMarketCatalogForDashboard(planMarketCatalog, {
+      now: new Date("2026-08-27T08:05:00.000Z"),
+    }),
+    refresh: {
+      source_url: "https://a62b9nf2.function2.insforge.app/tokentracker-plan-market-feed",
+      source_status: "configured",
+      last_checked_at: lastSuccessfulAt,
+      last_successful_at: lastSuccessfulAt,
+      catalog_version: "2026-08-27.1",
+      changes: {
+        plans_added: 0,
+        plans_changed: 0,
+        plans_removed: 0,
+        price_changed: 0,
+        listed: 0,
+        delisted: 0,
+        ...changes,
+      },
+      error_code: null,
+    },
+  };
+}
+
+it("runs manual catalog refresh once with native button loading and exact change results", async () => {
+  let resolveRefresh;
+  planMarketApi.refreshPlanMarketCatalog.mockReturnValue(new Promise((resolve) => {
+    resolveRefresh = resolve;
+  }));
+  renderPage();
+
+  const button = screen.getByRole("button", { name: "copy:plan_market.refresh.button" });
+  expect(button.tagName).toBe("BUTTON");
+  expect(button).toHaveClass("tt-pressable", "tt-product-focusable");
+
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(planMarketApi.refreshPlanMarketCatalog).toHaveBeenCalledTimes(1);
+  expect(button).toBeDisabled();
+  expect(button).toHaveAttribute("aria-busy", "true");
+  expect(screen.getByRole("status")).toHaveTextContent("copy:plan_market.refresh.loading");
+
+  await act(async () => {
+    resolveRefresh(remoteState({
+      changes: { plans_added: 2, plans_changed: 3, listed: 1, delisted: 1, price_changed: 2 },
+    }));
+  });
+
+  expect(screen.getByRole("status")).toHaveTextContent("copy:plan_market.refresh.success");
+  expect(screen.getByTestId("plan-market-refresh-added")).toHaveTextContent("2");
+  expect(screen.getByTestId("plan-market-refresh-changed")).toHaveTextContent("3");
+  expect(screen.getByTestId("plan-market-refresh-listed")).toHaveTextContent("1");
+  expect(screen.getByTestId("plan-market-refresh-delisted")).toHaveTextContent("1");
+  expect(screen.getByTestId("plan-market-refresh-price-changed")).toHaveTextContent("2");
+  expect(screen.getByTestId("plan-market-last-success")).toHaveAttribute(
+    "dateTime",
+    "2026-08-27T08:05:00.000Z",
+  );
+});
+
+it("shows a safe failure state and retries from the same real button", async () => {
+  planMarketApi.refreshPlanMarketCatalog
+    .mockRejectedValueOnce(new Error("private upstream token should never render"))
+    .mockResolvedValueOnce(remoteState());
+  renderPage();
+
+  fireEvent.click(screen.getByRole("button", { name: "copy:plan_market.refresh.button" }));
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("copy:plan_market.refresh.failure"));
+  expect(document.body).not.toHaveTextContent("private upstream token");
+
+  fireEvent.click(screen.getByRole("button", { name: "copy:plan_market.refresh.retry" }));
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("copy:plan_market.refresh.success"));
+  expect(planMarketApi.refreshPlanMarketCatalog).toHaveBeenCalledTimes(2);
+});
+
+it("persists a low-frequency automatic cadence and pauses due checks while the page is hidden", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-27T15:30:00.000Z"));
+  window.localStorage.setItem("tt.planMarketRefreshCadence.v1", "6h");
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  planMarketApi.getPlanMarketState.mockResolvedValue(remoteState({
+    lastSuccessfulAt: "2026-08-27T08:00:00.000Z",
+  }));
+  planMarketApi.refreshPlanMarketCatalog.mockResolvedValue(remoteState({
+    lastSuccessfulAt: "2026-08-27T15:30:00.000Z",
+  }));
+
+  renderPage();
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByLabelText("copy:plan_market.refresh.cadence_label")).toHaveValue("6h");
+  expect(planMarketApi.refreshPlanMarketCatalog).not.toHaveBeenCalled();
+
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+    await Promise.resolve();
+  });
+  expect(planMarketApi.refreshPlanMarketCatalog).toHaveBeenCalledTimes(1);
+
+  fireEvent.change(screen.getByLabelText("copy:plan_market.refresh.cadence_label"), {
+    target: { value: "24h" },
+  });
+  expect(window.localStorage.getItem("tt.planMarketRefreshCadence.v1")).toBe("24h");
+});
+
+it("throttles failed automatic checks for the selected cadence instead of retrying on every visibility change", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-27T15:30:00.000Z"));
+  window.localStorage.setItem("tt.planMarketRefreshCadence.v1", "6h");
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  planMarketApi.getPlanMarketState.mockResolvedValue(remoteState({
+    lastSuccessfulAt: "2026-08-27T08:00:00.000Z",
+  }));
+  planMarketApi.refreshPlanMarketCatalog.mockRejectedValue(new Error("offline"));
+
+  renderPage();
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  expect(planMarketApi.refreshPlanMarketCatalog).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+    await Promise.resolve();
+  });
+  expect(planMarketApi.refreshPlanMarketCatalog).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+  });
+  expect(planMarketApi.refreshPlanMarketCatalog).toHaveBeenCalledTimes(2);
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+  });
+  expect(planMarketApi.refreshPlanMarketCatalog).toHaveBeenCalledTimes(3);
 });
 
 it("registers the production Rust link_id resolver and removes the legacy arbitrary-URL opener", () => {

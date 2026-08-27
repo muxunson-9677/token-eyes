@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownUp, CalendarDays, ChevronDown, ChevronUp, ExternalLink, Globe2, ListFilter, Megaphone, RefreshCw, ShieldAlert, ShieldCheck, Store, Tags, Wifi } from "lucide-react";
 import { copy } from "../lib/copy";
-import planMarketCatalog from "../../../shared/plan-market-catalog.json";
+import { getPlanMarketState, refreshPlanMarketCatalog } from "../lib/api";
+import bundledPlanMarketCatalog from "../../../shared/plan-market-catalog.json";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
 import {
   OfficialExternalLink,
@@ -16,6 +17,34 @@ import {
 const CURRENCY_SYMBOL = { CNY: "¥", USD: "$" };
 const DEFAULT_STALE_AFTER_SECONDS = 30 * 24 * 60 * 60;
 const FRESHNESS_BADGES = new Set(["latest", "new", "hot"]);
+const REFRESH_CADENCE_STORAGE_KEY = "tt.planMarketRefreshCadence.v1";
+const REFRESH_CADENCE_MS = Object.freeze({
+  manual: 0,
+  "6h": 6 * 60 * 60 * 1000,
+  "24h": 24 * 60 * 60 * 1000,
+});
+const EMPTY_MARKET_CHANGES = Object.freeze({
+  plans_added: 0,
+  plans_changed: 0,
+  plans_removed: 0,
+  price_changed: 0,
+  listed: 0,
+  delisted: 0,
+});
+
+function storedRefreshCadence() {
+  try {
+    const value = window.localStorage.getItem(REFRESH_CADENCE_STORAGE_KEY);
+    return Object.hasOwn(REFRESH_CADENCE_MS, value) ? value : "manual";
+  } catch {
+    return "manual";
+  }
+}
+
+function displayTimestamp(value) {
+  const date = new Date(String(value || ""));
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : String(value || "");
+}
 
 export function hasOfficialProviderSource(provider) {
   return provider?.evidence?.verified === true
@@ -434,9 +463,130 @@ function ProviderCard({ provider, expanded, onToggle }) {
 }
 
 export function PlanMarketPage() {
-  const marketCatalog = useMemo(() => (
-    projectPlanMarketCatalogForDashboard(planMarketCatalog, { now: new Date() })
+  const fallbackCatalog = useMemo(() => (
+    projectPlanMarketCatalogForDashboard(bundledPlanMarketCatalog, { now: new Date() })
   ), []);
+  const [marketCatalog, setMarketCatalog] = useState(fallbackCatalog);
+  const [refreshMeta, setRefreshMeta] = useState({
+    source_status: "configured",
+    last_checked_at: null,
+    last_successful_at: null,
+    catalog_version: null,
+    changes: EMPTY_MARKET_CHANGES,
+    error_code: null,
+  });
+  const [refreshState, setRefreshState] = useState("idle");
+  const [initialStateLoaded, setInitialStateLoaded] = useState(false);
+  const [refreshCadence, setRefreshCadence] = useState(storedRefreshCadence);
+  const refreshPromiseRef = useRef(null);
+  const lastAttemptAtRef = useRef(null);
+  const applyRemoteState = useCallback((state) => {
+    if (!state?.catalog || !Array.isArray(state.catalog.providers)) {
+      throw new TypeError("Invalid plan market state");
+    }
+    setMarketCatalog(state.catalog);
+    setRefreshMeta({
+      source_status: state.refresh?.source_status || "configured",
+      last_checked_at: state.refresh?.last_checked_at || null,
+      last_successful_at: state.refresh?.last_successful_at || null,
+      catalog_version: state.refresh?.catalog_version || null,
+      changes: { ...EMPTY_MARKET_CHANGES, ...(state.refresh?.changes || {}) },
+      error_code: state.refresh?.error_code || null,
+    });
+  }, []);
+  const runRefresh = useCallback(() => {
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    setRefreshState("loading");
+    lastAttemptAtRef.current = Date.now();
+    const request = refreshPlanMarketCatalog()
+      .then((state) => {
+        applyRemoteState(state);
+        setRefreshState("success");
+        return state;
+      })
+      .catch((error) => {
+        setRefreshMeta((current) => ({
+          ...current,
+          source_status: "unreachable",
+          last_checked_at: new Date(lastAttemptAtRef.current).toISOString(),
+          error_code: error?.error_code || "feed_unavailable",
+        }));
+        setRefreshState("failure");
+        throw error;
+      })
+      .finally(() => {
+        refreshPromiseRef.current = null;
+      });
+    refreshPromiseRef.current = request;
+    return request;
+  }, [applyRemoteState]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getPlanMarketState({ signal: controller.signal })
+      .then(applyRemoteState)
+      .catch((error) => {
+        if (error?.name !== "AbortError") {
+          setRefreshMeta((current) => ({ ...current, source_status: "unreachable" }));
+        }
+      })
+      .finally(() => setInitialStateLoaded(true));
+    return () => controller.abort();
+  }, [applyRemoteState]);
+
+  useEffect(() => {
+    const intervalMs = REFRESH_CADENCE_MS[refreshCadence] || 0;
+    if (!initialStateLoaded || intervalMs === 0) return undefined;
+    let timer = null;
+    const schedule = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      if (document.visibilityState === "hidden") return;
+      const lastSuccessMs = Date.parse(String(refreshMeta.last_successful_at || ""));
+      const lastCheckedMs = Date.parse(String(refreshMeta.last_checked_at || ""));
+      const cadenceAnchorMs = Math.max(
+        Number.isFinite(lastSuccessMs) ? lastSuccessMs : 0,
+        Number.isFinite(lastCheckedMs) ? lastCheckedMs : 0,
+        Number(lastAttemptAtRef.current) || 0,
+      );
+      const delay = cadenceAnchorMs > 0
+        ? Math.max(0, cadenceAnchorMs + intervalMs - Date.now())
+        : 0;
+      if (delay === 0) {
+        void runRefresh().catch(() => {});
+        return;
+      }
+      timer = window.setTimeout(() => {
+        timer = null;
+        if (document.visibilityState !== "hidden") void runRefresh().catch(() => {});
+      }, delay);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") schedule();
+      else if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    schedule();
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [initialStateLoaded, refreshCadence, refreshMeta.last_checked_at, refreshMeta.last_successful_at, runRefresh]);
+
+  const changeRefreshCadence = (event) => {
+    const value = Object.hasOwn(REFRESH_CADENCE_MS, event.target.value)
+      ? event.target.value
+      : "manual";
+    setRefreshCadence(value);
+    try {
+      window.localStorage.setItem(REFRESH_CADENCE_STORAGE_KEY, value);
+    } catch {
+      // The selection remains active for this page even if storage is unavailable.
+    }
+  };
   const providers = marketCatalog.providers;
   const [providerFilter, setProviderFilter] = useState("all");
   const [sort, setSort] = useState("default");
@@ -487,7 +637,35 @@ export function PlanMarketPage() {
               </OfficialExternalLink>
             </div>
             <div className="tt-plan-market-controls">
-              <span className="tt-plan-market-updated"><RefreshCw aria-hidden />{copy("plan_market.last_verified_label")} <time dateTime={marketCatalog.updated_at}>{marketCatalog.updated_at}</time></span>
+              <span className="tt-plan-market-updated">
+                <RefreshCw aria-hidden />
+                {refreshMeta.last_successful_at ? (
+                  <>{copy("plan_market.refresh.last_success")} <time data-testid="plan-market-last-success" dateTime={refreshMeta.last_successful_at}>{displayTimestamp(refreshMeta.last_successful_at)}</time></>
+                ) : copy("plan_market.refresh.never")}
+                <small>{copy("plan_market.refresh.catalog_version")} {refreshMeta.catalog_version || marketCatalog.updated_at}</small>
+              </span>
+              <button
+                type="button"
+                data-testid="plan-market-refresh-button"
+                className="tt-plan-market-refresh-button tt-pressable tt-product-focusable"
+                disabled={refreshState === "loading"}
+                aria-busy={refreshState === "loading" ? "true" : "false"}
+                onClick={() => { void runRefresh().catch(() => {}); }}
+              >
+                <RefreshCw aria-hidden className={refreshState === "loading" ? "tt-plan-market-refresh-spin" : ""} />
+                {refreshState === "failure"
+                  ? copy("plan_market.refresh.retry")
+                  : copy("plan_market.refresh.button")}
+              </button>
+              <label className="tt-plan-market-select-wrap tt-plan-market-refresh-cadence">
+                <Wifi aria-hidden />
+                <span className="sr-only">{copy("plan_market.refresh.cadence_label")}</span>
+                <select value={refreshCadence} onChange={changeRefreshCadence} aria-label={copy("plan_market.refresh.cadence_label")}>
+                  <option value="manual">{copy("plan_market.refresh.cadence_manual")}</option>
+                  <option value="6h">{copy("plan_market.refresh.cadence_6h")}</option>
+                  <option value="24h">{copy("plan_market.refresh.cadence_24h")}</option>
+                </select>
+              </label>
               <label className="tt-plan-market-select-wrap"><ListFilter aria-hidden /><span className="sr-only">{copy("plan_market.filter.label")}</span>
                 <select data-testid="plan-market-provider-filter" value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)} aria-label={copy("plan_market.filter.label")}>
                   <option value="all">{copy("plan_market.filter.all")}</option>
@@ -500,6 +678,22 @@ export function PlanMarketPage() {
                   <option value="plan-count-asc">{copy("plan_market.sort.plan_count_asc")}</option>
                 </select>
               </label>
+              {refreshState === "loading" ? (
+                <div className="tt-plan-market-refresh-feedback" role="status" aria-live="polite">{copy("plan_market.refresh.loading")}</div>
+              ) : null}
+              {refreshState === "failure" ? (
+                <div className="tt-plan-market-refresh-feedback tt-plan-market-refresh-feedback--failure" role="alert">{copy("plan_market.refresh.failure")}</div>
+              ) : null}
+              {refreshState === "success" ? (
+                <div className="tt-plan-market-refresh-feedback tt-plan-market-refresh-feedback--success" role="status" aria-live="polite">
+                  <span>{copy("plan_market.refresh.success")}</span>
+                  <span data-testid="plan-market-refresh-added">{copy("plan_market.refresh.added")} <strong>{refreshMeta.changes.plans_added}</strong></span>
+                  <span data-testid="plan-market-refresh-changed">{copy("plan_market.refresh.changed")} <strong>{refreshMeta.changes.plans_changed}</strong></span>
+                  <span data-testid="plan-market-refresh-listed">{copy("plan_market.refresh.listed")} <strong>{refreshMeta.changes.listed}</strong></span>
+                  <span data-testid="plan-market-refresh-delisted">{copy("plan_market.refresh.delisted")} <strong>{refreshMeta.changes.delisted}</strong></span>
+                  <span data-testid="plan-market-refresh-price-changed">{copy("plan_market.refresh.price_changed")} <strong>{refreshMeta.changes.price_changed}</strong></span>
+                </div>
+              ) : null}
             </div>
           </header>
           <section data-testid="plan-market-overview" data-layout-stable="true" className="tt-plan-market-overview" aria-label={copy("nav.spend.plans")}>
